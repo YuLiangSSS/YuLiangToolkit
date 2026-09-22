@@ -647,5 +647,33 @@
             </Setter>
         </Style>
 
+        <!-- ================= 标签芯片（主页“快速筛选”用的小圆角按钮） ================= -->
+        <Style x:Key="TagChipButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#1D2735" />
+            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chip" Background="{TemplateBinding Background}"
+                                BorderBrush="#2C3B52" BorderThickness="1"
+                                CornerRadius="11" Padding="10,4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chip" Property="Background" Value="#26364A" />
+                                <Setter TargetName="Chip" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chip" Property="Opacity" Value="0.8" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
     </Application.Resources>
 </Application>

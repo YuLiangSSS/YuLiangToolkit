@@ -25,9 +25,18 @@ public partial class App : Application
         var vm = new MainViewModel(tools);
         var window = new MainWindow { DataContext = vm };
         MainWindow = window;
+
+        // 截图模式（YLT_SHOT）下不激活窗口：免得正在打字/玩游戏时被弹窗抢走输入。
+        // ShowActivated 必须在 Show() 之前设；RenderTargetBitmap 渲染视觉树，不依赖窗口激活。
+        var shotPath = Environment.GetEnvironmentVariable("YLT_SHOT");
+        if (!string.IsNullOrWhiteSpace(shotPath))
+        {
+            window.ShowActivated = false;
+        }
+
         window.Show();
 
-        // 开发调试：截图模式。YLT_SHOT=输出 PNG 路径（可选 YLT_SHOT_TOOL=工具 Id 直接打开某个工具）
+        // 开发调试：可选 YLT_SHOT_TOOL / YLT_NAV_TOOL 直接打开某个工具
         var toolId = Environment.GetEnvironmentVariable("YLT_SHOT_TOOL") ?? Environment.GetEnvironmentVariable("YLT_NAV_TOOL");
         if (!string.IsNullOrWhiteSpace(toolId))
         {
@@ -35,7 +44,6 @@ public partial class App : Application
             if (tool is not null) vm.OpenToolCommand.Execute(tool);
         }
 
-        var shotPath = Environment.GetEnvironmentVariable("YLT_SHOT");
         if (!string.IsNullOrWhiteSpace(shotPath))
         {
             window.CaptureTo(shotPath);

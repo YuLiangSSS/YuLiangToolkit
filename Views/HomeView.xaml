@@ -3,13 +3,78 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Margin="30,26,30,26">
-            <TextBlock Text="工具集主页" FontSize="22" FontWeight="SemiBold" />
-            <TextBlock Text="选择下方工具开始使用，工具也会自动出现在左侧导航中。"
-                       FontSize="12.5" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,6,0,0" />
-            <TextBlock Text="开发提示：新增工具只需新建一个实现 ITool 接口的类（或放入 plugins 目录），主程序会自动发现并展示。"
-                       FontSize="11" Foreground="#5A6472" Margin="0,4,0,20" TextWrapping="Wrap" />
 
-            <ItemsControl ItemsSource="{Binding Tools}">
+            <!-- 标题 -->
+            <TextBlock Text="工具集主页" FontSize="22" FontWeight="SemiBold" />
+            <TextBlock Text="搜名称 / 标签 / 描述找功能，或按「最近使用」排序；左侧导航始终列出全部功能。"
+                       FontSize="12.5" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,6,0,0" />
+
+            <!-- ===== 搜索 + 排序条 ===== -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0" Padding="14,12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Text="🔍" FontSize="14" VerticalAlignment="Center" Margin="2,0,8,0" />
+
+                    <!-- 搜索框（含占位提示；Esc 清空，Ctrl+F 聚焦） -->
+                    <Grid Grid.Column="1">
+                        <TextBox x:Name="SearchBox" Height="34" Style="{StaticResource TextBoxStyle}"
+                                 Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                 ToolTip="按名称、分类、标签、描述、Id 搜索；空格分隔多个关键词（需同时命中）；Esc 清空，Ctrl+F 聚焦" />
+                        <TextBlock Text="搜索功能…（名称 / 标签 / 描述，Ctrl+F）"
+                                   Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Visibility="{Binding SearchText, Converter={StaticResource EmptyToVis}}" />
+                    </Grid>
+
+                    <Button Grid.Column="2" Content="✕" Padding="10,4" Margin="8,0,0,0"
+                            Style="{StaticResource SecondaryButtonStyle}" ToolTip="清空搜索（Esc）"
+                            Command="{Binding ClearSearchCommand}"
+                            Visibility="{Binding HasSearchText, Converter={StaticResource BoolToVis}}" />
+
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="18,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="排序" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                        <ComboBox ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SelectedSort}"
+                                  DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}"
+                                  MinWidth="120" Margin="8,0,0,0"
+                                  ToolTip="默认顺序 = 功能自带的优先级；最近使用 = 刚打开过的排最前（记录在 Config\shell\config.json，重启后保留）" />
+                    </StackPanel>
+
+                    <TextBlock Grid.Column="4" Text="{Binding FilterSummary}" VerticalAlignment="Center"
+                               Margin="18,0,4,0" MinWidth="120" TextAlignment="Right" FontSize="11.5"
+                               Foreground="{StaticResource TextSecondaryBrush}" />
+                </Grid>
+            </Border>
+
+            <!-- ===== 标签快捷筛选（未搜索时显示；点标签即搜索） ===== -->
+            <StackPanel Margin="0,14,0,0" Visibility="{Binding ShowTagBar, Converter={StaticResource BoolToVis}}">
+                <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
+                           Text="快速筛选：点标签即搜索（标签就是卡片上那行蓝色小字）" />
+                <ItemsControl ItemsSource="{Binding AllTags}" Margin="0,8,0,0">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Content="{Binding}" Margin="0,0,8,8"
+                                    Style="{StaticResource TagChipButtonStyle}"
+                                    Command="{Binding DataContext.SearchTagCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                    CommandParameter="{Binding}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
+            <!-- ===== 功能卡片墙 ===== -->
+            <ItemsControl ItemsSource="{Binding ToolCards}" Margin="0,10,0,0">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <WrapPanel />
@@ -18,30 +83,53 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <Button Style="{StaticResource ToolCardButtonStyle}" Width="300" Margin="0,0,16,16"
+                                ToolTip="{Binding ToolTipText}"
                                 Command="{Binding DataContext.OpenToolCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                CommandParameter="{Binding}">
+                                CommandParameter="{Binding Tool}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
                                 <Border Width="52" Height="52" CornerRadius="12" Background="#232A36" VerticalAlignment="Top">
-                                    <TextBlock Text="{Binding EmojiIcon}" FontSize="24"
+                                    <TextBlock Text="{Binding Emoji}" FontSize="24"
                                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
                                 <StackPanel Grid.Column="1" Margin="14,0,0,0">
-                                    <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis" />
                                     <TextBlock Text="{Binding Description}" FontSize="11.5"
                                                Foreground="{StaticResource TextSecondaryBrush}"
-                                               TextWrapping="Wrap" Margin="0,5,0,0" MaxHeight="34" />
-                                    <TextBlock Text="{Binding Category}" FontSize="10"
-                                               Foreground="{StaticResource AccentBrush}" Margin="0,8,0,0" />
+                                               TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                               MaxHeight="34" Margin="0,5,0,0" />
+                                    <TextBlock Text="{Binding TagsText}" FontSize="10"
+                                               Foreground="{StaticResource AccentBrush}"
+                                               TextTrimming="CharacterEllipsis" Margin="0,8,0,0" />
+                                    <TextBlock Text="{Binding LastUsedText}" FontSize="10" Foreground="#5A6472"
+                                               Margin="0,4,0,0"
+                                               Visibility="{Binding ShowLastUsed, Converter={StaticResource BoolToVis}}" />
                                 </StackPanel>
                             </Grid>
                         </Button>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+            <!-- ===== 搜索无结果 ===== -->
+            <Border Style="{StaticResource CardStyle}" Padding="22,20" Margin="0,4,0,0"
+                    Visibility="{Binding HasNoResults, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <TextBlock Text="没有找到匹配的功能" FontSize="14" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding NoResultHint}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"
+                               Foreground="{StaticResource TextSecondaryBrush}" />
+                    <Button Content="清空搜索" Style="{StaticResource SecondaryButtonStyle}"
+                            Command="{Binding ClearSearchCommand}" HorizontalAlignment="Left" Margin="0,14,0,0" />
+                </StackPanel>
+            </Border>
+
+            <!-- 开发提示 -->
+            <TextBlock FontSize="11" Foreground="#5A6472" Margin="0,6,0,0" TextWrapping="Wrap"
+                       Text="开发提示：新增工具只需新建一个实现 ITool 的类（或把 dll 放进 plugins 目录），主程序会自动发现；给它加上 Tags 属性，标签搜索与主页标签条就会带上它。详见 代码记录.md。" />
         </StackPanel>
     </ScrollViewer>
 </UserControl>

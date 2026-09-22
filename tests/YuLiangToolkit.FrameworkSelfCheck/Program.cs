@@ -2,8 +2,11 @@
 // 运行： dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
 // （默认在临时目录里造数据根，不碰仓库的 Data/Config；退出码 0 = 全部通过）
 using System.IO;
+using YuLiangToolkit.App.Models;
+using YuLiangToolkit.App.ViewModels;
 using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Storage;
+using YuLiangToolkit.Core.Tools;
 
 // 自检必须跑在临时数据根里：YLT_HOME 要在任何 AppPaths 访问之前设好
 if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("YLT_HOME")))
@@ -140,6 +143,78 @@ Check("LoadWithDefaults 补齐缺失键并落盘",
     && seeded.GetBool("flag") == false,
     seeded.ToJson().Replace(Environment.NewLine, " "));
 
+// ---------- 14. 主页搜索（ToolFilter：纯逻辑，不需要开界面） ----------
+var fakeTools = new ITool[]
+{
+    new FakeTool("video-to-audio", "视频转音频", "媒体", "批量提取视频的音频", 10, "视频", "音频", "FFmpeg", "mp3"),
+    new FakeTool("flash-downloader", "Flash 小游戏下载器", "网络", "抓取并保存网页里的 swf", 20, "flash", "swf", "下载"),
+    new FakeTool("sample-framework", "框架示例", "开发", "Data/Config 轮子演示", 900, "示例", "模板", "Config"),
+};
+var cards = fakeTools.Select(t => new ToolCard(t, null)).ToList();
+
+int MatchCount(string query) => ToolFilter.Apply(cards, query, ToolSortMode.Default).Count;
+
+Check("按名称搜索", MatchCount("视频") == 1);
+Check("按标签搜索（mp3 命中视频工具）", MatchCount("mp3") == 1);
+Check("按分类搜索", MatchCount("网络") == 1);
+Check("按描述搜索", MatchCount("swf") == 1);
+Check("按 Id 搜索（英文）", MatchCount("flash-downloader") == 1);
+Check("大小写不敏感（FFMPEG / ffmpeg）", MatchCount("FFMPEG") == 1 && MatchCount("ffmpeg") == 1);
+Check("空格多关键词 = 都要命中", MatchCount("视频 mp3") == 1 && MatchCount("视频 swf") == 0);
+Check("中文逗号/顿号也能切分关键词", MatchCount("视频，mp3") == 1 && MatchCount("视频、音频") == 1);
+Check("空搜索词返回全部", MatchCount("") == cards.Count && MatchCount("   ") == cards.Count);
+Check("搜不到时返回空（界面显示空状态）", MatchCount("不存在的功能xyz") == 0);
+
+// ---------- 15. 主页排序 ----------
+var now = DateTime.Now;
+cards[0].LastUsed = now.AddHours(-2);   // 视频转音频：2 小时前用过
+cards[1].LastUsed = now;                // Flash：刚用过
+// 框架示例：从未用过
+
+var byRecent = ToolFilter.Sort(cards, ToolSortMode.RecentlyUsed);
+Check("最近使用排序：刚用过的排最前", byRecent[0].Id == "flash-downloader" && byRecent[1].Id == "video-to-audio");
+Check("最近使用排序：从未用过的排最后", byRecent[^1].Id == "sample-framework");
+
+var byDefault = ToolFilter.Sort(cards, ToolSortMode.Default);
+Check("默认顺序 = 按 Order", byDefault[0].Id == "video-to-audio" && byDefault[^1].Id == "sample-framework");
+
+var asc = ToolFilter.Sort(cards, ToolSortMode.NameAsc).Select(c => c.Name).ToList();
+var desc = ToolFilter.Sort(cards, ToolSortMode.NameDesc).Select(c => c.Name).ToList();
+Check("名称升序 / 降序互为倒序", asc.SequenceEqual(desc.AsEnumerable().Reverse()));
+
+var byCategory = ToolFilter.Sort(cards, ToolSortMode.Category);
+Check("按分类排序：同分类聚在一起", byCategory.Select(c => c.Category).Distinct().Count() == 3);
+
+// ---------- 16. 标签收集 + 上次使用时间文案 ----------
+var tags = ToolFilter.CollectTags(cards);
+Check("标签收集去重（分类也算标签）", tags.Contains("媒体") && tags.Contains("mp3") && tags.Count == tags.Distinct().Count(),
+    string.Join(" / ", tags));
+Check("卡片标签里分类排第一", cards[0].Tags[0] == "媒体" && cards[0].TagsText.StartsWith("媒体"));
+Check("上次使用文案", ToolCard.FormatLastUsed(null) == "从未使用"
+    && ToolCard.FormatLastUsed(now) == "刚刚用过"
+    && ToolCard.FormatLastUsed(now.AddMinutes(-12)) == "12 分钟前用过"
+    && ToolCard.FormatLastUsed(now.AddHours(-3)) == "3 小时前用过"
+    && ToolCard.FormatLastUsed(now.AddDays(-5)) == "5 天前用过");
+
+// ---------- 17. 外壳配置（主页排序偏好 + 上次使用时间） ----------
+var shellStore = ToolConfigStore.For("shell");
+var shell = shellStore.Load<ShellConfig>();
+Check("外壳配置落在 Config\\shell\\config.json",
+    Path.GetFileName(Path.GetDirectoryName(shell.FilePath)!) == "shell", shell.FilePath);
+
+shell.SortMode = ToolSortMode.RecentlyUsed;
+shell.MarkUsed("video-to-audio");          // 原地改字典，不走属性 setter
+Thread.Sleep(900);
+var savedShell = JsonFileStore.Read<ShellConfig>(shellStore.FilePath);
+Check("原地改字典也能自动落盘（最近使用时间）", savedShell?.GetLastUsed("video-to-audio") is not null,
+    JsonFileStore.Serialize(savedShell).Replace(Environment.NewLine, " "));
+// 枚举按 C# 原名保存（"RecentlyUsed" / "Mp3Lossy"）：手改配置时看得懂，且不会因为枚举顺序变化而错位。
+// 注意别改成 camelCase——已存的配置会读不出来（读取失败会被当成损坏文件备份并回退默认值）。
+Check("枚举以字符串（C# 原名）保存并读回",
+    File.ReadAllText(shellStore.FilePath).Contains("\"RecentlyUsed\"")
+    && JsonFileStore.Read<ShellConfig>(shellStore.FilePath)?.SortMode == ToolSortMode.RecentlyUsed,
+    File.ReadAllText(shellStore.FilePath).Replace(Environment.NewLine, " "));
+
 Console.WriteLine(string.Join(Environment.NewLine, results));
 var failed = results.Count(r => r.StartsWith("FAIL"));
 Console.WriteLine();
@@ -147,6 +222,30 @@ Console.WriteLine(failed == 0
     ? $"全部通过（{results.Count} 项）· 数据根：{AppPaths.Root}"
     : $"失败 {failed} / {results.Count} 项 · 数据根：{AppPaths.Root}");
 return failed == 0 ? 0 : 1;
+
+/// <summary>自检用的假工具：只填展示字段，用来验证搜索/排序逻辑。</summary>
+internal sealed class FakeTool : ITool
+{
+    public FakeTool(string id, string name, string category, string description, int order, params string[] tags)
+    {
+        Id = id;
+        Name = name;
+        Category = category;
+        Description = description;
+        Order = order;
+        Tags = tags;
+    }
+
+    public string Id { get; }
+    public string Name { get; }
+    public string Description { get; }
+    public string EmojiIcon => "🧪";
+    public string Category { get; }
+    public IReadOnlyList<string> Tags { get; }
+    public int Order { get; }
+
+    public System.Windows.FrameworkElement CreateView() => new System.Windows.Controls.TextBlock();
+}
 
 /// <summary>自检用的配置类：故意全部用自动属性，验证“不写字也能自动保存”这条承诺。</summary>
 internal sealed class TestCfg : ToolConfig

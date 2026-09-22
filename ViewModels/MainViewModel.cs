@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.Windows;
+using YuLiangToolkit.App.Models;
 using YuLiangToolkit.App.Views;
+using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Core.Services;
 using YuLiangToolkit.Core.Storage;
@@ -29,13 +31,33 @@ public class NavItem
     public void Navigate() => _navigate();
 }
 
-/// <summary>主窗口视图模型：管理侧边栏、主页与工具导航。</summary>
+/// <summary>
+/// 主窗口视图模型：管理侧边栏、主页（搜索 + 排序）与工具导航。
+///
+/// <para>主页状态存哪：搜索词只留在内存（重启不保留，免得下次打开发现“我的功能不见了”）；
+/// 排序方式与每个功能的“上次使用时间”存进 <c>Config\shell\config.json</c>（见 <see cref="ShellConfig"/>，
+/// 外壳也算一个“功能”，所以同样走 <see cref="ToolConfig"/> 自动落盘）。</para>
+/// </summary>
 public class MainViewModel : ObservableObject
 {
+    /// <summary>外壳自己的功能 Id（配置放在 Config\shell\ 下）。</summary>
+    private const string ShellToolId = "shell";
+
+    private readonly ToolConfigStore _shellStore;
+    private readonly ShellConfig _shell;
+    private readonly List<ToolCard> _allCards = new();
     private bool _syncingNav;
 
     public ObservableCollection<NavItem> NavItems { get; } = new();
+
+    /// <summary>全部已发现的功能（未过滤）。</summary>
     public ObservableCollection<ITool> Tools { get; } = new();
+
+    /// <summary>主页实际展示的卡片（已按搜索词过滤 + 按当前排序方式排好）。</summary>
+    public ObservableCollection<ToolCard> ToolCards { get; } = new();
+
+    /// <summary>所有功能用到的标签（去重排序），用于主页“快速筛选”。</summary>
+    public IReadOnlyList<string> AllTags { get; }
 
     private object? _currentView;
     public object? CurrentView
@@ -75,15 +97,97 @@ public class MainViewModel : ObservableObject
         set => Set(ref _currentTitle, value);
     }
 
+    // ---------- 搜索 ----------
+
+    private string _searchText = "";
+
+    /// <summary>搜索词：空格分隔多个关键词（都要命中）。匹配名称 / 分类 / 标签 / 描述 / Id。</summary>
+    public string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            if (!Set(ref _searchText, value)) return;
+            OnPropertyChanged(nameof(HasSearchText));
+            OnPropertyChanged(nameof(ShowTagBar));
+            RefreshToolCards();
+        }
+    }
+
+    /// <summary>搜索框里有没有内容（用来显示“清空”按钮）。</summary>
+    public bool HasSearchText => !string.IsNullOrWhiteSpace(_searchText);
+
+    /// <summary>没在搜索时才显示标签快捷筛选条（有搜索词时让位给结果）。</summary>
+    public bool ShowTagBar => !HasSearchText;
+
+    private string _filterSummary = "";
+    /// <summary>搜索框右侧计数，例如 "匹配 2 / 12 个功能"。</summary>
+    public string FilterSummary
+    {
+        get => _filterSummary;
+        private set => Set(ref _filterSummary, value);
+    }
+
+    private bool _hasNoResults;
+    /// <summary>搜索无结果（显示空状态提示）。</summary>
+    public bool HasNoResults
+    {
+        get => _hasNoResults;
+        private set => Set(ref _hasNoResults, value);
+    }
+
+    private string _noResultHint = "";
+    public string NoResultHint
+    {
+        get => _noResultHint;
+        private set => Set(ref _noResultHint, value);
+    }
+
+    // ---------- 排序 ----------
+
+    /// <summary>排序下拉框选项。</summary>
+    public IReadOnlyList<OptionItem<ToolSortMode>> SortOptions { get; } = OptionItem.From(
+        (ToolSortMode.Default, "默认顺序"),
+        (ToolSortMode.RecentlyUsed, "最近使用"),
+        (ToolSortMode.NameAsc, "名称 A→Z"),
+        (ToolSortMode.NameDesc, "名称 Z→A"),
+        (ToolSortMode.Category, "按分类"));
+
+    /// <summary>当前排序（改一下即写入 Config\shell\config.json，重启后保持）。</summary>
+    public OptionItem<ToolSortMode> SelectedSort
+    {
+        get => OptionItem<ToolSortMode>.Find(SortOptions, _shell.SortMode) ?? SortOptions[0];
+        set
+        {
+            if (value is null || value.Value == _shell.SortMode) return;
+            _shell.SortMode = value.Value;   // 属性变更 → 框架自动落盘
+            OnPropertyChanged();
+            RefreshToolCards();
+        }
+    }
+
+    // ---------- 命令 ----------
+
     public RelayCommand GoHomeCommand { get; }
     public RelayCommand OpenToolCommand { get; }
+    public RelayCommand ClearSearchCommand { get; }
+    public RelayCommand SearchTagCommand { get; }
 
     public MainViewModel(IEnumerable<ITool> tools)
     {
+        _shellStore = ToolConfigStore.For(ShellToolId);
+        _shell = _shellStore.Load<ShellConfig>();
+
         GoHomeCommand = new RelayCommand(_ => GoHome());
         OpenToolCommand = new RelayCommand(p =>
         {
             if (p is ITool t) OpenTool(t);
+            else if (p is ToolCard c) OpenTool(c.Tool);
+        });
+        ClearSearchCommand = new RelayCommand(_ => SearchText = "");
+        SearchTagCommand = new RelayCommand(p =>
+        {
+            if (p is string tag && !string.IsNullOrWhiteSpace(tag)) SearchText = tag;
         });
 
         NavItems.Add(new NavItem("首页", "🏠", null, GoHome));
@@ -93,10 +197,50 @@ public class MainViewModel : ObservableObject
             NavItems.Add(new NavItem(t.Name, t.EmojiIcon, t, () => OpenTool(t)));
         }
 
+        foreach (var tool in Tools)
+        {
+            _allCards.Add(new ToolCard(tool, _shell.GetLastUsed(tool.Id)));
+        }
+
+        AllTags = ToolFilter.CollectTags(_allCards);
+
+        // 开发调试：YLT_HOME_SEARCH=关键词 可以在启动时预置搜索词（截图验证“筛选后/无结果”状态用）
+        var presetSearch = Environment.GetEnvironmentVariable("YLT_HOME_SEARCH");
+        if (!string.IsNullOrWhiteSpace(presetSearch)) _searchText = presetSearch;
+
+        RefreshToolCards();
+
         var ffmpeg = FFmpegLocator.Find(null);
         StatusText = $"共加载 {Tools.Count} 个工具 · FFmpeg：{(ffmpeg is not null ? "已找到" : "未找到（可在工具内配置）")}"
-                     + $" · 数据/配置目录：{AppPaths.Root} · v0.2.0";
+                     + $" · 数据/配置目录：{AppPaths.Root} · v{AppVersion}";
         GoHome();
+    }
+
+    /// <summary>程序版本（取自程序集，别再写死在状态栏里）。</summary>
+    private static string AppVersion
+        => typeof(MainViewModel).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+
+    /// <summary>按当前搜索词与排序方式重算主页卡片列表（逻辑在 <see cref="ToolFilter"/>，可脱离界面自检）。</summary>
+    private void RefreshToolCards()
+    {
+        var matched = ToolFilter.Apply(_allCards, _searchText, _shell.SortMode);
+
+        ToolCards.Clear();
+        foreach (var card in matched)
+        {
+            // 只有按“最近使用”排序时才在卡片上显示“x 分钟前用过”
+            card.ShowLastUsed = _shell.SortMode == ToolSortMode.RecentlyUsed && card.LastUsed is not null;
+            ToolCards.Add(card);
+        }
+
+        HasNoResults = ToolCards.Count == 0;
+        FilterSummary = HasSearchText
+            ? $"匹配 {ToolCards.Count} / {_allCards.Count} 个功能"
+            : $"共 {_allCards.Count} 个功能";
+
+        NoResultHint = $"没有匹配「{_searchText.Trim()}」的功能。"
+                       + "试试更短的关键词——名称、分类、标签、描述、Id 都能搜到；"
+                       + "也可以用空格组合多个关键词（比如「视频 mp3」）。";
     }
 
     /// <summary>切换功能前通知上一个工具：落盘未保存的配置、停止后台任务。</summary>
@@ -108,9 +252,18 @@ public class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>记一笔“这个功能刚被用过”（“最近使用”排序与卡片提示都靠它）。</summary>
+    private void MarkToolUsed(string toolId)
+    {
+        _shell.MarkUsed(toolId);   // 字典改动会被 ToolConfigStore 的后台内容比对捡到并落盘
+        var card = _allCards.FirstOrDefault(c => c.Id == toolId);
+        if (card is not null) card.LastUsed = DateTime.Now;
+    }
+
     private void GoHome()
     {
         CloseCurrentTool();
+        RefreshToolCards();   // 从功能页返回时刷新“最近使用”的顺序
         _syncingNav = true;
         SelectedNavItem = NavItems.FirstOrDefault(n => n.IsHome);
         _syncingNav = false;
@@ -122,6 +275,7 @@ public class MainViewModel : ObservableObject
     private void OpenTool(ITool tool)
     {
         CloseCurrentTool();
+        MarkToolUsed(tool.Id);
         _syncingNav = true;
         SelectedNavItem = NavItems.FirstOrDefault(n => n.Tool == tool);
         _syncingNav = false;

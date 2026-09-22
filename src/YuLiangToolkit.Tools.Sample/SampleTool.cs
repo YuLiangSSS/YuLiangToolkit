@@ -16,6 +16,10 @@ public class SampleTool : ITool
     public string Description => "Data/Config 轮子演示：选项即时写入 Config，资源文件放进 Data（本项目可直接复制为新功能）";
     public string EmojiIcon => "🧪";
     public string Category => "开发";
+
+    /// <summary>主页标签：卡片上显示成蓝色小字，点主页的标签即可快速筛选。</summary>
+    public IReadOnlyList<string> Tags => new[] { "示例", "模板", "Data", "Config", "轮子演示" };
+
     public int Order => 900;
 
     public FrameworkElement CreateView()
