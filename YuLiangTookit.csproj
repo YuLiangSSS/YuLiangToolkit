@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- 本目录下 src/ 里的库项目源码不能被这个主项目重复编译进来；
+         Data/ 与 Config/ 是运行时数据与配置（用户可往里丢文件），tests/ 是自检程序，都不参与编译 -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);src\**;Data\**;Config\**;tests\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="src\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+    <ProjectReference Include="src\YuLiangToolkit.Tools.VideoToAudio\YuLiangToolkit.Tools.VideoToAudio.csproj" />
+    <ProjectReference Include="src\YuLiangToolkit.Tools.Sample\YuLiangToolkit.Tools.Sample.csproj" />
+  </ItemGroup>
+
+</Project>

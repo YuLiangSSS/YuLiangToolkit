@@ -1,0 +1,47 @@
+<UserControl x:Class="YuLiangToolkit.App.Views.HomeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="30,26,30,26">
+            <TextBlock Text="工具集主页" FontSize="22" FontWeight="SemiBold" />
+            <TextBlock Text="选择下方工具开始使用，工具也会自动出现在左侧导航中。"
+                       FontSize="12.5" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,6,0,0" />
+            <TextBlock Text="开发提示：新增工具只需新建一个实现 ITool 接口的类（或放入 plugins 目录），主程序会自动发现并展示。"
+                       FontSize="11" Foreground="#5A6472" Margin="0,4,0,20" TextWrapping="Wrap" />
+
+            <ItemsControl ItemsSource="{Binding Tools}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Button Style="{StaticResource ToolCardButtonStyle}" Width="300" Margin="0,0,16,16"
+                                Command="{Binding DataContext.OpenToolCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                CommandParameter="{Binding}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Width="52" Height="52" CornerRadius="12" Background="#232A36" VerticalAlignment="Top">
+                                    <TextBlock Text="{Binding EmojiIcon}" FontSize="24"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="14,0,0,0">
+                                    <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding Description}" FontSize="11.5"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               TextWrapping="Wrap" Margin="0,5,0,0" MaxHeight="34" />
+                                    <TextBlock Text="{Binding Category}" FontSize="10"
+                                               Foreground="{StaticResource AccentBrush}" Margin="0,8,0,0" />
+                                </StackPanel>
+                            </Grid>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 新功能模板：复制本文件夹改名（例如 YuLiangToolkit.Tools.FlashDownloader），
+       然后 ① 改下面两行 AssemblyName/RootNamespace；② 把本文件加进 YuLiangToolkit.sln；
+       ③ 在主项目 YuLiangTookit.csproj 里加一条 ProjectReference（或把 dll 丢进 plugins/）。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.Sample</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.Sample</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

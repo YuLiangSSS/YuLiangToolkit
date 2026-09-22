@@ -1,0 +1,25 @@
+# scripts —— 开发/调试脚本
+
+这些是开发过程中用来**验证界面和排查问题**的一次性脚本（都是 PowerShell，含 UI 自动化）。
+
+> ⚠️ **会弹窗口、会抢焦点**：带 `Start-Process` 的脚本会真的把程序窗口打开并模拟点击/输入，
+> 如果你正在干别的（尤其打游戏），**别跑**。只想看界面长相的话用无头截图：
+> ```powershell
+> $env:YLT_SHOT_TOOL="sample-framework"; $env:YLT_SHOT="shots\check.png"
+> .\bin\Debug\net9.0-windows\YuLiangTookit.exe
+> ```
+
+| 脚本 | 作用 | 备注 |
+| --- | --- | --- |
+| `e2e-convert.ps1` | 端到端跑「视频转音频」：设源文件夹 → 扫描 → 开始转换 → 回读状态与产物 | 输入默认用 `testdata\`；会开窗口、点按钮 |
+| `dump-uia.ps1` | 打印已运行窗口的 UI 自动化树（控件类型 + 名称），排查“找不到控件”用 | 需要程序已在运行；进程名参数默认 `YuLiangToolkit.App`，实际是 `YuLiangTookit` |
+| `diag-uia.ps1` | 启动程序后 dump 窗口/前 60 个控件，确认窗口是否创建、控件是否可见 | 会开窗口 |
+| `fix-transparent.ps1` | 把截图里完全透明的像素替换成窗口底色 `#16181D`（截图产物的瑕疵修补） | 纯图像处理，不开窗口 |
+| `scrollbar-analyze.ps1` | 分析截图右侧像素，确认自定义滚动条确实生效（滑块色 `#3A414D`） | 纯图像处理，不开窗口 |
+
+约定：
+
+* 脚本里的路径都是**绝对路径**（指向本机仓库），换机器/换目录要自己改；
+* 截图输出统一写到 `shots/`（该目录下的 `*.png` 已加入 `.gitignore`，不入库）；
+* 写新脚本请保持 **ASCII 或存成 UTF-8 with BOM**——Windows PowerShell 5.1 读无 BOM 的 UTF-8 中文会乱码报语法错误
+  （`build.ps1` 也是为此保持纯 ASCII）。

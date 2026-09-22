@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <NuGetAudit>false</NuGetAudit>
+    <Authors>YuLiang</Authors>
+    <Version>0.1.0</Version>
+    <Product>YuLiangToolkit</Product>
+  </PropertyGroup>
+</Project>

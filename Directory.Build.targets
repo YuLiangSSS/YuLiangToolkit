@@ -1,0 +1,7 @@
+<Project>
+  <!-- UseWPF 项目的隐式 using 不含 System.IO / System.Text，这里统一补上 -->
+  <ItemGroup>
+    <Using Include="System.IO" />
+    <Using Include="System.Text" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,32 @@
+# 换行与二进制处理约定（避免以后出现“整个文件都变了”的假 diff）
+# 仓库内统一存 LF，检出到 Windows 工作区按 core.autocrlf=true 转成 CRLF。
+* text=auto
+
+# 二进制：禁止 git 做换行转换与文本 diff
+*.exe    binary
+*.dll    binary
+*.pdb    binary
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.mp4    binary
+*.mkv    binary
+*.mov    binary
+*.mp3    binary
+*.flac   binary
+*.swf    binary
+*.zip    binary
+
+# 文本：明确类型，方便 diff / 合并
+*.cs       text
+*.xaml     text
+*.csproj   text
+*.props    text
+*.targets  text
+*.json     text
+*.md       text
+*.ps1      text eol=crlf
+*.sln      text eol=crlf
+*.bat      text eol=crlf
