@@ -17,6 +17,8 @@
     <!-- 主页的搜索/排序逻辑（ToolFilter / ToolCard）在主程序集里，引用来做纯逻辑断言。
          注意：只 new ToolCard，不碰任何需要 WPF Application 资源的东西。 -->
     <ProjectReference Include="..\..\YuLiangTookit.csproj" />
+    <!-- 「批量重命名」的命名规则/冲突检测（RenameEngine）也是纯逻辑，直接断言。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.BatchRename\YuLiangToolkit.Tools.BatchRename.csproj" />
   </ItemGroup>
 
 </Project>

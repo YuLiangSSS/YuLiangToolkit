@@ -11,6 +11,7 @@ Data/
 ├─ <功能Id>/               ← 每个功能一个同名小文件夹（首次真正写入时自动创建）
 │  ├─ player.swf
 │  └─ sub/dir/其它资源.bin  ← 子目录也支持
+├─ batch-rename/           ← 批量重命名工具：rename-history.json（改名流水账，撤销靠它，删了就没法撤销）
 └─ sample-framework/       ← 示例工具的文件夹（可整目录删除）
 ```
 

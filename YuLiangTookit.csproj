@@ -14,6 +14,7 @@
   <ItemGroup>
     <ProjectReference Include="src\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.VideoToAudio\YuLiangToolkit.Tools.VideoToAudio.csproj" />
+    <ProjectReference Include="src\YuLiangToolkit.Tools.BatchRename\YuLiangToolkit.Tools.BatchRename.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.Sample\YuLiangToolkit.Tools.Sample.csproj" />
   </ItemGroup>
 

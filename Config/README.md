@@ -11,6 +11,7 @@ Config/
 ├─ <功能Id>/
 │  ├─ config.json          ← 强类型配置（ToolConfig / ToolConfigStore.Load<T>）
 │  └─ options.json         ← 动态键值配置（DynamicToolConfig，可选）
+├─ batch-rename/config.json ← 批量重命名：整套改名规则 + 排序偏好 + 上次用过的文件夹
 └─ sample-framework/
    ├─ config.json
    └─ options.json

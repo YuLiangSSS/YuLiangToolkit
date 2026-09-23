@@ -1,0 +1,744 @@
+<UserControl x:Class="YuLiangToolkit.Tools.BatchRename.Views.BatchRenameView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:YuLiangToolkit.Tools.BatchRename.ViewModels"
+             AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+        <!-- 小标题（规则分组用） -->
+        <Style x:Key="GroupTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+
+        <!-- 字段左侧的说明文字 -->
+        <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- 列表行：需要选中高亮，所以不用全局 FileListStyle（那个模板没有高亮） -->
+        <Style x:Key="RenameRowStyle" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Row" CornerRadius="6" Margin="12,1" Padding="6,5" Background="Transparent">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Row" Property="Background" Value="#222834" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Row" Property="Background" Value="#2A3242" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 规则清单的一行：卡片自己就是视觉主体；行与行之间的间距由指示线自带的边距提供，
+             所以这里不再留 Margin —— 卡片之间不留“打不到任何卡片”的空隙，拖放判定才不会被 ListBox 兜底抢走 -->
+        <Style x:Key="RuleRowStyle" TargetType="ListBoxItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <ContentPresenter />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 规则标题行：整行可点（展开/收起），所以做成一个扁平按钮 -->
+        <Style x:Key="RuleHeaderButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="Transparent" CornerRadius="6" Padding="6,4">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#222834" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 规则行右边的小方按钮（↑ ↓ ✕） -->
+        <Style x:Key="RuleIconButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="26" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="Transparent" BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource CardHoverBackgroundBrush}" />
+                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#1B2029" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.35" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="28,22,28,26">
+
+            <!-- ================= 标题 ================= -->
+            <StackPanel>
+                <TextBlock Text="🏷️ 批量重命名" FontSize="21" FontWeight="SemiBold" />
+                <TextBlock FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                           Text="按同一套规则给一批文件改名：查找替换 / 加前后缀 / 自动编号 / 改扩展名 / 大小写。改之前先把新名字列出来给你看，改完还能一键撤销（记录落盘，关掉程序也认）。" />
+            </StackPanel>
+
+            <!-- ================= ① 文件列表 ================= -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0" Padding="0">
+                <StackPanel>
+                    <Grid Margin="18,14,18,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="① 要改名的文件" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"
+                                       Text="可以直接把文件 / 文件夹从资源管理器拖进这个窗口" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="AddFilesButton" Content="添加文件…" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding AddFilesCommand}" />
+                            <Button x:Name="PickFolderButton" Content="扫描文件夹…" Style="{StaticResource SecondaryButtonStyle}"
+                                    Margin="8,0,0,0" Command="{Binding PickFolderCommand}"
+                                    ToolTip="选一个文件夹，按下面的「包含子文件夹 / 扩展名」设置把文件全部加进来" />
+                            <Button Content="重新扫描" Style="{StaticResource SecondaryButtonStyle}"
+                                    Margin="8,0,0,0" Command="{Binding RescanCommand}"
+                                    ToolTip="用上次的文件夹重新列一遍（会替换当前列表）" />
+                            <Button Content="清空" Style="{StaticResource SecondaryButtonStyle}"
+                                    Margin="8,0,0,0" Command="{Binding ClearAllCommand}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" Margin="18,0,18,10">
+                        <CheckBox Content="包含子文件夹" IsChecked="{Binding Cfg.IncludeSubfolders}"
+                                  Style="{StaticResource CheckBoxStyle}" Margin="0,0,20,0"
+                                  ToolTip="只影响「扫描文件夹 / 拖文件夹进来」时的展开范围" />
+                        <TextBlock Text="只收这些扩展名" Style="{StaticResource FieldLabelStyle}" Margin="0,0,8,0" />
+                        <TextBox x:Name="ExtensionFilterBox" Width="220"
+                                 Text="{Binding Cfg.ExtensionFilter, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource TextBoxStyle}"
+                                 ToolTip="分号 / 逗号 / 空格分隔，例如：jpg; png; .bmp。留空 = 全部文件" />
+                        <TextBlock Text="（留空表示全部文件）" Style="{StaticResource FieldLabelStyle}" Margin="8,0,0,0" FontSize="11" />
+                    </StackPanel>
+
+                    <!-- 列表表头 -->
+                    <Grid Margin="18,0,18,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="30" />
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="22" />
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="92" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="1" Text="原文件名" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBlock Grid.Column="3" Text="新文件名" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBlock Grid.Column="4" Text="状态" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                    </Grid>
+
+                    <!-- 高度随内容长（空列表时就矮矮的一条），加满到 300 之后自己滚动，
+                         这样下面的「命名规则」不会被一个大空框顶到屏幕外面去 -->
+                    <ListBox x:Name="FileList" ItemsSource="{Binding Files}" MinHeight="120" MaxHeight="300"
+                             SelectionMode="Extended"
+                             Background="Transparent" BorderThickness="0"
+                             ItemContainerStyle="{StaticResource RenameRowStyle}"
+                             SelectedItem="{Binding SelectedFile}"
+                             SelectionChanged="OnFileSelectionChanged">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="30" />
+                                        <ColumnDefinition Width="2*" />
+                                        <ColumnDefinition Width="22" />
+                                        <ColumnDefinition Width="2*" />
+                                        <ColumnDefinition Width="92" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <CheckBox IsChecked="{Binding IsChecked}" Style="{StaticResource CheckBoxStyle}"
+                                              VerticalAlignment="Center" ToolTip="不勾选的文件本次跳过" />
+
+                                    <TextBlock Grid.Column="1" Text="{Binding OriginalName}" TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center" ToolTip="{Binding FullPathText}" />
+                                    <TextBlock Grid.Column="2" Text="→" Foreground="{StaticResource TextSecondaryBrush}"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock x:Name="NewNameText" Grid.Column="3" Text="{Binding NewName}"
+                                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                               ToolTip="{Binding Message}" />
+                                    <TextBlock x:Name="StatusText" Grid.Column="4" Text="{Binding StatusText}"
+                                               FontSize="11" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               ToolTip="{Binding Message}" />
+                                </Grid>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding Status}" Value="Ok">
+                                        <Setter TargetName="NewNameText" Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="Done">
+                                        <Setter TargetName="NewNameText" Property="Opacity" Value="0.55" />
+                                        <Setter TargetName="StatusText" Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="Conflict">
+                                        <Setter TargetName="NewNameText" Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                        <Setter TargetName="StatusText" Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="Error">
+                                        <Setter TargetName="NewNameText" Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                        <Setter TargetName="StatusText" Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Status}" Value="Failed">
+                                        <Setter TargetName="StatusText" Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsChecked}" Value="False">
+                                        <Setter TargetName="NewNameText" Property="Opacity" Value="0.4" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <Grid Margin="18,8,18,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding SummaryText}" FontSize="11.5" VerticalAlignment="Center"
+                                   Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <Button Content="全选" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding CheckAllCommand}" />
+                            <Button Content="全不选" Style="{StaticResource SecondaryButtonStyle}" Margin="6,0,0,0"
+                                    Command="{Binding UncheckAllCommand}" />
+                            <Button Content="↑" Style="{StaticResource SecondaryButtonStyle}" Margin="14,0,0,0" Width="34"
+                                    Command="{Binding MoveUpCommand}" ToolTip="把选中的行往上挪（序号按列表顺序生成）" />
+                            <Button Content="↓" Style="{StaticResource SecondaryButtonStyle}" Margin="6,0,0,0" Width="34"
+                                    Command="{Binding MoveDownCommand}" ToolTip="把选中的行往下挪" />
+                            <TextBlock Text="排序" Style="{StaticResource FieldLabelStyle}" Margin="14,0,6,0" />
+                            <ComboBox ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SelectedSort}"
+                                      DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}" MinWidth="104" />
+                            <CheckBox Content="降序" IsChecked="{Binding SortDescending}" Style="{StaticResource CheckBoxStyle}"
+                                      Margin="10,0,0,0" VerticalAlignment="Center" />
+                            <Button Content="移除选中" Style="{StaticResource SecondaryButtonStyle}" Margin="14,0,0,0"
+                                    Command="{Binding RemoveSelectedCommand}" />
+                            <Button Content="在资源管理器中显示" Style="{StaticResource SecondaryButtonStyle}" Margin="6,0,0,0"
+                                    Command="{Binding RevealSelectedCommand}" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- ================= ② 命名规则（可增删、可拖动排序的规则清单） ================= -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="② 命名规则" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap"
+                                       Text="规则从上到下依次套用，同一种规则可以加多条。按住每行左边的 ≡ 上下拖动就能调整顺序；点标题行展开改参数。" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="新建规则" Style="{StaticResource FieldLabelStyle}" Margin="0,0,8,0" />
+                            <ComboBox x:Name="NewRuleKindCombo" ItemsSource="{Binding RuleKindOptions}"
+                                      SelectedItem="{Binding NewRuleKind}" DisplayMemberPath="Label"
+                                      Style="{StaticResource ComboBoxStyle}" MinWidth="176"
+                                      ToolTip="选一个规则类型，然后点右边的「添加规则」" />
+                            <Button x:Name="AddRuleButton" Content="+ 添加规则" Style="{StaticResource PrimaryButtonStyle}"
+                                    Padding="14,7" Margin="8,0,0,0" Command="{Binding AddRuleCommand}"
+                                    ToolTip="把选中的规则加到清单末尾，加完会自动展开让你填参数" />
+                            <Button x:Name="ClearRulesButton" Content="清空规则" Style="{StaticResource SecondaryButtonStyle}"
+                                    Margin="8,0,0,0" Command="{Binding ClearRulesCommand}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- 空状态引导 -->
+                    <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Padding="16,16" Margin="0,12,0,0"
+                            Visibility="{Binding HasNoRules, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="规则清单还是空的" FontSize="12.5" FontWeight="SemiBold" />
+                            <TextBlock FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Text="在上面选一个类型，点「添加规则」，规则就会出现在这里 —— 然后填参数、拖顺序、加第二条。举个例子：①「清理」去掉名字里的下划线 → ②「查找替换」把 IMG 换成 照片 → ③「自动编号」编成 001 起 → ④「扩展名」统一转小写。" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 规则清单：顺序 = 执行顺序 -->
+                    <ListBox x:Name="RuleList" ItemsSource="{Binding Rules}" Margin="0,12,0,0"
+                             Background="Transparent" BorderThickness="0" MaxHeight="430"
+                             ItemContainerStyle="{StaticResource RuleRowStyle}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             AllowDrop="True" DragOver="OnRuleListDragOver" Drop="OnRuleListDrop">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <!-- 拖放事件挂在这一层（整行，含两条指示线的占位），不是挂在卡片上：
+                                     挂卡片上的话，鼠标一落到卡片外面那点边距就会冒泡到 ListBox 的
+                                     “空白处 = 放到末尾”，指示线在当前位置和末尾之间来回跳（踩过）。
+                                     ⚠️ Background="Transparent" 不能省：StackPanel 不设背景就【不可命中测试】，
+                                     两条指示线自带的 2px 边距（以及线的左右 2px 缩进）就成了“死区”，
+                                     鼠标停在那里会穿透到 ListBox 的兜底分支 → 指示线跳到最末尾。
+                                     鼠标只要在蓝线边缘抖 1px，就会在「当前位置 ↔ 最末尾」之间疯狂对跳。 -->
+                                <StackPanel AllowDrop="True" DragOver="OnRuleDragOver" Drop="OnRuleDrop"
+                                            Background="Transparent">
+
+                                    <!-- 插入位置指示线（上）。
+                                         ⚠️ 这两条线必须「始终占位、只换颜色」，不能用 Visibility 切换：
+                                         线一显示/隐藏就会改变卡片高度 → 鼠标底下的内容跟着上下动 →
+                                         拖放目标在“当前位置 / 末尾”之间自激对跳，看起来就是蓝线疯狂闪。 -->
+                                    <Border Height="2" CornerRadius="1" Margin="2,0,2,2">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="Transparent" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ShowDropTop}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+
+                                    <Border x:Name="RuleCard" Background="{StaticResource InputBackgroundBrush}"
+                                            CornerRadius="8">
+                                        <StackPanel>
+                                            <!-- 标题行：拖动把手 + 启用勾选 + 类型与摘要 + 上移/下移/删除 -->
+                                            <Grid Height="42">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="32" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <!-- 拖动区域：三条横杠。按住这里上下拖 = 调整规则顺序 -->
+                                                <Border x:Name="RuleDragHandle" Grid.Column="0" Background="Transparent"
+                                                        Cursor="SizeAll"
+                                                        ToolTip="按住这里上下拖动，可以调整这条规则的先后顺序"
+                                                        PreviewMouseLeftButtonDown="OnRuleHandleMouseDown"
+                                                        PreviewMouseMove="OnRuleHandleMouseMove">
+                                                    <TextBlock Text="☰" FontSize="15" HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                                </Border>
+
+                                                <CheckBox Grid.Column="1" IsChecked="{Binding Rule.Enabled}"
+                                                          Style="{StaticResource CheckBoxStyle}" VerticalAlignment="Center"
+                                                          Margin="0,0,12,0"
+                                                          ToolTip="不勾选 = 这条规则本次不生效（保留在清单里，不用删掉）" />
+
+                                                <Button Grid.Column="2" Style="{StaticResource RuleHeaderButtonStyle}"
+                                                        Command="{Binding DataContext.ToggleExpandCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        ToolTip="点一下展开 / 收起这条规则的参数">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding Rule.KindName}" FontSize="12.5"
+                                                                   FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding Rule.Summary}" Margin="12,0,0,0"
+                                                                   FontSize="11.5" VerticalAlignment="Center"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock x:Name="ExpandHint" Grid.Column="2" Text="▾" Margin="10,0,0,0"
+                                                                   FontSize="11" VerticalAlignment="Center"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                    </Grid>
+                                                </Button>
+
+                                                <StackPanel Grid.Column="3" Orientation="Horizontal"
+                                                            VerticalAlignment="Center" Margin="8,0,10,0">
+                                                    <Button Content="↑" Style="{StaticResource RuleIconButtonStyle}"
+                                                            Command="{Binding DataContext.MoveRuleUpCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding}" ToolTip="上移一条（也可以直接拖左边的 ≡）" />
+                                                    <Button Content="↓" Style="{StaticResource RuleIconButtonStyle}" Margin="4,0,0,0"
+                                                            Command="{Binding DataContext.MoveRuleDownCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding}" ToolTip="下移一条" />
+                                                    <Button Content="✕" Style="{StaticResource RuleIconButtonStyle}" Margin="4,0,0,0"
+                                                            Command="{Binding DataContext.RemoveRuleCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding}" ToolTip="删除这条规则" />
+                                                </StackPanel>
+                                            </Grid>
+
+                                            <!-- 参数区（点标题行展开） -->
+                                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
+                                                    Padding="16,13,16,14"
+                                                    Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
+                                                <StackPanel>
+                                                    <!-- ===== 查找替换 ===== -->
+                                                    <StackPanel Visibility="{Binding Rule.IsReplace, Converter={StaticResource BoolToVis}}">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="查找" Style="{StaticResource FieldLabelStyle}" Margin="0,0,8,0" />
+                                                            <TextBox Grid.Column="1" Text="{Binding Rule.FindText, UpdateSourceTrigger=PropertyChanged}"
+                                                                     Style="{StaticResource TextBoxStyle}" />
+                                                            <TextBlock Grid.Column="2" Text="替换为" Style="{StaticResource FieldLabelStyle}" Margin="12,0,8,0" />
+                                                            <TextBox Grid.Column="3" Text="{Binding Rule.ReplaceText, UpdateSourceTrigger=PropertyChanged}"
+                                                                     Style="{StaticResource TextBoxStyle}" />
+                                                        </Grid>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                                            <CheckBox Content="正则表达式" IsChecked="{Binding Rule.UseRegex}"
+                                                                      Style="{StaticResource CheckBoxStyle}" Margin="0,0,20,0"
+                                                                      ToolTip="勾上后「查找」按正则解释，「替换为」里可以用 $1 $2 引用捕获组" />
+                                                            <CheckBox Content="区分大小写" IsChecked="{Binding Rule.CaseSensitive}"
+                                                                      Style="{StaticResource CheckBoxStyle}" Margin="0,0,20,0" />
+                                                            <CheckBox Content="全部替换" IsChecked="{Binding Rule.ReplaceAll}"
+                                                                      Style="{StaticResource CheckBoxStyle}"
+                                                                      ToolTip="不勾选则每个名字只替换第一处" />
+                                                        </StackPanel>
+                                                        <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,0"
+                                                                   TextWrapping="Wrap"
+                                                                   Visibility="{Binding Rule.UseRegex, Converter={StaticResource BoolToVis}}"
+                                                                   Text="正则例子：^IMG_(\d+) → $1 ；\s+ → 一个空格（把连续空白压成一个）" />
+                                                    </StackPanel>
+
+                                                    <!-- ===== 清理 ===== -->
+                                                    <StackPanel Visibility="{Binding Rule.IsCleanup, Converter={StaticResource BoolToVis}}">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <CheckBox Content="去掉首尾空格" IsChecked="{Binding Rule.TrimWhitespace}"
+                                                                      Style="{StaticResource CheckBoxStyle}" Margin="0,0,20,0" />
+                                                            <CheckBox Content="连续空格合并成一个" IsChecked="{Binding Rule.CollapseSpaces}"
+                                                                      Style="{StaticResource CheckBoxStyle}" />
+                                                        </StackPanel>
+                                                        <Grid Margin="0,10,0,0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="删掉这些字符" Style="{StaticResource FieldLabelStyle}" Margin="0,0,8,0" />
+                                                            <TextBox Grid.Column="1" Text="{Binding Rule.RemoveChars, UpdateSourceTrigger=PropertyChanged}"
+                                                                     Style="{StaticResource TextBoxStyle}"
+                                                                     ToolTip="逐字符删除，例如填「_-」会把下划线和短横线全部去掉" />
+                                                            <TextBlock Grid.Column="2" Text="（逐字符，不是子串）" Style="{StaticResource FieldLabelStyle}"
+                                                                       FontSize="11" Margin="8,0,0,0" />
+                                                        </Grid>
+                                                    </StackPanel>
+
+                                                    <!-- ===== 截取 / 删除 ===== -->
+                                                    <StackPanel Visibility="{Binding Rule.IsDeleteRange, Converter={StaticResource BoolToVis}}">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="从头删" Style="{StaticResource FieldLabelStyle}" Margin="0,0,8,0" />
+                                                            <TextBox Grid.Column="1" Width="56"
+                                                                     Text="{Binding Rule.DeleteFromStart, UpdateSourceTrigger=PropertyChanged}"
+                                                                     Style="{StaticResource TextBoxStyle}" ToolTip="删掉开头 N 个字符" />
+                                                            <TextBlock Grid.Column="2" Text="个字符　从尾删" Style="{StaticResource FieldLabelStyle}" Margin="8,0,8,0" />
+                                                            <TextBox Grid.Column="3" Width="56"
+                                                                     Text="{Binding Rule.DeleteFromEnd, UpdateSourceTrigger=PropertyChanged}"
+                                                                     Style="{StaticResource TextBoxStyle}" ToolTip="删掉末尾 N 个字符" />
+                                                        </Grid>
+                                                        <Grid Margin="0,10,0,0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="删除从" Style="{StaticResource FieldLabelStyle}" Margin="0,0,8,0" />
+                                                            <TextBox Grid.Column="1" Text="{Binding Rule.DeleteBetweenStart, UpdateSourceTrigger=PropertyChanged}"
+                                                                     Style="{StaticResource TextBoxStyle}" ToolTip="起始标记，例如 【" />
+                                                            <TextBlock Grid.Column="2" Text="到" Style="{StaticResource FieldLabelStyle}" Margin="10,0,8,0" />
+                                                            <TextBox Grid.Column="3" Text="{Binding Rule.DeleteBetweenEnd, UpdateSourceTrigger=PropertyChanged}"
+                                                                     Style="{StaticResource TextBoxStyle}" ToolTip="结束标记，例如 】" />
+                                                        </Grid>
+                                                        <CheckBox Content="只删两个标记本身，保留中间内容"
+                                                                  IsChecked="{Binding Rule.DeleteBetweenKeepContent}"
+                                                                  Style="{StaticResource CheckBoxStyle}" Margin="0,10,0,0" />
+                                                    </StackPanel>
+
+                                                    <!-- ===== 大小写 ===== -->
+                                                    <Grid Visibility="{Binding Rule.IsCase, Converter={StaticResource BoolToVis}}">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="改成" Style="{StaticResource FieldLabelStyle}" Margin="0,0,8,0" />
+                                                        <ComboBox Grid.Column="1" ItemsSource="{Binding CaseOptions}"
+                                                                  DisplayMemberPath="Label" SelectedValuePath="Value"
+                                                                  SelectedValue="{Binding Rule.CaseMode}"
+                                                                  Style="{StaticResource ComboBoxStyle}" />
+                                                    </Grid>
+
+                                                    <!-- ===== 前后缀 ===== -->
+                                                    <Grid Visibility="{Binding Rule.IsAffix, Converter={StaticResource BoolToVis}}">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="前缀" Style="{StaticResource FieldLabelStyle}" Margin="0,0,8,0" />
+                                                        <TextBox Grid.Column="1" Text="{Binding Rule.Prefix, UpdateSourceTrigger=PropertyChanged}"
+                                                                 Style="{StaticResource TextBoxStyle}" ToolTip="加在最前面" />
+                                                        <TextBlock Grid.Column="2" Text="后缀" Style="{StaticResource FieldLabelStyle}" Margin="12,0,8,0" />
+                                                        <TextBox Grid.Column="3" Text="{Binding Rule.Suffix, UpdateSourceTrigger=PropertyChanged}"
+                                                                 Style="{StaticResource TextBoxStyle}" ToolTip="加在最后面" />
+                                                    </Grid>
+
+                                                    <!-- ===== 自动编号 ===== -->
+                                                    <StackPanel Visibility="{Binding Rule.IsSequence, Converter={StaticResource BoolToVis}}">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="起始" Style="{StaticResource FieldLabelStyle}" Margin="0,0,8,0" />
+                                                            <TextBox Grid.Column="1" Width="56"
+                                                                     Text="{Binding Rule.SequenceStart, UpdateSourceTrigger=PropertyChanged}"
+                                                                     Style="{StaticResource TextBoxStyle}" ToolTip="第一个文件的编号" />
+                                                            <TextBlock Grid.Column="2" Text="步长" Style="{StaticResource FieldLabelStyle}" Margin="12,0,8,0" />
+                                                            <TextBox Grid.Column="3" Width="56"
+                                                                     Text="{Binding Rule.SequenceStep, UpdateSourceTrigger=PropertyChanged}"
+                                                                     Style="{StaticResource TextBoxStyle}"
+                                                                     ToolTip="每个文件加多少，可以是负数（-1 就是倒着编号）" />
+                                                            <TextBlock Grid.Column="4" Text="位数" Style="{StaticResource FieldLabelStyle}" Margin="12,0,8,0" />
+                                                            <TextBox Grid.Column="5" Width="56"
+                                                                     Text="{Binding Rule.SequenceDigits, UpdateSourceTrigger=PropertyChanged}"
+                                                                     Style="{StaticResource TextBoxStyle}"
+                                                                     ToolTip="不足前面补 0：3 位 → 001、002；范围 1~12" />
+                                                        </Grid>
+                                                        <Grid Margin="0,10,0,0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <ComboBox ItemsSource="{Binding SequencePlacementOptions}"
+                                                                      DisplayMemberPath="Label" SelectedValuePath="Value"
+                                                                      SelectedValue="{Binding Rule.SequencePlacement}"
+                                                                      Style="{StaticResource ComboBoxStyle}" />
+                                                            <TextBlock Grid.Column="1" Text="分隔符" Style="{StaticResource FieldLabelStyle}" Margin="12,0,8,0" />
+                                                            <TextBox Grid.Column="2" Width="72"
+                                                                     Text="{Binding Rule.SequenceSeparator, UpdateSourceTrigger=PropertyChanged}"
+                                                                     Style="{StaticResource TextBoxStyle}"
+                                                                     ToolTip="序号与原名之间插什么，默认下划线；可以留空" />
+                                                        </Grid>
+                                                        <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,0"
+                                                                   TextWrapping="Wrap"
+                                                                   Text="编号跟着列表走：在列表里上移 / 下移或换排序方式，编号也会跟着变。" />
+                                                    </StackPanel>
+
+                                                    <!-- ===== 扩展名 ===== -->
+                                                    <Grid Visibility="{Binding Rule.IsExtension, Converter={StaticResource BoolToVis}}">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="120" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <ComboBox ItemsSource="{Binding ExtensionModeOptions}"
+                                                                  DisplayMemberPath="Label" SelectedValuePath="Value"
+                                                                  SelectedValue="{Binding Rule.ExtensionMode}"
+                                                                  Style="{StaticResource ComboBoxStyle}" />
+                                                        <TextBlock Grid.Column="1" Text="新扩展名" Style="{StaticResource FieldLabelStyle}" Margin="12,0,8,0" />
+                                                        <TextBox Grid.Column="2" Text="{Binding Rule.NewExtension, UpdateSourceTrigger=PropertyChanged}"
+                                                                 Style="{StaticResource TextBoxStyle}"
+                                                                 IsEnabled="{Binding Rule.NeedsNewExtension}"
+                                                                 ToolTip="带不带点都行，例如 jpg 或 .jpg" />
+                                                    </Grid>
+
+                                                    <!-- ===== 作用范围（扩展名规则不需要） ===== -->
+                                                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0"
+                                                                Visibility="{Binding Rule.ShowScope, Converter={StaticResource BoolToVis}}">
+                                                        <TextBlock Text="作用于" Style="{StaticResource FieldLabelStyle}" Margin="0,0,8,0" />
+                                                        <ComboBox ItemsSource="{Binding ScopeOptions}"
+                                                                  DisplayMemberPath="Label" SelectedValuePath="Value"
+                                                                  SelectedValue="{Binding Rule.Scope}"
+                                                                  Style="{StaticResource ComboBoxStyle}" MinWidth="140"
+                                                                  ToolTip="这条规则改文件名的哪一部分" />
+                                                        <TextBlock Text="默认「主名」= 不含扩展名那一部分，最不容易误伤" FontSize="11"
+                                                                   Style="{StaticResource FieldLabelStyle}" Margin="10,0,0,0" />
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Border>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- 拖动时的插入位置指示线（下）：同样始终占位，只换颜色 -->
+                                    <Border Height="2" CornerRadius="1" Margin="2,2,2,0">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="Transparent" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ShowDropBottom}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+                                </StackPanel>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding Rule.Enabled}" Value="False">
+                                        <Setter TargetName="RuleCard" Property="Opacity" Value="0.55" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                                        <Setter TargetName="ExpandHint" Property="Text" Value="▴" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <!-- 重名处理 -->
+                    <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="重名怎么办" Style="{StaticResource GroupTitleStyle}" />
+                            <CheckBox Content="自动加 (1)、(2) 避让（不勾则重名的文件会被拦下不改）"
+                                      IsChecked="{Binding Cfg.AutoResolveConflicts}" Style="{StaticResource CheckBoxStyle}" />
+                            <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,0" TextWrapping="Wrap"
+                                       Text="默认不勾：只要有两个文件会算成同一个名字，它们就会被标成「冲突」并跳过，避免你还没看清就改错了。" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+            <!-- ================= ③ 执行 ================= -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock Text="③ 执行" FontSize="13" FontWeight="SemiBold" />
+
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ProgressBar Minimum="0" Maximum="1" Value="{Binding Progress}"
+                                     Style="{StaticResource ProgressBarStyle}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Margin="12,0,0,0" MinWidth="70"
+                                   TextAlignment="Right" VerticalAlignment="Center"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                    </Grid>
+
+                    <TextBlock Text="{Binding StatusText}" Margin="0,9,0,0" TextWrapping="Wrap" FontSize="12" />
+
+                    <TextBox Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True" Style="{StaticResource LogTextBoxStyle}"
+                             Height="110" Margin="0,10,0,0" VerticalScrollBarVisibility="Auto" />
+
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="打开配置文件夹" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding OpenConfigFolderCommand}" />
+                            <Button Content="打开流水账文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding OpenHistoryFolderCommand}"
+                                    ToolTip="改名流水账就在这里，撤销靠它" />
+                            <Button Content="清空日志" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding ClearLogCommand}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal">
+                            <Button x:Name="UndoLastButton" Content="撤销上一次改名" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding UndoSessionCommand}"
+                                    IsEnabled="{Binding CanUndoLast}"
+                                    ToolTip="把最近一批改名逐个改回原来的名字" />
+                            <Button Content="取消" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding CancelCommand}" IsEnabled="{Binding IsBusy}" />
+                            <Button x:Name="ExecuteButton" Content="执行重命名" Style="{StaticResource PrimaryButtonStyle}"
+                                    Margin="8,0,0,0" Command="{Binding ExecuteCommand}"
+                                    ToolTip="只改文件名，不移动文件；改完可以撤销" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- ================= ④ 历史记录 ================= -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0" Padding="0">
+                <StackPanel>
+                    <Grid Margin="18,14,18,8">
+                        <StackPanel>
+                            <TextBlock Text="④ 历史记录" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"
+                                       Text="最近 20 批改名；记录写在 Data\batch-rename\rename-history.json，关掉程序再打开照样能撤销" />
+                        </StackPanel>
+                    </Grid>
+
+                    <ListBox ItemsSource="{Binding History}" MaxHeight="150" Background="Transparent" BorderThickness="0"
+                             ItemContainerStyle="{StaticResource RenameRowStyle}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="86" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding TimeText}" Foreground="{StaticResource TextSecondaryBrush}"
+                                               VerticalAlignment="Center" FontSize="12" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Summary}" VerticalAlignment="Center"
+                                               FontSize="12" TextTrimming="CharacterEllipsis" />
+                                    <Button Grid.Column="2" Content="撤销这一批" Style="{StaticResource SecondaryButtonStyle}"
+                                            Command="{Binding DataContext.UndoSessionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            IsEnabled="{Binding Undone, Converter={StaticResource InverseBoolConverter}}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="18,8,18,14" TextWrapping="Wrap"
+                               Text="撤销同样只改文件名；如果某个文件之后被手动动过或删掉了，那一条会被跳过并在日志里说明。" />
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
