@@ -645,6 +645,20 @@ catch (Exception ex)
     Console.WriteLine(string.Join(Environment.NewLine, results));
 }
 
+// ---------- 滚轮滚动链（内层列表滚到头之后交给外层页面） ----------
+// 用真的 ScrollViewer 量一次布局再断言“该滚谁”，见 ScrollChainingChecks 里的说明。
+try
+{
+    ScrollChainingChecks.Run(
+        (name, ok, detail) => Check($"[滚动链] {name}", ok, detail),
+        (name, ok) => Check($"[滚动链] {name}", ok));
+}
+catch (Exception ex)
+{
+    Check($"[滚动链] 运行过程中抛出异常（{ex.GetType().Name}）", false,
+        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
+}
+
 Console.WriteLine(string.Join(Environment.NewLine, results));
 var failed = results.Count(r => r.StartsWith("FAIL"));
 Console.WriteLine();

@@ -2,6 +2,7 @@ using System.IO;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 
 namespace YuLiangToolkit.Tools.Sample.Views;
@@ -38,6 +39,62 @@ public partial class SampleView : UserControl
                 DumpMeasure(path);
             }));
         }
+
+        // 验证用：YLT_WHEEL_TEST=<文件> 时把「内层列表 / 外层页面」的滚动几何与滚动链的判定写进文件。
+        // 注意：这里**不模拟滚轮事件** —— WPF 的 ScrollViewer.OnMouseWheel 会读真实鼠标位置，
+        // 合成的事件走不到 ListBox（试过，一次都不触发），拿它验证会得出错误结论。
+        // 判定逻辑本身由自检覆盖（见 tests 里的 ScrollChainingChecks），鼠标那一层靠手动滚一下。
+        var wheelPath = Environment.GetEnvironmentVariable("YLT_WHEEL_TEST");
+        if (!string.IsNullOrWhiteSpace(wheelPath))
+        {
+            Loaded += (_, _) => Dispatcher.BeginInvoke(new Action(async () =>
+            {
+                await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
+                DumpWheel(wheelPath);
+            }));
+        }
+    }
+
+    // ---------------------------------------------------------------- 滚动链验证（YLT_WHEEL_TEST）
+
+    private void DumpWheel(string path)
+    {
+        var sb = new StringBuilder();
+        var inner = FindChild<ScrollViewer>(FileListBox);
+        var outer = FindOuterScrollViewer(FileListBox);   // 与 ScrollChaining 同一个查找方式
+        var chain = YuLiangToolkit.Core.Mvvm.ScrollChaining.Decide(inner, outer, -120);
+
+        sb.AppendLine($"挂了滚动链（ScrollChaining.Enabled）= {YuLiangToolkit.Core.Mvvm.ScrollChaining.GetEnabled(FileListBox)}");
+        sb.AppendLine($"内层列表：{Describe(inner)}   当前 {Offset(inner)}");
+        sb.AppendLine($"外层页面：{Describe(outer)}   当前 {Offset(outer)}");
+        sb.AppendLine();
+        sb.AppendLine($"当前状态下滚轮向下会滚谁 = {chain.Action}（Inner=内层自滚 / Outer=交给外层）");
+        sb.AppendLine($"ScrollChaining 最后一条判断 = {YuLiangToolkit.Core.Mvvm.ScrollChaining.LastDecision}");
+        sb.AppendLine();
+        sb.AppendLine("把鼠标放在上面这个列表里滚一下，再重开一次看 LastDecision 的变化：");
+        sb.AppendLine("  · 内层没到底 → 应该是「内层还能滚 → 交给 ListBox」");
+        sb.AppendLine("  · 内层已经到底 → 应该是「内层到头 → 滚外层」，同时外层偏移变大");
+
+        try { File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false)); } catch { /* 忽略 */ }
+    }
+
+    private static string Offset(ScrollViewer? v)
+        => v is null ? "(无)" : $"{v.VerticalOffset:0.#}/{Math.Max(0, v.ExtentHeight - v.ViewportHeight):0.#}";
+
+    private static string Describe(ScrollViewer? v)
+        => v is null
+            ? "(没找到)"
+            : $"滚动条={v.ComputedVerticalScrollBarVisibility} 视口={v.ViewportHeight:0.#} 内容={v.ExtentHeight:0.#}";
+
+
+    private static ScrollViewer? FindOuterScrollViewer(DependencyObject element)
+    {
+        for (var node = VisualTreeHelper.GetParent(element); node is not null; node = VisualTreeHelper.GetParent(node))
+        {
+            if (node is ScrollViewer viewer && viewer.ComputedVerticalScrollBarVisibility == Visibility.Visible)
+                return viewer;
+        }
+        return null;
     }
 
     private void DumpMeasure(string path)

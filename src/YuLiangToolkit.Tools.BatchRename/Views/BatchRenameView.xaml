@@ -2,6 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:YuLiangToolkit.Tools.BatchRename.ViewModels"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
              AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop">
 
     <UserControl.Resources>
@@ -177,6 +178,7 @@
                          这样下面的「命名规则」不会被一个大空框顶到屏幕外面去 -->
                     <ListBox x:Name="FileList" ItemsSource="{Binding Files}" MinHeight="120" MaxHeight="300"
                              SelectionMode="Extended"
+                             core:ScrollChaining.Enabled="True"
                              Background="Transparent" BorderThickness="0"
                              ItemContainerStyle="{StaticResource RenameRowStyle}"
                              SelectedItem="{Binding SelectedFile}"
@@ -304,6 +306,7 @@
                     <ListBox x:Name="RuleList" ItemsSource="{Binding Rules}" Margin="0,12,0,0"
                              Background="Transparent" BorderThickness="0" MaxHeight="430"
                              ItemContainerStyle="{StaticResource RuleRowStyle}"
+                             core:ScrollChaining.Enabled="True"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              AllowDrop="True" DragOver="OnRuleListDragOver" Drop="OnRuleListDrop">
                         <ListBox.ItemTemplate>
@@ -712,6 +715,7 @@
 
                     <ListBox ItemsSource="{Binding History}" MaxHeight="150" Background="Transparent" BorderThickness="0"
                              ItemContainerStyle="{StaticResource RenameRowStyle}"
+                             core:ScrollChaining.Enabled="True"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                         <ListBox.ItemTemplate>
                             <DataTemplate>

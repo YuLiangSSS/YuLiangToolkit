@@ -2,7 +2,8 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:YuLiangToolkit.Tools.Sample.ViewModels"
-             xmlns:views="clr-namespace:YuLiangToolkit.Tools.Sample.Views">
+             xmlns:views="clr-namespace:YuLiangToolkit.Tools.Sample.Views"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core">
 
     <UserControl.Resources>
         <!-- 表头末尾那一列用它占位：ListBox 给滚动条预留的宽度（见 ScrollBarWidthConverter 的说明） -->
@@ -159,6 +160,7 @@
                          这样「大小」的“大”和「376 B」的“3”落在同一条竖线上。 -->
                     <ListBox x:Name="FileListBox" ItemsSource="{Binding Files}" SelectedItem="{Binding SelectedFile}"
                              Height="150" Margin="8,0"
+                             core:ScrollChaining.Enabled="True"
                              ToolTip="单击选中，下面的按钮作用于选中项">
                         <!-- 行样式等沿用全局 FileListStyle，只替换模板（保持与其它列表一致） -->
                         <ListBox.Style>
@@ -193,8 +195,12 @@
                                                                HorizontalAlignment="Left" Foreground="{StaticResource TextSecondaryBrush}" />
                                                 </Grid>
 
-                                                <!-- 数据行（可滚动） -->
-                                                <ScrollViewer Grid.Row="1" Focusable="False"
+                                                <!-- 数据行（可滚动）
+                                                     ⚠ x:Name 必须叫 "ScrollViewer"：ItemsControl/ListBox 是按模板里
+                                                     这个名字找「滚动宿主」的，不起名就等于没有滚动宿主 ——
+                                                     表现是滚轮完全不起作用（事件也不会到 ListBox 的 PreviewMouseWheel，
+                                                     实测 0 次），排查起来很费劲。 -->
+                                                <ScrollViewer x:Name="ScrollViewer" Grid.Row="1" Focusable="False"
                                                               HorizontalScrollBarVisibility="Disabled"
                                                               VerticalScrollBarVisibility="Auto"
                                                               Padding="0" Background="Transparent">
