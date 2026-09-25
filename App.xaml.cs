@@ -12,8 +12,9 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        // 数据/配置目录（Data、Config）首次运行时建好
+        // 数据/配置目录（在 exe 旁边）首次运行时建好，并各放一份“这是干什么的”说明
         AppPaths.EnsureCreated();
+        RuntimeReadme.EnsureSeeded();
 
         // 退出前把还没落盘的配置写掉（防抖窗口内的改动不会丢）
         Exit += (_, _) => ToolConfigStore.FlushAll();

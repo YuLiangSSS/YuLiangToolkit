@@ -1,17 +1,25 @@
-# Config —— 功能配置总目录
+# Config —— 功能配置（说明文件，不是运行时目录）
 
-这个文件夹记录**每个功能的每个选项**：Checkbox 勾没勾、Textbox 填了什么、下拉框选了哪一项……
-界面上一改就自动存进来（防抖 400ms），下次打开功能自动恢复。
+> ⚠️ **真正的运行时 `Config` 在 exe 旁边**，不在仓库里：
+> `bin\Debug\net9.0-windows\Config\`、`bin\Release\net9.0-windows\Config\`，或 `publish.ps1` 出来的 `dist\YuLiangToolkit\Config\`。
+> 这个仓库文件夹只保留说明，方便你（和以后接手的人）知道约定长什么样。
 
-## 目录约定
+这个目录记录**每个功能的每个选项**：Checkbox 勾没勾、Textbox 填了什么、下拉框选了哪一项……
+界面上一改就自动存进来（最多滞后 400ms），下次打开功能自动恢复。
+
+## 目录约定（运行时那份）
 
 ```
-Config/
-├─ README.md               ← 本说明
+<exe 所在目录>\Config\
+├─ 怎么用这两个文件夹.md      ← 程序首次运行时自己写的说明
+├─ shell/config.json          ← 外壳（主页/导航）：排序偏好 + 各功能上次使用时间
 ├─ <功能Id>/
-│  ├─ config.json          ← 强类型配置（ToolConfig / ToolConfigStore.Load<T>）
-│  └─ options.json         ← 动态键值配置（DynamicToolConfig，可选）
-├─ batch-rename/config.json ← 批量重命名：整套改名规则 + 排序偏好 + 上次用过的文件夹
+│  ├─ config.json             ← 强类型配置（ToolConfig / ToolConfigStore.Load<T>）
+│  └─ options.json            ← 动态键值配置（DynamicToolConfig，可选）
+├─ batch-rename/config.json   ← 批量重命名：整套改名规则 + 排序偏好 + 上次用过的文件夹
+├─ flash-downloader/
+│  ├─ config.json             ← Flash 下载器选项
+│  └─ folders.json            ← 游戏目录（动态配置的第二份文件）
 └─ sample-framework/
    ├─ config.json
    └─ options.json
@@ -86,4 +94,5 @@ Dyn = LoadDynamicConfigWithDefaults(new Dictionary<string, object?>
 * 文件损坏（手改坏了）会被自动改名备份成 `xxx.bad-20250101-120000.json` 并回退默认值，不会崩。
 * 写入是**原子**的（先写 `.tmp` 再替换），断电不会留下半个文件。
 * 程序退出、切换功能时都会强制落盘一次未保存的改动（`ToolConfigStore.FlushAll`）。
+* **`dotnet clean` / 手删 `bin`/`dist` = 删掉这些配置**（下次打开回到默认值），重要设置自己留个备份。
 * 本目录已从主项目编译项里排除，往这里丢 `.cs` / `.xaml` 不会被编译。

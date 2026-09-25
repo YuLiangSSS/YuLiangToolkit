@@ -21,6 +21,9 @@
 
 # 运行（或直接在 Rider / Visual Studio 中打开解决方案按运行）
 dotnet run --project YuLiangTookit.csproj
+
+# 发布到 dist\YuLiangToolkit\（加 -SelfContained 可打成不依赖本机 .NET 的版本）
+.\publish.ps1
 ```
 
 要求：.NET 9 SDK（`global.json` 已锁定 9.0.317）。
@@ -34,15 +37,15 @@ dotnet run --project YuLiangTookit.csproj
 
 ```
 YuLiangTookit.csproj                     # 主程序（WPF 壳：自定义标题栏、主页、侧边栏导航、深色主题）
+build.ps1 / publish.ps1                  # 一键构建 / 一键发布（发布到 dist\YuLiangToolkit\）
 代码记录.md                               # 轮子速查 / 开发约定（先读这个）
-Data/                                    # 功能数据：每个功能一个同名小文件夹（swf、模板、缓存…）
-Config/                                  # 功能配置：每个功能一个同名小文件夹（选项即时落盘成 json）
+Data/  Config/                           # 只有说明文件【运行时目录在 exe 旁边，见下】
 src/
 ├── YuLiangToolkit.Core/                 # 核心库
 │   ├── Tools/ITool.cs                   # 工具契约：实现它即可被自动发现
 │   ├── Tools/ToolDiscovery.cs           # 反射式工具发现（主目录 + plugins 目录）
 │   ├── Mvvm/                            # MVVM 基类 + OptionItem + ToolViewModelBase（功能 VM 基类）
-│   ├── Storage/                         # AppPaths / ToolStorage（Data 门面）/ JsonFileStore
+│   ├── Storage/                         # AppPaths / ToolStorage（Data 门面）/ JsonFileStore / RuntimeReadme
 │   ├── Configuration/                   # ToolConfig / ToolConfigStore / DynamicToolConfig（等价于“即时存选项”）
 │   └── Services/                        # FFmpeg 定位/执行、全局设置（%AppData%）
 ├── YuLiangToolkit.Tools.VideoToAudio/   # 功能：视频转音频
@@ -53,12 +56,18 @@ tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（147 项
 
 ## 数据与配置（Data / Config）
 
-* `Data/<功能Id>/`：功能用到的资源文件（例如以后做 flash 下载器，就把 swf 丢进 `Data/flash-downloader/`）。
+**这两个目录就在 exe 旁边**（`bin\Debug\net9.0-windows\`、`bin\Release\…`、`publish.ps1` 出来的 `dist\YuLiangToolkit\`），
+首次运行 exe 时自动生成，并各带一份「怎么用这两个文件夹.md」说明：
+
+* `<exe 旁边>/Data/<功能Id>/`：功能用到的资源文件（例如下载下来的 swf、播放器、模板、缓存…）。
   代码里用 `ToolStorage.For("flash-downloader")` 读写，别自己拼路径；文件夹首次真正写入时自动创建。
-* `Config/<功能Id>/config.json`：该功能每个选项（Checkbox / Textbox / 下拉框 / 滑块…）的值。
+* `<exe 旁边>/Config/<功能Id>/config.json`：该功能每个选项（Checkbox / Textbox / 下拉框 / 滑块…）的值。
   在功能 ViewModel 里 `Cfg = LoadConfig<XxxConfig>()`，XAML 直接 `{Binding Cfg.Xxx}`，**改一下就自动存，不需要保存按钮**。
-* 开发态（IDE 里按运行）读写的**就是仓库里这两个文件夹**；发布后是 exe 同级的 `Data/`、`Config/`；
-  exe 目录不可写时兜底到 `%AppData%\YuLiangToolkit`。详见 `代码记录.md` 第 3 节。
+* 找目录的顺序：`YLT_HOME` 环境变量 → **exe 同级** → `%AppData%\YuLiangToolkit`（只在 exe 目录不可写时兜底）。
+  状态栏最右侧一直显示当前实际用的目录。详见 `代码记录.md` 第 3 节。
+* 因为数据跟着 exe 走，**整个程序目录拷走即可迁移/发布**；反过来 `dotnet clean`、手删 `bin`/`dist` 会连数据一起删掉，
+  重要内容自己备份。
+* 仓库根的 `Data/`、`Config/` 现在只剩说明文件（不再是运行时目录）。
 
 ## 如何添加一个新工具（可扩展性）
 
