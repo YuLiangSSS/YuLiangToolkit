@@ -1,7 +1,14 @@
 <UserControl x:Class="YuLiangToolkit.Tools.Sample.Views.SampleView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="clr-namespace:YuLiangToolkit.Tools.Sample.ViewModels">
+             xmlns:vm="clr-namespace:YuLiangToolkit.Tools.Sample.ViewModels"
+             xmlns:views="clr-namespace:YuLiangToolkit.Tools.Sample.Views">
+
+    <UserControl.Resources>
+        <!-- 表头末尾那一列用它占位：ListBox 给滚动条预留的宽度（见 ScrollBarWidthConverter 的说明） -->
+        <views:ScrollBarWidthConverter x:Key="ScrollBarWidth" />
+    </UserControl.Resources>
+
     <!-- 说明：本文件是新功能的界面模板。用到的样式（CardStyle / TextBoxStyle / ComboBoxStyle …）
          全部来自 App.xaml（见 代码记录.md 的「UI 样式资源速查」）。 -->
 
@@ -141,34 +148,73 @@
                         </StackPanel>
                     </Grid>
 
-                    <!-- 列头：左边留出和列表行一样的内边距（10 外边距 + 10 内边距），这样表头与内容对齐 -->
-                    <Grid Margin="28,0,18,6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="2*" />
-                            <ColumnDefinition Width="90" />
-                            <ColumnDefinition Width="130" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="文件名" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                        <TextBlock Grid.Column="1" Text="大小" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                        <TextBlock Grid.Column="2" Text="修改时间" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                        <TextBlock Grid.Column="3" Text="{Binding DataSummary}" FontSize="11"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
-                    </Grid>
-
-                    <!-- FileListStyle 现在自带行内边距 / 悬停 / 选中高亮 / 白字（见 App.xaml） -->
-                    <ListBox ItemsSource="{Binding Files}" SelectedItem="{Binding SelectedFile}"
-                             Style="{StaticResource FileListStyle}" Height="150" Margin="8,0"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                    <!-- ===== 文件列表（表头 + 数据行）=====
+                         表头写在 ListBox 自己的 ControlTemplate 里，与数据行**同处一列**，
+                         所以窗口怎么缩放两者都同宽，不需要监听布局事件。
+                         两个边距把差异补平（都是量出来的，别凭感觉改）：
+                         · 左边距 33 = 行内容的缩进（外边距10 + 内边距10 + 强调条3 + 内容左边距9 + 列表边框1）
+                         · 右边距 = 滚动条宽度（绑定里扣掉）：ListBox 无论有没有滚动条都会预留这一段，
+                           不扣的话表头会比数据行宽一条，「大小 / 修改时间」就错开了。
+                         数据行的 ColumnDefinitions 必须与表头**一字不差**，且数值列都左对齐，
+                         这样「大小」的“大”和「376 B」的“3”落在同一条竖线上。 -->
+                    <ListBox x:Name="FileListBox" ItemsSource="{Binding Files}" SelectedItem="{Binding SelectedFile}"
+                             Height="150" Margin="8,0"
                              ToolTip="单击选中，下面的按钮作用于选中项">
+                        <!-- 行样式等沿用全局 FileListStyle，只替换模板（保持与其它列表一致） -->
+                        <ListBox.Style>
+                            <Style TargetType="ListBox" BasedOn="{StaticResource FileListStyle}">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBox">
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="*" />
+                                                </Grid.RowDefinitions>
+
+                                                <!-- 表头：宽度 = 列表宽度 − 滚动条宽度（见 ScrollBarWidthWidthConverter） -->
+                                                <Grid x:Name="HeaderGrid" Grid.Row="0" Margin="33,0,21,6" HorizontalAlignment="Stretch"
+                                                      DataContext="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="86" />
+                                                        <ColumnDefinition Width="132" />
+                                                        <ColumnDefinition Width="132" />
+                                                        <!-- ListBox 给滚动条预留的位置，表头也留一份，否则右边两列错位 -->
+                                                        <ColumnDefinition Width="{Binding Converter={StaticResource ScrollBarWidth}}" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock x:Name="HeaderName" Text="文件名" FontSize="11"
+                                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                                    <TextBlock x:Name="HeaderSize" Grid.Column="1" Text="大小" FontSize="11"
+                                                               HorizontalAlignment="Left" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                    <TextBlock x:Name="HeaderTime" Grid.Column="2" Text="修改时间" FontSize="11"
+                                                               HorizontalAlignment="Left" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="3" Text="{Binding DataSummary}" FontSize="11"
+                                                               HorizontalAlignment="Left" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                </Grid>
+
+                                                <!-- 数据行（可滚动） -->
+                                                <ScrollViewer Grid.Row="1" Focusable="False"
+                                                              HorizontalScrollBarVisibility="Disabled"
+                                                              VerticalScrollBarVisibility="Auto"
+                                                              Padding="0" Background="Transparent">
+                                                    <ItemsPresenter />
+                                                </ScrollViewer>
+                                            </Grid>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.Style>
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Grid>
+                                    <!-- ⚠ 这串宽度必须与模板里的表头**一字不差**（包括最后那列） -->
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="2*" />
-                                        <ColumnDefinition Width="90" />
-                                        <ColumnDefinition Width="130" />
-                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="86" />
+                                        <ColumnDefinition Width="132" />
+                                        <ColumnDefinition Width="132" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="{Binding RelativePath}" FontSize="12.5" TextTrimming="CharacterEllipsis"
                                                ToolTip="{Binding FullPath}" />
