@@ -13,27 +13,91 @@ public sealed partial class FlashDownloaderViewModel
 {
     // ================================================================ 列表
 
-    /// <summary>重建游戏列表（<paramref name="announce"/> 为 true 时把结果写进状态栏与日志）。</summary>
+    /// <summary>
+    /// 重新扫游戏目录，然后按「搜索词 + 排序方式」重建界面上的列表
+    /// （<paramref name="announce"/> 为 true 时把结果写进状态栏与日志）。
+    ///
+    /// <para>分成两步是刻意的：扫盘得到 <c>_allGames</c>（全部），界面上的 <see cref="Games"/> 只是
+    /// 过滤 + 排序后的视图。这样搜索/改排序不需要重新读磁盘。</para>
+    /// </summary>
     public void RefreshGames(bool announce)
     {
         var previous = SelectedGame?.Entry.FileOrFolderName;
         var entries = Library.List();
 
-        Games.Clear();
-        foreach (var entry in entries) Games.Add(new GameItem(entry));
-
-        if (previous is not null)
-            SelectedGame = Games.FirstOrDefault(g => g.Entry.FileOrFolderName == previous);
-
-        OnPropertyChanged(nameof(GamesSummary));
+        _allGames = entries.Select(e => new GameItem(e)).ToList();
+        RebuildGameList(previous);
 
         if (!announce) return;
         var legacy = Library.FindLegacyFolderNames();
         var suffix = legacy.Count > 0
             ? $"。由于版本更新，有 {legacy.Count} 个文件夹还是旧名字（例如 {legacy[0]} 应改成 {legacy[0]}s）"
             : "";
-        StatusText = $"找到 {Games.Count} 个游戏{suffix}";
+        StatusText = $"找到 {_allGames.Count} 个游戏{suffix}";
         Log(StatusText);
+    }
+
+    /// <summary>
+    /// 只重建界面列表（过滤 + 排序），不重新扫盘。
+    /// 搜索框、排序下拉、正逆序按钮都走这里。
+    /// </summary>
+    /// <param name="keepSelectedName">重建后要重新选中的那个游戏名（null = 不处理选中项）。</param>
+    private void RebuildGameList(string? keepSelectedName = null)
+    {
+        var wanted = keepSelectedName ?? SelectedGame?.Entry.FileOrFolderName;
+
+        var shown = GameFilter.Apply(
+            _allGames.Select(g => g.Entry),
+            GameSearchText,
+            Cfg.GameSortMode,
+            Cfg.GameSortDescending,
+            Cfg.LastPlayedAt);
+
+        Games.Clear();
+        foreach (var entry in shown)
+        {
+            // 复用已有 GameItem：里面的 Warning 是扫盘时算好的，别每次都重算（有 IO）
+            var existing = _allGames.FirstOrDefault(g => g.Entry.FileOrFolderName == entry.FileOrFolderName);
+            Games.Add(existing ?? new GameItem(entry));
+        }
+
+        // 选中项还在显示列表里就保持选中，否则清空（免得“选中的东西看不见了”）
+        SelectedGame = wanted is null
+            ? null
+            : Games.FirstOrDefault(g => g.Entry.FileOrFolderName == wanted);
+
+        GamesEmptyHint = GameFilter.EmptyHint(_allGames.Count, Games.Count, GameSearchText);
+        OnPropertyChanged(nameof(GamesSummary));
+        OnPropertyChanged(nameof(GamesEmptyHint));
+    }
+
+    /// <summary>正序 / 逆序切换。</summary>
+    private void ToggleSortDirection()
+    {
+        Cfg.GameSortDescending = !Cfg.GameSortDescending;
+        OnPropertyChanged(nameof(SortDirectionText));
+        OnPropertyChanged(nameof(SortDirectionToolTip));
+        RebuildGameList();
+        StatusText = $"排序：{SelectedGameSort.Label}，{SortDirectionText}";
+    }
+
+    /// <summary>
+    /// 记下「这个游戏刚玩过」（给「按上次游玩排序」用）。
+    ///
+    /// <para>公开是为了让自检能在<b>不真的启动播放器</b>的前提下验证这段簿记
+    /// （自检里去调 <see cref="PlayEntry"/> 会弹出真的 FlashPlayer 窗口、把无头自检卡住，踩过）。</para>
+    /// </summary>
+    public void MarkPlayed(GameEntry entry)
+    {
+        Cfg.LastPlayedAt[entry.FileOrFolderName] = DateTime.Now;
+
+        // 把没用的老记录清掉（游戏被删了、或改过名），免得配置越滚越大
+        var alive = _allGames.Select(g => g.Entry.FileOrFolderName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var stale in Cfg.LastPlayedAt.Keys.Where(k => !alive.Contains(k)).ToList())
+            Cfg.LastPlayedAt.Remove(stale);
+
+        // 正在「按上次游玩」排序时，刚玩过的应该马上窜到最上面
+        if (Cfg.GameSortMode == GameSortMode.LastPlayed) RebuildGameList(entry.FileOrFolderName);
     }
 
     // ================================================================ 下载
@@ -51,7 +115,8 @@ public sealed partial class FlashDownloaderViewModel
         var (appendix, _) = GamePageParser.GetUrlInfo(url);
         if (appendix.Length > 0)
         {
-            var existing = Games.FirstOrDefault(g => string.Equals(g.Entry.Appendix, appendix, StringComparison.OrdinalIgnoreCase));
+            // 在「全部游戏」里找，而不是当前过滤后的视图 —— 搜着词的时候也不该重复下载
+            var existing = _allGames.FirstOrDefault(g => string.Equals(g.Entry.Appendix, appendix, StringComparison.OrdinalIgnoreCase));
             if (existing is not null)
             {
                 SelectedGame = existing;
@@ -107,27 +172,41 @@ public sealed partial class FlashDownloaderViewModel
             StatusText = "请先选择一个游戏";
             return;
         }
+        PlayEntry(item.Entry);
+    }
 
-        var entry = item.Entry;
-        if (entry.IsFolder)
+    /// <summary>
+    /// 游玩一个游戏（界面按钮、双击列表都走这里）。
+    /// 只有真的打开了才记「玩过」——找不到播放器 / 文件不在了就不算，
+    /// 否则「按上次游玩排序」会被失败的操作污染。
+    /// </summary>
+    /// <returns>确实打开了没有。</returns>
+    public bool PlayEntry(GameEntry entry)
+    {
+        var started = false;        if (entry.IsFolder)
         {
             if (entry.FolderExt == ".swf")
             {
-                RunWithFlashPlayer(entry.GameFullPath);
+                started = RunWithFlashPlayer(entry.GameFullPath);
             }
             else if (entry.FolderExt == ".htm")
             {
                 PlayHtmlGame(entry);
+                started = true;
             }
             else
             {
                 StatusText = $"为安全考虑只能打开 .swf 和 .htm，这个文件夹标记的扩展名是 {entry.FolderExt}，不支持打开";
                 Log(StatusText);
             }
-            return;
+        }
+        else
+        {
+            started = RunWithFlashPlayer(entry.FullPath);
         }
 
-        RunWithFlashPlayer(entry.FullPath);
+        if (started) MarkPlayed(entry);
+        return started;
     }
 
     /// <summary>用 Flash 独立播放器打开一个 swf。</summary>
@@ -227,15 +306,15 @@ public sealed partial class FlashDownloaderViewModel
 
     private void DeleteAll()
     {
-        if (Games.Count == 0)
+        if (_allGames.Count == 0)
         {
             StatusText = "没有可删除的游戏";
             return;
         }
-        if (!Confirm($"确定要删除这 {Games.Count} 个游戏吗？文件会被真的删掉。", "全部删除")) return;
+        if (!Confirm($"确定要删除这 {_allGames.Count} 个游戏吗？文件会被真的删掉。", "全部删除")) return;
 
         var failed = 0;
-        foreach (var item in Games.ToList())
+        foreach (var item in _allGames.ToList())
         {
             var result = Library.Delete(item.Entry);
             if (!result.Ok) { failed++; Log(result.Message); }

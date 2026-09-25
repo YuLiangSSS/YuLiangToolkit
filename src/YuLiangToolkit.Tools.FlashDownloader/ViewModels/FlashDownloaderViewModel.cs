@@ -43,6 +43,9 @@ public sealed partial class FlashDownloaderViewModel : ToolViewModelBase
 
     private CancellationTokenSource? _cts;
     private GameItem? _selectedGame;
+    private string _gameSearchText = "";
+    /// <summary>扫出来的全部游戏（未过滤）；<see cref="Games"/> 是它过滤+排序后的视图。</summary>
+    private List<GameItem> _allGames = new();
     private string _gamesDirectory = "";
     private string _serverStatus = "未启动";
     private string _flashPlayerPath = "";
@@ -81,6 +84,8 @@ public sealed partial class FlashDownloaderViewModel : ToolViewModelBase
         DownloadAndPlayCommand = new AsyncRelayCommand(_ => DownloadAsync(true));
         PlayCommand = new RelayCommand(_ => PlaySelected(), _ => SelectedGame is not null);
         RefreshListCommand = new RelayCommand(_ => { RefreshGames(true); });
+        ClearGameSearchCommand = new RelayCommand(_ => GameSearchText = "", _ => HasGameSearchText);
+        ToggleSortDirectionCommand = new RelayCommand(_ => ToggleSortDirection());
         DeleteCommand = new RelayCommand(_ => DeleteSelected(), _ => SelectedGame is not null);
         DeleteAllCommand = new RelayCommand(_ => DeleteAll());
         MoveIntoFolderCommand = new AsyncRelayCommand(_ => MoveIntoFolderAsync(), _ => SelectedGame?.Entry.CanMoveIntoFolder == true);
@@ -142,7 +147,6 @@ public sealed partial class FlashDownloaderViewModel : ToolViewModelBase
     /// <summary>功能选项（改一下就写进 <c>Config\flash-downloader\config.json</c>）。</summary>
     public FlashDownloaderConfig Cfg { get; }
 
-    /// <summary>游戏目录门面（扫列表 / 删除 / 装入文件夹）。</summary>
     /// <summary>游戏目录门面（扫列表 / 删除 / 装入文件夹）。改目录时会整个换掉。</summary>
     public GamesLibrary Library { get; private set; }
 
@@ -169,8 +173,61 @@ public sealed partial class FlashDownloaderViewModel : ToolViewModelBase
 
     // ---------------------------------------------------------------- 界面数据
 
-    /// <summary>游戏列表。</summary>
+    /// <summary>游戏列表（已经过搜索过滤 + 排序，直接绑 ListBox）。</summary>
     public ObservableCollection<GameItem> Games { get; } = new();
+
+    /// <summary>搜索词：输入即过滤（关键词用空格分隔，需全部命中）。**不持久化**。</summary>
+    public string GameSearchText
+    {
+        get => _gameSearchText;
+        set
+        {
+            if (!Set(ref _gameSearchText, value)) return;
+            OnPropertyChanged(nameof(HasGameSearchText));
+            RebuildGameList();
+        }
+    }
+
+    /// <summary>搜索框里有没有内容（控制「✕」按钮显不显示）。</summary>
+    public bool HasGameSearchText => !string.IsNullOrWhiteSpace(GameSearchText);
+
+    /// <summary>排序方式下拉框的选项。</summary>
+    public IReadOnlyList<OptionItem<GameSortMode>> GameSortOptions { get; } = OptionItem.From(
+        (GameSortMode.LastPlayed, "按上次游玩"),
+        (GameSortMode.Name, "按名字"),
+        (GameSortMode.Size, "按大小"),
+        (GameSortMode.Site, "按站点"),
+        (GameSortMode.Default, "按默认顺序"));
+
+    /// <summary>下拉框与配置之间的桥接属性。</summary>
+    public OptionItem<GameSortMode> SelectedGameSort
+    {
+        get => OptionItem<GameSortMode>.Find(GameSortOptions, Cfg.GameSortMode) ?? GameSortOptions[0];
+        set
+        {
+            if (value is null) return;
+            Cfg.GameSortMode = value.Value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(SortDirectionText));
+            OnPropertyChanged(nameof(SortDirectionToolTip));
+            RebuildGameList();
+        }
+    }
+    /// <summary>正序 / 逆序切换按钮上的文字。</summary>
+    public string SortDirectionText => Cfg.GameSortDescending ? "↓ 逆序" : "↑ 正序";
+
+    /// <summary>正序 / 逆序按钮的提示。</summary>
+    public string SortDirectionToolTip => Cfg.GameSortDescending
+        ? "当前：逆序（点一下换成正序）"
+        : "当前：正序（点一下换成逆序）";
+
+    private string _gamesEmptyHint = "";
+    /// <summary>列表被搜索筛过之后的提示（空 = 不用提示）。</summary>
+    public string GamesEmptyHint
+    {
+        get => _gamesEmptyHint;
+        private set => Set(ref _gamesEmptyHint, value);
+    }
 
     /// <summary>关联文件下载的逐行结果。</summary>
     public ObservableCollection<RelatedRow> RelatedRows { get; } = new();
@@ -219,12 +276,17 @@ public sealed partial class FlashDownloaderViewModel : ToolViewModelBase
     }
 
     /// <summary>列表统计文本。</summary>
+    /// <summary>
+    /// 列表统计文本：搜索时显示「筛出 N / 共 M 个」，否则只显示总数；顺带提醒旧版命名。
+    /// </summary>
     public string GamesSummary
     {
         get
         {
-            var legacy = Games.Count(g => g.Entry.IsLegacyFolderName);
-            var text = $"共 {Games.Count} 个游戏";
+            var total = _allGames.Count;
+            var shown = Games.Count;
+            var text = HasGameSearchText && shown != total ? $"筛出 {shown} / 共 {total} 个游戏" : $"共 {total} 个游戏";
+            var legacy = _allGames.Count(g => g.Entry.IsLegacyFolderName);
             if (legacy > 0) text += $"（其中 {legacy} 个是旧版命名，请在名字后面加 s 或 h）";
             return text;
         }
@@ -334,6 +396,10 @@ public sealed partial class FlashDownloaderViewModel : ToolViewModelBase
     public AsyncRelayCommand DownloadAndPlayCommand { get; }
     public RelayCommand PlayCommand { get; }
     public RelayCommand RefreshListCommand { get; }
+    /// <summary>清空游戏列表搜索词。</summary>
+    public RelayCommand ClearGameSearchCommand { get; }
+    /// <summary>正序 / 逆序切换。</summary>
+    public RelayCommand ToggleSortDirectionCommand { get; }
     public RelayCommand DeleteCommand { get; }
     public RelayCommand DeleteAllCommand { get; }
     public AsyncRelayCommand MoveIntoFolderCommand { get; }

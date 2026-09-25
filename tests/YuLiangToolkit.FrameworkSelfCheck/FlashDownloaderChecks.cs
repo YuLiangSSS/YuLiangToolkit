@@ -6,6 +6,7 @@ using System.Text;
 using YuLiangToolkit.Tools.FlashDownloader;
 using YuLiangToolkit.Tools.FlashDownloader.Core;
 using YuLiangToolkit.Tools.FlashDownloader.Engine;
+using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Tools.FlashDownloader.ViewModels;
 using YuLiangToolkit.Tools.FlashDownloader.Web;
@@ -34,6 +35,7 @@ internal static class FlashDownloaderChecks
         CheckEntryNaming(result, plain);
         CheckBatchPlan(result, plain, work);
         CheckLibraryOperations(result, plain, work);
+        CheckGameFilter(result, plain);
         CheckWebMapping(result, plain, games, tools);
         CheckTemplates(result, plain);
         CheckViewModelWiring(result, plain);
@@ -469,7 +471,128 @@ internal static class FlashDownloaderChecks
         report("拒绝绝对路径", !library.TryResolve(@"C:\Windows\evil.exe", out _));
     }
 
-    // ---------------------------------------------------------------- 6. 本地服务器的路径映射
+    // ---------------------------------------------------------------- 6. 游戏列表的搜索 / 排序
+
+    /// <summary>
+    /// 游戏列表搜索 / 排序（与主页的 ToolFilter 一个套路，纯函数直接断言）。
+    /// 这一组是补 v0.5.1 的新功能：搜索框、排序下拉、正逆序。
+    /// </summary>
+    private static void CheckGameFilter(Action<string, bool, string> check, Action<string, bool> report)
+    {
+        var root = NewDir("filter");
+        var library = new GamesLibrary(root);
+
+        // 造三个游戏：4399 的散放 swf、17yy 的网页文件夹、7k7k 的播放器文件夹。
+        // 大小刻意拉开（100 / 200 / 300 字节），否则「按大小」会平局、断言就依赖排序稳定性了。
+        // 注意「文件夹大小」= 里面所有文件之和，所以 h 文件夹里那个 htm 桩也要算进去。
+        File.WriteAllBytes(Path.Combine(root, "黄金矿工_a100.swf"), new byte[100]);
+        Directory.CreateDirectory(Path.Combine(root, "森林冰火人_c200h"));
+        File.WriteAllBytes(Path.Combine(root, "森林冰火人_c200h", "森林冰火人_c200.htm"), new byte[200]);
+        Directory.CreateDirectory(Path.Combine(root, "小破孩_b300s"));
+        File.WriteAllBytes(Path.Combine(root, "小破孩_b300s", "小破孩_b300.swf"), new byte[300]);
+
+        var all = library.List();
+        check("搜索/排序的测试数据（3 个游戏）", all.Count == 3, string.Join(",", all.Select(e => e.FileOrFolderName)));
+
+        // ---- 关键词切分 ----
+        check("关键词切分：空格 / 中英文逗号 / 顿号都算分隔符",
+            GameFilter.SplitKeywords("4399 网页, 冰火、a100").SequenceEqual(new[] { "4399", "网页", "冰火", "a100" }),
+            string.Join("|", GameFilter.SplitKeywords("4399 网页, 冰火、a100")));
+        report("空搜索词切出空数组（调用方据此跳过过滤）",
+            GameFilter.SplitKeywords("").Length == 0 && GameFilter.SplitKeywords("   ").Length == 0
+            && GameFilter.SplitKeywords(null).Length == 0);
+
+        // ---- 搜索命中 ----
+        IReadOnlyList<string> Names(IEnumerable<GameEntry> entries) => entries.Select(e => e.FileOrFolderName).ToList();
+
+        check("搜索：按名字命中",
+            Names(GameFilter.Apply(all, "冰火", GameSortMode.Default)).SequenceEqual(new[] { "森林冰火人_c200h" }),
+            string.Join(",", Names(GameFilter.Apply(all, "冰火", GameSortMode.Default))));
+        report("搜索：按站点后缀命中（a100）",
+            Names(GameFilter.Apply(all, "a100", GameSortMode.Default)).SequenceEqual(new[] { "黄金矿工_a100.swf" }));
+        check("搜索：按站点名命中（4399 → 散放的 a100 那条）",
+            Names(GameFilter.Apply(all, "4399", GameSortMode.Default)).SequenceEqual(new[] { "黄金矿工_a100.swf" }),
+            string.Join(",", Names(GameFilter.Apply(all, "4399", GameSortMode.Default))));
+        check("搜索：按打开方式命中（网页 → 只剩 h 文件夹）",
+            Names(GameFilter.Apply(all, "网页", GameSortMode.Default)).SequenceEqual(new[] { "森林冰火人_c200h" }),
+            string.Join(",", Names(GameFilter.Apply(all, "网页", GameSortMode.Default))));
+        report("搜索：大小写不敏感", GameFilter.Apply(all, "C200", GameSortMode.Default).Count == 1);
+        report("搜索：多个关键词是 AND（4399 + 矿工 命中；4399 + 冰火 不命中）",
+            GameFilter.Apply(all, "4399 矿工", GameSortMode.Default).Count == 1
+            && GameFilter.Apply(all, "4399 冰火", GameSortMode.Default).Count == 0);
+        report("搜索：没命中就是空列表（界面会给出提示文案）",
+            GameFilter.Apply(all, "不存在的游戏", GameSortMode.Default).Count == 0);
+
+        // ---- 排序 ----
+        // 名字排序用的是 StringComparer.CurrentCulture（中文系统按拼音），所以这里只断言
+        // 「顺序稳定 + 正逆序互补」，不写死具体次序（写死了换台机器/换个区域就红）。
+        var byName = Names(GameFilter.Sort(all, GameSortMode.Name, false));
+        report("排序：按名字（3 个都在，且正序与逆序正好相反）",
+            byName.Count == 3
+            && byName.SequenceEqual(Names(GameFilter.Sort(all, GameSortMode.Name, true)).Reverse()));
+        check("排序：按大小（小 → 大）",
+            Names(GameFilter.Sort(all, GameSortMode.Size, false))
+                .SequenceEqual(new[] { "黄金矿工_a100.swf", "森林冰火人_c200h", "小破孩_b300s" }),
+            string.Join(",", Names(GameFilter.Sort(all, GameSortMode.Size, false))));
+        check("排序：按站点分组的固定次序（4399 → 7k7k → 17yy）",
+            Names(GameFilter.Sort(all, GameSortMode.Site, false))
+                .SequenceEqual(new[] { "黄金矿工_a100.swf", "小破孩_b300s", "森林冰火人_c200h" }),
+            string.Join(",", Names(GameFilter.Sort(all, GameSortMode.Site, false))));
+        report("排序：站点次序不是按字符串比（否则 7k7k 会跑到 4399 前面）",
+            all.First(e => e.Appendix[0] == 'a').SiteSortKey < all.First(e => e.Appendix[0] == 'b').SiteSortKey
+            && all.First(e => e.Appendix[0] == 'b').SiteSortKey < all.First(e => e.Appendix[0] == 'c').SiteSortKey);
+
+        // ---- 「按上次游玩」：刚玩过的排最上面，从没玩过的垫底 ----
+        var played = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["黄金矿工_a100.swf"] = new DateTime(2026, 1, 1, 10, 0, 0),
+            ["森林冰火人_c200h"] = new DateTime(2026, 5, 1, 10, 0, 0),
+        };
+        check("排序：按上次游玩（最近玩的在最上面，从没玩过的垫底）",
+            Names(GameFilter.Sort(all, GameSortMode.LastPlayed, false, played))
+                .SequenceEqual(new[] { "森林冰火人_c200h", "黄金矿工_a100.swf", "小破孩_b300s" }),
+            string.Join(",", Names(GameFilter.Sort(all, GameSortMode.LastPlayed, false, played))));
+        report("排序：按上次游玩 + 逆序 = 整个翻过来",
+            Names(GameFilter.Sort(all, GameSortMode.LastPlayed, true, played))
+                .SequenceEqual(new[] { "小破孩_b300s", "黄金矿工_a100.swf", "森林冰火人_c200h" }));
+        report("排序：没给游玩记录时不会崩（全当从没玩过）",
+            GameFilter.Sort(all, GameSortMode.LastPlayed).Count == 3);
+        report("排序：搜索和排序可以叠加（搜 4399 再按大小排）",
+            Names(GameFilter.Apply(all, "4399", GameSortMode.Size, false, played))
+                .SequenceEqual(new[] { "黄金矿工_a100.swf" }));
+
+        // ---- 空状态提示 ----
+        check("空状态：目录里真没游戏时说的是“去下载”",
+            GameFilter.EmptyHint(0, 0, "").Contains("还没有游戏"), GameFilter.EmptyHint(0, 0, ""));
+        check("空状态：被搜索筛没了时说清楚是筛的（带上关键词与总数）",
+            GameFilter.EmptyHint(3, 0, "冰火").Contains("冰火") && GameFilter.EmptyHint(3, 0, "冰火").Contains("3"),
+            GameFilter.EmptyHint(3, 0, "冰火"));
+        report("空状态：有结果时不给提示（控件靠空串隐藏）", GameFilter.EmptyHint(3, 2, "冰火").Length == 0);
+
+        // ---- 游玩时间记录（VM 用的表） ----
+        report("游玩时间表的键是“文件名/文件夹名”，与列表项对得上",
+            played.Keys.All(k => all.Any(e => e.FileOrFolderName == k)));
+    }
+
+    /// <summary>
+    /// 删掉一个游戏后，过期的「上次游玩」记录应该被清掉（否则配置会越滚越大）。
+    /// 清理发生在 <c>MarkPlayed</c> 里，所以这里先删文件、刷新、再玩一个游戏来触发它。
+    /// </summary>
+    private static bool PrunePlayedAndCheck(FlashDownloaderViewModel vm, string gamesDir)
+    {
+        var victim = vm.Games.FirstOrDefault(g => g.Entry.FileOrFolderName == "森林冰火人_c300h");
+        if (victim is null) return false;
+        Directory.Delete(Path.Combine(gamesDir, victim.Entry.FileOrFolderName), recursive: true);
+        vm.RefreshGames(false);
+
+        var another = vm.Games.FirstOrDefault();
+        if (another is null) return false;
+        vm.MarkPlayed(another.Entry); // 触发 MarkPlayed → 顺手清理死记录（同样不碰 PlayEntry）
+
+        return !vm.Cfg.LastPlayedAt.ContainsKey(victim.Entry.FileOrFolderName);
+    }
+
+    // ---------------------------------------------------------------- 7. 本地服务器的路径映射
 
     private static void CheckWebMapping(Action<string, bool, string> check, Action<string, bool> report,
         string games, string tools)
@@ -613,6 +736,71 @@ internal static class FlashDownloaderChecks
                 vm.Cfg.GamesFolder = "";
                 report("清空 GamesFolder 之后回落到默认目录",
                     string.Equals(vm.Cfg.EffectiveGamesDirectory, expectedGames, StringComparison.OrdinalIgnoreCase));
+
+                // ---- 列表的搜索 / 排序 / 游玩记录（v0.5.1 新增，这里跑 VM 这一层） ----
+                var gamesDir = vm.Library.Root;
+                Directory.CreateDirectory(gamesDir);
+                File.WriteAllBytes(Path.Combine(gamesDir, "黄金矿工_a100.swf"), new byte[100]);
+                File.WriteAllBytes(Path.Combine(gamesDir, "小破孩_b200.swf"), new byte[200]);
+                Directory.CreateDirectory(Path.Combine(gamesDir, "森林冰火人_c300h"));
+                File.WriteAllBytes(Path.Combine(gamesDir, "森林冰火人_c300h", "森林冰火人_c300.htm"),
+                    new byte[300]);
+
+                vm.RefreshGames(false);
+                check("VM：扫出 3 个游戏并显示成 3 行", vm.Games.Count == 3 && vm.GamesSummary.Contains("共 3 个"),
+                    $"{vm.Games.Count} / {vm.GamesSummary}");
+
+                // 默认排序是「按上次游玩」：三个都没玩过 → 顺序稳定即可
+                check("VM：默认排序方式是按上次游玩",
+                    vm.SelectedGameSort.Value == GameSortMode.LastPlayed, vm.SelectedGameSort.Label);
+
+                vm.GameSearchText = "冰火";
+                check("VM：搜索框一输入就过滤（1 行）",
+                    vm.Games.Count == 1 && vm.Games[0].Entry.FileOrFolderName == "森林冰火人_c300h",
+                    string.Join(",", vm.Games.Select(g => g.Entry.FileOrFolderName)));
+                check("VM：统计文案显示“筛出 1 / 共 3 个”",
+                    vm.GamesSummary.Contains("筛出 1 / 共 3"), vm.GamesSummary);
+                report("VM：搜索时能识别“有搜索词”（✕ 按钮靠它显示）", vm.HasGameSearchText);
+
+                vm.GameSearchText = "找不到的东西";
+                check("VM：搜不到时列表为空并给出提示",
+                    vm.Games.Count == 0 && vm.GamesEmptyHint.Contains("找不到的东西"), vm.GamesEmptyHint);
+
+                vm.GameSearchText = "";
+                report("VM：清空搜索词后 3 个游戏都回来", vm.Games.Count == 3 && vm.GamesEmptyHint.Length == 0);
+
+                // 排序切换
+                vm.SelectedGameSort = OptionItem<GameSortMode>.Find(vm.GameSortOptions, GameSortMode.Size)!;
+                check("VM：切换成“按大小”后小游戏在最前面",
+                    vm.Games[0].Entry.FileOrFolderName == "黄金矿工_a100.swf",
+                    string.Join(",", vm.Games.Select(g => g.Entry.FileOrFolderName)));
+                var beforeToggle = vm.SortDirectionText;
+                vm.ToggleSortDirectionCommand.Execute(null);
+                check("VM：正逆序按钮真的把顺序翻过来了",
+                    vm.SortDirectionText != beforeToggle
+                    && vm.Games[0].Entry.FileOrFolderName == "森林冰火人_c300h",
+                    $"{vm.SortDirectionText} / {string.Join(",", vm.Games.Select(g => g.Entry.FileOrFolderName))}");
+                report("VM：正逆序状态写进了配置（下次打开还是它）", vm.Cfg.GameSortDescending);
+
+                // 游玩记录 → 「按上次游玩」排序
+                vm.SelectedGameSort = OptionItem<GameSortMode>.Find(vm.GameSortOptions, GameSortMode.LastPlayed)!;
+                var target = vm.Games.First(g => g.Entry.FileOrFolderName == "小破孩_b200.swf");
+                // ⚠ 这里绝对不能调 PlayEntry —— 它会真的启动 FlashPlayer 窗口，无头自检会卡死（踩过）。
+                //   「玩过」的簿记直接调 MarkPlayed 验证。
+                vm.MarkPlayed(target.Entry);
+                report("VM：游玩后会写进 LastPlayedAt（键 = 文件名）",
+                    vm.Cfg.LastPlayedAt.ContainsKey("小破孩_b200.swf"));
+                if (vm.Cfg.LastPlayedAt.ContainsKey("小破孩_b200.swf"))
+                {
+                    vm.Cfg.LastPlayedAt["小破孩_b200.swf"] = DateTime.Now.AddMinutes(5); // 保证比别的都新
+                    vm.Cfg.GameSortDescending = false;
+                    vm.RefreshGames(false);
+                    check("VM：刚玩过的自动窜到最上面",
+                        vm.Games[0].Entry.FileOrFolderName == "小破孩_b200.swf",
+                        string.Join(",", vm.Games.Select(g => g.Entry.FileOrFolderName)));
+                }
+                check("VM：删掉游戏后再刷新，过期的游玩记录会被清掉",
+                    PrunePlayedAndCheck(vm, gamesDir), string.Join(",", vm.Cfg.LastPlayedAt.Keys));
             }
             finally
             {

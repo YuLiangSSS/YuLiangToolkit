@@ -82,6 +82,19 @@ public sealed partial class GameEntry
     /// <summary>站点显示名。</summary>
     public string SiteText => Appendix.Length > 0 ? GameSites.DisplayName(Site) : "—";
 
+    /// <summary>
+    /// 站点排序键：4399 → 7k7k → 17yy → 其它。
+    /// 不能拿 <see cref="SiteText"/> 直接排——那会按中文字符串比，
+    /// 「7k7k」会跑到「4399」前面（自检里就是这么发现的）。
+    /// </summary>
+    public int SiteSortKey => Site switch
+    {
+        GameSite.Site4399 => 1,
+        GameSite.Site7k7k => 2,
+        GameSite.Site17yy => 3,
+        _ => 9,
+    };
+
     /// <summary>给用户看的后缀文本。</summary>
     public string AppendixText => Appendix.Length > 0 ? Appendix : "—";
 

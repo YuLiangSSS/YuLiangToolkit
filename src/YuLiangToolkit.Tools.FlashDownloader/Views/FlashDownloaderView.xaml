@@ -104,7 +104,8 @@
                 <!-- ===== 左：游戏列表 ===== -->
                 <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="0">
                     <StackPanel>
-                        <Grid Margin="18,14,18,8">
+                        <!-- 标题行：标题 + 统计 + 刷新/全部删除 -->
+                        <Grid Margin="18,14,18,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -125,30 +126,68 @@
                             </StackPanel>
                         </Grid>
 
+                        <!-- 搜索 + 排序 -->
+                        <Grid Margin="18,12,18,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <Grid Grid.Column="0">
+                                <TextBox x:Name="GameSearchBox" Height="32" Style="{StaticResource TextBoxStyle}"
+                                         Text="{Binding GameSearchText, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="按名字 / 站点后缀 / 4399 / 网页 搜索；空格分隔多个关键词（需同时命中）；Esc 清空" />
+                                <TextBlock Text="搜索游戏…（名字 / 后缀 / 站点）"
+                                           Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Visibility="{Binding GameSearchText, Converter={StaticResource EmptyToVis}}" />
+                            </Grid>
+
+                            <Button Grid.Column="1" Content="✕" Padding="10,3" Margin="8,0,0,0" Height="32"
+                                    Style="{StaticResource SecondaryButtonStyle}" ToolTip="清空搜索（Esc）"
+                                    Command="{Binding ClearGameSearchCommand}"
+                                    Visibility="{Binding HasGameSearchText, Converter={StaticResource BoolToVis}}" />
+
+                            <ComboBox Grid.Column="2" ItemsSource="{Binding GameSortOptions}"
+                                      SelectedItem="{Binding SelectedGameSort}"
+                                      DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}"
+                                      MinWidth="118" Height="32" Margin="8,0,0,0"
+                                      ToolTip="排序方式：上次游玩 = 刚玩过的排最上面" />
+
+                            <Button Grid.Column="3" Content="{Binding SortDirectionText}" Height="32" Margin="8,0,0,0"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding ToggleSortDirectionCommand}"
+                                    ToolTip="{Binding SortDirectionToolTip}" />
+                        </Grid>
+
                         <ListBox x:Name="GameList" ItemsSource="{Binding Games}" SelectedItem="{Binding SelectedGame}"
                                  Style="{StaticResource FileListStyle}" MinHeight="230" MaxHeight="330"
+                                 Margin="8,10,8,0"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                 ToolTip="双击 = 游玩">
+                                 ToolTip="单击选中，双击 = 游玩">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="60" />
+                                            <ColumnDefinition Width="52" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel>
                                             <TextBlock Text="{Binding DisplayText}" TextTrimming="CharacterEllipsis"
-                                                       ToolTip="{Binding FullPath}" />
+                                                       FontSize="12.5" ToolTip="{Binding FullPath}" />
                                             <TextBlock Text="{Binding DetailText}" FontSize="10.5"
                                                        Foreground="{StaticResource TextSecondaryBrush}"
-                                                       TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
-                                            <TextBlock Text="{Binding Warning}" FontSize="10.5" TextWrapping="Wrap" Margin="0,2,0,0"
+                                                       TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
+                                            <TextBlock Text="{Binding Warning}" FontSize="10.5" TextWrapping="Wrap" Margin="0,3,0,0"
                                                        Foreground="{StaticResource DangerBrush}"
                                                        Visibility="{Binding HasWarning, Converter={StaticResource BoolToVis}}" />
                                         </StackPanel>
                                         <TextBlock Grid.Column="1" Text="{Binding SiteText}" FontSize="11"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   VerticalAlignment="Center" Margin="6,0,8,0" TextAlignment="Right" />
                                         <Border Grid.Column="2" Background="{StaticResource InputBackgroundBrush}" CornerRadius="5"
                                                 Padding="7,3" VerticalAlignment="Center" BorderThickness="1"
                                                 BorderBrush="{StaticResource BorderBrush}">
@@ -159,25 +198,35 @@
                             </ListBox.ItemTemplate>
                         </ListBox>
 
-                        <WrapPanel Margin="18,10,18,14">
-                            <Button x:Name="PlayButton" Content="游玩" Style="{StaticResource PrimaryButtonStyle}"
-                                    Command="{Binding PlayCommand}" />
-                            <Button Content="装入文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
-                                    Command="{Binding MoveIntoFolderCommand}"
-                                    ToolTip="把散放的 swf 收进「游戏名_?123s」文件夹，多文件游戏必须这么做" />
-                            <Button Content="改为 htm 打开" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
-                                    Command="{Binding ConvertToHtmCommand}"
-                                    ToolTip="只有在本地 swf 实在打不开时才需要（要浏览器支持 Flash）" />
-                            <Button Content="打开游戏页" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
-                                    Command="{Binding OpenGamePageCommand}" />
-                            <Button Content="在资源管理器中显示" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
-                                    Command="{Binding RevealCommand}" />
-                            <Button Content="删除" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
-                                    Command="{Binding DeleteCommand}" />
-                        </WrapPanel>
+                        <!-- 搜索筛没了的时候提示一句（免得以为游戏丢了） -->
+                        <TextBlock Text="{Binding GamesEmptyHint}" FontSize="11.5" TextWrapping="Wrap"
+                                   Margin="20,8,20,0" Foreground="{StaticResource TextSecondaryBrush}"
+                                   Visibility="{Binding GamesEmptyHint, Converter={StaticResource EmptyToVisInverse}}" />
+
+                        <!-- 操作按钮：分两行，行距 8（以前挤在一起了） -->
+                        <StackPanel Margin="18,12,18,0">
+                            <WrapPanel>
+                                <Button x:Name="PlayButton" Content="游玩" Style="{StaticResource PrimaryButtonStyle}"
+                                        Command="{Binding PlayCommand}" />
+                                <Button Content="装入文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                        Command="{Binding MoveIntoFolderCommand}"
+                                        ToolTip="把散放的 swf 收进「游戏名_?123s」文件夹，多文件游戏必须这么做" />
+                                <Button Content="改为 htm 打开" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                        Command="{Binding ConvertToHtmCommand}"
+                                        ToolTip="只有在本地 swf 实在打不开时才需要（要浏览器支持 Flash）" />
+                            </WrapPanel>
+                            <WrapPanel Margin="0,8,0,0">
+                                <Button Content="打开游戏页" Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding OpenGamePageCommand}" />
+                                <Button Content="在资源管理器中显示" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                        Command="{Binding RevealCommand}" />
+                                <Button Content="删除" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                        Command="{Binding DeleteCommand}" />
+                            </WrapPanel>
+                        </StackPanel>
 
                         <!-- 选中游戏的信息（相当于原工具的「修改信息」弹窗） -->
-                        <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Margin="18,0,18,16" Padding="12,10">
+                        <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Margin="18,12,18,16" Padding="12,10">
                             <TextBox Style="{StaticResource LogTextBoxStyle}" Background="Transparent" BorderThickness="0"
                                      MaxHeight="112" Text="{Binding SelectedSummary, Mode=OneWay}"
                                      ToolTip="SWFNetPath.ini 里的信息（网络路径 / 宽高 / 是否新页面）" />

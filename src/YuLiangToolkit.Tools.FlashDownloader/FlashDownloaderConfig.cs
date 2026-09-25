@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using YuLiangToolkit.Core.Configuration;
+using YuLiangToolkit.Tools.FlashDownloader.Core;
 
 namespace YuLiangToolkit.Tools.FlashDownloader;
 
@@ -52,6 +53,19 @@ public sealed class FlashDownloaderConfig : ToolConfig
 
     /// <summary>上一次输入的游戏 URL（下次打开工具直接带出来）。</summary>
     public string LastGameUrl { get; set; } = "";
+
+    /// <summary>游戏列表的排序方式（默认 / 上次游玩 / 名字 / 大小 / 站点）。</summary>
+    public GameSortMode GameSortMode { get; set; } = GameSortMode.LastPlayed;
+
+    /// <summary>游戏列表是否反序。</summary>
+    public bool GameSortDescending { get; set; }
+
+    /// <summary>
+    /// 每个游戏「上次游玩时间」（键 = 文件名或文件夹名）。
+    /// 「按上次游玩排序」靠它 —— 与外壳的 <c>ShellConfig.LastUsed</c> 一个套路：
+    /// 字典原地增删改照样会落盘（自动保存靠内容比对，不依赖变更通知）。
+    /// </summary>
+    public Dictionary<string, DateTime> LastPlayedAt { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>默认游戏目录（功能数据目录下），只读计算属性 → 不写进 JSON。</summary>
     [JsonIgnore]

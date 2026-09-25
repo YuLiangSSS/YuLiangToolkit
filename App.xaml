@@ -22,6 +22,8 @@
 
         <conv:InverseBoolConverter x:Key="InverseBoolConverter" />
         <conv:EmptyStringToVisibilityConverter x:Key="EmptyToVis" />
+        <!-- 与 EmptyToVis 相反：用于「有结果或者干脆没内容时隐藏」的空状态提示 -->
+        <conv:EmptyStringToVisibilityConverter x:Key="EmptyToVisInverse" Invert="True" />
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
 
         <!-- ================= 卡片 ================= -->
@@ -599,23 +601,57 @@
         </Style>
 
         <!-- ================= 文件列表 ================= -->
+        <!-- 行样式：内边距 + 悬停/选中高亮 + 白色前景。
+             ⚠ 这三样缺一个都会很难看（v0.5.1 修过一次）：
+             ① 没有 Padding/Margin → 文字贴着卡片边框；
+             ② 没有 IsMouseOver / IsSelected 触发器 → 点一下完全没有反馈；
+             ③ 没设 Foreground → ListBoxItem 的模板被换掉后，子 TextBlock 会继承默认的**黑色**，
+                在深色背景上基本看不清（所以这里显式给 TextElement.Foreground）。 -->
+        <Style x:Key="FileRowItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+            <Setter Property="TextElement.Foreground" Value="{StaticResource TextPrimaryBrush}" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Bd" CornerRadius="7" Margin="10,1" Padding="10,8"
+                                Background="Transparent" BorderThickness="1" BorderBrush="Transparent">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="3" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border x:Name="Accent" Width="3" CornerRadius="1.5" HorizontalAlignment="Left"
+                                        Background="{StaticResource AccentBrush}" Visibility="Collapsed" />
+                                <ContentPresenter Grid.Column="1" Margin="9,0,0,0" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#232A36" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#2C374A" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#3E5A80" />
+                                <Setter TargetName="Accent" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.5" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="FileListStyle" TargetType="ListBox">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
             <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
-            <Setter Property="ItemContainerStyle">
-                <Setter.Value>
-                    <Style TargetType="ListBoxItem">
-                        <Setter Property="Template">
-                            <Setter.Value>
-                                <ControlTemplate TargetType="ListBoxItem">
-                                    <ContentPresenter />
-                                </ControlTemplate>
-                            </Setter.Value>
-                        </Setter>
-                    </Style>
-                </Setter.Value>
-            </Setter>
+            <Setter Property="ItemContainerStyle" Value="{StaticResource FileRowItemStyle}" />
         </Style>
 
         <!-- ================= 主页工具卡片按钮 ================= -->
