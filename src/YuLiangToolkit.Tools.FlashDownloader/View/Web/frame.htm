@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>小游戏加载中…</title>
+<style>
+/************** 可配置颜色区域（四种配色，右上角小方块切换） **************/
+:root{
+  --bgclr1:#e6f1f3;  --bgclr2:#161616;  --bgclr3:#bccd72;  --bgclr4:#dcd1a0;
+  --fmclr1:#ffffff;  --fmclr2:#0e0e0e;  --fmclr3:#c8e389;  --fmclr4:#e6cda3;
+  --txtclr1:#000000; --txtclr2:#cccccc; --txtclr3:#000000; --txtclr4:#000000;
+  --gmbgclr0:#000000;
+  --loadtxtclr0:#e6e6e6;
+  --bdclr1:#cccccc;  --bdclr2:#292929;  --bdclr3:#7f7f7f;  --bdclr4:#7f7f7f;
+  --bdclra0:#7f7f7f;
+}
+/*******************************************/
+html,body{margin:0;padding:0;width:100%;height:100%;}
+body{overflow:auto;font-family:"Microsoft YaHei UI","Microsoft YaHei",sans-serif;}
+
+#pagePadding{height:180px;margin:0 auto;}
+#frameOuter{position:absolute;top:34px;box-sizing:border-box;}
+
+#topBar{height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;}
+#topLeft{font-size:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#topRight{display:flex;gap:9px;flex:0 0 auto;}
+
+.themeBtn{width:20px;height:20px;cursor:pointer;border:1px solid var(--bdclra0);box-sizing:border-box;}
+
+#gameBox{
+  margin:0 auto;background:var(--gmbgclr0);
+  display:flex;align-items:center;justify-content:center;
+  position:relative;overflow:hidden;
+}
+#loader{font-size:22px;color:var(--loadtxtclr0);position:absolute;z-index:40;text-align:center;padding:0 20px;}
+#nonexist{
+  position:absolute;inset:0;display:none;z-index:30;
+  color:#ddd;font-size:18px;line-height:1.7;
+  align-items:center;justify-content:center;text-align:center;padding:0 24px;
+  background:repeating-linear-gradient(45deg,#2a2a2a,#2a2a2a 12px,#242424 12px,#242424 24px);
+}
+iframe{border:0;overflow:hidden;display:none;position:relative;z-index:10;background:transparent;}
+
+#bottomBar{height:96px;display:flex;align-items:center;justify-content:flex-start;padding-left:35px;gap:25px;}
+.btn{cursor:pointer;text-align:center;font-size:12px;user-select:none;display:flex;flex-direction:column;align-items:center;width:52px;}
+.btn .icon{width:34px;height:34px;line-height:34px;font-size:20px;border:1px solid var(--bdclra0);border-radius:8px;}
+.btn span{font-size:13.5px;margin-top:5px;}
+
+#fsBar{
+  position:fixed;right:0;bottom:0;height:50px;display:flex;gap:12px;
+  align-items:center;justify-content:flex-end;padding-right:16px;z-index:9999;
+  visibility:hidden;user-select:none;background:rgba(0,0,0,.35);
+}
+#fsBar button{background:transparent;border:0;color:#fff;cursor:pointer;padding:0 10px;font-size:15px;height:100%;}
+#fsBackdrop{display:none;position:fixed;inset:0;z-index:9997;pointer-events:none;}
+</style>
+</head>
+<body>
+<div id="frameOuter">
+  <div id="topBar">
+    <div id="topLeft">小游戏</div>
+    <div id="topRight"></div>
+  </div>
+  <div id="gameBox">
+    <div id="loader">准备中</div>
+    <div id="nonexist"></div>
+    <iframe id="gameFrame" scrolling="no"></iframe>
+  </div>
+  <div id="bottomBar">
+    <div class="btn" id="btnReplay"><div class="icon">↻</div><span>重玩</span></div>
+    <div class="btn" id="btnZoom1"><div class="icon">＋</div><span>放大</span></div>
+    <div class="btn" id="btnZoom2"><div class="icon">－</div><span>缩小</span></div>
+    <div class="btn" id="btnFullscreen"><div class="icon">⛶</div><span>全屏</span></div>
+  </div>
+</div>
+<div id="pagePadding"></div>
+
+<div id="fsBar" aria-hidden="true">
+  <button id="fsReplay">重玩</button>
+  <button id="fsExit">退出全屏</button>
+</div>
+<div id="fsBackdrop"></div>
+
+<script>
+/* =========================================================================
+   网页游戏的播放壳（由 YuLiangToolkit「Flash 下载器」本地服务器提供）
+   用法： http://localhost:端口/frame.htm?game=游戏名_a123&width=800&height=600
+   其中 game 与「下载」时生成的文件夹名一致（服务器会去 games/<game>h/<game>.htm 取游戏）。
+   —— 只有本工具开着的时候这个地址才有效。
+   ========================================================================= */
+const params = new URLSearchParams(location.search);
+const game = params.get('game');
+let width = parseInt(params.get('width')) || 800;
+let height = parseInt(params.get('height')) || 600;
+
+let name = '未知';
+if (game && game.trim()) {
+  const m = game.match(/^(.*)_[a-z][0-9]+$/);
+  name = m ? m[1] : game;
+}
+document.title = name + '小游戏，本地游玩中';
+document.getElementById('topLeft').textContent = name + '小游戏';
+
+const THEMES = [
+  { bgclr:'var(--bgclr1)', fm:'var(--fmclr1)', txt:'var(--txtclr1)', border:'var(--bdclr1)', btn:1 },
+  { bgclr:'var(--bgclr2)', fm:'var(--fmclr2)', txt:'var(--txtclr2)', border:'var(--bdclr2)', btn:2 },
+  { bgclr:'var(--bgclr3)', fm:'var(--fmclr3)', txt:'var(--txtclr3)', border:'var(--bdclr3)', btn:3 },
+  { bgclr:'var(--bgclr4)', fm:'var(--fmclr4)', txt:'var(--txtclr4)', border:'var(--bdclr4)', btn:4 }
+];
+let theme = parseInt(localStorage.getItem('ylt_frame_theme')) || 0;
+
+const outer = document.getElementById('frameOuter');
+const gameBox = document.getElementById('gameBox');
+const iframe = document.getElementById('gameFrame');
+const loader = document.getElementById('loader');
+const nonexist = document.getElementById('nonexist');
+const pagePadding = document.getElementById('pagePadding');
+
+function applyTheme() {
+  const t = THEMES[theme] || THEMES[0];
+  document.body.style.backgroundColor = t.bgclr;
+  outer.style.background = t.fm;
+  outer.style.color = t.txt;
+  outer.style.border = '1px solid ' + t.border;
+  try { localStorage.setItem('ylt_frame_theme', theme); } catch (e) { }
+}
+
+function layout() {
+  const width2 = width + 110;
+  const height2 = height + 160;
+  const clientWidth = document.documentElement.clientWidth;
+  outer.style.left = Math.max(5, (clientWidth - width2) / 2) + 'px';
+  outer.style.width = width2 + 'px';
+  outer.style.height = height2 + 'px';
+  gameBox.style.width = width + 'px';
+  gameBox.style.height = height + 'px';
+  iframe.width = width;
+  iframe.height = height;
+  pagePadding.style.width = (width2 + 10) + 'px';
+}
+window.addEventListener('resize', layout);
+
+/* ---------- 准备动画 ---------- */
+let dots = 0;
+const loaderTimer = setInterval(() => {
+  dots = (dots % 6) + 1;
+  loader.textContent = '准备中' + '.'.repeat(dots);
+}, 300);
+function stopLoader() { clearInterval(loaderTimer); }
+
+/* ---------- 加载游戏（先 HEAD 探一下，不存在就说清楚原因） ---------- */
+function gamePath() { return 'games/' + encodeURIComponent(game) + 'h/' + encodeURIComponent(game) + '.htm'; }
+
+if (!game || !game.trim()) {
+  stopLoader();
+  loader.textContent = '这个网页只是外壳：要带 ?game=游戏名_a123 参数才有得玩。';
+} else {
+  const path = gamePath();
+  fetch(path, { method: 'HEAD' }).then(r => {
+    if (!r.ok) throw 0;
+    stopLoader();
+    loader.style.display = 'none';
+    nonexist.style.display = 'none';
+    iframe.src = path;
+    iframe.style.display = 'block';
+    iframe.onload = () => { loader.style.display = 'none'; nonexist.style.display = 'none'; };
+  }).catch(() => {
+    stopLoader();
+    loader.style.display = 'none';
+    iframe.style.display = 'none';
+    nonexist.style.display = 'flex';
+    nonexist.innerHTML = '没找到 <b>' + path + '</b><br><br>'
+      + '① 先在「Flash 下载器」里下载这个游戏；<br>'
+      + '② 有些文件是游戏运行中才需要的，打开「自动下载所需文件」再点“重玩”。';
+  });
+}
+
+/* ---------- 按钮 ---------- */
+function replayIframe() {
+  try { iframe.contentWindow.location.reload(); }
+  catch (e) { iframe.src = gamePath(); }
+}
+document.getElementById('btnReplay').onclick = replayIframe;
+document.getElementById('btnZoom1').onclick = function () { width *= 4 / 3; height *= 4 / 3; layout(); };
+document.getElementById('btnZoom2').onclick = function () { width *= 0.75; height *= 0.75; layout(); };
+document.getElementById('btnFullscreen').onclick = enterFullscreen;
+
+const topRight = document.getElementById('topRight');
+THEMES.forEach((t, i) => {
+  const d = document.createElement('div');
+  d.className = 'themeBtn';
+  d.style.background = t.fm;
+  d.title = '换配色';
+  d.onclick = function () { theme = i; applyTheme(); };
+  topRight.appendChild(d);
+});
+
+/* ---------- 内层全屏（底部留 50px 放控制条） ---------- */
+let fullscreen = false;
+let prevStyles = {};
+
+function enterFullscreen() {
+  if (fullscreen) return;
+  fullscreen = true;
+  prevStyles = {
+    position: iframe.style.position, left: iframe.style.left, top: iframe.style.top,
+    width: iframe.style.width, height: iframe.style.height, zIndex: iframe.style.zIndex
+  };
+  document.documentElement.style.overflow = 'hidden';
+  document.body.style.overflow = 'hidden';
+  iframe.style.position = 'fixed';
+  iframe.style.left = '0';
+  iframe.style.top = '0';
+  iframe.style.zIndex = 9998;
+  iframe.style.display = 'block';
+  resizeFullscreen();
+  document.getElementById('fsBar').style.visibility = 'visible';
+  document.getElementById('fsBackdrop').style.display = 'block';
+  document.getElementById('fsBackdrop').style.background = THEMES[theme].fm;
+  window.addEventListener('resize', resizeFullscreen);
+}
+
+function resizeFullscreen() {
+  if (!fullscreen) return;
+  iframe.style.width = document.documentElement.clientWidth + 'px';
+  iframe.style.height = Math.max(0, document.documentElement.clientHeight - 50) + 'px';
+}
+
+function exitFullscreen() {
+  if (!fullscreen) return;
+  fullscreen = false;
+  document.documentElement.style.overflow = '';
+  document.body.style.overflow = '';
+  iframe.style.position = prevStyles.position || '';
+  iframe.style.left = prevStyles.left || '';
+  iframe.style.top = prevStyles.top || '';
+  iframe.style.width = prevStyles.width || '';
+  iframe.style.height = prevStyles.height || '';
+  iframe.style.zIndex = prevStyles.zIndex || '';
+  document.getElementById('fsBar').style.visibility = 'hidden';
+  document.getElementById('fsBackdrop').style.display = 'none';
+  window.removeEventListener('resize', resizeFullscreen);
+  layout();
+}
+
+document.getElementById('fsReplay').onclick = replayIframe;
+document.getElementById('fsExit').onclick = exitFullscreen;
+
+applyTheme();
+layout();
+</script>
+</body>
+</html>

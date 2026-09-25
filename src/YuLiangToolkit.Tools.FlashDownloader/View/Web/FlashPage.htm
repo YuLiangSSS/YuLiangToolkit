@@ -1,0 +1,35 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<html>
+<head>
+<meta content="text/html; charset=UTF-8" http-equiv="Content-Type">
+<title>__YLT_TITLE__</title>
+<!--
+  用网页打开「没有新页面的 swf」时的加载页（由 YuLiangToolkit「Flash 下载器」生成）。
+  __YLT_TITLE__  → 游戏名
+  __YLT_GAME__   → 游戏 swf 的文件名（和本网页放在同一个文件夹里）
+  提示：这个页面必须配合本地服务器（http://localhost:端口/）使用，
+        而且浏览器要能跑 Flash（或装 Flash 大厅 / Ruffle 扩展）。
+        能直接双击 swf 玩就别用这个方式 —— 它只是“实在没办法”时的退路。
+-->
+<script language="JavaScript">
+<!--
+var openinpage = true;//登录在顶级页面弹出
+//-->
+</script>
+<meta name="DESCRIPTION" content="本地小游戏">
+</head>
+
+<body bottommargin="0" leftmargin="0" topmargin="0" rightmargin="0" scroll="no" oncontextmenu="return false" ondragstart="return false" onselectstart="return false" onselect="document.selection.empty()">
+<p align="center" style="padding:0px;margin:0px;">
+
+<object id="flashgame" classid="clsid:D27CDB6E-AE6D-11cf-96B8-444553540000" width="100%" height="100%">
+	<param name="movie" value="__YLT_GAME__" />
+	<param name="quality" value="high" />
+	<param name="allowScriptAccess" value="always" />
+	<param name="allowNetworking" value="all" />
+	<embed id="flashgame1" src="__YLT_GAME__" quality="high" type="application/x-shockwave-flash" width="100%" height="100%" allowScriptAccess="always" allowNetworking="all" />
+</object>
+
+</p>
+</body>
+</html>

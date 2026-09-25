@@ -17,9 +17,7 @@
 │  ├─ config.json             ← 强类型配置（ToolConfig / ToolConfigStore.Load<T>）
 │  └─ options.json            ← 动态键值配置（DynamicToolConfig，可选）
 ├─ batch-rename/config.json   ← 批量重命名：整套改名规则 + 排序偏好 + 上次用过的文件夹
-├─ flash-downloader/
-│  ├─ config.json             ← Flash 下载器选项
-│  └─ folders.json            ← 游戏目录（动态配置的第二份文件）
+├─ flash-downloader/config.json  ← Flash 下载器：游戏目录 / 并发 / 超时 / 端口 / 播放器路径 / 上次输入
 └─ sample-framework/
    ├─ config.json
    └─ options.json

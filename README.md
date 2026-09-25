@@ -27,7 +27,7 @@ dotnet run --project YuLiangTookit.csproj
 ```
 
 要求：.NET 9 SDK（`global.json` 已锁定 9.0.317）。
-首个工具「视频转音频」依赖 FFmpeg：应用会自动检测 PATH 中的 `ffmpeg.exe`（也可在工具内手动选择，或点「下载 FFmpeg」打开官方下载页）。
+「视频转音频」依赖 FFmpeg：应用会自动检测 PATH 中的 `ffmpeg.exe`（也可在工具内手动选择，或点「下载 FFmpeg」打开官方下载页）。
 
 > 📒 **改代码前先看 [`代码记录.md`](代码记录.md)**：里面是所有“轮子”（工具契约、MVVM 基类、Data/Config 存储与配置框架、
 > FFmpeg 封装、UI 样式清单）的用途 + 签名 + 一行用法，以及新增功能的完整步骤和踩坑记录。
@@ -42,7 +42,7 @@ build.ps1 / publish.ps1                  # 一键构建 / 一键发布（发布�
 Data/  Config/                           # 只有说明文件【运行时目录在 exe 旁边，见下】
 src/
 ├── YuLiangToolkit.Core/                 # 核心库
-│   ├── Tools/ITool.cs                   # 工具契约：实现它即可被自动发现
+│   ├── Tools/ITool.cs                   # 工具契约：实现它即可被自动发现（Tags 可选）
 │   ├── Tools/ToolDiscovery.cs           # 反射式工具发现（主目录 + plugins 目录）
 │   ├── Mvvm/                            # MVVM 基类 + OptionItem + ToolViewModelBase（功能 VM 基类）
 │   ├── Storage/                         # AppPaths / ToolStorage（Data 门面）/ JsonFileStore / RuntimeReadme
@@ -50,8 +50,9 @@ src/
 │   └── Services/                        # FFmpeg 定位/执行、全局设置（%AppData%）
 ├── YuLiangToolkit.Tools.VideoToAudio/   # 功能：视频转音频
 ├── YuLiangToolkit.Tools.BatchRename/    # 功能：批量重命名（规则清单引擎 + 两阶段改名 + 撤销）
+├── YuLiangToolkit.Tools.FlashDownloader/# 功能：Flash 下载器（4399/7k7k/17yy + 本地服务器 + 自动补全资源）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（147 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（304 项行为逐条验证）
 ```
 
 ## 数据与配置（Data / Config）
@@ -59,7 +60,8 @@ tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（147 项
 **这两个目录就在 exe 旁边**（`bin\Debug\net9.0-windows\`、`bin\Release\…`、`publish.ps1` 出来的 `dist\YuLiangToolkit\`），
 首次运行 exe 时自动生成，并各带一份「怎么用这两个文件夹.md」说明：
 
-* `<exe 旁边>/Data/<功能Id>/`：功能用到的资源文件（例如下载下来的 swf、播放器、模板、缓存…）。
+* `<exe 旁边>/Data/<功能Id>/`：功能用到的资源文件（例如 Flash 下载器下载的游戏在
+  `Data/flash-downloader/games/`，播放器与播放页模板在 `Data/flash-downloader/tools/`）。
   代码里用 `ToolStorage.For("flash-downloader")` 读写，别自己拼路径；文件夹首次真正写入时自动创建。
 * `<exe 旁边>/Config/<功能Id>/config.json`：该功能每个选项（Checkbox / Textbox / 下拉框 / 滑块…）的值。
   在功能 ViewModel 里 `Cfg = LoadConfig<XxxConfig>()`，XAML 直接 `{Binding Cfg.Xxx}`，**改一下就自动存，不需要保存按钮**。
@@ -132,7 +134,36 @@ Data/Config 的路径与持久化全部由框架接管。也可以把编译好�
   所以**关掉程序再打开照样能撤销**；列表里列出每批改名，可以挑其中一批单独撤销。
 - 整套规则存在 `Config\batch-rename\config.json` 的 `rules` 数组里，**可以直接用记事本改**（改完重开功能即生效）。
 
-## 第三个工具：框架示例（开发用，可删）
+## 第三个工具：Flash 下载器
+
+把 4399 / 7k7k / 17yy 上的小游戏下载到本地，离线也能玩。用的是「Flash 独立播放器」或「本地网页服务器」两条路。
+
+- **下载**：把游戏页网址（如 `https://www.4399.com/flash/6853.htm`）粘进「游戏 URL」→ 点「下载」或「下载并游玩」。
+  下载完成后，单个 swf 存成 `游戏名_a6853.swf`；网页游戏（h5 / Unity）存成 `游戏名_a12346h/` 文件夹。
+- **游玩**：
+  - swf → 用 `FlashPlayer.exe`（Ruffle 的 `ruffle.exe` 也行）直接打开；工具会自动找到它并拷进 `Data\flash-downloader\tools\`。
+  - 网页游戏 → 启动内置的本地 HTML 服务器，用浏览器打开播放页（有背景、重玩 / 放大 / 缩小 / 全屏、四套配色）。
+    **注意：玩网页游戏时不能关掉本工具**，否则 `http://localhost:1055/` 就断了。
+- **多文件游戏**（只下主 swf 玩不了的那种）：
+  1. 选中游戏 → 「**装入文件夹**」（把散放的 swf 收进 `游戏名_?123s/`，并写好 `SWFNetPath.ini`）；
+  2. 「**关联文件下载器**」里一行一个相对路径（如 `assets/level1.swf`）→ 「批量下载」。
+     路径对不对可以拿 [ProcessMonitor](https://learn.microsoft.com/en-us/sysinternals/downloads/procmon) 看
+     Flash 播放器加载失败的那些文件，或者直接用下面的第 3 步。
+  3. 更省事的办法：点「**自动下载所需文件**」，然后在游戏里点「重玩」/ 刷新网页 ——
+     游戏向本地服务器要文件，服务器发现本地没有就**先去网上下下来再答复**，缺什么补什么。
+- **实在打不开本地 swf** 时，可以「**改为 htm 打开**」：文件夹改名成 `h`、换成网页加载页 + 本地服务器打开
+  （要浏览器支持 Flash，只是断网也能玩而已，一般情况下不需要）。
+- **自由下载工具**：给网址 + 上一级网址（防盗链用的 Referer）+ 文件名，直接存进游戏目录 ——
+  不属于那三个站、或者自动解析不到的地址可以用它，按说明手工建好文件夹与 `SWFNetPath.ini` 就能用批量下载。
+- **4399 h5 游戏的广告**：下载时会把页面里的官方 h5api 换成内置的替代脚本（广告变 0 秒）；
+  需要登录 / 联机排行的大游戏本地玩不了，这是设计如此。
+- 选项在 `Config\flash-downloader\config.json`（游戏目录 / 并发 / 超时 / 端口 / 播放器路径…），
+  **游戏目录可以在界面上改成任意位置**（默认 `Data\flash-downloader\games\`）。
+
+> Flash 早就停止维护了，本工具走的是「下载游戏本体 + 本地播放器/本地服务器」的路子；
+> 遇到提示“安全沙箱错误”时，需要在 Flash 播放器里把自己的游戏文件夹加进「受信任位置」。
+
+## 第四个工具：框架示例（开发用，可删）
 
 `src\YuLiangToolkit.Tools.Sample` 把 Data / Config 两个轮子跑给你看：
 
@@ -155,7 +186,7 @@ Data/Config 的路径与持久化全部由框架接管。也可以把编译好�
 - `YLT_SHOT=<png路径>`（可选 `YLT_SHOT_TOOL`）：渲染当前界面为 PNG 后退出，用于无头验证 UI
   （注意：截图里内容区顶部会有淡淡的重复标题残影，是 `RenderTargetBitmap` 截图时机的老毛病，不是界面 bug）；
 - `YLT_HOME=<目录>`：覆盖数据根目录（Data/Config 的父目录），测试时用来隔离；
-- 轮子自检（147 项行为，退出码 0 = 全通过）：
+- 轮子自检（304 项行为，退出码 0 = 全通过；其中 Flash 下载器那部分会自己起一个本地假游戏站跑真下载，不访问外网）：
 
   ```powershell
   dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj

@@ -7,14 +7,22 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- 本目录下 src/ 里的库项目源码不能被这个主项目重复编译进来；
-         Data/ 与 Config/ 是运行时数据与配置（用户可往里丢文件），tests/ 是自检程序，都不参与编译 -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);src\**;Data\**;Config\**;tests\**</DefaultItemExcludes>
+         仓库根的 Data/ 与 Config/ 只是“说明 + 可选种子”（真正运行时的 Data/Config 在 exe 旁边），
+         tests/ 是自检程序，都不参与编译；
+         FlashGameDownloader/ 是参考用的原版 Python 小项目（临时放在仓库根，不是本项目的一部分） -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);src\**;Data\**;Config\**;tests\**;FlashGameDownloader\**</DefaultItemExcludes>
   </PropertyGroup>
+
+  <!-- 注意：不要用 <None CopyToOutputDirectory> 往 exe 旁边拷 Data/Config 的内容！
+       那样这些文件会被记进 obj\...\*.FileListAbsolute.txt，一旦仓库里对应的种子文件被删掉，
+       下次构建的 IncrementalClean 会把 exe 旁边的同名文件当垃圾删掉（用户数据就没了，已踩过）。
+       运行时目录里的说明文件由程序自己首次运行时写入（见 RuntimeReadme），发布时用 publish.ps1 附带。 -->
 
   <ItemGroup>
     <ProjectReference Include="src\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.VideoToAudio\YuLiangToolkit.Tools.VideoToAudio.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.BatchRename\YuLiangToolkit.Tools.BatchRename.csproj" />
+    <ProjectReference Include="src\YuLiangToolkit.Tools.FlashDownloader\YuLiangToolkit.Tools.FlashDownloader.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.Sample\YuLiangToolkit.Tools.Sample.csproj" />
   </ItemGroup>
 

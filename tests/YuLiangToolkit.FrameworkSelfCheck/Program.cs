@@ -8,6 +8,7 @@ using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Core.Tools;
+using YuLiangToolkit.FrameworkSelfCheck;
 using YuLiangToolkit.Tools.BatchRename;
 using YuLiangToolkit.Tools.BatchRename.ViewModels;
 
@@ -628,7 +629,22 @@ Check($"流水账最多保留 {RenameHistory.MaxSessions} 批（不会无限长�
     Check("撤销后不再有可撤销的记录", !vm.CanUndoLast);
 }
 
-Console.WriteLine(string.Join(Environment.NewLine, results));
+
+// ---------- Flash 下载器（站点解析 / 命名 / ini / 批量计划 / 真下载 / 本地服务器 / 自动下载） ----------
+// 这一批里有真下载 / 真起 HTTP 服务器，包一层便于出错时看清是哪一条挂的（顺便打印已有结果）
+try
+{
+    FlashDownloaderChecks.Run(
+        (name, ok, detail) => Check($"[Flash下载器] {name}", ok, detail),
+        (name, ok) => Check($"[Flash下载器] {name}", ok));
+}
+catch (Exception ex)
+{
+    Check($"[Flash下载器] 运行过程中抛出异常（{ex.GetType().Name}）", false,
+        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
+    Console.WriteLine(string.Join(Environment.NewLine, results));
+}
+
 Console.WriteLine(string.Join(Environment.NewLine, results));
 var failed = results.Count(r => r.StartsWith("FAIL"));
 Console.WriteLine();

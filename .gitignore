@@ -30,9 +30,13 @@ Data/*/
 dist/
 
 # ================= 暂不入库 =================
-# 第三方 Flash 运行时（11 MB 二进制）：用「Flash 下载器」时它会被拷到
-# <exe 旁边>\Data\flash-downloader\tools\ 下，仓库里这份只是“发现源”。
+# 第三方 Flash 运行时（11 MB 二进制）。用「Flash 下载器」时它会被拷到
+# <exe 旁边>\Data\flash-downloader\tools\ 下；仓库里这份只是“发现源”，不必入库。
 FlashPlayer.exe
+
+# 参考用的原版 Python 小项目（临时放在仓库根做对照，验完就删）：里面的说明/截图体积不小，
+# 而且不是本项目的一部分，所以不入库。
+FlashGameDownloader/
 
 # ================= 杂项 =================
 *.tmp

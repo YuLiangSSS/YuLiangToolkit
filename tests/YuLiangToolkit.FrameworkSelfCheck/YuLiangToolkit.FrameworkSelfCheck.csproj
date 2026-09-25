@@ -19,6 +19,9 @@
     <ProjectReference Include="..\..\YuLiangTookit.csproj" />
     <!-- 「批量重命名」的命名规则/冲突检测（RenameEngine）也是纯逻辑，直接断言。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.BatchRename\YuLiangToolkit.Tools.BatchRename.csproj" />
+    <!-- 「Flash 下载器」：站点解析 / 命名规则 / SWFNetPath.ini / 批量下载计划 / 本地服务器路径映射
+         / 真下载（打自检自己起的小 HTTP 服务器）/ 自动下载缺失文件，全部无头跑。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.FlashDownloader\YuLiangToolkit.Tools.FlashDownloader.csproj" />
   </ItemGroup>
 
 </Project>

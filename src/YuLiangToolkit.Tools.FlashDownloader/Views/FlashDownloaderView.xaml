@@ -1,0 +1,398 @@
+<UserControl x:Class="YuLiangToolkit.Tools.FlashDownloader.Views.FlashDownloaderView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:YuLiangToolkit.Tools.FlashDownloader.ViewModels">
+    <!-- 界面说明（对应原始 Python 工具的主窗口 + 三个弹窗，这里做成一页里的折叠面板）：
+         ① 顶部：URL 输入 + 「下载 / 下载并游玩」；
+         ② 状态条：找到的 SWF 路径 + 本地服务器地址；
+         ③ 左边：游戏列表（游玩 / 装入文件夹 / 改为 htm 打开 / 删除 / 刷新 …）；
+         ④ 右边：关联文件下载器（批量下载 / 自动下载所需文件 / 自由下载工具 / 修改信息）；
+         ⑤ 底部：配置 + 日志。
+         样式全部来自 App.xaml（CardStyle / TextBoxStyle / PrimaryButtonStyle …）。 -->
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="28,20,28,24">
+
+            <!-- ===== 标题 ===== -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="⚡ Flash 下载器" FontSize="21" FontWeight="SemiBold" />
+                    <TextBlock FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                               Text="支持 4399 / 7k7k / 17yy：粘贴游戏页网址 → 下载成 swf 或网页版 → 用 Flash 独立播放器 / 本地服务器离线玩。多文件游戏用「关联文件下载器」把缺的文件补进来。" />
+                </StackPanel>
+                <Border Grid.Column="1" Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Padding="12,8"
+                        VerticalAlignment="Top" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                    <StackPanel>
+                        <TextBlock Text="{Binding ServerStatus}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="360" />
+                        <TextBlock Text="{Binding FlashPlayerText}" FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}"
+                                   TextTrimming="CharacterEllipsis" MaxWidth="360" Margin="0,4,0,0"
+                                   ToolTip="{Binding FlashPlayerPath}" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- ===== ① URL 与主按钮 ===== -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,14,0,0">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="80" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="游戏 URL" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBox x:Name="UrlBox" Grid.Column="1" Style="{StaticResource TextBoxStyle}"
+                                 Text="{Binding GameUrl, UpdateSourceTrigger=PropertyChanged}"
+                                 ToolTip="例：https://www.4399.com/flash/6853.htm ；7k7k / 17yy 的游戏页网址也可以" />
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button x:Name="DownloadAndPlayButton" Content="下载并游玩" Style="{StaticResource PrimaryButtonStyle}"
+                                Command="{Binding DownloadAndPlayCommand}"
+                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
+                        <Button x:Name="DownloadButton" Content="下载" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                Command="{Binding DownloadCommand}"
+                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
+                        <Button Content="4399" Style="{StaticResource SecondaryButtonStyle}" Margin="24,0,0,0"
+                                Command="{Binding OpenSiteCommand}" CommandParameter="https://www.4399.com/" />
+                        <Button Content="7k7k" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                Command="{Binding OpenSiteCommand}" CommandParameter="https://www.7k7k.com/" />
+                        <Button Content="17yy" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                Command="{Binding OpenSiteCommand}" CommandParameter="http://www.17yy.com/" />
+                        <Button Content="打开游戏目录" Style="{StaticResource SecondaryButtonStyle}" Margin="24,0,0,0"
+                                Command="{Binding OpenGamesFolderCommand}" />
+                    </StackPanel>
+
+                    <!-- 状态栏 1：找到的 SWF 路径 -->
+                    <TextBox Style="{StaticResource LogTextBoxStyle}" Margin="0,12,0,0" MaxHeight="52"
+                             Text="{Binding InfoText, Mode=OneWay}" ToolTip="解析游戏页之后，这里显示真正的 swf / 网页地址" />
+
+                    <!-- 状态栏 2：本地服务器 -->
+                    <Grid Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="启动本地服务器" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding StartServerCommand}" />
+                            <Button Content="停止" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding StopServerCommand}" />
+                            <Button Content="打开首页" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding OpenServerHomeCommand}" />
+                            <Button Content="复制地址" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding CopyServerUrlCommand}" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="11.5"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Text="网页游戏必须开着服务器；关掉本工具 localhost 就失效了" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- ===== ③④ 游戏列表 + 右侧工具 ===== -->
+            <Grid Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition Width="560" />
+                </Grid.ColumnDefinitions>
+
+                <!-- ===== 左：游戏列表 ===== -->
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="0">
+                    <StackPanel>
+                        <Grid Margin="18,14,18,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="游戏列表" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding GamesSummary}" FontSize="10.5"
+                                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding GamesDirectory}" FontSize="10.5"
+                                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0"
+                                           TextTrimming="CharacterEllipsis" ToolTip="{Binding GamesDirectory}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                                <Button Content="刷新列表" Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding RefreshListCommand}" />
+                                <Button Content="全部删除" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                        Command="{Binding DeleteAllCommand}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <ListBox x:Name="GameList" ItemsSource="{Binding Games}" SelectedItem="{Binding SelectedGame}"
+                                 Style="{StaticResource FileListStyle}" MinHeight="230" MaxHeight="330"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ToolTip="双击 = 游玩">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="60" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding DisplayText}" TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding FullPath}" />
+                                            <TextBlock Text="{Binding DetailText}" FontSize="10.5"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                                            <TextBlock Text="{Binding Warning}" FontSize="10.5" TextWrapping="Wrap" Margin="0,2,0,0"
+                                                       Foreground="{StaticResource DangerBrush}"
+                                                       Visibility="{Binding HasWarning, Converter={StaticResource BoolToVis}}" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" Text="{Binding SiteText}" FontSize="11"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                        <Border Grid.Column="2" Background="{StaticResource InputBackgroundBrush}" CornerRadius="5"
+                                                Padding="7,3" VerticalAlignment="Center" BorderThickness="1"
+                                                BorderBrush="{StaticResource BorderBrush}">
+                                            <TextBlock Text="{Binding TypeBadge}" FontSize="10.5" />
+                                        </Border>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <WrapPanel Margin="18,10,18,14">
+                            <Button x:Name="PlayButton" Content="游玩" Style="{StaticResource PrimaryButtonStyle}"
+                                    Command="{Binding PlayCommand}" />
+                            <Button Content="装入文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding MoveIntoFolderCommand}"
+                                    ToolTip="把散放的 swf 收进「游戏名_?123s」文件夹，多文件游戏必须这么做" />
+                            <Button Content="改为 htm 打开" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding ConvertToHtmCommand}"
+                                    ToolTip="只有在本地 swf 实在打不开时才需要（要浏览器支持 Flash）" />
+                            <Button Content="打开游戏页" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding OpenGamePageCommand}" />
+                            <Button Content="在资源管理器中显示" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding RevealCommand}" />
+                            <Button Content="删除" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding DeleteCommand}" />
+                        </WrapPanel>
+
+                        <!-- 选中游戏的信息（相当于原工具的「修改信息」弹窗） -->
+                        <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Margin="18,0,18,16" Padding="12,10">
+                            <TextBox Style="{StaticResource LogTextBoxStyle}" Background="Transparent" BorderThickness="0"
+                                     MaxHeight="112" Text="{Binding SelectedSummary, Mode=OneWay}"
+                                     ToolTip="SWFNetPath.ini 里的信息（网络路径 / 宽高 / 是否新页面）" />
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <!-- ===== 右：三个工具面板（两栏排布，少滚动一点） ===== -->
+                <Grid Grid.Column="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 左栏：关联文件下载器（含自动下载所需文件） -->
+                    <Border Grid.Column="0" Style="{StaticResource CardStyle}" VerticalAlignment="Top">
+                        <StackPanel>
+                            <TextBlock Text="关联文件下载器" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,10"
+                                       Text="多文件游戏（只下主 swf 玩不了的那种）：一行一个相对路径，例如 assets/level1.swf，路径相对 swf 所在目录。" />
+
+                            <TextBox x:Name="BatchInputBox" Style="{StaticResource TextBoxStyle}" Height="80"
+                                     AcceptsReturn="True" TextWrapping="NoWrap"
+                                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                     VerticalContentAlignment="Top"
+                                     Text="{Binding BatchInput, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="一行一个相对路径；含 .. 或空格 / 特殊字符的行会被自动跳过并统计出来" />
+
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <Button x:Name="BatchDownloadButton" Content="批量下载" Style="{StaticResource PrimaryButtonStyle}"
+                                        Command="{Binding BatchDownloadCommand}"
+                                        IsEnabled="{Binding IsBatchRunning, Converter={StaticResource InverseBoolConverter}}" />
+                                <Button Content="取消下载" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                        Command="{Binding CancelBatchCommand}" />
+                                <Button Content="清空" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                        Command="{Binding ClearBatchInputCommand}" />
+                            </StackPanel>
+                            <CheckBox Content="不覆盖已有文件" Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0"
+                                      IsChecked="{Binding Cfg.SkipExistingFiles}" />
+
+                            <TextBlock Text="{Binding BatchStatusText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,10,0,0" />
+
+                            <Grid Margin="0,8,0,0" Visibility="{Binding IsBatchRunning, Converter={StaticResource BoolToVis}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ProgressBar Minimum="0" Maximum="1" Value="{Binding Progress}"
+                                             Style="{StaticResource ProgressBarStyle}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Margin="10,0,0,0" MinWidth="60"
+                                           TextAlignment="Right" VerticalAlignment="Center"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                            </Grid>
+
+                            <ListBox ItemsSource="{Binding RelatedRows}" Style="{StaticResource FileListStyle}"
+                                     MinHeight="64" MaxHeight="110" Margin="0,10,0,0"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="60" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding RelativePath}" TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding LocalPath}" FontSize="11.5" />
+                                            <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontSize="11.5"
+                                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,8,0,0"
+                                       Text="不知道要下哪些文件？用 ProcessMonitor 看 Flash 播放器加载失败的那些文件，或者直接用下面的「自动下载所需文件」。" />
+
+                            <!-- 自动下载所需文件 -->
+                            <Separator Margin="0,12,0,10" Background="{StaticResource BorderBrush}" />
+                            <TextBlock Text="自动下载所需文件（网页游戏）" FontSize="12.5" FontWeight="SemiBold" />
+                            <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,8"
+                                       Text="开启后：游戏向本地服务器要文件 → 本地没有就先去网上下 → 再答复游戏（加载会慢一点）。需要先在左边选中一个名字以 h 结尾的网页游戏。" />
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="AutoDownloadButton" Content="{Binding AutoDownloadButtonText}"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Command="{Binding ToggleAutoDownloadCommand}" />
+                                <Button Content="清除日志" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                        Command="{Binding ClearAutoDownloadLogCommand}" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding AutoDownloadStatus}" VerticalAlignment="Center" Margin="0,8,0,0"
+                                       FontSize="11.5" TextWrapping="Wrap" />
+                            <TextBox Style="{StaticResource LogTextBoxStyle}" Height="80" Margin="0,8,0,0"
+                                     Text="{Binding AutoDownloadText, Mode=OneWay}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 右栏：自由下载工具 + 设置 -->
+                    <StackPanel Grid.Column="2">
+                        <Border Style="{StaticResource CardStyle}" VerticalAlignment="Top">
+                            <StackPanel>
+                                <TextBlock Text="自由下载工具" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,10"
+                                           Text="给一个网址 + 上一级网址（防盗链用的 Referer）+ 文件名，直接存进游戏目录。不支持的网站可以按使用说明手工建文件夹。" />
+                                <TextBlock Text="网址" FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBox Style="{StaticResource TextBoxStyle}" Margin="0,3,0,0"
+                                         Text="{Binding FreeUrl, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Text="上一级网址（Referer）" FontSize="11.5"
+                                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,0" />
+                                <TextBox Style="{StaticResource TextBoxStyle}" Margin="0,3,0,0"
+                                         Text="{Binding FreeReferer, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="游戏的上一级页面；留空也能下，但很多站会拒绝" />
+                                <TextBlock Text="文件名（含扩展名）" FontSize="11.5"
+                                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,0" />
+                                <Grid Margin="0,3,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding FreeName, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="含扩展名，例如 game.swf 或 assets/level1.swf（会自动建子目录）" />
+                                    <Button Grid.Column="1" Content="下载" Style="{StaticResource PrimaryButtonStyle}" Margin="8,0,0,0"
+                                            Command="{Binding FreeDownloadCommand}"
+                                            IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
+                                </Grid>
+                                <TextBlock Text="{Binding FreeStatus}" FontSize="11.5" TextWrapping="Wrap" Margin="0,10,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 配置与播放器 -->
+                        <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+                            <StackPanel>
+                                <TextBlock Text="设置" FontSize="13" FontWeight="SemiBold" />
+
+                                <TextBlock Text="游戏目录" FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,12,0,0" />
+                                <TextBlock Text="{Binding GamesDirectory}" FontSize="11.5" TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding GamesDirectory}" Margin="0,3,0,0" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <Button Content="更改…" Style="{StaticResource SecondaryButtonStyle}"
+                                            Command="{Binding ChooseGamesFolderCommand}" />
+                                    <Button Content="恢复默认" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                            Command="{Binding UseDefaultFolderCommand}" />
+                                </StackPanel>
+
+                                <TextBlock Text="Flash 播放器（FlashPlayer.exe / ruffle.exe）" FontSize="11.5"
+                                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,12,0,0" />
+                                <TextBlock Text="{Binding FlashPlayerText}" FontSize="11.5" TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding FlashPlayerPath}" Margin="0,3,0,0" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <Button Content="寻找" Style="{StaticResource SecondaryButtonStyle}"
+                                            Command="{Binding LocateFlashPlayerCommand}" />
+                                    <Button Content="指定…" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                            Command="{Binding ChooseFlashPlayerCommand}" />
+                                </StackPanel>
+
+                                <CheckBox Content="打开工具时自动启动本地服务器" Style="{StaticResource CheckBoxStyle}"
+                                          Margin="0,14,0,0" IsChecked="{Binding Cfg.AutoStartServer}" />
+                                <CheckBox Content="用本地服务器打开网页游戏" Style="{StaticResource CheckBoxStyle}"
+                                          Margin="0,8,0,0" IsChecked="{Binding Cfg.UseLocalServerForHtm}" />
+                                <CheckBox Content="替换 4399 h5 广告 API" Style="{StaticResource CheckBoxStyle}"
+                                          Margin="0,8,0,0" IsChecked="{Binding Cfg.Replace4399H5Api}"
+                                          ToolTip="把 h5 游戏页面里的官方 h5api 换成内置替代脚本，广告变 0 秒" />
+
+                                <Grid Margin="0,14,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="52" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="52" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="56" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="并发" VerticalAlignment="Center" FontSize="11.5"
+                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                    <TextBox Grid.Column="1" Style="{StaticResource TextBoxStyle}" Margin="6,0,10,0"
+                                             Text="{Binding Cfg.MaxParallel, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Grid.Column="2" Text="超时" VerticalAlignment="Center" FontSize="11.5"
+                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                    <TextBox Grid.Column="3" Style="{StaticResource TextBoxStyle}" Margin="6,0,10,0"
+                                             Text="{Binding Cfg.ReadTimeoutSeconds, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Grid.Column="4" Text="端口" VerticalAlignment="Center" FontSize="11.5"
+                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                    <TextBox Grid.Column="5" Style="{StaticResource TextBoxStyle}" Margin="6,0,0,0"
+                                             Text="{Binding Cfg.ServerStartPort, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="从 1055 开始找，被占用了会自动往后试 100 个" />
+                                </Grid>
+
+                                <Button Content="打开配置文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="0,10,0,0"
+                                        HorizontalAlignment="Left" Command="{Binding OpenConfigFolderCommand}" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+
+            <!-- ===== ⑤ 日志 ===== -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+                <StackPanel>
+                    <Grid>
+                        <TextBlock Text="日志" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="清空日志" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding ClearLogCommand}" />
+                            <Button Content="打开工具目录" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding OpenToolsFolderCommand}"
+                                    ToolTip="播放页 / 替代 API / Flash 播放器都在 Data\flash-downloader\tools" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBox x:Name="LogBox" Style="{StaticResource LogTextBoxStyle}" Height="110" Margin="0,10,0,0"
+                             Text="{Binding LogText, Mode=OneWay}" />
+                    <TextBlock Text="{Binding StatusText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0"
+                               Foreground="{StaticResource TextSecondaryBrush}" />
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

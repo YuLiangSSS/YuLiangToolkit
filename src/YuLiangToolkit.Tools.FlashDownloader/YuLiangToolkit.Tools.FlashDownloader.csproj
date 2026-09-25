@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「Flash 下载器」功能：4399 / 7k7k / 17yy 小游戏下载 + 本地服务器游玩 + 关联文件下载。
+       细节见根目录 代码记录.md 的 2.11 节。模板资源（View/Web/*）以嵌入资源形式随 dll 走。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.FlashDownloader</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.FlashDownloader</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 播放页 / 跨域替代 API / Flash 加载页：编译进 dll，首次运行时释放到 Data\flash-downloader\tools\ -->
+    <EmbeddedResource Include="View\Web\frame.htm" LogicalName="YuLiangToolkit.Tools.FlashDownloader.Web.frame.htm" />
+    <EmbeddedResource Include="View\Web\h5api-replacement.js" LogicalName="YuLiangToolkit.Tools.FlashDownloader.Web.h5api-replacement.js" />
+    <EmbeddedResource Include="View\Web\FlashPage.htm" LogicalName="YuLiangToolkit.Tools.FlashDownloader.Web.FlashPage.htm" />
+  </ItemGroup>
+
+</Project>
