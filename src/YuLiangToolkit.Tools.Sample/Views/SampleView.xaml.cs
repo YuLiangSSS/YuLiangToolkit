@@ -62,7 +62,7 @@ public partial class SampleView : UserControl
         var sb = new StringBuilder();
         var inner = FindChild<ScrollViewer>(FileListBox);
         var outer = FindOuterScrollViewer(FileListBox);   // 与 ScrollChaining 同一个查找方式
-        var chain = YuLiangToolkit.Core.Mvvm.ScrollChaining.Decide(inner, outer, -120);
+        var chain = YuLiangToolkit.Core.Mvvm.ScrollChaining.Decide(inner, outer is not null, -120);
 
         sb.AppendLine($"挂了滚动链（ScrollChaining.Enabled）= {YuLiangToolkit.Core.Mvvm.ScrollChaining.GetEnabled(FileListBox)}");
         sb.AppendLine($"内层列表：{Describe(inner)}   当前 {Offset(inner)}");

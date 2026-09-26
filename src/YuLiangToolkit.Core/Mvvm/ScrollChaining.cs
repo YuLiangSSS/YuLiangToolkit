@@ -13,12 +13,24 @@ namespace YuLiangToolkit.Core.Mvvm;
 /// <c>MouseWheel</c> 吃了；等它滚到底（或里面压根没内容可滚），事件也不往上冒，
 /// 外层页面的 <c>ScrollViewer</c> 一动不动 —— 手感上就是"卡住了"。</para>
 ///
-/// <para><b>⚠ 必须用隧道的 <c>PreviewMouseWheel</c>，不能用冒泡的 <c>MouseWheel</c></b>：
-/// WPF 的 <see cref="ListBox"/> 重写了 <c>OnMouseWheel</c>，直接把它转发给内部的 ScrollViewer
-/// 并把 <c>Handled</c> 置为 true，事件<b>根本不会冒泡</b>到外面的处理器上（实测：挂 MouseWheel 一次都不触发）。
-/// 隧道是从根往下走的，会先经过我们，才有机会拦下来。</para>
+/// <para><b>做法：不自己滚，把事件"让"给外层</b>。
+/// 滚轮是**隧道**事件（PreviewMouseWheel，从根往下走），外层页面的 <c>ScrollViewer</c> 就在这条路上、
+/// 而且排在我们前面。所以只要：
+/// <list type="bullet">
+/// <item>内层还能滚 → 把 <c>e.Handled</c> 置 true，<b>拦住外层</b>，让 ListBox 自己滚
+/// （ListBox 的 <c>OnMouseWheel</c> 不看这个标志，照样滚）；</item>
+/// <item>内层已经到头 / 没内容可滚 → <b>什么都不做</b>，事件继续隧道下去，
+/// 外层 <c>ScrollViewer</c> 会像"鼠标直接停在页面上"一样处理它。</item>
+/// </list>
+/// 关键是<b>别自己调 <c>LineUp</c>/<c>LineDown</c></b>：那是一次滚一行的步长，
+/// 而 WPF 原生滚轮是 <c>MouseWheelDelta × 系统行数</c>（还带平滑滚动），
+/// 自己滚会明显比正常慢 —— 用户直接就能感觉出来（v0.5.3 踩过）。</para>
 ///
-/// <para>用法：XAML 上写 <c>local:ScrollChaining.Enabled="True"</c>，或代码里
+/// <para><b>⚠ 必须用 <c>PreviewMouseWheel</c>，不能用冒泡的 <c>MouseWheel</c></b>：
+/// WPF 的 <see cref="ListBox"/> 重写了 <c>OnMouseWheel</c>，直接把它转发给内部的 ScrollViewer
+/// 并把 <c>Handled</c> 置为 true，事件<b>根本不会冒泡</b>到外面的处理器上（实测：挂 MouseWheel 一次都不触发）。</para>
+///
+/// <para>用法：XAML 上写 <c>core:ScrollChaining.Enabled="True"</c>，或代码里
 /// <c>ScrollChaining.Attach(GameList)</c>。</para>
 /// </summary>
 public static class ScrollChaining
@@ -57,20 +69,19 @@ public static class ScrollChaining
         if (sender is not DependencyObject element) return;
 
         var inner = FindScrollViewer(element);
-        var outer = FindOuterScrollViewer(element);
-        var decision = Decide(inner, outer, e.Delta);
+        var decision = Decide(inner, hasOuter: FindOuterScrollViewer(element) is not null, e.Delta);
 
         switch (decision.Action)
         {
             case ScrollAction.Inner:
-                // 什么都不做，让隧道继续下去由 ListBox 自己滚
-                LastDecision = "内层还能滚 → 交给 ListBox";
+                // 拦住外层（否则一次滚轮里外一起滚）；ListBox 不看 Handled，自己照滚
+                LastDecision = "内层还能滚 → 拦住外层，交给 ListBox";
+                e.Handled = true;
                 break;
 
             case ScrollAction.Outer:
-                LastDecision = $"内层到头 → 滚外层（从 {outer!.VerticalOffset:0.#} 起）";
-                ScrollOnce(outer, decision.Down);
-                e.Handled = true;   // 吃掉，免得里外一起滚
+                // 不碰事件：让它继续隧道下去，由外层 ScrollViewer 按正常速度滚
+                LastDecision = "内层到头 → 放行给外层（用 WPF 原生滚轮速度）";
                 break;
 
             default:
@@ -79,29 +90,29 @@ public static class ScrollChaining
         }
     }
 
-    /// <summary>该滚谁。单独抽出来是为了能脱离鼠标/窗口直接断言（见自检）。</summary>
+    /// <summary>该让谁来响应这一步滚轮。纯函数，自检里直接断言。</summary>
     public enum ScrollAction
     {
-        /// <summary>谁都滚不动。</summary>
+        /// <summary>内外都滚不动。</summary>
         None = 0,
 
-        /// <summary>内层列表还能滚，交给它。</summary>
+        /// <summary>内层列表还能滚，交给它（并拦住外层）。</summary>
         Inner = 1,
 
-        /// <summary>内层到底了，转给外层页面。</summary>
+        /// <summary>内层到底了，放行给外层页面。</summary>
         Outer = 2,
     }
 
     /// <summary>这一步滚轮该由谁来响应。</summary>
     /// <param name="inner">鼠标所在的内层可滚动控件（可为 null）。</param>
-    /// <param name="outer">外层页面的 ScrollViewer（可为 null）。</param>
+    /// <param name="hasOuter">上面有没有可滚动的外层页面。</param>
     /// <param name="delta">滚轮增量：负 = 向下、正 = 向上。</param>
-    public static (ScrollAction Action, bool Down) Decide(ScrollViewer? inner, ScrollViewer? outer, int delta)
+    public static (ScrollAction Action, bool Down) Decide(ScrollViewer? inner, bool hasOuter, int delta)
     {
         var down = delta < 0;
 
         if (inner is not null && CanScroll(inner, down)) return (ScrollAction.Inner, down);
-        if (outer is not null) return (ScrollAction.Outer, down);
+        if (hasOuter) return (ScrollAction.Outer, down);
         return (ScrollAction.None, down);
     }
 
@@ -114,13 +125,6 @@ public static class ScrollChaining
         var offset = viewer.VerticalOffset;
         var max = viewer.ExtentHeight - viewer.ViewportHeight;
         return down ? offset < max - 0.5 : offset > 0.5;
-    }
-
-    /// <summary>按一行滚（<c>LineUp</c>/<c>LineDown</c> 会自己处理方向与步长）。</summary>
-    private static void ScrollOnce(ScrollViewer viewer, bool down)
-    {
-        if (down) viewer.LineDown();
-        else viewer.LineUp();
     }
 
     /// <summary>沿可视化树往上找**外层**那个可滚动的 <see cref="ScrollViewer"/>。</summary>

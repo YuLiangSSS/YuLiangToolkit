@@ -39,8 +39,7 @@ internal static class ScrollChainingChecks
     }
 
     private static void RunOnSta(Action<string, bool, string> check, Action<string, bool> report)
-    {
-        var window = new Window
+    {        var window = new Window
         {
             Width = 320,
             Height = 200,
@@ -81,25 +80,25 @@ internal static class ScrollChainingChecks
             inner.ScrollToVerticalOffset(innerMax / 2);
             window.UpdateLayout();
             report("内层在中间时：向下滚 → 内层",
-                ScrollChaining.Decide(inner, outer, -120).Action == ScrollChaining.ScrollAction.Inner);
+                ScrollChaining.Decide(inner, true, -120).Action == ScrollChaining.ScrollAction.Inner);
             report("内层在中间时：向上滚 → 内层",
-                ScrollChaining.Decide(inner, outer, 120).Action == ScrollChaining.ScrollAction.Inner);
+                ScrollChaining.Decide(inner, true, 120).Action == ScrollChaining.ScrollAction.Inner);
 
             // ---- 内层到底：继续往下应该转给外层 ----
             inner.ScrollToEnd();
             window.UpdateLayout();
             report("内层到底时：向下滚 → 外层（这就是用户要的“不要卡住”）",
-                ScrollChaining.Decide(inner, outer, -120).Action == ScrollChaining.ScrollAction.Outer);
+                ScrollChaining.Decide(inner, true, -120).Action == ScrollChaining.ScrollAction.Outer);
             report("内层到底时：向上滚 → 还是内层（先把自己滚回去）",
-                ScrollChaining.Decide(inner, outer, 120).Action == ScrollChaining.ScrollAction.Inner);
+                ScrollChaining.Decide(inner, true, 120).Action == ScrollChaining.ScrollAction.Inner);
 
             // ---- 内层到顶：继续往上应该转给外层 ----
             inner.ScrollToTop();
             window.UpdateLayout();
             report("内层到顶时：向上滚 → 外层",
-                ScrollChaining.Decide(inner, outer, 120).Action == ScrollChaining.ScrollAction.Outer);
+                ScrollChaining.Decide(inner, true, 120).Action == ScrollChaining.ScrollAction.Outer);
             report("内层到顶时：向下滚 → 还是内层",
-                ScrollChaining.Decide(inner, outer, -120).Action == ScrollChaining.ScrollAction.Inner);
+                ScrollChaining.Decide(inner, true, -120).Action == ScrollChaining.ScrollAction.Inner);
 
             // ---- 内层压根不需要滚动条（内容比视口矮）----
             var shortInner = new ScrollViewer { Height = 400, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -120,8 +119,8 @@ internal static class ScrollChainingChecks
                 window2.Show();
                 window2.UpdateLayout();
                 report("内层没内容可滚时：滚轮直接给外层（上下都算）",
-                    ScrollChaining.Decide(shortInner, outer2, -120).Action == ScrollChaining.ScrollAction.Outer
-                    && ScrollChaining.Decide(shortInner, outer2, 120).Action == ScrollChaining.ScrollAction.Outer);
+                    ScrollChaining.Decide(shortInner, true, -120).Action == ScrollChaining.ScrollAction.Outer
+                    && ScrollChaining.Decide(shortInner, true, 120).Action == ScrollChaining.ScrollAction.Outer);
             }
             finally
             {
@@ -130,15 +129,15 @@ internal static class ScrollChainingChecks
 
             // ---- 边界情况：没有外层 / 没有内层 ----
             report("没有外层时不会乱滚（返回 None，让事件自然冒泡）",
-                ScrollChaining.Decide(null, null, -120).Action == ScrollChaining.ScrollAction.None);
+                ScrollChaining.Decide(null, false, -120).Action == ScrollChaining.ScrollAction.None);
             report("只有外层、没有内层时：直接滚外层",
-                ScrollChaining.Decide(null, outer, -120).Action == ScrollChaining.ScrollAction.Outer);
+                ScrollChaining.Decide(null, true, -120).Action == ScrollChaining.ScrollAction.Outer);
             report("滚轮增量为 0 时不滚（Decide 仍给出方向，但调用方会先拦掉 delta==0）",
-                ScrollChaining.Decide(inner, outer, 0).Down == false);
+                ScrollChaining.Decide(inner, true, 0).Down == false);
 
             // ---- 方向判定 ----
             report("负增量 = 向下、正增量 = 向上",
-                ScrollChaining.Decide(inner, outer, -120).Down && !ScrollChaining.Decide(inner, outer, 120).Down);
+                ScrollChaining.Decide(inner, true, -120).Down && !ScrollChaining.Decide(inner, true, 120).Down);
 
             // ---- 附加属性开关 ----
             var probe = new ListBox();
@@ -148,10 +147,46 @@ internal static class ScrollChainingChecks
                 ScrollChaining.GetEnabled(probe));
             ScrollChaining.SetEnabled(probe, false);
             report("可以关掉（重复开关不会重复订阅）", !ScrollChaining.GetEnabled(probe));
+
+            // ---- 「滚到头交给外层」时不能自己滚：必须放行给 WPF 原生滚轮 ----
+            // v0.5.3 一开始是自己调 LineUp/LineDown，一次只滚一行，比正常滚轮慢得多（用户直接感觉出来了）。
+            // 现在 ScrollChaining 只设 e.Handled，滚动交给外层 ScrollViewer 自己按原生速度做。
+            // 这里从源码层面钉住这个约定：ScrollChaining 里不该再出现任何"自己滚"的调用。
+            var source = ReadScrollChainingSource();
+            if (source is null)
+            {
+                report("能读到 ScrollChaining 源码（用于钉住“不自己滚”的约定）", false);
+            }
+            else
+            {
+                var ownScrollCalls = new[] { ".LineUp()", ".LineDown()", ".ScrollToVerticalOffset(", ".ScrollToEnd()", ".ScrollToTop()" }
+                    .Where(call => source.Contains(call, StringComparison.Ordinal))
+                    .ToList();
+                check("滚到头交给外层时【不自己滚】（否则步长只有一行，比原生滚轮慢得多）",
+                    ownScrollCalls.Count == 0,
+                    ownScrollCalls.Count == 0 ? "没有自己滚的调用" : "还在自己滚：" + string.Join("、", ownScrollCalls));
+            }
         }
         finally
         {
             window.Close();
         }
+    }
+
+    /// <summary>
+    /// 读 <c>ScrollChaining.cs</c> 的源码文本，用来钉住「不自己滚」这条约定。
+    /// 找不到文件就返回 null（这时那条断言会报失败并说明原因，不会假装通过）。
+    /// </summary>
+    private static string? ReadScrollChainingSource()
+    {
+        // 自检程序在 tests\YuLiangToolkit.FrameworkSelfCheck\bin\<cfg>\<tfm>\ 下跑，往上找仓库根
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir.FullName, "src", "YuLiangToolkit.Core", "Mvvm", "ScrollChaining.cs");
+            if (File.Exists(candidate)) return File.ReadAllText(candidate);
+            dir = dir.Parent;
+        }
+        return null;
     }
 }
