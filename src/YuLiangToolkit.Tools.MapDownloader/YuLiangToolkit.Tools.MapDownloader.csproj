@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 功能 6：osu! 下图器（从 MapDownloader 那个独立 WinForms 小程序移植过来）。
+       界面按本工具集的约定重写成 WPF + MVVM，网络/下载/筛选那几块照搬原来的行为。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.MapDownloader</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.MapDownloader</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

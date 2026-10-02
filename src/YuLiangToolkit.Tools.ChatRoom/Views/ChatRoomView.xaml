@@ -1,0 +1,725 @@
+<UserControl x:Class="YuLiangToolkit.Tools.ChatRoom.Views.ChatRoomView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d">
+    <!-- 联机聊天室：一页里放完
+         ① 顶部：标题 + 状态徽标（身份 / 地址 / 延迟）
+         ② 连接条：左 = 主机（监听地址 + 端口 + 开房间），右 = 客户端（主机地址 + 端口 + 连接）
+         ③ 聊天记录（占满宽度：文字 / 图片 / 音频 / 视频 / 文件，靠左靠右区分谁说的）+ 输入区
+         ④ 底部：流量（上限 + 用量指示）/ 发送选项 / 文件传输 + 房间成员 / 历史记录 + 协议与日志
+         样式全部来自 App.xaml（CardStyle / TextBoxStyle / PrimaryButtonStyle …），不自造风格。
+
+         ⚠ 布局注意：这一页整体在 ScrollViewer 里，**卡片内部不要用 Height="*" 的行**——
+         ScrollViewer 量内容时给的是无限高度，星号行会退化成内容高度，卡片被撑得极高，
+         上半个卡片被顶到视口外面（踩过：截图里聊天区一片空白）。行高一律 Auto + 给列表 Min/MaxHeight。 -->
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="28,20,28,24">
+
+            <!-- ===================== 标题 + 状态 ===================== -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="💬 联机聊天室" FontSize="21" FontWeight="SemiBold" />
+                    <TextBlock FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                               Text="主机开一个 TCP 端口等人连，客户端填「IP（或内网穿透给的域名）+ 端口」就能聊。文字、图片、音频、视频、任意文件都能发；每次连接单独一个记录文件夹，并带单次流量上限。" />
+                </StackPanel>
+
+                <Border Grid.Column="1" Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Padding="12,8"
+                        VerticalAlignment="Top" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" MinWidth="250"
+                        Margin="16,0,0,0">
+                    <StackPanel>
+                        <TextBlock Text="{Binding StatusBadgeText}" FontSize="13" FontWeight="SemiBold">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsOnline}" Value="True">
+                                            <Setter Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Text="{Binding SelfDisplay}" FontSize="11.5" Margin="0,4,0,0" />
+                        <TextBlock Text="{Binding PeerSummary}" FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap" MaxWidth="360" Margin="0,4,0,0" />
+                        <TextBlock Text="{Binding ListenSummary}" FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap" MaxWidth="360" Margin="0,2,0,0"
+                                   Visibility="{Binding ListenSummary, Converter={StaticResource EmptyToVisInverse}}" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- 状态栏 -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,14,0,0" Padding="14,10">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding NoticeText}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" MaxWidth="760" />
+                    <TextBlock Text="{Binding ActivityText}" FontSize="10.5" Margin="18,0,0,0" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextSecondaryBrush}" />
+                </StackPanel>
+            </Border>
+
+            <!-- ===================== ① 连接条 ===================== -->
+            <Grid Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 主机 -->
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}">
+                    <StackPanel>
+                        <TextBlock Text="🖥 我是主机（开房间等人连）" FontSize="12.5" FontWeight="SemiBold" />
+                        <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                   Text="开监听后把下面这串地址发给对方。局域网直接可用；外网请用端口映射 / 内网穿透工具，把它给的「域名 + 端口」发给对方。" />
+
+                        <Grid Margin="0,8,0,0">
+                            <!-- 监听地址就是一个普通输入框（不用下拉框）：
+                                 常见就那几个值，下面的「全部 IPv4 / 含 IPv6 / 只本机」按钮一点就填好了，
+                                 下拉列表反而挡视线（本机地址一多，列表里全是长 IPv6）。
+                                 端口用 Width="Auto"：正文字号下 5 位数字加内边距天然放得下，不写死像素。 -->
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="70" />
+                                <ColumnDefinition Width="*" MinWidth="150" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="监听" VerticalAlignment="Center" FontSize="11.5"
+                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                            <TextBox Grid.Column="1" Height="30" Style="{StaticResource TextBoxStyle}"
+                                     Text="{Binding ListenAddress, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="0.0.0.0 = 本机所有 IPv4 网卡（推荐）；:: = 同时支持 IPv6；也可以只绑某张网卡的地址（点下面的按钮一键填）" />
+                            <TextBox Grid.Column="2" Height="30" Margin="8,0,0,0" Style="{StaticResource TextBoxStyle}"
+                                     Text="{Binding ListenPort, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="监听端口（1024~65535 挑一个没人占的）" />
+                        </Grid>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button Content="开房间" Style="{StaticResource PrimaryButtonStyle}" MinWidth="82"
+                                    Command="{Binding StartHostCommand}" IsEnabled="{Binding IsOffline}" />
+                            <Button Content="断开" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding StopCommand}" IsEnabled="{Binding IsOnline}" />
+                            <Button Content="复制地址" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding CopyAddressCommand}" />
+                            <Button Content="全部请出" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding KickAllCommand}" ToolTip="把所有客户端移出房间（自己继续监听）" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <TextBlock Text="绑定：" FontSize="10.5" VerticalAlignment="Center"
+                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                            <Button Content="全部 IPv4" Padding="8,2" FontSize="10.5" Margin="4,0,0,0"
+                                    Style="{StaticResource SecondaryButtonStyle}" Command="{Binding SetListenAllCommand}"
+                                    ToolTip="监听 0.0.0.0：本机所有 IPv4 网卡，局域网直连用这个" />
+                            <Button Content="含 IPv6" Padding="8,2" FontSize="10.5" Margin="4,0,0,0"
+                                    Style="{StaticResource SecondaryButtonStyle}" Command="{Binding SetListenAllV6Command}"
+                                    ToolTip="监听 ::：同时收 IPv4 与 IPv6 的连接" />
+                            <Button Content="只本机" Padding="8,2" FontSize="10.5" Margin="4,0,0,0"
+                                    Style="{StaticResource SecondaryButtonStyle}" Command="{Binding SetListenLocalCommand}"
+                                    ToolTip="只监听 127.0.0.1：只有本机连得上，用来自己测功能" />
+                        </StackPanel>
+
+                        <!-- 本机有哪些地址可以填（原来那是下拉列表里的内容，改成输入框后放这里当提示） -->
+                        <TextBlock Text="{Binding LocalAddressHint}" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+
+                        <TextBlock Text="{Binding AdvertiseText}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"
+                                   Foreground="{StaticResource AccentBrush}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 客户端 -->
+                <Border Grid.Column="2" Style="{StaticResource CardStyle}">
+                    <StackPanel>
+                        <TextBlock Text="🔌 我是客户端（连别人的房间）" FontSize="12.5" FontWeight="SemiBold" />
+                        <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                   Text="内网穿透：穿透工具把主机那台机器的端口映射出来后，把「它给的域名/IP + 端口」填在下面（本功能走普通 TCP，穿透工具按 TCP 类型映射）。" />
+
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="70" />
+                                <ColumnDefinition Width="*" MinWidth="150" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="主机" VerticalAlignment="Center" FontSize="11.5"
+                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                            <TextBox Grid.Column="1" Height="30" Style="{StaticResource TextBoxStyle}"
+                                     Text="{Binding HostAddress, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="IPv4（192.168.1.5）/ IPv6（[fe80::1]）/ 域名（内网穿透工具给的，如 xxx.frp.io）" />
+                            <TextBox Grid.Column="2" Height="30" Margin="8,0,0,0" Style="{StaticResource TextBoxStyle}"
+                                     Text="{Binding HostPort, UpdateSourceTrigger=PropertyChanged}" ToolTip="端口" />
+                        </Grid>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button Content="连接" Style="{StaticResource PrimaryButtonStyle}" MinWidth="82"
+                                    Command="{Binding ConnectCommand}" IsEnabled="{Binding IsOffline}" />
+                            <Button Content="断开" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding StopCommand}" IsEnabled="{Binding IsOnline}" />
+                            <Button Content="复制" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding CopyAddressCommand}" />
+                            <Button Content="测延迟" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding PingCommand}" ToolTip="发一个心跳包，测一下到对方的往返时间" />
+                        </StackPanel>
+
+                        <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,8,0,0"
+                                   Text="连上之后双方互发消息：你发的所有内容主机都收得到；主机的消息会广播给房间里的每个客户端。" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- ===================== ② 聊天 ===================== -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0" Padding="0">
+                <StackPanel>
+                    <!-- 工具条 -->
+                    <Grid Margin="18,14,18,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="聊天记录" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding HistorySummary}" FontSize="10.5" TextWrapping="Wrap"
+                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                            <Button Content="清空聊天" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding ClearChatCommand}"
+                                    ToolTip="只清界面，磁盘上的聊天记录不会被删" />
+                            <Button Content="打开记录文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding OpenSessionFolderCommand}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- 消息列表：Auto 行 + Min/MaxHeight（见文件头的布局说明） -->
+                    <ListBox x:Name="MessageList" ItemsSource="{Binding Messages}"
+                             Style="{StaticResource FileListStyle}"
+                             MinHeight="380" MaxHeight="560" Margin="8,10,8,0"
+                             core:ScrollChaining.Enabled="True"
+                             HorizontalContentAlignment="Stretch"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ToolTip="双击图片打开原图；音视频点「播放」">
+                        <ListBox.ItemContainerStyle>
+                            <!-- 行样式必须自己补齐四条（内边距 / 悬停选中反馈 / 前景色 / 选中条），见 代码记录.md 2.9 -->
+                            <Style TargetType="ListBoxItem" BasedOn="{StaticResource FileRowItemStyle}">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <!-- ===== 系统提示：居中灰字 ===== -->
+                                    <TextBlock Text="{Binding Text}" FontSize="11" TextWrapping="Wrap"
+                                               HorizontalAlignment="Center" TextAlignment="Center"
+                                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,3"
+                                               Visibility="{Binding IsSystem, Converter={StaticResource BoolToVis}}" />
+
+                                    <!-- ===== 普通消息：靠左 / 靠右 ===== -->
+                                    <StackPanel Visibility="{Binding IsSystem, Converter={StaticResource InverseBoolConverter}}"
+                                                HorizontalAlignment="Left" MaxWidth="560">
+                                        <StackPanel.Style>
+                                            <Style TargetType="StackPanel">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsMine}" Value="True">
+                                                        <Setter Property="HorizontalAlignment" Value="Right" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </StackPanel.Style>
+
+                                        <!-- 发送者 + 时间 -->
+                                        <StackPanel Orientation="Horizontal" Margin="2,0,2,3">
+                                            <TextBlock Text="{Binding SenderLine}" FontSize="10.5"
+                                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding TimeText}" FontSize="10.5" Margin="8,0,0,0"
+                                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                        </StackPanel>
+
+                                        <!-- 文字气泡 -->
+                                        <Border CornerRadius="8" Padding="11,7" Margin="0,0,0,2"
+                                                Background="{StaticResource InputBackgroundBrush}"
+                                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                                Visibility="{Binding HasText, Converter={StaticResource BoolToVis}}">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsMine}" Value="True">
+                                                            <Setter Property="Background" Value="{StaticResource AccentPressedBrush}" />
+                                                            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <TextBlock Text="{Binding Text}" FontSize="12.5" TextWrapping="Wrap" />
+                                        </Border>
+
+                                        <!-- 图片：显示自动压缩的预览图，双击打开原图 -->
+                                        <Border CornerRadius="6" Margin="0,2,0,2" Padding="3"
+                                                Background="{StaticResource InputBackgroundBrush}"
+                                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                                HorizontalAlignment="Left" Cursor="Hand"
+                                                MouseLeftButtonDown="OnImageClick"
+                                                ToolTip="{Binding FileSummary}"
+                                                Visibility="{Binding HasImage, Converter={StaticResource BoolToVis}}">
+                                            <Image Source="{Binding ThumbnailPath}" MaxWidth="380" MaxHeight="280"
+                                                   Stretch="Uniform" StretchDirection="DownOnly" />
+                                        </Border>
+
+                                        <!-- 音频：点一下播 -->
+                                        <Border CornerRadius="6" Margin="0,2,0,2" Padding="8"
+                                                Background="{StaticResource InputBackgroundBrush}"
+                                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                                Visibility="{Binding HasAudio, Converter={StaticResource BoolToVis}}">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding FileSummary}" FontSize="10.5"
+                                                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,5" />
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Button Content="▶ 播放 / 暂停" Padding="10,3" FontSize="11"
+                                                            Style="{StaticResource SecondaryButtonStyle}"
+                                                            Click="OnToggleMediaClick" />
+                                                    <Button Content="打开" Padding="10,3" FontSize="11" Margin="6,0,0,0"
+                                                            Style="{StaticResource SecondaryButtonStyle}"
+                                                            Click="OnOpenFileButtonClick" Tag="{Binding LocalPath}" />
+                                                </StackPanel>
+                                                <!-- MediaElement 在 LoadedBehavior=Manual 时不会自己响，靠上面那个按钮 Play() -->
+                                                <MediaElement Source="{Binding LocalPath}" LoadedBehavior="Manual"
+                                                              UnloadedBehavior="Manual" Volume="0.8" Height="1" Opacity="0" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- 视频：点一下播 -->
+                                        <Border CornerRadius="6" Margin="0,2,0,2" Padding="3"
+                                                Background="{StaticResource InputBackgroundBrush}"
+                                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                                Visibility="{Binding HasVideo, Converter={StaticResource BoolToVis}}">
+                                            <StackPanel>
+                                                <MediaElement Source="{Binding LocalPath}" LoadedBehavior="Manual"
+                                                              UnloadedBehavior="Manual" Volume="0.8"
+                                                              MaxWidth="380" MaxHeight="260" />
+                                                <StackPanel Orientation="Horizontal" Margin="6,4,6,4">
+                                                    <TextBlock Text="{Binding FileSummary}" FontSize="10.5" VerticalAlignment="Center"
+                                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                                    <Button Content="▶ 播放 / 暂停" Padding="10,3" FontSize="11" Margin="10,0,0,0"
+                                                            Style="{StaticResource SecondaryButtonStyle}" Click="OnToggleMediaClick" />
+                                                    <Button Content="打开" Padding="10,3" FontSize="11" Margin="6,0,0,0"
+                                                            Style="{StaticResource SecondaryButtonStyle}"
+                                                            Click="OnOpenFileButtonClick" Tag="{Binding LocalPath}" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- 其它文件（图片 / 音频 / 视频之外的那一行；没有文件时这一块自己藏起来） -->
+                                        <Border CornerRadius="6" Margin="0,2,0,2" Padding="10,8"
+                                                Background="{StaticResource InputBackgroundBrush}"
+                                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding HasImage}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding HasAudio}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding HasVideo}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsFile}" Value="False">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding FileSummary}" FontSize="11.5" TextWrapping="Wrap" />
+                                                <ProgressBar Value="{Binding File.Ratio, Mode=OneWay}" Maximum="1" Height="4" Margin="0,6,0,0"
+                                                             Style="{StaticResource ProgressBarStyle}"
+                                                             Visibility="{Binding File.IsActive, Converter={StaticResource BoolToVis}}" />
+                                                <TextBlock Text="{Binding File.ProgressText}" FontSize="10.5" Margin="0,4,0,0"
+                                                           TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                                    <Button Content="打开文件" Padding="10,3" FontSize="11"
+                                                            Style="{StaticResource SecondaryButtonStyle}"
+                                                            Click="OnOpenFileButtonClick" Tag="{Binding LocalPath}" />
+                                                    <Button Content="打开所在文件夹" Padding="10,3" FontSize="11" Margin="8,0,0,0"
+                                                            Style="{StaticResource SecondaryButtonStyle}"
+                                                            Click="OnRevealFileButtonClick" Tag="{Binding}" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <!-- 输入区 -->
+                    <StackPanel Margin="18,10,18,16">
+                        <Grid>
+                            <TextBox x:Name="InputBox" Height="58" AcceptsReturn="True" TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto" Style="{StaticResource TextBoxStyle}"
+                                     Text="{Binding MessageText, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="回车发送，Shift+回车换行" />
+                            <TextBlock Text="说点什么…（回车发送，Shift+回车换行）" Margin="12,8,0,0"
+                                       VerticalAlignment="Top" IsHitTestVisible="False"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       Visibility="{Binding MessageText, Converter={StaticResource EmptyToVis}}" />
+                        </Grid>
+
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="发送" Style="{StaticResource PrimaryButtonStyle}" MinWidth="76"
+                                        Command="{Binding SendCommand}" IsEnabled="{Binding CanSend}" />
+                                <Button Content="发送文件…" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                        Command="{Binding AttachCommand}" ToolTip="图片 / 音频 / 视频 / 压缩包 / 任意文件，可多选" />
+                                <Button Content="发送图片…" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                        Command="{Binding SendImageCommand}" ToolTip="{Binding ImageQualityHint}" />
+                            </StackPanel>
+                            <TextBox Grid.Column="1" Height="32" Margin="12,0,0,0" Style="{StaticResource TextBoxStyle}"
+                                     Text="{Binding TransferNote, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="发文件时附带的留言（发完自动清空）" />
+                            <TextBlock Grid.Column="1" Text="发文件时想说的一句话…" Margin="24,0,0,0" VerticalAlignment="Center"
+                                       IsHitTestVisible="False" Foreground="{StaticResource TextSecondaryBrush}"
+                                       Visibility="{Binding TransferNote, Converter={StaticResource EmptyToVis}}" />
+                        </Grid>
+
+                        <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,0" TextWrapping="Wrap"
+                                   Text="收 / 发都在同一个列表里：自己发的靠右（蓝底），对方发的靠左。图片自动压一份预览（不额外占流量），双击预览图打开原图。" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- ===================== ③ 底部三栏 =====================
+                 中间那栏的「发图压缩」是这三个下拉里文字最长的（"只压过大的图（推荐）"），
+                 所以它要比左右两栏**宽一点**（5:6:5）；等宽或更窄会把下拉框挤到文字显示不全。
+                 栏间距 10px：1024 宽的最小窗口下，这一点点差距正好是输入框能不能放开 4 位数的区别。 -->
+            <Grid Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="5*" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="6*" />
+                    <ColumnDefinition Width="10" />
+                    <ColumnDefinition Width="5*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 流量 -->
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}">
+                    <StackPanel>
+                        <TextBlock Text="流量（单次连接）" FontSize="13" FontWeight="SemiBold" />
+                        <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                   Text="「一次连接」= 一次会话（一个记录文件夹）。到上限就停止发送，不会一口气把流量跑光。" />
+
+                        <TextBlock Text="{Binding TrafficSummaryText}" FontSize="12.5" Margin="0,10,0,0" />
+                        <TextBlock Text="{Binding TrafficRateText}" FontSize="11" Margin="0,3,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+
+                        <ProgressBar Value="{Binding TrafficRatio, Mode=OneWay}" Maximum="1" Height="8" Margin="0,8,0,0"
+                                     Style="{StaticResource ProgressBarStyle}" />
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding TrafficLimitText}" FontSize="10.5" TextWrapping="Wrap"
+                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                            <TextBlock Grid.Column="1" Text="{Binding TrafficRatioText}" FontSize="10.5" Margin="6,0,0,0"
+                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                        </Grid>
+
+                        <TextBlock Text="⚠ 本次流量已到上限：已停止发送。可以调大上限（立刻生效）或重新连接。" FontSize="11"
+                                   Margin="0,8,0,0" TextWrapping="Wrap" Foreground="{StaticResource DangerBrush}"
+                                   Visibility="{Binding IsTrafficExhausted, Converter={StaticResource BoolToVis}}" />
+
+                        <!-- 底部三栏比较窄，标签一律放在输入框**上面**（不占横向宽度）：
+                             1024 宽的最小窗口下，侧边标签会把下拉框挤到只剩几十像素、文字被裁掉。 -->
+                        <TextBlock Text="上限（MB）" FontSize="11.5" Margin="0,10,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Height="30" MinWidth="140" Style="{StaticResource TextBoxStyle}"
+                                     Text="{Binding TrafficLimitMb, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="一次连接最多能跑多少流量；填 0 = 不限（不建议）" />
+                            <TextBlock Grid.Column="1" Text="MB" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11.5"
+                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                        </Grid>
+
+                        <TextBlock Text="算哪个方向" FontSize="11.5" Margin="0,8,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                        <ComboBox Margin="0,4,0,0" Height="30" ItemsSource="{Binding TrafficScopeOptions}"
+                                  SelectedItem="{Binding SelectedTrafficScope}" DisplayMemberPath="Label"
+                                  Style="{StaticResource ComboBoxStyle}" />
+
+                        <CheckBox Margin="0,10,0,0" Style="{StaticResource CheckBoxStyle}"
+                                  IsChecked="{Binding Cfg.NotifyPeerOnLimit}" Content="到上限时通知对方" />
+                        <TextBlock FontSize="10.5" Margin="24,2,0,0" TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Text="打开时对方会看到「本端流量到顶，暂停发送」，免得以为你掉线了。" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 发送选项 -->
+                <Border Grid.Column="2" Style="{StaticResource CardStyle}">
+                    <StackPanel>
+                        <TextBlock Text="发送选项" FontSize="13" FontWeight="SemiBold" />
+
+                        <TextBlock Text="昵称" FontSize="11.5" Margin="0,10,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBox Margin="0,4,0,0" Height="30" Style="{StaticResource TextBoxStyle}"
+                                 Text="{Binding Nickname, UpdateSourceTrigger=PropertyChanged}" />
+
+                        <TextBlock Text="头像（一个 emoji）" FontSize="11.5" Margin="0,8,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBox Margin="0,4,0,0" Height="30" Style="{StaticResource TextBoxStyle}"
+                                 Text="{Binding Emoji, UpdateSourceTrigger=PropertyChanged}" ToolTip="填一个 emoji 就行" />
+
+                        <TextBlock Text="发图压缩" FontSize="11.5" Margin="0,8,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                        <ComboBox Margin="0,4,0,0" Height="30" ItemsSource="{Binding ImageQualityOptions}"
+                                  SelectedItem="{Binding SelectedImageQuality}" DisplayMemberPath="Label"
+                                  Style="{StaticResource ComboBoxStyle}" />
+                        <TextBlock Text="{Binding ImageQualityHint}" FontSize="10.5" Margin="0,3,0,0" TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+
+                        <TextBlock Text="大文件确认（MB）" FontSize="11.5" Margin="0,8,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Height="30" MinWidth="140" Style="{StaticResource TextBoxStyle}"
+                                     Text="{Binding Cfg.ConfirmFileMb, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="超过这个大小（MB）先问一句再发；填 0 = 不确认" />
+                            <TextBlock Grid.Column="1" Text="MB" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11.5"
+                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                        </Grid>
+
+                        <CheckBox Margin="0,10,0,0" Style="{StaticResource CheckBoxStyle}" IsChecked="{Binding Cfg.AutoStart}"
+                                  Content="打开工具时自动开局" />
+
+                        <TextBlock Text="表情（点一下插到输入框）" FontSize="11.5" Margin="0,10,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                        <ItemsControl ItemsSource="{Binding QuickEmojis}" Margin="0,4,0,0">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Content="{Binding}" Padding="6,2" Margin="0,0,4,4" FontSize="14"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            Command="{Binding DataContext.InsertEmojiCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <!-- 文件传输 -->
+                <Border Grid.Column="4" Style="{StaticResource CardStyle}" Padding="0">
+                    <StackPanel>
+                        <Grid Margin="18,14,18,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="文件传输" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock FontSize="10.5" Margin="0,4,0,0" TextWrapping="Wrap"
+                                           Foreground="{StaticResource TextSecondaryBrush}">
+                                    <Run Text="发送：" /><Run Text="{Binding UploadSummary, Mode=OneWay}" />
+                                </TextBlock>
+                                <TextBlock FontSize="10.5" Margin="0,2,0,0" TextWrapping="Wrap"
+                                           Foreground="{StaticResource TextSecondaryBrush}">
+                                    <Run Text="接收：" /><Run Text="{Binding DownloadSummary, Mode=OneWay}" />
+                                </TextBlock>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="清空" Style="{StaticResource SecondaryButtonStyle}"
+                                    VerticalAlignment="Top" Command="{Binding ClearTransfersCommand}" />
+                        </Grid>
+
+                        <ListBox ItemsSource="{Binding Transfers}" Style="{StaticResource FileListStyle}"
+                                 MinHeight="150" MaxHeight="230" Margin="8,10,8,0"
+                                 core:ScrollChaining.Enabled="True"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel>
+                                        <TextBlock FontSize="11.5" TextTrimming="CharacterEllipsis">
+                                            <Run Text="{Binding DirectionText, Mode=OneWay}" />
+                                            <Run Text="　" />
+                                            <Run Text="{Binding FileName, Mode=OneWay}" />
+                                        </TextBlock>
+                                        <ProgressBar Value="{Binding Ratio, Mode=OneWay}" Maximum="1" Height="4" Margin="0,5,0,0"
+                                                     Style="{StaticResource ProgressBarStyle}" />
+                                        <TextBlock Text="{Binding ProgressText}" FontSize="10.5" Margin="0,3,0,0"
+                                                   TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"
+                                   Margin="18,8,18,14"
+                                   Text="同一时刻只传一个文件（避免把这一条连接的带宽抢光），后面的自动排队。" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- ===================== ④ 房间成员 + 历史记录 ===================== -->
+            <Grid Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="290" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 房间成员 -->
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="0">
+                    <StackPanel>
+                        <Grid Margin="18,14,18,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="房间成员" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding MemberListSummary}" FontSize="10.5" Margin="0,4,0,0"
+                                           Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="刷新" Style="{StaticResource SecondaryButtonStyle}"
+                                    VerticalAlignment="Top" Command="{Binding RefreshMembersCommand}" />
+                        </Grid>
+
+                        <ListBox ItemsSource="{Binding MemberItems}" Style="{StaticResource FileListStyle}"
+                                 MinHeight="130" MaxHeight="250" Margin="8,10,8,12"
+                                 core:ScrollChaining.Enabled="True"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Opacity="{Binding Opacity}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Display}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}"
+                                                       Margin="0,2,0,0">
+                                                <Run Text="{Binding RoleText, Mode=OneWay}" />
+                                                <Run Text="　" />
+                                                <Run Text="{Binding JoinedText, Mode=OneWay}" />
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding EndpointText}" FontSize="10" Margin="0,1,0,0"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="移出" Padding="10,3" FontSize="11"
+                                                Style="{StaticResource SecondaryButtonStyle}" VerticalAlignment="Center"
+                                                Command="{Binding DataContext.KickCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Visibility="{Binding CanKick, Converter={StaticResource BoolToVis}}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                </Border>
+
+                <!-- 历史记录 -->
+                <Border Grid.Column="2" Style="{StaticResource CardStyle}" Padding="0">
+                    <StackPanel>
+                        <Grid Margin="18,14,18,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="历史记录" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding HistorySummary}" FontSize="10.5" Margin="0,4,0,0" TextWrapping="Wrap"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding SessionRootText}" FontSize="10" Margin="0,2,0,0"
+                                           TextTrimming="CharacterEllipsis" ToolTip="{Binding SessionRootText}"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                                <Button Content="刷新" Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding RefreshHistoryCommand}" />
+                                <Button Content="打开根目录" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                        Command="{Binding OpenRootFolderCommand}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <ListBox ItemsSource="{Binding History}" Style="{StaticResource FileListStyle}"
+                                 MinHeight="130" MaxHeight="250" Margin="8,10,8,12"
+                                 core:ScrollChaining.Enabled="True"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ToolTip="「查看」= 把那次聊天读回界面；「文件夹」= 打开那次的数据目录">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding SessionName}" FontSize="12" />
+                                            <TextBlock Text="{Binding SummaryText}" FontSize="10.5" Margin="0,2,0,0"
+                                                       TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding DirectoryPath}" FontSize="10" Margin="0,2,0,0"
+                                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding DirectoryPath}"
+                                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Button Content="查看" Padding="10,3" FontSize="11"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Command="{Binding DataContext.OpenHistoryCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}" />
+                                            <Button Content="文件夹" Padding="10,3" FontSize="11" Margin="6,0,0,0"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Command="{Binding DataContext.OpenHistoryFolderCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- ===================== ⑤ 协议与日志 ===================== -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock Text="协议与日志" FontSize="13" FontWeight="SemiBold" />
+                    <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
+                               Text="协议是「4 字节长度 + JSON 头 + 裸载荷」的 TCP 流：文字走 JSON 载荷、文件走裸字节（不膨胀）。说明文件在 Data\chat-room\Protocol\chat-protocol.json，首次运行自动释放。" />
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button Content="查看协议说明" Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding OpenProtocolDocCommand}" />
+                        <Button Content="打开我的记录文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                Command="{Binding OpenSessionFolderCommand}" />
+                    </StackPanel>
+                    <TextBox Style="{StaticResource LogTextBoxStyle}" Height="120" Margin="0,10,0,0"
+                             Text="{Binding LogText, Mode=OneWay}" core:ScrollChaining.Enabled="True" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

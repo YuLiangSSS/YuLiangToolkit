@@ -1,27 +1,25 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
 using YuLiangToolkit.Core.Mvvm;
 
 namespace YuLiangToolkit.FrameworkSelfCheck;
 
 /// <summary>
-/// 滚轮「滚动链」的判定逻辑（<see cref="ScrollChaining.Decide"/>）。
+/// 滚轮「滚动链」的**行为**验证：造一个真的嵌套结构（外层页面 ScrollViewer + 内层 ListBox），
+/// 扔真的滚轮事件进去，看**谁滚了、滚了多少、事件被谁吃掉**。
 ///
-/// <para>这里用**真的 <see cref="ScrollViewer"/>**（塞进临时窗口量一次布局），不是造几个假对象 ——
-/// “能不能滚”这件事完全取决于 <c>ExtentHeight / ViewportHeight / VerticalOffset</c> 三个真实值，
-/// 用假的就测不到点子上了。</para>
+/// <para>为什么必须真跑：这件事完全取决于 WPF 的真实行为，而真实行为跟直觉相反 ——
+/// <c>ScrollViewer.OnMouseWheel</c> 里 <c>e.Handled = true</c> 是**无条件**执行的（滚没滚都置），
+/// 所以"什么都不做、指望事件自己冒泡上去"的写法会让滚轮卡在列表上（本文件第 2 条断言钉住的就是它）。</para>
 ///
-/// <para>⚠ 为什么不去模拟鼠标滚轮事件：WPF 的 <c>ScrollViewer.OnMouseWheel</c> 会读**真实鼠标位置**，
-/// 鼠标不在控件上就直接返回；用 <c>RaiseEvent</c> 造事件根本走不到 ListBox（实测 0 次触发），
-/// 拿它做断言只会得出错误结论。所以这里只断言"该滚谁"这一步纯逻辑，鼠标那一层交给人工验证。</para>
+/// <para>⚠ 合成滚轮事件**可以用**，但有个前提：先把 <c>ScrollToXxx</c> 这类命令过完 layout。
+/// 那些是排进 ScrollViewer 命令队列、在 LayoutUpdated 里执行的；如果测量前队列还没排空，
+/// 它会在事件滚完之后才生效、把偏移改回去，看起来就像"合成事件滚不动"（早期就是这么误判的）。</para>
 /// </summary>
 internal static class ScrollChainingChecks
 {
-    /// <summary>
-    /// 在**自己的 STA 线程**上跑：自检程序的入口是 MTA（顶层的 top-level statements 默认 MTA），
-    /// 而 WPF 的 UI 组件（连 <c>InputManager</c> 都是）要求 STA，直接在主线程 new Window 会抛
-    /// “调用线程必须为 STA”。这里起一个 STA 线程跑完再把断言结果搬回来。
-    /// </summary>
     public static void Run(Action<string, bool, string> check, Action<string, bool> report)
     {
         Exception? failure = null;
@@ -39,133 +37,232 @@ internal static class ScrollChainingChecks
     }
 
     private static void RunOnSta(Action<string, bool, string> check, Action<string, bool> report)
-    {        var window = new Window
+    {
+        var window = new Window
         {
-            Width = 320,
-            Height = 200,
-            ShowActivated = false,
-            ShowInTaskbar = false,
-            WindowStyle = WindowStyle.None,
-            Left = -4000,          // 挪到屏幕外，别闪
-            Top = -4000,
+            Width = 340, Height = 300, ShowActivated = false, ShowInTaskbar = false,
+            WindowStyle = WindowStyle.None, Left = -4000, Top = -4000,
         };
 
         try
         {
-            var inner = new ScrollViewer { Height = 80, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-            var filler = new StackPanel();
-            for (var i = 0; i < 20; i++) filler.Children.Add(new TextBlock { Text = $"行 {i}", Height = 20 });
-            inner.Content = filler;
+            // ---------- 结构：页面 ScrollViewer（像素滚动） > StackPanel > ListBox（逻辑滚动） ----------
+            var list = new ListBox
+            {
+                Height = 80,
+                ItemsSource = Enumerable.Range(0, 30).Select(i => $"游戏 {i}").ToList(),
+            };
 
-            var outer = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-            var outerFiller = new StackPanel();
-            for (var i = 0; i < 40; i++) outerFiller.Children.Add(new TextBlock { Text = $"外层 {i}", Height = 20 });
-            outerFiller.Children.Add(inner);
-            outer.Content = outerFiller;
+            var pageContent = new StackPanel();
+            for (var i = 0; i < 25; i++) pageContent.Children.Add(new TextBlock { Text = $"页面上方 {i}", Height = 20 });
+            pageContent.Children.Add(list);
+            for (var i = 0; i < 25; i++) pageContent.Children.Add(new TextBlock { Text = $"页面下方 {i}", Height = 20 });
 
-            window.Content = outer;
+            var page = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = pageContent,
+            };
+            window.Content = page;
             window.Show();
-            window.UpdateLayout();
+            Settle(window);
+
+            var inner = FindChild<ScrollViewer>(list)
+                        ?? throw new InvalidOperationException(
+                            "找不到 ListBox 内部的 ScrollViewer（模板里那个必须 x:Name=\"ScrollViewer\"）");
+
+            // 事件起点：内层列表里的真实元素（隧道会经过 ListBox，冒泡会到内层 ScrollViewer）
+            var target = FindChild<ScrollContentPresenter>(inner) as UIElement ?? inner;
 
             var innerMax = Math.Max(0, inner.ExtentHeight - inner.ViewportHeight);
-            var outerMax = Math.Max(0, outer.ExtentHeight - outer.ViewportHeight);
+            var outerMax = Math.Max(0, page.ExtentHeight - page.ViewportHeight);
+            check("测试环境：内层能滚、外层也能滚",
+                innerMax > 1 && outerMax > 1,
+                $"内层上限={innerMax:0.#}（项）外层上限={outerMax:0.#}（像素）");
 
-            check("滚动链测试环境：内层真的能滚（内容比视口高）",
-                innerMax > 0 && inner.ComputedVerticalScrollBarVisibility == Visibility.Visible,
-                $"内容={inner.ExtentHeight:0.#} 视口={inner.ViewportHeight:0.#} 上限={innerMax:0.#}");
-            check("滚动链测试环境：外层也真的能滚",
-                outerMax > 0, $"上限={outerMax:0.#}");
+            // ---------- 0. 先量出"原生一格"是多少：WheelScrollLines 行 × 一行多少像素 ----------
+            page.ScrollToTop();
+            Settle(window);
+            var beforeLine = page.VerticalOffset;
+            page.LineDown();
+            Settle(window);
+            var lineStep = page.VerticalOffset - beforeLine;
 
-            // ---- 内层不在边界：滚轮给内层 ----
-            inner.ScrollToVerticalOffset(innerMax / 2);
-            window.UpdateLayout();
-            report("内层在中间时：向下滚 → 内层",
-                ScrollChaining.Decide(inner, true, -120).Action == ScrollChaining.ScrollAction.Inner);
-            report("内层在中间时：向上滚 → 内层",
-                ScrollChaining.Decide(inner, true, 120).Action == ScrollChaining.ScrollAction.Inner);
+            page.ScrollToTop();
+            Settle(window);
+            var notchBefore = page.VerticalOffset;
+            ScrollChaining.ScrollOneNotch(page, down: true);
+            Settle(window);
+            var notch = page.VerticalOffset - notchBefore;
 
-            // ---- 内层到底：继续往下应该转给外层 ----
-            inner.ScrollToEnd();
-            window.UpdateLayout();
-            report("内层到底时：向下滚 → 外层（这就是用户要的“不要卡住”）",
-                ScrollChaining.Decide(inner, true, -120).Action == ScrollChaining.ScrollAction.Outer);
-            report("内层到底时：向上滚 → 还是内层（先把自己滚回去）",
-                ScrollChaining.Decide(inner, true, 120).Action == ScrollChaining.ScrollAction.Inner);
+            check("★ 一格滚轮 = WheelScrollLines 行（不是一行）",
+                lineStep > 0 && notch > lineStep * 1.5,
+                $"一行={lineStep:0.#}px，一格={notch:0.#}px" +
+                $"（WheelScrollLines={SystemParameters.WheelScrollLines}，期望≈{lineStep * SystemParameters.WheelScrollLines:0.#}px）");
 
-            // ---- 内层到顶：继续往上应该转给外层 ----
+            // ---------- 1. 没挂滚动链：内层到底后事件被 WPF 吞掉，外层不动（"卡住"的复现） ----------
+            list.SetValue(ScrollChaining.EnabledProperty, false);
+            ScrollToEnd(inner, page, window);
+            var beforeOuter = page.VerticalOffset;
+            var beforeInner = inner.VerticalOffset;
+            var handledWithout = RaiseWheel(target, -120, window);
+            check("没挂滚动链时：内层到底后滚轮被 WPF 吃掉，外层一动不动（这就是要修的病）",
+                Math.Abs(page.VerticalOffset - beforeOuter) < 0.5
+                && Math.Abs(inner.VerticalOffset - beforeInner) < 0.5
+                && handledWithout,
+                $"外层 {beforeOuter:0.#} → {page.VerticalOffset:0.#}，Handled={handledWithout}");
+
+            // ---------- 2. 挂上滚动链：内层到底 → 这一格归外层 ----------
+            ScrollChaining.Attach(list);
+            ScrollToEnd(inner, page, window);
+            beforeOuter = page.VerticalOffset;
+            beforeInner = inner.VerticalOffset;
+            var handledAtBottom = RaiseWheel(target, -120, window);
+
+            check("★ 挂上滚动链后：内层到底继续往下滚 → 外层接着往下滚",
+                page.VerticalOffset > beforeOuter + 0.5,
+                $"外层 {beforeOuter:0.#} → {page.VerticalOffset:0.#}");
+
+            check("★ 而且滚的正好是原生一格（不是只滚一行）",
+                Math.Abs(page.VerticalOffset - beforeOuter - notch) < 1.0,
+                $"滚了 {page.VerticalOffset - beforeOuter:0.#}px，原生一格={notch:0.#}px");
+
+            check("内层到底时它自己没再动（不会内外一起滚）",
+                Math.Abs(inner.VerticalOffset - beforeInner) < 0.5,
+                $"{beforeInner:0.#} → {inner.VerticalOffset:0.#}");
+
+            check("★ 事件被我们吃掉了（Handled=true）—— 不然内层会把它吞掉，外层收不到",
+                handledAtBottom,
+                $"Handled={handledAtBottom}；判断={ScrollChaining.LastDecision}");
+
+            // ---------- 3. 内层还能滚：只滚内层，外层不许动 ----------
             inner.ScrollToTop();
-            window.UpdateLayout();
-            report("内层到顶时：向上滚 → 外层",
-                ScrollChaining.Decide(inner, true, 120).Action == ScrollChaining.ScrollAction.Outer);
-            report("内层到顶时：向下滚 → 还是内层",
-                ScrollChaining.Decide(inner, true, -120).Action == ScrollChaining.ScrollAction.Inner);
+            page.ScrollToTop();
+            Settle(window);
+            beforeInner = inner.VerticalOffset;
+            beforeOuter = page.VerticalOffset;
+            RaiseWheel(target, -120, window);
 
-            // ---- 内层压根不需要滚动条（内容比视口矮）----
-            var shortInner = new ScrollViewer { Height = 400, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-            shortInner.Content = new TextBlock { Text = "就一行", Height = 20 };
-            var outer2 = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-            var outer2Filler = new StackPanel();
-            for (var i = 0; i < 40; i++) outer2Filler.Children.Add(new TextBlock { Text = $"外层 {i}", Height = 20 });
-            outer2Filler.Children.Add(shortInner);
-            outer2.Content = outer2Filler;
+            check("内层还能滚时：内层自己滚了（原生的那一格 = WheelScrollLines 项）",
+                inner.VerticalOffset > beforeInner + 0.5,
+                $"{beforeInner:0.#} → {inner.VerticalOffset:0.#}（项）");
 
-            var window2 = new Window
-            {
-                Width = 320, Height = 200, ShowActivated = false, ShowInTaskbar = false,
-                WindowStyle = WindowStyle.None, Left = -4000, Top = -4000, Content = outer2,
-            };
-            try
-            {
-                window2.Show();
-                window2.UpdateLayout();
-                report("内层没内容可滚时：滚轮直接给外层（上下都算）",
-                    ScrollChaining.Decide(shortInner, true, -120).Action == ScrollChaining.ScrollAction.Outer
-                    && ScrollChaining.Decide(shortInner, true, 120).Action == ScrollChaining.ScrollAction.Outer);
-            }
-            finally
-            {
-                window2.Close();
-            }
+            check("★ 内层还能滚时：外层一动不动（这一步不归它）",
+                Math.Abs(page.VerticalOffset - beforeOuter) < 0.5,
+                $"外层 {beforeOuter:0.#} → {page.VerticalOffset:0.#}；判断={ScrollChaining.LastDecision}");
 
-            // ---- 边界情况：没有外层 / 没有内层 ----
-            report("没有外层时不会乱滚（返回 None，让事件自然冒泡）",
-                ScrollChaining.Decide(null, false, -120).Action == ScrollChaining.ScrollAction.None);
-            report("只有外层、没有内层时：直接滚外层",
-                ScrollChaining.Decide(null, true, -120).Action == ScrollChaining.ScrollAction.Outer);
-            report("滚轮增量为 0 时不滚（Decide 仍给出方向，但调用方会先拦掉 delta==0）",
-                ScrollChaining.Decide(inner, true, 0).Down == false);
+            // ---------- 4. 内层到顶 + 继续往上滚 → 外层往上滚 ----------
+            inner.ScrollToTop();
+            page.ScrollToVerticalOffset(outerMax / 2);
+            Settle(window);
+            beforeOuter = page.VerticalOffset;
+            RaiseWheel(target, 120, window);
 
-            // ---- 方向判定 ----
-            report("负增量 = 向下、正增量 = 向上",
-                ScrollChaining.Decide(inner, true, -120).Down && !ScrollChaining.Decide(inner, true, 120).Down);
+            check("★ 内层到顶继续往上滚 → 外层往上滚",
+                page.VerticalOffset < beforeOuter - 0.5,
+                $"外层 {beforeOuter:0.#} → {page.VerticalOffset:0.#}");
 
-            // ---- 附加属性开关 ----
-            var probe = new ListBox();
-            report("默认没挂滚动链", !ScrollChaining.GetEnabled(probe));
+            // ---------- 5. 内层压根没得滚（空列表 / 只有一行） → 直接归外层 ----------
+            var shortList = new ListBox { Height = 60, ItemsSource = new[] { "就一行" } };
+            var pageContent2 = new StackPanel();
+            for (var i = 0; i < 25; i++) pageContent2.Children.Add(new TextBlock { Text = $"上 {i}", Height = 20 });
+            pageContent2.Children.Add(shortList);
+            for (var i = 0; i < 25; i++) pageContent2.Children.Add(new TextBlock { Text = $"下 {i}", Height = 20 });
+
+            var page2 = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = pageContent2 };
+            window.Content = page2;
+            ScrollChaining.Attach(shortList);
+            Settle(window);
+
+            var shortInner = FindChild<ScrollViewer>(shortList);
+            check("没内容可滚的内层：CanScroll=false（内容比视口矮也算）",
+                shortInner is not null && !ScrollChaining.CanScroll(shortInner, true),
+                shortInner is null ? "找不到内层 ScrollViewer" : $"上限={Math.Max(0, shortInner.ExtentHeight - shortInner.ViewportHeight):0.#}");
+
+            var shortTarget = (shortInner is not null ? FindChild<ScrollContentPresenter>(shortInner) as UIElement : null)
+                              ?? (UIElement?)shortList;
+            var page2Before = page2.VerticalOffset;
+            if (shortTarget is not null) RaiseWheel(shortTarget, -120, window);
+
+            check("★ 内层没得滚（只有一行）→ 滚轮直接落到外层",
+                page2.VerticalOffset > page2Before + 0.5,
+                $"外层 {page2Before:0.#} → {page2.VerticalOffset:0.#}");
+
+            // ---------- 6. 内外都到头：谁也不动，也别抢事件 ----------
+            var page3Content = new StackPanel();
+            var list3 = new ListBox { Height = 80, ItemsSource = Enumerable.Range(0, 30).Select(i => $"游戏 {i}").ToList() };
+            page3Content.Children.Add(list3);
+            for (var i = 0; i < 30; i++) page3Content.Children.Add(new TextBlock { Text = $"下 {i}", Height = 20 });
+            var page3 = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Content = page3Content };
+            window.Content = page3;
+            ScrollChaining.Attach(list3);
+            Settle(window);
+
+            var inner3 = FindChild<ScrollViewer>(list3)!;
+            var target3 = FindChild<ScrollContentPresenter>(inner3) as UIElement ?? inner3;
+            inner3.ScrollToEnd();
+            page3.ScrollToEnd();
+            Settle(window);
+            var outer3Before = page3.VerticalOffset;
+            RaiseWheel(target3, -120, window);
+
+            check("内外都到头时：什么都不做（不抢事件，判断也不是 Outer）",
+                Math.Abs(page3.VerticalOffset - outer3Before) < 0.5
+                && ScrollChaining.LastDecision.Contains("内外都滚不动", StringComparison.Ordinal),
+                $"外层 {outer3Before:0.#} → {page3.VerticalOffset:0.#}；判断={ScrollChaining.LastDecision}");
+
+            // ---------- 7. 纯逻辑：Decide / CanScroll（脱离鼠标也能断言） ----------
+            // 先把最初那棵树挂回来（上面的用例换过 Window.Content，旧的树已经脱离布局了）
+            window.Content = page;
+            Settle(window);
+            report("Decide 纯函数断言（下面几条不依赖鼠标）", true);
+
+            string Where() => $"内层 {inner.VerticalOffset:0.#}/{innerMax:0.#}，外层 {page.VerticalOffset:0.#}/{outerMax:0.#}";
+
+            inner.ScrollToVerticalOffset(innerMax / 2);
+            Settle(window);
+            check("Decide：内层在中间 → Inner",
+                ScrollChaining.Decide(inner, page, -120).Action == ScrollChaining.ScrollAction.Inner, Where());
+
+            inner.ScrollToEnd();
+            page.ScrollToTop();
+            Settle(window);
+            check("Decide：内层到底 + 外层还能往下滚 → Outer",
+                ScrollChaining.Decide(inner, page, -120).Action == ScrollChaining.ScrollAction.Outer, Where());
+
+            inner.ScrollToTop();
+            page.ScrollToVerticalOffset(200);
+            Settle(window);
+            check("Decide：内层到顶 + 向上滚 → Outer",
+                ScrollChaining.Decide(inner, page, 120).Action == ScrollChaining.ScrollAction.Outer, Where());
+
+            inner.ScrollToEnd();          // 先到底，否则"内层还能滚"当然不是 None
+            Settle(window);
+            check("Decide：外层也是 null → None（滚不动就别抢事件）",
+                ScrollChaining.Decide(inner, null, -120).Action == ScrollChaining.ScrollAction.None, Where());
+
+            page.ScrollToTop();
+            Settle(window);
+            check("Decide：内层为 null + 外层能滚 → Outer（挂在不带滚动条的容器上也管用）",
+                ScrollChaining.Decide(null, page, -120).Action == ScrollChaining.ScrollAction.Outer, Where());
+
+            check("CanScroll：空列表 / null 都算滚不动",
+                !ScrollChaining.CanScroll(null, true)
+                && shortInner is not null && !ScrollChaining.CanScroll(shortInner, false),
+                $"shortInner={(shortInner is null ? "(没找到)" : Math.Max(0, shortInner.ExtentHeight - shortInner.ViewportHeight).ToString("0.#"))}");
+
+            inner.ScrollToVerticalOffset(innerMax / 2);
+            Settle(window);
+            check("CanScroll：能滚的列表在两个方向都算能滚（中间位置）",
+                ScrollChaining.CanScroll(inner, true) && ScrollChaining.CanScroll(inner, false), Where());
+
+            // ---------- 8. 附加属性开关 ----------
+            var probe = new ListBox { ItemsSource = new[] { "a" } };
+            check("默认没挂滚动链", !ScrollChaining.GetEnabled(probe), "GetEnabled 默认 false");
             ScrollChaining.Attach(probe);
-            report("Attach 之后开关为 true（XAML 里写 ScrollChaining.Enabled 也是走这里）",
-                ScrollChaining.GetEnabled(probe));
+            check("Attach 之后开关为 true", ScrollChaining.GetEnabled(probe), "Attach() = SetEnabled(true)");
             ScrollChaining.SetEnabled(probe, false);
-            report("可以关掉（重复开关不会重复订阅）", !ScrollChaining.GetEnabled(probe));
-
-            // ---- 「滚到头交给外层」时不能自己滚：必须放行给 WPF 原生滚轮 ----
-            // v0.5.3 一开始是自己调 LineUp/LineDown，一次只滚一行，比正常滚轮慢得多（用户直接感觉出来了）。
-            // 现在 ScrollChaining 只设 e.Handled，滚动交给外层 ScrollViewer 自己按原生速度做。
-            // 这里从源码层面钉住这个约定：ScrollChaining 里不该再出现任何"自己滚"的调用。
-            var source = ReadScrollChainingSource();
-            if (source is null)
-            {
-                report("能读到 ScrollChaining 源码（用于钉住“不自己滚”的约定）", false);
-            }
-            else
-            {
-                var ownScrollCalls = new[] { ".LineUp()", ".LineDown()", ".ScrollToVerticalOffset(", ".ScrollToEnd()", ".ScrollToTop()" }
-                    .Where(call => source.Contains(call, StringComparison.Ordinal))
-                    .ToList();
-                check("滚到头交给外层时【不自己滚】（否则步长只有一行，比原生滚轮慢得多）",
-                    ownScrollCalls.Count == 0,
-                    ownScrollCalls.Count == 0 ? "没有自己滚的调用" : "还在自己滚：" + string.Join("、", ownScrollCalls));
-            }
+            check("可以关掉", !ScrollChaining.GetEnabled(probe), "SetEnabled(false) 会摘掉 PreviewMouseWheel");
         }
         finally
         {
@@ -174,18 +271,63 @@ internal static class ScrollChainingChecks
     }
 
     /// <summary>
-    /// 读 <c>ScrollChaining.cs</c> 的源码文本，用来钉住「不自己滚」这条约定。
-    /// 找不到文件就返回 null（这时那条断言会报失败并说明原因，不会假装通过）。
+    /// 把 ScrollViewer 的 <c>ScrollToXxx</c> 命令彻底过完 layout。
+    /// ⚠ 这一步不能省：那些命令是排队在 LayoutUpdated 里执行的，没排空就去发滚轮事件，
+    /// 命令会在事件之后生效、把偏移改回去（早期就是因此误判"合成事件滚不动"）。
     /// </summary>
-    private static string? ReadScrollChainingSource()
+    private static void Settle(Window window)
     {
-        // 自检程序在 tests\YuLiangToolkit.FrameworkSelfCheck\bin\<cfg>\<tfm>\ 下跑，往上找仓库根
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
+        for (var i = 0; i < 4; i++) window.UpdateLayout();
+    }
+
+    private static void ScrollToEnd(ScrollViewer inner, ScrollViewer page, Window window)
+    {
+        inner.ScrollToEnd();
+        page.ScrollToTop();
+        Settle(window);
+    }
+
+    /// <summary>
+    /// 像真实鼠标那样扔一格滚轮：**先隧道（PreviewMouseWheel），没被吃掉再冒泡（MouseWheel）**。
+    ///
+    /// <para>⚠ 这一步不能省：<c>RaiseEvent</c> 只走你指定的那一个路由事件 —— 直接抛冒泡的
+    /// <c>MouseWheelEvent</c>，挂在 <c>PreviewMouseWheel</c> 上的处理器**一次都不会执行**（实测），
+    /// 于是测出来的永远是"滚动链没生效"。真实输入是 InputManager 先发 Preview、再发冒泡，
+    /// 这里照抄那个顺序。</para>
+    /// </summary>
+    private static bool RaiseWheel(UIElement target, int delta, Window window)
+    {
+        static MouseWheelEventArgs Args(UIElement target, int delta, RoutedEvent routedEvent) => new(
+            Mouse.PrimaryDevice, Environment.TickCount, delta)
         {
-            var candidate = Path.Combine(dir.FullName, "src", "YuLiangToolkit.Core", "Mvvm", "ScrollChaining.cs");
-            if (File.Exists(candidate)) return File.ReadAllText(candidate);
-            dir = dir.Parent;
+            RoutedEvent = routedEvent,
+            Source = target,
+        };
+
+        var preview = Args(target, delta, UIElement.PreviewMouseWheelEvent);
+        target.RaiseEvent(preview);
+        if (preview.Handled)
+        {
+            Settle(window);
+            return true;
+        }
+
+        var bubble = Args(target, delta, UIElement.MouseWheelEvent);
+        target.RaiseEvent(bubble);
+        Settle(window);
+        return bubble.Handled;
+    }
+
+    private static T? FindChild<T>(DependencyObject? root) where T : DependencyObject
+    {
+        if (root is null) return null;
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T hit) return hit;
+            var deeper = FindChild<T>(child);
+            if (deeper is not null) return deeper;
         }
         return null;
     }

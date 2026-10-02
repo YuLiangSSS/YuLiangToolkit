@@ -38,6 +38,11 @@ FlashPlayer.exe
 # 而且不是本项目的一部分，所以不入库。
 FlashGameDownloader/
 
+# 移植「osu! 下图器」时参考的原版 WinForms 小项目（源代码放在仓库根，不是本项目的一部分）：
+# 里面还有 bin/obj/publish 一堆二进制，不入库；已经移植进 src/YuLiangToolkit.Tools.MapDownloader/。
+# 想让它进版本库就删掉这条（或 git add -f）。
+MapDownloader/
+
 # ================= 杂项 =================
 *.tmp
 *.log

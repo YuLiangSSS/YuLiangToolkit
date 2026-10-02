@@ -1,0 +1,81 @@
+{
+  "protocol": "YuLiangToolkit.ChatRoom",
+  "magic": "YLTCHAT1",
+  "version": 1,
+  "transport": "TCP（一条控制连接发消息，每个文件另开一条数据连接；两端都可能是主机或客户端）",
+  "frame": {
+    "note": "每个包 = 4 字节小端长度前缀 + JSON 头 + 裸载荷。长度前缀只数 JSON 头自己的字节数（不含前缀，也不含载荷）。",
+    "lengthPrefixBytes": 4,
+    "lengthPrefixEndian": "little",
+    "lengthPrefixMeans": "JSON 头的字节数",
+    "headerEncoding": "UTF-8",
+    "maxHeaderBytes": 262144,
+    "maxPayloadBytes": 4194304
+  },
+  "headerFields": {
+    "kind": "包类型，见 kinds",
+    "from": "发送方成员 Id（握手前为空）",
+    "frame": "本条包自己的唯一 Id",
+    "replyTo": "回应哪个 frame（Pong / TransferDone 用）",
+    "payload": "载荷字节数（文件数据包用它做进度条）",
+    "extra": "随类型而变的附加 JSON（见 kinds 里的 extra）"
+  },
+  "kinds": {
+    "Hello": {
+      "dir": "双向（客户端先发，主机随后回）",
+      "payload": "0",
+      "extra": "{ magic, protocolVersion, role: Host|Client, memberId, name, emoji, appVersion, listenPort? }"
+    },
+    "Welcome": {
+      "dir": "主机 → 客户端",
+      "payload": "0",
+      "extra": "{ memberId（主机给你定的 Id）, sessionName, hostName, members: [...] }"
+    },
+    "Ping": { "dir": "双向", "payload": "0", "extra": "{}" },
+    "Pong": { "dir": "双向", "payload": "0", "extra": "{ latencyMs }" },
+    "Text": {
+      "dir": "双向（主机负责转发给其它人）",
+      "payload": "UTF-8 文本",
+      "extra": "{ messageId, sentAtUtc, sentLocal, member: {...} }"
+    },
+    "System": {
+      "dir": "双向",
+      "payload": "0",
+      "extra": "{ text, messageId, sentAtUtc, member: {...} }",
+      "note": "加入 / 离开 / 被移出 / 流量到顶 之类的通知"
+    },
+    "Members": {
+      "dir": "双向",
+      "payload": "0",
+      "extra": "{ members: [ { memberId, name, emoji, role, endpoint } ] }",
+      "note": "有人进出时重发一次完整名单"
+    },
+    "Kick": { "dir": "主机 → 客户端", "payload": "0", "extra": "{ memberId, reason }" },
+    "TransferStart": {
+      "dir": "开数据连接的一方 → 接收方",
+      "payload": "0",
+      "extra": "{ transferId, fileName, sizeBytes, contentKind, kindLabel, sha256, crc32, messageId, note, sentAtUtc }",
+      "note": "后面紧跟一条数据连接，头之后就是裸文件字节"
+    },
+    "TransferDone": {
+      "dir": "接收方 → 发送方",
+      "payload": "0",
+      "extra": "{ transferId, ok, error, savedAs }"
+    },
+    "TransferCancel": { "dir": "双向", "payload": "0", "extra": "{ transferId, error }" },
+    "Bye": { "dir": "双向", "payload": "0", "extra": "{ reason }" }
+  },
+  "flow": {
+    "1": "客户端 connect(主机 IP:端口) → 发 Hello",
+    "2": "主机校验 magic/版本 → 回 Hello + Welcome（定成员 Id、告诉你会话文件夹名）",
+    "3": "之后双方都能发 Text / System / Members / Ping；主机把 Text 转发给其它成员",
+    "4": "要发文件时：先在该连接的 TransferStart，再另开一条 TCP 连接，写同一份 TransferStart 头 + 裸字节",
+    "5": "接收方落盘到会话文件夹的子目录（images/audio/video/files），回 TransferDone(ok)",
+    "6": "任何一端随时可发 Bye 并关闭；主机收到就把它从名单里去掉并通知其它人"
+  },
+  "traffic": {
+    "note": "单次流量上限：主机与客户端各自统计“本端收发合计”并各自限流，谁到顶谁停止发送（一条 System 提示对方）",
+    "counted": "文件裸字节 + 文本/图片预览载荷 + 包头（包头很小，也计入，免得算不准）",
+    "checkedBefore": "发文件前先用剩余额度预检，超了就根本不开数据连接"
+  }
+}

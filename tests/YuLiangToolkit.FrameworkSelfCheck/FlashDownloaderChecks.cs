@@ -824,7 +824,17 @@ internal static class FlashDownloaderChecks
         using var site = new FakeGameSite();
         if (!site.Started)
         {
-            report("自检用的假游戏站能启动（本地 HTTP 服务器）", false);
+            if (!System.Net.HttpListener.IsSupported)
+            {
+                // 环境不支持 HttpListener（HTTP.SYS 不可用：某些受限沙箱 / 精简系统就是这样），
+                // 整个「真下载」分组直接跳过。**不算失败**——它验的是下载逻辑，不是本机能不能开 HTTP 服务。
+                check("跳过整组「真下载」自检：当前环境不支持 HttpListener（HttpListener.IsSupported=False）",
+                    true, "本机 HTTP.SYS 不可用");
+                return;
+            }
+            // 支持却起不来，那就是真问题：把原因打出来
+            check("自检用的假游戏站能启动（本地 HTTP 服务器）", false,
+                $"最近一次失败：{site.Error}（单独试 10999：{ProbeListener()}）");
             return;
         }
 
@@ -1043,7 +1053,8 @@ internal static class FlashDownloaderChecks
 
     private static string NewDir(string name)
     {
-        var dir = Path.Combine(Path.GetTempPath(), $"ylt-selfcheck-flash-{name}-{Guid.NewGuid():N}");
+        // 用 SelfCheckScratch：系统临时目录不可写的环境（受限沙箱）会自动退到自检程序旁边
+        var dir = SelfCheckScratch.MakeFile($"ylt-flash-{name}");
         Directory.CreateDirectory(dir);
         return dir;
     }
@@ -1060,7 +1071,7 @@ internal static class FlashDownloaderChecks
         public const string Auto1Body = "AUTO1-SWF";
         public const string Auto2Body = "AUTO2-SWF";
 
-        private readonly HttpListener _listener = new();
+        private HttpListener _listener = new();
 
         public int Port { get; private set; }
         public bool Started { get; private set; }
@@ -1080,20 +1091,25 @@ internal static class FlashDownloaderChecks
 
         public FakeGameSite()
         {
+            // ⚠ 每次重试都要 new 一个 HttpListener：同一个实例 Start() 失败之后再碰它（连 Prefixes 都会）
+            // 会抛 ObjectDisposedException —— .NET 在 Start 失败时就把底层 listener 释放了，
+            // 表现成「自检随机挂一条 ObjectDisposedException / 句柄无效」（本机必现，已修）。
             for (var port = 10755; port < 10820; port++)
             {
-                _listener.Prefixes.Clear();
-                _listener.Prefixes.Add($"http://localhost:{port}/");
+                var listener = new HttpListener();
+                listener.Prefixes.Add($"http://localhost:{port}/");
                 try
                 {
-                    _listener.Start();
+                    listener.Start();
+                    _listener = listener;
                     Port = port;
                     Started = true;
                     break;
                 }
                 catch (Exception ex)
                 {
-                    Error = ex.Message;
+                    Error = $"端口 {port}：{ex.GetType().Name} {ex.Message}";
+                    try { listener.Close(); } catch { }
                 }
             }
             if (Started) _ = Task.Run(LoopAsync);
@@ -1219,6 +1235,23 @@ internal static class FlashDownloaderChecks
         {
             try { _listener.Stop(); } catch { }
             try { _listener.Close(); } catch { }
+        }
+    }
+
+    /// <summary>排错用：单独试一次 HttpListener，区分「整个进程都开不了」和「这批端口开不了」。</summary>
+    private static string ProbeListener()
+    {
+        try
+        {
+            using var probe = new HttpListener();
+            probe.Prefixes.Add("http://localhost:10999/");
+            probe.Start();
+            probe.Stop();
+            return "单独试 10999 能开（那就是那几个端口的问题）";
+        }
+        catch (Exception ex)
+        {
+            return $"单独试 10999 也开不了：{ex.GetType().Name} {ex.Message}";
         }
     }
 }

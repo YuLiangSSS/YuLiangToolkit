@@ -41,11 +41,14 @@
             <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="Padding" Value="10,0" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="CaretBrush" Value="{StaticResource AccentBrush}" />
             <Setter Property="SelectionBrush" Value="{StaticResource AccentBrush}" />
+            <!-- 单行输入框的垂直居中：靠 VerticalContentAlignment，别用上下 Padding 去凑
+                 （Padding="10,7" 在 30px 高的框里会把文字顶得不居中） -->
             <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
                     <Setter Property="BorderBrush" Value="#3D4A5E" />
@@ -322,6 +325,15 @@
             <Setter Property="Background" Value="{StaticResource InputBackgroundBrush}" />
             <Setter Property="Foreground" Value="White" />
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <!-- 边框粗细必须显式给：模板里是 TemplateBinding BorderThickness，
+                 ComboBox 默认的 BorderThickness 是 0，不给就没边框了 -->
+            <Setter Property="BorderThickness" Value="1" />
+            <!-- 高度：模板改版后，内容区**不再有**上下留白（老写法是内容 Margin="10,6"，
+                 那 12px 顺手把框撑到 ~30px）。只靠 13px 文字的自然高度，整个下拉框只有 ~20px 高，
+                 比旁边的输入框（30/32）明显矮一截 —— 就是用户报的「ComboBox 变得很小」。
+                 所以这里给默认高度：30 = 界面上输入框的通用高度。
+                 某个界面要更高/更矮，直接在用法处写 Height="32" 覆盖（局部值优先于样式）。 -->
+            <Setter Property="MinHeight" Value="30" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
@@ -329,28 +341,29 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBox">
+                        <!-- 结构照 WPF 官方那套来（**别自己凑**）：
+                             ToggleButton 在**顶层**（只画底板和箭头，负责“点一下开下拉”），
+                             只读文字 / 可编辑输入框放在它**上面**的 ToggleButton 之外，给它让出右边箭头的位置。
+                             ⚠ 曾经把 ToggleButton 改成“Opacity=0、Panel.ZIndex=-1 的整块垫底”，
+                               结果点击全被上层元素吃掉，**下拉框点都点不开**（用户报的）。别再那么改。 -->
                         <Grid>
+                            <!-- ① 底层：整块可点 + 右侧箭头。
+                                 ⚠ 这里必须显式把 Background / BorderBrush 交给 ToggleButton：
+                                   模板里不接的话，ToggleButton 会退回 WPF 默认控件底色（浅灰），
+                                   整个下拉框看着发灰发闷、跟其它输入框不是一个颜色。 -->
                             <ToggleButton x:Name="Toggle" Focusable="False" ClickMode="Press"
-                                          IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
                                           Background="{TemplateBinding Background}"
-                                          BorderBrush="{TemplateBinding BorderBrush}">
+                                          BorderBrush="{TemplateBinding BorderBrush}"
+                                          BorderThickness="{TemplateBinding BorderThickness}"
+                                          IsChecked="{Binding IsDropDownOpen, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}">
                                 <ToggleButton.Template>
                                     <ControlTemplate TargetType="ToggleButton">
                                         <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="8">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <ContentPresenter Margin="10,6" VerticalAlignment="Center"
-                                                                  TextElement.Foreground="White"
-                                                                  Content="{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}"
-                                                                  ContentTemplate="{Binding SelectionBoxItemTemplate, RelativeSource={RelativeSource AncestorType=ComboBox}}"
-                                                                  ContentStringFormat="{Binding SelectionBoxItemStringFormat, RelativeSource={RelativeSource AncestorType=ComboBox}}" />
-                                                <Path Grid.Column="1" Margin="0,0,10,0" VerticalAlignment="Center"
-                                                      Data="M 0 0 L 4 4 L 8 0 Z" Fill="{StaticResource TextSecondaryBrush}" />
-                                            </Grid>
+                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8">
+                                            <Path x:Name="Arrow" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                  Margin="0,0,11,0" Data="M 0 0 L 5 5 L 10 0 Z"
+                                                  Fill="{StaticResource TextSecondaryBrush}" />
                                         </Border>
                                         <ControlTemplate.Triggers>
                                             <Trigger Property="IsMouseOver" Value="True">
@@ -363,7 +376,32 @@
                                     </ControlTemplate>
                                 </ToggleButton.Template>
                             </ToggleButton>
+
+                            <!-- ② 只读时显示的选中项文字。
+                                 垂直居中靠 Margin="10,0" + VerticalAlignment="Center"；
+                                 **不要**写成 Margin="10,6"，那会让文字在 30px 高的框里明显偏下（看着不居中）。
+                                 它盖在 ToggleButton 上面，所以必须 IsHitTestVisible="False"，
+                                 否则点到文字上就开不了下拉。
+                                 右边留 30 = 箭头(10) + 箭头右边距(11) + 一点呼吸，文字不会压到箭头上。 -->
+                            <ContentPresenter x:Name="Display" Margin="10,0,30,0" VerticalAlignment="Center"
+                                              IsHitTestVisible="False"
+                                              TextElement.Foreground="White"
+                                              Content="{Binding SelectionBoxItem, RelativeSource={RelativeSource TemplatedParent}}"
+                                              ContentTemplate="{Binding SelectionBoxItemTemplate, RelativeSource={RelativeSource TemplatedParent}}"
+                                              ContentStringFormat="{Binding SelectionBoxItemStringFormat, RelativeSource={RelativeSource TemplatedParent}}" />
+
+                            <!-- ③ ⚠ IsEditable="True" 的 ComboBox **必须有**这个命名部件：
+                                 WPF 只把编辑区的文字放进 PART_EditableTextBox。模板里没有它，
+                                 用户选完之后框里一片空白（看起来就是“选了不显示”）。 -->
+                            <TextBox x:Name="PART_EditableTextBox" Margin="10,0,30,0" Padding="0"
+                                     Background="Transparent" BorderThickness="0"
+                                     Foreground="White" CaretBrush="{StaticResource AccentBrush}"
+                                     FontSize="{TemplateBinding FontSize}"
+                                     VerticalAlignment="Center" VerticalContentAlignment="Center"
+                                     Visibility="Collapsed" />
+
                             <Popup x:Name="PART_Popup" Placement="Bottom"
+                                   PlacementTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}"
                                    IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True"
                                    Focusable="False" PopupAnimation="Fade">
                                 <Border Background="{StaticResource CardBackgroundBrush}"
@@ -379,6 +417,14 @@
                             </Popup>
                         </Grid>
                         <ControlTemplate.Triggers>
+                            <!-- 可编辑：把只读文字换成真正的输入框 -->
+                            <Trigger Property="IsEditable" Value="True">
+                                <Setter TargetName="Display" Property="Visibility" Value="Collapsed" />
+                                <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="Toggle" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.45" />
                             </Trigger>

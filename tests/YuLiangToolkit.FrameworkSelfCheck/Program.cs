@@ -15,8 +15,7 @@ using YuLiangToolkit.Tools.BatchRename.ViewModels;
 // 自检必须跑在临时数据根里：YLT_HOME 要在任何 AppPaths 访问之前设好
 if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("YLT_HOME")))
 {
-    var tempRoot = Path.Combine(Path.GetTempPath(), $"ylt-selfcheck-{DateTime.Now:yyyyMMdd-HHmmss}");
-    Environment.SetEnvironmentVariable("YLT_HOME", tempRoot);
+    Environment.SetEnvironmentVariable("YLT_HOME", SelfCheckScratch.MakeDirectory("ylt-selfcheck"));
 }
 
 var results = new List<string>();
@@ -97,7 +96,7 @@ Check("ToolStorage 写入并列举（含子目录）", listed.Any(f => f.Relativ
     string.Join(",", listed.Select(f => f.RelativePath)));
 Check("SizeText 可读", listed.First(f => f.RelativePath.EndsWith("资源.txt")).SizeText.EndsWith("B"));
 
-var external = Path.Combine(Path.GetTempPath(), "ylt-selfcheck-external.swf");
+var external = SelfCheckScratch.MakeFile("ylt-selfcheck-external.swf");
 File.WriteAllBytes(external, new byte[] { 1, 2, 3, 4, 5 });
 var first = storage.Import(external);
 var second = storage.Import(external);
@@ -656,6 +655,33 @@ try
 catch (Exception ex)
 {
     Check($"[滚动链] 运行过程中抛出异常（{ex.GetType().Name}）", false,
+        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
+}
+
+// ---------- 联机聊天室（协议 / CRC / 流量上限 / 会话文件夹 / 回环真连一轮） ----------
+// 最后跑：这一组会真的开 TCP 监听（只绑 127.0.0.1）并写一堆临时文件。
+try
+{
+    ChatRoomChecks.Run(
+        (name, ok, detail) => Check($"[聊天室] {name}", ok, detail),
+        (name, ok) => Check($"[聊天室] {name}", ok));
+}
+catch (Exception ex)
+{
+    Check($"[聊天室] 运行过程中抛出异常（{ex.GetType().Name}）", false,
+        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
+}
+
+// ---------- osu! 下图器（查询串 / 命名 / 本地筛选 / 打自检自己起的假镜像真下载） ----------
+try
+{
+    MapDownloaderChecks.Run(
+        (name, ok, detail) => Check(name, ok, detail),
+        (name, ok) => Check(name, ok));
+}
+catch (Exception ex)
+{
+    Check($"[下图器] 运行过程中抛出异常（{ex.GetType().Name}）", false,
         $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
 }
 

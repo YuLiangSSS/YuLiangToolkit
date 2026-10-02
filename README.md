@@ -51,8 +51,10 @@ src/
 ├── YuLiangToolkit.Tools.VideoToAudio/   # 功能：视频转音频
 ├── YuLiangToolkit.Tools.BatchRename/    # 功能：批量重命名（规则清单引擎 + 两阶段改名 + 撤销）
 ├── YuLiangToolkit.Tools.FlashDownloader/# 功能：Flash 下载器（4399/7k7k/17yy + 本地服务器 + 自动补全资源）
+├── YuLiangToolkit.Tools.ChatRoom/       # 功能：联机聊天室（TCP 直连 / 内网穿透 + 传文件 + 单次流量上限）
+├── YuLiangToolkit.Tools.MapDownloader/  # 功能：osu! 下图器（搜谱面集 + 批量下 .osz，从独立小工具移植）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（355 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（501 项行为逐条验证）
 ```
 
 ## 数据与配置（Data / Config）
@@ -61,7 +63,8 @@ tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（355 项
 首次运行 exe 时自动生成，并各带一份「怎么用这两个文件夹.md」说明：
 
 * `<exe 旁边>/Data/<功能Id>/`：功能用到的资源文件（例如 Flash 下载器下载的游戏在
-  `Data/flash-downloader/games/`，播放器与播放页模板在 `Data/flash-downloader/tools/`）。
+  `Data/flash-downloader/games/`，播放器与播放页模板在 `Data/flash-downloader/tools/`；
+  osu! 下图器下回来的谱面包在 `Data/map-downloader/downloads/`）。
   代码里用 `ToolStorage.For("flash-downloader")` 读写，别自己拼路径；文件夹首次真正写入时自动创建。
 * `<exe 旁边>/Config/<功能Id>/config.json`：该功能每个选项（Checkbox / Textbox / 下拉框 / 滑块…）的值。
   在功能 ViewModel 里 `Cfg = LoadConfig<XxxConfig>()`，XAML 直接 `{Binding Cfg.Xxx}`，**改一下就自动存，不需要保存按钮**。
@@ -166,7 +169,63 @@ Data/Config 的路径与持久化全部由框架接管。也可以把编译好�
 > Flash 早就停止维护了，本工具走的是「下载游戏本体 + 本地播放器/本地服务器」的路子；
 > 遇到提示“安全沙箱错误”时，需要在 Flash 播放器里把自己的游戏文件夹加进「受信任位置」。
 
-## 第四个工具：框架示例（开发用，可删）
+## 第四个工具：联机聊天室
+
+主机开一个 TCP 端口等人连，客户端填「IP（或域名）+ 端口」就能聊 —— 局域网直连，
+外网用**端口映射 / 内网穿透工具**（frp、ngrok、花生壳…把主机那台机器的端口映射出来，把它给的
+「域名 + 端口」填进去即可；IPv6 地址也支持）。**不依赖任何第三方服务**，两端都是本程序。
+
+- **主机**：选监听地址（`0.0.0.0` = 本机所有 IPv4 网卡，推荐；`::` = 同时支持 IPv6；也可以只绑某张网卡）
+  + 端口 → 点「开房间」→ 把界面上那串地址（例如 `192.168.1.7:5200`）发给对方。
+- **客户端**：填主机地址与端口 → 「连接」。地址支持 IPv4 / IPv6（`[fe80::1]`）/ 域名，
+  也可以直接带端口（`192.168.1.7:5200`，穿透工具给的常常是这种）。
+- **能发什么**：文字、图片、音频、视频、任意文件。图片在聊天里直接显示预览（双击打开原图），
+  音频/视频能在界面里直接播；其它文件显示成一张卡片，有进度条与「打开文件 / 打开所在文件夹」。
+- **图片省流量**：发送前可以在本地先压缩（默认「长边超过 1920 像素才缩」），
+  预览图是**两端各自本地生成**的 —— 不会为了预览多花你的流量。
+- **单次流量上限**（本工具的重点之一）：一次连接最多能跑多少流量，可以设成
+  「收发合计 / 仅上传 / 仅下载」或不限制。界面上有**进度条 + 已用/剩余 + 实时收发速度**；
+  - **发送前就预检**：文件比剩余额度大 → 直接不发（不会传一半被掐断）；
+  - **到上限立刻停**：还能继续聊文字之前会被拦下，并给出提示；
+  - 快到上限会提醒，也可以让对方收到一句「本端流量到顶，暂停发送」，免得以为你掉线了。
+- **记录（Data 文件夹）**：**每开始一次连接都会新建一个以开始时刻命名的文件夹**
+  `Data\chat-room\Sessions\年份.月份.日期-时间.分钟.秒\`（例如 `2025.1.3-14.5.9`），里面是：
+  - `chat-log.jsonl`：全部消息，一行一条 JSON（文字 / 文件 / 系统提示，追加写）；
+  - `session.json`：本次抬头（开始/结束时间、身份、对端、消息条数、流量统计）；
+  - `images/` `audio/` `video/` `files/`：收到与发出的文件按大类归位（**重名自动加序号，绝不覆盖**）；
+  - `怎么用这个文件夹.md`：不想记就打开它看。
+  界面右侧的「历史记录」列出所有会话，可以一键「查看」（把那次聊天读回界面）或「文件夹」。
+- **协议**：自研的简单 TCP 协议（`4 字节长度 + JSON 头 + 裸载荷`），说明文件在
+  `Data\chat-room\Protocol\chat-protocol.json`（首次运行从程序里释放，能用记事本看）。
+- 选项在 `Config\chat-room\config.json`（昵称 / 头像 / 监听地址与端口 / 上次连的主机 / 流量上限 / 发图压缩…）。
+- 工具被切走或程序关闭时会自动断开（并在那次的记录里补上结束时间与统计）。
+
+> 一句提醒：这条连接**没有加密**（就是普通 TCP）。传敏感东西请自己在可信网络里用，
+> 或者先套一层加密通道（穿透工具的 TLS、VPN 都行）。
+
+## 第五个工具：osu! 下图器
+
+把 osu! 的谱面集（beatmap）搜出来、批量下成 `.osz`。**搜索走 osu! 官方 API，下载走第三方镜像**。
+（这个工具是从早先那个独立的小程序 `MapDownloader` 移植进来的，用法基本没变。）
+
+- **先配凭据**：去 osu! 官网的 [OAuth 应用页面](https://osu.ppy.sh/home/account/edit#oauth) 注册一个应用
+  （Client Credentials 授权），把 **Client ID** 与 **Client Secret** 填进「① API 凭据」→ 点「获取 Token」。
+  换到的 Token 存在配置里（约 24 小时有效），下次打开会自动续；勾着「打开工具时自动换 Token」就不用管它。
+- **搜索**：关键词（标题 / 艺术家 / 作者）、模式（osu! / Taiko / Catch / Mania）、状态（Ranked / Loved / …）、
+  排序（相关性 / 标题 / 艺术家 / 难度 / Ranked 时间 / 评分 / 游玩次数 / 收藏数）、是否带 NSFW。
+  - **日期范围与 Key 数（mania 的键数）是本地筛选**：接口不支持这两项，所以是拉回来之后再筛的
+    （界面上也写明了，免得以为搜不到）。
+  - 「**加载更多**」按游标取下一页；「**获取全部**」沿着游标一直取到底（再点一次 = 停止，几千条也能拉）。
+- **下载**：结果表里勾上要的那些行（或「全选」），然后四个按钮里挑一个 ——
+  「选中 / 全部」×「无视频 / 含视频」。含视频的包大得多，自己权衡。
+  文件存成 `{谱面集Id} {标题}.osz`，落在 `Data\map-downloader\downloads\`（可以换成任意目录），
+  已经在的直接跳过；**中途取消 / 断线不会留下半个坏文件**（先下 `.part` 再改名）。
+- **导进游戏**：把 `.osz` 双击（或拖进 osu! 窗口）就会自动导入，之后可以删掉原文件省地方。
+- 选项在 `Config\map-downloader\config.json`（凭据、Token、搜索条件、下载目录、并发数）。
+  > ⚠️ Client Secret 与 Token 是**明文存在这个文件里**的（跟原版一样，只适合本机自用）；
+  > 它在 `Config\` 下、已被 `.gitignore` 忽略，别把这个文件拷给别人。
+
+## 第六个工具：框架示例（开发用，可删）
 
 `src\YuLiangToolkit.Tools.Sample` 把 Data / Config 两个轮子跑给你看：
 
@@ -189,7 +248,7 @@ Data/Config 的路径与持久化全部由框架接管。也可以把编译好�
 - `YLT_SHOT=<png路径>`（可选 `YLT_SHOT_TOOL`）：渲染当前界面为 PNG 后退出，用于无头验证 UI
   （注意：截图里内容区顶部会有淡淡的重复标题残影，是 `RenderTargetBitmap` 截图时机的老毛病，不是界面 bug）；
 - `YLT_HOME=<目录>`：覆盖数据根目录（Data/Config 的父目录），测试时用来隔离；
-- 轮子自检（355 项行为，退出码 0 = 全通过；其中 Flash 下载器那部分会自己起一个本地假游戏站跑真下载，不访问外网）：
+- 轮子自检（501 项行为，退出码 0 = 全通过；其中 Flash 下载器那部分会自己起一个本地假游戏站跑真下载，联机聊天室那部分会在 127.0.0.1 上真开一局，滚轮滚动链那部分会造真结构扔真事件，osu! 下图器那部分会自己起一个假镜像真下载 .osz，都不访问外网）：
 
   ```powershell
   dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj

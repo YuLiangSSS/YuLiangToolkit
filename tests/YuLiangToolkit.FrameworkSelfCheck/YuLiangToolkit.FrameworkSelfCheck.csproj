@@ -22,6 +22,12 @@
     <!-- 「Flash 下载器」：站点解析 / 命名规则 / SWFNetPath.ini / 批量下载计划 / 本地服务器路径映射
          / 真下载（打自检自己起的小 HTTP 服务器）/ 自动下载缺失文件，全部无头跑。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.FlashDownloader\YuLiangToolkit.Tools.FlashDownloader.csproj" />
+    <!-- 「联机聊天室」：协议帧 / CRC32 / 单次流量上限 / 会话文件夹命名与聊天记录
+         / 真的在 127.0.0.1 上开一局主机 + 客户端聊一轮（双向文字与文件）。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.ChatRoom\YuLiangToolkit.Tools.ChatRoom.csproj" />
+    <!-- 「osu! 下图器」：查询串 / 文件名清洗 / 本地日期与 Key 数筛选 / 配置轮子
+         / 打自检自己起的假镜像真下载（跳过已存在、404 计失败、取消不留半个文件）。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.MapDownloader\YuLiangToolkit.Tools.MapDownloader.csproj" />
   </ItemGroup>
 
 </Project>
