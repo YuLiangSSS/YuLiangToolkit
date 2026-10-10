@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net.Sockets;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Input;
@@ -30,37 +31,35 @@ public sealed partial class ChatRoomViewModel
         {
             Cfg.LastRole = ChatRole.Host;
             Notice("正在开房间…");
-            Log($"开始监听 {ListenAddress}:{ListenPort}");
 
-            _meter = new TrafficMeter(Cfg.TrafficLimitBytes, Cfg.TrafficScope);
-            _warned = false;
-            _session = new ChatRoomSession(ChatRoomConfig.ToolId, Cfg.EffectiveNickname, Cfg.Emoji, _meter, _store);
-            WireSession(_session);
+            // 傻瓜模式：地址和端口都由工具挑（用户一个都不用填）；关掉它才用界面上那些输入框。
+            var plan = BuildListenPlan();
+            Log($"开始监听 {plan.Address}:{plan.Port} —— {plan.Reason}");
 
-            var error = await _session.StartHostAsync(ListenAddress, ListenPort);
-            if (error.Length > 0)
+            var started = await TryStartHostAsync(plan.Address, plan.Port);
+            if (!started && plan.DualStack)
             {
-                Notice($"开房间失败：{error}", ChatNoticeLevel.Error);
-                Log($"✗ {error}");
-                await TeardownSessionAsync();
-                return;
+                // 极少数机器 / 安全软件不让绑 IPv6 通配地址。傻瓜模式的目标是「点一下一定能开起来」，
+                // 所以退回只用 IPv4 再试一次，而不是直接把错误甩给用户。
+                Log("双栈监听没成功，退回只用 IPv4（0.0.0.0）再试一次");
+                started = await TryStartHostAsync("0.0.0.0", plan.Port);
             }
+            if (!started) return;
 
+            var session = _session!;
             ApplyTrafficSettings();
             OnPropertyChanged(nameof(IsHost));
             // ⚠ 顺序要紧：先把 IsOnline 置起来再算摘要 —— UpdateConnectionSummary 靠 IsOnline 判断
             // “到底是没连上、还是连着但还没人进来”，反了就永远显示「未监听」（截图里踩过）。
             IsOnline = true;
             UpdateConnectionSummary();
-            Cfg.RememberSession(_session.SessionName);
+            RebuildShareInfo();          // ← 把本机 IPv4 / IPv6 + 端口摊在界面上（内网穿透要照着填）
+            Cfg.RememberSession(session.SessionName);
             RefreshHistory();
-            Log($"✓ 房间已开：监听 {_session.ListenText}");
-            Log($"  本次记录文件夹：{_session.SessionDirectory}");
-            if (LanAddress.Length > 0)
-                Log($"  告诉对方填：{LanAddress}:{_session.Host?.EndPoint?.Port ?? ListenPort}");
-            else
-                Log("  没检测到局域网地址（可能没连网卡）；外网请用内网穿透工具给的地址");
-            AddSystemMessage($"房间已开（监听 {_session.ListenText}）。把地址告诉对方：{AdvertiseText()}");
+            Log($"✓ 房间已开：监听 {session.ListenText}");
+            Log($"  本次记录文件夹：{session.SessionDirectory}");
+            LogShareInfo();
+            AddSystemMessage($"房间已开（监听 {session.ListenText}）。把地址告诉对方：{AdvertiseText()}");
             AddSystemMessage("对方连上后会出现在「房间成员」里。");
         }
         finally
@@ -68,6 +67,34 @@ public sealed partial class ChatRoomViewModel
             IsBusy2 = false;
             CommandManager.InvalidateRequerySuggested();
         }
+    }
+
+    /// <summary>
+    /// 这一次要按哪个「地址 + 端口」开监听。
+    /// 傻瓜模式走 <see cref="ChatProtocol.ChooseSimpleListenPlan"/>（双栈 + 空闲端口）；
+    /// 关掉傻瓜模式就用界面上填的那两个值，跟以前完全一样。
+    /// </summary>
+    private ChatProtocol.SimpleListenPlan BuildListenPlan()
+        => Cfg.SimpleMode
+            ? ChatProtocol.ChooseSimpleListenPlan(Cfg.ListenPort, Socket.OSSupportsIPv6, ChatProtocol.IsPortAvailable)
+            : new ChatProtocol.SimpleListenPlan(ListenAddress, ListenPort, false, "按界面上填的地址与端口监听");
+
+    /// <summary>按一个具体的地址 + 端口开房间。失败时已经把这次会话拆干净了，调用方可以直接换一组再试。</summary>
+    /// <returns>开起来了没有。</returns>
+    private async Task<bool> TryStartHostAsync(string listenAddress, int port)
+    {
+        _meter = new TrafficMeter(Cfg.TrafficLimitBytes, Cfg.TrafficScope);
+        _warned = false;
+        _session = new ChatRoomSession(ChatRoomConfig.ToolId, Cfg.EffectiveNickname, Cfg.Emoji, _meter, _store);
+        WireSession(_session);
+
+        var error = await _session.StartHostAsync(listenAddress, port);
+        if (error.Length == 0) return true;
+
+        Notice($"开房间失败：{error}", ChatNoticeLevel.Error);
+        Log($"✗ {error}");
+        await TeardownSessionAsync();
+        return false;
     }
 
     /// <summary>连主机（客户端）：新建会话文件夹 + 连接 + 握手。</summary>
@@ -154,6 +181,7 @@ public sealed partial class ChatRoomViewModel
         MemberItems.Clear();
         UpdateMembersPlaceholder();
         UpdateConnectionSummary();
+        RebuildShareInfo();     // 房间关了就把「连接信息」收起来（端口也没了）
         RefreshStatus();
     }
 
@@ -519,6 +547,107 @@ public sealed partial class ChatRoomViewModel
             ? (LanAddress.Length > 0 ? LanAddress : "（用 ipconfig 查本机 IPv4）")
             : ListenAddress.Trim('[', ']');
         return $"{address}:{port}";
+    }
+
+    // ---------------------------------------------------------------- 连接信息面板
+
+    /// <summary>
+    /// 重建「连接信息」：把本机每个能报出去的地址拼上端口，IPv4 / IPv6 分两组。
+    ///
+    /// <para>只在开完房间 / 断开时调一次 —— 它会枚举网卡，别放进每秒刷新的那条路径。</para>
+    ///
+    /// <para><b>为什么不把地址藏起来</b>：内网穿透工具要照着填「本地端口」，
+    /// 关掉傻瓜模式也还要知道该把哪个 IP 发出去，所以这里一个都不省。</para>
+    /// </summary>
+    private void RebuildShareInfo()
+    {
+        ShareIpv4Rows.Clear();
+        ShareIpv6Rows.Clear();
+
+        var port = _session?.Host?.EndPoint?.Port ?? 0;
+        var boundAddress = _session?.Host?.EndPoint?.Address;
+        var hosting = IsOnline && IsHost && port > 0;
+        // 只绑了 127.0.0.1（或 ::1）时，列出局域网地址是**错的**：别人根本连不进来。
+        var loopbackOnly = boundAddress is not null && System.Net.IPAddress.IsLoopback(boundAddress);
+
+        if (hosting && !loopbackOnly)
+        {
+            foreach (var address in ChatProtocol.ListShareAddresses())
+            {
+                var row = new ShareEndpointRow(
+                    ChatProtocol.WithPort(address.Text, port),
+                    address.Family,
+                    address.Interface,
+                    address.IsRecommended,
+                    InterfaceNote(address.Interface));
+                (address.Family == "IPv6" ? ShareIpv6Rows : ShareIpv4Rows).Add(row);
+            }
+        }
+
+        LocalPortText = port > 0 ? port.ToString() : "";
+        var dualStack = _session?.IsDualStack == true;
+        ListenModeText = !hosting ? ""
+            : loopbackOnly ? $"本机端口 {port}　只监听本机（127.0.0.1）：别的机器连不进来，只适合自己测功能"
+            : $"本机端口 {port}　{(dualStack ? "双栈监听：IPv4 与 IPv6 都能连进来" : "只监听 IPv4")}";
+
+        // 没有可用 IPv6 就直说（用户要的就是这个：别让他以为是自己填错了）。
+        // 但只绑回环时不说这句 —— 那不是「网络没有」，是「我们没往外开」。
+        Ipv6NoticeText = hosting && !loopbackOnly && ShareIpv6Rows.Count == 0 ? ChatProtocol.NoIpv6Text : "";
+        ShareNoticeText = !hosting ? ""
+            : loopbackOnly
+                ? "这次只绑了本机地址，所以没有局域网地址可发 —— 想联机请把「监听」改成 0.0.0.0（或直接勾上傻瓜模式）。"
+                : ShareIpv4Rows.Count == 0 && ShareIpv6Rows.Count == 0
+                    ? "没探测到可用的本机地址（可能没连网）—— 可以用 ipconfig 看一眼，或改用内网穿透工具给的地址。"
+                    : "";
+        PunchHintText = port > 0
+            ? $"内网穿透：穿透工具里的「本地端口 / 内网端口」填 {port}，"
+              + "然后把工具给你的「域名:端口」原样发给对方（那组地址不用你改）。"
+            : "";
+
+        OnPropertyChanged(nameof(HasShareInfo));
+        OnPropertyChanged(nameof(HasIpv4Rows));
+        OnPropertyChanged(nameof(HasIpv6Rows));
+        OnPropertyChanged(nameof(Ipv6NoticeText));
+        OnPropertyChanged(nameof(ShareNoticeText));
+        OnPropertyChanged(nameof(LocalPortText));
+        OnPropertyChanged(nameof(ListenModeText));
+        OnPropertyChanged(nameof(PunchHintText));
+    }
+
+    /// <summary>把连接信息写进日志（截图 / 排错时不用去猜界面上显示了什么）。</summary>
+    private void LogShareInfo()
+    {
+        if (LocalPortText.Length == 0) return;
+        Log($"  本机端口：{LocalPortText}（内网穿透的「本地端口」填它）");
+        Log($"  {ListenModeText}");
+        if (ShareNoticeText.Length > 0) Log($"  {ShareNoticeText}");
+        foreach (var row in ShareIpv4Rows) Log($"  IPv4：{row.Text}　{row.DetailText}");
+        if (ShareIpv6Rows.Count > 0)
+        {
+            foreach (var row in ShareIpv6Rows) Log($"  IPv6：{row.Text}　{row.DetailText}");
+        }
+        else if (Ipv6NoticeText.Length > 0)
+        {
+            Log($"  {Ipv6NoticeText}");
+        }
+        Log($"  {PunchHintText}");
+    }
+
+    /// <summary>虚拟网卡上那一行小字提示（对方多半连不上，先说清楚免得白试）。</summary>
+    private static string InterfaceNote(string interfaceName)
+    {
+        var name = interfaceName;
+        foreach (var virtualAdapter in new[] { "VMware", "VirtualBox", "Hyper-V", "WSL" })
+        {
+            if (name.Contains(virtualAdapter, StringComparison.OrdinalIgnoreCase))
+                return "虚拟网卡，别的机器多半连不上";
+        }
+        foreach (var overlay in new[] { "Radmin", "ZeroTier", "Tailscale", "Hamachi" })
+        {
+            if (name.Contains(overlay, StringComparison.OrdinalIgnoreCase))
+                return "虚拟局域网，装了同款工具的机器才能连";
+        }
+        return "";
     }
 
     private void RefreshStatus()

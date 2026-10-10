@@ -83,7 +83,7 @@ public sealed partial class GameEntry
     public string SiteText => Appendix.Length > 0 ? GameSites.DisplayName(Site) : "—";
 
     /// <summary>
-    /// 站点排序键：4399 → 7k7k → 17yy → 其它。
+    /// 站点排序键：4399 → 7k7k → 17yy → ArmorGames → Kongregate → 其它。
     /// 不能拿 <see cref="SiteText"/> 直接排——那会按中文字符串比，
     /// 「7k7k」会跑到「4399」前面（自检里就是这么发现的）。
     /// </summary>
@@ -92,6 +92,8 @@ public sealed partial class GameEntry
         GameSite.Site4399 => 1,
         GameSite.Site7k7k => 2,
         GameSite.Site17yy => 3,
+        GameSite.SiteArmorGames => 4,
+        GameSite.SiteKongregate => 5,
         _ => 9,
     };
 

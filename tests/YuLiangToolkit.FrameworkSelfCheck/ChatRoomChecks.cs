@@ -40,6 +40,8 @@ public static class ChatRoomChecks
             CheckTrafficMeter(check, plain);
             CheckNaming(plain);
             CheckSessionFolder(check, plain, scratch);
+            CheckSimpleMode(check, plain);
+            CheckDualStack(check, plain, scratch);
             CheckLoopback(check, plain, scratch);
         }
         finally
@@ -321,6 +323,158 @@ public static class ChatRoomChecks
             reloaded is { EndedAt: not null, MessageCount: 3, SentBytes: 4096, ReceivedBytes: 8192 }, "");
         plain("列表摘要带上身份与消息数",
             reloaded!.SummaryText.Contains("主机") && reloaded.SummaryText.Contains("3 条消息"));
+    }
+
+    // ---------------------------------------------------------------- 傻瓜模式（自动挑监听 + 地址显示）
+
+    /// <summary>
+    /// 傻瓜模式的两件事：**工具自己挑监听地址与端口**（纯逻辑，探测函数换成假的来断言），
+    /// 以及**开完房间要能报出本机 IPv4 / IPv6**（地址枚举是真枚举网卡）。
+    /// </summary>
+    private static void CheckSimpleMode(Action<string, bool, string> check, Action<string, bool> plain)
+    {
+        // ---- 端口探测（真绑一次） ----
+        var free = FindFreePort();
+        check("端口探测：空闲端口返回 true", ChatProtocol.IsPortAvailable("0.0.0.0", free), free.ToString());
+
+        var holder = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Any, 0);
+        holder.Start();
+        var busy = ((System.Net.IPEndPoint)holder.LocalEndpoint).Port;
+        check("端口探测：被占用的端口返回 false（探测时故意不设 SO_REUSEADDR，否则 Windows 会“抢”端口）",
+            !ChatProtocol.IsPortAvailable("0.0.0.0", busy), busy.ToString());
+        holder.Stop();
+
+        plain("端口探测：非法端口一律 false",
+            !ChatProtocol.IsPortAvailable("0.0.0.0", 0) && !ChatProtocol.IsPortAvailable("0.0.0.0", 70000));
+
+        // ---- 傻瓜模式挑方案：探测函数换成假的，纯逻辑逐条断言 ----
+        var alwaysFree = new Func<string, int, bool>((_, _) => true);
+        var neverFree = new Func<string, int, bool>((_, _) => false);
+
+        var withV6 = ChatProtocol.ChooseSimpleListenPlan(5200, true, alwaysFree);
+        check("傻瓜模式：支持 IPv6 时监听 ::（双栈）并沿用上次的端口",
+            withV6 is { Address: "::", Port: 5200, DualStack: true }, withV6.Reason);
+
+        var busyPlan = ChatProtocol.ChooseSimpleListenPlan(5200, true, neverFree);
+        check("傻瓜模式：端口被占就改成让系统挑一个（0），地址仍然是双栈",
+            busyPlan is { Address: "::", Port: 0, DualStack: true } && busyPlan.Reason.Contains("占用"), busyPlan.Reason);
+
+        var noV6Plan = ChatProtocol.ChooseSimpleListenPlan(5200, false, alwaysFree);
+        check("傻瓜模式：本机不支持 IPv6 时退回 0.0.0.0，并且不再是双栈",
+            noV6Plan is { Address: "0.0.0.0", Port: 5200, DualStack: false }, noV6Plan.Reason);
+
+        var weirdPlan = ChatProtocol.ChooseSimpleListenPlan(80, true, alwaysFree);
+        check("傻瓜模式：端口不在 1024~65535 就不硬用（改成让系统挑）", weirdPlan.Port == 0, weirdPlan.Reason);
+        plain("傻瓜模式：上次没设过端口（0）也是让系统挑",
+            ChatProtocol.ChooseSimpleListenPlan(0, true, alwaysFree).Port == 0);
+
+        // ---- 地址枚举：开完房间要报给用户的东西 ----
+        var addresses = ChatProtocol.ListShareAddresses();
+        plain("地址列表：只可能是 IPv4 / IPv6 两族", addresses.All(a => a.Family is "IPv4" or "IPv6"));
+        plain("地址列表：不含回环 / 自动私有地址 / IPv6 链路本地（报了对方也连不上）",
+            addresses.All(IsAddressWorthSharing));
+
+        var list = addresses.ToList();
+        var firstV6 = list.FindIndex(a => a.Family == "IPv6");
+        var lastV4 = list.FindLastIndex(a => a.Family == "IPv4");
+        plain("地址列表：IPv4 全部排在 IPv6 前面", firstV6 < 0 || lastV4 < 0 || lastV4 < firstV6);
+        plain("地址列表：每族最多只有一个「推荐」",
+            list.Count(a => a is { Family: "IPv4", IsRecommended: true }) <= 1
+            && list.Count(a => a is { Family: "IPv6", IsRecommended: true }) <= 1);
+        check("「有没有可用 IPv6」和地址列表一致（界面那句「当前网络没有 IPv6」靠它）",
+            ChatProtocol.HasUsableIPv6 == list.Any(a => a.Family == "IPv6"),
+            $"IPv6 {list.Count(a => a.Family == "IPv6")} 个 / IPv4 {list.Count(a => a.Family == "IPv4")} 个");
+
+        // ---- 拼端口（界面上一行一个「地址:端口」） ----
+        check("拼端口：IPv4 / 带方括号的 IPv6 / 裸 IPv6 都能拼",
+            ChatProtocol.WithPort("192.168.1.7", 5200) == "192.168.1.7:5200"
+            && ChatProtocol.WithPort("[2409::1]", 5200) == "[2409::1]:5200"
+            && ChatProtocol.WithPort("2409::1", 5200) == "[2409::1]:5200"
+            && ChatProtocol.WithPort("", 5200) == "",
+            ChatProtocol.WithPort("2409::1", 5200));
+
+        plain("「当前网络没有 IPv6」那句话是给人看的（不是空串）", ChatProtocol.NoIpv6Text.Contains("没有 IPv6"));
+    }
+
+    /// <summary>这个地址值不值得报给对方（独立实现一遍，别拿被测代码自己验自己）。</summary>
+    private static bool IsAddressWorthSharing(ChatProtocol.ShareAddress address)
+    {
+        var text = address.Text.Trim('[', ']');
+        if (!System.Net.IPAddress.TryParse(text, out var ip)) return false;
+        if (System.Net.IPAddress.IsLoopback(ip)) return false;
+        if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+            return !text.StartsWith("169.254.");
+        return !ip.IsIPv6LinkLocal && !ip.IsIPv6Multicast && !ip.IsIPv6SiteLocal;
+    }
+
+    // ---------------------------------------------------------------- 双栈监听（同一个端口收两族）
+
+    /// <summary>
+    /// 回归断言：绑 <c>::</c> 时**必须显式开双栈**。
+    ///
+    /// <para>Windows 上 IPv6 通配地址默认 <c>IPV6_V6ONLY=1</c>（只收 IPv6），.NET 的
+    /// <see cref="System.Net.Sockets.TcpListener"/> 不会替我们打开 —— 不设 <c>DualMode</c>，
+    /// 绑了 <c>::</c> 之后 IPv4 客户端**一个都连不进来**，而界面上还写着「IPv4 与 IPv6 都能连」。
+    /// 傻瓜模式默认就走双栈，所以这条必须有断言兜着（改回不设 DualMode 会立刻红）。</para>
+    /// </summary>
+    private static void CheckDualStack(Action<string, bool, string> check, Action<string, bool> plain, string scratch)
+    {
+        if (!System.Net.Sockets.Socket.OSSupportsIPv6)
+        {
+            check("跳过「双栈监听」整组自检：本机不支持 IPv6", true, "Socket.OSSupportsIPv6 = false");
+            return;
+        }
+
+        Exception? failure = null;
+        var notes = new List<string>();
+
+        var worker = Task.Run(async () =>
+        {
+            try { await RunDualStackAsync(check, notes).ConfigureAwait(false); }
+            catch (Exception ex) { failure = ex; }
+        });
+
+        if (!worker.Wait(TimeSpan.FromSeconds(60)))
+            failure = new TimeoutException("双栈自检 60 秒没跑完（多半卡在连接上了）");
+
+        check("双栈自检整体跑完没有抛异常", failure is null,
+            failure is null ? string.Join("；", notes) : $"{failure.GetType().Name}: {failure.Message}");
+    }
+
+    private static async Task RunDualStackAsync(Action<string, bool, string> check, List<string> notes)
+    {
+        var port = FindFreePort();
+        var store = new ChatSessionStore(ChatRoomConfig.ToolId);
+
+        var host = new ChatRoomSession(ChatRoomConfig.ToolId, "双栈主机", "🐟",
+            new TrafficMeter(0, TrafficQuotaScope.Off), store);
+        var overV4 = new ChatRoomSession(ChatRoomConfig.ToolId, "IPv4 客户端", "🐻",
+            new TrafficMeter(0, TrafficQuotaScope.Off), store);
+        var overV6 = new ChatRoomSession(ChatRoomConfig.ToolId, "IPv6 客户端", "🐼",
+            new TrafficMeter(0, TrafficQuotaScope.Off), store);
+
+        try
+        {
+            var startError = await host.StartHostAsync("::", port).ConfigureAwait(false);
+            check("主机能在 :: 上开双栈监听（傻瓜模式的默认姿势）",
+                startError.Length == 0 && host.IsDualStack, startError.Length > 0 ? startError : host.ListenText);
+            notes.Add($"监听 {host.ListenText}，双栈={host.IsDualStack}");
+
+            var v4Error = await overV4.ConnectAsync("127.0.0.1", port).ConfigureAwait(false);
+            check("同一个端口：IPv4 客户端（127.0.0.1）连得进来", v4Error.Length == 0 && overV4.IsOnline, v4Error);
+
+            var v6Error = await overV6.ConnectAsync("::1", port).ConfigureAwait(false);
+            check("同一个端口：IPv6 客户端（::1）也连得进来", v6Error.Length == 0 && overV6.IsOnline, v6Error);
+
+            await WaitAsync(() => host.ClientCount == 2, 5000).ConfigureAwait(false);
+            check("两族客户端都出现在主机的成员名单里", host.ClientCount == 2, host.ClientCount.ToString());
+        }
+        finally
+        {
+            try { await overV6.DisposeAsync().ConfigureAwait(false); } catch { }
+            try { await overV4.DisposeAsync().ConfigureAwait(false); } catch { }
+            try { await host.DisposeAsync().ConfigureAwait(false); } catch { }
+        }
     }
 
     // ---------------------------------------------------------------- 真的连一轮（回环）

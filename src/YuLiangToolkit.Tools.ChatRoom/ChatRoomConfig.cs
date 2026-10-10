@@ -56,6 +56,16 @@ public sealed class ChatRoomConfig : ToolConfig
     /// <summary>监听端口（填 0 = 让系统随便挑一个空闲端口）。</summary>
     public int ListenPort { get; set; } = 5200;
 
+    /// <summary>
+    /// 傻瓜模式（默认开）：不让用户填监听地址与端口，工具自己挑
+    /// （优先双栈 <c>::</c> + 上次那个端口，占了就换一个空闲的），
+    /// 开完房间直接把「本机 IPv4 / IPv6 + 端口」摊在界面上。
+    ///
+    /// <para>注意：<b>不是把 IP 和端口藏起来</b>——内网穿透工具要照着填本机端口，
+    /// 所以只是不让用户「选」，该显示的一个都不少。</para>
+    /// </summary>
+    public bool SimpleMode { get; set; } = true;
+
     // ---------------------------------------------------------------- 客户端
 
     /// <summary>要连的主机地址：IPv4 / IPv6 / 域名都可以；也可以带端口（<c>1.2.3.4:5200</c>）。</summary>

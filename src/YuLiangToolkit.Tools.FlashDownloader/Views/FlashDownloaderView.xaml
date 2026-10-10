@@ -23,7 +23,7 @@
                 <StackPanel>
                     <TextBlock Text="⚡ Flash 下载器" FontSize="21" FontWeight="SemiBold" />
                     <TextBlock FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
-                               Text="支持 4399 / 7k7k / 17yy：粘贴游戏页网址 → 下载成 swf 或网页版 → 用 Flash 独立播放器 / 本地服务器离线玩。多文件游戏用「关联文件下载器」把缺的文件补进来。" />
+                               Text="支持 4399 / 7k7k / 17yy / ArmorGames / Kongregate：粘贴游戏页网址 → 下载成 swf 或网页版 → 用 Flash 独立播放器 / 本地服务器离线玩。多文件游戏用「关联文件下载器」把缺的文件补进来。" />
                 </StackPanel>
                 <Border Grid.Column="1" Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Padding="12,8"
                         VerticalAlignment="Top" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
@@ -47,10 +47,14 @@
                         <TextBlock Text="游戏 URL" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
                         <TextBox x:Name="UrlBox" Grid.Column="1" Style="{StaticResource TextBoxStyle}"
                                  Text="{Binding GameUrl, UpdateSourceTrigger=PropertyChanged}"
-                                 ToolTip="例：https://www.4399.com/flash/6853.htm ；7k7k / 17yy 的游戏页网址也可以" />
+                                 ToolTip="例：https://www.4399.com/flash/6853.htm ；7k7k / 17yy / ArmorGames / Kongregate 的游戏页网址也可以" />
                     </Grid>
 
-                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                    <!-- 主按钮 + 站点快捷入口。⚠ 用 WrapPanel 而不是横向 StackPanel：
+                         窗口拉到最窄（MainWindow 的 MinWidth = 1024）时这一排会放不下，
+                         StackPanel 会直接把「打开游戏目录」挤出可视区（加 ArmorGames / Kongregate
+                         两个按钮之后就会发生），WrapPanel 会自动折到第二行。 -->
+                    <WrapPanel Margin="0,12,0,0">
                         <Button x:Name="DownloadAndPlayButton" Content="下载并游玩" Style="{StaticResource PrimaryButtonStyle}"
                                 Command="{Binding DownloadAndPlayCommand}"
                                 IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
@@ -63,9 +67,13 @@
                                 Command="{Binding OpenSiteCommand}" CommandParameter="https://www.7k7k.com/" />
                         <Button Content="17yy" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
                                 Command="{Binding OpenSiteCommand}" CommandParameter="http://www.17yy.com/" />
+                        <Button Content="ArmorGames" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                Command="{Binding OpenSiteCommand}" CommandParameter="https://armorgames.com/" />
+                        <Button Content="Kongregate" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                Command="{Binding OpenSiteCommand}" CommandParameter="https://www.kongregate.com/" />
                         <Button Content="打开游戏目录" Style="{StaticResource SecondaryButtonStyle}" Margin="24,0,0,0"
                                 Command="{Binding OpenGamesFolderCommand}" />
-                    </StackPanel>
+                    </WrapPanel>
 
                     <!-- 状态栏 1：找到的 SWF 路径 -->
                     <TextBox Style="{StaticResource LogTextBoxStyle}" Margin="0,12,0,0" MaxHeight="52"
@@ -139,7 +147,7 @@
                             <Grid Grid.Column="0">
                                 <TextBox x:Name="GameSearchBox" Height="32" Style="{StaticResource TextBoxStyle}"
                                          Text="{Binding GameSearchText, UpdateSourceTrigger=PropertyChanged}"
-                                         ToolTip="按名字 / 站点后缀 / 4399 / 网页 搜索；空格分隔多个关键词（需同时命中）；Esc 清空" />
+                                         ToolTip="按名字 / 站点后缀 / 4399 / ArmorGames / 网页 搜索；空格分隔多个关键词（需同时命中）；Esc 清空" />
                                 <TextBlock Text="搜索游戏…（名字 / 后缀 / 站点）"
                                            Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
                                            Foreground="{StaticResource TextSecondaryBrush}"

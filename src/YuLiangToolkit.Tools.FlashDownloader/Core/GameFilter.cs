@@ -15,7 +15,7 @@ public enum GameSortMode
     /// <summary>按大小。</summary>
     Size = 3,
 
-    /// <summary>按站点（4399 / 7k7k / 17yy / 其它）。</summary>
+    /// <summary>按站点（4399 / 7k7k / 17yy / ArmorGames / Kongregate / 其它）。</summary>
     Site = 4,
 }
 

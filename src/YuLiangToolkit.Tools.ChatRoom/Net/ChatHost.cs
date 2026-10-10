@@ -39,6 +39,12 @@ public sealed class ChatHost : IDisposable
     /// <summary>实际监听的端点（端口填 0 自动挑时，这里就是真实端口）。</summary>
     public IPEndPoint? EndPoint { get; private set; }
 
+    /// <summary>
+    /// 这个监听是不是双栈的（同一个端口 IPv4 与 IPv6 都收）。
+    /// 傻瓜模式绑 <c>::</c> 时是 true —— 界面据此告诉用户「IPv4/IPv6 都能连」。
+    /// </summary>
+    public bool DualStack { get; private set; }
+
     /// <summary>已连上的客户端数量。</summary>
     public int ClientCount => _clients.Count;
 
@@ -96,13 +102,19 @@ public sealed class ChatHost : IDisposable
         {
             _cts = new CancellationTokenSource();
             _listener = new TcpListener(address, port);
+            // ⚠ 双栈必须显式打开：Windows 上 IPv6 通配地址默认「只收 IPv6」（IPV6_V6ONLY=1），
+            // 不设这一行，绑 "::" 之后 IPv4 的客户端**一个都连不进来**，而界面上的按钮还写着
+            // 「同时收 IPv4 与 IPv6 的连接」——实测确认过（自检里有回归断言）。
+            if (address.Equals(IPAddress.IPv6Any)) _listener.Server.DualMode = true;
             _listener.Server.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
             _listener.Start();
             EndPoint = (IPEndPoint)_listener.LocalEndpoint;
+            DualStack = _listener.Server.DualMode;
             IsListening = true;
             _acceptLoop = Task.Run(() => AcceptLoopAsync(_cts.Token));
             Noticed?.Invoke(new ChatNotice(ChatNoticeLevel.Info,
-                $"正在监听 {ChatProtocol.FormatEndpoint(EndPoint.Address, EndPoint.Port)}（{(address.AddressFamily == AddressFamily.InterNetworkV6 ? "IPv6" : "IPv4")}）"));
+                $"正在监听 {ChatProtocol.FormatEndpoint(EndPoint.Address, EndPoint.Port)}"
+                + $"（{(DualStack ? "双栈：IPv4 + IPv6" : address.AddressFamily == AddressFamily.InterNetworkV6 ? "仅 IPv6" : "仅 IPv4")}）"));
             return "";
         }
         catch (SocketException ex)
@@ -145,6 +157,7 @@ public sealed class ChatHost : IDisposable
         }
         cts?.Dispose();
         EndPoint = null;
+        DualStack = false;
         Noticed?.Invoke(new ChatNotice(ChatNoticeLevel.Info, "已停止监听"));
         MemberListChanged?.Invoke(Members);
     }

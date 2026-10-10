@@ -139,7 +139,7 @@ public sealed partial class FlashDownloaderViewModel : ToolViewModelBase
 
         Log($"游戏目录：{GamesDirectory}");
         Log($"配置文件：{Cfg.FilePath}");
-        Log("支持 4399 / 7k7k / 17yy。粘贴游戏页网址 → 「下载并游玩」；多文件游戏请用「关联文件下载器」。");
+        Log("支持 4399 / 7k7k / 17yy / ArmorGames / Kongregate。粘贴游戏页网址 → 「下载并游玩」；多文件游戏请用「关联文件下载器」。");
     }
 
     // ---------------------------------------------------------------- 核心对象

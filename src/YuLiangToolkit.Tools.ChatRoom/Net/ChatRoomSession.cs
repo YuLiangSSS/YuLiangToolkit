@@ -42,6 +42,12 @@ public sealed class ChatRoomSession : ChatRoomConnection, IAsyncDisposable
     /// <summary>主机实际监听的地址（填 0 端口时这里是真实端口）。</summary>
     public string ListenText => _host?.EndPoint is { } ep ? ChatProtocol.FormatEndpoint(ep.Address, ep.Port) : "";
 
+    /// <summary>主机这次监听的端口（没开房间时是 0）。</summary>
+    public int ListenPort => _host?.EndPoint?.Port ?? 0;
+
+    /// <summary>这次监听是不是双栈（IPv4 与 IPv6 都能连）。傻瓜模式绑 <c>::</c> 时为 true。</summary>
+    public bool IsDualStack => _host?.DualStack == true;
+
     /// <summary>对端地址文本。</summary>
     public string PeerText => _client?.ServerText ?? "";
 

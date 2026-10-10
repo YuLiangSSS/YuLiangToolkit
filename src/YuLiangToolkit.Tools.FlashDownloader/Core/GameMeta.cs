@@ -2,7 +2,9 @@ namespace YuLiangToolkit.Tools.FlashDownloader.Core;
 
 /// <summary>
 /// 支持的小游戏站点。对应原始 Python 项目里 <c>HtmlAnalyse.getURLInfo()</c> 返回的
-/// <c>'4399' / '7k7k' / '17yy' / None</c>，以及文件名后缀里的 a / b / c / z 四个字母。
+/// <c>'4399' / '7k7k' / '17yy' / None</c>，以及文件名后缀里的 a / b / c / d / e / z 六个字母。
+///
+/// <para>枚举值按名字进 JSON（配置里的排序等），<b>只能往后加，不能改前面的数字</b>。</para>
 /// </summary>
 public enum GameSite
 {
@@ -11,6 +13,12 @@ public enum GameSite
     Site4399 = 1,
     Site7k7k = 2,
     Site17yy = 3,
+
+    /// <summary>ArmorGames（后缀字母 d）：<c>armorgames.com/play/编号</c>，swf 在 cache.armorgames.com。</summary>
+    SiteArmorGames = 4,
+
+    /// <summary>Kongregate（后缀字母 e）：<c>kongregate.com/games/作者/游戏名</c>，swf 在 chat.kongregate.com。</summary>
+    SiteKongregate = 5,
 }
 
 /// <summary>下载内容的类型。</summary>
@@ -29,12 +37,17 @@ public enum GameContentKind
 /// <summary>站点相关的静态小工具（字母 ↔ 站点 ↔ 显示名 ↔ 支持情况）。</summary>
 public static class GameSites
 {
-    /// <summary>站点对应的后缀字母（<c>a</c> = 4399，<c>b</c> = 7k7k，<c>c</c> = 17yy，<c>z</c> = 其它）。</summary>
+    /// <summary>
+    /// 站点对应的后缀字母（<c>a</c> = 4399，<c>b</c> = 7k7k，<c>c</c> = 17yy，
+    /// <c>d</c> = ArmorGames，<c>e</c> = Kongregate，<c>z</c> = 其它）。
+    /// </summary>
     public static char ToLetter(GameSite site) => site switch
     {
         GameSite.Site4399 => 'a',
         GameSite.Site7k7k => 'b',
         GameSite.Site17yy => 'c',
+        GameSite.SiteArmorGames => 'd',
+        GameSite.SiteKongregate => 'e',
         _ => 'z',
     };
 
@@ -44,6 +57,8 @@ public static class GameSites
         'a' => GameSite.Site4399,
         'b' => GameSite.Site7k7k,
         'c' => GameSite.Site17yy,
+        'd' => GameSite.SiteArmorGames,
+        'e' => GameSite.SiteKongregate,
         _ => GameSite.Unknown,
     };
 
@@ -53,6 +68,8 @@ public static class GameSites
         GameSite.Site4399 => "4399",
         GameSite.Site7k7k => "7k7k",
         GameSite.Site17yy => "17yy",
+        GameSite.SiteArmorGames => "ArmorGames",
+        GameSite.SiteKongregate => "Kongregate",
         _ => "其它站点",
     };
 
@@ -65,7 +82,23 @@ public static class GameSites
         GameSite.Site4399 => "https://www.4399.com/",
         GameSite.Site7k7k => "https://www.7k7k.com/",
         GameSite.Site17yy => "http://www.17yy.com/",
+        GameSite.SiteArmorGames => "https://armorgames.com/",
+        GameSite.SiteKongregate => "https://www.kongregate.com/",
         _ => "",
+    };
+
+    /// <summary>
+    /// 后缀里的编号能不能<b>反推</b>回游戏页网址。
+    ///
+    /// <para>4399 / 7k7k / 17yy / ArmorGames 的游戏页网址里就带着编号，能直接拼回去；
+    /// Kongregate 不行 —— 它的页面地址是「作者 / 游戏名」（<c>…/games/作者/游戏名</c>），
+    /// 编号只藏在网页正文里，站点也不提供「编号 → 页面」的跳转（试过多个写法都是 404）。
+    /// 所以 <c>e12345</c> 这种后缀只能认出站点，不能自动找回页面。</para>
+    /// </summary>
+    public static bool CanResolveFromAppendix(GameSite site) => site switch
+    {
+        GameSite.Site4399 or GameSite.Site7k7k or GameSite.Site17yy or GameSite.SiteArmorGames => true,
+        _ => false,
     };
 }
 

@@ -71,6 +71,13 @@ public sealed partial class ChatRoomViewModel
     private void CopyAddress()
     {
         var text = IsHost && IsOnline ? AdvertiseText() : $"{HostAddress}:{HostPort}";
+        CopyText(text);
+    }
+
+    /// <summary>复制一段文本到剪贴板（「连接信息」里每一行的「复制」也走这里）。</summary>
+    private void CopyText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
         try
         {
             Clipboard.SetText(text);

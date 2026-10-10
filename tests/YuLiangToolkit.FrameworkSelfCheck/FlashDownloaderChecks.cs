@@ -31,6 +31,7 @@ internal static class FlashDownloaderChecks
         Directory.CreateDirectory(tools);
 
         CheckParsing(result, plain);
+        CheckNewSites(result, plain);
         CheckIni(result, plain, work);
         CheckEntryNaming(result, plain);
         CheckBatchPlan(result, plain, work);
@@ -40,6 +41,10 @@ internal static class FlashDownloaderChecks
         CheckTemplates(result, plain);
         CheckViewModelWiring(result, plain);
         CheckNetworkAndDownloads(result, plain, work, games, tools);
+
+        // 联网验收：默认跳过。站点改版 / 断网会让它红，而默认自检必须是确定性的。
+        // 想跑就设 YLT_LIVE_SITES=1（见 FlashDownloaderChecks.CheckLiveSites 的说明）。
+        if (Environment.GetEnvironmentVariable("YLT_LIVE_SITES") == "1") CheckLiveSites(result, plain);
     }
 
     // ---------------------------------------------------------------- 1. 站点解析（对应 HtmlAnalyse）
@@ -203,6 +208,318 @@ internal static class FlashDownloaderChecks
         report("17yy 宽高", GamePageParser.Get17yyGameWidthHeight(html17yy) == (960, 540));
         report("17yy 标题兜底（m7_gamename 缺席时）",
             GamePageParser.Get17yyGameName("<title>森林冰火人在线玩\"") == "森林冰火人");
+    }
+
+    // ---------------------------------------------------------------- 1b. ArmorGames / Kongregate
+
+    /// <summary>
+    /// ArmorGames 与 Kongregate 的页面解析（纯字符串，不联网）。
+    ///
+    /// <para><b>样本都是照抄真页面的关键片段</b>（实测抓下来的），所以站点改版时这里会先红：
+    /// ArmorGames 的 swf 明写在 <c>&lt;param name="movie"&gt;</c> / <c>&lt;embed src&gt;</c> 里；
+    /// Kongregate 得走三步——游戏页 → 嵌入页（<c>iframeConfig</c>）→ frame 页（<c>swf_location</c>）。</para>
+    /// </summary>
+    private static void CheckNewSites(Action<string, bool, string> check, Action<string, bool> report)
+    {
+        // ---- ArmorGames：https://armorgames.com/play/14775 的关键片段 ----
+        const string armorHtml = """
+            <meta property="og:title"  content="Strike Force Heroes 2 - Play on Armor Games">
+            <div id="gamefilearea" style="height:600px; display: none;">
+                <div id="game-ruffle" style="display: none;">
+            <object classid="clsid:d27cdb6e-ae6d-11cf-96b8-444553540000"
+                    codebase="http://fpdownload.macromedia.com/pub/shockwave/cabs/flash/swflash.cab#version=8,0,0,0"
+                    width="800" height="600" id="gamefile" align="middle">
+                <param name="allowScriptAccess" value="always" />
+                <param name="movie" value="https://cache.armorgames.com/files/games/strike-force-heroes--14775.swf" />
+                <param name="quality" value="high" />
+                <param name="flashvars" value="gameID=14775" />
+                <embed src="https://cache.armorgames.com/files/games/strike-force-heroes--14775.swf"
+                       width="800"
+                       height="600"
+                       id="gamefileEmbed"
+                       flashvars="gameID=14775" />
+            </object>
+                </div>
+            </div>
+            """;
+        const string armorSwf = "https://cache.armorgames.com/files/games/strike-force-heroes--14775.swf";
+
+        check("ArmorGames 游戏名：og:title 剪掉「 - Play on Armor Games」",
+            GamePageParser.GetArmorGamesGameName(armorHtml) == "Strike Force Heroes 2",
+            GamePageParser.GetArmorGamesGameName(armorHtml));
+        check("ArmorGames 从 <param name=\"movie\"> 里拿到 swf（不是自己拼的）",
+            GamePageParser.GetArmorGamesDirectSwfPath(armorHtml) == armorSwf,
+            GamePageParser.GetArmorGamesDirectSwfPath(armorHtml) ?? "(null)");
+        check("ArmorGames 宽高：object / embed 的属性跨行也读得到",
+            GamePageParser.GetArmorGamesGameWidthHeight(armorHtml) == (800, 600),
+            GamePageParser.GetArmorGamesGameWidthHeight(armorHtml).ToString());
+        check("ArmorGames 没有 og:title 时退回 <title> 并剪尾巴",
+            GamePageParser.GetArmorGamesGameName("<title>Sonny 2 - Play on Armor Games</title>") == "Sonny 2",
+            GamePageParser.GetArmorGamesGameName("<title>Sonny 2 - Play on Armor Games</title>"));
+        check("ArmorGames 只有 <embed> 时也能找到 swf",
+            GamePageParser.GetArmorGamesDirectSwfPath(
+                "<embed src=\"https://cache.armorgames.com/files/games/sonny-2-2900.swf\" width=\"640\" height=\"480\" />")
+            == "https://cache.armorgames.com/files/games/sonny-2-2900.swf",
+            GamePageParser.GetArmorGamesDirectSwfPath(
+                "<embed src=\"https://cache.armorgames.com/files/games/sonny-2-2900.swf\" width=\"640\" height=\"480\" />") ?? "(null)");
+        report("ArmorGames 页面里没有 swf（HTML5 游戏）→ null",
+            GamePageParser.GetArmorGamesDirectSwfPath("<html><body><canvas id=\"game\"></canvas></body></html>") is null);
+        report("armorgames.com 的域名识别",
+            GameUrlInfo.DetectSite("https://www.armorgames.com/play/14775") == GameSite.SiteArmorGames);
+        check("ArmorGames 编号从 /play/14775 里读",
+            GamePageParser.GetUrlInfo("https://armorgames.com/play/14775")
+            == ("d14775", GameSite.SiteArmorGames),
+            GamePageParser.GetUrlInfo("https://armorgames.com/play/14775").Appendix);
+        report("ArmorGames 编号也能从 …-game/14775 这种地址读",
+            GamePageParser.GetUrlInfo("https://armorgames.com/strike-force-heroes-2-game/14775").Appendix == "d14775");
+        report("ArmorGames 的带语言段 / 带 slug 的地址也认",
+            GamePageParser.GetUrlInfo("https://armorgames.com/play/14775/strike-force-heroes-2").Appendix == "d14775");
+
+        var armorBack = GamePageParser.AppendixToUrl("d14775");
+        check("ArmorGames 后缀能反推回游戏页（装入文件夹 / 改为 htm 要用）",
+            armorBack is not null && armorBack.Value.Url == "https://armorgames.com/play/14775"
+            && armorBack.Value.Site == GameSite.SiteArmorGames,
+            armorBack?.Url ?? "(null)");
+
+        // ---- Kongregate 第 1 步：游戏页（里面那个 iframe 指向嵌入页） ----
+        const string kongGameHtml = """
+            <title>Scratch Inc. – Play Instantly Online | Kongregate</title>
+            <iframe src="/games/Makopaz/scratch-inc/embed" width="100%" height="100%" frameborder="0" allowfullscreen="allowfullscreen" allow="camera *; microphone *; fullscreen *; autoplay *" class="game-embed-iframe" style="border: none; display: block;" data-previews--game-controls-target="embedIframe"></iframe>
+            <script>
+              window.dataLayer.push({ event: 'gameplay_start', game_id: '324529', game_name: 'Scratch Inc.' });
+            </script>
+            """;
+
+        check("Kongregate 游戏名：标题剪掉「 – Play Instantly Online | Kongregate」",
+            GamePageParser.GetKongregateGameName(kongGameHtml) == "Scratch Inc.",
+            GamePageParser.GetKongregateGameName(kongGameHtml));
+        check("Kongregate 游戏编号：网址里没有，只能从网页正文的 game_id 读",
+            GamePageParser.GetKongregateGameId(kongGameHtml) == "324529",
+            GamePageParser.GetKongregateGameId(kongGameHtml));
+        check("Kongregate 嵌入页地址：优先用页面里那个 iframe",
+            GamePageParser.GetKongregateEmbedUrl(kongGameHtml, "https://www.kongregate.com/en/games/makopaz/scratch-inc")
+            == "https://www.kongregate.com/games/Makopaz/scratch-inc/embed",
+            GamePageParser.GetKongregateEmbedUrl(kongGameHtml, "https://www.kongregate.com/en/games/makopaz/scratch-inc") ?? "(null)");
+        check("Kongregate 嵌入页地址：没有 iframe 时自己拼",
+            GamePageParser.BuildKongregateEmbedUrl("https://www.kongregate.com/en/games/makopaz/scratch-inc")
+            == "https://www.kongregate.com/en/games/makopaz/scratch-inc/embed",
+            GamePageParser.BuildKongregateEmbedUrl("https://www.kongregate.com/en/games/makopaz/scratch-inc") ?? "(null)");
+        report("Kongregate 嵌入页地址：粘的就是嵌入页时不重复加 /embed",
+            GamePageParser.BuildKongregateEmbedUrl("https://www.kongregate.com/en/games/makopaz/scratch-inc/embed")
+            == "https://www.kongregate.com/en/games/makopaz/scratch-inc/embed");
+        report("Kongregate 不是 /games/作者/游戏名 的地址拼不出嵌入页",
+            GamePageParser.BuildKongregateEmbedUrl("https://www.kongregate.com/en/games") is null);
+
+        // 名字有两个坑，都是联网验收里抓出来的：
+        // ① 游戏页标题是「Bloons Super Monkey on Kongregate – Play Now」（不是嵌入页那种尾巴）；
+        // ② 只认标题会拼出 BloonsSuperMonkeyonKongregate–PlayNow_e72514.swf 这种鬼名字，
+        //    所以优先读脚本里的 game_name / game_title。
+        check("Kongregate 游戏页标题的「 on Kongregate – Play Now」也要剪掉",
+            GamePageParser.GetKongregateGameName("<title>Bloons Super Monkey on Kongregate – Play Now</title>")
+            == "Bloons Super Monkey",
+            GamePageParser.GetKongregateGameName("<title>Bloons Super Monkey on Kongregate – Play Now</title>"));
+        check("Kongregate 名字优先读脚本里的 game_name（比标题可靠）",
+            GamePageParser.GetKongregateScriptName("active_user.setGame(72514, \"/x\", {\"game_name\":\"Bloons Super Monkey\",\"game_type\":\"flash\"});")
+            == "Bloons Super Monkey",
+            GamePageParser.GetKongregateScriptName("active_user.setGame(72514, \"/x\", {\"game_name\":\"Bloons Super Monkey\",\"game_type\":\"flash\"});"));
+        check("Kongregate frame 页的 ttgArgs.game_title 也是名字来源",
+            GamePageParser.GetKongregateScriptName(
+                "var ttgArgs = { game_title: \"Bloons Super Monkey\", time: 123 };")
+            == "Bloons Super Monkey",
+            GamePageParser.GetKongregateScriptName("var ttgArgs = { game_title: \"Bloons Super Monkey\", time: 123 };"));
+        check("Kongregate 的网址里读不出编号（要靠后面的 game_id 补）",
+            GamePageParser.GetUrlInfo("https://www.kongregate.com/games/Ninjakiwi/bloons-super-monkey")
+            == ("", GameSite.SiteKongregate),
+            GamePageParser.GetUrlInfo("https://www.kongregate.com/games/Ninjakiwi/bloons-super-monkey").Appendix);
+
+        // ---- Kongregate 第 2 步：嵌入页的 iframeConfig（Flash 游戏：Bloons Super Monkey） ----
+        const string kongFlashEmbed = """
+            <title>Bloons Super Monkey - Play on Kongregate</title>
+            <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+            active_user.setGame(72514, "/en/games/Ninjakiwi/bloons-super-monkey", {"user_vars":"[]","game_type":"flash","game_name":"Bloons Super Monkey","requires_flash":true});
+            iframeConfig = {"auto_resize":null,"iframe_url":'https://game72514.konggames.com/games/Ninjakiwi/bloons-super-monkey/frame/' + channel_id + '/?kongregate_host=www.kongregate.com',"alternate_game_file_url":null,"game_width":640,"game_height":480,"max_game_width":null,"max_game_height":null,"game_left":0,"game_top":23,"style_updates":"","iframe_class":"dont_hide","host":"https://www.kongregate.com","api_host":"https://api.kongregate.com","api_path":"https://chat.kongregate.com/flash/API_AS3_5a1d8c231ff1d223d7181f3900f58126.swf","preview":false,"game_permalink":"bloons-super-monkey","game_id":72514,"game_url":"http://www.kongregate.com/en/games/Ninjakiwi/bloons-super-monkey","game_version":1266848660,"flash_var_prefix":"kv_","post_message":true,"iframe_host":"https://game72514.konggames.com","game_host":"https://chat.kongregate.com","channel_id":encodeURIComponent(channel_id),"svid":null,"game_type":"flash"};
+            var iframeUrl = 'https://game72514.konggames.com/games/Ninjakiwi/bloons-super-monkey/frame/' + channel_id + '/?kongregate_host=www.kongregate.com';
+            var gameType = "flash";
+            """;
+
+        var kongConfig = GamePageParser.GetKongregateIframeConfig(kongFlashEmbed);
+        check("Kongregate 抠得出 iframeConfig", kongConfig is not null, kongConfig ?? "(null)");
+        check("Kongregate 编号也能从 iframeConfig 的 game_id 读到",
+            GamePageParser.GetKongregateGameId(kongFlashEmbed) == "72514",
+            GamePageParser.GetKongregateGameId(kongFlashEmbed));
+        report("Kongregate 判定成 Flash（game_type / requires_flash / game_host 三选一）",
+            GamePageParser.IsKongregateFlashGame(kongConfig));
+        check("Kongregate 宽高从 iframeConfig 读",
+            GamePageParser.GetKongregateGameWidthHeight(kongConfig) == (640, 480),
+            GamePageParser.GetKongregateGameWidthHeight(kongConfig).ToString());
+        check("Kongregate frame 地址：JS 拼接换成固定串，查询串要保住",
+            GamePageParser.GetKongregateFrameUrl(kongConfig)
+            == "https://game72514.konggames.com/games/Ninjakiwi/bloons-super-monkey/frame/ylt/?kongregate_host=www.kongregate.com",
+            GamePageParser.GetKongregateFrameUrl(kongConfig) ?? "(null)");
+        check("Kongregate 嵌入页里只有它自己的 API swf → 不算找到游戏",
+            GamePageParser.GetKongregateSwfPath(kongFlashEmbed) is null,
+            GamePageParser.GetKongregateSwfPath(kongFlashEmbed) ?? "(null)");
+        report("Kongregate 认得出 API 库 swf（API_AS3，不能当成游戏下）",
+            GamePageParser.IsKongregateApiSwf("https://chat.kongregate.com/flash/API_AS3_5a1d8c231ff1d223d7181f3900f58126.swf")
+            && !GamePageParser.IsKongregateApiSwf("https://chat.kongregate.com/gamez/0007/2514/live/bloonssupermonkey.swf"));
+
+        // ---- Kongregate 第 3 步：frame 页里那行 swf_location ----
+        const string kongFrameHtml = """
+            <script>
+            gameLoader = {
+              loadGame: function(urlOptions) {
+                var swf_location = "https://chat.kongregate.com/gamez/0007/2514/live/bloonssupermonkey.swf?kongregate_game_version=1266848660";
+                var swfobject_flash_vars = {"kongregate":"true","kongregate_api_path":"https%3A%2F%2Fchat.kongregate.com%2Fflash%2FAPI_AS3_5a1d8c231ff1d223d7181f3900f58126.swf"};
+              }
+            };
+            </script>
+            """;
+        check("Kongregate frame 页里找到真正的游戏 swf（带版本查询串）",
+            GamePageParser.GetKongregateSwfPath(kongFrameHtml)
+            == "https://chat.kongregate.com/gamez/0007/2514/live/bloonssupermonkey.swf?kongregate_game_version=1266848660",
+            GamePageParser.GetKongregateSwfPath(kongFrameHtml) ?? "(null)");
+
+        // ---- Kongregate 的 h5 游戏：iframe_url 是普通字符串（双引号 + \u0026 转义） ----
+        const string kongHtml5Embed = """
+            iframeConfig = {"auto_resize":null,"iframe_url":"https://game324529.konggames.com/gamez/0032/4529/live/index.html?kongregate_game_version=1790890979\u0026kongregate_host=www.kongregate.com","alternate_game_file_url":null,"game_width":1320,"game_height":850,"api_path":"https://chat.kongregate.com/flash/API_AS3_5a1d8c231ff1d223d7181f3900f58126.swf","game_id":324529,"game_host":"https://game324529.konggames.com","game_type":"html"};
+            """;
+        var kongHtml5Config = GamePageParser.GetKongregateIframeConfig(kongHtml5Embed);
+        report("Kongregate h5 游戏不会被误判成 Flash",
+            kongHtml5Config is not null
+            && !GamePageParser.IsKongregateFlashGame(kongHtml5Config)
+            && GamePageParser.GetKongregateGameWidthHeight(kongHtml5Config) == (1320, 850));
+        check("Kongregate h5 游戏的 iframe_url：\\u0026 要还原成 &",
+            GamePageParser.GetKongregateFrameUrl(kongHtml5Config)
+            == "https://game324529.konggames.com/gamez/0032/4529/live/index.html?kongregate_game_version=1790890979&kongregate_host=www.kongregate.com",
+            GamePageParser.GetKongregateFrameUrl(kongHtml5Config) ?? "(null)");
+
+        // ---- 站点表 / 命名规则要认这两个字母 ----
+        report("字母表：d=ArmorGames、e=Kongregate 能来回换",
+            GameSites.ToLetter(GameSite.SiteArmorGames) == 'd'
+            && GameSites.ToLetter(GameSite.SiteKongregate) == 'e'
+            && GameSites.FromLetter('D') == GameSite.SiteArmorGames
+            && GameSites.FromLetter('e') == GameSite.SiteKongregate
+            && GameSites.DisplayName(GameSite.SiteKongregate) == "Kongregate"
+            && GameSites.HomePage(GameSite.SiteArmorGames).Contains("armorgames.com"));
+        report("Kongregate 的后缀反推不出页面（站点自己就不提供），要如实说出来",
+            GamePageParser.AppendixToUrl("e72514") is null
+            && !GameSites.CanResolveFromAppendix(GameSite.SiteKongregate)
+            && GameSites.CanResolveFromAppendix(GameSite.SiteArmorGames));
+        report("e / d 后缀在文件名规则里也认（散放 swf、s / h 文件夹）",
+            CoreGameEntry.AppendixOfSwfFile("Bloons_e72514.swf") == "e72514"
+            && CoreGameEntry.AppendixOfSwfFile("Strike Force Heroes 2_d14775.swf") == "d14775"
+            && CoreGameEntry.FolderExtOf("Bloons_e72514s") == ".swf"
+            && CoreGameEntry.FolderExtOf("Bloons_e72514h") == ".htm"
+            && CoreGameEntry.GameNameOfFolder("Bloons_e72514s") == "Bloons_e72514"
+            && CoreGameEntry.AppendixOfFolder("Bloons_e72514s") == "e72514");
+    }
+
+    // ---------------------------------------------------------------- 1c. 联网验收（默认不跑）
+
+    /// <summary>
+    /// <b>联网验收</b>：拿真站点的页面走一遍「解析 → 下载」，确认抓取规则没被站点改版打掉。
+    ///
+    /// <para><b>默认不跑</b>，要 <c>$env:YLT_LIVE_SITES=1</c> 才开：站点改版 / 断网 / 被墙都会让它红，
+    /// 而默认自检必须是确定性的（离线也能全绿）。改了 4399 / 7k7k / 17yy / ArmorGames / Kongregate
+    /// 的解析规则之后，跑一次这个看看真页面还认不认。</para>
+    ///
+    /// <para>这里只验两个国外站点：它们没有防盗链，谁的机器上都能跑；国内站点有时会挑 IP，
+    /// 放进来会让「联网验收」变得时灵时不灵。</para>
+    /// </summary>
+    public static void CheckLiveSites(Action<string, bool, string> check, Action<string, bool> report)
+    {
+        var root = NewDir("live-sites");
+        var config = new FlashDownloaderConfig { ConnectTimeoutSeconds = 10, ReadTimeoutSeconds = 90 };
+        using var http = new FlashHttp(config.ConnectTimeoutSeconds, config.ReadTimeoutSeconds);
+        var downloader = new GameDownloader(http, config);
+
+        // ---- ArmorGames：swf 明写在游戏页上 ----
+        var armor = downloader.ResolveAsync("https://armorgames.com/play/14775").GetAwaiter().GetResult();
+        check("联网 ArmorGames：解析出 swf + 编号 d14775 + 宽高",
+            armor.Ok && armor.Meta is
+            {
+                Kind: GameContentKind.Swf, Site: GameSite.SiteArmorGames, Appendix: "d14775",
+                Width: 800, Height: 600,
+            }
+            && armor.Meta.ContentUrl.Contains("armorgames.com", StringComparison.OrdinalIgnoreCase),
+            armor.Ok ? armor.Meta!.Describe() : armor.Error);
+
+        // ArmorGames 的游戏动辄十几 MB，联网验收里不整个拖下来；只探头三个字节确认那真是个 swf
+        // （FWS = 未压缩 / CWS = zlib / ZWS = LZMA，Flash 文件头就这三种）。
+        if (armor.Ok && armor.Meta is not null)
+        {
+            check("联网 ArmorGames：那个地址真的在发 swf（只看文件头）",
+                SwfHeaderOf(http, armor.Meta.ContentUrl, armor.Meta.Referer) is "FWS" or "CWS" or "ZWS",
+                armor.Meta.ContentUrl);
+        }
+
+        // ---- Kongregate：游戏页 → 嵌入页 → frame 页，三跳之后才是 swf ----
+        var kong = downloader.ResolveAsync("https://www.kongregate.com/games/Ninjakiwi/bloons-super-monkey")
+            .GetAwaiter().GetResult();
+        check("联网 Kongregate：三跳之后解析出 swf + 编号 e72514 + 宽高",
+            kong.Ok && kong.Meta is
+            {
+                Kind: GameContentKind.Swf, Site: GameSite.SiteKongregate, Appendix: "e72514",
+                Width: 640, Height: 480, IsNewPage: true,
+            }
+            && kong.Meta.ContentUrl.Contains("chat.kongregate.com", StringComparison.OrdinalIgnoreCase),
+            kong.Ok ? kong.Meta!.Describe() : kong.Error);
+
+        // Kongregate 的 swf 只有两三 MB，可以真下一遍把整条链路验穿
+        if (kong.Ok && kong.Meta is not null)
+        {
+            var library = new GamesLibrary(Path.Combine(root, "games"));
+            var download = downloader.DownloadAsync(library, kong.Meta).GetAwaiter().GetResult();
+            var file = download.Ok ? Path.Combine(library.Root, download.FileOrFolderName) : "";
+            check("联网 Kongregate：真下载落成 游戏名_e72514.swf 且内容是 swf",
+                download.Ok && download.FileOrFolderName == "BloonsSuperMonkey_e72514.swf"
+                && File.Exists(file) && new FileInfo(file).Length > 100_000
+                && SwfHeaderOfFile(file) is "FWS" or "CWS" or "ZWS",
+                download.Ok ? $"{download.FileOrFolderName}（{new FileInfo(file).Length / 1024} KB）" : download.Error);
+        }
+
+        // ---- Kongregate 的 h5 游戏不能被当成 Flash ----
+        var kongH5 = downloader.ResolveAsync("https://www.kongregate.com/games/Makopaz/scratch-inc")
+            .GetAwaiter().GetResult();
+        check("联网 Kongregate：h5 游戏识别成网页版（不是 swf），并记下编号 e324529",
+            kongH5.Ok && kongH5.Meta is { Kind: GameContentKind.Htm, Appendix: "e324529" },
+            kongH5.Ok ? kongH5.Meta!.Describe() : kongH5.Error);
+
+        // ---- 顺手确认「编号 → 游戏页」这条：ArmorGames 能回得去，Kongregate 回不去（站点不给）----
+        var armorBack = downloader.ResolveByAppendixAsync("d14775").GetAwaiter().GetResult();
+        report("联网 ArmorGames：光有后缀 d14775 也能重新解析出游戏",
+            armorBack.Ok && armorBack.Meta is { Appendix: "d14775", Kind: GameContentKind.Swf });
+        var kongBack = downloader.ResolveByAppendixAsync("e72514").GetAwaiter().GetResult();
+        report("联网 Kongregate：光有后缀 e72514 反推不出页面，但要把话说清楚（不是崩 / 不是空指针）",
+            !kongBack.Ok && kongBack.Error.Contains("编号", StringComparison.Ordinal));
+    }
+
+    /// <summary>只取一个网址的头三个字节（判定 swf 文件头用，避免把十几 MB 全拖下来）。</summary>
+    private static string SwfHeaderOf(FlashHttp http, string url, string? referer)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.TryAddWithoutValidation("User-Agent", GamePageParser.DefaultUserAgent);
+            request.Headers.TryAddWithoutValidation("Range", "bytes=0-2");
+            if (!string.IsNullOrWhiteSpace(referer)) request.Headers.TryAddWithoutValidation("Referer", referer);
+            using var response = http.Client.Send(request);
+            var bytes = response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+            return bytes.Length >= 3 ? Encoding.ASCII.GetString(bytes, 0, 3) : "";
+        }
+        catch { return ""; }
+    }
+
+    /// <summary>读本地文件的前三个字节（swf 文件头）。</summary>
+    private static string SwfHeaderOfFile(string path)
+    {
+        try
+        {
+            using var stream = File.OpenRead(path);
+            var buffer = new byte[3];
+            return stream.Read(buffer, 0, 3) == 3 ? Encoding.ASCII.GetString(buffer) : "";
+        }
+        catch { return ""; }
     }
 
     // ---------------------------------------------------------------- 2. SWFNetPath.ini

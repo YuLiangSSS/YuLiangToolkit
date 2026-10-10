@@ -6,8 +6,8 @@ namespace YuLiangToolkit.Tools.FlashDownloader.Core;
 /// <para>为什么要拆：这段逻辑是「拿用户粘的网址 → 认出站点 + 后缀」的第一步，
 /// 单独成文件方便自检直接定位，也避免和一大堆正则混在一个大文件里。</para>
 ///
-/// <para><b>规则</b>：先按域名认站点；域名认不出来时按后缀字母兜底（a=4399 / b=7k7k / c=17yy），
-/// 这样镜像站、代理站的地址也能认出老朋友，不会白白丢掉后缀。</para>
+/// <para><b>规则</b>：先按域名认站点；域名认不出来时按后缀字母兜底（a=4399 / b=7k7k / c=17yy /
+/// d=ArmorGames / e=Kongregate），这样镜像站、代理站的地址也能认出老朋友，不会白白丢掉后缀。</para>
 /// </summary>
 public static class GameUrlInfo
 {
@@ -18,6 +18,8 @@ public static class GameUrlInfo
         if (url.Contains("4399.com", StringComparison.OrdinalIgnoreCase)) return GameSite.Site4399;
         if (url.Contains("7k7k.com", StringComparison.OrdinalIgnoreCase)) return GameSite.Site7k7k;
         if (url.Contains("17yy.com", StringComparison.OrdinalIgnoreCase)) return GameSite.Site17yy;
+        if (url.Contains("armorgames.com", StringComparison.OrdinalIgnoreCase)) return GameSite.SiteArmorGames;
+        if (url.Contains("kongregate.com", StringComparison.OrdinalIgnoreCase)) return GameSite.SiteKongregate;
         return GameSite.Unknown;
     }
 

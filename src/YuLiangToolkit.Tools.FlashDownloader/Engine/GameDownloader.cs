@@ -59,6 +59,11 @@ public sealed class GameDownloader
             return GameResolveResult.Fail("网址格式不对（要以 http:// 或 https:// 开头）");
 
         var (appendix, site) = GamePageParser.GetUrlInfo(trimmed);
+
+        // 粘进来的本身就是个 swf（各站 CDN 的直链都算）：不用解析，它就是游戏本体
+        if (GamePageParser.GetUrlExtension(trimmed) == ".swf")
+            return GameResolveResult.Success(DirectSwfMeta(trimmed, appendix, site));
+
         switch (site)
         {
             case GameSite.Site4399:
@@ -67,10 +72,14 @@ public sealed class GameDownloader
                 return await Resolve7k7kAsync(trimmed, appendix, ct).ConfigureAwait(false);
             case GameSite.Site17yy:
                 return await Resolve17yyAsync(trimmed, appendix, ct).ConfigureAwait(false);
+            case GameSite.SiteArmorGames:
+                return await ResolveArmorGamesAsync(trimmed, appendix, ct).ConfigureAwait(false);
+            case GameSite.SiteKongregate:
+                return await ResolveKongregateAsync(trimmed, appendix, ct).ConfigureAwait(false);
         }
 
         // 域名不认识：抓一次页面，按内容猜是哪家的结构（原始工具这里直接报“未知站点”，
-        // 我们多做一次尝试，但规则还是那三套，认不出来照样明说）
+        // 我们多做一次尝试，但规则还是那几套，认不出来照样明说）
         var probe = await GetTextAsync(trimmed, null, ct).ConfigureAwait(false);
         if (probe.Error.Length > 0) return GameResolveResult.Fail(probe.Error);
 
@@ -80,16 +89,111 @@ public sealed class GameDownloader
             return await Resolve4399FromHtmlAsync(trimmed, appendix, probe.Text, ct).ConfigureAwait(false);
         }
 
+        // ArmorGames 的结构：页面里带着它 CDN 上的 swf，或者标题上写着 Play on Armor Games
+        if (GamePageParser.GetArmorGamesDirectSwfPath(probe.Text) is not null
+            || probe.Text.Contains("Play on Armor Games", StringComparison.OrdinalIgnoreCase))
+        {
+            return ResolveArmorGamesFromHtml(trimmed, appendix, probe.Text);
+        }
+
+        // Kongregate 的结构：页面里有 game_id，地址又像 /games/作者/游戏名
+        if (GamePageParser.GetKongregateGameId(probe.Text).Length > 0
+            && GamePageParser.BuildKongregateEmbedUrl(trimmed) is not null)
+        {
+            return await ResolveKongregateFromHtmlAsync(trimmed, appendix, probe.Text, ct).ConfigureAwait(false);
+        }
+
         return GameResolveResult.Fail(
-            "未知站点：本工具只认 4399 / 7k7k / 17yy 的页面结构。其它网站请用「自由下载工具」按说明手工下载。");
+            "未知站点：本工具只认 4399 / 7k7k / 17yy / ArmorGames / Kongregate 的页面结构。"
+            + "其它网站请用「自由下载工具」按说明手工下载。");
     }
 
     /// <summary>用后缀重新解析（「装入文件夹 / 改为 htm 打开 / 自动识别」用这个）。</summary>
     public async Task<GameResolveResult> ResolveByAppendixAsync(string appendix, CancellationToken ct = default)
     {
-        var converted = GamePageParser.AppendixToUrl(appendix);
-        if (converted is null) return GameResolveResult.Fail($"后缀「{appendix}」认不出站点（应为 a/b/c + 数字）");
+        var text = (appendix ?? "").Trim();
+        var converted = GamePageParser.AppendixToUrl(text);
+        if (converted is null)
+        {
+            // Kongregate 的后缀只有编号，站点又没有「编号 → 页面」的跳转，这里只能说实话
+            if (text.Length > 0 && GameSites.FromLetter(text[0]) == GameSite.SiteKongregate)
+            {
+                return GameResolveResult.Fail(
+                    $"Kongregate 的后缀「{text}」只记了游戏编号，站点不提供「编号 → 游戏页」的地址，"
+                    + "没法自动找回网络路径。请重新粘贴游戏页网址下载一次，"
+                    + "或手工把 swf 地址填进这个文件夹的 SWFNetPath.ini。");
+            }
+            return GameResolveResult.Fail($"后缀「{text}」认不出站点（应为 a/b/c/d/e + 数字）");
+        }
         return await ResolveAsync(converted.Value.Url, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>直接粘一个 swf 直链时构造的游戏信息（名字退回文件名）。</summary>
+    private static GameMeta DirectSwfMeta(string swfUrl, string appendix, GameSite site)
+    {
+        var name = GamePageParser.ToSafeFileName(
+            Path.GetFileNameWithoutExtension(GamePageParser.GetUrlFileName(swfUrl)));
+        return new GameMeta
+        {
+            OriginUrl = swfUrl,
+            CleanName = name,
+            Appendix = appendix,
+            Site = site,
+            Kind = GameContentKind.Swf,
+            ContentUrl = swfUrl,
+            IsNewPage = false,
+        };
+    }
+
+    private async Task<GameResolveResult> ResolveArmorGamesAsync(string url, string appendix, CancellationToken ct)
+    {
+        var html = await GetTextAsync(url, null, ct).ConfigureAwait(false);
+        if (html.Error.Length > 0) return GameResolveResult.Fail(html.Error);
+        return ResolveArmorGamesFromHtml(url, appendix, html.Text);
+    }
+
+    /// <summary>
+    /// ArmorGames 页面结构的解析主体（域名认识与否都走这里）。
+    ///
+    /// <para>ArmorGames 的 swf 就明写在页面的 <c>&lt;param name="movie"&gt;</c> / <c>&lt;embed src&gt;</c> 里，
+    /// 一下就能拿到；页面里没有 swf 的就是 HTML5 游戏，退回「整页下载 + 网页打开」。</para>
+    /// </summary>
+    private GameResolveResult ResolveArmorGamesFromHtml(string url, string appendix, string htmlText)
+    {
+        var name = GamePageParser.ToSafeFileName(GamePageParser.GetArmorGamesGameName(htmlText));
+        var (w, h) = GamePageParser.GetArmorGamesGameWidthHeight(htmlText);
+
+        var swf = GamePageParser.GetArmorGamesDirectSwfPath(htmlText);
+        if (!string.IsNullOrEmpty(swf))
+        {
+            return GameResolveResult.Success(new GameMeta
+            {
+                OriginUrl = url,
+                CleanName = name,
+                Appendix = appendix,
+                Site = GameSite.SiteArmorGames,
+                Width = w,
+                Height = h,
+                Kind = GameContentKind.Swf,
+                ContentUrl = swf,
+                IsNewPage = false,
+            });
+        }
+
+        // 页面里压根没有 swf → HTML5 游戏，只能整页拿下来用网页跑
+        return GameResolveResult.Success(new GameMeta
+        {
+            OriginUrl = url,
+            CleanName = name,
+            Appendix = appendix,
+            Site = GameSite.SiteArmorGames,
+            Width = w,
+            Height = h,
+            Kind = GameContentKind.Htm,
+            ContentUrl = url,
+            IsNewPage = false,
+            PageContent = System.Text.Encoding.UTF8.GetBytes(htmlText),
+        });
     }
 
     private async Task<GameResolveResult> Resolve4399Async(string url, string appendix, CancellationToken ct)
@@ -374,6 +478,154 @@ public sealed class GameDownloader
         return GameResolveResult.Fail($"未知类型的路径：{gotPath}");
     }
 
+    // ---------------------------------------------------------------- Kongregate
+
+    /// <summary>
+    /// Kongregate 要比别的站点多走两步，因为它的 swf <b>不写在游戏页上</b>：
+    /// <list type="number">
+    ///   <item>游戏页 <c>…/games/作者/游戏名</c> → 拿游戏名、编号（<c>game_id</c>）与嵌入页地址；</item>
+    ///   <item>嵌入页 <c>…/embed</c> → 拿 <c>iframeConfig</c>（是不是 Flash、宽高、frame 地址）；</item>
+    ///   <item>frame 页 → 里面那行 <c>var swf_location = "…swf"</c> 才是真正的游戏本体。</item>
+    /// </list>
+    /// h5 游戏这一步就到此为止，退回「整页下载 + 网页打开」。
+    /// </summary>
+    private async Task<GameResolveResult> ResolveKongregateAsync(string url, string appendix, CancellationToken ct)
+    {
+        // 用户粘的可能就是嵌入页（…/embed），先去掉尾巴当作游戏页
+        var pageUrl = NormalizeKongregatePageUrl(url);
+        var html = await GetTextAsync(pageUrl, null, ct).ConfigureAwait(false);
+        if (html.Error.Length > 0) return GameResolveResult.Fail(html.Error);
+        return await ResolveKongregateFromHtmlAsync(pageUrl, appendix, html.Text, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Kongregate 页面结构的解析主体（域名认识与否都走这里）。</summary>
+    private async Task<GameResolveResult> ResolveKongregateFromHtmlAsync(
+        string pageUrl, string appendix, string pageHtml, CancellationToken ct)
+    {
+        var name = KongregateNameOf(pageHtml);
+
+        // Kongregate 的网址里没有编号，编号只在网页正文里 —— 解析到了就补进后缀
+        var gameId = GamePageParser.GetKongregateGameId(pageHtml);
+        if (appendix.Length == 0 && gameId.Length > 0)
+            appendix = GameSites.ToLetter(GameSite.SiteKongregate) + gameId;
+
+        var embedUrl = GamePageParser.GetKongregateEmbedUrl(pageHtml, pageUrl)
+                       ?? GamePageParser.BuildKongregateEmbedUrl(pageUrl);
+        if (string.IsNullOrEmpty(embedUrl))
+            return GameResolveResult.Fail("认不出 Kongregate 的游戏页地址（应该形如 …/games/作者/游戏名）");
+
+        var embed = await GetTextAsync(embedUrl, pageUrl, ct).ConfigureAwait(false);
+        if (embed.Error.Length > 0) return GameResolveResult.Fail($"打不开游戏嵌入页：{embed.Error}");
+
+        var config = GamePageParser.GetKongregateIframeConfig(embed.Text);
+        var frameUrl = GamePageParser.GetKongregateFrameUrl(config)
+                       ?? GamePageParser.GetKongregateIframeUrlVariable(embed.Text);
+        if (config is null && frameUrl is null)
+            return GameResolveResult.Fail("Kongregate 的嵌入页结构变了（既没有 iframeConfig，也没有 iframeUrl）");
+
+        var (w, h) = GamePageParser.GetKongregateGameWidthHeight(config);
+        if (name.Length == 0) name = KongregateNameOf(embed.Text);
+
+        var isFlash = GamePageParser.IsKongregateFlashGame(config)
+                      || GamePageParser.GetKongregateGameTypeVariable(embed.Text)
+                          .Equals("flash", StringComparison.OrdinalIgnoreCase);
+
+        if (isFlash)
+        {
+            // ① 嵌入页自己给了 swf（alternate_game_file_url），或者 iframe_url 直接就是 swf
+            var swf = FirstSwfUrl(GamePageParser.GetKongregateConfigValue(config, "alternate_game_file_url"), frameUrl);
+            // ② 再看嵌入页正文里有没有（会排掉 Kongregate 自己的 API swf）
+            swf ??= GamePageParser.GetKongregateSwfPath(embed.Text);
+
+            // ③ 真正的地址写在 frame 页里，去把它抠出来
+            if (swf is null)
+            {
+                if (frameUrl is null)
+                    return GameResolveResult.Fail("Kongregate 说这是 Flash 游戏，但嵌入页里没有可用的 frame 地址");
+
+                var frame = await GetTextAsync(frameUrl, embedUrl, ct).ConfigureAwait(false);
+                if (frame.Error.Length > 0) return GameResolveResult.Fail($"打不开游戏 frame 页：{frame.Error}");
+                swf = GamePageParser.GetKongregateSwfPath(frame.Text);
+                if (name.Length == 0) name = KongregateNameOf(frame.Text);
+            }
+
+            if (swf is null)
+                return GameResolveResult.Fail("Kongregate 说这是 Flash 游戏，但没能在页面里找到 swf 地址");
+
+            return GameResolveResult.Success(new GameMeta
+            {
+                OriginUrl = pageUrl,
+                CleanName = name,
+                Appendix = appendix,
+                Site = GameSite.SiteKongregate,
+                Width = w,
+                Height = h,
+                Kind = GameContentKind.Swf,
+                ContentUrl = swf,
+                // 把游戏页记成「新页面」：换 Referer 要用它，ini 里也留个能找到家的线索
+                IsNewPage = true,
+                NewPageUrl = pageUrl,
+            });
+        }
+
+        // 不是 Flash：h5 游戏。iframe_url 指向真正的游戏页（在 game编号.konggames.com 上），
+        // 拿它比拿外层的介绍页有用得多（关联文件下载器能顺着它把资源补下来）。
+        var gameUrl = frameUrl;
+        var page = pageHtml;
+        if (!string.IsNullOrEmpty(gameUrl) && !gameUrl.Equals(pageUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            var inner = await GetTextAsync(gameUrl, embedUrl, ct).ConfigureAwait(false);
+            if (inner.Error.Length == 0) page = inner.Text;
+            else gameUrl = pageUrl; // 内层打不开就退回外层页面，至少还能留个记录
+        }
+        else
+        {
+            gameUrl = pageUrl;
+        }
+
+        return GameResolveResult.Success(new GameMeta
+        {
+            OriginUrl = pageUrl,
+            CleanName = name,
+            Appendix = appendix,
+            Site = GameSite.SiteKongregate,
+            Width = w,
+            Height = h,
+            Kind = GameContentKind.Htm,
+            ContentUrl = gameUrl,
+            IsNewPage = false,
+            PageContent = System.Text.Encoding.UTF8.GetBytes(page),
+        });
+    }
+
+    /// <summary>
+    /// Kongregate 的游戏名：先看脚本里的 <c>game_name</c> / <c>game_title</c>，再退回 <c>&lt;title&gt;</c>。
+    ///
+    /// <para>⚠ 只认标题会踩坑：游戏页标题是「Bloons Super Monkey on Kongregate – Play Now」，
+    /// 不剪干净的话文件名会变成 <c>BloonsSuperMonkeyonKongregate–PlayNow_e72514.swf</c>
+    /// （联网验收里抓出来的）。</para>
+    /// </summary>
+    private static string KongregateNameOf(string html)
+    {
+        var raw = GamePageParser.GetKongregateScriptName(html);
+        if (raw.Length == 0) raw = GamePageParser.GetKongregateGameName(html);
+        return GamePageParser.ToSafeFileName(raw);
+    }
+
+    /// <summary>去掉 Kongregate 地址尾巴上的 <c>/embed</c>（用户可能直接粘嵌入页）。</summary>
+    private static string NormalizeKongregatePageUrl(string url)
+    {
+        var trimmed = url.Trim();
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri)) return trimmed;
+        var path = uri.AbsolutePath.TrimEnd('/');
+        if (path.EndsWith("/embed", StringComparison.OrdinalIgnoreCase)) path = path[..^"/embed".Length];
+        return $"{uri.Scheme}://{uri.Authority}{path}";
+    }
+
+    /// <summary>参数里第一个像 swf 地址的（其余情况返回 null）。</summary>
+    private static string? FirstSwfUrl(params string?[] candidates)
+        => candidates.FirstOrDefault(c => GamePageParser.GetUrlExtension(c) == ".swf");
+
     // ---------------------------------------------------------------- 下载
 
     /// <summary>
@@ -461,9 +713,13 @@ public sealed class GameDownloader
                     return GameDownloadResult.Fail($"下载网页失败：{fetched.Message}", meta);
 
                 var text = GamePageParser.DecodeWebContent(fetched.Content, fetched.ContentType).Text;
-                var replaced = meta.Site == GameSite.Site4399
-                    ? GamePageParser.Replace4399Page(text, _config.Replace4399H5Api)
-                    : GamePageParser.Replace7k7k17yyPage(text);
+                var replaced = meta.Site switch
+                {
+                    GameSite.Site4399 => GamePageParser.Replace4399Page(text, _config.Replace4399H5Api),
+                    GameSite.Site7k7k or GameSite.Site17yy => GamePageParser.Replace7k7k17yyPage(text),
+                    // ArmorGames / Kongregate 的页面里没有要摘掉的站内脚本，原样保存
+                    _ => text,
+                };
                 page = System.Text.Encoding.UTF8.GetBytes(replaced);
             }
 

@@ -95,6 +95,7 @@ public sealed partial class ChatRoomViewModel : ToolViewModelBase
         SetListenLocalCommand = new RelayCommand(_ => ListenAddress = "127.0.0.1");
         SetListenAllCommand = new RelayCommand(_ => ListenAddress = "0.0.0.0");
         SetListenAllV6Command = new RelayCommand(_ => ListenAddress = "::");
+        CopyTextCommand = new RelayCommand(p => CopyText(p as string));
 
         // ------- 界面状态定时刷新（流量 / 人数 / 速度） -------
         _statusTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(1) };
@@ -259,6 +260,65 @@ public sealed partial class ChatRoomViewModel : ToolViewModelBase
         }
     }
 
+    // ---------------------------------------------------------------- 傻瓜模式 + 连接信息
+
+    /// <summary>
+    /// 傻瓜模式：不用填监听地址与端口，工具自己挑（详见 <see cref="ChatRoomConfig.SimpleMode"/>）。
+    /// </summary>
+    public bool SimpleMode
+    {
+        get => Cfg.SimpleMode;
+        set
+        {
+            if (Cfg.SimpleMode == value) return;
+            Cfg.SimpleMode = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsAdvancedMode));
+            OnPropertyChanged(nameof(SimpleModeHint));
+            Log(value ? "已打开傻瓜模式：监听地址与端口交给工具自己挑" : "已关闭傻瓜模式：回到手动填监听地址与端口");
+        }
+    }
+
+    /// <summary>普通模式（傻瓜模式关掉时）：界面上才显示「监听地址 / 端口 / 绑定」那一堆控件。</summary>
+    public bool IsAdvancedMode => !Cfg.SimpleMode;
+
+    /// <summary>傻瓜模式下的一行说明（开房间之前显示，告诉用户等会儿会发生什么）。</summary>
+    public string SimpleModeHint =>
+        $"傻瓜模式：不用填地址和端口 —— 点「开房间」后工具会自动挑一个空闲端口"
+        + $"（优先沿用上次的 {Cfg.EffectiveListenPort}），"
+        + "并把本机的 IPv4 / IPv6 地址列出来，照着发给对方就行。";
+
+    /// <summary>「连接信息」面板显示不显示（主机 + 房间开着 + 知道端口）。</summary>
+    public bool HasShareInfo => IsOnline && IsHost && LocalPortText.Length > 0;
+
+    /// <summary>局域网地址（IPv4），每一行都能直接复制发给对方。</summary>
+    public ObservableCollection<ShareEndpointRow> ShareIpv4Rows { get; } = new();
+
+    /// <summary>IPv6 地址，同上。</summary>
+    public ObservableCollection<ShareEndpointRow> ShareIpv6Rows { get; } = new();
+
+    /// <summary>IPv4 / IPv6 两组各自有没有内容（空的就把小标题也收起来，别留个空壳）。</summary>
+    public bool HasIpv4Rows => ShareIpv4Rows.Count > 0;
+
+    public bool HasIpv6Rows => ShareIpv6Rows.Count > 0;
+
+    /// <summary>没有可用 IPv6 时显示的那句话（有就空着）。</summary>
+    public string Ipv6NoticeText { get; private set; } = "";
+
+    /// <summary>
+    /// 地址列表不能照常显示时的解释：只绑了回环（别人连不进来）、或者一个地址都没探到。
+    /// </summary>
+    public string ShareNoticeText { get; private set; } = "";
+
+    /// <summary>「局域网内其它客户端连本房间要用的端口」——内网穿透也照这个填。</summary>
+    public string LocalPortText { get; private set; } = "";
+
+    /// <summary>这次监听的一句话说明（双栈 / 仅 IPv4、端口是多少）。</summary>
+    public string ListenModeText { get; private set; } = "";
+
+    /// <summary>内网穿透怎么填的提示。</summary>
+    public string PunchHintText { get; private set; } = "";
+
     /// <summary>是不是主机身份（决定界面上哪一栏亮着）。</summary>
     public bool IsHost => _session?.IsHost ?? Cfg.LastRole == ChatRole.Host;
 
@@ -272,6 +332,8 @@ public sealed partial class ChatRoomViewModel : ToolViewModelBase
             OnPropertyChanged(nameof(IsOffline));
             OnPropertyChanged(nameof(StatusBadgeText));
             OnPropertyChanged(nameof(StatusBadgeBrushKey));
+            // 「连接信息」面板只在房间开着时有意义（关掉就收起来，别占地方）
+            OnPropertyChanged(nameof(HasShareInfo));
         }
     }
 
@@ -521,6 +583,9 @@ public sealed partial class ChatRoomViewModel : ToolViewModelBase
     public RelayCommand SetListenLocalCommand { get; }
     public RelayCommand SetListenAllCommand { get; }
     public RelayCommand SetListenAllV6Command { get; }
+
+    /// <summary>复制「连接信息」里某一行（参数是要复制的文本）。</summary>
+    public RelayCommand CopyTextCommand { get; }
 
     /// <summary>需要用户二次确认时的出口（自检里替换成“总是同意”，就能无头跑完整流程）。</summary>
     public Func<string, string, bool> Confirm { get; set; } = (message, title) =>

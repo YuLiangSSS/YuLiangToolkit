@@ -107,7 +107,7 @@ public sealed partial class FlashDownloaderViewModel
         var url = (GameUrl ?? "").Trim();
         if (url.Length == 0)
         {
-            StatusText = "请输入游戏 URL，例如 https://www.4399.com/flash/6853.htm";
+            StatusText = "请输入游戏 URL，例如 https://www.4399.com/flash/6853.htm 或 https://armorgames.com/play/14775";
             return;
         }
 
@@ -696,7 +696,7 @@ public sealed partial class FlashDownloaderViewModel
                   网页游戏：   文件夹 "游戏名_a12345h"，里面是 "游戏名_a12345.htm" + "SWFNetPath.ini"
                   播放器游戏： 文件夹 "游戏名_a12345s"，里面是 "游戏名_a12345.swf" + "SWFNetPath.ini"
 
-                其中字母 a=4399、b=7k7k、c=17yy、z=其它；数字是游戏在站点里的编号。
+                其中字母 a=4399、b=7k7k、c=17yy、d=ArmorGames、e=Kongregate、z=其它；数字是游戏在站点里的编号。
                 字母后面的 s / h 表示用 Flash 播放器 / 用网页打开，改错了工具会拒绝打开。
 
                 用本工具的「下载」按钮会自动按这个规则命名，不需要你手工改。

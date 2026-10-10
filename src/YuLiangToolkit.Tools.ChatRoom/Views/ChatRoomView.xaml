@@ -77,29 +77,69 @@
                 <!-- 主机 -->
                 <Border Grid.Column="0" Style="{StaticResource CardStyle}">
                     <StackPanel>
-                        <TextBlock Text="🖥 我是主机（开房间等人连）" FontSize="12.5" FontWeight="SemiBold" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="🖥 我是主机（开房间等人连）" FontSize="12.5" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" />
+                            <!-- 傻瓜模式：勾上就不显示监听地址 / 端口那些控件，全交给工具自己挑。
+                                 ⚠ 注意 IP 和端口并不会被藏起来 —— 开完房间下面的「连接信息」里全都有
+                                 （内网穿透要照着填本地端口）。 -->
+                            <CheckBox Grid.Column="1" Content="傻瓜模式" Style="{StaticResource CheckBoxStyle}"
+                                      FontSize="11" VerticalAlignment="Center"
+                                      IsChecked="{Binding SimpleMode}"
+                                      ToolTip="不用你选监听地址和端口：点「开房间」后工具自动挑一个空闲端口，并把本机 IPv4 / IPv6 地址列出来" />
+                        </Grid>
                         <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
                                    Text="开监听后把下面这串地址发给对方。局域网直接可用；外网请用端口映射 / 内网穿透工具，把它给的「域名 + 端口」发给对方。" />
 
-                        <Grid Margin="0,8,0,0">
-                            <!-- 监听地址就是一个普通输入框（不用下拉框）：
-                                 常见就那几个值，下面的「全部 IPv4 / 含 IPv6 / 只本机」按钮一点就填好了，
-                                 下拉列表反而挡视线（本机地址一多，列表里全是长 IPv6）。
-                                 端口用 Width="Auto"：正文字号下 5 位数字加内边距天然放得下，不写死像素。 -->
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="70" />
-                                <ColumnDefinition Width="*" MinWidth="150" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="监听" VerticalAlignment="Center" FontSize="11.5"
+                        <!-- 傻瓜模式：这里只放一句话说明，具体的地址端口在下面的「连接信息」里 -->
+                        <TextBlock Text="{Binding SimpleModeHint}" FontSize="10.5" Margin="0,8,0,0" TextWrapping="Wrap"
+                                   Foreground="{StaticResource AccentBrush}"
+                                   Visibility="{Binding SimpleMode, Converter={StaticResource BoolToVis}}" />
+
+                        <!-- 普通模式才显示：监听地址 + 端口 + 一键绑定 + 本机地址提示 -->
+                        <StackPanel Visibility="{Binding IsAdvancedMode, Converter={StaticResource BoolToVis}}">
+                            <Grid Margin="0,8,0,0">
+                                <!-- 监听地址就是一个普通输入框（不用下拉框）：
+                                     常见就那几个值，下面的「全部 IPv4 / 含 IPv6 / 只本机」按钮一点就填好了，
+                                     下拉列表反而挡视线（本机地址一多，列表里全是长 IPv6）。
+                                     端口用 Width="Auto"：正文字号下 5 位数字加内边距天然放得下，不写死像素。 -->
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="70" />
+                                    <ColumnDefinition Width="*" MinWidth="150" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="监听" VerticalAlignment="Center" FontSize="11.5"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBox Grid.Column="1" Height="30" Style="{StaticResource TextBoxStyle}"
+                                         Text="{Binding ListenAddress, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="0.0.0.0 = 本机所有 IPv4 网卡（推荐）；:: = 同时支持 IPv6；也可以只绑某张网卡的地址（点下面的按钮一键填）" />
+                                <TextBox Grid.Column="2" Height="30" Margin="8,0,0,0" Style="{StaticResource TextBoxStyle}"
+                                         Text="{Binding ListenPort, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="监听端口（1024~65535 挑一个没人占的）" />
+                            </Grid>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <TextBlock Text="绑定：" FontSize="10.5" VerticalAlignment="Center"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <Button Content="全部 IPv4" Padding="8,2" FontSize="10.5" Margin="4,0,0,0"
+                                        Style="{StaticResource SecondaryButtonStyle}" Command="{Binding SetListenAllCommand}"
+                                        ToolTip="监听 0.0.0.0：本机所有 IPv4 网卡，局域网直连用这个" />
+                                <Button Content="含 IPv6" Padding="8,2" FontSize="10.5" Margin="4,0,0,0"
+                                        Style="{StaticResource SecondaryButtonStyle}" Command="{Binding SetListenAllV6Command}"
+                                        ToolTip="监听 ::（双栈）：同一个端口 IPv4 与 IPv6 都能连" />
+                                <Button Content="只本机" Padding="8,2" FontSize="10.5" Margin="4,0,0,0"
+                                        Style="{StaticResource SecondaryButtonStyle}" Command="{Binding SetListenLocalCommand}"
+                                        ToolTip="只监听 127.0.0.1：只有本机连得上，用来自己测功能" />
+                            </StackPanel>
+
+                            <!-- 本机有哪些地址可以填（原来那是下拉列表里的内容，改成输入框后放这里当提示） -->
+                            <TextBlock Text="{Binding LocalAddressHint}" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap"
                                        Foreground="{StaticResource TextSecondaryBrush}" />
-                            <TextBox Grid.Column="1" Height="30" Style="{StaticResource TextBoxStyle}"
-                                     Text="{Binding ListenAddress, UpdateSourceTrigger=PropertyChanged}"
-                                     ToolTip="0.0.0.0 = 本机所有 IPv4 网卡（推荐）；:: = 同时支持 IPv6；也可以只绑某张网卡的地址（点下面的按钮一键填）" />
-                            <TextBox Grid.Column="2" Height="30" Margin="8,0,0,0" Style="{StaticResource TextBoxStyle}"
-                                     Text="{Binding ListenPort, UpdateSourceTrigger=PropertyChanged}"
-                                     ToolTip="监听端口（1024~65535 挑一个没人占的）" />
-                        </Grid>
+                        </StackPanel>
 
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <Button Content="开房间" Style="{StaticResource PrimaryButtonStyle}" MinWidth="82"
@@ -112,23 +152,85 @@
                                     Command="{Binding KickAllCommand}" ToolTip="把所有客户端移出房间（自己继续监听）" />
                         </StackPanel>
 
-                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                            <TextBlock Text="绑定：" FontSize="10.5" VerticalAlignment="Center"
-                                       Foreground="{StaticResource TextSecondaryBrush}" />
-                            <Button Content="全部 IPv4" Padding="8,2" FontSize="10.5" Margin="4,0,0,0"
-                                    Style="{StaticResource SecondaryButtonStyle}" Command="{Binding SetListenAllCommand}"
-                                    ToolTip="监听 0.0.0.0：本机所有 IPv4 网卡，局域网直连用这个" />
-                            <Button Content="含 IPv6" Padding="8,2" FontSize="10.5" Margin="4,0,0,0"
-                                    Style="{StaticResource SecondaryButtonStyle}" Command="{Binding SetListenAllV6Command}"
-                                    ToolTip="监听 ::：同时收 IPv4 与 IPv6 的连接" />
-                            <Button Content="只本机" Padding="8,2" FontSize="10.5" Margin="4,0,0,0"
-                                    Style="{StaticResource SecondaryButtonStyle}" Command="{Binding SetListenLocalCommand}"
-                                    ToolTip="只监听 127.0.0.1：只有本机连得上，用来自己测功能" />
-                        </StackPanel>
+                        <!-- ===== 连接信息：开完房间直接摊出来（IPv4 / IPv6 / 端口 / 内网穿透怎么填） ===== -->
+                        <Border Margin="0,10,0,0" Padding="12,10" CornerRadius="8"
+                                Background="{StaticResource InputBackgroundBrush}"
+                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                Visibility="{Binding HasShareInfo, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="📋 连接信息（复制给要连进来的人）" FontSize="11.5" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding ListenModeText}" FontSize="11" Margin="0,4,0,0"
+                                           Foreground="{StaticResource AccentBrush}" TextWrapping="Wrap" />
 
-                        <!-- 本机有哪些地址可以填（原来那是下拉列表里的内容，改成输入框后放这里当提示） -->
-                        <TextBlock Text="{Binding LocalAddressHint}" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBlock Text="局域网 IPv4" FontSize="10.5" Margin="0,8,0,3"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Visibility="{Binding HasIpv4Rows, Converter={StaticResource BoolToVis}}" />
+                                <ItemsControl ItemsSource="{Binding ShareIpv4Rows}"
+                                              Visibility="{Binding HasIpv4Rows, Converter={StaticResource BoolToVis}}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,2,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Text}" FontSize="12" FontFamily="Consolas, Cascadia Mono, monospace"
+                                                           VerticalAlignment="Center" TextWrapping="Wrap" />
+                                                <TextBlock Grid.Column="1" Text="{Binding DetailText}" FontSize="10"
+                                                           Margin="8,0,8,0" VerticalAlignment="Center" TextWrapping="Wrap"
+                                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                                <Button Grid.Column="2" Content="复制" Padding="8,1" FontSize="10.5"
+                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                        Command="{Binding DataContext.CopyTextCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding Text}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Text="IPv6" FontSize="10.5" Margin="0,8,0,3"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Visibility="{Binding HasIpv6Rows, Converter={StaticResource BoolToVis}}" />
+                                <ItemsControl ItemsSource="{Binding ShareIpv6Rows}"
+                                              Visibility="{Binding HasIpv6Rows, Converter={StaticResource BoolToVis}}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,2,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Text}" FontSize="12" FontFamily="Consolas, Cascadia Mono, monospace"
+                                                           VerticalAlignment="Center" TextWrapping="Wrap" />
+                                                <TextBlock Grid.Column="1" Text="{Binding DetailText}" FontSize="10"
+                                                           Margin="8,0,8,0" VerticalAlignment="Center" TextWrapping="Wrap"
+                                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                                <Button Grid.Column="2" Content="复制" Padding="8,1" FontSize="10.5"
+                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                        Command="{Binding DataContext.CopyTextCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding Text}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <!-- 没有 IPv6 就直说，别让用户以为是哪里填错了。
+                                     ⚠ 这里必须用 EmptyToVisInverse（非空才显示）：EmptyToVis 是反过来的
+                                     ——它在字符串为空时显示，是给输入框占位符用的（踩过：提示一直不出现）。 -->
+                                <TextBlock Text="{Binding Ipv6NoticeText}" FontSize="10.5" Margin="0,4,0,0" TextWrapping="Wrap"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Visibility="{Binding Ipv6NoticeText, Converter={StaticResource EmptyToVisInverse}}" />
+
+                                <!-- 只绑了本机 / 一个地址都没探到时，解释一句（而不是列一堆连不上的地址） -->
+                                <TextBlock Text="{Binding ShareNoticeText}" FontSize="10.5" Margin="0,4,0,0" TextWrapping="Wrap"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Visibility="{Binding ShareNoticeText, Converter={StaticResource EmptyToVisInverse}}" />
+
+                                <TextBlock Text="{Binding PunchHintText}" FontSize="10.5" Margin="0,8,0,0" TextWrapping="Wrap"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                            </StackPanel>
+                        </Border>
 
                         <TextBlock Text="{Binding AdvertiseText}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"
                                    Foreground="{StaticResource AccentBrush}" />
