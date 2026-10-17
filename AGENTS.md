@@ -22,6 +22,7 @@ dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.Fram
 ```
 
 * **改了行为就同步改自检断言**（自检就是"这份文档里承诺的行为"的执行版本，见第 6 节）。
+* **改了用户看得见的行为 / 设置项**，顺手更新 `docs/tools/<工具Id>.md`（一页一个工具）与 README 的「工具一览」表。
 * 界面相关的改动再按第 6 节跑一次截图冒烟（`YLT_SHOT`）。
 * 改完只在必要处顺手更新本文件；**版本号 / 变更记录（第 9 节）/ 自检项数**三处要一起改。
 
@@ -147,7 +148,12 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 YuLiangToolkit.sln
 YuLiangTookit.csproj              # 主程序（DefaultItemExcludes 排除了 src/ Data/ Config/ tests/ MapDownloader/）
 AGENTS.md                         # ← 本文件：给 AI / 未来自己的开发指南（轮子速查 · 约定 · 踩坑）
-README.md                         # 面向使用者的说明
+README.md                         # 面向使用者的说明：工具一览表 + 快速开始（**保持短**）
+docs/                             # 面向使用者的详细文档（一页一个工具，GitHub 上就是 wiki 的效果）
+│  ├─ README.md                   #   文档索引
+│  ├─ shell.md                    #   主页搜索/排序/标签 · 自定义标题栏 · Data/Config 目录约定
+│  ├─ tools/<工具Id>.md           #   每个工具一页：能做什么 / 怎么用 / 设置项 / 数据在哪 / 注意
+│  └─ assets/100-percent-ai-coding.png   # README 标题旁那行手写体徽标（System.Drawing 画的）
 build.ps1                         # 一键还原 + 构建（保持纯 ASCII，见第 8 节）
 publish.ps1                       # 一键发布到 dist\YuLiangToolkit\（-SelfContained 可打成自带运行时）
 global.json                       # SDK 版本锁定（9.0.317）
