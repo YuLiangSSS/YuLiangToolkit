@@ -9,13 +9,13 @@
 
 | 工具 | 能干什么 | 说明 |
 | --- | --- | --- |
-| 🎥 **视频转音频** | 抽视频里的音轨：有损 MP3 / 无损 FLAC / 原样提取，批量 + 进度 + 取消 | [看详情](docs/tools/video-to-audio.md) |
-| 🎬 **视频 / 音乐播放器** | 本地播放器：播放列表、列表 / 单曲 / 随机、可调步长的快进快退（左键跳、右键换歌）、记住上次 | [看详情](docs/tools/media-player.md) |
-| ⚡ **Flash 下载器** | 4399 / 7k7k / 17yy / ArmorGames / Kongregate 的小游戏下载到本地离线玩 | [看详情](docs/tools/flash-downloader.md) |
-| 💬 **联机聊天室** | 主机开端口、客户端连进来，文字 / 图片 / 文件随便传，带单次流量上限 | [看详情](docs/tools/chat-room.md) |
-| 🏷️ **批量重命名** | 规则清单 + 实时预览 + 两阶段改名 + 可撤销 | [看详情](docs/tools/batch-rename.md) |
-| 🎧 **osu! 下图器** | 搜谱面集、批量下 `.osz`（含视频 / 无视频） | [看详情](docs/tools/map-downloader.md) |
-| 🧪 **框架示例** | 开发用模板（Data / Config 轮子演示，可整目录删除） | [看详情](docs/tools/sample-framework.md) |
+| 🎥 **视频转音频** | 抽视频里的音轨：有损 MP3 / 无损 FLAC / 原样提取，批量 + 进度 + 取消 | [详情](docs/tools/video-to-audio.md) |
+| 🎬 **视频 / 音乐播放器** | 本地播放器：播放列表、列表 / 单曲 / 随机、可调步长的快进快退（左键跳、右键换歌）、记住上次 | [详情](docs/tools/media-player.md) |
+| ⚡ **Flash 下载器** | 4399 / 7k7k / 17yy / ArmorGames / Kongregate 的小游戏下载到本地离线玩 | [详情](docs/tools/flash-downloader.md) |
+| 💬 **联机聊天室** | 主机开端口、客户端连进来，文字 / 图片 / 文件随便传，带单次流量上限 | [详情](docs/tools/chat-room.md) |
+| 🏷️ **批量重命名** | 规则清单 + 实时预览 + 两阶段改名 + 可撤销 | [详情](docs/tools/batch-rename.md) |
+| 🎧 **osu! 下图器** | 搜谱面集、批量下 `.osz`（含视频 / 无视频） | [详情](docs/tools/map-downloader.md) |
+| 🧪 **框架示例** | 开发用模板（Data / Config 轮子演示，可整目录删除） | [详情](docs/tools/sample-framework.md) |
 
 > 主页的搜索 / 排序 / 标签、自定义标题栏、以及**数据存在哪（Data / Config 目录约定）**：
 > 见 [docs/shell.md](docs/shell.md)。
