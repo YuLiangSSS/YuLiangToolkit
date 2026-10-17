@@ -1,4 +1,4 @@
-// Data / Config 轮子自检：把 代码记录.md 里承诺的行为逐条真跑一遍。
+// Data / Config 轮子自检：把 AGENTS.md 里承诺的行为逐条真跑一遍。
 // 运行： dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
 // （默认在临时目录里造数据根，不碰仓库的 Data/Config；退出码 0 = 全部通过）
 using System.IO;

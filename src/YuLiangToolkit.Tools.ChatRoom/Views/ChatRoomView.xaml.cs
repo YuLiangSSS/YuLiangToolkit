@@ -126,7 +126,7 @@ public partial class ChatRoomView : UserControl
     {
         if (!_autoScroll) return;
         // 延到下一回合再滚：正在处理集合变更时强制布局会让 ItemsControl 计数不同步
-        // （见 代码记录.md 的拖动排序那条踩坑）
+        // （见 AGENTS.md 的拖动排序那条踩坑）
         Dispatcher.BeginInvoke(new Action(ScrollMessagesToEnd),
             System.Windows.Threading.DispatcherPriority.Background);
     }

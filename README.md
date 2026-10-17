@@ -29,7 +29,7 @@ dotnet run --project YuLiangTookit.csproj
 要求：.NET 9 SDK（`global.json` 已锁定 9.0.317）。
 「视频转音频」依赖 FFmpeg：应用会自动检测 PATH 中的 `ffmpeg.exe`（也可在工具内手动选择，或点「下载 FFmpeg」打开官方下载页）。
 
-> 📒 **改代码前先看 [`代码记录.md`](代码记录.md)**：里面是所有“轮子”（工具契约、MVVM 基类、Data/Config 存储与配置框架、
+> 📒 **改代码前先看 [`AGENTS.md`](AGENTS.md)**：里面是所有“轮子”（工具契约、MVVM 基类、Data/Config 存储与配置框架、
 > FFmpeg 封装、UI 样式清单）的用途 + 签名 + 一行用法，以及新增功能的完整步骤和踩坑记录。
 > 有它就不需要把 `src/` 通读一遍。
 
@@ -38,7 +38,7 @@ dotnet run --project YuLiangTookit.csproj
 ```
 YuLiangTookit.csproj                     # 主程序（WPF 壳：自定义标题栏、主页、侧边栏导航、深色主题）
 build.ps1 / publish.ps1                  # 一键构建 / 一键发布（发布到 dist\YuLiangToolkit\）
-代码记录.md                               # 轮子速查 / 开发约定（先读这个）
+AGENTS.md                               # 轮子速查 / 开发约定（先读这个）
 Data/  Config/                           # 只有说明文件【运行时目录在 exe 旁边，见下】
 src/
 ├── YuLiangToolkit.Core/                 # 核心库
@@ -69,7 +69,7 @@ tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（555 项
 * `<exe 旁边>/Config/<功能Id>/config.json`：该功能每个选项（Checkbox / Textbox / 下拉框 / 滑块…）的值。
   在功能 ViewModel 里 `Cfg = LoadConfig<XxxConfig>()`，XAML 直接 `{Binding Cfg.Xxx}`，**改一下就自动存，不需要保存按钮**。
 * 找目录的顺序：`YLT_HOME` 环境变量 → **exe 同级** → `%AppData%\YuLiangToolkit`（只在 exe 目录不可写时兜底）。
-  状态栏最右侧一直显示当前实际用的目录。详见 `代码记录.md` 第 3 节。
+  状态栏最右侧一直显示当前实际用的目录。详见 `AGENTS.md` 第 3 节。
 * 因为数据跟着 exe 走，**整个程序目录拷走即可迁移/发布**；反过来 `dotnet clean`、手删 `bin`/`dist` 会连数据一起删掉，
   重要内容自己备份。
 * 仓库根的 `Data/`、`Config/` 现在只剩说明文件（不再是运行时目录）。
@@ -89,7 +89,7 @@ dotnet sln YuLiangToolkit.sln add src\YuLiangToolkit.Tools.MyTool\YuLiangToolkit
 要点：实现 `ITool`（提供 `Id/Name/Description/EmojiIcon/Category/Order` 和 `CreateView()`）即可被
 `ToolDiscovery` 在启动时自动发现；选项继承 `ToolConfig`，ViewModel 继承 `ToolViewModelBase`，
 Data/Config 的路径与持久化全部由框架接管。也可以把编译好的 dll 放进程序目录的 `plugins/` 文件夹
-（外部插件，无需改主程序）。完整步骤见 `代码记录.md` 第 4 节。
+（外部插件，无需改主程序）。完整步骤见 `AGENTS.md` 第 4 节。
 
 ## 第一个工具：视频转音频
 

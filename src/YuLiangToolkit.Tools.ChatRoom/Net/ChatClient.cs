@@ -204,7 +204,7 @@ public sealed class ChatClient : IAsyncDisposable
         return Connection.SendLocalTextAsync(text, (info, body) => link.SendTextAsync(info, body, CancellationToken.None));
     }
 
-    /// <summary>发一个文件给主机（主机收到后不再转发给别的客户端 —— 见 代码记录.md 的说明）。</summary>
+    /// <summary>发一个文件给主机（主机收到后不再转发给别的客户端 —— 见 AGENTS.md 的说明）。</summary>
     public async Task SendFileAsync(string path, string note = "")
     {
         var link = _link;

@@ -1,11 +1,100 @@
-# 代码记录 · 轮子速查（YuLiangToolkit）
+# AGENTS.md — YuLiangToolkit（凉雨工具集）开发指南
 
-> **给未来的自己 / 未来的 AI 会话**：改这个项目之前先读本文件，**不要再去把 `src/` 里的代码通读一遍**。
-> 这里记录所有已经造好的「轮子」（可复用组件）的**用途 + 签名 + 一行用法**，以及 Data/Config 目录约定、
-> 新增功能的标准流程、容易踩的坑。
+> **本文件是这个项目唯一的开发文档，写给 AI 编码代理 / 未来的自己。**
+> 改这个项目之前先读本文件，**不要再去通读 `src/`**：这里把所有已经造好的「轮子」（可复用组件）的
+> **用途 + 签名 + 一行用法**、Data/Config 目录约定、新增功能的标准流程、以及踩过的坑都写全了。
 >
-> **当前版本 v0.7.0**（`Directory.Build.props` 的 `<Version>`，状态栏直接读它，**别在别处写死**）。
-> 六个功能：视频转音频 · 批量重命名 · Flash 下载器 · 联机聊天室 · osu! 下图器 · 框架示例（模板，可整目录删除）。
+> * **当前版本 v0.7.2** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
+> * 六个功能：视频转音频 · 批量重命名 · Flash 下载器 · 联机聊天室 · osu! 下图器 · 框架示例（模板，可整目录删除）。
+> * 平台：Windows + .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM，**无第三方库、无 NuGet 依赖**。
+> * 语言：代码注释、提交信息、文档、以及回答用户，一律用**中文**。
+
+---
+
+## A. AI 开工守则（动手前先读完这一节）
+
+### A.1 改完代码必须做的两件事
+
+```powershell
+.\build.ps1                                                    # ① 编译：必须 0 错误（有警告也顺手清掉）
+dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
+                                                               # ② 自检：555 项行为逐条真跑，退出码 0 = 全通过
+```
+
+* **改了行为就同步改自检断言**（自检就是"这份文档里承诺的行为"的执行版本，见第 6 节）。
+* 界面相关的改动再按第 6 节跑一次截图冒烟（`YLT_SHOT`）。
+* 改完只在必要处顺手更新本文件；**版本号 / 变更记录（第 9 节）/ 自检项数**三处要一起改。
+
+### A.2 硬性规则（违反 = 破坏项目或删掉用户数据）
+
+| # | 规则 | 为什么 |
+| --- | --- | --- |
+| 1 | **数据目录在 exe 旁边**（`bin\Debug\net9.0-windows\Data`、`…\Config`），仓库根的 `Data/`、`Config/` 只放说明文件。**绝不要把运行时数据写到仓库根。** | 见第 3 节；早期版本踩过这个坑 |
+| 2 | **绝不用 `<None CopyToOutputDirectory>` 往 exe 旁边拷 Data/Config 里的东西** | 构建的 IncrementalClean 会把输出目录里的同名文件当垃圾删掉 —— 而那里正是用户数据（第 5 节，删过用户的游戏和播放器） |
+| 3 | `dotnet clean` / 手删 `bin`、`dist` = **删用户数据**（下载的游戏、配置都在里面），清理脚本别把 `Data`、`Config` 一起端了 | 同上 |
+| 4 | **别用 PowerShell 的 `Get-Content`/`Set-Content` 改 XAML / 源码** | Windows PowerShell 5.1 按 GBK 读，中文会变乱码、`Title="…"` 的引号会被弄坏（XML 直接 MC3000）。用编辑工具改 |
+| 5 | `build.ps1` / `publish.ps1` 以及任何 `.ps1`：**保持纯 ASCII，或存成 UTF-8 with BOM** | 同上，5.1 按 ANSI 解析含中文的脚本会报语法错误 |
+| 6 | 数据目录里的**相对路径不能带 `..`、不能是绝对路径** | `ToolStorage` 故意抛 `ArgumentException` 防逃逸 |
+| 7 | 配置类里**带 setter 的计算属性必须标 `[JsonIgnore]`** | 否则会被当成配置项写进 JSON |
+| 8 | 后台线程改界面一律走 `Ui(...)` / `UiAsync(...)` | 直接赋值会抛"调用线程无法访问此对象" |
+| 9 | 新增**顶层目录**时，同步改主项目 `DefaultItemExcludes` **和** `.gitignore` | 少改前者，目录里随便一个 `.cs` 都能把主程序编译搞崩 |
+| 10 | 新增持久化入口如果绕过 `ToolConfigStore`，**自己接 `FlushAll`** | 程序退出 / 切换功能时框架只 Flush 它管的那部分 |
+| 11 | 工具被切走时框架调 `NotifyClosed()`：**挂在缓存对象（配置对象等）上的事件记得在这里摘掉** | 配置对象按类型缓存，不摘就会每次打开多挂一个旧 VM |
+| 12 | 想改配置的**即时性**（用户一敲键就刷新界面）时，属性必须写 `Set(ref 字段, 值)` | 自动属性只保证"最终会存下来"，不发通知（见 2.4 / 第 5 节） |
+
+### A.3 别做 / 先问用户
+
+* **`scripts/` 下的调试脚本会弹窗抢焦点**（`e2e-batch-rename-drag.ps1` 会真的动鼠标 2 秒）：跑之前确认用户没在忙别的（见 `scripts/README.md`）。
+* **截图 / 界面验证必须用 `Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait`**：它是 GUI 子系统程序，PowerShell 直接跑不会等它，你会误判"截图没生成"。
+* 自检里**不要调 `PlayEntry()`**（会真启动 FlashPlayer 窗口，无头自检卡死）；簿记入口 `MarkPlayed()` 是公开的，自检只调它。
+* 别在业务代码里从 URL 反推本地路径（见 2.11 / 第 5 节，反推过一次就把文件写到游戏目录外面了）。
+* 别重复引入第三方库：本项目刻意"无 NuGet 依赖"，新轮子优先手写进 `Core/`（参考 `ScrollChaining`、`Crc32`）。
+
+### A.4 本文件怎么查（按任务定位）
+
+| 我要做的事 | 看哪节 |
+| --- | --- |
+| 搞清楚项目结构、有哪些项目、环境变量开关 | **0 / 1** |
+| 用现成的轮子（存储 / 配置 / MVVM / FFmpeg / UI 样式） | **2.1 – 2.9.1** |
+| 改某个具体功能（批量重命名 / Flash / 聊天室 / osu!） | **2.10 – 2.13**（每节都写了分层、约定、坑） |
+| 找 Data / Config 放哪、目录长什么样 | **3** |
+| **新增一个功能** | **4**（照抄 `Tools.Sample` 或 `Tools.BatchRename` 模板） |
+| 排查某类毛病（存储、WPF、文件系统、构建、网络） | **5** |
+| 跑验证（编译 / 自检 / 截图 / 发布冒烟） | **6** |
+| 看某功能当前的 Id、选项存哪、数据在哪 | **7** |
+| git 约定、哪些东西不入库 | **8** |
+| 某个版本改了什么 | **9** |
+
+> 第 0–9 节是稳定编号，**源码注释里到处用 `AGENTS.md 的 2.11 节` 这种引用指向它**（搜索 `AGENTS.md` 就能找到全部引用点）。
+> 重排或删除章节编号会让这些引用失效——要改就一起改。
+>
+> ⚠️ **本文件约 1450 行 / 130 KB**：作为"工作区指令"自动注入时可能被上下文预算截断（只保留前半段）。
+> 一旦发现 2.12 节之后的内容不见了，**用读取工具按行号接着读**（约值，会随编辑漂移）：
+> `0 → 95` · `1 → 135` · `2.1–2.9.1 → 240` · `2.10 → 644` · `2.11 → 755` · `2.12 → 877` · `2.13 → 1005` ·
+> `3 → 1060` · `4 → 1144` · `5 → 1183` · `6 → 1301` · `7 → 1373` · `8 → 1387` · `9 → 1429`。
+> 定位更稳的办法是搜标题，例如找第 5 节就搜 `## 5.`。
+
+### A.5 常用命令速查
+
+```powershell
+# 构建 / 运行 / 发布
+.\build.ps1                                        # 一键 restore + build（离线，走本机 NuGet 缓存）
+dotnet run --project YuLiangTookit.csproj          # 直接跑主程序
+.\publish.ps1                                      # 发布到 dist\YuLiangToolkit\（-SelfContained 自带运行时）
+
+# 自检（退出码 0 = 全通过）
+dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
+
+# 无头截图（不抢焦点，可后台跑）：先设工具 Id，再设输出 png
+$env:YLT_SHOT_TOOL="chat-room"; $env:YLT_SHOT="shots\chat-room.png"
+Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
+Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT            # 用完清掉，否则后续启动都进截图模式
+
+# git（中文文件名已配置不转义显示）
+git status; git add -A; git commit -m "..."; git log --oneline --stat -3
+```
+
+全部调试用环境变量（`YLT_*`，不设就是正常启动）见第 0 节；截图 / 专项核对流程见第 6 节。
 
 ---
 
@@ -14,13 +103,13 @@
 | 项 | 内容 |
 | --- | --- |
 | 技术栈 | .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM（无第三方库、无 NuGet 依赖） |
-| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.7.0 就是读它） |
+| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.7.2 就是读它；**别在别处写死**） |
 | 解决方案 | `YuLiangToolkit.sln`（9 个项目：主程序 + Core + 6 个功能 + 自检） |
 | 主程序 | `YuLiangTookit.csproj`（注意：文件名少一个 `l`，是历史拼写）→ 自定义标题栏外壳、主页、侧边栏、深色主题 |
 | 核心库 | `src/YuLiangToolkit.Core/`（工具契约、MVVM 基类、存储、配置、FFmpeg 封装） |
 | 功能 | `Tools.VideoToAudio`（视频转音频）、`Tools.BatchRename`（批量重命名）、`Tools.FlashDownloader`（Flash 下载器）、`Tools.ChatRoom`（联机聊天室）、`Tools.MapDownloader`（osu! 下图器）、`Tools.Sample`（框架示例，可删） |
 | 数据/配置 | **在 exe 旁边**（`bin\Debug\net9.0-windows\Data`、`…\Config`）——见第 3 节；仓库根的 `Data/`、`Config/` 只剩说明文件 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**501 项**行为逐条验证，纯控制台）——见第 6 节 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**555 项**行为逐条验证，纯控制台）——见第 6 节 |
 | 构建 | `.\build.ps1`（离线，走本机 NuGet 缓存；会设 `DOTNET_CLI_HOME` 到 `.dotnet-cli-home`） |
 | 运行 | `dotnet run --project YuLiangTookit.csproj` 或直接跑 `bin\Debug\net9.0-windows\YuLiangTookit.exe` |
 
@@ -54,7 +143,7 @@
 ```
 YuLiangToolkit.sln
 YuLiangTookit.csproj              # 主程序（DefaultItemExcludes 排除了 src/ Data/ Config/ tests/ MapDownloader/）
-代码记录.md                        # ← 本文件
+AGENTS.md                         # ← 本文件：给 AI / 未来自己的开发指南（轮子速查 · 约定 · 踩坑）
 README.md                         # 面向使用者的说明
 build.ps1                         # 一键还原 + 构建（保持纯 ASCII，见第 8 节）
 publish.ps1                       # 一键发布到 dist\YuLiangToolkit\（-SelfContained 可打成自带运行时）

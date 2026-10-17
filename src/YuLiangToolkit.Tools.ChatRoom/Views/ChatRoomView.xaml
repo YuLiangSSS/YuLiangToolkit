@@ -308,7 +308,7 @@
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              ToolTip="双击图片打开原图；音视频点「播放」">
                         <ListBox.ItemContainerStyle>
-                            <!-- 行样式必须自己补齐四条（内边距 / 悬停选中反馈 / 前景色 / 选中条），见 代码记录.md 2.9 -->
+                            <!-- 行样式必须自己补齐四条（内边距 / 悬停选中反馈 / 前景色 / 选中条），见 AGENTS.md 2.9 -->
                             <Style TargetType="ListBoxItem" BasedOn="{StaticResource FileRowItemStyle}">
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                             </Style>

@@ -2,7 +2,7 @@
 
   <!-- 「联机聊天室」功能：主机开监听、客户端连 IP:端口 的局域网 / 内网穿透聊天，
        支持文字 / 图片 / 音频 / 视频 / 任意文件，带单次流量上限。
-       分层（纯逻辑 → 网络 → 界面）与“为什么这么做”见根目录 代码记录.md 的 2.12 节。 -->
+       分层（纯逻辑 → 网络 → 界面）与“为什么这么做”见根目录 AGENTS.md 的 2.12 节。 -->
   <PropertyGroup>
     <TargetFramework>net9.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>

@@ -40,7 +40,7 @@ data.OpenInExplorer();                            // 让用户在资源管理器
 ## 路径是怎么定的
 
 `YLT_HOME` 环境变量（自检 / 特殊部署用）→ **exe 所在目录**（默认）→ `%AppData%\YuLiangToolkit`（exe 目录不可写时兜底）。
-实现见 `src/YuLiangToolkit.Core/Storage/AppPaths.cs`，速查表见根目录 `代码记录.md` 第 2.3 / 第 3 节。
+实现见 `src/YuLiangToolkit.Core/Storage/AppPaths.cs`，速查表见根目录 `AGENTS.md` 第 2.3 / 第 3 节。
 
 ## 注意
 

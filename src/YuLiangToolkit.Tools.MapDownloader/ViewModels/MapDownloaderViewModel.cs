@@ -11,7 +11,7 @@ namespace YuLiangToolkit.Tools.MapDownloader.ViewModels;
 ///
 /// <para>分工与原版一致：<see cref="OsuApiClient"/> 只管说话（换 Token / 搜索），
 /// <see cref="OszDownloader"/> 只管下文件，界面状态由这里串起来 ——
-/// 筛选、命名、URL 这些纯逻辑都在 <c>Core/</c> 里，自检直接断言（见 代码记录.md 2.13）。</para>
+/// 筛选、命名、URL 这些纯逻辑都在 <c>Core/</c> 里，自检直接断言（见 AGENTS.md 2.13）。</para>
 /// </summary>
 public sealed partial class MapDownloaderViewModel : ToolViewModelBase
 {
@@ -31,7 +31,7 @@ public sealed partial class MapDownloaderViewModel : ToolViewModelBase
         Cfg = LoadConfig<MapDownloaderConfig>();
 
         // ⚠ 顺序要紧：先 LoadConfig → 再填默认下载目录 → 最后才让下载器拿目录
-        //（写成字段初始化器会拿到空目录，见 代码记录.md 第 5 节的踩坑）。
+        //（写成字段初始化器会拿到空目录，见 AGENTS.md 第 5 节的踩坑）。
         Cfg.DefaultDownloadFolder = Storage.PathOf("downloads");
         ApplyDownloadSettings();
 

@@ -257,7 +257,7 @@ public sealed class SampleViewModel : ToolViewModelBase
 
             约定：每个功能独占一个以「工具 Id」命名的小文件夹，
             例如本工具的文件就在 Data\sample-framework\ 下。
-            想在代码里读写它，用 ToolStorage.For("sample-framework") 即可（见 代码记录.md）。
+            想在代码里读写它，用 ToolStorage.For("sample-framework") 即可（见 AGENTS.md）。
             """);
     }
 }

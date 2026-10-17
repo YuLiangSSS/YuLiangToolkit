@@ -10,7 +10,7 @@ namespace YuLiangToolkit.Tools.FlashDownloader;
 /// + 本地服务器游玩 + 关联文件下载。
 ///
 /// <para>它复刻的是仓库根目录那个参考项目（Python 的 FlashGameDownloader V2.0）的功能，
-/// 细节与“为什么这么做”都写在 代码记录.md 的 2.11 节。</para>
+/// 细节与“为什么这么做”都写在 AGENTS.md 的 2.11 节。</para>
 /// </summary>
 public class FlashDownloaderTool : ITool
 {

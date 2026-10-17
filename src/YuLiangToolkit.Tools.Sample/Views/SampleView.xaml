@@ -11,7 +11,7 @@
     </UserControl.Resources>
 
     <!-- 说明：本文件是新功能的界面模板。用到的样式（CardStyle / TextBoxStyle / ComboBoxStyle …）
-         全部来自 App.xaml（见 代码记录.md 的「UI 样式资源速查」）。 -->
+         全部来自 App.xaml（见 AGENTS.md 的「UI 样式资源速查」）。 -->
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Margin="28,22,28,26">
@@ -274,7 +274,7 @@
                 <StackPanel>
                     <TextBlock Text="把本功能当模板" FontSize="12" FontWeight="SemiBold" />
                     <TextBlock FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,6,0,0"
-                               Text="复制 src\YuLiangToolkit.Tools.Sample 整个文件夹 → 改名 → 改 csproj 里的 AssemblyName/RootNamespace → 加进 YuLiangToolkit.sln 与主项目引用，即得到一个新功能；把 SampleTool.cs / SampleConfig.cs / SampleViewModel.cs / SampleView.xaml 里的 Id 与内容换成自己的即可。详细步骤见根目录 代码记录.md。" />
+                               Text="复制 src\YuLiangToolkit.Tools.Sample 整个文件夹 → 改名 → 改 csproj 里的 AssemblyName/RootNamespace → 加进 YuLiangToolkit.sln 与主项目引用，即得到一个新功能；把 SampleTool.cs / SampleConfig.cs / SampleViewModel.cs / SampleView.xaml 里的 Id 与内容换成自己的即可。详细步骤见根目录 AGENTS.md。" />
                 </StackPanel>
             </Border>
 
