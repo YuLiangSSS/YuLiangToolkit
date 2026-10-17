@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -154,6 +155,49 @@ public partial class MediaPlayerView : UserControl
 
         // 视图重建 / 后台播放切回来时，VM 里可能已经是全屏状态 → 跟外壳同步一次
         if (vm.IsFullscreen) OnFullscreenChanged(vm, true);
+
+        // 排查用：YLT_PLAYER_MEASURE=<文件> 把全屏后各层的真实高度写出来（只读，不影响界面）
+        if (Environment.GetEnvironmentVariable("YLT_PLAYER_MEASURE") is not null) ScheduleMeasure();
+    }
+
+    private void ScheduleMeasure()
+    {
+        var timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(1) };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            WriteMeasure();
+        };
+        timer.Start();
+    }
+
+    private void WriteMeasure()
+    {
+        var path = Environment.GetEnvironmentVariable("YLT_PLAYER_MEASURE");
+        if (string.IsNullOrWhiteSpace(path)) return;
+
+        var win = Window.GetWindow(this);
+        var hit = VisualTreeHelper.HitTest(this, new Point(100, 1060))?.VisualHit;
+        var playCenter = PlayPauseButton.TranslatePoint(
+            new Point(PlayPauseButton.ActualWidth / 2, PlayPauseButton.ActualHeight / 2), this);
+        var lines = new[]
+        {
+            $"window={win?.ActualWidth:0.#}x{win?.ActualHeight:0.#} state={win?.WindowState}",
+            $"view={ActualWidth:0.#}x{ActualHeight:0.#}",
+            $"playerColumn={PlayerColumn.ActualWidth:0.#}x{PlayerColumn.ActualHeight:0.#}",
+            $"playerInner={PlayerInnerGrid.ActualWidth:0.#}x{PlayerInnerGrid.ActualHeight:0.#}",
+            $"video={VideoSurface.ActualWidth:0.#}x{VideoSurface.ActualHeight:0.#}",
+            $"media={Media.ActualWidth:0.#}x{Media.ActualHeight:0.#}",
+            $"controlBar={ControlBar.ActualWidth:0.#}x{ControlBar.ActualHeight:0.#} vis={ControlBar.Visibility} row={Grid.GetRow(ControlBar)}",
+            $"playCenter=({playCenter.X:0.#},{playCenter.Y:0.#}) viewCenterX={ActualWidth / 2:0.#}",
+            $"cover={CoverOverlay.ActualWidth:0.#}x{CoverOverlay.ActualHeight:0.#} vis={CoverOverlay.Visibility}",
+            $"hit@(100,1060)={hit?.GetType().Name} text={(hit as TextBlock)?.Text}",
+            $"hit@(960,1000)={VisualTreeHelper.HitTest(this, new Point(960, 1000))?.VisualHit?.GetType().Name}",
+            $"statusText={Vm?.StatusText}",
+            $"workArea={SystemParameters.WorkArea}",
+        };
+
+        try { File.WriteAllLines(path, lines); } catch { /* 排查文件写不进去就算了 */ }
     }
 
     /// <summary>全屏状态变了 → 让外壳去藏 / 恢复标题栏、侧边栏、状态栏并把窗口铺满屏幕。</summary>

@@ -51,6 +51,9 @@
         <Style x:Key="ControlBarStyle" TargetType="Border">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Margin" Value="0" />
+            <!-- ⚠ 默认行号必须写在 Style 里：如果写在控件的 XAML 上（Grid.Row="1"），本地值的优先级高于
+                 Style 触发器，下面全屏时的 Grid.Row=0 会**静默失效**（v0.9.5 查出来的老坑）。 -->
+            <Setter Property="Grid.Row" Value="1" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsFullscreen}" Value="True">
                     <Setter Property="Grid.Row" Value="0" />
@@ -144,23 +147,23 @@
         </Grid.ColumnDefinitions>
 
         <!-- ==================== 左：播放区（设置面板会盖住整列） ==================== -->
-        <Grid Grid.Column="0" Style="{StaticResource PlayerSurfaceStyle}">
+        <Grid x:Name="PlayerColumn" Grid.Column="0" Style="{StaticResource PlayerSurfaceStyle}">
 
-            <Grid>
+            <Grid x:Name="PlayerInnerGrid">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
                 <!-- 视频 / 音频封面（全屏时铺满整屏，见 VideoSurfaceStyle） -->
-                <Border Grid.Row="0" Style="{StaticResource VideoSurfaceStyle}" ClipToBounds="True">
+                <Border x:Name="VideoSurface" Grid.Row="0" Style="{StaticResource VideoSurfaceStyle}" ClipToBounds="True">
                     <Grid>
                         <MediaElement x:Name="Media" Stretch="Uniform"
                                       LoadedBehavior="Manual" UnloadedBehavior="Manual"
                                       ScrubbingEnabled="True" Volume="0.8" />
 
                         <!-- 音频：盖一层「专辑封面」占位（视频时不显示） -->
-                        <Border Background="#12161D"
+                        <Border x:Name="CoverOverlay" Background="#12161D"
                                 Visibility="{Binding CoverVisible, Converter={StaticResource BoolToVis}}">
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="560" Margin="24">
                                 <TextBlock Text="{Binding CoverGlyph}" FontSize="58" HorizontalAlignment="Center" />
@@ -199,7 +202,7 @@
                 </Border>
 
                 <!-- ===== 控制条：进度 + 按钮 + 状态。全屏时它浮在画面底部、鼠标一动才出现 ===== -->
-                <Border x:Name="ControlBar" Grid.Row="1" Style="{StaticResource ControlBarStyle}"
+                <Border x:Name="ControlBar" Style="{StaticResource ControlBarStyle}"
                         Visibility="{Binding ControlsVisible, Converter={StaticResource BoolToVis}}">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -240,70 +243,83 @@
                                Foreground="{StaticResource TextSecondaryBrush}" />
                 </Grid>
 
-                <!-- 控制按钮：设置 · 快退 · 播放/暂停 · 快进 · 停止 ｜ 播放顺序 · 音量 -->
+                <!-- 控制按钮：设置 ｜ 快退 · **播放/暂停（正中）** · 快进 · 停止 ｜ 播放顺序 · 音量 · 退出全屏
+                     ⚠ 大播放键必须独自占中间那个 Auto 列、左右两列都是 *，它的中心才等于整条控制条的中心。
+                     以前把「快退 + 播放 + 快进 + 停止」当成一组居中，组的中心在中间、播放键本身偏左（v0.9.6 修）。 -->
                 <Grid Grid.Row="2" Margin="0,14,0,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
-                    <!-- 设置：Segoe MDL2 Assets 的齿轮（E713）/ 返回箭头（E72B） -->
-                    <Button Grid.Column="0" Style="{StaticResource TransportButtonStyle}"
-                            Content="{Binding SettingsGlyph}" FontFamily="Segoe MDL2 Assets" FontSize="15"
-                            Command="{Binding ToggleSettingsCommand}"
-                            ToolTip="设置（在同一个页面里打开，不弹子窗口）" />
+                    <!-- 左列：设置贴最左，快退贴住播放键 -->
+                    <Grid Grid.Column="0">
+                        <!-- 设置：Segoe MDL2 Assets 的齿轮（E713）/ 返回箭头（E72B） -->
+                        <Button HorizontalAlignment="Left" VerticalAlignment="Center"
+                                Style="{StaticResource TransportButtonStyle}"
+                                Content="{Binding SettingsGlyph}" FontFamily="Segoe MDL2 Assets" FontSize="15"
+                                Command="{Binding ToggleSettingsCommand}"
+                                ToolTip="设置（在同一个页面里打开，不弹子窗口）" />
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
                         <!-- 快退：左键退一步，右键上一首（右键在代码后置里接，Button.Click 只认左键） -->
-                        <Button x:Name="BackButton" Style="{StaticResource TransportButtonStyle}"
+                        <Button x:Name="BackButton" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                Margin="0,0,3,0" Style="{StaticResource TransportButtonStyle}"
                                 Command="{Binding SeekBackwardCommand}" ToolTip="{Binding SeekBackwardTooltip}">
                             <Path Data="M 7,0 L 0,6.5 L 7,13 Z M 14,0 L 7,6.5 L 14,13 Z"
                                   Fill="{StaticResource TextPrimaryBrush}" />
                         </Button>
+                    </Grid>
 
-                        <!-- 播放 / 暂停：三角形 ↔ 两根竖条 -->
-                        <Button Style="{StaticResource TransportPrimaryButtonStyle}"
-                                Command="{Binding PlayPauseCommand}" ToolTip="{Binding PlayTooltip}">
-                            <Grid Width="14" Height="14">
-                                <Path Data="M 1,0 L 14,7 L 1,14 Z" Fill="White"
-                                      Visibility="{Binding ShowPlayIcon, Converter={StaticResource BoolToVis}}" />
-                                <Path Data="M 1,0 H 5 V 14 H 1 Z M 9,0 H 13 V 14 H 9 Z" Fill="White"
-                                      Visibility="{Binding ShowPauseIcon, Converter={StaticResource BoolToVis}}" />
-                            </Grid>
-                        </Button>
+                    <!-- 正中：播放 / 暂停（左右两列都是 *，所以它的中心 = 控制条中心） -->
+                    <Button x:Name="PlayPauseButton" Grid.Column="1"
+                            Style="{StaticResource TransportPrimaryButtonStyle}"
+                            Command="{Binding PlayPauseCommand}" ToolTip="{Binding PlayTooltip}">
+                        <Grid Width="14" Height="14">
+                            <Path Data="M 1,0 L 14,7 L 1,14 Z" Fill="White"
+                                  Visibility="{Binding ShowPlayIcon, Converter={StaticResource BoolToVis}}" />
+                            <Path Data="M 1,0 H 5 V 14 H 1 Z M 9,0 H 13 V 14 H 9 Z" Fill="White"
+                                  Visibility="{Binding ShowPauseIcon, Converter={StaticResource BoolToVis}}" />
+                        </Grid>
+                    </Button>
 
-                        <!-- 快进：左键快进一步，右键下一首 -->
-                        <Button x:Name="ForwardButton" Style="{StaticResource TransportButtonStyle}"
-                                Command="{Binding SeekForwardCommand}" ToolTip="{Binding SeekForwardTooltip}">
-                            <Path Data="M 0,0 L 7,6.5 L 0,13 Z M 7,0 L 14,6.5 L 7,13 Z"
-                                  Fill="{StaticResource TextPrimaryBrush}" />
-                        </Button>
+                    <!-- 右列：快进 + 停止贴住播放键；播放顺序 / 音量 / 退出全屏贴最右 -->
+                    <Grid Grid.Column="2">
+                        <StackPanel HorizontalAlignment="Left" VerticalAlignment="Center" Orientation="Horizontal">
+                            <!-- 快进：左键快进一步，右键下一首 -->
+                            <Button x:Name="ForwardButton" Margin="3,0,3,0"
+                                    Style="{StaticResource TransportButtonStyle}"
+                                    Command="{Binding SeekForwardCommand}" ToolTip="{Binding SeekForwardTooltip}">
+                                <Path Data="M 0,0 L 7,6.5 L 0,13 Z M 7,0 L 14,6.5 L 7,13 Z"
+                                      Fill="{StaticResource TextPrimaryBrush}" />
+                            </Button>
 
-                        <Button Style="{StaticResource TransportButtonStyle}"
-                                Command="{Binding StopCommand}" ToolTip="停止（位置回到开头）">
-                            <Path Data="M 0.5,0.5 H 12.5 V 12.5 H 0.5 Z" Fill="{StaticResource TextPrimaryBrush}" />
-                        </Button>
-                    </StackPanel>
+                            <!-- 停止：位置回到开头 -->
+                            <Button Style="{StaticResource TransportButtonStyle}"
+                                    Command="{Binding StopCommand}" ToolTip="停止（位置回到开头）">
+                                <Path Data="M 0.5,0.5 H 12.5 V 12.5 H 0.5 Z" Fill="{StaticResource TextPrimaryBrush}" />
+                            </Button>
+                        </StackPanel>
 
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                        <!-- 播放顺序：点一下轮换（列表循环 → 单曲循环 → 随机播放） -->
-                        <Button Width="46" Height="34" Style="{StaticResource TransportButtonStyle}" Margin="0"
-                                Content="{Binding ModeShortText}" FontSize="11.5" FontWeight="SemiBold"
-                                Command="{Binding CyclePlayModeCommand}"
-                                ToolTip="{Binding PlayModeTooltip}" />
-                        <TextBlock Text="音量" FontSize="10.5" VerticalAlignment="Center" Margin="10,0,6,0"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
-                        <Slider Width="92" Minimum="0" Maximum="100" Value="{Binding VolumeValue}"
-                                Style="{StaticResource SliderStyle}" VerticalAlignment="Center" ToolTip="音量" />
+                        <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                            <!-- 播放顺序：点一下轮换（列表循环 → 单曲循环 → 随机播放） -->
+                            <Button Width="46" Height="34" Style="{StaticResource TransportButtonStyle}" Margin="0"
+                                    Content="{Binding ModeShortText}" FontSize="11.5" FontWeight="SemiBold"
+                                    Command="{Binding CyclePlayModeCommand}"
+                                    ToolTip="{Binding PlayModeTooltip}" />
+                            <TextBlock Text="音量" FontSize="10.5" VerticalAlignment="Center" Margin="10,0,6,0"
+                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                            <Slider Width="92" Minimum="0" Maximum="100" Value="{Binding VolumeValue}"
+                                    Style="{StaticResource SliderStyle}" VerticalAlignment="Center" ToolTip="音量" />
 
-                        <!-- 退出全屏：全屏时控制条右边这个才是按钮（画面右下角那个圆钮在全屏时藏起来了） -->
-                        <Button Width="44" Height="34" Style="{StaticResource TransportButtonStyle}" Margin="10,0,0,0"
-                                FontFamily="Segoe MDL2 Assets" FontSize="14"
-                                Content="{Binding FullscreenGlyph}" Command="{Binding ToggleFullscreenCommand}"
-                                ToolTip="{Binding FullscreenTooltip}"
-                                Visibility="{Binding IsFullscreen, Converter={StaticResource BoolToVis}}" />
-                    </StackPanel>
+                            <!-- 退出全屏：全屏时控制条右边这个才是按钮（画面右下角那个圆钮在全屏时藏起来了） -->
+                            <Button Width="44" Height="34" Style="{StaticResource TransportButtonStyle}" Margin="10,0,0,0"
+                                    FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                    Content="{Binding FullscreenGlyph}" Command="{Binding ToggleFullscreenCommand}"
+                                    ToolTip="{Binding FullscreenTooltip}"
+                                    Visibility="{Binding IsFullscreen, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
+                    </Grid>
                 </Grid>
 
                 <!-- 状态栏（每个功能自己一句“正在干什么”，主窗口底部那条是外壳的） -->

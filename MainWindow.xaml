@@ -13,7 +13,7 @@
         FontFamily="Microsoft YaHei UI, Segoe UI"
         UseLayoutRounding="True"
         TextOptions.TextFormattingMode="Display"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="Manual">
     <!-- 自定义窗口框架：CaptionHeight=0（整窗为客户区，窗口按钮必然可点），
          标题栏拖拽/双击最大化由代码手动处理；边缘缩放仍由 ResizeBorderThickness 提供 -->
     <shell:WindowChrome.WindowChrome>

@@ -26,7 +26,9 @@ namespace YuLiangToolkit.Core.Services;
 /// 工作区目录继承了别的沙箱工具留下的 <c>Low Mandatory Level</c> 标记，exe 于是以 Low 权限运行，
 /// ShowWindow / SHAppBarMessage 一律返回 5）。换个文件夹、或把该目录的完整性级别改回 Medium
 /// （<c>icacls &lt;目录&gt; /setintegritylevel "(OI)(CI)Medium"</c>）就好，代码这边无解。</para>
-/// <para>⚠ 自检**故意不测**这个：跑测试时把开发者自己的任务栏藏起来太吓人（见 AGENTS.md 2.14）。</para>
+/// <para>⚠ 自检**只测只读的完整性判定**（<see cref="IntegrityCheck"/>），**不真藏任务栏**：
+/// 跑测试时把开发者自己的任务栏藏起来太吓人（见 AGENTS.md 2.14）。藏不住时先看程序启动时打的控制台
+/// 「完整性自检」—— 错误码 <c>5</c> 它已经替你翻译成“进程级别不够”。</para>
 /// </summary>
 public static class TaskbarHider
 {

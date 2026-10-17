@@ -13,6 +13,11 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // 完整性自检：把「本进程完整性级别 + 任务栏找不找得到 + 全屏能不能藏任务栏」打到控制台
+        // （同时也写 Debug 输出；设了 YLT_TASKBAR_TRACE 会追加到那个文件）。
+        // 全屏藏不住任务栏时先看这几行：错误码 5 = exe 被标成 Low，改全屏代码没用（见 IntegrityCheck 类注释）。
+        IntegrityCheck.WriteReport();
+
         // 数据/配置目录（在 exe 旁边）首次运行时建好，并各放一份“这是干什么的”说明
         AppPaths.EnsureCreated();
         RuntimeReadme.EnsureSeeded();

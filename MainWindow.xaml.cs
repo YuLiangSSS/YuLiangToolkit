@@ -65,6 +65,18 @@ public partial class MainWindow : Window, IFullscreenHost
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw);
+
+    [DllImport("user32.dll")]
+    private static extern int GetWindowRgn(IntPtr hWnd, IntPtr hRgn);
+
+    [DllImport("gdi32.dll")]
+    private static extern IntPtr CreateRectRgn(int left, int top, int right, int bottom);
+
+    [DllImport("gdi32.dll")]
+    private static extern bool DeleteObject(IntPtr hObject);
+
     private bool _fullscreen;
     private Rect _restoreBounds;
     private WindowState _restoreState;
@@ -77,6 +89,12 @@ public partial class MainWindow : Window, IFullscreenHost
     {
         InitializeComponent();
         StateChanged += OnWindowStateChanged;
+
+        // 开在「工作区」正中间：CenterScreen 会把任务栏那 48px 也算进屏幕高度，窗口看着偏低（v0.9.6）。
+        // SystemParameters.WorkArea 已经是扣掉任务栏的 DIP 矩形，窗口 Width/Height 也是 DIP，直接算即可。
+        var area = SystemParameters.WorkArea;
+        Left = area.Left + Math.Max(0, (area.Width - Width) / 2);
+        Top = area.Top + Math.Max(0, (area.Height - Height) / 2);
 
         // 全屏时把任务栏真的藏起来（见 TaskbarHider）；失活 / 最小化 / 关窗口一律还回去，
         // 免得用户 alt-tab 出去发现任务栏没了。
@@ -104,10 +122,16 @@ public partial class MainWindow : Window, IFullscreenHost
         {
             _taskbarWatch?.Stop();
             TaskbarHider.Restore();
+
+            // 全屏窗口失活 / 最小化时**别再置顶**：去掉窗口 Region 之后全屏窗口会盖住整个屏幕，
+            // 如果还保持 Topmost，“还回去的任务栏”会被它继续压在下面，用户 alt-tab 出去就以为任务栏没了。
+            if (_fullscreen) Topmost = false;
             return;
         }
 
+        Topmost = true;
         TaskbarHider.Hide();
+        ClearFullscreenRegion();
         _taskbarWatch?.Start();
     }
 
@@ -121,10 +145,12 @@ public partial class MainWindow : Window, IFullscreenHost
         {
             _taskbarWatch.Stop();
             TaskbarHider.Restore();
+            if (_fullscreen) Topmost = false;
             return;
         }
 
         TaskbarHider.Hide();
+        ClearFullscreenRegion();
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -196,6 +222,39 @@ public partial class MainWindow : Window, IFullscreenHost
             return (ct.TransformToDevice.M11, ct.TransformToDevice.M22);
         }
         return (1.0, 1.0);
+    }
+
+    /// <summary>
+    /// 去掉窗口上那条“工作区大小”的 Region —— **全屏底部黑条 / 控制条最底下被裁的根因**（v0.9.5）。
+    ///
+    /// <para>实测：最大化到整块显示器后 <c>GetWindowRect</c> 是 1928×1088，但系统给窗口套了一个
+    /// <c>(4,4)-(1924,1036)</c> 的窗口区域（正好是 1920×1032 的工作区）。于是屏幕最下面 48px
+    /// **根本没有被窗口覆盖**：任务栏被藏起来后那里露出黑色桌面，播放器控制条最底下的状态文字
+    /// 也被裁掉（看起来就像“任务栏只是被涂黑了”）。<c>WM_GETMINMAXINFO</c> 只改窗口矩形、
+    /// **不改这个 Region**，必须显式 <c>SetWindowRgn(hwnd, IntPtr.Zero)</c> 清掉。</para>
+    ///
+    /// <para>系统在最大化 / 激活变化之后可能又把它套回去，所以进入全屏时清一次、看门狗每 400ms 再兜底。</para>
+    /// </summary>
+    private void ClearFullscreenRegion()
+    {
+        if (!_fullscreen) return;
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero) return;
+
+        // GetWindowRgn 要一个区域句柄接收结果；拿它判断“到底有没有区域”，没有就不用白调 SetWindowRgn
+        // （每次 SetWindowRgn 都会让窗口重绘，400ms 看门狗里能省则省）。
+        var probe = CreateRectRgn(0, 0, 1, 1);
+        try
+        {
+            if (GetWindowRgn(hwnd, probe) == 0) return;   // 0 = ERROR，表示本来就没有区域
+        }
+        finally
+        {
+            DeleteObject(probe);
+        }
+
+        SetWindowRgn(hwnd, IntPtr.Zero, true);
     }
 
     // ---------- 自定义标题栏窗口控制 ----------
@@ -293,6 +352,11 @@ public partial class MainWindow : Window, IFullscreenHost
         // 之后由看门狗每 400ms 补一次（explorer 会把任务栏自己显示回来，见 OnTaskbarWatchTick）。
         TaskbarHider.Hide();
         _taskbarWatch.Start();
+
+        // 窗口最大化后系统会套一个“工作区大小”的 Region（正好把任务栏那 48px 裁掉）→ 底部黑条 / 控制条被裁。
+        // 先清一次，再排一次（最大化 / 激活之后系统可能又套上；看门狗每 400ms 还会兜底）。
+        ClearFullscreenRegion();
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(ClearFullscreenRegion));
     }
 
     private void ExitFullscreen()

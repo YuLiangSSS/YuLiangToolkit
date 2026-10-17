@@ -6,6 +6,7 @@ using YuLiangToolkit.App.Models;
 using YuLiangToolkit.App.ViewModels;
 using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Mvvm;
+using YuLiangToolkit.Core.Services;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Core.Tools;
 using YuLiangToolkit.FrameworkSelfCheck;
@@ -23,6 +24,7 @@ void Check(string name, bool ok, string detail = "") =>
     results.Add($"{(ok ? "PASS" : "FAIL")} | {name}{(detail.Length > 0 ? "  :: " + detail : "")}");
 
 Console.WriteLine($"数据根目录: {AppPaths.Root}");
+Console.WriteLine($"完整性自检: {IntegrityCheck.Summary()}");
 Console.WriteLine();
 
 // ---------- 1. 强类型配置：首次加载落盘默认值 ----------
@@ -697,6 +699,29 @@ catch (Exception ex)
     Check($"[播放器] 运行过程中抛出异常（{ex.GetType().Name}）", false,
         $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
 }
+
+// ---------- 完整性自检（全屏藏任务栏的前置条件） ----------
+// 只读：读自己的令牌 + FindWindow，**不隐藏任何窗口**（见 AGENTS.md 2.14）。
+// 这块是 v0.9.4 加的：全屏藏不住任务栏时，先看启动时那行「完整性自检」，分清是权限问题还是代码问题。
+Check("[完整性] RID 0x0000 判为 Untrusted", IntegrityCheck.Classify(0x0000) == IntegrityLevel.Untrusted);
+Check("[完整性] RID 0x1000 判为 Low", IntegrityCheck.Classify(0x1000) == IntegrityLevel.Low);
+Check("[完整性] RID 0x2000 判为 Medium", IntegrityCheck.Classify(0x2000) == IntegrityLevel.Medium);
+Check("[完整性] RID 0x2100（Medium Plus）也算 Medium", IntegrityCheck.Classify(0x2100) == IntegrityLevel.Medium);
+Check("[完整性] RID 0x3000 判为 High", IntegrityCheck.Classify(0x3000) == IntegrityLevel.High);
+Check("[完整性] RID 0x4000 判为 System", IntegrityCheck.Classify(0x4000) == IntegrityLevel.System);
+Check("[完整性] 当前进程级别读得出来（不是 Unknown）",
+    IntegrityCheck.CurrentProcess != IntegrityLevel.Unknown,
+    IntegrityCheck.Summary());
+Check("[完整性] Low 的说明里点明 Win32 错误码 5",
+    IntegrityCheck.Describe(IntegrityLevel.Low).Contains("5"),
+    IntegrityCheck.Describe(IntegrityLevel.Low));
+
+var integrityLines = IntegrityCheck.ReportLines();
+Check("[完整性] 报告有结论行、级别与当前进程一致",
+    integrityLines.Count >= 3
+    && integrityLines[^1].Contains("结论")
+    && integrityLines[0].Contains(IntegrityCheck.LevelName(IntegrityCheck.CurrentProcess)),
+    string.Join(" | ", integrityLines));
 
 Console.WriteLine(string.Join(Environment.NewLine, results));
 var failed = results.Count(r => r.StartsWith("FAIL"));

@@ -4,7 +4,7 @@
 > 改这个项目之前先读本文件，**不要再去通读 `src/`**：这里把所有已经造好的「轮子」（可复用组件）的
 > **用途 + 签名 + 一行用法**、Data/Config 目录约定、新增功能的标准流程、以及踩过的坑都写全了。
 >
-> * **当前版本 v0.9.3** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
+> * **当前版本 v0.9.6** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
 > * 七个功能：视频转音频 · **视频 / 音乐播放器** · 批量重命名 · Flash 下载器 · 联机聊天室 · osu! 下图器 · 框架示例（模板，可整目录删除）。
 > * 平台：Windows + .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM，**无第三方库、无 NuGet 依赖**。
 > * 语言：代码注释、提交信息、文档、以及回答用户，一律用**中文**。
@@ -18,7 +18,7 @@
 ```powershell
 .\build.ps1                                                    # ① 编译：必须 0 错误（有警告也顺手清掉）
 dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
-                                                               # ② 自检：704 项行为逐条真跑，退出码 0 = 全通过
+                                                               # ② 自检：713 项行为逐条真跑，退出码 0 = 全通过
 ```
 
 * **改了行为就同步改自检断言**（自检就是"这份文档里承诺的行为"的执行版本，见第 6 节）。
@@ -105,13 +105,13 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | 项 | 内容 |
 | --- | --- |
 | 技术栈 | .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM（无第三方库、无 NuGet 依赖） |
-| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.9.3 就是读它；**别在别处写死**） |
+| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.9.6 就是读它；**别在别处写死**） |
 | 解决方案 | `YuLiangToolkit.sln`（10 个项目：主程序 + Core + 7 个功能 + 自检） |
 | 主程序 | `YuLiangTookit.csproj`（注意：文件名少一个 `l`，是历史拼写）→ 自定义标题栏外壳、主页、侧边栏、深色主题 |
 | 核心库 | `src/YuLiangToolkit.Core/`（工具契约、MVVM 基类、存储、配置、FFmpeg 封装） |
 | 功能 | `Tools.VideoToAudio`（视频转音频）、`Tools.MediaPlayer`（视频 / 音乐播放器）、`Tools.BatchRename`（批量重命名）、`Tools.FlashDownloader`（Flash 下载器）、`Tools.ChatRoom`（联机聊天室）、`Tools.MapDownloader`（osu! 下图器）、`Tools.Sample`（框架示例，可删） |
 | 数据/配置 | **在 exe 旁边**（`bin\Debug\net9.0-windows\Data`、`…\Config`）——见第 3 节；仓库根的 `Data/`、`Config/` 只剩说明文件 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**704 项**行为逐条验证，纯控制台）——见第 6 节 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**713 项**行为逐条验证，纯控制台）——见第 6 节 |
 | 构建 | `.\build.ps1`（离线，走本机 NuGet 缓存；会设 `DOTNET_CLI_HOME` 到 `.dotnet-cli-home`） |
 | 运行 | `dotnet run --project YuLiangTookit.csproj` 或直接跑 `bin\Debug\net9.0-windows\YuLiangTookit.exe` |
 
@@ -141,7 +141,8 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | `YLT_PLAYER_SETTINGS=1` | 打开「视频 / 音乐播放器」时直接把设置面板展开（截图核对那一屏用） |
 | `YLT_PLAYER_FULLSCREEN=1` | 打开「视频 / 音乐播放器」时启动就进全屏（截图核对全屏版式用；要配 `YLT_PLAYER_DEMO`） |
 | `YLT_PLAYER_HIDE_CONTROLS=1` | 再配合上面那个：进全屏后先把控制条藏起来（核对「鼠标不动时只剩画面」那一帧） |
-| `YLT_TASKBAR_TRACE=<文件>` | 把「全屏藏任务栏」每次藏 / 还的细节（hwnd、Win32 错误码、是否仍然可见）写进文件。**全屏时任务栏没藏住先看它**：错误码 `5` = 完整性级别不够（见 2.14） |
+| `YLT_PLAYER_MEASURE=<文件>` | 打开「视频 / 音乐播放器」1 秒后，把全屏时各层的真实尺寸（窗口 / 播放列 / 视频 Border / 控制条 / 封面）与底部命中元素写进文件，核对「底部黑条 / 控制条被裁」用 |
+| `YLT_TASKBAR_TRACE=<文件>` | 把「全屏藏任务栏」每次藏 / 还的细节（hwnd、Win32 错误码、是否仍然可见）写进文件；**启动时的完整性自检也会追加到这里**。**全屏时任务栏没藏住先看它**：错误码 `5` = 完整性级别不够（见 2.14） |
 | `YLT_MINI_DEMO=1` | 启动时先开一下播放器再回主页，制造「正在后台播放」的状态 —— 左下角迷你播放条会出现（截图核对用） |
 
 ---
@@ -179,7 +180,7 @@ src/
 │  │              ToolViewModelBase.cs · OptionItem.cs · ScrollChaining.cs
 │  ├─ Storage/    AppPaths.cs · RuntimeReadme.cs · ToolStorage.cs · JsonFileStore.cs · FileSize.cs
 │  ├─ Configuration/ ToolConfig.cs · ToolConfigStore.cs · DynamicToolConfig.cs
-│  ├─ Services/   AppSettingsService.cs · FFmpegLocator.cs · FFmpegRunner.cs
+│  ├─ Services/   AppSettingsService.cs · FFmpegLocator.cs · FFmpegRunner.cs · TaskbarHider.cs · IntegrityCheck.cs
 │  └─ Models/     AppSettings.cs（全局设置，只放跨功能项）
 ├─ YuLiangToolkit.Tools.VideoToAudio/      # 功能 1
 │  ├─ VideoToAudioTool.cs · VideoToAudioConfig.cs · LegacyAppSettings.cs
@@ -516,6 +517,9 @@ public sealed class FlashDownloaderViewModel : ToolViewModelBase
 | `MainViewModel` | `NavItems`（侧边栏，首项是首页）· `Tools` · `ToolCards`（过滤+排序后的卡片）· `AllTags` · `SearchText` · `SortOptions`/`SelectedSort` · `CurrentView` · `BackVisible` · `SelectedNavItem` · `StatusText` · `CurrentTitle` · `GoHomeCommand` · `OpenToolCommand` · `ClearSearchCommand` · `SearchTagCommand`；**切换功能时会调用上一个 VM 的 `NotifyClosed()`**；打开功能时记录“上次使用” |
 | `MainWindow` | `WindowStyle=None` + `WindowChrome(CaptionHeight=0)`；标题栏拖拽/双击最大化在代码里手动实现；`WM_GETMINMAXINFO` 把最大化钳制到工作区；`CaptureTo(png)` 是截图模式实现 |
 | `HomeView` | 主页：搜索框 + 排序下拉 + 标签条 + 卡片墙 + 空状态；代码后置只做 Ctrl+F 聚焦 / Esc 清空 / 进入主页自动聚焦搜索框 |
+
+> 主窗口的启动位置：`WindowStartupLocation="Manual"`，构造函数里按 `SystemParameters.WorkArea`（已扣掉任务栏）算 `Left/Top`
+> —— `CenterScreen` 会把任务栏那 48px 也算进屏幕高度，窗口看着偏低（v0.9.6 修，1920×1080 + 底部任务栏时窗口开在 `320,106`）。
 
 ### 2.8 主页搜索 · 排序 · 标签（v0.3.0）
 
@@ -1143,6 +1147,20 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 4. **把 Windows 任务栏真的藏起来**（`TaskbarHider`，见下面的「藏任务栏」）；
    退出时反过来：先 `_fullscreen = false` 再还原 `WindowState` 与各行列尺寸，并把任务栏还回去。
 
+**⚠ 全屏底部一条黑带 / 控制条被裁（v0.9.5，`MainWindow.ClearFullscreenRegion`）** —— v0.9.3/0.9.4 之后暴露的第二个坑：
+
+* 现象：任务栏确实藏掉了、窗口 `GetWindowRect` 也是 1928×1088，但**屏幕最下面约 48px 露出黑色桌面**，
+  全屏控制条最底下的状态文字被裁掉（用户原话：“播放按钮下方显示不全，是不是只把任务栏涂黑了”）。
+* 根因：最大化时 **Windows 给窗口套了一个「工作区大小」的窗口区域（Region）** —— `GetWindowRgn` 返回
+  `(4,4)-(1924,1036)`（正好 1920×1032 工作区），窗口矩形 1088、**实际可见 / 命中区域只有 1032**。
+  `WM_GETMINMAXINFO` **只改窗口矩形，不改 Region**。
+* 修法：进全屏时 + 看门狗里调 `SetWindowRgn(hwnd, IntPtr.Zero, true)` 清掉
+  （`MainWindow.ClearFullscreenRegion`：先用 `GetWindowRgn` 判断有没有区域，避免每 400ms 无谓重绘）。
+* ⚠ 清掉 Region 后全屏窗口会**真的盖住任务栏**，所以失活 / 最小化时必须把 `Topmost = false`（`SyncTaskbar`）——
+  否则“还回去的任务栏”会被全屏窗口继续压在下面，用户 alt-tab 出去会以为任务栏没了。
+* 用 `GetWindowRect` / `GetClientRect` **看不出来**（两个都是 1088）；判断这件事得用 `GetWindowRgn` +
+  `WindowFromPoint`（在屏幕底部点一下，命中 `Progman` = 没盖住）。
+
 **藏任务栏（v0.9.3，`Core/Services/TaskbarHider.cs`）** —— 这是 v0.9.0~v0.9.2 一直没修好的那块：
 
 * **“铺满 + 置顶”盖不住任务栏**：任务栏自己也是置顶窗口，z 序不一定听我们的（有的机器/主题上照样露出来）。
@@ -1155,25 +1173,49 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
   v0.9.2 之后那版就写了 4×50ms 的等待，手感很糟）。
 * **什么时候还回去**：退出全屏 / 窗口失活 / 最小化 / 关窗口 / 进程退出（`AppDomain.ProcessExit`、未处理异常钩子）。
   失活就还原是有意的 —— 用户 alt-tab 出去不能发现任务栏没了。
-* ⚠ **藏不住时的排查顺序**：先设 `YLT_TASKBAR_TRACE=<文件>` 看日志里的 Win32 错误码。
+* ⚠ **藏不住时的排查顺序**：先看程序启动时打的控制台「完整性自检」（v0.9.4，见下面），再设
+  `YLT_TASKBAR_TRACE=<文件>` 看每次藏 / 还的 Win32 错误码。
   **错误码 `5`（拒绝访问）= 本进程完整性级别比任务栏低**（Windows 的 UIPI 不允许跨级别动别人的窗口），
   这时 `ShowWindow` / `SHAppBarMessage(ABM_SETSTATE)` 全都会失败，**代码怎么写都没用**。
-  v0.9.3 真机上就是这么个坑：工作区目录被别的沙箱工具留下了 `Low Mandatory Level` 标记，文件夹里所有 exe
-  都以 Low 权限运行（`whoami /groups` 里看不到，得读进程令牌或用 `icacls <exe>` 看 `Mandatory Label`）。
-  修法是把目录的完整性级别改回 Medium：`icacls <目录> /setintegritylevel "(OI)(CI)Medium"`。
+  v0.9.3 真机上就是这么个坑：工作区被别的沙箱工具留下了 `Low Mandatory Level` 标记，exe 以 Low 权限运行
+  （`whoami /groups` 里看不到，得读进程令牌或用 `icacls <exe>` 看 `Mandatory Label`）。
+  修法：`icacls <目录> /setintegritylevel "(OI)(CI)Medium" /T`，然后重启程序。
+  ⚠ **标签是标在“文件”上的，不是目录**：不加 `/T` 只改目录、已有的 `exe/dll` 仍然是 Low（v0.9.4 实测：
+  目录是 Medium，`bin` 里 143 个文件是 Low）；**用低权限沙箱重新编译**也会把输出再标回 Low。
   正常安装/发布出去的 exe 不会带这个标记。
-* 自检**故意不测**这块：跑测试时把开发者自己的任务栏藏起来太吓人；验证靠真机跑一次（见第 6 节）。
+* 自检**只测只读的完整性判定**（`IntegrityCheck` 的等级归类 / 报告文案，9 项），**不真藏任务栏** ——
+  跑测试时把开发者自己的任务栏藏起来太吓人；真机验证见第 6 节。
+
+**启动时的「完整性自检」（v0.9.4，`Core/Services/IntegrityCheck.cs`）** —— 全屏藏不住任务栏时**先看控制台**：
+
+* `App.OnStartup` 第一件事调 `IntegrityCheck.WriteReport()`：把「进程完整性级别 + 任务栏窗口句柄 / 可见性 + 结论」
+  三行打到控制台（从终端 / `dotnet run` 启动可见；双击启动没有控制台，不显示也不报错），同时写 `Debug` 输出；
+  设了 `YLT_TASKBAR_TRACE` 还会追加到那个文件。
+* 级别低于 `Medium` 时结论直接写「藏不住任务栏（错误码 5）」并给出
+  `icacls "<exe 所在目录>" /setintegritylevel "(OI)(CI)Medium" /T` 的修复命令 ——
+  这样「权限问题」和「代码问题」一眼就能分开，不用再猜。
+* 实现是**只读**的：`OpenProcessToken` + `GetTokenInformation(TokenIntegrityLevel)` 读自己的令牌，
+  `FindWindow("Shell_TrayWnd")` 找任务栏；绝不隐藏 / 显示任何窗口，所以自检程序能直接断言。
+* 自检程序启动时也会打一行 `IntegrityCheck.Summary()`，例如
+  `进程完整性=Medium（0x2000）· 任务栏窗口 0x…（可见=True）· 全屏可藏任务栏=是`。
+* ⚠ **从 IDE（Rider / Visual Studio）里看是乱码**（v0.9.5 修）：它们按 UTF-8 读 stdout，而 .NET 默认按
+  控制台代码页（中文系统 936/GBK）写。`WriteReport` 在 `Console.IsOutputRedirected` 为真时切 UTF-8，
+  **真正的控制台保持原样**（否则在 cmd 里反而会乱）。
 
 播放器界面这一侧的「沉浸式」做法（**全在 `MediaPlayerView` 里**）：
 
 * 控制条（进度 + 按钮 + 状态）包在 `Border x:Name="ControlBar"` 里，`Grid.Row` 由 `ControlBarStyle` 的
   DataTrigger 在全屏时改成 **0 + 底部对齐 + 上透下黑的渐变背景** → 它就从「画面下面一排」变成「浮在画面上」；
   画面那块 Border 同时在全屏时 `Grid.RowSpan=2`、去圆角去边框，于是画面铺满整屏；
+  ⚠ 默认的 `Grid.Row="1"` **必须写在 Style 的 Setter 里**：直接写在 Border 上属于本地值、优先级高于
+  DataTrigger，全屏时 `Grid.Row=0` 会**静默失效**（v0.9.5 才查出来；现在已挪进 `ControlBarStyle`）。
 * 控制条 `Visibility` 绑 `ControlsVisible`：**鼠标一动就显示**（`PreviewMouseMove` 隧道事件，画面上的
   `MediaElement` 也盖不住），**2.5 秒不动就隐藏**，同时 `Cursor = Cursors.None` 把鼠标指针也藏了；
   鼠标停在控制条上 / 正在拖进度条时不隐藏；
 * 画面右下角那个圆钮（普通模式的全屏入口）在全屏时藏起来（`ShowCornerFullscreenButton`），
   改用控制条最右边的「退出全屏」—— 否则它会挡画面。
+* 控制条里的大播放键**独自占中间那个 `Auto` 列、左右两列都是 `*`**，它的中心才等于控制条中心；
+  别把「快退 + 播放 + 快进 + 停止」当成一组居中 —— 组居中 ≠ 播放键居中，全屏时会明显偏左（v0.9.6 修）。
 
 > ⚠️ **别用 `Left/Top/Width/Height` 直接铺满屏幕**：那样会被窗口管理器夹回**工作区**（实测 1920×1080 的屏只拿到
 > 1920×1032，任务栏那 48px 空着）。正路只有「临时改 WM_GETMINMAXINFO 再最大化」这一条。
@@ -1663,7 +1705,10 @@ git diff                        # 看未暂存改动
 
 | 版本 | 内容 |
 | --- | --- |
-| **v0.9.3**（当前） | **修「全屏藏不住任务栏」**（见 2.14 的「藏任务栏」）：任务栏自己也是置顶窗口，靠「铺满 + `Topmost`」盖它不可靠 —— 改成**真的藏**（`Core/Services/TaskbarHider.cs`：`ShowWindowAsync(SW_HIDE)` + `SetWindowPos(SWP_HIDEWINDOW)` + `ShowWindow(SW_HIDE)`，主屏 + 副屏都藏，以 `IsWindowVisible` 的真实结果为准），并挂 **400ms 看门狗**（`MainWindow._taskbarWatch`）盯住「explorer 把它显示回来」；退出全屏 / 失活 / 最小化 / 关窗口 / 进程退出一律还回去。顺带去掉 UI 线程上的 `Thread.Sleep`、新增 `YLT_TASKBAR_TRACE` 排查日志与 `TaskbarHider.LastError`。**真正踩的坑不在代码里**：工作区目录带着别的沙箱工具留下的 `Low Mandatory Level` 标记 → 文件夹里的 exe 以 **Low 权限**运行 → UIPI 让 `ShowWindow` / `SHAppBarMessage` 一律返回 `5`（拒绝访问）；用 `icacls <目录> /setintegritylevel "(OI)(CI)Medium"` 修好后一切正常。自检 704 项（这块**故意不进自检**，跑测试藏开发者任务栏太吓人）。版本号 0.9.2 → 0.9.3 |
+| **v0.9.6**（当前） | **摆正两处「不正中」**（见 2.7 / 2.14）：① 播放器控制条的大播放键以前是跟着「快退 + 播放 + 快进 + 停止」整组居中，**组居中 ≠ 播放键居中**，所以全屏时它明显偏左；改成**播放键独自占中间的 `Auto` 列、左右两列都是 `*`**，全屏实测 `playCenter.x = 960`（屏幕正中，蓝圆像素中心 959），快退/快进/停止贴着它两边，设置与音量仍靠边。② 主窗口以前用 `CenterScreen` 居中（把任务栏那 48px 也算进屏幕高度，窗口看着偏低），改成 `WindowStartupLocation="Manual"` + 按 `SystemParameters.WorkArea` 算**工作区正中间**（1920×1080 + 48px 任务栏时窗口开在 `320,106`，中心 `960,516`）。自检仍 **713** 项（纯版式，真机截图核对）。版本号 0.9.5 → 0.9.6 |
+| **v0.9.5** | **修「全屏底部一条黑带、控制条最底下被裁」**（见 2.14）：`WM_GETMINMAXINFO` 把窗口撑到整块显示器后，Windows 还给窗口套了一个**工作区大小的窗口 Region**（`GetWindowRgn` = `(4,4)-(1924,1036)`），窗口矩形 1088、实际可见 / 命中区域只有 1032 —— 任务栏藏掉后底部 48px 露出黑色桌面，控制条的状态文字被裁掉。修法：`MainWindow.ClearFullscreenRegion` 在进全屏 + 400ms 看门狗里 `SetWindowRgn(hwnd, 0)`（先 `GetWindowRgn` 判断有没有区域，避免无谓重绘）；清掉 Region 后全屏窗口会真的盖住任务栏，所以失活 / 最小化时 `Topmost = false`，保证“还回去的任务栏”不会再被压住。顺带：控制条默认的 `Grid.Row="1"` 从控件本地值挪进 `ControlBarStyle`（本地值压过 DataTrigger，全屏 `Grid.Row=0` 一直没生效），新增 `YLT_PLAYER_MEASURE` 排查钩子；控制台自检在重定向（Rider / VS / 管道）时**切 UTF-8 输出**，IDE 里不再乱码（真正的控制台仍按代码页写）。自检仍 **713** 项（窗口 Region 没法无头断言，真机截图核对）。版本号 0.9.4 → 0.9.5 |
+| **v0.9.4** | **启动时的「完整性自检」**（见 2.14）：全屏藏不住任务栏时，第一眼就能分清是「权限不够」还是「代码不对」。新增 `Core/Services/IntegrityCheck.cs` —— 只读地读本进程的 `Mandatory Integrity Level`（`OpenProcessToken` + `GetTokenInformation(TokenIntegrityLevel)`）+ `FindWindow("Shell_TrayWnd")`，`App.OnStartup` 把「级别 / 任务栏 / 结论」三行打到控制台（同时写 `Debug`；设了 `YLT_TASKBAR_TRACE` 也追加），级别低于 `Medium` 时直接给出 `icacls "<exe 目录>" /setintegritylevel "(OI)(CI)Medium" /T` 的修复命令。**背景**：v0.9.3 的全屏代码本身没问题，是 `bin\Debug` 里 143 个文件又被低权限沙箱编译标成了 `Low`（目录是 Medium，标签在**文件**上，覆盖写会保留）→ UIPI 拒绝操作任务栏（错误码 5）；`/T` 改回 Medium 后实测全屏中 `IsWindowVisible(Shell_TrayWnd)=False`、退出后 `True`。自检 704 → **713** 项（只测只读的等级归类与报告文案，**不藏任务栏**）。版本号 0.9.3 → 0.9.4 |
+| **v0.9.3** | **修「全屏藏不住任务栏」**（见 2.14 的「藏任务栏」）：任务栏自己也是置顶窗口，靠「铺满 + `Topmost`」盖它不可靠 —— 改成**真的藏**（`Core/Services/TaskbarHider.cs`：`ShowWindowAsync(SW_HIDE)` + `SetWindowPos(SWP_HIDEWINDOW)` + `ShowWindow(SW_HIDE)`，主屏 + 副屏都藏，以 `IsWindowVisible` 的真实结果为准），并挂 **400ms 看门狗**（`MainWindow._taskbarWatch`）盯住「explorer 把它显示回来」；退出全屏 / 失活 / 最小化 / 关窗口 / 进程退出一律还回去。顺带去掉 UI 线程上的 `Thread.Sleep`、新增 `YLT_TASKBAR_TRACE` 排查日志与 `TaskbarHider.LastError`。**真正踩的坑不在代码里**：工作区目录带着别的沙箱工具留下的 `Low Mandatory Level` 标记 → 文件夹里的 exe 以 **Low 权限**运行 → UIPI 让 `ShowWindow` / `SHAppBarMessage` 一律返回 `5`（拒绝访问）；用 `icacls <目录> /setintegritylevel "(OI)(CI)Medium"` 修好后一切正常。自检 704 项（这块**故意不进自检**，跑测试藏开发者任务栏太吓人）。版本号 0.9.2 → 0.9.3 |
 | v0.9.2 | **迷你条标题改成「来回滚」**（见 2.14）：**放得下就一动不动**（之前是两份文本首尾相接一直滚，短标题也会被滚走，反而读不全）；放不下才滚 —— 右→左滚到最后一个字 → 停 1.2 s → 左→右滚回第一个字 → 停 → 循环。速度 34 px/s，只溢出几像素时至少滚 1 s；「要不要滚 / 一趟多久」抽成纯函数 `MiniPlayerPanel.ScrollDuration`。自检 672 → **678** 项。版本号 0.9.1 → 0.9.2 |
 | v0.9.1 | **全屏改成「沉浸式」**（见 2.14）：画面铺满整屏（连任务栏一起盖住），平时屏幕上**只有画面**；**鼠标往屏幕下方一动**才浮出控制条（正在放什么 + 进度条 + 全套按钮 + 退出全屏），**2.5 秒不动鼠标**就自动缩回去、鼠标指针也一起隐藏（v0.9.0 那版是全屏后控制条一直占一条）。做法：控制条被包进 `ControlBar`，全屏时由 `ControlBarStyle` 的 DataTrigger 改成「`Grid.Row=0` + 底部对齐 + 上透下黑渐变」，画面那块 `Grid.RowSpan=2`；显隐走 `ControlsVisible`，闲置计时器在界面代码后置里（鼠标停在控制条上 / 拖进度条时不缩）。自检 665 → **672** 项。版本号 0.9.0 → 0.9.1 |
 | v0.9.0 | **播放器加全屏 + 后台播放 + 左下角迷你条**（见 2.14）：① **整窗全屏**（`F11` / 画面右下角按钮，`Esc` 退出；藏掉标题栏 / 侧边栏 / 播放列表，连任务栏一起盖住）；② 设置项「**后台播放**」（默认开）：切到别的工具 / 回主页时**声音不断**，外壳会保住播放器的视图（`IBackgroundTool`），切回来是同一个 VM、列表与进度都还在；③ 后台播放时左下角浮出**迷你播放条**：标题从右往左循环滚 + 快退 / 播放暂停 / 快进（**左键跳步长、右键上一首 / 下一首**，与播放器页一致），点标题回播放器。踩坑：全屏**不能**直接设 `Left/Top/Width/Height`（会被夹回工作区，1920×1080 只拿到 1920×1032），必须临时改 `WM_GETMINMAXINFO` 再最大化 + 临时 `Topmost`；后台播放时界面 `Unloaded` **不能**顺手 `Close()` 播放器。自检 654 → **665** 项。版本号 0.8.0 → 0.9.0 |
