@@ -4,8 +4,8 @@
 > 改这个项目之前先读本文件，**不要再去通读 `src/`**：这里把所有已经造好的「轮子」（可复用组件）的
 > **用途 + 签名 + 一行用法**、Data/Config 目录约定、新增功能的标准流程、以及踩过的坑都写全了。
 >
-> * **当前版本 v0.7.2** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
-> * 六个功能：视频转音频 · 批量重命名 · Flash 下载器 · 联机聊天室 · osu! 下图器 · 框架示例（模板，可整目录删除）。
+> * **当前版本 v0.8.0** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
+> * 七个功能：视频转音频 · **视频 / 音乐播放器** · 批量重命名 · Flash 下载器 · 联机聊天室 · osu! 下图器 · 框架示例（模板，可整目录删除）。
 > * 平台：Windows + .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM，**无第三方库、无 NuGet 依赖**。
 > * 语言：代码注释、提交信息、文档、以及回答用户，一律用**中文**。
 
@@ -18,7 +18,7 @@
 ```powershell
 .\build.ps1                                                    # ① 编译：必须 0 错误（有警告也顺手清掉）
 dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
-                                                               # ② 自检：555 项行为逐条真跑，退出码 0 = 全通过
+                                                               # ② 自检：654 项行为逐条真跑，退出码 0 = 全通过
 ```
 
 * **改了行为就同步改自检断言**（自检就是"这份文档里承诺的行为"的执行版本，见第 6 节）。
@@ -56,7 +56,7 @@ dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.Fram
 | --- | --- |
 | 搞清楚项目结构、有哪些项目、环境变量开关 | **0 / 1** |
 | 用现成的轮子（存储 / 配置 / MVVM / FFmpeg / UI 样式） | **2.1 – 2.9.1** |
-| 改某个具体功能（批量重命名 / Flash / 聊天室 / osu!） | **2.10 – 2.13**（每节都写了分层、约定、坑） |
+| 改某个具体功能（批量重命名 / Flash / 聊天室 / osu! / 播放器） | **2.10 – 2.14**（每节都写了分层、约定、坑） |
 | 找 Data / Config 放哪、目录长什么样 | **3** |
 | **新增一个功能** | **4**（照抄 `Tools.Sample` 或 `Tools.BatchRename` 模板） |
 | 排查某类毛病（存储、WPF、文件系统、构建、网络） | **5** |
@@ -68,10 +68,11 @@ dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.Fram
 > 第 0–9 节是稳定编号，**源码注释里到处用 `AGENTS.md 的 2.11 节` 这种引用指向它**（搜索 `AGENTS.md` 就能找到全部引用点）。
 > 重排或删除章节编号会让这些引用失效——要改就一起改。
 >
-> ⚠️ **本文件约 1450 行 / 130 KB**：作为"工作区指令"自动注入时可能被上下文预算截断（只保留前半段）。
+> ⚠️ **本文件约 1570 行 / 140 KB**：作为"工作区指令"自动注入时可能被上下文预算截断（只保留前半段）。
 > 一旦发现 2.12 节之后的内容不见了，**用读取工具按行号接着读**（约值，会随编辑漂移）：
-> `0 → 95` · `1 → 135` · `2.1–2.9.1 → 240` · `2.10 → 644` · `2.11 → 755` · `2.12 → 877` · `2.13 → 1005` ·
-> `3 → 1060` · `4 → 1144` · `5 → 1183` · `6 → 1301` · `7 → 1373` · `8 → 1387` · `9 → 1429`。
+> `0 → 101` · `1 → 143` · `2.1 → 257` · `2.9 → 535` · `2.10 → 663` · `2.11 → 774` · `2.12 → 896` ·
+> `2.13 → 1024` · `2.14 → 1077` · `3 → 1159` · `4 → 1245` · `5 → 1284` · `6 → 1408` · `7 → 1491` ·
+> `8 → 1506` · `9 → 1548`。
 > 定位更稳的办法是搜标题，例如找第 5 节就搜 `## 5.`。
 
 ### A.5 常用命令速查
@@ -103,13 +104,13 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | 项 | 内容 |
 | --- | --- |
 | 技术栈 | .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM（无第三方库、无 NuGet 依赖） |
-| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.7.2 就是读它；**别在别处写死**） |
-| 解决方案 | `YuLiangToolkit.sln`（9 个项目：主程序 + Core + 6 个功能 + 自检） |
+| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.8.0 就是读它；**别在别处写死**） |
+| 解决方案 | `YuLiangToolkit.sln`（10 个项目：主程序 + Core + 7 个功能 + 自检） |
 | 主程序 | `YuLiangTookit.csproj`（注意：文件名少一个 `l`，是历史拼写）→ 自定义标题栏外壳、主页、侧边栏、深色主题 |
 | 核心库 | `src/YuLiangToolkit.Core/`（工具契约、MVVM 基类、存储、配置、FFmpeg 封装） |
-| 功能 | `Tools.VideoToAudio`（视频转音频）、`Tools.BatchRename`（批量重命名）、`Tools.FlashDownloader`（Flash 下载器）、`Tools.ChatRoom`（联机聊天室）、`Tools.MapDownloader`（osu! 下图器）、`Tools.Sample`（框架示例，可删） |
+| 功能 | `Tools.VideoToAudio`（视频转音频）、`Tools.MediaPlayer`（视频 / 音乐播放器）、`Tools.BatchRename`（批量重命名）、`Tools.FlashDownloader`（Flash 下载器）、`Tools.ChatRoom`（联机聊天室）、`Tools.MapDownloader`（osu! 下图器）、`Tools.Sample`（框架示例，可删） |
 | 数据/配置 | **在 exe 旁边**（`bin\Debug\net9.0-windows\Data`、`…\Config`）——见第 3 节；仓库根的 `Data/`、`Config/` 只剩说明文件 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**555 项**行为逐条验证，纯控制台）——见第 6 节 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**654 项**行为逐条验证，纯控制台）——见第 6 节 |
 | 构建 | `.\build.ps1`（离线，走本机 NuGet 缓存；会设 `DOTNET_CLI_HOME` 到 `.dotnet-cli-home`） |
 | 运行 | `dotnet run --project YuLiangTookit.csproj` 或直接跑 `bin\Debug\net9.0-windows\YuLiangTookit.exe` |
 
@@ -135,6 +136,8 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | `YLT_CHAT_TRACE=<文件>` | 自检里把聊天室的状态提示 / 收发消息 / 断线原因写进文件（排错用） |
 | `YLT_CHAT_NET_TRACE=<文件>` | 把聊天室每个收发帧（类型 + 载荷长度 + 读循环退出原因）写进文件（排协议问题用） |
 | `YLT_MAP_DEMO=1` | 打开「osu! 下图器」时塞 12 行假结果（超长标题 / 无上架日期 / 不同 CS 都有），只为看版式与核对表头对齐，**不发任何请求** |
+| `YLT_PLAYER_DEMO=1` | 打开「视频 / 音乐播放器」时塞 6 行假列表（音频 / 视频都有），只为看列表与封面版式；点了会提示“文件不在了” |
+| `YLT_PLAYER_SETTINGS=1` | 打开「视频 / 音乐播放器」时直接把设置面板展开（截图核对那一屏用） |
 
 ---
 
@@ -229,6 +232,17 @@ src/
 │  │            OszDownloader.cs           # 并发下 .osz（跳过已存在 / 取消不留半个文件 / 统计）
 │  ├─ ViewModels/ MapDownloaderViewModel*.cs（2 个 partial）· BeatmapSetItem.cs
 │  └─ Views/    MapDownloaderView.xaml(.cs) · ScrollBarWidthConverter.cs
+├─ YuLiangToolkit.Tools.MediaPlayer/       # 功能 7：视频 / 音乐播放器（MediaElement + 可换假播放器，见 2.14）
+│  ├─ MediaPlayerTool.cs · MediaPlayerConfig.cs · MediaPlaylistState.cs
+│  ├─ MediaTypes.cs                        # ★纯逻辑：扩展名 → 音频 / 视频 + 读取方式过滤
+│  ├─ MediaTime.cs                         # ★纯逻辑：时间文本 / 进度比例 / 快进快退夹取（0.1 秒精度）
+│  ├─ MediaScanner.cs                      # ★纯逻辑：扫文件夹（递归 / 过滤 / 自然排序）
+│  ├─ PlaylistMerger.cs                    # ★纯逻辑：追加去重 / 覆盖 + 统计文案
+│  ├─ PlayQueue.cs                         # ★纯逻辑：列表循环 / 单曲循环 / 随机（洗牌一轮不重复）
+│  ├─ MediaItem.cs                         # 列表行模型（不碰播放器）
+│  ├─ IMediaPlayback.cs                    # 播放器抽象：界面用 MediaElement 实现，自检用假的
+│  ├─ ViewModels/ MediaPlayerViewModel.cs + .Playlist.cs + .Playback.cs（3 个 partial）
+│  └─ Views/    MediaPlayerView.xaml(.cs) · MediaElementPlayback.cs   # MediaElement 适配器
 App.xaml / App.xaml.cs             # 全局样式资源 + 启动/退出钩子（截图模式设为不抢焦点）
 MainWindow.xaml(.cs)               # 自定义标题栏外壳
 Models/ShellConfig.cs              # 外壳配置：主页排序偏好 + 各功能上次使用时间（存 Config/shell/）
@@ -594,8 +608,8 @@ var tags   = ToolFilter.CollectTags(cards);                          // 标签�
 
 鼠标停在**内层列表**（游戏列表 / 文件列表 / 日志框）上滚滚轮：内层滚到头、或者压根没得滚
 （空列表 / 内容比视口矮）时，这一格滚轮**交给外层页面**继续滚，不会卡在列表上不动。
-`src\YuLiangToolkit.Core\Mvvm\ScrollChaining.cs` 干的就是这件事，已经挂在全部 13 处内层列表上
-（Flash 下载器 3 · 联机聊天室 5 · 批量重命名 3 · 视频转音频 1 · 框架示例 1）。
+`src\YuLiangToolkit.Core\Mvvm\ScrollChaining.cs` 干的就是这件事，已经挂在全部 15 处内层列表上
+（Flash 下载器 3 · 联机聊天室 5 · 批量重命名 3 · 视频转音频 1 · 播放器 2 · 框架示例 1）。
 
 ```xml
 <!-- View 顶部加命名空间 -->
@@ -1061,6 +1075,86 @@ await client.SendFileAsync(@"D:\图片\截图.png");
 直接是 `false`，那一整组就只能"跳过"（Flash 下载器那组就吃过这个亏）。改用裸 `TcpListener` 手写几十行
 HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 
+### 2.14 视频 / 音乐播放器（v0.8.0 新增）
+
+**定位**：左边是工具列表（外壳，不动），中间播放（视频 / 音频封面 + 进度条 + 一排控制按钮），右边是播放列表。
+功能上对齐网易云那种本地播放器：打开文件夹 / 文件 / 拖放、列表循环 / 单曲循环 / 随机、可调步长的快进快退、
+音量、记住上次的列表与进度。
+
+分工：`MediaTypes` / `MediaTime` / `MediaScanner` / `PlaylistMerger` / `PlayQueue`（**纯逻辑**，自检直接断言）
+→ `MediaPlayerViewModel`（3 个 partial：状态与设置 / 列表 / 播放控制）
+→ `MediaPlayerView.xaml(.cs)` + `MediaElementPlayback`（真播放器：把 `MediaElement` 包成 `IMediaPlayback`）。
+
+| 轮子 | 位置 | 说明 |
+| --- | --- | --- |
+| `MediaKind` / `MediaIncludeMode` | `MediaTypes.cs` | 音频 / 视频；读取方式（一并读取 / 仅音频 / 仅视频）；`KindOf` `IsAudio` `IsVideo` `Accept(path, mode)` `Describe` `KindText` `KindGlyph` `DescribeExtensions` |
+| `MediaTime` | `MediaTime.cs` | **纯函数**：`Format`（`3:05` / `1:02:03`）· `FormatSeconds` · `RoundStep`（**0.1 秒精度 + 夹在 0.1~60 秒**）· `Clamp` · `Seek(position, duration, delta)` · `Ratio` · `FromRatio` |
+| `MediaScanner` | `MediaScanner.cs` | `EnumerateFiles(folder, recursive, mode)` / `BuildItems(...)` / `FromFiles(paths, mode)`；读不动的子目录**跳过不抛异常**；按**自然顺序**排序（`2.mp3` 在 `10.mp3` 前） |
+| `NaturalStringComparer` | 同上 | 数字段按数值比、非数字段大小写不敏感；`Instance` 直接用（也可以拿去排别的列表） |
+| `PlaylistMerger.Merge(existing, incoming, append)` | `PlaylistMerger.cs` | **纯逻辑**：追加（保留下原列表 + 补新的）或覆盖（只用新的一批）；按完整路径**大小写不敏感去重**；返回 `MergeReport(Items, Added, Skipped, Displaced, Describe(append))` |
+| `PlayQueue` | `PlayQueue.cs` | **纯逻辑**：`Mode`（`LoopAll` / `RepeatOne` / `Shuffle`）· `Next(count, autoAdvance)` · `Previous(count)` · `SetCurrent(index)` · `Reset()`；随机模式维护洗牌表（一轮不重复，重洗不会紧接着重放上一首）；`ModeText` / `ModeGlyph` / `ModeTooltip` / `Cycle` |
+| `MediaItem` | `MediaItem.cs` | 列表行：`FullPath` `FileName` `Title` `Folder` `Kind` `KindText` `KindGlyph` `Number` `IsPlaying` `Tooltip`；**不碰播放器**（所以自检可以随便造） |
+| `IMediaPlayback` | `IMediaPlayback.cs` | 播放器抽象：`Load/Play/Pause/Stop/Seek/Close` + `Position/Duration/IsPlaying/HasVideo/Volume` + `Opened/Ended/Failed` 事件 |
+| `MediaPlayerConfig` | `MediaPlayerConfig.cs` | 全部设置（见下） |
+| `MediaPlaylistState` | `MediaPlaylistState.cs` | 「记住上次」的快照：`Paths` + `CurrentPath` + `PositionSeconds` |
+| `MediaElementPlayback` | `Views/MediaElementPlayback.cs` | 真播放器：`LoadedBehavior/UnloadedBehavior=Manual`、`ScrubbingEnabled=true`、`Seek` 先夹范围、`MediaFailed` 翻成人话 |
+| `MediaPlayerViewModel` | `ViewModels/*.cs` | 配置桥接 + 界面状态 + 命令；`.Playlist.cs` 管打开/增删/恢复，`.Playback.cs` 管播放/快进快退/上一首下一首 |
+
+#### 设置项（`Config\media-player\config.json`）
+
+| 设置 | 存的值 | 说明 |
+| --- | --- | --- |
+| 读取哪些文件 | `IncludeMode`（枚举字符串） | 音频 + 视频 / 仅音频 / 仅视频；**打开文件与拖放也按它过滤**，不然设置就没意义 |
+| 连子文件夹一起读取 | `ScanRecursive`（默认 true） | 递归扫描；递归在后台线程跑（`IsBusy`） |
+| 再开一个文件夹 | `AppendWhenOpeningFolder`（默认 true=追加） | 追加 / 覆盖；**「打开文件」按钮和拖放一律追加**（那个设置只管文件夹） |
+| 快进 / 快退步长 | `SeekStepSeconds`（默认 5.0） | 0.1 ~ 60 秒、**0.1 秒精度**；滑块 + 数字框都能改；`SeekStepEffective` 负责规整 |
+| 播放顺序 | `PlayOrder`（默认列表循环） | 与播放条上那个「循环 / 单曲 / 随机」按钮是同一个值 |
+| 音量 | `Volume`（默认 80） | 0 ~ 100；`VolumeEffective` 夹范围 |
+| 恢复上次的播放列表 / 位置 | `RestorePlaylist` / `ResumeLastPlayed` | 列表快照在 `Data\media-player\playlist.json`；恢复了也**不自动出声** |
+| 上次打开的文件夹 | `LastFolder` | 文件对话框的起始目录 + 设置页上的一行提示 |
+
+#### 几个必须知道的约定
+
+* **播放器必须抽成 `IMediaPlayback`**：`MediaElement` 要真的解码、还要活在界面线程上，无头自检造不出来。
+  自检里塞一个 `FakeMediaPlayback`（只记录被要求做了什么 + 手动抛 `Opened/Ended`），
+  就能把「播放 → 快进快退 → 播完自动接下一首 → 单曲循环 → 随机 → 记住上次」整条链路跑完（99 项断言）。
+  **凡是新加播放相关逻辑，先想「假播放器能不能断言」，不能就别写进 VM。**
+* **`MediaElement` 的两个行为必须设 `Manual`**：`LoadedBehavior`/`UnloadedBehavior` 留默认值时，
+  它会自己在加载时开播、卸载时自己关掉，跟 ViewModel 的命令打架；时长要等 `MediaOpened` 之后才可信。
+* **进度的来源只有一个**：界面里 200ms 的 `DispatcherTimer` 读 `IMediaPlayback.Position` 调
+  `vm.UpdatePosition(pos, duration)`；拖进度条时 `_seeking=true` 把计时器挡住，否则滑块会被拽回去。
+  进度条本身是 `ProgressBar`（`IsHitTestVisible=False`）+ 一个透明 `Grid` 接鼠标事件（点一下 / 按住拖都能跳）。
+* **上一首 / 下一首是两个独立命令**（`PreviousCommand` / `NextCommand`），
+  **右键快退 / 右键快进**在代码后置里接到这两个命令上：`Button.Command` 只响应左键，右键连 `Click` 都不会触发。
+* **`PlayItem` 里只在 `index != _queue.Current` 时调 `SetCurrent`**：否则「播完自动下一首」也会被当成
+  「用户跳着点」，随机模式那一轮的顺序就作废了（表现为随机播放老是回到开头几首）。
+* **单曲循环是 VM 自己处理的**（`OnPlayerEnded` 里 `Seek(0)+Play`）：`PlayQueue` 只回答「下一首是谁」，
+  `RepeatOne` 的 `Next(..., autoAdvance: true)` 返回原地，但「重放」这个动作必须有人做。
+* **覆盖模式下正在播的那首被顶掉了要停播**（不然界面显示着一首已经不存在的曲目）。
+* **恢复上次时文件可能已经不在**：逐条 `File.Exists` 过滤，并报「N 个已不存在，已跳过」。
+* **`ManageClosed`**：`OnClosed` 里 `SavePlaylistState()` + `DetachPlayer()`（切走工具就停声，不留后台播放）。
+
+#### 界面层的坑（都实测过）
+
+* ⚠ **控制按钮的图标别用 `⏪ ⏩ ⏹ 🔁 🔂 🔀` 这些字符**：本机字体没有这些码位，
+  会被渲染成「带方框的豆腐块」（截图核对时才发现，肉眼一眼能看出是坏的）。
+  现在全部用**矢量 `Path`**（播放/暂停/快进/快退/停止），齿轮用 `Segoe MDL2 Assets` 的 `E713`（打开后变 `E72B`），
+  播放顺序按钮直接写两个字（循环 / 单曲 / 随机）。**加新图标照这个来，别赌字体。**
+  （`🎵 🎬 📂 ✕` 这几个 emoji 在本机是能正常显示的，列表行与「文件夹 / 文件 / 移除」按钮可以用。）
+* **设置面板是同页面板**，用一层不透明 `Border` **盖住左边整列**（播放区 + 进度条 + 按钮），
+  不是子窗口：子窗口要自己管生命周期（关工具时还得负责关掉它），这一屏一页放得下就没必要。
+* **设置面板要盖整列而不是只盖视频区**：只盖视频区时内容比可视区高，底部的「恢复默认设置 / 返回播放」被切掉。
+* **列表行里正在播的那行**用 `DataTrigger` 把行号换成 `▶`（不额外占宽度，也不影响对齐）。
+* 播放条右侧那一组（模式按钮 + 音量）与左边 5 个按钮共用同一行：`Grid` 三列（`Auto`/`*`/`Auto`），
+  中间那组 `HorizontalAlignment=Center`，窗口变窄时也不会错位。
+* `YLT_PLAYER_DEMO=1` 塞 6 行假列表（点了会提示文件不在了）、`YLT_PLAYER_SETTINGS=1` 直接展开设置面板 ——
+  截图核版式用，跟 `YLT_MAP_DEMO` / `YLT_CHAT_DEMO` 一个套路。
+
+**验证方式**：`MediaPlayerChecks`（99 项）——扩展名归类 / 时间与快进快退 / 自然排序 / 真扫临时目录 /
+合并去重 / 三种播放顺序（随机用固定种子断言“一轮不重复”）/ 配置落盘 / 无头 VM 全流程。
+⚠ 自检里**不要碰真的 `MediaElement`**（要解码、要界面线程，无头跑既慢又依赖本机编解码器）；
+界面上能不能播只能靠手动 + 截图确认。
+
 ---
 
 ## 3. Data / Config 目录约定（v0.2.0 起；v0.4.1 起位置在 **exe 旁边**）
@@ -1077,7 +1171,8 @@ bin\Debug\net9.0-windows\          （或 bin\Release\… / dist\YuLiangToolkit\
 │  ├─ flash-downloader\tools\…     ← 播放页模板 + FlashPlayer.exe
 │  ├─ batch-rename\rename-history.json
 │  ├─ chat-room\Sessions\…         ← 每次连接一个「年份.月份.日期-时间.分钟.秒」文件夹（见下）
-│  └─ map-downloader\downloads\…   ← osu! 的 .osz 落盘处（可以在界面上换成任意目录）
+│  ├─ map-downloader\downloads\…   ← osu! 的 .osz 落盘处（可以在界面上换成任意目录）
+│  └─ media-player\playlist.json   ← 播放列表快照（下次打开恢复用：路径 + 上次那首 + 听到第几秒）
 └─ Config\                         ← 功能配置
    ├─ 怎么用这两个文件夹.md
    ├─ shell\config.json            ← 外壳自己的：主页排序偏好 + 上次使用时间
@@ -1086,6 +1181,7 @@ bin\Debug\net9.0-windows\          （或 bin\Release\… / dist\YuLiangToolkit\
    ├─ flash-downloader\            ← config.json（含游戏目录、并发、端口、播放器路径…）
    ├─ chat-room\config.json        ← 昵称/头像、监听地址与端口、要连的主机、单次流量上限、发图压缩…
    ├─ map-downloader\config.json   ← osu! 凭据（Client ID/Secret、Access Token）+ 搜索条件 + 下载目录与并发
+   ├─ media-player\config.json     ← 播放器：读取方式 / 递归 / 追加覆盖 / 音量 / 播放顺序 / 快进快退步长 / 恢复上次
    └─ sample-framework\            ← config.json + options.json
 ```
 
@@ -1213,6 +1309,12 @@ Data/chat-room/
   （配置对象是按类型缓存的，不摘的话每次打开工具都会多挂一个旧 VM 上去）。
 * 列表里的 `ListBox.ScrollIntoView` 会**顺着 `BringIntoView` 一路请求到外层页面**，把整页顶下去 ——
   要滚内层就找它内部的 `ScrollViewer` 直接滚（见 2.12）。
+* **按钮/菜单里的图标别用 `⏪ ⏩ ⏹ 🔁 🔂 🔀` 这类字符**：本机字体没有这些码位，会渲染成「带方框的豆腐块」。
+  要稳就用矢量 `Path`，或者 `Segoe MDL2 Assets`（`FontFamily` 设上，配 `E713` 这种码位），
+  或者干脆写字（播放器那个「循环 / 单曲 / 随机」按钮）。`🎵 🎬 📂 ✕` 这几个 emoji 在本机是能显示的。
+  ⚠ 这类毛病**截图放大才看得出**，别只看一眼小图就说"没问题"。
+* **`MediaElement` 的 `LoadedBehavior` / `UnloadedBehavior` 都要设 `Manual`**：留默认值时它自己在加载时开播、
+  卸载时自己关掉，会跟 ViewModel 的命令打架（见 2.14）。
 
 **文件系统 / 批量改名**
 * Windows 上**只改大小写的改名**（`photo.jpg` → `Photo.jpg`）用一步 `File.Move` 会失败（目标“已存在”）；
@@ -1310,11 +1412,13 @@ Data/chat-room/
 # 1) 编译（0 警告 0 错误）
 .\build.ps1
 
-# 2) 轮子自检：555 项行为逐条真跑（Data/Config 轮子 + 主页搜索排序 + 批量重命名规则/冲突/执行/撤销
+# 2) 轮子自检：654 项行为逐条真跑（Data/Config 轮子 + 主页搜索排序 + 批量重命名规则/冲突/执行/撤销
 #    + Flash 下载器的站点解析/命名/ini/批量计划/真下载/本地服务器/自动下载
 #    + 联机聊天室的协议/CRC/流量上限/会话文件夹/傻瓜模式挑监听/双栈真连两族/回环真连一局
 #    + 滚轮滚动链的真行为：造真结构扔真事件，断内层/外层各滚了多少
-#    + osu! 下图器的查询串/命名/本地筛选 + 打自检自己起的假镜像真下载），退出码 0 = 全通过
+#    + osu! 下图器的查询串/命名/本地筛选 + 打自检自己起的假镜像真下载
+#    + 播放器的扩展名归类/时间与快进快退/自然排序/真扫临时目录/合并去重/三种播放顺序/假播放器跑完整条 VM 流程），
+#    退出码 0 = 全通过
 dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
 
 # 3) 界面冒烟：直接开各功能截图（会生成对应 Config\<Id>\config.json；窗口不抢焦点）
@@ -1347,6 +1451,15 @@ $env:YLT_SHOT_TOOL="chat-room"; $env:YLT_NO_SERVER="1"
 $env:YLT_SHOT="shots\chat-room.png";      Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
 $env:YLT_CHAT_DEMO="1"; $env:YLT_SHOT="shots\chat-room-demo.png"; Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
 #   看底部三栏要配 YLT_CHAT_SIZE / YLT_CHAT_SCROLL；联机排错用 YLT_CHAT_TRACE / YLT_CHAT_NET_TRACE（见第 0 节）
+
+# 3f) 视频 / 音乐播放器：空列表 / 有内容 / 设置面板三种状态
+$env:YLT_SHOT_TOOL="media-player"; $env:YLT_SHOT="shots\player-empty.png"
+Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
+$env:YLT_PLAYER_DEMO="1"; $env:YLT_SHOT="shots\player-demo.png"      # 塞 6 行假列表看版式
+Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
+$env:YLT_PLAYER_SETTINGS="1"; $env:YLT_SHOT="shots\player-settings.png"   # 直接展开设置面板
+Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
+#   ⚠ 控制按钮的图标是矢量 Path，截图放大 3~4 倍核对一遍（曾经用字符图标，全是豆腐块）
 
 # 4) 发布冒烟：发布到 dist\YuLiangToolkit\，跑一次确认 Data/Config 建在它自己旁边
 .\publish.ps1
@@ -1386,6 +1499,7 @@ $env:YLT_SHOT="shots\published.png"; .\dist\YuLiangToolkit\YuLiangTookit.exe
 | Flash 下载器 | `flash-downloader` | `Config\flash-downloader\config.json`（游戏目录 / 并发 / 超时 / 端口 / 播放器路径 / 上次输入） | `Data\flash-downloader\games\`（游戏本体 + `SWFNetPath.ini`）、`Data\flash-downloader\tools\`（播放页 / 替代 API / FlashPlayer.exe） | `Order = 20`；支持 4399 / 7k7k / 17yy / ArmorGames / Kongregate，本地服务器 + 自动下载所需文件（见 2.11）；**目录可在界面上改**；标签：flash/swf/小游戏/下载/4399/7k7k/17yy/ArmorGames/Kongregate/本地服务器/离线玩/h5/unity/网页游戏 |
 | 联机聊天室 | `chat-room` | `Config\chat-room\config.json`（昵称 / 头像 / **傻瓜模式** / 监听地址与端口 / 要连的主机 / 单次流量上限与方向 / 发图压缩 / 大文件确认 / 最近会话） | `Data\chat-room\Protocol\`（协议说明）、`Data\chat-room\Sessions\<时间>\`（**每次连接新建**：`chat-log.jsonl` + `session.json` + `images`/`audio`/`video`/`files`） | `Order = 30`；主机开 TCP 端口、客户端填 IP/域名 + 端口，局域网与内网穿透通用（IPv6 也行）；文字 / 图片 / 音频 / 视频 / 任意文件双向发送；**单次流量上限 + 用量指示**；**傻瓜模式默认开**（工具自己挑双栈监听 + 列出本机 IPv4/IPv6 与端口，见 2.12）；标签：聊天/聊天室/局域网/联机/TCP/内网穿透/IPv6/传文件/发图片/语音/视频/流量限制/主机/客户端 |
 | osu! 下图器 | `map-downloader` | `Config\map-downloader\config.json`（Client ID / Client Secret、Access Token 与到期时间、搜索条件、下载目录与并发数） | `Data\map-downloader\downloads\`（下回来的 `.osz`，**目录可在界面上改**） | `Order = 50`；从独立 WinForms 小工具移植（见 2.13）；搜索走 osu! 官方 API（要自己注册 OAuth 应用换 Token），`.osz` 走第三方镜像 dl.sayobot.cn；标签：osu/osu!/谱面/beatmap/下图/下图器/osz/下载/搜索/mania/音游 |
+| 视频 / 音乐播放器 | `media-player` | `Config\media-player\config.json`（读取方式 / 递归 / 追加还是覆盖 / 音量 / 播放顺序 / 快进快退步长 / 恢复上次列表与位置） | `Data\media-player\playlist.json`（列表快照：路径 + 上次那首 + 听到第几秒） | `Order = 15`；本地播放器（见 2.14）：`MediaElement` 出画面，列表循环 / 单曲循环 / 随机，**左键快进快退（步长 0.1~60 秒可调）、右键上一首下一首**，可拖放、记住上次的列表；标签：播放器/播放/音乐/视频/音频/mp3/flac/mp4/播放列表/随机播放/单曲循环/列表循环/快进/快退/音量/本地 |
 | 框架示例 | `sample-framework` | `Config\sample-framework\config.json` + `options.json` | `Data\sample-framework\`（首运行写入 `示例数据.txt`） | `Order = 900`；纯演示，整目录可删（删前把主程序里的 `ProjectReference` 与 sln 条目一起去掉）；标签：示例/模板/Data/Config/轮子演示 |
 
 ---
@@ -1436,7 +1550,8 @@ git diff                        # 看未暂存改动
 
 | 版本 | 内容 |
 | --- | --- |
-| **v0.7.2**（当前） | **「联机聊天室」加傻瓜模式**（默认开，见 2.12）：监听地址与端口不再让用户选，`ChooseSimpleListenPlan` 自己挑（优先双栈 `::` + 上次的端口，被占了改让系统挑）；开完房间直接把**本机 IPv4 / IPv6 地址 + 端口**列成可复制的一行行「地址:端口」（没有可用 IPv6 就直说「当前网络没有 IPv6」），内网穿透照着填本地端口即可。⚠ **IP 和端口一个都没藏**，只是不让用户「选」。顺带修一个真 bug：绑 `::` 时没开 `DualMode`，**IPv4 客户端一个都连不进来**（自检 `CheckDualStack` 用真连接兜住，去掉修复会红 3 条）。自检 535 → **555** 项。版本号 0.7.1 → 0.7.2 |
+| **v0.8.0**（当前） | **新增「视频 / 音乐播放器」**（`Tools.MediaPlayer`，见 2.14）：左中右三栏（播放区 + 进度条与控制按钮 + 播放列表）；打开文件夹（可多选、可递归）/ 打开文件 / 拖放，按「音频 + 视频 / 仅音频 / 仅视频」过滤，再开一个文件夹可**追加**或**覆盖**；列表循环 / 单曲循环 / 随机播放（随机一轮不重复）；**可调步长的快进快退（0.1 秒精度、0.1~60 秒），左键快退快进、右键上一首下一首**；音量、记住上次的列表与听到的位置。播放器抽成 `IMediaPlayback`，自检用假播放器把整条流程跑完。踩坑：控制按钮用 `⏪ ⏩ ⏹ 🔁` 字符会变成豆腐块（改矢量 Path + MDL2 图标）、`MediaElement` 的 `Loaded/UnloadedBehavior` 必须 `Manual`、设置面板要盖整列而不是只盖视频区。自检 555 → **654** 项。版本号 0.7.2 → 0.8.0 |
+| v0.7.2 | **「联机聊天室」加傻瓜模式**（默认开，见 2.12）：监听地址与端口不再让用户选，`ChooseSimpleListenPlan` 自己挑（优先双栈 `::` + 上次的端口，被占了改让系统挑）；开完房间直接把**本机 IPv4 / IPv6 地址 + 端口**列成可复制的一行行「地址:端口」（没有可用 IPv6 就直说「当前网络没有 IPv6」），内网穿透照着填本地端口即可。⚠ **IP 和端口一个都没藏**，只是不让用户「选」。顺带修一个真 bug：绑 `::` 时没开 `DualMode`，**IPv4 客户端一个都连不进来**（自检 `CheckDualStack` 用真连接兜住，去掉修复会红 3 条）。自检 535 → **555** 项。版本号 0.7.1 → 0.7.2 |
 | v0.7.1 | **「Flash 下载器」新增 ArmorGames / Kongregate 两站的网页 swf 抓取**（见 2.11）：后缀字母新增 `d` / `e`；ArmorGames 从 `/play/编号` 页的 `<param name="movie">` / `<embed src>` 读 swf 与宽高，页面里没有 swf 的（HTML5 游戏）自动退回整页下载；Kongregate 走「游戏页 → `…/embed`（`iframeConfig`）→ frame 页（`swf_location`）」三跳抓 swf，并排掉它自己的 `API_AS3_*.swf`。顺带：粘 `.swf` 直链也能直接下载；`ResolveAsync` 的未知域名兜底也能认出这两家的页面结构。自检 501 → 535 项，另加一个**默认不跑**的联网验收开关 `YLT_LIVE_SITES=1`。版本号 0.7.0 → 0.7.1 |
 | v0.7.0 | **新增「osu! 下图器」**（`Tools.MapDownloader`，见 2.13）：把仓库根那个独立的 WinForms 小工具（`MapDownloader/`）移植进来 —— 填 osu! 的 Client ID / Secret 换 Token，搜谱面集（模式 / 状态 / 排序 / NSFW / 日期 / Key 数），勾选或全量下载 `.osz`（含视频 `full` / 无视频 `novideo`）；下载走第三方镜像、并发 5、跳过已存在、**取消不留半个文件**。自检 441 → **501** 项（新增 `MapDownloaderChecks` 60 项，含"自检自己起假镜像真下载"）。版本号 0.6.0 → 0.7.0 |
 | v0.6.0 | **新增「联机聊天室」**（`Tools.ChatRoom`）：主机开 TCP 端口 / 客户端填 IP/域名 + 端口，局域网与内网穿透通用；文字 / 图片 / 音频 / 视频 / 任意文件双向发送；**每次连接新建一个时间命名的会话文件夹**；**单次流量上限 + 用量指示**。自研帧协议见 2.12，自检在 `127.0.0.1` 上真开一局双向收发。自检 355 → 433（v0.7.2 时共 **555** 项） |

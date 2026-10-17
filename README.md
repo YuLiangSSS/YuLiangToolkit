@@ -53,8 +53,9 @@ src/
 ├── YuLiangToolkit.Tools.FlashDownloader/# 功能：Flash 下载器（4399/7k7k/17yy/ArmorGames/Kongregate + 本地服务器 + 自动补全资源）
 ├── YuLiangToolkit.Tools.ChatRoom/       # 功能：联机聊天室（TCP 直连 / 内网穿透 + 传文件 + 单次流量上限）
 ├── YuLiangToolkit.Tools.MapDownloader/  # 功能：osu! 下图器（搜谱面集 + 批量下 .osz，从独立小工具移植）
+├── YuLiangToolkit.Tools.MediaPlayer/    # 功能：视频 / 音乐播放器（MediaElement + 播放列表 / 循环随机 / 可调步长的快进快退）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（555 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（654 项行为逐条验证）
 ```
 
 ## 数据与配置（Data / Config）
@@ -241,7 +242,27 @@ Data/Config 的路径与持久化全部由框架接管。也可以把编译好�
   > ⚠️ Client Secret 与 Token 是**明文存在这个文件里**的（跟原版一样，只适合本机自用）；
   > 它在 `Config\` 下、已被 `.gitignore` 忽略，别把这个文件拷给别人。
 
-## 第六个工具：框架示例（开发用，可删）
+## 第六个工具：视频 / 音乐播放器
+
+本地播放器：中间是画面（音频时显示封面），下面是进度条与一排控制按钮，右边是播放列表。
+
+- **打开**：`📂 文件夹`（可多选，按设置决定要不要连子文件夹一起读）、`🎵 文件`（多选），
+  或者把文件 / 文件夹**直接拖进窗口**。同一个文件重复打开会自动去重。
+- **读取范围**（设置里改）：音频 + 视频 / 仅音频 / 仅视频；再开一个文件夹时是**追加**还是**覆盖**列表。
+- **播放顺序**：列表循环 / 单曲循环 / 随机播放（右下角那个「循环 / 单曲 / 随机」按钮点一下轮换，
+  设置里也能直接选）。随机模式一轮内不重复，一轮放完才重洗。
+- **快进快退**：**左键**按设定步长快退 / 快进（默认 5 秒，设置里 0.1 ~ 60 秒可调、精确到 0.1 秒），
+  **右键**快退 = 上一首、**右键**快进 = 下一首。进度条可以直接点或按住拖动。
+- **快捷键**：`空格` 播放/暂停、`←`/`→` 快退/快进、`Delete` 从列表移除、`Enter` 播放选中行、
+  `Ctrl+O` 打开文件、`Ctrl+Shift+O` 打开文件夹、`Esc` 关掉设置面板。
+- **记住上次**：播放列表与听到的位置存在 `Data\media-player\playlist.json`，下次打开自动接上
+  （只选中、不自动出声）；文件被删了的条目会自动跳过。
+- 设置是**同一个页面里的面板**（点左上角齿轮打开），不弹子窗口；选项在
+  `Config\media-player\config.json`，改一下就自动保存。
+- 能播哪些格式取决于系统的 Media Foundation 解码器：mp3 / wav / flac / m4a / wma / ogg 与
+  mp4 / mkv / webm / avi / mov 之类一般都行，打不开时会提示一句人话而不是静默失败。
+
+## 第七个工具：框架示例（开发用，可删）
 
 `src\YuLiangToolkit.Tools.Sample` 把 Data / Config 两个轮子跑给你看：
 
@@ -264,7 +285,7 @@ Data/Config 的路径与持久化全部由框架接管。也可以把编译好�
 - `YLT_SHOT=<png路径>`（可选 `YLT_SHOT_TOOL`）：渲染当前界面为 PNG 后退出，用于无头验证 UI
   （注意：截图里内容区顶部会有淡淡的重复标题残影，是 `RenderTargetBitmap` 截图时机的老毛病，不是界面 bug）；
 - `YLT_HOME=<目录>`：覆盖数据根目录（Data/Config 的父目录），测试时用来隔离；
-- 轮子自检（555 项行为，退出码 0 = 全通过；其中 Flash 下载器那部分会自己起一个本地假游戏站跑真下载，联机聊天室那部分会在 127.0.0.1（以及 `::` 双栈）上真开一局，滚轮滚动链那部分会造真结构扔真事件，osu! 下图器那部分会自己起一个假镜像真下载 .osz，都不访问外网）：
+- 轮子自检（654 项行为，退出码 0 = 全通过；其中 Flash 下载器那部分会自己起一个本地假游戏站跑真下载，联机聊天室那部分会在 127.0.0.1（以及 `::` 双栈）上真开一局，滚轮滚动链那部分会造真结构扔真事件，osu! 下图器那部分会自己起一个假镜像真下载 .osz，视频 / 音乐播放器那部分用一个假播放器把播放流程整条跑一遍，都不访问外网）：
 
   ```powershell
   dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj

@@ -28,6 +28,9 @@
     <!-- 「osu! 下图器」：查询串 / 文件名清洗 / 本地日期与 Key 数筛选 / 配置轮子
          / 打自检自己起的假镜像真下载（跳过已存在、404 计失败、取消不留半个文件）。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.MapDownloader\YuLiangToolkit.Tools.MapDownloader.csproj" />
+    <!-- 「视频 / 音乐播放器」：扩展名归类 / 时间与快进快退 / 自然排序 / 扫文件夹 / 合并去重
+         / 播放顺序（顺序·单曲·随机）/ 配置；再塞一个假播放器把 ViewModel 整条链路跑一遍。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.MediaPlayer\YuLiangToolkit.Tools.MediaPlayer.csproj" />
   </ItemGroup>
 
 </Project>

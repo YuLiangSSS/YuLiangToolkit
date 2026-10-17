@@ -1,0 +1,469 @@
+<UserControl x:Class="YuLiangToolkit.Tools.MediaPlayer.Views.MediaPlayerView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             AllowDrop="True">
+
+    <!-- 「视频 / 音乐播放器」的界面。样式全部来自 App.xaml（见 AGENTS.md 2.9）；
+         只有播放控制按钮是这里自定义的（圆形无边框），因为全局按钮样式是「带边框的方块」。
+         布局照参考图：中间播放区 + 进度条 + 一排控制按钮，右边是播放列表；
+         「设置」是同一个页面里的覆盖面板（盖住整列，不弹子窗口，见 2.14 节的说明）。
+
+         ⚠ 播放控制按钮里不要用 ⏪ ⏩ ⏹ 🔁 这类字符：本机字体没有这些码位，
+         会退化成「带方框的豆腐块」（截图核对时才发现）。这里一律用矢量 Path，
+         齿轮用 Segoe MDL2 Assets（跟标题栏的窗口按钮同一个字体，一定有）。 -->
+
+    <UserControl.Resources>
+
+        <!-- 播放控制按钮：圆形、无边框、悬停才亮 -->
+        <Style x:Key="TransportButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="44" />
+            <Setter Property="Height" Value="44" />
+            <Setter Property="Margin" Value="3,0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Border x:Name="Bd" CornerRadius="99" Background="{TemplateBinding Background}" />
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource CardHoverBackgroundBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource BorderBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.35" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 播放 / 暂停：强调色实心、大一圈 -->
+        <Style x:Key="TransportPrimaryButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="56" />
+            <Setter Property="Height" Value="56" />
+            <Setter Property="Margin" Value="6,0" />
+            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Border x:Name="Bd" CornerRadius="99" Background="{TemplateBinding Background}" />
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource AccentHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource AccentPressedBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.35" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 设置页里的小标题 / 行标签 -->
+        <Style x:Key="SettingsSectionStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,16,0,8" />
+        </Style>
+
+        <Style x:Key="SettingsLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="320" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ==================== 左：播放区（设置面板会盖住整列） ==================== -->
+        <Grid Grid.Column="0" Margin="18,16,14,14">
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- 视频 / 音频封面 -->
+                <Border Grid.Row="0" Background="#0C0F14" CornerRadius="12"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" ClipToBounds="True">
+                    <Grid>
+                        <MediaElement x:Name="Media" Stretch="Uniform"
+                                      LoadedBehavior="Manual" UnloadedBehavior="Manual"
+                                      ScrubbingEnabled="True" Volume="0.8" />
+
+                        <!-- 音频：盖一层「专辑封面」占位（视频时不显示） -->
+                        <Border Background="#12161D"
+                                Visibility="{Binding CoverVisible, Converter={StaticResource BoolToVis}}">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="560" Margin="24">
+                                <TextBlock Text="{Binding CoverGlyph}" FontSize="58" HorizontalAlignment="Center" />
+                                <TextBlock Text="{Binding TitleText}" FontSize="18" FontWeight="SemiBold"
+                                           Margin="0,16,0,0" TextAlignment="Center" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding SubtitleText}" FontSize="11.5" TextWrapping="Wrap"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Margin="0,8,0,0" TextAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 视频时左上角压一条标题（不然看不出在放哪个文件） -->
+                        <Border VerticalAlignment="Top" HorizontalAlignment="Left" Background="#A6000000"
+                                CornerRadius="12,0,12,0" Padding="14,8"
+                                Visibility="{Binding HasVideo, Converter={StaticResource BoolToVis}}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🎬" FontSize="12" Margin="0,0,8,0" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding TitleText}" FontSize="12" FontWeight="SemiBold"
+                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="420" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- 进度条（点 / 拖可以跳转，见代码后置的 OnSeek*） -->
+                <Grid Grid.Row="1" Margin="6,14,6,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Text="{Binding PositionText}" MinWidth="48" FontSize="11.5" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextSecondaryBrush}" />
+
+                    <Grid x:Name="SeekArea" Grid.Column="1" Height="20" Margin="10,0" Background="Transparent"
+                          Cursor="Hand" ToolTip="点一下或按住拖动，跳到任意位置"
+                          MouseLeftButtonDown="OnSeekMouseDown" MouseMove="OnSeekMouseMove"
+                          MouseLeftButtonUp="OnSeekMouseUp" MouseLeave="OnSeekMouseLeave">
+                        <ProgressBar Minimum="0" Maximum="1" Value="{Binding ProgressRatio, Mode=OneWay}"
+                                     Style="{StaticResource ProgressBarStyle}" Height="6"
+                                     VerticalAlignment="Center" IsHitTestVisible="False" />
+                    </Grid>
+
+                    <TextBlock Grid.Column="2" Text="{Binding DurationText}" MinWidth="48" TextAlignment="Right"
+                               FontSize="11.5" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextSecondaryBrush}" />
+                </Grid>
+
+                <!-- 控制按钮：设置 · 快退 · 播放/暂停 · 快进 · 停止 ｜ 播放顺序 · 音量 -->
+                <Grid Grid.Row="2" Margin="0,14,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 设置：Segoe MDL2 Assets 的齿轮（E713）/ 返回箭头（E72B） -->
+                    <Button Grid.Column="0" Style="{StaticResource TransportButtonStyle}"
+                            Content="{Binding SettingsGlyph}" FontFamily="Segoe MDL2 Assets" FontSize="15"
+                            Command="{Binding ToggleSettingsCommand}"
+                            ToolTip="设置（在同一个页面里打开，不弹子窗口）" />
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
+                        <!-- 快退：左键退一步，右键上一首（右键在代码后置里接，Button.Click 只认左键） -->
+                        <Button x:Name="BackButton" Style="{StaticResource TransportButtonStyle}"
+                                Command="{Binding SeekBackwardCommand}" ToolTip="{Binding SeekBackwardTooltip}">
+                            <Path Data="M 7,0 L 0,6.5 L 7,13 Z M 14,0 L 7,6.5 L 14,13 Z"
+                                  Fill="{StaticResource TextPrimaryBrush}" />
+                        </Button>
+
+                        <!-- 播放 / 暂停：三角形 ↔ 两根竖条 -->
+                        <Button Style="{StaticResource TransportPrimaryButtonStyle}"
+                                Command="{Binding PlayPauseCommand}" ToolTip="{Binding PlayTooltip}">
+                            <Grid Width="14" Height="14">
+                                <Path Data="M 1,0 L 14,7 L 1,14 Z" Fill="White"
+                                      Visibility="{Binding ShowPlayIcon, Converter={StaticResource BoolToVis}}" />
+                                <Path Data="M 1,0 H 5 V 14 H 1 Z M 9,0 H 13 V 14 H 9 Z" Fill="White"
+                                      Visibility="{Binding ShowPauseIcon, Converter={StaticResource BoolToVis}}" />
+                            </Grid>
+                        </Button>
+
+                        <!-- 快进：左键快进一步，右键下一首 -->
+                        <Button x:Name="ForwardButton" Style="{StaticResource TransportButtonStyle}"
+                                Command="{Binding SeekForwardCommand}" ToolTip="{Binding SeekForwardTooltip}">
+                            <Path Data="M 0,0 L 7,6.5 L 0,13 Z M 7,0 L 14,6.5 L 7,13 Z"
+                                  Fill="{StaticResource TextPrimaryBrush}" />
+                        </Button>
+
+                        <Button Style="{StaticResource TransportButtonStyle}"
+                                Command="{Binding StopCommand}" ToolTip="停止（位置回到开头）">
+                            <Path Data="M 0.5,0.5 H 12.5 V 12.5 H 0.5 Z" Fill="{StaticResource TextPrimaryBrush}" />
+                        </Button>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- 播放顺序：点一下轮换（列表循环 → 单曲循环 → 随机播放） -->
+                        <Button Width="46" Height="34" Style="{StaticResource TransportButtonStyle}" Margin="0"
+                                Content="{Binding ModeShortText}" FontSize="11.5" FontWeight="SemiBold"
+                                Command="{Binding CyclePlayModeCommand}"
+                                ToolTip="{Binding PlayModeTooltip}" />
+                        <TextBlock Text="音量" FontSize="10.5" VerticalAlignment="Center" Margin="10,0,6,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                        <Slider Width="92" Minimum="0" Maximum="100" Value="{Binding VolumeValue}"
+                                Style="{StaticResource SliderStyle}" VerticalAlignment="Center" ToolTip="音量" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- 状态栏（每个功能自己一句“正在干什么”，主窗口底部那条是外壳的） -->
+                <TextBlock Grid.Row="3" Text="{Binding StatusText}" Margin="6,12,6,0" FontSize="11"
+                           TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextSecondaryBrush}" />
+            </Grid>
+
+            <!-- ===== 设置面板：盖住左边整列（不弹子窗口） =====
+                 为什么不做子窗口：WPF 的子窗口要自己管生命周期（关工具时还得负责关掉它），
+                 而这一屏内容一页就放得下 —— 盖一层反而最简单、也不会丢焦点。 -->
+            <Border Background="#FF151820" CornerRadius="12" BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1"
+                    Visibility="{Binding IsSettingsVisible, Converter={StaticResource BoolToVis}}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              core:ScrollChaining.Enabled="True">
+                    <StackPanel Margin="26,18,26,18" MaxWidth="660" HorizontalAlignment="Left">
+
+                        <TextBlock Text="播放器设置" FontSize="17" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding SettingsPathText}" FontSize="10.5" Margin="0,5,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="改一下就自动保存（不用点保存按钮）；关掉工具 / 退出程序时还会强制落盘一次。"
+                                   FontSize="10.5" Margin="0,4,0,0" TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+
+                        <!-- ===== 读取 ===== -->
+                        <TextBlock Text="打开文件夹时" Style="{StaticResource SettingsSectionStyle}" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="132" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="读取哪些文件" Style="{StaticResource SettingsLabelStyle}" />
+                            <ComboBox Grid.Column="1" Height="32" HorizontalAlignment="Left" MinWidth="230"
+                                      ItemsSource="{Binding IncludeModeOptions}" DisplayMemberPath="Label"
+                                      SelectedItem="{Binding SelectedIncludeMode}"
+                                      Style="{StaticResource ComboBoxStyle}" />
+                        </Grid>
+                        <TextBlock Text="{Binding IncludeModeHint}" FontSize="10.5" Margin="132,7,0,0"
+                                   TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" />
+
+                        <CheckBox Content="连子文件夹一起读取（递归）" Margin="132,14,0,0"
+                                  IsChecked="{Binding ScanRecursive}"
+                                  Style="{StaticResource CheckBoxStyle}"
+                                  ToolTip="打开：整个目录树都扫；关掉：只看这一层" />
+
+                        <Grid Margin="0,14,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="132" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="再开一个文件夹" Style="{StaticResource SettingsLabelStyle}" />
+                            <ComboBox Grid.Column="1" Height="32" HorizontalAlignment="Left" MinWidth="230"
+                                      ItemsSource="{Binding AppendModeOptions}" DisplayMemberPath="Label"
+                                      SelectedItem="{Binding SelectedAppendMode}"
+                                      Style="{StaticResource ComboBoxStyle}" />
+                        </Grid>
+                        <TextBlock Text="「打开文件」按钮和拖进来的文件一律追加（那个设置只管文件夹）。"
+                                   FontSize="10.5" Margin="132,7,0,0" TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+
+                        <!-- ===== 播放 ===== -->
+                        <TextBlock Text="播放" Style="{StaticResource SettingsSectionStyle}" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="132" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="快进 / 快退步长" Style="{StaticResource SettingsLabelStyle}" />
+                            <Slider Grid.Column="1" Minimum="0.1" Maximum="60" TickFrequency="0.1"
+                                    IsSnapToTickEnabled="True" SmallChange="0.1" LargeChange="1"
+                                    Value="{Binding SeekStepSeconds}"
+                                    Style="{StaticResource SliderStyle}"
+                                    VerticalAlignment="Center" />
+                            <TextBox Grid.Column="2" Width="66" Margin="10,0,0,0" Height="32"
+                                     Text="{Binding SeekStepSeconds, StringFormat={}{0:0.0}, UpdateSourceTrigger=LostFocus}"
+                                     Style="{StaticResource TextBoxStyle}" ToolTip="也可以直接输数字，精确到 0.1 秒" />
+                        </Grid>
+                        <TextBlock Text="0.1 ~ 60 秒，精确到 0.1 秒。快退 / 快进按钮：左键跳这个秒数，右键换上一首 / 下一首。"
+                                   FontSize="10.5" Margin="132,7,0,0" TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+
+                        <Grid Margin="0,14,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="132" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="播放顺序" Style="{StaticResource SettingsLabelStyle}" />
+                            <ComboBox Grid.Column="1" Height="32" HorizontalAlignment="Left" MinWidth="230"
+                                      ItemsSource="{Binding PlayModeOptions}" DisplayMemberPath="Label"
+                                      SelectedItem="{Binding SelectedPlayMode}"
+                                      Style="{StaticResource ComboBoxStyle}"
+                                      ToolTip="播放条右边那个「循环 / 单曲 / 随机」按钮点的也是它" />
+                        </Grid>
+
+                        <Grid Margin="0,14,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="132" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="音量" Style="{StaticResource SettingsLabelStyle}" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="100" SmallChange="1" LargeChange="10"
+                                    Value="{Binding VolumeValue}" Style="{StaticResource SliderStyle}"
+                                    VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="2" Text="{Binding VolumeText}" MinWidth="46" Margin="10,0,0,0"
+                                       FontSize="11.5" TextAlignment="Right" VerticalAlignment="Center"
+                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                        </Grid>
+
+                        <!-- ===== 下次打开 ===== -->
+                        <TextBlock Text="下次打开这个工具时" Style="{StaticResource SettingsSectionStyle}" />
+                        <CheckBox Content="恢复上次的播放列表" Margin="132,0,0,0"
+                                  IsChecked="{Binding RestorePlaylist}"
+                                  Style="{StaticResource CheckBoxStyle}" />
+                        <CheckBox Content="恢复上次听到的位置（只选中，不自动出声）" Margin="132,12,0,0"
+                                  IsChecked="{Binding ResumeLastPlayed}"
+                                  Style="{StaticResource CheckBoxStyle}" />
+                        <TextBlock Text="{Binding LastFolderText}" FontSize="10.5" Margin="132,7,0,0"
+                                   TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" />
+
+                        <!-- ===== 底部按钮 ===== -->
+                        <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
+                            <Button Content="恢复默认设置" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding ResetSettingsCommand}" />
+                            <Button Content="打开配置文件夹" Margin="8,0,0,0" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding OpenConfigFolderCommand}" />
+                            <Button Content="打开数据文件夹" Margin="8,0,0,0" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding OpenDataFolderCommand}" />
+                            <Button Content="返回播放" Margin="8,0,0,0" Style="{StaticResource PrimaryButtonStyle}"
+                                    Command="{Binding ToggleSettingsCommand}" />
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <!-- ==================== 右：播放列表 ==================== -->
+        <Border Grid.Column="1" Margin="0,16,18,14" Background="{StaticResource CardBackgroundBrush}"
+                CornerRadius="12" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+            <Grid Margin="12,14,12,12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- 标题 + 统计 -->
+                <StackPanel Grid.Row="0">
+                    <TextBlock Text="播放列表" FontSize="13" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding PlaylistSummary}" FontSize="10.5" Margin="0,4,0,0"
+                               Foreground="{StaticResource TextSecondaryBrush}" />
+                </StackPanel>
+
+                <!-- 打开 / 移除 / 清空 -->
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,6">
+                    <Button Content="📂 文件夹" Margin="0,0,6,0" FontSize="11" Padding="9,5"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Command="{Binding OpenFolderCommand}"
+                            ToolTip="打开一个或多个文件夹（按设置里的读取方式过滤，可递归）" />
+                    <Button Content="🎵 文件" Margin="0,0,6,0" FontSize="11" Padding="9,5"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Command="{Binding OpenFilesCommand}"
+                            ToolTip="手动挑几个媒体文件（也可以直接把文件拖进窗口）" />
+                    <Button Content="✕ 移除" Margin="0,0,6,0" FontSize="11" Padding="9,5"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Command="{Binding RemoveSelectedCommand}"
+                            ToolTip="从列表里拿掉选中的那一行（不删磁盘文件）" />
+                    <Button Content="清空" FontSize="11" Padding="9,5"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Command="{Binding ClearPlaylistCommand}"
+                            ToolTip="清空整个列表（不删磁盘文件）" />
+                </StackPanel>
+
+                <!-- 列表本体 + 空状态 -->
+                <Grid Grid.Row="2">
+                    <ListBox x:Name="PlaylistBox" ItemsSource="{Binding Items}"
+                             SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
+                             Style="{StaticResource FileListStyle}"
+                             core:ScrollChaining.Enabled="True"
+                             MouseDoubleClick="OnPlaylistDoubleClick"
+                             ToolTip="单击选中，双击播放">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="24" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- 行号；正在播的那行换成 ▶ -->
+                                    <TextBlock x:Name="NumberText" Text="{Binding Number}" FontSize="10.5"
+                                               VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                    <TextBlock x:Name="PlayingMark" Text="▶" FontSize="9.5" VerticalAlignment="Center"
+                                               Foreground="{StaticResource AccentBrush}" Visibility="Collapsed" />
+
+                                    <TextBlock Grid.Column="1" Text="{Binding KindGlyph}" FontSize="10.5"
+                                               Margin="0,0,6,0" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{Binding Title}" FontSize="12"
+                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding Tooltip}" />
+                                    <TextBlock Grid.Column="3" Text="{Binding KindText}" FontSize="10"
+                                               Margin="6,0,0,0" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                </Grid>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsPlaying}" Value="True">
+                                        <Setter TargetName="NumberText" Property="Visibility" Value="Collapsed" />
+                                        <Setter TargetName="PlayingMark" Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <!-- 空列表提示（有内容时藏起来） -->
+                    <TextBlock Text="列表是空的&#10;点上面的「文件夹」或「文件」加进来，&#10;也可以把文件 / 文件夹直接拖进这个窗口"
+                               Visibility="{Binding IsPlaylistEmpty, Converter={StaticResource BoolToVis}}"
+                               FontSize="11.5" TextAlignment="Center" TextWrapping="Wrap" LineHeight="19"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               IsHitTestVisible="False" />
+                </Grid>
+
+                <!-- 选中行的说明 / 快捷键提示 -->
+                <StackPanel Grid.Row="3" Margin="4,10,4,0">
+                    <TextBlock Text="{Binding SelectedItemText}" FontSize="10.5" TextWrapping="Wrap"
+                               Foreground="{StaticResource TextSecondaryBrush}" />
+                    <TextBlock FontSize="10" Margin="0,4,0,0" TextWrapping="Wrap"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Text="快捷键：空格 播放/暂停 · ←/→ 快退/快进 · Delete 从列表移除" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

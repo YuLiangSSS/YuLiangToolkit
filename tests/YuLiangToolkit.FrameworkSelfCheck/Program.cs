@@ -685,6 +685,19 @@ catch (Exception ex)
         $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
 }
 
+// ---------- 视频 / 音乐播放器（扩展名归类 / 快进快退 / 扫文件夹 / 播放顺序 / 假播放器跑 VM） ----------
+try
+{
+    MediaPlayerChecks.Run(
+        (name, ok, detail) => Check(name, ok, detail),
+        (name, ok) => Check(name, ok));
+}
+catch (Exception ex)
+{
+    Check($"[播放器] 运行过程中抛出异常（{ex.GetType().Name}）", false,
+        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
+}
+
 Console.WriteLine(string.Join(Environment.NewLine, results));
 var failed = results.Count(r => r.StartsWith("FAIL"));
 Console.WriteLine();

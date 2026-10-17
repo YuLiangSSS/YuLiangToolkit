@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="src\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.VideoToAudio\YuLiangToolkit.Tools.VideoToAudio.csproj" />
+    <ProjectReference Include="src\YuLiangToolkit.Tools.MediaPlayer\YuLiangToolkit.Tools.MediaPlayer.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.BatchRename\YuLiangToolkit.Tools.BatchRename.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.FlashDownloader\YuLiangToolkit.Tools.FlashDownloader.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.ChatRoom\YuLiangToolkit.Tools.ChatRoom.csproj" />
