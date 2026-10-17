@@ -25,6 +25,42 @@
             </Style.Triggers>
         </Style>
 
+        <!-- 画面那一块：全屏时铺满整屏（跨掉控制条那一行）、去掉圆角与边框 -->
+        <Style x:Key="VideoSurfaceStyle" TargetType="Border">
+            <Setter Property="Background" Value="#0C0F14" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsFullscreen}" Value="True">
+                    <Setter Property="Grid.RowSpan" Value="2" />
+                    <Setter Property="CornerRadius" Value="0" />
+                    <Setter Property="BorderThickness" Value="0" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- 全屏时压住画面底部的渐变（上透下黑，控制条看着像"浮"在视频上） -->
+        <LinearGradientBrush x:Key="FullscreenBarBrush" StartPoint="0,0" EndPoint="0,1">
+            <GradientStop Color="#00000000" Offset="0" />
+            <GradientStop Color="#B8000000" Offset="0.42" />
+            <GradientStop Color="#E6000000" Offset="1" />
+        </LinearGradientBrush>
+
+        <!-- 控制条：平时是画面下面的一排；全屏时**浮在画面底部**（鼠标一动才浮出来，见 ControlsVisible） -->
+        <Style x:Key="ControlBarStyle" TargetType="Border">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Margin" Value="0" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsFullscreen}" Value="True">
+                    <Setter Property="Grid.Row" Value="0" />
+                    <Setter Property="VerticalAlignment" Value="Bottom" />
+                    <Setter Property="Background" Value="{StaticResource FullscreenBarBrush}" />
+                    <Setter Property="Padding" Value="24,30,24,14" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
         <!-- 播放控制按钮：圆形、无边框、悬停才亮 -->
         <Style x:Key="TransportButtonStyle" TargetType="Button">
             <Setter Property="Width" Value="44" />
@@ -114,13 +150,10 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- 视频 / 音频封面 -->
-                <Border Grid.Row="0" Background="#0C0F14" CornerRadius="12"
-                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" ClipToBounds="True">
+                <!-- 视频 / 音频封面（全屏时铺满整屏，见 VideoSurfaceStyle） -->
+                <Border Grid.Row="0" Style="{StaticResource VideoSurfaceStyle}" ClipToBounds="True">
                     <Grid>
                         <MediaElement x:Name="Media" Stretch="Uniform"
                                       LoadedBehavior="Manual" UnloadedBehavior="Manual"
@@ -150,15 +183,37 @@
                             </StackPanel>
                         </Border>
 
-                        <!-- 全屏按钮：压在画面右下角（跟常见播放器一个位置，也不跟下面那排控制按钮抢宽度） -->
+                        <!-- 鼠标感应层：画面本身没有控件，靠它保证「动鼠标 → 浮出控制条」一定收得到事件 -->
+                        <Border Background="Transparent" />
+
+                        <!-- 全屏按钮：压在画面右下角（跟常见播放器一个位置，也不跟下面那排控制按钮抢宽度）。
+                             全屏时这个按钮藏起来、改用控制条右边的那个（见 ShowCornerFullscreenButton）。 -->
                         <Button HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,14,14"
                                 Width="38" Height="38" Style="{StaticResource TransportButtonStyle}"
                                 Background="#66000000"
                                 FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource TextPrimaryBrush}"
                                 Content="{Binding FullscreenGlyph}" Command="{Binding ToggleFullscreenCommand}"
-                                ToolTip="{Binding FullscreenTooltip}" />
+                                ToolTip="{Binding FullscreenTooltip}"
+                                Visibility="{Binding ShowCornerFullscreenButton, Converter={StaticResource BoolToVis}}" />
                     </Grid>
                 </Border>
+
+                <!-- ===== 控制条：进度 + 按钮 + 状态。全屏时它浮在画面底部、鼠标一动才出现 ===== -->
+                <Border x:Name="ControlBar" Grid.Row="1" Style="{StaticResource ControlBarStyle}"
+                        Visibility="{Binding ControlsVisible, Converter={StaticResource BoolToVis}}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- 全屏时在进度条上方显示正在放什么（普通模式下面板里已经有标题了） -->
+                    <TextBlock Grid.Row="0" Text="{Binding TitleText}" FontSize="13" FontWeight="SemiBold"
+                               Margin="6,0,6,2" TextTrimming="CharacterEllipsis"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               Visibility="{Binding IsFullscreen, Converter={StaticResource BoolToVis}}" />
 
                 <!-- 进度条（点 / 拖可以跳转，见代码后置的 OnSeek*） -->
                 <Grid Grid.Row="1" Margin="6,14,6,0">
@@ -241,12 +296,21 @@
                                    Foreground="{StaticResource TextSecondaryBrush}" />
                         <Slider Width="92" Minimum="0" Maximum="100" Value="{Binding VolumeValue}"
                                 Style="{StaticResource SliderStyle}" VerticalAlignment="Center" ToolTip="音量" />
+
+                        <!-- 退出全屏：全屏时控制条右边这个才是按钮（画面右下角那个圆钮在全屏时藏起来了） -->
+                        <Button Width="44" Height="34" Style="{StaticResource TransportButtonStyle}" Margin="10,0,0,0"
+                                FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                Content="{Binding FullscreenGlyph}" Command="{Binding ToggleFullscreenCommand}"
+                                ToolTip="{Binding FullscreenTooltip}"
+                                Visibility="{Binding IsFullscreen, Converter={StaticResource BoolToVis}}" />
                     </StackPanel>
                 </Grid>
 
                 <!-- 状态栏（每个功能自己一句“正在干什么”，主窗口底部那条是外壳的） -->
                 <TextBlock Grid.Row="3" Text="{Binding StatusText}" Margin="6,12,6,0" FontSize="11"
                            TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextSecondaryBrush}" />
+                </Grid>
+                </Border>
             </Grid>
 
             <!-- ===== 设置面板：盖住左边整列（不弹子窗口） =====

@@ -746,6 +746,32 @@ internal static class MediaPlayerChecks
         vm.ExitFullscreen();
         check("全屏：重复退出不会再发事件（不会把外壳来回折腾）", events.Count == 2);
 
+        // ---- 全屏时的控制条自动隐藏 ----
+        check("全屏：普通模式控制条一直露着，画面右下角有那个圆钮",
+            vm.ControlsVisible && vm.ShowCornerFullscreenButton);
+
+        vm.ToggleFullscreenCommand.Execute(null);
+        check("全屏：进去时控制条先亮着（2.5 秒后由界面计时器缩回去），画面角上的圆钮让位给控制条",
+            vm.ControlsVisible && !vm.ShowCornerFullscreenButton);
+
+        vm.HideControls();
+        check("全屏：鼠标闲置 → 控制条缩回去（沉浸式看视频）", !vm.ControlsVisible);
+
+        vm.ShowControls();
+        check("全屏：鼠标一动 → 控制条又出来", vm.ControlsVisible);
+
+        vm.HideControls();
+        vm.IsSettingsVisible = true;
+        vm.HideControls();
+        check("全屏：正开着设置面板时不缩控制条（不然鼠标一动也点不到）", vm.ControlsVisible);
+        vm.IsSettingsVisible = false;
+
+        vm.ExitFullscreen();
+        check("全屏：退出全屏 → 控制条恢复常显，圆钮回来",
+            vm.ControlsVisible && vm.ShowCornerFullscreenButton);
+        vm.HideControls();
+        check("全屏：普通模式下叫它藏也不会藏（只有全屏才自动隐藏）", vm.ControlsVisible);
+
         // ---- 后台播放 ----
         check("后台播放：开着时 → 切走要保活、并且该显示左下角小窗，没曲目时两样都不做",
             vm.BackgroundPlayback && !vm.KeepAliveOnLeave && !vm.ShowMiniPanel);

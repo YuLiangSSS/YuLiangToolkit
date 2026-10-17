@@ -4,7 +4,7 @@
 > 改这个项目之前先读本文件，**不要再去通读 `src/`**：这里把所有已经造好的「轮子」（可复用组件）的
 > **用途 + 签名 + 一行用法**、Data/Config 目录约定、新增功能的标准流程、以及踩过的坑都写全了。
 >
-> * **当前版本 v0.9.0** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
+> * **当前版本 v0.9.1** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
 > * 七个功能：视频转音频 · **视频 / 音乐播放器** · 批量重命名 · Flash 下载器 · 联机聊天室 · osu! 下图器 · 框架示例（模板，可整目录删除）。
 > * 平台：Windows + .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM，**无第三方库、无 NuGet 依赖**。
 > * 语言：代码注释、提交信息、文档、以及回答用户，一律用**中文**。
@@ -18,7 +18,7 @@
 ```powershell
 .\build.ps1                                                    # ① 编译：必须 0 错误（有警告也顺手清掉）
 dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
-                                                               # ② 自检：665 项行为逐条真跑，退出码 0 = 全通过
+                                                               # ② 自检：672 项行为逐条真跑，退出码 0 = 全通过
 ```
 
 * **改了行为就同步改自检断言**（自检就是"这份文档里承诺的行为"的执行版本，见第 6 节）。
@@ -105,13 +105,13 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | 项 | 内容 |
 | --- | --- |
 | 技术栈 | .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM（无第三方库、无 NuGet 依赖） |
-| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.9.0 就是读它；**别在别处写死**） |
+| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.9.1 就是读它；**别在别处写死**） |
 | 解决方案 | `YuLiangToolkit.sln`（10 个项目：主程序 + Core + 7 个功能 + 自检） |
 | 主程序 | `YuLiangTookit.csproj`（注意：文件名少一个 `l`，是历史拼写）→ 自定义标题栏外壳、主页、侧边栏、深色主题 |
 | 核心库 | `src/YuLiangToolkit.Core/`（工具契约、MVVM 基类、存储、配置、FFmpeg 封装） |
 | 功能 | `Tools.VideoToAudio`（视频转音频）、`Tools.MediaPlayer`（视频 / 音乐播放器）、`Tools.BatchRename`（批量重命名）、`Tools.FlashDownloader`（Flash 下载器）、`Tools.ChatRoom`（联机聊天室）、`Tools.MapDownloader`（osu! 下图器）、`Tools.Sample`（框架示例，可删） |
 | 数据/配置 | **在 exe 旁边**（`bin\Debug\net9.0-windows\Data`、`…\Config`）——见第 3 节；仓库根的 `Data/`、`Config/` 只剩说明文件 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**665 项**行为逐条验证，纯控制台）——见第 6 节 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**672 项**行为逐条验证，纯控制台）——见第 6 节 |
 | 构建 | `.\build.ps1`（离线，走本机 NuGet 缓存；会设 `DOTNET_CLI_HOME` 到 `.dotnet-cli-home`） |
 | 运行 | `dotnet run --project YuLiangTookit.csproj` 或直接跑 `bin\Debug\net9.0-windows\YuLiangTookit.exe` |
 
@@ -140,6 +140,7 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | `YLT_PLAYER_DEMO=1` | 打开「视频 / 音乐播放器」时塞 6 行假列表（音频 / 视频都有），只为看列表与封面版式；点了会提示“文件不在了” |
 | `YLT_PLAYER_SETTINGS=1` | 打开「视频 / 音乐播放器」时直接把设置面板展开（截图核对那一屏用） |
 | `YLT_PLAYER_FULLSCREEN=1` | 打开「视频 / 音乐播放器」时启动就进全屏（截图核对全屏版式用；要配 `YLT_PLAYER_DEMO`） |
+| `YLT_PLAYER_HIDE_CONTROLS=1` | 再配合上面那个：进全屏后先把控制条藏起来（核对「鼠标不动时只剩画面」那一帧） |
 | `YLT_MINI_DEMO=1` | 启动时先开一下播放器再回主页，制造「正在后台播放」的状态 —— 左下角迷你播放条会出现（截图核对用） |
 
 ---
@@ -1132,16 +1133,30 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 | `IFullscreenHost` | `MainWindow`（外壳） | `IsFullscreen` / `SetFullscreen(bool)`：进 / 出全屏，返回操作后的状态 |
 | `IBackgroundTool` | 播放器的 ViewModel | `KeepAliveOnLeave`（切走要不要保住视图）· `ShowMiniPanel`（要不要在左下角浮小窗）· `BackgroundStateChanged` 事件 |
 
-**全屏（真·整窗全屏）**：播放器只管切 `IsFullscreen` 并抛 `FullscreenChanged`，界面代码后置
-`Window.GetWindow(this) as IFullscreenHost` 找到外壳去操作窗口。外壳的做法是：
+**全屏（真·整窗全屏 + 沉浸式控制条）**：播放器只管切 `IsFullscreen` 并抛 `FullscreenChanged`，界面代码后置
+找到外壳去操作窗口。外壳的做法是：
 
 1. 把标题栏 / 工具条 / 状态栏三行的**高度改成 0**、侧边栏**列宽改成 0**（边框跟着一起消失）；
 2. `_fullscreen = true` 之后再 `WindowState = Maximized`，让 `WM_GETMINMAXINFO` 走「**整块显示器**」而不是工作区；
-3. `Topmost = true`（任务栏是置顶窗口，不置顶盖不住它）。
+3. `Topmost = true`（任务栏是置顶窗口，不置顶盖不住它），并把这圈非客户区的可拖拽边框推到屏幕外面。
    退出时反过来：先 `_fullscreen = false` 再还原 `WindowState` 与各行列尺寸。
+
+播放器界面这一侧的「沉浸式」做法（**全在 `MediaPlayerView` 里**）：
+
+* 控制条（进度 + 按钮 + 状态）包在 `Border x:Name="ControlBar"` 里，`Grid.Row` 由 `ControlBarStyle` 的
+  DataTrigger 在全屏时改成 **0 + 底部对齐 + 上透下黑的渐变背景** → 它就从「画面下面一排」变成「浮在画面上」；
+  画面那块 Border 同时在全屏时 `Grid.RowSpan=2`、去圆角去边框，于是画面铺满整屏；
+* 控制条 `Visibility` 绑 `ControlsVisible`：**鼠标一动就显示**（`PreviewMouseMove` 隧道事件，画面上的
+  `MediaElement` 也盖不住），**2.5 秒不动就隐藏**，同时 `Cursor = Cursors.None` 把鼠标指针也藏了；
+  鼠标停在控制条上 / 正在拖进度条时不隐藏；
+* 画面右下角那个圆钮（普通模式的全屏入口）在全屏时藏起来（`ShowCornerFullscreenButton`），
+  改用控制条最右边的「退出全屏」—— 否则它会挡画面。
 
 > ⚠️ **别用 `Left/Top/Width/Height` 直接铺满屏幕**：那样会被窗口管理器夹回**工作区**（实测 1920×1080 的屏只拿到
 > 1920×1032，任务栏那 48px 空着）。正路只有「临时改 WM_GETMINMAXINFO 再最大化」这一条。
+> ⚠ **截图验证全屏只能看版式**：`RenderTargetBitmap` 抓不到 `MediaElement` 的视频画面（抓到的是空白/怪色块），
+> 真机播放时的画面缩放靠 `Stretch="Uniform"` 保证。核对版式用 `YLT_PLAYER_FULLSCREEN=1` +
+> `YLT_PLAYER_HIDE_CONTROLS=1` 这两张图对照。
 
 **后台播放**：外壳的 `CloseCurrentTool()` 在调完 `vm.NotifyClosed()` 之后问一句 `KeepAliveOnLeave`：
 
@@ -1622,7 +1637,8 @@ git diff                        # 看未暂存改动
 
 | 版本 | 内容 |
 | --- | --- |
-| **v0.9.0**（当前） | **播放器加全屏 + 后台播放 + 左下角迷你条**（见 2.14）：① **整窗全屏**（`F11` / 画面右下角按钮，`Esc` 退出；藏掉标题栏 / 侧边栏 / 播放列表，连任务栏一起盖住）；② 设置项「**后台播放**」（默认开）：切到别的工具 / 回主页时**声音不断**，外壳会保住播放器的视图（`IBackgroundTool`），切回来是同一个 VM、列表与进度都还在；③ 后台播放时左下角浮出**迷你播放条**：标题从右往左循环滚 + 快退 / 播放暂停 / 快进（**左键跳步长、右键上一首 / 下一首**，与播放器页一致），点标题回播放器。踩坑：全屏**不能**直接设 `Left/Top/Width/Height`（会被夹回工作区，1920×1080 只拿到 1920×1032），必须临时改 `WM_GETMINMAXINFO` 再最大化 + 临时 `Topmost`；后台播放时界面 `Unloaded` **不能**顺手 `Close()` 播放器。自检 654 → **665** 项。版本号 0.8.0 → 0.9.0 |
+| **v0.9.1**（当前） | **全屏改成「沉浸式」**（见 2.14）：画面铺满整屏（连任务栏一起盖住），平时屏幕上**只有画面**；**鼠标往屏幕下方一动**才浮出控制条（正在放什么 + 进度条 + 全套按钮 + 退出全屏），**2.5 秒不动鼠标**就自动缩回去、鼠标指针也一起隐藏（v0.9.0 那版是全屏后控制条一直占一条）。做法：控制条被包进 `ControlBar`，全屏时由 `ControlBarStyle` 的 DataTrigger 改成「`Grid.Row=0` + 底部对齐 + 上透下黑渐变」，画面那块 `Grid.RowSpan=2`；显隐走 `ControlsVisible`，闲置计时器在界面代码后置里（鼠标停在控制条上 / 拖进度条时不缩）。自检 665 → **672** 项。版本号 0.9.0 → 0.9.1 |
+| v0.9.0 | **播放器加全屏 + 后台播放 + 左下角迷你条**（见 2.14）：① **整窗全屏**（`F11` / 画面右下角按钮，`Esc` 退出；藏掉标题栏 / 侧边栏 / 播放列表，连任务栏一起盖住）；② 设置项「**后台播放**」（默认开）：切到别的工具 / 回主页时**声音不断**，外壳会保住播放器的视图（`IBackgroundTool`），切回来是同一个 VM、列表与进度都还在；③ 后台播放时左下角浮出**迷你播放条**：标题从右往左循环滚 + 快退 / 播放暂停 / 快进（**左键跳步长、右键上一首 / 下一首**，与播放器页一致），点标题回播放器。踩坑：全屏**不能**直接设 `Left/Top/Width/Height`（会被夹回工作区，1920×1080 只拿到 1920×1032），必须临时改 `WM_GETMINMAXINFO` 再最大化 + 临时 `Topmost`；后台播放时界面 `Unloaded` **不能**顺手 `Close()` 播放器。自检 654 → **665** 项。版本号 0.8.0 → 0.9.0 |
 | v0.8.0 | **新增「视频 / 音乐播放器」**（`Tools.MediaPlayer`，见 2.14）：左中右三栏（播放区 + 进度条与控制按钮 + 播放列表）；打开文件夹（可多选、可递归）/ 打开文件 / 拖放，按「音频 + 视频 / 仅音频 / 仅视频」过滤，再开一个文件夹可**追加**或**覆盖**；列表循环 / 单曲循环 / 随机播放（随机一轮不重复）；**可调步长的快进快退（0.1 秒精度、0.1~60 秒），左键快退快进、右键上一首下一首**；音量、记住上次的列表与听到的位置。播放器抽成 `IMediaPlayback`，自检用假播放器把整条流程跑完。踩坑：控制按钮用 `⏪ ⏩ ⏹ 🔁` 字符会变成豆腐块（改矢量 Path + MDL2 图标）、`MediaElement` 的 `Loaded/UnloadedBehavior` 必须 `Manual`、设置面板要盖整列而不是只盖视频区。自检 555 → **654** 项。版本号 0.7.2 → 0.8.0 |
 | v0.7.2 | **「联机聊天室」加傻瓜模式**（默认开，见 2.12）：监听地址与端口不再让用户选，`ChooseSimpleListenPlan` 自己挑（优先双栈 `::` + 上次的端口，被占了改让系统挑）；开完房间直接把**本机 IPv4 / IPv6 地址 + 端口**列成可复制的一行行「地址:端口」（没有可用 IPv6 就直说「当前网络没有 IPv6」），内网穿透照着填本地端口即可。⚠ **IP 和端口一个都没藏**，只是不让用户「选」。顺带修一个真 bug：绑 `::` 时没开 `DualMode`，**IPv4 客户端一个都连不进来**（自检 `CheckDualStack` 用真连接兜住，去掉修复会红 3 条）。自检 535 → **555** 项。版本号 0.7.1 → 0.7.2 |
 | v0.7.1 | **「Flash 下载器」新增 ArmorGames / Kongregate 两站的网页 swf 抓取**（见 2.11）：后缀字母新增 `d` / `e`；ArmorGames 从 `/play/编号` 页的 `<param name="movie">` / `<embed src>` 读 swf 与宽高，页面里没有 swf 的（HTML5 游戏）自动退回整页下载；Kongregate 走「游戏页 → `…/embed`（`iframeConfig`）→ frame 页（`swf_location`）」三跳抓 swf，并排掉它自己的 `API_AS3_*.swf`。顺带：粘 `.swf` 直链也能直接下载；`ResolveAsync` 的未知域名兜底也能认出这两家的页面结构。自检 501 → 535 项，另加一个**默认不跑**的联网验收开关 `YLT_LIVE_SITES=1`。版本号 0.7.0 → 0.7.1 |

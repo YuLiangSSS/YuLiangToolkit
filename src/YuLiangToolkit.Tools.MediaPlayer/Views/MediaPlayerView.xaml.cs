@@ -38,6 +38,9 @@ public partial class MediaPlayerView : UserControl
         DragOver += OnDragOver;
         Drop += OnDrop;
 
+        // 全屏时鼠标一动就把控制条亮出来（隧道事件，画面上的 MediaElement 也盖不住）
+        PreviewMouseMove += (_, _) => WakeControls();
+
         // 右键：快退按钮 = 上一首，快进按钮 = 下一首（左键仍然走各自的 Command）
         BackButton.MouseRightButtonUp += (_, e) =>
         {
@@ -55,6 +58,55 @@ public partial class MediaPlayerView : UserControl
 
     /// <summary>宿主窗口（外壳）的全屏开关；视图卸载时就置空（别再往上找 Window，那时已经摘下来了）。</summary>
     private IFullscreenHost? _fullscreenHost;
+
+    // ---------------------------------------------------------------- 全屏 · 控制条自动隐藏
+
+    /// <summary>鼠标不动多久就把控制条 + 鼠标指针一起藏起来（全屏时才这样）。</summary>
+    private static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(2.5);
+
+    private DispatcherTimer? _idleTimer;
+
+    /// <summary>鼠标一动：亮出控制条、鼠标指针露出来，并重新计时（不在全屏时什么都不做）。</summary>
+    private void WakeControls()
+    {
+        if (Vm is not { } vm || !vm.IsFullscreen) return;
+
+        vm.ShowControls();
+        Cursor = null;
+        StartIdleTimer();
+    }
+
+    /// <summary>开始 / 重新开始“鼠标闲置”倒计时（只挂一次 Tick）。</summary>
+    private void StartIdleTimer()
+    {
+        _idleTimer ??= new DispatcherTimer(DispatcherPriority.Background) { Interval = IdleDelay };
+        if (_idleTimer.Tag is null)
+        {
+            _idleTimer.Tick += OnIdleTick;
+            _idleTimer.Tag = true;
+        }
+
+        _idleTimer.Stop();
+        _idleTimer.Start();
+    }
+
+    private void OnIdleTick(object? sender, EventArgs e)
+    {
+        _idleTimer?.Stop();
+
+        if (Vm is not { } vm || !vm.IsFullscreen) return;
+
+        // 鼠标正停在控制条上（或在拖进度条）→ 别缩回去，重新计时就行
+        if (ControlBar.IsMouseOver || _seeking)
+        {
+            if (!_seeking) WakeControls();
+            else _idleTimer?.Start();
+            return;
+        }
+
+        vm.HideControls();
+        if (!vm.ControlsVisible) Cursor = Cursors.None;   // 指针也一起藏起来（沉浸式）
+    }
 
     // ---------------------------------------------------------------- 生命周期
 
@@ -106,11 +158,27 @@ public partial class MediaPlayerView : UserControl
 
     /// <summary>全屏状态变了 → 让外壳去藏 / 恢复标题栏、侧边栏、状态栏并把窗口铺满屏幕。</summary>
     private void OnFullscreenChanged(object? sender, bool on)
-        => _fullscreenHost?.SetFullscreen(on);
+    {
+        _fullscreenHost?.SetFullscreen(on);
+
+        if (!on)
+        {
+            _idleTimer?.Stop();
+            Cursor = null;    // 退出全屏把鼠标指针还回来（不然会一直是“隐藏”状态）
+            return;
+        }
+
+        // 刚进全屏先把控制条亮一下，2.5 秒后自动缩。
+        // ⚠ 视图重建（后台播放切回来）时 VM 里可能已经藏好了 → 别又把它拽出来，只补个倒计时。
+        if (Vm?.ControlsVisible == true) WakeControls();
+        else StartIdleTimer();
+    }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         _timer?.Stop();
+        _idleTimer?.Stop();
+        Cursor = null;
 
         if (_hostWindow is not null) _hostWindow.PreviewKeyDown -= OnWindowPreviewKeyDown;
         _hostWindow = null;

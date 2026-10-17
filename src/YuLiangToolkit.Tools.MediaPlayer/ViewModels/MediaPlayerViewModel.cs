@@ -80,6 +80,9 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
 
         // 截图用：启动就进全屏（配合 YLT_PLAYER_DEMO 核对全屏版式）
         if (Environment.GetEnvironmentVariable("YLT_PLAYER_FULLSCREEN") is not null) IsFullscreen = true;
+
+        // 截图用：进全屏后先把控制条藏起来，核对「沉浸」那一帧（正常是鼠标一动就出来）
+        if (Environment.GetEnvironmentVariable("YLT_PLAYER_HIDE_CONTROLS") is not null) HideControls();
     }
 
     // ---------- 配置与命令 ----------
@@ -431,6 +434,7 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
         set
         {
             if (!Set(ref _isSettingsVisible, value)) return;
+            ShowControls();          // 面板是从控制条上的齿轮打开的，别让控制条正好在这时候缩回去
             OnPropertyChanged(nameof(SettingsGlyph));
         }
     }
@@ -447,6 +451,7 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
     // ---------- 全屏 ----------
 
     private bool _isFullscreen;
+    private bool _controlsVisible = true;
 
     /// <summary>
     /// 是不是全屏。ViewModel 只记状态：真正的窗口操作由界面（外壳的 <c>IFullscreenHost</c>）做，
@@ -458,11 +463,38 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
         private set
         {
             if (!Set(ref _isFullscreen, value)) return;
+            ControlsVisible = true;                  // 进 / 出全屏都先把控制条亮出来
             OnPropertyChanged(nameof(FullscreenGlyph));
             OnPropertyChanged(nameof(ShowPlaylist));
             OnPropertyChanged(nameof(FullscreenTooltip));
+            OnPropertyChanged(nameof(ShowCornerFullscreenButton));
             FullscreenChanged?.Invoke(this, value);
         }
+    }
+
+    /// <summary>全屏时画面右下角那个圆钮只在非全屏显示（全屏时它会挡住画面，改用控制条里的按钮）。</summary>
+    public bool ShowCornerFullscreenButton => !IsFullscreen;
+
+    /// <summary>
+    /// 全屏时控制条要不要露出来：鼠标一动就露，停 2.5 秒自动缩回去（只影响全屏，普通模式永远露着）。
+    /// 计时器在界面代码后置里（见 <c>MediaPlayerView</c> 的 mouse-idle 逻辑）。
+    /// </summary>
+    public bool ControlsVisible
+    {
+        get => _controlsVisible;
+        private set => Set(ref _controlsVisible, value);
+    }
+
+    /// <summary>鼠标动了 / 刚进全屏 → 把控制条亮出来。</summary>
+    public void ShowControls()
+    {
+        if (!ControlsVisible) ControlsVisible = true;
+    }
+
+    /// <summary>鼠标闲置够久 → 把控制条缩回去（普通模式 / 正开着设置面板时不缩）。</summary>
+    public void HideControls()
+    {
+        if (IsFullscreen && !IsSettingsVisible) ControlsVisible = false;
     }
 
     /// <summary>全屏按钮的图标：Segoe MDL2 的「全屏」E740 / 「退出全屏」E73F。</summary>

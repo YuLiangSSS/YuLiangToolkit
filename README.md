@@ -10,7 +10,7 @@
 | 工具 | 能干什么 |
 | --- | --- |
 | [**🎥 视频转音频**](docs/tools/video-to-audio.md) | 抽视频里的音轨：有损 MP3 / 无损 FLAC / 原样提取，批量 + 进度 + 取消 |
-| [**🎬 视频 / 音乐播放器**](docs/tools/media-player.md) | 本地播放器：播放列表、单曲 / 随机、全屏、**后台播放（切页不断，左下角迷你条）**、可调步长的快进快退 |
+| [**🎬 视频 / 音乐播放器**](docs/tools/media-player.md) | 本地播放器：播放列表、单曲 / 随机、**沉浸式全屏（鼠标一动浮出控制条）**、**后台播放（切页不断，左下角迷你条）**、可调步长的快进快退 |
 | [**⚡ Flash 下载器**](docs/tools/flash-downloader.md) | 4399 / 7k7k / 17yy / ArmorGames / Kongregate 的小游戏下载到本地离线玩 |
 | [**💬 联机聊天室**](docs/tools/chat-room.md) | 主机开端口、客户端连进来，文字 / 图片 / 文件随便传，带单次流量上限 |
 | [**🏷️ 批量重命名**](docs/tools/batch-rename.md) | 规则清单 + 实时预览 + 两阶段改名 + 可撤销 |
