@@ -16,6 +16,7 @@ obj/
 # ================= 开发调试产物 =================
 shots/*.png
 shots/*.txt
+shots/.demo-home/          # 截图用的临时数据根（YLT_HOME），里面有 Data/Config
 testdata/out/
 
 # ================= 运行时生成的配置与数据 =================
