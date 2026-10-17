@@ -6,7 +6,7 @@
     <NuGetAudit>false</NuGetAudit>
     <Authors>YuLiang</Authors>
     <!-- 状态栏显示的版本号取自这里（MainViewModel 读程序集版本），改一处即可 -->
-    <Version>0.8.0</Version>
+    <Version>0.9.0</Version>
     <Product>YuLiangToolkit</Product>
   </PropertyGroup>
 </Project>

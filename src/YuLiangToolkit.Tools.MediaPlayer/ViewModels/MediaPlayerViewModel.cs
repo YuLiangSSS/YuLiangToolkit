@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using YuLiangToolkit.Core.Mvvm;
+using YuLiangToolkit.Core.Tools;
 
 namespace YuLiangToolkit.Tools.MediaPlayer.ViewModels;
 
@@ -19,7 +20,7 @@ namespace YuLiangToolkit.Tools.MediaPlayer.ViewModels;
 /// <para>配置在 <c>Config\media-player\config.json</c>，列表快照在 <c>Data\media-player\playlist.json</c>。
 /// 细节与踩过的坑见 AGENTS.md 2.14 节。</para>
 /// </summary>
-public sealed partial class MediaPlayerViewModel : ToolViewModelBase
+public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroundTool
 {
     /// <summary>播放顺序的算术（随机模式注入 <see cref="Random"/>，自检里换成固定种子）。</summary>
     private readonly PlayQueue _queue;
@@ -48,6 +49,7 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase
         PreviousCommand = new RelayCommand(_ => MoveTrack(-1), _ => Items.Count > 0);
         NextCommand = new RelayCommand(_ => MoveTrack(+1), _ => Items.Count > 0);
         CyclePlayModeCommand = new RelayCommand(_ => PlayMode = PlayQueue.Cycle(PlayMode));
+        ToggleFullscreenCommand = new RelayCommand(_ => ToggleFullscreen());
 
         // 列表
         PlaySelectedCommand = new RelayCommand(_ => PlayItem(SelectedItem), _ => SelectedItem is not null);
@@ -75,6 +77,9 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase
 
         // 截图用：直接把设置面板打开（不然要点一下齿轮才看得到那一屏）
         if (Environment.GetEnvironmentVariable("YLT_PLAYER_SETTINGS") is not null) IsSettingsVisible = true;
+
+        // 截图用：启动就进全屏（配合 YLT_PLAYER_DEMO 核对全屏版式）
+        if (Environment.GetEnvironmentVariable("YLT_PLAYER_FULLSCREEN") is not null) IsFullscreen = true;
     }
 
     // ---------- 配置与命令 ----------
@@ -91,6 +96,7 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase
     public RelayCommand PreviousCommand { get; }
     public RelayCommand NextCommand { get; }
     public RelayCommand CyclePlayModeCommand { get; }
+    public RelayCommand ToggleFullscreenCommand { get; }
     public RelayCommand PlaySelectedCommand { get; }
     public RelayCommand RemoveSelectedCommand { get; }
     public RelayCommand ClearPlaylistCommand { get; }
@@ -162,6 +168,7 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase
             OnPropertyChanged(nameof(TitleText));
             OnPropertyChanged(nameof(SubtitleText));
             OnPropertyChanged(nameof(CoverGlyph));
+            RaiseBackgroundState();   // 有没有东西可播 → 决定外壳要不要显示迷你条
         }
     }
 
@@ -437,6 +444,77 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase
     /// <summary>设置页的说明文字（当前配置文件在哪）。</summary>
     public string SettingsPathText => $"配置：{ConfigPathText}";
 
+    // ---------- 全屏 ----------
+
+    private bool _isFullscreen;
+
+    /// <summary>
+    /// 是不是全屏。ViewModel 只记状态：真正的窗口操作由界面（外壳的 <c>IFullscreenHost</c>）做，
+    /// 这样自检里没有窗口也能断言状态机（见 <see cref="FullscreenChanged"/>）。
+    /// </summary>
+    public bool IsFullscreen
+    {
+        get => _isFullscreen;
+        private set
+        {
+            if (!Set(ref _isFullscreen, value)) return;
+            OnPropertyChanged(nameof(FullscreenGlyph));
+            OnPropertyChanged(nameof(ShowPlaylist));
+            OnPropertyChanged(nameof(FullscreenTooltip));
+            FullscreenChanged?.Invoke(this, value);
+        }
+    }
+
+    /// <summary>全屏按钮的图标：Segoe MDL2 的「全屏」E740 / 「退出全屏」E73F。</summary>
+    public string FullscreenGlyph => IsFullscreen ? "\uE73F" : "\uE740";
+
+    /// <summary>全屏按钮的悬停提示。</summary>
+    public string FullscreenTooltip => IsFullscreen ? "退出全屏（Esc）" : "全屏（Esc 退出）";
+
+    /// <summary>全屏时把右边的播放列表收起来，画面占满整个工具页。</summary>
+    public bool ShowPlaylist => !IsFullscreen;
+
+    /// <summary>
+    /// 全屏状态变了（界面据此去操作真实窗口：藏标题栏 / 侧边栏、铺满屏幕）。
+    /// <para>带 true/false 参数 = 目标状态。</para>
+    /// </summary>
+    public event EventHandler<bool>? FullscreenChanged;
+
+    /// <summary>切换全屏（按钮 / Esc / F11 都走它）。</summary>
+    public void ToggleFullscreen() => IsFullscreen = !IsFullscreen;
+
+    /// <summary>强制退出全屏（切走工具、界面卸载时调用，避免留下一个“藏了壳”的窗口）。</summary>
+    public void ExitFullscreen()
+    {
+        if (IsFullscreen) IsFullscreen = false;
+    }
+
+    // ---------- 后台播放（IBackgroundTool） ----------
+
+    /// <summary>设置里的「后台播放」；改一下会顺带通知外壳刷新迷你条。</summary>
+    public bool BackgroundPlayback
+    {
+        get => Cfg.BackgroundPlayback;
+        set
+        {
+            if (Cfg.BackgroundPlayback == value) return;
+            Cfg.BackgroundPlayback = value;
+            OnPropertyChanged();
+            RaiseBackgroundState();
+        }
+    }
+
+    /// <summary>切走时要不要留着这个视图（= 后台播放 + 当前有曲目）。</summary>
+    public bool KeepAliveOnLeave => Cfg.BackgroundPlayback && CurrentItem is not null;
+
+    /// <summary>不在前台时要不要显示左下角迷你播放条。</summary>
+    public bool ShowMiniPanel => Cfg.BackgroundPlayback && CurrentItem is not null;
+
+    /// <summary>上面两个值可能变了（外壳据此决定留不留视图、显不显示迷你条）。</summary>
+    public event EventHandler? BackgroundStateChanged;
+
+    private void RaiseBackgroundState() => BackgroundStateChanged?.Invoke(this, EventArgs.Empty);
+
     /// <summary>把设置恢复成出厂值（**不动播放列表**，也不动快进快退之外的播放状态）。</summary>
     public void ResetSettings()
     {
@@ -448,6 +526,7 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase
         Cfg.SeekStepSeconds = 5.0;
         Cfg.RestorePlaylist = true;
         Cfg.ResumeLastPlayed = true;
+        Cfg.BackgroundPlayback = true;
 
         VolumeValue = Cfg.Volume;
         SeekStepSeconds = Cfg.SeekStepSeconds;
@@ -459,6 +538,8 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase
         OnPropertyChanged(nameof(ScanRecursive));
         OnPropertyChanged(nameof(RestorePlaylist));
         OnPropertyChanged(nameof(ResumeLastPlayed));
+        OnPropertyChanged(nameof(BackgroundPlayback));
+        RaiseBackgroundState();
 
         StatusText = "设置已恢复默认值";
         Log("设置已恢复默认值");
@@ -501,6 +582,15 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase
     protected override void OnClosed()
     {
         SavePlaylistState();
+
+        // 后台播放：外壳会保住这个视图（里面的 MediaElement 还在），所以这里**别**摘播放器、别停。
+        if (KeepAliveOnLeave)
+        {
+            Log("后台播放：界面切走了，声音继续（左下角小窗可以暂停 / 换歌）");
+            return;
+        }
+
+        ExitFullscreen();   // 别把窗口留在“藏了壳”的全屏状态
         DetachPlayer();
     }
 }

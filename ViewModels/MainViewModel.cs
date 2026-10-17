@@ -173,6 +173,31 @@ public class MainViewModel : ObservableObject
     public RelayCommand ClearSearchCommand { get; }
     public RelayCommand SearchTagCommand { get; }
 
+    /// <summary>点左下角迷你条 → 回到那个正在后台播放的工具。</summary>
+    public RelayCommand OpenBackgroundToolCommand { get; }
+
+    // ---------- 左下角迷你条（后台播放） ----------
+
+    private FrameworkElement? _keptAliveView;
+    private ITool? _keptAliveTool;
+    private IBackgroundTool? _keptAliveBackground;
+    private object? _miniPanelSource;
+    private bool _miniPanelVisible;
+
+    /// <summary>迷你条绑定用的对象（通常是那个工具的 ViewModel）；没有后台工具时为 null。</summary>
+    public object? MiniPanelSource
+    {
+        get => _miniPanelSource;
+        private set => Set(ref _miniPanelSource, value);
+    }
+
+    /// <summary>迷你条要不要显示。</summary>
+    public bool MiniPanelVisible
+    {
+        get => _miniPanelVisible;
+        private set => Set(ref _miniPanelVisible, value);
+    }
+
     public MainViewModel(IEnumerable<ITool> tools)
     {
         _shellStore = ToolConfigStore.For(ShellToolId);
@@ -188,6 +213,10 @@ public class MainViewModel : ObservableObject
         SearchTagCommand = new RelayCommand(p =>
         {
             if (p is string tag && !string.IsNullOrWhiteSpace(tag)) SearchText = tag;
+        });
+        OpenBackgroundToolCommand = new RelayCommand(_ =>
+        {
+            if (_keptAliveTool is { } tool) OpenTool(tool);
         });
 
         NavItems.Add(new NavItem("首页", "🏠", null, GoHome));
@@ -213,6 +242,19 @@ public class MainViewModel : ObservableObject
         var ffmpeg = FFmpegLocator.Find(null);
         StatusText = $"共加载 {Tools.Count} 个工具 · FFmpeg：{(ffmpeg is not null ? "已找到" : "未找到（可在工具内配置）")}"
                      + $" · 数据/配置目录：{AppPaths.Root} · v{AppVersion}";
+        GoHome();
+
+        // 截图用：YLT_MINI_DEMO=1 —— 打开播放器（配合 YLT_PLAYER_DEMO 塞几条假列表）再切回主页，
+        // 让左下角的迷你条出现（就是“后台播放”的那个效果）
+        if (Environment.GetEnvironmentVariable("YLT_MINI_DEMO") is not null) SeedMiniPanelDemo();
+    }
+
+    /// <summary>只给截图/冒烟用：开一下播放器再回主页，制造“正在后台播放”的状态。</summary>
+    private void SeedMiniPanelDemo()
+    {
+        var player = Tools.FirstOrDefault(t => string.Equals(t.Id, "media-player", StringComparison.OrdinalIgnoreCase));
+        if (player is null) return;
+        OpenTool(player);
         GoHome();
     }
 
@@ -243,13 +285,71 @@ public class MainViewModel : ObservableObject
                        + "也可以用空格组合多个关键词（比如「视频 mp3」）。";
     }
 
-    /// <summary>切换功能前通知上一个工具：落盘未保存的配置、停止后台任务。</summary>
+    /// <summary>
+    /// 切换功能前通知上一个工具：落盘未保存的配置、停止后台任务。
+    /// <para>如果它说自己要「后台继续」（<see cref="IBackgroundTool"/>），就**把视图留着不销毁**
+    /// —— 视图一销毁，里面的播放器也就没了；左下角的迷你条会接管暂停 / 换歌。</para>
+    /// </summary>
     private void CloseCurrentTool()
     {
-        if (CurrentView is FrameworkElement fe && fe.DataContext is ToolViewModelBase vm)
+        if (CurrentView is not FrameworkElement fe || fe.DataContext is not ToolViewModelBase vm) return;
+
+        vm.NotifyClosed();
+
+        if (vm is IBackgroundTool background && background.KeepAliveOnLeave)
         {
-            vm.NotifyClosed();
+            KeepAliveView(fe, vm, background);
+            return;
         }
+
+        ClearKeptAlive();
+    }
+
+    /// <summary>留住一个后台视图（只留一份；旧的直接丢掉，里面的播放器会随之释放）。</summary>
+    private void KeepAliveView(FrameworkElement view, ToolViewModelBase vm, IBackgroundTool background)
+    {
+        if (ReferenceEquals(_keptAliveView, view)) return;
+
+        ClearKeptAlive();
+
+        _keptAliveView = view;
+        _keptAliveTool = Tools.FirstOrDefault(t => t.Id == vm.ToolId);
+        _keptAliveBackground = background;
+        background.BackgroundStateChanged -= OnBackgroundStateChanged;
+        background.BackgroundStateChanged += OnBackgroundStateChanged;
+
+        UpdateMiniPanel();
+    }
+
+    /// <summary>放掉后台视图的引用（不主动停播放：要么它已经回到前台，要么让它自然释放）。</summary>
+    private void ClearKeptAlive()
+    {
+        if (_keptAliveBackground is not null)
+        {
+            _keptAliveBackground.BackgroundStateChanged -= OnBackgroundStateChanged;
+        }
+
+        _keptAliveView = null;
+        _keptAliveTool = null;
+        _keptAliveBackground = null;
+        UpdateMiniPanel();
+    }
+
+    private void OnBackgroundStateChanged(object? sender, EventArgs e) => UpdateMiniPanel();
+
+    /// <summary>
+    /// 迷你条只在「后台工具不在前台」且「它自己说该显示」时出现。
+    /// 前台 / 后台的判定用视图实例比较，不需要工具自己汇报。
+    /// </summary>
+    private void UpdateMiniPanel()
+    {
+        var show = _keptAliveView is not null
+                   && _keptAliveBackground is not null
+                   && !ReferenceEquals(CurrentView, _keptAliveView)
+                   && _keptAliveBackground.ShowMiniPanel;
+
+        MiniPanelSource = show ? _keptAliveView!.DataContext : null;
+        MiniPanelVisible = show;
     }
 
     /// <summary>记一笔“这个功能刚被用过”（“最近使用”排序与卡片提示都靠它）。</summary>
@@ -270,6 +370,7 @@ public class MainViewModel : ObservableObject
         CurrentView = new HomeView { DataContext = this };
         BackVisible = false;
         CurrentTitle = "工具集主页";
+        UpdateMiniPanel();
     }
 
     private void OpenTool(ITool tool)
@@ -279,8 +380,20 @@ public class MainViewModel : ObservableObject
         _syncingNav = true;
         SelectedNavItem = NavItems.FirstOrDefault(n => n.Tool == tool);
         _syncingNav = false;
-        CurrentView = tool.CreateView();
+
+        // 之前被“后台保活”的正是这个工具的视图 → 原样挂回去：播放不断，列表 / 设置状态都还在
+        FrameworkElement? reused = null;
+        if (_keptAliveView is { } kept && _keptAliveTool?.Id == tool.Id)
+        {
+            reused = kept;
+            ClearKeptAlive();
+        }
+
+        CurrentView = reused ?? tool.CreateView();
+        (reused?.DataContext as ToolViewModelBase)?.NotifyOpened();   // 恢复后台自动保存
+
         BackVisible = true;
         CurrentTitle = tool.Name;
+        UpdateMiniPanel();
     }
 }

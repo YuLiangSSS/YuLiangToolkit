@@ -186,10 +186,18 @@ public sealed class OszDownloader
             }
         }
 
+        /// <summary>
+        /// 报一次进度。**计数、取快照、回调必须在同一把锁里**：否则两个下载线程会交错
+        /// （A 先自增、B 自增完先回调），外面收到的最后一次回调可能是 Finished=2 的旧快照 ——
+        /// 进度看起来"退回去"了，自检也随机挂（这条踩过）。
+        /// </summary>
         public void Report()
         {
-            Interlocked.Increment(ref _finished);
-            onProgress?.Invoke(new OszProgress(_finished, total, _downloaded, _skipped, _failed));
+            lock (_lock)
+            {
+                _finished++;
+                onProgress?.Invoke(new OszProgress(_finished, total, _downloaded, _skipped, _failed));
+            }
         }
 
         public OszDownloadSummary ToSummary(bool cancelled) => new(

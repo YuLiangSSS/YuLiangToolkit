@@ -50,6 +50,14 @@ public sealed class MediaPlayerConfig : ToolConfig
     /// <summary>捞回列表时顺便恢复上次听到的那一首（只选中 + 记住位置，**不自动出声**）。</summary>
     public bool ResumeLastPlayed { get; set; } = true;
 
+    // ---------- 后台播放 ----------
+
+    /// <summary>
+    /// 切到别的工具 / 回主页时**继续播放**（并在外壳左下角显示一个小迷你播放条）。
+    /// 关掉就是老行为：切走即停。
+    /// </summary>
+    public bool BackgroundPlayback { get; set; } = true;
+
     // ---------- 计算属性（只读 → 不会被写进 JSON） ----------
 
     /// <summary>实际生效的步长：规整到 0.1 秒精度并夹在允许范围内。</summary>

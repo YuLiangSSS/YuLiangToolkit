@@ -15,6 +15,16 @@
 
     <UserControl.Resources>
 
+        <!-- 播放区那一列的边距：平时四周留白，全屏时清零（画面直接顶到屏幕边上） -->
+        <Style x:Key="PlayerSurfaceStyle" TargetType="Grid">
+            <Setter Property="Margin" Value="18,16,14,14" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsFullscreen}" Value="True">
+                    <Setter Property="Margin" Value="0" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
         <!-- 播放控制按钮：圆形、无边框、悬停才亮 -->
         <Style x:Key="TransportButtonStyle" TargetType="Button">
             <Setter Property="Width" Value="44" />
@@ -94,11 +104,11 @@
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="320" />
+            <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
 
         <!-- ==================== 左：播放区（设置面板会盖住整列） ==================== -->
-        <Grid Grid.Column="0" Margin="18,16,14,14">
+        <Grid Grid.Column="0" Style="{StaticResource PlayerSurfaceStyle}">
 
             <Grid>
                 <Grid.RowDefinitions>
@@ -139,6 +149,14 @@
                                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="420" />
                             </StackPanel>
                         </Border>
+
+                        <!-- 全屏按钮：压在画面右下角（跟常见播放器一个位置，也不跟下面那排控制按钮抢宽度） -->
+                        <Button HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,14,14"
+                                Width="38" Height="38" Style="{StaticResource TransportButtonStyle}"
+                                Background="#66000000"
+                                FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource TextPrimaryBrush}"
+                                Content="{Binding FullscreenGlyph}" Command="{Binding ToggleFullscreenCommand}"
+                                ToolTip="{Binding FullscreenTooltip}" />
                     </Grid>
                 </Border>
 
@@ -337,6 +355,16 @@
                                        Foreground="{StaticResource TextSecondaryBrush}" />
                         </Grid>
 
+                        <!-- ===== 后台 ===== -->
+                        <TextBlock Text="切到别的工具时" Style="{StaticResource SettingsSectionStyle}" />
+                        <CheckBox Content="后台播放（界面切走也继续出声）" Margin="132,0,0,0"
+                                  IsChecked="{Binding BackgroundPlayback}"
+                                  Style="{StaticResource CheckBoxStyle}"
+                                  ToolTip="打开后：切到别的工具 / 回主页时声音不断，左下角会出现一个迷你播放条" />
+                        <TextBlock Text="打开时左下角会浮出一个小窗：滚动显示标题，带快退 / 播放暂停 / 快进，点标题回到播放器。"
+                                   FontSize="10.5" Margin="132,7,0,0" TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+
                         <!-- ===== 下次打开 ===== -->
                         <TextBlock Text="下次打开这个工具时" Style="{StaticResource SettingsSectionStyle}" />
                         <CheckBox Content="恢复上次的播放列表" Margin="132,0,0,0"
@@ -364,9 +392,10 @@
             </Border>
         </Grid>
 
-        <!-- ==================== 右：播放列表 ==================== -->
-        <Border Grid.Column="1" Margin="0,16,18,14" Background="{StaticResource CardBackgroundBrush}"
-                CornerRadius="12" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+        <!-- ==================== 右：播放列表（全屏时收起，见 ShowPlaylist） ==================== -->
+        <Border Grid.Column="1" Width="320" Margin="0,16,18,14" Background="{StaticResource CardBackgroundBrush}"
+                CornerRadius="12" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                Visibility="{Binding ShowPlaylist, Converter={StaticResource BoolToVis}}">
             <Grid Margin="12,14,12,12">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />

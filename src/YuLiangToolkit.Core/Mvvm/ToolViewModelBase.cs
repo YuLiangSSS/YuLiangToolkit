@@ -179,6 +179,18 @@ public abstract class ToolViewModelBase : ObservableObject, IDisposable
 
     private bool _closed;
 
+    /// <summary>
+    /// 工具重新被打开（外壳缓存了视图、把它重新挂回界面时）。
+    /// 与 <see cref="NotifyClosed"/> 配对：恢复后台自动保存，让配置改动重新能落盘。
+    ///
+    /// <para>目前只有「后台播放」会走到这里（切走时视图被保住，切回来是同一个 ViewModel）。</para>
+    /// </summary>
+    public void NotifyOpened()
+    {
+        _closed = false;
+        try { ConfigStore.StartWatching(); } catch { /* 启动失败不影响使用 */ }
+    }
+
     /// <summary>工具被切换走 / 关闭：立刻落盘配置、停止后台保存检查并触发 <see cref="OnClosed"/>（可重入安全）。</summary>
     public void NotifyClosed()
     {
@@ -193,7 +205,11 @@ public abstract class ToolViewModelBase : ObservableObject, IDisposable
         try { OnClosed(); } catch { /* 不因为清理逻辑影响主流程 */ }
     }
 
-    /// <summary>子类可重写：停止后台任务、释放资源等。配置已由基类 Flush。</summary>
+    /// <summary>
+    /// 子类可重写：停止后台任务、释放资源等。配置已由基类 Flush。
+    /// <para>⚠ 如果这个工具实现了 <see cref="Tools.IBackgroundTool"/> 且此刻要求保活，
+    /// 这里就<b>不要</b>把播放器/服务拆掉——外壳会继续用这个视图。</para>
+    /// </summary>
     protected virtual void OnClosed() { }
 
     public void Dispose()

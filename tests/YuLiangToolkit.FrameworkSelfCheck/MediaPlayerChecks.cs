@@ -30,6 +30,7 @@ internal static class MediaPlayerChecks
         CheckQueue(assert);
         CheckConfig(assert);
         CheckViewModel(assert);
+        CheckFullscreenAndBackground(assert);
     }
 
     // ---------------------------------------------------------------- 扩展名归类
@@ -354,7 +355,7 @@ internal static class MediaPlayerChecks
     private static void CheckConfig(CheckFn check)
     {
         var cfg = new MediaPlayerConfig();
-        check("配置默认值：两种都收 / 递归 / 追加 / 音量 80 / 列表循环 / 步长 5 秒 / 恢复列表与位置",
+        check("配置默认值：两种都收 / 递归 / 追加 / 音量 80 / 列表循环 / 步长 5 秒 / 恢复列表与位置 / 后台播放开着",
             cfg.IncludeMode == MediaIncludeMode.AudioAndVideo
             && cfg.ScanRecursive
             && cfg.AppendWhenOpeningFolder
@@ -362,7 +363,8 @@ internal static class MediaPlayerChecks
             && cfg.PlayOrder == PlayOrderMode.LoopAll
             && cfg.SeekStepEffective == 5.0
             && cfg.RestorePlaylist
-            && cfg.ResumeLastPlayed);
+            && cfg.ResumeLastPlayed
+            && cfg.BackgroundPlayback);
 
         cfg.SeekStepSeconds = 3.46;
         var step = cfg.SeekStepEffective;
@@ -698,11 +700,96 @@ internal static class MediaPlayerChecks
             reopened.StatusText);
 
         // ---- 关掉工具 ----
+        reopened.BackgroundPlayback = false;   // 后台播放默认是开的；关掉就是“切走即停”的老行为
         reopened.NotifyClosed();
-        check("VM：关掉工具时把播放器摘掉（不会在后台继续出声）", reopened.Player is null);
+        check("VM：关掉后台播放后切走 → 摘掉播放器（不会在背后继续出声）", reopened.Player is null);
     }
 
-    // ---------------------------------------------------------------- 工具
+    // ---------------------------------------------------------------- 全屏 / 后台播放
+
+    /// <summary>
+    /// 全屏状态机 + 后台播放（切走不停）。真窗口的操作（藏壳、铺满屏幕）在外壳里，
+    /// 这里只断言 ViewModel 该负责的那一层：状态、图标、事件、以及“切走时要不要拆播放器”。
+    /// </summary>
+    private static void CheckFullscreenAndBackground(CheckFn check)
+    {
+        var root = SelfCheckScratch.MakeDirectory("ylt-media-bg");
+        var first = WriteFile(root, "后台-01.mp3");
+        var second = WriteFile(root, "后台-02.mp3");
+
+        var vm = new MediaPlayerViewModel { Confirm = _ => true };
+        vm.ClearPlaylistCommand.Execute(null);   // 前面的用例存过列表快照，这里从空开始才有确定性
+        vm.BackgroundPlayback = true;            // 配置对象是全局缓存的，前面的用例可能把它关过
+
+        var fake = new FakeMediaPlayback();
+        vm.AttachPlayer(fake);
+        vm.AddFilesAsync(new[] { first, second }).GetAwaiter().GetResult();
+
+        // ---- 全屏 ----
+        var events = new List<bool>();
+        vm.FullscreenChanged += (_, on) => events.Add(on);
+
+        check("全屏：默认不是全屏，图标是「进入全屏」、右边列表还在",
+            !vm.IsFullscreen && vm.FullscreenGlyph == "\uE740" && vm.ShowPlaylist && vm.FullscreenTooltip.Contains("全屏"),
+            vm.FullscreenTooltip);
+
+        vm.ToggleFullscreenCommand.Execute(null);
+        check("全屏：点一下 → 状态切过去、图标变「退出全屏」、播放列表收起、事件发出 true",
+            vm.IsFullscreen && vm.FullscreenGlyph == "\uE73F" && !vm.ShowPlaylist
+            && events.Count == 1 && events[0],
+            $"glyph=0x{((int)vm.FullscreenGlyph[0]):X4}");
+
+        vm.ExitFullscreen();
+        check("全屏：退出 → 恢复原样，事件发出 false",
+            !vm.IsFullscreen && vm.ShowPlaylist && events.SequenceEqual(new[] { true, false }));
+
+        vm.ExitFullscreen();
+        check("全屏：重复退出不会再发事件（不会把外壳来回折腾）", events.Count == 2);
+
+        // ---- 后台播放 ----
+        check("后台播放：开着时 → 切走要保活、并且该显示左下角小窗，没曲目时两样都不做",
+            vm.BackgroundPlayback && !vm.KeepAliveOnLeave && !vm.ShowMiniPanel);
+
+        vm.PlayItem(vm.Items[0]);
+        fake.RaiseOpened(TimeSpan.FromSeconds(120), hasVideo: false);
+        check("后台播放：有曲目 → 切走要保活，并且该显示左下角小窗",
+            vm.KeepAliveOnLeave && vm.ShowMiniPanel);
+
+        var stateEvents = 0;
+        vm.BackgroundStateChanged += (_, _) => stateEvents++;
+        vm.BackgroundPlayback = false;
+        check("后台播放：关掉设置 → 通知外壳刷新，且不再保活 / 不再显示小窗",
+            stateEvents > 0 && !vm.KeepAliveOnLeave && !vm.ShowMiniPanel);
+        vm.BackgroundPlayback = true;
+
+        vm.NotifyClosed();
+        check("后台播放：开着时切走 → 播放器没被摘掉、还在放（声音不断）",
+            ReferenceEquals(vm.Player, fake) && fake.IsPlaying, vm.StatusText);
+
+        vm.NotifyOpened();
+        check("后台播放：再切回来 → 还是同一个播放器，不需要重新加载", ReferenceEquals(vm.Player, fake));
+
+        // 关掉后台播放就是老行为：切走即停
+        var stopVm = new MediaPlayerViewModel { Confirm = _ => true };
+        stopVm.ClearPlaylistCommand.Execute(null);
+        var stopFake = new FakeMediaPlayback();
+        stopVm.AttachPlayer(stopFake);
+        stopVm.AddFilesAsync(new[] { first }).GetAwaiter().GetResult();
+        stopVm.PlayItem(stopVm.Items[0]);
+        stopFake.RaiseOpened(TimeSpan.FromSeconds(60), hasVideo: false);
+        stopVm.BackgroundPlayback = false;
+        stopVm.NotifyClosed();
+        check("后台播放：关着时切走 → 摘掉播放器（切走即停的老行为）", stopVm.Player is null);
+
+        // 全屏时切走，窗口要能还原
+        var fullscreenVm = new MediaPlayerViewModel { Confirm = _ => true };
+        fullscreenVm.ClearPlaylistCommand.Execute(null);
+        fullscreenVm.BackgroundPlayback = false;
+        fullscreenVm.ToggleFullscreenCommand.Execute(null);
+        fullscreenVm.NotifyClosed();
+        check("全屏：切走工具时自动退出全屏（不会留下一个“藏了壳”的窗口）", !fullscreenVm.IsFullscreen);
+    }
+
 
     private static string WriteFile(string folder, string name)
     {

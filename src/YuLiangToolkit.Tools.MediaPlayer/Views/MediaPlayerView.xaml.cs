@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Media3D;
 using System.Windows.Threading;
+using YuLiangToolkit.Core.Tools;
 using YuLiangToolkit.Tools.MediaPlayer.ViewModels;
 
 namespace YuLiangToolkit.Tools.MediaPlayer.Views;
@@ -90,7 +91,18 @@ public partial class MediaPlayerView : UserControl
             _hostWindow.PreviewKeyDown -= OnWindowPreviewKeyDown;
             _hostWindow.PreviewKeyDown += OnWindowPreviewKeyDown;
         }
+
+        // 全屏：ViewModel 只切状态，真正的窗口操作交给外壳（MainWindow 实现了 IFullscreenHost）
+        vm.FullscreenChanged -= OnFullscreenChanged;
+        vm.FullscreenChanged += OnFullscreenChanged;
+
+        // 视图重建 / 后台播放切回来时，VM 里可能已经是全屏状态 → 跟外壳同步一次
+        if (vm.IsFullscreen) OnFullscreenChanged(vm, true);
     }
+
+    /// <summary>全屏状态变了 → 让外壳去藏 / 恢复标题栏、侧边栏、状态栏并把窗口铺满屏幕。</summary>
+    private void OnFullscreenChanged(object? sender, bool on)
+        => (Window.GetWindow(this) as IFullscreenHost)?.SetFullscreen(on);
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
@@ -99,7 +111,14 @@ public partial class MediaPlayerView : UserControl
         if (_hostWindow is not null) _hostWindow.PreviewKeyDown -= OnWindowPreviewKeyDown;
         _hostWindow = null;
 
-        _playback?.Close();
+        if (Vm is { } vm)
+        {
+            vm.FullscreenChanged -= OnFullscreenChanged;
+            vm.ExitFullscreen();   // 切走 / 关工具时别把窗口留在“藏了壳”的全屏状态
+        }
+
+        // ⚠ 后台播放时**不能**关播放器：外壳会把这个视图留着，声音要继续
+        if (Vm?.KeepAliveOnLeave != true) _playback?.Close();
     }
 
     private void OnTimerTick(object? sender, EventArgs e)
@@ -228,9 +247,22 @@ public partial class MediaPlayerView : UserControl
                 e.Handled = true;
                 vm.PlaySelectedCommand.Execute(null);
                 break;
-            case Key.Escape when vm.IsSettingsVisible:
+            case Key.Escape:
+                // 先退全屏（全屏时最符合直觉），再关设置面板
+                if (vm.IsFullscreen)
+                {
+                    e.Handled = true;
+                    vm.ToggleFullscreen();
+                }
+                else if (vm.IsSettingsVisible)
+                {
+                    e.Handled = true;
+                    vm.IsSettingsVisible = false;
+                }
+                break;
+            case Key.F11:
                 e.Handled = true;
-                vm.IsSettingsVisible = false;
+                vm.ToggleFullscreen();
                 break;
         }
     }
