@@ -78,7 +78,7 @@
         </Style>
     </UserControl.Resources>
 
-    <!-- 迷你播放条：一行滚动标题 + 快退 / 播放暂停 / 快进。
+    <!-- 迷你播放条：一行「来回滚」的标题 + 快退 / 播放暂停 / 快进。
          DataContext = 播放器的 ViewModel（外壳的 MiniPanelSource 给过来的）。 -->
     <Border Width="264" Background="#FF1F242C" CornerRadius="12" Padding="10,8,10,10"
             BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
@@ -88,16 +88,13 @@
                               RelativeSource={RelativeSource AncestorType=Window}}"
                     ToolTip="回到播放器">
                 <Grid x:Name="TitleClip" Height="18" ClipToBounds="True">
-                    <StackPanel x:Name="TitleStrip" Orientation="Horizontal" HorizontalAlignment="Left">
-                        <StackPanel.RenderTransform>
+                    <TextBlock x:Name="TitleText" Text="{Binding TitleText}" FontSize="12" FontWeight="SemiBold"
+                               HorizontalAlignment="Left" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextPrimaryBrush}">
+                        <TextBlock.RenderTransform>
                             <TranslateTransform x:Name="TitleShift" />
-                        </StackPanel.RenderTransform>
-                        <TextBlock x:Name="TitleText1" Text="{Binding TitleText}" FontSize="12" FontWeight="SemiBold"
-                                   VerticalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}" />
-                        <TextBlock x:Name="TitleText2" Text="{Binding TitleText}" Margin="30,0,0,0" FontSize="12"
-                                   FontWeight="SemiBold" VerticalAlignment="Center"
-                                   Foreground="{StaticResource TextPrimaryBrush}" />
-                    </StackPanel>
+                        </TextBlock.RenderTransform>
+                    </TextBlock>
                 </Grid>
             </Button>
 

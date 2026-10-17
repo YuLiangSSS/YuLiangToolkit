@@ -1,4 +1,5 @@
 using System.IO;
+using YuLiangToolkit.App.Views;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Tools.MediaPlayer;
 using YuLiangToolkit.Tools.MediaPlayer.ViewModels;
@@ -31,6 +32,45 @@ internal static class MediaPlayerChecks
         CheckConfig(assert);
         CheckViewModel(assert);
         CheckFullscreenAndBackground(assert);
+        CheckMiniPanelMarquee(assert);
+    }
+
+    // ---------------------------------------------------------------- 迷你条标题（来回滚）
+
+    /// <summary>
+    /// 左下角迷你条那个「标题来回滚」的算术：放得下就**不滚**，放不下才滚，且越长的滚越久。
+    /// 动画本身是 WPF 故事板（无头测不了），但“要不要滚 / 一趟多久”是纯函数，这里逐条钉住。
+    /// </summary>
+    private static void CheckMiniPanelMarquee(CheckFn check)
+    {
+        const double view = 244;   // 264 的小窗减掉左右内边距
+
+        check("迷你条标题：短标题放得下 → 不滚（完整显示，不会缺字）",
+            MiniPlayerPanel.ScrollDuration(180, view) is null,
+            MiniPlayerPanel.ScrollDuration(180, view)?.ToString() ?? "null");
+
+        check("迷你条标题：正好塞满 → 也不滚",
+            MiniPlayerPanel.ScrollDuration(view, view) is null);
+
+        var oneWay = MiniPlayerPanel.ScrollDuration(344, view);   // 溢出 100px
+        check("迷你条标题：长标题 → 要滚，一趟 ≈ 溢出宽度 ÷ 速度",
+            oneWay is { } d && d.TotalSeconds > 2.5 && d.TotalSeconds < 3.3,
+            oneWay?.ToString() ?? "null");
+
+        var barely = MiniPlayerPanel.ScrollDuration(view + 6, view);   // 只溢出 6px
+        check("迷你条标题：只溢出一点点 → 也要至少滚满 1 秒（不至于闪一下）",
+            barely is { } b && Math.Abs(b.TotalSeconds - 1.0) < 0.01,
+            barely?.ToString() ?? "null");
+
+        var longer = MiniPlayerPanel.ScrollDuration(800, view);
+        check("迷你条标题：越长滚得越久（速度恒定）",
+            oneWay is { } o && longer is { } l && l > o,
+            $"{oneWay?.TotalSeconds:0.00}s → {longer?.TotalSeconds:0.00}s");
+
+        check("迷你条标题：还没量出宽度（0 / NaN）→ 先不动，等 SizeChanged 再来",
+            MiniPlayerPanel.ScrollDuration(0, view) is null
+            && MiniPlayerPanel.ScrollDuration(double.NaN, view) is null
+            && MiniPlayerPanel.ScrollDuration(300, 0) is null);
     }
 
     // ---------------------------------------------------------------- 扩展名归类

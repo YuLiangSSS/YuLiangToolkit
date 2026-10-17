@@ -4,7 +4,7 @@
 > 改这个项目之前先读本文件，**不要再去通读 `src/`**：这里把所有已经造好的「轮子」（可复用组件）的
 > **用途 + 签名 + 一行用法**、Data/Config 目录约定、新增功能的标准流程、以及踩过的坑都写全了。
 >
-> * **当前版本 v0.9.1** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
+> * **当前版本 v0.9.2** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
 > * 七个功能：视频转音频 · **视频 / 音乐播放器** · 批量重命名 · Flash 下载器 · 联机聊天室 · osu! 下图器 · 框架示例（模板，可整目录删除）。
 > * 平台：Windows + .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM，**无第三方库、无 NuGet 依赖**。
 > * 语言：代码注释、提交信息、文档、以及回答用户，一律用**中文**。
@@ -18,7 +18,7 @@
 ```powershell
 .\build.ps1                                                    # ① 编译：必须 0 错误（有警告也顺手清掉）
 dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
-                                                               # ② 自检：672 项行为逐条真跑，退出码 0 = 全通过
+                                                               # ② 自检：678 项行为逐条真跑，退出码 0 = 全通过
 ```
 
 * **改了行为就同步改自检断言**（自检就是"这份文档里承诺的行为"的执行版本，见第 6 节）。
@@ -105,13 +105,13 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | 项 | 内容 |
 | --- | --- |
 | 技术栈 | .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM（无第三方库、无 NuGet 依赖） |
-| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.9.1 就是读它；**别在别处写死**） |
+| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.9.2 就是读它；**别在别处写死**） |
 | 解决方案 | `YuLiangToolkit.sln`（10 个项目：主程序 + Core + 7 个功能 + 自检） |
 | 主程序 | `YuLiangTookit.csproj`（注意：文件名少一个 `l`，是历史拼写）→ 自定义标题栏外壳、主页、侧边栏、深色主题 |
 | 核心库 | `src/YuLiangToolkit.Core/`（工具契约、MVVM 基类、存储、配置、FFmpeg 封装） |
 | 功能 | `Tools.VideoToAudio`（视频转音频）、`Tools.MediaPlayer`（视频 / 音乐播放器）、`Tools.BatchRename`（批量重命名）、`Tools.FlashDownloader`（Flash 下载器）、`Tools.ChatRoom`（联机聊天室）、`Tools.MapDownloader`（osu! 下图器）、`Tools.Sample`（框架示例，可删） |
 | 数据/配置 | **在 exe 旁边**（`bin\Debug\net9.0-windows\Data`、`…\Config`）——见第 3 节；仓库根的 `Data/`、`Config/` 只剩说明文件 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**672 项**行为逐条验证，纯控制台）——见第 6 节 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**678 项**行为逐条验证，纯控制台）——见第 6 节 |
 | 构建 | `.\build.ps1`（离线，走本机 NuGet 缓存；会设 `DOTNET_CLI_HOME` 到 `.dotnet-cli-home`） |
 | 运行 | `dotnet run --project YuLiangTookit.csproj` 或直接跑 `bin\Debug\net9.0-windows\YuLiangTookit.exe` |
 
@@ -259,7 +259,7 @@ ViewModels/MainViewModel.cs        # 侧边栏/主页/功能切换、搜索词�
 ViewModels/ToolCard.cs             # 主页卡片模型（含预拼搜索索引、标签、上次使用文案）
 ViewModels/ToolFilter.cs           # 主页过滤/排序/标签收集（纯逻辑，可自检）
 Views/HomeView.xaml(.cs)           # 主页：搜索框 + 排序下拉 + 标签条 + 卡片墙 + 空状态
-Views/MiniPlayerPanel.xaml(.cs)    # 左下角迷你播放条（后台播放时浮出，标题循环滚动）
+Views/MiniPlayerPanel.xaml(.cs)    # 左下角迷你播放条（后台播放时浮出，标题放不下才来回滚）
 Converters/                        # InverseBoolConverter · EmptyStringToVisibilityConverter
 ```
 
@@ -1176,9 +1176,12 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 
 * 外壳用 `MiniPanelSource`（= 那个后台工具的 ViewModel）当它的 `DataContext`，用 `MiniPanelVisible` 控制显示；
 * 显示条件 = 「后台工具存在 **且** 它不在前台 **且** 工具的 `ShowMiniPanel` 为真」；
-* **滚动标题**：两份一样的 `TextBlock` 并排放在 `ClipToBounds` 的 `Grid` 里，整体 `TranslateTransform`
-  从 0 左移到 `-(一份宽 + 30)` 后 `RepeatBehavior.Forever` —— 第二份正好补位，所以看不出接缝；
-  速度约 34 px/s，标题变长（`SizeChanged`）会重算；
+* **标题滚动（v0.9.2 改成「来回滚」）**：**放得下就一动不动**（完整显示）；放不下才滚 ——
+  先右→左滚到 `-(标题宽 − 可视宽)`（最后一个字正好贴着右边）→ 停 1.2 s → 再左→右滚回 0（第一个字回来）
+  → 停 → `RepeatBehavior.Forever` 循环。速度 34 px/s；只溢出几像素时至少滚 1 s（不然像闪一下）。
+  实现是 `DoubleAnimationUsingKeyFrames` 打在 `TranslateTransform.X` 上；
+  **「要不要滚 / 一趟多久」抽成纯函数 `MiniPlayerPanel.ScrollDuration(textWidth, viewWidth)`**，自检直接断言。
+  ⚠ 别再用“两份文本首尾相接一直滚”的老写法：短标题也会被滚走，看的人反而读不全（v0.9.0 就是这么错的）。
 * 三个按钮：**左键**走各自的 `Command`（快退 / 播放暂停 / 快进），**右键**在代码后置里接成
   上一首 / 下一首 —— 跟播放器页里那两个按钮完全一致（`Button.Command` 只认左键）；
 * 标题那一行本身是个按钮，点它 `OpenBackgroundToolCommand` → 回到播放器；
@@ -1637,7 +1640,8 @@ git diff                        # 看未暂存改动
 
 | 版本 | 内容 |
 | --- | --- |
-| **v0.9.1**（当前） | **全屏改成「沉浸式」**（见 2.14）：画面铺满整屏（连任务栏一起盖住），平时屏幕上**只有画面**；**鼠标往屏幕下方一动**才浮出控制条（正在放什么 + 进度条 + 全套按钮 + 退出全屏），**2.5 秒不动鼠标**就自动缩回去、鼠标指针也一起隐藏（v0.9.0 那版是全屏后控制条一直占一条）。做法：控制条被包进 `ControlBar`，全屏时由 `ControlBarStyle` 的 DataTrigger 改成「`Grid.Row=0` + 底部对齐 + 上透下黑渐变」，画面那块 `Grid.RowSpan=2`；显隐走 `ControlsVisible`，闲置计时器在界面代码后置里（鼠标停在控制条上 / 拖进度条时不缩）。自检 665 → **672** 项。版本号 0.9.0 → 0.9.1 |
+| **v0.9.2**（当前） | **迷你条标题改成「来回滚」**（见 2.14）：**放得下就一动不动**（之前是两份文本首尾相接一直滚，短标题也会被滚走，反而读不全）；放不下才滚 —— 右→左滚到最后一个字 → 停 1.2 s → 左→右滚回第一个字 → 停 → 循环。速度 34 px/s，只溢出几像素时至少滚 1 s；「要不要滚 / 一趟多久」抽成纯函数 `MiniPlayerPanel.ScrollDuration`。自检 672 → **678** 项。版本号 0.9.1 → 0.9.2 |
+| v0.9.1 | **全屏改成「沉浸式」**（见 2.14）：画面铺满整屏（连任务栏一起盖住），平时屏幕上**只有画面**；**鼠标往屏幕下方一动**才浮出控制条（正在放什么 + 进度条 + 全套按钮 + 退出全屏），**2.5 秒不动鼠标**就自动缩回去、鼠标指针也一起隐藏（v0.9.0 那版是全屏后控制条一直占一条）。做法：控制条被包进 `ControlBar`，全屏时由 `ControlBarStyle` 的 DataTrigger 改成「`Grid.Row=0` + 底部对齐 + 上透下黑渐变」，画面那块 `Grid.RowSpan=2`；显隐走 `ControlsVisible`，闲置计时器在界面代码后置里（鼠标停在控制条上 / 拖进度条时不缩）。自检 665 → **672** 项。版本号 0.9.0 → 0.9.1 |
 | v0.9.0 | **播放器加全屏 + 后台播放 + 左下角迷你条**（见 2.14）：① **整窗全屏**（`F11` / 画面右下角按钮，`Esc` 退出；藏掉标题栏 / 侧边栏 / 播放列表，连任务栏一起盖住）；② 设置项「**后台播放**」（默认开）：切到别的工具 / 回主页时**声音不断**，外壳会保住播放器的视图（`IBackgroundTool`），切回来是同一个 VM、列表与进度都还在；③ 后台播放时左下角浮出**迷你播放条**：标题从右往左循环滚 + 快退 / 播放暂停 / 快进（**左键跳步长、右键上一首 / 下一首**，与播放器页一致），点标题回播放器。踩坑：全屏**不能**直接设 `Left/Top/Width/Height`（会被夹回工作区，1920×1080 只拿到 1920×1032），必须临时改 `WM_GETMINMAXINFO` 再最大化 + 临时 `Topmost`；后台播放时界面 `Unloaded` **不能**顺手 `Close()` 播放器。自检 654 → **665** 项。版本号 0.8.0 → 0.9.0 |
 | v0.8.0 | **新增「视频 / 音乐播放器」**（`Tools.MediaPlayer`，见 2.14）：左中右三栏（播放区 + 进度条与控制按钮 + 播放列表）；打开文件夹（可多选、可递归）/ 打开文件 / 拖放，按「音频 + 视频 / 仅音频 / 仅视频」过滤，再开一个文件夹可**追加**或**覆盖**；列表循环 / 单曲循环 / 随机播放（随机一轮不重复）；**可调步长的快进快退（0.1 秒精度、0.1~60 秒），左键快退快进、右键上一首下一首**；音量、记住上次的列表与听到的位置。播放器抽成 `IMediaPlayback`，自检用假播放器把整条流程跑完。踩坑：控制按钮用 `⏪ ⏩ ⏹ 🔁` 字符会变成豆腐块（改矢量 Path + MDL2 图标）、`MediaElement` 的 `Loaded/UnloadedBehavior` 必须 `Manual`、设置面板要盖整列而不是只盖视频区。自检 555 → **654** 项。版本号 0.7.2 → 0.8.0 |
 | v0.7.2 | **「联机聊天室」加傻瓜模式**（默认开，见 2.12）：监听地址与端口不再让用户选，`ChooseSimpleListenPlan` 自己挑（优先双栈 `::` + 上次的端口，被占了改让系统挑）；开完房间直接把**本机 IPv4 / IPv6 地址 + 端口**列成可复制的一行行「地址:端口」（没有可用 IPv6 就直说「当前网络没有 IPv6」），内网穿透照着填本地端口即可。⚠ **IP 和端口一个都没藏**，只是不让用户「选」。顺带修一个真 bug：绑 `::` 时没开 `DualMode`，**IPv4 客户端一个都连不进来**（自检 `CheckDualStack` 用真连接兜住，去掉修复会红 3 条）。自检 535 → **555** 项。版本号 0.7.1 → 0.7.2 |
