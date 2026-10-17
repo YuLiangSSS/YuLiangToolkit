@@ -37,6 +37,9 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
         _volume = Cfg.VolumeEffective;
         _queue = new PlayQueue { Mode = Cfg.PlayOrder };
 
+        // 时间显示是倒计时（老配置里存过）时，还没打开文件先显示 --:--，而不是 0:00
+        PositionText = MediaTimeDisplay.Format(TimeSpan.Zero, TimeSpan.Zero, Cfg.TimeDisplayMode);
+
         // 打开
         OpenFolderCommand = new AsyncRelayCommand(_ => OpenFolderAsync());
         OpenFilesCommand = new AsyncRelayCommand(_ => OpenFilesAsync());
@@ -330,6 +333,24 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
 
     public string PlayModeTooltip => PlayQueue.ModeTooltip(PlayMode);
 
+    /// <summary>
+    /// 进度条左边的时间怎么显示：正向计时（<see cref="TimeDisplayMode.Elapsed"/>，默认）/
+    /// 剩余倒计时（<see cref="TimeDisplayMode.Remaining"/>）。改完立即刷新，不用等下一个 200ms 计时器。
+    /// </summary>
+    public TimeDisplayMode TimeDisplay
+    {
+        get => Cfg.TimeDisplayMode;
+        set
+        {
+            if (Cfg.TimeDisplayMode == value) return;
+            Cfg.TimeDisplayMode = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(SelectedTimeDisplay));
+            PositionText = MediaTimeDisplay.Format(_lastPosition, _lastDuration, value);
+            Log($"时间显示改为：{MediaTimeDisplay.Describe(value)}");
+        }
+    }
+
     // ---------- 下拉框桥接（值 ↔ 显示文本分离，见 2.4） ----------
 
     public IReadOnlyList<OptionItem<PlayOrderMode>> PlayModeOptions { get; } = OptionItem.From(
@@ -345,6 +366,22 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
         {
             if (value is null) return;
             PlayMode = value.Value;
+            OnPropertyChanged();
+        }
+    }
+
+    public IReadOnlyList<OptionItem<TimeDisplayMode>> TimeDisplayOptions { get; } = OptionItem.From(
+        (TimeDisplayMode.Elapsed, "已播放时间（0:00 → 总时长）"),
+        (TimeDisplayMode.Remaining, "剩余时间（总时长 → 0:00）"));
+
+    /// <summary>设置页里的「时间显示」下拉。</summary>
+    public OptionItem<TimeDisplayMode> SelectedTimeDisplay
+    {
+        get => OptionItem<TimeDisplayMode>.Find(TimeDisplayOptions, Cfg.TimeDisplayMode) ?? TimeDisplayOptions[0];
+        set
+        {
+            if (value is null) return;
+            TimeDisplay = value.Value;
             OnPropertyChanged();
         }
     }
@@ -555,6 +592,7 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
         Cfg.AppendWhenOpeningFolder = true;
         Cfg.Volume = 80;
         Cfg.PlayOrder = PlayOrderMode.LoopAll;
+        Cfg.TimeDisplayMode = TimeDisplayMode.Elapsed;
         Cfg.SeekStepSeconds = 5.0;
         Cfg.RestorePlaylist = true;
         Cfg.ResumeLastPlayed = true;
@@ -571,6 +609,9 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
         OnPropertyChanged(nameof(RestorePlaylist));
         OnPropertyChanged(nameof(ResumeLastPlayed));
         OnPropertyChanged(nameof(BackgroundPlayback));
+        OnPropertyChanged(nameof(SelectedTimeDisplay));
+        OnPropertyChanged(nameof(TimeDisplay));
+        PositionText = MediaTimeDisplay.Format(_lastPosition, _lastDuration, Cfg.TimeDisplayMode);
         RaiseBackgroundState();
 
         StatusText = "设置已恢复默认值";

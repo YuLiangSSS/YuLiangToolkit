@@ -202,7 +202,7 @@ public sealed partial class MediaPlayerViewModel
         if (duration > TimeSpan.Zero) _lastDuration = duration;
 
         _lastPosition = position;
-        PositionText = MediaTime.Format(position);
+        PositionText = MediaTimeDisplay.Format(position, _lastDuration, Cfg.TimeDisplayMode);
         DurationText = _lastDuration > TimeSpan.Zero ? MediaTime.Format(_lastDuration) : "--:--";
         ProgressRatio = MediaTime.Ratio(position, _lastDuration);
     }

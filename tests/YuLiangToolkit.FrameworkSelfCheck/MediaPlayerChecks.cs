@@ -154,6 +154,25 @@ internal static class MediaPlayerChecks
 
         check("进度比例：位置超过时长时比例仍然是 1（不会画出界）",
             MediaTime.Ratio(TimeSpan.FromSeconds(12), duration) == 1);
+
+        // 时间显示：正向 / 剩余倒计时（v0.9.7）
+        var full = TimeSpan.FromSeconds(185);   // 3:05
+
+        check("时间显示：正向 = 已播放（0:00 → 总时长）",
+            MediaTimeDisplay.Format(TimeSpan.Zero, full, TimeDisplayMode.Elapsed) == "0:00"
+            && MediaTimeDisplay.Format(TimeSpan.FromSeconds(65), full, TimeDisplayMode.Elapsed) == "1:05"
+            && MediaTimeDisplay.Format(full, full, TimeDisplayMode.Elapsed) == "3:05");
+
+        check("时间显示：倒计时 = 总时长 − 已播放（一开始是整段时长，最后 0:00）",
+            MediaTimeDisplay.Format(TimeSpan.Zero, full, TimeDisplayMode.Remaining) == "3:05"
+            && MediaTimeDisplay.Format(TimeSpan.FromSeconds(65), full, TimeDisplayMode.Remaining) == "2:00"
+            && MediaTimeDisplay.Format(full, full, TimeDisplayMode.Remaining) == "0:00");
+
+        check("时间显示：倒计时夹在 0 ~ 总时长；时长未知显示 --:--",
+            MediaTimeDisplay.Format(TimeSpan.FromSeconds(999), full, TimeDisplayMode.Remaining) == "0:00"
+            && MediaTimeDisplay.Format(TimeSpan.FromSeconds(-5), full, TimeDisplayMode.Remaining) == "3:05"
+            && MediaTimeDisplay.Format(TimeSpan.Zero, TimeSpan.Zero, TimeDisplayMode.Remaining) == "--:--"
+            && MediaTimeDisplay.Format(TimeSpan.Zero, TimeSpan.Zero, TimeDisplayMode.Elapsed) == "0:00");
     }
 
     // ---------------------------------------------------------------- 自然排序
@@ -401,6 +420,7 @@ internal static class MediaPlayerChecks
             && cfg.AppendWhenOpeningFolder
             && cfg.VolumeEffective == 80
             && cfg.PlayOrder == PlayOrderMode.LoopAll
+            && cfg.TimeDisplayMode == TimeDisplayMode.Elapsed
             && cfg.SeekStepEffective == 5.0
             && cfg.RestorePlaylist
             && cfg.ResumeLastPlayed
@@ -433,6 +453,7 @@ internal static class MediaPlayerChecks
         // 枚举按字符串存（C# 原名），加减成员不会让老配置错位
         cfg.PlayOrder = PlayOrderMode.Shuffle;
         cfg.IncludeMode = MediaIncludeMode.AudioOnly;
+        cfg.TimeDisplayMode = TimeDisplayMode.Remaining;
         cfg.SeekStepSeconds = 2.5;
         cfg.Volume = 55;
         var path = SelfCheckScratch.MakeFile("media-config.json");
@@ -440,14 +461,15 @@ internal static class MediaPlayerChecks
         var json = File.ReadAllText(path);
         var reloaded = JsonFileStore.Read<MediaPlayerConfig>(path);
 
-        check("配置：枚举按字符串存（\"Shuffle\" / \"AudioOnly\"，不是数字）",
-            json.Contains("\"Shuffle\"") && json.Contains("\"AudioOnly\""),
+        check("配置：枚举按字符串存（\"Shuffle\" / \"AudioOnly\" / \"Remaining\"，不是数字）",
+            json.Contains("\"Shuffle\"") && json.Contains("\"AudioOnly\"") && json.Contains("\"Remaining\""),
             json.Contains("\"Shuffle\"") ? "有" : "没找到");
 
-        check("配置落盘再读回来：播放顺序 / 读取方式 / 步长 / 音量都对",
+        check("配置落盘再读回来：播放顺序 / 读取方式 / 时间显示 / 步长 / 音量都对",
             reloaded is not null
             && reloaded.PlayOrder == PlayOrderMode.Shuffle
             && reloaded.IncludeMode == MediaIncludeMode.AudioOnly
+            && reloaded.TimeDisplayMode == TimeDisplayMode.Remaining
             && reloaded.SeekStepEffective == 2.5
             && reloaded.VolumeEffective == 55);
 
@@ -688,6 +710,12 @@ internal static class MediaPlayerChecks
         fake.RaiseOpened(TimeSpan.FromSeconds(200), hasVideo: false);
         fake.Position = TimeSpan.FromSeconds(42);
         vm.UpdatePosition(fake.Position, TimeSpan.FromSeconds(200));
+        vm.TimeDisplay = TimeDisplayMode.Remaining;
+        check("VM：切到「剩余时间」→ 左侧立刻变成还剩多少（2:38）",
+            vm.PositionText == "2:38", vm.PositionText);
+        vm.TimeDisplay = TimeDisplayMode.Elapsed;
+        check("VM：切回「已播放时间」→ 又是 0:42（不用等 200ms 计时器）",
+            vm.PositionText == "0:42", vm.PositionText);
         vm.SavePlaylistState();
 
         check("VM：列表快照落在 Data\\media-player\\playlist.json",
@@ -728,11 +756,14 @@ internal static class MediaPlayerChecks
         reopened.VolumeValue = 12;
         reopened.SeekStepSeconds = 30;
         reopened.PlayMode = PlayOrderMode.Shuffle;
+        reopened.TimeDisplay = TimeDisplayMode.Remaining;
         reopened.ResetSettingsCommand.Execute(null);
-        check("VM：恢复默认设置 → 音量 80 / 步长 5.0 / 列表循环 / 两种都收 / 递归 / 追加",
+        check("VM：恢复默认设置 → 音量 80 / 步长 5.0 / 列表循环 / 时间显示回到已播放 / 两种都收 / 递归 / 追加",
             reopened.VolumeValue == 80
             && reopened.SeekStepSeconds == 5.0
             && reopened.PlayMode == PlayOrderMode.LoopAll
+            && reopened.TimeDisplay == TimeDisplayMode.Elapsed
+            && reopened.PositionText == "0:42"
             && reopened.Cfg.IncludeMode == MediaIncludeMode.AudioAndVideo
             && reopened.ScanRecursive
             && reopened.Cfg.AppendWhenOpeningFolder

@@ -39,6 +39,9 @@ public sealed class MediaPlayerConfig : ToolConfig
     /// <summary>播放顺序：列表循环 / 单曲循环 / 随机播放。</summary>
     public PlayOrderMode PlayOrder { get; set; } = PlayOrderMode.LoopAll;
 
+    /// <summary>进度条左边那个时间怎么显示：正向计时（默认）/ 剩余倒计时（还差多少播完）。</summary>
+    public TimeDisplayMode TimeDisplayMode { get; set; } = TimeDisplayMode.Elapsed;
+
     /// <summary>快进 / 快退一步多少秒（**0.1 秒精度**，0.1 ~ 600）。</summary>
     public double SeekStepSeconds { get; set; } = 5.0;
 

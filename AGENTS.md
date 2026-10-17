@@ -4,7 +4,7 @@
 > 改这个项目之前先读本文件，**不要再去通读 `src/`**：这里把所有已经造好的「轮子」（可复用组件）的
 > **用途 + 签名 + 一行用法**、Data/Config 目录约定、新增功能的标准流程、以及踩过的坑都写全了。
 >
-> * **当前版本 v0.9.6** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
+> * **当前版本 v0.9.7** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
 > * 七个功能：视频转音频 · **视频 / 音乐播放器** · 批量重命名 · Flash 下载器 · 联机聊天室 · osu! 下图器 · 框架示例（模板，可整目录删除）。
 > * 平台：Windows + .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM，**无第三方库、无 NuGet 依赖**。
 > * 语言：代码注释、提交信息、文档、以及回答用户，一律用**中文**。
@@ -18,7 +18,7 @@
 ```powershell
 .\build.ps1                                                    # ① 编译：必须 0 错误（有警告也顺手清掉）
 dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
-                                                               # ② 自检：713 项行为逐条真跑，退出码 0 = 全通过
+                                                               # ② 自检：718 项行为逐条真跑，退出码 0 = 全通过
 ```
 
 * **改了行为就同步改自检断言**（自检就是"这份文档里承诺的行为"的执行版本，见第 6 节）。
@@ -111,7 +111,7 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | 核心库 | `src/YuLiangToolkit.Core/`（工具契约、MVVM 基类、存储、配置、FFmpeg 封装） |
 | 功能 | `Tools.VideoToAudio`（视频转音频）、`Tools.MediaPlayer`（视频 / 音乐播放器）、`Tools.BatchRename`（批量重命名）、`Tools.FlashDownloader`（Flash 下载器）、`Tools.ChatRoom`（联机聊天室）、`Tools.MapDownloader`（osu! 下图器）、`Tools.Sample`（框架示例，可删） |
 | 数据/配置 | **在 exe 旁边**（`bin\Debug\net9.0-windows\Data`、`…\Config`）——见第 3 节；仓库根的 `Data/`、`Config/` 只剩说明文件 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**713 项**行为逐条验证，纯控制台）——见第 6 节 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**718 项**行为逐条验证，纯控制台）——见第 6 节 |
 | 构建 | `.\build.ps1`（离线，走本机 NuGet 缓存；会设 `DOTNET_CLI_HOME` 到 `.dotnet-cli-home`） |
 | 运行 | `dotnet run --project YuLiangTookit.csproj` 或直接跑 `bin\Debug\net9.0-windows\YuLiangTookit.exe` |
 
@@ -1124,10 +1124,15 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 | 再开一个文件夹 | `AppendWhenOpeningFolder`（默认 true=追加） | 追加 / 覆盖；**「打开文件」按钮和拖放一律追加**（那个设置只管文件夹） |
 | 快进 / 快退步长 | `SeekStepSeconds`（默认 5.0） | 0.1 ~ 60 秒、**0.1 秒精度**；滑块 + 数字框都能改；`SeekStepEffective` 负责规整 |
 | 播放顺序 | `PlayOrder`（默认列表循环） | 与播放条上那个「循环 / 单曲 / 随机」按钮是同一个值 |
+| 时间显示 | `TimeDisplayMode`（默认 `Elapsed`） | 进度条**左边**那个时间：`Elapsed` = 已播放（0:00 → 总时长），`Remaining` = 剩余倒计时（总时长 → 0:00）；**右边始终是总时长**；纯逻辑在 `MediaTimeDisplay.Format` |
 | 音量 | `Volume`（默认 80） | 0 ~ 100；`VolumeEffective` 夹范围 |
 | 恢复上次的播放列表 / 位置 | `RestorePlaylist` / `ResumeLastPlayed` | 列表快照在 `Data\media-player\playlist.json`；恢复了也**不自动出声** |
 | 后台播放 | `BackgroundPlayback`（默认 true） | 切走时继续出声，并在外壳左下角显示迷你播放条；关掉 = 切走即停 |
 | 上次打开的文件夹 | `LastFolder` | 文件对话框的起始目录 + 设置页上的一行提示 |
+
+> **时间显示**（v0.9.7）：左侧那个时间由纯函数 `MediaTimeDisplay.Format(position, duration, mode)` 算 ——
+> `Elapsed` 从 `0:00` 数到总时长，`Remaining` 从总时长倒数到 `0:00`（还差多少播完）；**右侧永远是总时长**。
+> 切换下拉立刻刷新（不等 200ms 计时器）；倒计时夹在 0 ~ 总时长，时长还没读到显示 `--:--`。
 
 #### 全屏 · 后台播放 · 迷你条（v0.9.0 加的三件）
 
@@ -1705,7 +1710,8 @@ git diff                        # 看未暂存改动
 
 | 版本 | 内容 |
 | --- | --- |
-| **v0.9.6**（当前） | **摆正两处「不正中」**（见 2.7 / 2.14）：① 播放器控制条的大播放键以前是跟着「快退 + 播放 + 快进 + 停止」整组居中，**组居中 ≠ 播放键居中**，所以全屏时它明显偏左；改成**播放键独自占中间的 `Auto` 列、左右两列都是 `*`**，全屏实测 `playCenter.x = 960`（屏幕正中，蓝圆像素中心 959），快退/快进/停止贴着它两边，设置与音量仍靠边。② 主窗口以前用 `CenterScreen` 居中（把任务栏那 48px 也算进屏幕高度，窗口看着偏低），改成 `WindowStartupLocation="Manual"` + 按 `SystemParameters.WorkArea` 算**工作区正中间**（1920×1080 + 48px 任务栏时窗口开在 `320,106`，中心 `960,516`）。自检仍 **713** 项（纯版式，真机截图核对）。版本号 0.9.5 → 0.9.6 |
+| **v0.9.7**（当前） | **播放器新增「时间显示」设置**（见 2.14）：进度条左边那个时间可以选 **已播放时间**（`Elapsed`，默认，从 0:00 数到总时长）或 **剩余时间**（`Remaining`，从总时长倒数到 0:00，即「还差多少秒播完」）；右边始终是总时长。纯逻辑抽成 `MediaTimeDisplay.Format(position, duration, mode)`（倒计时夹在 0 ~ 总时长，时长未知显示 `--:--`），VM 切换下拉立即刷新（不等 200ms 计时器），设置项存 `TimeDisplayMode`（枚举按 C# 原名存字符串）。自检 713 → **718** 项。版本号 0.9.6 → 0.9.7 |
+| **v0.9.6** | **摆正两处「不正中」**（见 2.7 / 2.14）：① 播放器控制条的大播放键以前是跟着「快退 + 播放 + 快进 + 停止」整组居中，**组居中 ≠ 播放键居中**，所以全屏时它明显偏左；改成**播放键独自占中间的 `Auto` 列、左右两列都是 `*`**，全屏实测 `playCenter.x = 960`（屏幕正中，蓝圆像素中心 959），快退/快进/停止贴着它两边，设置与音量仍靠边。② 主窗口以前用 `CenterScreen` 居中（把任务栏那 48px 也算进屏幕高度，窗口看着偏低），改成 `WindowStartupLocation="Manual"` + 按 `SystemParameters.WorkArea` 算**工作区正中间**（1920×1080 + 48px 任务栏时窗口开在 `320,106`，中心 `960,516`）。自检仍 **713** 项（纯版式，真机截图核对）。版本号 0.9.5 → 0.9.6 |
 | **v0.9.5** | **修「全屏底部一条黑带、控制条最底下被裁」**（见 2.14）：`WM_GETMINMAXINFO` 把窗口撑到整块显示器后，Windows 还给窗口套了一个**工作区大小的窗口 Region**（`GetWindowRgn` = `(4,4)-(1924,1036)`），窗口矩形 1088、实际可见 / 命中区域只有 1032 —— 任务栏藏掉后底部 48px 露出黑色桌面，控制条的状态文字被裁掉。修法：`MainWindow.ClearFullscreenRegion` 在进全屏 + 400ms 看门狗里 `SetWindowRgn(hwnd, 0)`（先 `GetWindowRgn` 判断有没有区域，避免无谓重绘）；清掉 Region 后全屏窗口会真的盖住任务栏，所以失活 / 最小化时 `Topmost = false`，保证“还回去的任务栏”不会再被压住。顺带：控制条默认的 `Grid.Row="1"` 从控件本地值挪进 `ControlBarStyle`（本地值压过 DataTrigger，全屏 `Grid.Row=0` 一直没生效），新增 `YLT_PLAYER_MEASURE` 排查钩子；控制台自检在重定向（Rider / VS / 管道）时**切 UTF-8 输出**，IDE 里不再乱码（真正的控制台仍按代码页写）。自检仍 **713** 项（窗口 Region 没法无头断言，真机截图核对）。版本号 0.9.4 → 0.9.5 |
 | **v0.9.4** | **启动时的「完整性自检」**（见 2.14）：全屏藏不住任务栏时，第一眼就能分清是「权限不够」还是「代码不对」。新增 `Core/Services/IntegrityCheck.cs` —— 只读地读本进程的 `Mandatory Integrity Level`（`OpenProcessToken` + `GetTokenInformation(TokenIntegrityLevel)`）+ `FindWindow("Shell_TrayWnd")`，`App.OnStartup` 把「级别 / 任务栏 / 结论」三行打到控制台（同时写 `Debug`；设了 `YLT_TASKBAR_TRACE` 也追加），级别低于 `Medium` 时直接给出 `icacls "<exe 目录>" /setintegritylevel "(OI)(CI)Medium" /T` 的修复命令。**背景**：v0.9.3 的全屏代码本身没问题，是 `bin\Debug` 里 143 个文件又被低权限沙箱编译标成了 `Low`（目录是 Medium，标签在**文件**上，覆盖写会保留）→ UIPI 拒绝操作任务栏（错误码 5）；`/T` 改回 Medium 后实测全屏中 `IsWindowVisible(Shell_TrayWnd)=False`、退出后 `True`。自检 704 → **713** 项（只测只读的等级归类与报告文案，**不藏任务栏**）。版本号 0.9.3 → 0.9.4 |
 | **v0.9.3** | **修「全屏藏不住任务栏」**（见 2.14 的「藏任务栏」）：任务栏自己也是置顶窗口，靠「铺满 + `Topmost`」盖它不可靠 —— 改成**真的藏**（`Core/Services/TaskbarHider.cs`：`ShowWindowAsync(SW_HIDE)` + `SetWindowPos(SWP_HIDEWINDOW)` + `ShowWindow(SW_HIDE)`，主屏 + 副屏都藏，以 `IsWindowVisible` 的真实结果为准），并挂 **400ms 看门狗**（`MainWindow._taskbarWatch`）盯住「explorer 把它显示回来」；退出全屏 / 失活 / 最小化 / 关窗口 / 进程退出一律还回去。顺带去掉 UI 线程上的 `Thread.Sleep`、新增 `YLT_TASKBAR_TRACE` 排查日志与 `TaskbarHider.LastError`。**真正踩的坑不在代码里**：工作区目录带着别的沙箱工具留下的 `Low Mandatory Level` 标记 → 文件夹里的 exe 以 **Low 权限**运行 → UIPI 让 `ShowWindow` / `SHAppBarMessage` 一律返回 `5`（拒绝访问）；用 `icacls <目录> /setintegritylevel "(OI)(CI)Medium"` 修好后一切正常。自检 704 项（这块**故意不进自检**，跑测试藏开发者任务栏太吓人）。版本号 0.9.2 → 0.9.3 |

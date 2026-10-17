@@ -420,6 +420,23 @@
                                       ToolTip="播放条右边那个「循环 / 单曲 / 随机」按钮点的也是它" />
                         </Grid>
 
+                        <!-- 时间显示：左边那个时间正向数 / 倒着数（右边始终是总时长） -->
+                        <Grid Margin="0,14,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="132" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="时间显示" Style="{StaticResource SettingsLabelStyle}" />
+                            <ComboBox Grid.Column="1" Height="32" HorizontalAlignment="Left" MinWidth="230"
+                                      ItemsSource="{Binding TimeDisplayOptions}" DisplayMemberPath="Label"
+                                      SelectedItem="{Binding SelectedTimeDisplay}"
+                                      Style="{StaticResource ComboBoxStyle}"
+                                      ToolTip="左边那个时间：正向数到结尾，或者倒着数还剩多少（右边始终是总时长）" />
+                        </Grid>
+                        <TextBlock Text="左边的时间：默认从 0:00 数到总时长；选「剩余时间」就从总时长倒着数到 0:00（还差多少播完）。右边始终显示总时长。"
+                                   FontSize="10.5" Margin="132,7,0,0" TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+
                         <Grid Margin="0,14,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="132" />
