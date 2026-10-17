@@ -583,6 +583,9 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
     {
         SavePlaylistState();
 
+        // 全屏状态不能留给下一个页面（外壳会把标题栏 / 侧边栏一直藏着）
+        ExitFullscreen();
+
         // 后台播放：外壳会保住这个视图（里面的 MediaElement 还在），所以这里**别**摘播放器、别停。
         if (KeepAliveOnLeave)
         {
@@ -590,7 +593,6 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
             return;
         }
 
-        ExitFullscreen();   // 别把窗口留在“藏了壳”的全屏状态
         DetachPlayer();
     }
 }

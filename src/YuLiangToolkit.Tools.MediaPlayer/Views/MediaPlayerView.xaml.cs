@@ -53,6 +53,9 @@ public partial class MediaPlayerView : UserControl
 
     private MediaPlayerViewModel? Vm => DataContext as MediaPlayerViewModel;
 
+    /// <summary>宿主窗口（外壳）的全屏开关；视图卸载时就置空（别再往上找 Window，那时已经摘下来了）。</summary>
+    private IFullscreenHost? _fullscreenHost;
+
     // ---------------------------------------------------------------- 生命周期
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -93,6 +96,7 @@ public partial class MediaPlayerView : UserControl
         }
 
         // 全屏：ViewModel 只切状态，真正的窗口操作交给外壳（MainWindow 实现了 IFullscreenHost）
+        _fullscreenHost = Window.GetWindow(this) as IFullscreenHost;
         vm.FullscreenChanged -= OnFullscreenChanged;
         vm.FullscreenChanged += OnFullscreenChanged;
 
@@ -102,7 +106,7 @@ public partial class MediaPlayerView : UserControl
 
     /// <summary>全屏状态变了 → 让外壳去藏 / 恢复标题栏、侧边栏、状态栏并把窗口铺满屏幕。</summary>
     private void OnFullscreenChanged(object? sender, bool on)
-        => (Window.GetWindow(this) as IFullscreenHost)?.SetFullscreen(on);
+        => _fullscreenHost?.SetFullscreen(on);
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
@@ -113,9 +117,12 @@ public partial class MediaPlayerView : UserControl
 
         if (Vm is { } vm)
         {
+            // ⚠ 顺序不能反：先 ExitFullscreen（此时还订阅着，事件能传出去让外壳还原窗口），
+            // 再摘事件。反过来的话外壳会一直停在“藏了壳”的全屏状态，切到别的页面就没有标题栏了。
+            vm.ExitFullscreen();
             vm.FullscreenChanged -= OnFullscreenChanged;
-            vm.ExitFullscreen();   // 切走 / 关工具时别把窗口留在“藏了壳”的全屏状态
         }
+        _fullscreenHost = null;
 
         // ⚠ 后台播放时**不能**关播放器：外壳会把这个视图留着，声音要继续
         if (Vm?.KeepAliveOnLeave != true) _playback?.Close();
