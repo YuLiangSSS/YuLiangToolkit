@@ -1,6 +1,7 @@
 using System.Windows;
 using YuLiangToolkit.App.ViewModels;
 using YuLiangToolkit.Core.Configuration;
+using YuLiangToolkit.Core.Services;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Core.Tools;
 
@@ -16,9 +17,17 @@ public partial class App : Application
         AppPaths.EnsureCreated();
         RuntimeReadme.EnsureSeeded();
 
-        // 退出前把还没落盘的配置写掉（防抖窗口内的改动不会丢）
-        Exit += (_, _) => ToolConfigStore.FlushAll();
-        SessionEnding += (_, _) => ToolConfigStore.FlushAll();
+        // 退出前把还没落盘的配置写掉（防抖窗口内的改动不会丢），顺手把（可能被全屏藏起来的）任务栏还回去
+        Exit += (_, _) =>
+        {
+            TaskbarHider.Restore();
+            ToolConfigStore.FlushAll();
+        };
+        SessionEnding += (_, _) =>
+        {
+            TaskbarHider.Restore();
+            ToolConfigStore.FlushAll();
+        };
 
         // 自动发现所有工具（主程序集 + plugins 目录）
         var tools = ToolDiscovery.Discover();

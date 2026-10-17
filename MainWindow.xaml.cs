@@ -7,6 +7,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using YuLiangToolkit.Core.Services;
 using YuLiangToolkit.Core.Tools;
 
 namespace YuLiangToolkit.App;
@@ -69,10 +70,61 @@ public partial class MainWindow : Window, IFullscreenHost
     private WindowState _restoreState;
     private bool _restoreTopmost;
 
+    /// <summary>全屏期间“盯着任务栏”的看门狗（见 <see cref="OnTaskbarWatchTick"/>）。</summary>
+    private readonly DispatcherTimer _taskbarWatch;
+
     public MainWindow()
     {
         InitializeComponent();
         StateChanged += OnWindowStateChanged;
+
+        // 全屏时把任务栏真的藏起来（见 TaskbarHider）；失活 / 最小化 / 关窗口一律还回去，
+        // 免得用户 alt-tab 出去发现任务栏没了。
+        Activated += (_, _) => SyncTaskbar();
+        Deactivated += (_, _) => SyncTaskbar();
+        Closed += (_, _) => TaskbarHider.Restore();
+
+        // 看门狗：explorer 有时会把任务栏自己又显示回来（切激活窗口、桌面刷新……），
+        // 全屏期间每 400ms 盯一次，冒出来就再藏。不在全屏时它是停着的，没有开销。
+        _taskbarWatch = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(400),
+        };
+        _taskbarWatch.Tick += (_, _) => OnTaskbarWatchTick();
+    }
+
+    /// <summary>
+    /// 按“是否全屏 + 是否前台”决定任务栏藏还是还。
+    /// ⚠ 只在「失活 / 又来前台 / 最小化」这些变化里用；**进全屏那一刻别靠它**
+    /// （那时 <see cref="Window.IsActive"/> 可能还是 false，会导致任务栏根本没藏，所以 EnterFullscreen 里自己调 Hide）。
+    /// </summary>
+    private void SyncTaskbar()
+    {
+        if (!_fullscreen || WindowState == WindowState.Minimized || !IsActive)
+        {
+            _taskbarWatch?.Stop();
+            TaskbarHider.Restore();
+            return;
+        }
+
+        TaskbarHider.Hide();
+        _taskbarWatch?.Start();
+    }
+
+    /// <summary>
+    /// 全屏期间盯着任务栏：还藏着就什么都不做，又被显示回来了就再藏一次；
+    /// 一失活 / 一最小化就收手并把任务栏还回去（<see cref="SyncTaskbar"/> 也会做，这里是双保险）。
+    /// </summary>
+    private void OnTaskbarWatchTick()
+    {
+        if (!_fullscreen || WindowState == WindowState.Minimized || !IsActive)
+        {
+            _taskbarWatch.Stop();
+            TaskbarHider.Restore();
+            return;
+        }
+
+        TaskbarHider.Hide();
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -192,6 +244,8 @@ public partial class MainWindow : Window, IFullscreenHost
     {
         // 最大化时切换为“还原”图标
         MaximizeButton.Content = WindowState == WindowState.Maximized ? "\uE923" : "\uE922";
+
+        SyncTaskbar();   // 全屏时被最小化 / 还原 → 任务栏该还就还
     }
 
     // ---------- 全屏（IFullscreenHost） ----------
@@ -202,10 +256,13 @@ public partial class MainWindow : Window, IFullscreenHost
     /// <summary>
     /// 进入 / 退出全屏。返回操作之后的状态。
     ///
-    /// <para>做法：把标题栏 / 工具条 / 状态栏所在的行高度改成 0、侧边栏列宽改成 0（边框跟着一起消失），
-    /// 然后窗口切回 <see cref="WindowState.Normal"/> 并**直接设成显示器的整块矩形**（不是工作区，
-    /// 所以会盖住任务栏），再临时 <c>Topmost = true</c> —— 任务栏是置顶窗口，不置顶盖不住它。
-    /// 退出时把这些全部还原。</para>
+    /// <para>做法（两步都要）：</para>
+    /// <list type="number">
+    ///   <item>把标题栏 / 工具条 / 状态栏的行高改成 0、侧边栏列宽改成 0，并把窗口最大化到**整块显示器**；</item>
+    ///   <item><b>把 Windows 任务栏真的藏起来</b>（<see cref="TaskbarHider"/>）。
+    ///   光靠“铺满 + 置顶”盖不住它 —— 任务栏自己也是置顶窗口，z 序不一定听我们的（v0.9.2 翻车点）。</item>
+    /// </list>
+    /// <para>退出时全部还原；失活 / 最小化时也会把任务栏还回去（见 <see cref="SyncTaskbar"/>）。</para>
     /// </summary>
     public bool SetFullscreen(bool on)
     {
@@ -230,11 +287,18 @@ public partial class MainWindow : Window, IFullscreenHost
         _fullscreen = true;                 // 先置位：下面最大化时 WndProc 才会按整块显示器算
         WindowState = WindowState.Normal;   // 先还原，避免“Normal → Maximized”被当成同尺寸而忽略
         WindowState = WindowState.Maximized;
-        Topmost = true;                     // 任务栏是置顶窗口，不置顶盖不住它
+        Topmost = true;                     // 置顶：盖住其它普通窗口；任务栏另外用 Hide 藏掉
+
+        // 直接藏任务栏：此刻 IsActive 可能还没变成 true，所以不能走 SyncTaskbar 的判断。
+        // 之后由看门狗每 400ms 补一次（explorer 会把任务栏自己显示回来，见 OnTaskbarWatchTick）。
+        TaskbarHider.Hide();
+        _taskbarWatch.Start();
     }
 
     private void ExitFullscreen()
     {
+        _taskbarWatch.Stop();
+        TaskbarHider.Restore();             // 第一件事就把任务栏还回去
         Topmost = _restoreTopmost;
 
         TitleRow.Height = new GridLength(40);
