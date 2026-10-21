@@ -1,4 +1,4 @@
-# YuLiangToolkit（凉雨工具集） <img src="docs/assets/100-percent-ai-coding.png" height="42" alt="100% AI Coding" align="top" />
+# YuLiangToolkit（凉雨工具集|自用小工具）99.99% AI Coding
 
 一个可扩展的 WPF 工具集应用：主页是工具卡片墙（**搜索 / 排序 / 标签**），左侧导航自动列出所有已发现的工具。
 深色主题 + 自定义标题栏（最小化 / 最大化 / 关闭按钮画在界面里，没有系统窗口顶栏）。
