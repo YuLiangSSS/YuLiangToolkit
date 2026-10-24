@@ -158,7 +158,7 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 
 ```
 YuLiangToolkit.sln
-YuLiangTookit.csproj              # 主程序（DefaultItemExcludes 排除了 src/ Data/ Config/ tests/ MapDownloader/ HeavenUsurperToolkit-master/）
+YuLiangTookit.csproj              # 主程序（DefaultItemExcludes 排除了 src/ Data/ Config/ tests/ MapDownloader/）
 AGENTS.md                         # ← 本文件：给 AI / 未来自己的开发指南（轮子速查 · 约定 · 踩坑）
 README.md                         # 面向使用者的说明：工具一览表 + 快速开始（**保持短**）
 docs/                             # 面向使用者的详细文档（一页一个工具，GitHub 上就是 wiki 的效果）
@@ -176,7 +176,6 @@ Data/                             # 只有说明文件（真正的运行时 Data
 Config/                           # 同上，只有说明文件
 dist/                             # publish.ps1 的发布输出【不入库，gitignore】
 MapDownloader/                    # 移植「osu! 下图器」时参考的原版 WinForms 小项目【不入库，见第 8 节】
-HeavenUsurperToolkit-master/      # 移植「音游工具」时参考的旧项目（.NET 8 WPF）【不入库，见第 8 节】
 tests/YuLiangToolkit.FrameworkSelfCheck/   # 轮子自检控制台程序
 scripts/                          # 开发/调试脚本（UI 自动化、截图分析）——会弹窗抢焦点，慎跑
                                   #   e2e-batch-rename-drag.ps1 是唯一覆盖“WPF 拖放事件”那层的验证（会真的动鼠标 2 秒）
@@ -1398,7 +1397,8 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 
 ### 2.17 osu!mania 三件套：Key 转换 / LN 转换 / 等级计算（v0.10.0）
 
-**来历**：从旧项目 `HeavenUsurperToolkit-master/`（.NET 8 WPF、无第三方依赖、无持久化）移植
+**来历**：从旧项目 HeavenUsurperToolkit（.NET 8 WPF、无第三方依赖、无持久化；参考项目文件夹已从仓库删除，
+移植分析与新旧对照存档在 `docs/porting/`）移植
 KeyConverter / LNTransformer / LevelCalculator 三个工具。**算法逐行照搬**，界面按本工具集 WPF + MVVM 重写；
 解析器不再用手写 `OsuFileV14.cs`，改用 **OsuParsers 1.7.2（NuGet，MIT，netstandard2.0）**，写回也用它。
 
@@ -1876,7 +1876,6 @@ $env:YLT_SHOT="shots\published.png"; .\dist\YuLiangToolkit\YuLiangTookit.exe
 | `FlashPlayer.exe` | 11 MB 第三方 Flash 运行时（仓库里那份现在已经没有了，规则留着无妨）：用「Flash 下载器」时它会被拷到 `Data\flash-downloader\tools\` 下，而 `Data/*/` 已忽略 |
 | `FlashGameDownloader/` | 参考用的原版 Python 小项目，**已经删除**；忽略规则留着无妨（主项目 `DefaultItemExcludes` 里那条同理） |
 | `MapDownloader/` | 移植「osu! 下图器」时参考的原版 WinForms 小项目（里面还有 bin/obj/publish 一堆二进制），**不入库**；已经移植进 `src/YuLiangToolkit.Tools.MapDownloader/`，想让它进版本库就删掉这条（或 `git add -f`） |
-| `HeavenUsurperToolkit-master/` | 移植「音游工具」（KeyConverter / LNTransformer / LevelCalculator / 粒子）时参考的旧项目（.NET 8 WPF），**不入库**；已移植进 `src/YuLiangToolkit.Tools.OsuMania/` 与 `Core/Particles/`。它同时也在主项目 `DefaultItemExcludes` 里（否则会被根目录 glob 编译进去报 `ThemeInfo` 重复） |
 
 > `Config/README.md`、`Data/README.md` 这些**说明文件是入库的**（规则只忽略了它们下面的功能子目录/生成物）。
 
@@ -1910,7 +1909,7 @@ git diff                        # 看未暂存改动
 
 | 版本 | 内容 |
 | --- | --- |
-| **v0.10.0**（当前） | **多级分类导航 + 粒子效果 + osu!mania 三件套**。① 外壳：`ITool.CategoryPath`（默认空，老工具零改动）+ `Core/Tools/ToolCatalog.cs` 任意层级目录树；主页「全部分类」卡片 → 类别页（可继续下钻子类别）→ 工具；顶部工具条改成**可点击面包屑**「主页 › 类别 › 工具」；侧边栏只列根层类别 + 根层工具；搜索仍然扁平覆盖全部工具。新增「音游工具」类别（🎵，`ShellCategories` 可扩展），`osu! 下图器` 归入其中（见 2.15）。② 粒子：移植旧项目 `ParticleEffectManager`，重写为 `ParticleEngine`（纯逻辑，38 项自检）+ `ParticleOverlay`（OnRender、按 60fps 归一、粒子上限 600、事件成对挂摘），窗口级覆盖层；主页右上角新增「⚙ 主页设置」窗口，粒子开关默认开、存 `Config\shell\config.json` 的 `showParticles`（见 2.16）。③ 新增 `Tools.OsuMania`：从 `HeavenUsurperToolkit-master/` 移植 `osu-key-converter` / `osu-ln-transformer` / `osu-level-calculator` 三个工具（算法逐行照搬 + 修复旧 bug：1k/2k 崩溃、HitSound 丢失、Original LN 只最后一列、OD 被误写 0、无红点闪退等），解析器从手写 `OsuFileV14.cs` 换成 **OsuParsers 1.7.2（NuGet，MIT，本项目唯一第三方依赖）**，旧 `StarRating.cs` 移植后新旧数值对齐 10/10 差 0；三个工具与下图器同属「音游工具」（见 2.17）。④ 自检 718 → **1005** 项（导航 53 + 粒子 38 + 星数 38 + osu 158）；主页类别/设置/粒子/三工具截图冒烟；`DefaultItemExcludes` + `.gitignore` 排除旧项目参考目录 `HeavenUsurperToolkit-master/`。版本号 0.9.7 → 0.10.0 |
+| **v0.10.0**（当前） | **多级分类导航 + 粒子效果 + osu!mania 三件套**。① 外壳：`ITool.CategoryPath`（默认空，老工具零改动）+ `Core/Tools/ToolCatalog.cs` 任意层级目录树；主页「全部分类」卡片 → 类别页（可继续下钻子类别）→ 工具；顶部工具条改成**可点击面包屑**「主页 › 类别 › 工具」；侧边栏只列根层类别 + 根层工具；搜索仍然扁平覆盖全部工具。新增「音游工具」类别（🎵，`ShellCategories` 可扩展），`osu! 下图器` 归入其中（见 2.15）。② 粒子：移植旧项目 `ParticleEffectManager`，重写为 `ParticleEngine`（纯逻辑，38 项自检）+ `ParticleOverlay`（OnRender、按 60fps 归一、粒子上限 600、事件成对挂摘），窗口级覆盖层；主页右上角新增「⚙ 主页设置」窗口，粒子开关默认开、存 `Config\shell\config.json` 的 `showParticles`（见 2.16）。③ 新增 `Tools.OsuMania`：从旧项目 HeavenUsurperToolkit 移植 `osu-key-converter` / `osu-ln-transformer` / `osu-level-calculator` 三个工具（算法逐行照搬 + 修复旧 bug：1k/2k 崩溃、HitSound 丢失、Original LN 只最后一列、OD 被误写 0、无红点闪退等），解析器从手写 `OsuFileV14.cs` 换成 **OsuParsers 1.7.2（NuGet，MIT，本项目唯一第三方依赖）**，旧 `StarRating.cs` 移植后新旧数值对齐 10/10 差 0；三个工具与下图器同属「音游工具」（见 2.17）。④ 自检 718 → **1005** 项（导航 53 + 粒子 38 + 星数 38 + osu 158）；主页类别/设置/粒子/三工具截图冒烟。版本号 0.9.7 → 0.10.0 |
 | **v0.9.7** | **播放器新增「时间显示」设置**（见 2.14）：进度条左边那个时间可以选 **已播放时间**（`Elapsed`，默认，从 0:00 数到总时长）或 **剩余时间**（`Remaining`，从总时长倒数到 0:00，即「还差多少秒播完」）；右边始终是总时长。纯逻辑抽成 `MediaTimeDisplay.Format(position, duration, mode)`（倒计时夹在 0 ~ 总时长，时长未知显示 `--:--`），VM 切换下拉立即刷新（不等 200ms 计时器），设置项存 `TimeDisplayMode`（枚举按 C# 原名存字符串）。自检 713 → **718** 项。版本号 0.9.6 → 0.9.7 |
 | **v0.9.6** | **摆正两处「不正中」**（见 2.7 / 2.14）：① 播放器控制条的大播放键以前是跟着「快退 + 播放 + 快进 + 停止」整组居中，**组居中 ≠ 播放键居中**，所以全屏时它明显偏左；改成**播放键独自占中间的 `Auto` 列、左右两列都是 `*`**，全屏实测 `playCenter.x = 960`（屏幕正中，蓝圆像素中心 959），快退/快进/停止贴着它两边，设置与音量仍靠边。② 主窗口以前用 `CenterScreen` 居中（把任务栏那 48px 也算进屏幕高度，窗口看着偏低），改成 `WindowStartupLocation="Manual"` + 按 `SystemParameters.WorkArea` 算**工作区正中间**（1920×1080 + 48px 任务栏时窗口开在 `320,106`，中心 `960,516`）。自检仍 **713** 项（纯版式，真机截图核对）。版本号 0.9.5 → 0.9.6 |
 | **v0.9.5** | **修「全屏底部一条黑带、控制条最底下被裁」**（见 2.14）：`WM_GETMINMAXINFO` 把窗口撑到整块显示器后，Windows 还给窗口套了一个**工作区大小的窗口 Region**（`GetWindowRgn` = `(4,4)-(1924,1036)`），窗口矩形 1088、实际可见 / 命中区域只有 1032 —— 任务栏藏掉后底部 48px 露出黑色桌面，控制条的状态文字被裁掉。修法：`MainWindow.ClearFullscreenRegion` 在进全屏 + 400ms 看门狗里 `SetWindowRgn(hwnd, 0)`（先 `GetWindowRgn` 判断有没有区域，避免无谓重绘）；清掉 Region 后全屏窗口会真的盖住任务栏，所以失活 / 最小化时 `Topmost = false`，保证“还回去的任务栏”不会再被压住。顺带：控制条默认的 `Grid.Row="1"` 从控件本地值挪进 `ControlBarStyle`（本地值压过 DataTrigger，全屏 `Grid.Row=0` 一直没生效），新增 `YLT_PLAYER_MEASURE` 排查钩子；控制台自检在重定向（Rider / VS / 管道）时**切 UTF-8 输出**，IDE 里不再乱码（真正的控制台仍按代码页写）。自检仍 **713** 项（窗口 Region 没法无头断言，真机截图核对）。版本号 0.9.4 → 0.9.5 |

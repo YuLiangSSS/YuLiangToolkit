@@ -3,7 +3,7 @@
 > 写给维护者 / 未来的 AI：这里记录 **旧版 HeavenUsurperToolkit 的算法是怎么搬过来的、哪些行为原样保留、
 > 哪些旧 bug 被明确修掉、怎么验证的**。改动 `src/YuLiangToolkit.Tools.OsuMania/Core/` 之前先读这一页。
 >
-> * 旧项目路径：`HeavenUsurperToolkit-master/`（只读参考，**不要修改**）
+> * 旧项目路径：`HeavenUsurperToolkit-master/`（**已从仓库删除**；本文档是移植存档，行号指当时的代码快照）
 > * 新项目：`src/YuLiangToolkit.Tools.OsuMania/`（Core = 纯逻辑；ViewModels/Views/Tool = 界面）
 > * 解析库：`OsuParsers 1.7.2`（NuGet，MIT，唯一第三方依赖；见 AGENTS.md 第 13 条）
 
