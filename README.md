@@ -76,6 +76,8 @@ YuLiangTookit.csproj                     # 主程序（WPF 壳：自定义标题
 build.ps1 / publish.ps1                  # 一键构建 / 一键发布（发布到 dist\YuLiangToolkit\）
 AGENTS.md                               # 轮子速查 / 开发约定（改代码先读这个）
 README.md                               # 本文件：工具一览 + 快速开始
+LICENSE                                 # Unlicense（随便用，不用署名）
+THIRD-PARTY-NOTICES.md                  # 第三方组件的 MIT 许可（OsuParsers / ppy 数学工具）
 docs/                                   # 每个工具一页的详细说明（见 docs/README.md）
 Data/  Config/                           # 只有说明文件【运行时目录在 exe 旁边】
 src/
@@ -100,3 +102,14 @@ Data / Config 的路径与持久化全由框架接管。也可以把编译好的
 
 最省事的做法是复制 `src\YuLiangToolkit.Tools.Sample` 当模板，完整步骤见
 [AGENTS.md 第 4 节](AGENTS.md) 与 [框架示例](docs/tools/sample-framework.md)。
+
+## 许可证
+
+本项目采用 **Unlicense**（见 [LICENSE](LICENSE)）：
+
+> **随便用、随便改、随便 fork、商用、二次发布、打包分发都可以，不需要署名，也不用保留版权声明。**
+> 唯一请求：别把作者标成别人。
+
+仓库里有少量第三方内容仍遵循它们自己的许可（`OsuParsers` 与 ppy osu!lazer 的数学工具，均为 MIT），
+详见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+

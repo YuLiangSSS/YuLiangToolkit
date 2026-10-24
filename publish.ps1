@@ -44,6 +44,14 @@ try {
         }
     }
 
+    # Ship the licence texts next to the exe as well (Unlicense + third-party notices).
+    foreach ($name in @("LICENSE", "THIRD-PARTY-NOTICES.md")) {
+        $src = Join-Path $root $name
+        if (Test-Path $src) {
+            Copy-Item $src (Join-Path $OutputDir $name) -Force
+        }
+    }
+
     $full = (Resolve-Path $OutputDir).Path
     Write-Host ""
     Write-Host "==> OK" -ForegroundColor Green
