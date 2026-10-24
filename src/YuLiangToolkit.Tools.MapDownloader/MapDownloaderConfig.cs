@@ -7,7 +7,7 @@ namespace YuLiangToolkit.Tools.MapDownloader;
 /// 「osu! 下图器」的强类型配置 → <c>Config\map-downloader\config.json</c>。
 ///
 /// <para>原版是个 WinForms 小程序，凭据存在 <c>Properties.Settings</c> 里、token 另写一个
-/// <c>token_expiry.dat</c> 放在 exe 旁边；移植后统一走本工具集的配置体系（改一下就自动落盘），
+/// <c>token_expiry.dat</c> 放在 exe 旁边；改写后统一走本工具集的配置体系（改一下就自动落盘），
 /// 所以这里既有 API 凭据，也有搜索条件和下载目录。</para>
 ///
 /// <para>⚠ 凭据（Client Secret / Access Token）是明文存在这个 JSON 里的，跟原版一样只适合本机自用；

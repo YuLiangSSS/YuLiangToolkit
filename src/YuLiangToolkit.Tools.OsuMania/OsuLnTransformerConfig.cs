@@ -5,10 +5,10 @@ namespace YuLiangToolkit.Tools.OsuMania;
 /// <summary>
 /// 「osu! LN 转换器」的参数（自动持久化到 <c>Config\osu-ln-transformer\config.json</c>）。
 ///
-/// <para>字段默认值与旧版 LNTransformer 界面控件的默认值一致：Level 3、LN% 100、Divide 4、
+/// <para>字段默认值与早期版本 LNTransformer 界面控件的默认值一致：Level 3、LN% 100、Divide 4、
 /// Column 10、Gap 12、随机种子 114514、Ignore 勾选、Fix Error 勾选、Original LN 不勾选。</para>
 ///
-/// <para><b>与旧版的一个有意的差异</b>：旧版永远把 OD 写进谱面（默认 0，会把谱面 OD 写坏）；
+/// <para><b>与早期版本的一个有意的差异</b>：早期版本永远把 OD 写进谱面（默认 0，会把谱面 OD 写坏）；
 /// 新版默认“保留原谱 OD”，只有勾上 <see cref="ModifyOverallDifficulty"/> 才用
 /// <see cref="OverallDifficulty"/> 覆盖（见 <c>LnTransformerOptions.KeepOverallDifficulty</c>）。</para>
 /// </summary>
@@ -77,10 +77,10 @@ public sealed class OsuLnTransformerConfig : ToolConfig
     /// <summary>忽略已经转换过的谱面（Creator / 难度名带 LNTransformer 标记），默认勾选。</summary>
     public bool Ignore { get; set; } = true;
 
-    /// <summary>保留原谱面里已有的长条（旧版 Original LN），默认不勾选。</summary>
+    /// <summary>保留原谱面里已有的长条（早期版本 Original LN），默认不勾选。</summary>
     public bool OriginalLN { get; set; }
 
-    /// <summary>用反算修复 LN 尾巴的细小误差（旧版 Fix Error），默认勾选。</summary>
+    /// <summary>用反算修复 LN 尾巴的细小误差（早期版本 Fix Error），默认勾选。</summary>
     public bool FixError { get; set; } = true;
 
     /// <summary>新谱师名（配合 <see cref="UseCreator"/>；不勾选时追加 " &amp; LNTransformer"）。</summary>
@@ -89,7 +89,7 @@ public sealed class OsuLnTransformerConfig : ToolConfig
     /// <summary>是否用 <see cref="Creator"/> 替换原谱师。</summary>
     public bool UseCreator { get; set; }
 
-    // ---- 源键数过滤：旧版 1k~10k 复选框；一个都不勾 = 全部转换 ----
+    // ---- 源键数过滤：早期版本 1k~10k 复选框；一个都不勾 = 全部转换 ----
 
     public bool Filter1K { get; set; }
     public bool Filter2K { get; set; }
@@ -102,7 +102,7 @@ public sealed class OsuLnTransformerConfig : ToolConfig
     public bool Filter9K { get; set; }
     public bool Filter10K { get; set; }
 
-    /// <summary>把 10 个勾选框拼成引擎要的 <c>CheckKeys</c> 列表；空列表 = 全部（旧版语义）。</summary>
+    /// <summary>把 10 个勾选框拼成引擎要的 <c>CheckKeys</c> 列表；空列表 = 全部（早期版本语义）。</summary>
     public IReadOnlyList<int> BuildCheckKeys()
     {
         var keys = new List<int>(10);
@@ -120,7 +120,7 @@ public sealed class OsuLnTransformerConfig : ToolConfig
     }
 
     /// <summary>
-    /// 各档 Level 的含义（旧版说明整理成中文）：-3 ~ -1 是“特殊档”，
+    /// 各档 Level 的含义（早期版本说明整理成中文）：-3 ~ -1 是“特殊档”，
     /// 其中 -3 时 Percentage / Column / Gap 三项不生效，界面上要提示清楚。
     /// </summary>
     public const string LevelHint =

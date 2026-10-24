@@ -12,7 +12,7 @@ namespace YuLiangToolkit.Tools.OsuMania.ViewModels;
 /// 「osu! 等级计算器」的 ViewModel：拖入 → 后台逐个加载（串行）→ 星数 + 等级表格 → 重新计算。
 ///
 /// <para><b>星数来源</b>：<see cref="OsuBeatmapFile.TryLoad"/> 加载时已经调用
-/// <c>StarRatingCalculator.CalculateStarRating</c> 算过一次（与旧版 OsuFileV14 构造时一致），所以直接读
+/// <c>StarRatingCalculator.CalculateStarRating</c> 算过一次（与谱面加载时一致），所以直接读
 /// <see cref="OsuManiaBeatmap.StarRating"/>；如果它是 0 / NaN（空谱或算法异常），再显式算一次兜底。
 /// 等级用 <see cref="LevelCalculator.CalculateLevel(OsuManiaBeatmap)"/> 换算。</para>
 ///
@@ -46,10 +46,10 @@ public sealed class OsuLevelCalculatorViewModel : ToolViewModelBase
             """
             拖入 .osu 文件或文件夹（递归查找），工具会逐个算出：
 
-            · Star Rating（星数）：用旧版 StarRating 算法（Star Rating Rebirth / srcalc 思路的 C# 重写，
+            · Star Rating（星数）：用 StarRating 算法（Star Rating Rebirth / srcalc 思路的 C# 重写，
               其中数学工具来自 ppy osu!lazer，MIT）。它不是 osu! 官方 mania 难度算法，
               与游戏内显示的 SR 可能有 1 星以上差异。
-            · Level（等级）：旧项目按上面这套 SR 拟合出来的换算公式
+            · Level（等级）：按上面这套 SR 拟合出来的换算公式
               （星数 2.7626 ~ 10.5542 走 6.9615 × e^(0.1374 × SR)，更低的走 3.6198 × SR，
               更高的走 2.791 × SR + 0.5436）。
 

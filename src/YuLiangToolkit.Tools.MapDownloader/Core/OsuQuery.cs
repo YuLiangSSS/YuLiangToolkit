@@ -6,7 +6,7 @@ namespace YuLiangToolkit.Tools.MapDownloader.Core;
 /// <para>参数规则照搬原版 <c>OsuApiClient</c>：<c>q</c>（关键词）、<c>m</c>（模式）、<c>s</c>（状态）、
 /// <c>sort</c>（排序）、<c>nsfw=true</c>、<c>cursor_string</c>（翻页游标）。
 /// 只有 <c>q</c> 和 <c>cursor_string</c> 需要转义 —— 游标是 API 给的一长串 base64 样的东西，
-/// 里面带 <c>+ / =</c> 这类字符，不转义会拼出坏 URL（原版这里是对的，移植时别改掉）。</para>
+/// 里面带 <c>+ / =</c> 这类字符，不转义会拼出坏 URL（原版这里是对的，改写时别改掉）。</para>
 /// </summary>
 public static class OsuQuery
 {

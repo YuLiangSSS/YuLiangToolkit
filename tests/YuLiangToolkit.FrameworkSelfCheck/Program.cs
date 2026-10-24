@@ -726,7 +726,7 @@ catch (Exception ex)
         $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
 }
 
-// ---------- 星数计算（旧版 StarRating 的对齐基准；数值回归，见 docs/porting/） ----------
+// ---------- 星数计算（数值基准回归） ----------
 try
 {
     StarRatingChecks.Run(

@@ -277,7 +277,7 @@ public sealed partial class FlashDownloaderViewModel : ToolViewModelBase
 
     /// <summary>列表统计文本。</summary>
     /// <summary>
-    /// 列表统计文本：搜索时显示「筛出 N / 共 M 个」，否则只显示总数；顺带提醒旧版命名。
+    /// 列表统计文本：搜索时显示「筛出 N / 共 M 个」，否则只显示总数；顺带提醒早期版本命名。
     /// </summary>
     public string GamesSummary
     {
@@ -287,7 +287,7 @@ public sealed partial class FlashDownloaderViewModel : ToolViewModelBase
             var shown = Games.Count;
             var text = HasGameSearchText && shown != total ? $"筛出 {shown} / 共 {total} 个游戏" : $"共 {total} 个游戏";
             var legacy = _allGames.Count(g => g.Entry.IsLegacyFolderName);
-            if (legacy > 0) text += $"（其中 {legacy} 个是旧版命名，请在名字后面加 s 或 h）";
+            if (legacy > 0) text += $"（其中 {legacy} 个是早期版本命名，请在名字后面加 s 或 h）";
             return text;
         }
     }

@@ -6,11 +6,11 @@ using YuLiangToolkit.Tools.OsuMania.Views;
 namespace YuLiangToolkit.Tools.OsuMania;
 
 /// <summary>
-/// 「osu! Key 转换器」：把低键数的 osu!mania 谱面转换成更高键数（旧项目 KeyConverter 的移植版）。
+/// 「osu! Key 转换器」：把低键数的 osu!mania 谱面转换成更高键数。
 ///
 /// <para>界面 / 参数 / 配置见 <see cref="ViewModels.OsuKeyConverterViewModel"/> 与
-/// <see cref="OsuKeyConverterConfig"/>；算法在 <c>Core/KeyConverterEngine.cs</c>（由 osu-core 移植，
-/// 行为与旧版逐行一致）。三个 osu 工具同属「音游工具」类别，Order 51 / 52 / 53 连号排列。</para>
+/// <see cref="OsuKeyConverterConfig"/>；算法在 <c>Core/KeyConverterEngine.cs</c>（
+/// 行为保持一致）。三个 osu 工具同属「音游工具」类别，Order 51 / 52 / 53 连号排列。</para>
 /// </summary>
 public class OsuKeyConverterTool : ITool
 {

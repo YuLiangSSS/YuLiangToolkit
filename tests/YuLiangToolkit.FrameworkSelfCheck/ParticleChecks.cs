@@ -7,7 +7,7 @@ namespace YuLiangToolkit.FrameworkSelfCheck;
 /// 所以这里直接 new 出来逐帧断言，**不需要 STA / 不开窗口**（界面那层由 <c>ParticleOverlay</c> 负责，
 /// 它的绘制/事件挂摘用 <c>YLT_PARTICLE_DEMO=1</c> + <c>YLT_SHOT</c> 截图冒烟验收）。
 ///
-/// <para>钉住的是「旧版行为对齐 + 旧版两个毛病已修」：</para>
+/// <para>钉住的是「早期版本行为对齐 + 早期版本两个毛病已修」：</para>
 /// <list type="bullet">
 ///   <item>对齐：每帧从鼠标位置生成、随机方向 0~2π、自身速度 1~3、寿命 30~89、左键速度+数量爆发、
 ///   右键只加数量、爆发后逐帧衰减回默认、开关关掉立即清空且不再生成；</item>
@@ -56,18 +56,18 @@ internal static class ParticleChecks
         check("默认未启用、没有任何粒子",
             !engine.Active && engine.Particles.Count == 0 && engine.TotalSpawned == 0);
 
-        check("默认参数对齐旧版：全局速度 0.15、每帧 1 个",
+        check("默认参数对齐早期版本：全局速度 0.15、每帧 1 个",
             Math.Abs(engine.Speed - ParticleEngine.DefaultSpeed) < 1e-9
             && Math.Abs(engine.Count - ParticleEngine.DefaultSpawnPerFrame) < 1e-9,
             $"速度={engine.Speed:0.###}，数量={engine.Count:0.###}");
 
-        // 未启用时 Update 必须什么都不生成（旧版 IsParticleEffectEnabled=false 时也走这条路）
+        // 未启用时 Update 必须什么都不生成（早期版本 IsParticleEffectEnabled=false 时也走这条路）
         engine.SetEmitter(100, 100);
         engine.Update();
         engine.Update(1.0);
         check("未启用时 Update 不生成任何粒子", engine.Particles.Count == 0 && engine.TotalSpawned == 0);
 
-        // 未启用时 boost 不生效（旧版 TriggerXxxBoost 里也先判 IsParticleEffectEnabled）
+        // 未启用时 boost 不生效（早期版本 TriggerXxxBoost 里也先判 IsParticleEffectEnabled）
         engine.BoostSpeedAndCount();
         engine.BoostCount();
         check("未启用时左/右键爆发不生效",
@@ -87,13 +87,13 @@ internal static class ParticleChecks
 
         var particle = engine.Particles[0];
 
-        // 生成当帧就会先老 1 帧、动 1 帧（与旧版"创建后马上进入更新循环"一致）
+        // 生成当帧就会先老 1 帧、动 1 帧（与早期版本"创建后马上进入更新循环"一致）
         var distanceFromEmitter = Math.Sqrt(
             (particle.X - 100) * (particle.X - 100) + (particle.Y - 100) * (particle.Y - 100));
         check("生成位置≈发射点（当帧漂移最多 3×0.15=0.45px）", distanceFromEmitter <= 0.5,
             $"距发射点 {distanceFromEmitter:0.###}px");
 
-        check("随机参数都在旧版范围：角度 0~2π、自身速度 1~3、寿命 30~89",
+        check("随机参数都在早期版本范围：角度 0~2π、自身速度 1~3、寿命 30~89",
             particle.Angle >= 0 && particle.Angle < Math.PI * 2
             && particle.Speed >= 1 && particle.Speed <= 3
             && particle.LifeSpan >= ParticleEngine.MinLifeSpan && particle.LifeSpan < ParticleEngine.MaxLifeSpan,
@@ -175,9 +175,9 @@ internal static class ParticleChecks
             && Math.Abs(left.Count - ParticleEngine.MaxSpawnPerFrame) < 1e-9,
             $"速度={left.Speed:0.###}，数量={left.Count:0.###}");
 
-        // 当帧生成个数：10 先按每帧 -0.5 衰减成 9.5，再向下取整 = 9（与旧版 (int) 截断一致）
+        // 当帧生成个数：10 先按每帧 -0.5 衰减成 9.5，再向下取整 = 9（与早期版本 (int) 截断一致）
         left.Update();
-        check("数量爆发当帧生成 9 个（10 先衰减 0.5 再向下取整，与旧版一致）",
+        check("数量爆发当帧生成 9 个（10 先衰减 0.5 再向下取整，与早期版本一致）",
             left.TotalSpawned == 9, $"实际 {left.TotalSpawned} 个");
 
         // ---- 右键：只加数量，不动速度 ----
@@ -324,9 +324,9 @@ internal static class ParticleChecks
             Math.Abs(fps60.TotalSpawned - fps144.TotalSpawned) <= 2,
             $"60fps 生成 {fps60.TotalSpawned} 个，144fps 生成 {fps144.TotalSpawned} 个");
 
-        check("高刷屏没有把生成数放大 2.4 倍（旧版的病）",
+        check("高刷屏没有把生成数放大 2.4 倍（早期版本的病）",
             fps144.TotalSpawned < 70,
-            $"144fps 一秒生成 {fps144.TotalSpawned} 个（旧版会是 144 个）");
+            $"144fps 一秒生成 {fps144.TotalSpawned} 个（早期版本会是 144 个）");
 
         check("刷新率无关：1 秒后存活粒子数接近",
             Math.Abs(fps60.Particles.Count - fps144.Particles.Count) <= 5,

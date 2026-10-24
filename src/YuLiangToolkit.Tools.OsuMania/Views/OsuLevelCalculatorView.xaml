@@ -225,7 +225,7 @@
 
             <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0">
                 <TextBlock FontSize="11.5" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}"
-                           Text="说明：星数用旧版 StarRating 算法（Star Rating Rebirth / srcalc 思路的 C# 重写，其中数学工具来自 ppy osu!lazer，MIT）计算，它不是 osu! 官方 mania 难度算法，与游戏内显示的 SR 可能有 1 星以上差异；等级是按这套 SR 拟合的旧公式换算。两者都只读谱面。只支持 osu!mania（Mode=3），非 mania / 损坏 / 键数不在 1~10 的文件会在状态列标红。" />
+                           Text="说明：星数用 StarRating 算法（Star Rating Rebirth / srcalc 思路的 C# 重写，其中数学工具来自 ppy osu!lazer，MIT）计算，它不是 osu! 官方 mania 难度算法，与游戏内显示的 SR 可能有 1 星以上差异；等级是按这套 SR 拟合的旧公式换算。两者都只读谱面。只支持 osu!mania（Mode=3），非 mania / 损坏 / 键数不在 1~10 的文件会在状态列标红。" />
             </Border>
 
         </StackPanel>

@@ -4,21 +4,19 @@ using YuLiangToolkit.Tools.OsuMania.Core.Difficulty;
 namespace YuLiangToolkit.FrameworkSelfCheck;
 
 /// <summary>
-/// osu!mania 星数自检：把「旧实现参考值」固化成断言，防止以后有人“顺手优化”数学 / 常量 / 循环顺序导致星数漂移。
+/// osu!mania 星数自检：把星数参考值固化成断言，防止以后有人“顺手优化”数学 / 常量 / 循环顺序导致星数漂移。
 ///
-/// <para><b>参考值来源</b>：旧项目 <c>HeavenUsurperToolkit-master/StarRating.cs</c>（875 行）+ <c>Utils.cs</c>（125 行）
-/// 对 10 组确定性合成谱面的输出，详见 <c>docs/porting/star-rating-reference.md</c>；
-/// 新旧对齐报告见 <c>docs/porting/star-rating-parity-report.md</c>（当时 10/10 差 0）。</para>
+/// <para><b>参考值</b>：10 组确定性合成谱面算出的星数基准（10 位小数，与算法基准 10/10 差 0）；
+/// 本自检逐年断言，防止算法 / 常量 / 运算顺序漂移。</para>
 ///
 /// <para><b>合成谱面生成规则（确定性，不依赖外部文件）</b>：每组由固定参数 + <c>new Random(1000 + id * 37)</c> 生成：
 /// 从 t=1000ms 起，每次 <c>t += rng.Next(MinGap, MaxGap+1)</c>；
 /// 以 <c>ChordPermille‰</c> 概率在同一时间点放 2~3 个不同列（最多 keys 个），
 /// 每个对象以 <c>LnPermille‰</c> 概率成为长条（长度 = 100 + rng.Next(0,19)*50 ms，即 100~1000ms），
 /// 否则为普通键（EndTime = StartTime）；最后按 (StartTime, Column) 稳定排序。
-/// 该规则与 <c>star-rating-reference.md</c> §2 完全一致（参考值就是用它算出来的）。
+/// 参考值就是按这套规则算出来的。
 /// <b>注意</b>：这里用 <see cref="System.Random"/>（固定种子），在 .NET 9 运行时上确定；
-/// 若将来整体升级到新的 .NET 大版本且 Random 实现变化，参考值需要按新运行时重算并更新
-/// <c>docs/porting/star-rating-reference.md</c>（本自检会在数值对不上时直接报 FAIL，不会静默放过）。</para>
+/// 若将来整体升级到新的 .NET 大版本且 Random 实现变化，参考值需要按新运行时重算（本自检会在数值对不上时直接报 FAIL，不会静默放过）。</para>
 ///
 /// <para><b>接线方式</b>（Program.cs 里加这一段即可，本文件内部已给每条断言加 <c>[星数] </c> 前缀）：</para>
 /// <code>
@@ -38,7 +36,7 @@ namespace YuLiangToolkit.FrameworkSelfCheck;
 /// </summary>
 public static class StarRatingChecks
 {
-    /// <summary>数值比较容差：参考值保留 10 位小数，对齐要求 ≤ 1e-9（旧实现与新实现实测差为 0）。</summary>
+    /// <summary>数值比较容差：参考值保留 10 位小数，对齐要求 ≤ 1e-9（早期版本与新实现实测差为 0）。</summary>
     private const double Tolerance = 1e-9;
 
     /// <summary>跑完整组断言（签名与其它 Checks 一致：带 detail 的 check + 不带 detail 的 plain）。</summary>
@@ -48,7 +46,7 @@ public static class StarRatingChecks
         void check(string name, bool ok, string detail = "") => checkWithDetail("[星数] " + name, ok, detail);
         void plain(string name, bool ok) => plainCheck("[星数] " + name, ok);
 
-        // ============================ 1. 10 组参考值（旧实现基准，10 位小数） ============================
+        // ============================ 1. 10 组参考值（早期版本基准，10 位小数） ============================
         var cases = BuildCases();
         var generated = new Dictionary<int, List<NoteSpec>>();
 
@@ -85,15 +83,15 @@ public static class StarRatingChecks
         {
             emptyThrew = true;
         }
-        check("空谱面返回 0 且不抛异常（旧实现在 OsuFileV14 构造器里同样兜底为 0）",
+        check("空谱面返回 0 且不抛异常（早期版本在 OsuFileV14 构造器里同样兜底为 0）",
             !emptyThrew && emptySr == 0, emptyThrew ? "抛异常了" : $"SR={emptySr}");
 
         double oneNoteSr = StarRatingCalculator.CalculateStarRating(
             new List<ManiaNote> { new(0, 1000) }, 8.0, 4, 1.0);
-        check("单 note：可算、有限（退化输入返回 0，不抛；与旧实现一致）",
+        check("单 note：可算、有限（退化输入返回 0，不抛；与早期版本一致）",
             double.IsFinite(oneNoteSr) && oneNoteSr >= 0, $"SR={oneNoteSr}");
 
-        // 2K（旧版 KeyX 表没有 1K/2K，新实现 ColumnX 已修；星数算法本身支持 2 键）
+        // 2K（早期版本 KeyX 表没有 1K/2K，新实现 ColumnX 已修；星数算法本身支持 2 键）
         var twoKeyNotes = Generate(new CaseSpec(101, 2, 8.0, 1.0, 120, 100, 0, 80, 300, "2K 120 notes", 1.7929102511));
         double twoKeySr = StarRatingCalculator.CalculateStarRating(ToManiaNotes(twoKeyNotes), 8.0, 2, 1.0);
         check("2K 谱面参考值（参考表边界用例：1.7929102511）", Math.Abs(twoKeySr - 1.7929102511) <= Tolerance,
@@ -128,9 +126,9 @@ public static class StarRatingChecks
         check("7K 同谱 OD 9.5 的 SR > OD 0 的 SR", od95Seven > od0Seven, $"OD0={od0Seven:F6} OD9.5={od95Seven:F6}");
 
         // ============================ 4. LevelCalculator：SR → 等级公式 ============================
-        check("LevelCalculator 下界常量与旧版一致（2.76257856739498）",
+        check("LevelCalculator 下界常量与早期版本一致（2.76257856739498）",
             LevelCalculator.LowerBound == 2.76257856739498, $"实际={LevelCalculator.LowerBound:R}");
-        check("LevelCalculator 上界常量与旧版一致（10.5541834716376）",
+        check("LevelCalculator 上界常量与早期版本一致（10.5541834716376）",
             LevelCalculator.UpperBound == 10.5541834716376, $"实际={LevelCalculator.UpperBound:R}");
 
         double fitting5 = 6.9615 * Math.Exp(0.1374 * 5.0);
@@ -164,7 +162,7 @@ public static class StarRatingChecks
             Math.Abs(LevelCalculator.CalculateLevel(10.6) - (2.791 * 10.6 + 0.5436)) <= 1e-12,
             $"实际={LevelCalculator.CalculateLevel(10.6):F12}");
 
-        check("SR=0 返回 NaN（旧版 CalculateLevel 的行为）", double.IsNaN(LevelCalculator.CalculateLevel(0)), "");
+        check("SR=0 返回 NaN（早期版本 CalculateLevel 的行为）", double.IsNaN(LevelCalculator.CalculateLevel(0)), "");
         check("负 SR 返回 NaN", double.IsNaN(LevelCalculator.CalculateLevel(-1.0)), "");
         check("SR >= 12.3456789 返回 NaN（上限外）",
             double.IsNaN(LevelCalculator.CalculateLevel(12.3456789)) && double.IsNaN(LevelCalculator.CalculateLevel(13.0)), "");
@@ -180,8 +178,8 @@ public static class StarRatingChecks
         check("FormatLevel(3.0) 显示 3（去掉多余的 .00）", LevelCalculator.FormatLevel(3.0) == "3",
             LevelCalculator.FormatLevel(3.0));
 
-        // ============================ 5. 参考值与等级公式联动（旧版 LevelCalculator 的实际用法） ============================
-        // 旧版 LevelCalculator 的等级 = 按星数拟合公式算出来的；拿参考表里的 4.9352511737 验证一遍链路
+        // ============================ 5. 参考值与等级公式联动（早期版本 LevelCalculator 的实际用法） ============================
+        // 早期版本 LevelCalculator 的等级 = 按星数拟合公式算出来的；拿参考表里的 4.9352511737 验证一遍链路
         double levelOfCase02 = LevelCalculator.CalculateLevel(4.9352511737);
         double expectedLevelOfCase02 = 6.9615 * Math.Exp(0.1374 * 4.9352511737);
         check("参考值 #02 的星数 → 等级与拟合公式一致",
@@ -190,10 +188,10 @@ public static class StarRatingChecks
     }
 
     // =====================================================================================
-    //  确定性合成谱面生成（与 docs/porting/star-rating-reference.md §2 的规则逐行一致）
+    //  确定性合成谱面生成（参考值就是按这套规则算的）
     // =====================================================================================
 
-    /// <summary>参考表（<c>docs/porting/star-rating-reference.md</c> §3）的 10 组参数与参考值。</summary>
+    /// <summary>10 组参数与参考值（参考值见类注释）。</summary>
     private static List<CaseSpec> BuildCases() => new()
     {
         new(1, 4, 8.0, 1.0, 200, 0, 0, 120, 380, "4K 稀疏纯 note", 1.0478683262),
@@ -245,14 +243,14 @@ public static class StarRatingChecks
         return objs.OrderBy(o => o.StartTime).ThenBy(o => o.Column).ToList();
     }
 
-    /// <summary>把生成结果转成算法输入（普通键 EndTime == StartTime，LN EndTime &gt; StartTime；与旧版语义一致）。</summary>
+    /// <summary>把生成结果转成算法输入（普通键 EndTime == StartTime，LN EndTime &gt; StartTime；与早期版本语义一致）。</summary>
     private static List<ManiaNote> ToManiaNotes(List<NoteSpec> notes)
         => notes.Select(n => new ManiaNote(n.Column, n.StartTime, n.EndTime)).ToList();
 
-    /// <summary>与旧项目 <c>ManiaHitObject</c> 对齐的最小记录（算法只读这三个字段）。</summary>
+    /// <summary>算法只读头 / 尾 / 列三个字段的最小记录。</summary>
     private readonly record struct NoteSpec(int StartTime, int EndTime, int Column);
 
-    /// <summary>一组参考用例：生成参数 + 旧实现参考值。</summary>
+    /// <summary>一组参考用例：生成参数 + 早期版本参考值。</summary>
     private sealed record CaseSpec(
         int Id, int Keys, double Od, double Rate, int NoteCount,
         int ChordPermille, int LnPermille, int MinGap, int MaxGap,

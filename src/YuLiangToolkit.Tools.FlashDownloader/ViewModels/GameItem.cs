@@ -41,7 +41,7 @@ public sealed class GameItem : ObservableObject
     /// <summary>大小。</summary>
     public string SizeText => Entry.SizeText;
 
-    /// <summary>说明列（打开方式 + 大小，或者“旧版命名”警告）。</summary>
+    /// <summary>说明列（打开方式 + 大小，或者“早期版本命名”警告）。</summary>
     public string DetailText => Entry.DetailText;
 
     /// <summary>能不能玩（本体文件在不在）。</summary>
@@ -60,7 +60,7 @@ public sealed class GameItem : ObservableObject
     {
         var problems = new List<string>();
         if (entry.IsLegacyFolderName)
-            problems.Add("旧版命名：请在文件夹名后面补上 s（用 Flash 播放器）或 h（用网页）");
+            problems.Add("早期版本命名：请在文件夹名后面补上 s（用 Flash 播放器）或 h（用网页）");
         else if (!entry.CanPlay)
             problems.Add($"文件夹后缀是 {entry.FolderExt}，不支持打开");
         else if (!entry.HasGameFile)

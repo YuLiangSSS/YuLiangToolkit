@@ -5,7 +5,7 @@ namespace YuLiangToolkit.Tools.FlashDownloader.Core;
 
 /// <summary>
 /// 游戏页 / 网页文本解析（纯函数，无 IO、无 WPF，自检里逐条断言）。
-/// 从原始 Python 项目的 <c>HtmlAnalyse</c> 移植，正则与判定顺序保持一致。
+/// 从原始 Python 项目的 <c>HtmlAnalyse</c> 改写，正则与判定顺序保持一致。
 /// </summary>
 public static partial class GamePageParser
 {

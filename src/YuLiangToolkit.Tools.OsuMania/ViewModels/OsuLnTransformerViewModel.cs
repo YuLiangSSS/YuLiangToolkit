@@ -33,7 +33,7 @@ public sealed class OsuLnTransformerViewModel : OsuTransformViewModelBase
             · 保留原 LN：勾选后原谱面里的长条原样保留，不再参与转换。
             · 修复尾判误差：把 LN 尾巴对齐到 1/Divide 拍的整数格上，减少游戏里尾判的细小误差。
             · 忽略已转换：谱师 / 难度名里带 LNTransformer 标记的谱面直接跳过，避免重复转换。
-            · 修改 OD：默认不勾 = 保留原谱 OD；勾选后才用右边填的数值覆盖（旧版会强制写成输入框的值，默认 0，是个 bug）。
+            · 修改 OD：默认不勾 = 保留原谱 OD；勾选后才用右边填的数值覆盖（默认会把 OD 写成输入框的值 0，容易写坏谱面）。
             · 源键数过滤：勾了哪些就只转哪些键数；一个都不勾 = 全部转换。
 
             输出位置：新 .osu 写在「原谱面所在目录」，文件名由 艺术家 - 标题 (谱师) [难度名] 拼成，
@@ -80,7 +80,7 @@ public sealed class OsuLnTransformerViewModel : OsuTransformViewModelBase
             Column = Math.Clamp(Cfg.Column, 0, 10),
             Gap = Math.Clamp(Cfg.Gap, 0, 20),
             OverallDifficulty = Math.Clamp(Cfg.OverallDifficulty, 0, 10),
-            // 勾「修改 OD」才覆盖；默认保留原谱 OD（旧版 bug 的修正，见配置类注释）。
+            // 勾「修改 OD」才覆盖；默认保留原谱 OD（早期版本 bug 的修正，见配置类注释）。
             KeepOverallDifficulty = !Cfg.ModifyOverallDifficulty,
             Creator = Cfg.Creator,
             CreatorIsChecked = Cfg.UseCreator,

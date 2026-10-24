@@ -6,7 +6,7 @@ using YuLiangToolkit.Tools.OsuMania.Views;
 namespace YuLiangToolkit.Tools.OsuMania;
 
 /// <summary>
-/// 「osu! LN 转换器」：把普通音符批量变成 LN（面条）（旧项目 LNTransformer 的移植版）。
+/// 「osu! LN 转换器」：把普通音符批量变成 LN（面条）。
 ///
 /// <para>算法在 <c>Core/LnTransformerEngine.cs</c>；参数在 <see cref="OsuLnTransformerConfig"/>，
 /// 各 Level 档位的含义见配置类里的 <see cref="OsuLnTransformerConfig.LevelHint"/>。</para>

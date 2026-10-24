@@ -165,7 +165,6 @@ docs/                             # 面向使用者的详细文档（一页一�
 │  ├─ README.md                   #   文档索引
 │  ├─ shell.md                    #   主页搜索/排序/标签 · 多级分类/面包屑 · 主页设置 · Data/Config 目录约定
 │  ├─ tools/<工具Id>.md           #   每个工具一页：能做什么 / 怎么用 / 设置项 / 数据在哪 / 注意
-│  ├─ porting/                    #   从旧项目移植时的分析 / 选型 / 新旧对齐报告（开发存档，见 2.17）
 │  └─ assets/100-percent-ai-coding.png   # README 标题旁那行手写体徽标（System.Drawing 画的）
 build.ps1                         # 一键还原 + 构建（保持纯 ASCII，见第 8 节）
 publish.ps1                       # 一键发布到 dist\YuLiangToolkit\（-SelfContained 可打成自带运行时）
@@ -175,7 +174,7 @@ Directory.Build.props / .targets  # 公共编译属性 + 隐式 using 补充
 Data/                             # 只有说明文件（真正的运行时 Data 在 exe 旁边，见第 3 节）
 Config/                           # 同上，只有说明文件
 dist/                             # publish.ps1 的发布输出【不入库，gitignore】
-MapDownloader/                    # 移植「osu! 下图器」时参考的原版 WinForms 小项目【不入库，见第 8 节】
+MapDownloader/                    # 改写「osu! 下图器」时参考的原版 WinForms 小项目【不入库，见第 8 节】
 tests/YuLiangToolkit.FrameworkSelfCheck/   # 轮子自检控制台程序
 scripts/                          # 开发/调试脚本（UI 自动化、截图分析）——会弹窗抢焦点，慎跑
                                   #   e2e-batch-rename-drag.ps1 是唯一覆盖“WPF 拖放事件”那层的验证（会真的动鼠标 2 秒）
@@ -243,7 +242,7 @@ src/
 │  │            ChatRoomSession.cs          # 把上面这些拼成“一次会话”的门面
 │  ├─ ViewModels/ ChatRoomViewModel*.cs（3 个 partial）· ChatMessageItem.cs（含 FileProgress）· ChatMemberItem.cs
 │  └─ Views/    ChatRoomView.xaml(.cs)
-├─ YuLiangToolkit.Tools.MapDownloader/     # 功能 6：osu! 下图器（从仓库根的 WinForms 小工具移植，见 2.13）
+├─ YuLiangToolkit.Tools.MapDownloader/     # 功能 6：osu! 下图器（从仓库根的 WinForms 小工具改写，见 2.13）
 │  ├─ MapDownloaderTool.cs · MapDownloaderConfig.cs   # 契约 + 凭据/搜索条件/下载目录
 │  ├─ Core/     OsuModels.cs               # osu! API 的 DTO + 搜索请求模型 + OszItem
 │  │            OsuQuery.cs                # ★纯逻辑：搜索查询串 / URL / 换 Token 表单
@@ -260,12 +259,12 @@ src/
 │  ├─ OsuLevelCalculatorTool.cs · OsuLevelCalculatorConfig.cs
 │  ├─ OsuDemoData.cs                       # YLT_OSU_DEMO=1 用的合成谱面/示例数据
 │  ├─ Core/     OsuManiaBeatmap.cs         # ★工作模型（ManiaNote / TimingPoint / Metadata）
-│  │            OsuBeatmapFile.cs          # ★OsuParsers 解析桥 + 保存（旧版文件名规则）
-│  │            KeyConverterEngine.cs      # ★纯逻辑：低 k → 高 k（逐行移植旧 KeyConverter）
-│  │            LnTransformerEngine.cs     # ★纯逻辑：14 档 LN 转换（逐行移植旧 LNTransformer）
-│  │            LevelCalculator.cs         # ★纯逻辑：星数 → 等级（旧三段拟合公式）
+│  │            OsuBeatmapFile.cs          # ★OsuParsers 解析桥 + 保存（按元数据拼文件名）
+│  │            KeyConverterEngine.cs      # ★纯逻辑：低 k → 高 k（KeyConverter 算法）
+│  │            LnTransformerEngine.cs     # ★纯逻辑：14 档 LN 转换（LNTransformer 算法）
+│  │            LevelCalculator.cs         # ★纯逻辑：星数 → 等级（三段拟合公式）
 │  │            OsuFileBatch.cs · OsuTransformUtils.cs
-│  │            Difficulty/ StarRatingCalculator.cs · EasyObject.cs · Utils.cs（旧 StarRating 移植）
+│  │            Difficulty/ StarRatingCalculator.cs · EasyObject.cs · Utils.cs（星数算法）
 │  ├─ ViewModels/ OsuTransformViewModelBase.cs + 三个工具 VM + OsuFileItem.cs · LevelRowItem.cs
 │  └─ Views/    OsuKeyConverterView.xaml(.cs) · OsuLnTransformerView.xaml(.cs) · OsuLevelCalculatorView.xaml(.cs)
 ├─ YuLiangToolkit.Tools.MediaPlayer/       # 功能 7：视频 / 音乐播放器（MediaElement + 可换假播放器，见 2.14）
@@ -1068,10 +1067,10 @@ await client.SendFileAsync(@"D:\图片\截图.png");
 * `StartHostAsync` / `ConnectAsync` 里要**先把 `IsOnline` 置起来再算连接摘要**：
   `UpdateConnectionSummary()` 靠 `IsOnline` 区分“没连上”和“连着但还没人进来”，顺序反了就永远显示未监听。
 
-### 2.13 osu! 下图器（v0.7.0 新增，从独立小工具移植）
+### 2.13 osu! 下图器（v0.7.0 新增，从独立小工具改写）
 
 **来历**：原版是仓库根 `MapDownloader/` 里那个 WinForms 小程序（`net8.0-windows`、凭据存 `Properties.Settings`、
-结果表是 `DataGridView`、两个 Tab）。移植时**网络与筛选逻辑照搬**，界面按本工具集约定重写成 WPF + MVVM
+结果表是 `DataGridView`、两个 Tab）。改写时**网络与筛选逻辑照搬**，界面按本工具集约定重写成 WPF + MVVM
 （一页放完、卡片式、列表用全局 `FileListStyle` + `FileRowItemStyle`）。
 分工：`Core/`（纯逻辑，自检直接断言）→ `Engine/`（osu! API + `.osz` 下载）→ `ViewModels/` → `Views/`。
 
@@ -1088,7 +1087,7 @@ await client.SendFileAsync(@"D:\图片\截图.png");
 | `BeatmapSetItem` | `ViewModels/BeatmapSetItem.cs` | 结果表一行：展示字段构造时算好 ＋ `IsSelected`（勾选框）＋ `Tooltip`（把游玩数 / 收藏数 / 难度名塞进悬停提示）＋ 重写 `ToString()` |
 | `MapDownloaderViewModel` | `ViewModels/MapDownloaderViewModel*.cs` | 两个 partial：一个管状态与命令，一个管实际操作（换 Token / 搜索 / 加载更多 / 获取全部 / 下载） |
 
-**与原版一致的地方**（移植的底线）：搜索参数与拼接顺序、日期与 Key 数走**本地筛选**（osu! 搜索接口不支持这两项）、
+**与原版一致的地方**（改写的底线）：搜索参数与拼接顺序、日期与 Key 数走**本地筛选**（osu! 搜索接口不支持这两项）、
 `{Id} {标题}.osz` 命名、并发 5、已存在跳过、UA / Accept / Referer、含视频 = `full`、无视频 = `novideo`、
 「获取全部」沿 `cursor_string` 翻页（页间隔 200ms、可停）。
 默认下载目录从"exe 旁边的 `Downloads`"改成 `Data\map-downloader\downloads`（可在界面上换，跟其它功能一致）。
@@ -1368,11 +1367,11 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 
 ### 2.16 窗口级粒子效果 + 主页设置（v0.10.0）
 
-**定位**：移植 HeavenUsurperToolkit 的鼠标粒子：粒子跟随鼠标生成、向随机方向飞出并淡出；
+**定位**：鼠标粒子效果：粒子跟随鼠标生成、向随机方向飞出并淡出；
 **左键爆发**（速度+数量拉满）、**右键加量**；窗口失活/最小化/鼠标离开自动清空暂停。
 开关在主页右上角「⚙ 主页设置」窗口里（默认开），存 `Config\shell\config.json` 的 `showParticles`。
 
-**旧版的问题（这次都修了）**：按帧固定增量（高刷屏速度翻倍）→ 改按真实时间归一化；
+**实现要点（相对经典写法的改进）**：按帧固定增量在高刷屏会速度翻倍 → 按真实时间归一化；
 每帧 `new Ellipse/SolidColorBrush` → 改 `DrawingContext.DrawEllipse` + 冻结画刷调色板（每帧零分配）；
 `CompositionTarget.Rendering` 静态事件从不取消（泄漏）→ Loaded/Unloaded 成对挂摘、关闭即退订；
 没有粒子上限 → 硬上限 600。
@@ -1381,7 +1380,7 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 
 | 轮子 | 位置 | 说明 |
 | --- | --- | --- |
-| `Particle` / `ParticleEngine` | Core/Particles/ | 可注入随机种子；常量对齐旧版（默认速度 0.15 / 上限 3 / 每帧衰 0.1；数量 1→10、每帧衰 0.5；寿命 30~89 帧；初始直径 5）；`Update(frameSteps)` 按 60fps 归一（单步上限 4、有生成累加器）；`Active` / `Speed` / `Count` / `EmitterX/Y` / `Particles` / `TotalSpawned`；`SetEmitter` `BoostSpeedAndCount` `BoostCount` `Clear` `Reset` `Reseed` |
+| `Particle` / `ParticleEngine` | Core/Particles/ | 可注入随机种子；常量：默认速度 0.15 / 上限 3 / 每帧衰 0.1；数量 1→10、每帧衰 0.5；寿命 30~89 帧；初始直径 5；`Update(frameSteps)` 按 60fps 归一（单步上限 4、有生成累加器）；`Active` / `Speed` / `Count` / `EmitterX/Y` / `Particles` / `TotalSpawned`；`SetEmitter` `BoostSpeedAndCount` `BoostCount` `Clear` `Reset` `Reseed` |
 | `ParticleOverlay` | Core/Controls/ | `FrameworkElement` + `OnRender`；DP：`IsActive`（默认 false）、`ParticleColor`（默认 #F2EEFF 淡紫白）、`GlowColor`（柔光）；Loaded 挂 Window 鼠标/Rendering 事件、Unloaded/Closed 全摘；DPI/最大化/全屏自适应；`YLT_PARTICLE_DEMO=1` 无鼠标演示 |
 | `ShellConfig.ShowParticles` | Models/ShellConfig.cs | 默认 `true`；`MainViewModel.ParticlesEnabled` 的 get/set 直接读写它（自动落盘） |
 | `ShellSettingsWindow` | Views/ | 「主页设置」窗口：外观（粒子开关）+ 说明；`Owner=主窗口`、`CenterOwner`、`ShowInTaskbar=false`；Esc / 完成关闭；以后设置项加在这里 |
@@ -1397,9 +1396,7 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 
 ### 2.17 osu!mania 三件套：Key 转换 / LN 转换 / 等级计算（v0.10.0）
 
-**来历**：从旧项目 HeavenUsurperToolkit（.NET 8 WPF、无第三方依赖、无持久化；参考项目文件夹已从仓库删除，
-移植分析与新旧对照存档在 `docs/porting/`）移植
-KeyConverter / LNTransformer / LevelCalculator 三个工具。**算法逐行照搬**，界面按本工具集 WPF + MVVM 重写；
+**来历**：KeyConverter / LNTransformer / LevelCalculator 三个算法工具。**算法逐行照搬**，界面按本工具集 WPF + MVVM 重写；
 解析器不再用手写 `OsuFileV14.cs`，改用 **OsuParsers 1.7.2（NuGet，MIT，netstandard2.0）**，写回也用它。
 
 分工：`Core/`（解析桥 + 工作模型 + 纯算法引擎，自检直接断言）→ `Tool`/`Config` → `ViewModels/` → `Views/`。
@@ -1416,36 +1413,36 @@ KeyConverter / LNTransformer / LevelCalculator 三个工具。**算法逐行照�
 
 | 轮子 | 位置 | 说明 |
 | --- | --- | --- |
-| OsuParsers（NuGet） | 项目 `PackageReference` | `BeatmapDecoder.Decode(path)` → `OsuParsers.Beatmaps.Beatmap`；`beatmap.Save(path)`；mania 对象 `ManiaNote`/`ManiaHoldNote`、`GetColumn/SetColumn`。⚠ **解码器是 static 状态、非线程安全**（实测并发会串台/异常）→ 解析桥里加锁、批量串行；⚠ `Save()` 是全量重排：未知段落/未知键/部分注释会丢（旧版也是重写，但库能多保留 `[Editor]` 等已知段） |
-| `OsuManiaBeatmap` / `ManiaNote` / `OsuTimingPoint` / `OsuBeatmapMetadata` / `OsuNoteExtras` | Core/OsuManiaBeatmap.cs | 与 UI/解析库解耦的工作模型：`KeyCount` `OverallDifficulty` `Metadata` `TimingPoints` `HitObjects` `StarRating`；`ManiaNote` 有 `Column`(0 基) `StartTime` `EndTime` `IsLongNote` `HitSound` `Extras` `IsLN` `Clone` `ToNote`；`ColumnX(keys,column)` 通用列坐标（3~10k 与旧 KeyX 等价，修掉 1k/2k 崩溃）；`TimingPointAt/BeatLengthAt` |
+| OsuParsers（NuGet） | 项目 `PackageReference` | `BeatmapDecoder.Decode(path)` → `OsuParsers.Beatmaps.Beatmap`；`beatmap.Save(path)`；mania 对象 `ManiaNote`/`ManiaHoldNote`、`GetColumn/SetColumn`。⚠ **解码器是 static 状态、非线程安全**（实测并发会串台/异常）→ 解析桥里加锁、批量串行；⚠ `Save()` 是全量重排：未知段落/未知键/部分注释会丢（早期版本也是重写，但库能多保留 `[Editor]` 等已知段） |
+| `OsuManiaBeatmap` / `ManiaNote` / `OsuTimingPoint` / `OsuBeatmapMetadata` / `OsuNoteExtras` | Core/OsuManiaBeatmap.cs | 与 UI/解析库解耦的工作模型：`KeyCount` `OverallDifficulty` `Metadata` `TimingPoints` `HitObjects` `StarRating`；`ManiaNote` 有 `Column`(0 基) `StartTime` `EndTime` `IsLongNote` `HitSound` `Extras` `IsLN` `Clone` `ToNote`；`ColumnX(keys,column)` 通用列坐标（3~10k 与 `KeyX` 表等价，兼容 1k/2k）；`TimingPointAt/BeatLengthAt` |
 | `OsuBeatmapFile` | Core/OsuBeatmapFile.cs | `TryLoad/Load`（校验 mania、键数 1~10、解析失败给中文原因）；OsuParsers ↔ 工作模型双向映射（保留 HitSound/Extras/TimingPoints，列号 = `GetColumn(keyCount)`）；`Save()` 按旧规则写「原目录 + `{Artist} - {Title} ({Creator}) [{Difficulty}]` 去掉 9 个非法字符 + .osu」并返回输出路径；解码/保存加 `DecodeLock` |
-| `StarRatingCalculator` / `EasyObject` / `Utils` | Core/Difficulty/ | 旧 `StarRating.cs`（**不是** osu!lazer 源码，是第三方 Star Rating Rebirth / `srcalc` 思路的 C# 重写；`Utils.cs` 来自 ppy osu!lazer，MIT）逐行移植；入口 `CalculateStarRating(IReadOnlyList<ManiaNote>, od, keys, rate=1.0)`，失败返回 0。**新旧数值对齐 10/10 差 0**（见 `docs/porting/star-rating-parity-report.md`） |
+| `StarRatingCalculator` / `EasyObject` / `Utils` | Core/Difficulty/ | 星数算法（**不是** osu!lazer 源码，是第三方 Star Rating Rebirth / `srcalc` 思路的 C# 重写；`Utils.cs` 来自 ppy osu!lazer，MIT）；入口 `CalculateStarRating(IReadOnlyList<ManiaNote>, od, keys, rate=1.0)`，失败返回 0。**数值基准 10/10 差 0** |
 | `LevelCalculator` | Core/LevelCalculator.cs | 旧三段拟合：`[2.76257856739498, 10.5541834716376]` 内 `6.9615·e^(0.1374·SR)`；低于下界 `3.6198·SR`；高于上界 `2.791·SR+0.5436`；其余 `NaN`；`FormatLevel` |
-| `KeyConverterEngine` / `KeyConverterOptions` | Core/KeyConverterEngine.cs | 旧 `ApplyToBeatmap` + `ProcessArea` 逐行移植：只支持升 key；按 Gap 公式 `29998.8584·e^(-0.3176·Gap)+347.7248`（Gap=0→∞）分块；每块随机复制列 + Blank 空白列 + 随机插入列；按列 50ms/10ms 合并清理；改 Difficulty 前缀 `[源To目标C...]` 与 Creator。`Apply(beatmap)` 只改内存、`Apply(file)` 转换+保存 |
+| `KeyConverterEngine` / `KeyConverterOptions` | Core/KeyConverterEngine.cs | 旧 `ApplyToBeatmap` + `ProcessArea` 逐行改写：只支持升 key；按 Gap 公式 `29998.8584·e^(-0.3176·Gap)+347.7248`（Gap=0→∞）分块；每块随机复制列 + Blank 空白列 + 随机插入列；按列 50ms/10ms 合并清理；改 Difficulty 前缀 `[源To目标C...]` 与 Creator。`Apply(beatmap)` 只改内存、`Apply(file)` 转换+保存 |
 | `LnTransformerEngine` / `LnTransformerOptions` | Core/LnTransformerEngine.cs | 旧 14 档 Level（-3 Hold off、-2 Random ms、-1 Random divide、0 Regular LN、1~9 高斯密度、10 Invert）+ `AfterTransform` 按列/每 Gap 行随机重分配轨道 + `FixError` 用 `PreciseTime` 吸附网格 + OD 开关 `KeepOverallDifficulty`（默认保留原谱 OD）+ `IsConverted` |
 | `OsuFileBatch` | Core/OsuFileBatch.cs | 拖放路径 → 递归枚举 `.osu`（大小写不敏感、去重）；`RunKeyConverter/RunLnTransformer` **串行**批处理 + `IProgress` + `CancellationToken`；`ConvertOne`；`OsuBatchResult` 统计文案 |
 | Tool / Config / ViewModel / View | 项目根 + `ViewModels/` `Views/` | `OsuTransformViewModelBase` 复用拖放/列表/参数/进度/日志；三个工具各自的 Tool/Config/VM/View；`YLT_OSU_DEMO=1` 生成合成谱面供截图/冒烟 |
 
-**与旧版的行为差异（有意修复；`docs/porting/osu-core-notes.md` 里逐条记录）**
+**行为说明（有意修复的已知问题）**
 
-1. **1k/2k 不再崩**：旧版 `KeyX` 没有 1/2 键表；新版用通用列坐标公式（3~10k 输出与旧 KeyX 逐列相等）。
-2. **HitSound/Extras 保留**：旧 KeyConverter 收尾重建对象时把它们全丢（固定 0）；新版从源音符复制。
-3. **Clean=0 = 不去子弹**：旧代码在 clean=0 分支会把整列删掉（bug），新版按参数本意"不去重"。
-4. **Original LN 对所有列生效**：旧版 `originalLNObjects` 在按列循环里被覆盖，只有最后一列生效；新版累加。
-5. **OD 默认保留**：旧版 LN 工具默认 `OverallDifficulty=0` 会把谱面 OD 写坏；新版默认 `KeepOverallDifficulty=true`，想改 OD 才勾。
-6. **没有红线不再闪退**：旧 `TimingPointAt` 全绿点时 `RedPoints[-1]` 崩；新版转成"跳过+原因"。
+1. **1k/2k 不再崩**：`KeyX` 表没有 1/2 键；这里用通用列坐标公式（3~10k 与 `KeyX` 逐列相等）。
+2. **HitSound/Extras 保留**：KeyConverter 收尾重建对象时把它们全丢（固定 0）；新版从源音符复制。
+3. **Clean=0 = 不去子弹**：原有代码在 clean=0 分支会把整列删掉（bug），新版按参数本意"不去重"。
+4. **Original LN 对所有列生效**：`originalLNObjects` 必须累加，不能在按列循环里被覆盖（否则只有最后一列生效）。
+5. **OD 默认保留**：默认 `KeepOverallDifficulty=true`（不会把谱面 OD 写坏），想改 OD 才勾。
+6. **没有红线不再闪退**：`TimingPointAt` 全绿点时 `RedPoints[-1]` 崩；新版转成"跳过+原因"。
 7. **加载/保存用成熟解析库**：实际格式版本、`[Editor]`/`[Events]` 等已知段保留度更好（但 `Save()` 仍只保留已知段落）。
-8. 新增进度/取消/日志/统计/参数持久化（旧版只有拖放 + 一个进度条，失败静默）。
+8. 进度/取消/日志/统计/参数持久化（原先只有拖放 + 一个进度条，失败静默）。
 
 **数据/配置**
 
 * 配置：`Config\osu-key-converter\config.json`、`Config\osu-ln-transformer\config.json`、`Config\osu-level-calculator\config.json`（参数下次打开还在）。
 * 输出：**写在原谱面所在目录**（按上面的元数据文件名规则；**没有备份**，同名会被覆盖 —— 日志里会显示输出路径）。不写 `Data\`。
-* 旧版输出规则也照搬：因为工具会改 Creator/Difficulty，通常生成**新文件**；重复转换已转过的文件时输出路径会等于输入路径（原地重写）。
+* 输出规则：因为工具会改 Creator/Difficulty，通常生成**新文件**；重复转换已转过的文件时输出路径会等于输入路径（原地重写）。
 
 **自检与验证**
 
-* `OsuManiaChecks`（158 项）：解析往返 / 保存文件名 / 非 mania / 键数校验 / StarRating / Level 公式 / KeyConverter（4→7 列范围、可复现、固定种子）/ LN 各档 / OriginalLN / FixError / 批量与取消 / 线程安全；`StarRatingChecks`（38 项）钉住旧版星数参考值。
+* `OsuManiaChecks`（158 项）：解析往返 / 保存文件名 / 非 mania / 键数校验 / StarRating / Level 公式 / KeyConverter（4→7 列范围、可复现、固定种子）/ LN 各档 / OriginalLN / FixError / 批量与取消 / 线程安全；`StarRatingChecks`（38 项）钉住星数参考值。
 * 截图冒烟：`$env:YLT_OSU_DEMO="1"; $env:YLT_SHOT_TOOL="osu-key-converter"; $env:YLT_SHOT="shots\osu-key.png"`（三个 Id 各一张；`YLT_OSU_DEMO` 会生成合成 4K 谱面到 `Data\osu-*\`）。
 * 限制：**OsuParsers 解码器非线程安全** —— UI 与自检都必须串行处理 `.osu`，别改成并发。
 
@@ -1633,8 +1630,8 @@ Data/chat-room/
 * **粒子别用"每帧 new 控件/画刷"**：用 `DrawingContext.DrawEllipse` + 冻结画刷；否则粒子一多 UI 线程直接卡。
 * **OsuParsers 解码器是 static 状态、非线程安全**：批量 `.osu` 必须串行（解析桥已加锁兜底），别改成 `Parallel.ForEachAsync` —— 实测会串台/抛 `FormatException`。
 * **OsuParsers 的 `Save()` 是全量重写**（只保留已知段落）：未知段/注释会丢，这个要在 UI 上（工具页"注意"）说清楚；不要承诺"原样保留"。
-* **输出文件写在原谱面目录、按元数据命名**：不要"好心"改成覆盖原文件 —— 旧版行为就是生成新文件；同名时才会覆盖（日志里必须显示输出路径）。
-* **星数算法不要拿 osu!lazer 官方值对答案**：这套 Level 公式是按旧 `StarRating.cs`（Star Rating Rebirth 思路）拟合的，官方 mania SR 与它差 ~1.2 星。参考值在 `docs/porting/star-rating-reference.md`。
+* **输出文件写在原谱面目录、按元数据命名**：不要"好心"改成覆盖原文件 —— 正常就是生成新文件；同名时才会覆盖（日志里必须显示输出路径）。
+* **星数算法不要拿 osu!lazer 官方值对答案**：这套 Level 公式是按 `StarRating.cs`（Star Rating Rebirth 思路）拟合的，官方 mania SR 与它差 ~1.2 星。
 
 **文件系统 / 批量改名**
 * Windows 上**只改大小写的改名**（`photo.jpg` → `Photo.jpg`）用一步 `File.Move` 会失败（目标“已存在”）；
@@ -1740,7 +1737,7 @@ Data/chat-room/
 #    + osu! 下图器的查询串/命名/本地筛选 + 打自检自己起的假镜像真下载
 #    + 播放器的扩展名归类/时间与快进快退/自然排序/真扫临时目录/合并去重/三种播放顺序/假播放器跑完整条 VM 流程
 #    + 粒子引擎的生成/寿命/衰减/开关/上限/确定性
-#    + osu!mania 三件套的解析往返/转 K/转 LN/等级/批量/线程安全 + StarRating 旧版参考值，
+#    + osu!mania 三件套的解析往返/转 K/转 LN/等级/批量/线程安全 + StarRating 参考值，
 #    退出码 0 = 全通过
 dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
 
@@ -1851,10 +1848,10 @@ $env:YLT_SHOT="shots\published.png"; .\dist\YuLiangToolkit\YuLiangTookit.exe
 | 批量重命名 | `batch-rename` | `Config\batch-rename\config.json`（**规则清单 `rules` 数组** + 冲突开关 + 排序偏好 + 上次文件夹） | `Data\batch-rename\rename-history.json`（改名流水账，撤销靠它，最多 20 批） | `Order = 40`；规则可增删、可重复、可拖动排序，**数组顺序 = 执行顺序**（见 2.10）；标签：重命名/改名/批量/文件/序号/编号/查找替换/正则/扩展名/撤销 |
 | Flash 下载器 | `flash-downloader` | `Config\flash-downloader\config.json`（游戏目录 / 并发 / 超时 / 端口 / 播放器路径 / 上次输入） | `Data\flash-downloader\games\`（游戏本体 + `SWFNetPath.ini`）、`Data\flash-downloader\tools\`（播放页 / 替代 API / FlashPlayer.exe） | `Order = 20`；支持 4399 / 7k7k / 17yy / ArmorGames / Kongregate，本地服务器 + 自动下载所需文件（见 2.11）；**目录可在界面上改**；标签：flash/swf/小游戏/下载/4399/7k7k/17yy/ArmorGames/Kongregate/本地服务器/离线玩/h5/unity/网页游戏 |
 | 联机聊天室 | `chat-room` | `Config\chat-room\config.json`（昵称 / 头像 / **傻瓜模式** / 监听地址与端口 / 要连的主机 / 单次流量上限与方向 / 发图压缩 / 大文件确认 / 最近会话） | `Data\chat-room\Protocol\`（协议说明）、`Data\chat-room\Sessions\<时间>\`（**每次连接新建**：`chat-log.jsonl` + `session.json` + `images`/`audio`/`video`/`files`） | `Order = 30`；主机开 TCP 端口、客户端填 IP/域名 + 端口，局域网与内网穿透通用（IPv6 也行）；文字 / 图片 / 音频 / 视频 / 任意文件双向发送；**单次流量上限 + 用量指示**；**傻瓜模式默认开**（工具自己挑双栈监听 + 列出本机 IPv4/IPv6 与端口，见 2.12）；标签：聊天/聊天室/局域网/联机/TCP/内网穿透/IPv6/传文件/发图片/语音/视频/流量限制/主机/客户端 |
-| osu! 下图器 | `map-downloader` | `Config\map-downloader\config.json`（Client ID / Client Secret、Access Token 与到期时间、搜索条件、下载目录与并发数） | `Data\map-downloader\downloads\`（下回来的 `.osz`，**目录可在界面上改**） | `Order = 50`；**归入「音游工具」类别**（`CategoryPath`）；从独立 WinForms 小工具移植（见 2.13）；搜索走 osu! 官方 API（要自己注册 OAuth 应用换 Token），`.osz` 走第三方镜像 dl.sayobot.cn；标签：osu/osu!/谱面/beatmap/下图/下图器/osz/下载/搜索/mania/音游 |
-| osu! Key 转换器 | `osu-key-converter` | `Config\osu-key-converter\config.json`（目标 Keys / Gap / Clean / Blank / Seed / Creator / 键数过滤） | —（转换结果写**原谱面目录**，见 2.17） | `Order = 51`；音游工具；低 k → 高 k（只支持升 key）；旧 KeyConverter 算法逐行移植 + 修复 1k/2k/HitSound 等 bug |
-| osu! LN 转换器 | `osu-ln-transformer` | `Config\osu-ln-transformer\config.json`（Level / LN% / Divide / Column / Gap / OD 开关 / Seed / Creator / Ignore / Original LN / Fix Error / 键数过滤） | —（同上） | `Order = 52`；音游工具；14 档 LN 转换（-3~10，含 Hold off / Random / Invert / 高斯密度）；旧 LNTransformer 算法逐行移植 + 修复 Original LN/OD 等 bug |
-| osu! 等级计算器 | `osu-level-calculator` | `Config\osu-level-calculator\config.json`（显示/计算偏好） | —（只读谱面，不写文件） | `Order = 53`；音游工具；拖入 `.osu` 批量算 mania 星数（旧 Star Rating Rebirth 移植）→ 旧三段拟合公式得 Level；表格展示 |
+| osu! 下图器 | `map-downloader` | `Config\map-downloader\config.json`（Client ID / Client Secret、Access Token 与到期时间、搜索条件、下载目录与并发数） | `Data\map-downloader\downloads\`（下回来的 `.osz`，**目录可在界面上改**） | `Order = 50`；**归入「音游工具」类别**（`CategoryPath`）；从独立 WinForms 小工具改写（见 2.13）；搜索走 osu! 官方 API（要自己注册 OAuth 应用换 Token），`.osz` 走第三方镜像 dl.sayobot.cn；标签：osu/osu!/谱面/beatmap/下图/下图器/osz/下载/搜索/mania/音游 |
+| osu! Key 转换器 | `osu-key-converter` | `Config\osu-key-converter\config.json`（目标 Keys / Gap / Clean / Blank / Seed / Creator / 键数过滤） | —（转换结果写**原谱面目录**，见 2.17） | `Order = 51`；音游工具；低 k → 高 k（只支持升 key）；KeyConverter 算法逐行改写 + 修复 1k/2k/HitSound 等已知 bug |
+| osu! LN 转换器 | `osu-ln-transformer` | `Config\osu-ln-transformer\config.json`（Level / LN% / Divide / Column / Gap / OD 开关 / Seed / Creator / Ignore / Original LN / Fix Error / 键数过滤） | —（同上） | `Order = 52`；音游工具；14 档 LN 转换（-3~10，含 Hold off / Random / Invert / 高斯密度）；LNTransformer 算法逐行改写 + 修复 Original LN/OD 等已知 bug |
+| osu! 等级计算器 | `osu-level-calculator` | `Config\osu-level-calculator\config.json`（显示/计算偏好） | —（只读谱面，不写文件） | `Order = 53`；音游工具；拖入 `.osu` 批量算 mania 星数（Star Rating Rebirth 改写）→ 三段拟合公式得 Level；表格展示 |
 | 视频 / 音乐播放器 | `media-player` | `Config\media-player\config.json`（读取方式 / 递归 / 追加还是覆盖 / 音量 / 播放顺序 / 快进快退步长 / 后台播放 / 恢复上次列表与位置） | `Data\media-player\playlist.json`（列表快照：路径 + 上次那首 + 听到第几秒） | `Order = 15`；本地播放器（见 2.14）：`MediaElement` 出画面，列表循环 / 单曲循环 / 随机，**左键快进快退（步长 0.1~60 秒可调）、右键上一首下一首**，**整窗全屏**（`F11` / 右下角按钮），**后台播放**（切走不断声 + 左下角迷你条），可拖放、记住上次的列表 |
 | 框架示例 | `sample-framework` | `Config\sample-framework\config.json` + `options.json` | `Data\sample-framework\`（首运行写入 `示例数据.txt`） | `Order = 900`；纯演示，整目录可删（删前把主程序里的 `ProjectReference` 与 sln 条目一起去掉）；标签：示例/模板/Data/Config/轮子演示 |
 
@@ -1875,7 +1872,7 @@ $env:YLT_SHOT="shots\published.png"; .\dist\YuLiangToolkit\YuLiangTookit.exe
 | `Data/*/` | 功能数据可能很大（以后的 swf 等）；想版本化就删掉这条规则 |
 | `FlashPlayer.exe` | 11 MB 第三方 Flash 运行时（仓库里那份现在已经没有了，规则留着无妨）：用「Flash 下载器」时它会被拷到 `Data\flash-downloader\tools\` 下，而 `Data/*/` 已忽略 |
 | `FlashGameDownloader/` | 参考用的原版 Python 小项目，**已经删除**；忽略规则留着无妨（主项目 `DefaultItemExcludes` 里那条同理） |
-| `MapDownloader/` | 移植「osu! 下图器」时参考的原版 WinForms 小项目（里面还有 bin/obj/publish 一堆二进制），**不入库**；已经移植进 `src/YuLiangToolkit.Tools.MapDownloader/`，想让它进版本库就删掉这条（或 `git add -f`） |
+| `MapDownloader/` | 改写「osu! 下图器」时参考的原版 WinForms 小项目（里面还有 bin/obj/publish 一堆二进制），**不入库**；已经改写进 `src/YuLiangToolkit.Tools.MapDownloader/`，想让它进版本库就删掉这条（或 `git add -f`） |
 
 > `Config/README.md`、`Data/README.md` 这些**说明文件是入库的**（规则只忽略了它们下面的功能子目录/生成物）。
 
@@ -1909,7 +1906,7 @@ git diff                        # 看未暂存改动
 
 | 版本 | 内容 |
 | --- | --- |
-| **v0.10.0**（当前） | **多级分类导航 + 粒子效果 + osu!mania 三件套**。① 外壳：`ITool.CategoryPath`（默认空，老工具零改动）+ `Core/Tools/ToolCatalog.cs` 任意层级目录树；主页「全部分类」卡片 → 类别页（可继续下钻子类别）→ 工具；顶部工具条改成**可点击面包屑**「主页 › 类别 › 工具」；侧边栏只列根层类别 + 根层工具；搜索仍然扁平覆盖全部工具。新增「音游工具」类别（🎵，`ShellCategories` 可扩展），`osu! 下图器` 归入其中（见 2.15）。② 粒子：移植旧项目 `ParticleEffectManager`，重写为 `ParticleEngine`（纯逻辑，38 项自检）+ `ParticleOverlay`（OnRender、按 60fps 归一、粒子上限 600、事件成对挂摘），窗口级覆盖层；主页右上角新增「⚙ 主页设置」窗口，粒子开关默认开、存 `Config\shell\config.json` 的 `showParticles`（见 2.16）。③ 新增 `Tools.OsuMania`：从旧项目 HeavenUsurperToolkit 移植 `osu-key-converter` / `osu-ln-transformer` / `osu-level-calculator` 三个工具（算法逐行照搬 + 修复旧 bug：1k/2k 崩溃、HitSound 丢失、Original LN 只最后一列、OD 被误写 0、无红点闪退等），解析器从手写 `OsuFileV14.cs` 换成 **OsuParsers 1.7.2（NuGet，MIT，本项目唯一第三方依赖）**，旧 `StarRating.cs` 移植后新旧数值对齐 10/10 差 0；三个工具与下图器同属「音游工具」（见 2.17）。④ 自检 718 → **1005** 项（导航 53 + 粒子 38 + 星数 38 + osu 158）；主页类别/设置/粒子/三工具截图冒烟。版本号 0.9.7 → 0.10.0 |
+| **v0.10.0**（当前） | **多级分类导航 + 粒子效果 + osu!mania 三件套**。① 外壳：`ITool.CategoryPath`（默认空，老工具零改动）+ `Core/Tools/ToolCatalog.cs` 任意层级目录树；主页「全部分类」卡片 → 类别页（可继续下钻子类别）→ 工具；顶部工具条改成**可点击面包屑**「主页 › 类别 › 工具」；侧边栏只列根层类别 + 根层工具；搜索仍然扁平覆盖全部工具。新增「音游工具」类别（🎵，`ShellCategories` 可扩展），`osu! 下图器` 归入其中（见 2.15）。② 粒子：新增 `ParticleEngine`（纯逻辑，38 项自检）+ `ParticleOverlay`（OnRender、按 60fps 归一、粒子上限 600、事件成对挂摘），窗口级覆盖层；主页右上角新增「⚙ 主页设置」窗口，粒子开关默认开、存 `Config\shell\config.json` 的 `showParticles`（见 2.16）。③ 新增 `Tools.OsuMania`：`osu-key-converter` / `osu-ln-transformer` / `osu-level-calculator` 三个工具（算法逐行照搬 + 修复已知 bug：1k/2k 崩溃、HitSound 丢失、Original LN 只最后一列、OD 被误写 0、无红点闪退等），解析器从手写 `OsuFileV14.cs` 换成 **OsuParsers 1.7.2（NuGet，MIT，本项目唯一第三方依赖）**，星数算法数值基准 10/10 差 0；三个工具与下图器同属「音游工具」（见 2.17）。④ 自检 718 → **1005** 项（导航 53 + 粒子 38 + 星数 38 + osu 158）；主页类别/设置/粒子/三工具截图冒烟。版本号 0.9.7 → 0.10.0 |
 | **v0.9.7** | **播放器新增「时间显示」设置**（见 2.14）：进度条左边那个时间可以选 **已播放时间**（`Elapsed`，默认，从 0:00 数到总时长）或 **剩余时间**（`Remaining`，从总时长倒数到 0:00，即「还差多少秒播完」）；右边始终是总时长。纯逻辑抽成 `MediaTimeDisplay.Format(position, duration, mode)`（倒计时夹在 0 ~ 总时长，时长未知显示 `--:--`），VM 切换下拉立即刷新（不等 200ms 计时器），设置项存 `TimeDisplayMode`（枚举按 C# 原名存字符串）。自检 713 → **718** 项。版本号 0.9.6 → 0.9.7 |
 | **v0.9.6** | **摆正两处「不正中」**（见 2.7 / 2.14）：① 播放器控制条的大播放键以前是跟着「快退 + 播放 + 快进 + 停止」整组居中，**组居中 ≠ 播放键居中**，所以全屏时它明显偏左；改成**播放键独自占中间的 `Auto` 列、左右两列都是 `*`**，全屏实测 `playCenter.x = 960`（屏幕正中，蓝圆像素中心 959），快退/快进/停止贴着它两边，设置与音量仍靠边。② 主窗口以前用 `CenterScreen` 居中（把任务栏那 48px 也算进屏幕高度，窗口看着偏低），改成 `WindowStartupLocation="Manual"` + 按 `SystemParameters.WorkArea` 算**工作区正中间**（1920×1080 + 48px 任务栏时窗口开在 `320,106`，中心 `960,516`）。自检仍 **713** 项（纯版式，真机截图核对）。版本号 0.9.5 → 0.9.6 |
 | **v0.9.5** | **修「全屏底部一条黑带、控制条最底下被裁」**（见 2.14）：`WM_GETMINMAXINFO` 把窗口撑到整块显示器后，Windows 还给窗口套了一个**工作区大小的窗口 Region**（`GetWindowRgn` = `(4,4)-(1924,1036)`），窗口矩形 1088、实际可见 / 命中区域只有 1032 —— 任务栏藏掉后底部 48px 露出黑色桌面，控制条的状态文字被裁掉。修法：`MainWindow.ClearFullscreenRegion` 在进全屏 + 400ms 看门狗里 `SetWindowRgn(hwnd, 0)`（先 `GetWindowRgn` 判断有没有区域，避免无谓重绘）；清掉 Region 后全屏窗口会真的盖住任务栏，所以失活 / 最小化时 `Topmost = false`，保证“还回去的任务栏”不会再被压住。顺带：控制条默认的 `Grid.Row="1"` 从控件本地值挪进 `ControlBarStyle`（本地值压过 DataTrigger，全屏 `Grid.Row=0` 一直没生效），新增 `YLT_PLAYER_MEASURE` 排查钩子；控制台自检在重定向（Rider / VS / 管道）时**切 UTF-8 输出**，IDE 里不再乱码（真正的控制台仍按代码页写）。自检仍 **713** 项（窗口 Region 没法无头断言，真机截图核对）。版本号 0.9.4 → 0.9.5 |
@@ -1921,7 +1918,7 @@ git diff                        # 看未暂存改动
 | v0.8.0 | **新增「视频 / 音乐播放器」**（`Tools.MediaPlayer`，见 2.14）：左中右三栏（播放区 + 进度条与控制按钮 + 播放列表）；打开文件夹（可多选、可递归）/ 打开文件 / 拖放，按「音频 + 视频 / 仅音频 / 仅视频」过滤，再开一个文件夹可**追加**或**覆盖**；列表循环 / 单曲循环 / 随机播放（随机一轮不重复）；**可调步长的快进快退（0.1 秒精度、0.1~60 秒），左键快退快进、右键上一首下一首**；音量、记住上次的列表与听到的位置。播放器抽成 `IMediaPlayback`，自检用假播放器把整条流程跑完。踩坑：控制按钮用 `⏪ ⏩ ⏹ 🔁` 字符会变成豆腐块（改矢量 Path + MDL2 图标）、`MediaElement` 的 `Loaded/UnloadedBehavior` 必须 `Manual`、设置面板要盖整列而不是只盖视频区。自检 555 → **654** 项。版本号 0.7.2 → 0.8.0 |
 | v0.7.2 | **「联机聊天室」加傻瓜模式**（默认开，见 2.12）：监听地址与端口不再让用户选，`ChooseSimpleListenPlan` 自己挑（优先双栈 `::` + 上次的端口，被占了改让系统挑）；开完房间直接把**本机 IPv4 / IPv6 地址 + 端口**列成可复制的一行行「地址:端口」（没有可用 IPv6 就直说「当前网络没有 IPv6」），内网穿透照着填本地端口即可。⚠ **IP 和端口一个都没藏**，只是不让用户「选」。顺带修一个真 bug：绑 `::` 时没开 `DualMode`，**IPv4 客户端一个都连不进来**（自检 `CheckDualStack` 用真连接兜住，去掉修复会红 3 条）。自检 535 → **555** 项。版本号 0.7.1 → 0.7.2 |
 | v0.7.1 | **「Flash 下载器」新增 ArmorGames / Kongregate 两站的网页 swf 抓取**（见 2.11）：后缀字母新增 `d` / `e`；ArmorGames 从 `/play/编号` 页的 `<param name="movie">` / `<embed src>` 读 swf 与宽高，页面里没有 swf 的（HTML5 游戏）自动退回整页下载；Kongregate 走「游戏页 → `…/embed`（`iframeConfig`）→ frame 页（`swf_location`）」三跳抓 swf，并排掉它自己的 `API_AS3_*.swf`。顺带：粘 `.swf` 直链也能直接下载；`ResolveAsync` 的未知域名兜底也能认出这两家的页面结构。自检 501 → 535 项，另加一个**默认不跑**的联网验收开关 `YLT_LIVE_SITES=1`。版本号 0.7.0 → 0.7.1 |
-| v0.7.0 | **新增「osu! 下图器」**（`Tools.MapDownloader`，见 2.13）：把仓库根那个独立的 WinForms 小工具（`MapDownloader/`）移植进来 —— 填 osu! 的 Client ID / Secret 换 Token，搜谱面集（模式 / 状态 / 排序 / NSFW / 日期 / Key 数），勾选或全量下载 `.osz`（含视频 `full` / 无视频 `novideo`）；下载走第三方镜像、并发 5、跳过已存在、**取消不留半个文件**。自检 441 → **501** 项（新增 `MapDownloaderChecks` 60 项，含"自检自己起假镜像真下载"）。版本号 0.6.0 → 0.7.0 |
+| v0.7.0 | **新增「osu! 下图器」**（`Tools.MapDownloader`，见 2.13）：把仓库根那个独立的 WinForms 小工具（`MapDownloader/`）改写进来 —— 填 osu! 的 Client ID / Secret 换 Token，搜谱面集（模式 / 状态 / 排序 / NSFW / 日期 / Key 数），勾选或全量下载 `.osz`（含视频 `full` / 无视频 `novideo`）；下载走第三方镜像、并发 5、跳过已存在、**取消不留半个文件**。自检 441 → **501** 项（新增 `MapDownloaderChecks` 60 项，含"自检自己起假镜像真下载"）。版本号 0.6.0 → 0.7.0 |
 | v0.6.0 | **新增「联机聊天室」**（`Tools.ChatRoom`）：主机开 TCP 端口 / 客户端填 IP/域名 + 端口，局域网与内网穿透通用；文字 / 图片 / 音频 / 视频 / 任意文件双向发送；**每次连接新建一个时间命名的会话文件夹**；**单次流量上限 + 用量指示**。自研帧协议见 2.12，自检在 `127.0.0.1` 上真开一局双向收发。自检 355 → 433（v0.7.2 时共 **555** 项） |
 | v0.6.0 后续微调 | 修 `ComboBoxStyle` 的两个缺陷（缺 `PART_EditableTextBox` → 选中后一片空白；`Margin="10,6"` 顶得文字偏下）+ 补 `MinHeight`；宽度改成按内容定（数字框 `Width="Auto"`、底部三栏 5:6:5）；修「房间开着却显示未监听」（`IsOnline` 置位顺序）；**监听地址从下拉框改成输入框**。教训：layout 类问题要「先量内容真实宽度 → 按内容定宽 → 截图/UIA 实测」，别拍像素值 |
 | v0.5.3 | 滚轮滚动链（`ScrollChaining`）第一版：原实现自己调 `LineUp/LineDown` 滚外层，比原生慢得多（用户指出），于是改成"**什么都不做、放行给外层**"；顺带修好框架示例模板里没起名的 `ScrollViewer`（它导致那个列表滚轮完全失效）。⚠ **"放行"这条思路是错的**（WPF 在内层滚不动时照样吃事件），见下面那行 |

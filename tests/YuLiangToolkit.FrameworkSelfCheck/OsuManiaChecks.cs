@@ -14,8 +14,7 @@ namespace YuLiangToolkit.FrameworkSelfCheck;
 /// 「osu!mania 转谱」核心算法的自检：解析桥（OsuParsers 往返）/ 星数 / 等级 / 转 K / 转 LN / 批量入口。
 ///
 /// <para>全部用临时目录里的合成谱面跑，不碰仓库的 Data/Config。
-/// 这里断言的是「旧版 HeavenUsurperToolkit 的行为在移植后保持不变」以及本次明确修掉的几个旧 bug
-/// （详见 docs/porting/osu-core-notes.md）。</para>
+/// 这里断言的是转换 / 计算的核心行为，以及本次明确修掉的几个已知 bug。</para>
 /// </summary>
 public static class OsuManiaChecks
 {
@@ -314,12 +313,12 @@ SliderTickRate:1
             Math.Abs(after.StarRating - before.StarRating) < 1e-6,
             $"{before.StarRating:R} vs {after.StarRating:R}");
 
-        // 输出文件名：旧版规则 = 原目录 + {Artist} - {Title} ({Creator}) [{Difficulty}] + .osu
+        // 输出文件名：早期版本规则 = 原目录 + {Artist} - {Title} ({Creator}) [{Difficulty}] + .osu
         var renamed = Reload(samplePath);
         renamed.Beatmap.Metadata.Creator = "新谱师";
         renamed.Beatmap.Metadata.Difficulty = "7K Test";
         string expectedName = "测试艺术家 - 测试歌曲 (新谱师) [7K Test].osu";
-        check("命名：BuildOutputFileName 按旧版规则拼",
+        check("命名：BuildOutputFileName 按早期版本规则拼",
             renamed.BuildOutputFileName() == expectedName,
             $"{renamed.BuildOutputFileName()} != {expectedName}");
         check("命名：输出目录 = 原文件目录",
@@ -378,7 +377,7 @@ SliderTickRate:1
         try { _ = empty.TimingPointAt(0); } catch (InvalidOperationException) { emptyThrew = true; }
         check("时间点：空 TimingPoints 抛 InvalidOperationException", emptyThrew);
 
-        // 只有绿线 → 旧版会下标越界；新版抛带说明的异常
+        // 只有绿线 → 早期版本会下标越界；新版抛带说明的异常
         var greenOnly = new OsuManiaBeatmap();
         greenOnly.TimingPoints.Add(new OsuTimingPoint { Time = 0, BeatLength = -50, Inherited = true });
         string? greenMessage = null;
@@ -387,7 +386,7 @@ SliderTickRate:1
         check("时间点：只有绿线时抛带说明的异常", greenMessage is not null && greenMessage.Contains("红线"),
             greenMessage ?? "(未抛)");
 
-        // 列坐标：3~10K 与旧版 KeyX 常量表逐列一致（表 = floor(512*(col+0.5)/keys)）
+        // 列坐标：3~10K 与早期版本 KeyX 常量表逐列一致（表 = floor(512*(col+0.5)/keys)）
         var mismatches = new List<string>();
         for (int keys = 3; keys <= 10; keys++)
         {
@@ -401,7 +400,7 @@ SliderTickRate:1
                 }
             }
         }
-        check("列坐标：3~10K 与旧版 KeyX 常量表完全一致", mismatches.Count == 0, string.Join(",", mismatches.Take(5)));
+        check("列坐标：3~10K 与早期版本 KeyX 常量表完全一致", mismatches.Count == 0, string.Join(",", mismatches.Take(5)));
 
         check("列坐标：4K = 64/192/320/448",
             OsuManiaBeatmap.ColumnX(4, 0) == 64 && OsuManiaBeatmap.ColumnX(4, 1) == 192
@@ -409,7 +408,7 @@ SliderTickRate:1
         check("列坐标：7K = 36/109/182/256/329/402/475",
             Enumerable.Range(0, 7).Select(c => OsuManiaBeatmap.ColumnX(7, c))
                 .SequenceEqual(new[] { 36, 109, 182, 256, 329, 402, 475 }));
-        check("列坐标：1K / 2K 不再越界（旧版 bug 修复）",
+        check("列坐标：1K / 2K 不再越界（早期版本 bug 修复）",
             OsuManiaBeatmap.ColumnX(1, 0) == 256
             && OsuManiaBeatmap.ColumnX(2, 0) == 128 && OsuManiaBeatmap.ColumnX(2, 1) == 384);
 
@@ -453,7 +452,7 @@ SliderTickRate:1
         double srRate15 = StarRatingCalculator.CalculateStarRating(map.HitObjects, 8, 4, 1.5);
         check("星数：rate=1.5 与 1.0 不同", Math.Abs(srRate15 - sr) > 1e-6, $"{sr:R} vs {srRate15:R}");
 
-        check("星数：空谱面返回 0（旧版抛异常）",
+        check("星数：空谱面返回 0（早期版本抛异常）",
             StarRatingCalculator.CalculateStarRating(new List<ManiaNote>(), 8, 4) == 0);
         check("星数：越界键数 / 异常输入不抛异常（返回 0）",
             StarRatingCalculator.CalculateStarRating(new List<ManiaNote> { new(0, 0, 0) }, 8, 0) == 0);
@@ -643,11 +642,11 @@ SliderTickRate:1
             creatorEmpty.Beatmap.Metadata.Creator);
         var creatorSpace = Reload(samplePath);
         KeyConverterEngine.Apply(creatorSpace.Beatmap, new KeyConverterOptions { TargetKeys = 7, CreatorIsChecked = true, Creator = "   " });
-        check("转K：Creator 只填空格时按旧版 IsNullOrEmpty 语义原样替换",
+        check("转K：Creator 只填空格时按早期版本 IsNullOrEmpty 语义原样替换",
             creatorSpace.Beatmap.Metadata.Creator == "   ",
             $"'{creatorSpace.Beatmap.Metadata.Creator}'");
 
-        // HitSound / Extras 保留（旧版 bug 修复）
+        // HitSound / Extras 保留（早期版本 bug 修复）
         var hsFile = Reload(samplePath);
         foreach (var note in hsFile.Beatmap.HitObjects)
         {
@@ -659,28 +658,28 @@ SliderTickRate:1
             note.Extras.SampleFileName = "hit.wav";
         }
         KeyConverterEngine.Apply(hsFile.Beatmap, new KeyConverterOptions { TargetKeys = 7 });
-        check("转K：转换后 HitSound / Extras 保留（旧版会全丢）",
+        check("转K：转换后 HitSound / Extras 保留（早期版本会全丢）",
             hsFile.Beatmap.HitObjects.Count > 0 && hsFile.Beatmap.HitObjects.All(n =>
                 n.HitSound == 7 && n.Extras.SampleSet == 2 && n.Extras.AdditionSet == 3
                 && n.Extras.CustomIndex == 5 && n.Extras.Volume == 60 && n.Extras.SampleFileName == "hit.wav"),
             string.Join(",", hsFile.Beatmap.HitObjects.Take(3).Select(n => $"{n.HitSound}/{n.Extras.SampleSet}/{n.Extras.SampleFileName}")));
 
-        // 旧版会死循环的输入：目标键数 > 2 × 源键数（2K→4K / 4K→9K 等），新版必须能跑完
+        // 早期版本会死循环的输入：目标键数 > 2 × 源键数（2K→4K / 4K→9K 等），新版必须能跑完
         string twoKPath = WriteText(dir, "kc-2k.osu", SimpleMapText(2, 8, noteCount: 60));
         var twoK = Reload(twoKPath);
         var twoKResult = KeyConverterEngine.Apply(twoK.Beatmap, new KeyConverterOptions { TargetKeys = 4, Gap = 5 });
-        check("转K：2K→4K 能跑完（旧版此处死循环，已修）",
+        check("转K：2K→4K 能跑完（早期版本此处死循环，已修）",
             twoKResult.Converted && twoK.Beatmap.KeyCount == 4
             && twoK.Beatmap.HitObjects.All(n => n.Column is >= 0 and <= 3),
             twoKResult.SkipReason ?? "");
         string fourToNinePath = WriteText(dir, "kc-4to9.osu", SimpleMapText(4, 8, noteCount: 120));
         var fourToNine = Reload(fourToNinePath);
         var fourToNineResult = KeyConverterEngine.Apply(fourToNine.Beatmap, new KeyConverterOptions { TargetKeys = 9, Gap = 10 });
-        check("转K：4K→9K 能跑完（旧版此处死循环，已修）",
+        check("转K：4K→9K 能跑完（早期版本此处死循环，已修）",
             fourToNineResult.Converted && fourToNine.Beatmap.HitObjects.All(n => n.Column is >= 0 and <= 8),
             fourToNineResult.SkipReason ?? "");
 
-        // Clean=0：旧版可达行为就是“不去子弹”，转换仍成功
+        // Clean=0：早期版本可达行为就是“不去子弹”，转换仍成功
         var clean0 = Reload(bigPath);
         var clean0Result = KeyConverterEngine.Apply(clean0.Beatmap, new KeyConverterOptions { TargetKeys = 7, Clean = 0, Gap = 10 });
         check("转K：Clean=0 不做去子弹但转换成功", clean0Result.Converted && clean0.Beatmap.HitObjects.Count > 0,
@@ -691,7 +690,7 @@ SliderTickRate:1
         var gap0Result = KeyConverterEngine.Apply(gap0.Beatmap, new KeyConverterOptions { TargetKeys = 7, Gap = 0 });
         check("转K：Gap=0（整张一次处理）成功", gap0Result.Converted, gap0Result.SkipReason ?? "");
 
-        // 空谱面：转换成功、键数改变、对象仍为空（旧版也是这样写文件）
+        // 空谱面：转换成功、键数改变、对象仍为空（早期版本也是这样写文件）
         var emptyMap = new OsuManiaBeatmap { KeyCount = 4, OverallDifficulty = 8 };
         emptyMap.TimingPoints.Add(new OsuTimingPoint { Time = 0, BeatLength = 500 });
         var emptyResult = KeyConverterEngine.Apply(emptyMap, new KeyConverterOptions { TargetKeys = 7 });
@@ -823,7 +822,7 @@ SliderTickRate:1
             KeepOverallDifficulty = true,
             OverallDifficulty = 0,
         });
-        check("转LN：默认保留原谱 OD（修复旧版把 OD 写成 0 的问题）",
+        check("转LN：默认保留原谱 OD（修复早期版本把 OD 写成 0 的问题）",
             Math.Abs(odKeep.Beatmap.OverallDifficulty - 8) < 1e-6,
             odKeep.Beatmap.OverallDifficulty.ToString("R"));
 
@@ -839,7 +838,7 @@ SliderTickRate:1
             Math.Abs(odWrite.Beatmap.OverallDifficulty - 9.5) < 1e-6,
             odWrite.Beatmap.OverallDifficulty.ToString("R"));
 
-        // OriginalLN：勾选后源谱面所有 LN 都保留（旧版只保留最后一列，已修）
+        // OriginalLN：勾选后源谱面所有 LN 都保留（早期版本只保留最后一列，已修）
         var originalLn = Reload(samplePath);
         var sourceLns = originalLn.Beatmap.HitObjects
             .Where(n => n.StartTime != n.EndTime)
@@ -857,7 +856,7 @@ SliderTickRate:1
         });
         bool allSourceLnsKept = sourceLns.Count > 0 && sourceLns.All(ln => originalLn.Beatmap.HitObjects.Any(n =>
             n.Column == ln.Column && n.StartTime == ln.StartTime && n.EndTime == ln.EndTime && n.IsLongNote));
-        check("转LN：OriginalLN 勾选时保留源谱面全部 LN（旧版漏列 bug 已修）",
+        check("转LN：OriginalLN 勾选时保留源谱面全部 LN（早期版本漏列 bug 已修）",
             originalLnResult.Converted && allSourceLnsKept,
             $"{sourceLns.Count} 条源 LN，保留 {originalLn.Beatmap.HitObjects.Count(n => n.StartTime != n.EndTime)} 条");
 

@@ -2,10 +2,9 @@ namespace YuLiangToolkit.Core.Particles;
 
 /// <summary>
 /// 鼠标粒子效果的**纯逻辑引擎**：不碰 WPF、不依赖 <c>Application.Current</c> / 渲染线程，
-/// 自检可以直接 new 出来逐帧断言（旧版 HeavenUsurperToolkit 把「粒子对象 + Ellipse 控件 + Canvas」
-/// 全揉在一起，没法无头测）。
+/// 自检可以直接 new 出来逐帧断言。
 ///
-/// <para><b>和旧版的对应关系</b>（旧代码在 <c>HeavenUsurperToolkit-master\ParticleEffectManager.cs</c>）：</para>
+/// <para><b>行为要点</b>：</para>
 /// <list type="bullet">
 ///   <item>每帧从鼠标位置生成粒子，方向随机 0~2π、自身速度 1~3、寿命 <see cref="MinLifeSpan"/>~<see cref="MaxLifeSpan"/>；</item>
 ///   <item>全局速度默认 <see cref="DefaultSpeed"/>，最大 <see cref="MaxSpeed"/>，每帧衰减 <see cref="SpeedDecayPerFrame"/>；</item>
@@ -15,12 +14,12 @@ namespace YuLiangToolkit.Core.Particles;
 ///   <item>关掉开关就清空、不再生成（<see cref="Active"/> = false）。</item>
 /// </list>
 ///
-/// <para><b>相对旧版修掉的两个毛病</b>：</para>
+/// <para><b>两个关键修正</b>：</para>
 /// <list type="number">
-///   <item><b>高刷屏速度翻倍</b>：旧版按「帧」累加，144Hz 屏上粒子速度快 2.4 倍、寿命也短 2.4 倍。
+///   <item><b>高刷屏速度翻倍</b>：按「帧」固定累加时，144Hz 屏上粒子速度快 2.4 倍、寿命也短 2.4 倍。
 ///   这里所有时间量都以 60fps 为基准帧（<see cref="ReferenceFps"/>），<see cref="Update(double)"/>
 ///   接真实经过时间换算出来的帧步长，于是「每秒位移 / 每秒生成数 / 存活秒数」与刷新率无关；</item>
-///   <item><b>粒子上限</b>：旧版把生成数量点满后可以无限往 Canvas 里塞 Ellipse。这里硬上限
+///   <item><b>粒子上限</b>：生成数量点满后不能无限堆积，否则会 OOM / GC 抖动。这里硬上限
 ///   <see cref="MaxParticles"/> 个，到顶就丢弃新粒子，永不无限增长（也不会有 GC 抖动）。</item>
 /// </list>
 ///
@@ -31,7 +30,7 @@ namespace YuLiangToolkit.Core.Particles;
 /// </summary>
 public sealed class ParticleEngine
 {
-    // ---------------- 行为常量（数值尽量与旧版一致，改了记得同步改自检） ----------------
+    // ---------------- 行为常量（数值尽量与早期版本一致，改了记得同步改自检） ----------------
 
     /// <summary>基准帧率：<see cref="Update(double)"/> 的步长 1.0 = 60fps 的一帧。</summary>
     public const double ReferenceFps = 60.0;
@@ -42,7 +41,7 @@ public sealed class ParticleEngine
     /// <summary>全局速度上限（左键爆发时拉满）。</summary>
     public const double MaxSpeed = 3.0;
 
-    /// <summary>全局速度每基准帧的衰减量（旧版 <c>SpeedDecay</c>）。</summary>
+    /// <summary>全局速度每基准帧的衰减量（早期版本 <c>SpeedDecay</c>）。</summary>
     public const double SpeedDecayPerFrame = 0.1;
 
     /// <summary>每基准帧生成的粒子数（安静值）。</summary>
@@ -51,7 +50,7 @@ public sealed class ParticleEngine
     /// <summary>每基准帧生成数量的上限（左/右键爆发时拉满）。</summary>
     public const int MaxSpawnPerFrame = 10;
 
-    /// <summary>生成数量每基准帧的衰减量（旧版 <c>ParticleCountDecay</c>；内部用 double，取整时向下取）。</summary>
+    /// <summary>生成数量每基准帧的衰减量（早期版本 <c>ParticleCountDecay</c>；内部用 double，取整时向下取）。</summary>
     public const double SpawnDecayPerFrame = 0.5;
 
     /// <summary>寿命下限（基准帧）。</summary>
@@ -60,7 +59,7 @@ public sealed class ParticleEngine
     /// <summary>寿命上限（基准帧；随机取 [30, 90)）。</summary>
     public const double MaxLifeSpan = 90;
 
-    /// <summary>粒子初始直径（DIP，旧版固定 5px）。</summary>
+    /// <summary>粒子初始直径（DIP，早期版本固定 5px）。</summary>
     public const double BaseSize = 5.0;
 
     /// <summary>粒子上限（安全阀：到顶就不再生成，永不无限增长）。</summary>
@@ -159,15 +158,15 @@ public sealed class ParticleEngine
     /// <summary>换随机种子（自检可复现；正常代码不需要调用）。</summary>
     public void Reseed(int seed) => _random = new Random(seed);
 
-    /// <summary>左键爆发：全局速度、每帧数量都拉到最大（等价旧版 <c>TriggerParticleSpeedBoost</c> + <c>TriggerParticleCountBoost</c>）。</summary>
+    /// <summary>左键爆发：全局速度、每帧数量都拉到最大（等价早期版本 <c>TriggerParticleSpeedBoost</c> + <c>TriggerParticleCountBoost</c>）。</summary>
     public void BoostSpeedAndCount()
     {
-        if (!_active) return;   // 与旧版一致：开关关着时点击不生效
+        if (!_active) return;   // 与早期版本一致：开关关着时点击不生效
         _speed = MaxSpeed;
         _count = MaxSpawnPerFrame;
     }
 
-    /// <summary>右键爆发：只把每帧数量拉到最大（等价旧版 <c>TriggerParticleCountBoost</c>）。</summary>
+    /// <summary>右键爆发：只把每帧数量拉到最大（等价早期版本 <c>TriggerParticleCountBoost</c>）。</summary>
     public void BoostCount()
     {
         if (!_active) return;
@@ -181,7 +180,7 @@ public sealed class ParticleEngine
     /// 推进一帧。<paramref name="frameSteps"/> 是「这一帧相当于几个 60fps 基准帧」：
     /// 界面层用 <c>经过秒数 × 60</c> 算出来，于是 144Hz 屏每帧约 0.42、60Hz 屏为 1.0，速度/寿命/生成率都一致。
     ///
-    /// <para>顺序与旧版一致：先衰减全局速度/数量 → 生成新粒子 → 再统一更新位置与寿命（所以刚生成的
+    /// <para>顺序与早期版本一致：先衰减全局速度/数量 → 生成新粒子 → 再统一更新位置与寿命（所以刚生成的
     /// 粒子当帧也会先老 1 帧、动 1 帧）。</para>
     /// </summary>
     /// <param name="frameSteps">基准帧步长；&lt;=0 / NaN 视为不动，超大值按 <see cref="MaxFrameStep"/> 截断。</param>
@@ -189,7 +188,7 @@ public sealed class ParticleEngine
     {
         if (!_active)
         {
-            // 与旧版一致：未启用时把残留粒子清掉（正常路径在 Active 的 setter 里就清了，这里是兜底）
+            // 与早期版本一致：未启用时把残留粒子清掉（正常路径在 Active 的 setter 里就清了，这里是兜底）
             if (_particles.Count > 0) Clear();
             return;
         }
@@ -205,7 +204,7 @@ public sealed class ParticleEngine
             if (_speed < DefaultSpeed) _speed = DefaultSpeed;
         }
 
-        // 2) 生成数量衰减（double 递减、取整时向下取整 —— 与旧版「-0.5 再 (int) 截断」等效）
+        // 2) 生成数量衰减（double 递减、取整时向下取整 —— 与早期版本「-0.5 再 (int) 截断」等效）
         if (_count > DefaultSpawnPerFrame)
         {
             _count -= SpawnDecayPerFrame * frameSteps;
@@ -253,9 +252,9 @@ public sealed class ParticleEngine
             X = EmitterX,
             Y = EmitterY,
             Angle = _random.NextDouble() * Math.PI * 2,
-            Speed = 1 + _random.NextDouble() * 2,          // 旧版：random 1~3
+            Speed = 1 + _random.NextDouble() * 2,          // 早期版本：random 1~3
             Age = 0,
-            LifeSpan = _random.Next((int)MinLifeSpan, (int)MaxLifeSpan),   // 旧版：30~89
+            LifeSpan = _random.Next((int)MinLifeSpan, (int)MaxLifeSpan),   // 早期版本：30~89
         });
         TotalSpawned++;
     }

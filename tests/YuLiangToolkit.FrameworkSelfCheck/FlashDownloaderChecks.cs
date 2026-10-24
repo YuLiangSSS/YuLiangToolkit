@@ -580,7 +580,7 @@ internal static class FlashDownloaderChecks
             broken.Width == -1 && broken.ErrorText.Contains("第3行"), broken.ErrorText);
         var missing = SwfNetPathIni.FromFile(Path.Combine(work, "没有这个文件.ini"), ".swf");
         report("ini 不存在时不抛异常（IsMissing 立起来）", missing.IsMissing && missing.NetPath.Length == 0);
-        report("旧版 ini（没有类型行）会提示需要更新",
+        report("早期版本 ini（没有类型行）会提示需要更新",
             SwfNetPathIni.Parse("https://a/b.swf", ".swf").HasProblem);
         report("文件夹后缀 → ini 类型",
             SwfNetPathIni.KindFromFolderExt(".swf") == GameFolderKind.Swf

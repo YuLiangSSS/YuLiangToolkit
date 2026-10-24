@@ -1,12 +1,8 @@
-// 来源：HeavenUsurperToolkit-master/StarRating.cs 的移植。
-// 该实现是第三方 "Star Rating Rebirth / srcalc" 思路的 C# 重写（旧文件里就有说明，不是 osu!lazer 源码直拷）；
-// 同目录 Utils.cs / EasyObject.cs 的数学工具来自 ppy osu!lazer（MIT）。
+// 第三方 "Star Rating Rebirth / srcalc" 思路的 C# 重写（不是 osu!lazer 源码直拷；
+// 同目录 Utils.cs / EasyObject.cs 的数学工具来自 ppy osu!lazer，MIT）。
 //
-// 本项目把旧文件逐行照搬过来：只改了命名空间、把 ManiaHitObject 换成本项目的 ManiaNote、
-// 把 List 入参放宽成 IReadOnlyList，并在最外层加了 try/catch（旧版是 OsuFileV14 的构造器在调用处 catch 的）。
-//
-// ⚠ 这是“星数计算”的移植件：公式、常量、数组顺序、平滑窗口、百分位、边界条件全都与旧版一致。
-//   不要为了“更好读”去合并循环 / 提常量 / 改浮点运算顺序，结果会变。
+// ⚠ 公式、常量、数组顺序、平滑窗口、百分位、边界条件都不要为了“更好读”去
+//   合并循环 / 提常量 / 改浮点运算顺序，否则结果会变。
 
 using System;
 using System.Collections.Generic;
@@ -16,21 +12,21 @@ using YuLiangToolkit.Tools.OsuMania.Core;
 namespace YuLiangToolkit.Tools.OsuMania.Core.Difficulty;
 
 /// <summary>
-/// osu!mania 星数计算（移植自 HeavenUsurperToolkit 的 StarRating.cs；该算法是第三方
+/// osu!mania 星数计算（该算法是第三方
 /// “Star Rating Rebirth / srcalc” 思路的 C# 重写，不是 osu!lazer 源码直拷；utils 部分来自 ppy osu!lazer，MIT）。
 ///
 /// <para>入口：<see cref="CalculateStarRating(IReadOnlyList{ManiaNote}, double, int, double)"/>。
-/// 与旧版一致：任何计算失败（空谱、Timing / 键数异常等）都返回 0，不把异常抛给界面。</para>
+/// 任何计算失败（空谱、Timing / 键数异常等）都返回 0，不把异常抛给界面。</para>
 /// </summary>
 public static class StarRatingCalculator
 {
     /// <summary>
-    /// 计算星数。失败（空谱面、键数非法等）返回 0（旧版在 <c>OsuFileV14</c> 构造器里用 try/catch 兜底，
+    /// 计算星数。失败（空谱面、键数非法等）返回 0（早期版本在 <c>OsuFileV14</c> 构造器里用 try/catch 兜底，
     /// 行为一致）。
     /// </summary>
     /// <param name="objects">打击物（列号 0 基；LN 的 EndTime 与 StartTime 不同）。</param>
     /// <param name="od">整体难度 OD。</param>
-    /// <param name="keys">键数（1~10；旧版算法内部按 10 列上限建表）。</param>
+    /// <param name="keys">键数（1~10；早期版本算法内部按 10 列上限建表）。</param>
     /// <param name="rate">速率（默认 1.0；非 1 时先按 rate 缩放时间）。</param>
     public static double CalculateStarRating(IReadOnlyList<ManiaNote> objects, double od, int keys, double rate = 1.0)
     {
@@ -48,7 +44,7 @@ public static class StarRatingCalculator
     public static double CalculateStarRating(OsuManiaBeatmap beatmap, double rate = 1.0)
         => CalculateStarRating(beatmap.HitObjects, beatmap.OverallDifficulty, beatmap.KeyCount, rate);
 
-    /// <summary>真正的计算主体（旧版 <c>StarRatingCalculator.CalculateStarRating</c> 的逐行移植）。</summary>
+    /// <summary>真正的计算主体（早期版本 <c>StarRatingCalculator.CalculateStarRating</c> 的逐行改写）。</summary>
     private static double CalculateStarRatingCore(IReadOnlyList<ManiaNote> objects, double od, int keys, double rate)
     {
         var hit = EasyObject.FromManiaObjects(objects);

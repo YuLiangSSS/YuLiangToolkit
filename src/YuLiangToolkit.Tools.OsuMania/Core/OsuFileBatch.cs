@@ -76,7 +76,7 @@ public sealed class OsuBatchResult
 }
 
 /// <summary>
-/// 批量处理入口（旧版“拖文件夹进来批量转换”行为的纯逻辑版，可直接被界面 / 自检复用）。
+/// 批量处理入口（早期版本“拖文件夹进来批量转换”行为的纯逻辑版，可直接被界面 / 自检复用）。
 ///
 /// <para>流程：拖入的路径集合 → 递归枚举 <c>.osu</c>（大小写不敏感）→ 逐个 <see cref="OsuBeatmapFile.TryLoad"/>
 /// → 引擎转换 → <see cref="OsuBeatmapFile.Save"/> 写文件 → 汇总结果。单个文件失败不会中断整批。</para>
@@ -93,7 +93,7 @@ public static class OsuFileBatch
     /// <summary>识别的谱面扩展名。</summary>
     public const string OsuExtension = ".osu";
 
-    /// <summary>路径是否是 .osu 文件（扩展名大小写不敏感，与旧版 <c>Path.GetExtension(s).ToLower() == ".osu"</c> 一致）。</summary>
+    /// <summary>路径是否是 .osu 文件（扩展名大小写不敏感，与早期版本 <c>Path.GetExtension(s).ToLower() == ".osu"</c> 一致）。</summary>
     public static bool IsOsuFile(string? path)
         => !string.IsNullOrEmpty(path) && string.Equals(Path.GetExtension(path), OsuExtension, StringComparison.OrdinalIgnoreCase);
 
@@ -101,7 +101,7 @@ public static class OsuFileBatch
     /// 把「拖入的文件 / 文件夹」展开成 .osu 文件列表：文件直接收（只收 .osu），文件夹递归收（只收 .osu）。
     /// 重复路径去重（Windows 下忽略大小写）；不存在的路径忽略；没权限的子目录跳过，不抛异常。
     ///
-    /// <para>返回顺序：先按拖入顺序处理文件，文件夹内再按目录名 / 文件名排序（旧版依赖系统枚举顺序，新版固定排序，
+    /// <para>返回顺序：先按拖入顺序处理文件，文件夹内再按目录名 / 文件名排序（早期版本依赖系统枚举顺序，新版固定排序，
     /// 只为让批量结果可复现）。</para>
     /// </summary>
     public static IReadOnlyList<string> CollectOsuFiles(IEnumerable<string>? droppedPaths)

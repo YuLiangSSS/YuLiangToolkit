@@ -39,7 +39,7 @@ public sealed class LevelRowItem : ObservableObject
     /// <summary>所在文件夹（「打开文件夹」用）。</summary>
     public string Folder { get; }
 
-    /// <summary>等级（旧版拟合公式换算；无法换算时显示 "-"）。</summary>
+    /// <summary>等级（拟合公式换算；无法换算时显示 "-"）。</summary>
     public string LevelText
     {
         get => _levelText;

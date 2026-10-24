@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- 功能 8：osu!mania 转谱工具（从 HeavenUsurperToolkit 移植）。
+  <!-- 功能 8：osu!mania 转谱工具（从 早期版本 改写）。
        核心算法（转 K / 转 LN / 星数 / 等级）全部是与界面无关的纯逻辑，
        谱面解析交给 OsuParsers（NuGet 1.7.2，MIT）；这里是 Core/引擎，界面在 Views/ 与 ViewModels/。 -->
   <PropertyGroup>

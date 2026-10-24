@@ -19,7 +19,7 @@ namespace YuLiangToolkit.Tools.OsuMania.Core;
 /// <summary>
 /// .osu 文件的解析 / 保存桥：OsuParsers（第三方解析库）↔ 本项目的 <see cref="OsuManiaBeatmap"/> 工作模型。
 ///
-/// <para><b>为什么要有这一层</b>：旧项目自己手写解析器（<c>OsuFileV14</c>）；新版用 OsuParsers 读 / 写，
+/// <para><b>为什么要有这一层</b>：早期版本自己手写解析器（<c>OsuFileV14</c>）；新版用 OsuParsers 读 / 写，
 /// 但转谱 / 星数等算法不应该直接依赖第三方类型，所以统一在这里做双向映射。
 /// 算法层只看到 <see cref="OsuManiaBeatmap"/> / <see cref="ManiaNote"/>。</para>
 ///
@@ -28,17 +28,17 @@ namespace YuLiangToolkit.Tools.OsuMania.Core;
 /// 转谱算法本身（<see cref="KeyConverterEngine"/> / <see cref="LnTransformerEngine"/>）是纯内存计算，
 /// 但为了可复现的随机顺序，同一局里请单线程按文件顺序跑。</para>
 ///
-/// <para><b>写文件不是覆盖原文件</b>（照搬旧版 <c>OsuFileV14.WriteFile</c>）：
+/// <para><b>写文件不是覆盖原文件</b>（照搬早期版本 <c>OsuFileV14.WriteFile</c>）：
 /// 输出到「原文件所在目录」+「按元数据拼出来的文件名」：
 /// <c>{Artist} - {Title} ({Creator}) [{Difficulty}]</c>（去掉 Windows 非法字符 <c>\ / : * ? " &lt; &gt; |</c>）+ <c>.osu</c>。
 /// 因为转谱工具会改 Creator / Difficulty，正常会自然生成新文件，不会覆盖原谱。</para>
 /// </summary>
 public sealed class OsuBeatmapFile
 {
-    /// <summary>Windows 文件名非法字符（旧版 <c>OsuFileV14.ForbiddenChar</c>，逐字符照搬）。</summary>
+    /// <summary>Windows 文件名非法字符（早期版本 <c>OsuFileV14.ForbiddenChar</c>，逐字符照搬）。</summary>
     public static readonly char[] ForbiddenChars = { '\\', '/', ':', '*', '?', '"', '<', '>', '|' };
 
-    /// <summary>旧版固定扩展名。</summary>
+    /// <summary>早期版本固定扩展名。</summary>
     public const string FileExtension = ".osu";
 
     /// <summary>
@@ -72,7 +72,7 @@ public sealed class OsuBeatmapFile
     /// </summary>
     public Beatmap Source { get; }
 
-    /// <summary>谱面星数（加载时算好；旧版 <c>OsuFileV14.StarRating</c> 同样是加载时算一次）。</summary>
+    /// <summary>谱面星数（加载时算好；早期版本 <c>OsuFileV14.StarRating</c> 同样是加载时算一次）。</summary>
     public double StarRating => Beatmap.StarRating;
 
     /// <summary>原文件名（不含路径）。</summary>
@@ -174,9 +174,9 @@ public sealed class OsuBeatmapFile
                 continue;
             }
 
-            // 旧版读文件时：actualColumn = floor(x * CircleSize / 512)。库的 GetColumn 就是同一公式。
+            // 早期版本读文件时：actualColumn = floor(x * CircleSize / 512)。库的 GetColumn 就是同一公式。
             int column = mania.GetColumn(keys);
-            // 旧版对越界列号会直接抛异常（KeyX 越界）；这里夹取到合法列，避免一个坏 x 让整批文件失败。
+            // 早期版本对越界列号会直接抛异常（KeyX 越界）；这里夹取到合法列，避免一个坏 x 让整批文件失败。
             column = Math.Clamp(column, 0, keys - 1);
 
             bool isLongNote = ho is ParserHoldNote;
@@ -199,7 +199,7 @@ public sealed class OsuBeatmapFile
             beatmap.HitObjects.Add(note);
         }
 
-        // 与旧版 OsuFileV14 构造时一致：加载后立刻算一次星数（失败返回 0）。
+        // 与早期版本 OsuFileV14 构造时一致：加载后立刻算一次星数（失败返回 0）。
         try
         {
             beatmap.StarRating = StarRatingCalculator.CalculateStarRating(beatmap);
@@ -224,11 +224,11 @@ public sealed class OsuBeatmapFile
         return file!;
     }
 
-    /// <summary>读一个文件里的键数（旧版 <c>(int)General.CircleSize</c>，这里同样截断取整）。</summary>
+    /// <summary>读一个文件里的键数（早期版本 <c>(int)General.CircleSize</c>，这里同样截断取整）。</summary>
     private static int KeyCountOf(Beatmap source) => (int)source.DifficultySection.CircleSize;
 
     /// <summary>
-    /// 按旧版规则拼输出文件名：<c>{Artist} - {Title} ({Creator}) [{Difficulty}].osu</c>，去掉非法字符。
+    /// 按早期版本规则拼输出文件名：<c>{Artist} - {Title} ({Creator}) [{Difficulty}].osu</c>，去掉非法字符。
     /// </summary>
     public string BuildOutputFileName()
     {
@@ -238,11 +238,11 @@ public sealed class OsuBeatmapFile
         return safe + FileExtension;
     }
 
-    /// <summary>按旧版规则拼输出文件完整路径（写回原文件所在目录）。</summary>
+    /// <summary>按早期版本规则拼输出文件完整路径（写回原文件所在目录）。</summary>
     public string BuildOutputPath() => Path.Combine(Directory, BuildOutputFileName());
 
     /// <summary>
-    /// 把工作模型写回谱面并保存：输出到原目录 + 按元数据拼的文件名（旧版行为）。
+    /// 把工作模型写回谱面并保存：输出到原目录 + 按元数据拼的文件名（早期版本行为）。
     /// </summary>
     /// <returns>实际写出的文件完整路径。</returns>
     public string Save() => SaveTo(BuildOutputPath());
@@ -326,7 +326,7 @@ public sealed class OsuBeatmapFile
             }
             else
             {
-                // 普通键：旧版写 type=1（结束时间字段等于开始时间）。
+                // 普通键：早期版本写 type=1（结束时间字段等于开始时间）。
                 objects.Add(new ParserManiaNote(position, note.StartTime, note.StartTime, hitSound, extras, note.IsNewCombo, note.ComboOffset));
             }
         }

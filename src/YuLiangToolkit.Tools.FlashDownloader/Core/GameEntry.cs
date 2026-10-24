@@ -108,7 +108,7 @@ public sealed partial class GameEntry
 
     /// <summary>列表中“说明”那一列。</summary>
     public string DetailText
-        => IsLegacyFolderName ? "旧版命名（请在名字后加 s 或 h）"
+        => IsLegacyFolderName ? "早期版本命名（请在名字后加 s 或 h）"
         : $"{OpenModeText} · {SizeText}";
 
     /// <summary>从文件夹构造。</summary>
@@ -182,7 +182,7 @@ public sealed partial class GameEntry
         return match.Success ? match.Groups[1].Value : "";
     }
 
-    /// <summary>旧命名（<c>xxx_a123</c>，缺 s / h）——需要用户手工改名才能在旧版工具里识别。</summary>
+    /// <summary>旧命名（<c>xxx_a123</c>，缺 s / h）——需要用户手工改名才能在早期版本工具里识别。</summary>
     public static bool IsLegacy(string folderName)
         => !FolderNewPattern().IsMatch(folderName) && FolderOldPattern().IsMatch(folderName);
 

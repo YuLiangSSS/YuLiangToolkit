@@ -3,20 +3,20 @@ using System;
 namespace YuLiangToolkit.Tools.OsuMania.Core;
 
 /// <summary>
-/// 星数 → 等级（Level）的换算公式（旧版 <c>LevelCalculator.xaml.cs</c> 的逐行移植）。
+/// 星数 → 等级（Level）的换算公式（早期版本 <c>LevelCalculator.xaml.cs</c> 的逐行改写）。
 ///
-/// <para>旧版是一个 WPF 页面里的两个方法；这里抽成纯函数，供“等级计算器 / 转谱预览”复用。</para>
+/// <para>早期版本是一个 WPF 页面里的两个方法；这里抽成纯函数，供“等级计算器 / 转谱预览”复用。</para>
 /// </summary>
 public static class LevelCalculator
 {
-    /// <summary>拟合公式的下界（旧版常量 LOWER_BOUND，逐位照搬）。</summary>
+    /// <summary>拟合公式的下界（早期版本常量 LOWER_BOUND，逐位照搬）。</summary>
     public const double LowerBound = 2.76257856739498;
 
-    /// <summary>拟合公式的上界（旧版常量 UPPPER_BOUND，逐位照搬；旧代码就是三个 P）。</summary>
+    /// <summary>拟合公式的上界（早期版本常量 UPPPER_BOUND，逐位照搬；原有代码就是三个 P）。</summary>
     public const double UpperBound = 10.5541834716376;
 
     /// <summary>
-    /// 由星数算等级（旧版 <c>CalculateLevel</c> 的逐行移植）。
+    /// 由星数算等级（早期版本 <c>CalculateLevel</c> 的逐行改写）。
     ///
     /// <list type="bullet">
     /// <item>2.76257856739498 ~ 10.5541834716376：走拟合公式 <c>6.9615 * e^(0.1374 * x)</c>；</item>
@@ -57,7 +57,7 @@ public static class LevelCalculator
 
     /// <summary>
     /// 方便界面显示：NaN 时给 “-/异常”，否则保留 <paramref name="digits"/> 位小数
-    /// （旧版界面用 <c>Math.Round(..., 2)</c>，默认 2 位）。
+    /// （早期版本界面用 <c>Math.Round(..., 2)</c>，默认 2 位）。
     /// </summary>
     public static string FormatLevel(double level, int digits = 2)
         => double.IsNaN(level) ? "-" : Math.Round(level, digits).ToString("0." + new string('#', digits));

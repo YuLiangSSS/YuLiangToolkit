@@ -2,7 +2,7 @@
 
 > 拖入一批 osu!mania 谱面（`.osu`），自动算出每张谱的**星数（Star Rating）**和**等级（Level）**，
 > 表格里同时列出 OD / 键数 / 标题 / 难度名 / 艺术家 / 谱师。
-> **只读谱面，不会修改或生成任何文件。**（从早先那个独立小工具「LevelCalculator」移植过来。）
+> **只读谱面，不会修改或生成任何文件。**（从早先那个独立小工具「LevelCalculator」改写过来。）
 
 > 主页上归在「**音游工具**」类别里：点类别卡片进类别页，顶部面包屑（`主页 › 音游工具 › osu! 等级计算器`）
 > 可以点回上一级。同一个类别下还有 osu! 下图器 / Key 转换器 / LN 转换器。
@@ -36,7 +36,7 @@
 
 | 列 | 内容 |
 | --- | --- |
-| **Level** | 由星数换算的「等级」（旧项目的拟合公式，**不是 osu! 官方数值**）；算不出来显示 `-` |
+| **Level** | 由星数换算的「等级」（拟合公式，**不是 osu! 官方数值**）；算不出来显示 `-` |
 | **StarRating** | 星数，保留两位小数 |
 | **OD** | 谱面当前的 OverallDifficulty |
 | **Key数** | 键数（4K / 7K…） |
@@ -48,16 +48,16 @@
 
 ## 星数与等级怎么来的
 
-- **星数（SR）**：用旧项目 `StarRating.cs` 的算法（**Star Rating Rebirth / `srcalc` 思路的 C# 重写**；其中
+- **星数（SR）**：用 `StarRating.cs` 的算法（**Star Rating Rebirth / `srcalc` 思路的 C# 重写**；其中
   `Utils.cs` 来自 ppy osu!lazer，MIT）。它**不是** osu! 客户端/官方 mania 难度算法 —— 实测同一张 4K 谱，
   两边星数相差约 1.2 星；谱面加载时算一次，读到 0 / NaN 时再兜底重算一次。
-- **等级（Level）**：旧项目拟合出来的经验换算公式（分段）：
+- **等级（Level）**：经验换算公式（分段）：
   - 星数在 **2.76257856739498 ~ 10.5541834716376**：`Level = 6.9615 × e^(0.1374 × SR)`；
   - 更低的星数（> 0）：`Level = 3.6198 × SR`；
   - 更高的星数（< 12.3456789）：`Level = 2.791 × SR + 0.5436`；
   - 其它（SR ≤ 0、≥ 12.3456789、NaN）：**显示 `-`**。
 - 公式是**社区 / 旧作者自己拟合的「等级」经验值**，不是 osu! 官方数据；同一个 SR 在别处看到的
-  “等级”可能不一样。边界处（2.7626 / 10.5542）有两段公式交接造成的微小跳变，属于旧版 as-is 行为。
+  “等级”可能不一样。边界处（2.7626 / 10.5542）有两段公式交接造成的微小跳变，属于既有行为。
 
 ## 数据与配置
 
@@ -69,9 +69,9 @@
 ## 注意
 
 - **只支持 osu!mania**（`.osu` 里 `Mode: 3`）且键数在 **1 ~ 10**；其它谱面会标红并给出原因
-  （旧版会把 std / taiko 谱也算成 mania 星数，新版直接提示）。
+  （std / taiko 谱直接提示，不会误算成 mania 星数）。
 - **星数不是 osu! 客户端显示的星数**：算法不同（Star Rating Rebirth 思路 vs 官方 mania 难度算法），
-  实测可差 1 星以上；等级公式又是按这套旧 SR 拟合的，所以更不能当官方难度 / 官方等级。
+  实测可差 1 星以上；等级公式又是按这套 SR 拟合的，所以更不能当官方难度 / 官方等级。
   谱面文件的版本（v14 / 新版）与实现细节也会让数值略有浮动。
 - **表的顺序就是拖入顺序**（同一文件夹内按文件名排序）；目前**不支持点列排序 / 删除单行 / 导出**。
 - 计算是**串行**的（解析库的编解码内部有静态状态、非线程安全），几百张谱会慢一点；
@@ -81,8 +81,7 @@
 ## 相关代码
 
 - 项目：`src/YuLiangToolkit.Tools.OsuMania/`
-- 星数：`Core/Difficulty/StarRatingCalculator.cs`（旧版 StarRating 算法：Star Rating Rebirth 思路的 C# 重写；
-  `Utils.cs` 来自 ppy osu!lazer，MIT）；等级：`Core/LevelCalculator.cs`（旧版公式的逐行移植）
+- 星数：`Core/Difficulty/StarRatingCalculator.cs`（Star Rating Rebirth 思路的 C# 重写；
+  `Utils.cs` 来自 ppy osu!lazer，MIT）；等级：`Core/LevelCalculator.cs`（该公式的逐行实现）
 - 解析桥：`Core/OsuBeatmapFile.cs`（OsuParsers 1.7.2，MIT）；界面：`Views/OsuLevelCalculatorView.xaml`、
   `ViewModels/OsuLevelCalculatorViewModel.cs`
-- 旧版行为的逐条分析：`docs/porting/legacy-analysis.md` 第 5、6 节

@@ -280,7 +280,7 @@
                             <TextBox Text="{Binding Cfg.Creator, UpdateSourceTrigger=PropertyChanged}" Width="200"
                                      Margin="10,0,0,0" Style="{StaticResource TextBoxStyle}"
                                      IsEnabled="{Binding Cfg.UseCreator}"
-                                     ToolTip="不勾选时旧版会在原谱师后追加 &quot; &amp; LNTransformer&quot;" />
+                                     ToolTip="不勾选时会在原谱师后追加 &quot; &amp; LNTransformer&quot;" />
                             <TextBlock Text="不勾选 = 原谱师后追加 &quot; &amp; LNTransformer&quot;" FontSize="11"
                                        Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0" />
                         </StackPanel>

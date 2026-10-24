@@ -6,10 +6,10 @@ using System.Text.RegularExpressions;
 namespace YuLiangToolkit.Tools.OsuMania.Core;
 
 /// <summary>
-/// 转 LN（长短条转换）参数。默认值与旧版界面控件默认值一致：
+/// 转 LN（长短条转换）参数。默认值与早期版本界面控件默认值一致：
 /// Level=3、LN 100%、Divide=4、Column=10、Gap=12、Ignore 勾选、Fix Error 勾选、Original LN 不勾选。
 ///
-/// <para><b>Level 的含义</b>（照搬旧版说明）：
+/// <para><b>Level 的含义</b>（照搬早期版本说明）：
 /// -3 = Hold off（把所有长条压成普通键，再随机抽一部分换回 LN）；
 /// -2 = 完全随机长度；-1 = 随机等分；0 = 常规 LN（1/100 节拍长度的正态分布）；
 /// 1~9 = 微 / 轻 / 中 / 密 LN（mu = Level * 11，sigma = 0.85 / 8→0.9 / 9→1.0）；10 = Invert（反相）。</para>
@@ -19,13 +19,13 @@ public sealed class LnTransformerOptions
     /// <summary>随机种子文本（默认 "114514"；留空则每次随机）。固定种子结果可复现。</summary>
     public string SeedText { get; set; } = "114514";
 
-    /// <summary>转换等级（旧版滑条 -3~10）。</summary>
+    /// <summary>转换等级（早期版本滑条 -3~10）。</summary>
     public int Level { get; set; } = 3;
 
     /// <summary>转换为 LN 的对象占比（0~100）。</summary>
     public double Percentage { get; set; } = 100;
 
-    /// <summary>转换为 1/几 的 LN（旧版滑条 1~16）。</summary>
+    /// <summary>转换为 1/几 的 LN（早期版本滑条 1~16）。</summary>
     public int Divide { get; set; } = 4;
 
     /// <summary>转换多少条轨道（0~10；大于谱面键数时按全部轨道处理）。</summary>
@@ -38,24 +38,24 @@ public sealed class LnTransformerOptions
     public double OverallDifficulty { get; set; }
 
     /// <summary>
-    /// 是否保留原谱 OD。默认 true（旧版界面固定把 OD 写成输入框里的值，默认 0 会把谱面 OD 写坏，
-    /// 这是旧 bug；新版默认不动 OD，只有界面显式关掉这个开关才写 <see cref="OverallDifficulty"/>）。
+    /// 是否保留原谱 OD。默认 true（早期版本界面固定把 OD 写成输入框里的值，默认 0 会把谱面 OD 写坏，
+    /// 这是已知 bug；新版默认不动 OD，只有界面显式关掉这个开关才写 <see cref="OverallDifficulty"/>）。
     /// </summary>
     public bool KeepOverallDifficulty { get; set; } = true;
 
     /// <summary>新谱师名（配合 <see cref="CreatorIsChecked"/>）。</summary>
     public string Creator { get; set; } = "";
 
-    /// <summary>勾选后才替换谱师；否则旧版会在原谱师后面追加 " &amp; LNTransformer"。</summary>
+    /// <summary>勾选后才替换谱师；否则早期版本会在原谱师后面追加 " &amp; LNTransformer"。</summary>
     public bool CreatorIsChecked { get; set; }
 
-    /// <summary>忽略已转换过的谱面（旧版默认勾选）。</summary>
+    /// <summary>忽略已转换过的谱面（早期版本默认勾选）。</summary>
     public bool Ignore { get; set; } = true;
 
-    /// <summary>保留原谱面里的长条（旧版 Original LN，默认不勾）。</summary>
+    /// <summary>保留原谱面里的长条（早期版本 Original LN，默认不勾）。</summary>
     public bool OriginalLN { get; set; }
 
-    /// <summary>用反算修复 LN 尾巴的细小误差（旧版 Fix Error，默认勾选）。</summary>
+    /// <summary>用反算修复 LN 尾巴的细小误差（早期版本 Fix Error，默认勾选）。</summary>
     public bool FixError { get; set; } = true;
 
     /// <summary>只转换这些键数的谱面（1k~10k 复选框；空 = 全部）。</summary>
@@ -85,22 +85,22 @@ public sealed class LnTransformResult
 }
 
 /// <summary>
-/// 转 LN 引擎（旧版 <c>LNTransformer.xaml.cs</c> 的 <c>ApplyToBeatmap</c> / <c>Transform</c> / <c>Invert</c>
+/// 转 LN 引擎（早期版本 <c>LNTransformer.xaml.cs</c> 的 <c>ApplyToBeatmap</c> / <c>Transform</c> / <c>Invert</c>
 /// / <c>TrueRandom</c> / <c>AfterTransform</c> / <c>GetDurationByDistribution</c> / <c>RandDistribution</c>
-/// / <c>TimeRound</c> / <c>IsConverted</c> 的逐行移植）。
+/// / <c>TimeRound</c> / <c>IsConverted</c> 的逐行改写）。
 ///
-/// <para><b>与旧版的区别（Lead 已确认要修）</b>：</para>
+/// <para><b>与早期版本的区别（Lead 已确认要修）</b>：</para>
 /// <list type="bullet">
-/// <item>旧版按列循环时把 <c>originalLNObjects</c> 覆盖掉了（只保留最后一列），导致 Original LN 只对最后一列生效；
+/// <item>早期版本按列循环时把 <c>originalLNObjects</c> 覆盖掉了（只保留最后一列），导致 Original LN 只对最后一列生效；
 /// 新版累加所有列（<c>AddRange</c>），Original LN 对全部列生效。</item>
 /// <item>OD 默认保留原谱（<see cref="LnTransformerOptions.KeepOverallDifficulty"/> = true）；
-/// 旧版永远把 OD 写成界面输入框的值（默认 0，会把谱面 OD 写坏）。</item>
+/// 早期版本永远把 OD 写成界面输入框的值（默认 0，会把谱面 OD 写坏）。</item>
 /// <item>TimingPoint 异常（没有红线等）会由最外层 catch 转成“跳过 + 原因”，不会让界面闪退。</item>
 /// </list>
 /// </summary>
 public static class LnTransformerEngine
 {
-    /// <summary>旧版 <c>LNTransformer.ERROR</c>（毫秒）：判断“最后一个音是否当作 LN / 尾巴是否贴边”。</summary>
+    /// <summary>早期版本 <c>LNTransformer.ERROR</c>（毫秒）：判断“最后一个音是否当作 LN / 尾巴是否贴边”。</summary>
     public const double Error = 2.0;
 
     /// <summary>
@@ -135,7 +135,7 @@ public static class LnTransformerEngine
     }
 
     /// <summary>
-    /// 转换并保存到旧版命名规则的位置（原目录 + 元数据拼文件名），结果里带 <see cref="LnTransformResult.OutputPath"/>。
+    /// 转换并保存到早期版本命名规则的位置（原目录 + 元数据拼文件名），结果里带 <see cref="LnTransformResult.OutputPath"/>。
     /// 保存失败不抛异常，返回跳过结果并带原因。
     /// </summary>
     public static LnTransformResult Apply(OsuBeatmapFile file, LnTransformerOptions options)
@@ -165,7 +165,7 @@ public static class LnTransformerEngine
         int keys = beatmap.KeyCount;
         var newObjects = new List<ManiaNote>();
         var oldObjects = beatmap.HitObjects;
-        // 旧版这里在按列循环里被覆盖（只保留最后一列）；新版累加所有列，Original LN 才能对全部列生效。
+        // 早期版本这里在按列循环里被覆盖（只保留最后一列）；新版累加所有列，Original LN 才能对全部列生效。
         var originalLNObjects = new List<ManiaNote>();
 
         if (options.Level == -3)
@@ -205,7 +205,7 @@ public static class LnTransformerEngine
                 gap--;
                 if (gap <= 0)
                 {
-                    // 旧版这里再抽列时用的是 transformColumnNum 原值（没有 ==0 时取 keys 的兜底），照搬。
+                    // 早期版本这里再抽列时用的是 transformColumnNum 原值（没有 ==0 时取 keys 的兜底），照搬。
                     randomColumnSet = OsuTransformUtils.SelectRandom(Enumerable.Range(0, keys), rng, transformColumnNum).ToHashSet();
                     gap = options.Gap;
                 }
@@ -290,7 +290,7 @@ public static class LnTransformerEngine
     }
 
     /// <summary>
-    /// Level -1 / 0 / 1~9 的按列转换（旧版 <c>Transform</c> 的逐行移植）。
+    /// Level -1 / 0 / 1~9 的按列转换（早期版本 <c>Transform</c> 的逐行改写）。
     /// </summary>
     /// <returns>本列里保留下来的原 LN（供 AfterTransform 判断）。</returns>
     public static List<ManiaNote> Transform(Random rng, double mu, double sigmaDivisor, double divide, OsuManiaBeatmap osu, List<ManiaNote> newObjects,
@@ -302,7 +302,7 @@ public static class LnTransformerEngine
         var locations = column.OrderBy(h => h.StartTime).ToList();
         for (int i = 0; i < locations.Count - 1; i++)
         {
-            // 旧版这里有一行未使用的 offset 赋值（但对空的 TimingPoints 会抛异常），保留它的副作用。
+            // 早期版本这里有一行未使用的 offset 赋值（但对空的 TimingPoints 会抛异常），保留它的副作用。
             _ = osu.TimingPoints.First().Time;
             double fullDuration = locations[i + 1].StartTime - locations[i].StartTime; // Full duration of the hold note.
             double duration = GetDurationByDistribution(rng, osu, locations[i].StartTime, fullDuration, mu, sigmaDivisor, divide, divide2, mu2, mu1Dmu2);
@@ -348,7 +348,7 @@ public static class LnTransformerEngine
     }
 
     /// <summary>
-    /// 由分布随机出 LN 时长（旧版 <c>GetDurationByDistribution</c> 的逐行移植；随机数调用顺序照搬）。
+    /// 由分布随机出 LN 时长（早期版本 <c>GetDurationByDistribution</c> 的逐行改写；随机数调用顺序照搬）。
     /// </summary>
     public static double GetDurationByDistribution(Random rng, OsuManiaBeatmap osu, int startTime, double limitDuration, double mu, double sigmaDivisor, double divide,
         int divide2 = -1, double mu2 = -2, double mu1Dmu2 = -1)
@@ -407,7 +407,7 @@ public static class LnTransformerEngine
     }
 
     /// <summary>
-    /// Level 10：反相（旧版 <c>Invert</c> 的逐行移植）。
+    /// Level 10：反相（早期版本 <c>Invert</c> 的逐行改写）。
     /// </summary>
     /// <returns>本列里保留下来的原 LN。</returns>
     public static List<ManiaNote> Invert(OsuManiaBeatmap osu, List<ManiaNote> newObjects, Random rng, IGrouping<int, ManiaNote> column, double divideValue,
@@ -483,7 +483,7 @@ public static class LnTransformerEngine
     }
 
     /// <summary>
-    /// Level -2：完全随机长度（旧版 <c>TrueRandom</c> 的逐行移植）。
+    /// Level -2：完全随机长度（早期版本 <c>TrueRandom</c> 的逐行改写）。
     /// </summary>
     /// <returns>本列里保留下来的原 LN。</returns>
     public static List<ManiaNote> TrueRandom(List<ManiaNote> newObjects, Random rng, IGrouping<int, ManiaNote> column, bool originalLNIsChecked, double percentageValue)
@@ -528,7 +528,7 @@ public static class LnTransformerEngine
 
     /// <summary>
     /// 转换后的收尾：按 Gap 每隔几行重抽一次“保留 LN 的轨道”，并把不在轨道上的 LN 压成普通键
-    /// （旧版 <c>AfterTransform</c> 的逐行移植；注意第二次抽列用的是 raw transformColumnNum，照搬）。
+    /// （早期版本 <c>AfterTransform</c> 的逐行改写；注意第二次抽列用的是 raw transformColumnNum，照搬）。
     /// </summary>
     public static void AfterTransform(List<ManiaNote> afterObjects, List<ManiaNote> originalLNObjects, OsuManiaBeatmap osu, Random rng, int transformColumnNum,
         bool originalLNIsChecked, int gapValue)
@@ -567,7 +567,7 @@ public static class LnTransformerEngine
             gap--;
             if (gap == 0)
             {
-                // 旧版第二次抽列没有 “transformColumnNum == 0 时取 keys” 的兜底，照搬。
+                // 早期版本第二次抽列没有 “transformColumnNum == 0 时取 keys” 的兜底，照搬。
                 randomColumnSet = OsuTransformUtils.SelectRandom(Enumerable.Range(0, keys), rng, transformColumnNum).ToHashSet();
                 gap = maxGap;
             }
@@ -576,7 +576,7 @@ public static class LnTransformerEngine
         osu.HitObjects = resultObjects.OrderBy(h => h.StartTime).ToList();
     }
 
-    /// <summary>正态分布抽样（Box-Muller；旧版 <c>RandDistribution</c> 的逐行移植）。</summary>
+    /// <summary>正态分布抽样（Box-Muller；早期版本 <c>RandDistribution</c> 的逐行改写）。</summary>
     public static double RandDistribution(Random rng, double u, double d)
     {
         double u1, u2, z, x;
@@ -591,7 +591,7 @@ public static class LnTransformerEngine
         return x;
     }
 
-    /// <summary>把时长四舍五入到 <paramref name="timedivide"/> 的整数倍（旧版 <c>TimeRound</c> 的逐行移植）。</summary>
+    /// <summary>把时长四舍五入到 <paramref name="timedivide"/> 的整数倍（早期版本 <c>TimeRound</c> 的逐行改写）。</summary>
     public static double TimeRound(double timedivide, double num)
     {
         double remainder = num % timedivide;
@@ -601,7 +601,7 @@ public static class LnTransformerEngine
     }
 
     /// <summary>
-    /// 判断谱面是否已被转 LN 过（旧版 <c>IsConverted</c>：Creator 含 "LNTransformer"，或难度名匹配 <c>[LN...]</c>）。
+    /// 判断谱面是否已被转 LN 过（早期版本 <c>IsConverted</c>：Creator 含 "LNTransformer"，或难度名匹配 <c>[LN...]</c>）。
     /// </summary>
     public static bool IsConverted(OsuManiaBeatmap beatmap)
     {
@@ -617,7 +617,7 @@ public static class LnTransformerEngine
         return false;
     }
 
-    /// <summary>按旧版规则处理 OD（默认保留原谱，见 <see cref="LnTransformerOptions.KeepOverallDifficulty"/>）。</summary>
+    /// <summary>按早期版本规则处理 OD（默认保留原谱，见 <see cref="LnTransformerOptions.KeepOverallDifficulty"/>）。</summary>
     private static void ApplyOverallDifficulty(OsuManiaBeatmap beatmap, LnTransformerOptions options)
     {
         if (!options.KeepOverallDifficulty)
@@ -626,7 +626,7 @@ public static class LnTransformerEngine
         }
     }
 
-    /// <summary>按旧版规则处理谱师：勾选且非空则替换，否则追加 " &amp; LNTransformer"。</summary>
+    /// <summary>按早期版本规则处理谱师：勾选且非空则替换，否则追加 " &amp; LNTransformer"。</summary>
     private static void ApplyCreator(OsuManiaBeatmap beatmap, LnTransformerOptions options)
     {
         if (options.CreatorIsChecked && !string.IsNullOrEmpty(options.Creator))

@@ -24,7 +24,7 @@ public sealed record OszDownloadSummary(
 }
 
 /// <summary>
-/// <c>.osz</c> 并发下载器（原版 <c>BeatmapDownloader</c> 的移植）。
+/// <c>.osz</c> 并发下载器（原版 <c>BeatmapDownloader</c> 的改写）。
 ///
 /// <para>行为与原版一致：并发 <see cref="Concurrency"/> 个、已存在就跳过、命名 <c>{Id} {标题}.osz</c>、
 /// 带上 UA / Accept / Referer、5 分钟超时。三处<b>故意改掉</b>的地方：

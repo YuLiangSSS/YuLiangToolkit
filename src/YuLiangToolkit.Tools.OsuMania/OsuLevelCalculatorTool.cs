@@ -8,7 +8,7 @@ namespace YuLiangToolkit.Tools.OsuMania;
 /// <summary>
 /// 「osu! 等级计算器」：拖入 .osu 批量计算 mania 星数（Star Rating）与等级（Level）。
 ///
-/// <para>星数由 <c>Core/Difficulty/StarRatingCalculator</c> 计算（旧版 Star Rating Rebirth / srcalc 思路的
+/// <para>星数由 <c>Core/Difficulty/StarRatingCalculator</c> 计算（早期版本 Star Rating Rebirth / srcalc 思路的
 /// C# 重写，其中数学工具来自 ppy osu!lazer，MIT；**不是 osu! 官方 mania 难度算法**，与游戏内 SR
 /// 可能有 1 星以上差异），等级由 <c>Core/LevelCalculator</c> 按这套 SR 拟合的旧公式换算；
 /// 两者都只读谱面、**不修改任何文件**。</para>

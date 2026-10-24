@@ -1,8 +1,8 @@
 // Copyright (c) ppy Pty Ltd <contact@ppy.sh>. Licensed under the MIT Licence.
 // See the LICENCE file in the repository root for full licence text.
 //
-// 来源：HeavenUsurperToolkit-master/Utils.cs（ppy/osu!lazer 的数学工具移植版；旧文件保留了 ppy 的 MIT 版权头），
-// 逐行照搬到本项目，只改了命名空间 / 类名。不要“优化”这里的数学与顺序。
+// ppy/osu!lazer 的数学工具（MIT），逐行照搬，只改了命名空间 / 类名。
+// 不要“优化”这里的数学与顺序。
 
 using System;
 
@@ -11,7 +11,7 @@ namespace YuLiangToolkit.Tools.OsuMania.Core.Difficulty;
 /// <summary>
 /// 星数计算用到的 8 个数学工具函数（二分查找、累积和、平滑、插值、缩放、找同列下一个音符）。
 ///
-/// <para>来源：ppy/osu!lazer（MIT），经 HeavenUsurperToolkit 移植。逐行照搬，行为不能改。</para>
+/// <para>来自 ppy/osu!lazer（MIT），逐行照搬，行为不能改。</para>
 /// </summary>
 public static class Utils
 {

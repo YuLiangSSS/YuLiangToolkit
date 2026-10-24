@@ -7,16 +7,16 @@ namespace YuLiangToolkit.Tools.OsuMania.Core;
 /// <summary>
 /// osu!mania 谱面的工作模型（算法层只碰这里的类型，不直接依赖 OsuParsers）。
 ///
-/// <para>旧项目 HeavenUsurperToolkit 用自己手写的 <c>OsuFileV14</c> 读谱面；
-/// 移植后读 / 写交给 NuGet 的 OsuParsers（见 <see cref="OsuBeatmapFile"/>），
-/// 但转 K / 转 LN / 星数 / 等级这些算法仍然只在这个模型上跑，行为与旧版一致。</para>
+/// <para>早期版本 用自己手写的 <c>OsuFileV14</c> 读谱面；
+/// 改写后读 / 写交给 NuGet 的 OsuParsers（见 <see cref="OsuBeatmapFile"/>），
+/// 但转 K / 转 LN / 星数 / 等级这些算法仍然只在这个模型上跑，行为与早期版本一致。</para>
 /// </summary>
 public sealed class OsuManiaBeatmap
 {
-    /// <summary>.osu 文件格式版本（旧版只处理 v14，新版交给库读，这里记录原值便于回写）。</summary>
+    /// <summary>.osu 文件格式版本（早期版本只处理 v14，新版交给库读，这里记录原值便于回写）。</summary>
     public int FormatVersion { get; set; } = 14;
 
-    /// <summary>键数（谱面 [Difficulty] 的 CircleSize；旧版写作 General.CircleSize）。</summary>
+    /// <summary>键数（谱面 [Difficulty] 的 CircleSize；早期版本写作 General.CircleSize）。</summary>
     public int KeyCount { get; set; } = 4;
 
     /// <summary>整体难度 OD（[Difficulty] 的 OverallDifficulty）。</summary>
@@ -36,22 +36,22 @@ public sealed class OsuManiaBeatmap
 
     /// <summary>
     /// 谱面星数。由 <see cref="OsuBeatmapFile"/> 加载时用 <c>StarRatingCalculator</c> 算好
-    /// （与旧版 <c>OsuFileV14.StarRating</c> 在构造时算一次相同；转谱后旧版不会重算，这里同样不自动重算）。
+    /// （与早期版本 <c>OsuFileV14.StarRating</c> 在构造时算一次相同；转谱后早期版本不会重算，这里同样不自动重算）。
     /// </summary>
     public double StarRating { get; set; }
 
-    /// <summary>用当前模型的键数 / OD / 打击物重新算一次星数（与旧版构造时同一入口）。</summary>
+    /// <summary>用当前模型的键数 / OD / 打击物重新算一次星数（与早期版本构造时同一入口）。</summary>
     public double CalculateStarRating(double rate = 1.0)
         => Difficulty.StarRatingCalculator.CalculateStarRating(HitObjects, OverallDifficulty, KeyCount, rate);
 
     /// <summary>
-    /// 取 <paramref name="time"/> 时刻生效的时间点（旧版 <c>OsuFileV14.TimingPointAt</c> 的逐行移植）。
+    /// 取 <paramref name="time"/> 时刻生效的时间点（早期版本 <c>OsuFileV14.TimingPointAt</c> 的逐行改写）。
     ///
     /// <para>行为照旧：只考虑 <see cref="OsuTimingPoint.BeatLength"/> &gt;= 0 的红线；
     /// 只有一个红线就直接返回；否则找 <c>Time &lt;= time &lt; 下一条.Time</c> 的区间；
     /// 都匹配不上就返回最后一条红线。</para>
-    /// <para>旧版在 TimingPoints 为空、或只有绿线（没有红线）时会抛异常，这里保持“抛异常”的语义
-    /// （调用方按旧版习惯用 try/catch 兜底）。</para>
+    /// <para>早期版本在 TimingPoints 为空、或只有绿线（没有红线）时会抛异常，这里保持“抛异常”的语义
+    /// （调用方按早期版本习惯用 try/catch 兜底）。</para>
     /// </summary>
     public OsuTimingPoint TimingPointAt(double time)
     {
@@ -64,7 +64,7 @@ public sealed class OsuManiaBeatmap
 
         if (redPoints.Count == 0)
         {
-            // 旧版此时会去取 RedPoints[RedPoints.Count - 1]（-1）而抛 ArgumentOutOfRangeException；
+            // 早期版本此时会去取 RedPoints[RedPoints.Count - 1]（-1）而抛 ArgumentOutOfRangeException；
             // 这里显式抛一个更清楚的异常，避免上层看到难以理解的越界错误。
             throw new InvalidOperationException("TimingPoints 里没有红线（BeatLength >= 0），无法取得节拍长度。");
         }
@@ -88,12 +88,12 @@ public sealed class OsuManiaBeatmap
     /// <summary>取 <paramref name="time"/> 时刻生效的节拍长度（毫秒）；等价于 <c>TimingPointAt(time).BeatLength</c>。</summary>
     public double BeatLengthAt(double time) => TimingPointAt(time).BeatLength;
 
-    /// <summary>第一个时间点的时间（旧版大量使用 <c>osu.TimingPoints.First().Time</c> 作为反算 offset）。</summary>
+    /// <summary>第一个时间点的时间（早期版本大量使用 <c>osu.TimingPoints.First().Time</c> 作为反算 offset）。</summary>
     public double FirstTimingPointTime => TimingPoints.Count > 0
         ? TimingPoints[0].Time
         : throw new InvalidOperationException("TimingPoints is empty.");
 
-    /// <summary>支持的键数范围（旧版转 K 只支持 1~10；3~10 有历史常量表）。</summary>
+    /// <summary>支持的键数范围（早期版本转 K 只支持 1~10；3~10 有历史常量表）。</summary>
     public const int MinKeyCount = 1;
     /// <summary>支持的键数上限。</summary>
     public const int MaxKeyCount = 10;
@@ -102,8 +102,8 @@ public sealed class OsuManiaBeatmap
     public static bool IsSupportedKeyCount(int keys) => keys >= MinKeyCount && keys <= MaxKeyCount;
 
     /// <summary>
-    /// 旧版 <c>OsuFileV14.KeyX</c> 的列坐标常量表（3~10 键，逐值照搬）。
-    /// 列坐标为 osu! 谱面 512 宽画布上的 x；旧版用它给打击物换列。
+    /// 早期版本 <c>OsuFileV14.KeyX</c> 的列坐标常量表（3~10 键，逐值照搬）。
+    /// 列坐标为 osu! 谱面 512 宽画布上的 x；早期版本用它给打击物换列。
     /// </summary>
     public static readonly IReadOnlyDictionary<int, int[]> KeyX = new Dictionary<int, int[]>
     {
@@ -120,9 +120,9 @@ public sealed class OsuManiaBeatmap
     /// <summary>
     /// 第 <paramref name="column"/> 列（0 基）在 <paramref name="keys"/> 键谱面里的 x 坐标。
     ///
-    /// <para>3~10 键直接查旧版 <see cref="KeyX"/> 常量表（保证与旧版逐位一致）；
+    /// <para>3~10 键直接查早期版本 <see cref="KeyX"/> 常量表（保证与早期版本逐位一致）；
     /// 其它键数（1、2 键）用同一公式 <c>floor(512 * (column + 0.5) / keys)</c> 计算 ——
-    /// 旧版这里会 KeyNotFoundException（<see cref="KeyX"/> 表里没有 1k / 2k，属于旧版 bug），已修掉。</para>
+    /// 早期版本这里会 KeyNotFoundException（<see cref="KeyX"/> 表里没有 1k / 2k，属于早期版本 bug），已修掉。</para>
     /// </summary>
     public static int ColumnX(int keys, int column)
     {
@@ -144,7 +144,7 @@ public sealed class OsuManiaBeatmap
     }
 }
 
-/// <summary>osu! 谱面元数据（对应旧版 <c>Metadata</c> 结构体）。</summary>
+/// <summary>osu! 谱面元数据（对应早期版本 <c>Metadata</c> 结构体）。</summary>
 public sealed class OsuBeatmapMetadata
 {
     /// <summary>标题。</summary>
@@ -163,7 +163,7 @@ public sealed class OsuBeatmapMetadata
     public string Creator { get; set; } = "";
 
     /// <summary>
-    /// 难度名（.osu 文件 [Metadata] 的 <c>Version</c> 字段；旧版叫 <c>Metadata.Difficulty</c>）。
+    /// 难度名（.osu 文件 [Metadata] 的 <c>Version</c> 字段；早期版本叫 <c>Metadata.Difficulty</c>）。
     /// 转谱工具会在最前面插入 <c>[4To7C]</c> / <c>[LN-Lv3-C10]</c> 之类的前缀。
     /// </summary>
     public string Difficulty { get; set; } = "";
@@ -174,31 +174,31 @@ public sealed class OsuBeatmapMetadata
     /// <summary>标签（空格分隔的原始文本）。</summary>
     public string Tags { get; set; } = "";
 
-    /// <summary>BeatmapID（旧版是字符串，默认 "0"；这里用 int，默认 0）。</summary>
+    /// <summary>BeatmapID（早期版本是字符串，默认 "0"；这里用 int，默认 0）。</summary>
     public int BeatmapID { get; set; }
 
-    /// <summary>BeatmapSetID（旧版是字符串，默认 "-1"；这里用 int，默认 -1）。</summary>
+    /// <summary>BeatmapSetID（早期版本是字符串，默认 "-1"；这里用 int，默认 -1）。</summary>
     public int BeatmapSetID { get; set; } = -1;
 
     /// <summary>复制一份元数据（转谱工具会改 Creator / Difficulty，自检里也会用到）。</summary>
     public OsuBeatmapMetadata Clone() => (OsuBeatmapMetadata)MemberwiseClone();
 }
 
-/// <summary>时间点（旧版 <c>TimingPoint</c> 结构体的简化版；算法只关心 Time / BeatLength / 红线判定）。</summary>
+/// <summary>时间点（早期版本 <c>TimingPoint</c> 结构体的简化版；算法只关心 Time / BeatLength / 红线判定）。</summary>
 public sealed class OsuTimingPoint
 {
-    /// <summary>时间（毫秒，旧版是 int）。</summary>
+    /// <summary>时间（毫秒，早期版本是 int）。</summary>
     public int Time { get; set; }
 
-    /// <summary>节拍长度（毫秒）。绿线是负数（旧版用 BeatLength &gt;= 0 判定红线）。</summary>
+    /// <summary>节拍长度（毫秒）。绿线是负数（早期版本用 BeatLength &gt;= 0 判定红线）。</summary>
     public double BeatLength { get; set; }
 
-    /// <summary>是否为继承时间点（绿线）。注意旧版的红线判定用的是 BeatLength &gt;= 0，不是这个标记。</summary>
+    /// <summary>是否为继承时间点（绿线）。注意早期版本的红线判定用的是 BeatLength &gt;= 0，不是这个标记。</summary>
     public bool Inherited { get; set; }
 }
 
 /// <summary>
-/// 打击物的采样信息（旧版 <c>ManiaHitObject.HitSample</c> 字符串里那几个冒号分隔字段的简化类型）。
+/// 打击物的采样信息（早期版本 <c>ManiaHitObject.HitSample</c> 字符串里那几个冒号分隔字段的简化类型）。
 /// </summary>
 public sealed class OsuNoteExtras
 {
@@ -224,13 +224,13 @@ public sealed class OsuNoteExtras
 /// <summary>
 /// mania 的一个打击物（普通键或长条）。
 ///
-/// <para><b>与旧版 <c>ManiaHitObject</c> 结构体的差异</b>：旧版是可变结构体，代码里靠“复制一份再改”
+/// <para><b>与早期版本 <c>ManiaHitObject</c> 结构体的差异</b>：早期版本是可变结构体，代码里靠“复制一份再改”
 /// 来避免互相影响；这里是 class，但保留了 <see cref="Clone"/> / <see cref="ToNote"/> 两个复制入口，
-/// 移植后的算法在每个“旧版会发生结构体复制”的位置都显式复制，输出与旧版一致。</para>
+/// 改写后的算法在每个“早期版本会发生结构体复制”的位置都显式复制，输出与早期版本一致。</para>
 ///
-/// <para><b>IsLongNote 的语义</b>：旧版用 <c>Type == 128 || StartTime != EndTime</c> 判定 LN，
+/// <para><b>IsLongNote 的语义</b>：早期版本用 <c>Type == 128 || StartTime != EndTime</c> 判定 LN，
 /// 其中“type=128 但长度 0”也是一种 LN（长条被压成 0 长度）。这里用独立的
-/// <see cref="IsLongNote"/> 保留这个语义：<see cref="EndTime"/> 的 setter 与旧版一样，
+/// <see cref="IsLongNote"/> 保留这个语义：<see cref="EndTime"/> 的 setter 与早期版本一样，
 /// 赋值不等于 <see cref="StartTime"/> 就变成 LN，赋值等于 StartTime 就变回普通键。</para>
 /// </summary>
 public sealed class ManiaNote
@@ -248,7 +248,7 @@ public sealed class ManiaNote
     /// 结束时间（毫秒）。普通键等于 <see cref="StartTime"/>；LN 大于开始时间
     /// （也允许“type=128 且长度 0”的 LN：<see cref="IsLongNote"/> 为 true 但两端相等）。
     ///
-    /// <para>setter 行为照旧版：赋值不等于 StartTime → 变成长条；赋值等于 StartTime → 变回普通键。</para>
+    /// <para>setter 行为照早期版本：赋值不等于 StartTime → 变成长条；赋值等于 StartTime → 变回普通键。</para>
     /// </summary>
     public int EndTime
     {
@@ -261,7 +261,7 @@ public sealed class ManiaNote
     }
 
     /// <summary>
-    /// 是否为长条。旧版 <c>IsLN =&gt; StartTime != EndTime || Type == 128</c>；
+    /// 是否为长条。早期版本 <c>IsLN =&gt; StartTime != EndTime || Type == 128</c>；
     /// 这里允许 EndTime == StartTime 但仍为 LN（保留“type=128 长度 0”的旧语义）。
     /// </summary>
     public bool IsLongNote
@@ -270,16 +270,16 @@ public sealed class ManiaNote
         set => _isLongNote = value;
     }
 
-    /// <summary>旧的写法（旧代码里的 <c>IsLN</c>），等价于 <see cref="IsLongNote"/>。</summary>
+    /// <summary>旧的写法（原有代码里的 <c>IsLN</c>），等价于 <see cref="IsLongNote"/>。</summary>
     public bool IsLN => _isLongNote;
 
-    /// <summary>打击音效（旧版是按位叠加的 int：0=None、1=Normal、2=Whistle、4=Finish、8=Clap）。</summary>
+    /// <summary>打击音效（早期版本是按位叠加的 int：0=None、1=Normal、2=Whistle、4=Finish、8=Clap）。</summary>
     public int HitSound { get; set; }
 
-    /// <summary>是否新连击段（旧版 <c>IsNewCombo</c>）。</summary>
+    /// <summary>是否新连击段（早期版本 <c>IsNewCombo</c>）。</summary>
     public bool IsNewCombo { get; set; }
 
-    /// <summary>连击偏移（旧版 <c>ComboOffset</c>）。</summary>
+    /// <summary>连击偏移（早期版本 <c>ComboOffset</c>）。</summary>
     public int ComboOffset { get; set; }
 
     /// <summary>采样信息。</summary>
@@ -300,7 +300,7 @@ public sealed class ManiaNote
 
     /// <summary>
     /// 构造一个打击物。结束时间等于开始时间时是普通键，否则是长条
-    /// （对应旧版 <c>new ManiaHitObject(column, keys, startTime, endTime: endTime)</c>）。
+    /// （对应早期版本 <c>new ManiaHitObject(column, keys, startTime, endTime: endTime)</c>）。
     /// </summary>
     public ManiaNote(int column, int startTime, int endTime)
     {
@@ -329,7 +329,7 @@ public sealed class ManiaNote
     }
 
     /// <summary>
-    /// 把 LN 压成普通键（旧版 <c>ToNote()</c>：复制一份并把 EndTime 设回 StartTime）。
+    /// 把 LN 压成普通键（早期版本 <c>ToNote()</c>：复制一份并把 EndTime 设回 StartTime）。
     /// 不修改原对象。
     /// </summary>
     public ManiaNote ToNote()

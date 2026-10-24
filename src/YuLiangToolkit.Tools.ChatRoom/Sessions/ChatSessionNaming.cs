@@ -30,7 +30,7 @@ public static class ChatSessionNaming
     /// <summary>
     /// 所有会话文件夹都放在这个子目录下（<c>Data\chat-room\Sessions\2025.1.3-14.5.9\</c>）。
     ///
-    /// <para>为什么不直接摊在 <c>Data\chat-room\</c> 下：那个目录里还有协议说明、旧版本可能留下的东西，
+    /// <para>为什么不直接摊在 <c>Data\chat-room\</c> 下：那个目录里还有协议说明、早期版本本可能留下的东西，
     /// 「历史记录」列表会把它们当成一次聊天列出来（踩过：列表里出现一个叫 <c>Protocol</c> 的“会话”）。</para>
     /// </summary>
     public const string SessionsFolderName = "Sessions";

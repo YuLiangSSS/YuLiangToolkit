@@ -6,7 +6,7 @@ using YuLiangToolkit.Tools.MapDownloader.Views;
 namespace YuLiangToolkit.Tools.MapDownloader;
 
 /// <summary>
-/// 「osu! 下图器」——从独立的小工具 MapDownloader 移植过来（原版是 WinForms，
+/// 「osu! 下图器」——从独立的小工具 MapDownloader 改写过来（原版是 WinForms，
 /// 界面在本工具集里重写成 WPF + MVVM，网络与筛选逻辑照搬）。
 ///
 /// <para>细节（为什么这么分层、踩过哪些坑）见根目录 <c>AGENTS.md</c> 的 2.13 节。</para>

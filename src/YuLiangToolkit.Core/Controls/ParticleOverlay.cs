@@ -8,7 +8,7 @@ namespace YuLiangToolkit.Core.Controls;
 
 /// <summary>
 /// 鼠标粒子覆盖层：铺在窗口最上面，用 <see cref="FrameworkElement.OnRender"/> + <c>DrawingContext</c>
-/// 直接画圆点（**每个粒子不是控件**，不往可视化树里塞 Ellipse —— 旧版那样每帧 new 一堆控件，
+/// 直接画圆点（**每个粒子不是控件**，不往可视化树里塞 Ellipse —— 早期版本那样每帧 new 一堆控件，
 /// 粒子上限一放开就会卡）。粒子数学全在 <see cref="ParticleEngine"/> 里（纯逻辑、可无头自检），
 /// 本控件只负责：接鼠标事件、按刷新率算帧步长、把粒子画成「淡紫柔光 + 近白圆点」。
 ///
@@ -111,7 +111,7 @@ public sealed class ParticleOverlay : FrameworkElement
     private bool _loaded;
     private bool _hooked;          // 窗口事件是否已挂上（成对解绑的开关）
     private bool _renderingHooked; // CompositionTarget.Rendering 是否已挂上
-    private bool _pointerInside;   // 鼠标是否在窗口内（离开窗口即暂停，对齐旧版）
+    private bool _pointerInside;   // 鼠标是否在窗口内（离开窗口即暂停，对齐早期版本）
     private bool _windowActive;    // 窗口是否激活（失活即暂停）
     private bool _idle = true;     // 上一帧是否"没在生成"（重新开始时把计时归零，避免粒子一上来瞬移）
 
@@ -297,7 +297,7 @@ public sealed class ParticleOverlay : FrameworkElement
     {
         if (!_loaded) return;
 
-        // 与旧版一致：鼠标离开窗口就清空，回来重新开始（不是"暂停在原地"）
+        // 与早期版本一致：鼠标离开窗口就清空，回来重新开始（不是"暂停在原地"）
         _pointerInside = false;
         _engine.Clear();
         _idle = true;
@@ -350,7 +350,7 @@ public sealed class ParticleOverlay : FrameworkElement
         _pointerInside = false;
         _idle = true;
         _lastTick = 0;
-        _engine.Clear();          // 失活时清空（对齐旧版离开窗口就清空；回来重新开始）
+        _engine.Clear();          // 失活时清空（对齐早期版本离开窗口就清空；回来重新开始）
         InvalidateVisual();
         UpdateRenderingSubscription();
     }
@@ -487,7 +487,7 @@ public sealed class ParticleOverlay : FrameworkElement
 
     /// <summary>
     /// 预生成一档一档的半透明画刷（全部冻结）：绘制时按 alpha 查表，**每帧零分配**。
-    /// 旧版每个粒子每帧 new 一个 SolidColorBrush，粒子上限一放开就是 GC 灾难。
+    /// 早期版本每个粒子每帧 new 一个 SolidColorBrush，粒子上限一放开就是 GC 灾难。
     /// </summary>
     private static Brush[] BuildPalette(Color color, double maxAlpha)
     {

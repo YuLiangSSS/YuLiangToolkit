@@ -1,6 +1,5 @@
-// 来源：HeavenUsurperToolkit-master/StarRating.cs 底部的 EasyObject（该文件是第三方
-// “Star Rating Rebirth / srcalc” 思路的 C# 重写，不是 osu!lazer 源码直拷；数学工具来自 ppy osu!lazer，MIT）。
-// 本项目逐行照搬，只改了命名空间（并把 List<ManiaHitObject> 换成 IReadOnlyList<ManiaNote>）。
+// 星数算法内部使用的简化音符（第三方 “Star Rating Rebirth / srcalc” 思路的 C# 重写，
+// 不是 osu!lazer 源码直拷；数学工具来自 ppy osu!lazer，MIT）。
 
 using System;
 using System.Collections.Generic;
@@ -10,7 +9,6 @@ namespace YuLiangToolkit.Tools.OsuMania.Core.Difficulty;
 
 /// <summary>
 /// 星数算法内部使用的简化音符（只保留头 / 尾 / 列）。
-/// 来源：移植自 HeavenUsurperToolkit 的 StarRating.cs（Star Rating Rebirth / srcalc 思路）。
 /// </summary>
 public sealed class EasyObject
 {
@@ -46,7 +44,7 @@ public sealed class EasyObject
         return easyObjects;
     }
 
-    /// <summary>按速率缩放（rate != 1 时用；会原地修改传入的数组，与旧版一致）。</summary>
+    /// <summary>按速率缩放（rate != 1 时用；会原地修改传入的数组，与早期版本一致）。</summary>
     public static EasyObject[] FromRate(EasyObject[] objects, double rate)
     {
         for (int i = 0; i < objects.Length; i++)

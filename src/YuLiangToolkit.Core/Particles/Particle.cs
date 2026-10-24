@@ -9,7 +9,7 @@ namespace YuLiangToolkit.Core.Particles;
 ///
 /// <para><see cref="Age"/> / <see cref="LifeSpan"/> 的单位是「60fps 基准帧」，不是真实毫秒：
 /// 高刷屏一帧只算 0.42 个基准帧，所以速度、寿命、淡出都不会随刷新率变化
-/// （旧版 HeavenUsurperToolkit 直接按帧累加，144Hz 屏上速度会快 2.4 倍）。</para>
+/// （早期版本 直接按帧累加，144Hz 屏上速度会快 2.4 倍）。</para>
 /// </summary>
 public sealed class Particle
 {
