@@ -1,0 +1,366 @@
+<UserControl x:Class="YuLiangToolkit.Tools.OsuMania.Views.OsuLnTransformerView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:YuLiangToolkit.Tools.OsuMania.Views"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop">
+
+    <UserControl.Resources>
+        <views:ScrollBarWidthConverter x:Key="ScrollBarWidth" />
+
+        <Style x:Key="ParamLabelStyle" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+        </Style>
+        <Style x:Key="ParamValueStyle" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextAlignment" Value="Right" />
+            <Setter Property="MinWidth" Value="64" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="28,22,28,26">
+
+            <!-- ===== 标题 ===== -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="🍜 osu! LN 转换器" FontSize="21" FontWeight="SemiBold" />
+                    <TextBlock FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                               Text="把普通音符批量变成长条（LN）：支持密度分布 / 完全随机 / 反相 / 保留原 LN / 修复尾判误差。新谱面写在原文件所在目录，不覆盖原谱。" />
+                </StackPanel>
+                <Border Grid.Column="1" Style="{StaticResource CardStyle}" VerticalAlignment="Center" Padding="12,8">
+                    <TextBlock Text="{Binding FileCountText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" />
+                </Border>
+            </Grid>
+
+            <!-- ===== ① 谱面文件 ===== -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
+                <StackPanel>
+                    <TextBlock Text="① 谱面文件" FontSize="13" FontWeight="SemiBold" />
+
+                    <Border Margin="0,12,0,0" Background="{StaticResource InputBackgroundBrush}" CornerRadius="8"
+                            Padding="16,13" BorderThickness="1" BorderBrush="{StaticResource BorderBrush}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="📂" FontSize="18" VerticalAlignment="Center" />
+                                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="把 .osu 文件或文件夹拖到这里" FontSize="13" />
+                                    <TextBlock Text="文件夹会递归查找 .osu；重复文件自动去重，也可以点右侧按钮选择"
+                                               FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,3,0,0" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Content="选择文件…" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding SelectFilesCommand}" />
+                                <Button Content="清空列表" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                        Command="{Binding ClearFilesCommand}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- 文件列表：表头写在 ListBox 模板里，与数据行同列容器（AGENTS.md 2.9） -->
+                    <ListBox ItemsSource="{Binding Files}" Height="190" Margin="8,10,8,0"
+                             core:ScrollChaining.Enabled="True"
+                             ToolTip="列表里的文件就是这次要转换的全部文件">
+                        <ListBox.Style>
+                            <Style TargetType="ListBox" BasedOn="{StaticResource FileListStyle}">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBox">
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="*" />
+                                                </Grid.RowDefinitions>
+
+                                                <Grid Grid.Row="0" Margin="33,0,21,6">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="2*" />
+                                                        <ColumnDefinition Width="64" />
+                                                        <ColumnDefinition Width="150" />
+                                                        <ColumnDefinition Width="{Binding Converter={StaticResource ScrollBarWidth}}" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="文件名" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="1" Text="路径" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="2" Text="键数" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="3" Text="状态" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                </Grid>
+
+                                                <ScrollViewer x:Name="ScrollViewer" Grid.Row="1" Focusable="False"
+                                                              HorizontalScrollBarVisibility="Disabled"
+                                                              VerticalScrollBarVisibility="Auto"
+                                                              Padding="0" Background="Transparent">
+                                                    <ItemsPresenter />
+                                                </ScrollViewer>
+                                            </Grid>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.Style>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border x:Name="Row" Background="Transparent" CornerRadius="6">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="2*" />
+                                            <ColumnDefinition Width="64" />
+                                            <ColumnDefinition Width="150" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding FilePath}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding FilePath}" FontSize="11.5"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   TextTrimming="CharacterEllipsis" ToolTip="{Binding FilePath}" />
+                                        <TextBlock Grid.Column="2" Text="{Binding KeyCountText}"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                        <TextBlock x:Name="Status" Grid.Column="3" Text="{Binding StatusText}"
+                                                   TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusTooltip}" />
+                                    </Grid>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsConverted}" Value="True">
+                                        <Setter TargetName="Status" Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsFailed}" Value="True">
+                                        <Setter TargetName="Row" Property="Background" Value="#3A2222" />
+                                        <Setter TargetName="Status" Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+            </Border>
+
+            <!-- ===== ② 转换参数 ===== -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="② 转换参数" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock Text="参数改一下就自动存进 Config\osu-ln-transformer\config.json"
+                                       FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="参数说明 ▾" Style="{StaticResource SecondaryButtonStyle}"
+                                VerticalAlignment="Center" Command="{Binding ToggleHelpCommand}" />
+                    </Grid>
+
+                    <StackPanel Margin="0,14,0,0">
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="转换等级 Level" Style="{StaticResource ParamLabelStyle}" />
+                            <Slider Grid.Column="1" Minimum="-3" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding Cfg.Level}" Style="{StaticResource SliderStyle}"
+                                    ToolTip="{Binding LevelTooltip}" />
+                            <TextBlock Grid.Column="2" Text="{Binding Cfg.Level}" Style="{StaticResource ParamValueStyle}" />
+                        </Grid>
+
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="LN 占比 LN%" Style="{StaticResource ParamLabelStyle}" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
+                                    Value="{Binding Cfg.Percentage}" Style="{StaticResource SliderStyle}"
+                                    ToolTip="0~100：转换概率，100 = 全部符合条件的普通键都变 LN" />
+                            <TextBlock Grid.Column="2" Text="{Binding Cfg.Percentage, StringFormat={}{0:0}%}"
+                                       Style="{StaticResource ParamValueStyle}" />
+                        </Grid>
+
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="等分 Divide" Style="{StaticResource ParamLabelStyle}" />
+                            <Slider Grid.Column="1" Minimum="1" Maximum="16" TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding Cfg.Divide}" Style="{StaticResource SliderStyle}"
+                                    ToolTip="LN 时长按 1/Div 拍计算（1~16）" />
+                            <TextBlock Grid.Column="2" Text="{Binding Cfg.Divide}" Style="{StaticResource ParamValueStyle}" />
+                        </Grid>
+
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="转换轨道 Column" Style="{StaticResource ParamLabelStyle}" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="10" TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding Cfg.Column}" Style="{StaticResource SliderStyle}"
+                                    ToolTip="只在这些轨道上转 LN（0~10；超过谱面键数时按全部轨道算）" />
+                            <TextBlock Grid.Column="2" Text="{Binding Cfg.Column}" Style="{StaticResource ParamValueStyle}" />
+                        </Grid>
+
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="间隔 Gap" Style="{StaticResource ParamLabelStyle}" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="20" TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding Cfg.Gap}" Style="{StaticResource SliderStyle}"
+                                    ToolTip="每隔多少行音符重抽一次转换轨道（0 = 轨道不变）" />
+                            <TextBlock Grid.Column="2" Text="{Binding Cfg.Gap}" Style="{StaticResource ParamValueStyle}" />
+                        </Grid>
+
+                        <TextBlock Text="提示：Level = -3（Hold off）时 LN% / 转换轨道 / 间隔都不生效。"
+                                   FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="150,0,0,10" TextWrapping="Wrap" />
+
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="随机种子" Style="{StaticResource ParamLabelStyle}" />
+                            <TextBox Grid.Column="1" Text="{Binding Cfg.Seed, UpdateSourceTrigger=PropertyChanged}"
+                                     Width="130" Style="{StaticResource TextBoxStyle}"
+                                     ToolTip="默认 114514：固定种子结果可复现；清空 = 每次随机" />
+                            <TextBlock Grid.Column="2" Text="固定种子时，同一张谱每次转出来完全一样" FontSize="11"
+                                       Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0" />
+                        </Grid>
+
+                        <!-- OD：默认保持原谱，勾选才覆盖 -->
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="150" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="OverallDifficulty" Style="{StaticResource ParamLabelStyle}" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <CheckBox Content="修改 OD" IsChecked="{Binding Cfg.ModifyOverallDifficulty}"
+                                          Style="{StaticResource CheckBoxStyle}" VerticalAlignment="Center" />
+                                <TextBox Text="{Binding Cfg.OverallDifficulty, UpdateSourceTrigger=LostFocus}" Width="64"
+                                         Margin="10,0,0,0" Style="{StaticResource TextBoxStyle}"
+                                         IsEnabled="{Binding Cfg.ModifyOverallDifficulty}"
+                                         ToolTip="勾选「修改 OD」后才写回谱面；不勾 = 保留原谱 OD" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="2" Text="不勾 = 保留原谱 OD（默认）；勾选才用这个数值覆盖"
+                                       FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0" />
+                        </Grid>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <CheckBox Content="忽略已转换的谱面（Ignore）" IsChecked="{Binding Cfg.Ignore}"
+                                      Style="{StaticResource CheckBoxStyle}" Margin="0,0,22,0" />
+                            <CheckBox Content="修复尾判误差（Fix Error）" IsChecked="{Binding Cfg.FixError}"
+                                      Style="{StaticResource CheckBoxStyle}" Margin="0,0,22,0" />
+                            <CheckBox Content="保留原 LN（Original LN）" IsChecked="{Binding Cfg.OriginalLN}"
+                                      Style="{StaticResource CheckBoxStyle}" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <CheckBox Content="替换谱师为" IsChecked="{Binding Cfg.UseCreator}"
+                                      Style="{StaticResource CheckBoxStyle}" VerticalAlignment="Center" />
+                            <TextBox Text="{Binding Cfg.Creator, UpdateSourceTrigger=PropertyChanged}" Width="200"
+                                     Margin="10,0,0,0" Style="{StaticResource TextBoxStyle}"
+                                     IsEnabled="{Binding Cfg.UseCreator}"
+                                     ToolTip="不勾选时旧版会在原谱师后追加 &quot; &amp; LNTransformer&quot;" />
+                            <TextBlock Text="不勾选 = 原谱师后追加 &quot; &amp; LNTransformer&quot;" FontSize="11"
+                                       Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0" />
+                        </StackPanel>
+
+                        <TextBlock Text="源键数过滤（不勾 = 全部转换）" Style="{StaticResource ParamLabelStyle}" FontSize="12.5"
+                                   Margin="0,12,0,6" />
+                        <WrapPanel>
+                            <CheckBox Content="1K" IsChecked="{Binding Cfg.Filter1K}" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6" />
+                            <CheckBox Content="2K" IsChecked="{Binding Cfg.Filter2K}" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6" />
+                            <CheckBox Content="3K" IsChecked="{Binding Cfg.Filter3K}" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6" />
+                            <CheckBox Content="4K" IsChecked="{Binding Cfg.Filter4K}" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6" />
+                            <CheckBox Content="5K" IsChecked="{Binding Cfg.Filter5K}" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6" />
+                            <CheckBox Content="6K" IsChecked="{Binding Cfg.Filter6K}" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6" />
+                            <CheckBox Content="7K" IsChecked="{Binding Cfg.Filter7K}" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6" />
+                            <CheckBox Content="8K" IsChecked="{Binding Cfg.Filter8K}" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6" />
+                            <CheckBox Content="9K" IsChecked="{Binding Cfg.Filter9K}" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6" />
+                            <CheckBox Content="10K" IsChecked="{Binding Cfg.Filter10K}" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6" />
+                        </WrapPanel>
+                    </StackPanel>
+
+                    <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,10,0,0"
+                            Visibility="{Binding IsHelpVisible, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{Binding HelpText}" TextWrapping="Wrap" FontSize="11.5"
+                                   Foreground="{StaticResource TextSecondaryBrush}" LineHeight="19" />
+                    </Border>
+                </StackPanel>
+            </Border>
+
+            <!-- ===== ③ 进度与日志 ===== -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock Text="③ 进度与日志" FontSize="13" FontWeight="SemiBold" />
+
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ProgressBar Minimum="0" Maximum="1" Value="{Binding Progress}"
+                                     Style="{StaticResource ProgressBarStyle}" Height="8" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Margin="12,0,0,0" MinWidth="70"
+                                   TextAlignment="Right" VerticalAlignment="Center"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                    </Grid>
+
+                    <TextBlock Text="{Binding SummaryText}" Margin="0,10,0,0" FontSize="12"
+                               Foreground="{StaticResource TextSecondaryBrush}" />
+                    <TextBlock Text="{Binding StatusText}" Margin="0,6,0,0" TextWrapping="Wrap" FontSize="12" />
+
+                    <TextBox Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
+                             Style="{StaticResource LogTextBoxStyle}" Height="130" Margin="0,10,0,0"
+                             core:ScrollChaining.Enabled="True" />
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                        <Button Content="清空日志" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding ClearLogCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- ===== ④ 操作 ===== -->
+            <Grid Margin="0,16,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button Content="打开输出文件夹" Style="{StaticResource SecondaryButtonStyle}"
+                        Command="{Binding OpenOutputFolderCommand}" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <Button Content="取消" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding CancelCommand}" />
+                    <Button Content="开始转换" Style="{StaticResource PrimaryButtonStyle}" Margin="8,0,0,0"
+                            Command="{Binding StartCommand}" />
+                </StackPanel>
+            </Grid>
+
+            <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0">
+                <TextBlock FontSize="11.5" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}"
+                           Text="提示：转换后的难度名会加 [LN-Lv3-C10] 这样的前缀，所以新文件名与原来不同、不会覆盖原谱。勾着「忽略已转换」时，已经转换过的谱面再次拖进来会直接跳过。处理全程串行，单个文件失败不会中断整批。" />
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

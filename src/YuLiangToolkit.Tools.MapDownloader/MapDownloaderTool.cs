@@ -21,7 +21,13 @@ public class MapDownloaderTool : ITool
 
     public string EmojiIcon => "🎧";
 
-    public string Category => "游戏";
+    public string Category => "音游工具";
+
+    /// <summary>
+    /// 收进「音游工具」类别页（主页不再直接平铺）。类别元数据（🎵 图标 / 描述）由外壳的
+    /// <c>Models/ShellCategories.cs</c> 配；工具项目只认这个路径字符串。
+    /// </summary>
+    public IReadOnlyList<string> CategoryPath => new[] { "音游工具" };
 
     public IReadOnlyList<string> Tags => new[]
     {

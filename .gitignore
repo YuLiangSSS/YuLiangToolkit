@@ -45,6 +45,12 @@ FlashGameDownloader/
 # 想让它进版本库就删掉这条（或 git add -f）。
 MapDownloader/
 
+# 移植「音游工具」（KeyConverter / LNTransformer / LevelCalculator）时参考的旧项目
+# HeavenUsurperToolkit-master/（源代码放在仓库根，不是本项目的一部分）。
+# 旧项目文件同样会因为根目录 glob 被主项目编译，所以两份配置都要有：
+# 这里忽略 + YuLiangTookit.csproj 的 DefaultItemExcludes 排除。
+HeavenUsurperToolkit-master/
+
 # ================= 杂项 =================
 *.tmp
 *.log

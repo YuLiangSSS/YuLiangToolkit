@@ -1,5 +1,6 @@
 using System.Windows;
 using YuLiangToolkit.App.ViewModels;
+using YuLiangToolkit.App.Views;
 using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Services;
 using YuLiangToolkit.Core.Storage;
@@ -51,6 +52,15 @@ public partial class App : Application
 
         window.Show();
 
+        // 开发调试：YLT_NAV_CATEGORY=音游工具（或 音游工具/子分类）直接进类别页（截图验收用）
+        var categoryPath = Environment.GetEnvironmentVariable("YLT_NAV_CATEGORY");
+        if (!string.IsNullOrWhiteSpace(categoryPath))
+        {
+            vm.NavigateToCategory(categoryPath.Split(
+                new[] { '/', '\\' },
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        }
+
         // 开发调试：可选 YLT_SHOT_TOOL / YLT_NAV_TOOL 直接打开某个工具
         var toolId = Environment.GetEnvironmentVariable("YLT_SHOT_TOOL") ?? Environment.GetEnvironmentVariable("YLT_NAV_TOOL");
         if (!string.IsNullOrWhiteSpace(toolId))
@@ -59,9 +69,16 @@ public partial class App : Application
             if (tool is not null) vm.OpenToolCommand.Execute(tool);
         }
 
+        // 开发调试：YLT_OPEN_SETTINGS=1 打开「主页设置」窗口（配合 YLT_SHOT 截那个窗口本身）
+        var settingsWindow = string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("YLT_OPEN_SETTINGS"))
+            ? null
+            : vm.OpenSettings(activate: string.IsNullOrWhiteSpace(shotPath));
+
         if (!string.IsNullOrWhiteSpace(shotPath))
         {
-            window.CaptureTo(shotPath);
+            // 设置窗口开着就截它（RenderTargetBitmap 只渲染传入的视觉树，不截会被主窗口盖住）
+            if (settingsWindow is not null) settingsWindow.CaptureTo(shotPath);
+            else window.CaptureTo(shotPath);
         }
     }
 }

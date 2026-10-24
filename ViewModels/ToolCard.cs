@@ -28,16 +28,30 @@ public sealed class ToolCard : ObservableObject
     public string Description => Tool.Description;
     public string Category => Tool.Category;
 
+    /// <summary>类别路径（多层用 " / " 连接；根层工具为空串）。</summary>
+    public string CategoryPathText => Tool.CategoryPath.Count == 0
+        ? ""
+        : string.Join(" / ", Tool.CategoryPath);
+
+    /// <summary>这个工具是不是被收进了某个类别（根层工具为 false）。</summary>
+    public bool HasCategoryPath => Tool.CategoryPath.Count > 0;
+
     /// <summary>分类 + 标签（去重后的顺序列表）。</summary>
     public IReadOnlyList<string> Tags { get; }
 
     /// <summary>卡片上那行蓝色小字（用 " · " 连接所有标签）。</summary>
     public string TagsText { get; }
 
-    /// <summary>鼠标悬停提示：描述 + 标签 + 上次使用 + Id。</summary>
-    public string ToolTipText => $"{Name}\n{Description}\n\n标签：{TagsText}\n上次使用：{LastUsedText}\nId：{Id}";
+    /// <summary>鼠标悬停提示：描述 + 标签 + 类别路径 + 上次使用 + Id。</summary>
+    public string ToolTipText
+        => $"{Name}\n{Description}\n\n标签：{TagsText}\n"
+           + (HasCategoryPath ? $"分类：{CategoryPathText}\n" : "")
+           + $"上次使用：{LastUsedText}\nId：{Id}";
 
-    /// <summary>搜索索引：名称 + 分类 + 标签 + 描述 + Id（一次性拼好，小写不敏感比较在 Matches 里做）。</summary>
+    /// <summary>
+    /// 搜索索引：名称 + 分类 + 标签 + 描述 + Id + 类别路径（一次性拼好，小写不敏感比较在 Matches 里做）。
+    /// 带上类别路径是为了「搜子分类名也能找到里面的工具」（例如搜「谱面处理」）。
+    /// </summary>
     private string SearchIndex { get; }
 
     /// <summary>
@@ -107,5 +121,6 @@ public sealed class ToolCard : ObservableObject
     }
 
     private static string BuildSearchIndex(ITool tool, string tagsText)
-        => $"{tool.Name} {tool.Category} {tagsText} {tool.Description} {tool.Id}";
+        => $"{tool.Name} {tool.Category} {tagsText} {tool.Description} {tool.Id} "
+           + string.Join(" ", tool.CategoryPath);
 }

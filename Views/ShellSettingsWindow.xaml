@@ -1,0 +1,63 @@
+<Window x:Class="YuLiangToolkit.App.Views.ShellSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="主页设置"
+        Width="460" SizeToContent="Height"
+        WindowStyle="None" ResizeMode="NoResize" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource WindowBackgroundBrush}"
+        Foreground="{StaticResource TextPrimaryBrush}"
+        FontFamily="Microsoft YaHei UI, Segoe UI"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display">
+    <!-- 无边框小窗：标题栏在代码里手动拖拽（与主窗口同一套做法：WindowStyle=None + 自己画按钮） -->
+    <Border Background="{StaticResource WindowBackgroundBrush}"
+            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="40" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- 标题栏（可拖拽 + 关闭按钮） -->
+            <Border Grid.Row="0" Background="{StaticResource HeaderBackgroundBrush}"
+                    MouseLeftButtonDown="OnTitleBarMouseLeftDown">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                        <TextBlock Text="⚙" FontSize="15" VerticalAlignment="Center" />
+                        <TextBlock Text="主页设置" FontSize="13.5" FontWeight="SemiBold" Margin="9,0,0,0"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Style="{StaticResource WindowCloseButtonStyle}"
+                            Content="&#xE8BB;" Click="OnCloseClick" ToolTip="关闭（Esc）" />
+                </Grid>
+            </Border>
+
+            <!-- 设置内容 -->
+            <StackPanel Grid.Row="1" Margin="24,18,24,22">
+                <TextBlock Text="外观" FontSize="13" FontWeight="SemiBold"
+                           Foreground="{StaticResource AccentBrush}" />
+                <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
+                    <StackPanel>
+                        <CheckBox Content="显示鼠标粒子效果" Style="{StaticResource CheckBoxStyle}"
+                                  IsChecked="{Binding ParticlesEnabled}"
+                                  ToolTip="关掉之后不再绘制粒子，设置会自动保存" />
+                        <TextBlock FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap" Margin="0,9,0,0"
+                                   Text="粒子跟随鼠标移动：左键点一下爆一簇、右键点一下来更多；关闭后不再绘制。设置自动保存到 Config\shell\config.json，重启后保持。" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock FontSize="11" Foreground="#5A6472" TextWrapping="Wrap" Margin="0,14,0,0"
+                           Text="主页设置只影响外壳本身（粒子效果、主页排序等）；各功能自己的选项在对应功能页面里。" />
+
+                <Button Content="完成" Style="{StaticResource PrimaryButtonStyle}"
+                        HorizontalAlignment="Right" Margin="0,18,0,0" Click="OnCloseClick" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

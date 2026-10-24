@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:views="clr-namespace:YuLiangToolkit.App.Views"
+        xmlns:core="clr-namespace:YuLiangToolkit.Core.Controls;assembly=YuLiangToolkit.Core"
         Title="YuLiang 工具集"
         Width="1280" Height="820"
         MinWidth="1024" MinHeight="700"
@@ -54,16 +55,55 @@
             </Grid>
         </Border>
 
-        <!-- 工具条：返回主页 + 当前工具名 -->
+        <!-- 工具条：可点击分层面包屑（主页 > 类别 > … > 工具），左边是「返回上一级」 -->
         <Border Grid.Row="1" Background="{StaticResource HeaderBackgroundBrush}"
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,1" Padding="16,8">
-            <StackPanel Orientation="Horizontal">
-                <Button Content="← 返回主页" Style="{StaticResource SecondaryButtonStyle}"
-                        Command="{Binding GoHomeCommand}"
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 返回上一级：工具 → 所属类别；类别 → 父类别（到顶回主页）。全屏时整行被藏掉，逻辑不受影响 -->
+                <Button Grid.Column="0" Content="← 返回" Style="{StaticResource SecondaryButtonStyle}"
+                        Command="{Binding NavigateParentCommand}" Margin="0,0,12,0"
+                        ToolTip="返回上一级（工具 → 所属类别；类别 → 上一层）"
                         Visibility="{Binding BackVisible, Converter={StaticResource BoolToVis}}" />
-                <TextBlock Text="{Binding CurrentTitle}" Margin="14,0,0,0" VerticalAlignment="Center"
-                           FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" />
-            </StackPanel>
+
+                <!-- 面包屑：祖先项可点（标签芯片样式），当前项高亮且不可点 -->
+                <ScrollViewer Grid.Column="1" VerticalAlignment="Center"
+                              HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled"
+                              Focusable="False">
+                    <ItemsControl ItemsSource="{Binding Breadcrumbs}" VerticalAlignment="Center">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="›" FontSize="14" Margin="8,0" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               Visibility="{Binding ShowSeparator, Converter={StaticResource BoolToVis}}" />
+                                    <!-- 祖先层级：点一下跳回去 -->
+                                    <Button Content="{Binding DisplayText}" Style="{StaticResource TagChipButtonStyle}"
+                                            Command="{Binding DataContext.NavigateBreadcrumbCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}"
+                                            Visibility="{Binding IsClickable, Converter={StaticResource BoolToVis}}" />
+                                    <!-- 当前项：高亮、不可点 -->
+                                    <Border Background="#1D2735" BorderBrush="#2C3B52" BorderThickness="1"
+                                            CornerRadius="11" Padding="10,4"
+                                            Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="{Binding DisplayText}" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+                                    </Border>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
         </Border>
 
         <!-- 主体：侧边栏 + 内容 -->
@@ -111,5 +151,12 @@
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="20,7">
             <TextBlock Text="{Binding StatusText}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
         </Border>
+
+        <!-- 鼠标粒子覆盖层：铺满整个窗口（含标题栏 / 状态栏），不吃鼠标事件。
+             IsActive 绑主页设置里的 ParticlesEnabled（默认开，存 Config\shell\config.json）。
+             控件本身在 YuLiangToolkit.Core.Controls.ParticleOverlay（particle 队友实现，见其类注释）。 -->
+        <core:ParticleOverlay Grid.RowSpan="4" Panel.ZIndex="900"
+                              IsHitTestVisible="False"
+                              IsActive="{Binding ParticlesEnabled}" />
     </Grid>
 </Window>

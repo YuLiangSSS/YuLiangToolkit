@@ -1,6 +1,8 @@
 # YuLiangToolkit（凉雨工具集|自用小工具）99.99% AI Coding
 
 一个可扩展的 WPF 工具集应用：主页是工具卡片墙（**搜索 / 排序 / 标签**），左侧导航自动列出所有已发现的工具。
+功能多了会按类别收进**类别页**（支持任意层级分类，顶部是可点击的面包屑 `主页 › 音游工具 › 工具名`）；
+右上角「⚙ 主页设置」里可以开关**鼠标粒子效果**。
 深色主题 + 自定义标题栏（最小化 / 最大化 / 关闭按钮画在界面里，没有系统窗口顶栏）。
 
 ## 工具一览
@@ -15,7 +17,13 @@
 | [**💬 联机聊天室**](docs/tools/chat-room.md) | 主机开端口、客户端连进来，文字 / 图片 / 文件随便传，带单次流量上限 |
 | [**🏷️ 批量重命名**](docs/tools/batch-rename.md) | 规则清单 + 实时预览 + 两阶段改名 + 可撤销 |
 | [**🎧 osu! 下图器**](docs/tools/map-downloader.md) | 搜谱面集、批量下 `.osz`（含视频 / 无视频） |
+| [**🎹 osu! Key 转换器**](docs/tools/osu-key-converter.md) | 把低键数 mania 谱面「复制列 / 插空白列」加成高键数（2~10 可选），支持批量 |
+| [**🍜 osu! LN 转换器**](docs/tools/osu-ln-transformer.md) | 按 14 档强度把普通键改成 LN（长条），可选保留原 LN / 修尾巴误差 |
+| [**⭐ osu! 等级计算器**](docs/tools/osu-level-calculator.md) | 拖入 mania 谱面算等级（Star Rating → 等级），批量表格 |
 | [**🧪 框架示例**](docs/tools/sample-framework.md) | 开发用模板（Data / Config 轮子演示，可整目录删除） |
+
+> 🎵 **音游工具**是主页上的一个分类：点「音游工具」类别卡片进类别页，再点工具卡片打开；
+> 顶部的面包屑（`主页 › 音游工具 › 工具名`）每一层都能点回去。osu! 相关的四个工具都收在这个分类里。
 
 > 全部文档的索引（含通用说明）在 [docs/](docs/README.md)。
 
@@ -37,14 +45,15 @@ dotnet run --project YuLiangTookit.csproj
 
 要求：.NET 9 SDK（`global.json` 已锁定 9.0.317）。
 只有「视频转音频」依赖 FFmpeg（应用会自动检测 `PATH` 里的 `ffmpeg.exe`，也可以在工具里手动指定）——
-见 [视频转音频](docs/tools/video-to-audio.md)。
+见 [视频转音频](docs/tools/video-to-audio.md)。osu! 三个转换 / 计算工具用 `OsuParsers`（MIT）解析 `.osu`：
+从源码构建时**首次需要联网还原一次** NuGet 包，之后走本机缓存（`build.ps1` 离线也能命中）。
 
 ## 文档
 
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：所有「轮子」（工具契约、MVVM 基类、Data/Config 配置框架、
   FFmpeg 封装、UI 样式清单）的用途 + 签名 + 一行用法，加上新增功能的完整步骤和踩过的坑；
-- ✅ **自检**：654 项行为逐条真跑（退出码 0 = 全通过），改了行为就该顺手跑一次：
+- ✅ **自检**：1005 项行为逐条真跑（退出码 0 = 全通过），改了行为就该顺手跑一次：
 
   ```powershell
   dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
@@ -63,28 +72,30 @@ dotnet run --project YuLiangTookit.csproj
 ## 项目结构
 
 ```
-YuLiangTookit.csproj                     # 主程序（WPF 壳：自定义标题栏、主页、侧边栏导航、深色主题）
+YuLiangTookit.csproj                     # 主程序（WPF 壳：自定义标题栏、主页/类别页/面包屑、侧边栏导航、深色主题）
 build.ps1 / publish.ps1                  # 一键构建 / 一键发布（发布到 dist\YuLiangToolkit\）
 AGENTS.md                               # 轮子速查 / 开发约定（改代码先读这个）
 README.md                               # 本文件：工具一览 + 快速开始
 docs/                                   # 每个工具一页的详细说明（见 docs/README.md）
 Data/  Config/                           # 只有说明文件【运行时目录在 exe 旁边】
 src/
-├── YuLiangToolkit.Core/                 # 核心库：工具契约 / MVVM 基类 / 存储 / 配置 / FFmpeg 封装
+├── YuLiangToolkit.Core/                 # 核心库：工具契约 / 多级分类目录树 / MVVM 基类 / 存储 / 配置 / FFmpeg 封装 / 粒子
 ├── YuLiangToolkit.Tools.VideoToAudio/   # 功能：视频转音频
 ├── YuLiangToolkit.Tools.MediaPlayer/    # 功能：视频 / 音乐播放器
 ├── YuLiangToolkit.Tools.BatchRename/    # 功能：批量重命名（规则清单引擎 + 两阶段改名 + 撤销）
 ├── YuLiangToolkit.Tools.FlashDownloader/# 功能：Flash 下载器（五站点解析 + 本地服务器 + 自动补全资源）
 ├── YuLiangToolkit.Tools.ChatRoom/       # 功能：联机聊天室（TCP 直连 / 内网穿透 + 传文件 + 流量上限）
 ├── YuLiangToolkit.Tools.MapDownloader/  # 功能：osu! 下图器（搜谱面集 + 批量下 .osz）
+├── YuLiangToolkit.Tools.OsuMania/       # 功能：音游工具（osu! Key 转换器 / LN 转换器 / 等级计算器）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（654 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（1005 项行为逐条验证）
 ```
 
 ## 如何添加一个新工具
 
 实现 `ITool`（提供 `Id / Name / Description / EmojiIcon / Category / Order` 与 `CreateView()`）就会被
-`ToolDiscovery` 在启动时自动发现；选项继承 `ToolConfig`，ViewModel 继承 `ToolViewModelBase`，
+`ToolDiscovery` 在启动时自动发现；想收进类别页就再加一个 `CategoryPath`（例如 `new[] { "音游工具" }`，
+支持任意层级，不写就放在主页根层）。选项继承 `ToolConfig`，ViewModel 继承 `ToolViewModelBase`，
 Data / Config 的路径与持久化全由框架接管。也可以把编译好的 dll 放进程序目录的 `plugins\`（外部插件，不用改主程序）。
 
 最省事的做法是复制 `src\YuLiangToolkit.Tools.Sample` 当模板，完整步骤见

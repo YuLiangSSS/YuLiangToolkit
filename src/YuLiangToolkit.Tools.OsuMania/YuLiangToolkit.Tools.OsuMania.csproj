@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 功能 8：osu!mania 转谱工具（从 HeavenUsurperToolkit 移植）。
+       核心算法（转 K / 转 LN / 星数 / 等级）全部是与界面无关的纯逻辑，
+       谱面解析交给 OsuParsers（NuGet 1.7.2，MIT）；这里是 Core/引擎，界面在 Views/ 与 ViewModels/。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.OsuMania</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.OsuMania</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- osu! 谱面（.osu）解析 / 保存：只在这一层出现，算法层不直接依赖第三方类型。 -->
+    <PackageReference Include="OsuParsers" Version="1.7.2" />
+  </ItemGroup>
+
+</Project>

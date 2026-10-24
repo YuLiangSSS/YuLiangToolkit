@@ -36,6 +36,9 @@ public sealed class ShellConfig : ToolConfig
     /// <summary>功能 Id → 上次打开时间（本地时间）。</summary>
     public Dictionary<string, DateTime> LastUsed { get; set; } = new();
 
+    /// <summary>是否在界面上绘制鼠标粒子效果（主页设置里的开关，默认开）。</summary>
+    public bool ShowParticles { get; set; } = true;
+
     /// <summary>取某个功能上次使用时间（没有记录返回 null）。</summary>
     public DateTime? GetLastUsed(string toolId)
         => LastUsed.TryGetValue(toolId, out var time) ? time : null;

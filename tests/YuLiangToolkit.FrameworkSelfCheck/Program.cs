@@ -700,6 +700,58 @@ catch (Exception ex)
         $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
 }
 
+// ---------- 外壳分类导航（任意层级目录树 / 面包屑 / 类别计数） ----------
+try
+{
+    NavigationChecks.Run(
+        (name, ok, detail) => Check($"[导航] {name}", ok, detail),
+        (name, ok) => Check($"[导航] {name}", ok));
+}
+catch (Exception ex)
+{
+    Check($"[导航] 运行过程中抛出异常（{ex.GetType().Name}）", false,
+        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
+}
+
+// ---------- 粒子效果（引擎的生成 / 寿命 / 衰减 / 开关 / 上限；纯逻辑无界面） ----------
+try
+{
+    ParticleChecks.Run(
+        (name, ok, detail) => Check(name, ok, detail),
+        (name, ok) => Check(name, ok));
+}
+catch (Exception ex)
+{
+    Check($"[粒子] 运行过程中抛出异常（{ex.GetType().Name}）", false,
+        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
+}
+
+// ---------- 星数计算（旧版 StarRating 的对齐基准；数值回归，见 docs/porting/） ----------
+try
+{
+    StarRatingChecks.Run(
+        (name, ok, detail) => Check(name, ok, detail),
+        (name, ok) => Check(name, ok));
+}
+catch (Exception ex)
+{
+    Check($"[星数] 运行过程中抛出异常（{ex.GetType().Name}）", false,
+        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
+}
+
+// ---------- osu!mania 三件套（解析桥 / 转 K / 转 LN / 等级 / 批量，见 2.17） ----------
+try
+{
+    OsuManiaChecks.Run(
+        (name, ok, detail) => Check(name, ok, detail),
+        (name, ok) => Check(name, ok));
+}
+catch (Exception ex)
+{
+    Check($"[osu工具] 运行过程中抛出异常（{ex.GetType().Name}）", false,
+        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
+}
+
 // ---------- 完整性自检（全屏藏任务栏的前置条件） ----------
 // 只读：读自己的令牌 + FindWindow，**不隐藏任何窗口**（见 AGENTS.md 2.14）。
 // 这块是 v0.9.4 加的：全屏藏不住任务栏时，先看启动时那行「完整性自检」，分清是权限问题还是代码问题。

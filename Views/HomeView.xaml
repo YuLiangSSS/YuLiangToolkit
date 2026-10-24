@@ -4,10 +4,23 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Margin="30,26,30,26">
 
-            <!-- 标题 -->
-            <TextBlock Text="工具集主页" FontSize="22" FontWeight="SemiBold" />
-            <TextBlock Text="搜名称 / 标签 / 描述找功能，或按「最近使用」排序；左侧导航始终列出全部功能。"
-                       FontSize="12.5" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,6,0,0" />
+            <!-- ===== 标题 + 主页设置按钮 ===== -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel>
+                    <TextBlock Text="工具集主页" FontSize="22" FontWeight="SemiBold" />
+                    <TextBlock FontSize="12.5" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,6,0,0"
+                               Text="按类别浏览，或直接搜索名称 / 标签 / 描述；点类别卡片进分类页，左侧导航列出根层分类与工具。" />
+                </StackPanel>
+
+                <Button Grid.Column="1" Content="⚙ 主页设置" Style="{StaticResource SecondaryButtonStyle}"
+                        VerticalAlignment="Top" Command="{Binding OpenSettingsCommand}"
+                        ToolTip="打开主页设置（鼠标粒子效果开关等）" />
+            </Grid>
 
             <!-- ===== 搜索 + 排序条 ===== -->
             <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0" Padding="14,12">
@@ -52,10 +65,58 @@
                 </Grid>
             </Border>
 
-            <!-- ===== 标签快捷筛选（未搜索时显示；点标签即搜索） ===== -->
-            <StackPanel Margin="0,14,0,0" Visibility="{Binding ShowTagBar, Converter={StaticResource BoolToVis}}">
+            <!-- ===== 类别卡片（根层类别；搜索时隐藏） ===== -->
+            <StackPanel Margin="0,18,0,0" Visibility="{Binding ShowCategoryCards, Converter={StaticResource BoolToVis}}">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBlock Text="全部分类" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <TextBlock Text="点进去看这一类里的工具（支持多层分类）" FontSize="11.5"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="10,0,0,0"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding CategoryCards}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Style="{StaticResource ToolCardButtonStyle}" Width="300" Margin="0,0,16,16"
+                                    ToolTip="{Binding ToolTipText}"
+                                    Command="{Binding DataContext.NavigateCategoryCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                    CommandParameter="{Binding}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="52" Height="52" CornerRadius="12" Background="#232A36" VerticalAlignment="Top">
+                                        <TextBlock Text="{Binding Emoji}" FontSize="24"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Margin="14,0,0,0">
+                                        <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Description}" FontSize="11.5"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                                   MaxHeight="34" Margin="0,5,0,0"
+                                                   Visibility="{Binding HasDescription, Converter={StaticResource BoolToVis}}" />
+                                        <TextBlock Text="{Binding CountText}" FontSize="10"
+                                                   Foreground="{StaticResource AccentBrush}"
+                                                   TextTrimming="CharacterEllipsis" Margin="0,8,0,0" />
+                                    </StackPanel>
+                                </Grid>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
+            <!-- ===== 标签快捷筛选（未搜索时显示；点标签即搜索）。放在分类之后：先让用户看到「音游工具」入口 ===== -->
+            <StackPanel Margin="0,6,0,0" Visibility="{Binding ShowTagBar, Converter={StaticResource BoolToVis}}">
                 <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
-                           Text="快速筛选：点标签即搜索（标签就是卡片上那行蓝色小字）" />
+                           Text="快速筛选：点标签即搜索（标签就是卡片上那行蓝色小字，分类里的工具也能搜到）" />
                 <ItemsControl ItemsSource="{Binding AllTags}" Margin="0,8,0,0">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
@@ -73,49 +134,56 @@
                 </ItemsControl>
             </StackPanel>
 
-            <!-- ===== 功能卡片墙 ===== -->
-            <ItemsControl ItemsSource="{Binding ToolCards}" Margin="0,10,0,0">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Button Style="{StaticResource ToolCardButtonStyle}" Width="300" Margin="0,0,16,16"
-                                ToolTip="{Binding ToolTipText}"
-                                Command="{Binding DataContext.OpenToolCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                CommandParameter="{Binding Tool}">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Border Width="52" Height="52" CornerRadius="12" Background="#232A36" VerticalAlignment="Top">
-                                    <TextBlock Text="{Binding Emoji}" FontSize="24"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
-                                <StackPanel Grid.Column="1" Margin="14,0,0,0">
-                                    <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"
-                                               TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding Description}" FontSize="11.5"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
-                                               TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
-                                               MaxHeight="34" Margin="0,5,0,0" />
-                                    <TextBlock Text="{Binding TagsText}" FontSize="10"
-                                               Foreground="{StaticResource AccentBrush}"
-                                               TextTrimming="CharacterEllipsis" Margin="0,8,0,0" />
-                                    <TextBlock Text="{Binding LastUsedText}" FontSize="10" Foreground="#5A6472"
-                                               Margin="0,4,0,0"
-                                               Visibility="{Binding ShowLastUsed, Converter={StaticResource BoolToVis}}" />
-                                </StackPanel>
-                            </Grid>
-                        </Button>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+            <!-- ===== 工具卡片墙（主页根层工具 / 搜索结果） ===== -->
+            <StackPanel Margin="0,10,0,0" Visibility="{Binding ShowToolCards, Converter={StaticResource BoolToVis}}">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBlock Text="{Binding ToolSectionTitle}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <TextBlock FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" Margin="10,0,0,0"
+                               VerticalAlignment="Center" Text="点卡片直接打开；有分类的功能也可以用搜索直接找到" />
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding ToolCards}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Style="{StaticResource ToolCardButtonStyle}" Width="300" Margin="0,0,16,16"
+                                    ToolTip="{Binding ToolTipText}"
+                                    Command="{Binding DataContext.OpenToolCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                    CommandParameter="{Binding Tool}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="52" Height="52" CornerRadius="12" Background="#232A36" VerticalAlignment="Top">
+                                        <TextBlock Text="{Binding Emoji}" FontSize="24"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <StackPanel Grid.Column="1" Margin="14,0,0,0">
+                                        <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding Description}" FontSize="11.5"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                                   MaxHeight="34" Margin="0,5,0,0" />
+                                        <TextBlock Text="{Binding TagsText}" FontSize="10"
+                                                   Foreground="{StaticResource AccentBrush}"
+                                                   TextTrimming="CharacterEllipsis" Margin="0,8,0,0" />
+                                        <TextBlock Text="{Binding LastUsedText}" FontSize="10" Foreground="#5A6472"
+                                                   Margin="0,4,0,0"
+                                                   Visibility="{Binding ShowLastUsed, Converter={StaticResource BoolToVis}}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
 
-            <!-- ===== 搜索无结果 ===== -->
+            <!-- ===== 空状态（搜索无结果 / 主页没有任何工具） ===== -->
             <Border Style="{StaticResource CardStyle}" Padding="22,20" Margin="0,4,0,0"
                     Visibility="{Binding HasNoResults, Converter={StaticResource BoolToVis}}">
                 <StackPanel>
@@ -123,13 +191,14 @@
                     <TextBlock Text="{Binding NoResultHint}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"
                                Foreground="{StaticResource TextSecondaryBrush}" />
                     <Button Content="清空搜索" Style="{StaticResource SecondaryButtonStyle}"
-                            Command="{Binding ClearSearchCommand}" HorizontalAlignment="Left" Margin="0,14,0,0" />
+                            Command="{Binding ClearSearchCommand}" HorizontalAlignment="Left" Margin="0,14,0,0"
+                            Visibility="{Binding HasSearchText, Converter={StaticResource BoolToVis}}" />
                 </StackPanel>
             </Border>
 
             <!-- 开发提示 -->
             <TextBlock FontSize="11" Foreground="#5A6472" Margin="0,6,0,0" TextWrapping="Wrap"
-                       Text="开发提示：新增工具只需新建一个实现 ITool 的类（或把 dll 放进 plugins 目录），主程序会自动发现；给它加上 Tags 属性，标签搜索与主页标签条就会带上它。详见 AGENTS.md。" />
+                       Text="开发提示：新增工具只需新建一个实现 ITool 的类（或把 dll 放进 plugins 目录），主程序会自动发现；给它加上 Tags 标签就能被搜索命中，再加上 CategoryPath（例如 new[] { &quot;音游工具&quot; }）就会自动收进对应类别页。详见 AGENTS.md 的 2.7 / 2.8 节。" />
         </StackPanel>
     </ScrollViewer>
 </UserControl>
