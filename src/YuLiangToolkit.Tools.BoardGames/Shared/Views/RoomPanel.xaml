@@ -1,0 +1,189 @@
+<UserControl x:Class="YuLiangToolkit.Tools.BoardGames.Shared.Views.RoomPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- 「房间」面板（房间 + 模式 + 开房/加入 + 分享地址 + 状态 + 暂停/重连 + 离开）。
+         聊天已拆到 ChatPanel；两个控件都要求 DataContext = 游戏 VM（继承 BoardGameRoomViewModelBase）。
+         绑定名必须与 BoardGameRoomViewModelBase 的属性/命令一字不差。
+         版式目标：在线时整卡尽量矮（分享地址最多 3 行 + 折叠提示），让 1280×820 首屏能露出「对局」卡。 -->
+    <Border Style="{StaticResource CardStyle}" Padding="14,12">
+        <StackPanel>
+            <!-- 标题 + 状态徽标 -->
+            <Grid>
+                <TextBlock Text="房间" FontSize="13" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextPrimaryBrush}" />
+                <TextBlock Text="{Binding ModeBadgeText}" HorizontalAlignment="Right"
+                           FontSize="12" FontWeight="SemiBold" ToolTip="当前玩法状态">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ModeBadgeBrushKey}" Value="SuccessBrush">
+                                    <Setter Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding ModeBadgeBrushKey}" Value="DangerBrush">
+                                    <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Grid>
+
+            <!-- 断线重连 / 对局暂停（WIP 3.6：状态一句人话、能看见重连进度） -->
+            <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="6" Padding="8,6"
+                    Margin="0,8,0,0"
+                    Visibility="{Binding IsGamePaused, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <TextBlock Text="{Binding GamePauseStatusText}" FontSize="11.5" FontWeight="SemiBold"
+                               TextWrapping="Wrap" Foreground="{StaticResource DangerBrush}" />
+                    <TextBlock Text="{Binding ReconnectStatusText}" FontSize="10.5" TextWrapping="Wrap"
+                               Margin="0,2,0,0" Foreground="{StaticResource TextSecondaryBrush}"
+                               Visibility="{Binding ReconnectStatusText, Converter={StaticResource EmptyToVisInverse}}" />
+                </StackPanel>
+            </Border>
+
+            <!-- 同机双人 / 开房 / 加入：进房间后整块收起（只留状态、分享地址、离开按钮） -->
+            <StackPanel Visibility="{Binding ShowJoinControls, Converter={StaticResource BoolToVis}}">
+                <Button Content="同机双人（两个人轮流用这台电脑）" Style="{StaticResource SecondaryButtonStyle}"
+                        Margin="0,8,0,0" HorizontalAlignment="Stretch"
+                        Command="{Binding StartLocalCommand}" IsEnabled="{Binding CanJoin}" />
+
+                <TextBlock Text="开房间（你等对方连进来）" FontSize="11"
+                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,10,0,0" />
+                <Grid Margin="0,4,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="玩家名" VerticalAlignment="Center" FontSize="11.5"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,8,0" />
+                    <TextBox Grid.Column="1" Text="{Binding PlayerName, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource TextBoxStyle}" ToolTip="对方看到的名字" />
+                </Grid>
+                <Grid Margin="0,6,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="80" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="端口" VerticalAlignment="Center" FontSize="11.5"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,8,0" />
+                    <TextBox Grid.Column="1" Text="{Binding ListenPortText, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource TextBoxStyle}" ToolTip="0 = 让系统自动挑一个空闲端口" />
+                    <TextBlock Grid.Column="2" Text="0 = 自动挑" VerticalAlignment="Center" FontSize="10"
+                               Foreground="{StaticResource TextSecondaryBrush}" Margin="8,0,0,0" />
+                </Grid>
+                <Button Content="开房间" Style="{StaticResource PrimaryButtonStyle}" Margin="0,8,0,0"
+                        HorizontalAlignment="Stretch" Command="{Binding StartHostCommand}"
+                        IsEnabled="{Binding CanJoin}" />
+
+                <TextBlock Text="加入房间（填对方发来的地址）" FontSize="11"
+                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,10,0,0" />
+                <TextBox Text="{Binding JoinAddress, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource TextBoxStyle}" Margin="0,4,0,0"
+                         ToolTip="例如 192.168.1.5:5310、[::1]:5310、穿透域名:端口" />
+                <Button Content="加入房间" Style="{StaticResource PrimaryButtonStyle}" Margin="0,8,0,0"
+                        HorizontalAlignment="Stretch" Command="{Binding JoinRoomCommand}"
+                        IsEnabled="{Binding CanJoin}" />
+            </StackPanel>
+
+            <!-- 开房后的分享地址：最多 3 行，其余折叠（标题右侧直接放「复制邀请」，省一行高度） -->
+            <StackPanel Visibility="{Binding HasShareRows, Converter={StaticResource BoolToVis}}" Margin="0,8,0,0">
+                <Grid>
+                    <TextBlock Text="地址（复制发给对方）" FontSize="11" VerticalAlignment="Center"
+                               Foreground="{StaticResource TextSecondaryBrush}" />
+                    <Button Content="复制邀请" Style="{StaticResource SecondaryButtonStyle}" FontSize="11"
+                            Padding="10,3" HorizontalAlignment="Right" VerticalAlignment="Center"
+                            Command="{Binding CopyInviteCommand}" ToolTip="把推荐地址连带一句邀请文案复制到剪贴板" />
+                </Grid>
+                <ItemsControl ItemsSource="{Binding ShareRowsVisible}" Margin="0,4,0,0">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,3,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding AddressText}" FontSize="12"
+                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding DetailText}" FontSize="10"
+                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="复制" Style="{StaticResource SecondaryButtonStyle}"
+                                        FontSize="11" Padding="8,2" VerticalAlignment="Center"
+                                        Command="{Binding DataContext.CopyTextCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding AddressText}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Text="{Binding ShareMoreText}" FontSize="10" TextWrapping="Wrap" Margin="0,3,0,0"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           Visibility="{Binding HasMoreShareRows, Converter={StaticResource BoolToVis}}" />
+            </StackPanel>
+
+            <!-- 状态 / 提示（压紧：两行正文 + 一行执子） -->
+            <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="6"
+                    Padding="8,6" Margin="0,8,0,0">
+                <StackPanel>
+                    <TextBlock Text="{Binding ConnectionSummary}" FontSize="10.5" TextWrapping="Wrap"
+                               Foreground="{StaticResource TextSecondaryBrush}" />
+                    <TextBlock Text="{Binding NoticeText}" FontSize="10.5" TextWrapping="Wrap" Margin="0,2,0,0">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding NoticeBrushKey}" Value="SuccessBrush">
+                                        <Setter Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding NoticeBrushKey}" Value="DangerBrush">
+                                        <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <!-- 同机双人时「我方/对方执子」没有意义，整行隐藏（免得出现「对方：同机双人」这种怪话）。
+                         ⚠ 「取反再控显隐」必须用 InverseBoolToVis：InverseBoolConverter 返回 bool，
+                         绑到 Visibility 上 WPF 不会自动转换，转换失败时控件保持默认 Visible（看起来绑定没生效）。 -->
+                    <StackPanel Orientation="Horizontal" Margin="0,3,0,0"
+                                Visibility="{Binding IsLocalMode, Converter={StaticResource InverseBoolToVis}}">
+                        <TextBlock Text="{Binding LocalSideText}" FontSize="10.5"
+                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                        <TextBlock Text="{Binding PeerSideText}" FontSize="10.5" Margin="10,0,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- 对方向你请求（悔棋 / 和棋 / 再来一局） -->
+            <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="6" Padding="8,6"
+                    Margin="0,6,0,0"
+                    Visibility="{Binding HasPendingPrompt, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <TextBlock Text="{Binding PendingPromptText}" FontSize="11" TextWrapping="Wrap"
+                               Foreground="{StaticResource TextPrimaryBrush}" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,5,0,0">
+                        <Button Content="同意" Style="{StaticResource PrimaryButtonStyle}" FontSize="11"
+                                Padding="14,3" Command="{Binding AcceptPendingCommand}" />
+                        <Button Content="拒绝" Style="{StaticResource SecondaryButtonStyle}" FontSize="11"
+                                Padding="14,3" Margin="8,0,0,0" Command="{Binding RejectPendingCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- 自己发的请求等回应 -->
+            <TextBlock Text="{Binding PendingWaitText}" FontSize="10.5" TextWrapping="Wrap" Margin="0,5,0,0"
+                       Foreground="{StaticResource TextSecondaryBrush}"
+                       Visibility="{Binding HasPendingWait, Converter={StaticResource BoolToVis}}" />
+
+            <!-- 离开房间 / 停止重连 -->
+            <Button Content="{Binding LeaveRoomText}" Style="{StaticResource SecondaryButtonStyle}"
+                    Margin="0,8,0,0" HorizontalAlignment="Stretch" Command="{Binding LeaveRoomCommand}"
+                    Visibility="{Binding CanLeaveRoom, Converter={StaticResource BoolToVis}}" />
+        </StackPanel>
+    </Border>
+</UserControl>

@@ -1,0 +1,79 @@
+<UserControl x:Class="YuLiangToolkit.Tools.BoardGames.Shared.Views.ChatPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core">
+
+    <!-- 「房间聊天」面板：从原 RoomPanel 里拆出来，单独放到页面最底部（聊天最下）。
+         DataContext = 游戏 VM（继承 BoardGameRoomViewModelBase）；绑定名与原 RoomPanel 里的聊天部分完全一致。 -->
+    <Border Style="{StaticResource CardStyle}">
+        <StackPanel>
+            <Grid>
+                <TextBlock Text="房间聊天" FontSize="13" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextPrimaryBrush}" />
+                <Button Content="清空" Style="{StaticResource SecondaryButtonStyle}" FontSize="11"
+                        Padding="10,3" HorizontalAlignment="Right" VerticalAlignment="Center"
+                        Command="{Binding ClearChatCommand}" />
+            </Grid>
+
+            <!-- 内层列表挂滚动链：滚到头时把滚轮交给外层页面（见 AGENTS.md 2.9.1） -->
+            <ListBox ItemsSource="{Binding ChatItems}" Height="168" Margin="0,8,0,0"
+                     Background="Transparent" BorderThickness="0" Focusable="False"
+                     core:ScrollChaining.Enabled="True"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     HorizontalContentAlignment="Stretch">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Padding" Value="2" />
+                        <Setter Property="Margin" Value="0" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ListBoxItem">
+                                    <ContentPresenter Margin="2,2" />
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding DisplayText}" TextWrapping="Wrap">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="FontSize" Value="12" />
+                                    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsSystem}" Value="True">
+                                            <Setter Property="FontSize" Value="11" />
+                                            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsMine}" Value="True">
+                                            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <Grid Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="ChatInputBox"
+                         Text="{Binding ChatText, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource TextBoxStyle}" ToolTip="输入聊天内容，回车发送" />
+                <Button Grid.Column="1" Content="发送" Style="{StaticResource PrimaryButtonStyle}"
+                        Margin="8,0,0,0" Command="{Binding SendChatCommand}"
+                        IsEnabled="{Binding CanSendChat}" />
+                <Button Grid.Column="2" Content="清空" Style="{StaticResource SecondaryButtonStyle}"
+                        Margin="8,0,0,0" Command="{Binding ClearChatCommand}" />
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>

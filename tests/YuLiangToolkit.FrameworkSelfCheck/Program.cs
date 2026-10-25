@@ -752,6 +752,19 @@ catch (Exception ex)
         $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
 }
 
+// ---------- 棋牌：五子棋 / 象棋 / 房间网络层（见 AGENTS.md 2.18） ----------
+try
+{
+    BoardGamesChecks.Run(
+        (name, ok, detail) => Check(name, ok, detail),
+        (name, ok) => Check(name, ok));
+}
+catch (Exception ex)
+{
+    Check($"[棋牌] 运行过程中抛出异常（{ex.GetType().Name}）", false,
+        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
+}
+
 // ---------- 完整性自检（全屏藏任务栏的前置条件） ----------
 // 只读：读自己的令牌 + FindWindow，**不隐藏任何窗口**（见 AGENTS.md 2.14）。
 // 这块是 v0.9.4 加的：全屏藏不住任务栏时，先看启动时那行「完整性自检」，分清是权限问题还是代码问题。

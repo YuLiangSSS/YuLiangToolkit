@@ -21,6 +21,8 @@
         <SolidColorBrush x:Key="InputBackgroundBrush" Color="#181C22" />
 
         <conv:InverseBoolConverter x:Key="InverseBoolConverter" />
+        <!-- bool 取反后直接给 Visibility 用（true=Collapsed）；别把 InverseBoolConverter 绑到 Visibility 上（见类注释） -->
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
         <conv:EmptyStringToVisibilityConverter x:Key="EmptyToVis" />
         <!-- 与 EmptyToVis 相反：用于「有结果或者干脆没内容时隐藏」的空状态提示 -->
         <conv:EmptyStringToVisibilityConverter x:Key="EmptyToVisInverse" Invert="True" />

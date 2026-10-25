@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「棋牌」类别：联机五子棋 + 联机象棋（主机开 TCP 监听 / 客户端填地址加入的房间）。
+       分层（纯逻辑引擎 → 房间协议与会话 → ViewModel → View）与约定见根目录 AGENTS.md 的 2.18 节。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.BoardGames</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.BoardGames</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

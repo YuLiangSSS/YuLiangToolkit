@@ -34,6 +34,9 @@
     <!-- 「osu!mania 转谱」：OsuParsers 解析桥往返 / 星数 / 等级公式 / 转 K / 转 LN，
          全部是纯逻辑（合成谱面文本在临时目录里造，不碰仓库 Data/Config）。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.OsuMania\YuLiangToolkit.Tools.OsuMania.csproj" />
+    <!-- 「棋牌」：五子棋胜负 / 禁手，象棋走法 / 将军 / 摆棋 / 让先 / 记谱，
+         以及在本机 127.0.0.1 上真的开一局房间（主机 + 客户端双向同步）。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.BoardGames\YuLiangToolkit.Tools.BoardGames.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,271 @@
+<UserControl x:Class="YuLiangToolkit.Tools.BoardGames.Gomoku.Views.GomokuView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             xmlns:shared="clr-namespace:YuLiangToolkit.Tools.BoardGames.Shared.Views"
+             xmlns:views="clr-namespace:YuLiangToolkit.Tools.BoardGames.Gomoku.Views"
+             Background="Transparent">
+
+    <!-- 联机五子棋主界面（WIP 4.6）：一页放完 —— 左棋盘、右房间 + 对局 + 设置、下方棋谱。
+         注意：整页在 ScrollViewer 里，所以行高一律 Auto（不要 Height="*"），
+         棋盘用固定 640×640 的自绘控件套 Viewbox 缩放；内层列表挂滚动链（AGENTS.md 2.9.1）。 -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="28,22,28,26">
+
+            <!-- ================= 标题行 ================= -->
+            <Grid>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="⚫" FontSize="22" VerticalAlignment="Center" />
+                    <TextBlock Text="联机五子棋" FontSize="21" FontWeight="SemiBold" Margin="10,0,0,0"
+                               VerticalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}" />
+                    <Border CornerRadius="10" Padding="10,3" Margin="14,0,0,0" VerticalAlignment="Center"
+                            Background="{StaticResource InputBackgroundBrush}">
+                        <TextBlock Text="{Binding ModeBadgeText}" FontSize="12" FontWeight="SemiBold">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ModeBadgeBrushKey}" Value="SuccessBrush">
+                                            <Setter Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Border>
+                </StackPanel>
+            </Grid>
+
+            <!-- ================= 主区域：左棋盘 / 右栏 ================= -->
+            <Grid Margin="0,16,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="380" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 左：棋盘 + 对局操作（状态行在棋盘上方、操作按钮紧贴棋盘下方，1280×820 首屏可见） -->
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}" VerticalAlignment="Top">
+                    <StackPanel>
+                        <!-- 顶部状态行 -->
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <WrapPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding TurnText}" FontSize="15" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding MoveCountText}" FontSize="12" Margin="14,0,0,0"
+                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding ResultDetailText}" FontSize="12" Margin="14,0,0,0"
+                                           TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}"
+                                           VerticalAlignment="Center"
+                                           Visibility="{Binding IsGameOver, Converter={StaticResource BoolToVis}}" />
+                            </WrapPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding GamePauseStatusText}" FontSize="11.5"
+                                       FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center"
+                                       Foreground="{StaticResource DangerBrush}"
+                                       Visibility="{Binding IsGamePaused, Converter={StaticResource BoolToVis}}" />
+                        </Grid>
+
+                        <!-- 棋盘：固定 640×640 自绘，外层 Viewbox 限高 480 缩放
+                             （实测 1280×820：520 会把棋盘下按钮挤出首屏，480 留出余量；1024×700 自动缩到约 300） -->
+                        <Viewbox Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Top"
+                                 MaxWidth="480" MaxHeight="480">
+                            <views:GomokuBoardView x:Name="Board"
+                                                   Width="640" Height="640"
+                                                   State="{Binding BoardState}"
+                                                   Interactive="{Binding IsBoardInteractive}"
+                                                   ShowCoordinates="True" />
+                        </Viewbox>
+
+                        <!-- 操作按钮：紧贴棋盘下方（开始对局也放这里，首屏不用滚） -->
+                        <WrapPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <Button Content="开始对局" Style="{StaticResource PrimaryButtonStyle}"
+                                    Margin="0,4,8,0"
+                                    Command="{Binding StartOnlineGameCommand}"
+                                    Visibility="{Binding ShowStartOnlineButton, Converter={StaticResource BoolToVis}}" />
+                            <Button Content="悔棋" Style="{StaticResource SecondaryButtonStyle}"
+                                    Margin="0,4,8,0"
+                                    Command="{Binding UndoCommand}" IsEnabled="{Binding CanUndo}"
+                                    ToolTip="同机双人直接撤；联机需要对方同意" />
+                            <Button Content="求和" Style="{StaticResource SecondaryButtonStyle}"
+                                    Margin="0,4,8,0"
+                                    Command="{Binding OfferDrawCommand}" IsEnabled="{Binding CanOfferDraw}"
+                                    ToolTip="联机时请对方同意和棋" />
+                            <Button Content="{Binding ResignButtonText}" Style="{StaticResource SecondaryButtonStyle}"
+                                    Margin="0,4,8,0" MinWidth="72"
+                                    Command="{Binding ResignCommand}" IsEnabled="{Binding CanResign}"
+                                    ToolTip="联机对局进行中要点两下确认，防手滑" />
+                            <Button Content="再来一局" Style="{StaticResource SecondaryButtonStyle}"
+                                    Margin="0,4,8,0"
+                                    Command="{Binding RematchCommand}" IsEnabled="{Binding CanRematch}"
+                                    ToolTip="联机需要对方同意，同意后双方换边" />
+                        </WrapPanel>
+
+                        <TextBlock Text="{Binding BoardHintText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,10,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 右栏：房间 / 对局 / 设置 -->
+                <StackPanel Grid.Column="2">
+
+                    <!-- 房间 + 聊天（共享面板，两个棋牌游戏共用） -->
+                    <shared:RoomPanel />
+
+                    <!-- 对局 -->
+                    <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="对局" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimaryBrush}" />
+
+                            <WrapPanel Margin="0,10,0,0">
+                                <TextBlock Text="{Binding MySideText}" FontSize="12.5"
+                                           Foreground="{StaticResource TextPrimaryBrush}" />
+                                <TextBlock Text="{Binding OpponentSideText}" FontSize="12.5" Margin="12,0,0,0"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                            </WrapPanel>
+                            <TextBlock Text="{Binding TurnText}" FontSize="12.5" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Foreground="{StaticResource AccentBrush}" />
+                            <TextBlock Text="{Binding ResultDetailText}" FontSize="12.5" TextWrapping="Wrap"
+                                       Margin="0,4,0,0" Foreground="{StaticResource TextSecondaryBrush}" />
+
+                            <!-- 房主专用的「开始对局」：开房成功后、对方加入前后都能点 -->
+                            <Button Content="开始对局" Style="{StaticResource PrimaryButtonStyle}" Margin="0,12,0,0"
+                                    HorizontalAlignment="Stretch"
+                                    Command="{Binding StartOnlineGameCommand}"
+                                    Visibility="{Binding ShowStartOnlineButton, Converter={StaticResource BoolToVis}}" />
+                            <TextBlock Text="{Binding StartGameHint}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       Visibility="{Binding ShowStartOnlineButton, Converter={StaticResource BoolToVis}}" />
+
+                            <!-- 没进房间时：同机双人快速开一局（已经在同机双人里就不用这个，用「再来一局」） -->
+                            <Button Content="同机双人新开一局" Style="{StaticResource SecondaryButtonStyle}"
+                                    Margin="0,10,0,0" HorizontalAlignment="Stretch"
+                                    Command="{Binding NewLocalGameCommand}"
+                                    Visibility="{Binding ShowNewLocalGameButton, Converter={StaticResource BoolToVis}}" />
+
+                            <!-- 对局暂停 / 断线重连状态（WIP 3.6：主机等对方重连 / 客户端自动重连中） -->
+                            <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="6" Padding="10,8"
+                                    Margin="0,10,0,0"
+                                    Visibility="{Binding IsGamePaused, Converter={StaticResource BoolToVis}}">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding GamePauseStatusText}" FontSize="12" FontWeight="SemiBold"
+                                               TextWrapping="Wrap" Foreground="{StaticResource DangerBrush}" />
+                                    <TextBlock Text="{Binding ReconnectStatusText}" FontSize="11" TextWrapping="Wrap"
+                                               Margin="0,4,0,0" Foreground="{StaticResource TextSecondaryBrush}"
+                                               Visibility="{Binding ReconnectStatusText, Converter={StaticResource EmptyToVisInverse}}" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- 离开房间：对局进行中要点两下确认（提示会中断本局） -->
+                            <TextBlock Text="{Binding LeaveRoomWarning}" FontSize="11" TextWrapping="Wrap"
+                                       Margin="0,10,0,0" Foreground="{StaticResource DangerBrush}"
+                                       Visibility="{Binding LeaveRoomWarning, Converter={StaticResource EmptyToVisInverse}}" />
+                            <Button Content="{Binding LeaveRoomButtonText}" Style="{StaticResource SecondaryButtonStyle}"
+                                    Margin="0,8,0,0" HorizontalAlignment="Stretch"
+                                    Command="{Binding SafeLeaveRoomCommand}"
+                                    Visibility="{Binding ShowLeaveRoomButton, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 设置 -->
+                    <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0" IsEnabled="{Binding IsSetupAllowed}">
+                        <StackPanel>
+                            <TextBlock Text="设置" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimaryBrush}" />
+
+                            <!-- 禁手：黑棋三三 / 四四 / 长连判负（黑棋正好五连仍算赢） -->
+                            <CheckBox Content="启用禁手" Style="{StaticResource CheckBoxStyle}" Margin="0,12,0,0"
+                                      IsChecked="{Binding ForbiddenEnabled}"
+                                      ToolTip="开：黑棋三三 / 四四 / 长连判负；关：长连也算赢。黑棋正好五连永远算赢。" />
+                            <TextBlock Text="{Binding ForbiddenSummary}" FontSize="11" TextWrapping="Wrap"
+                                       Margin="0,4,0,0" Foreground="{StaticResource TextSecondaryBrush}" />
+
+                            <CheckBox Content="显示禁手点" Style="{StaticResource CheckBoxStyle}" Margin="0,10,0,0"
+                                      IsChecked="{Binding ShowForbiddenPoints}"
+                                      ToolTip="黑方回合时在禁手点画红色小叉" />
+
+                            <CheckBox Content="显示棋谱" Style="{StaticResource CheckBoxStyle}" Margin="0,10,0,0"
+                                      IsChecked="{Binding ShowMoveList}" />
+
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="棋盘大小" FontSize="12" VerticalAlignment="Center"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <ComboBox Grid.Column="1" Height="32" Margin="10,0,0,0"
+                                          Style="{StaticResource ComboBoxStyle}"
+                                          DisplayMemberPath="Label"
+                                          ItemsSource="{Binding BoardSizeOptions}"
+                                          SelectedItem="{Binding SelectedBoardSize}" />
+                            </Grid>
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="房主执子" FontSize="12" VerticalAlignment="Center"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <ComboBox Grid.Column="1" Height="32" Margin="10,0,0,0"
+                                          Style="{StaticResource ComboBoxStyle}"
+                                          DisplayMemberPath="Label"
+                                          ItemsSource="{Binding HostSideOptions}"
+                                          SelectedItem="{Binding SelectedHostSide}" />
+                            </Grid>
+
+                            <TextBlock Text="开房前设置生效；已开局改动会在下一局生效" FontSize="11" TextWrapping="Wrap"
+                                       Margin="0,12,0,0" Foreground="{StaticResource TextSecondaryBrush}" />
+                            <TextBlock Text="房主执子只能在未进房间时修改" FontSize="11" TextWrapping="Wrap"
+                                       Margin="0,4,0,0" Foreground="{StaticResource TextSecondaryBrush}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 棋谱（右栏、聊天上方；首屏看不到时就往下滚） -->
+                    <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0"
+                            Visibility="{Binding ShowMoveList, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <Grid>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="棋谱" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}" />
+                                    <TextBlock Text="{Binding MoveCountText}" FontSize="11.5" Margin="10,2,0,0"
+                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                </StackPanel>
+                                <Button Content="复制棋谱" Style="{StaticResource SecondaryButtonStyle}"
+                                        HorizontalAlignment="Right" Command="{Binding CopyMovesCommand}"
+                                        ToolTip="把「1. 黑 H8」这样的完整棋谱复制到剪贴板" />
+                            </Grid>
+
+                            <TextBlock Text="还没有落子" FontSize="12" Margin="0,10,0,0"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       Visibility="{Binding HasMoves, Converter={StaticResource InverseBoolToVis}}" />
+
+                            <ListBox ItemsSource="{Binding MoveLines}" MaxHeight="220" Margin="0,10,0,0"
+                                     Style="{StaticResource FileListStyle}"
+                                     core:ScrollChaining.Enabled="True"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     Visibility="{Binding HasMoves, Converter={StaticResource BoolToVis}}">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" FontSize="12.5" />
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 房间聊天（共享面板，放整页最底部：聊天不挡对局操作） -->
+                    <shared:ChatPanel Margin="0,12,0,0" />
+                </StackPanel>
+            </Grid>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

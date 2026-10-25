@@ -16,9 +16,14 @@
 | 🎹 osu! Key 转换器 | 低键数 mania 谱面「复制列 / 插空白列」加成高键数（2~10 可选） | [tools/osu-key-converter.md](tools/osu-key-converter.md) |
 | 🍜 osu! LN 转换器 | 按 14 档强度把普通键改成 LN（长条），可选保留原 LN / 修尾巴 | [tools/osu-ln-transformer.md](tools/osu-ln-transformer.md) |
 | ⭐ osu! 等级计算器 | 拖入 mania 谱面算等级（Star Rating → 等级），批量表格 | [tools/osu-level-calculator.md](tools/osu-level-calculator.md) |
+| ⚫ 联机五子棋 | 开 TCP 房间和朋友下五子棋：可选禁手（三三 / 四四 / 长连）、悔棋、聊天 | [tools/gomoku.md](tools/gomoku.md) |
+| 🀄 联机象棋 | 开 TCP 房间下中国象棋：自由摆棋 + 一键默认开局、让子 / 让先、中文记谱 | [tools/xiangqi.md](tools/xiangqi.md) |
 | 🧪 框架示例 | 开发用模板（Data/Config 轮子演示，可整目录删除） | [tools/sample-framework.md](tools/sample-framework.md) |
 
 > 🎵 上面四个 osu! 工具在主页上收在「**音游工具**」类别里：点类别卡片进类别页，顶部面包屑可点回上一级。
+>
+> 🎲 五子棋与象棋收在「**棋牌**」类别里（同样点类别卡片进类别页，
+> 联机方式见各自那一页的「怎么联机」）。
 
 ## 通用说明
 

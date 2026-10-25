@@ -27,6 +27,7 @@
     <ProjectReference Include="src\YuLiangToolkit.Tools.ChatRoom\YuLiangToolkit.Tools.ChatRoom.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.MapDownloader\YuLiangToolkit.Tools.MapDownloader.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.OsuMania\YuLiangToolkit.Tools.OsuMania.csproj" />
+    <ProjectReference Include="src\YuLiangToolkit.Tools.BoardGames\YuLiangToolkit.Tools.BoardGames.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.Sample\YuLiangToolkit.Tools.Sample.csproj" />
   </ItemGroup>
 

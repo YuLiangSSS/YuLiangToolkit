@@ -1,0 +1,477 @@
+<UserControl x:Class="YuLiangToolkit.Tools.BoardGames.Xiangqi.Views.XiangqiView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             xmlns:shared="clr-namespace:YuLiangToolkit.Tools.BoardGames.Shared.Views"
+             xmlns:views="clr-namespace:YuLiangToolkit.Tools.BoardGames.Xiangqi.Views"
+             Background="{StaticResource WindowBackgroundBrush}">
+
+    <!-- 「联机中国象棋」界面。整体一页（外层 ScrollViewer），布局：
+         标题行 → 左棋盘卡 + 右栏（房间 → 对局 → 摆棋与让子 → 设置）→ 下方跨列棋谱（聊天由共享 ChatPanel 接在最下）。
+         ⚠ 外层是 ScrollViewer：卡片内部不要用 Height="*" 的行；棋盘用 Viewbox 缩放；棋盘卡里的按钮不能被折叠线裁掉。 -->
+    <ScrollViewer x:Name="OuterScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel x:Name="RootPanel" Margin="28,22,28,26">
+
+            <!-- ============ 标题行 ============ -->
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="🀄" FontSize="24" VerticalAlignment="Center" />
+                    <TextBlock Text="联机中国象棋" FontSize="20" FontWeight="SemiBold" Margin="10,0,0,0"
+                               VerticalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}" />
+                    <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="6"
+                            Padding="9,3" Margin="14,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding ModeBadgeText}" FontSize="12" FontWeight="SemiBold">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ModeBadgeBrushKey}" Value="SuccessBrush">
+                                            <Setter Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding ModeBadgeBrushKey}" Value="DangerBrush">
+                                            <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Border>
+                    <TextBlock Text="{Binding MySideText}" FontSize="12" Margin="14,0,0,0"
+                               VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
+                </StackPanel>
+                <TextBlock FontSize="11.5" TextWrapping="Wrap" Margin="0,6,0,0"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           Text="自由摆棋 · 让子 / 让先 · 走法提示 · 中文记谱 · 悔棋 / 认输 / 求和 / 再来一局 · 断线自动重连" />
+            </StackPanel>
+
+            <!-- ============ 主体：左棋盘 + 右栏卡片 ============ -->
+            <Grid Margin="0,16,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="392" />
+                </Grid.ColumnDefinitions>
+
+                <!-- ===== 左：棋盘卡（轮次 / 手数 / 结果 / 将军 / 操作按钮都压在这张卡里） ===== -->
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}" VerticalAlignment="Top">
+                    <StackPanel>
+                        <Grid>
+                            <TextBlock Text="{Binding TurnText}" FontSize="13.5" FontWeight="SemiBold"
+                                       TextWrapping="Wrap" Foreground="{StaticResource TextPrimaryBrush}" />
+                            <TextBlock Text="{Binding CheckText}" FontSize="12" HorizontalAlignment="Right"
+                                       VerticalAlignment="Center" Foreground="{StaticResource DangerBrush}"
+                                       Visibility="{Binding CheckText, Converter={StaticResource EmptyToVisInverse}}" />
+                        </Grid>
+
+                        <!-- 棋盘固定设计尺寸 500×565，用 Viewbox 缩放：MaxWidth/MaxHeight 保证 1280×820 首屏放得下 -->
+                        <Viewbox Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Center"
+                                 MaxWidth="430" MaxHeight="478" Margin="0,8,0,0">
+                            <views:XiangqiBoardView x:Name="BoardView" Width="500" Height="565"
+                                                    State="{Binding BoardState}"
+                                                    Flipped="{Binding IsFlipped}"
+                                                    Interactive="{Binding IsBoardInteractive}" />
+                        </Viewbox>
+
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding MoveCountText}" FontSize="11"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding ResultText}" FontSize="11.5" FontWeight="SemiBold"
+                                           Margin="12,0,0,0" TextWrapping="Wrap"
+                                           Foreground="{StaticResource SuccessBrush}"
+                                           Visibility="{Binding ResultText, Converter={StaticResource EmptyToVisInverse}}" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="翻转棋盘" Style="{StaticResource SecondaryButtonStyle}"
+                                    Padding="10,4" FontSize="11.5" VerticalAlignment="Center"
+                                    Command="{Binding FlipBoardCommand}" />
+                        </Grid>
+
+                        <!-- 操作按钮：压进棋盘卡，首屏不会被裁掉 -->
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="6" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="6" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="6" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button Content="悔棋" Style="{StaticResource SecondaryButtonStyle}" FontSize="12"
+                                    Padding="4,5" HorizontalAlignment="Stretch"
+                                    Command="{Binding UndoCommand}" />
+                            <Button Grid.Column="2" Content="认输" Style="{StaticResource SecondaryButtonStyle}"
+                                    FontSize="12" Padding="4,5" HorizontalAlignment="Stretch"
+                                    Command="{Binding ResignCommand}" />
+                            <Button Grid.Column="4" Content="求和" Style="{StaticResource SecondaryButtonStyle}"
+                                    FontSize="12" Padding="4,5" HorizontalAlignment="Stretch"
+                                    Command="{Binding OfferDrawCommand}" />
+                            <Button Grid.Column="6" Content="再来一局" Style="{StaticResource SecondaryButtonStyle}"
+                                    FontSize="12" Padding="4,5" HorizontalAlignment="Stretch"
+                                    Command="{Binding RematchCommand}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- ===== 右栏（用 Grid 定行号：摆棋卡在未开局时排最上面，房间 / 对局在它下面） ===== -->
+                <Grid Grid.Column="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- 房间（共享面板：开房 / 加入 / 地址分享 / 离开；ChatPanel 由共享层接在页面最下面） -->
+                    <shared:RoomPanel Grid.Row="1" Margin="0,12,0,0" />
+
+                    <!-- ===== 对局 ===== -->
+                    <Border Grid.Row="2" Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+                        <StackPanel>
+                            <Grid>
+                                <TextBlock Text="对局" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimaryBrush}" />
+                                <TextBlock Text="{Binding ModeBadgeText}" HorizontalAlignment="Right"
+                                           FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                            </Grid>
+
+                            <!-- 断线 / 对局暂停（红底状态块，基类统一维护） -->
+                            <Border Background="#3A1F22" BorderBrush="{StaticResource DangerBrush}" BorderThickness="1"
+                                    CornerRadius="6" Padding="10,8" Margin="0,8,0,0"
+                                    Visibility="{Binding IsGamePaused, Converter={StaticResource BoolToVis}}">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding GamePauseStatusText}" FontSize="12" FontWeight="SemiBold"
+                                               TextWrapping="Wrap" Foreground="{StaticResource DangerBrush}" />
+                                    <TextBlock Text="{Binding ReconnectStatusText}" FontSize="10.5" TextWrapping="Wrap"
+                                               Margin="0,4,0,0" Foreground="{StaticResource TextSecondaryBrush}"
+                                               Visibility="{Binding IsReconnecting, Converter={StaticResource BoolToVis}}" />
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="{Binding TurnText}" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap"
+                                       Margin="0,8,0,0" Foreground="{StaticResource TextPrimaryBrush}" />
+                            <TextBlock Text="{Binding CheckText}" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Foreground="{StaticResource DangerBrush}"
+                                       Visibility="{Binding CheckText, Converter={StaticResource EmptyToVisInverse}}" />
+                            <TextBlock Text="{Binding ResultText}" FontSize="12.5" FontWeight="SemiBold"
+                                       TextWrapping="Wrap" Margin="0,4,0,0" Foreground="{StaticResource SuccessBrush}"
+                                       Visibility="{Binding ResultText, Converter={StaticResource EmptyToVisInverse}}" />
+                            <TextBlock Text="{Binding MySideSummaryText}" FontSize="11.5" TextWrapping="Wrap"
+                                       Margin="0,6,0,0" Foreground="{StaticResource TextSecondaryBrush}" />
+                            <TextBlock Text="{Binding PeerSideSummaryText}" FontSize="11.5" TextWrapping="Wrap"
+                                       Margin="0,2,0,0" Foreground="{StaticResource TextSecondaryBrush}" />
+                            <TextBlock Text="{Binding StartHintText}" FontSize="11" TextWrapping="Wrap"
+                                       Margin="0,6,0,0" Foreground="{StaticResource TextSecondaryBrush}" />
+
+                            <!-- 主机：对方加入后出现「开始对局」 -->
+                            <Button Content="开始对局" Style="{StaticResource PrimaryButtonStyle}" Margin="0,10,0,0"
+                                    HorizontalAlignment="Stretch" Command="{Binding StartOnlineGameCommand}"
+                                    Visibility="{Binding ShowStartOnlineButton, Converter={StaticResource BoolToVis}}"
+                                    ToolTip="把当前摆棋作为开局，同步给对方" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ===== 摆棋与让子（未开局时是主操作，排右栏最上面；开局后收起成一行摘要） ===== -->
+                    <Border x:Name="SetupCardBorder" Grid.Row="0" Style="{StaticResource CardStyle}" Margin="0"
+                            Visibility="{Binding ShowSetupCard, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <Grid>
+                                <TextBlock Text="摆棋与让子" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimaryBrush}" />
+                                <TextBlock Text="{Binding SetupSummaryText}" HorizontalAlignment="Right"
+                                           FontSize="10.5" TextTrimming="CharacterEllipsis" MaxWidth="240"
+                                           VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
+                            </Grid>
+
+                            <!-- 展开态（未开局 / 主动重新摆棋）：调色板 + 让子 + 让先 -->
+                            <StackPanel Visibility="{Binding ShowSetupControls, Converter={StaticResource BoolToVis}}"
+                                        IsEnabled="{Binding IsSetupAllowed}">
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="8" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Content="默认开局" Style="{StaticResource PrimaryButtonStyle}"
+                                            HorizontalAlignment="Stretch" Command="{Binding ApplyDefaultSetupCommand}"
+                                            ToolTip="一键恢复标准象棋布局（红方在下、黑方在上）" />
+                                    <Button Grid.Column="2" Content="清空棋盘" Style="{StaticResource SecondaryButtonStyle}"
+                                            HorizontalAlignment="Stretch" Command="{Binding ClearSetupCommand}"
+                                            ToolTip="清空后可以从调色板自由摆子" />
+                                </Grid>
+
+                                <TextBlock Text="调色板：选一枚棋子，再点棋盘落子（选「删」再点 = 删掉那格）"
+                                           FontSize="11" TextWrapping="Wrap" Margin="0,12,0,4"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <ListBox ItemsSource="{Binding PaletteItems}" SelectedItem="{Binding SelectedPalette}"
+                                         Background="Transparent" BorderThickness="0" Focusable="False"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                         ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                    <ListBox.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel />
+                                        </ItemsPanelTemplate>
+                                    </ListBox.ItemsPanel>
+                                    <ListBox.ItemContainerStyle>
+                                        <Style TargetType="ListBoxItem">
+                                            <Setter Property="Margin" Value="0,0,6,6" />
+                                            <Setter Property="Cursor" Value="Hand" />
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="ListBoxItem">
+                                                        <Border x:Name="Chip" Width="42" Height="38" CornerRadius="6"
+                                                                Background="{StaticResource InputBackgroundBrush}"
+                                                                BorderBrush="{StaticResource BorderBrush}"
+                                                                BorderThickness="1">
+                                                            <ContentPresenter HorizontalAlignment="Center"
+                                                                              VerticalAlignment="Center" />
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="Chip" Property="Background"
+                                                                        Value="{StaticResource CardHoverBackgroundBrush}" />
+                                                            </Trigger>
+                                                            <Trigger Property="IsSelected" Value="True">
+                                                                <Setter TargetName="Chip" Property="BorderBrush"
+                                                                        Value="{StaticResource AccentBrush}" />
+                                                                <Setter TargetName="Chip" Property="Background"
+                                                                        Value="{StaticResource CardHoverBackgroundBrush}" />
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </ListBox.ItemContainerStyle>
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding DisplayChar}" FontSize="18" FontWeight="Bold"
+                                                       ToolTip="{Binding ToolTip}" FontFamily="Microsoft YaHei">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsRed}" Value="True">
+                                                                <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding IsDelete}" Value="True">
+                                                                <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="让子方" FontSize="12" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,8,0" />
+                                    <ComboBox Grid.Column="1" Height="32" Style="{StaticResource ComboBoxStyle}"
+                                              ItemsSource="{Binding HandicapGiverOptions}" DisplayMemberPath="Label"
+                                              SelectedItem="{Binding SelectedHandicapGiver}"
+                                              ToolTip="从哪一方去掉被让的棋子" />
+                                </Grid>
+                                <ItemsControl ItemsSource="{Binding HandicapPresets}" Margin="0,8,0,0">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Content="{Binding Name}" Style="{StaticResource SecondaryButtonStyle}"
+                                                    Margin="0,0,6,6" Padding="10,5" FontSize="12"
+                                                    ToolTip="{Binding Description}"
+                                                    Command="{Binding DataContext.ApplyHandicapCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="让先步数" FontSize="12" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,8,0" />
+                                    <Slider Grid.Column="1" Minimum="0" Maximum="5" TickFrequency="1"
+                                            IsSnapToTickEnabled="True" SmallChange="1" LargeChange="1"
+                                            Style="{StaticResource SliderStyle}"
+                                            Value="{Binding OpeningFreeMoves, Mode=TwoWay}"
+                                            ToolTip="被让方（让子方的对面）开局可以连走几步；0 = 不让先" />
+                                </Grid>
+                                <TextBlock Text="{Binding OpeningFreeMovesText}" FontSize="10.5" TextWrapping="Wrap"
+                                           Margin="0,2,0,0" Foreground="{StaticResource TextSecondaryBrush}" />
+
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="房主执棋" FontSize="12" VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,8,0" />
+                                    <ComboBox Grid.Column="1" Height="32" Style="{StaticResource ComboBoxStyle}"
+                                              ItemsSource="{Binding HostSideOptions}" DisplayMemberPath="Label"
+                                              SelectedItem="{Binding SelectedHostSide}"
+                                              ToolTip="房主执红还是执黑（执黑时自动翻转棋盘）" />
+                                </Grid>
+
+                                <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="6"
+                                        Padding="10,8" Margin="0,10,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding SetupStatusText}" FontSize="11.5" TextWrapping="Wrap"
+                                                   FontWeight="SemiBold">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding HasSetupError}" Value="True">
+                                                            <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding SetupFenText}" FontFamily="Consolas" FontSize="10"
+                                                   TextWrapping="Wrap" Margin="0,4,0,0"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Button Content="{Binding ApplySetupAndStartText}" Style="{StaticResource PrimaryButtonStyle}"
+                                        Margin="0,10,0,0" HorizontalAlignment="Stretch"
+                                        Command="{Binding ApplySetupAndStartCommand}"
+                                        Visibility="{Binding ShowApplySetupButton, Converter={StaticResource BoolToVis}}"
+                                        ToolTip="把当前摆棋作为开局（离线 = 开一局同机双人；主机 = 开始并同步给对方）" />
+                            </StackPanel>
+
+                            <!-- 收起态（对局进行中 / 已结束）：一行摘要 + 重新摆棋（二次确认） -->
+                            <StackPanel Margin="0,10,0,0"
+                                        Visibility="{Binding ShowSetupCollapsedSummary, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="{Binding SetupSummaryText}" FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <Button Content="重新摆棋（会结束本局）" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="0,8,0,0" HorizontalAlignment="Stretch" FontSize="12" Padding="6,5"
+                                        Command="{Binding RequestRestartSetupCommand}"
+                                        Visibility="{Binding ShowRestartSetupButton, Converter={StaticResource BoolToVis}}"
+                                        ToolTip="结束当前对局并回到摆棋（会先问一次）" />
+
+                                <StackPanel Margin="0,8,0,0"
+                                            Visibility="{Binding IsRestartSetupConfirming, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="确定结束当前对局、重新摆棋吗？" FontSize="12" FontWeight="SemiBold"
+                                               TextWrapping="Wrap" Foreground="{StaticResource DangerBrush}" />
+                                    <Grid Margin="0,8,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="8" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button Content="确定结束" Style="{StaticResource PrimaryButtonStyle}"
+                                                HorizontalAlignment="Stretch" FontSize="12" Padding="6,6"
+                                                Command="{Binding ConfirmRestartSetupCommand}" />
+                                        <Button Grid.Column="2" Content="取消" Style="{StaticResource SecondaryButtonStyle}"
+                                                HorizontalAlignment="Stretch" FontSize="12" Padding="6,6"
+                                                Command="{Binding CancelRestartSetupCommand}" />
+                                    </Grid>
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ===== 设置 ===== -->
+                    <Border Grid.Row="3" Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="设置" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimaryBrush}" />
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="6" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="8" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <CheckBox Content="走法提示" Style="{StaticResource CheckBoxStyle}"
+                                          IsChecked="{Binding ShowLegalMoves}"
+                                          ToolTip="选中棋子时高亮它可以走的点" />
+                                <CheckBox Grid.Column="2" Content="自动翻转" Style="{StaticResource CheckBoxStyle}"
+                                          IsChecked="{Binding AutoFlip}"
+                                          ToolTip="执黑时把棋盘转过来（黑方在下）" />
+                                <CheckBox Grid.Row="2" Content="最后一步" Style="{StaticResource CheckBoxStyle}"
+                                          IsChecked="{Binding ShowLastMove}"
+                                          ToolTip="标记上一步的起点与终点" />
+                                <CheckBox Grid.Row="2" Grid.Column="2" Content="显示坐标"
+                                          Style="{StaticResource CheckBoxStyle}"
+                                          IsChecked="{Binding ShowCoordinates}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Grid>
+
+            <!-- ============ 棋谱（跨两列） ============ -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
+                <StackPanel>
+                    <Grid>
+                        <TextBlock Text="棋谱（中文记谱）" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                        <Button Content="复制棋谱" Style="{StaticResource SecondaryButtonStyle}" Padding="12,5"
+                                HorizontalAlignment="Right" Command="{Binding CopyNotationCommand}" />
+                    </Grid>
+                    <ListBox ItemsSource="{Binding MoveLines}" Height="150" Margin="0,10,0,0"
+                             Background="Transparent" BorderThickness="0" Focusable="False"
+                             core:ScrollChaining.Enabled="True"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="10,5" />
+                                <Setter Property="Margin" Value="10,1" />
+                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                <Setter Property="HorizontalContentAlignment" Value="Left" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="Row" Background="Transparent" CornerRadius="4"
+                                                    Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Row" Property="Background"
+                                                            Value="{StaticResource CardHoverBackgroundBrush}" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontSize="12.5" FontFamily="Microsoft YaHei" />
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+            </Border>
+
+            <!-- ============ 房间聊天（页面最下；共享 ChatPanel，DataContext 同样是本 VM） ============ -->
+            <shared:ChatPanel Margin="0,16,0,0" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

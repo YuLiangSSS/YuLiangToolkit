@@ -52,6 +52,20 @@ public partial class App : Application
 
         window.Show();
 
+        // 开发调试：YLT_WINDOW_SIZE=1024x700 强制窗口尺寸（截图核对最小窗口 / 窄屏版式用）
+        var windowSize = Environment.GetEnvironmentVariable("YLT_WINDOW_SIZE");
+        if (!string.IsNullOrWhiteSpace(windowSize))
+        {
+            var parts = windowSize.Split('x', 'X', '×');
+            if (parts.Length == 2
+                && int.TryParse(parts[0].Trim(), out var sizeW) && sizeW > 0
+                && int.TryParse(parts[1].Trim(), out var sizeH) && sizeH > 0)
+            {
+                window.Width = Math.Max(window.MinWidth, sizeW);
+                window.Height = Math.Max(window.MinHeight, sizeH);
+            }
+        }
+
         // 开发调试：YLT_NAV_CATEGORY=音游工具（或 音游工具/子分类）直接进类别页（截图验收用）
         var categoryPath = Environment.GetEnvironmentVariable("YLT_NAV_CATEGORY");
         if (!string.IsNullOrWhiteSpace(categoryPath))

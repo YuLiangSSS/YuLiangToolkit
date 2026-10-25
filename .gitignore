@@ -13,6 +13,9 @@ obj/
 # ================= dotnet CLI 本地用户状态（build.ps1 生成） =================
 .dotnet-cli-home/
 
+# 并行开发时各 agent 用 --artifacts-path 隔离出来的编译产物（不碰主 bin/obj）
+.artifacts/
+
 # ================= 开发调试产物 =================
 shots/*.png
 shots/*.txt

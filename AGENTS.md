@@ -4,9 +4,9 @@
 > 改这个项目之前先读本文件，**不要再去通读 `src/`**：这里把所有已经造好的「轮子」（可复用组件）的
 > **用途 + 签名 + 一行用法**、Data/Config 目录约定、新增功能的标准流程、以及踩过的坑都写全了。
 >
-> * **当前版本 v0.10.0** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
-> * 十个功能：视频转音频 · **视频 / 音乐播放器** · 批量重命名 · Flash 下载器 · 联机聊天室 · osu! 下图器 · **osu! Key 转换器** · **osu! LN 转换器** · **osu! 等级计算器** · 框架示例（模板，可整目录删除）。
->   osu! 的四个工具归入「音游工具」分类（主页多级目录 → 类别页 → 工具，见 2.15）。
+> * **当前版本 v0.11.0** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
+> * 十二个功能：视频转音频 · **视频 / 音乐播放器** · 批量重命名 · Flash 下载器 · 联机聊天室 · osu! 下图器 · **osu! Key 转换器** · **osu! LN 转换器** · **osu! 等级计算器** · **联机五子棋** · **联机象棋** · 框架示例（模板，可整目录删除）。
+>   osu! 的四个工具归入「音游工具」分类；**联机五子棋 / 联机象棋归入「棋牌」分类**（主页多级目录 → 类别页 → 工具，见 2.15 / 2.18）。
 > * 平台：Windows + .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM；**唯一第三方依赖是 `OsuParsers`**（osu `.osu` 解析/写回，MIT，见 2.17），其余轮子都手写在 `Core/`。
 > * 语言：代码注释、提交信息、文档、以及回答用户，一律用**中文**。
 
@@ -19,7 +19,7 @@
 ```powershell
 .\build.ps1                                                    # ① 编译：必须 0 错误（有警告也顺手清掉）
 dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
-                                                               # ② 自检：1005 项行为逐条真跑，退出码 0 = 全通过
+                                                               # ② 自检：1412 项行为逐条真跑，退出码 0 = 全通过
 ```
 
 * **改了行为就同步改自检断言**（自检就是"这份文档里承诺的行为"的执行版本，见第 6 节）。
@@ -64,6 +64,7 @@ dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.Fram
 | **给功能做多级分类 / 类别页 / 可点击面包屑** | **2.15** |
 | **粒子效果 / 主页设置窗口** | **2.16** |
 | **osu!mania 三件套（Key 转换 / LN 转换 / 等级计算）** | **2.17** |
+| **棋牌：联机五子棋 / 联机象棋 / 房间协议 / 断线重连** | **2.18** |
 | 找 Data / Config 放哪、目录长什么样 | **3** |
 | **新增一个功能** | **4**（照抄 `Tools.Sample` 或 `Tools.BatchRename` 模板） |
 | 排查某类毛病（存储、WPF、文件系统、构建、网络） | **5** |
@@ -75,7 +76,7 @@ dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.Fram
 > 第 0–9 节是稳定编号，**源码注释里到处用 `AGENTS.md 的 2.11 节` 这种引用指向它**（搜索 `AGENTS.md` 就能找到全部引用点）。
 > 重排或删除章节编号会让这些引用失效——要改就一起改。
 >
-> ⚠️ **本文件约 1900 行 / 190 KB**：作为"工作区指令"自动注入时可能被上下文预算截断（只保留前半段）。
+> ⚠️ **本文件约 2200 行 / 212 KB**：作为"工作区指令"自动注入时可能被上下文预算截断（只保留前半段）。
 > 一旦发现后半段不见了，**用读取工具按行号接着读**；定位章节最稳的办法是搜索标题（`## 3.` / `### 2.17`），
 > 别依赖行号（本文件一直在长，行号会漂）。
 
@@ -108,13 +109,13 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | 项 | 内容 |
 | --- | --- |
 | 技术栈 | .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM；唯一第三方依赖 `OsuParsers`（MIT，osu 谱面解析/写回） |
-| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.10.0 就是读它；**别在别处写死**） |
-| 解决方案 | `YuLiangToolkit.sln`（11 个项目：主程序 + Core + 8 个功能 + 自检） |
+| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.11.0 就是读它；**别在别处写死**） |
+| 解决方案 | `YuLiangToolkit.sln`（12 个项目：主程序 + Core + 9 个功能 + 自检） |
 | 主程序 | `YuLiangTookit.csproj`（注意：文件名少一个 `l`，是历史拼写）→ 自定义标题栏外壳、主页/类别页/侧边栏/面包屑、深色主题、窗口级粒子层 |
-| 核心库 | `src/YuLiangToolkit.Core/`（工具契约、目录树、MVVM 基类、存储、配置、FFmpeg 封装、粒子引擎/覆盖层） |
-| 功能 | `Tools.VideoToAudio`（视频转音频）、`Tools.MediaPlayer`（视频 / 音乐播放器）、`Tools.BatchRename`（批量重命名）、`Tools.FlashDownloader`（Flash 下载器）、`Tools.ChatRoom`（联机聊天室）、`Tools.MapDownloader`（osu! 下图器）、`Tools.OsuMania`（osu! Key / LN / 等级三个工具）、`Tools.Sample`（框架示例，可删） |
+| 核心库 | `src/YuLiangToolkit.Core/`（工具契约、目录树、MVVM 基类、存储、配置、FFmpeg 封装、粒子引擎/覆盖层、通用 TCP 房间底座 `Core/Net`） |
+| 功能 | `Tools.VideoToAudio`（视频转音频）、`Tools.MediaPlayer`（视频 / 音乐播放器）、`Tools.BatchRename`（批量重命名）、`Tools.FlashDownloader`（Flash 下载器）、`Tools.ChatRoom`（联机聊天室）、`Tools.MapDownloader`（osu! 下图器）、`Tools.OsuMania`（osu! Key / LN / 等级三个工具）、`Tools.BoardGames`（联机五子棋 / 联机象棋）、`Tools.Sample`（框架示例，可删） |
 | 数据/配置 | **在 exe 旁边**（`bin\Debug\net9.0-windows\Data`、`…\Config`）——见第 3 节；仓库根的 `Data/`、`Config/` 只剩说明文件 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**1005 项**行为逐条验证，纯控制台）——见第 6 节 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**1412 项**行为逐条验证，纯控制台）——见第 6 节 |
 | 构建 | `.\build.ps1`（离线，走本机 NuGet 缓存；会设 `DOTNET_CLI_HOME` 到 `.dotnet-cli-home`） |
 | 运行 | `dotnet run --project YuLiangTookit.csproj` 或直接跑 `bin\Debug\net9.0-windows\YuLiangTookit.exe` |
 
@@ -151,6 +152,12 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | `YLT_OPEN_SETTINGS=1` | 启动后直接打开「主页设置」窗口（截图核对粒子开关用；见 2.16） |
 | `YLT_PARTICLE_DEMO=1` | 粒子覆盖层进入演示模式：没有鼠标输入也持续在窗口中部生成粒子（无头截图用，见 2.16） |
 | `YLT_OSU_DEMO=1` | 打开三个 osu 工具时自动准备一份合成 4K 谱面/示例结果（截图与冒烟用，不发网络请求；见 2.17） |
+| `YLT_GOMOKU_DEMO=1` | 打开「联机五子棋」时造一局演示棋（同机双人 12 手 + 禁手点），截图/冒烟用，不联网 |
+| `YLT_XIANGQI_DEMO=1` | 打开「联机象棋」时造一局演示棋（同机双人 11 步中盘），截图/冒烟用，不联网 |
+| `YLT_XIANGQI_SETUP=1` | 打开「联机象棋」时直接进摆棋并套用「让单马」（截图核对摆棋卡用） |
+| `YLT_BOARD_DEMO_PAUSE=1` | 棋牌演示「对局暂停 / 正在重连」状态（截图核对暂停 UI 用；不影响真实联机） |
+| `YLT_BOARD_RECONNECT_MS` / `YLT_BOARD_RECONNECT_TRIES` | 自检加速断线重连重试（默认 2000ms × 30 次，正常使用不要设） |
+| `YLT_WINDOW_SIZE=<宽>x<高>` | 启动后把窗口改成指定尺寸（如 `1024x700`，截图核对最小窗口版式用） |
 
 ---
 
@@ -187,6 +194,7 @@ src/
 │  │              ToolViewModelBase.cs · OptionItem.cs · ScrollChaining.cs
 │  ├─ Storage/    AppPaths.cs · RuntimeReadme.cs · ToolStorage.cs · JsonFileStore.cs · FileSize.cs
 │  ├─ Configuration/ ToolConfig.cs · ToolConfigStore.cs · DynamicToolConfig.cs
+│  ├─ Net/        RoomProtocol.cs · RoomFrame.cs · RoomLink.cs · RoomHost.cs · RoomClient.cs（通用 TCP 房间底座，见 2.18）
 │  ├─ Services/   AppSettingsService.cs · FFmpegLocator.cs · FFmpegRunner.cs · TaskbarHider.cs · IntegrityCheck.cs
 │  ├─ Particles/  Particle.cs · ParticleEngine.cs（纯逻辑粒子引擎，见 2.16）
 │  ├─ Controls/   ParticleOverlay.cs（WPF 覆盖层：OnRender 画粒子 + 鼠标/渲染事件）
@@ -267,6 +275,15 @@ src/
 │  │            Difficulty/ StarRatingCalculator.cs · EasyObject.cs · Utils.cs（星数算法）
 │  ├─ ViewModels/ OsuTransformViewModelBase.cs + 三个工具 VM + OsuFileItem.cs · LevelRowItem.cs
 │  └─ Views/    OsuKeyConverterView.xaml(.cs) · OsuLnTransformerView.xaml(.cs) · OsuLevelCalculatorView.xaml(.cs)
+├─ YuLiangToolkit.Tools.BoardGames/        # 功能 9：棋牌：联机五子棋 / 联机象棋（见 2.18）
+│  ├─ Shared/   BoardProtocol.cs · BoardMessages.cs · BoardRoomSession.cs   # ★房间协议 / 会话（握手、转发、断线分类）
+│  │            ViewModels/ BoardGameRoomViewModelBase.cs（房间生命周期 / 聊天 / 悔棋求和认输 / 断线重连）
+│  │            Views/ RoomPanel.xaml · ChatPanel.xaml（两游戏共用的房间与聊天面板）
+│  ├─ Gomoku/   GomokuTool.cs · GomokuConfig.cs · GomokuBoard.cs · GomokuForbidden.cs · GomokuGame.cs  # ★五子棋引擎 + 禁手
+│  │            ViewModels/GomokuViewModel.cs · Views/GomokuView.xaml(.cs) · GomokuBoardView.cs（自绘棋盘）
+│  └─ Xiangqi/  XiangqiTool.cs · XiangqiConfig.cs · XiangqiPiece.cs · XiangqiBoard.cs · XiangqiRules.cs
+│               XiangqiGame.cs · XiangqiSetup.cs · XiangqiNotation.cs（自由摆棋 / 让子 / 让先 / 中文记谱）
+│               ViewModels/XiangqiViewModel.cs · Views/XiangqiView.xaml(.cs) · XiangqiBoardView.cs（自绘棋盘）
 ├─ YuLiangToolkit.Tools.MediaPlayer/       # 功能 7：视频 / 音乐播放器（MediaElement + 可换假播放器，见 2.14）
 │  ├─ MediaPlayerTool.cs · MediaPlayerConfig.cs · MediaPlaylistState.cs
 │  ├─ MediaTypes.cs                        # ★纯逻辑：扩展名 → 音频 / 视频 + 读取方式过滤
@@ -286,7 +303,7 @@ ViewModels/ToolCard.cs             # 主页卡片模型（含预拼搜索索引�
 ViewModels/ToolFilter.cs           # 主页过滤/排序/标签收集（纯逻辑，可自检）
 Views/HomeView.xaml(.cs)           # 主页：搜索框 + 排序下拉 + 标签条 + 卡片墙 + 空状态
 Views/MiniPlayerPanel.xaml(.cs)    # 左下角迷你播放条（后台播放时浮出，标题放不下才来回滚）
-Converters/                        # InverseBoolConverter · EmptyStringToVisibilityConverter
+Converters/                        # InverseBoolConverter · InverseBoolToVisibilityConverter · EmptyStringToVisibilityConverter
 ```
 
 ---
@@ -625,7 +642,8 @@ var tags   = ToolFilter.CollectTags(cards);                          // 标签�
 
 **转换器**：`InverseBoolConverter` · `BoolToVis`（`BooleanToVisibilityConverter`）·
 `EmptyToVis`（字符串为空才 Visible，用于输入框占位提示，避免压在内容上）·
-`EmptyToVisInverse`（反过来：**非空才 Visible**，用于“有内容才显示”的提示，例如「搜不到匹配的游戏」）
+`EmptyToVisInverse`（反过来：**非空才 Visible**，用于“有内容才显示”的提示，例如「搜不到匹配的游戏」）·
+`InverseBoolToVis`（bool 取反后**直接给 Visibility**；⚠ 别拿 `InverseBoolConverter` 去绑 `Visibility`——它返回 bool，WPF 转换会静默失败、控件一直保持 Visible，v0.11.0 棋牌面板踩过）
 
 > ⚠ **`ComboBoxStyle` 支持可编辑下拉，但有三个硬要求**（v0.6.0 后续修，别再踩）：
 > ① 模板里**必须有 `PART_EditableTextBox` 命名部件** —— `IsEditable="True"` 时 WPF 只把编辑区文字放进它，
@@ -653,8 +671,8 @@ var tags   = ToolFilter.CollectTags(cards);                          // 标签�
 
 鼠标停在**内层列表**（游戏列表 / 文件列表 / 日志框）上滚滚轮：内层滚到头、或者压根没得滚
 （空列表 / 内容比视口矮）时，这一格滚轮**交给外层页面**继续滚，不会卡在列表上不动。
-`src\YuLiangToolkit.Core\Mvvm\ScrollChaining.cs` 干的就是这件事，已经挂在全部 15 处内层列表上
-（Flash 下载器 3 · 联机聊天室 5 · 批量重命名 3 · 视频转音频 1 · 播放器 2 · 框架示例 1）。
+`src\YuLiangToolkit.Core\Mvvm\ScrollChaining.cs` 干的就是这件事，已经挂在全部 18 处内层列表上
+（Flash 下载器 3 · 联机聊天室 5 · 批量重命名 3 · 视频转音频 1 · 播放器 2 · 框架示例 1 · 棋牌棋谱/聊天 3）。
 
 ```xml
 <!-- View 顶部加命名空间 -->
@@ -1336,7 +1354,7 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 
 **定位**：主页从"平铺卡片墙"升级为**可任意分层的目录树**。工具可以声明 `CategoryPath`（任意层级），
 外壳自动建树、生成类别页与可点击面包屑；**不写 `CategoryPath` 的老工具仍在根层，行为完全不变**。
-「音游工具」就是第一个类别（内含 osu! 下图器 + Key/LN/等级计算器四个工具）。
+「音游工具」就是第一个类别（内含 osu! 下图器 + Key/LN/等级计算器四个工具）；v0.11.0 起第二个类别是「棋牌」（联机五子棋 + 联机象棋，见 2.18）。
 
 分工：`ITool.CategoryPath`（契约）→ `Core/Tools/ToolCatalog.cs`（**纯逻辑**建树/查找/面包屑，自检直接断言）
 → `Models/ShellCategories.cs`（可选的类别图标/描述/排序"补妆"）→ `MainViewModel`（导航状态机）
@@ -1448,6 +1466,126 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 
 ---
 
+### 2.18 棋牌：联机五子棋 + 联机象棋（v0.11.0）
+
+**定位**：在「联机聊天室」之外再做一个**能真下棋的 TCP 房间**：主机开监听、客户端填地址加入，
+五子棋 / 中国象棋各一个工具；两个工具共用一套**通用 TCP 房间底座 + 棋牌房间协议 + 房间界面**。
+同时新增「棋牌」工具大类（`ShellCategories.BoardGames = "棋牌"`，🎲，`Order = 20`）。用户最在意的两点：
+**断网重连要稳**（不能一掉线就丢棋局）、**象棋要能自由摆棋**（让单马 / 让单车 / 让几先，一键默认开局）。
+
+分工（纯逻辑 → 网络 → 界面，严格分层，自检直接断底层）：
+
+`Core/Net`（通用 TCP 底座，**与棋牌无关，以后别的联网工具也能复用**）
+→ `Tools.BoardGames/Shared`（棋牌房间协议 + 会话 + 基类 ViewModel + 房间/聊天面板）
+→ 两个游戏目录（`Gomoku/`、`Xiangqi/`：规则引擎 → VM → 自绘棋盘控件 → View）。
+
+| 轮子 | 位置 | 说明 |
+| --- | --- | --- |
+| `RoomProtocol` | `Core/Net/RoomProtocol.cs` | 帧格式（**4 字节小端长度 = JSON 头字节数**，后面跟 JSON 头 + 裸载荷）、`BuildFrame`、`JsonOptions`（camelCase/中文不转义）、端点解析 `ParseEndpoint`/`ResolveAsync`（IPv4/域名/IPv6/带端口）、`FormatEndpoint`、本机地址分享 `ListShareAddresses`（IPv4/IPv6，过滤回环/169.254/链路本地）、傻瓜监听方案 `ChooseSimpleListenPlan`、`IsPortAvailable`、`WithPort` |
+| `RoomFrame` | `Core/Net/RoomFrame.cs` | 包头：`Kind` `From` `Frame` `ReplyTo` `Payload` `Extra`；`ExtraAs<T>()` / `WithExtra()` / `New()`；载荷长度由 `BuildFrame` 自动写 |
+| `RoomLink` | `Core/Net/RoomLink.cs` | 一条连接：读循环、帧收发、15s 心跳 / 90s 空闲判掉线、ping/pong 内部处理、`LatencyMs`、`IdleMs`、`FrameReceived`（**载荷先读干净再抛事件**）/`Closed` |
+| `RoomHost` / `RoomClient` | `Core/Net/RoomHost.cs` `.RoomClient.cs` | 主机监听（`::` 时**必须显式 `DualMode=true`**，端口 0 = 系统分配）与客户端连接（5s 超时、可 `Abort`）；不掺棋牌语义 |
+| `BoardProtocol` / `BoardMessages` | `Shared/BoardProtocol.cs` `.BoardMessages.cs` | magic=`YLTBOARD1`、版本、gameId（`gomoku`/`xiangqi`）、包类型 `hello/welcome/snapshot/action/chat/notice/request/response/bye`、请求类型 `undo/draw/rematch/resign`、`WrapSnapshot`/`ReadSnapshot`（局面包装 `{seq,hostSide,clientSide,game}`）、断线分类 `BoardDisconnectKind`（LocalLeave/PeerBye/PeerClosed/NetworkError） |
+| `BoardRoomSession` | `Shared/BoardRoomSession.cs` | 主机 + 客户端共用门面：握手校验、**只允许 1 个对手**（第三人提示「房间已满」）、掉线重连（welcomeFactory 每次重给执边 + 最新局面）、聊天/提示/动作/请求/响应/快照/bye 转发、断线原因归类 |
+| `BoardGameRoomViewModelBase` | `Shared/ViewModels/BoardGameRoomViewModelBase.cs` | 两个游戏 VM 的公共基类：房间生命周期、配置绑定（`IBoardGameRoomConfig`：玩家名/上次地址/端口）、地址分享、聊天、**悔棋/求和/再来一局/认输的协议流 + 确认弹层**、快照广播、**断线自动重连/对局暂停**；子类只实现 `BuildGameSnapshot` / `ApplyGameSnapshot` / `OnHostAction` / `ApplyUndoFor` / `ApplyDraw` / `ApplyResign` / `BeginNewGame` 等游戏钩子 |
+| `RoomShareRow` / `BoardChatItem` | `Shared/ViewModels/` | 分享地址行 / 聊天行 |
+| `RoomPanel` / `ChatPanel` | `Shared/Views/` | 两游戏共用：房间面板（模式/开房/加入/分享地址/状态/暂停重连块/离开）与聊天面板（**聊天放页面最下**，别挤掉对局操作） |
+| `GomokuBoard` / `GomokuForbidden` / `GomokuGame` / `GomokuSnapshot` / `GomokuText` / `GomokuConfig` | `Gomoku/` | 五子棋：棋盘、禁手判定、对局状态机（落子/胜负/悔棋/快照）、坐标与棋谱文案、配置 |
+| `GomokuViewModel` / `GomokuBoardView` / `GomokuView` | `Gomoku/ViewModels` `Gomoku/Views` | 界面：联机/同机双人、禁手设置、自绘棋盘（`OnRender`）、棋谱 |
+| `XiangqiPiece` / `XiangqiBoard` / `XiangqiRules` / `XiangqiGame` / `XiangqiSnapshot` / `XiangqiSetup` / `XiangqiNotation` / `XiangqiConfig` | `Xiangqi/` | 中国象棋：棋子/棋盘/FEN、全走法 + 将军/将死/困毙/飞将/自然限着、对局状态机（含让先）、摆棋校验与让子预设、中文记谱、配置 |
+| `XiangqiViewModel` / `XiangqiBoardView` / `XiangqiView` | `Xiangqi/ViewModels` `Xiangqi/Views` | 界面：自由摆棋 + 默认开局 + 让子/让先、走法提示、自动翻转、自绘棋盘、棋谱 |
+
+#### 线上协议（与聊天室同一套帧格式，内容不同）
+
+```
+每个包 = [4 字节小端长度][JSON 头][裸载荷]
+         长度只数 JSON 头自己的字节数；载荷多长由头里的 payload 说明
+```
+
+包类型（线上是字符串，加减类型不会让老版本错位）：`hello`（客户端自报门第：magic/版本/gameId/玩家名）·
+`welcome`（主机回执：你的执边 + 包装局面）· `snapshot`（主机 → 客户端：完整局面）· `action`（客户端 → 主机：
+走棋等动作，主机校验后执行并广播）· `chat` / `notice`（双向聊天与系统提示）· `request` / `response`
+（悔棋/和棋/再来一局/认输 + 同意/拒绝）· `bye`（礼貌退出；收到 bye = 不自动重连）。
+
+**主机是唯一权威**：棋局状态只在主机内存里推进，客户端**只从 `snapshot` 更新**；客户端动作先 `action` 发给主机，
+主机校验轮次/合法性后落子再广播。因此客户端收到**任意时刻**的快照都必须能整体重建棋局（含 started/结果/让先剩余）。
+
+#### 断线重连 / 对局暂停（用户点名重点，别改坏）
+
+* **主机**：客户端掉线后**不重置棋局、不关房间**，保持监听等重连；`IsGamePaused = true`、
+  `GamePauseStatusText =「对局暂停 · 等待对方重连」`，期间**主机不能落子**（`CanPlayNow` 必须要求 `HasPeer`）。
+  对方重新连上（welcome 会带最新局面）后清暂停、提示「对方已重新连接，继续对局」。
+* **客户端**：`PeerClosed`（TCP 断）或 `NetworkError`（重置/超时）→ 自动重连 **2 秒 × 最多 30 次 / 60 秒**，
+  `IsReconnecting = true`、`ReconnectStatusText` 显示第几次、棋盘只读、按钮禁用；成功用 welcome 快照恢复
+  （提示「已重新连接，继续对局」+ 钩子 `OnReconnected()`），失败回离线并保留地址提示手动加入。
+* **不自动重连的情况**：本端主动 `LeaveRoom`（`LocalLeave`）、收到对方 `bye`（`PeerBye`，例如房主关房）、
+  切到同机双人、关工具/切走工具 —— 这些会取消重连循环（`LeaveRoom` 在重连中 =「停止重连」）。
+* **真实拔网线的坑**：对端拔线时旧 TCP 可能挂到 90 秒空闲才断，重连会被「房间已满」挡住 ——
+  主机对「心跳停了 > 30 秒」的旧连接允许新连接**顶替**（`RoomLink.IdleMs`），正常第三人仍拒绝。
+* 重连是**单实例循环**（代数号取消）；旧会话的迟到事件按会话引用丢弃；断线期间棋局/聊天记录都不清空。
+* 自检可用 `YLT_BOARD_RECONNECT_MS` / `YLT_BOARD_RECONNECT_TRIES` 加速重试耗尽（生产默认 2000ms × 30）。
+
+#### 五子棋规则与设置（`Config\gomoku\config.json`）
+
+| 设置 | 存的值 | 说明 |
+| --- | --- | --- |
+| 玩家名 | `playerName` | 对方看到的名字 |
+| 端口 | `listenPort`（默认 5310） | 0 = 让系统挑；开房后界面显示真实端口与本机地址 |
+| 上次加入地址 | `lastJoinAddress` | 下次打开自动填 |
+| 房主执子 | `hostSide`（`black`/`white`，默认黑） | 主机执黑/执白，客户端自动执另一边；再来一局自动换边 |
+| **启用禁手** | `forbiddenEnabled`（默认 false） | **用户要的开关**：开 = 黑棋「三三 / 四四 / 长连（≥6）」判负（黑棋正好五连仍算赢）；关 = 双方长连都算赢 |
+| 标记禁手点 | `showForbiddenPoints`（默认 true） | 黑方回合时把黑棋会形成禁手的空点标红叉（后台算 + `Ui()` 回界面） |
+| 棋盘大小 | `boardSize`（15 / 19，默认 15） | 开房前/同机开局前可切 |
+| 显示棋谱 | `showMoveList`（默认 true） | 下方棋谱卡 |
+
+禁手判定（`GomokuForbidden`，纯逻辑）：以落子点为中心沿 4 个方向取 ±5 窗口 —— 正好 5 连 = 赢（优先）·
+≥6 长连 = 禁手 · 同一方向存在「4 黑 + 1 空」的 5 格窗口 = 一个四 · 存在某空点能形成活四（连续 4 黑两端空）= 一个活三；
+**四 ≥ 2（四四）或 活三 ≥ 2（三三）即禁手**。别去追求连珠全规则（文档里写明是"够用的判定"）。
+
+#### 中国象棋：规则 · 自由摆棋 · 让子 / 让先 · 记谱
+
+* 完整规则（`XiangqiRules`）：车直行、马走日（蹩马腿）、相/象走田（塞象眼、不过河）、仕/士九宫斜走、
+  帅/将九宫直走 + **将帅照面**（同列中间无子时不能走成照面）、炮隔一子吃、兵/卒向前（过河可横走）；
+  **不能走出被将军的棋**；将死判负、**困毙（无合法着法且未被将军）也判负**；连续 120 个半回合无吃子 = 自然限着判和。
+* 自由摆棋（`XiangqiSetup`）：调色板选红/黑任意棋子点棋盘放置（再点同格 = 删除/覆盖），可清空重摆；
+  **「默认开局」一键恢复标准布局**（用户点名）；FEN 可读可写。摆棋校验：双方各一个帅/将 + 在九宫内 +
+  将帅不照面 + 非行棋方不得已被将军（`Validate`），有错时禁止开房/开局并在界面提示。
+* 让子预设：让单马 / 让双马 / 让单车 / 让车马 / 让车马炮 / 让九子（`XiangqiHandicap`），**让子方（红/黑）可选**，
+  从让子方那半边去掉对应棋子；让九子 = 去掉被让方双车双马双炮五卒。
+* 让先：`0~5` 步；被让方（让子方以外那方）开局可以**连续走 N 步**再恢复正常轮换（`OpeningFreeMovesRemaining`），
+  快照里要带上，重连后不能丢。
+* 中文记谱（`XiangqiNotation`）：`炮二平五` / `马8进7` / `车九进一` / `相三进五` / 前车进一…；红方从右往左一~九、
+  黑方从黑方右往左 1~9；同一路同种棋子用 前/中/后 区分。棋谱列表 +「复制棋谱」。
+
+#### 配置 / 数据
+
+* `Config\gomoku\config.json`、`Config\xiangqi\config.json`（`ToolConfig` 自动保存；两个 Config 都实现
+  `IBoardGameRoomConfig` 供基类绑定玩家名/地址/端口）。
+* 棋局、聊天记录、棋谱都在内存里（没有落盘）；`Data\gomoku\`、`Data\xiangqi\` 目前不使用。
+* 删除配置文件 = 恢复默认选项（下次打开重建）。
+
+#### 界面约定（两个棋盘控件都是自绘）
+
+* 页面：外层 `ScrollViewer` → 标题行 → 左棋盘卡 + 右栏（宽 380）→ 下方棋谱卡 + 聊天卡。
+  **1280×820 首屏必须能看到对局操作**（开始对局/悔棋/求和/认输/再来一局）；1024×700 不横向溢出。
+  棋盘放在 `Viewbox` 里（固定逻辑尺寸、随列宽缩放），**绝不要在工具代码里改主窗口尺寸**。
+* `GomokuBoardView` / `XiangqiBoardView`：`FrameworkElement` + `OnRender` 全自绘（木纹底、网格、棋子渐变、
+  最后一手标记、禁手点红叉、获胜连线、可走点、将军标记）；画刷全部 `Freeze()`；`State` 用不可变记录整体替换，
+  DP 变化 `InvalidateVisual`；点击换算处理边距、容差约半格；象棋翻转时屏幕/逻辑坐标互换。
+* 断线/暂停状态：对局卡红底块 + 棋盘下提示，绑基类 `IsGamePaused/GamePauseStatusText/IsReconnecting/ReconnectStatusText`。
+* 认输/离开房间要**二次确认**（再点一次确认），断线重连期间所有落子/操作按钮禁用（离开可用）。
+* 调试/演示环境变量见第 0 节：`YLT_GOMOKU_DEMO` `YLT_XIANGQI_DEMO` `YLT_XIANGQI_SETUP`
+  `YLT_BOARD_DEMO_PAUSE`（暂停/重连 UI 演示）`YLT_BOARD_RECONNECT_MS/_TRIES`（自检加速）。
+
+#### 验证方式
+
+* `BoardGamesChecks`（**407 项**，1005 项里旧轮子的断言原样保留）：注册/类别 25 · 五子棋 92 · 象棋 141 · 配置 23 · 网络/重连/联机 VM 126；注册/类别、五子棋规则与禁手、象棋全走法/将军/摆棋/让子/让先/
+  记谱/快照、配置落盘、协议帧/端点、**本机 127.0.0.1 端口 0 真开房间**跑完一局 + 断线重连 + 第三人拒绝。
+* 截图冒烟（见第 6 节）：主页 / 棋牌类别页 / 两个工具（demo 数据）/ 象棋摆棋 / 暂停态 / 1024×700。
+* ⚠ 自检里**不要真开 WPF 窗口**、不要碰 `Clipboard`、不要在测试后留下监听端口（会话一定 Stop）。
+
+---
+
 ## 3. Data / Config 目录约定（v0.2.0 起；v0.4.1 起位置在 **exe 旁边**）
 
 **运行时目录 = exe 所在目录**（`bin\Debug\net9.0-windows\`、`bin\Release\…`、`publish.ps1` 出来的 `dist\YuLiangToolkit\`）。
@@ -1476,6 +1614,8 @@ bin\Debug\net9.0-windows\          （或 bin\Release\… / dist\YuLiangToolkit\
    ├─ osu-key-converter\config.json    ← Key 转换器：上次用的目标 Keys / Gap / Clean / Blank / Seed / Creator…
    ├─ osu-ln-transformer\config.json   ← LN 转换器：上次用的 Level / LN% / Divide / Column / Gap / OD 开关…
    ├─ osu-level-calculator\config.json ← 等级计算器：上次的显示/计算偏好
+   ├─ gomoku\config.json           ← 联机五子棋：玩家名 / 端口 / 房主执子 / 禁手开关 / 显示禁手点 / 棋盘大小
+   ├─ xiangqi\config.json          ← 联机象棋：玩家名 / 端口 / 房主执棋 / 走法提示 / 自动翻转 / 显示坐标
    └─ sample-framework\            ← config.json + options.json
 ```
 
@@ -1729,7 +1869,7 @@ Data/chat-room/
 # 1) 编译（0 警告 0 错误）
 .\build.ps1
 
-# 2) 轮子自检：1005 项行为逐条真跑（Data/Config 轮子 + 主页搜索排序 + 多级分类导航/面包屑
+# 2) 轮子自检：1412 项行为逐条真跑（Data/Config 轮子 + 主页搜索排序 + 多级分类导航/面包屑
 #    + 批量重命名规则/冲突/执行/撤销
 #    + Flash 下载器的站点解析/命名/ini/批量计划/真下载/本地服务器/自动下载
 #    + 联机聊天室的协议/CRC/流量上限/会话文件夹/傻瓜模式挑监听/双栈真连两族/回环真连一局
@@ -1737,7 +1877,8 @@ Data/chat-room/
 #    + osu! 下图器的查询串/命名/本地筛选 + 打自检自己起的假镜像真下载
 #    + 播放器的扩展名归类/时间与快进快退/自然排序/真扫临时目录/合并去重/三种播放顺序/假播放器跑完整条 VM 流程
 #    + 粒子引擎的生成/寿命/衰减/开关/上限/确定性
-#    + osu!mania 三件套的解析往返/转 K/转 LN/等级/批量/线程安全 + StarRating 参考值，
+#    + osu!mania 三件套的解析往返/转 K/转 LN/等级/批量/线程安全 + StarRating 参考值
+#    + 棋牌：五子棋禁手/象棋全规则/自由摆棋让子让先/回环联机与断线重连，
 #    退出码 0 = 全通过
 dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
 
@@ -1811,6 +1952,24 @@ foreach ($id in "osu-key-converter","osu-ln-transformer","osu-level-calculator")
 }
 Remove-Item Env:YLT_OSU_DEMO, Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 
+# 3k) 棋牌：两个工具 + 类别页 + 暂停态 + 1024 窄窗（演示数据，不联网）
+$env:YLT_SHOT_TOOL="gomoku"; $env:YLT_GOMOKU_DEMO="1"; $env:YLT_SHOT="shots\gomoku.png"
+Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
+$env:YLT_WINDOW_SIZE="1024x700"; $env:YLT_SHOT="shots\gomoku-1024.png"
+Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
+Remove-Item Env:YLT_WINDOW_SIZE
+$env:YLT_BOARD_DEMO_PAUSE="1"; $env:YLT_SHOT="shots\gomoku-pause.png"
+Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
+Remove-Item Env:YLT_BOARD_DEMO_PAUSE, Env:YLT_GOMOKU_DEMO
+$env:YLT_SHOT_TOOL="xiangqi"; $env:YLT_XIANGQI_DEMO="1"; $env:YLT_SHOT="shots\xiangqi.png"
+Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
+$env:YLT_XIANGQI_SETUP="1"; $env:YLT_SHOT="shots\xiangqi-setup.png"
+Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
+Remove-Item Env:YLT_XIANGQI_SETUP, Env:YLT_XIANGQI_DEMO
+$env:YLT_NAV_CATEGORY="棋牌"; $env:YLT_SHOT="shots\category-boardgames.png"
+Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
+Remove-Item Env:YLT_NAV_CATEGORY, Env:YLT_SHOT_TOOL, Env:YLT_SHOT
+
 # 4) 发布冒烟：发布到 dist\YuLiangToolkit\，跑一次确认 Data/Config 建在它自己旁边
 .\publish.ps1
 $env:YLT_SHOT="shots\published.png"; .\dist\YuLiangToolkit\YuLiangTookit.exe
@@ -1848,6 +2007,8 @@ $env:YLT_SHOT="shots\published.png"; .\dist\YuLiangToolkit\YuLiangTookit.exe
 | 批量重命名 | `batch-rename` | `Config\batch-rename\config.json`（**规则清单 `rules` 数组** + 冲突开关 + 排序偏好 + 上次文件夹） | `Data\batch-rename\rename-history.json`（改名流水账，撤销靠它，最多 20 批） | `Order = 40`；规则可增删、可重复、可拖动排序，**数组顺序 = 执行顺序**（见 2.10）；标签：重命名/改名/批量/文件/序号/编号/查找替换/正则/扩展名/撤销 |
 | Flash 下载器 | `flash-downloader` | `Config\flash-downloader\config.json`（游戏目录 / 并发 / 超时 / 端口 / 播放器路径 / 上次输入） | `Data\flash-downloader\games\`（游戏本体 + `SWFNetPath.ini`）、`Data\flash-downloader\tools\`（播放页 / 替代 API / FlashPlayer.exe） | `Order = 20`；支持 4399 / 7k7k / 17yy / ArmorGames / Kongregate，本地服务器 + 自动下载所需文件（见 2.11）；**目录可在界面上改**；标签：flash/swf/小游戏/下载/4399/7k7k/17yy/ArmorGames/Kongregate/本地服务器/离线玩/h5/unity/网页游戏 |
 | 联机聊天室 | `chat-room` | `Config\chat-room\config.json`（昵称 / 头像 / **傻瓜模式** / 监听地址与端口 / 要连的主机 / 单次流量上限与方向 / 发图压缩 / 大文件确认 / 最近会话） | `Data\chat-room\Protocol\`（协议说明）、`Data\chat-room\Sessions\<时间>\`（**每次连接新建**：`chat-log.jsonl` + `session.json` + `images`/`audio`/`video`/`files`） | `Order = 30`；主机开 TCP 端口、客户端填 IP/域名 + 端口，局域网与内网穿透通用（IPv6 也行）；文字 / 图片 / 音频 / 视频 / 任意文件双向发送；**单次流量上限 + 用量指示**；**傻瓜模式默认开**（工具自己挑双栈监听 + 列出本机 IPv4/IPv6 与端口，见 2.12）；标签：聊天/聊天室/局域网/联机/TCP/内网穿透/IPv6/传文件/发图片/语音/视频/流量限制/主机/客户端 |
+| 联机五子棋 | `gomoku` | `Config\gomoku\config.json`（玩家名 / 端口 / 上次地址 / 房主执子 / **禁手开关** / 显示禁手点 / 棋盘大小 / 显示棋谱） | —（对局与棋谱只在内存，不落盘） | `Order = 60`；**归入「棋牌」类别**；主机开 TCP 房间 / 客户端加入 / 同机双人；**禁手（黑棋三三/四四/长连判负，五连优先）可开关**、15/19 路、悔棋求和认输再来一局、房间聊天；**断线自动重连**（2s×30）+ 对局暂停（见 2.18）；标签：五子棋/连珠/禁手/棋牌/联机/局域网/TCP/双人/对弈/悔棋 |
+| 联机象棋 | `xiangqi` | `Config\xiangqi\config.json`（玩家名 / 端口 / 上次地址 / 房主执棋 / 走法提示 / 自动翻转 / 显示坐标 / 最后一步） | —（对局与棋谱只在内存，不落盘） | `Order = 61`；**归入「棋牌」类别**；完整中国象棋规则（马腿/象眼/不过河/九宫/飞将/炮架/过河兵、将军/将死/困毙/自然限着）；**自由摆棋 + 一键默认开局 + 让子（单马/双马/单车/车马/车马炮/九子，让子方红黑可选）+ 让先 0~5**；走法提示/自动翻转/中文记谱/悔棋求和认输再来一局/断线重连；标签：象棋/中国象棋/棋牌/联机/局域网/TCP/双人/对弈/摆棋/让子/让先/悔棋 |
 | osu! 下图器 | `map-downloader` | `Config\map-downloader\config.json`（Client ID / Client Secret、Access Token 与到期时间、搜索条件、下载目录与并发数） | `Data\map-downloader\downloads\`（下回来的 `.osz`，**目录可在界面上改**） | `Order = 50`；**归入「音游工具」类别**（`CategoryPath`）；从独立 WinForms 小工具改写（见 2.13）；搜索走 osu! 官方 API（要自己注册 OAuth 应用换 Token），`.osz` 走第三方镜像 dl.sayobot.cn；标签：osu/osu!/谱面/beatmap/下图/下图器/osz/下载/搜索/mania/音游 |
 | osu! Key 转换器 | `osu-key-converter` | `Config\osu-key-converter\config.json`（目标 Keys / Gap / Clean / Blank / Seed / Creator / 键数过滤） | —（转换结果写**原谱面目录**，见 2.17） | `Order = 51`；音游工具；低 k → 高 k（只支持升 key）；KeyConverter 算法逐行改写 + 修复 1k/2k/HitSound 等已知 bug |
 | osu! LN 转换器 | `osu-ln-transformer` | `Config\osu-ln-transformer\config.json`（Level / LN% / Divide / Column / Gap / OD 开关 / Seed / Creator / Ignore / Original LN / Fix Error / 键数过滤） | —（同上） | `Order = 52`；音游工具；14 档 LN 转换（-3~10，含 Hold off / Random / Invert / 高斯密度）；LNTransformer 算法逐行改写 + 修复 Original LN/OD 等已知 bug |
@@ -1906,7 +2067,8 @@ git diff                        # 看未暂存改动
 
 | 版本 | 内容 |
 | --- | --- |
-| **v0.10.0**（当前） | **多级分类导航 + 粒子效果 + osu!mania 三件套**。① 外壳：`ITool.CategoryPath`（默认空，老工具零改动）+ `Core/Tools/ToolCatalog.cs` 任意层级目录树；主页「全部分类」卡片 → 类别页（可继续下钻子类别）→ 工具；顶部工具条改成**可点击面包屑**「主页 › 类别 › 工具」；侧边栏只列根层类别 + 根层工具；搜索仍然扁平覆盖全部工具。新增「音游工具」类别（🎵，`ShellCategories` 可扩展），`osu! 下图器` 归入其中（见 2.15）。② 粒子：新增 `ParticleEngine`（纯逻辑，38 项自检）+ `ParticleOverlay`（OnRender、按 60fps 归一、粒子上限 600、事件成对挂摘），窗口级覆盖层；主页右上角新增「⚙ 主页设置」窗口，粒子开关默认开、存 `Config\shell\config.json` 的 `showParticles`（见 2.16）。③ 新增 `Tools.OsuMania`：`osu-key-converter` / `osu-ln-transformer` / `osu-level-calculator` 三个工具（算法逐行照搬 + 修复已知 bug：1k/2k 崩溃、HitSound 丢失、Original LN 只最后一列、OD 被误写 0、无红点闪退等），解析器从手写 `OsuFileV14.cs` 换成 **OsuParsers 1.7.2（NuGet，MIT，本项目唯一第三方依赖）**，星数算法数值基准 10/10 差 0；三个工具与下图器同属「音游工具」（见 2.17）。④ 自检 718 → **1005** 项（导航 53 + 粒子 38 + 星数 38 + osu 158）；主页类别/设置/粒子/三工具截图冒烟。版本号 0.9.7 → 0.10.0 |
+| **v0.11.0**（当前） | **新增「棋牌」类别：联机五子棋 + 联机象棋**。① 新增 `Core/Net/` 通用 TCP 房间底座（帧格式 / 双栈监听 / 心跳 / 端点解析 / 本机地址分享，与聊天无关、可复用）与 `Tools.BoardGames/Shared`（棋牌房间协议、`BoardRoomSession` 握手与转发、基类 `BoardGameRoomViewModelBase`、房间/聊天面板）。② **联机五子棋**（`gomoku`）：主机开房 / 客户端加入 / 同机双人；**禁手开关**（黑棋三三/四四/长连判负，五连优先，可标禁手点）、15/19 路、棋谱、悔棋求和认输再来一局、房间聊天。③ **联机象棋**（`xiangqi`）：完整规则（马腿/象眼/不过河/九宫/飞将/炮架/过河兵、将军/将死/困毙/自然限着）、**自由摆棋 + 一键默认开局 + 让子（单马/双马/单车/车马/车马炮/九子，让子方可选）+ 让先 0~5**、走法提示、自动翻转、中文记谱、悔棋求和认输再来一局。④ **断线重连**：客户端意外断线自动重连（2 秒 × 最多 30 次）、重连中可「停止重连」、主机保局并显示「对局暂停 · 等待对方重连」、房主关房/主动离开不重连；对局暂停期间禁止落子（主机需 `HasPeer` 才能走）。⑤ 新增 `InverseBoolToVis` 转换器（别拿 `InverseBoolConverter` 绑 Visibility）、开发用 `YLT_WINDOW_SIZE`。⑥ 自检 1005 → **1412** 项（棋牌 407：注册 25 + 五子棋 92 + 象棋 141 + 配置 23 + 网络/重连/联机 VM 126）；主页/类别页/两工具/摆棋/暂停态/1024 窄窗截图冒烟。版本号 0.10.0 → 0.11.0 |
+| v0.10.0 | **多级分类导航 + 粒子效果 + osu!mania 三件套**。① 外壳：`ITool.CategoryPath`（默认空，老工具零改动）+ `Core/Tools/ToolCatalog.cs` 任意层级目录树；主页「全部分类」卡片 → 类别页（可继续下钻子类别）→ 工具；顶部工具条改成**可点击面包屑**「主页 › 类别 › 工具」；侧边栏只列根层类别 + 根层工具；搜索仍然扁平覆盖全部工具。新增「音游工具」类别（🎵，`ShellCategories` 可扩展），`osu! 下图器` 归入其中（见 2.15）。② 粒子：新增 `ParticleEngine`（纯逻辑，38 项自检）+ `ParticleOverlay`（OnRender、按 60fps 归一、粒子上限 600、事件成对挂摘），窗口级覆盖层；主页右上角新增「⚙ 主页设置」窗口，粒子开关默认开、存 `Config\shell\config.json` 的 `showParticles`（见 2.16）。③ 新增 `Tools.OsuMania`：`osu-key-converter` / `osu-ln-transformer` / `osu-level-calculator` 三个工具（算法逐行照搬 + 修复已知 bug：1k/2k 崩溃、HitSound 丢失、Original LN 只最后一列、OD 被误写 0、无红点闪退等），解析器从手写 `OsuFileV14.cs` 换成 **OsuParsers 1.7.2（NuGet，MIT，本项目唯一第三方依赖）**，星数算法数值基准 10/10 差 0；三个工具与下图器同属「音游工具」（见 2.17）。④ 自检 718 → **1005** 项（导航 53 + 粒子 38 + 星数 38 + osu 158）；主页类别/设置/粒子/三工具截图冒烟。版本号 0.9.7 → 0.10.0 |
 | **v0.9.7** | **播放器新增「时间显示」设置**（见 2.14）：进度条左边那个时间可以选 **已播放时间**（`Elapsed`，默认，从 0:00 数到总时长）或 **剩余时间**（`Remaining`，从总时长倒数到 0:00，即「还差多少秒播完」）；右边始终是总时长。纯逻辑抽成 `MediaTimeDisplay.Format(position, duration, mode)`（倒计时夹在 0 ~ 总时长，时长未知显示 `--:--`），VM 切换下拉立即刷新（不等 200ms 计时器），设置项存 `TimeDisplayMode`（枚举按 C# 原名存字符串）。自检 713 → **718** 项。版本号 0.9.6 → 0.9.7 |
 | **v0.9.6** | **摆正两处「不正中」**（见 2.7 / 2.14）：① 播放器控制条的大播放键以前是跟着「快退 + 播放 + 快进 + 停止」整组居中，**组居中 ≠ 播放键居中**，所以全屏时它明显偏左；改成**播放键独自占中间的 `Auto` 列、左右两列都是 `*`**，全屏实测 `playCenter.x = 960`（屏幕正中，蓝圆像素中心 959），快退/快进/停止贴着它两边，设置与音量仍靠边。② 主窗口以前用 `CenterScreen` 居中（把任务栏那 48px 也算进屏幕高度，窗口看着偏低），改成 `WindowStartupLocation="Manual"` + 按 `SystemParameters.WorkArea` 算**工作区正中间**（1920×1080 + 48px 任务栏时窗口开在 `320,106`，中心 `960,516`）。自检仍 **713** 项（纯版式，真机截图核对）。版本号 0.9.5 → 0.9.6 |
 | **v0.9.5** | **修「全屏底部一条黑带、控制条最底下被裁」**（见 2.14）：`WM_GETMINMAXINFO` 把窗口撑到整块显示器后，Windows 还给窗口套了一个**工作区大小的窗口 Region**（`GetWindowRgn` = `(4,4)-(1924,1036)`），窗口矩形 1088、实际可见 / 命中区域只有 1032 —— 任务栏藏掉后底部 48px 露出黑色桌面，控制条的状态文字被裁掉。修法：`MainWindow.ClearFullscreenRegion` 在进全屏 + 400ms 看门狗里 `SetWindowRgn(hwnd, 0)`（先 `GetWindowRgn` 判断有没有区域，避免无谓重绘）；清掉 Region 后全屏窗口会真的盖住任务栏，所以失活 / 最小化时 `Topmost = false`，保证“还回去的任务栏”不会再被压住。顺带：控制条默认的 `Grid.Row="1"` 从控件本地值挪进 `ControlBarStyle`（本地值压过 DataTrigger，全屏 `Grid.Row=0` 一直没生效），新增 `YLT_PLAYER_MEASURE` 排查钩子；控制台自检在重定向（Rider / VS / 管道）时**切 UTF-8 输出**，IDE 里不再乱码（真正的控制台仍按代码页写）。自检仍 **713** 项（窗口 Region 没法无头断言，真机截图核对）。版本号 0.9.4 → 0.9.5 |

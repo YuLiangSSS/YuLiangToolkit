@@ -14,6 +14,9 @@ public static class ShellCategories
     /// <summary>「音游工具」类别名（osu! 系列工具都归这一类）。</summary>
     public const string MusicGame = "音游工具";
 
+    /// <summary>「棋牌」类别名（联机五子棋 / 联机象棋归这一类）。</summary>
+    public const string BoardGames = "棋牌";
+
     /// <summary>全部已登记的类别元数据。</summary>
     public static IReadOnlyList<ToolCategoryInfo> All { get; } = new[]
     {
@@ -23,6 +26,13 @@ public static class ShellCategories
             EmojiIcon = "🎵",
             Description = "osu! 谱面转换、LN 处理、等级计算与下图",
             Order = 10,
+        },
+        new ToolCategoryInfo
+        {
+            Path = new[] { BoardGames },
+            EmojiIcon = "🎲",
+            Description = "联机五子棋 / 联机象棋：开一个房间就能和朋友对弈",
+            Order = 20,
         },
     };
 }
