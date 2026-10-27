@@ -37,10 +37,14 @@
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="滚动方式" Foreground="{StaticResource TextSecondaryBrush}"
                                FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0" />
-                    <ComboBox x:Name="ModeCombo" Width="166" Style="{StaticResource ComboBoxStyle}"
-                              ItemsSource="{Binding ModeOptions}" DisplayMemberPath="Label"
-                              SelectedItem="{Binding SelectedMode}"
-                              ToolTip="{Binding ModeHint}" />
+                    <!-- 用「分段按钮」而不是 ComboBox：切方向很常用，点一下就生效；
+                         也免去下拉弹层（ComboBox 的 Popup 是独立窗口，容易和本工具自己接管的鼠标事件打架 ——
+                         用户报过「下拉项点不动」）。 -->
+                    <ListBox x:Name="ModeList" Style="{StaticResource SegmentedListBoxStyle}"
+                             ItemsSource="{Binding ModeOptions}" DisplayMemberPath="Label"
+                             SelectedItem="{Binding SelectedMode}"
+                             VerticalAlignment="Center"
+                             ToolTip="{Binding ModeHint}" />
                     <Button Content="⚙ 设置" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
                             Command="{Binding ToggleSettingsCommand}" ToolTip="滚轮步长 / 中键判定 / 离屏释放" />
                 </StackPanel>

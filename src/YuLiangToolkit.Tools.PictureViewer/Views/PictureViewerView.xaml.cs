@@ -94,6 +94,9 @@ public partial class PictureViewerView : UserControl
 
     private Window? _hostWindow;
 
+    /// <summary>开发排错用：<c>YLT_PICTURE_INPUT_TRACE=文件</c> 时把每次鼠标按下 / 松开 / 丢捕获写进去。</summary>
+    private string? _inputTracePath;
+
     public PictureViewerView()
     {
         InitializeComponent();
@@ -141,6 +144,22 @@ public partial class PictureViewerView : UserControl
         {
             _hostWindow.PreviewKeyDown -= OnHostPreviewKeyDown;
             _hostWindow.PreviewKeyDown += OnHostPreviewKeyDown;
+            _hostWindow.PreviewMouseDown -= OnHostPreviewMouseDownTrace;
+            _hostWindow.PreviewMouseDown += OnHostPreviewMouseDownTrace;
+        }
+
+        var tracePath = Environment.GetEnvironmentVariable("YLT_PICTURE_INPUT_TRACE");
+        if (!string.IsNullOrWhiteSpace(tracePath))
+        {
+            try
+            {
+                File.WriteAllText(tracePath, "");
+                _inputTracePath = tracePath;
+            }
+            catch
+            {
+                _inputTracePath = null;
+            }
         }
 
         vm.FolderPicker = PickFolder;
@@ -160,7 +179,11 @@ public partial class PictureViewerView : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        if (_hostWindow is not null) _hostWindow.PreviewKeyDown -= OnHostPreviewKeyDown;
+        if (_hostWindow is not null)
+        {
+            _hostWindow.PreviewKeyDown -= OnHostPreviewKeyDown;
+            _hostWindow.PreviewMouseDown -= OnHostPreviewMouseDownTrace;
+        }
         _hostWindow = null;
 
         ExitAnchor();
@@ -614,8 +637,9 @@ public partial class PictureViewerView : UserControl
 
     private void OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
-        if (Vm is not { } vm || !vm.HasPages) return;           // 没图时不吃滚轮
-        if (!IsInsideViewport(e)) return;                        // 鼠标在工具条 / 下拉框上时别抢滚轮
+        if (Vm is not { } vm || !vm.HasPages) return;                       // 没图时不吃滚轮
+        if (Mouse.Captured is not null && !ReferenceEquals(Mouse.Captured, this)) return;   // 别的控件（输入框 / 下拉弹层）正掌握鼠标
+        if (!IsFromViewport(e.OriginalSource as DependencyObject)) return;  // 鼠标在工具条 / 设置面板上时别抢滚轮
         if (IsInsideSettings(e.OriginalSource as DependencyObject)) return;
 
         if (_anchor.IsActive) ExitAnchor();
@@ -631,6 +655,14 @@ public partial class PictureViewerView : UserControl
     {
         if (Vm is not { } vm) return;
         var source = e.OriginalSource as DependencyObject;
+        TraceInput($"View.PreviewMouseDown {e.ChangedButton} src={(source as FrameworkElement)?.GetType().Name ?? source?.GetType().Name} " +
+                   $"fromViewport={IsFromViewport(source)} insideSettings={IsInsideSettings(source)} captured={Mouse.Captured?.GetType().Name} " +
+                   $"latched={_anchor.IsLatched} dragging={_dragging} handled={e.Handled}");
+
+        // ⚠ 别的控件正握着鼠标（例如 ComboBox 的下拉弹层、输入框拖动选择文字）时，整个事件都别碰：
+        // WPF 在「某控件捕获鼠标」时会把鼠标事件隧道经过它的所有祖先 —— 我们按位置判断「在视口里」就会
+        // 误以为是拖拽，把事件吃掉并抢走捕获，导致下拉项/输入框点不动（用户报的 bug）。
+        if (Mouse.Captured is not null && !ReferenceEquals(Mouse.Captured, this)) return;
 
         // 单点中键留下的锚点：再按任意键就关掉（PictureView 原来的行为），这一下点击不再传给下面的控件
         if (_anchor.IsLatched)
@@ -642,7 +674,7 @@ public partial class PictureViewerView : UserControl
 
         if (e.ChangedButton == MouseButton.Middle)
         {
-            if (!vm.HasPages || IsInsideSettings(source) || !IsInsideViewport(e)) return;
+            if (!vm.HasPages || IsInsideSettings(source) || !IsFromViewport(source)) return;
             if (_dragging) return;          // 正拖着画面时按中键：忽略，别让两套滚动同时改偏移
             if (_anchor.IsActive) return;   // 按住中键的过程中重复按下（理论上不会发生）
 
@@ -655,7 +687,7 @@ public partial class PictureViewerView : UserControl
 
         if (e.ChangedButton == MouseButton.Left && !_anchor.IsActive)
         {
-            if (!vm.HasPages || IsInsideSettings(source) || !IsInsideViewport(e)) return;
+            if (!vm.HasPages || IsInsideSettings(source) || !IsFromViewport(source)) return;
             e.Handled = true;
             BeginDrag(e);
         }
@@ -696,6 +728,7 @@ public partial class PictureViewerView : UserControl
 
     private void OnLostMouseCapture(object sender, MouseEventArgs e)
     {
+        TraceInput($"View.LostMouseCapture releasing={_releasingMouse} dragging={_dragging} anchor={_anchor.Phase}");
         if (_releasingMouse) return;
 
         if (_dragging)
@@ -831,8 +864,9 @@ public partial class PictureViewerView : UserControl
             }
         }
 
-        // 正在输入框 / 下拉框里时别抢键
-        if (Keyboard.FocusedElement is TextBox or ComboBox or ComboBoxItem or Slider or CheckBox) return;
+        // 正在输入框 / 下拉框 / 列表里时别抢键
+        if (Keyboard.FocusedElement is TextBox or ComboBox or ComboBoxItem or ListBox or ListBoxItem
+            or Slider or CheckBox or RadioButton) return;
         if (Keyboard.Modifiers != ModifierKeys.None) return;
 
         switch (e.Key)
@@ -853,11 +887,28 @@ public partial class PictureViewerView : UserControl
 
     private static double NowMilliseconds() => Environment.TickCount64;
 
-    private bool IsInsideViewport(MouseEventArgs e)
+    /// <summary>排错用：<c>YLT_PICTURE_INPUT_TRACE=文件</c> 时把鼠标事件写进去（不设就完全是空转）。</summary>
+    private void TraceInput(string line)
     {
-        var position = e.GetPosition(ViewportGrid);
-        return position.X >= 0 && position.Y >= 0
-               && position.X <= ViewportGrid.ActualWidth && position.Y <= ViewportGrid.ActualHeight;
+        if (string.IsNullOrWhiteSpace(_inputTracePath)) return;
+        try { File.AppendAllText(_inputTracePath, $"{DateTime.Now:HH:mm:ss.fff} {line}{Environment.NewLine}"); }
+        catch { /* 排查文件写不进去就算了 */ }
+    }
+
+    private void OnHostPreviewMouseDownTrace(object sender, MouseButtonEventArgs e)
+        => TraceInput($"Window.PreviewMouseDown {e.ChangedButton} src={(e.OriginalSource as FrameworkElement)?.GetType().Name} " +
+                      $"posWin={e.GetPosition(_hostWindow)} handled={e.Handled}");
+
+    /// <summary>
+    /// 事件源是不是「长带视口里的东西」（图片 /ScrollViewer / 空状态面板…）。
+    /// 比「按坐标判断在不在视口里」可靠：弹层（Popup）是独立窗口，按坐标会算成“在视口里”，
+    /// 但它的元素根本不在视口里 —— 按坐标判断就会把弹层的点击当成拖拽吃掉（见 OnPreviewMouseDown 的说明）。
+    /// </summary>
+    private bool IsFromViewport(DependencyObject? source)
+    {
+        if (source is null) return false;
+        if (ReferenceEquals(source, ViewportGrid)) return true;
+        return source is Visual && ViewportGrid.IsAncestorOf(source);
     }
 
     private bool IsInsideSettings(DependencyObject? source)
