@@ -59,19 +59,16 @@
 
                     <Border Width="1" Height="20" Background="{StaticResource BorderBrush}" Margin="10,0" />
 
-                    <TextBlock Text="滚动方式" Foreground="{StaticResource TextSecondaryBrush}"
+                    <!-- 阅读方式会越来越多（现在 6 种），工具条只留「当前方式」按钮，点它打开设置面板去切换。
+                         这样以后再加方式不用动工具条布局。 -->
+                    <TextBlock Text="阅读方式" Foreground="{StaticResource TextSecondaryBrush}"
                                FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0" />
-
-                    <!-- 用「分段按钮」而不是 ComboBox：切方向很常用，点一下就生效；
-                         也免去下拉弹层（ComboBox 的 Popup 是独立窗口，容易和本工具自己接管的鼠标事件打架 ——
-                         用户报过「下拉项点不动」）。标签用短名（上→下 / 左→右 / 右→左），把地方留给缩放。 -->
-                    <ListBox x:Name="ModeList" Style="{StaticResource SegmentedListBoxStyle}"
-                             ItemsSource="{Binding ModeOptions}" DisplayMemberPath="Label"
-                             SelectedItem="{Binding SelectedMode}"
-                             VerticalAlignment="Center"
-                             ToolTip="{Binding ModeHint}" />
+                    <Button x:Name="ModeButton" Content="{Binding CurrentModeText}"
+                            Style="{StaticResource SecondaryButtonStyle}" MinWidth="104"
+                            Command="{Binding ToggleSettingsCommand}"
+                            ToolTip="{Binding ModeHint}" />
                     <Button Content="⚙ 设置" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
-                            Command="{Binding ToggleSettingsCommand}" ToolTip="缩放 / 滚轮步长 / 中键判定 / 离屏释放" />
+                            Command="{Binding ToggleSettingsCommand}" ToolTip="阅读方式 / 缩放 / 滚轮步长 / 中键判定 / 离屏释放" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -91,8 +88,40 @@
                 <StackPanel x:Name="ImageStrip" Orientation="Vertical" Margin="0" />
             </ScrollViewer>
 
+            <!-- ================= 翻页 / 单张视图（连续模式时藏起来） ================= -->
+            <Grid x:Name="PagedHost" Visibility="Collapsed" Background="#0E1014">
+                <Grid x:Name="PagedViewport" Background="#0E1014" ClipToBounds="True">
+                    <!-- 图片全部由代码后置摆在 Canvas 上（翻页动画要按页宽平移） -->
+                    <Canvas x:Name="PagedCanvas" HorizontalAlignment="Left" VerticalAlignment="Top" />
+                </Grid>
+
+                <Button x:Name="PrevPageButton" Click="OnPrevPageClick"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        Width="46" Height="76" Padding="0" FontSize="24"
+                        HorizontalAlignment="Left" VerticalAlignment="Center" Margin="10,0,0,0">
+                    <Path Data="M 10,2 L 2,12 L 10,22" Stroke="{StaticResource TextPrimaryBrush}"
+                          StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          Stretch="Uniform" Width="12" Height="24" />
+                </Button>
+                <Button x:Name="NextPageButton" Click="OnNextPageClick"
+                        Style="{StaticResource SecondaryButtonStyle}"
+                        Width="46" Height="76" Padding="0" FontSize="24"
+                        HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,10,0">
+                    <Path Data="M 2,2 L 10,12 L 2,22" Stroke="{StaticResource TextPrimaryBrush}"
+                          StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                          Stretch="Uniform" Width="12" Height="24" />
+                </Button>
+
+                <!-- 页码 / 翻页按钮提示 -->
+                <Border x:Name="PageIndicatorPanel" Background="#B0000000" CornerRadius="12"
+                        Padding="12,5" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                        Margin="0,0,0,18" IsHitTestVisible="False">
+                    <TextBlock x:Name="PageIndicatorText" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}" />
+                </Border>
+            </Grid>
+
             <!-- 阅读进度（细条，不参与命中测试） -->
-            <Grid Height="3" VerticalAlignment="Bottom" IsHitTestVisible="False" Background="#1A1F28">
+            <Grid x:Name="ReadingProgressPanel" Height="3" VerticalAlignment="Bottom" IsHitTestVisible="False" Background="#1A1F28">
                 <Border x:Name="ReadingProgressFill" HorizontalAlignment="Left" Width="0"
                         Background="{StaticResource AccentBrush}" />
             </Grid>
@@ -126,7 +155,7 @@
                                HorizontalAlignment="Center" Margin="0,12,0,0" />
                     <TextBlock FontSize="12.5" Foreground="{StaticResource TextSecondaryBrush}"
                                TextWrapping="Wrap" TextAlignment="Center" Margin="0,10,0,0"
-                               Text="图片会按页序首尾相接拼成一条长带：条漫 / 长图用「纵向」一滚到底，看漫画可以切成「横向 左 → 右」或「横向 右 → 左」两种翻页习惯。&#10;滚轮滚动 · 左键按住拖动画面 · 单击中键留锚点 / 按住中键快速滚动。" />
+                               Text="阅读方式在顶部「阅读方式」按钮 / ⚙ 设置里切换：连续滚动（纵向、横向左右）适合条漫 / 长图；双页翻页（左→右 / 右→左）和单页浏览适合漫画。&#10;滚轮滚动 · 左键按住拖动画面 · 单击中键留锚点 / 按住中键快速滚动 · 翻页模式可用左右按钮 / 方向键。" />
                     <Button Content="📂 打开文件夹…" Style="{StaticResource PrimaryButtonStyle}"
                             Command="{Binding OpenFolderCommand}" HorizontalAlignment="Center"
                             Margin="0,20,0,0" Padding="20,9" />
@@ -147,47 +176,75 @@
                 </StackPanel>
             </Border>
 
-            <!-- 设置面板（浮在右上角；改一下自动存） -->
-            <Border x:Name="SettingsPanel" Width="356" HorizontalAlignment="Right" VerticalAlignment="Top"
+            <!-- 设置面板（浮在右上角；改一下自动存）。阅读方式越来越多，切换统一放这里。 -->
+            <Border x:Name="SettingsPanel" Width="380" HorizontalAlignment="Right" VerticalAlignment="Top"
                     Margin="0,12,12,0" Padding="16,14" Style="{StaticResource CardStyle}"
                     Visibility="{Binding IsSettingsVisible, Converter={StaticResource BoolToVis}}">
-                <StackPanel>
-                    <TextBlock Text="⚙ 阅读设置" FontSize="14" FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding ModeHint}" FontSize="11" TextWrapping="Wrap"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,6,0,0" />
+                <ScrollViewer MaxHeight="{Binding ActualHeight, ElementName=ViewportGrid}"
+                              VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="0,0,6,0">
+                        <TextBlock Text="⚙ 阅读设置" FontSize="14" FontWeight="SemiBold" />
 
-                    <CheckBox Content="拖动惯性（松手后继续滑一会儿）"
-                              IsChecked="{Binding Cfg.InertiaEnabled}"
-                              Style="{StaticResource CheckBoxStyle}" Margin="0,12,0,0"
-                              ToolTip="关掉 = 松手即停；开着 = 按甩动速度继续滑一段、逐渐减速" />
+                        <TextBlock Text="阅读方式" FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}"
+                                   Margin="0,12,0,6" />
+                        <ComboBox x:Name="ModeCombo" Style="{StaticResource ComboBoxStyle}" Height="32"
+                                  ItemsSource="{Binding ModeOptions}" DisplayMemberPath="Label"
+                                  SelectedItem="{Binding SelectedMode}"
+                                  ToolTip="连续滚动：纵向 / 横向左右；翻页 / 单张：双页左右、单页浏览" />
+                        <TextBlock Text="{Binding ModeHint}" FontSize="10.5" TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,6,0,0" />
 
-                    <CheckBox Content="惯性越滑越快（连续甩动会叠加）"
-                              IsChecked="{Binding Cfg.InertiaAccelerate}"
-                              Style="{StaticResource CheckBoxStyle}" Margin="0,10,0,0"
-                              ToolTip="手机漫画 App 的手感：下一次甩动时把还在滑的速度加上去、不重置；有速度上限，不会失控" />
+                        <!-- 翻页 / 单张模式专属设置 -->
+                        <StackPanel Visibility="{Binding IsPagedMode, Converter={StaticResource BoolToVis}}">
+                            <Border Height="1" Background="{StaticResource BorderBrush}" Margin="0,12,0,10" />
+                            <TextBlock Text="翻页设置" FontSize="11.5" FontWeight="SemiBold" />
+                            <TextBlock Text="滚轮在翻页模式里做什么" FontSize="11"
+                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,10,0,6" />
+                            <ComboBox Style="{StaticResource ComboBoxStyle}" Height="32"
+                                      ItemsSource="{Binding WheelActionOptions}" DisplayMemberPath="Label"
+                                      SelectedItem="{Binding SelectedWheelAction}"
+                                      ToolTip="翻页 = 滚一格翻一张；缩放 = 和 Ctrl+滚轮一样" />
+                            <CheckBox Content="翻页时滑动动画"
+                                      IsChecked="{Binding Cfg.PageTurnAnimation}"
+                                      Style="{StaticResource CheckBoxStyle}" Margin="0,10,0,0"
+                                      ToolTip="关掉 = 直接换图；开着 = 整页滑过去（约 0.2 秒）" />
+                        </StackPanel>
 
-                    <CheckBox Content="离屏图片自动释放（省内存）"
-                              IsChecked="{Binding Cfg.AutoUnloadOffscreen}"
-                              Style="{StaticResource CheckBoxStyle}" Margin="0,10,0,0" />
+                        <Border Height="1" Background="{StaticResource BorderBrush}" Margin="0,12,0,10" />
 
-                    <TextBlock Text="滚轮一格（像素，20 ~ 600）" FontSize="11.5"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,14,0,6" />
-                    <TextBox Text="{Binding Cfg.WheelStepPixels, UpdateSourceTrigger=PropertyChanged}"
-                             Style="{StaticResource TextBoxStyle}" Width="110" HorizontalAlignment="Left" />
+                        <CheckBox Content="拖动惯性（松手后继续滑一会儿）"
+                                  IsChecked="{Binding Cfg.InertiaEnabled}"
+                                  Style="{StaticResource CheckBoxStyle}"
+                                  ToolTip="关掉 = 松手即停；开着 = 按甩动速度继续滑一段、逐渐减速" />
 
-                    <TextBlock Text="单点中键 / 按住中键 的判定（毫秒，60 ~ 2000）" FontSize="11.5"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,14,0,6" />
-                    <TextBox Text="{Binding Cfg.MiddleHoldMilliseconds, UpdateSourceTrigger=PropertyChanged}"
-                             Style="{StaticResource TextBoxStyle}" Width="110" HorizontalAlignment="Left" />
-                    <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}"
-                               TextWrapping="Wrap" Margin="0,6,0,0"
-                               Text="按下到松开小于这个值 = 单点（锚点留下，再按任意键消失）；大于等于 = 按住（一松手锚点就消失）。" />
+                        <CheckBox Content="惯性越滑越快（连续甩动会叠加）"
+                                  IsChecked="{Binding Cfg.InertiaAccelerate}"
+                                  Style="{StaticResource CheckBoxStyle}" Margin="0,10,0,0"
+                                  ToolTip="手机漫画 App 的手感：下一次甩动时把还在滑的速度加上去、不重置；有速度上限，不会失控" />
 
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-                        <Button Content="关闭" Style="{StaticResource SecondaryButtonStyle}"
-                                Command="{Binding CloseSettingsCommand}" />
+                        <CheckBox Content="离屏图片自动释放（省内存）"
+                                  IsChecked="{Binding Cfg.AutoUnloadOffscreen}"
+                                  Style="{StaticResource CheckBoxStyle}" Margin="0,10,0,0" />
+
+                        <TextBlock Text="滚轮一格（像素，20 ~ 600）" FontSize="11.5"
+                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,14,0,6" />
+                        <TextBox Text="{Binding Cfg.WheelStepPixels, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource TextBoxStyle}" Width="110" HorizontalAlignment="Left" />
+
+                        <TextBlock Text="单点中键 / 按住中键 的判定（毫秒，60 ~ 2000）" FontSize="11.5"
+                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,14,0,6" />
+                        <TextBox Text="{Binding Cfg.MiddleHoldMilliseconds, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource TextBoxStyle}" Width="110" HorizontalAlignment="Left" />
+                        <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap" Margin="0,6,0,0"
+                                   Text="按下到松开小于这个值 = 单点（锚点留下，再按任意键消失）；大于等于 = 按住（一松手锚点就消失）。" />
+
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                            <Button Content="关闭" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding CloseSettingsCommand}" />
+                        </StackPanel>
                     </StackPanel>
-                </StackPanel>
+                </ScrollViewer>
             </Border>
         </Grid>
     </Grid>

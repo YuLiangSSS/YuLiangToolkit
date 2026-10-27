@@ -38,11 +38,87 @@ internal static class PictureViewerChecks
             && PictureScrollModes.Normalize(PictureScrollMode.HorizontalRightToLeft) == PictureScrollMode.HorizontalRightToLeft);
 
         var describes = Enum.GetValues<PictureScrollMode>().Select(PictureScrollModes.Describe).ToList();
-        Check("[图片] 三种方式都有名字且互不相同",
-            describes.Count == 3 && describes.All(d => d.Length > 0) && describes.Distinct().Count() == 3,
+        Check("[图片] 六种阅读方式都有名字且互不相同",
+            describes.Count == 6 && describes.All(d => d.Length > 0) && describes.Distinct().Count() == 6,
             string.Join(" / ", describes));
         Check("[图片] 每种方式都有说明文案",
             Enum.GetValues<PictureScrollMode>().All(m => PictureScrollModes.Hint(m).Length > 5));
+        Check("[图片] 短名字（分段/按钮用）也互不相同",
+            Enum.GetValues<PictureScrollMode>().Select(PictureScrollModes.DescribeCompact).Distinct().Count() == 6);
+
+        // 连续滚动 vs 翻页 / 单张：界面、滚轮、拖拽都按这个分类走
+        Check("[图片] 三种连续滚动方式归为「连续」",
+            PictureScrollModes.IsContinuous(PictureScrollMode.Vertical)
+            && PictureScrollModes.IsContinuous(PictureScrollMode.HorizontalLeftToRight)
+            && PictureScrollModes.IsContinuous(PictureScrollMode.HorizontalRightToLeft)
+            && !PictureScrollModes.IsPaged(PictureScrollMode.Vertical));
+        Check("[图片] 双页 / 单页归为「翻页」类",
+            PictureScrollModes.IsPaged(PictureScrollMode.SpreadLeftToRight)
+            && PictureScrollModes.IsPaged(PictureScrollMode.SpreadRightToLeft)
+            && PictureScrollModes.IsPaged(PictureScrollMode.SinglePage)
+            && !PictureScrollModes.IsContinuous(PictureScrollMode.SinglePage));
+        Check("[图片] 只有双页算 spread，单页不算",
+            PictureScrollModes.IsSpread(PictureScrollMode.SpreadLeftToRight)
+            && PictureScrollModes.IsSpread(PictureScrollMode.SpreadRightToLeft)
+            && PictureScrollModes.IsSinglePage(PictureScrollMode.SinglePage)
+            && !PictureScrollModes.IsSpread(PictureScrollMode.SinglePage));
+        Check("[图片] 翻页模式不属于「横向」（不吃长带那套阅读轴换算）",
+            !PictureScrollModes.IsHorizontal(PictureScrollMode.SpreadLeftToRight)
+            && !PictureScrollModes.IsHorizontal(PictureScrollMode.SinglePage));
+        Check("[图片] 日式双页也是反向（右→左翻）",
+            PictureScrollModes.IsReverse(PictureScrollMode.SpreadRightToLeft)
+            && !PictureScrollModes.IsReverse(PictureScrollMode.SpreadLeftToRight)
+            && !PictureScrollModes.IsReverse(PictureScrollMode.SinglePage));
+
+        // ---------------------------------------------------------------- 1b. 翻页排版 / 页号（PicturePaging）
+        Check("[图片] 页号夹取：负数是第一页、超界是最后一页、没图是 0",
+            PicturePaging.NormalizePageIndex(-3, 10) == 0
+            && PicturePaging.NormalizePageIndex(99, 10) == 9
+            && PicturePaging.NormalizePageIndex(4, 0) == 0);
+
+        Check("[图片] 双页左→右：左槽当前页、右槽下一张",
+            PicturePaging.VisiblePages(PictureScrollMode.SpreadLeftToRight, 2, 10) == (2, 3));
+        Check("[图片] 双页右→左：右槽当前页、左槽下一张（日式镜像）",
+            PicturePaging.VisiblePages(PictureScrollMode.SpreadRightToLeft, 2, 10) == (3, 2));
+        Check("[图片] 单页：只显示当前页，右槽空",
+            PicturePaging.VisiblePages(PictureScrollMode.SinglePage, 4, 10) == (4, null));
+
+        Check("[图片] 最后一屏不足两页时另一侧留空（左→右）",
+            PicturePaging.VisiblePages(PictureScrollMode.SpreadLeftToRight, 4, 5) == (4, null)
+            && PicturePaging.VisiblePages(PictureScrollMode.SpreadRightToLeft, 4, 5) == (null, 4));
+
+        Check("[图片] 翻页步进：前进 +1、后退 -1，两端夹住",
+            PicturePaging.StepPage(0, 5, forward: true) == 1
+            && PicturePaging.StepPage(4, 5, forward: true) == 4
+            && PicturePaging.StepPage(0, 5, forward: false) == 0
+            && PicturePaging.StepPage(3, 5, forward: false) == 2);
+        Check("[图片] 还能不能前后翻",
+            PicturePaging.CanGoPrevious(0, 5) == false
+            && PicturePaging.CanGoPrevious(1, 5)
+            && PicturePaging.CanGoNext(3, 5)
+            && PicturePaging.CanGoNext(4, 5) == false);
+
+        Check("[图片] 双页排版：两页各占一半宽、内容 = 视口 × 缩放",
+            SpreadLayoutCheck());
+
+        Check("[图片] 单页排版：内容 = 视口 × 缩放，一页占满",
+            SingleLayoutCheck());
+
+        Check("[图片] 平移夹取：内容不大于视口时不能平移、超出时可以",
+            PicturePaging.ClampPan(50, 50, 800, 600, 1000, 800) == (0, 0)
+            && PicturePaging.ClampPan(500, 300, 2000, 1200, 1000, 800) == (500, 300)
+            && PicturePaging.ClampPan(-20, 9999, 2000, 1200, 1000, 800) == (0, 400));
+
+        Check("[图片] 日式翻页：左右按钮的“上一张/下一张”互换",
+            PicturePaging.ButtonDirections(PictureScrollMode.SpreadLeftToRight) == (true, false)
+            && PicturePaging.ButtonDirections(PictureScrollMode.SpreadRightToLeft) == (false, true)
+            && PicturePaging.ButtonDirections(PictureScrollMode.SinglePage) == (true, false));
+
+        Check("[图片] 翻页模式滚轮动作：默认翻页、坏值归一到翻页",
+            PictureWheelActions.Normalize(PictureWheelAction.Zoom) == PictureWheelAction.Zoom
+            && PictureWheelActions.Normalize((PictureWheelAction)99) == PictureWheelAction.TurnPage
+            && PictureWheelActions.Describe(PictureWheelAction.TurnPage).Contains("翻页")
+            && PictureWheelActions.Describe(PictureWheelAction.Zoom) == "缩放");
 
         // ---------------------------------------------------------------- 2. 偏移：夹取 / 滚轮 / 拖拽
         Check("[图片] 偏移夹在 0 ~ 最大值之间",
@@ -357,6 +433,8 @@ internal static class PictureViewerChecks
             && Math.Abs(cfg.ZoomScale - 1.0) < 1e-9
             && cfg.InertiaEnabled
             && cfg.InertiaAccelerate
+            && cfg.PagedWheelEffective == PictureWheelAction.TurnPage
+            && cfg.PageTurnAnimation
             && cfg.AutoUnloadOffscreen,
             $"{cfg.ScrollModeEffective} / {cfg.WheelStepEffective} / {cfg.HoldMillisecondsEffective} / {cfg.ZoomPercentEffective}%");
 
@@ -364,14 +442,22 @@ internal static class PictureViewerChecks
         cfg.WheelStepPixels = 9999;
         cfg.MiddleHoldMilliseconds = 1;
         cfg.ZoomPercent = 9999;
+        cfg.PagedWheel = PictureWheelAction.Zoom;
+        cfg.PageTurnAnimation = false;
         Thread.Sleep(900);
         var savedJson = File.Exists(configStore.FilePath) ? File.ReadAllText(configStore.FilePath) : "";
         Check("[图片] 枚举按 C# 原名存字符串（手改配置看得懂）",
-            savedJson.Contains("\"HorizontalRightToLeft\""), savedJson.Replace(Environment.NewLine, " "));
+            savedJson.Contains("\"HorizontalRightToLeft\"") && savedJson.Contains("\"Zoom\""),
+            savedJson.Replace(Environment.NewLine, " "));
+        Check("[图片] 翻页设置也落盘（滚轮缩放 / 关掉滑动动画）",
+            savedJson.Contains("\"pagedWheel\": \"Zoom\"") && savedJson.Contains("\"pageTurnAnimation\": false"),
+            savedJson.Replace(Environment.NewLine, " "));
         Check("[图片] 手改坏的范围在生效值里被夹住（含缩放 25~800）",
             cfg.WheelStepEffective == 600 && cfg.HoldMillisecondsEffective == 60
             && cfg.ZoomPercentEffective == 800,
             $"{cfg.WheelStepEffective} / {cfg.HoldMillisecondsEffective} / {cfg.ZoomPercentEffective}");
+        cfg.PagedWheel = (PictureWheelAction)99;
+        Check("[图片] 翻页滚轮动作坏值归一化", cfg.PagedWheelEffective == PictureWheelAction.TurnPage);
 
         // ---------------------------------------------------------------- 11. 无头跑一遍 ViewModel
         var vm = new PictureViewerViewModel();
@@ -392,6 +478,35 @@ internal static class PictureViewerChecks
         Check("[图片] 加载完通知界面重建长带（PagesChanged）", pagesChanged > 0);
         Check("[图片] 加载完不在忙碌状态、状态文字是人话",
             !vm.IsBusy && vm.StatusText.Contains("3"), vm.StatusText);
+
+        // ---- 阅读方式 / 翻页设置（无头跑） ----
+        vm.Cfg.ScrollMode = PictureScrollMode.Vertical;   // 前面的配置检查把它改成了横向，这里先复位
+        Check("[图片] 设置面板的阅读方式下拉有 6 个选项",
+            vm.ModeOptions.Count == 6 && vm.ModeOptions.Select(o => o.Value).Distinct().Count() == 6,
+            string.Join(" / ", vm.ModeOptions.Select(o => o.Label)));
+        Check("[图片] 默认方式 = 纵向、不算翻页模式",
+            vm.Cfg.ScrollModeEffective == PictureScrollMode.Vertical && !vm.IsPagedMode);
+        vm.SelectedMode = vm.ModeOptions.First(o => o.Value == PictureScrollMode.SpreadRightToLeft);
+        Check("[图片] 选「双页 右→左」后：配置更新、进入翻页模式、按钮文字跟着变",
+            vm.Cfg.ScrollModeEffective == PictureScrollMode.SpreadRightToLeft
+            && vm.IsPagedMode
+            && vm.CurrentModeText == PictureScrollModes.Describe(PictureScrollMode.SpreadRightToLeft),
+            $"{vm.CurrentModeText} / paged={vm.IsPagedMode}");
+        vm.SelectedMode = vm.ModeOptions.First(o => o.Value == PictureScrollMode.Vertical);
+        Check("[图片] 切回纵向后又变回连续模式",
+            !vm.IsPagedMode && !PictureScrollModes.IsPaged(vm.Cfg.ScrollModeEffective));
+
+        Check("[图片] 翻页滚轮选项：翻页 / 缩放两项，默认翻页",
+            vm.WheelActionOptions.Count == 2
+            && vm.WheelActionOptions.Select(o => o.Value).SequenceEqual(
+                new[] { PictureWheelAction.TurnPage, PictureWheelAction.Zoom })
+            && vm.SelectedWheelAction.Value == PictureWheelAction.TurnPage);
+        vm.SelectedWheelAction = vm.WheelActionOptions.First(o => o.Value == PictureWheelAction.Zoom);
+        Check("[图片] 选「缩放」后写进配置",
+            vm.Cfg.PagedWheelEffective == PictureWheelAction.Zoom);
+        vm.SelectedWheelAction = vm.WheelActionOptions.First(o => o.Value == PictureWheelAction.TurnPage);
+        Check("[图片] 再选回「翻页」也写进配置",
+            vm.Cfg.PagedWheelEffective == PictureWheelAction.TurnPage);
 
         // ---- 缩放：输入框 + 放大镜命令（无头跑，不需要界面） ----
         vm.Cfg.ZoomPercent = 100;
@@ -436,6 +551,40 @@ internal static class PictureViewerChecks
         // ---------------------------------------------------------------- 收尾：清掉临时测试文件夹
         try { Directory.Delete(folder, recursive: true); } catch { /* 临时目录，删不掉无所谓 */ }
         try { Directory.Delete(emptyFolder, recursive: true); } catch { /* 同上 */ }
+    }
+
+    /// <summary>双页排版：两页各占一半宽、接缝在中间；缩放 2 倍后内容翻倍。</summary>
+    private static bool SpreadLayoutCheck()
+    {
+        var layout = PicturePaging.ComputeLayout(PictureScrollMode.SpreadLeftToRight, 1000, 800, 1.0, 10, 0);
+        if (layout.ContentWidth != 1000 || layout.ContentHeight != 800 || layout.Slots.Count != 2) return false;
+
+        var left = layout.Slots[0];
+        var right = layout.Slots[1];
+        if (left.X != 0 || right.X != 500 || left.Width != 500 || right.Width != 500) return false;
+        if (left.PageIndex != 0 || right.PageIndex != 1) return false;
+        if (layout.LeftPageIndex != 0 || layout.RightPageIndex != 1) return false;
+
+        // 日式镜像：右槽是当前页
+        var mirrored = PicturePaging.ComputeLayout(PictureScrollMode.SpreadRightToLeft, 1000, 800, 1.0, 10, 0);
+        if (mirrored.Slots[0].PageIndex != 1 || mirrored.Slots[1].PageIndex != 0) return false;
+
+        // 200%：内容和高都翻倍、第二页从 1000 开始
+        var zoomed = PicturePaging.ComputeLayout(PictureScrollMode.SpreadLeftToRight, 1000, 800, 2.0, 10, 0);
+        return zoomed.ContentWidth == 2000 && zoomed.ContentHeight == 1600
+               && zoomed.Slots[0].Width == 1000 && zoomed.Slots[1].X == 1000;
+    }
+
+    /// <summary>单页排版：内容 = 视口 × 缩放，一页占满、右槽空。</summary>
+    private static bool SingleLayoutCheck()
+    {
+        var layout = PicturePaging.ComputeLayout(PictureScrollMode.SinglePage, 1000, 800, 1.0, 10, 3);
+        if (layout.ContentWidth != 1000 || layout.ContentHeight != 800 || layout.Slots.Count != 1) return false;
+
+        var slot = layout.Slots[0];
+        return slot.PageIndex == 3 && slot.X == 0 && slot.Y == 0
+               && slot.Width == 1000 && slot.Height == 800
+               && layout.LeftPageIndex == 3 && layout.RightPageIndex is null;
     }
 
     /// <summary>造一张真 PNG（宽高自定义），用来验证「扫文件夹会读出真实像素尺寸」。</summary>

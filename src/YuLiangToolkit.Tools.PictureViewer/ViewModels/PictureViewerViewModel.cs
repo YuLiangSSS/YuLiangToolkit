@@ -16,9 +16,16 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
         Cfg = LoadConfig<PictureViewerConfig>();
 
         ModeOptions = OptionItem.From(
-            (PictureScrollMode.Vertical, PictureScrollModes.DescribeCompact(PictureScrollMode.Vertical)),
-            (PictureScrollMode.HorizontalLeftToRight, PictureScrollModes.DescribeCompact(PictureScrollMode.HorizontalLeftToRight)),
-            (PictureScrollMode.HorizontalRightToLeft, PictureScrollModes.DescribeCompact(PictureScrollMode.HorizontalRightToLeft)));
+            (PictureScrollMode.Vertical, PictureScrollModes.Describe(PictureScrollMode.Vertical)),
+            (PictureScrollMode.HorizontalLeftToRight, PictureScrollModes.Describe(PictureScrollMode.HorizontalLeftToRight)),
+            (PictureScrollMode.HorizontalRightToLeft, PictureScrollModes.Describe(PictureScrollMode.HorizontalRightToLeft)),
+            (PictureScrollMode.SpreadLeftToRight, PictureScrollModes.Describe(PictureScrollMode.SpreadLeftToRight)),
+            (PictureScrollMode.SpreadRightToLeft, PictureScrollModes.Describe(PictureScrollMode.SpreadRightToLeft)),
+            (PictureScrollMode.SinglePage, PictureScrollModes.Describe(PictureScrollMode.SinglePage)));
+
+        WheelActionOptions = OptionItem.From(
+            (PictureWheelAction.TurnPage, "翻页（上一张 / 下一张）"),
+            (PictureWheelAction.Zoom, "缩放"));
 
         OpenFolderCommand = new AsyncRelayCommand(_ => OpenFolderAsync());
         ToggleSettingsCommand = new RelayCommand(_ => IsSettingsVisible = !IsSettingsVisible);
@@ -35,10 +42,13 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
     /// <summary>强类型配置（<c>Config\picture-viewer\config.json</c>）。</summary>
     public PictureViewerConfig Cfg { get; }
 
-    /// <summary>三种滚动方式的下拉选项。</summary>
+    /// <summary>六种阅读方式的选项（工具条只显示当前方式，切换在设置面板里）。</summary>
     public IReadOnlyList<OptionItem<PictureScrollMode>> ModeOptions { get; }
 
-    /// <summary>下拉框的桥接属性：一改就写进配置，并通知界面重建长带（保持阅读位置）。</summary>
+    /// <summary>翻页模式下滚轮做什么的选项。</summary>
+    public IReadOnlyList<OptionItem<PictureWheelAction>> WheelActionOptions { get; }
+
+    /// <summary>下拉框的桥接属性：一改就写进配置，并通知界面重建长带 / 翻页视图（保持位置）。</summary>
     public OptionItem<PictureScrollMode> SelectedMode
     {
         get => OptionItem<PictureScrollMode>.Find(ModeOptions, Cfg.ScrollModeEffective) ?? ModeOptions[0];
@@ -48,11 +58,31 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
             Cfg.ScrollMode = value.Value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(ModeHint));
+            OnPropertyChanged(nameof(CurrentModeText));
+            OnPropertyChanged(nameof(IsPagedMode));
             ModeChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
-    /// <summary>当前滚动方式的一句说明。</summary>
+    /// <summary>翻页模式滚轮动作（存配置，改一下立即生效）。</summary>
+    public OptionItem<PictureWheelAction> SelectedWheelAction
+    {
+        get => OptionItem<PictureWheelAction>.Find(WheelActionOptions, Cfg.PagedWheelEffective) ?? WheelActionOptions[0];
+        set
+        {
+            if (value is null || value.Value == Cfg.PagedWheelEffective) return;
+            Cfg.PagedWheel = value.Value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>工具条上「阅读方式」按钮显示的文字（当前方式）。</summary>
+    public string CurrentModeText => PictureScrollModes.Describe(Cfg.ScrollModeEffective);
+
+    /// <summary>当前方式是翻页 / 单张类（设置面板据此显示「翻页设置」那一块）。</summary>
+    public bool IsPagedMode => PictureScrollModes.IsPaged(Cfg.ScrollModeEffective);
+
+    /// <summary>当前阅读方式的一句说明。</summary>
     public string ModeHint => PictureScrollModes.Hint(Cfg.ScrollModeEffective);
 
     // ---------------------------------------------------------------- 缩放
@@ -268,7 +298,7 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
 
     // ---------------------------------------------------------------- 环境变量（开发用）
 
-    /// <summary>开发 / 截图用：<c>YLT_PICTURE_MODE=vertical|ltr|rtl</c> 直接指定滚动方式。</summary>
+    /// <summary>开发 / 截图用：<c>YLT_PICTURE_MODE=vertical|ltr|rtl|spread-ltr|spread-rtl|single</c> 直接指定阅读方式。</summary>
     private void ApplyModeOverrideFromEnvironment()
     {
         var text = Environment.GetEnvironmentVariable("YLT_PICTURE_MODE");
@@ -279,6 +309,9 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
             "vertical" or "v" or "上下" or "1" => PictureScrollMode.Vertical,
             "ltr" or "left-to-right" or "lefttoright" or "从左到右" or "2" => PictureScrollMode.HorizontalLeftToRight,
             "rtl" or "right-to-left" or "righttoleft" or "从右到左" or "3" => PictureScrollMode.HorizontalRightToLeft,
+            "spread-ltr" or "spreadltr" or "双页左到右" or "4" => PictureScrollMode.SpreadLeftToRight,
+            "spread-rtl" or "spreadrtl" or "双页右到左" or "5" => PictureScrollMode.SpreadRightToLeft,
+            "single" or "single-page" or "singlepage" or "单页" or "6" => PictureScrollMode.SinglePage,
             _ => null,
         };
         if (mode is null) return;
@@ -286,6 +319,8 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
         Cfg.ScrollMode = mode.Value;
         OnPropertyChanged(nameof(SelectedMode));
         OnPropertyChanged(nameof(ModeHint));
+        OnPropertyChanged(nameof(CurrentModeText));
+        OnPropertyChanged(nameof(IsPagedMode));
     }
 
     /// <summary>开发 / 截图用：<c>YLT_PICTURE_ZOOM=200</c> 直接指定缩放百分比（截图核对放大后的排版）。</summary>

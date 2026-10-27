@@ -43,6 +43,12 @@ public sealed class PictureViewerConfig : ToolConfig
     /// </summary>
     public bool InertiaAccelerate { get; set; } = true;
 
+    /// <summary>翻页模式（双页 / 单页）里滚轮做什么：翻页（默认）或缩放。</summary>
+    public PictureWheelAction PagedWheel { get; set; } = PictureWheelAction.TurnPage;
+
+    /// <summary>翻页 / 单页切换图片时要不要滑动动画（默认开；关掉就是直接换）。</summary>
+    public bool PageTurnAnimation { get; set; } = true;
+
     /// <summary>上次打开的文件夹（只用来当文件对话框的起始目录，不会自动打开）。</summary>
     public string LastFolder { get; set; } = "";
 
@@ -67,6 +73,10 @@ public sealed class PictureViewerConfig : ToolConfig
     /// <summary>缩放系数（100% → 1.0）。</summary>
     [JsonIgnore]
     public double ZoomScale => PictureScrollMath.ZoomScale(ZoomPercentEffective);
+
+    /// <summary>生效的翻页模式滚轮动作（手改坏配置时退回翻页）。</summary>
+    [JsonIgnore]
+    public PictureWheelAction PagedWheelEffective => PictureWheelActions.Normalize(PagedWheel);
 
     /// <summary>当前方式的说明（设置面板里一行小字）。</summary>
     [JsonIgnore]

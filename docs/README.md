@@ -9,7 +9,7 @@
 | --- | --- | --- |
 | 🎥 视频转音频 | 抽视频里的音轨：MP3 / FLAC / 原样提取 | [tools/video-to-audio.md](tools/video-to-audio.md) |
 | 🎬 视频 / 音乐播放器 | 本地播放器：播放列表、循环随机、可调步长的快进快退 | [tools/media-player.md](tools/media-player.md) |
-| 🖼️ 图片连续阅读器 | 把一个文件夹的图片首尾相接成一条长带（无缝、无间距），滚轮连续看条漫 / 长图 / 漫画，三种阅读方向 | [tools/picture-viewer.md](tools/picture-viewer.md) |
+| 🖼️ 图片连续阅读器 | 把一个文件夹的图片首尾相接成一条长带（无缝、无间距），滚轮连续看条漫 / 长图 / 漫画；六种阅读方式（连续滚动三种方向 / 双页翻页左右 / 单页浏览），支持缩放、自由拖拽与拖动惯性 | [tools/picture-viewer.md](tools/picture-viewer.md) |
 | ⚡ Flash 下载器 | 4399 / 7k7k / 17yy / ArmorGames / Kongregate 小游戏下载到本地离线玩 | [tools/flash-downloader.md](tools/flash-downloader.md) |
 | 💬 联机聊天室 | 主机开端口、客户端连进来，局域网 / 内网穿透都能用，带流量上限 | [tools/chat-room.md](tools/chat-room.md) |
 | 🏷️ 批量重命名 | 规则清单 + 预览 + 两阶段改名 + 撤销 | [tools/batch-rename.md](tools/batch-rename.md) |

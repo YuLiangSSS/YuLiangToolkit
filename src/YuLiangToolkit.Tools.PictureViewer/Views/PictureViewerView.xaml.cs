@@ -106,6 +106,8 @@ public partial class PictureViewerView : UserControl
     private Point _dragStart;
     private double _dragStartReading;
     private double _dragStartCross;
+    private double _dragStartPanX;
+    private double _dragStartPanY;
     private bool _releasingMouse;
 
     private Window? _hostWindow;
@@ -186,7 +188,7 @@ public partial class PictureViewerView : UserControl
         vm.ZoomChanged -= OnZoomChanged;
         vm.ZoomChanged += OnZoomChanged;
 
-        if (vm.HasPages) await BuildStripAsync(keepProgress: true);
+        if (vm.HasPages) await ApplyReadingModeAsync(keepProgress: true);
 
         if (!_demoStarted)
         {
@@ -206,6 +208,7 @@ public partial class PictureViewerView : UserControl
 
         ExitAnchor();
         if (_dragging) EndDrag();
+        ExitPagedMode();
         AbortInertia();
 
         _scrollSettleTimer?.Stop();
@@ -225,9 +228,9 @@ public partial class PictureViewerView : UserControl
         ClearSlots();
     }
 
-    private void OnPagesChanged(object? sender, EventArgs e) => _ = BuildStripAsync(keepProgress: false);
+    private void OnPagesChanged(object? sender, EventArgs e) => _ = ApplyReadingModeAsync(keepProgress: false);
 
-    private void OnModeChanged(object? sender, EventArgs e) => _ = BuildStripAsync(keepProgress: true);
+    private void OnModeChanged(object? sender, EventArgs e) => _ = ApplyReadingModeAsync(keepProgress: true);
 
     private string? PickFolder()
     {
@@ -243,7 +246,7 @@ public partial class PictureViewerView : UserControl
     /// 按当前页清单 / 滚动方式重建长带。
     /// <paramref name="keepProgress"/> = true 时尽量停在原来的阅读位置（切换滚动方式）。
     /// </summary>
-    private async Task BuildStripAsync(bool keepProgress)
+    private async Task BuildStripAsync(bool keepProgress, double? forcedRatio = null)
     {
         if (Vm is not { } vm) return;
 
@@ -261,7 +264,7 @@ public partial class PictureViewerView : UserControl
         {
             // ⚠ 比例必须用「上一次真正建成的方向」来算：ModeChanged 是在 Cfg.ScrollMode 改完之后才发的，
             // 这时按新方向去读旧布局的偏移（轴都不一样）会永远得到 0，换来换去就跳回第一张。
-            var ratio = keepProgress ? GetReadingRatioForMode(_builtMode) : 0;
+            var ratio = forcedRatio ?? (keepProgress ? GetReadingRatioForMode(_builtMode) : 0);
 
             // 先把上一批整掉（生成号变了，还在解的那几张回来也会被丢掉）
             _generation++;
@@ -397,6 +400,18 @@ public partial class PictureViewerView : UserControl
 
     private void OnViewportSizeChanged(object sender, SizeChangedEventArgs e)
     {
+        if (_pagedActive)
+        {
+            if (_layoutQueued) return;
+            _layoutQueued = true;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                _layoutQueued = false;
+                if (_pagedActive) _ = RelayoutPagedKeepCenterAsync();
+            }), DispatcherPriority.Background);
+            return;
+        }
+
         if (_slots.Count == 0 || _layoutQueued) return;
 
         // 图片按视口跨轴缩放，所以内容长度也跟着按比例变：按「偏移 × 新老缩放比」定位最跟手；
@@ -501,7 +516,11 @@ public partial class PictureViewerView : UserControl
 
     // ---------------------------------------------------------------- 缩放
 
-    private void OnZoomChanged(object? sender, EventArgs e) => ApplyZoomChange();
+    private void OnZoomChanged(object? sender, EventArgs e)
+    {
+        if (_pagedActive) _ = RelayoutPagedKeepCenterAsync();
+        else ApplyZoomChange();
+    }
 
     /// <summary>缩放变了：重新排版，并尽量让**画面中心**停在原来那张图的同一处（像手机漫画 App 那样）。</summary>
     private void ApplyZoomChange()
@@ -535,6 +554,12 @@ public partial class PictureViewerView : UserControl
 
     private void UpdateReadingProgress()
     {
+        if (_pagedActive)
+        {
+            UpdatePagedProgress();
+            return;
+        }
+
         var ratio = Math.Clamp(GetReadingRatio(), 0, 1);
 
         // 日式右→左是往左读，进度条也从右边长出来
@@ -723,6 +748,33 @@ public partial class PictureViewerView : UserControl
         if (!IsFromViewport(e.OriginalSource as DependencyObject)) return;  // 鼠标在工具条 / 设置面板上时别抢滚轮
         if (IsInsideSettings(e.OriginalSource as DependencyObject)) return;
 
+        if (_pagedActive)
+        {
+            AbortInertia();
+            e.Handled = true;
+
+            var ctrl = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+            var shift = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
+
+            if (ctrl || (!shift && vm.Cfg.PagedWheelEffective == PictureWheelAction.Zoom))
+            {
+                if (e.Delta > 0) vm.ZoomInCommand.Execute(null);
+                else if (e.Delta < 0) vm.ZoomOutCommand.Execute(null);
+                return;
+            }
+
+            if (shift)
+            {
+                var panStep = vm.Cfg.WheelStepEffective;
+                PanPaged(_pagedPanX + (e.Delta < 0 ? panStep : -panStep), _pagedPanY);
+                return;
+            }
+
+            // 默认：滚轮往下 = 下一张（按阅读方向，日式模式同样是“往后读”）
+            _ = TurnPageAsync(forward: e.Delta < 0);
+            return;
+        }
+
         AbortInertia();
         if (_anchor.IsActive) ExitAnchor();
 
@@ -776,8 +828,12 @@ public partial class PictureViewerView : UserControl
             return;
         }
 
+        // 翻页视图里的「上一张 / 下一张」按钮（还有以后加的任何按钮）：点击留给 Button，别被拖拽吃掉
+        if (IsOnClickableControl(source)) return;
+
         if (e.ChangedButton == MouseButton.Middle)
         {
+            if (_pagedActive) return;   // 翻页 / 单张模式没有“沿阅读轴自动滚”这个概念
             if (!vm.HasPages || IsInsideSettings(source)) return;
             if (_dragging) return;          // 正拖着画面时按中键：忽略，别让两套滚动同时改偏移
             if (_anchor.IsActive) return;   // 按住中键的过程中重复按下（理论上不会发生）
@@ -837,14 +893,23 @@ public partial class PictureViewerView : UserControl
         _dragMoved = true;
         e.Handled = true;
 
-        // 两个轴都能拖：阅读轴沿用原来的方向规则，跨轴按「内容跟着手走」算
-        var reading = _dragStartReading + PictureScrollMath.DragDelta(Mode, dx, dy);
-        var cross = _dragStartCross + PictureScrollMath.CrossDragDelta(Mode, dx, dy);
-        SetReadingOffset(reading);
-        SetCrossOffset(cross);
+        if (_pagedActive)
+        {
+            // 翻页模式：内容跟着手走（放大后平移）。没放大时内容不溢出，夹取后等于不动。
+            PanPaged(_dragStartPanX - dx, _dragStartPanY - dy);
+        }
+        else
+        {
+            // 两个轴都能拖：阅读轴沿用原来的方向规则，跨轴按「内容跟着手走」算
+            var reading = _dragStartReading + PictureScrollMath.DragDelta(Mode, dx, dy);
+            var cross = _dragStartCross + PictureScrollMath.CrossDragDelta(Mode, dx, dy);
+            SetReadingOffset(reading);
+            SetCrossOffset(cross);
+        }
 
         // 惯性速度用「实际生效的偏移」采样：撞到边界就不动了，松手自然不会在边上滑
-        _inertia.Note(NowMilliseconds(), GetReadingOffset(), GetCrossOffset());
+        var (mainOffset, crossOffset) = GetInertiaOffsets();
+        _inertia.Note(NowMilliseconds(), mainOffset, crossOffset);
     }
 
     private void OnLostMouseCapture(object sender, MouseEventArgs e)
@@ -875,8 +940,11 @@ public partial class PictureViewerView : UserControl
         _dragStart = e.GetPosition(this);
         _dragStartReading = GetReadingOffset();
         _dragStartCross = GetCrossOffset();
+        _dragStartPanX = _pagedPanX;
+        _dragStartPanY = _pagedPanY;
         _inertia.Reset();
-        _inertia.Note(NowMilliseconds(), _dragStartReading, _dragStartCross);
+        var (mainOffset, crossOffset) = GetInertiaOffsets();
+        _inertia.Note(NowMilliseconds(), mainOffset, crossOffset);
         Cursor = Cursors.SizeAll;
         CaptureMouse();
     }
@@ -939,15 +1007,16 @@ public partial class PictureViewerView : UserControl
         if (elapsed <= 0 || elapsed > 100) elapsed = 16.0;   // 掉帧 / 休眠回来：别一下跳很远
 
         var (main, cross) = _inertia.Decay(_inertiaMainVelocity, _inertiaCrossVelocity, elapsed);
-        var readingBefore = GetReadingOffset();
-        var crossBefore = GetCrossOffset();
+        var (beforeMain, beforeCross) = GetInertiaOffsets();
+        var targetMain = beforeMain + main * elapsed;
+        var targetCross = beforeCross + cross * elapsed;
 
-        SetReadingOffset(readingBefore + main * elapsed);
-        SetCrossOffset(crossBefore + cross * elapsed);
+        ApplyInertiaOffsets(targetMain, targetCross);
 
+        var (afterMain, afterCross) = GetInertiaOffsets();
         // 撞到边界（请求了但实际没动）就把这一轴速度清掉，别在边上“嗡嗡”震
-        if (Math.Abs(GetReadingOffset() - (readingBefore + main * elapsed)) > 0.5) main = 0;
-        if (Math.Abs(GetCrossOffset() - (crossBefore + cross * elapsed)) > 0.5) cross = 0;
+        if (Math.Abs(afterMain - targetMain) > 0.5) main = 0;
+        if (Math.Abs(afterCross - targetCross) > 0.5) cross = 0;
 
         _inertiaMainVelocity = main;
         _inertiaCrossVelocity = cross;
@@ -1082,6 +1151,13 @@ public partial class PictureViewerView : UserControl
             or Slider or CheckBox or RadioButton) return;
         if (Keyboard.Modifiers != ModifierKeys.None) return;
 
+        // 翻页 / 单张模式：方向键翻页（日式模式左右互换）、PageUp/PageDown/空格、Home/End
+        if (_pagedActive && HandlePagedKey(e.Key))
+        {
+            e.Handled = true;
+            return;
+        }
+
         switch (e.Key)
         {
             case Key.Home:
@@ -1141,6 +1217,33 @@ public partial class PictureViewerView : UserControl
         return source is Visual && ViewportGrid.IsAncestorOf(source);
     }
 
+    /// <summary>这一下点击是不是落在按钮之类的可点击控件上（翻页箭头的点击不能被拖拽吃掉）。</summary>
+    private bool IsOnClickableControl(DependencyObject? source)
+    {
+        while (source is not null && !ReferenceEquals(source, ViewportGrid))
+        {
+            if (source is System.Windows.Controls.Primitives.ButtonBase) return true;
+            source = source is Visual || source is System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(source)
+                : LogicalTreeHelper.GetParent(source);
+        }
+        return false;
+    }
+
+    /// <summary>惯性采样 / 施加用的「当前偏移」：连续模式是阅读 + 跨轴偏移，翻页模式是平移偏移。</summary>
+    private (double Main, double Cross) GetInertiaOffsets()
+        => _pagedActive ? (_pagedPanX, _pagedPanY) : (GetReadingOffset(), GetCrossOffset());
+
+    private void ApplyInertiaOffsets(double main, double cross)
+    {
+        if (_pagedActive) PanPaged(main, cross);
+        else
+        {
+            SetReadingOffset(main);
+            SetCrossOffset(cross);
+        }
+    }
+
     private bool IsInsideSettings(DependencyObject? source)
     {
         while (source is not null)
@@ -1164,26 +1267,33 @@ public partial class PictureViewerView : UserControl
     {
         if (Vm is not { } vm || !vm.HasPages) return;
 
-        var scrollRatio = Environment.GetEnvironmentVariable("YLT_PICTURE_SCROLL");
-        if (!string.IsNullOrWhiteSpace(scrollRatio)
-            && double.TryParse(scrollRatio, NumberStyles.Float, CultureInfo.InvariantCulture, out var ratio))
+        if (_pagedActive)
         {
-            SetReadingOffset(PictureScrollMath.OffsetForRatio(ratio, GetReadingMaximum()));
+            ApplyPagedDebugHooks();
         }
-
-        var crossRatio = Environment.GetEnvironmentVariable("YLT_PICTURE_CROSS");
-        if (!string.IsNullOrWhiteSpace(crossRatio)
-            && double.TryParse(crossRatio, NumberStyles.Float, CultureInfo.InvariantCulture, out var cross))
+        else
         {
-            SetCrossOffset(PictureScrollMath.OffsetForRatio(cross, GetCrossMaximum()));
-        }
+            var scrollRatio = Environment.GetEnvironmentVariable("YLT_PICTURE_SCROLL");
+            if (!string.IsNullOrWhiteSpace(scrollRatio)
+                && double.TryParse(scrollRatio, NumberStyles.Float, CultureInfo.InvariantCulture, out var ratio))
+            {
+                SetReadingOffset(PictureScrollMath.OffsetForRatio(ratio, GetReadingMaximum()));
+            }
 
-        if (PictureViewerViewModel.IsEnvironmentOn("YLT_PICTURE_ANCHOR"))
-        {
-            UpdateAnchorArrowDirection();
-            Canvas.SetLeft(AnchorIndicator, Math.Max(0, ViewportGrid.ActualWidth / 2 - AnchorIndicator.Width / 2));
-            Canvas.SetTop(AnchorIndicator, Math.Max(0, ViewportGrid.ActualHeight / 2 - AnchorIndicator.Height / 2));
-            AnchorIndicator.Visibility = Visibility.Visible;
+            var crossRatio = Environment.GetEnvironmentVariable("YLT_PICTURE_CROSS");
+            if (!string.IsNullOrWhiteSpace(crossRatio)
+                && double.TryParse(crossRatio, NumberStyles.Float, CultureInfo.InvariantCulture, out var cross))
+            {
+                SetCrossOffset(PictureScrollMath.OffsetForRatio(cross, GetCrossMaximum()));
+            }
+
+            if (PictureViewerViewModel.IsEnvironmentOn("YLT_PICTURE_ANCHOR"))
+            {
+                UpdateAnchorArrowDirection();
+                Canvas.SetLeft(AnchorIndicator, Math.Max(0, ViewportGrid.ActualWidth / 2 - AnchorIndicator.Width / 2));
+                Canvas.SetTop(AnchorIndicator, Math.Max(0, ViewportGrid.ActualHeight / 2 - AnchorIndicator.Height / 2));
+                AnchorIndicator.Visibility = Visibility.Visible;
+            }
         }
 
         if (PictureViewerViewModel.IsEnvironmentOn("YLT_PICTURE_SETTINGS")) vm.IsSettingsVisible = true;
@@ -1243,6 +1353,9 @@ public partial class PictureViewerView : UserControl
             "vertical" or "v" or "上下" or "1" => PictureScrollMode.Vertical,
             "ltr" or "left-to-right" or "lefttoright" or "从左到右" or "2" => PictureScrollMode.HorizontalLeftToRight,
             "rtl" or "right-to-left" or "righttoleft" or "从右到左" or "3" => PictureScrollMode.HorizontalRightToLeft,
+            "spread-ltr" or "spreadltr" or "4" => PictureScrollMode.SpreadLeftToRight,
+            "spread-rtl" or "spreadrtl" or "5" => PictureScrollMode.SpreadRightToLeft,
+            "single" or "single-page" or "singlepage" or "6" => PictureScrollMode.SinglePage,
             _ => null,
         };
         if (mode is null) return false;
@@ -1259,26 +1372,39 @@ public partial class PictureViewerView : UserControl
         if (Vm is not { } vm) return;
 
         var mode = vm.Cfg.ScrollModeEffective;
-        var first = _slots.Count > 0 ? _slots[0] : null;
-        var last = _slots.Count > 0 ? _slots[^1] : null;
-        var firstChildIsPage1 = ImageStrip.Children.Count > 0 && first is not null
-                                && ReferenceEquals(ImageStrip.Children[0], first.Container);
-
-        var lines = new[]
+        var lines = new List<string>
         {
             $"at={DateTime.Now:HH:mm:ss.fff}",
-            $"mode={mode} builtMode={_builtMode} horizontal={PictureScrollModes.IsHorizontal(mode)} reverse={PictureScrollModes.IsReverse(mode)}",
+            $"mode={mode} builtMode={_builtMode} paged={_pagedActive} horizontal={PictureScrollModes.IsHorizontal(mode)} reverse={PictureScrollModes.IsReverse(mode)}",
             $"view={ActualWidth:0.#}x{ActualHeight:0.#} viewport={ViewportGrid.ActualWidth:0.#}x{ViewportGrid.ActualHeight:0.#} cross={_lastCross:0.#}",
-            $"scrollViewer={ImageScrollViewer.ActualWidth:0.#}x{ImageScrollViewer.ActualHeight:0.#}",
-            $"viewportSize={ImageScrollViewer.ViewportWidth:0.#}x{ImageScrollViewer.ViewportHeight:0.#} extent={ImageScrollViewer.ExtentWidth:0.#}x{ImageScrollViewer.ExtentHeight:0.#}",
-            $"physicalOffset=({ImageScrollViewer.HorizontalOffset:0.#},{ImageScrollViewer.VerticalOffset:0.#}) scrollable=({ImageScrollViewer.ScrollableWidth:0.#},{ImageScrollViewer.ScrollableHeight:0.#})",
-            $"readingOffset={GetReadingOffset():0.#}/{GetReadingMaximum():0.#} ratio={GetReadingRatio():0.###} fromPhysical={PictureScrollMath.ReadingOffset(mode, ImageScrollViewer.HorizontalOffset, ImageScrollViewer.VerticalOffset, ImageScrollViewer.ScrollableWidth, ImageScrollViewer.ScrollableHeight):0.#}",
-            $"zoom={vm.Cfg.ZoomPercentEffective}% crossOffset={GetCrossOffset():0.#}/{GetCrossMaximum():0.#}",
-            $"slots={_slots.Count} firstStart={first?.Start:0.#} firstLen={first?.MainLength:0.#} lastEnd={(last is null ? 0 : last.Start + last.MainLength):0.#}",
-            $"stripChildren={ImageStrip.Children.Count} orientation={ImageStrip.Orientation} firstChildIsPage1={firstChildIsPage1}",
-            $"anchorVisible={AnchorIndicator.Visibility} arrowHorizontal={ArrowLeft.Visibility} arrowVertical={ArrowUp.Visibility}",
-            $"busy={vm.IsBusy} pages={vm.Pages.Count} status={vm.StatusText}",
+            $"zoom={vm.Cfg.ZoomPercentEffective}%",
         };
+
+        if (_pagedActive)
+        {
+            var (left, right) = PicturePaging.VisiblePages(mode, _pageIndex, vm.Pages.Count);
+            lines.Add($"pageIndex={_pageIndex} left={left?.ToString() ?? "-"} right={right?.ToString() ?? "-"} pageCount={vm.Pages.Count}");
+            lines.Add($"pagedContent={_pagedContentWidth:0.#}x{_pagedContentHeight:0.#} pagedViewport={PagedViewport.ActualWidth:0.#}x{PagedViewport.ActualHeight:0.#} pan=({_pagedPanX:0.#},{_pagedPanY:0.#}) animating={_pagedAnimating}");
+            lines.Add($"pagedImages={_pagedLayerImages.Count} canvasChildren={PagedCanvas.Children.Count} indicator={PageIndicatorText.Text}");
+        }
+        else
+        {
+            var first = _slots.Count > 0 ? _slots[0] : null;
+            var last = _slots.Count > 0 ? _slots[^1] : null;
+            var firstChildIsPage1 = ImageStrip.Children.Count > 0 && first is not null
+                                    && ReferenceEquals(ImageStrip.Children[0], first.Container);
+
+            lines.Add($"scrollViewer={ImageScrollViewer.ActualWidth:0.#}x{ImageScrollViewer.ActualHeight:0.#}");
+            lines.Add($"viewportSize={ImageScrollViewer.ViewportWidth:0.#}x{ImageScrollViewer.ViewportHeight:0.#} extent={ImageScrollViewer.ExtentWidth:0.#}x{ImageScrollViewer.ExtentHeight:0.#}");
+            lines.Add($"physicalOffset=({ImageScrollViewer.HorizontalOffset:0.#},{ImageScrollViewer.VerticalOffset:0.#}) scrollable=({ImageScrollViewer.ScrollableWidth:0.#},{ImageScrollViewer.ScrollableHeight:0.#})");
+            lines.Add($"readingOffset={GetReadingOffset():0.#}/{GetReadingMaximum():0.#} ratio={GetReadingRatio():0.###} fromPhysical={PictureScrollMath.ReadingOffset(mode, ImageScrollViewer.HorizontalOffset, ImageScrollViewer.VerticalOffset, ImageScrollViewer.ScrollableWidth, ImageScrollViewer.ScrollableHeight):0.#}");
+            lines.Add($"crossOffset={GetCrossOffset():0.#}/{GetCrossMaximum():0.#}");
+            lines.Add($"slots={_slots.Count} firstStart={first?.Start:0.#} firstLen={first?.MainLength:0.#} lastEnd={(last is null ? 0 : last.Start + last.MainLength):0.#}");
+            lines.Add($"stripChildren={ImageStrip.Children.Count} orientation={ImageStrip.Orientation} firstChildIsPage1={firstChildIsPage1}");
+            lines.Add($"anchorVisible={AnchorIndicator.Visibility} arrowHorizontal={ArrowLeft.Visibility} arrowVertical={ArrowUp.Visibility}");
+        }
+
+        lines.Add($"busy={vm.IsBusy} pages={vm.Pages.Count} status={vm.StatusText}");
 
         try { File.WriteAllLines(path, lines); }
         catch { /* 排查文件写不进去就算了 */ }
