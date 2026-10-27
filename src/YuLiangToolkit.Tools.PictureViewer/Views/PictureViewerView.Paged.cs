@@ -30,7 +30,7 @@ public partial class PictureViewerView
     private double _pagedContentWidth;
     private double _pagedContentHeight;
     private TranslateTransform? _pagedCanvasTransform;
-    private readonly List<Image> _pagedLayerImages = new();
+    private readonly List<(FrameworkElement Element, Image Image)> _pagedLayerImages = new();
     private readonly Dictionary<string, BitmapImage> _pagedCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<string> _pagedCacheOrder = new();
 
@@ -166,26 +166,32 @@ public partial class PictureViewerView
         foreach (var slot in layout.Slots)
         {
             if (slot.PageIndex is not { } pageIndex) continue;
-            var image = await CreatePagedImageAsync(vm.Pages[pageIndex], slot, generation);
-            if (image is null || generation != _pagedGeneration) return;
-            _pagedLayerImages.Add(image);
-            PagedCanvas.Children.Add(image);
+            var visual = await CreatePagedImageAsync(vm.Pages[pageIndex], slot, generation);
+            if (visual is null || generation != _pagedGeneration) return;
+            _pagedLayerImages.Add(visual.Value);
+            PagedCanvas.Children.Add(visual.Value.Element);
         }
 
         ApplyPagedPan();
         UpdatePagedChrome();
     }
 
-    private async Task<Image?> CreatePagedImageAsync(PicturePage page, PicturePagedSlot slot, int generation)
+    private async Task<(FrameworkElement Element, Image Image)?> CreatePagedImageAsync(
+        PicturePage page, PicturePagedSlot slot, int generation)
     {
         if (slot.Width <= 0 || slot.Height <= 0) return null;
 
+        // 先给边框让出位置：图 = 槽位 − 每边「内 + 填充 + 外」的总厚度
+        var extra = Vm?.BorderStyle.TotalExtra ?? 0;
+        var availableWidth = Math.Max(1.0, slot.Width - extra);
+        var availableHeight = Math.Max(1.0, slot.Height - extra);
+
         var aspect = page.AspectRatio > 0 ? page.AspectRatio : 1.0;
-        var fitWidth = slot.Width;
+        var fitWidth = availableWidth;
         var fitHeight = fitWidth / aspect;
-        if (fitHeight > slot.Height)
+        if (fitHeight > availableHeight)
         {
-            fitHeight = slot.Height;
+            fitHeight = availableHeight;
             fitWidth = fitHeight * aspect;
         }
         if (fitWidth <= 0 || fitHeight <= 0) return null;
@@ -208,17 +214,26 @@ public partial class PictureViewerView
         };
         RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
 
+        var element = WrapImageWithFrame(image);
+        var elementWidth = fitWidth + extra;
+        var elementHeight = fitHeight + extra;
+        if (!ReferenceEquals(element, image))
+        {
+            element.Width = elementWidth;
+            element.Height = elementHeight;
+        }
+
         // 双页时两页要**在中间接缝处对齐**（左页靠右、右页靠左），不然中间会留一条空白；
         // 单页模式居中。
         double left;
         if (PictureScrollModes.IsSpread(Mode))
-            left = slot.X <= 0.5 ? slot.X + slot.Width - fitWidth : slot.X;
+            left = slot.X <= 0.5 ? slot.X + slot.Width - elementWidth : slot.X;
         else
-            left = slot.X + (slot.Width - fitWidth) / 2;
+            left = slot.X + (slot.Width - elementWidth) / 2;
 
-        Canvas.SetLeft(image, left);
-        Canvas.SetTop(image, slot.Y + (slot.Height - fitHeight) / 2);
-        return image;
+        Canvas.SetLeft(element, left);
+        Canvas.SetTop(element, slot.Y + (slot.Height - elementHeight) / 2);
+        return (element, image);
     }
 
     private async Task<BitmapImage?> LoadPagedBitmapAsync(PicturePage page, int decodeWidth, int generation)
@@ -285,7 +300,7 @@ public partial class PictureViewerView
 
     private void ClearPagedLayerImages()
     {
-        foreach (var image in _pagedLayerImages)
+        foreach (var (_, image) in _pagedLayerImages)
         {
             image.Source = null;
         }
@@ -410,23 +425,25 @@ public partial class PictureViewerView
             foreach (var slot in layoutOld.Slots)
             {
                 if (slot.PageIndex is not { } pageIndex) continue;
-                var image = await CreatePagedImageAsync(vm.Pages[pageIndex], slot, generation);
-                if (image is null || generation != _pagedGeneration) return;
+                var visual = await CreatePagedImageAsync(vm.Pages[pageIndex], slot, generation);
+                if (visual is null || generation != _pagedGeneration) return;
 
+                var element = visual.Value.Element;
                 var transform = new TranslateTransform();
-                image.RenderTransform = transform;
-                PagedCanvas.Children.Add(image);
+                element.RenderTransform = transform;
+                PagedCanvas.Children.Add(element);
                 animations.Add((transform, 0, shift));
             }
 
             if (incomingSlot?.PageIndex is { } incomingPage && incomingSlot is not null)
             {
-                var image = await CreatePagedImageAsync(vm.Pages[incomingPage], incomingSlot, generation);
-                if (image is null || generation != _pagedGeneration) return;
+                var visual = await CreatePagedImageAsync(vm.Pages[incomingPage], incomingSlot, generation);
+                if (visual is null || generation != _pagedGeneration) return;
 
+                var element = visual.Value.Element;
                 var transform = new TranslateTransform { X = -shift };
-                image.RenderTransform = transform;
-                PagedCanvas.Children.Add(image);
+                element.RenderTransform = transform;
+                PagedCanvas.Children.Add(element);
                 animations.Add((transform, -shift, 0));
             }
 

@@ -49,8 +49,56 @@ public sealed class PictureViewerConfig : ToolConfig
     /// <summary>翻页 / 单页切换图片时要不要滑动动画（默认开；关掉就是直接换）。</summary>
     public bool PageTurnAnimation { get; set; } = true;
 
+    /// <summary>是否显示图片边框（用于隔开相邻两张图）。默认开。</summary>
+    public bool BorderEnabled { get; set; } = true;
+
+    /// <summary>内边框粗细（像素，0 ~ 32，默认 1）。</summary>
+    public int BorderInnerSize { get; set; } = PictureBorderStyle.DefaultInnerSize;
+
+    /// <summary>填充宽度（像素，0 ~ 128，默认 4）。</summary>
+    public int BorderFillSize { get; set; } = PictureBorderStyle.DefaultFillSize;
+
+    /// <summary>外边框粗细（像素，0 ~ 32，默认 1）。</summary>
+    public int BorderOuterSize { get; set; } = PictureBorderStyle.DefaultOuterSize;
+
+    /// <summary>内边框颜色（ARGB，默认 #FF3E4552）。</summary>
+    public string BorderInnerColor { get; set; } = PictureBorderStyle.DefaultInnerColor;
+
+    /// <summary>边框填充颜色（ARGB，默认 #FF151A22）。</summary>
+    public string BorderFillColor { get; set; } = PictureBorderStyle.DefaultFillColor;
+
+    /// <summary>外边框颜色（ARGB，默认 #FF090B0F）。</summary>
+    public string BorderOuterColor { get; set; } = PictureBorderStyle.DefaultOuterColor;
+
     /// <summary>上次打开的文件夹（只用来当文件对话框的起始目录，不会自动打开）。</summary>
     public string LastFolder { get; set; } = "";
+
+    /// <summary>
+    /// 「恢复默认设置」：把所有阅读 / 显示相关的项改回默认（默认阅读方式 = 纵向 上→下）。
+    /// 不动文件关联（那是系统级开关，去设置里单独勾），也不动当前已经打开的文件夹（界面上的页清单）。
+    /// </summary>
+    public void ResetToDefaults()
+    {
+        ScrollMode = PictureScrollMode.Vertical;
+        WheelStepPixels = (int)PictureScrollMath.DefaultWheelStepPixels;
+        MiddleHoldMilliseconds = PictureScrollMath.DefaultHoldMilliseconds;
+        AutoUnloadOffscreen = true;
+        ZoomPercent = PictureScrollMath.DefaultZoomPercent;
+        InertiaEnabled = true;
+        InertiaAccelerate = true;
+        PagedWheel = PictureWheelAction.TurnPage;
+        PageTurnAnimation = true;
+
+        BorderEnabled = true;
+        BorderInnerSize = PictureBorderStyle.DefaultInnerSize;
+        BorderFillSize = PictureBorderStyle.DefaultFillSize;
+        BorderOuterSize = PictureBorderStyle.DefaultOuterSize;
+        BorderInnerColor = PictureBorderStyle.DefaultInnerColor;
+        BorderFillColor = PictureBorderStyle.DefaultFillColor;
+        BorderOuterColor = PictureBorderStyle.DefaultOuterColor;
+
+        LastFolder = "";
+    }
 
     // ---------- 计算属性（只读 → 不会被写进 JSON） ----------
 
@@ -81,4 +129,8 @@ public sealed class PictureViewerConfig : ToolConfig
     /// <summary>当前方式的说明（设置面板里一行小字）。</summary>
     [JsonIgnore]
     public string ScrollModeHint => PictureScrollModes.Hint(ScrollModeEffective);
+
+    /// <summary>生效的图片边框样式（坏值已夹取 / 颜色已规范化）。</summary>
+    [JsonIgnore]
+    public PictureBorderStyle BorderStyle => PictureBorderStyle.FromConfig(this);
 }

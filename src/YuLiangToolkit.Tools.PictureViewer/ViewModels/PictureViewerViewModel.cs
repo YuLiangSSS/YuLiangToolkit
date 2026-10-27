@@ -35,6 +35,20 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
 
         ApplyModeOverrideFromEnvironment();
         ApplyZoomOverrideFromEnvironment();
+        ApplyBorderOverrideFromEnvironment();
+
+        // 边框颜色编辑器：三个颜色各一个（R/G/B/A 数字 + 调色板 + 预览都绑它）
+        BorderInnerColorEditor = new RgbaColorEditor(Cfg.BorderInnerColor);
+        BorderFillColorEditor = new RgbaColorEditor(Cfg.BorderFillColor);
+        BorderOuterColorEditor = new RgbaColorEditor(Cfg.BorderOuterColor);
+        BorderInnerColorEditor.Changed += (_, _) => SaveBorderColor(ColorPart.Inner);
+        BorderFillColorEditor.Changed += (_, _) => SaveBorderColor(ColorPart.Fill);
+        BorderOuterColorEditor.Changed += (_, _) => SaveBorderColor(ColorPart.Outer);
+
+        PickInnerBorderColorCommand = new RelayCommand(p => PickBorderColor(ColorPart.Inner, p));
+        PickFillColorCommand = new RelayCommand(p => PickBorderColor(ColorPart.Fill, p));
+        PickOuterBorderColorCommand = new RelayCommand(p => PickBorderColor(ColorPart.Outer, p));
+        ResetSettingsCommand = new RelayCommand(_ => ResetSettings());
 
         // 双击图片启动（文件关联 / 命令行）时，主程序把图片路径放在这里；只生效一次。
         _launchImagePath = PictureFilePathLaunch.PendingImagePath;
@@ -412,6 +426,178 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
 
     /// <summary>文件关联区的状态说明（已关联多少个后缀 / 需不需要去系统里确认默认程序）。</summary>
     public string FileAssociationStatus => _fileAssociationStatus;
+
+    // ---------------------------------------------------------------- 图片边框
+
+    private enum ColorPart
+    {
+        Inner,
+        Fill,
+        Outer,
+    }
+
+    /// <summary>边框设置变了（颜色 / 粗细 / 开关）→ 界面重排长带或重画翻页视图。</summary>
+    public event EventHandler? BorderChanged;
+
+    /// <summary>开发 / 截图用的临时边框覆盖（<c>YLT_PICTURE_BORDER=demo|off</c>；只影响显示，不写配置）。</summary>
+    public PictureBorderStyle? BorderStyleOverride { get; private set; }
+
+    /// <summary>当前生效的边框样式（配置值；截图钩子可能临时覆盖）。</summary>
+    public PictureBorderStyle BorderStyle => BorderStyleOverride ?? Cfg.BorderStyle;
+
+    /// <summary>内边框颜色编辑器（R/G/B/A 四个数字 + 调色板 + 预览）。</summary>
+    public RgbaColorEditor BorderInnerColorEditor { get; }
+
+    /// <summary>填充颜色编辑器。</summary>
+    public RgbaColorEditor BorderFillColorEditor { get; }
+
+    /// <summary>外边框颜色编辑器。</summary>
+    public RgbaColorEditor BorderOuterColorEditor { get; }
+
+    /// <summary>调色板预设颜色（ARGB）。点一下会填进对应颜色，A 也可以被预设改动（透明色）。</summary>
+    public IReadOnlyList<string> BorderPalette { get; } = new[]
+    {
+        "#FFFFFFFF", "#FF000000", "#FF6B7280", "#FFEF4444", "#FFF97316", "#FFFACC15",
+        "#FF22C55E", "#FF06B6D4", "#FF3B82F6", "#FFA855F7", "#FFEC4899", "#00000000",
+    };
+
+    /// <summary>是否显示图片边框。</summary>
+    public bool BorderEnabled
+    {
+        get => Cfg.BorderEnabled;
+        set
+        {
+            if (value == Cfg.BorderEnabled) return;
+            Cfg.BorderEnabled = value;
+            OnPropertyChanged();
+            BorderChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>内边框粗细（0 ~ 32）。</summary>
+    public int BorderInnerSize
+    {
+        get => PictureBorderStyle.ClampBorder(Cfg.BorderInnerSize);
+        set
+        {
+            var clamped = PictureBorderStyle.ClampBorder(value);
+            if (clamped == Cfg.BorderInnerSize) return;
+            Cfg.BorderInnerSize = clamped;
+            OnPropertyChanged();
+            BorderChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>填充宽度（0 ~ 128）。</summary>
+    public int BorderFillSize
+    {
+        get => PictureBorderStyle.ClampFill(Cfg.BorderFillSize);
+        set
+        {
+            var clamped = PictureBorderStyle.ClampFill(value);
+            if (clamped == Cfg.BorderFillSize) return;
+            Cfg.BorderFillSize = clamped;
+            OnPropertyChanged();
+            BorderChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>外边框粗细（0 ~ 32）。</summary>
+    public int BorderOuterSize
+    {
+        get => PictureBorderStyle.ClampBorder(Cfg.BorderOuterSize);
+        set
+        {
+            var clamped = PictureBorderStyle.ClampBorder(value);
+            if (clamped == Cfg.BorderOuterSize) return;
+            Cfg.BorderOuterSize = clamped;
+            OnPropertyChanged();
+            BorderChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>内边框调色板。</summary>
+    public RelayCommand PickInnerBorderColorCommand { get; }
+
+    /// <summary>填充调色板。</summary>
+    public RelayCommand PickFillColorCommand { get; }
+
+    /// <summary>外边框调色板。</summary>
+    public RelayCommand PickOuterBorderColorCommand { get; }
+
+    /// <summary>恢复默认设置（阅读方式回到纵向；边框等全部回默认）。</summary>
+    public RelayCommand ResetSettingsCommand { get; }
+
+    private RgbaColorEditor EditorFor(ColorPart part) => part switch
+    {
+        ColorPart.Fill => BorderFillColorEditor,
+        ColorPart.Outer => BorderOuterColorEditor,
+        _ => BorderInnerColorEditor,
+    };
+
+    private void SaveBorderColor(ColorPart part)
+    {
+        var editor = EditorFor(part);
+        switch (part)
+        {
+            case ColorPart.Inner: Cfg.BorderInnerColor = editor.Hex; break;
+            case ColorPart.Fill: Cfg.BorderFillColor = editor.Hex; break;
+            case ColorPart.Outer: Cfg.BorderOuterColor = editor.Hex; break;
+        }
+        BorderChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void PickBorderColor(ColorPart part, object? parameter)
+    {
+        if (parameter is string hex) EditorFor(part).Load(hex);
+    }
+
+    /// <summary>把所有设置改回默认：配置、颜色编辑器、界面通知一起复位。</summary>
+    private void ResetSettings()
+    {
+        Cfg.ResetToDefaults();
+        BorderStyleOverride = null;
+
+        // 编辑器重新加载（会触发 Changed → 写回配置并通知界面，重复一次没关系）
+        BorderInnerColorEditor.Load(Cfg.BorderInnerColor);
+        BorderFillColorEditor.Load(Cfg.BorderFillColor);
+        BorderOuterColorEditor.Load(Cfg.BorderOuterColor);
+
+        OnPropertyChanged(nameof(BorderEnabled));
+        OnPropertyChanged(nameof(BorderInnerSize));
+        OnPropertyChanged(nameof(BorderFillSize));
+        OnPropertyChanged(nameof(BorderOuterSize));
+        OnPropertyChanged(nameof(SelectedMode));
+        OnPropertyChanged(nameof(SelectedWheelAction));
+        OnPropertyChanged(nameof(ModeHint));
+        OnPropertyChanged(nameof(CurrentModeText));
+        OnPropertyChanged(nameof(IsPagedMode));
+        OnPropertyChanged(nameof(ZoomText));
+
+        StatusText = "已恢复默认设置（阅读方式：纵向 上 → 下）";
+        ModeChanged?.Invoke(this, EventArgs.Empty);
+        ZoomChanged?.Invoke(this, EventArgs.Empty);
+        BorderChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>开发 / 截图用：<c>YLT_PICTURE_BORDER=off|demo</c> 临时覆盖边框（demo = 红/黄/蓝的夸张样式）。
+    /// 只改显示、**不写配置**，免得截图跑完把用户设置污染成红黄蓝。</summary>
+    private void ApplyBorderOverrideFromEnvironment()
+    {
+        var text = Environment.GetEnvironmentVariable("YLT_PICTURE_BORDER");
+        if (string.IsNullOrWhiteSpace(text)) return;
+
+        switch (text.Trim().ToLowerInvariant())
+        {
+            case "0" or "off" or "false" or "no":
+                BorderStyleOverride = PictureBorderStyle.Default with { Enabled = false };
+                break;
+            case "demo":
+                BorderStyleOverride = new PictureBorderStyle(
+                    true, 2, 10, 2, "#FFFF4040", "#FFFFD54A", "#FF4A90FF");
+                break;
+        }
+    }
 
     // ---------------------------------------------------------------- 环境变量（开发用）
 

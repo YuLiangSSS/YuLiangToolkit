@@ -36,7 +36,8 @@ public partial class PictureViewerView : UserControl
     private sealed class PageSlot
     {
         public PicturePage Page = null!;
-        public Border Container = null!;
+        /// <summary>展示用的外层控件：有边框时是「外边框 → 填充 → 内边框 → Image」的嵌套 Border，没边框时直接是 Image。</summary>
+        public FrameworkElement Container = null!;
         public Image ImageControl = null!;
         /// <summary>主轴长度：纵向模式是高度，横向模式是宽度。</summary>
         public double MainLength;
@@ -67,6 +68,7 @@ public partial class PictureViewerView : UserControl
     private bool _layoutQueued;
     private bool _demoStarted;
     private bool _measureScheduled;
+    private DispatcherTimer? _borderRebuildTimer;
     private double _maxPixelWidth;
     private double _maxPixelHeight;
     private double _lastCross;
@@ -187,6 +189,8 @@ public partial class PictureViewerView : UserControl
         vm.ModeChanged += OnModeChanged;
         vm.ZoomChanged -= OnZoomChanged;
         vm.ZoomChanged += OnZoomChanged;
+        vm.BorderChanged -= OnBorderChanged;
+        vm.BorderChanged += OnBorderChanged;
 
         // 双击图片启动（文件关联 / 命令行带了一张图）：先加载它所在的文件夹，再跳到那一张。
         var launchRequest = vm.HasLaunchImage;
@@ -241,6 +245,8 @@ public partial class PictureViewerView : UserControl
 
         _scrollSettleTimer?.Stop();
         _anchorTimer?.Stop();
+        _borderRebuildTimer?.Stop();
+        _borderRebuildTimer = null;
 
         _generation++;
         lock (_pendingLock) _pendingLoads.Clear();
@@ -250,6 +256,7 @@ public partial class PictureViewerView : UserControl
             vm.PagesChanged -= OnPagesChanged;
             vm.ModeChanged -= OnModeChanged;
             vm.ZoomChanged -= OnZoomChanged;
+            vm.BorderChanged -= OnBorderChanged;
             vm.FolderPicker = null;
         }
 
@@ -259,6 +266,33 @@ public partial class PictureViewerView : UserControl
     private void OnPagesChanged(object? sender, EventArgs e) => _ = ApplyReadingModeAsync(keepProgress: false);
 
     private void OnModeChanged(object? sender, EventArgs e) => _ = ApplyReadingModeAsync(keepProgress: true);
+
+    /// <summary>边框设置变了：节流 180ms 再重排（拖粗细滑块 / 连打颜色数字时不要每一格都重建整条长带）。</summary>
+    private void OnBorderChanged(object? sender, EventArgs e)
+    {
+        if (_borderRebuildTimer is null)
+        {
+            _borderRebuildTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(180),
+            };
+            _borderRebuildTimer.Tick += (_, _) =>
+            {
+                _borderRebuildTimer!.Stop();
+                RebuildForBorderChange();
+            };
+        }
+
+        _borderRebuildTimer.Stop();
+        _borderRebuildTimer.Start();
+    }
+
+    private void RebuildForBorderChange()
+    {
+        if (Vm is not { } vm || !vm.HasPages) return;
+        if (_pagedActive) _ = ShowPagedAsync(resetPan: false);
+        else _ = BuildStripAsync(keepProgress: true);
+    }
 
     private string? PickFolder()
     {
@@ -333,14 +367,9 @@ public partial class PictureViewerView : UserControl
                 };
                 RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
 
-                var border = new Border
-                {
-                    Child = image,
-                    Margin = new Thickness(0),
-                    Background = Brushes.Transparent,
-                };
+                var container = WrapImageWithFrame(image);
 
-                _slots.Add(new PageSlot { Page = page, Container = border, ImageControl = image });
+                _slots.Add(new PageSlot { Page = page, Container = container, ImageControl = image });
             }
 
             // 物理摆放：日式右→左时反着加，让第 1 张摆在最右边（阅读从右往左）
@@ -390,9 +419,50 @@ public partial class PictureViewerView : UserControl
     /// <summary>图片统一缩放后的跨轴尺寸（纵向 = 统一宽度，横向 = 统一高度），单位是 DIP；已含缩放百分比。</summary>
     private double ComputeCrossSize(double viewportCross)
     {
+        // 边框会占掉视口：100% 时「图 + 边框」刚好铺满一屏（不把图挤出视口）
+        var extra = Vm?.BorderStyle.TotalExtra ?? 0;
+        var usable = Math.Max(1.0, viewportCross - extra);
         var maxPixelCross = IsHorizontalMode ? _maxPixelHeight : _maxPixelWidth;
-        var fit = PictureScrollMath.UniformCrossSize(maxPixelCross / DpiScale, viewportCross);
+        var fit = PictureScrollMath.UniformCrossSize(maxPixelCross / DpiScale, usable);
         return fit * (Vm?.Cfg.ZoomScale ?? 1.0);
+    }
+
+    /// <summary>
+    /// 给一张图套上「内边框 → 填充 → 外边框」三层边框（没开边框 / 三层都是 0 时直接返回图片本身）。
+    /// 尺寸由调用方给外层容器 / Canvas 定位决定：外层每边多出 <see cref="PictureBorderStyle.TotalExtra"/>。
+    /// </summary>
+    private FrameworkElement WrapImageWithFrame(Image image)
+    {
+        var style = Vm?.BorderStyle ?? PictureBorderStyle.Default;
+        if (!style.HasAnyBorder) return image;
+
+        var inner = new Border
+        {
+            BorderThickness = new Thickness(style.InnerSize),
+            BorderBrush = CreateArgbBrush(style.InnerColor),
+            Child = image,
+        };
+        var fill = new Border
+        {
+            Background = CreateArgbBrush(style.FillColor),
+            Padding = new Thickness(style.FillSize),
+            Child = inner,
+        };
+        return new Border
+        {
+            BorderThickness = new Thickness(style.OuterSize),
+            BorderBrush = CreateArgbBrush(style.OuterColor),
+            Child = fill,
+        };
+    }
+
+    private static SolidColorBrush CreateArgbBrush(string hex)
+    {
+        if (!PictureBorderStyle.TryParseArgb(hex, out var argb)) argb = 0xFF000000;
+        var (r, g, b, a) = PictureBorderStyle.Split(argb);
+        var brush = new SolidColorBrush(Color.FromArgb((byte)a, (byte)r, (byte)g, (byte)b));
+        brush.Freeze();
+        return brush;
     }
 
     /// <summary>
@@ -410,6 +480,8 @@ public partial class PictureViewerView : UserControl
         var cross = ComputeCrossSize(viewportCross);
         if (cross <= 0) return false;
 
+        // 每张图的「图 + 边框」总尺寸：主轴 / 跨轴都加上边框（每边 extra）
+        var extra = Vm?.BorderStyle.TotalExtra ?? 0;
         var start = 0.0;
         foreach (var slot in _slots)
         {
@@ -417,14 +489,14 @@ public partial class PictureViewerView : UserControl
                 horizontal, slot.Page.PixelWidth, slot.Page.PixelHeight, cross);
             if (main <= 0) main = cross;
 
-            slot.MainLength = main;
+            slot.MainLength = main + extra;
             slot.Start = start;
-            start += main;
+            start += slot.MainLength;
 
             // ⚠ 宽高都要显式给：缩放后**另一个轴**也得能滚。只给一个轴、另一个靠拉伸的话，
             // 内容宽 / 高还是视口那么大，ScrollViewer 会认为“没得滚”，缩放后另一个方向就拖不动了。
-            slot.Container.Width = horizontal ? main : cross;
-            slot.Container.Height = horizontal ? cross : main;
+            slot.Container.Width = horizontal ? slot.MainLength : cross + extra;
+            slot.Container.Height = horizontal ? cross + extra : slot.MainLength;
         }
 
         _lastCross = cross;
@@ -1435,6 +1507,11 @@ public partial class PictureViewerView : UserControl
             lines.Add($"crossOffset={GetCrossOffset():0.#}/{GetCrossMaximum():0.#}");
             lines.Add($"slots={_slots.Count} firstStart={first?.Start:0.#} firstLen={first?.MainLength:0.#} lastEnd={(last is null ? 0 : last.Start + last.MainLength):0.#}");
             lines.Add($"stripChildren={ImageStrip.Children.Count} orientation={ImageStrip.Orientation} firstChildIsPage1={firstChildIsPage1}");
+            if (first is not null)
+            {
+                var border = vm.BorderStyle;
+                lines.Add($"border={border.Enabled} sizes={border.InnerSize}/{border.FillSize}/{border.OuterSize} extra={border.TotalExtra} container={first.Container.ActualWidth:0.#}x{first.Container.ActualHeight:0.#} image={first.ImageControl.ActualWidth:0.#}x{first.ImageControl.ActualHeight:0.#}");
+            }
             lines.Add($"anchorVisible={AnchorIndicator.Visibility} arrowHorizontal={ArrowLeft.Visibility} arrowVertical={ArrowUp.Visibility}");
         }
 

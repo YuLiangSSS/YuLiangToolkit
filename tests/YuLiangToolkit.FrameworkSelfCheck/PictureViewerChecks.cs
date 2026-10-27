@@ -126,6 +126,92 @@ internal static class PictureViewerChecks
             && PictureWheelActions.Describe(PictureWheelAction.TurnPage).Contains("翻页")
             && PictureWheelActions.Describe(PictureWheelAction.Zoom) == "缩放");
 
+        // ---------------------------------------------------------------- 1c. 图片边框（内边框 → 填充 → 外边框）
+        var borderDefault = PictureBorderStyle.Default;
+        Check("[图片] 边框默认样式：开、1/6/1 像素、每边总共 8 像素",
+            borderDefault.Enabled && borderDefault.InnerSize == 1 && borderDefault.FillSize == 6
+            && borderDefault.OuterSize == 1 && borderDefault.ExtraPerSide == 8
+            && borderDefault.TotalExtra == 16 && borderDefault.HasAnyBorder);
+
+        Check("[图片] 边框颜色解析：支持 #AARRGGBB / #RRGGBB / 不带 # / 0x",
+            PictureBorderStyle.TryParseArgb("#80FF0000", out var argb80)
+            && argb80 == 0x80FF0000
+            && PictureBorderStyle.TryParseArgb("#FF0000", out var argbOpaque) && argbOpaque == 0xFFFF0000
+            && PictureBorderStyle.TryParseArgb("11223344", out var argbBare) && argbBare == 0x11223344
+            && PictureBorderStyle.TryParseArgb("0xFF00FF00", out var argb0X) && argb0X == 0xFF00FF00
+            && !PictureBorderStyle.TryParseArgb("zzz", out _)
+            && !PictureBorderStyle.TryParseArgb("", out _));
+
+        Check("[图片] 边框颜色：拆分 / 合成来回一致、通道越界被夹到 0~255",
+            PictureBorderStyle.Split(0x80A1B2C3) == (0xA1, 0xB2, 0xC3, 0x80)
+            && PictureBorderStyle.Compose(0xA1, 0xB2, 0xC3, 0x80) == 0x80A1B2C3
+            && PictureBorderStyle.Compose(999, -5, 300, 999) == 0xFFFF00FF
+            && PictureBorderStyle.FromRgba(0, 0, 0, 0) == "#00000000");
+
+        Check("[图片] 边框粗细夹取：内/外 0~32、填充 0~128",
+            PictureBorderStyle.ClampBorder(-5) == 0
+            && PictureBorderStyle.ClampBorder(999) == 32
+            && PictureBorderStyle.ClampBorder(7) == 7
+            && PictureBorderStyle.ClampFill(-1) == 0
+            && PictureBorderStyle.ClampFill(9999) == 128
+            && PictureBorderStyle.ClampFill(20) == 20);
+
+        Check("[图片] 边框关闭 / 三层都是 0 时不算厚度",
+            (borderDefault with { Enabled = false }).ExtraPerSide == 0
+            && (borderDefault with { InnerSize = 0, FillSize = 0, OuterSize = 0 }).HasAnyBorder == false
+            && (borderDefault with { InnerSize = 999, FillSize = 999, OuterSize = 999 }).ExtraPerSide == 32 + 128 + 32);
+
+        var borderConfig = new PictureViewerConfig
+        {
+            BorderInnerSize = 3,
+            BorderFillSize = 9,
+            BorderOuterSize = 2,
+            BorderInnerColor = "#80FFFFFF",
+            BorderFillColor = "#123456",
+            BorderOuterColor = "不是颜色",
+        };
+        var borderStyle = PictureBorderStyle.FromConfig(borderConfig);
+        Check("[图片] 从配置读边框：颜色规范化、坏颜色回退默认",
+            borderStyle.InnerSize == 3 && borderStyle.FillSize == 9 && borderStyle.OuterSize == 2
+            && borderStyle.InnerColor == "#80FFFFFF"
+            && borderStyle.FillColor == "#FF123456"
+            && borderStyle.OuterColor == PictureBorderStyle.DefaultOuterColor
+            && PictureBorderStyle.NormalizeColor("#80ffffff", PictureBorderStyle.DefaultInnerColor) == "#80FFFFFF");
+
+        // 恢复默认：所有阅读 / 显示项回默认（默认阅读方式 = 纵向）
+        var resetConfig = new PictureViewerConfig
+        {
+            ScrollMode = PictureScrollMode.SinglePage,
+            WheelStepPixels = 300,
+            MiddleHoldMilliseconds = 900,
+            ZoomPercent = 250,
+            InertiaEnabled = false,
+            InertiaAccelerate = false,
+            AutoUnloadOffscreen = false,
+            PagedWheel = PictureWheelAction.Zoom,
+            PageTurnAnimation = false,
+            BorderEnabled = false,
+            BorderInnerSize = 9,
+            BorderFillSize = 40,
+            BorderOuterSize = 7,
+            BorderInnerColor = "#FFFF0000",
+            BorderFillColor = "#FF00FF00",
+            BorderOuterColor = "#FF0000FF",
+            LastFolder = @"D:\some",
+        };
+        resetConfig.ResetToDefaults();
+        Check("[图片] 恢复默认配置：阅读方式回纵向、缩放 100%、所有项回默认",
+            resetConfig.ScrollModeEffective == PictureScrollMode.Vertical
+            && resetConfig.WheelStepEffective == 120
+            && resetConfig.HoldMillisecondsEffective == 250
+            && resetConfig.ZoomPercentEffective == 100
+            && resetConfig.InertiaEnabled && resetConfig.InertiaAccelerate && resetConfig.AutoUnloadOffscreen
+            && resetConfig.PagedWheelEffective == PictureWheelAction.TurnPage
+            && resetConfig.PageTurnAnimation
+            && resetConfig.BorderStyle == PictureBorderStyle.Default
+            && resetConfig.LastFolder == "");
+
+
         // ---------------------------------------------------------------- 2. 偏移：夹取 / 滚轮 / 拖拽
         Check("[图片] 偏移夹在 0 ~ 最大值之间",
             PictureScrollMath.ClampOffset(-50, 1000) == 0
@@ -517,6 +603,52 @@ internal static class PictureViewerChecks
         vm.LoadFolderAsync(folder, Path.Combine(folder, "没有这张.png")).GetAwaiter().GetResult();
         Check("[图片] 指定的图不在文件夹里：不定位（停在开头）",
             vm.ConsumePendingPageIndex() is null && !vm.StatusText.Contains("已定位"));
+
+        // ---- 图片边框 / 恢复默认（无头跑） ----
+        var borderEvents = 0;
+        vm.BorderChanged += (_, _) => borderEvents++;
+        Check("[图片] 边框颜色编辑器：默认值与配置一致",
+            vm.BorderInnerColorEditor.Hex == PictureBorderStyle.DefaultInnerColor
+            && vm.BorderFillColorEditor.Hex == PictureBorderStyle.DefaultFillColor
+            && vm.BorderOuterColorEditor.Hex == PictureBorderStyle.DefaultOuterColor,
+            $"{vm.BorderInnerColorEditor.Hex} / {vm.BorderFillColorEditor.Hex} / {vm.BorderOuterColorEditor.Hex}");
+
+        vm.BorderInnerColorEditor.R = 255;
+        vm.BorderInnerColorEditor.G = 128;
+        vm.BorderInnerColorEditor.B = 0;
+        vm.BorderInnerColorEditor.A = 200;
+        Check("[图片] 改 RGBA 立刻写回配置（0 ~ 255，透明通道也在）",
+            vm.BorderInnerColorEditor.Hex == "#C8FF8000" && vm.Cfg.BorderInnerColor == "#C8FF8000",
+            vm.Cfg.BorderInnerColor);
+
+        vm.PickFillColorCommand.Execute("#FF112233");
+        Check("[图片] 调色板：点一下把颜色填进填充色", vm.Cfg.BorderFillColor == "#FF112233" && vm.BorderFillColorEditor.Hex == "#FF112233");
+
+        vm.BorderInnerSize = 999;
+        vm.BorderFillSize = 999;
+        vm.BorderOuterSize = -5;
+        Check("[图片] 边框粗细越界会被夹取（内/外 32、填充 128、最小 0）",
+            vm.BorderInnerSize == 32 && vm.BorderFillSize == 128 && vm.BorderOuterSize == 0);
+
+        vm.BorderEnabled = false;
+        Check("[图片] 关掉边框 / 改颜色 / 改粗细都会通知界面重排", borderEvents >= 4, $"events={borderEvents}");
+
+        vm.ResetSettingsCommand.Execute(null);
+        Check("[图片] 恢复默认：阅读方式回纵向、缩放 100%、边框回默认、编辑器同步",
+            vm.Cfg.ScrollModeEffective == PictureScrollMode.Vertical
+            && !vm.IsPagedMode
+            && vm.Cfg.ZoomPercentEffective == 100
+            && vm.BorderEnabled
+            && vm.BorderInnerSize == PictureBorderStyle.DefaultInnerSize
+            && vm.BorderFillSize == PictureBorderStyle.DefaultFillSize
+            && vm.BorderOuterSize == PictureBorderStyle.DefaultOuterSize
+            && vm.BorderInnerColorEditor.Hex == PictureBorderStyle.DefaultInnerColor
+            && vm.BorderFillColorEditor.Hex == PictureBorderStyle.DefaultFillColor
+            && vm.BorderOuterColorEditor.Hex == PictureBorderStyle.DefaultOuterColor
+            && vm.Cfg.LastFolder == ""
+            && vm.StatusText.Contains("恢复默认"),
+            $"{vm.StatusText} / {vm.BorderInnerColorEditor.Hex}");
+        Check("[图片] 恢复默认也触发了界面重排（BorderChanged）", borderEvents >= 5, $"events={borderEvents}");
 
         // ---- 阅读方式 / 翻页设置（无头跑） ----
         vm.Cfg.ScrollMode = PictureScrollMode.Vertical;   // 前面的配置检查把它改成了横向，这里先复位
