@@ -50,6 +50,14 @@ public static class PictureScrollModes
         _ => "纵向 上 → 下",
     };
 
+    /// <summary>工具条分段按钮上的短名（地方不够，方向靠箭头一眼看懂；完整说明见 <see cref="Hint"/>）。</summary>
+    public static string DescribeCompact(PictureScrollMode mode) => mode switch
+    {
+        PictureScrollMode.HorizontalLeftToRight => "左→右",
+        PictureScrollMode.HorizontalRightToLeft => "右→左",
+        _ => "上→下",
+    };
+
     /// <summary>一句话解释这个方式适合看什么。</summary>
     public static string Hint(PictureScrollMode mode) => mode switch
     {

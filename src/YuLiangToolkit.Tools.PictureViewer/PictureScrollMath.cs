@@ -28,6 +28,14 @@ public static class PictureScrollMath
     public const int MinHoldMilliseconds = 60;
     public const int MaxHoldMilliseconds = 2000;
 
+    /// <summary>缩放百分比：默认 100%（= 默认铺满基准，**不是**图片原始像素 1:1）、允许 25% ~ 800%。</summary>
+    public const int DefaultZoomPercent = 100;
+    public const int MinZoomPercent = 25;
+    public const int MaxZoomPercent = 800;
+
+    /// <summary>放大镜按钮 / Ctrl+滚轮一步改多少个百分点。</summary>
+    public const int ZoomStepPercent = 10;
+
     /// <summary>把偏移夹在 [0, maximum] 里；内容不够长（maximum ≤ 0）时永远是 0。</summary>
     public static double ClampOffset(double offset, double maximum)
     {
@@ -83,6 +91,14 @@ public static class PictureScrollMath
             _ => -dy,
         };
 
+    /// <summary>
+    /// 拖拽时「跨轴偏移」该加多少：纵向模式的跨轴是左右（看 dx），横向模式的跨轴是上下（看 dy）。
+    /// 符号同样是「内容跟着手走」—— 指针往右 / 下拖，看到的是左边 / 上边的部分。
+    /// 缩放之后两个轴都能拖，靠的就是它（见 AGENTS.md 2.19）。
+    /// </summary>
+    public static double CrossDragDelta(PictureScrollMode mode, double dx, double dy)
+        => PictureScrollModes.IsHorizontal(PictureScrollModes.Normalize(mode)) ? -dy : -dx;
+
     /// <summary>按比例（0 ~ 1）取阅读偏移，用来「换模式 / 换窗口大小时停在原来大概的位置」。</summary>
     public static double OffsetForRatio(double ratio, double maximum)
     {
@@ -124,6 +140,16 @@ public static class PictureScrollMath
     /// <summary>单点 / 按住判定时长的生效值（夹到 60 ~ 2000 毫秒）。</summary>
     public static int EffectiveHoldMilliseconds(int value)
         => Math.Clamp(value, MinHoldMilliseconds, MaxHoldMilliseconds);
+
+    /// <summary>缩放百分比的生效值（夹到 25 ~ 800）。</summary>
+    public static int EffectiveZoomPercent(int value) => Math.Clamp(value, MinZoomPercent, MaxZoomPercent);
+
+    /// <summary>缩放百分比 → 缩放系数（100 → 1.0，200 → 2.0）。</summary>
+    public static double ZoomScale(int percent) => EffectiveZoomPercent(percent) / 100.0;
+
+    /// <summary>按步数增减缩放百分比并夹好（放大镜按钮 / Ctrl+滚轮用）。</summary>
+    public static int StepZoomPercent(int currentPercent, int steps)
+        => EffectiveZoomPercent(EffectiveZoomPercent(currentPercent) + steps * ZoomStepPercent);
 
     // ---------------------------------------------------------------- 阅读偏移 ↔ ScrollViewer 物理偏移
     // 这三个函数是「日式右→左」的关键：图片在物理上是反着摆的，ScrollViewer 的物理偏移从最左边算，

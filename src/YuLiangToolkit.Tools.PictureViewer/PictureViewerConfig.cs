@@ -6,8 +6,8 @@ namespace YuLiangToolkit.Tools.PictureViewer;
 /// <summary>
 /// 「图片连续阅读器」的设置 → <c>Config\picture-viewer\config.json</c>。
 ///
-/// <para>都是「看一眼就懂」的项：滚动方式、滚轮一格多远、中键单点 / 按住的判定、离屏图片要不要自动释放、
-/// 上次打开的文件夹。改一下就自动落盘，没有保存按钮（见 AGENTS.md 2.4）。</para>
+/// <para>都是「看一眼就懂」的项：滚动方式、缩放、拖动惯性、滚轮一格多远、中键单点 / 按住的判定、
+/// 离屏图片要不要自动释放、上次打开的文件夹。改一下就自动落盘，没有保存按钮（见 AGENTS.md 2.4）。</para>
 /// </summary>
 public sealed class PictureViewerConfig : ToolConfig
 {
@@ -28,6 +28,21 @@ public sealed class PictureViewerConfig : ToolConfig
     /// <summary>离屏的图自动释放（默认开）：长条几百张图不至于把内存吃满；再滚回来会重新解码。</summary>
     public bool AutoUnloadOffscreen { get; set; } = true;
 
+    /// <summary>
+    /// 缩放百分比：默认 100%（= 程序默认的铺满基准，**不是**图片原始像素 1:1），允许 25 ~ 800。
+    /// 界面上的输入框 / 放大镜按钮 / Ctrl+滚轮都改它。
+    /// </summary>
+    public int ZoomPercent { get; set; } = PictureScrollMath.DefaultZoomPercent;
+
+    /// <summary>拖动惯性（松手后继续滑一段）。默认开；关掉就是松手即停。</summary>
+    public bool InertiaEnabled { get; set; } = true;
+
+    /// <summary>
+    /// 惯性「越滑越快」：下一次甩动时把还在滑的残余速度**加**上去，而不是清零重置
+    /// （手机漫画 App 的手感）。默认开；关掉则每次松手都只用这一次甩动的速度。
+    /// </summary>
+    public bool InertiaAccelerate { get; set; } = true;
+
     /// <summary>上次打开的文件夹（只用来当文件对话框的起始目录，不会自动打开）。</summary>
     public string LastFolder { get; set; } = "";
 
@@ -44,6 +59,14 @@ public sealed class PictureViewerConfig : ToolConfig
     /// <summary>生效的中键判定时长。</summary>
     [JsonIgnore]
     public int HoldMillisecondsEffective => PictureScrollMath.EffectiveHoldMilliseconds(MiddleHoldMilliseconds);
+
+    /// <summary>生效的缩放百分比（夹到 25 ~ 800）。</summary>
+    [JsonIgnore]
+    public int ZoomPercentEffective => PictureScrollMath.EffectiveZoomPercent(ZoomPercent);
+
+    /// <summary>缩放系数（100% → 1.0）。</summary>
+    [JsonIgnore]
+    public double ZoomScale => PictureScrollMath.ZoomScale(ZoomPercentEffective);
 
     /// <summary>当前方式的说明（设置面板里一行小字）。</summary>
     [JsonIgnore]

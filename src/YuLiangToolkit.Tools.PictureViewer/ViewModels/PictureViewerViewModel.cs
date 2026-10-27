@@ -16,15 +16,18 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
         Cfg = LoadConfig<PictureViewerConfig>();
 
         ModeOptions = OptionItem.From(
-            (PictureScrollMode.Vertical, PictureScrollModes.Describe(PictureScrollMode.Vertical)),
-            (PictureScrollMode.HorizontalLeftToRight, PictureScrollModes.Describe(PictureScrollMode.HorizontalLeftToRight)),
-            (PictureScrollMode.HorizontalRightToLeft, PictureScrollModes.Describe(PictureScrollMode.HorizontalRightToLeft)));
+            (PictureScrollMode.Vertical, PictureScrollModes.DescribeCompact(PictureScrollMode.Vertical)),
+            (PictureScrollMode.HorizontalLeftToRight, PictureScrollModes.DescribeCompact(PictureScrollMode.HorizontalLeftToRight)),
+            (PictureScrollMode.HorizontalRightToLeft, PictureScrollModes.DescribeCompact(PictureScrollMode.HorizontalRightToLeft)));
 
         OpenFolderCommand = new AsyncRelayCommand(_ => OpenFolderAsync());
         ToggleSettingsCommand = new RelayCommand(_ => IsSettingsVisible = !IsSettingsVisible);
         CloseSettingsCommand = new RelayCommand(_ => IsSettingsVisible = false);
+        ZoomInCommand = new RelayCommand(_ => StepZoom(1));
+        ZoomOutCommand = new RelayCommand(_ => StepZoom(-1));
 
         ApplyModeOverrideFromEnvironment();
+        ApplyZoomOverrideFromEnvironment();
     }
 
     // ---------------------------------------------------------------- 配置与选项
@@ -51,6 +54,44 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
 
     /// <summary>当前滚动方式的一句说明。</summary>
     public string ModeHint => PictureScrollModes.Hint(Cfg.ScrollModeEffective);
+
+    // ---------------------------------------------------------------- 缩放
+
+    /// <summary>
+    /// 工具条上那个百分比输入框的文字（默认「100%」）。
+    /// 输入 25 ~ 800 的数字（带不带 % 都行）按回车 / 离开输入框生效；非法输入会还原成当前值。
+    /// </summary>
+    public string ZoomText
+    {
+        get => $"{Cfg.ZoomPercentEffective}%";
+        set
+        {
+            var text = (value ?? "").Trim().TrimEnd('%', '％').Trim();
+            if (!int.TryParse(text, out var percent))
+            {
+                OnPropertyChanged();   // 输入不合法：把框里的字还原
+                return;
+            }
+
+            SetZoomPercent(percent);
+        }
+    }
+
+    private void SetZoomPercent(int percent)
+    {
+        var effective = PictureScrollMath.EffectiveZoomPercent(percent);
+        if (effective == Cfg.ZoomPercentEffective)
+        {
+            OnPropertyChanged(nameof(ZoomText));
+            return;
+        }
+
+        Cfg.ZoomPercent = effective;
+        OnPropertyChanged(nameof(ZoomText));
+        ZoomChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void StepZoom(int steps) => SetZoomPercent(PictureScrollMath.StepZoomPercent(Cfg.ZoomPercentEffective, steps));
 
     // ---------------------------------------------------------------- 页清单
 
@@ -118,6 +159,9 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
     /// <summary>滚动方式变了（界面重建长带并尽量停在原来的位置）。</summary>
     public event EventHandler? ModeChanged;
 
+    /// <summary>缩放变了（界面重新排版，并尽量保持画面中心不动）。</summary>
+    public event EventHandler? ZoomChanged;
+
     /// <summary>
     /// 选文件夹的对话框。由界面在 Loaded 时注入（真实实现是 <c>OpenFolderDialog</c>）；
     /// 无头自检可以换成「直接返回一个临时目录」，不弹窗。
@@ -134,6 +178,12 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
 
     /// <summary>收起设置面板。</summary>
     public RelayCommand CloseSettingsCommand { get; }
+
+    /// <summary>放大 10%（工具条右侧放大镜 +）。</summary>
+    public RelayCommand ZoomInCommand { get; }
+
+    /// <summary>缩小 10%（工具条右侧放大镜 −）。</summary>
+    public RelayCommand ZoomOutCommand { get; }
 
     // ---------------------------------------------------------------- 加载
 
@@ -236,6 +286,18 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
         Cfg.ScrollMode = mode.Value;
         OnPropertyChanged(nameof(SelectedMode));
         OnPropertyChanged(nameof(ModeHint));
+    }
+
+    /// <summary>开发 / 截图用：<c>YLT_PICTURE_ZOOM=200</c> 直接指定缩放百分比（截图核对放大后的排版）。</summary>
+    private void ApplyZoomOverrideFromEnvironment()
+    {
+        var text = Environment.GetEnvironmentVariable("YLT_PICTURE_ZOOM");
+        if (string.IsNullOrWhiteSpace(text)) return;
+
+        var cleaned = text.Trim().TrimEnd('%', '％').Trim();
+        if (!int.TryParse(cleaned, out var percent)) return;
+
+        Cfg.ZoomPercent = PictureScrollMath.EffectiveZoomPercent(percent);
     }
 
     /// <summary>环境变量开关：不设 / 空 / 0 / false 都算关。</summary>

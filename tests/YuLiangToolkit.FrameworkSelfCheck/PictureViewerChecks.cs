@@ -99,6 +99,33 @@ internal static class PictureViewerChecks
             PictureScrollMath.DragDelta(PictureScrollMode.Vertical, 500, 0) == 0
             && PictureScrollMath.DragDelta(PictureScrollMode.HorizontalLeftToRight, 0, 500) == 0);
 
+        // ---------------------------------------------------------------- 缩放 / 跨轴拖拽（v0.13.0）
+        Check("[图片] 缩放百分比夹在 25 ~ 800（默认 100）",
+            PictureScrollMath.EffectiveZoomPercent(100) == 100
+            && PictureScrollMath.EffectiveZoomPercent(10) == 25
+            && PictureScrollMath.EffectiveZoomPercent(9999) == 800
+            && PictureScrollMath.DefaultZoomPercent == 100);
+        Check("[图片] 缩放百分比换算系数（100% → 1.0、200% → 2.0、25% → 0.25）",
+            Math.Abs(PictureScrollMath.ZoomScale(100) - 1.0) < 1e-9
+            && Math.Abs(PictureScrollMath.ZoomScale(200) - 2.0) < 1e-9
+            && Math.Abs(PictureScrollMath.ZoomScale(25) - 0.25) < 1e-9);
+        Check("[图片] 放大镜按钮一步 10%，到边界不会越界",
+            PictureScrollMath.StepZoomPercent(100, 1) == 110
+            && PictureScrollMath.StepZoomPercent(100, -1) == 90
+            && PictureScrollMath.StepZoomPercent(800, 1) == 800
+            && PictureScrollMath.StepZoomPercent(25, -1) == 25);
+
+        Check("[图片] 缩放后跨轴也能拖：纵向看左右、横向看上下",
+            PictureScrollMath.CrossDragDelta(PictureScrollMode.Vertical, 60, 0) < 0
+            && PictureScrollMath.CrossDragDelta(PictureScrollMode.HorizontalLeftToRight, 0, 60) < 0
+            && PictureScrollMath.CrossDragDelta(PictureScrollMode.HorizontalRightToLeft, 0, 60) < 0);
+        Check("[图片] 跨轴拖拽忽略另一个轴：纵向看 dx、横向看 dy",
+            PictureScrollMath.CrossDragDelta(PictureScrollMode.Vertical, 0, 500) == 0
+            && PictureScrollMath.CrossDragDelta(PictureScrollMode.HorizontalLeftToRight, 500, 0) == 0);
+        Check("[图片] 内容跟着手走：指针往右下拖，两个轴都往“前/左上”方向退",
+            PictureScrollMath.DragDelta(PictureScrollMode.Vertical, 0, 60) < 0
+            && PictureScrollMath.CrossDragDelta(PictureScrollMode.Vertical, 60, 0) < 0);
+
         // ---------------------------------------------------------------- 3. 按比例定位
         Check("[图片] 按比例换算偏移（0 / 50% / 100%）",
             PictureScrollMath.OffsetForRatio(0, 1000) == 0
@@ -210,6 +237,56 @@ internal static class PictureViewerChecks
             && idleAnchor.OtherButtonDown() == PictureAnchorPhase.None
             && !idleAnchor.IsActive);
 
+        // ---------------------------------------------------------------- 拖动惯性（纯逻辑：采样 / 衰减 / 叠加）
+        var inertia = new PictureInertia();
+        inertia.Reset();
+        inertia.Note(0, 0, 0);
+        inertia.Note(100, 300, -120);
+        var velocity = inertia.ComputeVelocity();
+        Check("[图片] 惯性速度 = 采样窗口里的位移 / 时间",
+            Math.Abs(velocity.Main - 3.0) < 1e-9 && Math.Abs(velocity.Cross + 1.2) < 1e-9,
+            $"main={velocity.Main} cross={velocity.Cross}");
+
+        inertia.Reset();
+        inertia.Note(0, 100, 100);
+        inertia.Note(100, 100, 100);
+        Check("[图片] 停着不动 → 速度为 0（不会自己滑）",
+            inertia.ComputeVelocity() == (0.0, 0.0));
+        inertia.Reset();
+        Check("[图片] 只有一个采样点 / 没采样 → 速度为 0", inertia.ComputeVelocity() == (0.0, 0.0));
+
+        var decayed = inertia.Decay(2.0, -1.0, 100);
+        Check("[图片] 衰减：方向不变、速度变小、时间越久越小",
+            decayed.Main > 0 && decayed.Main < 2.0
+            && decayed.Cross < 0 && decayed.Cross > -1.0
+            && inertia.Decay(2.0, -1.0, 200).Main < decayed.Main);
+        Check("[图片] 衰减：时间为 0 / 负数时原样返回",
+            inertia.Decay(2.0, -1.0, 0) == (2.0, -1.0)
+            && inertia.Decay(2.0, -1.0, -5) == (2.0, -1.0));
+
+        Check("[图片] 太慢就不起滑（合成速度低于阈值）",
+            !inertia.IsFastEnough(0.01, 0.0)
+            && inertia.IsFastEnough(0.1, 0.0)
+            && !PictureInertia.IsFastEnough(double.NaN, 0, PictureInertia.DefaultMinimumSpeed));
+
+        // 「越滑越快」：第二次甩动把还在滑的残余速度加上去，而不是清零
+        var combined = PictureInertia.Combine(1.0, 0.0, 1.5, 0.0, accumulate: true);
+        Check("[图片] 连续甩动会叠加：新速度 = 本次 + 残余（越滑越快）",
+            Math.Abs(combined.Main - 2.5) < 1e-9 && combined.Cross == 0);
+        var resetVelocity = PictureInertia.Combine(1.0, 0.0, 1.5, 0.0, accumulate: false);
+        Check("[图片] 关掉叠加时只用本次甩动的速度（不把速度越滚越大）",
+            Math.Abs(resetVelocity.Main - 1.0) < 1e-9);
+        var clamped = PictureInertia.Combine(5.0, 0.0, 5.0, 0.0, accumulate: true);
+        Check("[图片] 叠加有速度上限（不会失控滑穿整本）",
+            Math.Abs(clamped.Main - PictureInertia.DefaultMaxSpeed) < 1e-9,
+            $"main={clamped.Main}");
+        var clampedDiagonal = PictureInertia.Combine(4.0, 4.0, 4.0, 4.0, accumulate: true);
+        Check("[图片] 斜着叠加上限：合速度被压到上限、方向不变",
+            Math.Abs(Math.Sqrt(clampedDiagonal.Main * clampedDiagonal.Main
+                               + clampedDiagonal.Cross * clampedDiagonal.Cross)
+                     - PictureInertia.DefaultMaxSpeed) < 1e-9
+            && Math.Abs(clampedDiagonal.Main - clampedDiagonal.Cross) < 1e-9);
+
         // ---------------------------------------------------------------- 8. 页序与图片类型
         Check("[图片] 认识的图片扩展名",
             PictureScanner.IsImageFile("a.jpg") && PictureScanner.IsImageFile("B.JPEG")
@@ -272,23 +349,29 @@ internal static class PictureViewerChecks
         // ---------------------------------------------------------------- 10. 配置：默认值 / 枚举按字符串存 / 夹取
         var configStore = ToolConfigStore.For(PictureViewerConfig.ToolId);
         var cfg = configStore.Load<PictureViewerConfig>();
-        Check("[图片] 配置默认值（纵向 / 滚轮 120 / 判定 250ms / 自动释放开）",
+        Check("[图片] 配置默认值（纵向 / 滚轮 120 / 判定 250ms / 缩放 100% / 惯性开 / 自动释放开）",
             cfg.ScrollModeEffective == PictureScrollMode.Vertical
             && cfg.WheelStepEffective == 120
             && cfg.HoldMillisecondsEffective == 250
+            && cfg.ZoomPercentEffective == 100
+            && Math.Abs(cfg.ZoomScale - 1.0) < 1e-9
+            && cfg.InertiaEnabled
+            && cfg.InertiaAccelerate
             && cfg.AutoUnloadOffscreen,
-            $"{cfg.ScrollModeEffective} / {cfg.WheelStepEffective} / {cfg.HoldMillisecondsEffective}");
+            $"{cfg.ScrollModeEffective} / {cfg.WheelStepEffective} / {cfg.HoldMillisecondsEffective} / {cfg.ZoomPercentEffective}%");
 
         cfg.ScrollMode = PictureScrollMode.HorizontalRightToLeft;
         cfg.WheelStepPixels = 9999;
         cfg.MiddleHoldMilliseconds = 1;
+        cfg.ZoomPercent = 9999;
         Thread.Sleep(900);
         var savedJson = File.Exists(configStore.FilePath) ? File.ReadAllText(configStore.FilePath) : "";
         Check("[图片] 枚举按 C# 原名存字符串（手改配置看得懂）",
             savedJson.Contains("\"HorizontalRightToLeft\""), savedJson.Replace(Environment.NewLine, " "));
-        Check("[图片] 手改坏的范围在生效值里被夹住",
-            cfg.WheelStepEffective == 600 && cfg.HoldMillisecondsEffective == 60,
-            $"{cfg.WheelStepEffective} / {cfg.HoldMillisecondsEffective}");
+        Check("[图片] 手改坏的范围在生效值里被夹住（含缩放 25~800）",
+            cfg.WheelStepEffective == 600 && cfg.HoldMillisecondsEffective == 60
+            && cfg.ZoomPercentEffective == 800,
+            $"{cfg.WheelStepEffective} / {cfg.HoldMillisecondsEffective} / {cfg.ZoomPercentEffective}");
 
         // ---------------------------------------------------------------- 11. 无头跑一遍 ViewModel
         var vm = new PictureViewerViewModel();
@@ -309,6 +392,28 @@ internal static class PictureViewerChecks
         Check("[图片] 加载完通知界面重建长带（PagesChanged）", pagesChanged > 0);
         Check("[图片] 加载完不在忙碌状态、状态文字是人话",
             !vm.IsBusy && vm.StatusText.Contains("3"), vm.StatusText);
+
+        // ---- 缩放：输入框 + 放大镜命令（无头跑，不需要界面） ----
+        vm.Cfg.ZoomPercent = 100;
+        vm.ZoomText = "250";
+        Check("[图片] 缩放输入框：输入 250 生效并显示成 250%",
+            vm.Cfg.ZoomPercentEffective == 250 && vm.ZoomText == "250%");
+        vm.ZoomText = "10";
+        Check("[图片] 缩放输入框：低于下限被夹到 25%",
+            vm.Cfg.ZoomPercentEffective == 25 && vm.ZoomText == "25%");
+        vm.ZoomText = "abc";
+        Check("[图片] 缩放输入框：非法输入不改当前值",
+            vm.Cfg.ZoomPercentEffective == 25 && vm.ZoomText == "25%");
+        vm.ZoomOutCommand.Execute(null);
+        Check("[图片] 缩小按钮一步 10%，已经到 25% 就不再变小", vm.Cfg.ZoomPercentEffective == 25);
+        vm.ZoomInCommand.Execute(null);
+        vm.ZoomInCommand.Execute(null);
+        Check("[图片] 放大按钮两步 = 45%，文字跟着变",
+            vm.Cfg.ZoomPercentEffective == 45 && vm.ZoomText == "45%");
+        var zoomChanged = 0;
+        vm.ZoomChanged += (_, _) => zoomChanged++;
+        vm.ZoomText = "150";
+        Check("[图片] 缩放变化会通知界面重新排版", zoomChanged == 1, $"events={zoomChanged}");
 
         // 空文件夹：不崩、给出「没有找到图片」
         var emptyFolder = Path.Combine(AppPaths.Root, "picture-viewer-empty");

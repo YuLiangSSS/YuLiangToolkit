@@ -35,18 +35,43 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- 缩放：百分比输入框 + 两个放大镜（− / +）。
+                         100% = 程序默认的铺满基准（不是图片原始像素 1:1），输入框可以自由改数字（25~800）。 -->
+                    <TextBox x:Name="ZoomBox" Width="60" TextAlignment="Center"
+                             Style="{StaticResource TextBoxStyle}"
+                             Text="{Binding ZoomText, UpdateSourceTrigger=LostFocus}"
+                             PreviewKeyDown="OnZoomBoxPreviewKeyDown"
+                             ToolTip="缩放比例（25% ~ 800%）：回车或离开输入框生效" />
+                    <Button x:Name="ZoomOutButton" Width="32" Height="30" Padding="0" Margin="4,0,0,0"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Command="{Binding ZoomOutCommand}" ToolTip="缩小 10%">
+                        <Path Data="M 9,3 A 6,6 0 1 0 9,15 A 6,6 0 1 0 9,3 M 13.5,13.5 L 18,18 M 6,9 L 12,9"
+                              Stroke="{StaticResource TextPrimaryBrush}" StrokeThickness="1.6" Fill="Transparent"
+                              Stretch="Uniform" Width="17" Height="17" />
+                    </Button>
+                    <Button x:Name="ZoomInButton" Width="32" Height="30" Padding="0" Margin="4,0,0,0"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Command="{Binding ZoomInCommand}" ToolTip="放大 10%">
+                        <Path Data="M 9,3 A 6,6 0 1 0 9,15 A 6,6 0 1 0 9,3 M 13.5,13.5 L 18,18 M 6,9 L 12,9 M 9,6 L 9,12"
+                              Stroke="{StaticResource TextPrimaryBrush}" StrokeThickness="1.6" Fill="Transparent"
+                              Stretch="Uniform" Width="17" Height="17" />
+                    </Button>
+
+                    <Border Width="1" Height="20" Background="{StaticResource BorderBrush}" Margin="10,0" />
+
                     <TextBlock Text="滚动方式" Foreground="{StaticResource TextSecondaryBrush}"
-                               FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0" />
+                               FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0" />
+
                     <!-- 用「分段按钮」而不是 ComboBox：切方向很常用，点一下就生效；
                          也免去下拉弹层（ComboBox 的 Popup 是独立窗口，容易和本工具自己接管的鼠标事件打架 ——
-                         用户报过「下拉项点不动」）。 -->
+                         用户报过「下拉项点不动」）。标签用短名（上→下 / 左→右 / 右→左），把地方留给缩放。 -->
                     <ListBox x:Name="ModeList" Style="{StaticResource SegmentedListBoxStyle}"
                              ItemsSource="{Binding ModeOptions}" DisplayMemberPath="Label"
                              SelectedItem="{Binding SelectedMode}"
                              VerticalAlignment="Center"
                              ToolTip="{Binding ModeHint}" />
                     <Button Content="⚙ 设置" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
-                            Command="{Binding ToggleSettingsCommand}" ToolTip="滚轮步长 / 中键判定 / 离屏释放" />
+                            Command="{Binding ToggleSettingsCommand}" ToolTip="缩放 / 滚轮步长 / 中键判定 / 离屏释放" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -131,9 +156,19 @@
                     <TextBlock Text="{Binding ModeHint}" FontSize="11" TextWrapping="Wrap"
                                Foreground="{StaticResource TextSecondaryBrush}" Margin="0,6,0,0" />
 
+                    <CheckBox Content="拖动惯性（松手后继续滑一会儿）"
+                              IsChecked="{Binding Cfg.InertiaEnabled}"
+                              Style="{StaticResource CheckBoxStyle}" Margin="0,12,0,0"
+                              ToolTip="关掉 = 松手即停；开着 = 按甩动速度继续滑一段、逐渐减速" />
+
+                    <CheckBox Content="惯性越滑越快（连续甩动会叠加）"
+                              IsChecked="{Binding Cfg.InertiaAccelerate}"
+                              Style="{StaticResource CheckBoxStyle}" Margin="0,10,0,0"
+                              ToolTip="手机漫画 App 的手感：下一次甩动时把还在滑的速度加上去、不重置；有速度上限，不会失控" />
+
                     <CheckBox Content="离屏图片自动释放（省内存）"
                               IsChecked="{Binding Cfg.AutoUnloadOffscreen}"
-                              Style="{StaticResource CheckBoxStyle}" Margin="0,14,0,0" />
+                              Style="{StaticResource CheckBoxStyle}" Margin="0,10,0,0" />
 
                     <TextBlock Text="滚轮一格（像素，20 ~ 600）" FontSize="11.5"
                                Foreground="{StaticResource TextSecondaryBrush}" Margin="0,14,0,6" />
