@@ -4,8 +4,8 @@
 > 改这个项目之前先读本文件，**不要再去通读 `src/`**：这里把所有已经造好的「轮子」（可复用组件）的
 > **用途 + 签名 + 一行用法**、Data/Config 目录约定、新增功能的标准流程、以及踩过的坑都写全了。
 >
-> * **当前版本 v0.11.0** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
-> * 十二个功能：视频转音频 · **视频 / 音乐播放器** · 批量重命名 · Flash 下载器 · 联机聊天室 · osu! 下图器 · **osu! Key 转换器** · **osu! LN 转换器** · **osu! 等级计算器** · **联机五子棋** · **联机象棋** · 框架示例（模板，可整目录删除）。
+> * **当前版本 v0.12.0** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
+> * 十三个功能：视频转音频 · **视频 / 音乐播放器** · **图片连续阅读器** · 批量重命名 · Flash 下载器 · 联机聊天室 · osu! 下图器 · **osu! Key 转换器** · **osu! LN 转换器** · **osu! 等级计算器** · **联机五子棋** · **联机象棋** · 框架示例（模板，可整目录删除）。
 >   osu! 的四个工具归入「音游工具」分类；**联机五子棋 / 联机象棋归入「棋牌」分类**（主页多级目录 → 类别页 → 工具，见 2.15 / 2.18）。
 > * 平台：Windows + .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM；**唯一第三方依赖是 `OsuParsers`**（osu `.osu` 解析/写回，MIT，见 2.17），其余轮子都手写在 `Core/`。
 > * 语言：代码注释、提交信息、文档、以及回答用户，一律用**中文**。
@@ -19,7 +19,7 @@
 ```powershell
 .\build.ps1                                                    # ① 编译：必须 0 错误（有警告也顺手清掉）
 dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
-                                                               # ② 自检：1412 项行为逐条真跑，退出码 0 = 全通过
+                                                               # ② 自检：1483 项行为逐条真跑，退出码 0 = 全通过
 ```
 
 * **改了行为就同步改自检断言**（自检就是"这份文档里承诺的行为"的执行版本，见第 6 节）。
@@ -60,11 +60,12 @@ dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.Fram
 | --- | --- |
 | 搞清楚项目结构、有哪些项目、环境变量开关 | **0 / 1** |
 | 用现成的轮子（存储 / 配置 / MVVM / FFmpeg / UI 样式） | **2.1 – 2.9.1** |
-| 改某个具体功能（批量重命名 / Flash / 聊天室 / osu! / 播放器） | **2.10 – 2.17**（每节都写了分层、约定、坑） |
+| 改某个具体功能（批量重命名 / Flash / 聊天室 / osu! / 播放器 / 图片阅读器） | **2.10 – 2.19**（每节都写了分层、约定、坑） |
 | **给功能做多级分类 / 类别页 / 可点击面包屑** | **2.15** |
 | **粒子效果 / 主页设置窗口** | **2.16** |
 | **osu!mania 三件套（Key 转换 / LN 转换 / 等级计算）** | **2.17** |
 | **棋牌：联机五子棋 / 联机象棋 / 房间协议 / 断线重连** | **2.18** |
+| **连续看图 / 三种滚动方向 / 中键锚点** | **2.19** |
 | 找 Data / Config 放哪、目录长什么样 | **3** |
 | **新增一个功能** | **4**（照抄 `Tools.Sample` 或 `Tools.BatchRename` 模板） |
 | 排查某类毛病（存储、WPF、文件系统、构建、网络） | **5** |
@@ -76,7 +77,7 @@ dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.Fram
 > 第 0–9 节是稳定编号，**源码注释里到处用 `AGENTS.md 的 2.11 节` 这种引用指向它**（搜索 `AGENTS.md` 就能找到全部引用点）。
 > 重排或删除章节编号会让这些引用失效——要改就一起改。
 >
-> ⚠️ **本文件约 2200 行 / 212 KB**：作为"工作区指令"自动注入时可能被上下文预算截断（只保留前半段）。
+> ⚠️ **本文件约 2300 行 / 222 KB**：作为"工作区指令"自动注入时可能被上下文预算截断（只保留前半段）。
 > 一旦发现后半段不见了，**用读取工具按行号接着读**；定位章节最稳的办法是搜索标题（`## 3.` / `### 2.17`），
 > 别依赖行号（本文件一直在长，行号会漂）。
 
@@ -109,13 +110,13 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | 项 | 内容 |
 | --- | --- |
 | 技术栈 | .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM；唯一第三方依赖 `OsuParsers`（MIT，osu 谱面解析/写回） |
-| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.11.0 就是读它；**别在别处写死**） |
-| 解决方案 | `YuLiangToolkit.sln`（12 个项目：主程序 + Core + 9 个功能 + 自检） |
+| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.12.0 就是读它；**别在别处写死**） |
+| 解决方案 | `YuLiangToolkit.sln`（13 个项目：主程序 + Core + 10 个功能 + 自检） |
 | 主程序 | `YuLiangTookit.csproj`（注意：文件名少一个 `l`，是历史拼写）→ 自定义标题栏外壳、主页/类别页/侧边栏/面包屑、深色主题、窗口级粒子层 |
 | 核心库 | `src/YuLiangToolkit.Core/`（工具契约、目录树、MVVM 基类、存储、配置、FFmpeg 封装、粒子引擎/覆盖层、通用 TCP 房间底座 `Core/Net`） |
-| 功能 | `Tools.VideoToAudio`（视频转音频）、`Tools.MediaPlayer`（视频 / 音乐播放器）、`Tools.BatchRename`（批量重命名）、`Tools.FlashDownloader`（Flash 下载器）、`Tools.ChatRoom`（联机聊天室）、`Tools.MapDownloader`（osu! 下图器）、`Tools.OsuMania`（osu! Key / LN / 等级三个工具）、`Tools.BoardGames`（联机五子棋 / 联机象棋）、`Tools.Sample`（框架示例，可删） |
+| 功能 | `Tools.VideoToAudio`（视频转音频）、`Tools.MediaPlayer`（视频 / 音乐播放器）、`Tools.PictureViewer`（图片连续阅读器）、`Tools.BatchRename`（批量重命名）、`Tools.FlashDownloader`（Flash 下载器）、`Tools.ChatRoom`（联机聊天室）、`Tools.MapDownloader`（osu! 下图器）、`Tools.OsuMania`（osu! Key / LN / 等级三个工具）、`Tools.BoardGames`（联机五子棋 / 联机象棋）、`Tools.Sample`（框架示例，可删） |
 | 数据/配置 | **在 exe 旁边**（`bin\Debug\net9.0-windows\Data`、`…\Config`）——见第 3 节；仓库根的 `Data/`、`Config/` 只剩说明文件 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**1412 项**行为逐条验证，纯控制台）——见第 6 节 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**1483 项**行为逐条验证，纯控制台）——见第 6 节 |
 | 构建 | `.\build.ps1`（离线，走本机 NuGet 缓存；会设 `DOTNET_CLI_HOME` 到 `.dotnet-cli-home`） |
 | 运行 | `dotnet run --project YuLiangTookit.csproj` 或直接跑 `bin\Debug\net9.0-windows\YuLiangTookit.exe` |
 
@@ -146,6 +147,13 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | `YLT_PLAYER_FULLSCREEN=1` | 打开「视频 / 音乐播放器」时启动就进全屏（截图核对全屏版式用；要配 `YLT_PLAYER_DEMO`） |
 | `YLT_PLAYER_HIDE_CONTROLS=1` | 再配合上面那个：进全屏后先把控制条藏起来（核对「鼠标不动时只剩画面」那一帧） |
 | `YLT_PLAYER_MEASURE=<文件>` | 打开「视频 / 音乐播放器」1 秒后，把全屏时各层的真实尺寸（窗口 / 播放列 / 视频 Border / 控制条 / 封面）与底部命中元素写进文件，核对「底部黑条 / 控制条被裁」用 |
+| `YLT_PICTURE_DEMO=1` | 打开「图片连续阅读器」时用 WPF 现画 8 张演示图（`Data\picture-viewer\demo\`，已存在就复用）并加载，截图/冒烟用，不读真实图片 |
+| `YLT_PICTURE_MODE=vertical\|ltr\|rtl` | 打开「图片连续阅读器」时直接指定滚动方式（纵向 / 横向左→右 / 横向右→左），截图核对三种版式用 |
+| `YLT_PICTURE_SCROLL=0~1` | 配合演示：加载完先按阅读比例滚到指定位置（`1` = 滚到最末尾），核对「左右方向到底从哪头开始」 |
+| `YLT_PICTURE_ANCHOR=1` | 把中键锚点指示器画在视口正中间（截图核对箭头方向 / 样式） |
+| `YLT_PICTURE_SETTINGS=1` | 直接展开右侧设置面板（截图核对那一屏） |
+| `YLT_PICTURE_MEASURE=<文件>` | 加载完约 0.9 秒后把真实几何写进文件：模式 / 视口与内容尺寸 / 物理偏移与可滚范围 / **阅读偏移**（含 `fromPhysical` 反算值）/ 槽位长度 / 首个子元素是不是第 1 张 / 锚点与箭头可见性 |
+| `YLT_PICTURE_SWITCH_MODE=vertical\|ltr\|rtl` | 配合 `YLT_PICTURE_MEASURE`：先写一份 `*.before` 几何，再切到指定滚动方式、0.35 秒后写正式文件（核对「换方向保持阅读位置」用） |
 | `YLT_TASKBAR_TRACE=<文件>` | 把「全屏藏任务栏」每次藏 / 还的细节（hwnd、Win32 错误码、是否仍然可见）写进文件；**启动时的完整性自检也会追加到这里**。**全屏时任务栏没藏住先看它**：错误码 `5` = 完整性级别不够（见 2.14） |
 | `YLT_MINI_DEMO=1` | 启动时先开一下播放器再回主页，制造「正在后台播放」的状态 —— 左下角迷你播放条会出现（截图核对用） |
 | `YLT_NAV_CATEGORY=<路径>` | 启动后直接进某个类别页（如 `音游工具` 或任意深度的 `音游工具/谱面处理`；见 2.15） |
@@ -165,7 +173,7 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 
 ```
 YuLiangToolkit.sln
-YuLiangTookit.csproj              # 主程序（DefaultItemExcludes 排除了 src/ Data/ Config/ tests/ MapDownloader/）
+YuLiangTookit.csproj              # 主程序（DefaultItemExcludes 排除了 src/ Data/ Config/ tests/ MapDownloader/ PictureView/）
 AGENTS.md                         # ← 本文件：给 AI / 未来自己的开发指南（轮子速查 · 约定 · 踩坑）
 README.md                         # 面向使用者的说明：工具一览表 + 快速开始（**保持短**）
 docs/                             # 面向使用者的详细文档（一页一个工具，GitHub 上就是 wiki 的效果）
@@ -182,6 +190,7 @@ Data/                             # 只有说明文件（真正的运行时 Data
 Config/                           # 同上，只有说明文件
 dist/                             # publish.ps1 的发布输出【不入库，gitignore】
 MapDownloader/                    # 改写「osu! 下图器」时参考的原版 WinForms 小项目【不入库，见第 8 节】
+PictureView/                      # 移植「图片连续阅读器」时参考的原版小项目（已移到桌面）【不入库，见第 8 节】
 tests/YuLiangToolkit.FrameworkSelfCheck/   # 轮子自检控制台程序
 scripts/                          # 开发/调试脚本（UI 自动化、截图分析）——会弹窗抢焦点，慎跑
                                   #   e2e-batch-rename-drag.ps1 是唯一覆盖“WPF 拖放事件”那层的验证（会真的动鼠标 2 秒）
@@ -295,6 +304,15 @@ src/
 │  ├─ IMediaPlayback.cs                    # 播放器抽象：界面用 MediaElement 实现，自检用假的
 │  ├─ ViewModels/ MediaPlayerViewModel.cs + .Playlist.cs + .Playback.cs（3 个 partial）
 │  └─ Views/    MediaPlayerView.xaml(.cs) · MediaElementPlayback.cs   # MediaElement 适配器
+├─ YuLiangToolkit.Tools.PictureViewer/     # 功能 10：图片连续阅读器（一条长带 + 三种滚动方向，见 2.19）
+│  ├─ PictureViewerTool.cs · PictureViewerConfig.cs
+│  ├─ PictureScrollMode.cs                 # ★纯逻辑：三种方向 + IsHorizontal / IsReverse / 文案
+│  ├─ PictureScrollMath.cs                 # ★纯逻辑：滚轮 / 中键锚点 / 拖拽 / 比例定位 / 统一缩放尺寸
+│  ├─ PictureAnchorMachine.cs              # ★纯逻辑：中键「单点留下 / 按住松手消失」状态机
+│  ├─ PictureScanner.cs                    # ★纯逻辑 + 磁盘：扩展名过滤 / 自然排序 / 只读文件头拿尺寸
+│  ├─ PictureDemoData.cs                   # YLT_PICTURE_DEMO=1 现画 8 张演示图
+│  ├─ ViewModels/ PictureViewerViewModel.cs（配置 / 页清单 / 无头可测的加载流程）
+│  └─ Views/    PictureViewerView.xaml(.cs)   # 长带排版 / 阅读偏移换算 / 可见范围解码 / 鼠标键盘
 App.xaml / App.xaml.cs             # 全局样式资源 + 启动/退出钩子（截图模式设为不抢焦点）
 MainWindow.xaml(.cs)               # 自定义标题栏外壳
 Models/ShellConfig.cs              # 外壳配置：主页排序偏好 + 各功能上次使用时间（存 Config/shell/）
@@ -1586,6 +1604,77 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 
 ---
 
+### 2.19 图片连续阅读器：一条长带 + 三种滚动方向 + 中键锚点（v0.12.0）
+
+**定位**：把仓库根原来的 `PictureView` 小项目移植进来（只支持上下滚动 + 中键单击锚点），并加三种滚动方向
+与「按住中键」的新玩法。图片**首尾相接、无间距**贴在一条 `StackPanel` 长带上，滚轮 / 左键拖拽 / 中键锚点
+都能连续移动。
+
+**分工**（纯逻辑全部可自检，界面只做必须碰 WPF 的事）：
+
+| 轮子 | 位置 | 说明 |
+| --- | --- | --- |
+| `PictureScrollMode` / `PictureScrollModes` | `PictureScrollMode.cs` | `Vertical` / `HorizontalLeftToRight` / `HorizontalRightToLeft`；`IsHorizontal` / `IsReverse` / `Normalize` / `Describe` / `Hint` |
+| `PictureScrollMath` | `PictureScrollMath.cs` | ★纯逻辑：偏移夹取 / 滚轮一格（向下=阅读前进）/ 中键锚点增量（沿阅读方向）/ 拖拽增量（内容跟手）/ 按比例定位 / 统一缩放尺寸 |
+| `PictureAnchorMachine` | `PictureAnchorMachine.cs` | ★纯逻辑：中键「单点留下 / 按住松手消失」状态机（`None` / `Pressed` / `Latched`），时间由调用方传进来 |
+| `PictureScanner` | `PictureScanner.cs` | ★纯逻辑 + 磁盘：扩展名过滤、自然排序（`2` 在 `10` 前）、只读文件头拿像素尺寸（坏图跳过） |
+| `PictureDemoData` | `PictureDemoData.cs` | 开发用：`YLT_PICTURE_DEMO=1` 时现画 8 张演示图（宽高比不同，方便看排版） |
+| `PictureViewerConfig` | `PictureViewerConfig.cs` | `Config\picture-viewer\config.json`：`ScrollMode` / `WheelStepPixels` / `MiddleHoldMilliseconds` / `AutoUnloadOffscreen` / `LastFolder` |
+| `PictureViewerView` | `Views/` | 造 Image/Border、按视口算尺寸、可见范围解码 / 离屏释放、阅读偏移 ↔ 物理偏移换算、鼠标键盘 |
+| `PictureViewerChecks` | 自检 | **71 项**：滚动数学 / 阅读偏移换算 / 状态机 / 页序 / 真扫临时图片目录 / 无头 VM / 配置 |
+
+**核心概念：阅读偏移（不是 ScrollViewer 的物理偏移）**
+
+* **阅读偏移**：0 = 第一张图开头，最大 = 最后一张末尾；界面里所有滚动操作只改它。
+* 纵向：阅读偏移 = 物理垂直偏移；横向左→右：阅读偏移 = 物理水平偏移。
+* **横向右→左**：图片**物理反着摆**（第一张在最右边，`ImageStrip.Children` 倒序添加），
+  阅读偏移 = `ScrollableWidth − HorizontalOffset`。
+  ⚠ 别改成 `FlowDirection=RightToLeft`：鼠标坐标 / 拖拽 / ScrollViewer 行为在 RTL 下很容易出玄学，
+  现在这样是显式的，而且能用 `YLT_PICTURE_MEASURE` 直接核对（实测起始 `physicalOffset=3468` / `readingOffset=0`）。
+* 滚轮**向下 = 阅读前进**，三种模式统一（横向不用按 Shift）；`WheelStepPixels` 默认 120，夹在 20~600。
+
+**中键锚点的两种玩法**（`PictureAnchorMachine`）
+
+* 按下中键 → `Pressed`（锚点立刻出现，按着就能滚）；
+* 在判定时长内松手 = **单点** → `Latched`（锚点留下，**再按任意键**——左/中/右——消失，PictureView 原行为）；
+* 超过判定时长才松手 = **按住** → `None`（一松手锚点立刻消失）；
+* 判定时长 = `MiddleHoldMilliseconds`（默认 250ms，夹在 60~2000）；「任意键关闭」用 `OtherButtonDown`，
+  按住中键的过程中按别的键不打断。
+* 滚动速度 = 指针在**阅读轴**上离锚点的距离 × 0.5（每帧，约 16ms），与浏览器中键自动滚动同原理；
+  横向模式看 X 轴、纵向看 Y 轴，右→左的符号反过来。
+* 锚点**固定不动**（指示器画在点击处，箭头朝滚动轴），鼠标指针不隐藏（能看清离锚点多远）——
+  原版是「指示器跟着鼠标、鼠标隐藏」，这里改了是为了让「按住」模式也能看懂速度来源。
+
+**踩过的坑 / 约定**
+
+* `ScrollViewer` 的滚动条全部 `Hidden`：横向模式自己接管滚轮，留原生滚动条只会让人以为「左右滚要按 Shift」；
+  底部那条 3px 细进度条代替它显示阅读进度。
+* **阅读偏移由界面自己记（`_readingOffset`），别每帧从 `ScrollViewer` 反读**：实测 `ScrollToXxx`
+  是**排队到布局阶段**才生效的（`YLT_PICTURE_MEASURE` 里 `readingOffset=693.6` 时 `physicalOffset` 还是 0），
+  滚轮连击 / 锚点每帧滚时反读会把每一下位移都丢掉。现在只在 `SetReadingOffset` 里改它、`ScrollChanged` 不覆盖；
+  ScrollViewer 只负责照着显示（测量文件的 `fromPhysical` 行可以核对两者最终一致）。
+* 可见范围加载的 150ms 防抖**不能每次 ScrollChanged 都重置**（连续滚轮 / 拖拽 / 锚点时每帧都来，
+  一重置就永远等不到到期，移动中画面空白）；只在计时器没跑时启动。
+* 重建途中又来的请求（连着换方向 / 换文件夹）**排队补跑**，不能静默丢；解码队列条目自带 generation，
+  并且只留一个 worker 排空（旧写法每入队起一个 worker，会互相偷条目）。
+* 重建长带（切方向、换文件夹、切工具）时 `_generation++`：还在后台解码的那几张回来会被丢掉，
+  否则旧图会贴到新槽上。
+* 离屏释放有 **3 秒宽限**（`AutoUnloadOffscreen`）：来回滚不会反复解码；解码宽度按显示宽度
+  （纵向 = 统一宽度，横向 = 这一张的显示宽度），不会把 4000px 原图整张吃进内存。
+* 统一缩放：纵向按**宽度**、横向按**高度**，统一尺寸 = `min(图里最大的那一维, 视口边)`；
+  窗口缩放时按**阅读比例**保持位置（不跳回开头）。
+* 只读所选文件夹**当前层**、自然排序（纯数字文件名就是数字页序），**不做缩放 / 旋转 / 手动排序**（文档写明限制）。
+* 鼠标事件都在 `Preview*` 上：滚轮抢在 ScrollViewer 前、左键拖拽抢在子控件前；设置面板 / 工具条里的点击
+  用 `IsInsideSettings` / `IsInsideViewport` 排除，别把按钮点坏了。
+
+**验证**：自检 **71 项**（滚动数学 / 阅读偏移换算 / 锚点状态机 / 页序 / 真扫临时目录 / 无头 VM）+ 截图冒烟
+（第 6 节 3l：纵向 / 横向 LTR 起止 / 横向 RTL 起止 / 锚点指示器 / 设置面板）；`YLT_PICTURE_MEASURE` 写真实几何核对
+（RTL 下 `physicalOffset` 与 `readingOffset` 互为反数、`firstChildIsPage1=False`）。
+**换方向保持阅读位置**用 `YLT_PICTURE_SWITCH_MODE=rtl` 配合 `YLT_PICTURE_MEASURE` 核对：会先写 `*.before`，
+再切方向、0.35 秒后写正式文件 —— 前后 `ratio` 应相同，RTL 的物理偏移应是 LTR 的镜像。
+
+---
+
 ## 3. Data / Config 目录约定（v0.2.0 起；v0.4.1 起位置在 **exe 旁边**）
 
 **运行时目录 = exe 所在目录**（`bin\Debug\net9.0-windows\`、`bin\Release\…`、`publish.ps1` 出来的 `dist\YuLiangToolkit\`）。
@@ -1869,7 +1958,7 @@ Data/chat-room/
 # 1) 编译（0 警告 0 错误）
 .\build.ps1
 
-# 2) 轮子自检：1412 项行为逐条真跑（Data/Config 轮子 + 主页搜索排序 + 多级分类导航/面包屑
+# 2) 轮子自检：1483 项行为逐条真跑（Data/Config 轮子 + 主页搜索排序 + 多级分类导航/面包屑
 #    + 批量重命名规则/冲突/执行/撤销
 #    + Flash 下载器的站点解析/命名/ini/批量计划/真下载/本地服务器/自动下载
 #    + 联机聊天室的协议/CRC/流量上限/会话文件夹/傻瓜模式挑监听/双栈真连两族/回环真连一局
@@ -1879,6 +1968,7 @@ Data/chat-room/
 #    + 粒子引擎的生成/寿命/衰减/开关/上限/确定性
 #    + osu!mania 三件套的解析往返/转 K/转 LN/等级/批量/线程安全 + StarRating 参考值
 #    + 棋牌：五子棋禁手/象棋全规则/自由摆棋让子让先/回环联机与断线重连，
+#    + 图片连续阅读器的滚动偏移数学/中键单点-按住状态机/页序自然排序/真扫临时图片文件夹/无头 VM，
 #    退出码 0 = 全通过
 dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
 
@@ -1970,6 +2060,22 @@ $env:YLT_NAV_CATEGORY="棋牌"; $env:YLT_SHOT="shots\category-boardgames.png"
 Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
 Remove-Item Env:YLT_NAV_CATEGORY, Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 
+# 3l) 图片连续阅读器：三种滚动方向 + 锚点指示器 + 设置面板（YLT_PICTURE_* 见第 0 节）
+$env:YLT_SHOT_TOOL="picture-viewer"; $env:YLT_PICTURE_DEMO="1"
+foreach ($m in "vertical","ltr","rtl") {
+    $env:YLT_PICTURE_MODE=$m; $env:YLT_SHOT="shots\picture-$m.png"
+    Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
+}
+#   横向方向核对「到底从哪头开始」：加 $env:YLT_PICTURE_SCROLL="0" / "1" 各截一张；
+#   几何核对用 $env:YLT_PICTURE_MEASURE="shots\picture-measure.txt"（RTL 时 physicalOffset 与 readingOffset 互为反数）
+#   换方向保持位置：$env:YLT_PICTURE_SCROLL="0.2"; $env:YLT_PICTURE_SWITCH_MODE="rtl"; 配 MEASURE 会先写 *.before
+$env:YLT_PICTURE_ANCHOR="1"; $env:YLT_SHOT="shots\picture-anchor.png"
+Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
+Remove-Item Env:YLT_PICTURE_ANCHOR
+$env:YLT_PICTURE_SETTINGS="1"; $env:YLT_SHOT="shots\picture-settings.png"
+Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
+Remove-Item Env:YLT_PICTURE_SETTINGS, Env:YLT_PICTURE_MODE, Env:YLT_PICTURE_DEMO, Env:YLT_SHOT_TOOL, Env:YLT_SHOT
+
 # 4) 发布冒烟：发布到 dist\YuLiangToolkit\，跑一次确认 Data/Config 建在它自己旁边
 .\publish.ps1
 $env:YLT_SHOT="shots\published.png"; .\dist\YuLiangToolkit\YuLiangTookit.exe
@@ -2014,6 +2120,7 @@ $env:YLT_SHOT="shots\published.png"; .\dist\YuLiangToolkit\YuLiangTookit.exe
 | osu! LN 转换器 | `osu-ln-transformer` | `Config\osu-ln-transformer\config.json`（Level / LN% / Divide / Column / Gap / OD 开关 / Seed / Creator / Ignore / Original LN / Fix Error / 键数过滤） | —（同上） | `Order = 52`；音游工具；14 档 LN 转换（-3~10，含 Hold off / Random / Invert / 高斯密度）；LNTransformer 算法逐行改写 + 修复 Original LN/OD 等已知 bug |
 | osu! 等级计算器 | `osu-level-calculator` | `Config\osu-level-calculator\config.json`（显示/计算偏好） | —（只读谱面，不写文件） | `Order = 53`；音游工具；拖入 `.osu` 批量算 mania 星数（Star Rating Rebirth 改写）→ 三段拟合公式得 Level；表格展示 |
 | 视频 / 音乐播放器 | `media-player` | `Config\media-player\config.json`（读取方式 / 递归 / 追加还是覆盖 / 音量 / 播放顺序 / 快进快退步长 / 后台播放 / 恢复上次列表与位置） | `Data\media-player\playlist.json`（列表快照：路径 + 上次那首 + 听到第几秒） | `Order = 15`；本地播放器（见 2.14）：`MediaElement` 出画面，列表循环 / 单曲循环 / 随机，**左键快进快退（步长 0.1~60 秒可调）、右键上一首下一首**，**整窗全屏**（`F11` / 右下角按钮），**后台播放**（切走不断声 + 左下角迷你条），可拖放、记住上次的列表 |
+| 图片连续阅读器 | `picture-viewer` | `Config\picture-viewer\config.json`（滚动方式 / 滚轮一格像素 / 中键单点-按住判定 / 离屏释放 / 上次文件夹） | `Data\picture-viewer\`（只有 `YLT_PICTURE_DEMO` 演示图；正常使用为空） | `Order = 16`；**媒体**；把文件夹图片拼成一条无间距长带：**纵向 / 横向左→右 / 横向右→左**，滚轮直接左右滚（不用 Shift）、左键拖拽、**中键锚点（单点留下按任意键消失 / 按住松手消失）**（见 2.19）；标签：图片/看图/漫画/条漫/长图/滚动/左右滚动/日式漫画/拖拽/中键/锚点 |
 | 框架示例 | `sample-framework` | `Config\sample-framework\config.json` + `options.json` | `Data\sample-framework\`（首运行写入 `示例数据.txt`） | `Order = 900`；纯演示，整目录可删（删前把主程序里的 `ProjectReference` 与 sln 条目一起去掉）；标签：示例/模板/Data/Config/轮子演示 |
 
 ---
@@ -2034,6 +2141,7 @@ $env:YLT_SHOT="shots\published.png"; .\dist\YuLiangToolkit\YuLiangTookit.exe
 | `FlashPlayer.exe` | 11 MB 第三方 Flash 运行时（仓库里那份现在已经没有了，规则留着无妨）：用「Flash 下载器」时它会被拷到 `Data\flash-downloader\tools\` 下，而 `Data/*/` 已忽略 |
 | `FlashGameDownloader/` | 参考用的原版 Python 小项目，**已经删除**；忽略规则留着无妨（主项目 `DefaultItemExcludes` 里那条同理） |
 | `MapDownloader/` | 改写「osu! 下图器」时参考的原版 WinForms 小项目（里面还有 bin/obj/publish 一堆二进制），**不入库**；已经改写进 `src/YuLiangToolkit.Tools.MapDownloader/`，想让它进版本库就删掉这条（或 `git add -f`） |
+| `PictureView/` | 移植「图片连续阅读器」时参考的原版小项目（**已移到桌面**），**不入库**；已经移植进 `src/YuLiangToolkit.Tools.PictureViewer/`。主项目 `DefaultItemExcludes` 也加了 `PictureView\**`，万一再放回仓库根也不会把主程序编译搞崩 |
 
 > `Config/README.md`、`Data/README.md` 这些**说明文件是入库的**（规则只忽略了它们下面的功能子目录/生成物）。
 
@@ -2067,7 +2175,8 @@ git diff                        # 看未暂存改动
 
 | 版本 | 内容 |
 | --- | --- |
-| **v0.11.0**（当前） | **新增「棋牌」类别：联机五子棋 + 联机象棋**。① 新增 `Core/Net/` 通用 TCP 房间底座（帧格式 / 双栈监听 / 心跳 / 端点解析 / 本机地址分享，与聊天无关、可复用）与 `Tools.BoardGames/Shared`（棋牌房间协议、`BoardRoomSession` 握手与转发、基类 `BoardGameRoomViewModelBase`、房间/聊天面板）。② **联机五子棋**（`gomoku`）：主机开房 / 客户端加入 / 同机双人；**禁手开关**（黑棋三三/四四/长连判负，五连优先，可标禁手点）、15/19 路、棋谱、悔棋求和认输再来一局、房间聊天。③ **联机象棋**（`xiangqi`）：完整规则（马腿/象眼/不过河/九宫/飞将/炮架/过河兵、将军/将死/困毙/自然限着）、**自由摆棋 + 一键默认开局 + 让子（单马/双马/单车/车马/车马炮/九子，让子方可选）+ 让先 0~5**、走法提示、自动翻转、中文记谱、悔棋求和认输再来一局。④ **断线重连**：客户端意外断线自动重连（2 秒 × 最多 30 次）、重连中可「停止重连」、主机保局并显示「对局暂停 · 等待对方重连」、房主关房/主动离开不重连；对局暂停期间禁止落子（主机需 `HasPeer` 才能走）。⑤ 新增 `InverseBoolToVis` 转换器（别拿 `InverseBoolConverter` 绑 Visibility）、开发用 `YLT_WINDOW_SIZE`。⑥ 自检 1005 → **1412** 项（棋牌 407：注册 25 + 五子棋 92 + 象棋 141 + 配置 23 + 网络/重连/联机 VM 126）；主页/类别页/两工具/摆棋/暂停态/1024 窄窗截图冒烟。版本号 0.10.0 → 0.11.0 |
+| **v0.12.0**（当前） | **新增「图片连续阅读器」**（`Tools.PictureViewer`，见 2.19）：把仓库根原来的 `PictureView` 小项目移植进来并扩展。① 一个文件夹的图片按页序**首尾相接拼成一条长带**（无间距、无分页），滚轮连续浏览，解决普通看图器一屏一张、条漫 / 长图要一张张点的痛点；② **三种滚动方式**：纵向（默认）/ **横向左→右**（中式漫画）/ **横向右→左**（日式漫画，第一张排在最右边）；横向模式下**滚轮直接左右滚**（不用按 Shift）、**左键按住可拖动画面**；③ **中键锚点两种玩法**：单点（按得短）→ 锚点留下、移动鼠标按离锚点的距离快速滚动、**再按任意键（左/中/右）消失**（PictureView 原行为）；按住（超过判定时长）→ 锚点出现、移动鼠标快速滚动、**一松手立刻消失** —— 两者用 `MiddleHoldMilliseconds`（默认 250ms）区分；④ 离屏图片自动释放（3 秒宽限）、按显示宽度解码、重建时用 generation 丢弃过期解码；⑤ 设置存 `Config\picture-viewer\config.json`；开发用 `YLT_PICTURE_DEMO` / `MODE` / `SCROLL` / `ANCHOR` / `SETTINGS` / `MEASURE`；⑥ 自检 1412 → **1483** 项（新增 71 项：滚动数学 / 阅读偏移↔物理偏移换算 / 锚点状态机 / 页序 / 真扫临时图片目录 / 无头 VM / 配置）；三种滚动方向 + 锚点 + 设置面板截图冒烟；移植来源 `PictureView/` 已移到桌面并加进 `.gitignore` 与 `DefaultItemExcludes`。版本号 0.11.0 → 0.12.0 |
+| v0.11.0 | **新增「棋牌」类别：联机五子棋 + 联机象棋**。① 新增 `Core/Net/` 通用 TCP 房间底座（帧格式 / 双栈监听 / 心跳 / 端点解析 / 本机地址分享，与聊天无关、可复用）与 `Tools.BoardGames/Shared`（棋牌房间协议、`BoardRoomSession` 握手与转发、基类 `BoardGameRoomViewModelBase`、房间/聊天面板）。② **联机五子棋**（`gomoku`）：主机开房 / 客户端加入 / 同机双人；**禁手开关**（黑棋三三/四四/长连判负，五连优先，可标禁手点）、15/19 路、棋谱、悔棋求和认输再来一局、房间聊天。③ **联机象棋**（`xiangqi`）：完整规则（马腿/象眼/不过河/九宫/飞将/炮架/过河兵、将军/将死/困毙/自然限着）、**自由摆棋 + 一键默认开局 + 让子（单马/双马/单车/车马/车马炮/九子，让子方可选）+ 让先 0~5**、走法提示、自动翻转、中文记谱、悔棋求和认输再来一局。④ **断线重连**：客户端意外断线自动重连（2 秒 × 最多 30 次）、重连中可「停止重连」、主机保局并显示「对局暂停 · 等待对方重连」、房主关房/主动离开不重连；对局暂停期间禁止落子（主机需 `HasPeer` 才能走）。⑤ 新增 `InverseBoolToVis` 转换器（别拿 `InverseBoolConverter` 绑 Visibility）、开发用 `YLT_WINDOW_SIZE`。⑥ 自检 1005 → **1412** 项（棋牌 407：注册 25 + 五子棋 92 + 象棋 141 + 配置 23 + 网络/重连/联机 VM 126）；主页/类别页/两工具/摆棋/暂停态/1024 窄窗截图冒烟。版本号 0.10.0 → 0.11.0 |
 | v0.10.0 | **多级分类导航 + 粒子效果 + osu!mania 三件套**。① 外壳：`ITool.CategoryPath`（默认空，老工具零改动）+ `Core/Tools/ToolCatalog.cs` 任意层级目录树；主页「全部分类」卡片 → 类别页（可继续下钻子类别）→ 工具；顶部工具条改成**可点击面包屑**「主页 › 类别 › 工具」；侧边栏只列根层类别 + 根层工具；搜索仍然扁平覆盖全部工具。新增「音游工具」类别（🎵，`ShellCategories` 可扩展），`osu! 下图器` 归入其中（见 2.15）。② 粒子：新增 `ParticleEngine`（纯逻辑，38 项自检）+ `ParticleOverlay`（OnRender、按 60fps 归一、粒子上限 600、事件成对挂摘），窗口级覆盖层；主页右上角新增「⚙ 主页设置」窗口，粒子开关默认开、存 `Config\shell\config.json` 的 `showParticles`（见 2.16）。③ 新增 `Tools.OsuMania`：`osu-key-converter` / `osu-ln-transformer` / `osu-level-calculator` 三个工具（算法逐行照搬 + 修复已知 bug：1k/2k 崩溃、HitSound 丢失、Original LN 只最后一列、OD 被误写 0、无红点闪退等），解析器从手写 `OsuFileV14.cs` 换成 **OsuParsers 1.7.2（NuGet，MIT，本项目唯一第三方依赖）**，星数算法数值基准 10/10 差 0；三个工具与下图器同属「音游工具」（见 2.17）。④ 自检 718 → **1005** 项（导航 53 + 粒子 38 + 星数 38 + osu 158）；主页类别/设置/粒子/三工具截图冒烟。版本号 0.9.7 → 0.10.0 |
 | **v0.9.7** | **播放器新增「时间显示」设置**（见 2.14）：进度条左边那个时间可以选 **已播放时间**（`Elapsed`，默认，从 0:00 数到总时长）或 **剩余时间**（`Remaining`，从总时长倒数到 0:00，即「还差多少秒播完」）；右边始终是总时长。纯逻辑抽成 `MediaTimeDisplay.Format(position, duration, mode)`（倒计时夹在 0 ~ 总时长，时长未知显示 `--:--`），VM 切换下拉立即刷新（不等 200ms 计时器），设置项存 `TimeDisplayMode`（枚举按 C# 原名存字符串）。自检 713 → **718** 项。版本号 0.9.6 → 0.9.7 |
 | **v0.9.6** | **摆正两处「不正中」**（见 2.7 / 2.14）：① 播放器控制条的大播放键以前是跟着「快退 + 播放 + 快进 + 停止」整组居中，**组居中 ≠ 播放键居中**，所以全屏时它明显偏左；改成**播放键独自占中间的 `Auto` 列、左右两列都是 `*`**，全屏实测 `playCenter.x = 960`（屏幕正中，蓝圆像素中心 959），快退/快进/停止贴着它两边，设置与音量仍靠边。② 主窗口以前用 `CenterScreen` 居中（把任务栏那 48px 也算进屏幕高度，窗口看着偏低），改成 `WindowStartupLocation="Manual"` + 按 `SystemParameters.WorkArea` 算**工作区正中间**（1920×1080 + 48px 任务栏时窗口开在 `320,106`，中心 `960,516`）。自检仍 **713** 项（纯版式，真机截图核对）。版本号 0.9.5 → 0.9.6 |

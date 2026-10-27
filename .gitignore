@@ -19,6 +19,8 @@ obj/
 # ================= 开发调试产物 =================
 shots/*.png
 shots/*.txt
+# 换方向核对时写出的「切换前」几何快照（YLT_PICTURE_MEASURE + YLT_PICTURE_SWITCH_MODE）
+shots/*.before
 # 截图用的临时数据根（YLT_HOME），里面有 Data/Config
 shots/.demo-home/
 testdata/out/
@@ -47,6 +49,10 @@ FlashGameDownloader/
 # 里面还有 bin/obj/publish 一堆二进制，不入库；已经移植进 src/YuLiangToolkit.Tools.MapDownloader/。
 # 想让它进版本库就删掉这条（或 git add -f）。
 MapDownloader/
+
+# 移植「图片连续阅读器」时参考的原版 PictureView 小项目（已移植进 src/YuLiangToolkit.Tools.PictureViewer/）：
+# 它只是移植来源、不是本项目的一部分，**不入库**（现已移到桌面；万一再放回仓库根也不会被误提交）。
+PictureView/
 
 # ================= 杂项 =================
 *.tmp

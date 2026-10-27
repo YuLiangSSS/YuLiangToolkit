@@ -1,0 +1,365 @@
+using System.IO;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using YuLiangToolkit.Core.Configuration;
+using YuLiangToolkit.Core.Storage;
+using YuLiangToolkit.Core.Tools;
+using YuLiangToolkit.Tools.PictureViewer;
+using YuLiangToolkit.Tools.PictureViewer.ViewModels;
+
+namespace YuLiangToolkit.FrameworkSelfCheck;
+
+/// <summary>
+/// 「图片连续阅读器」（picture-viewer）的自检：滚轮 / 拖拽 / 中键锚点的偏移数学、中键单点-按住状态机、
+/// 页序自然排序、排版尺寸、真扫一个临时图片文件夹、无头跑一遍 ViewModel 的加载流程。
+///
+/// <para>界面里的鼠标事件本身没法无头跑（要真的按鼠标），所以把「按了之后该滚多少」抽成
+/// <see cref="PictureScrollMath"/> / <see cref="PictureAnchorMachine"/> 在这里逐条钉死；
+/// 三种滚动方式的真实版式用截图 + <c>YLT_PICTURE_MEASURE</c> 核对（见 AGENTS.md 2.19）。</para>
+/// </summary>
+internal static class PictureViewerChecks
+{
+    public static void Run(Action<string, bool, string> check, Action<string, bool> checkPlain)
+    {
+        void Check(string name, bool ok, string detail = "") => check(name, ok, detail);
+
+        // ---------------------------------------------------------------- 1. 三种滚动方式
+        Check("[图片] 纵向不是横向、也不是反向",
+            !PictureScrollModes.IsHorizontal(PictureScrollMode.Vertical)
+            && !PictureScrollModes.IsReverse(PictureScrollMode.Vertical));
+        Check("[图片] 左→右是横向但不反向",
+            PictureScrollModes.IsHorizontal(PictureScrollMode.HorizontalLeftToRight)
+            && !PictureScrollModes.IsReverse(PictureScrollMode.HorizontalLeftToRight));
+        Check("[图片] 右→左是横向且反向（第一张摆最右边）",
+            PictureScrollModes.IsHorizontal(PictureScrollMode.HorizontalRightToLeft)
+            && PictureScrollModes.IsReverse(PictureScrollMode.HorizontalRightToLeft));
+        Check("[图片] 坏枚举值归一化成纵向",
+            PictureScrollModes.Normalize((PictureScrollMode)99) == PictureScrollMode.Vertical
+            && PictureScrollModes.Normalize(PictureScrollMode.HorizontalRightToLeft) == PictureScrollMode.HorizontalRightToLeft);
+
+        var describes = Enum.GetValues<PictureScrollMode>().Select(PictureScrollModes.Describe).ToList();
+        Check("[图片] 三种方式都有名字且互不相同",
+            describes.Count == 3 && describes.All(d => d.Length > 0) && describes.Distinct().Count() == 3,
+            string.Join(" / ", describes));
+        Check("[图片] 每种方式都有说明文案",
+            Enum.GetValues<PictureScrollMode>().All(m => PictureScrollModes.Hint(m).Length > 5));
+
+        // ---------------------------------------------------------------- 2. 偏移：夹取 / 滚轮 / 拖拽
+        Check("[图片] 偏移夹在 0 ~ 最大值之间",
+            PictureScrollMath.ClampOffset(-50, 1000) == 0
+            && PictureScrollMath.ClampOffset(500, 1000) == 500
+            && PictureScrollMath.ClampOffset(5000, 1000) == 1000
+            && PictureScrollMath.ClampOffset(500, 0) == 0
+            && PictureScrollMath.ClampOffset(double.NaN, 1000) == 0);
+
+        // 滚轮向下（Delta < 0）= 阅读往前进；一格默认 120px
+        Check("[图片] 滚轮向下 = 阅读偏移变大",
+            PictureScrollMath.WheelOffset(0, -120, 120, 1000) == 120);
+        Check("[图片] 滚轮向上 = 阅读偏移变小",
+            PictureScrollMath.WheelOffset(500, 120, 120, 1000) == 380);
+        Check("[图片] 滚轮在两头会被夹住（不会滚出内容）",
+            PictureScrollMath.WheelOffset(0, 120, 120, 1000) == 0
+            && PictureScrollMath.WheelOffset(1000, -120, 120, 1000) == 1000);
+        Check("[图片] 高速滚轮一格（Delta 240）走两格",
+            PictureScrollMath.WheelOffset(0, -240, 120, 1000) == 240);
+        Check("[图片] 一格步长超过 600 会被夹到 600、低于 20 夹到 20",
+            PictureScrollMath.WheelOffset(0, -120, 9999, 10000) == 600
+            && PictureScrollMath.WheelOffset(0, -120, 1, 10000) == 20);
+        Check("[图片] 步长生效值 / 判定时长生效值的夹取",
+            PictureScrollMath.EffectiveWheelStep(-5) == 20
+            && PictureScrollMath.EffectiveWheelStep(120) == 120
+            && PictureScrollMath.EffectiveWheelStep(100000) == 600
+            && PictureScrollMath.EffectiveHoldMilliseconds(1) == 60
+            && PictureScrollMath.EffectiveHoldMilliseconds(250) == 250
+            && PictureScrollMath.EffectiveHoldMilliseconds(99999) == 2000);
+
+        // 中键锚点：往阅读方向移动 = 前进
+        Check("[图片] 锚点纵向：鼠标往下偏 → 阅读前进（正增量）",
+            PictureScrollMath.AnchorDelta(PictureScrollMode.Vertical, 0, 120, 0, 20) > 0);
+        Check("[图片] 锚点左→右：鼠标往右偏 → 阅读前进（正增量）",
+            PictureScrollMath.AnchorDelta(PictureScrollMode.HorizontalLeftToRight, 120, 0, 20, 0) > 0);
+        Check("[图片] 锚点右→左：鼠标往左偏 → 阅读前进（正增量，方向反过来）",
+            PictureScrollMath.AnchorDelta(PictureScrollMode.HorizontalRightToLeft, 20, 0, 120, 0) > 0);
+        Check("[图片] 锚点停在原点 → 不滚",
+            PictureScrollMath.AnchorDelta(PictureScrollMode.Vertical, 40, 50, 40, 50) == 0);
+        Check("[图片] 锚点灵敏度不合法时退回默认值、过大的被夹住",
+            Math.Abs(PictureScrollMath.AnchorDelta(PictureScrollMode.Vertical, 0, 100, 0, 0, double.NaN)
+                     - 100 * PictureScrollMath.DefaultAnchorSensitivity) < 1e-9
+            && PictureScrollMath.AnchorDelta(PictureScrollMode.Vertical, 0, 100, 0, 0, 99)
+               == PictureScrollMath.AnchorDelta(PictureScrollMode.Vertical, 0, 100, 0, 0, 3.0));
+
+        // 拖拽：内容跟着手走（纵向往下拖 = 看上面的内容 = 偏移变小）
+        Check("[图片] 拖拽纵向：往下拖 → 阅读偏移变小",
+            PictureScrollMath.DragDelta(PictureScrollMode.Vertical, 0, 60) < 0);
+        Check("[图片] 拖拽左→右：往右拖 → 阅读偏移变小",
+            PictureScrollMath.DragDelta(PictureScrollMode.HorizontalLeftToRight, 60, 0) < 0);
+        Check("[图片] 拖拽右→左：往右拖 → 阅读偏移变大（阅读方向与物理方向相反）",
+            PictureScrollMath.DragDelta(PictureScrollMode.HorizontalRightToLeft, 60, 0) > 0);
+        Check("[图片] 拖拽只看滚动轴：纵向忽略横向位移、横向忽略纵向位移",
+            PictureScrollMath.DragDelta(PictureScrollMode.Vertical, 500, 0) == 0
+            && PictureScrollMath.DragDelta(PictureScrollMode.HorizontalLeftToRight, 0, 500) == 0);
+
+        // ---------------------------------------------------------------- 3. 按比例定位
+        Check("[图片] 按比例换算偏移（0 / 50% / 100%）",
+            PictureScrollMath.OffsetForRatio(0, 1000) == 0
+            && PictureScrollMath.OffsetForRatio(0.5, 1000) == 500
+            && PictureScrollMath.OffsetForRatio(1, 1000) == 1000);
+        Check("[图片] 比例超界会被夹住、内容不够长时是 0",
+            PictureScrollMath.OffsetForRatio(-1, 1000) == 0
+            && PictureScrollMath.OffsetForRatio(9, 1000) == 1000
+            && PictureScrollMath.OffsetForRatio(0.5, 0) == 0);
+        Check("[图片] 偏移 → 比例 → 偏移 能还原",
+            Math.Abs(PictureScrollMath.OffsetForRatio(
+                PictureScrollMath.RatioOf(345, 1000), 1000) - 345) < 1e-9);
+
+        // ---------------------------------------------------------------- 4. 阅读偏移 ↔ ScrollViewer 物理偏移
+        // 日式右→左是「图片物理反着摆」：物理 0（最左）其实是阅读的末尾 —— 换方向保持位置、锚点 / 滚轮
+        // 全建立在下面这几个换算上，必须断言（复核发现「换方向后位置失效」时这里一条都没有）。
+        Check("[图片] 阅读总长度：横向取水平可滚范围、纵向取垂直",
+            PictureScrollMath.ReadingMaximum(PictureScrollMode.Vertical, 500, 900) == 900
+            && PictureScrollMath.ReadingMaximum(PictureScrollMode.HorizontalLeftToRight, 500, 900) == 500
+            && PictureScrollMath.ReadingMaximum(PictureScrollMode.HorizontalRightToLeft, 500, 900) == 500
+            && PictureScrollMath.ReadingMaximum(PictureScrollMode.Vertical, -1, -1) == 0);
+
+        Check("[图片] 左→右：物理水平偏移 = 阅读偏移（往返一致）",
+            PictureScrollMath.ReadingOffset(PictureScrollMode.HorizontalLeftToRight, 300, 0, 1000, 0) == 300
+            && PictureScrollMath.PhysicalHorizontalOffset(PictureScrollMode.HorizontalLeftToRight, 300, 1000) == 300);
+
+        Check("[图片] 右→左：物理最左是阅读末尾、物理最右才是开头",
+            PictureScrollMath.ReadingOffset(PictureScrollMode.HorizontalRightToLeft, 1000, 0, 1000, 0) == 0
+            && PictureScrollMath.ReadingOffset(PictureScrollMode.HorizontalRightToLeft, 0, 0, 1000, 0) == 1000);
+
+        Check("[图片] 右→左：物理偏移 ↔ 阅读偏移 往返一致",
+            Math.Abs(PictureScrollMath.PhysicalHorizontalOffset(
+                PictureScrollMode.HorizontalRightToLeft,
+                PictureScrollMath.ReadingOffset(PictureScrollMode.HorizontalRightToLeft, 260, 0, 1000, 0),
+                1000) - 260) < 1e-9);
+
+        Check("[图片] 纵向：阅读偏移就是垂直偏移",
+            PictureScrollMath.ReadingOffset(PictureScrollMode.Vertical, 999, 420, 0, 800) == 420);
+
+        Check("[图片] 换算后偏移仍被夹在 0 ~ 总长里",
+            PictureScrollMath.ReadingOffset(PictureScrollMode.HorizontalRightToLeft, -500, 0, 1000, 0) == 1000
+            && PictureScrollMath.PhysicalHorizontalOffset(PictureScrollMode.HorizontalRightToLeft, 5000, 1000) == 0);
+
+        // ---------------------------------------------------------------- 6. 排版尺寸（统一宽度 / 统一高度）
+        Check("[图片] 统一跨轴尺寸 = min(图最大边, 视口边)",
+            PictureScrollMath.UniformCrossSize(2000, 1000) == 1000
+            && PictureScrollMath.UniformCrossSize(600, 1000) == 600
+            && PictureScrollMath.UniformCrossSize(0, 1000) == 1000
+            && PictureScrollMath.UniformCrossSize(1000, 0) == 0);
+        Check("[图片] 纵向：按统一宽度算高度（1000×1440 放到 1048 宽 → 1509.12）",
+            Math.Abs(PictureScrollMath.MainLengthForAspect(false, 1000, 1440, 1048) - (1048.0 * 1440 / 1000)) < 1e-6);
+        Check("[图片] 横向：按统一高度算宽度（1440×1000 放到 641 高 → 923.04）",
+            Math.Abs(PictureScrollMath.MainLengthForAspect(true, 1440, 1000, 641) - (641.0 * 1440 / 1000)) < 1e-6);
+        Check("[图片] 尺寸信息坏掉时退回统一尺寸（不除以 0）",
+            PictureScrollMath.MainLengthForAspect(false, 0, 1440, 1048) == 1048
+            && PictureScrollMath.MainLengthForAspect(true, 1440, 0, 641) == 641);
+
+        // ---------------------------------------------------------------- 7. 中键锚点状态机（单点 / 按住）
+        var anchor = new PictureAnchorMachine();
+        Check("[图片] 中键初始没有锚点", anchor.Phase == PictureAnchorPhase.None && !anchor.IsActive);
+
+        anchor.MiddleDown(0);
+        Check("[图片] 按下中键 → 锚点按着（Pressed，立刻能滚）",
+            anchor.Phase == PictureAnchorPhase.Pressed && anchor.IsActive && anchor.IsPressed && !anchor.IsLatched);
+
+        anchor.MiddleUp(100);
+        Check("[图片] 100ms 就松开 = 单点 → 锚点留下（Latched）",
+            anchor.Phase == PictureAnchorPhase.Latched && anchor.IsActive && anchor.IsLatched);
+
+        anchor.OtherButtonDown();
+        Check("[图片] 锚点留着时按任意键 → 锚点消失（PictureView 原来的行为）",
+            anchor.Phase == PictureAnchorPhase.None && !anchor.IsActive);
+
+        anchor.MiddleDown(1000);
+        anchor.MiddleUp(1300);
+        Check("[图片] 按住超过判定时长再松开 = 按住 → 锚点跟着消失",
+            anchor.Phase == PictureAnchorPhase.None);
+
+        anchor.HoldThresholdMilliseconds = 500;
+        anchor.MiddleDown(2000);
+        anchor.MiddleUp(2400);
+        Check("[图片] 判定时长改成 500ms 后，400ms 仍算单点",
+            anchor.Phase == PictureAnchorPhase.Latched && anchor.HoldMillisecondsEffective == 500);
+
+        anchor.MiddleDown(3000);
+        Check("[图片] 锚点留着时再按中键 → 关掉锚点",
+            anchor.Phase == PictureAnchorPhase.None);
+
+        anchor.MiddleDown(4000);
+        anchor.OtherButtonDown();
+        Check("[图片] 按住中键的过程中按别的键不打断（手还按着，松手才结束）",
+            anchor.Phase == PictureAnchorPhase.Pressed);
+        anchor.MiddleUp(4080);
+        Check("[图片] 按住 80ms（判定 500ms）松手 → 单点，锚点留下",
+            anchor.Phase == PictureAnchorPhase.Latched);
+
+        anchor.HoldThresholdMilliseconds = 10;
+        Check("[图片] 判定时长过小会被夹到 60ms", anchor.HoldMillisecondsEffective == 60);
+        anchor.Reset();
+        Check("[图片] Reset 强制清掉锚点", anchor.Phase == PictureAnchorPhase.None);
+
+        anchor.HoldThresholdMilliseconds = 999999;
+        Check("[图片] 判定时长过大会被夹到 2000ms", anchor.HoldMillisecondsEffective == 2000);
+        anchor.Reset();
+
+        var idleAnchor = new PictureAnchorMachine();
+        Check("[图片] 没按中键时松手中键 / 按别的键都不会凭空造出锚点",
+            idleAnchor.MiddleUp(123) == PictureAnchorPhase.None
+            && idleAnchor.OtherButtonDown() == PictureAnchorPhase.None
+            && !idleAnchor.IsActive);
+
+        // ---------------------------------------------------------------- 8. 页序与图片类型
+        Check("[图片] 认识的图片扩展名",
+            PictureScanner.IsImageFile("a.jpg") && PictureScanner.IsImageFile("B.JPEG")
+            && PictureScanner.IsImageFile("c.png") && PictureScanner.IsImageFile("d.bmp")
+            && PictureScanner.IsImageFile("e.gif") && PictureScanner.IsImageFile("f.webp")
+            && PictureScanner.IsImageFile("g.tif") && PictureScanner.IsImageFile("h.TIFF"));
+        Check("[图片] 不是图片的扩展名一律不收",
+            !PictureScanner.IsImageFile("a.mp4") && !PictureScanner.IsImageFile("b.txt")
+            && !PictureScanner.IsImageFile("") && !PictureScanner.IsImageFile(null));
+
+        Check("[图片] 自然排序：2 在 10 前面（不是字典序）",
+            PictureScanner.CompareNatural("2.png", "10.png") < 0
+            && PictureScanner.CompareNatural("10.png", "2.png") > 0);
+        Check("[图片] 自然排序：前导零不影响页序",
+            PictureScanner.CompareNatural("001.png", "2.png") < 0
+            && PictureScanner.CompareNatural("1.png", "01.png") == 0);
+        Check("[图片] 自然排序：非数字名也能比较（大小写不敏感）",
+            PictureScanner.CompareNatural("cover.png", "page2.png") < 0
+            && PictureScanner.CompareNatural("A.png", "a.png") == 0);
+        Check("[图片] 自然排序：数字段长度不同时按数值比",
+            PictureScanner.CompareNatural("第2话.png", "第10话.png") < 0);
+
+        // ---------------------------------------------------------------- 9. 真扫一个临时图片文件夹
+        var folder = Path.Combine(AppPaths.Root, "picture-viewer-fixture");
+        if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+        Directory.CreateDirectory(folder);
+
+        WritePng(Path.Combine(folder, "10.png"), 6, 7);
+        WritePng(Path.Combine(folder, "2.png"), 4, 5);
+        WritePng(Path.Combine(folder, "1.png"), 2, 3);
+        File.WriteAllText(Path.Combine(folder, "notes.txt"), "不是图片");
+        File.WriteAllText(Path.Combine(folder, "broken.png"), "这不是真的 PNG");
+
+        var files = PictureScanner.EnumerateFiles(folder);
+        // 枚举阶段只按扩展名收（坏图的扩展名也是 .png，要等读文件头时才知道读不出来）
+        Check("[图片] 扫文件夹只按扩展名收图片、并按页序排好（坏图留到读尺寸时再筛）",
+            files.Select(Path.GetFileName).SequenceEqual(new[] { "1.png", "2.png", "10.png", "broken.png" }),
+            string.Join(",", files.Select(Path.GetFileName)));
+
+        var pages = PictureScanner.ScanFolder(folder);
+        Check("[图片] 读得出每张图的原始像素尺寸（读不出的坏图跳过）",
+            pages.Count == 3
+            && pages[0].PixelWidth == 2 && pages[0].PixelHeight == 3
+            && pages[1].PixelWidth == 4 && pages[1].PixelHeight == 5
+            && pages[2].PixelWidth == 6 && pages[2].PixelHeight == 7,
+            string.Join(" / ", pages.Select(p => $"{p.FileName}:{p.PixelWidth}x{p.PixelHeight}")));
+        Check("[图片] 页对象的宽高比算得对",
+            Math.Abs(pages[2].AspectRatio - 6.0 / 7.0) < 1e-9);
+        Check("[图片] 不存在的文件夹返回空清单（不抛异常）",
+            PictureScanner.EnumerateFiles(Path.Combine(folder, "不存在")).Count == 0
+            && PictureScanner.ScanFolder(null).Count == 0);
+
+        var progressCalls = 0;
+        var progressTotal = 0;
+        PictureScanner.ScanFolder(folder, (done, total) => { progressTotal = total; Interlocked.Increment(ref progressCalls); });
+        Check("[图片] 扫描进度回调拿得到总数（含读不出的那张，回调次数 = 文件数）",
+            progressTotal == files.Count && progressCalls == files.Count,
+            $"calls={progressCalls} total={progressTotal} files={files.Count}");
+
+        // ---------------------------------------------------------------- 10. 配置：默认值 / 枚举按字符串存 / 夹取
+        var configStore = ToolConfigStore.For(PictureViewerConfig.ToolId);
+        var cfg = configStore.Load<PictureViewerConfig>();
+        Check("[图片] 配置默认值（纵向 / 滚轮 120 / 判定 250ms / 自动释放开）",
+            cfg.ScrollModeEffective == PictureScrollMode.Vertical
+            && cfg.WheelStepEffective == 120
+            && cfg.HoldMillisecondsEffective == 250
+            && cfg.AutoUnloadOffscreen,
+            $"{cfg.ScrollModeEffective} / {cfg.WheelStepEffective} / {cfg.HoldMillisecondsEffective}");
+
+        cfg.ScrollMode = PictureScrollMode.HorizontalRightToLeft;
+        cfg.WheelStepPixels = 9999;
+        cfg.MiddleHoldMilliseconds = 1;
+        Thread.Sleep(900);
+        var savedJson = File.Exists(configStore.FilePath) ? File.ReadAllText(configStore.FilePath) : "";
+        Check("[图片] 枚举按 C# 原名存字符串（手改配置看得懂）",
+            savedJson.Contains("\"HorizontalRightToLeft\""), savedJson.Replace(Environment.NewLine, " "));
+        Check("[图片] 手改坏的范围在生效值里被夹住",
+            cfg.WheelStepEffective == 600 && cfg.HoldMillisecondsEffective == 60,
+            $"{cfg.WheelStepEffective} / {cfg.HoldMillisecondsEffective}");
+
+        // ---------------------------------------------------------------- 11. 无头跑一遍 ViewModel
+        var vm = new PictureViewerViewModel();
+        var pagesChanged = 0;
+        vm.PagesChanged += (_, _) => pagesChanged++;
+
+        vm.FolderPicker = () => folder;
+        vm.OpenFolderCommand.Execute(null);
+        WaitUntil(() => vm is { IsBusy: false, HasPages: true }, 5000);
+
+        Check("[图片] 选文件夹后加载出页清单（3 张、按页序）",
+            vm.Pages.Count == 3 && vm.Pages[0].FileName == "1.png" && vm.Pages[2].FileName == "10.png",
+            string.Join(",", vm.Pages.Select(p => p.FileName)));
+        Check("[图片] 工具条文案：张数 + 文件夹名、路径",
+            vm.ImageCountText.Contains("3 张") && vm.FolderPathText == folder,
+            $"{vm.ImageCountText} / {vm.FolderPathText}");
+        Check("[图片] 加载完记下最后打开的文件夹（下次对话框从这里开始）", vm.Cfg.LastFolder == folder);
+        Check("[图片] 加载完通知界面重建长带（PagesChanged）", pagesChanged > 0);
+        Check("[图片] 加载完不在忙碌状态、状态文字是人话",
+            !vm.IsBusy && vm.StatusText.Contains("3"), vm.StatusText);
+
+        // 空文件夹：不崩、给出「没有找到图片」
+        var emptyFolder = Path.Combine(AppPaths.Root, "picture-viewer-empty");
+        if (Directory.Exists(emptyFolder)) Directory.Delete(emptyFolder, recursive: true);
+        Directory.CreateDirectory(emptyFolder);
+        vm.LoadFolderAsync(emptyFolder).GetAwaiter().GetResult();
+        Check("[图片] 空文件夹：没有页、给出人话提示",
+            !vm.HasPages && vm.StatusText.Contains("没有找到图片"), vm.StatusText);
+
+        // ---------------------------------------------------------------- 12. 工具注册信息
+        var tool = new PictureViewerTool();
+        Check("[图片] 工具 Id / 名称 / 分类 / 排序",
+            tool.Id == "picture-viewer" && tool.Name == "图片连续阅读器"
+            && tool.Category == "媒体" && tool.Order == 16);
+        Check("[图片] 主页标签能搜到「漫画 / 滚动 / 中键」",
+            tool.Tags.Contains("漫画") && tool.Tags.Contains("滚动") && tool.Tags.Contains("中键"),
+            string.Join(",", tool.Tags));
+        Check("[图片] 默认挂在主页根层（没有 CategoryPath）", ((ITool)tool).CategoryPath.Count == 0);
+
+        // ---------------------------------------------------------------- 收尾：清掉临时测试文件夹
+        try { Directory.Delete(folder, recursive: true); } catch { /* 临时目录，删不掉无所谓 */ }
+        try { Directory.Delete(emptyFolder, recursive: true); } catch { /* 同上 */ }
+    }
+
+    /// <summary>造一张真 PNG（宽高自定义），用来验证「扫文件夹会读出真实像素尺寸」。</summary>
+    private static void WritePng(string path, int width, int height)
+    {
+        var stride = width * 4;
+        var pixels = new byte[stride * height];
+        for (var i = 0; i < pixels.Length; i += 4)
+        {
+            pixels[i] = 0x30;      // B
+            pixels[i + 1] = 0x60;  // G
+            pixels[i + 2] = 0xC0;  // R
+            pixels[i + 3] = 0xFF;  // A
+        }
+
+        var source = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, stride);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(source));
+        using var stream = File.Create(path);
+        encoder.Save(stream);
+    }
+
+    private static bool WaitUntil(Func<bool> condition, int timeoutMilliseconds)
+    {
+        for (var waited = 0; waited < timeoutMilliseconds; waited += 50)
+        {
+            if (condition()) return true;
+            Thread.Sleep(50);
+        }
+        return condition();
+    }
+}

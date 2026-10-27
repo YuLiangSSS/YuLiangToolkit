@@ -31,6 +31,9 @@
     <!-- 「视频 / 音乐播放器」：扩展名归类 / 时间与快进快退 / 自然排序 / 扫文件夹 / 合并去重
          / 播放顺序（顺序·单曲·随机）/ 配置；再塞一个假播放器把 ViewModel 整条链路跑一遍。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.MediaPlayer\YuLiangToolkit.Tools.MediaPlayer.csproj" />
+    <!-- 「图片连续阅读器」：页序自然排序 / 三种滚动方式的偏移数学 / 中键单点-按住状态机
+         / 排版尺寸 / 真扫一个临时图片文件夹。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.PictureViewer\YuLiangToolkit.Tools.PictureViewer.csproj" />
     <!-- 「osu!mania 转谱」：OsuParsers 解析桥往返 / 星数 / 等级公式 / 转 K / 转 LN，
          全部是纯逻辑（合成谱面文本在临时目录里造，不碰仓库 Data/Config）。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.OsuMania\YuLiangToolkit.Tools.OsuMania.csproj" />

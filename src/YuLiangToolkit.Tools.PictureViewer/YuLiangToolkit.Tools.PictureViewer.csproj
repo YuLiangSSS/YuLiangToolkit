@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「图片连续阅读器」：把一个文件夹里的图片首尾相接拼成长带，滚轮 / 拖拽 / 中键锚点连续浏览。
+       分层：纯逻辑（PictureScrollMath / PictureAnchorMachine / PictureScanner）不碰界面，
+       自检直接断言；界面后台只做必须碰界面的事（图片解码、滚动容器、鼠标事件）。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.PictureViewer</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.PictureViewer</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

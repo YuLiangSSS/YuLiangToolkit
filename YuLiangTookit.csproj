@@ -10,7 +10,7 @@
          仓库根的 Data/ 与 Config/ 只是“说明 + 可选种子”（真正运行时的 Data/Config 在 exe 旁边），
          tests/ 是自检程序，都不参与编译；
          MapDownloader/ 是改写「osu! 下图器」时参考的原版 WinForms 小项目（不是本项目的一部分） -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);src\**;Data\**;Config\**;tests\**;FlashGameDownloader\**;MapDownloader\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);src\**;Data\**;Config\**;tests\**;FlashGameDownloader\**;MapDownloader\**;PictureView\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <!-- 注意：不要用 <None CopyToOutputDirectory> 往 exe 旁边拷 Data/Config 的内容！
@@ -22,6 +22,7 @@
     <ProjectReference Include="src\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.VideoToAudio\YuLiangToolkit.Tools.VideoToAudio.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.MediaPlayer\YuLiangToolkit.Tools.MediaPlayer.csproj" />
+    <ProjectReference Include="src\YuLiangToolkit.Tools.PictureViewer\YuLiangToolkit.Tools.PictureViewer.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.BatchRename\YuLiangToolkit.Tools.BatchRename.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.FlashDownloader\YuLiangToolkit.Tools.FlashDownloader.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.ChatRoom\YuLiangToolkit.Tools.ChatRoom.csproj" />
