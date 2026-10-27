@@ -4,7 +4,7 @@
 > 改这个项目之前先读本文件，**不要再去通读 `src/`**：这里把所有已经造好的「轮子」（可复用组件）的
 > **用途 + 签名 + 一行用法**、Data/Config 目录约定、新增功能的标准流程、以及踩过的坑都写全了。
 >
-> * **当前版本 v0.14.0** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
+> * **当前版本 v0.15.0** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
 > * 十三个功能：视频转音频 · **视频 / 音乐播放器** · **图片连续阅读器** · 批量重命名 · Flash 下载器 · 联机聊天室 · osu! 下图器 · **osu! Key 转换器** · **osu! LN 转换器** · **osu! 等级计算器** · **联机五子棋** · **联机象棋** · 框架示例（模板，可整目录删除）。
 >   osu! 的四个工具归入「音游工具」分类；**联机五子棋 / 联机象棋归入「棋牌」分类**（主页多级目录 → 类别页 → 工具，见 2.15 / 2.18）。
 > * 平台：Windows + .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM；**唯一第三方依赖是 `OsuParsers`**（osu `.osu` 解析/写回，MIT，见 2.17），其余轮子都手写在 `Core/`。
@@ -19,7 +19,7 @@
 ```powershell
 .\build.ps1                                                    # ① 编译：必须 0 错误（有警告也顺手清掉）
 dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
-                                                               # ② 自检：1532 项行为逐条真跑，退出码 0 = 全通过
+                                                               # ② 自检：1541 项行为逐条真跑，退出码 0 = 全通过
 ```
 
 * **改了行为就同步改自检断言**（自检就是"这份文档里承诺的行为"的执行版本，见第 6 节）。
@@ -65,7 +65,7 @@ dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.Fram
 | **粒子效果 / 主页设置窗口** | **2.16** |
 | **osu!mania 三件套（Key 转换 / LN 转换 / 等级计算）** | **2.17** |
 | **棋牌：联机五子棋 / 联机象棋 / 房间协议 / 断线重连** | **2.18** |
-| **连续看图 / 六种阅读方式 / 双页翻页 / 中键锚点** | **2.19** |
+| **连续看图 / 六种阅读方式 / 双页翻页 / 双击图片打开（文件关联）** | **2.19** |
 | 找 Data / Config 放哪、目录长什么样 | **3** |
 | **新增一个功能** | **4**（照抄 `Tools.Sample` 或 `Tools.BatchRename` 模板） |
 | 排查某类毛病（存储、WPF、文件系统、构建、网络） | **5** |
@@ -110,13 +110,13 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | 项 | 内容 |
 | --- | --- |
 | 技术栈 | .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM；唯一第三方依赖 `OsuParsers`（MIT，osu 谱面解析/写回） |
-| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.14.0 就是读它；**别在别处写死**） |
+| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.15.0 就是读它；**别在别处写死**） |
 | 解决方案 | `YuLiangToolkit.sln`（13 个项目：主程序 + Core + 10 个功能 + 自检） |
 | 主程序 | `YuLiangTookit.csproj`（注意：文件名少一个 `l`，是历史拼写）→ 自定义标题栏外壳、主页/类别页/侧边栏/面包屑、深色主题、窗口级粒子层 |
 | 核心库 | `src/YuLiangToolkit.Core/`（工具契约、目录树、MVVM 基类、存储、配置、FFmpeg 封装、粒子引擎/覆盖层、通用 TCP 房间底座 `Core/Net`） |
 | 功能 | `Tools.VideoToAudio`（视频转音频）、`Tools.MediaPlayer`（视频 / 音乐播放器）、`Tools.PictureViewer`（图片连续阅读器）、`Tools.BatchRename`（批量重命名）、`Tools.FlashDownloader`（Flash 下载器）、`Tools.ChatRoom`（联机聊天室）、`Tools.MapDownloader`（osu! 下图器）、`Tools.OsuMania`（osu! Key / LN / 等级三个工具）、`Tools.BoardGames`（联机五子棋 / 联机象棋）、`Tools.Sample`（框架示例，可删） |
 | 数据/配置 | **在 exe 旁边**（`bin\Debug\net9.0-windows\Data`、`…\Config`）——见第 3 节；仓库根的 `Data/`、`Config/` 只剩说明文件 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**1532 项**行为逐条验证，纯控制台）——见第 6 节 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**1541 项**行为逐条验证，纯控制台）——见第 6 节 |
 | 构建 | `.\build.ps1`（离线，走本机 NuGet 缓存；会设 `DOTNET_CLI_HOME` 到 `.dotnet-cli-home`） |
 | 运行 | `dotnet run --project YuLiangTookit.csproj` 或直接跑 `bin\Debug\net9.0-windows\YuLiangTookit.exe` |
 
@@ -313,6 +313,7 @@ src/
 │  ├─ PictureScrollMode.cs                 # ★纯逻辑：六种阅读方式分类 + 翻页滚轮动作 + 文案
 │  ├─ PictureScrollMath.cs                 # ★纯逻辑：滚轮 / 中键锚点 / 拖拽 / 比例定位 / 统一缩放尺寸
 │  ├─ PicturePaging.cs                     # ★纯逻辑：翻页配对（日式镜像）/ 页号步进 / 槽位排版 / 平移夹取
+│  ├─ PictureFileAssociation.cs            # 双击图片打开：HKCU 文件关联 + 启动请求 + 关联状态说明
 │  ├─ PictureAnchorMachine.cs              # ★纯逻辑：中键「单点留下 / 按住松手消失」状态机
 │  ├─ PictureScanner.cs                    # ★纯逻辑 + 磁盘：扩展名过滤 / 自然排序 / 只读文件头拿尺寸
 │  ├─ PictureDemoData.cs                   # YLT_PICTURE_DEMO=1 现画 8 张演示图
@@ -1609,7 +1610,7 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 
 ---
 
-### 2.19 图片连续阅读器：六种阅读方式 · 连续长带 / 双页翻页 / 单页 · 中键锚点 · 缩放 / 惯性（v0.12.0 起；v0.13.0 加缩放与惯性；v0.14.0 加翻页 / 单页）
+### 2.19 图片连续阅读器：六种阅读方式 · 连续长带 / 双页翻页 / 单页 · 缩放 / 惯性 · 双击图片打开（v0.12.0 起；v0.13.0 缩放惯性；v0.14.0 翻页单页；v0.15.0 文件关联）
 
 **定位**：把仓库根原来的 `PictureView` 小项目移植进来（只支持上下滚动 + 中键单击锚点），并加三种滚动方向、
 「按住中键」、缩放 / 双轴自由拖拽 / 拖动惯性（越滑越快）。图片**首尾相接、无间距**贴在一条 `StackPanel` 长带上，滚轮 / 左键拖拽 / 中键锚点
@@ -1628,9 +1629,11 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 | `PictureScanner` | `PictureScanner.cs` | ★纯逻辑 + 磁盘：扩展名过滤、自然排序（`2` 在 `10` 前）、只读文件头拿像素尺寸（坏图跳过） |
 | `PictureDemoData` | `PictureDemoData.cs` | 开发用：`YLT_PICTURE_DEMO=1` 时现画 8 张演示图（宽高比不同，方便看排版） |
 | `PictureViewerConfig` | `PictureViewerConfig.cs` | `Config\picture-viewer\config.json`：`ScrollMode` / `WheelStepPixels` / `MiddleHoldMilliseconds` / `AutoUnloadOffscreen` / `ZoomPercent` / `InertiaEnabled` / `InertiaAccelerate` / `PagedWheel` / `PageTurnAnimation` / `LastFolder` |
+| `PictureFileAssociation` | `PictureFileAssociation.cs` | 双击图片打开：HKCU 文件关联（ProgId + OpenWithProgids + 各后缀默认值备份/还原）、状态文案、启动命令行判断 |
+| `PictureFilePathLaunch` | `PictureFileAssociation.cs` | 主程序 → 工具的一次性启动请求（`PendingImagePath`），VM 构造时取走 |
 | `PictureViewerView` | `Views/PictureViewerView.xaml.cs` | 连续模式：长带排版、可见范围解码 / 离屏释放、阅读 / 跨轴偏移换算、双轴拖拽 + 惯性、鼠标键盘 |
 | `PictureViewerView.Paged` | `Views/PictureViewerView.Paged.cs` | 翻页 / 单页视图（partial）：页号状态、双页渲染、翻页滑动动画、缩放平移、左右按钮、页码、连续↔翻页切换 |
-| `PictureViewerChecks` | 自检 | **120 项**：滚动数学 / 阅读偏移换算 / 缩放 / 跨轴拖拽 / 惯性采样与叠加 / 锚点状态机 / 翻页配对与排版 / 滚轮动作 / 页序 / 真扫临时图片目录 / 无头 VM / 配置 |
+| `PictureViewerChecks` | 自检 | **129 项**：滚动数学 / 阅读偏移换算 / 缩放 / 跨轴拖拽 / 惯性采样与叠加 / 锚点状态机 / 翻页配对与排版 / 滚轮动作 / 双击定位 / 文件关联纯逻辑 / 页序 / 真扫临时图片目录 / 无头 VM / 配置 |
 
 **核心概念：阅读偏移（不是 ScrollViewer 的物理偏移）**
 
@@ -1669,6 +1672,27 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 * 惯性只在**自己拖拽**松手后启动；滚轮 / 缩放 / 锚点 / 工具条点击 / 开始新的拖拽都会停下（`AbortInertia` /
   `CancelInertia`）；撞到边界的那一轴速度清零，不在边上震。
 * `YLT_PICTURE_ZOOM` / `YLT_PICTURE_CROSS` 是截图核对钩子（见第 0 节）。
+
+**双击图片打开 · 文件关联（v0.15.0）**
+
+* 启动参数：主程序 `App.OnStartup` 里用 `PictureFileAssociation.IsSupportedImageFile` 扫 `e.Args`，命中就把绝对路径写进
+  `PictureFilePathLaunch.PendingImagePath` 并直接打开「图片连续阅读器」。ViewModel **构造时取走并清空**（只生效一次），
+  View 在 `OnLoaded` 里 `LoadLaunchImageAsync()` → `LoadFolderAsync(同目录, 那张图)` → 照常按阅读方式重建。
+* 自动定位：加载时 VM 用 `FindPageIndex` 找到那张图的下标，放进 `_pendingPageIndex`；界面**只消费一次**
+  （`ConsumePendingPageIndex()`）：连续模式 `ScrollToPage` 用 `PictureScrollMath.ReadingOffsetForPage`
+  （普通方向 = 该页主轴起点；日式右→左 = 总长 − 该页末尾）滚到那张图开头；翻页 / 单页直接 `_pageIndex = 下标`。
+  ⚠ 别在 View 里按“第几张 × 平均长度”估算：每张图长度不同，必须用 `_slots[i].Start/MainLength` 算。
+* 文件关联：**只写 HKCU**（不需要管理员）——
+  `Software\Classes\YuLiangToolkit.PictureViewer`（ProgId + DefaultIcon + shell\open\command）+ `Applications\<exe>` + 各后缀的
+  `OpenWithProgids`（让「打开方式」里有本工具）；同时把各后缀 `Software\Classes\.ext` 的默认值改成 ProgId，
+  **改之前把原来的默认值备份到 ProgId\PreviousDefaults**，取消关联时还原（用户原来的默认程序不会丢）。
+* **绝对不要碰** `Explorer\FileExts\.ext\UserChoice`：Win10/11 这个键带哈希、程序改不了（硬写会失效/被还原）。
+  所以界面必须说清楚：如果系统默认程序（例如 WPS / 照片）已经占着，需要去「默认应用」确认一次；
+  设置面板里的「打开 Windows 默认应用设置」按钮就是 `ms-settings:defaultapps`。
+* 注册/注销结束都要 `SHChangeNotify(SHCNE_ASSOCCHANGED)`，否则资源管理器要等一会儿才认。
+* 关联状态文案会数一遍每个后缀的 `UserChoice`：有几个还是别的程序就提示「其中 N 种格式的默认程序还是别的应用」。
+* 无头自检只测纯逻辑（后缀表 / `BuildOpenCommand` 引号 / `IsSupportedImageFile` / 定位下标与只消费一次）；
+  **不在自检里写真实 HKCU**（会污染系统），关联开关用 UIA 实测。
 
 **阅读方式怎么选 · 翻页 / 单页视图（v0.14.0）**
 
@@ -2007,7 +2031,7 @@ Data/chat-room/
 # 1) 编译（0 警告 0 错误）
 .\build.ps1
 
-# 2) 轮子自检：1532 项行为逐条真跑（Data/Config 轮子 + 主页搜索排序 + 多级分类导航/面包屑
+# 2) 轮子自检：1541 项行为逐条真跑（Data/Config 轮子 + 主页搜索排序 + 多级分类导航/面包屑
 #    + 批量重命名规则/冲突/执行/撤销
 #    + Flash 下载器的站点解析/命名/ini/批量计划/真下载/本地服务器/自动下载
 #    + 联机聊天室的协议/CRC/流量上限/会话文件夹/傻瓜模式挑监听/双栈真连两族/回环真连一局
@@ -2122,6 +2146,8 @@ foreach ($m in "vertical","ltr","rtl") {
 #   放大后 measure 里 crossOffset 的上限应 > 0（= 另一个方向真的能滚，纵向能左右拖、横向能上下拖）
 #   翻页 / 单页：$env:YLT_PICTURE_MODE="spread-ltr"/"spread-rtl"/"single" + $env:YLT_PICTURE_PAGE="3"；
 #   双页页码 / 配对看 measure 的 pageIndex / left / right；左右按钮 / 方向键 / 滚轮翻页用 UIA Invoke 或手动点一下
+#   双击图片 / 命令行打开：Start-Process $exe -ArgumentList "`"<图片路径>`""；配 YLT_PICTURE_MODE 与 MEASURE，
+#   看 status 里的「已定位到第 N 张」与 readingOffset / pageIndex 是否对得上（文件关联开关用设置面板勾选实测）
 $env:YLT_PICTURE_ANCHOR="1"; $env:YLT_SHOT="shots\picture-anchor.png"
 Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
 Remove-Item Env:YLT_PICTURE_ANCHOR
@@ -2228,7 +2254,8 @@ git diff                        # 看未暂存改动
 
 | 版本 | 内容 |
 | --- | --- |
-| **v0.14.0**（当前） | **「图片连续阅读器」新增双页翻页 / 单页浏览，并把阅读方式挪进设置**（见 2.19）：① 阅读方式从 3 种扩到 **6 种**：连续滚动（纵向 / 横向左右）+ **双页翻页左→右**（中间两页，一次翻一张：右边移到左边、新的从右边进）、**双页翻页右→左**（日式镜像，整页往右滑）、**单页浏览**（左右按钮 / 滚轮 / 方向键）；② 工具条不再摆所有模式，只显示**当前方式按钮**（点它打开设置），切换统一在设置面板的「阅读方式」下拉里（以后加方式只改下拉）；③ 新增翻页设置：`PagedWheel`（滚轮 = 翻页 / 缩放）、`PageTurnAnimation`（约 0.19 秒滑动动画，默认开；只在 100% 未平移时播放）；④ 支持翻页模式下缩放 + 拖拽平移 + 惯性；左右按钮在日式模式自动互换语义，方向键 / PageUp/PageDown / 空格 / Home/End 可翻页，底部显示页码；⑤ 连续↔翻页切换保持位置（按比例/页号互算）；⑥ 新增 `PicturePaging` 纯逻辑（翻页配对 / 排版 / 平移夹取）与 `PictureViewerView.Paged.cs` partial；自检 1505 → **1532** 项（新增 27 项：6 种方式分类 / 双页配对 / 翻页步进 / 排版 / 平移夹取 / 滚轮动作 / 无头模式切换）。截图冒烟：双页左右 / 单页 / 1024 窄窗 / 设置面板 / 连续模式回归；UIA 实测左右按钮翻页与设置里切模式。版本号 0.13.0 → 0.14.0 |
+| **v0.15.0**（当前） | **「图片连续阅读器」支持双击图片直接打开（文件关联）**（见 2.19）：① 设置面板新增「文件关联」：勾选后把 .jpg / .jpeg / .png / .bmp / .gif / .webp / .tif / .tiff 登记到本工具（只写 HKCU，不需要管理员），可在「打开方式」里选本工具；② 双击图片（或把图片路径作为命令行参数）启动时，主程序直接进「图片连续阅读器」，加载这张图所在文件夹并**自动定位到它**：连续模式滚到那一张开头（日式模式按阅读偏移换算），翻页 / 单页模式直接翻到那一页；③ 关联前会备份各后缀原来的默认程序，取消勾选时还原；不硬碰系统保护的 UserChoice，界面提示去「默认应用」确认一次并给出按钮；④ 自检 1532 → **1541** 项（新增 9 项：ReadingOffsetForPage / 后缀表 / 打开命令引号 / 启动参数判断 / 定位与只消费一次）；UIA 实测关联勾选与注册表登记/还原、命令行启动定位截图。版本号 0.14.0 → 0.15.0 |
+| v0.14.0 | **「图片连续阅读器」新增双页翻页 / 单页浏览，并把阅读方式挪进设置**（见 2.19）：① 阅读方式从 3 种扩到 **6 种**：连续滚动（纵向 / 横向左右）+ **双页翻页左→右**（中间两页，一次翻一张：右边移到左边、新的从右边进）、**双页翻页右→左**（日式镜像，整页往右滑）、**单页浏览**（左右按钮 / 滚轮 / 方向键）；② 工具条不再摆所有模式，只显示**当前方式按钮**（点它打开设置），切换统一在设置面板的「阅读方式」下拉里（以后加方式只改下拉）；③ 新增翻页设置：`PagedWheel`（滚轮 = 翻页 / 缩放）、`PageTurnAnimation`（约 0.19 秒滑动动画，默认开；只在 100% 未平移时播放）；④ 支持翻页模式下缩放 + 拖拽平移 + 惯性；左右按钮在日式模式自动互换语义，方向键 / PageUp/PageDown / 空格 / Home/End 可翻页，底部显示页码；⑤ 连续↔翻页切换保持位置（按比例/页号互算）；⑥ 新增 `PicturePaging` 纯逻辑（翻页配对 / 排版 / 平移夹取）与 `PictureViewerView.Paged.cs` partial；自检 1505 → **1532** 项（新增 27 项：6 种方式分类 / 双页配对 / 翻页步进 / 排版 / 平移夹取 / 滚轮动作 / 无头模式切换）。截图冒烟：双页左右 / 单页 / 1024 窄窗 / 设置面板 / 连续模式回归；UIA 实测左右按钮翻页与设置里切模式。版本号 0.13.0 → 0.14.0 |
 | v0.13.0 | **「图片连续阅读器」加缩放 / 双轴自由拖拽 / 拖动惯性（越滑越快）**（见 2.19）：① 顶部工具条新增**百分比输入框（默认 100%，可自由改 25%~800%）+ 两个放大镜按钮（− / +，一步 10%）**，缩放作用于整条长带，`Ctrl+滚轮` 也能以画面中心缩放；**100% = 原来的铺满基准**（不是原图像素 1:1）。② 缩放后**另一个轴也能滚**：纵向模式可左右拖、横向模式可上下拖（`_crossOffset` + `Shift+滚轮`；图片宽高改为都显式给，否则 ScrollViewer 认为另一轴没得滚）。③ **拖动惯性**（`InertiaEnabled`，默认开）：松手后按甩动速度继续滑、指数衰减、太慢/到边界停；④ **惯性越滑越快**（`InertiaAccelerate`，默认开，JMComic2 手感）：下一次甩动把还在滑的残余速度**叠加**上去（封顶 6 px/ms），而不是清零重置。⑤ 纯逻辑抽成 `PictureInertia`（采样 / 衰减 / 叠加 / 上限），自检 1483 → **1505** 项（新增 22 项：缩放换算 / 跨轴拖拽 / 惯性采样 / 衰减 / 叠加 / 上限 / 无头缩放命令）。版本号 0.12.1 → 0.13.0 |
 | v0.12.1 | **修复「滚动方式下拉点不动」+ 鼠标事件归属**（见 2.19）：① 根因是工具为了让左键拖拽/中键锚点生效，在 `PreviewMouseDown` 里**按坐标**判断“在长带视口里”就把事件吃掉并抢鼠标捕获 —— ComboBox 下拉弹层是独立窗口，点下拉项时坐标恰好在视口上，于是点击被当成“开始拖拽”吃掉（`Mouse.Captured` 也被抢走），表现就是**下拉项点不动**。修法：改成看事件源（`IsFromViewport`）+ 别人握着鼠标捕获时整个事件都不碰。② 「滚动方式」从 ComboBox 换成**顶部工具条里三个分段按钮**（`SegmentedListBoxStyle`，点一下就切、少一个弹层）。③ 新增排错钩子 `YLT_PICTURE_INPUT_TRACE`（把鼠标按下/松开/丢捕获写进文件），顺手把 ListBox/ListBoxItem 加进键盘快捷键的“别抢键”名单。自检仍 **1483** 项（纯 UI 交互，靠截图 + UIA 选中第 3 个模式核对 config 已落盘为 `HorizontalRightToLeft`）。版本号 0.12.0 → 0.12.1 |
 | v0.12.0 | **新增「图片连续阅读器」**（`Tools.PictureViewer`，见 2.19）：把仓库根原来的 `PictureView` 小项目移植进来并扩展。① 一个文件夹的图片按页序**首尾相接拼成一条长带**（无间距、无分页），滚轮连续浏览，解决普通看图器一屏一张、条漫 / 长图要一张张点的痛点；② **三种滚动方式**：纵向（默认）/ **横向左→右**（中式漫画）/ **横向右→左**（日式漫画，第一张排在最右边）；横向模式下**滚轮直接左右滚**（不用按 Shift）、**左键按住可拖动画面**；③ **中键锚点两种玩法**：单点（按得短）→ 锚点留下、移动鼠标按离锚点的距离快速滚动、**再按任意键（左/中/右）消失**（PictureView 原行为）；按住（超过判定时长）→ 锚点出现、移动鼠标快速滚动、**一松手立刻消失** —— 两者用 `MiddleHoldMilliseconds`（默认 250ms）区分；④ 离屏图片自动释放（3 秒宽限）、按显示宽度解码、重建时用 generation 丢弃过期解码；⑤ 设置存 `Config\picture-viewer\config.json`；开发用 `YLT_PICTURE_DEMO` / `MODE` / `SCROLL` / `ANCHOR` / `SETTINGS` / `MEASURE`；⑥ 自检 1412 → **1483** 项（新增 71 项：滚动数学 / 阅读偏移↔物理偏移换算 / 锚点状态机 / 页序 / 真扫临时图片目录 / 无头 VM / 配置）；三种滚动方向 + 锚点 + 设置面板截图冒烟；移植来源 `PictureView/` 已移到桌面并加进 `.gitignore` 与 `DefaultItemExcludes`。版本号 0.11.0 → 0.12.0 |

@@ -35,6 +35,12 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
 
         ApplyModeOverrideFromEnvironment();
         ApplyZoomOverrideFromEnvironment();
+
+        // 双击图片启动（文件关联 / 命令行）时，主程序把图片路径放在这里；只生效一次。
+        _launchImagePath = PictureFilePathLaunch.PendingImagePath;
+        PictureFilePathLaunch.PendingImagePath = null;
+        _fileAssociationStatus = PictureFileAssociation.DescribeState();
+        OpenDefaultAppsCommand = new RelayCommand(_ => PictureFileAssociation.OpenDefaultAppsSettings());
     }
 
     // ---------------------------------------------------------------- 配置与选项
@@ -215,6 +221,9 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
     /// <summary>缩小 10%（工具条右侧放大镜 −）。</summary>
     public RelayCommand ZoomOutCommand { get; }
 
+    /// <summary>打开 Windows「默认应用」设置（文件关联的最后一步只能由用户确认）。</summary>
+    public RelayCommand OpenDefaultAppsCommand { get; }
+
     // ---------------------------------------------------------------- 加载
 
     /// <summary>弹文件夹对话框 → 加载。取消对话框时什么都不做。</summary>
@@ -228,13 +237,19 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
     /// 加载一个文件夹：后台读图片尺寸（只读文件头，不进内存），完成后换掉页清单并通知界面重建。
     /// 传进来的目录不存在 / 里面没图片时不会抛异常，只把状态文字改成提示。
     /// </summary>
-    public async Task LoadFolderAsync(string folder)
+    /// <param name="preferredImagePath">
+    /// 可选：双击 / 命令行指定要打开的那张图（不区分大小写）。加载完界面会**自动跳到它所在位置**；
+    /// 找不到（例如文件刚被删）就停在文件夹开头。
+    /// </param>
+    public async Task LoadFolderAsync(string folder, string? preferredImagePath = null)
     {
         if (string.IsNullOrWhiteSpace(folder)) return;
 
         var full = folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var name = Path.GetFileName(full);
         if (string.IsNullOrEmpty(name)) name = full;
+
+        _launchTargetFound = false;
 
         IsBusy = true;
         Progress = 0;
@@ -256,14 +271,20 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
             FolderPath = pages.Count > 0 ? full : "";
             if (pages.Count > 0 && Cfg.LastFolder != full) Cfg.LastFolder = full;
 
+            _pendingPageIndex = FindPageIndex(pages, preferredImagePath);
+            _launchTargetFound = _pendingPageIndex is not null;
             StatusText = pages.Count == 0
                 ? $"「{name}」里没有找到图片（支持 jpg / jpeg / png / bmp / gif / webp / tif / tiff）"
                 : $"已加载「{name}」共 {pages.Count} 张 · {PictureScrollModes.Describe(Cfg.ScrollModeEffective)}";
+            if (_pendingPageIndex is { } target && pages.Count > 0)
+                StatusText += $" · 已定位到第 {target + 1} 张";
         }
         catch (Exception ex)
         {
             Pages = Array.Empty<PicturePage>();
             FolderPath = "";
+            _pendingPageIndex = null;
+            _launchTargetFound = false;
             StatusText = $"读取「{name}」失败：{ex.Message}";
         }
         finally
@@ -273,6 +294,59 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
             ProgressText = "";
             PagesChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    /// <summary>页清单里找指定图片（完整路径、不区分大小写）；找不到返回 null。</summary>
+    private static int? FindPageIndex(IReadOnlyList<PicturePage> pages, string? preferredImagePath)
+    {
+        if (string.IsNullOrWhiteSpace(preferredImagePath) || pages.Count == 0) return null;
+
+        try
+        {
+            var target = Path.GetFullPath(preferredImagePath.Trim().Trim('"'));
+            for (var i = 0; i < pages.Count; i++)
+            {
+                if (string.Equals(pages[i].FilePath, target, StringComparison.OrdinalIgnoreCase)) return i;
+            }
+        }
+        catch { /* 路径不合法就当没指定 */ }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 双击图片启动时：取走主程序放下的图片路径，加载它所在文件夹并记住要定位的那一张。
+    /// 没传图片就什么都不做。
+    /// </summary>
+    public async Task LoadLaunchImageAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_launchImagePath)) return;
+
+        var path = _launchImagePath;
+        _launchImagePath = null;
+
+        string? folder;
+        try { folder = Path.GetDirectoryName(Path.GetFullPath(path.Trim().Trim('"'))); }
+        catch { folder = null; }
+
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            StatusText = $"无法识别要打开的图片路径：{path}";
+            return;
+        }
+
+        await LoadFolderAsync(folder, path);
+        // _pendingPageIndex 可能已经被界面在 PagesChanged 里取走（取一次就清空），所以用 _launchTargetFound 判断
+        if (!_launchTargetFound)
+            StatusText = $"已加载「{Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))}」，但没找到刚才那张图，已停在开头。";
+    }
+
+    /// <summary>界面取走「加载后要定位到第几张」（取一次就清空，避免每次重建都跳回去）。</summary>
+    public int? ConsumePendingPageIndex()
+    {
+        var index = _pendingPageIndex;
+        _pendingPageIndex = null;
+        return index;
     }
 
     /// <summary>
@@ -295,6 +369,49 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
             StatusText = $"演示图片生成失败：{ex.Message}";
         }
     }
+
+    // ---------------------------------------------------------------- 双击图片打开 / 文件关联
+
+    private string? _launchImagePath;
+    private bool _launchTargetFound;
+    private int? _pendingPageIndex;
+    private bool? _fileAssociationEnabled;
+    private string _fileAssociationStatus = "";
+
+    /// <summary>这次创建 ViewModel 时是不是带着「要打开的图片」（主程序从命令行取到的）。</summary>
+    public bool HasLaunchImage => !string.IsNullOrWhiteSpace(_launchImagePath);
+
+    /// <summary>是否已把图片后缀登记到本工具（读注册表；带缓存）。</summary>
+    public bool IsFileAssociationEnabled
+    {
+        get
+        {
+            _fileAssociationEnabled ??= PictureFileAssociation.IsRegistered();
+            return _fileAssociationEnabled.Value;
+        }
+        set
+        {
+            var current = IsFileAssociationEnabled;
+            if (value == current) return;
+
+            var result = value ? PictureFileAssociation.Register() : PictureFileAssociation.Unregister();
+            _fileAssociationStatus = result.Message;
+            OnPropertyChanged(nameof(FileAssociationStatus));
+
+            if (!result.Success)
+            {
+                // 失败时勾选状态保持原样（比如注册表被策略锁住）
+                OnPropertyChanged();
+                return;
+            }
+
+            _fileAssociationEnabled = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>文件关联区的状态说明（已关联多少个后缀 / 需不需要去系统里确认默认程序）。</summary>
+    public string FileAssociationStatus => _fileAssociationStatus;
 
     // ---------------------------------------------------------------- 环境变量（开发用）
 

@@ -188,13 +188,41 @@ public partial class PictureViewerView : UserControl
         vm.ZoomChanged -= OnZoomChanged;
         vm.ZoomChanged += OnZoomChanged;
 
-        if (vm.HasPages) await ApplyReadingModeAsync(keepProgress: true);
+        // 双击图片启动（文件关联 / 命令行带了一张图）：先加载它所在的文件夹，再跳到那一张。
+        var launchRequest = vm.HasLaunchImage;
+        if (launchRequest)
+        {
+            await vm.LoadLaunchImageAsync();
+            await ApplyReadingModeAsync(keepProgress: true);
+        }
+        else if (vm.HasPages)
+        {
+            await ApplyReadingModeAsync(keepProgress: true);
+        }
 
-        if (!_demoStarted)
+        // 演示图片只在「没通过命令行指定图片」时加载，免得把用户双击的那张替换掉
+        if (!launchRequest && !_demoStarted)
         {
             _demoStarted = true;
             await vm.TryStartDemoAsync();
         }
+    }
+
+    /// <summary>
+    /// 把长带滚动到第 index 张的**开头**（双击图片打开时用）。
+    /// 普通方向直接取该页主轴起点；日式右→左用「总长 − 该页末尾」换算成阅读偏移。
+    /// </summary>
+    private void ScrollToPage(int index)
+    {
+        if (index < 0 || index >= _slots.Count || _slots.Count == 0) return;
+
+        var totalLength = _slots[^1].Start + _slots[^1].MainLength;
+        var slot = _slots[index];
+        var reading = PictureScrollMath.ReadingOffsetForPage(
+            PictureScrollModes.IsReverse(Mode), totalLength, slot.Start, slot.MainLength);
+
+        SetReadingOffset(reading);
+        UpdateReadingProgress();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -338,6 +366,12 @@ public partial class PictureViewerView : UserControl
             UpdateReadingProgress();
             ProcessVisibleRange();
             ApplyDebugHooks();
+
+            // 双击图片启动：长带搭好后直接滚到指定的那一张（只消费一次，换模式不会反复跳）
+            if (vm.ConsumePendingPageIndex() is { } launchPage)
+            {
+                ScrollToPage(launchPage);
+            }
         }
         finally
         {

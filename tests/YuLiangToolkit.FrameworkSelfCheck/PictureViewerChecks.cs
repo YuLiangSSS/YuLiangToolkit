@@ -114,6 +114,12 @@ internal static class PictureViewerChecks
             && PicturePaging.ButtonDirections(PictureScrollMode.SpreadRightToLeft) == (false, true)
             && PicturePaging.ButtonDirections(PictureScrollMode.SinglePage) == (true, false));
 
+        // 双击图片打开 → 自动跳到那一张：普通方向取该页主轴起点，日式右→左从右边量
+        Check("[图片] 某页开头的阅读偏移：普通方向 = 页起点",
+            PictureScrollMath.ReadingOffsetForPage(reverse: false, totalLength: 400, pageStart: 100, pageLength: 80) == 100);
+        Check("[图片] 某页开头的阅读偏移：日式反向 = 总长 − 该页末尾",
+            PictureScrollMath.ReadingOffsetForPage(reverse: true, totalLength: 400, pageStart: 100, pageLength: 80) == 220);
+
         Check("[图片] 翻页模式滚轮动作：默认翻页、坏值归一到翻页",
             PictureWheelActions.Normalize(PictureWheelAction.Zoom) == PictureWheelAction.Zoom
             && PictureWheelActions.Normalize((PictureWheelAction)99) == PictureWheelAction.TurnPage
@@ -478,6 +484,39 @@ internal static class PictureViewerChecks
         Check("[图片] 加载完通知界面重建长带（PagesChanged）", pagesChanged > 0);
         Check("[图片] 加载完不在忙碌状态、状态文字是人话",
             !vm.IsBusy && vm.StatusText.Contains("3"), vm.StatusText);
+
+        // ---- 双击图片打开（文件关联 / 命令行） ----
+        Check("[图片] 文件关联：支持的后缀表合法（小写、带点、无重复、含常见格式）",
+            PictureFileAssociation.SupportedExtensions.Count == 8
+            && PictureFileAssociation.SupportedExtensions.All(e => e.StartsWith('.') && e == e.ToLowerInvariant())
+            && PictureFileAssociation.SupportedExtensions.Distinct().Count() == 8
+            && PictureFileAssociation.SupportedExtensions.Contains(".png")
+            && PictureFileAssociation.SupportedExtensions.Contains(".webp"));
+        Check("[图片] 文件关联：后缀匹配不区分大小写、不认识的扩展名拒绝",
+            PictureFileAssociation.IsSupportedExtension(".PNG")
+            && PictureFileAssociation.IsSupportedExtension(" .Jpeg ")
+            && !PictureFileAssociation.IsSupportedExtension(".jxl")
+            && !PictureFileAssociation.IsSupportedExtension(""));
+        Check("[图片] 文件关联：打开命令给 exe 和 %1 都加引号（路径有空格也不会坏）",
+            PictureFileAssociation.BuildOpenCommand(@"C:\Program Files\YuLiang Toolkit\app.exe")
+            == "\"C:\\Program Files\\YuLiang Toolkit\\app.exe\" \"%1\"");
+        Check("[图片] 文件关联：只有真实存在的受支持图片才当作启动参数",
+            PictureFileAssociation.IsSupportedImageFile(Path.Combine(folder, "1.png"))
+            && !PictureFileAssociation.IsSupportedImageFile(Path.Combine(folder, "不存在.png"))
+            && !PictureFileAssociation.IsSupportedImageFile(Path.Combine(folder, "1.txt")));
+
+        var launchTarget = Path.Combine(folder, "10.png");
+        vm.LoadFolderAsync(folder, launchTarget).GetAwaiter().GetResult();
+        Check("[图片] 双击打开：加载所在文件夹并定位到指定图片（10.png 是第 3 张）",
+            vm.Pages.Count == 3
+            && vm.ConsumePendingPageIndex() == 2
+            && vm.StatusText.Contains("已定位到第 3 张"),
+            vm.StatusText);
+        Check("[图片] 定位只消费一次（换模式 / 重建不会反复跳回去）",
+            vm.ConsumePendingPageIndex() is null);
+        vm.LoadFolderAsync(folder, Path.Combine(folder, "没有这张.png")).GetAwaiter().GetResult();
+        Check("[图片] 指定的图不在文件夹里：不定位（停在开头）",
+            vm.ConsumePendingPageIndex() is null && !vm.StatusText.Contains("已定位"));
 
         // ---- 阅读方式 / 翻页设置（无头跑） ----
         vm.Cfg.ScrollMode = PictureScrollMode.Vertical;   // 前面的配置检查把它改成了横向，这里先复位

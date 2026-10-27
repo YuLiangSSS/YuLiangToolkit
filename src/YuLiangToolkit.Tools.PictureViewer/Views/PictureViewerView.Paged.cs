@@ -70,6 +70,12 @@ public partial class PictureViewerView
                 _pageIndex = 0;
             }
 
+            // 双击图片启动：翻页模式直接定位到那一张
+            if (vm.ConsumePendingPageIndex() is { } launchPage)
+            {
+                _pageIndex = PicturePaging.NormalizePageIndex(launchPage, vm.Pages.Count);
+            }
+
             _pagedActive = true;
             _pagedGeneration++;
             _generation++;

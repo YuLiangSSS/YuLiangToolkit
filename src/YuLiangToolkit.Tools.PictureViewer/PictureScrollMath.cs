@@ -151,6 +151,18 @@ public static class PictureScrollMath
     public static int StepZoomPercent(int currentPercent, int steps)
         => EffectiveZoomPercent(EffectiveZoomPercent(currentPercent) + steps * ZoomStepPercent);
 
+    /// <summary>
+    /// 某张图**开头**对应的阅读偏移（「双击图片打开后自动跳到那一张」用）。
+    /// 普通方向 = 该页在主轴上的起点；日式右→左 = 整条长带从右边量过来的距离。
+    /// 最后再由 <see cref="ClampOffset"/> / 界面的 SetReadingOffset 夹到可滚范围内。
+    /// </summary>
+    public static double ReadingOffsetForPage(bool reverse, double totalLength, double pageStart, double pageLength)
+    {
+        if (totalLength <= 0 || double.IsNaN(totalLength)) return 0;
+        var reading = reverse ? totalLength - (pageStart + pageLength) : pageStart;
+        return ClampOffset(reading, totalLength);
+    }
+
     // ---------------------------------------------------------------- 阅读偏移 ↔ ScrollViewer 物理偏移
     // 这三个函数是「日式右→左」的关键：图片在物理上是反着摆的，ScrollViewer 的物理偏移从最左边算，
     // 而界面里的滚轮 / 拖拽 / 中键只认「阅读偏移」。放在这里是为了自检能直接断言（见 AGENTS 2.19）。

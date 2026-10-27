@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using YuLiangToolkit.App.ViewModels;
 using YuLiangToolkit.App.Views;
@@ -5,6 +6,7 @@ using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Services;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Core.Tools;
+using YuLiangToolkit.Tools.PictureViewer;
 
 namespace YuLiangToolkit.App;
 
@@ -81,6 +83,18 @@ public partial class App : Application
         {
             var tool = tools.FirstOrDefault(t => t.Id == toolId);
             if (tool is not null) vm.OpenToolCommand.Execute(tool);
+        }
+
+        // 双击图片文件启动（文件关联 / 命令行参数）：直接进「图片连续阅读器」，
+        // 加载这张图所在文件夹，并定位到它（连续滚动滚过去、翻页模式直接翻到那一页）。
+        var launchImage = e.Args.FirstOrDefault(PictureFileAssociation.IsSupportedImageFile);
+        if (!string.IsNullOrWhiteSpace(launchImage))
+        {
+            try { PictureFilePathLaunch.PendingImagePath = Path.GetFullPath(launchImage.Trim().Trim('"')); }
+            catch { PictureFilePathLaunch.PendingImagePath = launchImage; }
+
+            var pictureTool = tools.FirstOrDefault(t => t.Id == PictureViewerConfig.ToolId);
+            if (pictureTool is not null) vm.OpenToolCommand.Execute(pictureTool);
         }
 
         // 开发调试：YLT_OPEN_SETTINGS=1 打开「主页设置」窗口（配合 YLT_SHOT 截那个窗口本身）
