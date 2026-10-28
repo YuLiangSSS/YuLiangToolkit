@@ -253,6 +253,7 @@ public sealed class ParticleEngine
             Y = EmitterY,
             Angle = _random.NextDouble() * Math.PI * 2,
             Speed = 1 + _random.NextDouble() * 2,          // 早期版本：random 1~3
+            ColorMix = _random.NextDouble(),                // 0~1：界面层用来在两种自定义颜色之间取色
             Age = 0,
             LifeSpan = _random.Next((int)MinLifeSpan, (int)MaxLifeSpan),   // 早期版本：30~89
         });

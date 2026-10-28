@@ -2,6 +2,7 @@
 // 运行： dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
 // （默认在临时目录里造数据根，不碰仓库的 Data/Config；退出码 0 = 全部通过）
 using System.IO;
+using System.Windows.Media;
 using YuLiangToolkit.App.Models;
 using YuLiangToolkit.App.ViewModels;
 using YuLiangToolkit.Core.Configuration;
@@ -238,6 +239,31 @@ shell.CloseAction = ShellCloseAction.Exit;
 Thread.Sleep(900);
 Check("关闭行为改回「关闭应用」后落盘",
     JsonFileStore.Read<ShellConfig>(shellStore.FilePath)?.CloseAction == ShellCloseAction.Exit);
+
+// ---------- 17.2 粒子颜色（主页设置「粒子颜色」，见 2.16） ----------
+var defaultShell = new ShellConfig();
+Check("粒子颜色默认：自定义关、两种颜色都启用且是默认值",
+    !defaultShell.ParticleCustomColors
+    && defaultShell.ParticleColor1Enabled && defaultShell.ParticleColor2Enabled
+    && defaultShell.ParticleColor1 == "#F2EEFF" && defaultShell.ParticleColor2 == "#8FB4FF");
+
+Check("颜色文本解析：#RRGGBB / 省略 # / 大小写都能认，坏值回退",
+    ParticleColors.Parse("#4C8DFF", Colors.Black) == Color.FromRgb(0x4C, 0x8D, 0xFF)
+    && ParticleColors.Parse("4c8dff", Colors.Black) == Color.FromRgb(0x4C, 0x8D, 0xFF)
+    && ParticleColors.Parse("坏值", Colors.Black) == Colors.Black
+    && ParticleColors.ToHex(Color.FromRgb(0x4C, 0x8D, 0xFF)) == "#4C8DFF");
+
+shell.ParticleCustomColors = true;
+shell.ParticleColor1Enabled = false;
+shell.ParticleColor1 = "#FF5A5A";
+shell.ParticleColor2 = "#9F8FFF";
+Thread.Sleep(900);
+var savedColors = JsonFileStore.Read<ShellConfig>(shellStore.FilePath);
+Check("粒子颜色设置自动落盘并读回（颜色按 #RRGGBB 存）",
+    savedColors is { ParticleCustomColors: true, ParticleColor1Enabled: false, ParticleColor2Enabled: true }
+    && savedColors.ParticleColor1 == "#FF5A5A" && savedColors.ParticleColor2 == "#9F8FFF"
+    && File.ReadAllText(shellStore.FilePath).Contains("\"#FF5A5A\""),
+    JsonFileStore.Serialize(savedColors).Replace(Environment.NewLine, " "));
 
 // ---------- 18. 批量重命名：单条规则的行为（纯逻辑，不碰界面） ----------
 // 规则清单就是一张 RenameRule 数组，BuildName 按数组顺序逐条套用。

@@ -49,6 +49,23 @@ public sealed class ShellConfig : ToolConfig
     /// <summary>是否在界面上绘制鼠标粒子效果（主页设置里的开关，默认开）。</summary>
     public bool ShowParticles { get; set; } = true;
 
+    // ---------- 粒子颜色（v0.22.0，主页设置「粒子颜色」卡片） ----------
+
+    /// <summary>是否启用自定义粒子颜色（默认关 = 原来的淡紫白，行为完全不变）。</summary>
+    public bool ParticleCustomColors { get; set; }
+
+    /// <summary>颜色 1 是否启用（默认开，但总开关关着时不生效）。</summary>
+    public bool ParticleColor1Enabled { get; set; } = true;
+
+    /// <summary>颜色 2 是否启用；只启用其中一种时粒子是单色，两种都启用时在区间内随机取色。</summary>
+    public bool ParticleColor2Enabled { get; set; } = true;
+
+    /// <summary>颜色 1（<c>#RRGGBB</c>）。</summary>
+    public string ParticleColor1 { get; set; } = "#F2EEFF";
+
+    /// <summary>颜色 2（<c>#RRGGBB</c>）。</summary>
+    public string ParticleColor2 { get; set; } = "#8FB4FF";
+
     /// <summary>
     /// 点窗口右上角 × 时的行为（主页设置里的选项，默认 <see cref="ShellCloseAction.Exit"/> = 关闭应用）。
     /// 选 <see cref="ShellCloseAction.MinimizeToTray"/> 后 × 只把窗口藏到托盘，应用继续在后台运行。

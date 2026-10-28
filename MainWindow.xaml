@@ -161,10 +161,15 @@
         </Border>
 
         <!-- 鼠标粒子覆盖层：铺满整个窗口（含标题栏 / 状态栏），不吃鼠标事件。
-             IsActive 绑主页设置里的 ParticlesEnabled（默认开，存 Config\shell\config.json）。
-             控件本身在 YuLiangToolkit.Core.Controls.ParticleOverlay（particle 队友实现，见其类注释）。 -->
+             IsActive 绑主页设置里的 ParticlesEnabled（默认开，存 Config\shell\config.json）；
+             自定义颜色：总开关 + 两种颜色 + 各自是否启用（只启用一种 = 单色粒子），见 2.16。 -->
         <core:ParticleOverlay Grid.RowSpan="4" Panel.ZIndex="900"
                               IsHitTestVisible="False"
-                              IsActive="{Binding ParticlesEnabled}" />
+                              IsActive="{Binding ParticlesEnabled}"
+                              UseCustomColors="{Binding ParticleCustomColorsEnabled}"
+                              Color1="{Binding ParticleColor1Value}"
+                              Color2="{Binding ParticleColor2Value}"
+                              UseColor1="{Binding ParticleColor1Enabled}"
+                              UseColor2="{Binding ParticleColor2Enabled}" />
     </Grid>
 </Window>

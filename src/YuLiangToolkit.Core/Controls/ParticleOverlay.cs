@@ -28,6 +28,12 @@ namespace YuLiangToolkit.Core.Controls;
 /// 有深色主题合适的默认值，一般不用写。控件自己会兜底 <c>IsHitTestVisible = false</c>，但 XAML 里
 /// 顺手写上更直观。</para>
 ///
+/// <para><b>自定义颜色（v0.22.0）</b>：<see cref="UseCustomColors"/> = true 后由
+/// <see cref="Color1"/> / <see cref="Color2"/> / <see cref="UseColor1"/> / <see cref="UseColor2"/> 决定取色：
+/// 只启用一种 → 单色；两种都启用 → 每颗粒子生成时的随机 <see cref="Particle.ColorMix"/> 在两种颜色之间
+/// 线性插值（用 <see cref="ParticleColorRange"/> 算）；两种都不启用 → 退回默认淡紫白。
+/// 画刷按「颜色档 × 透明度档」预生成，切换颜色只重建一次调色板，绘制时仍零分配。</para>
+///
 /// <para><b>行为</b>：鼠标在窗口内 → 每帧从鼠标位置生成粒子（跟随移动）；左键 → 速度 + 数量爆发；
 /// 右键 → 数量爆发；鼠标离开窗口 / 窗口失活 / 最小化 → 暂停并清空；<see cref="IsActive"/> = false →
 /// 立即清空并停掉渲染循环（<c>CompositionTarget.Rendering</c> 只是订阅，空闲时不会自己跑）。</para>
@@ -68,6 +74,42 @@ public sealed class ParticleOverlay : FrameworkElement
         new FrameworkPropertyMetadata(Color.FromRgb(0xC9, 0xBD, 0xFF),
             FrameworkPropertyMetadataOptions.AffectsRender, OnColorChanged));
 
+    // ---------- 自定义粒子颜色（v0.22.0） ----------
+    //
+    // 语义（主页设置「粒子颜色」卡片直接绑这几个 DP）：
+    //   UseCustomColors=false          → 用 ParticleColor / GlowColor（原来的淡紫白，行为不变）；
+    //   UseCustomColors=true, 只勾一种 → 粒子固定是那种颜色（柔光用同色）；
+    //   UseCustomColors=true, 勾两种   → 每颗粒子生成时的随机 ColorMix 在两种颜色之间线性插值；
+    //   两种都没勾                     → 退回默认淡紫白（界面会提示）。
+    // 画刷按「颜色档 × 透明度档」预生成（冻结），OnRender 里只查表，保持每帧零分配。
+
+    /// <summary>是否启用自定义粒子颜色（默认 false = 原来的淡紫白）。</summary>
+    public static readonly DependencyProperty UseCustomColorsProperty = DependencyProperty.Register(
+        nameof(UseCustomColors), typeof(bool), typeof(ParticleOverlay),
+        new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsRender, OnColorChanged));
+
+    /// <summary>自定义颜色 1（默认 <c>#F2EEFF</c>）。</summary>
+    public static readonly DependencyProperty Color1Property = DependencyProperty.Register(
+        nameof(Color1), typeof(Color), typeof(ParticleOverlay),
+        new FrameworkPropertyMetadata(Color.FromRgb(0xF2, 0xEE, 0xFF),
+            FrameworkPropertyMetadataOptions.AffectsRender, OnColorChanged));
+
+    /// <summary>自定义颜色 2（默认 <c>#8FB4FF</c>）。</summary>
+    public static readonly DependencyProperty Color2Property = DependencyProperty.Register(
+        nameof(Color2), typeof(Color), typeof(ParticleOverlay),
+        new FrameworkPropertyMetadata(Color.FromRgb(0x8F, 0xB4, 0xFF),
+            FrameworkPropertyMetadataOptions.AffectsRender, OnColorChanged));
+
+    /// <summary>颜色 1 是否参与取色（默认 true）。</summary>
+    public static readonly DependencyProperty UseColor1Property = DependencyProperty.Register(
+        nameof(UseColor1), typeof(bool), typeof(ParticleOverlay),
+        new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.AffectsRender, OnColorChanged));
+
+    /// <summary>颜色 2 是否参与取色（默认 true；只勾一种时是单色）。</summary>
+    public static readonly DependencyProperty UseColor2Property = DependencyProperty.Register(
+        nameof(UseColor2), typeof(bool), typeof(ParticleOverlay),
+        new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.AffectsRender, OnColorChanged));
+
     /// <summary>是否启用粒子效果。见 <see cref="IsActiveProperty"/>。</summary>
     public bool IsActive
     {
@@ -89,10 +131,48 @@ public sealed class ParticleOverlay : FrameworkElement
         set => SetValue(GlowColorProperty, value);
     }
 
+    /// <summary>是否启用自定义粒子颜色，见 <see cref="UseCustomColorsProperty"/>。</summary>
+    public bool UseCustomColors
+    {
+        get => (bool)GetValue(UseCustomColorsProperty);
+        set => SetValue(UseCustomColorsProperty, value);
+    }
+
+    /// <summary>自定义颜色 1，见 <see cref="Color1Property"/>。</summary>
+    public Color Color1
+    {
+        get => (Color)GetValue(Color1Property);
+        set => SetValue(Color1Property, value);
+    }
+
+    /// <summary>自定义颜色 2，见 <see cref="Color2Property"/>。</summary>
+    public Color Color2
+    {
+        get => (Color)GetValue(Color2Property);
+        set => SetValue(Color2Property, value);
+    }
+
+    /// <summary>颜色 1 是否参与取色，见 <see cref="UseColor1Property"/>。</summary>
+    public bool UseColor1
+    {
+        get => (bool)GetValue(UseColor1Property);
+        set => SetValue(UseColor1Property, value);
+    }
+
+    /// <summary>颜色 2 是否参与取色，见 <see cref="UseColor2Property"/>。</summary>
+    public bool UseColor2
+    {
+        get => (bool)GetValue(UseColor2Property);
+        set => SetValue(UseColor2Property, value);
+    }
+
     // ================================================================== 常量 / 字段
 
     /// <summary>透明度调色板的档数：预生成 N 个冻结画刷，绘制时按 alpha 查表，避免每帧 new 画刷。</summary>
     private const int PaletteLevels = 32;
+
+    /// <summary>两种自定义颜色之间切几档（12 档肉眼看就是连续渐变；档数越多画刷越多）。</summary>
+    private const int ColorBuckets = 12;
 
     /// <summary>柔光外圈的最大不透明度（很低，只是让边缘柔和一点）。</summary>
     private const double GlowMaxAlpha = 0.22;
@@ -105,8 +185,12 @@ public sealed class ParticleOverlay : FrameworkElement
     /// <summary>开发调试：<c>YLT_PARTICLE_DEMO=1</c> 时不用鼠标、按固定轨迹自动发射（供截图验收）。</summary>
     private readonly bool _demoMode = IsDemoModeEnabled();
 
-    private Brush[] _coreBrushes;
-    private Brush[] _glowBrushes;
+    /// <summary>颜色档数 × 透明度档数的冻结画刷表；第一维是颜色档（1 = 单色 / 默认）。</summary>
+    private Brush[,] _coreBrushes = null!;
+    private Brush[,] _glowBrushes = null!;
+
+    /// <summary>当前颜色档数（= <see cref="_coreBrushes"/> 第一维长度，缓存下来避免每帧查）。</summary>
+    private int _colorCount = 1;
 
     private Window? _window;
     private bool _loaded;
@@ -130,8 +214,7 @@ public sealed class ParticleOverlay : FrameworkElement
         Focusable = false;
         ClipToBounds = true;
 
-        _coreBrushes = BuildPalette(ParticleColor, 1.0);
-        _glowBrushes = BuildPalette(GlowColor, GlowMaxAlpha);
+        RebuildPalettes();
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -519,15 +602,16 @@ public sealed class ParticleOverlay : FrameworkElement
 
             var center = new Point(particle.X, particle.Y);
             var brushIndex = AlphaBucket(particle.Alpha);
+            var colorIndex = ColorBucket(particle.ColorMix);
 
             // 柔光只在圆点还够大时画，省掉大量"看不见的小点"的绘制开销
             if (radius >= 1.2)
             {
                 var glowRadius = radius * GlowRadiusScale + 0.5;
-                drawingContext.DrawEllipse(_glowBrushes[brushIndex], null, center, glowRadius, glowRadius);
+                drawingContext.DrawEllipse(_glowBrushes[colorIndex, brushIndex], null, center, glowRadius, glowRadius);
             }
 
-            drawingContext.DrawEllipse(_coreBrushes[brushIndex], null, center, radius, radius);
+            drawingContext.DrawEllipse(_coreBrushes[colorIndex, brushIndex], null, center, radius, radius);
         }
     }
 
@@ -538,10 +622,70 @@ public sealed class ParticleOverlay : FrameworkElement
         overlay.InvalidateVisual();
     }
 
+    /// <summary>
+    /// 按当前设置重建「颜色档 × 透明度档」的冻结画刷表。
+    /// 开关 / 颜色一变就重建一次（不是每帧），然后重绘把上一帧擦掉。
+    /// </summary>
     private void RebuildPalettes()
     {
-        _coreBrushes = BuildPalette(ParticleColor, 1.0);
-        _glowBrushes = BuildPalette(GlowColor, GlowMaxAlpha);
+        var (coreColors, glowColors) = ResolvePaletteColors();
+        _colorCount = coreColors.Count;
+        _coreBrushes = new Brush[_colorCount, PaletteLevels];
+        _glowBrushes = new Brush[_colorCount, PaletteLevels];
+
+        for (var colorIndex = 0; colorIndex < _colorCount; colorIndex++)
+        {
+            var core = BuildPalette(coreColors[colorIndex], 1.0);
+            var glow = BuildPalette(glowColors[colorIndex], GlowMaxAlpha);
+            for (var alphaIndex = 0; alphaIndex < PaletteLevels; alphaIndex++)
+            {
+                _coreBrushes[colorIndex, alphaIndex] = core[alphaIndex];
+                _glowBrushes[colorIndex, alphaIndex] = glow[alphaIndex];
+            }
+        }
+    }
+
+    /// <summary>按当前设置算出要预生成的颜色档列表（主色 + 柔光色各一份、数量相同）。</summary>
+    private (List<Color> Core, List<Color> Glow) ResolvePaletteColors()
+    {
+        var core = new List<Color>(ColorBuckets);
+        var glow = new List<Color>(ColorBuckets);
+
+        if (!UseCustomColors || (!UseColor1 && !UseColor2))
+        {
+            // 没开自定义 / 两种都没勾：原来的淡紫白（主色和柔光色分开）
+            core.Add(ParticleColor);
+            glow.Add(GlowColor);
+            return (core, glow);
+        }
+
+        if (!UseColor1 || !UseColor2)
+        {
+            // 只启用了一种：单色粒子（柔光用同色），不参与随机混色
+            var only = UseColor1 ? Color1 : Color2;
+            core.Add(only);
+            glow.Add(only);
+            return (core, glow);
+        }
+
+        // 两种都启用：在 Color1 → Color2 之间切 ColorBuckets 档，粒子按随机 ColorMix 落档
+        for (var i = 0; i < ColorBuckets; i++)
+        {
+            var t = ColorBuckets <= 1 ? 0 : i / (double)(ColorBuckets - 1);
+            var color = ParticleColorRange.Lerp(Color1, Color2, t);
+            core.Add(color);
+            glow.Add(color);
+        }
+
+        return (core, glow);
+    }
+
+    /// <summary>把粒子的随机 ColorMix 映射到颜色档下标（单色 / 默认时永远是 0）。</summary>
+    private int ColorBucket(double colorMix)
+    {
+        if (_colorCount <= 1) return 0;
+        var index = (int)Math.Round(Math.Clamp(colorMix, 0.0, 1.0) * (_colorCount - 1));
+        return Math.Clamp(index, 0, _colorCount - 1);
     }
 
     /// <summary>

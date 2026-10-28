@@ -1,3 +1,4 @@
+using System.Windows.Media;
 using YuLiangToolkit.Core.Particles;
 
 namespace YuLiangToolkit.FrameworkSelfCheck;
@@ -36,6 +37,7 @@ internal static class ParticleChecks
         CheckFrameStep(Check);
         CheckCap(Check);
         CheckDeterminism(Check);
+        CheckColors(Check);
         CheckRobustness(Check);
     }
 
@@ -395,6 +397,39 @@ internal static class ParticleChecks
                       || other.Particles.Zip(first.Particles).Any(pair =>
                           pair.First.X != pair.Second.X || pair.First.Speed != pair.Second.Speed);
         check("不同随机种子 → 结果不同（随机方向/寿命真的随机）", differs);
+    }
+
+    // ---------------------------------------------------------------- 颜色
+
+    /// <summary>自定义颜色：粒子带 0~1 的随机混色系数，且两种颜色的插值数学正确（v0.22.0）。</summary>
+    private static void CheckColors(CheckFn check)
+    {
+        var engine = Running(seed: 9);
+        for (var i = 0; i < 300; i++) engine.Update();
+
+        check("每个粒子都带 0~1 的随机颜色混合系数",
+            engine.Particles.Count > 0 && engine.Particles.All(p => p.ColorMix >= 0 && p.ColorMix <= 1));
+        var minMix = engine.Particles.Min(p => p.ColorMix);
+        var maxMix = engine.Particles.Max(p => p.ColorMix);
+        check("颜色混合系数真的随机分布（不是全 0 / 全 1）",
+            minMix < 0.2 && maxMix > 0.8, $"范围 {minMix:0.###} ~ {maxMix:0.###}");
+
+        var first = Color.FromRgb(0x10, 0x20, 0x30);
+        var second = Color.FromRgb(0xF0, 0xA0, 0x60);
+        check("颜色插值：0 = 颜色 1，1 = 颜色 2",
+            ParticleColorRange.Lerp(first, second, 0) == first
+            && ParticleColorRange.Lerp(first, second, 1) == second);
+        var mid = ParticleColorRange.Lerp(first, second, 0.5);
+        check("颜色插值：0.5 = 两色每个通道的中点",
+            mid.R == 0x80 && mid.G == 0x60 && mid.B == 0x48,
+            $"#{mid.R:X2}{mid.G:X2}{mid.B:X2}");
+        check("颜色插值：越界 / NaN 会被夹住（不会出现非法颜色）",
+            ParticleColorRange.Lerp(first, second, -1) == first
+            && ParticleColorRange.Lerp(first, second, 2) == second
+            && ParticleColorRange.Lerp(first, second, double.NaN) == first);
+        check("只启用一种颜色时固定返回那一种（不做随机）",
+            ParticleColorRange.Resolve(0.9, first, second, onlyOne: true) == first
+            && ParticleColorRange.Resolve(0.1, second, first, onlyOne: true) == second);
     }
 
     // ---------------------------------------------------------------- 健壮性

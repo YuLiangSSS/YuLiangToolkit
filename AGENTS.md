@@ -4,7 +4,7 @@
 > 改这个项目之前先读本文件，**不要再去通读 `src/`**：这里把所有已经造好的「轮子」（可复用组件）的
 > **用途 + 签名 + 一行用法**、Data/Config 目录约定、新增功能的标准流程、以及踩过的坑都写全了。
 >
-> * **当前版本 v0.21.0** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
+> * **当前版本 v0.22.0** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
 > * 十三个功能：视频转音频 · **视频 / 音乐播放器** · **图片连续阅读器** · 批量重命名 · Flash 下载器 · 联机聊天室 · osu! 下图器 · **osu! Key 转换器** · **osu! LN 转换器** · **osu! 等级计算器** · **联机五子棋** · **联机象棋** · 框架示例（模板，可整目录删除）。
 >   osu! 的四个工具归入「音游工具」分类；**联机五子棋 / 联机象棋归入「棋牌」分类**（主页多级目录 → 类别页 → 工具，见 2.15 / 2.18）。
 > * 平台：Windows + .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM；**唯一第三方依赖是 `OsuParsers`**（osu `.osu` 解析/写回，MIT，见 2.17），其余轮子都手写在 `Core/`。
@@ -19,7 +19,7 @@
 ```powershell
 .\build.ps1                                                    # ① 编译：必须 0 错误（有警告也顺手清掉）
 dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
-                                                               # ② 自检：1582 项行为逐条真跑，退出码 0 = 全通过
+                                                               # ② 自检：1591 项行为逐条真跑，退出码 0 = 全通过
 ```
 
 * **改了行为就同步改自检断言**（自检就是"这份文档里承诺的行为"的执行版本，见第 6 节）。
@@ -110,13 +110,13 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | 项 | 内容 |
 | --- | --- |
 | 技术栈 | .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM；唯一第三方依赖 `OsuParsers`（MIT，osu 谱面解析/写回） |
-| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.21.0 就是读它；**别在别处写死**） |
+| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.22.0 就是读它；**别在别处写死**） |
 | 解决方案 | `YuLiangToolkit.sln`（13 个项目：主程序 + Core + 10 个功能 + 自检） |
 | 主程序 | `YuLiangTookit.csproj`（注意：文件名少一个 `l`，是历史拼写）→ 自定义标题栏外壳、主页/类别页/侧边栏/面包屑、深色主题、窗口级粒子层 |
 | 核心库 | `src/YuLiangToolkit.Core/`（工具契约、目录树、MVVM 基类、存储、配置、FFmpeg 封装、粒子引擎/覆盖层、通用 TCP 房间底座 `Core/Net`） |
 | 功能 | `Tools.VideoToAudio`（视频转音频）、`Tools.MediaPlayer`（视频 / 音乐播放器）、`Tools.PictureViewer`（图片连续阅读器）、`Tools.BatchRename`（批量重命名）、`Tools.FlashDownloader`（Flash 下载器）、`Tools.ChatRoom`（联机聊天室）、`Tools.MapDownloader`（osu! 下图器）、`Tools.OsuMania`（osu! Key / LN / 等级三个工具）、`Tools.BoardGames`（联机五子棋 / 联机象棋）、`Tools.Sample`（框架示例，可删） |
 | 数据/配置 | **在 exe 旁边**（`bin\Debug\net9.0-windows\Data`、`…\Config`）——见第 3 节；仓库根的 `Data/`、`Config/` 只剩说明文件 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**1582 项**行为逐条验证，纯控制台）——见第 6 节 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**1591 项**行为逐条验证，纯控制台）——见第 6 节 |
 | 构建 | `.\build.ps1`（离线，走本机 NuGet 缓存；会设 `DOTNET_CLI_HOME` 到 `.dotnet-cli-home`） |
 | 运行 | `dotnet run --project YuLiangTookit.csproj` 或直接跑 `bin\Debug\net9.0-windows\YuLiangTookit.exe` |
 
@@ -589,7 +589,7 @@ public sealed class FlashDownloaderViewModel : ToolViewModelBase
 | `TrayIcon` | Core/Services/：**手写 Win32 `Shell_NotifyIcon`（不引 WinForms）** 的任务栏托盘小图标；`Activated`（左键/双击）、`Func<IReadOnlyList<TrayMenuItem>>` 右键菜单（原生弹出菜单）、`Tooltip`、explorer 重启（`TaskbarCreated`）自动恢复、首次添加失败每 2 秒重试 5 次；图标三档兜底：`Assets\app.ico` → exe 内嵌图标 → 系统默认（见 2.16） |
 | `HomeView` | 主页：搜索框 + 全部类别卡片 + 标签条 + 根层工具卡片 + 空状态；代码后置只做 Ctrl+F 聚焦 / Esc 清空 / 进入主页自动聚焦搜索框 |
 | `CategoryView` | 类别页（任意层级）：类别 emoji/名称/描述/统计 + 子类别卡片 + 直接工具卡片 + 类别内搜索 + 空状态（见 2.15） |
-| `ShellSettingsWindow` | 「主页设置」窗口（两组）：外观（粒子开关）+ 窗口与托盘（× = 关闭应用 / 最小化到托盘，见 2.16） |
+| `ShellSettingsWindow` | 「主页设置」窗口（三组）：外观（粒子开关）+ 粒子颜色（1~2 种颜色，见 2.16）+ 窗口与托盘（× = 关闭应用 / 最小化到托盘） |
 
 > 主窗口的启动位置：`WindowStartupLocation="Manual"`，构造函数里按 `SystemParameters.WorkArea`（已扣掉任务栏）算 `Left/Top`
 > —— `CenterScreen` 会把任务栏那 48px 也算进屏幕高度，窗口看着偏低（v0.9.6 修，1920×1080 + 底部任务栏时窗口开在 `320,106`）。
@@ -604,7 +604,7 @@ public sealed class FlashDownloaderViewModel : ToolViewModelBase
 | `ToolCard` | `ViewModels/ToolCard.cs` | 一张卡片：`Tool`（原始 `ITool`）· `Name/Emoji/Description/Category` · `Tags`/`TagsText`（分类在前 + 工具标签，去重）· `Matches(keywords)` · `LastUsed`/`LastUsedText` · `ShowLastUsed`；搜索索引 = 名称 + 分类 + 标签 + 描述 + Id + `CategoryPath` |
 | `ToolFilter` | `ViewModels/ToolFilter.cs` | `SplitKeywords(text)`（空格/逗号/顿号/分号切分）· `Filter(cards, keywords)`（AND 命中，大小写不敏感）· `Sort(cards, mode)` · `Apply(cards, text, mode)` · `CollectTags(cards)` |
 | `ToolSortMode` | `Models/ShellConfig.cs` | `Default`（按 `Order`）· `RecentlyUsed` · `NameAsc` · `NameDesc` · `Category`；中文用 `StringComparer.CurrentCulture`（中文系统即按拼音） |
-| `ShellConfig` | `Models/ShellConfig.cs` | 外壳自己的配置（`Config\shell\config.json`）：`SortMode` + `LastUsed` 字典（`MarkUsed(id)` / `GetLastUsed(id)`）+ `ShowParticles` + `CloseAction`（点 × 关闭应用 / 最小化到托盘，见 2.16） |
+| `ShellConfig` | `Models/ShellConfig.cs` | 外壳自己的配置（`Config\shell\config.json`）：`SortMode` + `LastUsed` 字典（`MarkUsed(id)` / `GetLastUsed(id)`）+ `ShowParticles` + 粒子颜色（`ParticleCustomColors` / `ParticleColor1Enabled` / `ParticleColor2Enabled` / `ParticleColor1` / `ParticleColor2`）+ `CloseAction`（点 × 关闭应用 / 最小化到托盘，见 2.16） |
 | `CategoryCard` / `BreadcrumbItem` | `Models/` | 类别卡片展示模型 / 面包屑项（见 2.15） |
 | `ShellCategories` | `Models/ShellCategories.cs` | 类别元数据清单（图标/描述/排序），见 2.15 |
 
@@ -1427,11 +1427,11 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 
 | 轮子 | 位置 | 说明 |
 | --- | --- | --- |
-| `Particle` / `ParticleEngine` | Core/Particles/ | 可注入随机种子；常量：默认速度 0.15 / 上限 3 / 每帧衰 0.1；数量 1→10、每帧衰 0.5；寿命 30~89 帧；初始直径 5；`Update(frameSteps)` 按 60fps 归一（单步上限 4、有生成累加器）；`Active` / `Speed` / `Count` / `EmitterX/Y` / `Particles` / `TotalSpawned`；`SetEmitter` `BoostSpeedAndCount` `BoostCount` `Clear` `Reset` `Reseed` |
-| `ParticleOverlay` | Core/Controls/ | `FrameworkElement` + `OnRender`；DP：`IsActive`（默认 false）、`ParticleColor`（默认 #F2EEFF 淡紫白）、`GlowColor`（柔光）；Loaded 挂 Window 鼠标/Rendering 事件、Unloaded/Closed 全摘；DPI/最大化/全屏自适应；**鼠标位置用 Win32 `GetCursorPos` + `PointFromScreen` 取真实值**（`DragMove` 的假 (0,0) 事件不再把发射点甩到左上角，见下面注意）；`YLT_PARTICLE_DEMO=1` 无鼠标演示、`YLT_PARTICLE_TRACE=<文件>` 排错 |
-| `ShellConfig.ShowParticles` | Models/ShellConfig.cs | 默认 `true`；`MainViewModel.ParticlesEnabled` 的 get/set 直接读写它（自动落盘） |
-| `ShellSettingsWindow` | Views/ | 「主页设置」窗口：外观（粒子开关）+ 说明；`Owner=主窗口`、`CenterOwner`、`ShowInTaskbar=false`；Esc / 完成关闭；以后设置项加在这里 |
-| `MainWindow` 接线 | MainWindow.xaml | 根部 `<core:ParticleOverlay Grid.RowSpan="4" Panel.ZIndex="900" IsHitTestVisible="False" IsActive="{Binding ParticlesEnabled}" />` |
+| `Particle` / `ParticleEngine` | Core/Particles/ | 可注入随机种子；常量：默认速度 0.15 / 上限 3 / 每帧衰 0.1；数量 1→10、每帧衰 0.5；寿命 30~89 帧；初始直径 5；`Update(frameSteps)` 按 60fps 归一（单步上限 4、有生成累加器）；`Active` / `Speed` / `Count` / `EmitterX/Y` / `Particles` / `TotalSpawned`；`SetEmitter` `BoostSpeedAndCount` `BoostCount` `Clear` `Reset` `Reseed`；每颗粒子还有随机 `ColorMix`（0~1，自定义颜色取色用） |
+| `ParticleOverlay` | Core/Controls/ | `FrameworkElement` + `OnRender`；DP：`IsActive`（默认 false）、`ParticleColor`（默认 #F2EEFF 淡紫白）、`GlowColor`（柔光）；Loaded 挂 Window 鼠标/Rendering 事件、Unloaded/Closed 全摘；DPI/最大化/全屏自适应；**鼠标位置用 Win32 `GetCursorPos` + `PointFromScreen` 取真实值**（`DragMove` 的假 (0,0) 事件不再把发射点甩到左上角，见下面注意）；`YLT_PARTICLE_DEMO=1` 无鼠标演示、`YLT_PARTICLE_TRACE=<文件>` 排错；**自定义颜色** DP：`UseCustomColors` / `Color1` / `Color2` / `UseColor1` / `UseColor2`（单色 / 区间随机，画刷按颜色档 × 透明度档预生成） |
+| `ShellConfig.ShowParticles` 等 | Models/ShellConfig.cs | `ShowParticles` 默认 `true`；自定义颜色：`ParticleCustomColors`（默认 false）+ `ParticleColor1Enabled` / `ParticleColor2Enabled` + `ParticleColor1` / `ParticleColor2`（`#RRGGBB`，默认 #F2EEFF / #8FB4FF）；`MainViewModel` 的 get/set 直接读写（自动落盘） |
+| `ShellSettingsWindow` | Views/ | 「主页设置」窗口：外观（粒子开关）+ 粒子颜色（`ColorPickerButton` 选色）+ 窗口与托盘；`Owner=主窗口`、`CenterOwner`、`ShowInTaskbar=false`；Esc / 完成关闭；以后设置项加在这里 |
+| `MainWindow` 接线 | MainWindow.xaml | 根部 `<core:ParticleOverlay Grid.RowSpan="4" Panel.ZIndex="900" IsHitTestVisible="False" IsActive="{Binding ParticlesEnabled}" UseCustomColors="{Binding ParticleCustomColorsEnabled}" Color1="{Binding ParticleColor1Value}" Color2="{Binding ParticleColor2Value}" UseColor1="{Binding ParticleColor1Enabled}" UseColor2="{Binding ParticleColor2Enabled}" />` |
 
 **注意**
 
@@ -1439,7 +1439,7 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 * 覆盖层**必须**放在 Window 内的 Grid 里铺满（`Grid.RowSpan`），别塞 StackPanel / 写死宽高（会塌成 0）。
 * 关闭开关时除清空粒子外要**退订渲染事件**（空闲零 CPU）；窗口失活/最小化也暂停。
 * 截图验证：`YLT_PARTICLE_DEMO=1`（无鼠标也能看到粒子）+ `YLT_SHOT`；设置窗口用 `YLT_OPEN_SETTINGS=1`。
-* 自检：`ParticleChecks`（38 项，纯逻辑：生成/寿命/衰减/开关/上限/确定性）。
+* 自检：`ParticleChecks`（44 项，纯逻辑：生成/寿命/衰减/开关/上限/确定性 + 自定义颜色的随机 ColorMix / 插值）。
 * **发射点别只用 `e.GetPosition`（v0.17.0 修过）**：点标题栏拖动窗口时 WPF 会额外派发一个坐标为 `(0,0)` 的假鼠标事件
   （`DragMove()` 期间 `e.GetPosition` 和 `Mouse.GetPosition` **都**返回 0,0），发射点被甩到窗口左上角 ——
   现象就是「小窗里点一下，粒子同时从左上角冒出来、往右下飞」；窗口最大化时标题栏不触发拖拽，所以只有小窗有这毛病。
@@ -1463,6 +1463,20 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 * 恢复：`MainWindow.ShowFromTray()`（`Show()` + 最小化还原 + `Activate()`，非全屏时用 Topmost 闪一下提到前台）；
   最小化到托盘时会顺手关掉「主页设置」从属窗口。`App.RequestExit()` 是唯一「真的退出」入口。
 * 自检：关闭行为默认值 / 自动落盘 / 读回（`CloseAction` 枚举按原名存）。
+
+#### 粒子颜色（v0.22.0）
+
+* 主页设置新增「**粒子颜色**」一组：总开关「启用自定义颜色」（默认关 = 原来的淡紫白）；
+  颜色 1 / 颜色 2 各有一个启用勾选框 + 一个 `ColorPickerButton`（预设色板 + 手填 `#RRGGBB`）。
+* 取色规则：只启用一种 → 单色粒子（柔光也用它）；两种都启用 → 每颗粒子生成时引擎给一个随机
+  `Particle.ColorMix`（0~1），界面层用 `ParticleColorRange.Lerp` 在两种颜色之间线性插值（RGB/A 各通道，
+  越界夹住）；两种都不勾 → 退回默认颜色。默认模式（总开关关）仍用 `ParticleColor` + `GlowColor`，观感不变。
+* 存 `Config\shell\config.json`：`particleCustomColors`、`particleColor1Enabled`、`particleColor2Enabled`、
+  `particleColor1` / `particleColor2`（`#RRGGBB`，人能看懂也能手改）。
+* 性能：颜色档（12）× 透明度档（32）的冻结画刷在颜色变化时重建一次，`OnRender` 仍只查表；
+  总开关关着 / 两种都不勾时只有 1 个颜色档（等价于旧行为）。
+* 自检：`ParticleChecks`（44 项）新增随机 ColorMix / 插值端点 / 中点 / 越界夹取 / 单色固定；
+  外壳配置默认值 / `#RRGGBB` 解析 / 落盘读回在自检的「外壳配置」段。
 
 ### 2.17 osu!mania 三件套：Key 转换 / LN 转换 / 等级计算（v0.10.0）
 
@@ -2104,7 +2118,7 @@ Data/chat-room/
 # 1) 编译（0 警告 0 错误）
 .\build.ps1
 
-# 2) 轮子自检：1582 项行为逐条真跑（Data/Config 轮子 + 主页搜索排序 + 多级分类导航/面包屑
+# 2) 轮子自检：1591 项行为逐条真跑（Data/Config 轮子 + 主页搜索排序 + 多级分类导航/面包屑
 #    + 批量重命名规则/冲突/执行/撤销
 #    + Flash 下载器的站点解析/命名/ini/批量计划/真下载/本地服务器/自动下载
 #    + 联机聊天室的协议/CRC/流量上限/会话文件夹/傻瓜模式挑监听/双栈真连两族/回环真连一局
@@ -2330,7 +2344,8 @@ git diff                        # 看未暂存改动
 
 | 版本 | 内容 |
 | --- | --- |
-| **v0.21.0**（当前） | **外壳导航改成浏览器式「← 后退 / → 前进」**（见 2.7 / 2.15）：① 顶部工具条左边的「← 返回上一级」换成一对后退 / 前进按钮，按**访问顺序**在主页 / 类别页 / 工具页之间跳（工具页、类别页、面包屑、侧边栏、主页卡片等所有入口都算一次访问）；② 历史行为与浏览器一致：重复进入当前页不新增记录、后退后从中间再导航会丢掉「前进」记录、最多保留 100 条；不能后退 / 前进时按钮变灰；③ 后退 / 前进不刷新「最近使用」排序，工具页视图 / 配置 / 后台播放逻辑照旧；④ 新增纯逻辑 `Core/Mvvm/NavigationHistory.cs` + `Models/ShellLocation.cs`（页面位置按稳定 Key 判断相等）；自检 1569 → **1582** 项（历史前进 / 后退 / 截断 / 上限 / 页面位置相等性共 13 项）；⑤ 文档同步。版本号 0.20.0 → 0.21.0 |
+| **v0.22.0**（当前） | **粒子自定义颜色**（见 2.16）：① 主页设置新增「粒子颜色」：总开关「启用自定义颜色」（默认关，保持原来的淡紫白）；颜色 1 / 颜色 2 各有一个启用勾选框 + 拾色按钮（预设色板 + 手填 `#RRGGBB`）；② 只启用一种 = 单色粒子；两种都启用 = 每颗粒子生成时用随机系数在两种颜色之间线性插值（RGB/A 各通道，柔光同色）；两种都不勾 = 回到默认颜色；③ 存 `Config\shell\config.json` 的 `particleCustomColors` / `particleColor1Enabled` / `particleColor2Enabled` / `particleColor1` / `particleColor2`；④ 新增 `ColorPickerButton` + `ColorToBrushConverter`、`ParticleColorRange`（纯逻辑插值）、`Particle.ColorMix`；画刷按颜色档 × 透明度档预生成，仍是每帧零分配；⑤ 自检 1582 → **1591** 项（随机 ColorMix / 插值 / 单色固定 / 颜色解析 / 配置落盘）；设置窗口 + 双色/单色粒子截图冒烟。版本号 0.21.0 → 0.22.0 |
+| v0.21.0 | **外壳导航改成浏览器式「← 后退 / → 前进」**（见 2.7 / 2.15）：① 顶部工具条左边的「← 返回上一级」换成一对后退 / 前进按钮，按**访问顺序**在主页 / 类别页 / 工具页之间跳（工具页、类别页、面包屑、侧边栏、主页卡片等所有入口都算一次访问）；② 历史行为与浏览器一致：重复进入当前页不新增记录、后退后从中间再导航会丢掉「前进」记录、最多保留 100 条；不能后退 / 前进时按钮变灰；③ 后退 / 前进不刷新「最近使用」排序，工具页视图 / 配置 / 后台播放逻辑照旧；④ 新增纯逻辑 `Core/Mvvm/NavigationHistory.cs` + `Models/ShellLocation.cs`（页面位置按稳定 Key 判断相等）；自检 1569 → **1582** 项（历史前进 / 后退 / 截断 / 上限 / 页面位置相等性共 13 项）；⑤ 文档同步。版本号 0.20.0 → 0.21.0 |
 | v0.20.0 | **图片阅读器：点工具条上的文件夹路径直接在资源管理器打开所在目录**：① 工具条第二行的路径改成可点的链接式按钮（悬停变强调色、鼠标手型、tooltip 显示完整路径与「点击打开」）；② 没打开文件夹时按钮禁用，打开失败 / 目录已被删会在状态栏提示；③ VM 新增 `OpenFolderInExplorerCommand` + `HasFolder` + `FolderOpener`（自检注入假打开器，不真弹资源管理器）；④ 自检 1566 → **1569** 项（可点状态 / 命令传对目录 / 打不开给提示）；⑤ 文档 / README 同步。版本号 0.19.0 → 0.20.0 |
 | v0.19.0 | **图片阅读器设置加「窗口 / 多开」开关**（见 2.19）：① 设置面板新增 `单实例模式（再双击图片复用同一个窗口）`，默认开；关掉后每次双击 / 启动都新开一个窗口（多实例）；② 这是启动级设置，改动下次启动生效；App 在 UI 创建前直接读 `Config\picture-viewer\config.json` 的 `SingleInstanceEnabled` 决定是否启用 Mutex/管道（不走 ToolConfigStore，避免和后面 ViewModel 的配置实例打架）；③ 没开单实例时不建 Mutex / 管道服务端，多开互不影响；④ 恢复默认会把开关回 true；⑤ 自检 1563 → **1566** 项（默认值 / VM 写回 / 恢复默认回 true）；真实双进程验证：配置开 → 第二次 exit 0 + 1 个窗口 + 图片定位；配置关 → 2 个窗口；UIA 勾选后配置文件跟着改写。版本号 0.18.0 → 0.19.0 |
 | v0.18.0 | **单实例唤醒：双击图片永远复用同一个应用窗口**（见 2.19）：① 再启动 / 再双击图片时不再开新窗口：第二个进程用命名 Mutex + 命名管道把命令行交给已开着的窗口，自己立刻退出；② 已开窗口会从托盘 / 最小化恢复并尽力置前，参数里有受支持图片就进「图片连续阅读器」，加载这张图所在文件夹并自动定位到它（连续模式滚到那张、翻页模式翻到那页）；③ 纯参数消息用 JSON + 协议版本，损坏 / 版本不对直接忽略；第二实例先把图片路径转绝对路径，避免两个进程 CWD 不同解析错；④ 管道名带安装目录哈希，不同发布目录互不干扰；⑤ 截图 / 调试环境（`YLT_SHOT*`、`YLT_NAV_*`、`YLT_OPEN_SETTINGS`）以及 `YLT_NO_SINGLE_INSTANCE=1` 自动关掉单实例，避免测试被已有窗口吸走；⑥ 自检 1560 → **1563** 项（消息编解码 3 项）；真实起两个进程 + UIA 验证：第二次 exit 0、实例数 1、第一窗口出现「8 张图片 · demo」「已定位到第 3 张」。版本号 0.17.0 → 0.18.0 |

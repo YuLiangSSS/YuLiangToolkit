@@ -25,6 +25,12 @@ public sealed class Particle
     /// <summary>自身速度系数（1~3）；真正的位移还要乘引擎的全局速度与帧步长。</summary>
     public double Speed { get; internal set; }
 
+    /// <summary>
+    /// 颜色混合系数 0~1（生成时随机）：界面层用它在「颜色 1 → 颜色 2」之间取色。
+    /// 0 = 颜色 1，1 = 颜色 2；只启用一种颜色时界面层直接忽略它。引擎不管具体颜色，只负责给一个随机值。
+    /// </summary>
+    public double ColorMix { get; internal set; }
+
     /// <summary>已存活时长（60fps 基准帧）。</summary>
     public double Age { get; internal set; }
 

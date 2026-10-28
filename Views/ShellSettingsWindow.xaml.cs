@@ -10,12 +10,14 @@ namespace YuLiangToolkit.App.Views;
 /// <summary>
 /// 「主页设置」窗口（模型窗口：Owner = 主窗口、居中、不显示在任务栏）。
 ///
-/// <para>目前两组设置：</para>
+/// <para>目前三组设置：</para>
 /// <list type="bullet">
 ///   <item>「外观」：鼠标粒子效果开关（绑定 <c>MainViewModel.ParticlesEnabled</c>）；</item>
+///   <item>「粒子颜色」：启用自定义颜色 + 两种颜色（可分别启用；只启用一种 = 单色粒子），
+///   颜色用 <see cref="ColorPickerButton"/> 选；</item>
 ///   <item>「窗口与托盘」：点 × 时「关闭应用 / 最小化到托盘」（绑定 <c>MinimizeToTrayOnClose</c> / <c>ExitOnClose</c>）。</item>
 /// </list>
-/// <para>两者都自动存进 <c>Config\shell\config.json</c>。以后加设置项直接在这个 XAML 里加卡片即可。</para>
+/// <para>三者都自动存进 <c>Config\shell\config.json</c>。以后加设置项直接在这个 XAML 里加卡片即可。</para>
 ///
 /// <para>无边框窗口的拖拽 / 关闭和主窗口同一套做法；<c>Esc</c> 关窗；
 /// 另带一个 <see cref="CaptureTo"/> 供 <c>YLT_OPEN_SETTINGS</c> 截图模式使用。</para>

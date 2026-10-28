@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows;
+using System.Windows.Media;
 using YuLiangToolkit.App.Models;
 using YuLiangToolkit.App.Views;
 using YuLiangToolkit.Core.Configuration;
@@ -308,6 +309,73 @@ public class MainViewModel : ObservableObject
         {
             if (_shell.ShowParticles == value) return;
             _shell.ShowParticles = value;
+            OnPropertyChanged();
+        }
+    }
+
+    // ---------- 粒子颜色（v0.22.0） ----------
+
+    /// <summary>
+    /// 是否启用自定义粒子颜色（默认关 = 原来的淡紫白）。开启后颜色 1 / 2 才参与取色。
+    /// 读写 <see cref="ShellConfig.ParticleCustomColors"/>，自动落盘。
+    /// </summary>
+    public bool ParticleCustomColorsEnabled
+    {
+        get => _shell.ParticleCustomColors;
+        set
+        {
+            if (_shell.ParticleCustomColors == value) return;
+            _shell.ParticleCustomColors = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>颜色 1 是否参与取色（默认开；总开关关着时不起作用）。</summary>
+    public bool ParticleColor1Enabled
+    {
+        get => _shell.ParticleColor1Enabled;
+        set
+        {
+            if (_shell.ParticleColor1Enabled == value) return;
+            _shell.ParticleColor1Enabled = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>颜色 2 是否参与取色（默认开；只勾一种时粒子是单色）。</summary>
+    public bool ParticleColor2Enabled
+    {
+        get => _shell.ParticleColor2Enabled;
+        set
+        {
+            if (_shell.ParticleColor2Enabled == value) return;
+            _shell.ParticleColor2Enabled = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>颜色 1（主页设置里的拾色器双向绑定；存 <c>#RRGGBB</c>）。</summary>
+    public Color ParticleColor1Value
+    {
+        get => ParticleColors.Parse(_shell.ParticleColor1, ParticleColors.Default1);
+        set
+        {
+            var hex = ParticleColors.ToHex(value);
+            if (string.Equals(_shell.ParticleColor1, hex, StringComparison.Ordinal)) return;
+            _shell.ParticleColor1 = hex;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>颜色 2（主页设置里的拾色器双向绑定；存 <c>#RRGGBB</c>）。</summary>
+    public Color ParticleColor2Value
+    {
+        get => ParticleColors.Parse(_shell.ParticleColor2, ParticleColors.Default2);
+        set
+        {
+            var hex = ParticleColors.ToHex(value);
+            if (string.Equals(_shell.ParticleColor2, hex, StringComparison.Ordinal)) return;
+            _shell.ParticleColor2 = hex;
             OnPropertyChanged();
         }
     }
