@@ -6,6 +6,8 @@ using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Interop;
+using YuLiangToolkit.Core.Storage;
+using YuLiangToolkit.Tools.PictureViewer;
 
 namespace YuLiangToolkit.App;
 
@@ -51,22 +53,42 @@ public sealed class SingleInstance : IDisposable
     public bool IsFirstInstance => _isFirstInstance;
 
     /// <summary>
-    /// 当前启动是否启用单实例。截图 / 调试环境变量会把它关掉：测试要能独立起进程，
-    /// 不能被正在运行的主窗口吸走。
+    /// 当前启动是否启用单实例：先看调试环境变量（截图 / UIA 测试要独立进程），
+    /// 再看「图片连续阅读器」设置里的**单实例模式**开关（默认开；关掉 = 每次双击都新开窗口）。
+    /// 这是启动级设置，运行中改了下次启动才生效。
     /// </summary>
-    public static bool IsEnabled
-    {
-        get
-        {
-            foreach (var name in new[]
-                     {
-                         "YLT_SHOT", "YLT_NAV_TOOL", "YLT_SHOT_TOOL", "YLT_NAV_CATEGORY",
-                         "YLT_OPEN_SETTINGS", "YLT_NO_SINGLE_INSTANCE",
-                     })
-            {
-                if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name))) return false;
-            }
+    public static bool IsEnabled => !IsEnvironmentBypass() && ReadUserSetting();
 
+    /// <summary>截图 / 调试环境变量会让每个进程独立启动（否则测试会被正在用的窗口吸走）。</summary>
+    public static bool IsEnvironmentBypass()
+    {
+        foreach (var name in new[]
+                 {
+                     "YLT_SHOT", "YLT_NAV_TOOL", "YLT_SHOT_TOOL", "YLT_NAV_CATEGORY",
+                     "YLT_OPEN_SETTINGS", "YLT_NO_SINGLE_INSTANCE",
+                 })
+        {
+            if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(name))) return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// 直接读「图片连续阅读器」的 config.json（不经过 ToolConfigStore，避免在 UI 起来之前
+    /// 就把它缓存 / 挂上自动保存）。读不到（首次运行 / 文件坏）时按默认「单实例开」处理。
+    /// </summary>
+    private static bool ReadUserSetting()
+    {
+        try
+        {
+            var path = Path.Combine(
+                AppPaths.ToolConfigDir(PictureViewerConfig.ToolId), "config.json");
+            var config = JsonFileStore.Read<PictureViewerConfig>(path);
+            return config?.SingleInstanceEnabled ?? true;
+        }
+        catch
+        {
             return true;
         }
     }

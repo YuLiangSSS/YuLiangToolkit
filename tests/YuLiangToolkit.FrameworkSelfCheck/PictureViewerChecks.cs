@@ -197,6 +197,7 @@ internal static class PictureViewerChecks
             BorderInnerColor = "#FFFF0000",
             BorderFillColor = "#FF00FF00",
             BorderOuterColor = "#FF0000FF",
+            SingleInstanceEnabled = false,
             LastFolder = @"D:\some",
         };
         resetConfig.ResetToDefaults();
@@ -209,6 +210,7 @@ internal static class PictureViewerChecks
             && resetConfig.PagedWheelEffective == PictureWheelAction.TurnPage
             && resetConfig.PageTurnAnimation
             && resetConfig.BorderStyle == PictureBorderStyle.Default
+            && resetConfig.SingleInstanceEnabled
             && resetConfig.LastFolder == "");
 
 
@@ -527,6 +529,7 @@ internal static class PictureViewerChecks
             && cfg.InertiaAccelerate
             && cfg.PagedWheelEffective == PictureWheelAction.TurnPage
             && cfg.PageTurnAnimation
+            && cfg.SingleInstanceEnabled
             && cfg.AutoUnloadOffscreen,
             $"{cfg.ScrollModeEffective} / {cfg.WheelStepEffective} / {cfg.HoldMillisecondsEffective} / {cfg.ZoomPercentEffective}%");
 
@@ -607,6 +610,14 @@ internal static class PictureViewerChecks
         // ---- 图片边框 / 恢复默认（无头跑） ----
         var borderEvents = 0;
         vm.BorderChanged += (_, _) => borderEvents++;
+
+        // 窗口 / 多开：默认单实例；改一下要写回配置，恢复默认要回 true
+        Check("[图片] 单实例开关默认开（设置面板绑定它）", vm.SingleInstanceEnabled);
+        vm.SingleInstanceEnabled = false;
+        Check("[图片] 关掉单实例开关会写回配置（多实例）", !vm.Cfg.SingleInstanceEnabled);
+        vm.SingleInstanceEnabled = true;
+        Check("[图片] 再打开单实例开关也写回配置", vm.Cfg.SingleInstanceEnabled);
+
         Check("[图片] 边框颜色编辑器：默认值与配置一致",
             vm.BorderInnerColorEditor.Hex == PictureBorderStyle.DefaultInnerColor
             && vm.BorderFillColorEditor.Hex == PictureBorderStyle.DefaultFillColor
@@ -645,6 +656,7 @@ internal static class PictureViewerChecks
             && vm.BorderInnerColorEditor.Hex == PictureBorderStyle.DefaultInnerColor
             && vm.BorderFillColorEditor.Hex == PictureBorderStyle.DefaultFillColor
             && vm.BorderOuterColorEditor.Hex == PictureBorderStyle.DefaultOuterColor
+            && vm.SingleInstanceEnabled
             && vm.Cfg.LastFolder == ""
             && vm.StatusText.Contains("恢复默认"),
             $"{vm.StatusText} / {vm.BorderInnerColorEditor.Hex}");

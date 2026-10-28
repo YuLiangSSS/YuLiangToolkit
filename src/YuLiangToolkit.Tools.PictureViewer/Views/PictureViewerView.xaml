@@ -248,6 +248,16 @@
                                   IsChecked="{Binding Cfg.AutoUnloadOffscreen}"
                                   Style="{StaticResource CheckBoxStyle}" Margin="0,10,0,0" />
 
+                        <!-- 窗口 / 多开：单实例 = 双击图片复用已打开窗口；关掉 = 每次新开（启动级设置） -->
+                        <Border Height="1" Background="{StaticResource BorderBrush}" Margin="0,14,0,10" />
+                        <TextBlock Text="窗口 / 多开" FontSize="11.5" FontWeight="SemiBold" />
+                        <CheckBox x:Name="SingleInstanceCheckBox" Content="单实例模式（再双击图片复用同一个窗口）"
+                                  IsChecked="{Binding SingleInstanceEnabled}"
+                                  Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0" />
+                        <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap" Margin="0,6,0,0"
+                                   Text="关掉 = 每次双击图片 / 启动程序都新开一个窗口（多实例）。这是启动级设置：改完下次启动生效，当前已经开着的窗口不受影响。" />
+
                         <!-- 图片边框：内边框 → 填充 → 外边框，颜色都是 RGBA -->
                         <Border Height="1" Background="{StaticResource BorderBrush}" Margin="0,14,0,10" />
                         <TextBlock Text="图片边框" FontSize="11.5" FontWeight="SemiBold" />

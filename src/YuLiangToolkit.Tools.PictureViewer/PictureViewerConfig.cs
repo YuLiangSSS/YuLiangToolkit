@@ -52,6 +52,12 @@ public sealed class PictureViewerConfig : ToolConfig
     /// <summary>是否显示图片边框（用于隔开相邻两张图）。默认开。</summary>
     public bool BorderEnabled { get; set; } = true;
 
+    /// <summary>
+    /// 单实例模式（默认开）：双击图片 / 再启动程序时复用已经打开的窗口；关掉就是多实例（每次新开窗口）。
+    /// 这是**启动级**设置，改动后下次启动生效（当前已开着的窗口不受影响）。
+    /// </summary>
+    public bool SingleInstanceEnabled { get; set; } = true;
+
     /// <summary>内边框粗细（像素，0 ~ 32，默认 1）。</summary>
     public int BorderInnerSize { get; set; } = PictureBorderStyle.DefaultInnerSize;
 
@@ -96,6 +102,8 @@ public sealed class PictureViewerConfig : ToolConfig
         BorderInnerColor = PictureBorderStyle.DefaultInnerColor;
         BorderFillColor = PictureBorderStyle.DefaultFillColor;
         BorderOuterColor = PictureBorderStyle.DefaultOuterColor;
+
+        SingleInstanceEnabled = true;
 
         LastFolder = "";
     }

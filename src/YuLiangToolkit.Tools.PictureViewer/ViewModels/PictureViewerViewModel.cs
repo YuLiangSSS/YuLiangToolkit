@@ -461,6 +461,18 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
         "#FF22C55E", "#FF06B6D4", "#FF3B82F6", "#FFA855F7", "#FFEC4899", "#00000000",
     };
 
+    /// <summary>单实例模式（启动级：关掉后下次启动就是多开；当前窗口不受影响）。</summary>
+    public bool SingleInstanceEnabled
+    {
+        get => Cfg.SingleInstanceEnabled;
+        set
+        {
+            if (value == Cfg.SingleInstanceEnabled) return;
+            Cfg.SingleInstanceEnabled = value;
+            OnPropertyChanged();
+        }
+    }
+
     /// <summary>是否显示图片边框。</summary>
     public bool BorderEnabled
     {
@@ -564,6 +576,7 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
         BorderOuterColorEditor.Load(Cfg.BorderOuterColor);
 
         OnPropertyChanged(nameof(BorderEnabled));
+        OnPropertyChanged(nameof(SingleInstanceEnabled));
         OnPropertyChanged(nameof(BorderInnerSize));
         OnPropertyChanged(nameof(BorderFillSize));
         OnPropertyChanged(nameof(BorderOuterSize));
