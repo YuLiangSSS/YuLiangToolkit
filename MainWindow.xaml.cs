@@ -261,7 +261,19 @@ public partial class MainWindow : Window, IFullscreenHost
 
     // ---------- 自定义标题栏窗口控制 ----------
 
-    /// <summary>标题栏手动拖拽 + 双击最大化（CaptionHeight=0 时窗口没有原生拖拽区）。</summary>
+    /// <summary>最大化时按住了标题栏：等鼠标真的拖起来再还原（只点一下不还原，和普通窗口一致）。</summary>
+    private bool _titleBarDragPending;
+
+    /// <summary>标题栏按下的位置（窗口内坐标，DIP）—— 还原后光标要抓住的那一点。</summary>
+    private Point _titleBarDragStart;
+
+    /// <summary>
+    /// 标题栏手动拖拽 + 双击最大化（CaptionHeight=0 时窗口没有原生拖拽区）。
+    ///
+    /// <para>普通状态直接 <see cref="Window.DragMove"/>；<b>最大化状态先记下按点、抓住鼠标，等鼠标真的拖动起来
+    /// 再还原</b>（见 <see cref="OnTitleBarMouseMove"/>）—— 这一点很重要：按下去就还原的话，
+    /// 只想点一下标题栏的人会莫名其妙掉出最大化，不是正常窗口的行为。</para>
+    /// </summary>
     private void OnTitleBarMouseLeftDown(object sender, MouseButtonEventArgs e)
     {
         // 点击窗口按钮时不触发拖拽/双击最大化（事件会冒泡到这里）
@@ -272,6 +284,7 @@ public partial class MainWindow : Window, IFullscreenHost
 
         if (e.ClickCount == 2)
         {
+            CancelTitleBarDrag(sender);
             OnMaximizeClick(sender, e);
             return;
         }
@@ -279,7 +292,89 @@ public partial class MainWindow : Window, IFullscreenHost
         if (WindowState == WindowState.Normal)
         {
             try { DragMove(); } catch { /* 拖动过程中被中断等情况忽略 */ }
+            return;
         }
+
+        if (WindowState == WindowState.Maximized && !_fullscreen)
+        {
+            _titleBarDragPending = true;
+            _titleBarDragStart = e.GetPosition(this);
+            if (sender is UIElement element) element.CaptureMouse();
+        }
+    }
+
+    /// <summary>
+    /// 最大化时按住标题栏拖动：超过系统的拖拽判定距离后，把窗口**按最大化前的尺寸还原**，
+    /// 并让光标抓住的那一点留在标题栏上原来的位置，再交给 <see cref="Window.DragMove"/> 继续拖。
+    /// </summary>
+    private void OnTitleBarMouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_titleBarDragPending) return;
+
+        if (e.LeftButton != MouseButtonState.Pressed)
+        {
+            CancelTitleBarDrag(sender);
+            return;
+        }
+
+        // 和窗口管理器一致：移动超过系统拖拽距离（默认 4px 左右）才算“拖”，否则只是一次点击
+        var current = e.GetPosition(this);
+        if (Math.Abs(current.X - _titleBarDragStart.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(current.Y - _titleBarDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        _titleBarDragPending = false;
+        if (sender is UIElement element) element.ReleaseMouseCapture();
+
+        RestoreMaximizedWindowUnderCursor(current);
+    }
+
+    private void OnTitleBarMouseLeftUp(object sender, MouseButtonEventArgs e) => CancelTitleBarDrag(sender);
+
+    private void OnTitleBarLostMouseCapture(object sender, MouseEventArgs e) => _titleBarDragPending = false;
+
+    private void CancelTitleBarDrag(object sender)
+    {
+        _titleBarDragPending = false;
+        if (sender is UIElement element) element.ReleaseMouseCapture();
+    }
+
+    /// <summary>
+    /// 最大化窗口被拖动时的还原：按最大化之前的尺寸摆好，光标抓住的点保持不动（位置计算见
+    /// <see cref="WindowDragRestore"/>，纯逻辑有自检），然后接着原生拖动 —— 就是普通窗口拖标题栏的手感。
+    /// </summary>
+    private void RestoreMaximizedWindowUnderCursor(Point grabInWindow)
+    {
+        var restore = RestoreBounds;
+        var restoreWidth = restore.Width > 0 ? restore.Width : Width;
+        var restoreHeight = restore.Height > 0 ? restore.Height : Height;
+
+        var cursor = ToScreenDip(grabInWindow);
+        var placement = WindowDragRestore.Compute(
+            cursor.X, cursor.Y,
+            _titleBarDragStart.X, _titleBarDragStart.Y,
+            ActualWidth,
+            restoreWidth, restoreHeight,
+            SystemParameters.WorkArea,
+            MinWidth, MinHeight);
+
+        WindowState = WindowState.Normal;   // 先还原（系统会把窗口放回最大化前的位置 / 大小）
+        Width = placement.Width;            // 再按“光标抓点不动”的位置 / 尺寸摆好
+        Height = placement.Height;
+        Left = placement.Left;
+        Top = placement.Top;
+
+        try { DragMove(); } catch { /* 拖动过程中被中断等情况忽略 */ }
+    }
+
+    /// <summary>窗口内坐标（DIP）→ 屏幕坐标（DIP）。<see cref="Visual.PointToScreen"/> 给的是物理像素。</summary>
+    private Point ToScreenDip(Point pointInWindow)
+    {
+        var device = PointToScreen(pointInWindow);
+        var (scaleX, scaleY) = GetScale();
+        return new Point(device.X / scaleX, device.Y / scaleY);
     }
 
     private static T? FindVisualAncestor<T>(DependencyObject? obj) where T : DependencyObject

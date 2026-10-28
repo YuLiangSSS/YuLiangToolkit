@@ -4,7 +4,7 @@
 > 改这个项目之前先读本文件，**不要再去通读 `src/`**：这里把所有已经造好的「轮子」（可复用组件）的
 > **用途 + 签名 + 一行用法**、Data/Config 目录约定、新增功能的标准流程、以及踩过的坑都写全了。
 >
-> * **当前版本 v0.22.0** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
+> * **当前版本 v0.22.1** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
 > * 十三个功能：视频转音频 · **视频 / 音乐播放器** · **图片连续阅读器** · 批量重命名 · Flash 下载器 · 联机聊天室 · osu! 下图器 · **osu! Key 转换器** · **osu! LN 转换器** · **osu! 等级计算器** · **联机五子棋** · **联机象棋** · 框架示例（模板，可整目录删除）。
 >   osu! 的四个工具归入「音游工具」分类；**联机五子棋 / 联机象棋归入「棋牌」分类**（主页多级目录 → 类别页 → 工具，见 2.15 / 2.18）。
 > * 平台：Windows + .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM；**唯一第三方依赖是 `OsuParsers`**（osu `.osu` 解析/写回，MIT，见 2.17），其余轮子都手写在 `Core/`。
@@ -19,7 +19,7 @@
 ```powershell
 .\build.ps1                                                    # ① 编译：必须 0 错误（有警告也顺手清掉）
 dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
-                                                               # ② 自检：1591 项行为逐条真跑，退出码 0 = 全通过
+                                                               # ② 自检：1600 项行为逐条真跑，退出码 0 = 全通过
 ```
 
 * **改了行为就同步改自检断言**（自检就是"这份文档里承诺的行为"的执行版本，见第 6 节）。
@@ -110,13 +110,13 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | 项 | 内容 |
 | --- | --- |
 | 技术栈 | .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM；唯一第三方依赖 `OsuParsers`（MIT，osu 谱面解析/写回） |
-| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.22.0 就是读它；**别在别处写死**） |
+| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.22.1 就是读它；**别在别处写死**） |
 | 解决方案 | `YuLiangToolkit.sln`（13 个项目：主程序 + Core + 10 个功能 + 自检） |
 | 主程序 | `YuLiangTookit.csproj`（注意：文件名少一个 `l`，是历史拼写）→ 自定义标题栏外壳、主页/类别页/侧边栏/面包屑、深色主题、窗口级粒子层 |
 | 核心库 | `src/YuLiangToolkit.Core/`（工具契约、目录树、MVVM 基类、存储、配置、FFmpeg 封装、粒子引擎/覆盖层、通用 TCP 房间底座 `Core/Net`） |
 | 功能 | `Tools.VideoToAudio`（视频转音频）、`Tools.MediaPlayer`（视频 / 音乐播放器）、`Tools.PictureViewer`（图片连续阅读器）、`Tools.BatchRename`（批量重命名）、`Tools.FlashDownloader`（Flash 下载器）、`Tools.ChatRoom`（联机聊天室）、`Tools.MapDownloader`（osu! 下图器）、`Tools.OsuMania`（osu! Key / LN / 等级三个工具）、`Tools.BoardGames`（联机五子棋 / 联机象棋）、`Tools.Sample`（框架示例，可删） |
 | 数据/配置 | **在 exe 旁边**（`bin\Debug\net9.0-windows\Data`、`…\Config`）——见第 3 节；仓库根的 `Data/`、`Config/` 只剩说明文件 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**1591 项**行为逐条验证，纯控制台）——见第 6 节 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**1600 项**行为逐条验证，纯控制台）——见第 6 节 |
 | 构建 | `.\build.ps1`（离线，走本机 NuGet 缓存；会设 `DOTNET_CLI_HOME` 到 `.dotnet-cli-home`） |
 | 运行 | `dotnet run --project YuLiangTookit.csproj` 或直接跑 `bin\Debug\net9.0-windows\YuLiangTookit.exe` |
 
@@ -212,6 +212,7 @@ src/
 │  ├─ Configuration/ ToolConfig.cs · ToolConfigStore.cs · DynamicToolConfig.cs
 │  ├─ Net/        RoomProtocol.cs · RoomFrame.cs · RoomLink.cs · RoomHost.cs · RoomClient.cs（通用 TCP 房间底座，见 2.18）
 │  ├─ Services/   AppSettingsService.cs · FFmpegLocator.cs · FFmpegRunner.cs · TaskbarHider.cs · IntegrityCheck.cs
+│  │              WindowDragRestore.cs（最大化窗口拖标题栏还原位置的计算，纯逻辑，见 2.7）
 │  ├─ Particles/  Particle.cs · ParticleEngine.cs（纯逻辑粒子引擎，见 2.16）
 │  ├─ Controls/   ParticleOverlay.cs（WPF 覆盖层：OnRender 画粒子 + 鼠标/渲染事件）
 │  └─ Models/     AppSettings.cs（全局设置，只放跨功能项）
@@ -585,7 +586,7 @@ public sealed class FlashDownloaderViewModel : ToolViewModelBase
 | 轮子 | 说明 |
 | --- | --- |
 | `MainViewModel` | `NavItems`（侧边栏：首页 + 根层类别 + 根层工具）· `Tools` · 目录树 `ToolCatalogNode`（`CurrentNode`/`Breadcrumbs`）· `ToolCards`/`CategoryCards`（过滤+排序后的卡片）· `AllTags` · `SearchText` · `SortOptions`/`SelectedSort` · `CurrentView` · `SelectedNavItem` · `StatusText` · `CurrentTitle` · `ParticlesEnabled` · `MinimizeToTrayOnClose`/`ExitOnClose`（× 关闭行为，绑主页设置的两个单选项）· `CloseSettingsWindow()` · `GoHomeCommand` · `OpenToolCommand` · `NavigateCategoryCommand`/`NavigateParentCommand`（只在类别页顶部 / 空状态用）/`NavigateBreadcrumbCommand` · `CanGoBack`/`CanGoForward` · `GoBackCommand`/`GoForwardCommand` · `OpenSettingsCommand` · `ClearSearchCommand` · `SearchTagCommand`；**切换功能时会调用上一个 VM 的 `NotifyClosed()`**；打开功能时记录“上次使用” |
-| `MainWindow` | `WindowStyle=None` + `WindowChrome(CaptionHeight=0)`；标题栏拖拽/双击最大化在代码里手动实现；`WM_GETMINMAXINFO` 把最大化钳制到工作区；工具条左边是浏览器式「← 后退 / → 前进」按钮，右边是可点击面包屑（主页 › 类别 › 工具）；根部有窗口级 `ParticleOverlay`（见 2.16）；`OnClosing` 按主页设置决定「关闭应用 / 最小化到托盘」；`HideToTray()` / `ShowFromTray()`（托盘单击恢复）；`CaptureTo(png)` 是截图模式实现 |
+| `MainWindow` | `WindowStyle=None` + `WindowChrome(CaptionHeight=0)`；标题栏拖拽/双击最大化在代码里手动实现（**最大化时按住标题栏往外拖 = 先还原成窗口再跟着鼠标走**，见下方说明）；`WM_GETMINMAXINFO` 把最大化钳制到工作区；工具条左边是浏览器式「← 后退 / → 前进」按钮，右边是可点击面包屑（主页 › 类别 › 工具）；根部有窗口级 `ParticleOverlay`（见 2.16）；`OnClosing` 按主页设置决定「关闭应用 / 最小化到托盘」；`HideToTray()` / `ShowFromTray()`（托盘单击恢复）；`CaptureTo(png)` 是截图模式实现 |
 | `TrayIcon` | Core/Services/：**手写 Win32 `Shell_NotifyIcon`（不引 WinForms）** 的任务栏托盘小图标；`Activated`（左键/双击）、`Func<IReadOnlyList<TrayMenuItem>>` 右键菜单（原生弹出菜单）、`Tooltip`、explorer 重启（`TaskbarCreated`）自动恢复、首次添加失败每 2 秒重试 5 次；图标三档兜底：`Assets\app.ico` → exe 内嵌图标 → 系统默认（见 2.16） |
 | `HomeView` | 主页：搜索框 + 全部类别卡片 + 标签条 + 根层工具卡片 + 空状态；代码后置只做 Ctrl+F 聚焦 / Esc 清空 / 进入主页自动聚焦搜索框 |
 | `CategoryView` | 类别页（任意层级）：类别 emoji/名称/描述/统计 + 子类别卡片 + 直接工具卡片 + 类别内搜索 + 空状态（见 2.15） |
@@ -593,6 +594,23 @@ public sealed class FlashDownloaderViewModel : ToolViewModelBase
 
 > 主窗口的启动位置：`WindowStartupLocation="Manual"`，构造函数里按 `SystemParameters.WorkArea`（已扣掉任务栏）算 `Left/Top`
 > —— `CenterScreen` 会把任务栏那 48px 也算进屏幕高度，窗口看着偏低（v0.9.6 修，1920×1080 + 底部任务栏时窗口开在 `320,106`）。
+
+**最大化时「按住标题栏拖出来变窗口」**（v0.22.1）：`Window.DragMove()` 对**最大化窗口无效**（窗口不会动，所以
+v0.22.0 以前最大化后标题栏根本拖不动）。现在的做法（`MainWindow` 的 `OnTitleBarMouseLeftDown / Move / Up`）：
+
+1. 最大化时按下标题栏**先不还原**：记下按点（窗口内坐标）、`CaptureMouse()` 抓住鼠标 ——
+   **点一下不还原**才是正常窗口行为；顺带用 `SystemParameters.MinimumHorizontalDragDistance` 做拖拽判定
+   （没过阈值只算点击）；
+2. 真的拖动后：`WindowState = Normal` → 按 `Core/Services/WindowDragRestore.Compute(...)` 算出的位置/尺寸摆好
+   （纯逻辑，自检 9 项断言：抓正中间 / 靠右 / 拖到屏幕边夹回工作区 / 工作区不在 (0,0) / 还原尺寸过大过小 / 拿不到尺寸兜底）
+   → 再 `DragMove()` 继续原生拖动；
+3. 还原位置 = 光标抓住的那一点在标题栏上**保持不变**（水平按“抓点在最大化窗口宽度里的比例”换算，竖直保持偏移），
+   最后夹回工作区；`PointToScreen` 给的是**物理像素**，要除以 DPI 缩放才是 DIP。
+
+> ⚠️ 试过但**不要用**的路子：给系统发 `WM_NCLBUTTONDOWN(HTCAPTION)` 当原生拖拽 —— 实测在
+> `WindowStyle=None` + `WindowChrome` 窗口上不生效（调用返回但窗口不动）；发 `WM_SYSCOMMAND(SC_MOVE|HTCAPTION)`
+> 倒是能动，但**一按下就立即还原**（点一下标题栏也会掉出最大化），不是正常窗口行为。
+> 所以只能自己判“拖起来了没有”，再还原 + `DragMove`。
 
 ### 2.8 主页搜索 · 排序 · 标签（v0.3.0）
 
@@ -2118,7 +2136,7 @@ Data/chat-room/
 # 1) 编译（0 警告 0 错误）
 .\build.ps1
 
-# 2) 轮子自检：1591 项行为逐条真跑（Data/Config 轮子 + 主页搜索排序 + 多级分类导航/面包屑
+# 2) 轮子自检：1600 项行为逐条真跑（Data/Config 轮子 + 主页搜索排序 + 多级分类导航/面包屑 + 最大化窗口拖标题栏的还原位置
 #    + 批量重命名规则/冲突/执行/撤销
 #    + Flash 下载器的站点解析/命名/ini/批量计划/真下载/本地服务器/自动下载
 #    + 联机聊天室的协议/CRC/流量上限/会话文件夹/傻瓜模式挑监听/双栈真连两族/回环真连一局
@@ -2344,7 +2362,8 @@ git diff                        # 看未暂存改动
 
 | 版本 | 内容 |
 | --- | --- |
-| **v0.22.0**（当前） | **粒子自定义颜色**（见 2.16）：① 主页设置新增「粒子颜色」：总开关「启用自定义颜色」（默认关，保持原来的淡紫白）；颜色 1 / 颜色 2 各有一个启用勾选框 + 拾色按钮（预设色板 + 手填 `#RRGGBB`）；② 只启用一种 = 单色粒子；两种都启用 = 每颗粒子生成时用随机系数在两种颜色之间线性插值（RGB/A 各通道，柔光同色）；两种都不勾 = 回到默认颜色；③ 存 `Config\shell\config.json` 的 `particleCustomColors` / `particleColor1Enabled` / `particleColor2Enabled` / `particleColor1` / `particleColor2`；④ 新增 `ColorPickerButton` + `ColorToBrushConverter`、`ParticleColorRange`（纯逻辑插值）、`Particle.ColorMix`；画刷按颜色档 × 透明度档预生成，仍是每帧零分配；⑤ 自检 1582 → **1591** 项（随机 ColorMix / 插值 / 单色固定 / 颜色解析 / 配置落盘）；设置窗口 + 双色/单色粒子截图冒烟。版本号 0.21.0 → 0.22.0 |
+| **v0.22.1**（当前） | **最大化窗口拖标题栏 = 拖出来变窗口**（见 2.7）：① 以前最大化后标题栏完全拖不动（`Window.DragMove()` 对最大化窗口无效，代码里整段跳过），做不出「普通窗口按住标题栏拖出来就变回窗口」的手感；② 现在最大化时按住标题栏**先不还原**（记下按点 + 抓住鼠标），超过系统拖拽判定距离才把窗口按最大化前的大小还原 —— 只点一下 / 只抖几个像素不还原，和普通窗口一致；③ 还原位置抽成纯逻辑 `Core/Services/WindowDragRestore.cs`（水平按抓取点比例、竖直保持偏移，最后夹回工作区；`PointToScreen` 的物理像素要换算成 DIP），还原后再 `DragMove()` 继续原生拖动；④ 自检 1591 → **1600** 项（9 项还原位置断言：中间 / 靠右 / 边缘夹取 / 工作区偏移 / 尺寸过大过小 / 尺寸缺失兜底）；E2E 真窗口验证「点标题栏不还原 / 往外拖还原并跟随光标 / 双击最大化还原 / 最大化按钮正常」。版本号 0.22.0 → 0.22.1 |
+| v0.22.0 | **粒子自定义颜色**（见 2.16）：① 主页设置新增「粒子颜色」：总开关「启用自定义颜色」（默认关，保持原来的淡紫白）；颜色 1 / 颜色 2 各有一个启用勾选框 + 拾色按钮（预设色板 + 手填 `#RRGGBB`）；② 只启用一种 = 单色粒子；两种都启用 = 每颗粒子生成时用随机系数在两种颜色之间线性插值（RGB/A 各通道，柔光同色）；两种都不勾 = 回到默认颜色；③ 存 `Config\shell\config.json` 的 `particleCustomColors` / `particleColor1Enabled` / `particleColor2Enabled` / `particleColor1` / `particleColor2`；④ 新增 `ColorPickerButton` + `ColorToBrushConverter`、`ParticleColorRange`（纯逻辑插值）、`Particle.ColorMix`；画刷按颜色档 × 透明度档预生成，仍是每帧零分配；⑤ 自检 1582 → **1591** 项（随机 ColorMix / 插值 / 单色固定 / 颜色解析 / 配置落盘）；设置窗口 + 双色/单色粒子截图冒烟。版本号 0.21.0 → 0.22.0 |
 | v0.21.0 | **外壳导航改成浏览器式「← 后退 / → 前进」**（见 2.7 / 2.15）：① 顶部工具条左边的「← 返回上一级」换成一对后退 / 前进按钮，按**访问顺序**在主页 / 类别页 / 工具页之间跳（工具页、类别页、面包屑、侧边栏、主页卡片等所有入口都算一次访问）；② 历史行为与浏览器一致：重复进入当前页不新增记录、后退后从中间再导航会丢掉「前进」记录、最多保留 100 条；不能后退 / 前进时按钮变灰；③ 后退 / 前进不刷新「最近使用」排序，工具页视图 / 配置 / 后台播放逻辑照旧；④ 新增纯逻辑 `Core/Mvvm/NavigationHistory.cs` + `Models/ShellLocation.cs`（页面位置按稳定 Key 判断相等）；自检 1569 → **1582** 项（历史前进 / 后退 / 截断 / 上限 / 页面位置相等性共 13 项）；⑤ 文档同步。版本号 0.20.0 → 0.21.0 |
 | v0.20.0 | **图片阅读器：点工具条上的文件夹路径直接在资源管理器打开所在目录**：① 工具条第二行的路径改成可点的链接式按钮（悬停变强调色、鼠标手型、tooltip 显示完整路径与「点击打开」）；② 没打开文件夹时按钮禁用，打开失败 / 目录已被删会在状态栏提示；③ VM 新增 `OpenFolderInExplorerCommand` + `HasFolder` + `FolderOpener`（自检注入假打开器，不真弹资源管理器）；④ 自检 1566 → **1569** 项（可点状态 / 命令传对目录 / 打不开给提示）；⑤ 文档 / README 同步。版本号 0.19.0 → 0.20.0 |
 | v0.19.0 | **图片阅读器设置加「窗口 / 多开」开关**（见 2.19）：① 设置面板新增 `单实例模式（再双击图片复用同一个窗口）`，默认开；关掉后每次双击 / 启动都新开一个窗口（多实例）；② 这是启动级设置，改动下次启动生效；App 在 UI 创建前直接读 `Config\picture-viewer\config.json` 的 `SingleInstanceEnabled` 决定是否启用 Mutex/管道（不走 ToolConfigStore，避免和后面 ViewModel 的配置实例打架）；③ 没开单实例时不建 Mutex / 管道服务端，多开互不影响；④ 恢复默认会把开关回 true；⑤ 自检 1563 → **1566** 项（默认值 / VM 写回 / 恢复默认回 true）；真实双进程验证：配置开 → 第二次 exit 0 + 1 个窗口 + 图片定位；配置关 → 2 个窗口；UIA 勾选后配置文件跟着改写。版本号 0.18.0 → 0.19.0 |

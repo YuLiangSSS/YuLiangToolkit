@@ -32,9 +32,12 @@
             <RowDefinition x:Name="StatusRow" Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- 自定义标题栏（手动拖拽 + 双击最大化） -->
+        <!-- 自定义标题栏（手动拖拽 + 双击最大化；最大化时按住拖出来会先还原成窗口） -->
         <Border Grid.Row="0" Background="{StaticResource HeaderBackgroundBrush}"
-                MouseLeftButtonDown="OnTitleBarMouseLeftDown">
+                MouseLeftButtonDown="OnTitleBarMouseLeftDown"
+                MouseMove="OnTitleBarMouseMove"
+                MouseLeftButtonUp="OnTitleBarMouseLeftUp"
+                LostMouseCapture="OnTitleBarLostMouseCapture">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />

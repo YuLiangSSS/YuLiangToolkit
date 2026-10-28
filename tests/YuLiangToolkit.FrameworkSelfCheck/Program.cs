@@ -2,6 +2,7 @@
 // 运行： dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
 // （默认在临时目录里造数据根，不碰仓库的 Data/Config；退出码 0 = 全部通过）
 using System.IO;
+using System.Windows;
 using System.Windows.Media;
 using YuLiangToolkit.App.Models;
 using YuLiangToolkit.App.ViewModels;
@@ -264,6 +265,48 @@ Check("粒子颜色设置自动落盘并读回（颜色按 #RRGGBB 存）",
     && savedColors.ParticleColor1 == "#FF5A5A" && savedColors.ParticleColor2 == "#9F8FFF"
     && File.ReadAllText(shellStore.FilePath).Contains("\"#FF5A5A\""),
     JsonFileStore.Serialize(savedColors).Replace(Environment.NewLine, " "));
+
+// ---------- 17.3 最大化窗口拖标题栏 → 还原位置（纯逻辑，见 AGENTS.md 2.7） ----------
+// 场景：1920x1032 的工作区里，1280x820 的窗口最大化后（实际 1920 宽），按住标题栏某个点往外拖。
+var dragArea = new Rect(0, 0, 1920, 1032);
+
+var dragCenter = WindowDragRestore.Compute(960, 20, 960, 20, 1920, 1280, 820, dragArea, 1024, 700);
+Check("拖标题栏还原：抓正中间 → 窗口居中、贴工作区顶边",
+    dragCenter.Left == 320 && dragCenter.Top == 0 && dragCenter.Width == 1280 && dragCenter.Height == 820,
+    $"({dragCenter.Left},{dragCenter.Top}) {dragCenter.Width}x{dragCenter.Height}");
+
+var dragRight = WindowDragRestore.Compute(1800, 20, 1800, 20, 1920, 1280, 820, dragArea, 1024, 700);
+Check("拖标题栏还原：抓靠右 → 光标还在标题栏同一比例处", Math.Abs(dragRight.Left - 600) < 1e-9,
+    $"left={dragRight.Left}");
+
+var dragEdge = WindowDragRestore.Compute(1919, 20, 1800, 20, 1920, 1280, 820, dragArea, 1024, 700);
+Check("拖标题栏还原：拖到屏幕右边缘 → 窗口被夹回工作区", dragEdge.Left == 640,
+    $"left={dragEdge.Left}");
+
+var dragAbove = WindowDragRestore.Compute(960, 5, 480, 20, 1920, 1280, 820, dragArea, 1024, 700);
+Check("拖标题栏还原：窗口不会被推到工作区上面（标题栏始终可点）", dragAbove.Top == 0,
+    $"top={dragAbove.Top}");
+
+var dragHuge = WindowDragRestore.Compute(960, 20, 960, 20, 1920, 2400, 1400, dragArea, 1024, 700);
+Check("拖标题栏还原：还原尺寸比工作区大 → 夹到工作区大小",
+    dragHuge.Width == 1920 && dragHuge.Height == 1032 && dragHuge.Left == 0 && dragHuge.Top == 0,
+    $"({dragHuge.Left},{dragHuge.Top}) {dragHuge.Width}x{dragHuge.Height}");
+
+var dragMin = WindowDragRestore.Compute(960, 20, 960, 20, 1920, 800, 600, dragArea, 1024, 700);
+Check("拖标题栏还原：还原尺寸比最小尺寸还小 → 用 Window 的最小尺寸",
+    dragMin.Width == 1024 && dragMin.Height == 700, $"{dragMin.Width}x{dragMin.Height}");
+
+var dragUnknown = WindowDragRestore.Compute(960, 20, 960, 20, 1920, 0, 0, dragArea, 1024, 700);
+Check("拖标题栏还原：拿不到最大化前的尺寸 → 用工作区尺寸兜底",
+    dragUnknown.Width == 1920 && dragUnknown.Height == 1032, $"{dragUnknown.Width}x{dragUnknown.Height}");
+
+var dragOffsetArea = WindowDragRestore.Compute(960, 70, 960, 20, 1920, 1280, 820, new Rect(100, 50, 1900, 1000), 1024, 700);
+Check("拖标题栏还原：工作区不在 (0,0)（任务栏在左边 / 上边）也按工作区算",
+    dragOffsetArea.Left == 320 && dragOffsetArea.Top == 50, $"({dragOffsetArea.Left},{dragOffsetArea.Top})");
+
+var dragNoWidth = WindowDragRestore.Compute(960, 20, 0, 20, 0, 1280, 820, dragArea, 1024, 700);
+Check("拖标题栏还原：拿不到当前窗口宽度 → 按正中间算",
+    dragNoWidth.Left == 320, $"left={dragNoWidth.Left}");
 
 // ---------- 18. 批量重命名：单条规则的行为（纯逻辑，不碰界面） ----------
 // 规则清单就是一张 RenameRule 数组，BuildName 按数组顺序逐条套用。
