@@ -36,8 +36,11 @@ public sealed class XiangqiConfig : ToolConfig, IBoardGameRoomConfig
     /// <summary>选中棋子时高亮可走点。</summary>
     public bool ShowLegalMoves { get; set; } = true;
 
-    /// <summary>执黑时自动翻转棋盘（黑方在下）。</summary>
-    public bool AutoFlip { get; set; } = true;
+    /// <summary>
+    /// 观战时的棋盘视角："red" = 红方在下（默认）/"black" = 黑方在下。
+    /// 坐席玩家的视角自动跟随自己所执的一方，不用这个设置。
+    /// </summary>
+    public string SpectatorViewSide { get; set; } = "red";
 
     /// <summary>显示最后一步的起点 / 终点标记。</summary>
     public bool ShowLastMove { get; set; } = true;
@@ -62,6 +65,10 @@ public sealed class XiangqiConfig : ToolConfig, IBoardGameRoomConfig
     /// <summary>HandicapGiver 对应的阵营（认不出按红方）。</summary>
     [JsonIgnore]
     public XiangqiSide HandicapGiverValue => XiangqiSides.Parse(HandicapGiver) ?? XiangqiSide.Red;
+
+    /// <summary>观战视角对应的阵营（认不出按红方在下）。</summary>
+    [JsonIgnore]
+    public XiangqiSide SpectatorViewSideValue => XiangqiSides.Parse(SpectatorViewSide) ?? XiangqiSide.Red;
 
     /// <summary>让先步数夹到 0~5（界面 / 逻辑统一用这个值）。</summary>
     [JsonIgnore]

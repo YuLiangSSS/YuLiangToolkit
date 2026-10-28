@@ -4,7 +4,7 @@
 > 改这个项目之前先读本文件，**不要再去通读 `src/`**：这里把所有已经造好的「轮子」（可复用组件）的
 > **用途 + 签名 + 一行用法**、Data/Config 目录约定、新增功能的标准流程、以及踩过的坑都写全了。
 >
-> * **当前版本 v0.23.0** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
+> * **当前版本 v0.24.0** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
 > * 十三个功能：视频转音频 · **视频 / 音乐播放器** · **图片连续阅读器** · 批量重命名 · Flash 下载器 · 联机聊天室 · osu! 下图器 · **osu! Key 转换器** · **osu! LN 转换器** · **osu! 等级计算器** · **联机五子棋** · **联机象棋** · 框架示例（模板，可整目录删除）。
 >   osu! 的四个工具归入「音游工具」分类；**联机五子棋 / 联机象棋归入「棋牌」分类**（主页多级目录 → 类别页 → 工具，见 2.15 / 2.18）。
 > * 平台：Windows + .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM；**唯一第三方依赖是 `OsuParsers`**（osu `.osu` 解析/写回，MIT，见 2.17），其余轮子都手写在 `Core/`。
@@ -19,7 +19,7 @@
 ```powershell
 .\build.ps1                                                    # ① 编译：必须 0 错误（有警告也顺手清掉）
 dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
-                                                               # ② 自检：1753 项行为逐条真跑，退出码 0 = 全通过
+                                                               # ② 自检：1775 项行为逐条真跑，退出码 0 = 全通过
 ```
 
 * **改了行为就同步改自检断言**（自检就是"这份文档里承诺的行为"的执行版本，见第 6 节）。
@@ -77,7 +77,7 @@ dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.Fram
 > 第 0–9 节是稳定编号，**源码注释里到处用 `AGENTS.md 的 2.11 节` 这种引用指向它**（搜索 `AGENTS.md` 就能找到全部引用点）。
 > 重排或删除章节编号会让这些引用失效——要改就一起改。
 >
-> ⚠️ **本文件约 2461 行 / 267 KB**：作为"工作区指令"自动注入时可能被上下文预算截断（只保留前半段）。
+> ⚠️ **本文件约 2465 行 / 270 KB**：作为"工作区指令"自动注入时可能被上下文预算截断（只保留前半段）。
 > 一旦发现后半段不见了，**用读取工具按行号接着读**；定位章节最稳的办法是搜索标题（`## 3.` / `### 2.17`），
 > 别依赖行号（本文件一直在长，行号会漂）。
 
@@ -110,13 +110,13 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | 项 | 内容 |
 | --- | --- |
 | 技术栈 | .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM；唯一第三方依赖 `OsuParsers`（MIT，osu 谱面解析/写回） |
-| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.23.0 就是读它；**别在别处写死**） |
+| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.24.0 就是读它；**别在别处写死**） |
 | 解决方案 | `YuLiangToolkit.sln`（13 个项目：主程序 + Core + 10 个功能 + 自检） |
 | 主程序 | `YuLiangTookit.csproj`（注意：文件名少一个 `l`，是历史拼写）→ 自定义标题栏外壳、主页/类别页/侧边栏/面包屑、深色主题、窗口级粒子层 |
 | 核心库 | `src/YuLiangToolkit.Core/`（工具契约、目录树、MVVM 基类、存储、配置、FFmpeg 封装、粒子引擎/覆盖层、通用 TCP 房间底座 `Core/Net`） |
 | 功能 | `Tools.VideoToAudio`（视频转音频）、`Tools.MediaPlayer`（视频 / 音乐播放器）、`Tools.PictureViewer`（图片连续阅读器）、`Tools.BatchRename`（批量重命名）、`Tools.FlashDownloader`（Flash 下载器）、`Tools.ChatRoom`（联机聊天室）、`Tools.MapDownloader`（osu! 下图器）、`Tools.OsuMania`（osu! Key / LN / 等级三个工具）、`Tools.BoardGames`（联机五子棋 / 联机象棋）、`Tools.Sample`（框架示例，可删） |
 | 数据/配置 | **在 exe 旁边**（`bin\Debug\net9.0-windows\Data`、`…\Config`）——见第 3 节；仓库根的 `Data/`、`Config/` 只剩说明文件 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**1753 项**行为逐条验证，纯控制台）——见第 6 节 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**1775 项**行为逐条验证，纯控制台）——见第 6 节 |
 | 构建 | `.\build.ps1`（离线，走本机 NuGet 缓存；会设 `DOTNET_CLI_HOME` 到 `.dotnet-cli-home`） |
 | 运行 | `dotnet run --project YuLiangTookit.csproj` 或直接跑 `bin\Debug\net9.0-windows\YuLiangTookit.exe` |
 
@@ -170,6 +170,8 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | `YLT_GOMOKU_DEMO=1` | 打开「联机五子棋」时造一局演示棋（同机双人 12 手 + 禁手点），截图/冒烟用，不联网 |
 | `YLT_XIANGQI_DEMO=1` | 打开「联机象棋」时造一局演示棋（同机双人 11 步中盘），截图/冒烟用，不联网 |
 | `YLT_XIANGQI_SETUP=1` | 打开「联机象棋」时直接进摆棋并套用「让单马」（截图核对摆棋卡用） |
+| `YLT_XIANGQI_DEMO_SEAT=black` | 配合 `YLT_BOARD_DEMO_ROOM=1`：演示房间里让房主坐后手位执黑（截图核对「执黑时黑方在下」用） |
+| `YLT_XIANGQI_DEMO_VIEW=red\|black` | 配合 `YLT_BOARD_DEMO_ROOM=spectator`：临时指定观战视角（截图核对观战红/黑方视角；不写配置） |
 | `YLT_BOARD_DEMO_PAUSE=1` | 棋牌演示「对局暂停 / 正在重连」状态（截图核对暂停 UI 用；不影响真实联机） |
 | `YLT_BOARD_DEMO_ROOM=1` / `=spectator` | 棋牌演示一个 4 人房：`1` = 房主视角，`spectator` = 观战视角（截图核对多人房间/席位/自动轮换/观战只读用；不联网） |
 | `YLT_BOARD_RECONNECT_MS` / `YLT_BOARD_RECONNECT_TRIES` | 自检加速断线重连重试（默认 2000ms × 30 次，正常使用不要设） |
@@ -1685,6 +1687,7 @@ protected abstract void BeginNewGame(bool swapSides);   // 开始下一局 / 本
 * 中文记谱（`XiangqiNotation`）：`炮二平五` / `马8进7` / `车九进一` / `相三进五` / 前车进一…；红方从右往左一~九、
   黑方从黑方右往左 1~9；同一路同种棋子用 前/中/后 区分。棋谱列表 +「复制棋谱」。
 * 象棋设置同样有 `autoRotateMode` / `autoPickMode`（默认 manual/rotation）；`hostSide` 是房主默认坐席（红/黑）。
+* **棋盘朝向**（v0.24.0）：坐席玩家**自动朝向自己**——执红红在下、执黑黑在下（`Flipped` 只做坐标映射，棋子文字 / 楚河汉界 / 坐标始终正向绘制，不旋转）；同机双人 / 离线保留手动「翻转棋盘」。**观战者（含不坐席位的房主）可自由选择红方视角 / 黑方视角**（棋盘下 ComboBox，存 `spectatorViewSide`，默认 red），视角只影响自己，刷新 / 状态包不会重置；换座 / 被换下后朝向自动跟着变。设置卡里已没有旧的「自动翻转」开关。
 
 #### 配置 / 数据
 
@@ -1706,7 +1709,7 @@ protected abstract void BeginNewGame(bool swapSides);   // 开始下一局 / 本
   DP 变化 `InvalidateVisual`；点击换算处理边距、容差约半格；象棋翻转时屏幕/逻辑坐标互换；观战时 `Interactive=false`。
 * 断线/暂停状态：对局卡红底块 + 棋盘下提示，绑基类 `IsGamePaused/GamePauseStatusText/IsReconnecting/ReconnectStatusText`。
 * 认输/离开房间/结束本局要**二次确认**；断线重连期间所有落子/操作按钮禁用（离开可用）。
-* 调试/演示环境变量见第 0 节：`YLT_GOMOKU_DEMO` `YLT_XIANGQI_DEMO` `YLT_XIANGQI_SETUP`
+* 调试/演示环境变量见第 0 节：`YLT_GOMOKU_DEMO` `YLT_XIANGQI_DEMO` `YLT_XIANGQI_SETUP` `YLT_XIANGQI_DEMO_SEAT` `YLT_XIANGQI_DEMO_VIEW`
   `YLT_BOARD_DEMO_PAUSE`（暂停/重连 UI）`YLT_BOARD_DEMO_ROOM=1|spectator`（4 人演示房间的房主/观战视角，不联网）
   `YLT_BOARD_RECONNECT_MS/_TRIES`（自检加速）。
 
@@ -1934,7 +1937,7 @@ bin\Debug\net9.0-windows\          （或 bin\Release\… / dist\YuLiangToolkit\
    ├─ osu-ln-transformer\config.json   ← LN 转换器：上次用的 Level / LN% / Divide / Column / Gap / OD 开关…
    ├─ osu-level-calculator\config.json ← 等级计算器：上次的显示/计算偏好
    ├─ gomoku\config.json           ← 联机五子棋：玩家名 / 端口 / 房主执子 / 禁手开关 / 显示禁手点 / 棋盘大小
-   ├─ xiangqi\config.json          ← 联机象棋：玩家名 / 端口 / 房主执棋 / 走法提示 / 自动翻转 / 显示坐标
+   ├─ xiangqi\config.json          ← 联机象棋：玩家名 / 端口 / 房主默认坐席 / 自动轮换 / 观战视角 / 走法提示 / 显示坐标
    └─ sample-framework\            ← config.json + options.json
 ```
 
@@ -2188,7 +2191,7 @@ Data/chat-room/
 # 1) 编译（0 警告 0 错误）
 .\build.ps1
 
-# 2) 轮子自检：1753 项行为逐条真跑（Data/Config 轮子 + 主页搜索排序 + 多级分类导航/面包屑 + 最大化窗口拖标题栏的还原位置
+# 2) 轮子自检：1775 项行为逐条真跑（Data/Config 轮子 + 主页搜索排序 + 多级分类导航/面包屑 + 最大化窗口拖标题栏的还原位置
 #    + 批量重命名规则/冲突/执行/撤销
 #    + Flash 下载器的站点解析/命名/ini/批量计划/真下载/本地服务器/自动下载
 #    + 联机聊天室的协议/CRC/流量上限/会话文件夹/傻瓜模式挑监听/双栈真连两族/回环真连一局
@@ -2358,7 +2361,7 @@ $env:YLT_SHOT="shots\published.png"; .\dist\YuLiangToolkit\YuLiangTookit.exe
 | Flash 下载器 | `flash-downloader` | `Config\flash-downloader\config.json`（游戏目录 / 并发 / 超时 / 端口 / 播放器路径 / 上次输入） | `Data\flash-downloader\games\`（游戏本体 + `SWFNetPath.ini`）、`Data\flash-downloader\tools\`（播放页 / 替代 API / FlashPlayer.exe） | `Order = 20`；支持 4399 / 7k7k / 17yy / ArmorGames / Kongregate，本地服务器 + 自动下载所需文件（见 2.11）；**目录可在界面上改**；标签：flash/swf/小游戏/下载/4399/7k7k/17yy/ArmorGames/Kongregate/本地服务器/离线玩/h5/unity/网页游戏 |
 | 联机聊天室 | `chat-room` | `Config\chat-room\config.json`（昵称 / 头像 / **傻瓜模式** / 监听地址与端口 / 要连的主机 / 单次流量上限与方向 / 发图压缩 / 大文件确认 / 最近会话） | `Data\chat-room\Protocol\`（协议说明）、`Data\chat-room\Sessions\<时间>\`（**每次连接新建**：`chat-log.jsonl` + `session.json` + `images`/`audio`/`video`/`files`） | `Order = 30`；主机开 TCP 端口、客户端填 IP/域名 + 端口，局域网与内网穿透通用（IPv6 也行）；文字 / 图片 / 音频 / 视频 / 任意文件双向发送；**单次流量上限 + 用量指示**；**傻瓜模式默认开**（工具自己挑双栈监听 + 列出本机 IPv4/IPv6 与端口，见 2.12）；标签：聊天/聊天室/局域网/联机/TCP/内网穿透/IPv6/传文件/发图片/语音/视频/流量限制/主机/客户端 |
 | 联机五子棋 | `gomoku` | `Config\gomoku\config.json`（玩家名 / 端口 / 上次地址 / 房主默认坐席 / 自动上场方式 / 补位方式 / **禁手开关** / 显示禁手点 / 棋盘大小 / 显示棋谱） | —（对局与棋谱只在内存，不落盘） | `Order = 60`；**归入「棋牌」类别**；主机开 TCP 房间 / 客户端加入 / 同机双人；**多人房间（最多 16 人，两席上场、其余观战）**：房主安排/交换/清空席位、开始下一局、结束本局（作废）；**自动轮换**（手动 / 输的下场 / 双方都下场 × 轮流 / 随机补位，没上过场优先）；禁手可开关、15/19 路、悔棋求和认输、房间聊天、断线自动重连（2s×30）+ 对局暂停（见 2.18）；标签：五子棋/连珠/禁手/棋牌/联机/局域网/TCP/双人/多人/观战/自动轮换/悔棋 |
-| 联机象棋 | `xiangqi` | `Config\xiangqi\config.json`（玩家名 / 端口 / 上次地址 / 房主默认坐席 / 自动上场方式 / 补位方式 / 走法提示 / 自动翻转 / 显示坐标 / 最后一步） | —（对局与棋谱只在内存，不落盘） | `Order = 61`；**归入「棋牌」类别**；完整中国象棋规则（马腿/象眼/不过河/九宫/飞将/炮架/过河兵、将军/将死/困毙/自然限着）；**自由摆棋 + 一键默认开局 + 让子（单马/双马/单车/车马/车马炮/九子，让子方红黑可选）+ 让先 0~5**；**多人房间（最多 16 人，两席上场、其余观战）**：房主席位安排、开始下一局、作废、自动轮换；走法提示/自动翻转/中文记谱/悔棋求和认输/断线重连；标签：象棋/中国象棋/棋牌/联机/局域网/TCP/双人/多人/观战/自动轮换/对弈/摆棋/让子/让先/悔棋 |
+| 联机象棋 | `xiangqi` | `Config\xiangqi\config.json`（玩家名 / 端口 / 上次地址 / 房主默认坐席 / 自动上场方式 / 补位方式 / **观战视角** / 走法提示 / 显示坐标 / 最后一步） | —（对局与棋谱只在内存，不落盘） | `Order = 61`；**归入「棋牌」类别**；完整中国象棋规则（马腿/象眼/不过河/九宫/飞将/炮架/过河兵、将军/将死/困毙/自然限着）；**自由摆棋 + 一键默认开局 + 让子（单马/双马/单车/车马/车马炮/九子，让子方红黑可选）+ 让先 0~5**；**多人房间（最多 16 人，两席上场、其余观战）**：房主席位安排、开始下一局、作废、自动轮换；**棋盘自动朝向执子方（执黑黑在下、棋子文字正着）；观战者可自由选红/黑方视角并记住**；走法提示/中文记谱/悔棋求和认输/断线重连；标签：象棋/中国象棋/棋牌/联机/局域网/TCP/双人/多人/观战/自动轮换/对弈/摆棋/让子/让先/悔棋 |
 | osu! 下图器 | `map-downloader` | `Config\map-downloader\config.json`（Client ID / Client Secret、Access Token 与到期时间、搜索条件、下载目录与并发数） | `Data\map-downloader\downloads\`（下回来的 `.osz`，**目录可在界面上改**） | `Order = 50`；**归入「音游工具」类别**（`CategoryPath`）；从独立 WinForms 小工具改写（见 2.13）；搜索走 osu! 官方 API（要自己注册 OAuth 应用换 Token），`.osz` 走第三方镜像 dl.sayobot.cn；标签：osu/osu!/谱面/beatmap/下图/下图器/osz/下载/搜索/mania/音游 |
 | osu! Key 转换器 | `osu-key-converter` | `Config\osu-key-converter\config.json`（目标 Keys / Gap / Clean / Blank / Seed / Creator / 键数过滤） | —（转换结果写**原谱面目录**，见 2.17） | `Order = 51`；音游工具；低 k → 高 k（只支持升 key）；KeyConverter 算法逐行改写 + 修复 1k/2k/HitSound 等已知 bug |
 | osu! LN 转换器 | `osu-ln-transformer` | `Config\osu-ln-transformer\config.json`（Level / LN% / Divide / Column / Gap / OD 开关 / Seed / Creator / Ignore / Original LN / Fix Error / 键数过滤） | —（同上） | `Order = 52`；音游工具；14 档 LN 转换（-3~10，含 Hold off / Random / Invert / 高斯密度）；LNTransformer 算法逐行改写 + 修复 Original LN/OD 等已知 bug |
@@ -2419,7 +2422,8 @@ git diff                        # 看未暂存改动
 
 | 版本 | 内容 |
 | --- | --- |
-| **v0.23.0**（当前） | **棋牌多人房间：观战 + 房主安排上场 + 自动轮换**（见 2.18）。① 协议升 v2：房间不再固定两人——一个房间最多 **16 人**（房主 + 15 客户端），两个「上场位」上的人比赛、其余观战；`BoardRoomState`/`BoardMemberInfo`/`BoardStateEnvelope`（seq/room/game）+ `WrapState/ReadState`；成员有稳定 `MemberId`、进房顺序、上场次数；`hello` 带 MemberId、`welcome` 带 YourMemberId+State、`snapshot` 改 `state`。② `BoardRoomSession` 重写为多客户端：成员表 / 同 id 重连复用 / 30s 僵死连接顶替 / 容量拒绝 / 聊天主机中转 / 按 MemberId 单发请求与回应；握手顺序（登记成员 → MemberJoined → stateFactory → welcome）保证新成员 welcome 状态含全部成员。③ 基类 `BoardGameRoomViewModelBase` 重写：多人房间权威模型、两席安排/交换/清空、开始下一局/作废本局（二次确认）、请求路由（房主是玩家/裁判）、暂停（仅席上玩家掉线，观战掉线不暂停）、成员/身份派生属性；新增 `BoardRotationPlanner` 纯逻辑与 `BoardMemberItem`，新增共用 `RosterPanel`（上场安排 + 房间成员两张卡，成员列表/自动上场/补位方式/开始下一局）。④ **自动轮换**：手动 / 输的下场 / 双方都下场 × 轮流 / 随机补位（没上过场优先、平局与人不够有回退、Reason 中文说明）；一局结束自动加分并排好下一局席位，房主点「开始下一局」。⑤ 两个游戏 VM/View 迁移到新基类：身份与权限全部用 `LocalSide/IsSeatedPlayer/IsSpectator/ShowPlayerActions`，观战 VM 层硬拦截；开始按钮只在 RosterPanel；象棋房主视角不再显示「再来一局」；`YLT_BOARD_DEMO_ROOM=1|spectator` 演示 4 人房。⑥ 主动 bye 时序加固（客户端发 bye 后等 80ms 排空再关，避免被误判成网络断开）；开房第一帧房主成员行即显示「你」。⑦ 自检 1600 → **1753** 项（棋牌 560：注册 25 + 五子棋 92 + 五子棋 v2 8 + 象棋 141 + 象棋 v2 5 + 自动轮换 46 + 成员 13 + 配置 26 + 协议/端点/帧 61 + 多客户端会话 43 + 房间 VM 真回环 78 + 容量 6 + 关房 5 + 断网 6 + 连接失败 5）；截图冒烟：多人房间房主/观战视角、棋盘按钮、1280×820 与 1024×700。版本号 0.22.1 → 0.23.0 |
+| **v0.24.0**（当前） | **象棋棋盘朝向：执子方视角 + 观战自由选红/黑视角**（见 2.18）。① 坐席玩家棋盘**自动朝向自己**：执红红在下、执黑黑在下；只做坐标映射，棋子文字 / 楚河汉界 / 坐标始终正向（不转字）——不再受旧「自动翻转」开关控制（`XiangqiConfig.AutoFlip` 删除，旧配置里的字段读取时忽略）。② 坐席玩家不显示手动翻转按钮，棋盘下显示「视角：红/黑方在下（跟随你所执的一方）」；同机双人 / 离线保留手动「翻转棋盘」且刷新不重置。③ **观战者**（含不坐席位的房主）棋盘下新增「观战视角」下拉：红方视角（红在下）/ 黑方视角（黑在下），改完立即生效、存 `spectatorViewSide`（默认 red）下次还记得；视角只影响观战者自己，RefreshAll / 收状态包都不会重置；换座 / 被换下后自动重算。④ 演示开关 `YLT_XIANGQI_DEMO_SEAT=black`（房主执黑视角截图）/ `YLT_XIANGQI_DEMO_VIEW=red|black`（观战视角截图，不写配置）。⑤ 自检 1753 → **1775** 项（新增 22：视角配置默认/持久化/旧配置兼容、离线与同机手动翻转、真回环执红/执黑朝向、观战默认红与切黑、刷新不重置、房主不下场按观战视角、换座跟随）；文档 docs/tools/xiangqi.md 新增「棋盘朝向」一节。版本号 0.23.0 → 0.24.0 |
+| v0.23.0 | **棋牌多人房间：观战 + 房主安排上场 + 自动轮换**（见 2.18）。① 协议升 v2：房间不再固定两人——一个房间最多 **16 人**（房主 + 15 客户端），两个「上场位」上的人比赛、其余观战；`BoardRoomState`/`BoardMemberInfo`/`BoardStateEnvelope`（seq/room/game）+ `WrapState/ReadState`；成员有稳定 `MemberId`、进房顺序、上场次数；`hello` 带 MemberId、`welcome` 带 YourMemberId+State、`snapshot` 改 `state`。② `BoardRoomSession` 重写为多客户端：成员表 / 同 id 重连复用 / 30s 僵死连接顶替 / 容量拒绝 / 聊天主机中转 / 按 MemberId 单发请求与回应；握手顺序（登记成员 → MemberJoined → stateFactory → welcome）保证新成员 welcome 状态含全部成员。③ 基类 `BoardGameRoomViewModelBase` 重写：多人房间权威模型、两席安排/交换/清空、开始下一局/作废本局（二次确认）、请求路由（房主是玩家/裁判）、暂停（仅席上玩家掉线，观战掉线不暂停）、成员/身份派生属性；新增 `BoardRotationPlanner` 纯逻辑与 `BoardMemberItem`，新增共用 `RosterPanel`（上场安排 + 房间成员两张卡，成员列表/自动上场/补位方式/开始下一局）。④ **自动轮换**：手动 / 输的下场 / 双方都下场 × 轮流 / 随机补位（没上过场优先、平局与人不够有回退、Reason 中文说明）；一局结束自动加分并排好下一局席位，房主点「开始下一局」。⑤ 两个游戏 VM/View 迁移到新基类：身份与权限全部用 `LocalSide/IsSeatedPlayer/IsSpectator/ShowPlayerActions`，观战 VM 层硬拦截；开始按钮只在 RosterPanel；象棋房主视角不再显示「再来一局」；`YLT_BOARD_DEMO_ROOM=1|spectator` 演示 4 人房。⑥ 主动 bye 时序加固（客户端发 bye 后等 80ms 排空再关，避免被误判成网络断开）；开房第一帧房主成员行即显示「你」。⑦ 自检 1600 → **1753** 项（棋牌 560：注册 25 + 五子棋 92 + 五子棋 v2 8 + 象棋 141 + 象棋 v2 5 + 自动轮换 46 + 成员 13 + 配置 26 + 协议/端点/帧 61 + 多客户端会话 43 + 房间 VM 真回环 78 + 容量 6 + 关房 5 + 断网 6 + 连接失败 5）；截图冒烟：多人房间房主/观战视角、棋盘按钮、1280×820 与 1024×700。版本号 0.22.1 → 0.23.0 |
 | v0.22.1 | **最大化窗口拖标题栏 = 拖出来变窗口**（见 2.7）：① 以前最大化后标题栏完全拖不动（`Window.DragMove()` 对最大化窗口无效，代码里整段跳过），做不出「普通窗口按住标题栏拖出来就变回窗口」的手感；② 现在最大化时按住标题栏**先不还原**（记下按点 + 抓住鼠标），超过系统拖拽判定距离才把窗口按最大化前的大小还原 —— 只点一下 / 只抖几个像素不还原，和普通窗口一致；③ 还原位置抽成纯逻辑 `Core/Services/WindowDragRestore.cs`（水平按抓取点比例、竖直保持偏移，最后夹回工作区；`PointToScreen` 的物理像素要换算成 DIP），还原后再 `DragMove()` 继续原生拖动；④ 自检 1591 → **1600** 项（9 项还原位置断言：中间 / 靠右 / 边缘夹取 / 工作区偏移 / 尺寸过大过小 / 尺寸缺失兜底）；E2E 真窗口验证「点标题栏不还原 / 往外拖还原并跟随光标 / 双击最大化还原 / 最大化按钮正常」。版本号 0.22.0 → 0.22.1 |
 | v0.22.0 | **粒子自定义颜色**（见 2.16）：① 主页设置新增「粒子颜色」：总开关「启用自定义颜色」（默认关，保持原来的淡紫白）；颜色 1 / 颜色 2 各有一个启用勾选框 + 拾色按钮（预设色板 + 手填 `#RRGGBB`）；② 只启用一种 = 单色粒子；两种都启用 = 每颗粒子生成时用随机系数在两种颜色之间线性插值（RGB/A 各通道，柔光同色）；两种都不勾 = 回到默认颜色；③ 存 `Config\shell\config.json` 的 `particleCustomColors` / `particleColor1Enabled` / `particleColor2Enabled` / `particleColor1` / `particleColor2`；④ 新增 `ColorPickerButton` + `ColorToBrushConverter`、`ParticleColorRange`（纯逻辑插值）、`Particle.ColorMix`；画刷按颜色档 × 透明度档预生成，仍是每帧零分配；⑤ 自检 1582 → **1591** 项（随机 ColorMix / 插值 / 单色固定 / 颜色解析 / 配置落盘）；设置窗口 + 双色/单色粒子截图冒烟。版本号 0.21.0 → 0.22.0 |
 | v0.21.0 | **外壳导航改成浏览器式「← 后退 / → 前进」**（见 2.7 / 2.15）：① 顶部工具条左边的「← 返回上一级」换成一对后退 / 前进按钮，按**访问顺序**在主页 / 类别页 / 工具页之间跳（工具页、类别页、面包屑、侧边栏、主页卡片等所有入口都算一次访问）；② 历史行为与浏览器一致：重复进入当前页不新增记录、后退后从中间再导航会丢掉「前进」记录、最多保留 100 条；不能后退 / 前进时按钮变灰；③ 后退 / 前进不刷新「最近使用」排序，工具页视图 / 配置 / 后台播放逻辑照旧；④ 新增纯逻辑 `Core/Mvvm/NavigationHistory.cs` + `Models/ShellLocation.cs`（页面位置按稳定 Key 判断相等）；自检 1569 → **1582** 项（历史前进 / 后退 / 截断 / 上限 / 页面位置相等性共 13 项）；⑤ 文档同步。版本号 0.20.0 → 0.21.0 |

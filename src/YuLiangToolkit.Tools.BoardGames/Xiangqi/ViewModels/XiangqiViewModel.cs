@@ -41,6 +41,9 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
     private bool _isSetupMode;
     private bool _isRestartSetupConfirming;
     private bool _flipped;
+
+    /// <summary>演示用：<c>YLT_XIANGQI_DEMO_VIEW=black|red</c> 临时覆盖观战视角（不写配置）。</summary>
+    private XiangqiSide? _spectatorViewOverride;
     private bool _waitingHostMove;
 
     /// <summary>造一个象棋工具界面（配置 / 摆棋草稿 / 正式棋局 / 命令全部备好）。</summary>
@@ -62,7 +65,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         ResignCommand = new RelayCommand(_ => ResignAction(), _ => CanResign);
         OfferDrawCommand = new RelayCommand(_ => OfferDrawAction(), _ => CanOfferDraw);
         RematchCommand = new RelayCommand(_ => RematchAction(), _ => CanRematch);
-        FlipBoardCommand = new RelayCommand(_ => FlipBoard());
+        FlipBoardCommand = new RelayCommand(_ => FlipBoard(), _ => ShowManualFlipButton);
         CopyNotationCommand = new RelayCommand(_ => CopyNotation(), _ => _game.History.Count > 0);
         ApplySetupAndStartCommand = new RelayCommand(_ => ApplySetupAndStart(), _ => CanApplySetupAndStart);
         RequestRestartSetupCommand = new RelayCommand(_ => RequestRestartSetup(), _ => CanRestartSetup);
@@ -83,6 +86,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         PropertyChanged += OnBaseStatePropertyChanged;
         RefreshAll();
         ApplyDemoData();
+        ApplyDemoViewOverride();
     }
 
     // ---------- 基类状态 → 派生属性刷新 ----------
@@ -118,6 +122,11 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         OnPropertyChanged(nameof(CanApplySetupAndStart));
         OnPropertyChanged(nameof(ApplySetupAndStartText));
         OnPropertyChanged(nameof(CanEditPreferredSeat));
+        OnPropertyChanged(nameof(ShowSpectatorViewOption));
+        OnPropertyChanged(nameof(ShowManualFlipButton));
+        OnPropertyChanged(nameof(SelectedSpectatorViewSide));
+        OnPropertyChanged(nameof(ViewSideHintText));
+        OnPropertyChanged(nameof(IsFlipped));
         OnPropertyChanged(nameof(TurnText));
         OnPropertyChanged(nameof(CheckText));
         OnPropertyChanged(nameof(IsStarted));
@@ -222,7 +231,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
             if (Cfg.HostSideValue == value.Value) return;
             Cfg.HostSide = value.Value.ToKey();
             OnPropertyChanged();
-            UpdateFlipFromSettings();
+            RefreshFlip();
             RefreshAll();
         }
     }
@@ -408,8 +417,52 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
     /// <summary>当前选中棋子的合法落点。</summary>
     public IReadOnlyList<XiangqiMove> LegalTargets => _legalTargets;
 
-    /// <summary>棋盘是否翻转（执黑 / 手动翻转 / 房主偏好）。</summary>
+    /// <summary>棋盘是否翻转（黑方在下）。坐席玩家跟随所执边、观战跟随观战视角、本地/离线为手动状态。</summary>
     public bool IsFlipped => _flipped;
+
+    // ---------- 棋盘朝向（执子方视角 / 观战视角 / 本地手动翻转） ----------
+
+    /// <summary>观战视角下拉选项。</summary>
+    public IReadOnlyList<OptionItem<string>> SpectatorViewOptions { get; } = OptionItem.From(
+        ("red", "红方视角（红在下）"),
+        ("black", "黑方视角（黑在下）"));
+
+    /// <summary>观战时的棋盘视角（写配置、立即生效、下次打开还记得）。</summary>
+    public OptionItem<string>? SelectedSpectatorViewSide
+    {
+        get => OptionItem<string>.Find(SpectatorViewOptions, SpectatorViewSideEffective.ToKey())
+               ?? SpectatorViewOptions[0];
+        set
+        {
+            if (value is null) return;
+            var side = XiangqiSides.Parse(value.Value) ?? XiangqiSide.Red;
+            if (_spectatorViewOverride == side && Cfg.SpectatorViewSideValue == side) return;
+            Cfg.SpectatorViewSide = side.ToKey();
+            _spectatorViewOverride = null;              // 用户一改就以配置为准
+            OnPropertyChanged();
+            RefreshFlip();
+        }
+    }
+
+    /// <summary>观战时显示「观战视角」下拉。</summary>
+    public bool ShowSpectatorViewOption => IsSpectator;
+
+    /// <summary>同机双人 / 离线时才显示「翻转棋盘」按钮（坐席与观战视角自动跟随）。</summary>
+    public bool ShowManualFlipButton => IsLocalMode || Mode == BoardPlayMode.Offline;
+
+    /// <summary>坐席玩家的一行视角说明（不是坐席玩家时为空）。</summary>
+    public string ViewSideHintText
+    {
+        get
+        {
+            if (!IsSeatedPlayer) return "";
+            var side = XiangqiSides.Parse(LocalSide) ?? XiangqiSide.Red;
+            return $"视角：{side.DisplayName()}在下（跟随你所执的一方）";
+        }
+    }
+
+    /// <summary>观战视角实际生效的一方（演示环境变量可临时覆盖，不写配置）。</summary>
+    private XiangqiSide SpectatorViewSideEffective => _spectatorViewOverride ?? Cfg.SpectatorViewSideValue;
 
     /// <summary>中文记谱（一行两条半回合）。</summary>
     public string NotationText => XiangqiNotation.BuildHistoryText(_game.History);
@@ -429,19 +482,6 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
             Cfg.ShowLegalMoves = value;
             OnPropertyChanged();
             RefreshBoardState();
-        }
-    }
-
-    /// <summary>执黑时自动翻转棋盘。</summary>
-    public bool AutoFlip
-    {
-        get => Cfg.AutoFlip;
-        set
-        {
-            if (Cfg.AutoFlip == value) return;
-            Cfg.AutoFlip = value;
-            OnPropertyChanged();
-            UpdateFlipFromSettings();
         }
     }
 
@@ -716,11 +756,20 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         NotifySelection();
     }
 
-    /// <summary>翻转棋盘（手动）。</summary>
+    /// <summary>
+    /// 翻转棋盘（手动）：<b>只有同机双人 / 离线能用</b>。坐席玩家的视角自动跟随所执边，
+    /// 观战用棋盘下方的「观战视角」下拉，两者调用这里只给提示。
+    /// </summary>
     private void FlipBoard()
     {
-        _flipped = !_flipped;
-        OnPropertyChanged(nameof(IsFlipped));
+        if (!ShowManualFlipButton)
+        {
+            SetNotice(IsSpectator
+                ? "观战视角请在棋盘下方选择「红方视角 / 黑方视角」"
+                : "棋盘视角会自动跟随你所执的一方，不用手动翻转", "TextSecondaryBrush");
+            return;
+        }
+        SetFlipped(!_flipped);
     }
 
     // ---------- 悔棋 / 认输 / 求和 / 再来一局 ----------
@@ -948,7 +997,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         _isSetupMode = true;
         _waitingHostMove = false;
         ClearSelection();
-        UpdateFlipFromSettings();
+        RefreshFlip();
         RefreshAll();
         SetNotice("已回到摆棋：改完点「应用并开始」重新开局", "TextSecondaryBrush");
     }
@@ -992,7 +1041,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         _isSetupMode = false;
         _isRestartSetupConfirming = false;
         ClearSelection();
-        UpdateFlipFromSettings();
+        RefreshFlip();
         RefreshAll();
         SetNotice("对局开始！" + $"{(SetupFirstSide == XiangqiSide.Red ? "红方" : "黑方")}先行", "SuccessBrush");
     }
@@ -1033,7 +1082,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         _isRestartSetupConfirming = false;
         _waitingHostMove = false;
         ClearSelection();
-        UpdateFlipFromSettings();
+        RefreshFlip();
         RefreshAll();
     }
 
@@ -1056,7 +1105,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
             _game = restored;
             _waitingHostMove = false;
             ClearSelection();
-            UpdateFlipFromSettings();
+            RefreshFlip();
             RefreshAll();
             NotifyGameFinishedIfNeeded();       // 客户端调用无副作用；保持契约一致
 
@@ -1141,7 +1190,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         _isRestartSetupConfirming = false;
         _waitingHostMove = false;
         ClearSelection();
-        UpdateFlipFromSettings();
+        RefreshFlip();
         RefreshAll();
     }
 
@@ -1156,7 +1205,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         _isRestartSetupConfirming = false;
         _waitingHostMove = false;
         ClearSelection();
-        UpdateFlipFromSettings();
+        RefreshFlip();
         RefreshAll();
     }
 
@@ -1167,7 +1216,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         ClearSelection();
         if (!IsLocalMode) _isSetupMode = false;
         if (!CanRestartSetup) _isRestartSetupConfirming = false;
-        UpdateFlipFromSettings();
+        RefreshFlip();
         RefreshAll();
     }
 
@@ -1179,7 +1228,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
     {
         _waitingHostMove = false;
         ClearSelection();
-        UpdateFlipFromSettings();
+        RefreshFlip();
         RefreshAll();
     }
 
@@ -1254,6 +1303,10 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         OnPropertyChanged(nameof(CanApplySetupAndStart));
         OnPropertyChanged(nameof(ApplySetupAndStartText));
         OnPropertyChanged(nameof(CanEditPreferredSeat));
+        OnPropertyChanged(nameof(ShowSpectatorViewOption));
+        OnPropertyChanged(nameof(ShowManualFlipButton));
+        OnPropertyChanged(nameof(SelectedSpectatorViewSide));
+        OnPropertyChanged(nameof(ViewSideHintText));
         OnPropertyChanged(nameof(IsBoardInteractive));
         OnPropertyChanged(nameof(CanPlayNow));
         OnPropertyChanged(nameof(IsStarted));
@@ -1285,17 +1338,37 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         try { CommandManager.InvalidateRequerySuggested(); } catch { /* 无头环境忽略 */ }
     }
 
-    /// <summary>按设置 / 本端执边决定棋盘要不要翻转（观战不翻）。</summary>
-    private void UpdateFlipFromSettings()
+    /// <summary>
+    /// 按「本端身份」决定棋盘朝向：
+    /// 同机双人 / 离线 = 手动状态（<see cref="FlipBoardCommand"/> 控制，刷新不会重置）；
+    /// 坐席玩家 = 跟随所执的一方（执黑则黑在下）；观战（含房主不下场）= 按观战视角设置。
+    /// </summary>
+    private void RefreshFlip()
     {
-        XiangqiSide? side = null;
-        if (!IsLocalMode)
+        bool flipped;
+        if (IsLocalMode || Mode == BoardPlayMode.Offline)
         {
-            var local = XiangqiSides.Parse(LocalSide);
-            if (local is not null) side = local;
-            else if (IsHost && IsOnline) side = Cfg.HostSideValue;   // 房主观战时按默认坐席偏好摆
+            flipped = _flipped;                    // 手动翻转状态：保留，不在这里改
         }
-        var flipped = Cfg.AutoFlip && side == XiangqiSide.Black;
+        else if (IsSeatedPlayer)
+        {
+            flipped = XiangqiSides.Parse(LocalSide) == XiangqiSide.Black;
+        }
+        else if (IsSpectator)
+        {
+            flipped = SpectatorViewSideEffective == XiangqiSide.Black;
+        }
+        else
+        {
+            // 连接中 / 还没算出身份：按房主默认坐席偏好先摆一个
+            flipped = Cfg.HostSideValue == XiangqiSide.Black;
+        }
+        SetFlipped(flipped);
+    }
+
+    /// <summary>设置翻转状态并通知界面（值没变就不通知）。</summary>
+    private void SetFlipped(bool flipped)
+    {
         if (_flipped == flipped) return;
         _flipped = flipped;
         OnPropertyChanged(nameof(IsFlipped));
@@ -1406,8 +1479,47 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         }
         _isSetupMode = false;
         ClearSelection();
-        UpdateFlipFromSettings();
+        RefreshFlip();
         RefreshAll();
+        ApplyDemoSeatOverride();
         SetNotice("演示数据：11 步中盘（含吃子与最后一步标记）", "TextSecondaryBrush");
+    }
+
+    /// <summary>
+    /// 演示：<c>YLT_XIANGQI_DEMO_SEAT=black</c>（配合 <c>YLT_BOARD_DEMO_ROOM=1</c>）把房主换到后手位（黑方）。
+    /// 用基类公开的 <see cref="BoardGameRoomViewModelBase.SeatOneChoices"/> / <c>SelectedSeatOneOption</c>
+    /// 选中小明触发两席交换（房主 → 后手位），从而得到「执黑视角」截图。
+    /// </summary>
+    private void ApplyDemoSeatOverride()
+    {
+        if (!IsDemoRoom || !IsHost) return;
+        var seat = (Environment.GetEnvironmentVariable("YLT_XIANGQI_DEMO_SEAT") ?? "").Trim().ToLowerInvariant();
+        if (seat != "black") return;
+        if (XiangqiSides.Parse(LocalSide) == XiangqiSide.Black) return;   // 已经在后手位了
+
+        var ming = SeatOneChoices.FirstOrDefault(o => o.DisplayName.Contains("小明"))
+                   ?? SeatOneChoices.FirstOrDefault(o => o.MemberId == "m1");
+        if (ming is null) return;
+
+        SelectedSeatOneOption = ming;      // 基类检测到小明在后手位 → 两席交换
+        ClearSelection();
+        RefreshFlip();
+        RefreshAll();
+    }
+
+    /// <summary>
+    /// 演示：<c>YLT_XIANGQI_DEMO_VIEW=black|red</c>（配合 <c>YLT_BOARD_DEMO_ROOM=spectator</c>）
+    /// 临时覆盖观战视角，<b>不写配置</b>。
+    /// </summary>
+    private void ApplyDemoViewOverride()
+    {
+        var text = (Environment.GetEnvironmentVariable("YLT_XIANGQI_DEMO_VIEW") ?? "").Trim().ToLowerInvariant();
+        if (text.Length == 0) return;
+        var side = XiangqiSides.Parse(text);
+        if (side is null) return;
+        if (!IsSpectator) return;          // 只对观战视角生效
+        _spectatorViewOverride = side;
+        OnPropertyChanged(nameof(SelectedSpectatorViewSide));
+        RefreshFlip();
     }
 }

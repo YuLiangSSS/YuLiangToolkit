@@ -60,7 +60,7 @@ dotnet run --project YuLiangTookit.csproj
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：所有「轮子」（工具契约、MVVM 基类、Data/Config 配置框架、
   FFmpeg 封装、UI 样式清单）的用途 + 签名 + 一行用法，加上新增功能的完整步骤和踩过的坑；
-- ✅ **自检**：1753 项行为逐条真跑（退出码 0 = 全通过），改了行为就该顺手跑一次：
+- ✅ **自检**：1775 项行为逐条真跑（退出码 0 = 全通过），改了行为就该顺手跑一次：
 
   ```powershell
   dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
@@ -100,7 +100,7 @@ src/
 ├── YuLiangToolkit.Tools.OsuMania/       # 功能：音游工具（osu! Key 转换器 / LN 转换器 / 等级计算器）
 ├── YuLiangToolkit.Tools.BoardGames/     # 功能：棋牌（联机五子棋 / 联机象棋 + 房间联机底座）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（1753 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（1775 项行为逐条验证）
 ```
 
 ## 如何添加一个新工具

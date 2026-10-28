@@ -72,6 +72,8 @@
                                                     Interactive="{Binding IsBoardInteractive}" />
                         </Viewbox>
 
+                        <!-- 棋盘朝向：观战 → 观战视角下拉；坐席玩家 → 说明文字（自动跟随所执一方）；
+                             同机双人 / 离线 → 手动「翻转棋盘」。 -->
                         <Grid Margin="0,8,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -85,9 +87,22 @@
                                            Foreground="{StaticResource SuccessBrush}"
                                            Visibility="{Binding ResultText, Converter={StaticResource EmptyToVisInverse}}" />
                             </StackPanel>
-                            <Button Grid.Column="1" Content="翻转棋盘" Style="{StaticResource SecondaryButtonStyle}"
-                                    Padding="10,4" FontSize="11.5" VerticalAlignment="Center"
-                                    Command="{Binding FlipBoardCommand}" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <ComboBox Width="152" Height="30" Style="{StaticResource ComboBoxStyle}"
+                                          ItemsSource="{Binding SpectatorViewOptions}" DisplayMemberPath="Label"
+                                          SelectedItem="{Binding SelectedSpectatorViewSide}"
+                                          Visibility="{Binding ShowSpectatorViewOption, Converter={StaticResource BoolToVis}}"
+                                          ToolTip="观战视角：红方在下 / 黑方在下（会记住）" />
+                                <TextBlock Text="{Binding ViewSideHintText}" FontSize="11" TextWrapping="Wrap"
+                                           VerticalAlignment="Center" MaxWidth="220"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Visibility="{Binding ViewSideHintText, Converter={StaticResource EmptyToVisInverse}}" />
+                                <Button Content="翻转棋盘" Style="{StaticResource SecondaryButtonStyle}"
+                                        Padding="10,4" FontSize="11.5" VerticalAlignment="Center"
+                                        Command="{Binding FlipBoardCommand}"
+                                        Visibility="{Binding ShowManualFlipButton, Converter={StaticResource BoolToVis}}"
+                                        ToolTip="同机双人 / 离线时可手动翻转棋盘" />
+                            </StackPanel>
                         </Grid>
 
                         <!-- 操作按钮：压进棋盘卡，首屏不会被裁掉；观战 / 离线时整排隐藏。
@@ -405,16 +420,15 @@
                                 <CheckBox Content="走法提示" Style="{StaticResource CheckBoxStyle}"
                                           IsChecked="{Binding ShowLegalMoves}"
                                           ToolTip="选中棋子时高亮它可以走的点" />
-                                <CheckBox Grid.Column="2" Content="自动翻转" Style="{StaticResource CheckBoxStyle}"
-                                          IsChecked="{Binding AutoFlip}"
-                                          ToolTip="执黑时把棋盘转过来（黑方在下）" />
-                                <CheckBox Grid.Row="2" Content="最后一步" Style="{StaticResource CheckBoxStyle}"
+                                <CheckBox Grid.Column="2" Content="最后一步" Style="{StaticResource CheckBoxStyle}"
                                           IsChecked="{Binding ShowLastMove}"
                                           ToolTip="标记上一步的起点与终点" />
-                                <CheckBox Grid.Row="2" Grid.Column="2" Content="显示坐标"
-                                          Style="{StaticResource CheckBoxStyle}"
+                                <CheckBox Grid.Row="2" Content="显示坐标" Style="{StaticResource CheckBoxStyle}"
                                           IsChecked="{Binding ShowCoordinates}" />
                             </Grid>
+                            <TextBlock FontSize="10.5" TextWrapping="Wrap" Margin="0,8,0,0"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       Text="棋子朝向会跟随你所执的一方（执红红在下、执黑黑在下）；观战可在棋盘下方切换红 / 黑视角，同机双人与离线可手动翻转。" />
                         </StackPanel>
                     </Border>
                 </Grid>

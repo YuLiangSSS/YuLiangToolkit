@@ -15,6 +15,7 @@ using YuLiangToolkit.Tools.BoardGames.Gomoku;
 using YuLiangToolkit.Tools.BoardGames.Shared;
 using YuLiangToolkit.Tools.BoardGames.Shared.ViewModels;
 using YuLiangToolkit.Tools.BoardGames.Xiangqi;
+using YuLiangToolkit.Tools.BoardGames.Xiangqi.ViewModels;
 
 namespace YuLiangToolkit.FrameworkSelfCheck;
 
@@ -1740,22 +1741,28 @@ public static class BoardGamesChecks
         check("[配置] 象棋默认值：玩家名 / 端口 5311 / 房主执红",
             xiangqiDefaults.PlayerName == "玩家" && xiangqiDefaults.LastJoinAddress == ""
             && xiangqiDefaults.ListenPort == 5311 && xiangqiDefaults.HostSide == "red", "");
-        check("[配置] 象棋默认值：走法提示 / 自动翻转 / 最后一步 / 坐标全开",
-            xiangqiDefaults.ShowLegalMoves && xiangqiDefaults.AutoFlip
-            && xiangqiDefaults.ShowLastMove && xiangqiDefaults.ShowCoordinates, "");
+        check("[配置] 象棋默认值：走法提示 / 最后一步 / 坐标全开",
+            xiangqiDefaults.ShowLegalMoves && xiangqiDefaults.ShowLastMove
+            && xiangqiDefaults.ShowCoordinates, "");
+        check("[配置] 象棋默认值：观战视角=红方在下（SpectatorViewSide=red）",
+            xiangqiDefaults.SpectatorViewSide == "red"
+            && xiangqiDefaults.SpectatorViewSideValue == XiangqiSide.Red,
+            $"{xiangqiDefaults.SpectatorViewSide}/{xiangqiDefaults.SpectatorViewSideValue}");
         check("[配置] 象棋默认值：让子方红、让先 0 步",
             xiangqiDefaults.HandicapGiver == "red" && xiangqiDefaults.OpeningFreeMoves == 0
             && xiangqiDefaults.OpeningFreeMovesEffective == 0, "");
         check("[配置] 象棋默认值：自动轮换=手动安排、补位=轮流上场",
             xiangqiDefaults.AutoRotateMode == "manual" && xiangqiDefaults.AutoPickMode == "rotation",
             $"{xiangqiDefaults.AutoRotateMode}/{xiangqiDefaults.AutoPickMode}");
-        check("[配置] 象棋计算属性：阵营 / 让先夹取 0~5 / 执子文案",
+        check("[配置] 象棋计算属性：阵营 / 让先夹取 0~5 / 执子文案 / 观战视角认不出按红",
             xiangqiDefaults.HostSideValue == XiangqiSide.Red
             && xiangqiDefaults.HandicapGiverValue == XiangqiSide.Red
             && new XiangqiConfig { OpeningFreeMoves = 9 }.OpeningFreeMovesEffective == 5
             && new XiangqiConfig { OpeningFreeMoves = -3 }.OpeningFreeMovesEffective == 0
             && new XiangqiConfig { HostSide = "black" }.HostSideText.Contains("黑方")
-            && new XiangqiConfig { HostSide = "red" }.HostSideText.Contains("红方"), "");
+            && new XiangqiConfig { HostSide = "red" }.HostSideText.Contains("红方")
+            && new XiangqiConfig { SpectatorViewSide = "black" }.SpectatorViewSideValue == XiangqiSide.Black
+            && new XiangqiConfig { SpectatorViewSide = "乱写" }.SpectatorViewSideValue == XiangqiSide.Red, "");
         IBoardGameRoomConfig xiangqiRoom = xiangqiDefaults;
         xiangqiRoom.PlayerName = "接口棋手";
         xiangqiRoom.LastJoinAddress = "[::1]:5311";
@@ -1782,20 +1789,30 @@ public static class BoardGamesChecks
         xiangqiCfg.OpeningFreeMoves = 3;
         xiangqiCfg.AutoRotateMode = "loserOut";
         xiangqiCfg.AutoPickMode = "random";
+        xiangqiCfg.SpectatorViewSide = "black";
         ToolConfigStore.FlushAll();
         var xiangqiReloaded = JsonFileStore.Read<XiangqiConfig>(xiangqiCfg.FilePath);
-        check("[配置] 象棋配置改完自动落盘、能读回（含自动轮换设置）",
+        check("[配置] 象棋配置改完自动落盘、能读回（含自动轮换 / 观战视角设置）",
             xiangqiReloaded is
             {
                 PlayerName: "象棋自检", HostSide: "black", ListenPort: 5312,
                 ShowCoordinates: false, OpeningFreeMoves: 3,
                 AutoRotateMode: "loserOut", AutoPickMode: "random",
+                SpectatorViewSide: "black",
             },
             JsonFileStore.Serialize(xiangqiReloaded).Replace(Environment.NewLine, " "));
         var xiangqiJson = File.ReadAllText(xiangqiCfg.FilePath);
-        check("[配置] 象棋配置是 camelCase（含 autoRotateMode / autoPickMode）",
+        check("[配置] 象棋配置是 camelCase（含 autoRotateMode / autoPickMode / spectatorViewSide）",
             xiangqiJson.Contains("\"autoRotateMode\"") && xiangqiJson.Contains("\"autoPickMode\"")
-            && xiangqiJson.Contains("\"playerName\""), xiangqiJson.Replace(Environment.NewLine, " "));
+            && xiangqiJson.Contains("\"spectatorViewSide\"") && xiangqiJson.Contains("\"playerName\""),
+            xiangqiJson.Replace(Environment.NewLine, " "));
+        check("[配置] 象棋配置里不再出现旧的 autoFlip 字段",
+            !xiangqiJson.Contains("autoFlip"), "");
+        var legacyXiangqi = JsonSerializer.Deserialize<XiangqiConfig>(
+            "{\"autoFlip\":false,\"spectatorViewSide\":\"black\",\"playerName\":\"旧配置\"}",
+            RoomProtocol.JsonOptions);
+        check("[配置] 旧配置里的 autoFlip 读取时被忽略（不报错、其它字段照常读）",
+            legacyXiangqi is { SpectatorViewSide: "black", PlayerName: "旧配置" }, "");
         check("[配置] 象棋 [JsonIgnore] 计算属性不会被写进配置文件",
             !xiangqiJson.Contains("hostSideValue") && !xiangqiJson.Contains("openingFreeMovesEffective")
             && !xiangqiJson.Contains("hostSideText"), "");
@@ -2191,6 +2208,7 @@ public static class BoardGamesChecks
         await RunXiangqiSessionAsync(check, report).ConfigureAwait(false);
         await RunConnectFailureAsync(check, report).ConfigureAwait(false);
         await RunRoomViewModelAsync(check, report).ConfigureAwait(false);
+        await RunXiangqiViewChecksAsync(check, report).ConfigureAwait(false);
     }
 
     /// <summary>A. 多客户端会话：3 客户端加入 / 聊天广播 / 状态广播 / 按 id 单发 / 断线保成员 / 同 id 重连 / 重复登录 / 主动 bye 移除。</summary>
@@ -3504,6 +3522,163 @@ public static class BoardGamesChecks
         finally
         {
             localVm.NotifyClosed();
+        }
+    }
+
+    // ---------- I. 象棋棋盘朝向（执子方视角 / 观战视角 / 本地手动翻转） ----------
+
+    private static async Task RunXiangqiViewChecksAsync(Action<string, bool, string> check, List<string> report)
+    {
+        // 前面的配置组把观战视角 / 房主坐席改过，先恢复默认语义
+        var viewCfg = ToolConfigStore.For("xiangqi").Load<XiangqiConfig>();
+        viewCfg.SpectatorViewSide = "red";
+        viewCfg.HostSide = "red";
+        ToolConfigStore.FlushAll();
+
+        // ===== 离线 / 同机双人：手动翻转 =====
+        var offline = new XiangqiViewModel();
+        try
+        {
+            check("[象棋视角] 离线默认不翻转：显示「翻转棋盘」按钮、没有观战视角下拉、没有坐席提示",
+                !offline.IsFlipped && offline.ShowManualFlipButton && !offline.ShowSpectatorViewOption
+                && offline.ViewSideHintText == "" && offline.FlipBoardCommand.CanExecute(null),
+                $"flipped={offline.IsFlipped} manual={offline.ShowManualFlipButton}");
+            offline.FlipBoardCommand.Execute(null);
+            check("[象棋视角] 离线手动翻转：点一下黑在下", offline.IsFlipped, "");
+            offline.FlipBoardCommand.Execute(null);
+            check("[象棋视角] 离线手动翻转：再点一下翻回红在下", !offline.IsFlipped, "");
+            offline.FlipBoardCommand.Execute(null);
+            offline.SelectedHostSide = offline.HostSideOptions.First(o => o.Value == XiangqiSide.Black);
+            check("[象棋视角] 本地/离线手动翻转不会被刷新重置（改设置触发刷新后仍是黑在下）",
+                offline.IsFlipped, offline.NoticeText);
+            offline.SelectedHostSide = offline.HostSideOptions.First(o => o.Value == XiangqiSide.Red);
+            offline.FlipBoardCommand.Execute(null);
+            check("[象棋视角] 本地再翻回红在下", !offline.IsFlipped, "");
+            offline.StartLocalCommand.Execute(null);
+            check("[象棋视角] 同机双人：仍是手动翻转状态、显示翻转按钮、没有观战视角下拉",
+                offline.IsLocalMode && offline.ShowManualFlipButton && !offline.ShowSpectatorViewOption
+                && offline.ViewSideHintText == "", $"local={offline.IsLocalMode}");
+            offline.FlipBoardCommand.Execute(null);
+            check("[象棋视角] 同机双人手动翻转可用", offline.IsFlipped, "");
+            offline.SelectedHostSide = offline.HostSideOptions.First(o => o.Value == XiangqiSide.Black);
+            check("[象棋视角] 同机双人手动翻转不会被刷新重置", offline.IsFlipped, "");
+        }
+        finally
+        {
+            offline.NotifyClosed();
+        }
+
+        // 离线组的「刷新不重置」测试改过房主坐席偏好，回环组开房前恢复成房主执红
+        viewCfg.HostSide = "red";
+        ToolConfigStore.FlushAll();
+
+        // ===== 真回环：房主执红 / 客户端执黑 / 第三人观战 =====
+        var hostX = new XiangqiViewModel { PlayerName = "象棋房主" };
+        var clientX = new XiangqiViewModel();
+        var watcherX = new XiangqiViewModel();
+        try
+        {
+            hostX.ListenPortText = "0";
+            hostX.StartHostCommand.Execute(null);
+            await WaitUntilAsync(() => hostX.IsOnline && hostX.IsHost, 12000).ConfigureAwait(false);
+            var portMatch = Regex.Match(hostX.ConnectionSummary, @"真实端口 (\d+)");
+            var port = portMatch.Success ? int.Parse(portMatch.Groups[1].Value) : 0;
+            check("[象棋视角] 房主开房默认执红：红在下（不翻转）、没有两种切换控件、提示跟随执子",
+                port > 0 && hostX.LocalSide == "red" && !hostX.IsFlipped
+                && !hostX.ShowManualFlipButton && !hostX.ShowSpectatorViewOption
+                && hostX.ViewSideHintText.Contains("红方在下"), hostX.ViewSideHintText);
+
+            clientX.PlayerName = "执黑棋手";
+            clientX.JoinAddress = $"127.0.0.1:{port}";
+            clientX.JoinRoomCommand.Execute(null);
+            await WaitUntilAsync(() => clientX.IsOnline && clientX.IsClient, 12000).ConfigureAwait(false);
+            var clientId = clientX.LocalMemberId;
+            hostX.SelectedSeatTwoOption = hostX.SeatTwoChoices.FirstOrDefault(o => o.MemberId == clientId);
+            await WaitUntilAsync(() => clientX.IsSeatedPlayer && clientX.LocalSide == "black", 8000)
+                .ConfigureAwait(false);
+            await WaitUntilAsync(() => clientX.IsFlipped, 8000).ConfigureAwait(false);
+            check("[象棋视角] 执黑玩家：棋盘自动翻转（黑在下）、提示跟随执子、两种手动控件都不显示",
+                clientX.IsFlipped && clientX.ViewSideHintText.Contains("黑方在下")
+                && !clientX.ShowManualFlipButton && !clientX.ShowSpectatorViewOption
+                && !clientX.FlipBoardCommand.CanExecute(null), clientX.ViewSideHintText);
+            var clientFlipped = clientX.IsFlipped;
+            clientX.FlipBoardCommand.Execute(null);
+            await Task.Delay(120).ConfigureAwait(false);
+            check("[象棋视角] 执黑玩家点「翻转棋盘」无效（视角自动跟随执子方）",
+                clientX.IsFlipped == clientFlipped && clientX.NoticeText.Contains("跟随"),
+                clientX.NoticeText);
+
+            watcherX.PlayerName = "观战棋友";
+            watcherX.JoinAddress = $"127.0.0.1:{port}";
+            watcherX.JoinRoomCommand.Execute(null);
+            await WaitUntilAsync(() => watcherX.IsOnline && watcherX.IsClient, 12000).ConfigureAwait(false);
+            check("[象棋视角] 观战者默认红方视角（红在下）、显示「观战视角」下拉、没有翻转按钮",
+                watcherX.IsSpectator && !watcherX.IsFlipped && watcherX.ShowSpectatorViewOption
+                && !watcherX.ShowManualFlipButton && watcherX.ViewSideHintText == ""
+                && watcherX.SelectedSpectatorViewSide?.Value == "red", watcherX.SelectedSpectatorViewSide?.Label ?? "");
+            watcherX.SelectedSpectatorViewSide =
+                watcherX.SpectatorViewOptions.First(o => o.Value == "black");
+            check("[象棋视角] 观战切到黑方视角：立即翻转并写入配置",
+                watcherX.IsFlipped && watcherX.Cfg.SpectatorViewSide == "black",
+                $"{watcherX.Cfg.SpectatorViewSide}/{watcherX.SelectedSpectatorViewSide?.Label}");
+            var watcherFlipped = watcherX.IsFlipped;
+            watcherX.FlipBoardCommand.Execute(null);
+            await Task.Delay(120).ConfigureAwait(false);
+            check("[象棋视角] 观战者点「翻转棋盘」无效（提示用观战视角下拉）",
+                watcherX.IsFlipped == watcherFlipped && watcherX.NoticeText.Contains("观战视角"),
+                watcherX.NoticeText);
+
+            hostX.StartNextGameCommand.Execute(null);
+            await WaitUntilAsync(() => hostX.IsGameRunning, 8000).ConfigureAwait(false);
+            await WaitUntilAsync(() => watcherX.Game.Started, 8000).ConfigureAwait(false);
+            hostX.SelectedAutoRotateMode =
+                hostX.AutoRotateModeOptions.First(o => o.Value != hostX.SelectedAutoRotateMode.Value);
+            await Task.Delay(300).ConfigureAwait(false);
+            check("[象棋视角] 观战视角不会被状态包 / 刷新重置（开局并再收状态后仍是黑方视角）",
+                watcherX.IsFlipped && watcherX.Game.Started,
+                $"flip={watcherX.IsFlipped} started={watcherX.Game.Started} cfg={watcherX.Cfg.SpectatorViewSide} role={watcherX.MyRoleText}");
+
+            ToolConfigStore.FlushAll();
+            var viewReloaded = JsonFileStore.Read<XiangqiConfig>(watcherX.Cfg.FilePath);
+            check("[象棋视角] 观战视角存进配置、下次打开记得（black）",
+                viewReloaded?.SpectatorViewSide == "black", viewReloaded?.SpectatorViewSide ?? "(读不回来)");
+
+            // 房主不下场 = 观战：按观战视角摆
+            hostX.AbortGameCommand.Execute(null);
+            hostX.AbortGameCommand.Execute(null);
+            await WaitUntilAsync(() => !hostX.IsGameRunning, 8000).ConfigureAwait(false);
+            hostX.ClearSeatsCommand.Execute(null);
+            await WaitUntilAsync(() => hostX.IsSpectator, 8000).ConfigureAwait(false);
+            await WaitUntilAsync(() => hostX.IsFlipped, 8000).ConfigureAwait(false);
+            check("[象棋视角] 房主不坐席位 = 观战：按观战视角设置摆（当前黑视角 → 翻转）",
+                hostX.IsSpectator && hostX.IsFlipped && hostX.ShowSpectatorViewOption,
+                $"{hostX.Cfg.SpectatorViewSide}/{hostX.IsFlipped}");
+            hostX.SelectedSpectatorViewSide = hostX.SpectatorViewOptions.First(o => o.Value == "red");
+            await WaitUntilAsync(() => !hostX.IsFlipped, 8000).ConfigureAwait(false);
+            check("[象棋视角] 房主观战切回红方视角：不翻转，且不影响已入座的执黑玩家",
+                !hostX.IsFlipped && clientX.IsFlipped, "");
+
+            // 换座：房主改执黑、客户端改执红 → 朝向跟着变
+            hostX.SelectedSeatOneOption = hostX.SeatOneChoices.FirstOrDefault(o => o.MemberId == clientId);
+            hostX.SelectedSeatTwoOption = hostX.SeatTwoChoices.FirstOrDefault(o => o.MemberId == "host");
+            await WaitUntilAsync(() => hostX.LocalSide == "black" && clientX.LocalSide == "red", 8000)
+                .ConfigureAwait(false);
+            await WaitUntilAsync(() => hostX.IsFlipped && !clientX.IsFlipped, 8000).ConfigureAwait(false);
+            check("[象棋视角] 换座后朝向跟着变：房主改执黑（翻转）、客户端改执红（不翻转）",
+                hostX.IsFlipped && !clientX.IsFlipped
+                && hostX.ViewSideHintText.Contains("黑方在下")
+                && clientX.ViewSideHintText.Contains("红方在下"),
+                $"{hostX.ViewSideHintText} / {clientX.ViewSideHintText}");
+        }
+        finally
+        {
+            try { watcherX.NotifyClosed(); } catch { }
+            try { clientX.NotifyClosed(); } catch { }
+            try { hostX.NotifyClosed(); } catch { }
+            // 还原配置，避免影响后续 / 用户真实配置
+            viewCfg.SpectatorViewSide = "red";
+            viewCfg.HostSide = "red";
+            ToolConfigStore.FlushAll();
         }
     }
 
