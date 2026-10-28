@@ -73,6 +73,12 @@ public class MainViewModel : ObservableObject
     private readonly Dictionary<string, ToolCard> _cardById = new(StringComparer.OrdinalIgnoreCase);
     private bool _syncingNav;
 
+    /// <summary>浏览器式导航历史（主页 / 类别页 / 工具页都算一次访问，见 <see cref="ShellLocation"/>）。</summary>
+    private readonly NavigationHistory<ShellLocation> _history = new();
+
+    /// <summary>true = 正在按历史后退/前进，此时访问页面不要再往历史里记一条。</summary>
+    private bool _replayingHistory;
+
     /// <summary>目录树根节点（「主页」）。</summary>
     private ToolCatalogNode _catalogRoot = null!;
 
@@ -114,14 +120,6 @@ public class MainViewModel : ObservableObject
         private set => Set(ref _currentView, value);
     }
 
-    private bool _backVisible;
-    /// <summary>工具条上「← 返回」按钮是否显示（主页不显示）。</summary>
-    public bool BackVisible
-    {
-        get => _backVisible;
-        private set => Set(ref _backVisible, value);
-    }
-
     private NavItem? _selectedNavItem;
     public NavItem? SelectedNavItem
     {
@@ -146,6 +144,14 @@ public class MainViewModel : ObservableObject
         get => _currentTitle;
         private set => Set(ref _currentTitle, value);
     }
+
+    // ---------- 浏览器式导航历史（后退 / 前进） ----------
+
+    /// <summary>能不能后退（工具条 ← 按钮的 IsEnabled；主页首次打开时为 false）。</summary>
+    public bool CanGoBack => _history.CanGoBack;
+
+    /// <summary>能不能前进（工具条 → 按钮的 IsEnabled；刚正常导航时为 false）。</summary>
+    public bool CanGoForward => _history.CanGoForward;
 
     /// <summary>当前是不是主页。</summary>
     public bool IsHomePage => _pageKind == ShellPageKind.Home;
@@ -347,7 +353,16 @@ public class MainViewModel : ObservableObject
     /// <summary>进某个类别页（参数可为 <see cref="CategoryCard"/> / <see cref="ToolCatalogNode"/> / 类别名）。</summary>
     public RelayCommand NavigateCategoryCommand { get; }
 
-    /// <summary>返回上一级：工具 → 所属类别；类别 → 父类别 / 主页。</summary>
+    /// <summary>后退：按访问顺序回到上一个页面（主页 / 类别页 / 工具页都算）。</summary>
+    public RelayCommand GoBackCommand { get; }
+
+    /// <summary>前进：回到后退之前所在的页面。</summary>
+    public RelayCommand GoForwardCommand { get; }
+
+    /// <summary>
+    /// 返回上一级：工具 → 所属类别；类别 → 父类别 / 主页（**只在类别页顶部 / 空状态里用**；
+    /// 顶部工具条已经换成浏览器式的后退 / 前进按钮了）。
+    /// </summary>
     public RelayCommand NavigateParentCommand { get; }
 
     /// <summary>点面包屑跳转（参数是 <see cref="BreadcrumbItem"/>）。</summary>
@@ -412,6 +427,8 @@ public class MainViewModel : ObservableObject
                     break;
             }
         });
+        GoBackCommand = new RelayCommand(_ => GoBack());
+        GoForwardCommand = new RelayCommand(_ => GoForward());
         NavigateParentCommand = new RelayCommand(_ => NavigateParent());
         NavigateBreadcrumbCommand = new RelayCommand(p =>
         {
@@ -506,7 +523,7 @@ public class MainViewModel : ObservableObject
         CurrentView = new HomeView { DataContext = this };
         UpdateBreadcrumbs();
         RefreshHeader();
-        BackVisible = false;
+        RecordHistory(ShellLocation.Home);
         CurrentTitle = "工具集主页";
         UpdateMiniPanel();
     }
@@ -535,12 +552,15 @@ public class MainViewModel : ObservableObject
         CurrentView = new CategoryView { DataContext = this };
         UpdateBreadcrumbs();
         RefreshHeader();
-        BackVisible = true;
+        RecordHistory(ShellLocation.ForCategory(node));
         CurrentTitle = node.Name;
         UpdateMiniPanel();
     }
 
-    /// <summary>返回上一级（工具 → 所属类别；类别 → 父类别；主页不动）。</summary>
+    /// <summary>
+    /// 返回上一级（**类别页顶部 / 空状态里的按钮**用；顶部工具条已经换成浏览器式后退 / 前进）：
+    /// 工具 → 所属类别；类别 → 父类别；主页不动。
+    /// </summary>
     private void NavigateParent()
     {
         switch (_pageKind)
@@ -555,6 +575,64 @@ public class MainViewModel : ObservableObject
                 GoHome();
                 break;
         }
+    }
+
+    // ---------- 浏览器式导航历史（后退 / 前进） ----------
+
+    /// <summary>把一次“访问页面”记进历史。重复访问当前页不会新增；在历史中间导航会截断后面的“前进”记录。</summary>
+    private void RecordHistory(ShellLocation location)
+    {
+        if (_replayingHistory) return;      // 按历史回放时不再记一条
+        if (!_history.Push(location)) return;
+        OnPropertyChanged(nameof(CanGoBack));
+        OnPropertyChanged(nameof(CanGoForward));
+    }
+
+    /// <summary>后退一格：把页面切回历史里的上一个位置（不再往历史里记）。</summary>
+    private void GoBack()
+    {
+        if (!_history.TryGoBack(out var location)) return;
+        ReplayHistory(location);
+    }
+
+    /// <summary>前进一格：把页面切回历史里的下一个位置。</summary>
+    private void GoForward()
+    {
+        if (!_history.TryGoForward(out var location)) return;
+        ReplayHistory(location);
+    }
+
+    /// <summary>
+    /// 按历史记录重建页面。回放期间 <see cref="RecordHistory"/> 不记新历史；
+    /// 工具页不刷新“最近使用”（回看旧页面 ≠ 刚打开这个功能）。
+    /// </summary>
+    private void ReplayHistory(ShellLocation location)
+    {
+        _replayingHistory = true;
+        try
+        {
+            switch (location.Kind)
+            {
+                case ShellLocationKind.Home:
+                    GoHome();
+                    break;
+
+                case ShellLocationKind.Category when location.Node is { } node:
+                    NavigateToNode(node);
+                    break;
+
+                case ShellLocationKind.Tool when location.Tool is { } tool:
+                    OpenTool(tool, markUsed: false);
+                    break;
+            }
+        }
+        finally
+        {
+            _replayingHistory = false;
+        }
+
+        OnPropertyChanged(nameof(CanGoBack));
+        OnPropertyChanged(nameof(CanGoForward));
     }
 
     /// <summary>点面包屑：主页回主页、类别进类别页、工具打开工具。</summary>
@@ -874,10 +952,11 @@ public class MainViewModel : ObservableObject
         if (card is not null) card.LastUsed = DateTime.Now;
     }
 
-    private void OpenTool(ITool tool)
+    /// <summary>打开一个工具页。<paramref name="markUsed"/>=false 用于按历史回放（不刷新“最近使用”）。</summary>
+    private void OpenTool(ITool tool, bool markUsed = true)
     {
         CloseCurrentTool();
-        MarkToolUsed(tool.Id);
+        if (markUsed) MarkToolUsed(tool.Id);
 
         _pageKind = ShellPageKind.Tool;
         _currentTool = tool;
@@ -901,7 +980,7 @@ public class MainViewModel : ObservableObject
 
         UpdateBreadcrumbs();
         RefreshHeader();
-        BackVisible = true;
+        RecordHistory(ShellLocation.ForTool(tool));
         CurrentTitle = tool.Name;
         UpdateMiniPanel();
     }

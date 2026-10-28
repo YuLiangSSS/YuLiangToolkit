@@ -4,7 +4,7 @@
 > 改这个项目之前先读本文件，**不要再去通读 `src/`**：这里把所有已经造好的「轮子」（可复用组件）的
 > **用途 + 签名 + 一行用法**、Data/Config 目录约定、新增功能的标准流程、以及踩过的坑都写全了。
 >
-> * **当前版本 v0.20.0** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
+> * **当前版本 v0.21.0** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
 > * 十三个功能：视频转音频 · **视频 / 音乐播放器** · **图片连续阅读器** · 批量重命名 · Flash 下载器 · 联机聊天室 · osu! 下图器 · **osu! Key 转换器** · **osu! LN 转换器** · **osu! 等级计算器** · **联机五子棋** · **联机象棋** · 框架示例（模板，可整目录删除）。
 >   osu! 的四个工具归入「音游工具」分类；**联机五子棋 / 联机象棋归入「棋牌」分类**（主页多级目录 → 类别页 → 工具，见 2.15 / 2.18）。
 > * 平台：Windows + .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM；**唯一第三方依赖是 `OsuParsers`**（osu `.osu` 解析/写回，MIT，见 2.17），其余轮子都手写在 `Core/`。
@@ -19,7 +19,7 @@
 ```powershell
 .\build.ps1                                                    # ① 编译：必须 0 错误（有警告也顺手清掉）
 dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
-                                                               # ② 自检：1569 项行为逐条真跑，退出码 0 = 全通过
+                                                               # ② 自检：1582 项行为逐条真跑，退出码 0 = 全通过
 ```
 
 * **改了行为就同步改自检断言**（自检就是"这份文档里承诺的行为"的执行版本，见第 6 节）。
@@ -110,13 +110,13 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | 项 | 内容 |
 | --- | --- |
 | 技术栈 | .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM；唯一第三方依赖 `OsuParsers`（MIT，osu 谱面解析/写回） |
-| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.20.0 就是读它；**别在别处写死**） |
+| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.21.0 就是读它；**别在别处写死**） |
 | 解决方案 | `YuLiangToolkit.sln`（13 个项目：主程序 + Core + 10 个功能 + 自检） |
 | 主程序 | `YuLiangTookit.csproj`（注意：文件名少一个 `l`，是历史拼写）→ 自定义标题栏外壳、主页/类别页/侧边栏/面包屑、深色主题、窗口级粒子层 |
 | 核心库 | `src/YuLiangToolkit.Core/`（工具契约、目录树、MVVM 基类、存储、配置、FFmpeg 封装、粒子引擎/覆盖层、通用 TCP 房间底座 `Core/Net`） |
 | 功能 | `Tools.VideoToAudio`（视频转音频）、`Tools.MediaPlayer`（视频 / 音乐播放器）、`Tools.PictureViewer`（图片连续阅读器）、`Tools.BatchRename`（批量重命名）、`Tools.FlashDownloader`（Flash 下载器）、`Tools.ChatRoom`（联机聊天室）、`Tools.MapDownloader`（osu! 下图器）、`Tools.OsuMania`（osu! Key / LN / 等级三个工具）、`Tools.BoardGames`（联机五子棋 / 联机象棋）、`Tools.Sample`（框架示例，可删） |
 | 数据/配置 | **在 exe 旁边**（`bin\Debug\net9.0-windows\Data`、`…\Config`）——见第 3 节；仓库根的 `Data/`、`Config/` 只剩说明文件 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**1569 项**行为逐条验证，纯控制台）——见第 6 节 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**1582 项**行为逐条验证，纯控制台）——见第 6 节 |
 | 构建 | `.\build.ps1`（离线，走本机 NuGet 缓存；会设 `DOTNET_CLI_HOME` 到 `.dotnet-cli-home`） |
 | 运行 | `dotnet run --project YuLiangTookit.csproj` 或直接跑 `bin\Debug\net9.0-windows\YuLiangTookit.exe` |
 
@@ -584,8 +584,8 @@ public sealed class FlashDownloaderViewModel : ToolViewModelBase
 
 | 轮子 | 说明 |
 | --- | --- |
-| `MainViewModel` | `NavItems`（侧边栏：首页 + 根层类别 + 根层工具）· `Tools` · 目录树 `ToolCatalogNode`（`CurrentNode`/`Breadcrumbs`）· `ToolCards`/`CategoryCards`（过滤+排序后的卡片）· `AllTags` · `SearchText` · `SortOptions`/`SelectedSort` · `CurrentView` · `BackVisible` · `SelectedNavItem` · `StatusText` · `CurrentTitle` · `ParticlesEnabled` · `MinimizeToTrayOnClose`/`ExitOnClose`（× 关闭行为，绑主页设置的两个单选项）· `CloseSettingsWindow()` · `GoHomeCommand` · `OpenToolCommand` · `NavigateCategoryCommand`/`NavigateParentCommand`/`NavigateBreadcrumbCommand` · `OpenSettingsCommand` · `ClearSearchCommand` · `SearchTagCommand`；**切换功能时会调用上一个 VM 的 `NotifyClosed()`**；打开功能时记录“上次使用” |
-| `MainWindow` | `WindowStyle=None` + `WindowChrome(CaptionHeight=0)`；标题栏拖拽/双击最大化在代码里手动实现；`WM_GETMINMAXINFO` 把最大化钳制到工作区；工具条是可点击面包屑（主页 › 类别 › 工具）；根部有窗口级 `ParticleOverlay`（见 2.16）；`OnClosing` 按主页设置决定「关闭应用 / 最小化到托盘」；`HideToTray()` / `ShowFromTray()`（托盘单击恢复）；`CaptureTo(png)` 是截图模式实现 |
+| `MainViewModel` | `NavItems`（侧边栏：首页 + 根层类别 + 根层工具）· `Tools` · 目录树 `ToolCatalogNode`（`CurrentNode`/`Breadcrumbs`）· `ToolCards`/`CategoryCards`（过滤+排序后的卡片）· `AllTags` · `SearchText` · `SortOptions`/`SelectedSort` · `CurrentView` · `SelectedNavItem` · `StatusText` · `CurrentTitle` · `ParticlesEnabled` · `MinimizeToTrayOnClose`/`ExitOnClose`（× 关闭行为，绑主页设置的两个单选项）· `CloseSettingsWindow()` · `GoHomeCommand` · `OpenToolCommand` · `NavigateCategoryCommand`/`NavigateParentCommand`（只在类别页顶部 / 空状态用）/`NavigateBreadcrumbCommand` · `CanGoBack`/`CanGoForward` · `GoBackCommand`/`GoForwardCommand` · `OpenSettingsCommand` · `ClearSearchCommand` · `SearchTagCommand`；**切换功能时会调用上一个 VM 的 `NotifyClosed()`**；打开功能时记录“上次使用” |
+| `MainWindow` | `WindowStyle=None` + `WindowChrome(CaptionHeight=0)`；标题栏拖拽/双击最大化在代码里手动实现；`WM_GETMINMAXINFO` 把最大化钳制到工作区；工具条左边是浏览器式「← 后退 / → 前进」按钮，右边是可点击面包屑（主页 › 类别 › 工具）；根部有窗口级 `ParticleOverlay`（见 2.16）；`OnClosing` 按主页设置决定「关闭应用 / 最小化到托盘」；`HideToTray()` / `ShowFromTray()`（托盘单击恢复）；`CaptureTo(png)` 是截图模式实现 |
 | `TrayIcon` | Core/Services/：**手写 Win32 `Shell_NotifyIcon`（不引 WinForms）** 的任务栏托盘小图标；`Activated`（左键/双击）、`Func<IReadOnlyList<TrayMenuItem>>` 右键菜单（原生弹出菜单）、`Tooltip`、explorer 重启（`TaskbarCreated`）自动恢复、首次添加失败每 2 秒重试 5 次；图标三档兜底：`Assets\app.ico` → exe 内嵌图标 → 系统默认（见 2.16） |
 | `HomeView` | 主页：搜索框 + 全部类别卡片 + 标签条 + 根层工具卡片 + 空状态；代码后置只做 Ctrl+F 聚焦 / Esc 清空 / 进入主页自动聚焦搜索框 |
 | `CategoryView` | 类别页（任意层级）：类别 emoji/名称/描述/统计 + 子类别卡片 + 直接工具卡片 + 类别内搜索 + 空状态（见 2.15） |
@@ -1398,9 +1398,9 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 | `ShellCategories` | Models/ShellCategories.cs | 静态清单：给「音游工具」配 🎵/描述/`Order=10`；以后加类别元数据只在这里加一条 |
 | `CategoryCard` / `BreadcrumbItem` | Models/ | 类别卡片展示模型（名称/emoji/描述/N 个工具）/ 面包屑项（Title、IsCurrent、NavigateCommand） |
 | `NavItem` / `ShellPageKind` | ViewModels/MainViewModel.cs | 侧边栏项（首页/根层类别/根层工具）；当前页面类型 Home/Category/Tool |
-| `MainViewModel` | 同上 | `_catalogRoot`、`CurrentNode`、`Breadcrumbs`、`CategoryCards`、`NavigateCategoryCommand`/`NavigateParentCommand`/`NavigateBreadcrumbCommand`、`ParticlesEnabled`、`OpenSettingsCommand`；**后台保活/迷你条逻辑原样保留** |
+| `MainViewModel` | 同上 | `_catalogRoot`、`CurrentNode`、`Breadcrumbs`、`CategoryCards`、`NavigateCategoryCommand`/`NavigateParentCommand`（只在类别页顶部 / 空状态用）/`NavigateBreadcrumbCommand`、`CanGoBack`/`CanGoForward` + `GoBackCommand`/`GoForwardCommand`（浏览器式前进 / 后退，历史见 `Core/Mvvm/NavigationHistory` 与 `Models/ShellLocation`）、`ParticlesEnabled`、`OpenSettingsCommand`；**后台保活/迷你条逻辑原样保留** |
 | `HomeView` / `CategoryView` | Views/ | 主页 = 搜索 + **全部分类** + 标签条 + 根层工具；类别页 = 标题/描述/统计 + 子类别卡 + 直接工具卡 + 类别内搜索 + 空状态 |
-| `MainWindow` 工具条 | MainWindow.xaml(.cs) | 可点击面包屑（🏠 主页 › 类别 › 工具）+「← 返回上一级」；当前项不可点 |
+| `MainWindow` 工具条 | MainWindow.xaml(.cs) | 浏览器式「← 后退 / → 前进」+ 可点击面包屑（🏠 主页 › 类别 › 工具）；当前项不可点 |
 
 **约定**
 
@@ -1408,8 +1408,9 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 * **类别页只平铺「直接工具 + 子类别卡片」**，不递归平铺子分类里的工具 —— 任意层级下界面都不会乱。
 * 侧边栏只列根层类别与根层工具；进入某类别子树时侧边栏高亮该根类别。
 * 新增工具归入某类别：只要实现 `CategoryPath`，**不用改外壳**；要类别图标/描述/排序：在 `ShellCategories` 加一条。
+* **浏览器式前进 / 后退**：所有页面访问（主页卡片、侧边栏、类别卡片、面包屑、工具打开）都会记一条历史；重复进当前页不新增，后退后再导航会丢掉“前进”记录；后退 / 前进回放时不刷新“最近使用”。
 * 调试入口：`YLT_NAV_CATEGORY=<路径>`（如 `音游工具`，支持任意深度用 `/` 分隔）。
-* 自检：`NavigationChecks`（56 项）覆盖任意深度建树/同路径合并/排序/`FindByPath`/面包屑/计数/搜索/空类别。
+* 自检：`NavigationChecks`（69 项）覆盖任意深度建树/同路径合并/排序/`FindByPath`/面包屑/计数/搜索/空类别，以及浏览器式前进/后退历史（重复访问不新增 / 截断前进记录 / 上限 / `ShellLocation` 相等性）。
 
 ### 2.16 窗口级粒子效果 + 主页设置（v0.10.0）
 
@@ -2103,7 +2104,7 @@ Data/chat-room/
 # 1) 编译（0 警告 0 错误）
 .\build.ps1
 
-# 2) 轮子自检：1569 项行为逐条真跑（Data/Config 轮子 + 主页搜索排序 + 多级分类导航/面包屑
+# 2) 轮子自检：1582 项行为逐条真跑（Data/Config 轮子 + 主页搜索排序 + 多级分类导航/面包屑
 #    + 批量重命名规则/冲突/执行/撤销
 #    + Flash 下载器的站点解析/命名/ini/批量计划/真下载/本地服务器/自动下载
 #    + 联机聊天室的协议/CRC/流量上限/会话文件夹/傻瓜模式挑监听/双栈真连两族/回环真连一局
@@ -2329,7 +2330,8 @@ git diff                        # 看未暂存改动
 
 | 版本 | 内容 |
 | --- | --- |
-| **v0.20.0**（当前） | **图片阅读器：点工具条上的文件夹路径直接在资源管理器打开所在目录**：① 工具条第二行的路径改成可点的链接式按钮（悬停变强调色、鼠标手型、tooltip 显示完整路径与「点击打开」）；② 没打开文件夹时按钮禁用，打开失败 / 目录已被删会在状态栏提示；③ VM 新增 `OpenFolderInExplorerCommand` + `HasFolder` + `FolderOpener`（自检注入假打开器，不真弹资源管理器）；④ 自检 1566 → **1569** 项（可点状态 / 命令传对目录 / 打不开给提示）；⑤ 文档 / README 同步。版本号 0.19.0 → 0.20.0 |
+| **v0.21.0**（当前） | **外壳导航改成浏览器式「← 后退 / → 前进」**（见 2.7 / 2.15）：① 顶部工具条左边的「← 返回上一级」换成一对后退 / 前进按钮，按**访问顺序**在主页 / 类别页 / 工具页之间跳（工具页、类别页、面包屑、侧边栏、主页卡片等所有入口都算一次访问）；② 历史行为与浏览器一致：重复进入当前页不新增记录、后退后从中间再导航会丢掉「前进」记录、最多保留 100 条；不能后退 / 前进时按钮变灰；③ 后退 / 前进不刷新「最近使用」排序，工具页视图 / 配置 / 后台播放逻辑照旧；④ 新增纯逻辑 `Core/Mvvm/NavigationHistory.cs` + `Models/ShellLocation.cs`（页面位置按稳定 Key 判断相等）；自检 1569 → **1582** 项（历史前进 / 后退 / 截断 / 上限 / 页面位置相等性共 13 项）；⑤ 文档同步。版本号 0.20.0 → 0.21.0 |
+| v0.20.0 | **图片阅读器：点工具条上的文件夹路径直接在资源管理器打开所在目录**：① 工具条第二行的路径改成可点的链接式按钮（悬停变强调色、鼠标手型、tooltip 显示完整路径与「点击打开」）；② 没打开文件夹时按钮禁用，打开失败 / 目录已被删会在状态栏提示；③ VM 新增 `OpenFolderInExplorerCommand` + `HasFolder` + `FolderOpener`（自检注入假打开器，不真弹资源管理器）；④ 自检 1566 → **1569** 项（可点状态 / 命令传对目录 / 打不开给提示）；⑤ 文档 / README 同步。版本号 0.19.0 → 0.20.0 |
 | v0.19.0 | **图片阅读器设置加「窗口 / 多开」开关**（见 2.19）：① 设置面板新增 `单实例模式（再双击图片复用同一个窗口）`，默认开；关掉后每次双击 / 启动都新开一个窗口（多实例）；② 这是启动级设置，改动下次启动生效；App 在 UI 创建前直接读 `Config\picture-viewer\config.json` 的 `SingleInstanceEnabled` 决定是否启用 Mutex/管道（不走 ToolConfigStore，避免和后面 ViewModel 的配置实例打架）；③ 没开单实例时不建 Mutex / 管道服务端，多开互不影响；④ 恢复默认会把开关回 true；⑤ 自检 1563 → **1566** 项（默认值 / VM 写回 / 恢复默认回 true）；真实双进程验证：配置开 → 第二次 exit 0 + 1 个窗口 + 图片定位；配置关 → 2 个窗口；UIA 勾选后配置文件跟着改写。版本号 0.18.0 → 0.19.0 |
 | v0.18.0 | **单实例唤醒：双击图片永远复用同一个应用窗口**（见 2.19）：① 再启动 / 再双击图片时不再开新窗口：第二个进程用命名 Mutex + 命名管道把命令行交给已开着的窗口，自己立刻退出；② 已开窗口会从托盘 / 最小化恢复并尽力置前，参数里有受支持图片就进「图片连续阅读器」，加载这张图所在文件夹并自动定位到它（连续模式滚到那张、翻页模式翻到那页）；③ 纯参数消息用 JSON + 协议版本，损坏 / 版本不对直接忽略；第二实例先把图片路径转绝对路径，避免两个进程 CWD 不同解析错；④ 管道名带安装目录哈希，不同发布目录互不干扰；⑤ 截图 / 调试环境（`YLT_SHOT*`、`YLT_NAV_*`、`YLT_OPEN_SETTINGS`）以及 `YLT_NO_SINGLE_INSTANCE=1` 自动关掉单实例，避免测试被已有窗口吸走；⑥ 自检 1560 → **1563** 项（消息编解码 3 项）；真实起两个进程 + UIA 验证：第二次 exit 0、实例数 1、第一窗口出现「8 张图片 · demo」「已定位到第 3 张」。版本号 0.17.0 → 0.18.0 |
 | v0.17.0 | **托盘图标 + 关闭按钮行为 + 粒子发射点修复**（见 2.7 / 2.16）：① 任务栏右侧新增托盘小图标（手写 Win32 `Shell_NotifyIcon`，不引 WinForms）：左键单击 / 双击恢复主窗口，右键菜单「显示主窗口 / 主页设置… / 退出」，悬停提示「YuLiang 工具集」；explorer 重启自动恢复，首次添加失败自动重试；新增 `Assets\app.ico`（深色圆角底 + 蓝色工具箱）并设为 exe / 任务栏 / 托盘共用图标；② 主页设置新增「窗口与托盘」：点右上角 × 时可选「关闭应用」（默认）/「最小化到托盘」，存 `Config\shell\config.json` 的 `closeAction`；选托盘后 × / Alt+F4 只隐藏窗口，托盘图标恢复；程序退出（托盘「退出」/ 截图模式 / 系统关机）不受影响；托盘图标没建出来时自动退化成正常关闭；③ 修「小窗点标题栏粒子从左上角冒出来」：`DragMove()` 期间 WPF 会派发坐标为 (0,0) 的假鼠标事件，发射点改用 Win32 `GetCursorPos` + `PointFromScreen` 取真实光标位置；新增 `YLT_PARTICLE_TRACE` 排错钩子；④ 自检 1555 → **1560** 项（关闭行为默认值 / 自动落盘 / 枚举原名读回）；编译冒烟 + 自检全通过（用户自行验收界面）。版本号 0.16.0 → 0.17.0 |

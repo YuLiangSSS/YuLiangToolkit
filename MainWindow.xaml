@@ -55,7 +55,7 @@
             </Grid>
         </Border>
 
-        <!-- 工具条：可点击分层面包屑（主页 > 类别 > … > 工具），左边是「返回上一级」 -->
+        <!-- 工具条：浏览器式「← 后退 / → 前进」+ 可点击分层面包屑（主页 > 类别 > … > 工具） -->
         <Border Grid.Row="1" Background="{StaticResource HeaderBackgroundBrush}"
                 BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,1" Padding="16,8">
             <Grid>
@@ -64,11 +64,19 @@
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <!-- 返回上一级：工具 → 所属类别；类别 → 父类别（到顶回主页）。全屏时整行被藏掉，逻辑不受影响 -->
-                <Button Grid.Column="0" Content="← 返回" Style="{StaticResource SecondaryButtonStyle}"
-                        Command="{Binding NavigateParentCommand}" Margin="0,0,12,0"
-                        ToolTip="返回上一级（工具 → 所属类别；类别 → 上一层）"
-                        Visibility="{Binding BackVisible, Converter={StaticResource BoolToVis}}" />
+                <!-- 后退 / 前进：按「访问顺序」在主页 / 类别页 / 工具页之间跳，和浏览器一样；
+                     没有可回退 / 前进的页面时按钮变灰（IsEnabled 绑 CanGoBack / CanGoForward）。
+                     全屏时整行被藏掉，逻辑不受影响 -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,12,0">
+                    <Button Content="←" Style="{StaticResource SecondaryButtonStyle}"
+                            Command="{Binding GoBackCommand}" IsEnabled="{Binding CanGoBack}"
+                            Width="34" Height="30" Padding="0" FontSize="15" Margin="0,0,6,0"
+                            ToolTip="后退：回到上一个页面（主页 / 类别页 / 工具页都算）" />
+                    <Button Content="→" Style="{StaticResource SecondaryButtonStyle}"
+                            Command="{Binding GoForwardCommand}" IsEnabled="{Binding CanGoForward}"
+                            Width="34" Height="30" Padding="0" FontSize="15"
+                            ToolTip="前进：回到后退之前所在的页面" />
+                </StackPanel>
 
                 <!-- 面包屑：祖先项可点（标签芯片样式），当前项高亮且不可点 -->
                 <ScrollViewer Grid.Column="1" VerticalAlignment="Center"

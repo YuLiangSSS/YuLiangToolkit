@@ -1,6 +1,7 @@
 using YuLiangToolkit.App;
 using YuLiangToolkit.App.Models;
 using YuLiangToolkit.App.ViewModels;
+using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Core.Tools;
 
 namespace YuLiangToolkit.FrameworkSelfCheck;
@@ -268,6 +269,66 @@ public static class NavigationChecks
                 .Children.Count == 0);
         check("NormalizePath：trim + 丢空段",
             ToolCatalog.NormalizePath(new[] { " A ", "", "B", "  " }).SequenceEqual(new[] { "A", "B" }));
+
+        // ============================ 11. 浏览器式导航历史（后退 / 前进） ============================
+        // 纯逻辑：NavigationHistory<T> 不碰 WPF，这里用 string 当“页面”逐条断言（外壳里 T 是 ShellLocation）。
+        var history = new NavigationHistory<string>();
+        check("导航历史：初始是空的，后退 / 前进都不可用",
+            !history.CanGoBack && !history.CanGoForward && history.Count == 0 && history.Current is null);
+
+        check("导航历史：记录第一页后还后退不了",
+            history.Push("home") && history.Count == 1 && history.Current == "home"
+            && !history.CanGoBack && !history.CanGoForward);
+        history.Push("tool:music-down");
+        history.Push("category:音游工具");
+        check("导航历史：连续访问三页后可以后退、不能前进",
+            history.Count == 3 && history.Current == "category:音游工具"
+            && history.CanGoBack && !history.CanGoForward);
+        check("导航历史：重复访问当前页不新增记录（点同一个导航项不会越点越多）",
+            !history.Push("category:音游工具") && history.Count == 3);
+        check("导航历史：后退回到上一页、同时可以前进",
+            history.TryGoBack(out var backTo) && backTo == "tool:music-down"
+            && history.Current == "tool:music-down" && history.CanGoForward);
+        check("导航历史：前进回到后退前的页面",
+            history.TryGoForward(out var forwardTo) && forwardTo == "category:音游工具"
+            && !history.CanGoForward && history.Current == "category:音游工具");
+
+        history.TryGoBack(out _);
+        history.Push("tool:media-video");
+        check("导航历史：从历史中间再访问新页面会丢掉“前进”记录（浏览器行为）",
+            history.Count == 3 && history.Current == "tool:media-video"
+            && !history.CanGoForward && history.CanGoBack,
+            string.Join(" / ", history.Entries));
+
+        var atStart = new NavigationHistory<string>();
+        atStart.Push("only");
+        check("导航历史：最老的一页不能再后退（TryGoBack 返回 false）",
+            !atStart.TryGoBack(out _) && atStart.Current == "only" && !atStart.CanGoBack);
+        check("导航历史：最新一页不能再前进（TryGoForward 返回 false）",
+            !atStart.TryGoForward(out _) && atStart.Current == "only" && !atStart.CanGoForward);
+
+        var capped = new NavigationHistory<int>();
+        for (var i = 0; i < NavigationHistory<int>.MaxEntries + 30; i++) capped.Push(i);
+        check($"导航历史：最多保留 {NavigationHistory<int>.MaxEntries} 条（超出丢最老的）",
+            capped.Count == NavigationHistory<int>.MaxEntries
+            && capped.CanGoBack
+            && capped.Current == NavigationHistory<int>.MaxEntries + 29,
+            $"保留 {capped.Count} 条");
+
+        // ShellLocation：外壳历史的记录对象，相等性只看稳定 Key（同一页面不会进两次历史）
+        var sameToolA = ShellLocation.ForTool(deepTool);
+        var sameToolB = ShellLocation.ForTool(deepTool);
+        check("页面位置：同一工具两次生成的记录相等（历史不会重复）",
+            sameToolA.Equals(sameToolB) && sameToolA.Key == "tool:" + deepTool.Id);
+        check("页面位置：不同页面不相等（主页 / 不同类别 / 不同工具各算各的）",
+            !ShellLocation.Home.Equals(sameToolA)
+            && !ShellLocation.ForCategory(music).Equals(ShellLocation.ForCategory(chart))
+            && ShellLocation.ForCategory(music).Equals(ShellLocation.ForCategory(music)));
+        check("页面位置：主页 / 类别 / 工具的类型与标题正确",
+            ShellLocation.Home.Kind == ShellLocationKind.Home && ShellLocation.Home.Title == "主页"
+            && ShellLocation.ForCategory(music).Kind == ShellLocationKind.Category
+            && ShellLocation.ForCategory(music).Title == "音游工具"
+            && sameToolA.Kind == ShellLocationKind.Tool && sameToolA.Title == deepTool.Name);
     }
 }
 
