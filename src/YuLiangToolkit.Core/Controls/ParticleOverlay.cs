@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -273,11 +274,53 @@ public sealed class ParticleOverlay : FrameworkElement
 
     // ================================================================== 鼠标事件
 
+    /// <summary>
+    /// 取鼠标在覆盖层里的真实位置。
+    ///
+    /// <para>⚠ <b>不能只用 <see cref="MouseEventArgs.GetPosition"/>（v0.17.0 修）</b>：点标题栏拖动窗口时
+    /// WPF 会额外派发一个坐标为 <c>(0,0)</c> 的“假”鼠标事件（实测 <c>DragMove()</c> 期间
+    /// <c>e.GetPosition</c> 和 <c>Mouse.GetPosition</c> 都返回 0,0），发射点被甩到窗口左上角 ——
+    /// 现象就是「小窗里点一下，粒子同时从左上角冒出来、往右下飞」；窗口最大化时标题栏不触发拖拽，
+    /// 所以只有小窗有这毛病。这里改用 Win32 的 <c>GetCursorPos</c> 取真实屏幕坐标再换算回来。</para>
+    /// </summary>
+    private Point GetPointerPosition(MouseEventArgs e)
+    {
+        if (TryGetRealCursorPosition(out var point)) return point;
+        return e.GetPosition(this);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out NativePoint point);
+
+    private bool TryGetRealCursorPosition(out Point point)
+    {
+        point = default;
+        if (PresentationSource.FromVisual(this) is null) return false;
+        if (!GetCursorPos(out var screen)) return false;
+        try
+        {
+            point = PointFromScreen(new Point(screen.X, screen.Y));
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private void OnWindowMouseMove(object sender, MouseEventArgs e)
     {
         if (!_loaded || !IsActive || _demoMode) return;
 
-        var position = e.GetPosition(this);
+        var position = GetPointerPosition(e);
+        Trace($"move pos={position.X:0.#},{position.Y:0.#} event={e.GetPosition(this).X:0.#},{e.GetPosition(this).Y:0.#}");
         _pointerInside = true;
         _engine.SetEmitter(position.X, position.Y);
         Wake();
@@ -287,10 +330,20 @@ public sealed class ParticleOverlay : FrameworkElement
     {
         if (!_loaded || !IsActive || _demoMode) return;
 
-        var position = e.GetPosition(this);
+        var position = GetPointerPosition(e);
+        Trace($"enter pos={position.X:0.#},{position.Y:0.#} event={e.GetPosition(this).X:0.#},{e.GetPosition(this).Y:0.#}");
         _pointerInside = true;
         _engine.SetEmitter(position.X, position.Y);
         Wake();
+    }
+
+    // ---------- 调试（YLT_PARTICLE_TRACE=文件） ----------
+    private static readonly string? TracePath = Environment.GetEnvironmentVariable("YLT_PARTICLE_TRACE");
+    private int _traceFrame;
+    private static void Trace(string line)
+    {
+        if (string.IsNullOrWhiteSpace(TracePath)) return;
+        try { File.AppendAllText(TracePath, $"{DateTime.Now:HH:mm:ss.fff} {line}{Environment.NewLine}"); } catch { /* 忽略 */ }
     }
 
     private void OnWindowMouseLeave(object sender, MouseEventArgs e)
@@ -309,7 +362,8 @@ public sealed class ParticleOverlay : FrameworkElement
     {
         if (!_loaded || !IsActive || _demoMode) return;
 
-        var position = e.GetPosition(this);
+        var position = GetPointerPosition(e);
+        Trace($"ldown pos={position.X:0.#},{position.Y:0.#} event={e.GetPosition(this).X:0.#},{e.GetPosition(this).Y:0.#} src={e.OriginalSource?.GetType().Name}");
         _pointerInside = true;
         _engine.SetEmitter(position.X, position.Y);
         _engine.BoostSpeedAndCount();   // 左键：速度 + 数量都拉满
@@ -320,7 +374,8 @@ public sealed class ParticleOverlay : FrameworkElement
     {
         if (!_loaded || !IsActive || _demoMode) return;
 
-        var position = e.GetPosition(this);
+        var position = GetPointerPosition(e);
+        Trace($"rdown pos={position.X:0.#},{position.Y:0.#} event={e.GetPosition(this).X:0.#},{e.GetPosition(this).Y:0.#}");
         _pointerInside = true;
         _engine.SetEmitter(position.X, position.Y);
         _engine.BoostCount();           // 右键：只加数量
@@ -417,6 +472,10 @@ public sealed class ParticleOverlay : FrameworkElement
 
         _engine.Update(frameSteps);
         _idle = false;
+        if (_traceFrame++ % 20 == 0)
+        {
+            Trace($"frame emitter={_engine.EmitterX:0.#},{_engine.EmitterY:0.#} alive={_engine.Particles.Count} ptr={_pointerInside}");
+        }
         InvalidateVisual();   // 主动重绘 → 下一帧渲染回调继续来（自维持循环）
     }
 

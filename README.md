@@ -2,7 +2,7 @@
 
 一个可扩展的 WPF 工具集应用：主页是工具卡片墙（**搜索 / 排序 / 标签**），左侧导航自动列出所有已发现的工具。
 功能多了会按类别收进**类别页**（支持任意层级分类，顶部是可点击的面包屑 `主页 › 音游工具 › 工具名`）；
-右上角「⚙ 主页设置」里可以开关**鼠标粒子效果**。
+右上角「⚙ 主页设置」里可以开关**鼠标粒子效果**，还能选**点 × 时「关闭应用 / 最小化到托盘」**；程序在**任务栏右侧有托盘小图标**（单击恢复窗口，右键菜单：显示主窗口 / 主页设置 / 退出）。
 深色主题 + 自定义标题栏（最小化 / 最大化 / 关闭按钮画在界面里，没有系统窗口顶栏）。
 
 ## 工具一览
@@ -58,7 +58,7 @@ dotnet run --project YuLiangTookit.csproj
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：所有「轮子」（工具契约、MVVM 基类、Data/Config 配置框架、
   FFmpeg 封装、UI 样式清单）的用途 + 签名 + 一行用法，加上新增功能的完整步骤和踩过的坑；
-- ✅ **自检**：1555 项行为逐条真跑（退出码 0 = 全通过），改了行为就该顺手跑一次：
+- ✅ **自检**：1560 项行为逐条真跑（退出码 0 = 全通过），改了行为就该顺手跑一次：
 
   ```powershell
   dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
@@ -97,7 +97,7 @@ src/
 ├── YuLiangToolkit.Tools.OsuMania/       # 功能：音游工具（osu! Key 转换器 / LN 转换器 / 等级计算器）
 ├── YuLiangToolkit.Tools.BoardGames/     # 功能：棋牌（联机五子棋 / 联机象棋 + 房间联机底座）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（1555 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（1560 项行为逐条验证）
 ```
 
 ## 如何添加一个新工具

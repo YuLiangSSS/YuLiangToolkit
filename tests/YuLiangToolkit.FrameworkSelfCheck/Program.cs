@@ -220,6 +220,25 @@ Check("枚举以字符串（C# 原名）保存并读回",
     && JsonFileStore.Read<ShellConfig>(shellStore.FilePath)?.SortMode == ToolSortMode.RecentlyUsed,
     File.ReadAllText(shellStore.FilePath).Replace(Environment.NewLine, " "));
 
+// ---------- 17.1 关闭按钮行为（主页设置「关闭应用 / 最小化到托盘」，见 2.16） ----------
+Check("关闭行为默认：点 × 关闭应用", new ShellConfig().CloseAction == ShellCloseAction.Exit);
+
+shell.CloseAction = ShellCloseAction.MinimizeToTray;
+Thread.Sleep(900);
+var savedClose = JsonFileStore.Read<ShellConfig>(shellStore.FilePath);
+Check("关闭行为改成「最小化到托盘」后自动落盘",
+    savedClose?.CloseAction == ShellCloseAction.MinimizeToTray,
+    File.ReadAllText(shellStore.FilePath).Replace(Environment.NewLine, " "));
+Check("关闭行为按 C# 原名存（配置文件里是 \"MinimizeToTray\"）",
+    File.ReadAllText(shellStore.FilePath).Contains("\"MinimizeToTray\""),
+    File.ReadAllText(shellStore.FilePath).Replace(Environment.NewLine, " "));
+Check("关闭行为读回一致（重启后保持）", savedClose?.CloseAction == ShellCloseAction.MinimizeToTray);
+
+shell.CloseAction = ShellCloseAction.Exit;
+Thread.Sleep(900);
+Check("关闭行为改回「关闭应用」后落盘",
+    JsonFileStore.Read<ShellConfig>(shellStore.FilePath)?.CloseAction == ShellCloseAction.Exit);
+
 // ---------- 18. 批量重命名：单条规则的行为（纯逻辑，不碰界面） ----------
 // 规则清单就是一张 RenameRule 数组，BuildName 按数组顺序逐条套用。
 // 下面几个小工厂函数只是为了让断言好读，规则本身定义在 RenameRule.cs 里。

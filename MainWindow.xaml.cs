@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -7,6 +8,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using YuLiangToolkit.App.ViewModels;
 using YuLiangToolkit.Core.Services;
 using YuLiangToolkit.Core.Tools;
 
@@ -299,6 +301,51 @@ public partial class MainWindow : Window, IFullscreenHost
     private void OnCloseClick(object sender, RoutedEventArgs e)
         => Close();
 
+    // ---------- 关闭按钮行为：关闭应用 / 最小化到托盘（主页设置里选） ----------
+
+    /// <summary>
+    /// 拦截关闭：主页设置里选了「最小化到托盘」时，点 ×（以及 Alt+F4 / 系统菜单关闭）只是把窗口藏起来，
+    /// 应用继续在后台跑（托盘图标由 <see cref="App"/> 创建，单击图标恢复）。
+    ///
+    /// <para>⚠ 真正的退出路径（托盘「退出」、截图模式、系统关机）会先置
+    /// <see cref="App.IsExiting"/>，所以这里不会把它们也拦下来；
+    /// 托盘图标没建出来时（<see cref="App.IsTrayVisible"/> = false）也正常关闭，免得窗口藏起来后找不回来。</para>
+    /// </summary>
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        if (!App.IsExiting && App.IsTrayVisible && DataContext is MainViewModel { MinimizeToTrayOnClose: true })
+        {
+            e.Cancel = true;
+            HideToTray();
+            return;
+        }
+
+        base.OnClosing(e);
+    }
+
+    /// <summary>把主窗口藏到任务栏右侧的托盘（进程不退；先顺手关掉从属的设置窗口）。</summary>
+    public void HideToTray()
+    {
+        if (DataContext is MainViewModel vm) vm.CloseSettingsWindow();
+        Hide();
+    }
+
+    /// <summary>从托盘恢复窗口：显示、把最小化还原、提到前台。</summary>
+    public void ShowFromTray()
+    {
+        if (!IsVisible) Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+
+        // 从托盘点出来时偶尔会被前台锁挡一下（窗口在但没到最前）：用 Topmost 闪一下把它顶上来。
+        // 全屏（播放器）期间不能动 Topmost —— 那套逻辑由 SyncTaskbar / 看门狗专门管着。
+        if (!_fullscreen)
+        {
+            Topmost = true;
+            Topmost = false;
+        }
+    }
+
     private void OnWindowStateChanged(object? sender, EventArgs e)
     {
         // 最大化时切换为“还原”图标
@@ -404,7 +451,7 @@ public partial class MainWindow : Window, IFullscreenHost
             {
                 try { File.WriteAllText(path + ".err.txt", ex.ToString()); } catch { /* 忽略 */ }
             }
-            Application.Current?.Shutdown();
+            App.RequestExit();   // 截图模式强制退出（不受「关闭=最小化到托盘」影响）
         });
     }
 }

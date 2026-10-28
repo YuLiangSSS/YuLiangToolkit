@@ -52,8 +52,25 @@
                     </StackPanel>
                 </Border>
 
+                <TextBlock Text="窗口与托盘" FontSize="13" FontWeight="SemiBold"
+                           Foreground="{StaticResource AccentBrush}" Margin="0,18,0,0" />
+                <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
+                    <StackPanel>
+                        <TextBlock Text="点击右上角 × 时" FontSize="12.5" FontWeight="SemiBold" />
+                        <RadioButton Content="关闭应用" Style="{StaticResource RadioButtonStyle}"
+                                     IsChecked="{Binding ExitOnClose}" Margin="0,9,0,0"
+                                     ToolTip="和以前一样：直接退出程序" />
+                        <RadioButton Content="最小化到托盘" Style="{StaticResource RadioButtonStyle}"
+                                     IsChecked="{Binding MinimizeToTrayOnClose}" Margin="0,9,0,0"
+                                     ToolTip="窗口藏到任务栏右侧，应用继续在后台运行" />
+                        <TextBlock FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap" Margin="0,9,0,0"
+                                   Text="选「最小化到托盘」后，× 只把窗口藏到任务栏右侧的小图标里，应用继续在后台运行：单击 / 双击托盘图标恢复窗口，右键托盘图标可以「显示主窗口 / 主页设置 / 退出」。设置自动保存，重启后保持。" />
+                    </StackPanel>
+                </Border>
+
                 <TextBlock FontSize="11" Foreground="#5A6472" TextWrapping="Wrap" Margin="0,14,0,0"
-                           Text="主页设置只影响外壳本身（粒子效果、主页排序等）；各功能自己的选项在对应功能页面里。" />
+                           Text="主页设置只影响外壳本身（粒子效果、关闭行为等）；各功能自己的选项在对应功能页面里。" />
 
                 <Button Content="完成" Style="{StaticResource PrimaryButtonStyle}"
                         HorizontalAlignment="Right" Margin="0,18,0,0" Click="OnCloseClick" />

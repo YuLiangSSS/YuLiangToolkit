@@ -21,6 +21,16 @@ public enum ToolSortMode
     Category,
 }
 
+/// <summary>点主窗口右上角 × 时的行为（存在 <c>Config\shell\config.json</c>，重启后保持）。</summary>
+public enum ShellCloseAction
+{
+    /// <summary>关闭应用（默认，和以前一样）。</summary>
+    Exit,
+
+    /// <summary>最小化到任务栏右侧的托盘：窗口藏起来，应用继续在后台运行。</summary>
+    MinimizeToTray,
+}
+
 /// <summary>
 /// 程序外壳（主页 / 导航）自己的配置 → <c>Config\shell\config.json</c>。
 ///
@@ -38,6 +48,12 @@ public sealed class ShellConfig : ToolConfig
 
     /// <summary>是否在界面上绘制鼠标粒子效果（主页设置里的开关，默认开）。</summary>
     public bool ShowParticles { get; set; } = true;
+
+    /// <summary>
+    /// 点窗口右上角 × 时的行为（主页设置里的选项，默认 <see cref="ShellCloseAction.Exit"/> = 关闭应用）。
+    /// 选 <see cref="ShellCloseAction.MinimizeToTray"/> 后 × 只把窗口藏到托盘，应用继续在后台运行。
+    /// </summary>
+    public ShellCloseAction CloseAction { get; set; } = ShellCloseAction.Exit;
 
     /// <summary>取某个功能上次使用时间（没有记录返回 null）。</summary>
     public DateTime? GetLastUsed(string toolId)

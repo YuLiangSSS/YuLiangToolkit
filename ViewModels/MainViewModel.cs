@@ -306,6 +306,37 @@ public class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// 「点 × 时最小化到托盘」是否选中（主页设置里的两个单选项之一）。
+    /// 读写 <see cref="ShellConfig.CloseAction"/>，由 <see cref="ToolConfigStore"/> 自动落盘。
+    /// <para>两个单选项各绑一个 bool 属性：WPF 取消选中时会传 false，这里**只处理 true**，
+    /// 否则两个属性会互相把对方写回去。</para>
+    /// </summary>
+    public bool MinimizeToTrayOnClose
+    {
+        get => _shell.CloseAction == ShellCloseAction.MinimizeToTray;
+        set
+        {
+            if (!value || MinimizeToTrayOnClose) return;
+            _shell.CloseAction = ShellCloseAction.MinimizeToTray;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ExitOnClose));
+        }
+    }
+
+    /// <summary>「点 × 时关闭应用」是否选中（默认）。见 <see cref="MinimizeToTrayOnClose"/>。</summary>
+    public bool ExitOnClose
+    {
+        get => _shell.CloseAction == ShellCloseAction.Exit;
+        set
+        {
+            if (!value || ExitOnClose) return;
+            _shell.CloseAction = ShellCloseAction.Exit;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(MinimizeToTrayOnClose));
+        }
+    }
+
     // ---------- 命令 ----------
 
     public RelayCommand GoHomeCommand { get; }
@@ -755,6 +786,15 @@ public class MainViewModel : ObservableObject
         _settingsWindow = window;
         window.Show();
         return window;
+    }
+
+    /// <summary>
+    /// 关掉「主页设置」窗口（如果有）。主窗口最小化到托盘时调用 ——
+    /// 不然设置窗口作为主窗口的从属窗口会单独留在屏幕上。
+    /// </summary>
+    public void CloseSettingsWindow()
+    {
+        if (_settingsWindow is { IsLoaded: true } window) window.Close();
     }
 
     // ---------- 工具切换 / 后台保活 ----------

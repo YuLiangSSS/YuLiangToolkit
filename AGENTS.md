@@ -4,7 +4,7 @@
 > 改这个项目之前先读本文件，**不要再去通读 `src/`**：这里把所有已经造好的「轮子」（可复用组件）的
 > **用途 + 签名 + 一行用法**、Data/Config 目录约定、新增功能的标准流程、以及踩过的坑都写全了。
 >
-> * **当前版本 v0.16.0** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
+> * **当前版本 v0.17.0** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
 > * 十三个功能：视频转音频 · **视频 / 音乐播放器** · **图片连续阅读器** · 批量重命名 · Flash 下载器 · 联机聊天室 · osu! 下图器 · **osu! Key 转换器** · **osu! LN 转换器** · **osu! 等级计算器** · **联机五子棋** · **联机象棋** · 框架示例（模板，可整目录删除）。
 >   osu! 的四个工具归入「音游工具」分类；**联机五子棋 / 联机象棋归入「棋牌」分类**（主页多级目录 → 类别页 → 工具，见 2.15 / 2.18）。
 > * 平台：Windows + .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM；**唯一第三方依赖是 `OsuParsers`**（osu `.osu` 解析/写回，MIT，见 2.17），其余轮子都手写在 `Core/`。
@@ -19,7 +19,7 @@
 ```powershell
 .\build.ps1                                                    # ① 编译：必须 0 错误（有警告也顺手清掉）
 dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
-                                                               # ② 自检：1555 项行为逐条真跑，退出码 0 = 全通过
+                                                               # ② 自检：1560 项行为逐条真跑，退出码 0 = 全通过
 ```
 
 * **改了行为就同步改自检断言**（自检就是"这份文档里承诺的行为"的执行版本，见第 6 节）。
@@ -110,13 +110,13 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | 项 | 内容 |
 | --- | --- |
 | 技术栈 | .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM；唯一第三方依赖 `OsuParsers`（MIT，osu 谱面解析/写回） |
-| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.16.0 就是读它；**别在别处写死**） |
+| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.17.0 就是读它；**别在别处写死**） |
 | 解决方案 | `YuLiangToolkit.sln`（13 个项目：主程序 + Core + 10 个功能 + 自检） |
 | 主程序 | `YuLiangTookit.csproj`（注意：文件名少一个 `l`，是历史拼写）→ 自定义标题栏外壳、主页/类别页/侧边栏/面包屑、深色主题、窗口级粒子层 |
 | 核心库 | `src/YuLiangToolkit.Core/`（工具契约、目录树、MVVM 基类、存储、配置、FFmpeg 封装、粒子引擎/覆盖层、通用 TCP 房间底座 `Core/Net`） |
 | 功能 | `Tools.VideoToAudio`（视频转音频）、`Tools.MediaPlayer`（视频 / 音乐播放器）、`Tools.PictureViewer`（图片连续阅读器）、`Tools.BatchRename`（批量重命名）、`Tools.FlashDownloader`（Flash 下载器）、`Tools.ChatRoom`（联机聊天室）、`Tools.MapDownloader`（osu! 下图器）、`Tools.OsuMania`（osu! Key / LN / 等级三个工具）、`Tools.BoardGames`（联机五子棋 / 联机象棋）、`Tools.Sample`（框架示例，可删） |
 | 数据/配置 | **在 exe 旁边**（`bin\Debug\net9.0-windows\Data`、`…\Config`）——见第 3 节；仓库根的 `Data/`、`Config/` 只剩说明文件 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**1555 项**行为逐条验证，纯控制台）——见第 6 节 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**1560 项**行为逐条验证，纯控制台）——见第 6 节 |
 | 构建 | `.\build.ps1`（离线，走本机 NuGet 缓存；会设 `DOTNET_CLI_HOME` 到 `.dotnet-cli-home`） |
 | 运行 | `dotnet run --project YuLiangTookit.csproj` 或直接跑 `bin\Debug\net9.0-windows\YuLiangTookit.exe` |
 
@@ -164,6 +164,7 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | `YLT_NAV_CATEGORY=<路径>` | 启动后直接进某个类别页（如 `音游工具` 或任意深度的 `音游工具/谱面处理`；见 2.15） |
 | `YLT_OPEN_SETTINGS=1` | 启动后直接打开「主页设置」窗口（截图核对粒子开关用；见 2.16） |
 | `YLT_PARTICLE_DEMO=1` | 粒子覆盖层进入演示模式：没有鼠标输入也持续在窗口中部生成粒子（无头截图用，见 2.16） |
+| `YLT_PARTICLE_TRACE=<文件>` | 把粒子覆盖层收到的鼠标事件坐标与每 20 帧的发射点/存活数追加进文件（排查「粒子从错误位置冒出来」用，见 2.16） |
 | `YLT_OSU_DEMO=1` | 打开三个 osu 工具时自动准备一份合成 4K 谱面/示例结果（截图与冒烟用，不发网络请求；见 2.17） |
 | `YLT_GOMOKU_DEMO=1` | 打开「联机五子棋」时造一局演示棋（同机双人 12 手 + 禁手点），截图/冒烟用，不联网 |
 | `YLT_XIANGQI_DEMO=1` | 打开「联机象棋」时造一局演示棋（同机双人 11 步中盘），截图/冒烟用，不联网 |
@@ -582,11 +583,12 @@ public sealed class FlashDownloaderViewModel : ToolViewModelBase
 
 | 轮子 | 说明 |
 | --- | --- |
-| `MainViewModel` | `NavItems`（侧边栏：首页 + 根层类别 + 根层工具）· `Tools` · 目录树 `ToolCatalogNode`（`CurrentNode`/`Breadcrumbs`）· `ToolCards`/`CategoryCards`（过滤+排序后的卡片）· `AllTags` · `SearchText` · `SortOptions`/`SelectedSort` · `CurrentView` · `BackVisible` · `SelectedNavItem` · `StatusText` · `CurrentTitle` · `ParticlesEnabled` · `GoHomeCommand` · `OpenToolCommand` · `NavigateCategoryCommand`/`NavigateParentCommand`/`NavigateBreadcrumbCommand` · `OpenSettingsCommand` · `ClearSearchCommand` · `SearchTagCommand`；**切换功能时会调用上一个 VM 的 `NotifyClosed()`**；打开功能时记录“上次使用” |
-| `MainWindow` | `WindowStyle=None` + `WindowChrome(CaptionHeight=0)`；标题栏拖拽/双击最大化在代码里手动实现；`WM_GETMINMAXINFO` 把最大化钳制到工作区；工具条是可点击面包屑（主页 › 类别 › 工具）；根部有窗口级 `ParticleOverlay`（见 2.16）；`CaptureTo(png)` 是截图模式实现 |
+| `MainViewModel` | `NavItems`（侧边栏：首页 + 根层类别 + 根层工具）· `Tools` · 目录树 `ToolCatalogNode`（`CurrentNode`/`Breadcrumbs`）· `ToolCards`/`CategoryCards`（过滤+排序后的卡片）· `AllTags` · `SearchText` · `SortOptions`/`SelectedSort` · `CurrentView` · `BackVisible` · `SelectedNavItem` · `StatusText` · `CurrentTitle` · `ParticlesEnabled` · `MinimizeToTrayOnClose`/`ExitOnClose`（× 关闭行为，绑主页设置的两个单选项）· `CloseSettingsWindow()` · `GoHomeCommand` · `OpenToolCommand` · `NavigateCategoryCommand`/`NavigateParentCommand`/`NavigateBreadcrumbCommand` · `OpenSettingsCommand` · `ClearSearchCommand` · `SearchTagCommand`；**切换功能时会调用上一个 VM 的 `NotifyClosed()`**；打开功能时记录“上次使用” |
+| `MainWindow` | `WindowStyle=None` + `WindowChrome(CaptionHeight=0)`；标题栏拖拽/双击最大化在代码里手动实现；`WM_GETMINMAXINFO` 把最大化钳制到工作区；工具条是可点击面包屑（主页 › 类别 › 工具）；根部有窗口级 `ParticleOverlay`（见 2.16）；`OnClosing` 按主页设置决定「关闭应用 / 最小化到托盘」；`HideToTray()` / `ShowFromTray()`（托盘单击恢复）；`CaptureTo(png)` 是截图模式实现 |
+| `TrayIcon` | Core/Services/：**手写 Win32 `Shell_NotifyIcon`（不引 WinForms）** 的任务栏托盘小图标；`Activated`（左键/双击）、`Func<IReadOnlyList<TrayMenuItem>>` 右键菜单（原生弹出菜单）、`Tooltip`、explorer 重启（`TaskbarCreated`）自动恢复、首次添加失败每 2 秒重试 5 次；图标三档兜底：`Assets\app.ico` → exe 内嵌图标 → 系统默认（见 2.16） |
 | `HomeView` | 主页：搜索框 + 全部类别卡片 + 标签条 + 根层工具卡片 + 空状态；代码后置只做 Ctrl+F 聚焦 / Esc 清空 / 进入主页自动聚焦搜索框 |
 | `CategoryView` | 类别页（任意层级）：类别 emoji/名称/描述/统计 + 子类别卡片 + 直接工具卡片 + 类别内搜索 + 空状态（见 2.15） |
-| `ShellSettingsWindow` | 「主页设置」窗口：粒子效果开关等外壳级设置（见 2.16） |
+| `ShellSettingsWindow` | 「主页设置」窗口（两组）：外观（粒子开关）+ 窗口与托盘（× = 关闭应用 / 最小化到托盘，见 2.16） |
 
 > 主窗口的启动位置：`WindowStartupLocation="Manual"`，构造函数里按 `SystemParameters.WorkArea`（已扣掉任务栏）算 `Left/Top`
 > —— `CenterScreen` 会把任务栏那 48px 也算进屏幕高度，窗口看着偏低（v0.9.6 修，1920×1080 + 底部任务栏时窗口开在 `320,106`）。
@@ -601,7 +603,7 @@ public sealed class FlashDownloaderViewModel : ToolViewModelBase
 | `ToolCard` | `ViewModels/ToolCard.cs` | 一张卡片：`Tool`（原始 `ITool`）· `Name/Emoji/Description/Category` · `Tags`/`TagsText`（分类在前 + 工具标签，去重）· `Matches(keywords)` · `LastUsed`/`LastUsedText` · `ShowLastUsed`；搜索索引 = 名称 + 分类 + 标签 + 描述 + Id + `CategoryPath` |
 | `ToolFilter` | `ViewModels/ToolFilter.cs` | `SplitKeywords(text)`（空格/逗号/顿号/分号切分）· `Filter(cards, keywords)`（AND 命中，大小写不敏感）· `Sort(cards, mode)` · `Apply(cards, text, mode)` · `CollectTags(cards)` |
 | `ToolSortMode` | `Models/ShellConfig.cs` | `Default`（按 `Order`）· `RecentlyUsed` · `NameAsc` · `NameDesc` · `Category`；中文用 `StringComparer.CurrentCulture`（中文系统即按拼音） |
-| `ShellConfig` | `Models/ShellConfig.cs` | 外壳自己的配置（`Config\shell\config.json`）：`SortMode` + `LastUsed` 字典（`MarkUsed(id)` / `GetLastUsed(id)`）+ `ShowParticles`（见 2.16） |
+| `ShellConfig` | `Models/ShellConfig.cs` | 外壳自己的配置（`Config\shell\config.json`）：`SortMode` + `LastUsed` 字典（`MarkUsed(id)` / `GetLastUsed(id)`）+ `ShowParticles` + `CloseAction`（点 × 关闭应用 / 最小化到托盘，见 2.16） |
 | `CategoryCard` / `BreadcrumbItem` | `Models/` | 类别卡片展示模型 / 面包屑项（见 2.15） |
 | `ShellCategories` | `Models/ShellCategories.cs` | 类别元数据清单（图标/描述/排序），见 2.15 |
 
@@ -1424,7 +1426,7 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 | 轮子 | 位置 | 说明 |
 | --- | --- | --- |
 | `Particle` / `ParticleEngine` | Core/Particles/ | 可注入随机种子；常量：默认速度 0.15 / 上限 3 / 每帧衰 0.1；数量 1→10、每帧衰 0.5；寿命 30~89 帧；初始直径 5；`Update(frameSteps)` 按 60fps 归一（单步上限 4、有生成累加器）；`Active` / `Speed` / `Count` / `EmitterX/Y` / `Particles` / `TotalSpawned`；`SetEmitter` `BoostSpeedAndCount` `BoostCount` `Clear` `Reset` `Reseed` |
-| `ParticleOverlay` | Core/Controls/ | `FrameworkElement` + `OnRender`；DP：`IsActive`（默认 false）、`ParticleColor`（默认 #F2EEFF 淡紫白）、`GlowColor`（柔光）；Loaded 挂 Window 鼠标/Rendering 事件、Unloaded/Closed 全摘；DPI/最大化/全屏自适应；`YLT_PARTICLE_DEMO=1` 无鼠标演示 |
+| `ParticleOverlay` | Core/Controls/ | `FrameworkElement` + `OnRender`；DP：`IsActive`（默认 false）、`ParticleColor`（默认 #F2EEFF 淡紫白）、`GlowColor`（柔光）；Loaded 挂 Window 鼠标/Rendering 事件、Unloaded/Closed 全摘；DPI/最大化/全屏自适应；**鼠标位置用 Win32 `GetCursorPos` + `PointFromScreen` 取真实值**（`DragMove` 的假 (0,0) 事件不再把发射点甩到左上角，见下面注意）；`YLT_PARTICLE_DEMO=1` 无鼠标演示、`YLT_PARTICLE_TRACE=<文件>` 排错 |
 | `ShellConfig.ShowParticles` | Models/ShellConfig.cs | 默认 `true`；`MainViewModel.ParticlesEnabled` 的 get/set 直接读写它（自动落盘） |
 | `ShellSettingsWindow` | Views/ | 「主页设置」窗口：外观（粒子开关）+ 说明；`Owner=主窗口`、`CenterOwner`、`ShowInTaskbar=false`；Esc / 完成关闭；以后设置项加在这里 |
 | `MainWindow` 接线 | MainWindow.xaml | 根部 `<core:ParticleOverlay Grid.RowSpan="4" Panel.ZIndex="900" IsHitTestVisible="False" IsActive="{Binding ParticlesEnabled}" />` |
@@ -1436,6 +1438,29 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 * 关闭开关时除清空粒子外要**退订渲染事件**（空闲零 CPU）；窗口失活/最小化也暂停。
 * 截图验证：`YLT_PARTICLE_DEMO=1`（无鼠标也能看到粒子）+ `YLT_SHOT`；设置窗口用 `YLT_OPEN_SETTINGS=1`。
 * 自检：`ParticleChecks`（38 项，纯逻辑：生成/寿命/衰减/开关/上限/确定性）。
+* **发射点别只用 `e.GetPosition`（v0.17.0 修过）**：点标题栏拖动窗口时 WPF 会额外派发一个坐标为 `(0,0)` 的假鼠标事件
+  （`DragMove()` 期间 `e.GetPosition` 和 `Mouse.GetPosition` **都**返回 0,0），发射点被甩到窗口左上角 ——
+  现象就是「小窗里点一下，粒子同时从左上角冒出来、往右下飞」；窗口最大化时标题栏不触发拖拽，所以只有小窗有这毛病。
+  现在统一走 Win32 `GetCursorPos` + `PointFromScreen` 取真实光标位置（见 `ParticleOverlay.GetPointerPosition`），
+  排错用 `YLT_PARTICLE_TRACE=<文件>`。
+
+#### 托盘图标 + 关闭按钮行为（v0.17.0）
+
+* **任务栏右侧的托盘小图标**由 `Core/Services/TrayIcon.cs` 手写 Win32 `Shell_NotifyIcon` 提供（**不引 WinForms**）：
+  左键单击 / 双击 → 把主窗口叫回前台；右键 → 原生弹出菜单「显示主窗口 / 主页设置… / 退出」；悬停显示「YuLiang 工具集」。
+  explorer 重启（`TaskbarCreated` 广播）自动把图标加回去；首次添加失败每 2 秒重试、最多 5 次。
+  图标三档兜底：exe 旁 `Assets\app.ico` → exe 内嵌图标 → 系统默认应用图标。
+* 图标素材 `Assets\app.ico`（深色圆角底 + 蓝色工具箱，含 16/20/24/32/40/48/64/128/256 九档）：
+  csproj 的 `<ApplicationIcon>` 让 exe / 任务栏也用同一个图标；`<None Update="Assets\app.ico" CopyToOutputDirectory="PreserveNewest">`
+  让它构建 / 发布都跟着 exe 走。⚠ 这是静态素材、不是用户数据，和 A.2 第 2 条警告的「别往 exe 旁边拷 Data/Config」不是一回事。
+* 主页设置新增「**窗口与托盘**」一组：点右上角 × 时「关闭应用」（默认）/「最小化到托盘」二选一，
+  存 `Config\shell\config.json` 的 `closeAction`（枚举按 C# 原名存：`"Exit"` / `"MinimizeToTray"`）。
+* 接线：`MainWindow.OnClosing` 拦关闭 —— 行为是托盘 **且托盘图标真的在**（`App.IsTrayVisible`）时
+  `e.Cancel = true` + `HideToTray()`；`App.IsExiting` 为 true（托盘「退出」/ 截图模式 / 系统关机）时放行。
+  **托盘没建出来时会退化成正常关闭**，不会出现「窗口藏起来找不回来」。
+* 恢复：`MainWindow.ShowFromTray()`（`Show()` + 最小化还原 + `Activate()`，非全屏时用 Topmost 闪一下提到前台）；
+  最小化到托盘时会顺手关掉「主页设置」从属窗口。`App.RequestExit()` 是唯一「真的退出」入口。
+* 自检：关闭行为默认值 / 自动落盘 / 读回（`CloseAction` 枚举按原名存）。
 
 ### 2.17 osu!mania 三件套：Key 转换 / LN 转换 / 等级计算（v0.10.0）
 
@@ -2049,7 +2074,7 @@ Data/chat-room/
 # 1) 编译（0 警告 0 错误）
 .\build.ps1
 
-# 2) 轮子自检：1555 项行为逐条真跑（Data/Config 轮子 + 主页搜索排序 + 多级分类导航/面包屑
+# 2) 轮子自检：1560 项行为逐条真跑（Data/Config 轮子 + 主页搜索排序 + 多级分类导航/面包屑
 #    + 批量重命名规则/冲突/执行/撤销
 #    + Flash 下载器的站点解析/命名/ini/批量计划/真下载/本地服务器/自动下载
 #    + 联机聊天室的协议/CRC/流量上限/会话文件夹/傻瓜模式挑监听/双栈真连两族/回环真连一局
@@ -2273,7 +2298,8 @@ git diff                        # 看未暂存改动
 
 | 版本 | 内容 |
 | --- | --- |
-| **v0.16.0**（当前） | **「图片连续阅读器」加图片边框 + 恢复默认**（见 2.19）：① 每张图可套「内边框 → 填充 → 外边框」三层边框，用来隔开相邻图片；三层都能调粗细（内/外 0~32、填充 0~128 像素，0 = 不画），三种颜色都按 **RGBA 0~255**（含透明度）独立可调；② 设置面板给每个颜色配了 R/G/B/A 数字框 + 预览色块 + **调色板**（12 个预设色，含透明色），改完节流 180ms 自动重排；③ 默认样式：1px 深色内边框 + 6px 灰带填充 + 1px 亮灰外边框，深色背景下能看清又不抢图；④ 设置面板新增「**恢复默认设置**」：阅读方式回纵向、缩放 100%、边框 / 惯性 / 滚轮 / 翻页设置全部回默认（不动文件关联）；⑤ 边框在连续 / 双页 / 单页模式都生效，并参与布局：100% 时「图 + 边框」刚好铺满视口，双页每页先让出边框再贴中间接缝；⑥ 新增 `PictureBorderStyle` 纯逻辑、`RgbaColorEditor`、`HexToBrushConverter`；自检 1541 → **1555** 项（边框颜色解析/合成/夹取/厚度、恢复默认配置与无头命令、RGBA 编辑器写回）；截图冒烟：默认边框 / demo 三层边框 / 双页 / 单页 / 设置面板；UIA 实测「恢复默认设置」把配置写回默认。版本号 0.15.0 → 0.16.0 |
+| **v0.17.0**（当前） | **托盘图标 + 关闭按钮行为 + 粒子发射点修复**（见 2.7 / 2.16）：① 任务栏右侧新增托盘小图标（手写 Win32 `Shell_NotifyIcon`，不引 WinForms）：左键单击 / 双击恢复主窗口，右键菜单「显示主窗口 / 主页设置… / 退出」，悬停提示「YuLiang 工具集」；explorer 重启自动恢复，首次添加失败自动重试；新增 `Assets\app.ico`（深色圆角底 + 蓝色工具箱）并设为 exe / 任务栏 / 托盘共用图标；② 主页设置新增「窗口与托盘」：点右上角 × 时可选「关闭应用」（默认）/「最小化到托盘」，存 `Config\shell\config.json` 的 `closeAction`；选托盘后 × / Alt+F4 只隐藏窗口，托盘图标恢复；程序退出（托盘「退出」/ 截图模式 / 系统关机）不受影响；托盘图标没建出来时自动退化成正常关闭；③ 修「小窗点标题栏粒子从左上角冒出来」：`DragMove()` 期间 WPF 会派发坐标为 (0,0) 的假鼠标事件，发射点改用 Win32 `GetCursorPos` + `PointFromScreen` 取真实光标位置；新增 `YLT_PARTICLE_TRACE` 排错钩子；④ 自检 1555 → **1560** 项（关闭行为默认值 / 自动落盘 / 枚举原名读回）；编译冒烟 + 自检全通过（用户自行验收界面）。版本号 0.16.0 → 0.17.0 |
+| v0.16.0 | **「图片连续阅读器」加图片边框 + 恢复默认**（见 2.19）：① 每张图可套「内边框 → 填充 → 外边框」三层边框，用来隔开相邻图片；三层都能调粗细（内/外 0~32、填充 0~128 像素，0 = 不画），三种颜色都按 **RGBA 0~255**（含透明度）独立可调；② 设置面板给每个颜色配了 R/G/B/A 数字框 + 预览色块 + **调色板**（12 个预设色，含透明色），改完节流 180ms 自动重排；③ 默认样式：1px 深色内边框 + 6px 灰带填充 + 1px 亮灰外边框，深色背景下能看清又不抢图；④ 设置面板新增「**恢复默认设置**」：阅读方式回纵向、缩放 100%、边框 / 惯性 / 滚轮 / 翻页设置全部回默认（不动文件关联）；⑤ 边框在连续 / 双页 / 单页模式都生效，并参与布局：100% 时「图 + 边框」刚好铺满视口，双页每页先让出边框再贴中间接缝；⑥ 新增 `PictureBorderStyle` 纯逻辑、`RgbaColorEditor`、`HexToBrushConverter`；自检 1541 → **1555** 项（边框颜色解析/合成/夹取/厚度、恢复默认配置与无头命令、RGBA 编辑器写回）；截图冒烟：默认边框 / demo 三层边框 / 双页 / 单页 / 设置面板；UIA 实测「恢复默认设置」把配置写回默认。版本号 0.15.0 → 0.16.0 |
 | v0.15.0 | **「图片连续阅读器」支持双击图片直接打开（文件关联）**（见 2.19）：① 设置面板新增「文件关联」：勾选后把 .jpg / .jpeg / .png / .bmp / .gif / .webp / .tif / .tiff 登记到本工具（只写 HKCU，不需要管理员），可在「打开方式」里选本工具；② 双击图片（或把图片路径作为命令行参数）启动时，主程序直接进「图片连续阅读器」，加载这张图所在文件夹并**自动定位到它**：连续模式滚到那一张开头（日式模式按阅读偏移换算），翻页 / 单页模式直接翻到那一页；③ 关联前会备份各后缀原来的默认程序，取消勾选时还原；不硬碰系统保护的 UserChoice，界面提示去「默认应用」确认一次并给出按钮；④ 自检 1532 → **1541** 项（新增 9 项：ReadingOffsetForPage / 后缀表 / 打开命令引号 / 启动参数判断 / 定位与只消费一次）；UIA 实测关联勾选与注册表登记/还原、命令行启动定位截图。版本号 0.14.0 → 0.15.0 |
 | v0.14.0 | **「图片连续阅读器」新增双页翻页 / 单页浏览，并把阅读方式挪进设置**（见 2.19）：① 阅读方式从 3 种扩到 **6 种**：连续滚动（纵向 / 横向左右）+ **双页翻页左→右**（中间两页，一次翻一张：右边移到左边、新的从右边进）、**双页翻页右→左**（日式镜像，整页往右滑）、**单页浏览**（左右按钮 / 滚轮 / 方向键）；② 工具条不再摆所有模式，只显示**当前方式按钮**（点它打开设置），切换统一在设置面板的「阅读方式」下拉里（以后加方式只改下拉）；③ 新增翻页设置：`PagedWheel`（滚轮 = 翻页 / 缩放）、`PageTurnAnimation`（约 0.19 秒滑动动画，默认开；只在 100% 未平移时播放）；④ 支持翻页模式下缩放 + 拖拽平移 + 惯性；左右按钮在日式模式自动互换语义，方向键 / PageUp/PageDown / 空格 / Home/End 可翻页，底部显示页码；⑤ 连续↔翻页切换保持位置（按比例/页号互算）；⑥ 新增 `PicturePaging` 纯逻辑（翻页配对 / 排版 / 平移夹取）与 `PictureViewerView.Paged.cs` partial；自检 1505 → **1532** 项（新增 27 项：6 种方式分类 / 双页配对 / 翻页步进 / 排版 / 平移夹取 / 滚轮动作 / 无头模式切换）。截图冒烟：双页左右 / 单页 / 1024 窄窗 / 设置面板 / 连续模式回归；UIA 实测左右按钮翻页与设置里切模式。版本号 0.13.0 → 0.14.0 |
 | v0.13.0 | **「图片连续阅读器」加缩放 / 双轴自由拖拽 / 拖动惯性（越滑越快）**（见 2.19）：① 顶部工具条新增**百分比输入框（默认 100%，可自由改 25%~800%）+ 两个放大镜按钮（− / +，一步 10%）**，缩放作用于整条长带，`Ctrl+滚轮` 也能以画面中心缩放；**100% = 原来的铺满基准**（不是原图像素 1:1）。② 缩放后**另一个轴也能滚**：纵向模式可左右拖、横向模式可上下拖（`_crossOffset` + `Shift+滚轮`；图片宽高改为都显式给，否则 ScrollViewer 认为另一轴没得滚）。③ **拖动惯性**（`InertiaEnabled`，默认开）：松手后按甩动速度继续滑、指数衰减、太慢/到边界停；④ **惯性越滑越快**（`InertiaAccelerate`，默认开，JMComic2 手感）：下一次甩动把还在滑的残余速度**叠加**上去（封顶 6 px/ms），而不是清零重置。⑤ 纯逻辑抽成 `PictureInertia`（采样 / 衰减 / 叠加 / 上限），自检 1483 → **1505** 项（新增 22 项：缩放换算 / 跨轴拖拽 / 惯性采样 / 衰减 / 叠加 / 上限 / 无头缩放命令）。版本号 0.12.1 → 0.13.0 |

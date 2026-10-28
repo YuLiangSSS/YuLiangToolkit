@@ -12,6 +12,22 @@ namespace YuLiangToolkit.App;
 
 public partial class App : Application
 {
+    /// <summary>任务栏右侧的托盘图标（整个进程一个；关窗口时是否「最小化到托盘」以它是否真的在为准）。</summary>
+    public static TrayIcon? Tray { get; private set; }
+
+    /// <summary>托盘图标现在是不是真的显示着（没有它就不能把窗口藏起来，否则用户找不回窗口）。</summary>
+    public static bool IsTrayVisible => Tray?.IsVisible == true;
+
+    /// <summary>是不是正在真正退出程序。为 true 时「关闭=最小化到托盘」不再拦 Close()。</summary>
+    public static bool IsExiting { get; private set; }
+
+    /// <summary>真正退出程序（托盘「退出」/ 截图模式 / 系统关机）。</summary>
+    public static void RequestExit()
+    {
+        IsExiting = true;
+        Current?.Shutdown();
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -30,9 +46,12 @@ public partial class App : Application
         {
             TaskbarHider.Restore();
             ToolConfigStore.FlushAll();
+            Tray?.Dispose();
+            Tray = null;
         };
         SessionEnding += (_, _) =>
         {
+            IsExiting = true;   // 系统关机 / 注销：别再被「关闭=最小化到托盘」拦住
             TaskbarHider.Restore();
             ToolConfigStore.FlushAll();
         };
@@ -53,6 +72,9 @@ public partial class App : Application
         }
 
         window.Show();
+
+        // 任务栏右侧的托盘图标：单击 / 双击恢复窗口，右键菜单（显示主窗口 / 主页设置 / 退出）。
+        SetupTrayIcon(window, vm);
 
         // 开发调试：YLT_WINDOW_SIZE=1024x700 强制窗口尺寸（截图核对最小窗口 / 窄屏版式用）
         var windowSize = Environment.GetEnvironmentVariable("YLT_WINDOW_SIZE");
@@ -107,6 +129,38 @@ public partial class App : Application
             // 设置窗口开着就截它（RenderTargetBitmap 只渲染传入的视觉树，不截会被主窗口盖住）
             if (settingsWindow is not null) settingsWindow.CaptureTo(shotPath);
             else window.CaptureTo(shotPath);
+        }
+    }
+
+    /// <summary>
+    /// 建任务栏托盘图标（不引 WinForms，手写 <see cref="TrayIcon"/>）：
+    /// 左键 / 双击恢复主窗口；右键菜单 = 显示主窗口 / 主页设置 / 退出。
+    ///
+    /// <para>托盘建不出来（极端环境）时只写 Debug 输出、**不影响程序启动**；
+    /// 此时 <see cref="IsTrayVisible"/> 为 false，「关闭=最小化到托盘」会退化成正常关闭，
+    /// 免得窗口藏起来之后用户找不回来。</para>
+    /// </summary>
+    private static void SetupTrayIcon(MainWindow window, MainViewModel viewModel)
+    {
+        try
+        {
+            var tray = new TrayIcon("YuLiang 工具集", () => new[]
+            {
+                new TrayMenuItem("显示主窗口", window.ShowFromTray, isDefault: true),
+                new TrayMenuItem("主页设置…", () =>
+                {
+                    window.ShowFromTray();
+                    viewModel.OpenSettings();
+                }),
+                TrayMenuItem.Separator,
+                new TrayMenuItem("退出 YuLiang 工具集", RequestExit),
+            });
+            tray.Activated += (_, _) => window.ShowFromTray();
+            Tray = tray;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[TrayIcon] 创建托盘图标失败：{ex}");
         }
     }
 }
