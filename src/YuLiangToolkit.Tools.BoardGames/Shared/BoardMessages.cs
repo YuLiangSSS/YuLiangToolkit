@@ -15,11 +15,17 @@ public sealed class HelloInfo
     /// <summary>要玩的游戏：<c>gomoku</c> / <c>xiangqi</c>（跟主机对不上就用不了）。</summary>
     public string GameId { get; set; } = "";
 
-    /// <summary>玩家名（主机显示「对手：谁谁谁」）。</summary>
+    /// <summary>玩家名（主机显示「谁谁谁」）。</summary>
     public string PlayerName { get; set; } = "";
 
     /// <summary>协议版本（对不上就拒连并提示）。</summary>
     public int ProtocolVersion { get; set; }
+
+    /// <summary>
+    /// 上次连接时主机分配的成员 id（<b>首次进房为空字符串</b>）。
+    /// 重连时带上它，主机就能复用原成员（保留进房顺序 / 席位 / 上场次数）。
+    /// </summary>
+    public string MemberId { get; set; } = "";
 }
 
 /// <summary>主机回给客户端的握手回执。</summary>
@@ -32,22 +38,22 @@ public sealed class WelcomeInfo
     /// <summary>主机（房主）的玩家名。</summary>
     public string HostName { get; set; } = "";
 
-    /// <summary>客户端执哪边：<c>black</c>/<c>white</c> 或 <c>red</c>/<c>black</c>。</summary>
-    public string YourSide { get; set; } = "";
-
     public int ProtocolVersion { get; set; }
 
-    /// <summary>包装后的局面（见 <see cref="BoardSnapshotEnvelope"/>；可能为空 = 还没有局面）。</summary>
-    public JsonElement? Snapshot { get; set; }
+    /// <summary>主机分配给本客户端的成员 id（之后发 hello 重连要带回来）。</summary>
+    public string YourMemberId { get; set; } = "";
+
+    /// <summary>包装后的完整房间状态（<see cref="BoardStateEnvelope"/>；可能为空 = 还没有状态）。</summary>
+    public JsonElement? State { get; set; }
 }
 
-/// <summary>主机广播的最新局面。</summary>
-public sealed class SnapshotInfo
+/// <summary>主机广播的最新完整状态（房间 + 棋局）。</summary>
+public sealed class StateInfo
 {
-    /// <summary>包装后的局面（<c>{seq, hostSide, clientSide, game}</c>）。</summary>
-    public JsonElement? Snapshot { get; set; }
+    /// <summary>包装后的完整状态（<c>{seq, room, game}</c>）。</summary>
+    public JsonElement? State { get; set; }
 
-    /// <summary>附带的提示（例如「对局开始」「对方悔棋了」，客户端显示在状态栏 / 聊天记录）。</summary>
+    /// <summary>可选附带的提示（例如「开始新的一局」）。</summary>
     public string? Notice { get; set; }
 }
 
@@ -65,6 +71,9 @@ public sealed class ChatInfo
     public string Name { get; set; } = "";
 
     public string Text { get; set; } = "";
+
+    /// <summary>true = 系统提示（进/出房间、对局提示等），界面用灰字显示。</summary>
+    public bool IsSystem { get; set; }
 }
 
 /// <summary>系统提示（<see cref="Level"/>：info / warn / error）。</summary>
@@ -80,7 +89,7 @@ public sealed class RequestInfo
 {
     public string Type { get; set; } = "";
 
-    /// <summary>可选附加数据（例如悔棋想撤几步）；目前协议不用，留好扩展位。</summary>
+    /// <summary>可选附加数据（目前协议不用，留好扩展位）。</summary>
     public JsonElement? Payload { get; set; }
 }
 
@@ -125,29 +134,78 @@ public enum BoardDisconnectKind
 }
 
 /// <summary>
-/// 主机把游戏局面包一层再发（见 WIP 文档 3.3；<see cref="BoardProtocol.WrapSnapshot"/> 负责序列化）。
-/// <para><see cref="Seq"/> 只增不减，客户端可据此忽略乱序的旧包；<see cref="HostSide"/>/<see cref="ClientSide"/>
-/// 每次都可能变（「再来一局」换边时）。</para>
+/// 房间里的一个成员（房主 + 每个接入的客户端）。
+/// <para><see cref="GamesPlayed"/> / 席位等真正的房间信息由基类维护在 <see cref="BoardRoomState"/> 里；
+/// 会话只负责成员身份、在线状态与进房顺序。</para>
 /// </summary>
-public sealed class BoardSnapshotEnvelope
+public sealed class BoardMemberInfo
 {
-    public int Seq { get; set; }
+    /// <summary>稳定 id：房主固定 <c>host</c>，客户端 <c>m1</c>/<c>m2</c>…（重连沿用）。</summary>
+    public string MemberId { get; set; } = "";
 
-    /// <summary>主机执哪边。</summary>
-    public string HostSide { get; set; } = "";
+    /// <summary>玩家名。</summary>
+    public string Name { get; set; } = "";
 
-    /// <summary>客户端执哪边（本端收到后据此知道「我执哪边」）。</summary>
-    public string ClientSide { get; set; } = "";
+    /// <summary>是不是房主（会话表里恒为 false，房主由基类合并）。</summary>
+    public bool IsHost { get; set; }
 
-    /// <summary>游戏自己的局面（各游戏 DOM 自己定义，房间不解释）。</summary>
-    public JsonElement? Game { get; set; }
+    /// <summary>当前在不在线（掉线但保留在成员表里时为 false）。</summary>
+    public bool IsOnline { get; set; }
+
+    /// <summary>完整打完的局数（会话恒填 0，由基类维护真正的值后放进房间状态）。</summary>
+    public int GamesPlayed { get; set; }
+
+    /// <summary>进房顺序（越小越早；自动轮换「轮流上场」按它排）。</summary>
+    public int JoinOrder { get; set; }
+
+    /// <summary>复制一份（事件里传给基类，避免基类拿到会被后续改动的同一个对象）。</summary>
+    public BoardMemberInfo Clone() => new()
+    {
+        MemberId = MemberId,
+        Name = Name,
+        IsHost = IsHost,
+        IsOnline = IsOnline,
+        GamesPlayed = GamesPlayed,
+        JoinOrder = JoinOrder,
+    };
 }
 
 /// <summary>
-/// 主机开房 / 客户端握手成功时，游戏交给房间的「欢迎信息」：
-/// 客户端执哪边 + 当前局面（<b>已包装</b>，见 <see cref="BoardSnapshotEnvelope"/>）。
+/// 房间状态（房主权威；客户端只读）。基类把它和棋局一起包进 <see cref="BoardStateEnvelope"/> 广播。
 /// </summary>
-public sealed record BoardWelcome(string ClientSide, JsonElement Snapshot);
+public sealed class BoardRoomState
+{
+    /// <summary>全部成员（含房主；掉线但保留的成员也在里面，<see cref="BoardMemberInfo.IsOnline"/>=false）。</summary>
+    public List<BoardMemberInfo> Members { get; set; } = new();
+
+    /// <summary>先手位（五子棋=黑棋、象棋=红方）上的成员 id；空字符串 = 空位。</summary>
+    public string SeatOneMemberId { get; set; } = "";
+
+    /// <summary>后手位上的成员 id；空字符串 = 空位。</summary>
+    public string SeatTwoMemberId { get; set; } = "";
+
+    /// <summary>自动上场方式：<c>manual</c>（手动安排）/ <c>loserOut</c>（输的下场）/ <c>bothOut</c>（双方都下场）。</summary>
+    public string AutoRotateMode { get; set; } = "manual";
+
+    /// <summary>补位方式：<c>rotation</c>（轮流上场）/ <c>random</c>（随机上场）。</summary>
+    public string AutoPickMode { get; set; } = "rotation";
+
+    /// <summary>房间人数上限（含房主）。</summary>
+    public int MaxMembers { get; set; } = 16;
+}
+
+/// <summary>
+/// 包装状态：seq 只增；room + game 一起发（棋牌状态很小）。
+/// <para>客户端收到后按 seq 忽略乱序旧包，把 <see cref="Room"/> 交给房间模型、<see cref="Game"/> 交给游戏 VM。</para>
+/// </summary>
+public sealed class BoardStateEnvelope
+{
+    public int Seq { get; set; }
+
+    public BoardRoomState? Room { get; set; }
+
+    public JsonElement? Game { get; set; }
+}
 
 /// <summary>联机请求的类型字符串（别在代码里手写字符串，免得两边拼错）。</summary>
 public static class BoardRequestTypes

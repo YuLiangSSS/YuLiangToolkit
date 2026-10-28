@@ -26,9 +26,8 @@ namespace YuLiangToolkit.Tools.BoardGames.Gomoku.ViewModels;
 /// </summary>
 public sealed class GomokuViewModel : BoardGameRoomViewModelBase
 {
-    private GomokuGame _game = null!;
+    private GomokuGame _game = new();                 // 基类在构造里可能问状态，先给一局空的占位
     private GomokuBoardViewState _boardState = new();
-    private string _mySide = "";
     private bool _clientMovePending;
     private int _refreshVersion;
     private bool _insideRefresh;
@@ -47,7 +46,7 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
         _game = new GomokuGame(Cfg.EffectiveBoardSize, Cfg.ForbiddenEnabled) { Started = false };
 
         BoardSizeOptions = OptionItem.From((15, "15 路（标准）"), (19, "19 路"));
-        HostSideOptions = OptionItem.From(("black", "房主执黑（先手）"), ("white", "房主执白（后手）"));
+        HostSideOptions = OptionItem.From(("black", "房主默认坐黑（先手位）"), ("white", "房主默认坐白（后手位）"));
 
         PlaceCommand = new RelayCommand(p =>
         {
@@ -59,10 +58,9 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
         OfferDrawCommand = new RelayCommand(_ => DrawCurrent(), _ => CanOfferDraw);
         CopyMovesCommand = new RelayCommand(_ => CopyMoves());
         NewLocalGameCommand = new RelayCommand(_ => NewLocalGame());
-        StartOnlineGameCommand = new RelayCommand(_ => StartOnlineGame(), _ => ShowStartOnlineButton);
         SafeLeaveRoomCommand = new RelayCommand(_ => OnLeaveRoomClicked(), _ => CanLeaveRoom);
 
-        // 房间状态（HasPeer / IsOnline / IsReconnecting / IsGamePaused）一变，本类的派生状态也跟着刷新，
+        // 房间状态（IsOnline / IsSeatedPlayer / IsGamePaused / IsReconnecting）一变，本类的派生状态也跟着刷新，
         // 不然「能不能落子 / 按钮禁用 / 提示文案」会慢半拍。
         PropertyChanged += OnRoomStatePropertyChanged;
 
@@ -73,8 +71,9 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
     private void OnRoomStatePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (_insideRefresh) return;
-        if (e.PropertyName is nameof(IsReconnecting) or nameof(IsGamePaused) or nameof(HasPeer)
-            or nameof(IsOnline) or nameof(CanLeaveRoom) or nameof(Mode))
+        if (e.PropertyName is nameof(IsReconnecting) or nameof(IsGamePaused) or nameof(IsOnline)
+            or nameof(Mode) or nameof(IsSeatedPlayer) or nameof(IsSpectator) or nameof(LocalSide)
+            or nameof(IsGameRunning) or nameof(CanLeaveRoom) or nameof(ShowPlayerActions))
         {
             RefreshAll();
         }
@@ -111,7 +110,7 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
         }
     }
 
-    /// <summary>房主执子下拉框的选中项（房间开着的时候不让改，免得跟客户端记的执子对不上）。</summary>
+    /// <summary>「房主默认坐席」下拉框的选中项（房间开着的时候不让改，开房瞬间决定房主自动坐哪一席）。</summary>
     public OptionItem<string> SelectedHostSide
     {
         get => OptionItem<string>.Find(HostSideOptions, Cfg.EffectiveHostSide) ?? HostSideOptions[0];
@@ -127,16 +126,13 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
 
             if (IsOnline)
             {
-                SetNotice("房间开着时不能改房主执子（先离开房间再改）", "DangerBrush");
+                SetNotice("房间开着时不能改房主默认坐席（先离开房间再改）", "DangerBrush");
                 OnPropertyChanged();
                 return;
             }
 
             Cfg.HostSide = side;
             OnPropertyChanged();
-            OnPropertyChanged(nameof(MySideText));
-            OnPropertyChanged(nameof(OpponentSideText));
-            if (!_game.Started) ResetGameForCurrentSetup(started: false);
         }
     }
 
@@ -182,8 +178,8 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
     /// <summary>当前禁手规则的一行说明。</summary>
     public string ForbiddenSummary => Cfg.ForbiddenSummary;
 
-    /// <summary>未开局 / 非客户端时可以改设置（客户端由房主定规则）。</summary>
-    public bool IsSetupAllowed => !IsClient;
+    /// <summary>设置卡可编辑：离线 / 同机双人 / 演示房间可改；联机只有房主在「对局没进行中」时可改（规则由房主定）。</summary>
+    public bool IsSetupAllowed => !IsOnline || IsDemoRoom || (IsHost && !IsGameRunning);
 
     /// <summary>设置改了之后要不要立刻重建棋盘（没开始的对局直接按新设置摆好）。</summary>
     private void OnRuleSettingChanged(string what)
@@ -245,41 +241,32 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
     /// <summary>手数文案，例如 "12 手"。</summary>
     public string MoveCountText => GomokuText.MoveCountText(_game.MoveCount);
 
-    /// <summary>我方的执子说明（同机双人 / 只由房间分配后才有意义）。</summary>
+    /// <summary>我方的执子说明（同机双人 / 观战 / 联机坐席都说清楚）。</summary>
     public string MySideText
     {
         get
         {
             if (IsLocalMode) return "同机双人（两人轮流）";
-            if (IsHost) return $"我方：{GomokuText.SideName(GomokuText.ParseSide(HostSide))}";
-            if (IsClient && GomokuText.ParseSide(_mySide) != GomokuCell.Empty)
-                return $"我方：{GomokuText.SideName(GomokuText.ParseSide(_mySide))}";
-            return "我方：未定";
+            if (!IsOnline) return "我方：未进房间";
+            return IsSeatedPlayer ? $"我方：{SideDisplayName(LocalSide)}" : "我方：观战中";
         }
     }
 
-    /// <summary>
-    /// 对手的执子说明。同机双人时不再显示「对方：同机双人」这种别扭措辞，
-    /// 改成「对手：同机轮流（换手）」；没进房间显示「未进房间」。
-    /// </summary>
+    /// <summary>对手说明（联机坐席时是对手；观战时说明在看棋）。</summary>
     public string OpponentSideText
     {
         get
         {
             if (IsLocalMode) return "对手：同机轮流（换手）";
             if (!IsOnline) return "对手：未进房间";
-            if (!HasPeer) return IsHost ? "对手：等待加入" : "对手：未定";
-
-            var mySide = IsHost ? HostSide : _mySide;
-            var cell = GomokuText.ParseSide(OppositeSide(mySide));
-            return cell == GomokuCell.Empty ? "对手：未定" : $"对手：{GomokuText.SideName(cell)}";
+            return IsSeatedPlayer ? PeerSideText : "对手：—（你在观战）";
         }
     }
 
     /// <summary>离线时显示「同机双人新开一局」入口；已经在同机双人里就不用了（有「再来一局」）。</summary>
     public bool ShowNewLocalGameButton => !IsOnline && !IsLocalMode;
 
-    /// <summary>方块下面那行操作提示：现在该谁走 / 为什么不能走。</summary>
+    /// <summary>棋盘下面那行提示：现在该谁走 / 为什么不能走 / 在观战。</summary>
     public string BoardHintText
     {
         get
@@ -290,23 +277,25 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
                        + "（棋盘只读，连上后可以继续下）";
             }
 
-            if (IsGamePaused)
-            {
-                return "对局暂停 · 等待对方重连（棋局已保留，连回来可以继续下）";
-            }
+            if (IsGamePaused) return GamePauseStatusText + "（棋盘只读）";
 
             if (!_game.Started)
             {
-                if (IsClient) return HasPeer ? "等待房主开始对局（现在棋盘只读）" : "连接已断开：可以点「加入房间」重新连";
-                if (IsHost && IsOnline) return HasPeer ? "调好设置后点「开始对局」" : "等对方加入后点「开始对局」";
                 if (IsLocalMode) return "点棋盘落子（黑棋先手）";
-                return "对局还没开始：先选玩法（同机双人 / 开房间 / 加入房间），房主再点「开始对局」";
+                if (!IsOnline) return "对局还没开始：先开房间 / 加入房间 / 同机双人，房主再点「开始对局」";
+                return SeatStatusText;
             }
 
-            if (_game.IsOver) return $"本局结束：{ResultDetailText}。点「再来一局」继续";
+            if (_game.IsOver)
+            {
+                if (IsLocalMode) return $"本局结束：{ResultDetailText}。点「再来一局」继续";
+                if (IsHost) return $"本局结束：{ResultDetailText}。安排下一局后点「开始下一局」";
+                if (IsSeatedPlayer) return $"本局结束：{ResultDetailText}。可以点「请求再来一局」";
+                return $"本局结束：{ResultDetailText}。等房主开始下一局";
+            }
+
             if (IsLocalMode) return $"同机双人：轮到{GomokuText.SideName(_game.Turn)}，点棋盘落子";
-            if (!IsOnline) return "还没进房间：开房间等对方加入，或填地址加入别人的房间";
-            if (!HasPeer) return IsHost ? "对局暂停 · 等待对方重连" : "连接断开，正在重连…";
+            if (IsSpectator) return "你在观战：可以看棋、聊天，等房主安排上场";
             if (_clientMovePending) return "已落子，等房主确认…";
             return CanPlayNow ? "轮到你了，点棋盘落子" : "等对方落子…";
         }
@@ -329,36 +318,28 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
     /// <summary>棋谱里有没有内容（复制按钮 / 空状态用）。</summary>
     public bool HasMoves => _game.MoveCount > 0;
 
-    /// <summary>现在轮到我 / 同机双人可以落子（对局暂停、重连中都算不能下）。</summary>
+    /// <summary>现在轮到我 / 同机双人可以落子（观战、对局暂停、重连中都算不能下）。</summary>
     public bool CanPlayNow
     {
         get
         {
             if (!_game.Started || _game.IsOver || IsGamePaused) return false;
             if (IsLocalMode) return true;
-            if (!IsOnline || !HasPeer) return false;
+            if (!IsOnline || !IsSeatedPlayer) return false;
 
-            var turn = _game.Turn;
-            if (IsHost) return turn == GomokuText.ParseSide(HostSide);
-            if (IsClient)
-            {
-                return !IsReconnecting
-                       && !_clientMovePending
-                       && GomokuText.ParseSide(_mySide) == turn
-                       && GomokuText.ParseSide(_mySide) != GomokuCell.Empty;
-            }
-
-            return false;
+            var my = GomokuText.ParseSide(LocalSide);
+            if (my == GomokuCell.Empty || _game.Turn != my) return false;
+            if (IsClient) return !IsReconnecting && !_clientMovePending;
+            return IsHost;
         }
     }
 
     /// <summary>
-    /// 棋盘能不能点：只要「对局进行中 + 联机时有对手」就允许点 —— 这样不是自己回合时点一下
-    /// 会得到一句提示（AGENTS.md / WIP 3.7：别让用户点了没反应），真正能不能落子由 <see cref="CanPlayNow"/> 把关。
-    /// 对局暂停 / 断线重连期间棋盘只读。
+    /// 棋盘能不能点：对局进行中、本端坐在席位上（同机双人也可以）才可点；
+    /// 观战 / 房主不坐席 / 暂停 / 重连中一律只读（真正能否落子仍由 <see cref="CanPlayNow"/> 把关）。
     /// </summary>
     public bool IsBoardInteractive =>
-        _game.Started && !_game.IsOver && !IsGamePaused && (IsLocalMode || (IsOnline && HasPeer));
+        _game.Started && !_game.IsOver && !IsGamePaused && (IsLocalMode || (IsOnline && IsSeatedPlayer));
 
     /// <summary>对局是否已经开始。</summary>
     public bool IsStarted => _game.Started;
@@ -366,24 +347,30 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
     /// <summary>对局是否已经结束。</summary>
     public bool IsGameOver => _game.IsOver;
 
-    /// <summary>主机开完房间、对方已加入、还没开始对局（显示「开始对局」按钮）。</summary>
-    public bool ShowStartOnlineButton => IsHost && IsOnline && HasPeer && !_game.Started && !IsGamePaused;
-
-    /// <summary>主机的「开始对局」按钮下面那行提示。</summary>
-    public string StartGameHint => ShowStartOnlineButton ? "调好设置后点「开始对局」" : "";
-
-    /// <summary>能不能悔棋。</summary>
-    public bool CanUndo => _game.MoveCount > 0 && !IsGamePaused && (IsLocalMode || (IsOnline && HasPeer));
+    /// <summary>能不能悔棋（联机需要房主/对手同意；同机双人直接撤）。</summary>
+    public bool CanUndo => _game.MoveCount > 0 && !IsGamePaused
+                           && (IsLocalMode || (IsOnline && IsSeatedPlayer));
 
     /// <summary>能不能认输。</summary>
-    public bool CanResign => _game.Started && !_game.IsOver && !IsGamePaused && (IsLocalMode || (IsOnline && HasPeer));
+    public bool CanResign => _game.Started && !_game.IsOver && !IsGamePaused
+                             && (IsLocalMode || (IsOnline && IsSeatedPlayer));
 
     /// <summary>能不能求和。</summary>
     public bool CanOfferDraw => CanResign;
 
-    /// <summary>能不能再来一局。</summary>
-    public bool CanRematch => IsLocalMode
-                              || (!IsGamePaused && ((IsOnline && HasPeer) || (IsHost && !_game.Started)));
+    /// <summary>「再来一局」按钮可见：同机双人 或 联机坐席客户端玩家（房主用基类的「开始下一局」）。</summary>
+    public bool ShowRematchButton => IsLocalMode || (IsClient && IsSeatedPlayer);
+
+    /// <summary>能不能请求再来一局：同机双人随时可重开；联机客户端玩家只在「本局结束」后可请求房主。</summary>
+    public bool CanRematch
+    {
+        get
+        {
+            if (IsGamePaused) return false;
+            if (IsLocalMode) return _game.Started || _game.MoveCount > 0;
+            return IsClient && IsSeatedPlayer && IsOnline && _game.IsOver;
+        }
+    }
 
     /// <summary>认输按钮的文案：联机对局中第一次点变成「再点一次确认认输」（防手滑）。</summary>
     public string ResignButtonText => _resignArmed ? "再点一次确认认输" : "认输";
@@ -424,9 +411,6 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
     /// <summary>同机双人新开一局。</summary>
     public RelayCommand NewLocalGameCommand { get; }
 
-    /// <summary>房主开始联机对局（之后客户端才能落子）。</summary>
-    public RelayCommand StartOnlineGameCommand { get; }
-
     /// <summary>带二次确认的「离开房间」（对局进行中第一下只变成「再点一次确认离开」，3 秒内有效）。</summary>
     public RelayCommand SafeLeaveRoomCommand { get; }
 
@@ -437,13 +421,19 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
     {
         if (!_game.Started)
         {
-            SetNotice("对局还没开始：先选玩法，房主再点「开始对局」", "DangerBrush");
+            SetNotice(IsLocalMode ? "点「新开一局」开始下棋" : "对局还没开始：等房主点「开始对局」", "DangerBrush");
             return;
         }
 
         if (_game.IsOver)
         {
-            SetNotice("这一局已经结束了，点「再来一局」重新开始", "DangerBrush");
+            SetNotice("这一局已经结束了" + (IsLocalMode ? "，点「再来一局」重新开始" : "，等房主开始下一局"), "DangerBrush");
+            return;
+        }
+
+        if (IsGamePaused)
+        {
+            SetNotice(GamePauseStatusText + "（现在不能落子）", "DangerBrush");
             return;
         }
 
@@ -453,27 +443,34 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
             return;
         }
 
-        if (!IsOnline || !HasPeer)
+        if (!IsOnline)
         {
-            SetNotice("现在没有对手在线：先开房间等对方加入，或加入别人的房间", "DangerBrush");
+            SetNotice("还没进房间：先开房间 / 加入房间 / 同机双人", "DangerBrush");
+            return;
+        }
+
+        // 观战者（以及没坐席的房主）不能落子：UI 已经隐藏按钮，这里再做一层 VM 拦截。
+        if (!IsSeatedPlayer)
+        {
+            SetNotice("你在观战，不能落子（可以看棋、聊天，等房主安排上场）", "DangerBrush");
+            return;
+        }
+
+        var my = GomokuText.ParseSide(LocalSide);
+        if (my == GomokuCell.Empty)
+        {
+            SetNotice("还没分配执边，稍等一下", "DangerBrush");
+            return;
+        }
+
+        if (_game.Turn != my)
+        {
+            SetNotice("还没轮到你走（等对方落子）", "DangerBrush");
             return;
         }
 
         if (IsClient)
         {
-            var my = GomokuText.ParseSide(_mySide);
-            if (my == GomokuCell.Empty)
-            {
-                SetNotice("还在等房主分配执子，稍等一下", "DangerBrush");
-                return;
-            }
-
-            if (_game.Turn != my)
-            {
-                SetNotice("还没轮到你走（等对方落子）", "DangerBrush");
-                return;
-            }
-
             if (_clientMovePending)
             {
                 SetNotice("上一手还在等房主确认…", "TextSecondaryBrush");
@@ -499,14 +496,7 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
 
         if (IsHost)
         {
-            var host = GomokuText.ParseSide(HostSide);
-            if (_game.Turn != host)
-            {
-                SetNotice("还没轮到你走（等对方落子）", "DangerBrush");
-                return;
-            }
-
-            PlayOnHost(host, point);
+            PlayOnHost(my, point);
         }
     }
 
@@ -535,7 +525,7 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
         }
 
         RefreshAll();
-        BroadcastSnapshot();
+        if (!_game.IsOver) BroadcastSnapshot();    // 结束的那一手由基类处理时统一广播
         AnnounceAfterPlay(side, point);
     }
 
@@ -747,13 +737,7 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
             return;
         }
 
-        if (!HasPeer)
-        {
-            SetNotice("对方不在房间里，先等一下", "DangerBrush");
-            return;
-        }
-
-        RequestUndo();                       // 基类：发请求、等对方同意
+        RequestUndo();                       // 基类：按房主/客户端身份路由，等对方同意
     }
 
     private void ResignCurrent()
@@ -774,13 +758,13 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
             return;
         }
 
-        if (!IsOnline || !HasPeer)
+        if (!IsOnline)
         {
-            SetNotice("现在没有对手在线，不能认输", "DangerBrush");
+            SetNotice("还没进房间，不能认输", "DangerBrush");
             return;
         }
 
-        ResignOnline();                      // 基类：主机直接判负并广播 / 客户端发请求
+        ResignOnline();                      // 基类：房主直接判负并广播 / 客户端玩家发请求
     }
 
     private void DrawCurrent()
@@ -800,13 +784,13 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
             return;
         }
 
-        if (!IsOnline || !HasPeer)
+        if (!IsOnline)
         {
-            SetNotice("现在没有对手在线，不能求和", "DangerBrush");
+            SetNotice("还没进房间，不能求和", "DangerBrush");
             return;
         }
 
-        OfferDraw();                         // 基类：发请求、等对方同意
+        OfferDraw();                         // 基类：按房主/客户端身份路由，等对方同意
     }
 
     private void Rematch()
@@ -814,7 +798,6 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
         if (IsLocalMode)
         {
             BeginNewGame(swapSides: false);
-            _game.Started = true;
             RefreshAll();
             SetNotice("已开新的一局（同机双人）", "SuccessBrush");
             return;
@@ -826,31 +809,15 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
             return;
         }
 
-        if (!HasPeer)
-        {
-            if (IsHost)
-            {
-                BeginNewGame(swapSides: false);
-                _game.Started = false;
-                RefreshAll();
-                SetNotice("棋盘已重置，等对方加入后点「开始对局」", "TextSecondaryBrush");
-            }
-            else
-            {
-                SetNotice("对方不在线，稍等一下", "DangerBrush");
-            }
-
-            return;
-        }
-
-        RequestRematch();                    // 基类：发请求、等对方同意（同意后换边）
+        // 联机：房主 = 基类直接开始下一局；客户端坐席玩家 = 请求房主；观战者由基类回绝。
+        RequestRematch();
     }
 
     private void NewLocalGame()
     {
         if (IsOnline)
         {
-            SetNotice("联机时请用「再来一局」（需要对方同意）", "DangerBrush");
+            SetNotice("联机时由房主在「房间成员」面板安排下一局", "DangerBrush");
             return;
         }
 
@@ -861,31 +828,8 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
         }
 
         BeginNewGame(swapSides: false);
-        _game.Started = true;
         RefreshAll();
         SetNotice("已开新的一局（同机双人）", "SuccessBrush");
-    }
-
-    private void StartOnlineGame()
-    {
-        if (!IsHost || !IsOnline)
-        {
-            SetNotice("只有房主在房间里才能开始对局", "DangerBrush");
-            return;
-        }
-
-        if (_game.Started)
-        {
-            SetNotice("对局已经开始了", "DangerBrush");
-            return;
-        }
-
-        _game.Started = true;
-        RefreshAll();
-        BroadcastSnapshot();
-        var side = GomokuText.SideName(GomokuText.ParseSide(HostSide));
-        SetNotice($"对局开始：你执{side}" + (HasPeer ? "，请落子" : "；等对方加入"), "SuccessBrush");
-        AppendSystemChat($"对局开始：房主执{side}");
     }
 
     private void CopyMoves()
@@ -911,7 +855,10 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
     // ---------------------------------------------------------------- 基类钩子：房间 / 联机
 
     /// <inheritdoc />
-    protected override string HostSide => Cfg.EffectiveHostSide;
+    protected override string FirstSeatSide => "black";
+
+    /// <inheritdoc />
+    protected override string PreferredHostSeatSide => Cfg.EffectiveHostSide;
 
     /// <inheritdoc />
     protected override string OppositeSide(string side)
@@ -931,6 +878,28 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
     /// <inheritdoc />
     protected override JsonElement BuildGameSnapshot()
         => JsonSerializer.SerializeToElement(_game.ToSnapshot(), RoomProtocol.JsonOptions);
+
+    /// <inheritdoc />
+    protected override BoardGameStatus ReportGameStatus()
+    {
+        var winner = _game.Result switch
+        {
+            GomokuResult.BlackWin => "black",
+            GomokuResult.WhiteWin => "white",
+            _ => null,
+        };
+        return new BoardGameStatus(_game.Started, _game.IsOver, winner);
+    }
+
+    /// <inheritdoc />
+    protected override void ResetGameToWaiting()
+    {
+        _game = new GomokuGame(Cfg.EffectiveBoardSize, Cfg.ForbiddenEnabled) { Started = false };
+        _clientMovePending = false;
+        DisarmResignConfirm();
+        DisarmLeaveConfirm();
+        RefreshAll();
+    }
 
     /// <inheritdoc />
     protected override void ApplyGameSnapshot(JsonElement game, string mySide)
@@ -955,7 +924,6 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
 
         var oldMoveCount = _game.MoveCount;
         var wasOver = _game.IsOver;
-        _mySide = mySide ?? "";
         _game = restored;
         _clientMovePending = false;
         RefreshAll();
@@ -973,24 +941,26 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
         }
         else if (restored.MoveCount > oldMoveCount && restored.LastMove is { } last && !restored.IsOver)
         {
-            var who = GomokuText.ParseSide(last.Player) == GomokuText.ParseSide(_mySide) ? "你" : "对方";
+            var who = GomokuText.ParseSide(last.Player) == GomokuText.ParseSide(mySide) ? "你" : "对方";
             SetNotice($"{who}落子 {GomokuText.DescribeMove(last, restored.Size)}，轮到{GomokuText.SideName(restored.Turn)}",
                 "TextSecondaryBrush");
         }
+
+        NotifyGameFinishedIfNeeded();
     }
 
     /// <inheritdoc />
-    protected override void OnHostAction(string type, JsonElement? payload)
+    protected override void OnHostAction(string fromMemberId, string fromSide, string type, JsonElement? payload)
     {
         if (!string.Equals(type, "move", StringComparison.OrdinalIgnoreCase)) return;
         if (payload is not { } element || element.ValueKind != JsonValueKind.Object) return;
 
         if (!TryReadCoordinate(element, "x", out var x) || !TryReadCoordinate(element, "y", out var y)) return;
 
-        var peer = GomokuText.ParseSide(OppositeSide(HostSide));
-        if (peer == GomokuCell.Empty) return;
+        var side = GomokuText.ParseSide(fromSide);
+        if (side == GomokuCell.Empty) return;             // 基类已校验过发送者在席位上，这里再兜一层
 
-        PlayOnHost(peer, new GomokuPoint(x, y));
+        PlayOnHost(side, new GomokuPoint(x, y));
     }
 
     private static bool TryReadCoordinate(JsonElement element, string name, out int value)
@@ -1032,16 +1002,9 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
     /// <inheritdoc />
     protected override void BeginNewGame(bool swapSides)
     {
-        if (swapSides)
-        {
-            Cfg.HostSide = Cfg.EffectiveHostSide == "black" ? "white" : "black";
-            OnPropertyChanged(nameof(SelectedHostSide));
-            OnPropertyChanged(nameof(MySideText));
-        }
-
+        // 换边已经由基类的「席位安排」决定（房主可以把同一个人换到先手/后手位），这里不再动配置。
         _game = new GomokuGame(Cfg.EffectiveBoardSize, Cfg.ForbiddenEnabled)
         {
-            // 联机「再来一局」是双方同意后才走到这里 → 直接开始；本地同样直接开始。
             Started = IsOnline || IsLocalMode,
         };
         _clientMovePending = false;
@@ -1054,41 +1017,33 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
     /// <inheritdoc />
     protected override void OnHostRoomOpened()
     {
-        _game = new GomokuGame(Cfg.EffectiveBoardSize, Cfg.ForbiddenEnabled) { Started = false };
-        _mySide = HostSide;
+        // 棋局已由基类在 PrepareHostRoom 里通过 ResetGameToWaiting 重置；这里只补一句提示。
         _clientMovePending = false;
         RefreshAll();
-        AppendSystemChat("房间已开：把地址发给对方，对方加入后点「开始对局」");
+        AppendSystemChat("房间已开：点「房间成员」里的席位下拉安排上场的人，选好点「开始对局」");
     }
 
     /// <inheritdoc />
     protected override void OnLocalModeStarted()
     {
         _game = new GomokuGame(Cfg.EffectiveBoardSize, Cfg.ForbiddenEnabled) { Started = true };
-        _mySide = "";
         _clientMovePending = false;
         RefreshAll();
         AppendSystemChat("同机双人：黑棋先手，轮流点棋盘落子");
     }
 
     /// <inheritdoc />
-    protected override void OnPeerJoined()
+    protected override void OnSeatsChanged()
     {
-        // 基类已经处理了提示与聊天（首次加入 / 掉线后重连各有一句），这里只刷新本类的派生状态。
+        // 席位 / 本端座位变了：能不能下棋、执哪边都跟着变（不再缓存 _mySide，直接用基类 LocalSide）。
         _clientMovePending = false;
         RefreshAll();
     }
 
     /// <inheritdoc />
-    protected override void OnPeerLeft(string? reason)
+    protected override void OnMembersChanged()
     {
         _clientMovePending = false;
-        if (IsHost && _game.Started && !_game.IsOver)
-        {
-            // 主机保持监听等对方回来（棋局不重置），聊天里留一条记录。
-            AppendSystemChat("对局暂停：等待对方重新连接（棋局保留，连回来可以继续下）");
-        }
-
         RefreshAll();
     }
 
@@ -1143,12 +1098,11 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
             OnPropertyChanged(nameof(IsBoardInteractive));
             OnPropertyChanged(nameof(IsStarted));
             OnPropertyChanged(nameof(IsGameOver));
-            OnPropertyChanged(nameof(ShowStartOnlineButton));
-            OnPropertyChanged(nameof(StartGameHint));
             OnPropertyChanged(nameof(CanUndo));
             OnPropertyChanged(nameof(CanResign));
             OnPropertyChanged(nameof(CanOfferDraw));
             OnPropertyChanged(nameof(CanRematch));
+            OnPropertyChanged(nameof(ShowRematchButton));
             OnPropertyChanged(nameof(IsSetupAllowed));
             OnPropertyChanged(nameof(ForbiddenSummary));
             OnPropertyChanged(nameof(ResignButtonText));
@@ -1165,6 +1119,9 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
         {
             _insideRefresh = false;
         }
+
+        // 棋局状态可能刚变成「结束」：交给基类加分 / 自动轮换 / 广播 / 提示（基类每局只处理一次）。
+        NotifyGameFinishedIfNeeded();
     }
 
     private void RefreshMoveLines()
@@ -1253,6 +1210,9 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
     /// <summary>
     /// <c>YLT_GOMOKU_DEMO=1</c> 时造一局进行中的演示棋（12 手、最后一手有红点、黑方回合、
     /// 开着禁手所以能看到红叉禁手点），只为截图核对版式，<b>不发任何网络请求</b>。
+    ///
+    /// <para><c>YLT_BOARD_DEMO_ROOM</c>（房主/观战演示房间）生效时<b>不要</b>进同机双人 ——
+    /// 基类已经准备好假成员 / 两席 / 在线状态，这里只把演示棋注入进去。</para>
     /// </summary>
     private void LoadDemoIfRequested()
     {
@@ -1267,7 +1227,10 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
         OnPropertyChanged(nameof(ShowForbiddenPoints));
         OnPropertyChanged(nameof(ForbiddenSummary));
 
-        StartLocalCommand.Execute(null);     // 进入同机双人，让状态徽标 / 按钮处于「能下」的样子
+        if (!IsDemoRoom)
+        {
+            StartLocalCommand.Execute(null);     // 普通截图：进同机双人，让状态徽标 / 按钮处于「能下」的样子
+        }
 
         var demo = new GomokuGame(15, true) { Started = true };
         var moves = new (GomokuCell Who, int X, int Y)[]
@@ -1286,6 +1249,8 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
 
         _game = demo;
         RefreshAll();
-        AppendSystemChat("演示数据（YLT_GOMOKU_DEMO=1）：12 手，黑方回合，(7,7) 是三三禁手点");
+        AppendSystemChat(IsDemoRoom
+            ? "演示房间 + 演示棋（YLT_BOARD_DEMO_ROOM + YLT_GOMOKU_DEMO）：12 手，(7,7) 是三三禁手点"
+            : "演示数据（YLT_GOMOKU_DEMO=1）：12 手，黑方回合，(7,7) 是三三禁手点");
     }
 }

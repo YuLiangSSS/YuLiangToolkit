@@ -80,28 +80,26 @@
                                                    ShowCoordinates="True" />
                         </Viewbox>
 
-                        <!-- 操作按钮：紧贴棋盘下方（开始对局也放这里，首屏不用滚） -->
-                        <WrapPanel Orientation="Horizontal" Margin="0,12,0,0">
-                            <Button Content="开始对局" Style="{StaticResource PrimaryButtonStyle}"
-                                    Margin="0,4,8,0"
-                                    Command="{Binding StartOnlineGameCommand}"
-                                    Visibility="{Binding ShowStartOnlineButton, Converter={StaticResource BoolToVis}}" />
+                        <!-- 操作按钮：紧贴棋盘下方；只有「同机双人 / 坐在席位上的人」看得到（观战只读） -->
+                        <WrapPanel Orientation="Horizontal" Margin="0,12,0,0"
+                                   Visibility="{Binding ShowPlayerActions, Converter={StaticResource BoolToVis}}">
                             <Button Content="悔棋" Style="{StaticResource SecondaryButtonStyle}"
                                     Margin="0,4,8,0"
                                     Command="{Binding UndoCommand}" IsEnabled="{Binding CanUndo}"
-                                    ToolTip="同机双人直接撤；联机需要对方同意" />
+                                    ToolTip="同机双人直接撤；联机需要对手/房主同意" />
                             <Button Content="求和" Style="{StaticResource SecondaryButtonStyle}"
                                     Margin="0,4,8,0"
                                     Command="{Binding OfferDrawCommand}" IsEnabled="{Binding CanOfferDraw}"
-                                    ToolTip="联机时请对方同意和棋" />
+                                    ToolTip="联机时请对手同意和棋" />
                             <Button Content="{Binding ResignButtonText}" Style="{StaticResource SecondaryButtonStyle}"
                                     Margin="0,4,8,0" MinWidth="72"
                                     Command="{Binding ResignCommand}" IsEnabled="{Binding CanResign}"
                                     ToolTip="联机对局进行中要点两下确认，防手滑" />
-                            <Button Content="再来一局" Style="{StaticResource SecondaryButtonStyle}"
+                            <Button Content="请求再来一局" Style="{StaticResource SecondaryButtonStyle}"
                                     Margin="0,4,8,0"
                                     Command="{Binding RematchCommand}" IsEnabled="{Binding CanRematch}"
-                                    ToolTip="联机需要对方同意，同意后双方换边" />
+                                    Visibility="{Binding ShowRematchButton, Converter={StaticResource BoolToVis}}"
+                                    ToolTip="联机客户端玩家：请求房主开始下一局；同机双人：直接开新局" />
                         </WrapPanel>
 
                         <TextBlock Text="{Binding BoardHintText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,10,0,0"
@@ -112,8 +110,11 @@
                 <!-- 右栏：房间 / 对局 / 设置 -->
                 <StackPanel Grid.Column="2">
 
-                    <!-- 房间 + 聊天（共享面板，两个棋牌游戏共用） -->
+                    <!-- 房间（开房 / 加入 / 状态 / 离开） -->
                     <shared:RoomPanel />
+
+                    <!-- 房间成员 + 两个上场席位 + 房主安排 / 自动轮换（共享面板，协议 v2 多人房间） -->
+                    <shared:RosterPanel Margin="0,12,0,0" />
 
                     <!-- 对局 -->
                     <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
@@ -121,33 +122,21 @@
                             <TextBlock Text="对局" FontSize="13" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextPrimaryBrush}" />
 
-                            <WrapPanel Margin="0,10,0,0">
-                                <TextBlock Text="{Binding MySideText}" FontSize="12.5"
-                                           Foreground="{StaticResource TextPrimaryBrush}" />
-                                <TextBlock Text="{Binding OpponentSideText}" FontSize="12.5" Margin="12,0,0,0"
-                                           Foreground="{StaticResource TextSecondaryBrush}" />
-                            </WrapPanel>
+                            <TextBlock Text="{Binding MyRoleText}" FontSize="12.5" FontWeight="SemiBold"
+                                       TextWrapping="Wrap" Margin="0,10,0,0"
+                                       Foreground="{StaticResource TextPrimaryBrush}" />
                             <TextBlock Text="{Binding TurnText}" FontSize="12.5" TextWrapping="Wrap" Margin="0,4,0,0"
                                        Foreground="{StaticResource AccentBrush}" />
                             <TextBlock Text="{Binding ResultDetailText}" FontSize="12.5" TextWrapping="Wrap"
                                        Margin="0,4,0,0" Foreground="{StaticResource TextSecondaryBrush}" />
 
-                            <!-- 房主专用的「开始对局」：开房成功后、对方加入前后都能点 -->
-                            <Button Content="开始对局" Style="{StaticResource PrimaryButtonStyle}" Margin="0,12,0,0"
-                                    HorizontalAlignment="Stretch"
-                                    Command="{Binding StartOnlineGameCommand}"
-                                    Visibility="{Binding ShowStartOnlineButton, Converter={StaticResource BoolToVis}}" />
-                            <TextBlock Text="{Binding StartGameHint}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                       Visibility="{Binding ShowStartOnlineButton, Converter={StaticResource BoolToVis}}" />
-
-                            <!-- 没进房间时：同机双人快速开一局（已经在同机双人里就不用这个，用「再来一局」） -->
+                            <!-- 没进房间时：同机双人快速开一局（已经在同机双人里就不用这个，用「请求再来一局」） -->
                             <Button Content="同机双人新开一局" Style="{StaticResource SecondaryButtonStyle}"
                                     Margin="0,10,0,0" HorizontalAlignment="Stretch"
                                     Command="{Binding NewLocalGameCommand}"
                                     Visibility="{Binding ShowNewLocalGameButton, Converter={StaticResource BoolToVis}}" />
 
-                            <!-- 对局暂停 / 断线重连状态（WIP 3.6：主机等对方重连 / 客户端自动重连中） -->
+                            <!-- 对局暂停 / 断线重连状态（WIP 3.6：席上玩家掉线 / 客户端自动重连中） -->
                             <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="6" Padding="10,8"
                                     Margin="0,10,0,0"
                                     Visibility="{Binding IsGamePaused, Converter={StaticResource BoolToVis}}">
@@ -210,7 +199,7 @@
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="房主执子" FontSize="12" VerticalAlignment="Center"
+                                <TextBlock Text="房主默认坐席" FontSize="12" VerticalAlignment="Center"
                                            Foreground="{StaticResource TextSecondaryBrush}" />
                                 <ComboBox Grid.Column="1" Height="32" Margin="10,0,0,0"
                                           Style="{StaticResource ComboBoxStyle}"
@@ -219,10 +208,10 @@
                                           SelectedItem="{Binding SelectedHostSide}" />
                             </Grid>
 
-                            <TextBlock Text="开房前设置生效；已开局改动会在下一局生效" FontSize="11" TextWrapping="Wrap"
+                            <TextBlock Text="开房前设置生效；联机时规则由房主在开房前/两局之间改" FontSize="11" TextWrapping="Wrap"
                                        Margin="0,12,0,0" Foreground="{StaticResource TextSecondaryBrush}" />
-                            <TextBlock Text="房主执子只能在未进房间时修改" FontSize="11" TextWrapping="Wrap"
-                                       Margin="0,4,0,0" Foreground="{StaticResource TextSecondaryBrush}" />
+                            <TextBlock Text="房主默认坐席只在开房前可改；房里的上场安排用上面的「房间成员」面板" FontSize="11"
+                                       TextWrapping="Wrap" Margin="0,4,0,0" Foreground="{StaticResource TextSecondaryBrush}" />
                         </StackPanel>
                     </Border>
 

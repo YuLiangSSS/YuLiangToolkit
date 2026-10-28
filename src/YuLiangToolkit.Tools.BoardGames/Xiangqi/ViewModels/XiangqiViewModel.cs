@@ -10,14 +10,18 @@ using YuLiangToolkit.Tools.BoardGames.Xiangqi.Views;
 namespace YuLiangToolkit.Tools.BoardGames.Xiangqi.ViewModels;
 
 /// <summary>
-/// 「联机中国象棋」界面逻辑：房间（交给 <see cref="BoardGameRoomViewModelBase"/>）+ 棋局 + 自由摆棋 / 让子 / 让先。
+/// 「联机中国象棋」界面逻辑：多人房间（交给 <see cref="BoardGameRoomViewModelBase"/>：成员 / 席位 / 自动轮换 /
+/// 观战 / 请求路由）+ 棋局 + 自由摆棋 / 让子 / 让先。
 ///
 /// <para><b>分层</b>：规则与棋局全在 <see cref="XiangqiGame"/> / <see cref="XiangqiRules"/> / <see cref="XiangqiSetup"/> /
 /// <see cref="XiangqiNotation"/> 里（纯逻辑、可自检），本类只负责：把草稿棋盘和正式棋局分开、把点击翻译成命令、
-/// 把棋局翻译成棋盘控件的渲染状态、以及联机时主机权威 / 客户端只从快照更新的约定。</para>
+/// 把棋局翻译成棋盘控件的渲染状态、以及「主机权威 / 客户端只从状态包更新」的约定。</para>
 ///
-/// <para><b>两种棋盘</b>：<c>_setupBoard</c> 是「摆棋草稿」（随便改，不影响进行中的对局）；
-/// <c>_game</c> 是正式棋局。没开局 / 主机等人时棋盘显示草稿，开局后显示正式棋局。</para>
+/// <para><b>两种棋盘</b>：<c>_setupBoard</c> 是「摆棋草稿」（房主在房间未开始时随便改，不影响进行中的对局）；
+/// <c>_game</c> 是正式棋局。没开局 / 房主摆棋时棋盘显示草稿，开局后显示正式棋局。</para>
+///
+/// <para><b>席位</b>：基类维护两个上场席位（先手位 = 红方、后手位 = 黑方），本端执哪边只看基类
+/// <see cref="BoardGameRoomViewModelBase.LocalSide"/>；观战 / 同机双人 / 离线都为空字符串（只读）。</para>
 /// </summary>
 public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
 {
@@ -38,26 +42,18 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
     private bool _isRestartSetupConfirming;
     private bool _flipped;
     private bool _waitingHostMove;
-    private string _mySide = "";
-
-    /// <summary>
-    /// 棋局快照的缓存：<b>只在 UI 线程刷新棋局时更新一次</b>。
-    /// 这样网络线程调 <see cref="BuildGameSnapshot"/>（握手欢迎 / 广播）时只读一个不可变值，
-    /// 不会和界面线程走子抢同一个 List（那时会抛「集合已修改」把握手弄断）。
-    /// </summary>
-    private JsonElement _snapshotCache;
 
     /// <summary>造一个象棋工具界面（配置 / 摆棋草稿 / 正式棋局 / 命令全部备好）。</summary>
     public XiangqiViewModel() : base("xiangqi", "中国象棋")
     {
         Cfg = LoadConfig<XiangqiConfig>();
-        AttachRoomConfig(Cfg);
+        AttachRoomConfig(Cfg);        // 演示房间（YLT_BOARD_DEMO_ROOM）会在这里把成员 / 席位备好
 
         _setupBoard = XiangqiBoard.CreateInitial();
         _game = CreateGameFromSetup(started: false);
         PaletteItems = BuildPaletteItems();
 
-        // ------- 命令 -------
+        // ------- 命令（XAML 直接绑）-------
         BoardPointCommand = new RelayCommand(parameter =>
         {
             if (parameter is ValueTuple<int, int> point) HandleBoardClick(point.Item1, point.Item2);
@@ -68,9 +64,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         RematchCommand = new RelayCommand(_ => RematchAction(), _ => CanRematch);
         FlipBoardCommand = new RelayCommand(_ => FlipBoard());
         CopyNotationCommand = new RelayCommand(_ => CopyNotation(), _ => _game.History.Count > 0);
-        StartOnlineGameCommand = new RelayCommand(_ => StartOnlineGame(), _ => StartGameEnabled);
         ApplySetupAndStartCommand = new RelayCommand(_ => ApplySetupAndStart(), _ => CanApplySetupAndStart);
-        ToggleSetupModeCommand = new RelayCommand(_ => ToggleSetupMode(), _ => IsSetupAllowed);
         RequestRestartSetupCommand = new RelayCommand(_ => RequestRestartSetup(), _ => CanRestartSetup);
         ConfirmRestartSetupCommand = new RelayCommand(_ => ConfirmRestartSetup(), _ => CanRestartSetup);
         CancelRestartSetupCommand = new RelayCommand(_ => CancelRestartSetup());
@@ -82,21 +76,23 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         }, _ => IsSetupAllowed);
         SelectPaletteCommand = new RelayCommand(parameter =>
         {
-            if (parameter is XiangqiPaletteItem item) SelectPalette(item);
+            if (parameter is XiangqiPaletteItem item) SelectedPalette = item;
         });
 
+        // 基类的房间 / 座位 / 暂停状态一变，就让「能不能下棋 / 按钮可用性」跟着刷新
+        PropertyChanged += OnBaseStatePropertyChanged;
         RefreshAll();
         ApplyDemoData();
-
-        // 基类的房间状态（在线 / 对方在线 / 暂停 / 重连 / 玩法）一变，就让「能不能下棋 / 按钮可用性」跟着刷新
-        PropertyChanged += OnBaseStatePropertyChanged;
     }
+
+    // ---------- 基类状态 → 派生属性刷新 ----------
 
     /// <summary>会让派生状态变化的基类属性名（只监听这些，避免自己通知自己造成递归）。</summary>
     private static readonly string[] BaseStatePropertyNames =
     {
-        nameof(HasPeer), nameof(IsOnline), nameof(IsGamePaused), nameof(IsReconnecting),
-        nameof(Mode), nameof(IsLocalMode), nameof(IsHost), nameof(IsClient),
+        nameof(Mode), nameof(IsLocalMode), nameof(IsHost), nameof(IsClient), nameof(IsOnline),
+        nameof(IsGamePaused), nameof(IsReconnecting), nameof(IsGameRunning),
+        nameof(IsSeatedPlayer), nameof(IsSpectator), nameof(LocalSide), nameof(ShowPlayerActions),
     };
 
     private void OnBaseStatePropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -106,39 +102,37 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         RefreshTransientState();
     }
 
-    /// <summary>只刷新「随房间状态变化」的派生属性（不重画棋盘、不重建棋谱，免得断线重连时闪）。</summary>
+    /// <summary>只刷新「随房间状态变化」的派生属性（不重画棋盘 / 不重建棋谱，避免重连时闪）。</summary>
     private void RefreshTransientState()
     {
         OnPropertyChanged(nameof(CanPlayNow));
         OnPropertyChanged(nameof(IsBoardInteractive));
-        OnPropertyChanged(nameof(StartGameEnabled));
-        OnPropertyChanged(nameof(ShowStartOnlineButton));
-        OnPropertyChanged(nameof(IsWaitingStart));
-        OnPropertyChanged(nameof(CanUndo));
-        OnPropertyChanged(nameof(CanResign));
-        OnPropertyChanged(nameof(CanOfferDraw));
-        OnPropertyChanged(nameof(CanRematch));
-        OnPropertyChanged(nameof(CanApplySetupAndStart));
-        OnPropertyChanged(nameof(IsSetupAllowed));
         OnPropertyChanged(nameof(ShowSetupCard));
-        OnPropertyChanged(nameof(StartHintText));
-        OnPropertyChanged(nameof(TurnText));
-        OnPropertyChanged(nameof(ApplySetupAndStartText));
-        OnPropertyChanged(nameof(ShowToggleSetupPreview));
+        OnPropertyChanged(nameof(ShowSetupBoard));
+        OnPropertyChanged(nameof(IsSetupAllowed));
         OnPropertyChanged(nameof(ShowSetupControls));
         OnPropertyChanged(nameof(ShowSetupCollapsedSummary));
         OnPropertyChanged(nameof(CanRestartSetup));
         OnPropertyChanged(nameof(ShowRestartSetupButton));
         OnPropertyChanged(nameof(ShowApplySetupButton));
-        OnPropertyChanged(nameof(MySideSummaryText));
-        OnPropertyChanged(nameof(PeerSideSummaryText));
-        OnPropertyChanged(nameof(MySideText));
+        OnPropertyChanged(nameof(CanApplySetupAndStart));
+        OnPropertyChanged(nameof(ApplySetupAndStartText));
+        OnPropertyChanged(nameof(CanEditPreferredSeat));
+        OnPropertyChanged(nameof(TurnText));
+        OnPropertyChanged(nameof(CheckText));
+        OnPropertyChanged(nameof(IsStarted));
+        OnPropertyChanged(nameof(CanUndo));
+        OnPropertyChanged(nameof(CanResign));
+        OnPropertyChanged(nameof(CanOfferDraw));
+        OnPropertyChanged(nameof(CanRematch));
+        OnPropertyChanged(nameof(ShowRematchButton));
+        OnPropertyChanged(nameof(RematchButtonText));
         InvalidateCommands();
     }
 
     // ---------- 配置 ----------
 
-    /// <summary>象棋自己的设置（房间三项由基类接管，其余在这里）。</summary>
+    /// <summary>象棋自己的设置（房间相关字段由基类接管，其余在这里）。</summary>
     public XiangqiConfig Cfg { get; }
 
     // ---------- 摆棋调色板 / 让子 / 让先 ----------
@@ -157,7 +151,6 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
             _selectedPalette = value;
             if (_selectedPalette is not null) _selectedPalette.IsSelected = true;
             OnPropertyChanged();
-            if (value is not null && !ShowSetupBoard && IsSetupAllowed) _isSetupMode = true;   // 选棋子 = 进摆棋预览
             RefreshAll();
         }
     }
@@ -206,24 +199,36 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
             ? $"让先 {Cfg.OpeningFreeMovesEffective} 步：{Cfg.HandicapGiverValue.Opposite().DisplayName()}开局先连走"
             : "不让先（红方先走）";
 
-    /// <summary>房主执棋选项。</summary>
+    /// <summary>房主默认坐席选项（红方 / 黑方）。</summary>
     public IReadOnlyList<OptionItem<XiangqiSide>> HostSideOptions { get; } = OptionItem.From(
-        (XiangqiSide.Red, "房主执红"),
-        (XiangqiSide.Black, "房主执黑"));
+        (XiangqiSide.Red, "先手位（红方）"),
+        (XiangqiSide.Black, "后手位（黑方）"));
 
-    /// <summary>房主执哪边（改了之后下一局生效；摆棋预览会按执黑自动翻转）。</summary>
+    /// <summary>
+    /// 房主默认坐哪一边（开房时由基类按 <see cref="PreferredHostSeatSide"/> 安排）。
+    /// <b>在线时不能改</b>（当前房间的席位由 RosterPanel 安排），下次开房生效。
+    /// </summary>
     public OptionItem<XiangqiSide>? SelectedHostSide
     {
         get => OptionItem<XiangqiSide>.Find(HostSideOptions, Cfg.HostSideValue) ?? HostSideOptions[0];
         set
         {
-            if (value is null || Cfg.HostSideValue == value.Value) return;
+            if (value is null) return;
+            if (IsOnline)
+            {
+                OnPropertyChanged();                       // 在线时改不了：把下拉弹回原值
+                return;
+            }
+            if (Cfg.HostSideValue == value.Value) return;
             Cfg.HostSide = value.Value.ToKey();
             OnPropertyChanged();
             UpdateFlipFromSettings();
             RefreshAll();
         }
     }
+
+    /// <summary>「房主默认坐席」下拉能不能改（只有没进房间时能改）。</summary>
+    public bool CanEditPreferredSeat => !IsOnline;
 
     // ---------- 摆棋草稿的显示状态 ----------
 
@@ -279,37 +284,28 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
     /// <summary>现在棋盘显示的是不是摆棋草稿。</summary>
     public bool ShowSetupBoard => _isSetupMode
                                   || Mode == BoardPlayMode.Offline
-                                  || (Mode == BoardPlayMode.Host && !_game.Started);
+                                  || ((IsLocalMode || IsHost) && !_game.Started);
 
-    /// <summary>正在摆棋预览（本地模式下改完草稿要看效果时用）。</summary>
+    /// <summary>正在摆棋预览（本地「重新摆棋」确认后进入）。</summary>
     public bool IsSetupMode => _isSetupMode;
 
-    /// <summary>摆棋卡片要不要显示（客户端只负责下棋，不显示摆棋）。</summary>
+    /// <summary>摆棋卡片要不要显示（客户端 = 只下棋 / 观战，不显示摆棋）。</summary>
     public bool ShowSetupCard => Mode != BoardPlayMode.Client;
 
-    /// <summary>摆棋能不能编辑：离线 / 同机双人随时可改；主机在开局前可改；联机开局后 / 客户端不可改。</summary>
-    public bool IsSetupAllowed => Mode switch
-    {
-        BoardPlayMode.Offline => true,
-        BoardPlayMode.Local => true,
-        BoardPlayMode.Host => !_game.Started,
-        _ => false,
-    };
+    /// <summary>
+    /// 摆棋能不能编辑：房主 / 同机双人 / 离线在<b>对局未开始时</b>可以摆（房主不坐席位也能摆）；
+    /// 对局进行中 / 客户端一律锁定。
+    /// </summary>
+    public bool IsSetupAllowed => ShowSetupCard && !_game.Started;
 
-    /// <summary>摆棋预览按钮的文字。</summary>
-    public string ToggleSetupModeText => _isSetupMode ? "返回对局棋盘" : "在棋盘上摆棋";
-
-    /// <summary>要不要显示「在棋盘上摆棋 / 返回对局棋盘」按钮（只有同机双人开局后才需要切）。</summary>
-    public bool ShowToggleSetupPreview => IsLocalMode && _game.Started;
-
-    /// <summary>摆棋卡是否展开（未开局 / 主动回到摆棋时才展开调色板等控件）。</summary>
+    /// <summary>摆棋卡展开（未开局 / 本地重新摆棋中）。</summary>
     public bool ShowSetupControls => !_game.Started || _isSetupMode;
 
-    /// <summary>摆棋卡是否收起成「摘要 + 重新摆棋」状态（对局进行中 / 已结束）。</summary>
+    /// <summary>摆棋卡收起成一行摘要（对局进行中 / 已结束；联机时作废由 RosterPanel 的「结束本局」负责）。</summary>
     public bool ShowSetupCollapsedSummary => _game.Started && !_isSetupMode;
 
-    /// <summary>能不能「重新摆棋（会结束本局）」：只有本地 / 主机（客户端听房主的）。</summary>
-    public bool CanRestartSetup => _game.Started && !IsClient && (IsLocalMode || IsHost);
+    /// <summary>能不能「重新摆棋（会结束本局）」：<b>只有同机双人</b>（联机走基类「结束本局（作废）」）。</summary>
+    public bool CanRestartSetup => IsLocalMode && _game.Started;
 
     /// <summary>正在等用户二次确认「结束本局重新摆棋」。</summary>
     public bool IsRestartSetupConfirming
@@ -325,46 +321,40 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
     /// <summary>「重新摆棋（会结束本局）」按钮要不要显示（确认中时换成确定 / 取消）。</summary>
     public bool ShowRestartSetupButton => CanRestartSetup && !_isRestartSetupConfirming;
 
-    /// <summary>「应用并开始」按钮要不要显示：只用于离线 / 同机双人（主机用「对局」卡里的「开始对局」）。</summary>
-    public bool ShowApplySetupButton => !IsClient && !IsHost
-                                        && (Mode == BoardPlayMode.Offline || IsLocalMode);
+    /// <summary>「应用并开始」按钮要不要显示：只用于离线 / 同机双人（联机由 RosterPanel 开始）。</summary>
+    public bool ShowApplySetupButton => Mode == BoardPlayMode.Offline || IsLocalMode;
 
-    /// <summary>「应用并开始」按钮的文字（离线 / 同机双人都是开一局同机双人）。</summary>
-    public string ApplySetupAndStartText => "应用并开始（同机双人）";
+    /// <summary>「应用并开始」按钮的文字。</summary>
+    public string ApplySetupAndStartText => IsLocalMode
+        ? "按当前摆棋重开一局"
+        : "应用并开始（同机双人）";
 
-    /// <summary>我方执子一句话（同机双人不说「未定」）。</summary>
-    public string MySideSummaryText => IsLocalMode ? "我方：同机双人（红黑轮流）" : LocalSideText;
-
-    /// <summary>对方执子一句话（同机双人 = 同一台电脑上的两个人）。</summary>
-    public string PeerSideSummaryText => IsLocalMode ? "对方：同一台电脑的两位玩家" : PeerSideText;
+    /// <summary>「应用并开始」能不能点。</summary>
+    public bool CanApplySetupAndStart => IsSetupValid && ShowApplySetupButton;
 
     /// <summary>棋盘能不能点（摆棋模式放子；对局模式走子）。</summary>
     public bool IsBoardInteractive => ShowSetupBoard ? IsSetupAllowed : CanPlayNow;
 
-    /// <summary>现在能不能落子（同机双人 = 随时；联机 = 对局中 + 轮到我 + 对方在线 + 没在重连/暂停）。</summary>
+    /// <summary>
+    /// 现在能不能落子：
+    /// 同机双人 = 对局中即可；联机 = 我坐在席位上 && 在线 && 没暂停 / 重连 && 轮到我执的这边。
+    /// 观战 / 离线 / 对局未开始 / 已结束一律 false。
+    /// </summary>
     public bool CanPlayNow
     {
         get
         {
             if (!_game.Started || _game.IsOver || _waitingHostMove) return false;
-            if (IsGamePaused || IsReconnecting) return false;    // 断线 / 对方掉线：棋局暂停，棋盘只读
-            return Mode switch
-            {
-                BoardPlayMode.Local => true,
-                BoardPlayMode.Host => IsOnline && HasPeer && _game.Turn == Cfg.HostSideValue,
-                BoardPlayMode.Client => IsOnline && HasPeer
-                                        && XiangqiSides.Parse(_mySide) is { } mine
-                                        && _game.Turn == mine,
-                _ => false,
-            };
+            if (IsGamePaused || IsReconnecting) return false;
+            if (IsLocalMode) return true;
+            if (!IsSeatedPlayer) return false;                 // 观战 / 未入座：只读
+            var side = XiangqiSides.Parse(LocalSide);
+            return side is not null && _game.Turn == side.Value;
         }
     }
 
     /// <summary>对局是否已经开始。</summary>
     public bool IsStarted => _game.Started;
-
-    /// <summary>联机等对方开始 / 等连接。</summary>
-    public bool IsWaitingStart => (IsHost || IsClient) && IsOnline && !_game.Started;
 
     /// <summary>轮次文案。</summary>
     public string TurnText
@@ -373,11 +363,11 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         {
             if (ShowSetupBoard)
             {
-                if (Mode == BoardPlayMode.Host && !_game.Started)
-                    return HasPeer ? "摆棋已就绪：点「开始对局」" : "摆棋与让子（等对方加入后开始）";
-                return "摆棋中：调好棋子后点「应用并开始」";
+                return Mode == BoardPlayMode.Offline
+                    ? "摆棋中：调好棋子后点「应用并开始」"
+                    : "摆棋中：房主摆好后在右侧「房间成员」里点开始";
             }
-            if (!_game.Started) return IsClient ? "等待房主开始对局…" : "对局还没开始";
+            if (!_game.Started) return "对局还没开始";
             if (_game.IsOver) return $"{_game.ResultText} · {_game.ResultReason}";
             var text = _waitingHostMove ? "已提交走法，等房主确认…" : $"轮到{_game.Turn.DisplayName()}走棋";
             if (_game.IsOpeningFreePhase)
@@ -412,16 +402,13 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         }
     }
 
-    /// <summary>我方执子文案（同机双人 / 联机各有说法）。</summary>
-    public string MySideText => LocalSideText;
-
     /// <summary>当前选中棋子的坐标（没选中为 null）。</summary>
     public (int X, int Y)? SelectedPoint => _selectedPoint;
 
     /// <summary>当前选中棋子的合法落点。</summary>
     public IReadOnlyList<XiangqiMove> LegalTargets => _legalTargets;
 
-    /// <summary>棋盘是否翻转（执黑 / 手动翻转）。</summary>
+    /// <summary>棋盘是否翻转（执黑 / 手动翻转 / 房主偏好）。</summary>
     public bool IsFlipped => _flipped;
 
     /// <summary>中文记谱（一行两条半回合）。</summary>
@@ -429,38 +416,6 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
 
     /// <summary>棋谱列表（绑定 ListBox）。</summary>
     public ObservableCollection<string> MoveLines { get; } = new();
-
-    /// <summary>主机「开始对局」按钮要不要显示（等对方加入后出现）。</summary>
-    public bool ShowStartOnlineButton => IsHost && IsOnline && HasPeer && !_game.Started;
-
-    /// <summary>主机「开始对局」能不能点（对方在线 + 没在重连暂停 + 摆棋合法）。</summary>
-    public bool StartGameEnabled => IsHost && !_game.Started && HasPeer && !IsGamePaused && IsSetupValid;
-
-    /// <summary>「应用并开始」能不能点。</summary>
-    public bool CanApplySetupAndStart => IsSetupValid && ShowApplySetupButton;
-
-    /// <summary>对局卡片顶部的一句话流程提示。</summary>
-    public string StartHintText
-    {
-        get
-        {
-            if (Mode == BoardPlayMode.Offline)
-                return "先在「摆棋与让子」里调好（默认开局 / 让子 / 让先），再点「应用并开始」进入同机双人对局。";
-            if (IsHost)
-            {
-                if (!IsOnline) return "正在开房间…";
-                if (_game.Started) return IsGamePaused ? GamePauseStatusText : "对局进行中：你走完一步会自动同步给对方。";
-                return HasPeer ? "对方已加入：点「开始对局」开始。" : "房间已开：把地址发给对方，等对方加入。";
-            }
-            if (IsClient)
-                return _game.Started ? "对局进行中：轮到你时点棋子走棋。" : "已加入房间：等待房主开始对局…";
-            if (IsLocalMode)
-                return _game.Started
-                    ? "同机双人：两个人轮流点棋盘走棋；要换摆法点摆棋卡的「重新摆棋」。"
-                    : "同机双人已就绪：点「应用并开始（同机双人）」。";
-            return "";
-        }
-    }
 
     // ---------- 设置开关（桥接 Cfg，改完立刻刷新棋盘） ----------
 
@@ -521,7 +476,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
     /// <summary>棋盘点击（CommandParameter 是 (x, y) 值元组；界面代码后置也直接调 <see cref="HandleBoardClick"/>）。</summary>
     public RelayCommand BoardPointCommand { get; }
 
-    /// <summary>悔棋（同机双人直接撤；联机发请求等对方同意）。</summary>
+    /// <summary>悔棋（同机双人直接撤；联机坐在席位上时发请求等对方 / 房主）。</summary>
     public RelayCommand UndoCommand { get; }
 
     /// <summary>认输。</summary>
@@ -530,7 +485,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
     /// <summary>求和。</summary>
     public RelayCommand OfferDrawCommand { get; }
 
-    /// <summary>再来一局。</summary>
+    /// <summary>再来一局（同机双人直接重开；联机请求房主 / 对手）。</summary>
     public RelayCommand RematchCommand { get; }
 
     /// <summary>翻转棋盘。</summary>
@@ -539,19 +494,13 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
     /// <summary>复制中文棋谱。</summary>
     public RelayCommand CopyNotationCommand { get; }
 
-    /// <summary>主机开始对局（把当前摆棋作为开局，广播给客户端）。</summary>
-    public RelayCommand StartOnlineGameCommand { get; }
-
-    /// <summary>应用当前摆棋并开始（离线 = 开一局同机双人；本地 = 重开；主机 = 开始并广播）。</summary>
+    /// <summary>应用当前摆棋并开始（离线 = 开一局同机双人；同机双人 = 按新摆棋重开）。</summary>
     public RelayCommand ApplySetupAndStartCommand { get; }
 
-    /// <summary>切到 / 退出「在棋盘上摆棋」预览。</summary>
-    public RelayCommand ToggleSetupModeCommand { get; }
-
-    /// <summary>对局中点「重新摆棋（会结束本局）」：先进入二次确认。</summary>
+    /// <summary>本地对局中点「重新摆棋（会结束本局）」：先进入二次确认。</summary>
     public RelayCommand RequestRestartSetupCommand { get; }
 
-    /// <summary>确认结束当前对局、回到摆棋。</summary>
+    /// <summary>确认结束当前本地对局、回到摆棋。</summary>
     public RelayCommand ConfirmRestartSetupCommand { get; }
 
     /// <summary>取消「重新摆棋」的二次确认。</summary>
@@ -572,8 +521,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
     // ---------- 棋盘点击 ----------
 
     /// <summary>
-    /// 棋盘点击入口：摆棋时放子 / 删子；对局时选子 / 走子。
-    /// 非法点击一律给一句中文提示（不静默）。
+    /// 棋盘点击入口：摆棋时放子 / 删子；对局时选子 / 走子。观战、暂停、不是自己回合都给一句中文提示。
     /// </summary>
     public void HandleBoardClick(int x, int y)
     {
@@ -583,21 +531,26 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         {
             if (!IsSetupAllowed)
             {
-                SetNotice("联机对局已经开始，不能修改摆棋", "DangerBrush");
+                SetNotice("对局进行中，摆棋已锁定；要改摆法请先结束本局", "DangerBrush");
                 return;
             }
             PlaceDraftPiece(x, y);
             return;
         }
 
+        if (IsSpectator)
+        {
+            SetNotice("你在观战：等房主安排上场后才能走棋；可以看棋、聊天", "TextSecondaryBrush");
+            return;
+        }
         if (!_game.Started)
         {
-            SetNotice(IsClient ? "等待房主开始对局…" : "对局还没开始", "TextSecondaryBrush");
+            SetNotice("对局还没开始，等房主点「开始对局」", "TextSecondaryBrush");
             return;
         }
         if (_game.IsOver)
         {
-            SetNotice($"对局已经结束：{_game.ResultText}（{_game.ResultReason}）,点「再来一局」", "TextSecondaryBrush");
+            SetNotice($"对局已经结束：{_game.ResultText}（{_game.ResultReason}）", "TextSecondaryBrush");
             return;
         }
         if (_waitingHostMove)
@@ -607,7 +560,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         }
         if (IsGamePaused || IsReconnecting)
         {
-            SetNotice(GamePauseStatusText.Length > 0 ? GamePauseStatusText : "对局暂停，等对方重连回来再下", "TextSecondaryBrush");
+            SetNotice(GamePauseStatusText.Length > 0 ? GamePauseStatusText : "对局暂停，稍等一下", "TextSecondaryBrush");
             return;
         }
         if (!CanPlayNow)
@@ -681,7 +634,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         return true;
     }
 
-    /// <summary>真正走一步（同机双人 / 主机本地执行；客户端只上报动作）。</summary>
+    /// <summary>真正走一步（同机双人 / 主机本地执行；客户端只上报动作，等状态包更新）。</summary>
     private void PlayMove((int X, int Y) from, (int X, int Y) to)
     {
         var side = CurrentPlaySide;
@@ -691,13 +644,18 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
 
         if (Mode == BoardPlayMode.Client)
         {
+            if (!IsSeatedPlayer)
+            {
+                SetNotice("你在观战，不能走棋", "DangerBrush");
+                ClearSelection();
+                return;
+            }
             if (!XiangqiRules.IsLegalMove(_game.Board, side.Value, move))
             {
                 SetNotice("这步棋不合规则（不能送将 / 走法不对）", "DangerBrush");
                 ClearSelection();
                 return;
             }
-            // 客户端只上报动作，棋盘等主机广播的快照再更新（主机是权威）
             SendAction("move", new { FromX = move.FromX, FromY = move.FromY, ToX = move.ToX, ToY = move.ToY });
             _waitingHostMove = true;
             ClearSelection();
@@ -725,32 +683,21 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
     {
         if (_game.IsOver)
         {
-            SetNotice($"{_game.ResultText}：{_game.ResultReason}", _game.Result == XiangqiResult.Draw ? "TextSecondaryBrush" : "SuccessBrush");
-            AppendSystemChat($"对局结束：{_game.ResultText}（{_game.ResultReason}）");
+            SetNotice($"{_game.ResultText}：{_game.ResultReason}",
+                _game.Result == XiangqiResult.Draw ? "TextSecondaryBrush" : "SuccessBrush");
             return;
         }
         if (_game.IsInCheck)
         {
             SetNotice($"将军！{_game.Turn.DisplayName()}必须应将", "DangerBrush");
-            AppendSystemChat("将军！");
             return;
         }
-        if (!captured.IsEmpty)
-        {
-            SetNotice($"吃掉对方的{captured.DisplayChar}，轮到{_game.Turn.DisplayName()}", "SuccessBrush");
-            return;
-        }
-        SetNotice($"轮到{_game.Turn.DisplayName()}走棋", "TextSecondaryBrush");
+        if (!captured.IsEmpty) SetNotice($"吃掉对方的{captured.DisplayChar}，轮到{_game.Turn.DisplayName()}", "SuccessBrush");
+        else SetNotice($"轮到{_game.Turn.DisplayName()}走棋", "TextSecondaryBrush");
     }
 
-    /// <summary>当前该谁走（本地/同机 = 棋局轮次；主机 = 主机执边；客户端 = 我方执边）。</summary>
-    private XiangqiSide? CurrentPlaySide => Mode switch
-    {
-        BoardPlayMode.Local => _game.Turn,
-        BoardPlayMode.Host => Cfg.HostSideValue,
-        BoardPlayMode.Client => XiangqiSides.Parse(_mySide),
-        _ => null,
-    };
+    /// <summary>当前该谁执子（同机 = 棋局轮次；联机 = 本端座位对应的边）。</summary>
+    private XiangqiSide? CurrentPlaySide => IsLocalMode ? _game.Turn : XiangqiSides.Parse(LocalSide);
 
     /// <summary>选中状态变了：通知界面 + 重画棋盘。</summary>
     private void NotifySelection()
@@ -778,16 +725,46 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
 
     // ---------- 悔棋 / 认输 / 求和 / 再来一局 ----------
 
-    /// <summary>能不能悔棋（联机：对方在线且没在重连暂停；同机双人：有棋可悔）。</summary>
-    public bool CanUndo => IsOnline ? HasPeer && !IsGamePaused : IsLocalMode && _game.History.Count > 0;
+    /// <summary>能不能悔棋（同机双人：有棋可悔；联机：坐在席位上且没暂停 / 重连）。</summary>
+    public bool CanUndo => IsLocalMode
+        ? _game.History.Count > 0
+        : IsSeatedPlayer && IsOnline && !IsGamePaused;
+
+    /// <summary>能不能认输 / 求和。</summary>
+    public bool CanResign => IsLocalMode
+        ? _game.Started && !_game.IsOver
+        : IsSeatedPlayer && IsOnline && !IsGamePaused && _game.Started && !_game.IsOver;
+
+    /// <summary>能不能求和（同认输条件）。</summary>
+    public bool CanOfferDraw => CanResign;
+
+    /// <summary>「再来一局」按钮可见：同机双人 或 联机坐席客户端玩家（房主用 RosterPanel 的「开始下一局」）。</summary>
+    public bool ShowRematchButton => IsLocalMode || (IsClient && IsSeatedPlayer);
+
+    /// <summary>「再来一局」按钮文案：同机双人直接重开；联机客户端玩家是向房主请求。</summary>
+    public string RematchButtonText => IsClient ? "请求再来一局" : "再来一局";
+
+    /// <summary>
+    /// 能不能再来一局：同机双人随时可重开；联机客户端玩家只在「本局结束」后请求房主开始下一局；
+    /// 房主不走这个入口（用 RosterPanel 的「开始下一局」）。
+    /// </summary>
+    public bool CanRematch
+    {
+        get
+        {
+            if (IsGamePaused) return false;
+            if (IsLocalMode) return _game.Started || _game.History.Count > 0;
+            return IsClient && IsSeatedPlayer && IsOnline && _game.IsOver;
+        }
+    }
 
     private void UndoAction()
     {
         if (IsOnline)
         {
-            if (!HasPeer)
+            if (!IsSeatedPlayer)
             {
-                SetNotice("对方不在线，暂时不能悔棋", "DangerBrush");
+                SetNotice("你在观战，不能悔棋", "DangerBrush");
                 return;
             }
             RequestUndo();
@@ -808,18 +785,13 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         SetNotice("还没进入对局，不能悔棋", "DangerBrush");
     }
 
-    /// <summary>能不能认输。</summary>
-    public bool CanResign => IsOnline
-        ? HasPeer && !IsGamePaused && _game.Started && !_game.IsOver
-        : IsLocalMode && _game.Started && !_game.IsOver;
-
     private void ResignAction()
     {
         if (IsOnline)
         {
-            if (!HasPeer)
+            if (!IsSeatedPlayer)
             {
-                SetNotice("对方不在线，暂时不能认输", "DangerBrush");
+                SetNotice("你在观战，不能认输", "DangerBrush");
                 return;
             }
             ResignOnline();
@@ -836,19 +808,15 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         ClearSelection();
         RefreshAll();
         SetNotice($"{losing.DisplayName()}认输，对局结束", "DangerBrush");
-        AppendSystemChat($"{losing.DisplayName()}认输，对局结束");
     }
-
-    /// <summary>能不能求和。</summary>
-    public bool CanOfferDraw => CanResign;
 
     private void OfferDrawAction()
     {
         if (IsOnline)
         {
-            if (!HasPeer)
+            if (!IsSeatedPlayer)
             {
-                SetNotice("对方不在线，暂时不能求和", "DangerBrush");
+                SetNotice("你在观战，不能求和", "DangerBrush");
                 return;
             }
             OfferDraw();
@@ -864,19 +832,20 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         ClearSelection();
         RefreshAll();
         SetNotice("和棋", "TextSecondaryBrush");
-        AppendSystemChat("同机双人：双方同意和棋");
     }
-
-    /// <summary>能不能再来一局。</summary>
-    public bool CanRematch => IsOnline ? HasPeer && !IsGamePaused : IsLocalMode;
 
     private void RematchAction()
     {
         if (IsOnline)
         {
-            if (!HasPeer)
+            if (!IsClient)
             {
-                SetNotice("对方不在线，暂时不能再来一局", "DangerBrush");
+                SetNotice("房主用右侧「房间成员」里的「开始下一局」开始新的一局", "TextSecondaryBrush");
+                return;
+            }
+            if (!IsSeatedPlayer)
+            {
+                SetNotice("你在观战，不能发起再来一局", "DangerBrush");
                 return;
             }
             RequestRematch();
@@ -888,6 +857,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
             return;
         }
         BeginNewGame(swapSides: false);
+        SetNotice("新的一局开始", "SuccessBrush");
     }
 
     /// <summary>复制中文棋谱。</summary>
@@ -907,15 +877,9 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
     /// <summary>一键恢复标准开局（用户点名要的按钮）。</summary>
     private void ApplyDefaultSetup()
     {
-        _setupBoard.Clear();
-        var initial = XiangqiBoard.CreateInitial();
-        for (var x = 0; x < XiangqiBoard.Width; x++)
-        {
-            for (var y = 0; y < XiangqiBoard.Height; y++) _setupBoard.Set(x, y, initial.Get(x, y));
-        }
+        CopyBoard(XiangqiBoard.CreateInitial(), _setupBoard);
         _appliedHandicap = null;
         _setupLabel = "标准开局";
-        _isSetupMode = true;
         RefreshAll();
         SetNotice("已恢复标准开局", "SuccessBrush");
     }
@@ -926,7 +890,6 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         _setupBoard.Clear();
         _appliedHandicap = null;
         _setupLabel = "空棋盘";
-        _isSetupMode = true;
         RefreshAll();
         SetNotice("棋盘已清空：从调色板里挑棋子摆吧", "TextSecondaryBrush");
     }
@@ -945,7 +908,6 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
             _appliedHandicap = null;
         }
         _setupLabel = preset.Handicap is null ? "标准开局" : preset.Name;
-        _isSetupMode = true;
         RefreshAll();
         SetNotice($"已套用「{preset.Name}」：{preset.Description}", "SuccessBrush");
     }
@@ -958,7 +920,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         SetNotice($"让子方改为{Cfg.HandicapGiverValue.DisplayName()}，已重新套用「{XiangqiSetup.HandicapName(handicap)}」", "TextSecondaryBrush");
     }
 
-    /// <summary>把 <paramref name="source"/> 的棋子复制到 <paramref name="target"/>（草稿棋盘是固定实例，换内容不换对象）。</summary>
+    /// <summary>把 <paramref name="source"/> 的棋子复制到 <paramref name="target"/>（草稿棋盘是固定实例）。</summary>
     private static void CopyBoard(XiangqiBoard source, XiangqiBoard target)
     {
         target.Clear();
@@ -968,85 +930,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         }
     }
 
-    /// <summary>选中调色板项（同时进入摆棋预览，让用户立刻能在棋盘上放子）。</summary>
-    private void SelectPalette(XiangqiPaletteItem item)
-    {
-        SelectedPalette = item;
-    }
-
-    /// <summary>切到 / 退出摆棋预览。</summary>
-    private void ToggleSetupMode()
-    {
-        if (!IsSetupAllowed) return;
-        _isSetupMode = !_isSetupMode;
-        ClearSelection();
-        RefreshAll();
-        SetNotice(_isSetupMode ? "摆棋预览：点棋盘放子 / 删子" : "已返回对局棋盘", "TextSecondaryBrush");
-    }
-
-    // ---------- 开局 / 应用摆棋 ----------
-
-    /// <summary>按当前摆棋草稿造一局正式棋。</summary>
-    private XiangqiGame CreateGameFromSetup(bool started)
-    {
-        var giver = Cfg.HandicapGiverValue;
-        var opening = Cfg.OpeningFreeMovesEffective;
-        XiangqiSide? openingSide = opening > 0 ? giver.Opposite() : null;
-        return new XiangqiGame(_setupBoard, XiangqiSide.Red, opening, openingSide) { Started = started };
-    }
-
-    /// <summary>主机开始对局：当前摆棋作为开局，广播给客户端。</summary>
-    private void StartOnlineGame()
-    {
-        if (HasSetupError)
-        {
-            SetNotice(SetupErrorText, "DangerBrush");
-            return;
-        }
-        _game = CreateGameFromSetup(started: true);
-        _isSetupMode = false;
-        _isRestartSetupConfirming = false;
-        ClearSelection();
-        UpdateFlipFromSettings();
-        RefreshAll();
-        BroadcastSnapshot();
-        SetNotice($"对局开始！{_game.Turn.DisplayName()}先行", "SuccessBrush");
-        AppendSystemChat($"房主开始了对局：{_game.Turn.DisplayName()}先行");
-    }
-
-    /// <summary>应用摆棋并开始：离线 = 直接一局同机双人；本地 = 按新摆棋重开；主机 = 开始并广播。</summary>
-    private void ApplySetupAndStart()
-    {
-        if (HasSetupError)
-        {
-            SetNotice(SetupErrorText, "DangerBrush");
-            return;
-        }
-        if (IsClient) return;
-        if (IsHost)
-        {
-            StartOnlineGame();
-            return;
-        }
-
-        if (Mode == BoardPlayMode.Offline)
-        {
-            // 离线时点「应用并开始」= 用摆好的局面开一局同机双人（基类会调 OnLocalModeStarted）
-            StartLocalCommand.Execute(null);
-            return;
-        }
-
-        _game = CreateGameFromSetup(started: true);
-        _isSetupMode = false;
-        _isRestartSetupConfirming = false;
-        ClearSelection();
-        UpdateFlipFromSettings();
-        RefreshAll();
-        SetNotice($"对局开始！{_game.Turn.DisplayName()}先行", "SuccessBrush");
-        AppendSystemChat($"用当前摆棋开始了新对局：{_game.Turn.DisplayName()}先行");
-    }
-
-    /// <summary>「重新摆棋（会结束本局）」第一步：进入二次确认。</summary>
+    /// <summary>「重新摆棋（会结束本局）」第一步：进入二次确认（只用于同机双人）。</summary>
     private void RequestRestartSetup()
     {
         if (!CanRestartSetup) return;
@@ -1055,7 +939,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         SetNotice("确定要结束当前对局、重新摆棋吗？", "DangerBrush");
     }
 
-    /// <summary>确认结束当前对局，回到摆棋（本地 / 主机；主机会广播「等待开始」的新局面）。</summary>
+    /// <summary>确认结束当前同机双人对局，回到摆棋草稿。</summary>
     private void ConfirmRestartSetup()
     {
         if (!CanRestartSetup) return;
@@ -1066,9 +950,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         ClearSelection();
         UpdateFlipFromSettings();
         RefreshAll();
-        if (IsHost) BroadcastSnapshot();
-        SetNotice("已回到摆棋：改完点「开始对局」重新开始", "TextSecondaryBrush");
-        AppendSystemChat("结束了当前对局，重新摆棋");
+        SetNotice("已回到摆棋：改完点「应用并开始」重新开局", "TextSecondaryBrush");
     }
 
     /// <summary>取消「重新摆棋」的二次确认。</summary>
@@ -1079,10 +961,49 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         SetNotice("已取消，对局继续", "TextSecondaryBrush");
     }
 
+    // ---------- 开局 / 应用摆棋 ----------
+
+    /// <summary>按当前摆棋草稿造一局正式棋（Started 由调用方决定）。</summary>
+    private XiangqiGame CreateGameFromSetup(bool started)
+    {
+        var giver = Cfg.HandicapGiverValue;
+        var opening = Cfg.OpeningFreeMovesEffective;
+        XiangqiSide? openingSide = opening > 0 ? giver.Opposite() : null;
+        return new XiangqiGame(_setupBoard, XiangqiSide.Red, opening, openingSide) { Started = started };
+    }
+
+    /// <summary>离线 / 同机双人：按当前摆棋开始一局本地对局。</summary>
+    private void ApplySetupAndStart()
+    {
+        if (HasSetupError)
+        {
+            SetNotice(SetupErrorText, "DangerBrush");
+            return;
+        }
+        if (Mode == BoardPlayMode.Offline)
+        {
+            // 离线时点「应用并开始」= 用摆好的局面开一局同机双人（基类会调 OnLocalModeStarted）
+            StartLocalCommand.Execute(null);
+            return;
+        }
+        if (!IsLocalMode) return;           // 联机开局走 RosterPanel 的基类开始命令
+
+        _game = CreateGameFromSetup(started: true);
+        _isSetupMode = false;
+        _isRestartSetupConfirming = false;
+        ClearSelection();
+        UpdateFlipFromSettings();
+        RefreshAll();
+        SetNotice("对局开始！" + $"{(SetupFirstSide == XiangqiSide.Red ? "红方" : "黑方")}先行", "SuccessBrush");
+    }
+
     // ---------- 基类钩子：房间 / 棋局 ----------
 
-    /// <summary>主机执边（"red"/"black"），来自配置。</summary>
-    protected override string HostSide => Cfg.HostSideValue.ToKey();
+    /// <summary>先手位执红（中国象棋红先）。</summary>
+    protected override string FirstSeatSide => "red";
+
+    /// <summary>房主开房时默认坐哪边（读配置：房主默认坐席 / 执红 or 执黑）。</summary>
+    protected override string PreferredHostSeatSide => Cfg.HostSideValue.ToKey();
 
     /// <summary>边 ↔ 对面。</summary>
     protected override string OppositeSide(string side)
@@ -1091,16 +1012,36 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
     /// <summary>边的中文名（"红方"/"黑方"）。</summary>
     protected override string SideDisplayName(string side) => (XiangqiSides.Parse(side) ?? XiangqiSide.Red).DisplayName();
 
-    /// <summary>主机广播 / 欢迎握手用的棋局快照（只读 UI 线程维护好的缓存，网络线程安全）。</summary>
-    protected override JsonElement BuildGameSnapshot()
+    /// <summary>当前棋局状态快照（基类判断暂停 / 开始下一局 / 自动轮换用）。</summary>
+    protected override BoardGameStatus ReportGameStatus()
     {
-        if (_snapshotCache.ValueKind != JsonValueKind.Undefined) return _snapshotCache;
-        // 兜底（理论上到不了这里：构造函数末尾就 RefreshAll 过一次）
-        return JsonSerializer.SerializeToElement(new XiangqiSnapshot { Fen = XiangqiSetup.InitialFen },
-            RoomProtocol.JsonOptions);
+        var over = _game.IsOver;
+        string? winner = _game.Result switch
+        {
+            XiangqiResult.RedWin => "red",
+            XiangqiResult.BlackWin => "black",
+            _ => null,
+        };
+        return new BoardGameStatus(_game.Started, over, over ? winner : null);
     }
 
-    /// <summary>客户端收到（任意时刻的）局面快照：按快照重建棋局，清掉选中 / 临时状态。</summary>
+    /// <summary>回到「未开始」：按当前摆棋草稿重置棋盘（开房 / 作废本局时基类调用；不写聊天）。</summary>
+    protected override void ResetGameToWaiting()
+    {
+        _game = CreateGameFromSetup(started: false);
+        _isSetupMode = false;
+        _isRestartSetupConfirming = false;
+        _waitingHostMove = false;
+        ClearSelection();
+        UpdateFlipFromSettings();
+        RefreshAll();
+    }
+
+    /// <summary>主机广播 / welcome 用的棋局快照（基类会缓存并在网络线程读取；这里只读游戏对象）。</summary>
+    protected override JsonElement BuildGameSnapshot()
+        => JsonSerializer.SerializeToElement(_game.ToSnapshot(), RoomProtocol.JsonOptions);
+
+    /// <summary>客户端收到（任意时刻的）状态包里的棋局：按快照重建，清掉选中 / 临时状态。</summary>
     protected override void ApplyGameSnapshot(JsonElement game, string mySide)
     {
         try
@@ -1109,32 +1050,36 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
             var (restored, error) = XiangqiGame.FromSnapshot(snapshot);
             if (restored is null)
             {
-                SetNotice($"同步局面失败：{error}", "DangerBrush");
+                SetNotice($"同步棋局失败：{error}", "DangerBrush");
                 return;
             }
             _game = restored;
-            _mySide = mySide ?? "";
             _waitingHostMove = false;
             ClearSelection();
             UpdateFlipFromSettings();
             RefreshAll();
-            if (_game.IsOver)
-                SetNotice($"{_game.ResultText}（{_game.ResultReason}）", "SuccessBrush");
-            else if (_game.IsInCheck)
-                SetNotice($"将军！{_game.Turn.DisplayName()}请应将", "DangerBrush");
+            NotifyGameFinishedIfNeeded();       // 客户端调用无副作用；保持契约一致
+
+            if (_game.IsOver) SetNotice($"{_game.ResultText}（{_game.ResultReason}）", "SuccessBrush");
+            else if (_game.IsInCheck) SetNotice($"将军！{_game.Turn.DisplayName()}请应将", "DangerBrush");
         }
         catch (Exception ex)
         {
-            SetNotice($"同步局面失败：{ex.Message}", "DangerBrush");
+            SetNotice($"同步棋局失败：{ex.Message}", "DangerBrush");
         }
     }
 
-    /// <summary>主机执行客户端发来的动作（目前只有 "move"）。</summary>
-    protected override void OnHostAction(string type, JsonElement? payload)
+    /// <summary>主机执行某个成员发来的动作（目前只有 "move"；fromSide 由基类按席位校验后给出）。</summary>
+    protected override void OnHostAction(string fromMemberId, string fromSide, string type, JsonElement? payload)
     {
         if (!string.Equals(type, "move", StringComparison.Ordinal)) return;
-        var peerSide = XiangqiSides.Parse(PeerSideForRoom());
-        if (peerSide is null) return;
+        var side = XiangqiSides.Parse(fromSide);
+        if (side is null)
+        {
+            SetNotice("收到一个无法识别执边的走法，已忽略", "DangerBrush");
+            BroadcastSnapshot();
+            return;
+        }
         if (!TryReadMove(payload, out var move))
         {
             SetNotice("收到一个看不懂的走法，已忽略", "DangerBrush");
@@ -1143,12 +1088,12 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         }
 
         var captured = _game.Board.Get(move.ToX, move.ToY);
-        var error = _game.Play(peerSide.Value, move.FromX, move.FromY, move.ToX, move.ToY);
+        var error = _game.Play(side.Value, move.FromX, move.FromY, move.ToX, move.ToY);
         if (error is not null)
         {
             SetNotice($"对方的走法无效：{error}", "DangerBrush");
             AppendSystemChat($"对方走法未通过校验：{error}");
-            BroadcastSnapshot();       // 回一个快照让客户端解除「等待确认」
+            BroadcastSnapshot();       // 回一个状态让客户端解除「等待确认」
             return;
         }
 
@@ -1166,7 +1111,6 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         ClearSelection();
         RefreshAll();
         SetNotice($"已按{side.DisplayName()}的请求悔棋", "TextSecondaryBrush");
-        AppendSystemChat($"{side.DisplayName()}悔棋成功");
         return true;
     }
 
@@ -1177,7 +1121,6 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         ClearSelection();
         RefreshAll();
         SetNotice("和棋", "TextSecondaryBrush");
-        AppendSystemChat("双方同意和棋，本局结束");
     }
 
     /// <summary>主机判某方认输。</summary>
@@ -1188,43 +1131,24 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         ClearSelection();
         RefreshAll();
         SetNotice($"{resigned.DisplayName()}认输，对局结束", "DangerBrush");
-        AppendSystemChat($"{resigned.DisplayName()}认输，本局结束");
     }
 
-    /// <summary>再做一局：换边（可选）后按当前摆棋重开；聊天记录保留、棋谱清空。</summary>
+    /// <summary>开始（下一）局：用当前摆棋 / 让子 / 让先重置并 Started=true（换边由基类席位决定）。</summary>
     protected override void BeginNewGame(bool swapSides)
     {
-        if (swapSides)
-        {
-            Cfg.HostSide = Cfg.HostSideValue.Opposite().ToKey();
-            OnPropertyChanged(nameof(SelectedHostSide));
-        }
         _game = CreateGameFromSetup(started: true);
-        _mySide = "";
-        _waitingHostMove = false;
-        _isSetupMode = false;
-        _isRestartSetupConfirming = false;
-        ClearSelection();
-        UpdateFlipFromSettings();
-        RefreshAll();
-        SetNotice(swapSides ? "再来一局：双方已换边" : "再来一局：新的一局开始", "SuccessBrush");
-        AppendSystemChat(swapSides ? "再来一局（双方换边）" : "再来一局");
-    }
-
-    /// <summary>主机开房成功：棋局先不开始，等对方加入后点「开始对局」。</summary>
-    protected override void OnHostRoomOpened()
-    {
-        _game = CreateGameFromSetup(started: false);
         _isSetupMode = false;
         _isRestartSetupConfirming = false;
         _waitingHostMove = false;
         ClearSelection();
         UpdateFlipFromSettings();
         RefreshAll();
-        SetNotice("房间已开：把上面的地址发给对方，对方加入后点「开始对局」", "SuccessBrush");
     }
 
-    /// <summary>进入同机双人：直接用当前摆棋开一局。</summary>
+    /// <summary>开房成功：棋局已在基类里通过 <see cref="ResetGameToWaiting"/> 重置，这里只刷新界面。</summary>
+    protected override void OnHostRoomOpened() => RefreshAll();
+
+    /// <summary>进入同机双人：用当前摆棋草稿开一局（基类负责提示 / 聊天）。</summary>
     protected override void OnLocalModeStarted()
     {
         _game = CreateGameFromSetup(started: true);
@@ -1236,76 +1160,48 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         RefreshAll();
     }
 
-    /// <summary>对手加入：主机提示点「开始对局」；客户端等快照。</summary>
-    protected override void OnPeerJoined()
-    {
-        _waitingHostMove = false;
-        RefreshAll();
-        if (IsHost && !_game.Started && IsSetupValid)
-            SetNotice("对方已加入：点「开始对局」开始下棋", "SuccessBrush");
-    }
-
-    /// <summary>对方离开：棋局不重置（等重连），只是暂停（不能走子）。</summary>
-    protected override void OnPeerLeft(string? reason)
-    {
-        _waitingHostMove = false;
-        ClearSelection();
-        RefreshAll();
-        if (IsHost && _game.Started && !_game.IsOver)
-            AppendSystemChat("对方掉线了：对局暂停，等对方重连回来继续（棋局没有丢）");
-    }
-
-    /// <summary>断线恢复：客户端重连成功 / 主机掉线的对方重新连回来。</summary>
-    protected override void OnReconnected()
-    {
-        _waitingHostMove = false;
-        ClearSelection();
-        UpdateFlipFromSettings();
-        RefreshAll();
-        SetNotice("已重新连接，继续对局", "SuccessBrush");
-        AppendSystemChat("已重新连接，继续对局");
-    }
-
-    /// <summary>玩法切换：刷新能不能走棋 / 摆棋 / 翻转，并清掉临时状态。</summary>
+    /// <summary>玩法切换：清临时状态、按新玩法刷新翻转与可操作性。</summary>
     protected override void OnModeChanged()
     {
         _waitingHostMove = false;
         ClearSelection();
-        if (Mode != BoardPlayMode.Local) _isSetupMode = false;
+        if (!IsLocalMode) _isSetupMode = false;
         if (!CanRestartSetup) _isRestartSetupConfirming = false;
         UpdateFlipFromSettings();
         RefreshAll();
     }
 
-    /// <summary>对手加入前校验摆棋（有错不让开房）。</summary>
-    protected override string? ValidateHostStart() => IsSetupValid ? null : SetupErrorText;
-
-    /// <summary>客户端收到快照后基类会调这里：再刷一遍界面状态。</summary>
+    /// <summary>客户端收到并应用完状态包：再刷一遍界面状态。</summary>
     protected override void OnSnapshotApplied() => RefreshAll();
+
+    /// <summary>席位变化 / 本端座位变化：本端执边与能不能走棋都变了。</summary>
+    protected override void OnSeatsChanged()
+    {
+        _waitingHostMove = false;
+        ClearSelection();
+        UpdateFlipFromSettings();
+        RefreshAll();
+    }
+
+    /// <summary>成员列表变化：刷新与在线成员相关的界面状态。</summary>
+    protected override void OnMembersChanged() => RefreshAll();
+
+    /// <summary>断线恢复：基类已经清了暂停 / 写了提示，这里只按最新状态刷新界面。</summary>
+    protected override void OnReconnected() => RefreshAll();
+
+    /// <summary>开房 / 开始对局前的校验：摆棋草稿不合法时不允许开始。</summary>
+    protected override string? ValidateHostStart() => IsSetupValid ? null : SetupErrorText;
 
     // ---------- 界面刷新 ----------
 
-    /// <summary>整套刷新：棋盘渲染状态 + 棋谱 + 摆棋提示 + 快照缓存 + 所有计算属性通知。</summary>
+    /// <summary>整套刷新：棋盘渲染状态 + 棋谱 + 摆棋提示 + 所有计算属性通知 + 结束判定。</summary>
     private void RefreshAll()
     {
         RefreshBoardState();
         RebuildMoveLines();
-        RefreshSnapshotCache();
         NotifyAllProperties();
         InvalidateCommands();
-    }
-
-    /// <summary>刷新网络线程要读的棋局快照缓存（只在这里做序列化，避免和网络线程抢 List）。</summary>
-    private void RefreshSnapshotCache()
-    {
-        try
-        {
-            _snapshotCache = JsonSerializer.SerializeToElement(_game.ToSnapshot(), RoomProtocol.JsonOptions);
-        }
-        catch
-        {
-            // 序列化失败不该影响界面；保留上一份缓存（下一轮再试）
-        }
+        NotifyGameFinishedIfNeeded();          // 每局只处理一次：加分 / 自动轮换 / 广播 / 提示
     }
 
     /// <summary>按「现在该显示草稿还是正式棋局」生成棋盘控件的渲染状态。</summary>
@@ -1344,33 +1240,30 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
     private void NotifyAllProperties()
     {
         OnPropertyChanged(nameof(Game));
+        OnPropertyChanged(nameof(BoardState));
         OnPropertyChanged(nameof(ShowSetupBoard));
         OnPropertyChanged(nameof(IsSetupMode));
         OnPropertyChanged(nameof(ShowSetupCard));
         OnPropertyChanged(nameof(IsSetupAllowed));
-        OnPropertyChanged(nameof(ToggleSetupModeText));
-        OnPropertyChanged(nameof(ShowToggleSetupPreview));
+        OnPropertyChanged(nameof(ShowSetupControls));
+        OnPropertyChanged(nameof(ShowSetupCollapsedSummary));
+        OnPropertyChanged(nameof(CanRestartSetup));
+        OnPropertyChanged(nameof(ShowRestartSetupButton));
+        OnPropertyChanged(nameof(IsRestartSetupConfirming));
+        OnPropertyChanged(nameof(ShowApplySetupButton));
+        OnPropertyChanged(nameof(CanApplySetupAndStart));
         OnPropertyChanged(nameof(ApplySetupAndStartText));
+        OnPropertyChanged(nameof(CanEditPreferredSeat));
         OnPropertyChanged(nameof(IsBoardInteractive));
         OnPropertyChanged(nameof(CanPlayNow));
         OnPropertyChanged(nameof(IsStarted));
-        OnPropertyChanged(nameof(IsWaitingStart));
-        OnPropertyChanged(nameof(IsGamePaused));
-        OnPropertyChanged(nameof(GamePauseStatusText));
-        OnPropertyChanged(nameof(IsReconnecting));
-        OnPropertyChanged(nameof(ReconnectStatusText));
         OnPropertyChanged(nameof(TurnText));
         OnPropertyChanged(nameof(CheckText));
         OnPropertyChanged(nameof(ResultText));
         OnPropertyChanged(nameof(MoveCountText));
-        OnPropertyChanged(nameof(MySideText));
         OnPropertyChanged(nameof(SelectedPoint));
         OnPropertyChanged(nameof(LegalTargets));
         OnPropertyChanged(nameof(IsFlipped));
-        OnPropertyChanged(nameof(ShowStartOnlineButton));
-        OnPropertyChanged(nameof(StartGameEnabled));
-        OnPropertyChanged(nameof(CanApplySetupAndStart));
-        OnPropertyChanged(nameof(StartHintText));
         OnPropertyChanged(nameof(SetupErrorText));
         OnPropertyChanged(nameof(HasSetupError));
         OnPropertyChanged(nameof(IsSetupValid));
@@ -1382,14 +1275,8 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         OnPropertyChanged(nameof(CanResign));
         OnPropertyChanged(nameof(CanOfferDraw));
         OnPropertyChanged(nameof(CanRematch));
-        OnPropertyChanged(nameof(ShowSetupControls));
-        OnPropertyChanged(nameof(ShowSetupCollapsedSummary));
-        OnPropertyChanged(nameof(CanRestartSetup));
-        OnPropertyChanged(nameof(ShowRestartSetupButton));
-        OnPropertyChanged(nameof(IsRestartSetupConfirming));
-        OnPropertyChanged(nameof(ShowApplySetupButton));
-        OnPropertyChanged(nameof(MySideSummaryText));
-        OnPropertyChanged(nameof(PeerSideSummaryText));
+        OnPropertyChanged(nameof(ShowRematchButton));
+        OnPropertyChanged(nameof(RematchButtonText));
     }
 
     /// <summary>让命令的可用状态重新评估（WPF 的 RequerySuggested 是懒的）。</summary>
@@ -1398,15 +1285,16 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         try { CommandManager.InvalidateRequerySuggested(); } catch { /* 无头环境忽略 */ }
     }
 
-    /// <summary>按设置 / 执边决定棋盘要不要翻转。</summary>
+    /// <summary>按设置 / 本端执边决定棋盘要不要翻转（观战不翻）。</summary>
     private void UpdateFlipFromSettings()
     {
-        var side = Mode switch
+        XiangqiSide? side = null;
+        if (!IsLocalMode)
         {
-            BoardPlayMode.Client => XiangqiSides.Parse(_mySide),
-            BoardPlayMode.Host => Cfg.HostSideValue,
-            _ => (XiangqiSide?)null,
-        };
+            var local = XiangqiSides.Parse(LocalSide);
+            if (local is not null) side = local;
+            else if (IsHost && IsOnline) side = Cfg.HostSideValue;   // 房主观战时按默认坐席偏好摆
+        }
         var flipped = Cfg.AutoFlip && side == XiangqiSide.Black;
         if (_flipped == flipped) return;
         _flipped = flipped;
@@ -1415,7 +1303,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
 
     // ---------- 小工具 ----------
 
-    /// <summary>能不能按 (x, y) 生成调色板（红方 7 种 + 黑方 7 种 + 删除）。</summary>
+    /// <summary>生成调色板（红方 7 种 + 黑方 7 种 + 删除）。</summary>
     private static IReadOnlyList<XiangqiPaletteItem> BuildPaletteItems()
     {
         var items = new List<XiangqiPaletteItem>(15);
@@ -1471,8 +1359,9 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
     // ---------- 演示数据（截图 / 冒烟用，不影响真实联机） ----------
 
     /// <summary>
-    /// <c>YLT_XIANGQI_DEMO=1</c>：进入同机双人并走一局演示中盘（含吃子 / 最后一步）；
-    /// <c>YLT_XIANGQI_SETUP=1</c>：直接展开摆棋并套用「让单马」。
+    /// <c>YLT_XIANGQI_DEMO=1</c>：走一局演示中盘（含吃子 / 最后一步）；
+    /// <c>YLT_XIANGQI_SETUP=1</c>：直接展开摆棋并套用「让单马」；
+    /// 与基类的 <c>YLT_BOARD_DEMO_ROOM</c> 叠加时不再进同机双人（基类已备好演示房间）。
     /// </summary>
     private void ApplyDemoData()
     {
@@ -1494,8 +1383,9 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
             return;
         }
 
-        // 演示中盘：先进入同机双人（会按摆棋开局），再按脚本走 11 步
-        StartLocalCommand.Execute(null);
+        // 演示中盘：演示房间（房主 / 观战）由基类备好模式与成员；否则进入同机双人
+        if (!IsDemoRoom) StartLocalCommand.Execute(null);
+        _game = new XiangqiGame(XiangqiBoard.CreateInitial(), XiangqiSide.Red) { Started = true };
         var script = new (int FromX, int FromY, int ToX, int ToY)[]
         {
             (7, 7, 4, 7),   // 1. 红 炮二平五
@@ -1514,6 +1404,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         {
             if (_game.Play(_game.Turn, fromX, fromY, toX, toY) is not null) break;
         }
+        _isSetupMode = false;
         ClearSelection();
         UpdateFlipFromSettings();
         RefreshAll();

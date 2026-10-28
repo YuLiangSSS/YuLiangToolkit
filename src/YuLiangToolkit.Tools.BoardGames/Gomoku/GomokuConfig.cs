@@ -8,8 +8,8 @@ namespace YuLiangToolkit.Tools.BoardGames.Gomoku;
 /// 「联机五子棋」的选项 → <c>Config\gomoku\config.json</c>。
 /// 属性一改就自动落盘（基类后台比对保存），界面直接双向绑定，没有「保存」按钮。
 ///
-/// <para><b>开工前能改的</b>：棋盘路数、禁手、房主执子 —— 这些决定「这一局怎么下」，
-/// 已经开始的对局里改会提示「下一局生效」（由 ViewModel 负责）。</para>
+/// <para><b>开房前能改的</b>：棋盘路数、禁手、房主默认坐席 —— 这些决定「这一局怎么下」；
+/// 联机后房主用「房间成员」面板安排每局上场的两个人。</para>
 /// </summary>
 public sealed class GomokuConfig : ToolConfig, IBoardGameRoomConfig
 {
@@ -18,7 +18,7 @@ public sealed class GomokuConfig : ToolConfig, IBoardGameRoomConfig
 
     // ---------------------------------------------------------------- 房间（IBoardGameRoomConfig）
 
-    /// <summary>玩家名（对方在房间列表 / 聊天里看到的名字；留空时用「玩家」）。</summary>
+    /// <summary>玩家名（房间成员列表 / 聊天里看到的名字；留空时用「玩家」）。</summary>
     public string PlayerName { get; set; } = "玩家";
 
     /// <summary>上次成功加入的房间地址（客户端「加入地址」输入框的默认值）。</summary>
@@ -27,9 +27,19 @@ public sealed class GomokuConfig : ToolConfig, IBoardGameRoomConfig
     /// <summary>开房间用的监听端口（<b>0 = 让系统自动挑一个空闲端口</b>）。</summary>
     public int ListenPort { get; set; } = 5310;
 
+    /// <summary>自动上场方式：<c>manual</c>（手动安排，默认）/ <c>loserOut</c>（输的下场）/ <c>bothOut</c>（双方都下场）。</summary>
+    public string AutoRotateMode { get; set; } = "manual";
+
+    /// <summary>补位方式：<c>rotation</c>（轮流上场，默认）/ <c>random</c>（随机上场）。</summary>
+    public string AutoPickMode { get; set; } = "rotation";
+
     // ---------------------------------------------------------------- 对局规则
 
-    /// <summary>房主执哪边：<c>"black"</c>（黑棋，先手）/ <c>"white"</c>（白棋，后手）。</summary>
+    /// <summary>
+    /// 房主默认坐哪边（<b>只在开房瞬间决定房主自动坐哪一席</b>）：
+    /// <c>"black"</c> = 先手位（黑棋，默认）/ <c>"white"</c> = 后手位（白棋）。
+    /// 开房后想换人/换边，由房间成员面板（RosterPanel）安排。
+    /// </summary>
     public string HostSide { get; set; } = "black";
 
     /// <summary>
@@ -53,7 +63,7 @@ public sealed class GomokuConfig : ToolConfig, IBoardGameRoomConfig
     [JsonIgnore]
     public int EffectiveBoardSize => BoardSize == 19 ? 19 : GomokuBoard.DefaultSize;
 
-    /// <summary>规整后的房主执子：只认 black / white，其它值一律按 black（先手）。</summary>
+    /// <summary>规整后的「房主默认坐席」：只认 black / white，其它值一律按 black（先手位）。</summary>
     [JsonIgnore]
     public string EffectiveHostSide =>
         string.Equals(HostSide, "white", StringComparison.OrdinalIgnoreCase) ? "white" : "black";

@@ -36,12 +36,12 @@
                             </TextBlock.Style>
                         </TextBlock>
                     </Border>
-                    <TextBlock Text="{Binding MySideText}" FontSize="12" Margin="14,0,0,0"
+                    <TextBlock Text="{Binding MyRoleText}" FontSize="12" Margin="14,0,0,0"
                                VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
                 </StackPanel>
                 <TextBlock FontSize="11.5" TextWrapping="Wrap" Margin="0,6,0,0"
                            Foreground="{StaticResource TextSecondaryBrush}"
-                           Text="自由摆棋 · 让子 / 让先 · 走法提示 · 中文记谱 · 悔棋 / 认输 / 求和 / 再来一局 · 断线自动重连" />
+                           Text="自由摆棋 · 让子 / 让先 · 多人观战 · 房主安排上场 · 中文记谱 · 悔棋 / 认输 / 求和 / 断线自动重连" />
             </StackPanel>
 
             <!-- ============ 主体：左棋盘 + 右栏卡片 ============ -->
@@ -90,36 +90,35 @@
                                     Command="{Binding FlipBoardCommand}" />
                         </Grid>
 
-                        <!-- 操作按钮：压进棋盘卡，首屏不会被裁掉 -->
-                        <Grid Margin="0,8,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="6" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="6" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="6" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
+                        <!-- 操作按钮：压进棋盘卡，首屏不会被裁掉；观战 / 离线时整排隐藏。
+                             「再来一局」只有同机双人 / 联机坐席客户端玩家可见；房主用 RosterPanel 的「开始下一局」。 -->
+                        <WrapPanel Margin="0,8,0,0" Orientation="Horizontal"
+                                   Visibility="{Binding ShowPlayerActions, Converter={StaticResource BoolToVis}}">
                             <Button Content="悔棋" Style="{StaticResource SecondaryButtonStyle}" FontSize="12"
-                                    Padding="4,5" HorizontalAlignment="Stretch"
-                                    Command="{Binding UndoCommand}" />
-                            <Button Grid.Column="2" Content="认输" Style="{StaticResource SecondaryButtonStyle}"
-                                    FontSize="12" Padding="4,5" HorizontalAlignment="Stretch"
-                                    Command="{Binding ResignCommand}" />
-                            <Button Grid.Column="4" Content="求和" Style="{StaticResource SecondaryButtonStyle}"
-                                    FontSize="12" Padding="4,5" HorizontalAlignment="Stretch"
-                                    Command="{Binding OfferDrawCommand}" />
-                            <Button Grid.Column="6" Content="再来一局" Style="{StaticResource SecondaryButtonStyle}"
-                                    FontSize="12" Padding="4,5" HorizontalAlignment="Stretch"
-                                    Command="{Binding RematchCommand}" />
-                        </Grid>
+                                    Margin="0,4,8,0" Padding="10,5"
+                                    Command="{Binding UndoCommand}" IsEnabled="{Binding CanUndo}"
+                                    ToolTip="同机双人直接撤；联机需要对手 / 房主同意" />
+                            <Button Content="认输" Style="{StaticResource SecondaryButtonStyle}" FontSize="12"
+                                    Margin="0,4,8,0" Padding="10,5"
+                                    Command="{Binding ResignCommand}" IsEnabled="{Binding CanResign}"
+                                    ToolTip="联机时由房主判负并广播" />
+                            <Button Content="求和" Style="{StaticResource SecondaryButtonStyle}" FontSize="12"
+                                    Margin="0,4,8,0" Padding="10,5"
+                                    Command="{Binding OfferDrawCommand}" IsEnabled="{Binding CanOfferDraw}"
+                                    ToolTip="联机时请对手 / 房主同意和棋" />
+                            <Button Content="{Binding RematchButtonText}" Style="{StaticResource SecondaryButtonStyle}"
+                                    FontSize="12" Margin="0,4,8,0" Padding="10,5"
+                                    Command="{Binding RematchCommand}" IsEnabled="{Binding CanRematch}"
+                                    Visibility="{Binding ShowRematchButton, Converter={StaticResource BoolToVis}}"
+                                    ToolTip="同机双人：直接重开；联机客户端玩家：请求房主开始下一局" />
+                        </WrapPanel>
                     </StackPanel>
                 </Border>
 
-                <!-- ===== 右栏（用 Grid 定行号：摆棋卡在未开局时排最上面，房间 / 对局在它下面） ===== -->
+                <!-- ===== 右栏（摆棋卡在未开局时排最上面；房间 → 成员/席位 → 对局 → 设置） ===== -->
                 <Grid Grid.Column="2">
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
@@ -129,8 +128,11 @@
                     <!-- 房间（共享面板：开房 / 加入 / 地址分享 / 离开；ChatPanel 由共享层接在页面最下面） -->
                     <shared:RoomPanel Grid.Row="1" Margin="0,12,0,0" />
 
+                    <!-- 成员 / 席位 / 房主安排上场 / 自动轮换（共享面板；开始对局只在这里） -->
+                    <shared:RosterPanel Grid.Row="2" Margin="0,12,0,0" />
+
                     <!-- ===== 对局 ===== -->
-                    <Border Grid.Row="2" Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+                    <Border Grid.Row="3" Style="{StaticResource CardStyle}" Margin="0,12,0,0">
                         <StackPanel>
                             <Grid>
                                 <TextBlock Text="对局" FontSize="13" FontWeight="SemiBold"
@@ -160,18 +162,8 @@
                             <TextBlock Text="{Binding ResultText}" FontSize="12.5" FontWeight="SemiBold"
                                        TextWrapping="Wrap" Margin="0,4,0,0" Foreground="{StaticResource SuccessBrush}"
                                        Visibility="{Binding ResultText, Converter={StaticResource EmptyToVisInverse}}" />
-                            <TextBlock Text="{Binding MySideSummaryText}" FontSize="11.5" TextWrapping="Wrap"
+                            <TextBlock Text="{Binding SeatStatusText}" FontSize="11" TextWrapping="Wrap"
                                        Margin="0,6,0,0" Foreground="{StaticResource TextSecondaryBrush}" />
-                            <TextBlock Text="{Binding PeerSideSummaryText}" FontSize="11.5" TextWrapping="Wrap"
-                                       Margin="0,2,0,0" Foreground="{StaticResource TextSecondaryBrush}" />
-                            <TextBlock Text="{Binding StartHintText}" FontSize="11" TextWrapping="Wrap"
-                                       Margin="0,6,0,0" Foreground="{StaticResource TextSecondaryBrush}" />
-
-                            <!-- 主机：对方加入后出现「开始对局」 -->
-                            <Button Content="开始对局" Style="{StaticResource PrimaryButtonStyle}" Margin="0,10,0,0"
-                                    HorizontalAlignment="Stretch" Command="{Binding StartOnlineGameCommand}"
-                                    Visibility="{Binding ShowStartOnlineButton, Converter={StaticResource BoolToVis}}"
-                                    ToolTip="把当前摆棋作为开局，同步给对方" />
                         </StackPanel>
                     </Border>
 
@@ -319,12 +311,13 @@
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="房主执棋" FontSize="12" VerticalAlignment="Center"
+                                    <TextBlock Text="房主默认坐席" FontSize="12" VerticalAlignment="Center"
                                                Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,8,0" />
                                     <ComboBox Grid.Column="1" Height="32" Style="{StaticResource ComboBoxStyle}"
                                               ItemsSource="{Binding HostSideOptions}" DisplayMemberPath="Label"
                                               SelectedItem="{Binding SelectedHostSide}"
-                                              ToolTip="房主执红还是执黑（执黑时自动翻转棋盘）" />
+                                              IsEnabled="{Binding CanEditPreferredSeat}"
+                                              ToolTip="房主开房时默认坐先手位（红）或后手位（黑）；进房间后不能改，下次开房生效" />
                                 </Grid>
 
                                 <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="6"
@@ -353,7 +346,7 @@
                                         Margin="0,10,0,0" HorizontalAlignment="Stretch"
                                         Command="{Binding ApplySetupAndStartCommand}"
                                         Visibility="{Binding ShowApplySetupButton, Converter={StaticResource BoolToVis}}"
-                                        ToolTip="把当前摆棋作为开局（离线 = 开一局同机双人；主机 = 开始并同步给对方）" />
+                                        ToolTip="离线 / 同机双人：用当前摆棋开一局；联机时由右侧「房间成员」里的开始按钮开局" />
                             </StackPanel>
 
                             <!-- 收起态（对局进行中 / 已结束）：一行摘要 + 重新摆棋（二次确认） -->
@@ -366,6 +359,10 @@
                                         Command="{Binding RequestRestartSetupCommand}"
                                         Visibility="{Binding ShowRestartSetupButton, Converter={StaticResource BoolToVis}}"
                                         ToolTip="结束当前对局并回到摆棋（会先问一次）" />
+                                <TextBlock FontSize="10.5" TextWrapping="Wrap" Margin="0,6,0,0"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Visibility="{Binding CanRestartSetup, Converter={StaticResource InverseBoolToVis}}"
+                                           Text="联机对局中摆棋已锁定；房主可在右侧「房间成员」里点「结束本局（作废）」后重新摆棋。" />
 
                                 <StackPanel Margin="0,8,0,0"
                                             Visibility="{Binding IsRestartSetupConfirming, Converter={StaticResource BoolToVis}}">
@@ -390,7 +387,7 @@
                     </Border>
 
                     <!-- ===== 设置 ===== -->
-                    <Border Grid.Row="3" Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+                    <Border Grid.Row="4" Style="{StaticResource CardStyle}" Margin="0,12,0,0">
                         <StackPanel>
                             <TextBlock Text="设置" FontSize="13" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextPrimaryBrush}" />

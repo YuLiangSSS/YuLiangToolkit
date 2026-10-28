@@ -22,9 +22,15 @@ public sealed class XiangqiConfig : ToolConfig, IBoardGameRoomConfig
     /// <summary>主机监听端口；0 = 让系统自动挑一个空闲端口。</summary>
     public int ListenPort { get; set; } = 5311;
 
+    /// <summary>房主上次选的自动上场方式（<c>manual</c> / <c>loserOut</c> / <c>bothOut</c>）。</summary>
+    public string AutoRotateMode { get; set; } = "manual";
+
+    /// <summary>房主上次选的补位方式（<c>rotation</c> / <c>random</c>）。</summary>
+    public string AutoPickMode { get; set; } = "rotation";
+
     // ---------- 对局 ----------
 
-    /// <summary>房主执红还是执黑："red" / "black"。</summary>
+    /// <summary>房主开房时默认坐哪边（"red" = 先手位 / "black" = 后手位）；只影响下次开房。</summary>
     public string HostSide { get; set; } = "red";
 
     /// <summary>选中棋子时高亮可走点。</summary>
@@ -61,7 +67,7 @@ public sealed class XiangqiConfig : ToolConfig, IBoardGameRoomConfig
     [JsonIgnore]
     public int OpeningFreeMovesEffective => Math.Clamp(OpeningFreeMoves, 0, 5);
 
-    /// <summary>房主执子的中文说明。</summary>
+    /// <summary>房主默认坐席的中文说明（先手位红方 / 后手位黑方）。</summary>
     [JsonIgnore]
-    public string HostSideText => HostSideValue.DisplayName();
+    public string HostSideText => HostSideValue == XiangqiSide.Red ? "先手位（红方）" : "后手位（黑方）";
 }
