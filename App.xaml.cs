@@ -12,6 +12,9 @@ namespace YuLiangToolkit.App;
 
 public partial class App : Application
 {
+    /// <summary>单实例协调器（第一个实例开管道服务端；第二实例只负责发消息然后退出）。</summary>
+    private static SingleInstance? _singleInstance;
+
     /// <summary>任务栏右侧的托盘图标（整个进程一个；关窗口时是否「最小化到托盘」以它是否真的在为准）。</summary>
     public static TrayIcon? Tray { get; private set; }
 
@@ -32,6 +35,27 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // 单实例：已经有窗口在跑时，把命令行（例如双击图片的路径）发给它，自己直接退出。
+        // 截图 / 调试进程不参与（见 SingleInstance.IsEnabled），否则测试会被正在使用的窗口吸走。
+        if (SingleInstance.IsEnabled)
+        {
+            _singleInstance = new SingleInstance();
+            if (!_singleInstance.IsFirstInstance)
+            {
+                var outgoing = NormalizeLaunchArguments(e.Args);
+                SingleInstance.AllowForegroundActivation();
+                if (_singleInstance.TrySendToExisting(outgoing, TimeSpan.FromSeconds(3)))
+                {
+                    _singleInstance.Dispose();
+                    _singleInstance = null;
+                    Shutdown(0);
+                    return;
+                }
+
+                // 连不上旧实例（它还在启动 / 已经卡死）：别让用户双击没反应，退回正常开窗口
+            }
+        }
+
         // 完整性自检：把「本进程完整性级别 + 任务栏找不找得到 + 全屏能不能藏任务栏」打到控制台
         // （同时也写 Debug 输出；设了 YLT_TASKBAR_TRACE 会追加到那个文件）。
         // 全屏藏不住任务栏时先看这几行：错误码 5 = exe 被标成 Low，改全屏代码没用（见 IntegrityCheck 类注释）。
@@ -48,6 +72,8 @@ public partial class App : Application
             ToolConfigStore.FlushAll();
             Tray?.Dispose();
             Tray = null;
+            _singleInstance?.Dispose();
+            _singleInstance = null;
         };
         SessionEnding += (_, _) =>
         {
@@ -130,6 +156,54 @@ public partial class App : Application
             if (settingsWindow is not null) settingsWindow.CaptureTo(shotPath);
             else window.CaptureTo(shotPath);
         }
+        else
+        {
+            // 正常启动：开管道服务端，之后每次双击图片 / 再启动一次都交给这个窗口处理
+            _singleInstance?.StartServer(args => HandleSecondInstance(args, window, vm, tools));
+        }
+    }
+
+    /// <summary>
+    /// 第二实例发来的命令行：先把窗口从托盘 / 最小化恢复并置前；如果带了一张受支持的图片，
+    /// 就打开「图片连续阅读器」——新 ViewModel 会取走 <see cref="PictureFilePathLaunch.PendingImagePath"/>，
+    /// 加载那张图所在文件夹并定位到它（见 AGENTS 2.19）。
+    /// </summary>
+    private static void HandleSecondInstance(
+        string[] args, MainWindow window, MainViewModel viewModel, IReadOnlyList<ITool> tools)
+    {
+        SingleInstance.ActivateWindow(window);
+
+        var image = args.FirstOrDefault(PictureFileAssociation.IsSupportedImageFile);
+        if (string.IsNullOrWhiteSpace(image)) return;
+
+        try { PictureFilePathLaunch.PendingImagePath = Path.GetFullPath(image.Trim().Trim('"')); }
+        catch { PictureFilePathLaunch.PendingImagePath = image; }
+
+        var pictureTool = tools.FirstOrDefault(t => t.Id == PictureViewerConfig.ToolId);
+        if (pictureTool is not null) viewModel.OpenToolCommand.Execute(pictureTool);
+    }
+
+    /// <summary>
+    /// 第二实例发消息前先把「受支持的图片路径」转成绝对路径：两个进程工作目录可能不同，
+    /// 直接发相对路径的话第一个实例会按自己的目录解析错。
+    /// </summary>
+    private static string[] NormalizeLaunchArguments(string[] args)
+    {
+        var result = new string[args.Length];
+        for (var i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+            if (!PictureFileAssociation.IsSupportedImageFile(arg))
+            {
+                result[i] = arg;
+                continue;
+            }
+
+            try { result[i] = Path.GetFullPath(arg.Trim().Trim('"')); }
+            catch { result[i] = arg; }
+        }
+
+        return result;
     }
 
     /// <summary>

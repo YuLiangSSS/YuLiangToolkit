@@ -48,7 +48,7 @@
                         Command="{Binding OpenFolderCommand}" VerticalAlignment="Center" />
 
                 <StackPanel Grid.Column="1" Margin="14,0,14,0" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding ImageCountText}" FontSize="13" FontWeight="SemiBold"
+                    <TextBlock x:Name="ImageCountTextBlock" Text="{Binding ImageCountText}" FontSize="13" FontWeight="SemiBold"
                                TextTrimming="CharacterEllipsis" />
                     <TextBlock Text="{Binding FolderPathText}" FontSize="10.5"
                                Foreground="{StaticResource TextSecondaryBrush}"

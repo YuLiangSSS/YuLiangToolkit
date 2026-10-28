@@ -1,3 +1,4 @@
+using YuLiangToolkit.App;
 using YuLiangToolkit.App.Models;
 using YuLiangToolkit.App.ViewModels;
 using YuLiangToolkit.Core.Tools;
@@ -36,6 +37,22 @@ public static class NavigationChecks
         // 局部包装：断言多的时候不写 detail 更清爽（Program.cs 传进来的两个委托语义不变）
         void check(string name, bool ok, string detail = "") => checkWithDetail(name, ok, detail);
         void plain(string name, bool ok) => plainCheck(name, ok);
+
+        // ============================ 0. 单实例唤醒的消息格式 ============================
+        // 第二个进程把命令行经命名管道交给第一个进程；这里只测 JSON 编解码（不真的开管道）。
+        var wakePayload = SingleInstance.SerializeMessage(new[] { @"C:\图 片\003.png", "" });
+        var wakeOk = SingleInstance.TryDeserializeMessage(wakePayload, out var wakeArgs);
+        check("[外壳] 单实例消息：序列化→反序列化保留参数（含空格 / 中文）",
+            wakeOk && wakeArgs.Length == 2 && wakeArgs[0] == @"C:\图 片\003.png" && wakeArgs[1] == "",
+            wakePayload);
+        check("[外壳] 单实例消息：坏 JSON / 版本不对 / 参数不是字符串都忽略",
+            !SingleInstance.TryDeserializeMessage("not json", out _)
+            && !SingleInstance.TryDeserializeMessage("{\"protocolVersion\":999,\"arguments\":[]}", out _)
+            && !SingleInstance.TryDeserializeMessage("{\"protocolVersion\":1,\"arguments\":[123]}", out _));
+        check("[外壳] 单实例消息：没有参数也能还原（第二次启动只唤醒窗口）",
+            SingleInstance.TryDeserializeMessage(
+                SingleInstance.SerializeMessage(Array.Empty<string>()), out var wakeEmpty)
+            && wakeEmpty.Length == 0);
 
         // ============================ 1. 默认 CategoryPath（老工具兼容） ============================
         ITool plainTool = new NavPlainTool("legacy-tool", "老工具", "媒体", 10);
