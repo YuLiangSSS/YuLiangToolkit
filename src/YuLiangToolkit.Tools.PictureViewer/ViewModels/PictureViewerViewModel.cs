@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using YuLiangToolkit.Core.Mvvm;
 
@@ -28,6 +29,7 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
             (PictureWheelAction.Zoom, "缩放"));
 
         OpenFolderCommand = new AsyncRelayCommand(_ => OpenFolderAsync());
+        OpenFolderInExplorerCommand = new RelayCommand(_ => OpenFolderInExplorer());
         ToggleSettingsCommand = new RelayCommand(_ => IsSettingsVisible = !IsSettingsVisible);
         CloseSettingsCommand = new RelayCommand(_ => IsSettingsVisible = false);
         ZoomInCommand = new RelayCommand(_ => StepZoom(1));
@@ -175,6 +177,7 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
             OnPropertyChanged();
             OnPropertyChanged(nameof(FolderName));
             OnPropertyChanged(nameof(FolderPathText));
+            OnPropertyChanged(nameof(HasFolder));
             OnPropertyChanged(nameof(ImageCountText));
         }
     }
@@ -186,6 +189,9 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
 
     /// <summary>工具条第二行的路径文本。</summary>
     public string FolderPathText => string.IsNullOrWhiteSpace(_folderPath) ? "还没有打开文件夹" : _folderPath;
+
+    /// <summary>当前有没有打开文件夹（路径那一行能不能点）。</summary>
+    public bool HasFolder => !string.IsNullOrWhiteSpace(_folderPath);
 
     /// <summary>工具条第一行：张数 + 文件夹名。</summary>
     public string ImageCountText => _pages.Count == 0
@@ -223,6 +229,9 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
     /// <summary>打开文件夹（Ctrl+O 也走它）。</summary>
     public AsyncRelayCommand OpenFolderCommand { get; }
 
+    /// <summary>点工具条上的文件夹路径 → 在资源管理器里打开这个文件夹。</summary>
+    public RelayCommand OpenFolderInExplorerCommand { get; }
+
     /// <summary>展开 / 收起设置面板。</summary>
     public RelayCommand ToggleSettingsCommand { get; }
 
@@ -245,6 +254,41 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
     {
         var folder = FolderPicker?.Invoke();
         if (!string.IsNullOrWhiteSpace(folder)) await LoadFolderAsync(folder);
+    }
+
+    /// <summary>
+    /// 在资源管理器里打开当前文件夹。自检可以把 <see cref="FolderOpener"/> 换掉，
+    /// 不真的弹资源管理器，只断言传进来的目录对不对。
+    /// </summary>
+    public Func<string, bool>? FolderOpener { get; set; }
+
+    /// <summary>点工具条上的路径：打开当前文件夹；目录已经不在时把状态文字改成提示。</summary>
+    private void OpenFolderInExplorer()
+    {
+        if (string.IsNullOrWhiteSpace(_folderPath)) return;
+
+        var folder = _folderPath;
+        try
+        {
+            var opened = FolderOpener?.Invoke(folder) ?? LaunchExplorer(folder);
+            if (!opened) StatusText = $"打开文件夹失败：目录可能已经不在了 —— {folder}";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"打开文件夹失败：{ex.Message}";
+        }
+    }
+
+    private static bool LaunchExplorer(string folder)
+    {
+        if (!Directory.Exists(folder)) return false;
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = folder,
+            UseShellExecute = true,
+        });
+        return true;
     }
 
     /// <summary>

@@ -23,6 +23,32 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- 工具条第 2 行的文件夹路径：看着像普通文字，但可以点开资源管理器 -->
+        <Style x:Key="FolderPathLinkStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="Transparent" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.5" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </UserControl.Resources>
 
     <!-- 图片连续阅读器界面：顶部一条工具条，下面整块都是「长带」。
@@ -50,10 +76,21 @@
                 <StackPanel Grid.Column="1" Margin="14,0,14,0" VerticalAlignment="Center">
                     <TextBlock x:Name="ImageCountTextBlock" Text="{Binding ImageCountText}" FontSize="13" FontWeight="SemiBold"
                                TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding FolderPathText}" FontSize="10.5"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               TextTrimming="CharacterEllipsis" Margin="0,3,0,0"
-                               ToolTip="{Binding FolderPathText}" />
+                    <!-- 点这一行路径 = 在资源管理器里打开当前图片所在文件夹 -->
+                    <Button x:Name="FolderPathButton" Style="{StaticResource FolderPathLinkStyle}"
+                            FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}"
+                            IsEnabled="{Binding HasFolder}"
+                            Command="{Binding OpenFolderInExplorerCommand}"
+                            Margin="0,3,0,0" HorizontalAlignment="Left">
+                        <Button.ToolTip>
+                            <StackPanel>
+                                <TextBlock Text="{Binding FolderPathText}" FontSize="10.5" />
+                                <TextBlock Text="点击在资源管理器里打开这个文件夹" FontSize="10.5"
+                                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </Button.ToolTip>
+                        <TextBlock Text="{Binding FolderPathText}" TextTrimming="CharacterEllipsis" />
+                    </Button>
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">

@@ -574,6 +574,17 @@ internal static class PictureViewerChecks
         Check("[图片] 加载完不在忙碌状态、状态文字是人话",
             !vm.IsBusy && vm.StatusText.Contains("3"), vm.StatusText);
 
+        // ---- 点工具条第 2 行的文件夹路径 → 在资源管理器里打开（自检换掉打开器，不真弹资源管理器） ----
+        string? openedFolder = null;
+        vm.FolderOpener = path => { openedFolder = path; return true; };
+        Check("[图片] 有文件夹时路径行可点（HasFolder）", vm.HasFolder);
+        vm.OpenFolderInExplorerCommand.Execute(null);
+        Check("[图片] 点路径把当前文件夹交给资源管理器打开", openedFolder == folder, openedFolder ?? "(null)");
+        vm.FolderOpener = _ => false;
+        vm.OpenFolderInExplorerCommand.Execute(null);
+        Check("[图片] 文件夹打不开时给提示", vm.StatusText.Contains("打开文件夹失败"), vm.StatusText);
+        vm.FolderOpener = null;
+
         // ---- 双击图片打开（文件关联 / 命令行） ----
         Check("[图片] 文件关联：支持的后缀表合法（小写、带点、无重复、含常见格式）",
             PictureFileAssociation.SupportedExtensions.Count == 8
