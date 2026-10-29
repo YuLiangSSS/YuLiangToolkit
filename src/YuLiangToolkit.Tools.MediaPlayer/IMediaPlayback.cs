@@ -7,7 +7,7 @@ namespace YuLiangToolkit.Tools.MediaPlayer;
 /// 必须活在界面线程上、还要真的解码音频，无头自检根本造不出来。
 /// 抽成接口后，界面里的 <c>MediaElementPlayback</c> 是真实现，
 /// 自检塞一个 <c>FakeMediaPlayback</c> 就能把「播放 / 暂停 / 快进快退 / 播完自动下一首」
-/// 整条链路跑一遍（见 AGENTS.md 2.14）。</para>
+/// 整条链路跑一遍（见 docs/dev/pitfalls.md）。</para>
 ///
 /// <para>约定：<see cref="Opened"/> / <see cref="Ended"/> / <see cref="Failed"/> 都在**界面线程**上触发
 /// （<c>MediaElement</c> 的事件本来就在 UI 线程，实现者别自己开线程）。</para>

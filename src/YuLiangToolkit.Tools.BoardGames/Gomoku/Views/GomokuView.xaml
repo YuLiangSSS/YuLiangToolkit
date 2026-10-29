@@ -8,7 +8,7 @@
 
     <!-- 联机五子棋主界面（WIP 4.6）：一页放完 —— 左棋盘、右房间 + 对局 + 设置、下方棋谱。
          注意：整页在 ScrollViewer 里，所以行高一律 Auto（不要 Height="*"），
-         棋盘用固定 640×640 的自绘控件套 Viewbox 缩放；内层列表挂滚动链（AGENTS.md 2.9.1）。 -->
+         棋盘用固定 640×640 的自绘控件套 Viewbox 缩放；内层列表挂滚动链（AGENTS.md）。 -->
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Margin="28,22,28,26">
 

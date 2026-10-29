@@ -74,4 +74,4 @@ Data\chat-room\
 ## 相关代码
 
 - 项目：`src/YuLiangToolkit.Tools.ChatRoom/`
-- 帧格式、双栈监听的坑（`DualMode` 必须显式打开）、界面层的几条约定：[AGENTS.md](../../AGENTS.md) 的 2.12 节
+- 帧格式与界面约定：源码 XML 注释；双栈监听等坑（`DualMode` 必须显式打开）：[docs/dev/pitfalls.md](../../docs/dev/pitfalls.md)

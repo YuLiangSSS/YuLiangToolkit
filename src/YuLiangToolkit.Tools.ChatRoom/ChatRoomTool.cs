@@ -9,7 +9,7 @@ namespace YuLiangToolkit.Tools.ChatRoom;
 /// 「联机聊天室」功能入口：主机开监听、客户端连 IP:端口 的局域网聊天，
 /// 支持文字 / 图片 / 音频 / 视频 / 任意文件，带单次流量上限。
 ///
-/// <para>协议与实现细节见根目录 <c>AGENTS.md</c> 的 2.12 节；
+/// <para>协议与实现细节见 <c>docs/dev/pitfalls.md</c>；
 /// 线上协议本身有一份人能读的说明（<c>Data\chat-room\Protocol\chat-protocol.json</c>）。</para>
 /// </summary>
 public class ChatRoomTool : ITool

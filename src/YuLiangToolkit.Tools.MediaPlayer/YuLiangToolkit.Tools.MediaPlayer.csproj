@@ -2,7 +2,7 @@
 
   <!-- 「视频 / 音乐播放器」：纯逻辑都在项目根目录（MediaTypes / MediaScanner / PlaylistMerger /
        PlayQueue / MediaTime，自检直接断言），界面是 MediaPlayerView.xaml + 代码后置里的
-       MediaElement 适配器（IMediaPlayback）。分层与“为什么这么做”见根目录 AGENTS.md 的 2.14 节。 -->
+       MediaElement 适配器（IMediaPlayback）。分层与“为什么这么做”见 docs/dev/pitfalls.md。 -->
   <PropertyGroup>
     <TargetFramework>net9.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>

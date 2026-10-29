@@ -38,4 +38,4 @@ dotnet sln YuLiangToolkit.sln add src\YuLiangToolkit.Tools.MyTool\YuLiangToolkit
 
 - 项目：`src/YuLiangToolkit.Tools.Sample/`（`SampleTool.cs` / `SampleConfig.cs` /
   `ViewModels/SampleViewModel.cs` / `Views/SampleView.xaml`）
-- 新增功能的完整步骤与所有轮子的签名：[AGENTS.md](../../AGENTS.md) 第 2、4 节
+- 新增功能的完整步骤与轮子速查：[AGENTS.md](../../AGENTS.md)（入口）；轮子源码在 `src/YuLiangToolkit.Core/`，注释即文档

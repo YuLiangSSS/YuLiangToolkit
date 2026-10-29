@@ -6,7 +6,7 @@
              AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop">
 
     <!-- 样式全部来自 App.xaml（CardStyle / TextBoxStyle / SliderStyle / CheckBoxStyle / PrimaryButtonStyle…）；
-         表头与数据行同列容器的做法与「框架示例 / osu! 下图器」一致（AGENTS.md 2.9）。 -->
+         表头与数据行同列容器的做法与「框架示例 / osu! 下图器」一致（AGENTS.md）。 -->
     <UserControl.Resources>
         <views:ScrollBarWidthConverter x:Key="ScrollBarWidth" />
 

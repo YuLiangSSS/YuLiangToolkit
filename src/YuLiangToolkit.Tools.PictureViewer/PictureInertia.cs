@@ -5,7 +5,7 @@ namespace YuLiangToolkit.Tools.PictureViewer;
 ///
 /// <para>为什么单独抽出来：这是「手机漫画 App 手感」的核心，但它在界面里只是一堆鼠标事件和定时器；
 /// 抽成纯逻辑后，自检可以直接断言「甩得快 → 有速度」「停着 → 没速度」「衰减方向不变、越来越慢」
-/// 「太慢就停」，不用真的去动鼠标（见 AGENTS.md 2.19）。</para>
+/// 「太慢就停」，不用真的去动鼠标（见 docs/dev/pitfalls.md）。</para>
 ///
 /// <para>单位：偏移量是 DIP 像素，时间是毫秒，所以速度是 <b>像素 / 毫秒</b>
 /// （60fps 下 <c>0.5 px/ms</c> ≈ 每帧 8px，手感合适）。</para>

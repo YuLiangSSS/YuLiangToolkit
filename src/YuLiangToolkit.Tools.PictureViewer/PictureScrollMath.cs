@@ -94,7 +94,7 @@ public static class PictureScrollMath
     /// <summary>
     /// 拖拽时「跨轴偏移」该加多少：纵向模式的跨轴是左右（看 dx），横向模式的跨轴是上下（看 dy）。
     /// 符号同样是「内容跟着手走」—— 指针往右 / 下拖，看到的是左边 / 上边的部分。
-    /// 缩放之后两个轴都能拖，靠的就是它（见 AGENTS.md 2.19）。
+    /// 缩放之后两个轴都能拖，靠的就是它（见 docs/dev/pitfalls.md）。
     /// </summary>
     public static double CrossDragDelta(PictureScrollMode mode, double dx, double dy)
         => PictureScrollModes.IsHorizontal(PictureScrollModes.Normalize(mode)) ? -dy : -dx;
@@ -165,7 +165,7 @@ public static class PictureScrollMath
 
     // ---------------------------------------------------------------- 阅读偏移 ↔ ScrollViewer 物理偏移
     // 这三个函数是「日式右→左」的关键：图片在物理上是反着摆的，ScrollViewer 的物理偏移从最左边算，
-    // 而界面里的滚轮 / 拖拽 / 中键只认「阅读偏移」。放在这里是为了自检能直接断言（见 AGENTS 2.19）。
+    // 而界面里的滚轮 / 拖拽 / 中键只认「阅读偏移」。放在这里是为了自检能直接断言（见 docs/dev/pitfalls.md）。
 
     /// <summary>某个滚动方式下的阅读总长度：横向看水平可滚范围，纵向看垂直可滚范围。</summary>
     public static double ReadingMaximum(

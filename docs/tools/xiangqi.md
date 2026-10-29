@@ -203,4 +203,4 @@
   `YLT_XIANGQI_DEMO_VIEW=black|red`（配合 `YLT_BOARD_DEMO_ROOM=spectator`：临时覆盖观战视角，不写配置）、
   `YLT_BOARD_DEMO_ROOM=1`（演示一个 4 人房：房主视角；`=spectator` 为观战视角；都不联网）、
   `YLT_BOARD_DEMO_PAUSE=1`（固定显示「对局暂停 / 正在重连」状态，仅截图用）
-- 分层与踩坑：[AGENTS.md](../../AGENTS.md) 的 2.18 节
+- 分层与踩坑：[docs/dev/pitfalls.md](../../docs/dev/pitfalls.md)

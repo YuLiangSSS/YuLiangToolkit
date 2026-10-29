@@ -10,7 +10,7 @@ namespace YuLiangToolkit.Tools.OsuMania;
 ///
 /// <para><b>为什么滑块相关的属性写成 <c>SetAndSave</c></b>：绑在滑块旁边的数值文本要“拖动时实时变化”，
 /// 自动属性只保证最终会存盘、不发界面通知；写成 <c>SetAndSave</c>（= 基类 <c>Set</c>）才能让同一属性的
-/// 其它绑定跟着刷新（见 AGENTS.md 2.4 / 2.5）。</para>
+/// 其它绑定跟着刷新（见 AGENTS.md）。</para>
 /// </summary>
 public sealed class OsuKeyConverterConfig : ToolConfig
 {

@@ -58,4 +58,4 @@
 
 - 项目：`src/YuLiangToolkit.Tools.MapDownloader/`
 - 改写自原版时**故意改掉的三处**（先下 `.part` 再改名、取消不抛异常、跳过单独统计）与踩坑：
-  [AGENTS.md](../../AGENTS.md) 的 2.13 节
+  [docs/dev/pitfalls.md](../../docs/dev/pitfalls.md)

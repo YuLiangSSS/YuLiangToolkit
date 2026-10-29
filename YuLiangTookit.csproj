@@ -17,7 +17,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- 托盘图标素材：构建 / 发布都跟着 exe 走（Assets 目录不放任何运行时用户数据，见 AGENTS.md 第 3 节） -->
+    <!-- 托盘图标素材：构建 / 发布都跟着 exe 走（Assets 目录不放任何运行时用户数据，见 AGENTS.md） -->
     <None Update="Assets\app.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 

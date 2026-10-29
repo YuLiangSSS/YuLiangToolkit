@@ -7,7 +7,7 @@ namespace YuLiangToolkit.Tools.PictureViewer;
 /// 「图片连续阅读器」的设置 → <c>Config\picture-viewer\config.json</c>。
 ///
 /// <para>都是「看一眼就懂」的项：滚动方式、缩放、拖动惯性、滚轮一格多远、中键单点 / 按住的判定、
-/// 离屏图片要不要自动释放、上次打开的文件夹。改一下就自动落盘，没有保存按钮（见 AGENTS.md 2.4）。</para>
+/// 离屏图片要不要自动释放、上次打开的文件夹。改一下就自动落盘，没有保存按钮（见 AGENTS.md）。</para>
 /// </summary>
 public sealed class PictureViewerConfig : ToolConfig
 {

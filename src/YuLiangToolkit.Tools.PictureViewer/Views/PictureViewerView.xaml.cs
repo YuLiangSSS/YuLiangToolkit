@@ -27,7 +27,7 @@ namespace YuLiangToolkit.Tools.PictureViewer.Views;
 /// <para><b>「阅读偏移」</b>：0 = 第一张图开头，最大值 = 最后一张图末尾。日式右→左模式下图片是
 /// **物理反着摆**的（第一张在最右边），ScrollViewer 的物理偏移 0 在最左边 —— 两者靠
 /// <see cref="PictureScrollMath.ReadingOffset"/> / <see cref="PictureScrollMath.PhysicalHorizontalOffset"/> 换算，
-/// 所以滚轮 / 拖拽 / 中键三种方式在三种模式里只有一套逻辑（见 AGENTS.md 2.19）。</para>
+/// 所以滚轮 / 拖拽 / 中键三种方式在三种模式里只有一套逻辑（见 docs/dev/pitfalls.md）。</para>
 /// </summary>
 public partial class PictureViewerView : UserControl
 {
@@ -313,7 +313,7 @@ public partial class PictureViewerView : UserControl
         if (Vm is not { } vm) return;
 
         // 重建途中又来了请求（连着换方向 / 换文件夹）：记下来，等这次建完补跑一次。
-        // 静默丢掉会让「长带停在旧方向、配置已经是新方向」——之后所有滚动都按新轴算旧布局（见 AGENTS 2.19）。
+        // 静默丢掉会让「长带停在旧方向、配置已经是新方向」——之后所有滚动都按新轴算旧布局（见 docs/dev/pitfalls.md）。
         if (_rebuilding)
         {
             _rebuildQueued = true;

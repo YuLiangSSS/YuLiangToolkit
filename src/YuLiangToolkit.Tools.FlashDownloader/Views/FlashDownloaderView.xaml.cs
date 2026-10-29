@@ -28,7 +28,7 @@ public partial class FlashDownloaderView : UserControl
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         // 验证用：YLT_FLASH_SELECT=<文件名或文件夹名> 时启动即选中那一行
-        // （截图检查“选中高亮”用；也方便以后写 UI 自动化脚本，见 AGENTS.md 第 6 节）
+        // （截图检查“选中高亮”用；也方便以后写 UI 自动化脚本，见 AGENTS.md）
         var wanted = Environment.GetEnvironmentVariable("YLT_FLASH_SELECT");
         if (!string.IsNullOrWhiteSpace(wanted) && ViewModel is { } vm)
         {

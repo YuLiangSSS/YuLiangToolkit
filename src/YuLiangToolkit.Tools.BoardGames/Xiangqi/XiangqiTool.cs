@@ -8,7 +8,7 @@ namespace YuLiangToolkit.Tools.BoardGames.Xiangqi;
 /// <summary>
 /// 「联机象棋」功能入口：主机开 TCP 房间 / 客户端填地址加入，也可以同机双人。
 /// 支持完整中国象棋规则、自由摆棋 + 一键默认开局、6 种让子、让先 0~5 步、走法提示、自动翻转、
-/// 中文记谱、悔棋 / 认输 / 求和 / 再来一局。归入「棋牌」类别（见 AGENTS.md 的 2.15 / 2.18）。
+/// 中文记谱、悔棋 / 认输 / 求和 / 再来一局。归入「棋牌」类别（见 docs/dev/pitfalls.md）。
 /// </summary>
 public class XiangqiTool : ITool
 {

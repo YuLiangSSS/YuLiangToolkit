@@ -15,7 +15,7 @@ namespace YuLiangToolkit.FrameworkSelfCheck;
 ///
 /// <para>界面里的鼠标事件本身没法无头跑（要真的按鼠标），所以把「按了之后该滚多少」抽成
 /// <see cref="PictureScrollMath"/> / <see cref="PictureAnchorMachine"/> 在这里逐条钉死；
-/// 三种滚动方式的真实版式用截图 + <c>YLT_PICTURE_MEASURE</c> 核对（见 AGENTS.md 2.19）。</para>
+/// 三种滚动方式的真实版式用截图 + <c>YLT_PICTURE_MEASURE</c> 核对（见 docs/dev/pitfalls.md）。</para>
 /// </summary>
 internal static class PictureViewerChecks
 {

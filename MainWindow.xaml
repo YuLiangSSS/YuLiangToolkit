@@ -177,7 +177,7 @@
 
         <!-- 鼠标粒子覆盖层：铺满整个窗口（含标题栏 / 状态栏），不吃鼠标事件。
              IsActive 绑主页设置里的 ParticlesEnabled（默认开，存 Config\shell\config.json）；
-             自定义颜色：总开关 + 两种颜色 + 各自是否启用（只启用一种 = 单色粒子），见 2.16。 -->
+             自定义颜色：总开关 + 两种颜色 + 各自是否启用（只启用一种 = 单色粒子），见 docs/dev/pitfalls.md。 -->
         <core:ParticleOverlay Grid.RowSpan="4" Panel.ZIndex="900"
                               IsHitTestVisible="False"
                               IsActive="{Binding ParticlesEnabled}"

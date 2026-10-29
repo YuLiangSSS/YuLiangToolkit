@@ -78,5 +78,5 @@ Data\flash-downloader\
 ## 相关代码
 
 - 项目：`src/YuLiangToolkit.Tools.FlashDownloader/`
-- 分层（纯逻辑 / 引擎 / 本地服务器 / 界面）、自动下载的原理、命名规则：[AGENTS.md](../../AGENTS.md) 的 2.11 节
-- 五个站点的抓取规则与踩坑：同文件第 5 节「网络 / 本地服务器」与「ArmorGames / Kongregate」两段
+- 分层（纯逻辑 / 引擎 / 本地服务器 / 界面）、自动下载原理、命名规则：源码 XML 注释；踩坑：[docs/dev/pitfalls.md](../../docs/dev/pitfalls.md)
+- 五个站点的抓取规则与踩坑：[docs/dev/pitfalls.md](../../docs/dev/pitfalls.md) 的「网络与 Flash 站点解析」一节

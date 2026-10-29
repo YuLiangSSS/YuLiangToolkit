@@ -85,5 +85,5 @@
 ## 相关代码
 
 - 项目：`src/YuLiangToolkit.Tools.MediaPlayer/`
-- 分层、`IMediaPlayback` 抽象、以及图标 / `MediaElement` 的踩坑：[AGENTS.md](../../AGENTS.md) 的 2.14 节
+- 分层与 `IMediaPlayback` 抽象：源码 XML 注释；图标 / `MediaElement` 的踩坑：[docs/dev/pitfalls.md](../../docs/dev/pitfalls.md)
 - 纯逻辑（自检直接断言）：`MediaTypes` / `MediaTime` / `MediaScanner` / `PlaylistMerger` / `PlayQueue`

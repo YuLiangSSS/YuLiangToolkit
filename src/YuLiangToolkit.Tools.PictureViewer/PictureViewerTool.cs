@@ -12,7 +12,7 @@ namespace YuLiangToolkit.Tools.PictureViewer;
 /// 横向左→右（中式漫画）、横向右→左（日式漫画）。滚轮 / 左键拖拽 / 中键锚点（单点留锚点、按住松手消失）
 /// 都能连续移动。</para>
 ///
-/// <para>分层与实现细节见根目录 <c>AGENTS.md</c> 的 2.19 节。</para>
+/// <para>分层与实现细节见 <c>docs/dev/pitfalls.md</c>。</para>
 /// </summary>
 public class PictureViewerTool : ITool
 {

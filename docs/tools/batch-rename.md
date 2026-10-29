@@ -67,4 +67,4 @@
 
 - 项目：`src/YuLiangToolkit.Tools.BatchRename/`
 - 分工（`RenameEngine` 算名字 → `RenameExecutor` 动手改 → `RenameHistory` 流水账）与冲突判定的坑：
-  [AGENTS.md](../../AGENTS.md) 的 2.10 节
+  [docs/dev/pitfalls.md](../../docs/dev/pitfalls.md)

@@ -12,7 +12,7 @@ namespace YuLiangToolkit.FrameworkSelfCheck;
 /// 把 ViewModel 的播放、快进快退、右键上一首下一首、播完自动接下一首、记住上次列表整条链路无头跑一遍。
 ///
 /// <para>⚠ 这里**不放真音频**：<c>MediaElement</c> 要真的解码，无头跑既慢又依赖本机编解码器。
-/// 播放器被抽成 <see cref="IMediaPlayback"/> 就是为这个（见 AGENTS.md 2.14）。</para>
+/// 播放器被抽成 <see cref="IMediaPlayback"/> 就是为这个（见 docs/dev/pitfalls.md）。</para>
 /// </summary>
 internal static class MediaPlayerChecks
 {

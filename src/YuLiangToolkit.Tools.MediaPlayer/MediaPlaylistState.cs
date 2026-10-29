@@ -2,7 +2,7 @@ namespace YuLiangToolkit.Tools.MediaPlayer;
 
 /// <summary>
 /// 播放列表的「记住上次」快照 → <c>Data\media-player\playlist.json</c>
-/// （走 <c>JsonFileStore</c>：原子写 + 损坏自动备份并回退，见 AGENTS.md 2.3）。
+/// （走 <c>JsonFileStore</c>：原子写 + 损坏自动备份并回退，见 AGENTS.md）。
 ///
 /// <para>只存路径与位置，不存别的：下次打开时文件不在了就顺手丢掉（列表里不会留死条目）。</para>
 /// </summary>

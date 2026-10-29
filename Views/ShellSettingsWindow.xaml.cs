@@ -13,7 +13,7 @@ namespace YuLiangToolkit.App.Views;
 /// <para>目前四组设置：</para>
 /// <list type="bullet">
 ///   <item>「界面风格」：默认（深色）/ 液态玻璃 二选一（绑定 <c>MainViewModel.DefaultThemeSelected</c> /
-///   <c>LiquidGlassThemeSelected</c>）；点一下由 <c>ThemeManager.Apply</c> 立即换肤，本窗口自己也跟着变（见 AGENTS 2.20）；</item>
+///   <c>LiquidGlassThemeSelected</c>）；点一下由 <c>ThemeManager.Apply</c> 立即换肤，本窗口自己也跟着变（见 docs/dev/pitfalls.md）；</item>
 ///   <item>「外观」：鼠标粒子效果开关（绑定 <c>MainViewModel.ParticlesEnabled</c>）；</item>
 ///   <item>「粒子颜色」：启用自定义颜色 + 两种颜色（可分别启用；只启用一种 = 单色粒子），
 ///   颜色用 <see cref="ColorPickerButton"/> 选；</item>

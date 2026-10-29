@@ -16,7 +16,7 @@ public sealed record PicturePagedLayout(
 
 /// <summary>
 /// 翻页 / 单张模式的**纯逻辑**：页号夹取、双页配对、翻页步进、缩放后的槽位排版、平移夹取。
-/// 界面只负责把结果画出来，自检可以直接断言（见 AGENTS.md 2.19）。
+/// 界面只负责把结果画出来，自检可以直接断言（见 docs/dev/pitfalls.md）。
 ///
 /// <para><b>双页配对</b>（和用户描述一致：一次翻一“页”，左右会重叠一张）：</para>
 /// <list type="bullet">

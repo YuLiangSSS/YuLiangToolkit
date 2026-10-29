@@ -198,7 +198,7 @@
 
             <!-- 开发提示 -->
             <TextBlock FontSize="11" Foreground="{DynamicResource FaintTextBrush}" Margin="0,6,0,0" TextWrapping="Wrap"
-                       Text="开发提示：新增工具只需新建一个实现 ITool 的类（或把 dll 放进 plugins 目录），主程序会自动发现；给它加上 Tags 标签就能被搜索命中，再加上 CategoryPath（例如 new[] { &quot;音游工具&quot; }）就会自动收进对应类别页。详见 AGENTS.md 的 2.7 / 2.8 节。" />
+                       Text="开发提示：新增工具只需新建一个实现 ITool 的类（或把 dll 放进 plugins 目录），主程序会自动发现；给它加上 Tags 标签就能被搜索命中，再加上 CategoryPath（例如 new[] { &quot;音游工具&quot; }）就会自动收进对应类别页。详见 AGENTS.md。" />
         </StackPanel>
     </ScrollViewer>
 </UserControl>

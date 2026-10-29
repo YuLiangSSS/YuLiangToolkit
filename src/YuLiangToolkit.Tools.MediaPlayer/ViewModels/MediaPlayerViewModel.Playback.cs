@@ -4,7 +4,7 @@ namespace YuLiangToolkit.Tools.MediaPlayer.ViewModels;
 /// 播放控制那一半：播放 / 暂停 / 停止 / 快进快退 / 上一首下一首 / 播完自动接下一首。
 ///
 /// <para>所有声画操作都转发给 <see cref="IMediaPlayback"/>（界面里是 <c>MediaElement</c>，
-/// 自检里是假播放器），所以这里没有一行 WPF 代码，可以无头跑（见 AGENTS.md 2.14）。</para>
+/// 自检里是假播放器），所以这里没有一行 WPF 代码，可以无头跑（见 docs/dev/pitfalls.md）。</para>
 /// </summary>
 public sealed partial class MediaPlayerViewModel
 {

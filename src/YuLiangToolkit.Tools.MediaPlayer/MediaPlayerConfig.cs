@@ -10,7 +10,7 @@ namespace YuLiangToolkit.Tools.MediaPlayer;
 /// **播放**（音量、播放顺序、快进快退步长）、**恢复**（记住上次的列表与位置）。</para>
 ///
 /// <para>⚠ 「播放顺序」这类枚举按字符串存（<c>"RepeatOne"</c>），加减成员不会让老配置错位；
-/// 带 setter 的计算属性都标了 <c>[JsonIgnore]</c>（见 AGENTS.md 2.4）。</para>
+/// 带 setter 的计算属性都标了 <c>[JsonIgnore]</c>（见 AGENTS.md）。</para>
 /// </summary>
 public sealed class MediaPlayerConfig : ToolConfig
 {

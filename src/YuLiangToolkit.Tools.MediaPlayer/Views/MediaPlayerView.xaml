@@ -4,10 +4,10 @@
              xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
              AllowDrop="True">
 
-    <!-- 「视频 / 音乐播放器」的界面。样式全部来自 App.xaml（见 AGENTS.md 2.9）；
+    <!-- 「视频 / 音乐播放器」的界面。样式全部来自 App.xaml（见 AGENTS.md）；
          只有播放控制按钮是这里自定义的（圆形无边框），因为全局按钮样式是「带边框的方块」。
          布局照参考图：中间播放区 + 进度条 + 一排控制按钮，右边是播放列表；
-         「设置」是同一个页面里的覆盖面板（盖住整列，不弹子窗口，见 2.14 节的说明）。
+         「设置」是同一个页面里的覆盖面板（盖住整列，不弹子窗口，见 docs/dev/pitfalls.md 的说明）。
 
          ⚠ 播放控制按钮里不要用 ⏪ ⏩ ⏹ 🔁 这类字符：本机字体没有这些码位，
          会退化成「带方框的豆腐块」（截图核对时才发现）。这里一律用矢量 Path，

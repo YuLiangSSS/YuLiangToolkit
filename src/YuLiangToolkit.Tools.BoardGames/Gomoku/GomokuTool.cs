@@ -8,7 +8,7 @@ namespace YuLiangToolkit.Tools.BoardGames.Gomoku;
 /// <summary>
 /// 「联机五子棋」功能入口：主机开一个 TCP 端口等人连，客户端填地址加入；
 /// 也能同机双人下。可选黑棋禁手（三三 / 四四 / 长连）、悔棋、求和、认输、再来一局、棋谱。
-/// 归入「棋牌」类别（见 AGENTS.md 的 2.15 / 2.18）。
+/// 归入「棋牌」类别（见 docs/dev/pitfalls.md）。
 /// </summary>
 public class GomokuTool : ITool
 {

@@ -3,7 +3,7 @@ using YuLiangToolkit.Core.Mvvm;
 namespace YuLiangToolkit.Tools.MapDownloader.Core;
 
 /// <summary>
-/// 界面下拉框里的选项（值 ↔ 中文标签分离：配置文件里存的是干净的值，见 AGENTS.md 2.4）。
+/// 界面下拉框里的选项（值 ↔ 中文标签分离：配置文件里存的是干净的值，见 AGENTS.md）。
 ///
 /// <para>值全部用 <b>字符串</b>：空串 = 不限，其余就是 osu! API 认的那个值。
 /// 这样配置类里不用为"没选"再造一个枚举，老配置文件加字段也不会错位。</para>

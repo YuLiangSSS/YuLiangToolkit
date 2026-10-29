@@ -9,7 +9,7 @@ namespace YuLiangToolkit.Tools.OsuMania.Views;
 ///
 /// <para>ListBox 会在右边给滚动条预留一条（无论此刻可见不可见），而表头写在 ListBox 模板里、
 /// 拿的是整宽；不补这一列的话表头会比数据行宽一条，右边几列就错开了。
-/// 做法与「框架示例 / osu! 下图器」完全一致（见 AGENTS.md 2.9）。</para>
+/// 做法与「框架示例 / osu! 下图器」完全一致（见 AGENTS.md）。</para>
 /// </summary>
 public sealed class ScrollBarWidthConverter : IValueConverter
 {

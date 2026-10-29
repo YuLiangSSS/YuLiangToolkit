@@ -59,8 +59,8 @@ dotnet run --project YuLiangTookit.csproj
 ## 文档
 
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
-- 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：所有「轮子」（工具契约、MVVM 基类、Data/Config 配置框架、
-  FFmpeg 封装、UI 样式清单）的用途 + 签名 + 一行用法，加上新增功能的完整步骤和踩过的坑；
+- 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；
+  踩坑细节按需查 **[docs/dev/pitfalls.md](docs/dev/pitfalls.md)**（只在排错 / 改危险代码时读）；
 - ✅ **自检**：1816 项行为逐条真跑（退出码 0 = 全通过），改了行为就该顺手跑一次：
 
   ```powershell
@@ -83,12 +83,13 @@ dotnet run --project YuLiangTookit.csproj
 YuLiangTookit.csproj                     # 主程序（WPF 壳：自定义标题栏、主页/类别页/面包屑、侧边栏导航、两套主题）
 Views/Themes/                            # 主题 token：默认深色 / 液态玻璃 + 运行时换肤 ThemeManager（主页设置里切换）
 build.ps1 / publish.ps1                  # 一键构建 / 一键发布（发布到 dist\YuLiangToolkit\）
-AGENTS.md                               # 轮子速查 / 开发约定（改代码先读这个）
+AGENTS.md                               # 精简开发入口地图（流程 / 硬性规则 / 找东西；细节按需查 docs/dev/pitfalls.md）
 SingleInstance.cs                       # 单实例唤醒（Mutex + 命名管道：再启动一次只唤醒已开窗口）
 README.md                               # 本文件：工具一览 + 快速开始
 LICENSE                                 # Unlicense（随便用，不用署名）
 THIRD-PARTY-NOTICES.md                  # 第三方组件的 MIT 许可（OsuParsers / ppy 数学工具）
 docs/                                   # 每个工具一页的详细说明（见 docs/README.md）
+docs/dev/pitfalls.md                    # 踩坑清单（按需读）
 Data/  Config/                           # 只有说明文件【运行时目录在 exe 旁边】
 src/
 ├── YuLiangToolkit.Core/                 # 核心库：工具契约 / 多级分类目录树 / MVVM 基类 / 存储 / 配置 / FFmpeg 封装 / 粒子 / 通用 TCP 房间
@@ -113,7 +114,7 @@ tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（1816 �
 Data / Config 的路径与持久化全由框架接管。也可以把编译好的 dll 放进程序目录的 `plugins\`（外部插件，不用改主程序）。
 
 最省事的做法是复制 `src\YuLiangToolkit.Tools.Sample` 当模板，完整步骤见
-[AGENTS.md 第 4 节](AGENTS.md) 与 [框架示例](docs/tools/sample-framework.md)。
+[AGENTS.md](AGENTS.md) 与 [框架示例](docs/tools/sample-framework.md)。
 
 ## 许可证
 

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- 「Flash 下载器」功能：4399 / 7k7k / 17yy 小游戏下载 + 本地服务器游玩 + 关联文件下载。
-       细节见根目录 AGENTS.md 的 2.11 节。模板资源（View/Web/*）以嵌入资源形式随 dll 走。 -->
+       细节见 docs/dev/pitfalls.md。模板资源（View/Web/*）以嵌入资源形式随 dll 走。 -->
   <PropertyGroup>
     <TargetFramework>net9.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>

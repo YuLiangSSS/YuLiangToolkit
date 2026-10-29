@@ -1,4 +1,4 @@
-// Data / Config 轮子自检：把 AGENTS.md 里承诺的行为逐条真跑一遍。
+// Data / Config 轮子自检：把项目约定里承诺的行为逐条真跑一遍。
 // 运行： dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
 // （默认在临时目录里造数据根，不碰仓库的 Data/Config；退出码 0 = 全部通过）
 using System.IO;
@@ -222,7 +222,7 @@ Check("枚举以字符串（C# 原名）保存并读回",
     && JsonFileStore.Read<ShellConfig>(shellStore.FilePath)?.SortMode == ToolSortMode.RecentlyUsed,
     File.ReadAllText(shellStore.FilePath).Replace(Environment.NewLine, " "));
 
-// ---------- 17.1 关闭按钮行为（主页设置「关闭应用 / 最小化到托盘」，见 2.16） ----------
+// ---------- 17.1 关闭按钮行为（主页设置「关闭应用 / 最小化到托盘」，见 docs/dev/pitfalls.md） ----------
 Check("关闭行为默认：点 × 关闭应用", new ShellConfig().CloseAction == ShellCloseAction.Exit);
 
 shell.CloseAction = ShellCloseAction.MinimizeToTray;
@@ -241,7 +241,7 @@ Thread.Sleep(900);
 Check("关闭行为改回「关闭应用」后落盘",
     JsonFileStore.Read<ShellConfig>(shellStore.FilePath)?.CloseAction == ShellCloseAction.Exit);
 
-// ---------- 17.2 粒子颜色（主页设置「粒子颜色」，见 2.16） ----------
+// ---------- 17.2 粒子颜色（主页设置「粒子颜色」，见 docs/dev/pitfalls.md） ----------
 var defaultShell = new ShellConfig();
 Check("粒子颜色默认：自定义关、两种颜色都启用且是默认值",
     !defaultShell.ParticleCustomColors
@@ -266,7 +266,7 @@ Check("粒子颜色设置自动落盘并读回（颜色按 #RRGGBB 存）",
     && File.ReadAllText(shellStore.FilePath).Contains("\"#FF5A5A\""),
     JsonFileStore.Serialize(savedColors).Replace(Environment.NewLine, " "));
 
-// ---------- 17.3 最大化窗口拖标题栏 → 还原位置（纯逻辑，见 AGENTS.md 2.7） ----------
+// ---------- 17.3 最大化窗口拖标题栏 → 还原位置（纯逻辑，见 AGENTS.md） ----------
 // 场景：1920x1032 的工作区里，1280x820 的窗口最大化后（实际 1920 宽），按住标题栏某个点往外拖。
 var dragArea = new Rect(0, 0, 1920, 1032);
 
@@ -827,7 +827,7 @@ catch (Exception ex)
         $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
 }
 
-// ---------- osu!mania 三件套（解析桥 / 转 K / 转 LN / 等级 / 批量，见 2.17） ----------
+// ---------- osu!mania 三件套（解析桥 / 转 K / 转 LN / 等级 / 批量，见 docs/dev/pitfalls.md） ----------
 try
 {
     OsuManiaChecks.Run(
@@ -840,7 +840,7 @@ catch (Exception ex)
         $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
 }
 
-// ---------- 棋牌：五子棋 / 象棋 / 房间网络层（见 AGENTS.md 2.18） ----------
+// ---------- 棋牌：五子棋 / 象棋 / 房间网络层（见 docs/dev/pitfalls.md） ----------
 try
 {
     BoardGamesChecks.Run(
@@ -880,7 +880,7 @@ catch (Exception ex)
 }
 
 // ---------- 完整性自检（全屏藏任务栏的前置条件） ----------
-// 只读：读自己的令牌 + FindWindow，**不隐藏任何窗口**（见 AGENTS.md 2.14）。
+// 只读：读自己的令牌 + FindWindow，**不隐藏任何窗口**（见 docs/dev/pitfalls.md）。
 // 这块是 v0.9.4 加的：全屏藏不住任务栏时，先看启动时那行「完整性自检」，分清是权限问题还是代码问题。
 Check("[完整性] RID 0x0000 判为 Untrusted", IntegrityCheck.Classify(0x0000) == IntegrityLevel.Untrusted);
 Check("[完整性] RID 0x1000 判为 Low", IntegrityCheck.Classify(0x1000) == IntegrityLevel.Low);

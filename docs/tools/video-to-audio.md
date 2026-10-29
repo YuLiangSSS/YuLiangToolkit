@@ -52,5 +52,5 @@
 ## 相关代码
 
 - 项目：`src/YuLiangToolkit.Tools.VideoToAudio/`
-- 实现与踩坑：[AGENTS.md](../../AGENTS.md) 的 2.6 节（FFmpeg 封装）与第 7 节（功能状态表）
+- 实现见源码注释；踩坑：[docs/dev/pitfalls.md](../../docs/dev/pitfalls.md)
 - 旧配置迁移的写法：`VideoToAudioConfig.FromLegacySettings()` + `LegacyAppSettings.cs`

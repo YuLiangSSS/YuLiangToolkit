@@ -25,7 +25,7 @@ public enum MediaIncludeMode
 ///
 /// <para>⚠ 这里只负责“按扩展名归类”，**不保证系统真能播**：WPF 的 <c>MediaElement</c> 走 Windows
 /// Media Foundation，能不能解码取决于本机装了什么编解码器（flac / mkv 之类在老系统上就可能失败）。
-/// 播放失败会由 <c>MediaElement.MediaFailed</c> 报到界面上（见 2.14 节）。</para>
+/// 播放失败会由 <c>MediaElement.MediaFailed</c> 报到界面上（见 docs/dev/pitfalls.md）。</para>
 /// </summary>
 public static class MediaTypes
 {

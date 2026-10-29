@@ -3,7 +3,7 @@ using System.Windows;
 namespace YuLiangToolkit.Core.Services;
 
 /// <summary>
-/// 最大化窗口「按住标题栏拖出来」的还原位置计算（纯逻辑，自检直接断言，见 AGENTS.md 2.7）。
+/// 最大化窗口「按住标题栏拖出来」的还原位置计算（纯逻辑，自检直接断言，见 AGENTS.md）。
 ///
 /// <para>手感和普通 Windows 窗口一致：拖动开始那一刻窗口先按**最大化之前的尺寸**还原，
 /// 光标抓住标题栏上哪个点、还原后还落在哪个点 —— 水平方向按「抓点在标题栏宽度里的比例」换算，

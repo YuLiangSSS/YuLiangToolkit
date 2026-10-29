@@ -18,7 +18,7 @@ namespace YuLiangToolkit.Tools.MediaPlayer.ViewModels;
 /// </list>
 ///
 /// <para>配置在 <c>Config\media-player\config.json</c>，列表快照在 <c>Data\media-player\playlist.json</c>。
-/// 细节与踩过的坑见 AGENTS.md 2.14 节。</para>
+/// 细节与踩过的坑见 docs/dev/pitfalls.md。</para>
 /// </summary>
 public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroundTool
 {
@@ -322,7 +322,7 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
 
     /// <summary>
     /// 播放条上那个模式按钮的两个字（循环 / 单曲 / 随机）。
-    /// 用文字而不是 🔁🔂🔀：那几个 emoji 在本机字体会变成豆腐块（见 2.14）。
+    /// 用文字而不是 🔁🔂🔀：那几个 emoji 在本机字体会变成豆腐块（见 docs/dev/pitfalls.md）。
     /// </summary>
     public string ModeShortText => PlayMode switch
     {
@@ -351,7 +351,7 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
         }
     }
 
-    // ---------- 下拉框桥接（值 ↔ 显示文本分离，见 2.4） ----------
+    // ---------- 下拉框桥接（值 ↔ 显示文本分离，见 AGENTS.md） ----------
 
     public IReadOnlyList<OptionItem<PlayOrderMode>> PlayModeOptions { get; } = OptionItem.From(
         (PlayOrderMode.LoopAll, "列表循环"),
@@ -478,7 +478,7 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
 
     /// <summary>
     /// 设置按钮的图标：Segoe MDL2 Assets 的「齿轮」（E713）；打开后变成「返回箭头」（E72B）。
-    /// ⚠ 别换成 ⚙ 这类字符：本机字体不一定有，界面上会变成豆腐块（见 2.14 节的踩坑）。
+    /// ⚠ 别换成 ⚙ 这类字符：本机字体不一定有，界面上会变成豆腐块（见 docs/dev/pitfalls.md 的踩坑）。
     /// </summary>
     public string SettingsGlyph => IsSettingsVisible ? "\uE72B" : "\uE713";
 

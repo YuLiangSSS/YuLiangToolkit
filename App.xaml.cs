@@ -172,7 +172,7 @@ public partial class App : Application
     /// <summary>
     /// 第二实例发来的命令行：先把窗口从托盘 / 最小化恢复并置前；如果带了一张受支持的图片，
     /// 就打开「图片连续阅读器」——新 ViewModel 会取走 <see cref="PictureFilePathLaunch.PendingImagePath"/>，
-    /// 加载那张图所在文件夹并定位到它（见 AGENTS 2.19）。
+    /// 加载那张图所在文件夹并定位到它（见 docs/dev/pitfalls.md）。
     /// </summary>
     private static void HandleSecondInstance(
         string[] args, MainWindow window, MainViewModel viewModel, IReadOnlyList<ITool> tools)

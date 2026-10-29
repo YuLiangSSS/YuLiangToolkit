@@ -67,7 +67,7 @@
                         </Grid>
                     </Border>
 
-                    <!-- 文件列表：表头写在 ListBox 模板里，与数据行同列容器（AGENTS.md 2.9） -->
+                    <!-- 文件列表：表头写在 ListBox 模板里，与数据行同列容器（AGENTS.md） -->
                     <ListBox ItemsSource="{Binding Files}" Height="190" Margin="8,10,8,0"
                              core:ScrollChaining.Enabled="True"
                              ToolTip="列表里的文件就是这次要转换的全部文件">

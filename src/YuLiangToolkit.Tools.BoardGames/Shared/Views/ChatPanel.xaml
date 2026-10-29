@@ -15,7 +15,7 @@
                         Command="{Binding ClearChatCommand}" />
             </Grid>
 
-            <!-- 内层列表挂滚动链：滚到头时把滚轮交给外层页面（见 AGENTS.md 2.9.1） -->
+            <!-- 内层列表挂滚动链：滚到头时把滚轮交给外层页面（见 AGENTS.md） -->
             <ListBox ItemsSource="{Binding ChatItems}" Height="168" Margin="0,8,0,0"
                      Background="Transparent" BorderThickness="0" Focusable="False"
                      core:ScrollChaining.Enabled="True"

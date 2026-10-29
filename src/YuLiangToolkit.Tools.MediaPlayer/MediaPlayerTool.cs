@@ -12,7 +12,7 @@ namespace YuLiangToolkit.Tools.MediaPlayer;
 /// 列表循环 / 单曲循环 / 随机播放、可调步长的快进快退（**左键快进快退、右键上一首下一首**）、
 /// 音量、记住上次的列表与位置。</para>
 ///
-/// <para>分层与踩过的坑见根目录 <c>AGENTS.md</c> 的 2.14 节。</para>
+/// <para>分层与踩过的坑见 <c>docs/dev/pitfalls.md</c>。</para>
 /// </summary>
 public class MediaPlayerTool : ITool
 {

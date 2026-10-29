@@ -24,7 +24,7 @@ public class OsuKeyConverterTool : ITool
 
     public string Category => "音游工具";
 
-    /// <summary>收进「音游工具」类别页（外壳按 CategoryPath 建目录树，见 AGENTS.md 第 2 节）。</summary>
+    /// <summary>收进「音游工具」类别页（外壳按 CategoryPath 建目录树，见 AGENTS.md）。</summary>
     public IReadOnlyList<string> CategoryPath => new[] { "音游工具" };
 
     public IReadOnlyList<string> Tags => new[]

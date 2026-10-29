@@ -2,7 +2,7 @@ namespace YuLiangToolkit.Tools.PictureViewer;
 
 /// <summary>
 /// 「阅读方式」——现在共 6 种，分两大类（以后还会加，所以界面上不再把每种都摆到工具条里，
-/// 工具条只留一个「当前方式」按钮，切换统一放到设置面板，见 AGENTS.md 2.19）：
+/// 工具条只留一个「当前方式」按钮，切换统一放到设置面板，见 docs/dev/pitfalls.md）：
 ///
 /// <para><b>连续滚动</b>（图片首尾相接成一条长带，滚轮连续滚）：</para>
 /// <list type="bullet">
