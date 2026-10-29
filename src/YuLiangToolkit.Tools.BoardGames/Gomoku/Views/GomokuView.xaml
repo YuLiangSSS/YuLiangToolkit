@@ -84,19 +84,19 @@
                         <WrapPanel Orientation="Horizontal" Margin="0,12,0,0"
                                    Visibility="{Binding ShowPlayerActions, Converter={StaticResource BoolToVis}}">
                             <Button Content="悔棋" Style="{StaticResource SecondaryButtonStyle}"
-                                    Margin="0,4,8,0"
+                                    Margin="0,0,8,8"
                                     Command="{Binding UndoCommand}" IsEnabled="{Binding CanUndo}"
                                     ToolTip="同机双人直接撤；联机需要对手/房主同意" />
                             <Button Content="求和" Style="{StaticResource SecondaryButtonStyle}"
-                                    Margin="0,4,8,0"
+                                    Margin="0,0,8,8"
                                     Command="{Binding OfferDrawCommand}" IsEnabled="{Binding CanOfferDraw}"
                                     ToolTip="联机时请对手同意和棋" />
                             <Button Content="{Binding ResignButtonText}" Style="{StaticResource SecondaryButtonStyle}"
-                                    Margin="0,4,8,0" MinWidth="72"
+                                    Margin="0,0,8,8" MinWidth="72"
                                     Command="{Binding ResignCommand}" IsEnabled="{Binding CanResign}"
                                     ToolTip="联机对局进行中要点两下确认，防手滑" />
                             <Button Content="请求再来一局" Style="{StaticResource SecondaryButtonStyle}"
-                                    Margin="0,4,8,0"
+                                    Margin="0,0,8,8"
                                     Command="{Binding RematchCommand}" IsEnabled="{Binding CanRematch}"
                                     Visibility="{Binding ShowRematchButton, Converter={StaticResource BoolToVis}}"
                                     ToolTip="联机客户端玩家：请求房主开始下一局；同机双人：直接开新局" />

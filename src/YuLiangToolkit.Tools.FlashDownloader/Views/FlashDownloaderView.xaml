@@ -56,22 +56,23 @@
                          两个按钮之后就会发生），WrapPanel 会自动折到第二行。 -->
                     <WrapPanel Margin="0,12,0,0">
                         <Button x:Name="DownloadAndPlayButton" Content="下载并游玩" Style="{StaticResource PrimaryButtonStyle}"
+                                Margin="0,0,8,8"
                                 Command="{Binding DownloadAndPlayCommand}"
                                 IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
-                        <Button x:Name="DownloadButton" Content="下载" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                        <Button x:Name="DownloadButton" Content="下载" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,16,8"
                                 Command="{Binding DownloadCommand}"
                                 IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
-                        <Button Content="4399" Style="{StaticResource SecondaryButtonStyle}" Margin="24,0,0,0"
+                        <Button Content="4399" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                 Command="{Binding OpenSiteCommand}" CommandParameter="https://www.4399.com/" />
-                        <Button Content="7k7k" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                        <Button Content="7k7k" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                 Command="{Binding OpenSiteCommand}" CommandParameter="https://www.7k7k.com/" />
-                        <Button Content="17yy" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                        <Button Content="17yy" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                 Command="{Binding OpenSiteCommand}" CommandParameter="http://www.17yy.com/" />
-                        <Button Content="ArmorGames" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                        <Button Content="ArmorGames" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                 Command="{Binding OpenSiteCommand}" CommandParameter="https://armorgames.com/" />
-                        <Button Content="Kongregate" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                        <Button Content="Kongregate" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                 Command="{Binding OpenSiteCommand}" CommandParameter="https://www.kongregate.com/" />
-                        <Button Content="打开游戏目录" Style="{StaticResource SecondaryButtonStyle}" Margin="24,0,0,0"
+                        <Button Content="打开游戏目录" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                 Command="{Binding OpenGamesFolderCommand}" />
                     </WrapPanel>
 
@@ -213,24 +214,24 @@
                                    Margin="20,8,20,0" Foreground="{DynamicResource TextSecondaryBrush}"
                                    Visibility="{Binding GamesEmptyHint, Converter={StaticResource EmptyToVisInverse}}" />
 
-                        <!-- 操作按钮：分两行，行距 8（以前挤在一起了） -->
+                        <!-- 操作按钮：分两行，行距 8（以前挤在一起了）；按钮自己带下边距，折行时不会贴住 -->
                         <StackPanel Margin="18,12,18,0">
                             <WrapPanel>
                                 <Button x:Name="PlayButton" Content="游玩" Style="{StaticResource PrimaryButtonStyle}"
-                                        Command="{Binding PlayCommand}" />
-                                <Button Content="装入文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                        Margin="0,0,8,8" Command="{Binding PlayCommand}" />
+                                <Button Content="装入文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                         Command="{Binding MoveIntoFolderCommand}"
                                         ToolTip="把散放的 swf 收进「游戏名_?123s」文件夹，多文件游戏必须这么做" />
-                                <Button Content="改为 htm 打开" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                <Button Content="改为 htm 打开" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                         Command="{Binding ConvertToHtmCommand}"
                                         ToolTip="只有在本地 swf 实在打不开时才需要（要浏览器支持 Flash）" />
                             </WrapPanel>
-                            <WrapPanel Margin="0,8,0,0">
-                                <Button Content="打开游戏页" Style="{StaticResource SecondaryButtonStyle}"
+                            <WrapPanel>
+                                <Button Content="打开游戏页" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                         Command="{Binding OpenGamePageCommand}" />
-                                <Button Content="在资源管理器中显示" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                <Button Content="在资源管理器中显示" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                         Command="{Binding RevealCommand}" />
-                                <Button Content="删除" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                <Button Content="删除" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                         Command="{Binding DeleteCommand}" />
                             </WrapPanel>
                         </StackPanel>

@@ -208,20 +208,20 @@
                             </ScrollViewer>
                         </Border>
 
-                        <WrapPanel Margin="0,12,0,0">
-                            <Button Content="添加行" Style="{StaticResource SecondaryButtonStyle}"
+                        <WrapPanel Margin="0,8,0,0">
+                            <Button Content="添加行" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                     Command="{Binding AddRowCommand}" />
-                            <Button Content="添加按键" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                            <Button Content="添加按键" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                     Command="{Binding AddKeyCommand}" />
-                            <Button Content="删除按键" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                            <Button Content="删除按键" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                     Command="{Binding DeleteKeyCommand}" />
-                            <Button Content="← 左移" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                            <Button Content="← 左移" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                     Command="{Binding MoveKeyLeftCommand}" />
-                            <Button Content="右移 →" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                            <Button Content="右移 →" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                     Command="{Binding MoveKeyRightCommand}" />
-                            <Button Content="↑ 上移行" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                            <Button Content="↑ 上移行" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                     Command="{Binding MoveRowUpCommand}" />
-                            <Button Content="↓ 下移行" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                            <Button Content="↓ 下移行" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                     Command="{Binding MoveRowDownCommand}" />
                         </WrapPanel>
                     </StackPanel>
@@ -236,8 +236,8 @@
                                        Text="内置 4K / 5K / 6K / 8K / 方向键 / 4K+侧键 / 8K+侧键（共 7 套）；每套预设的布局改动会分别记住，也可以另存成自己的预设。" />
                             <WrapPanel>
                                 <Button Content="恢复该预设默认布局" Style="{StaticResource SecondaryButtonStyle}"
-                                        Command="{Binding ResetPresetLayoutCommand}" />
-                                <Button Content="删除当前预设" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                        Margin="0,0,8,8" Command="{Binding ResetPresetLayoutCommand}" />
+                                <Button Content="删除当前预设" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                         Command="{Binding DeletePresetCommand}" />
                             </WrapPanel>
                             <Grid Margin="0,10,0,0">
@@ -794,12 +794,12 @@
                             <TextBox Grid.Column="1" IsReadOnly="True" Text="{Binding Cfg.KeySoundPath}"
                                      Style="{StaticResource TextBoxStyle}" ToolTip="空 = 内置合成点击声" />
                         </Grid>
-                        <WrapPanel Margin="0,10,0,0">
-                            <Button Content="选择 WAV…" Style="{StaticResource SecondaryButtonStyle}"
+                        <WrapPanel Margin="0,6,0,0">
+                            <Button Content="选择 WAV…" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                     Command="{Binding BrowseSoundCommand}" />
-                            <Button Content="清除" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                            <Button Content="清除" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                     Command="{Binding ClearSoundCommand}" />
-                            <Button Content="试听" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                            <Button Content="试听" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                     Command="{Binding TestSoundCommand}" />
                         </WrapPanel>
                         <TextBlock Margin="0,10,0,0" Style="{StaticResource CaptionText}"
@@ -818,12 +818,12 @@
                                Text="按需求未实现「直播插件相关」部分：OBS 浏览器源 / OBS 模式、JS 插件、自定义 CSS、自动更新、多语言。键位布局是简化的按行排列（不是 DmNote 的自由画布）。" />
                     <TextBlock Margin="0,6,0,0" Style="{StaticResource CaptionText}"
                                Text="数据目录（按键图片等）与配置目录都在程序 exe 旁边；改选项会自动保存，不用点保存。" />
-                    <WrapPanel Margin="0,12,0,0">
-                        <Button Content="打开 DmNote 项目主页" Style="{StaticResource SecondaryButtonStyle}"
+                    <WrapPanel Margin="0,8,0,0">
+                        <Button Content="打开 DmNote 项目主页" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                 Command="{Binding OpenSourceCommand}" />
-                        <Button Content="打开数据文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                        <Button Content="打开数据文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                 Command="{Binding OpenDataFolderCommand}" />
-                        <Button Content="打开配置文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                        <Button Content="打开配置文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                 Command="{Binding OpenConfigFolderCommand}" />
                     </WrapPanel>
                     <TextBlock Margin="0,8,0,0" Style="{StaticResource CaptionText}" Text="{Binding StoragePathText}" />

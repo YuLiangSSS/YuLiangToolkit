@@ -110,19 +110,19 @@
                         <WrapPanel Margin="0,8,0,0" Orientation="Horizontal"
                                    Visibility="{Binding ShowPlayerActions, Converter={StaticResource BoolToVis}}">
                             <Button Content="悔棋" Style="{StaticResource SecondaryButtonStyle}" FontSize="12"
-                                    Margin="0,4,8,0" Padding="10,5"
+                                    Margin="0,0,8,8" Padding="10,5"
                                     Command="{Binding UndoCommand}" IsEnabled="{Binding CanUndo}"
                                     ToolTip="同机双人直接撤；联机需要对手 / 房主同意" />
                             <Button Content="认输" Style="{StaticResource SecondaryButtonStyle}" FontSize="12"
-                                    Margin="0,4,8,0" Padding="10,5"
+                                    Margin="0,0,8,8" Padding="10,5"
                                     Command="{Binding ResignCommand}" IsEnabled="{Binding CanResign}"
                                     ToolTip="联机时由房主判负并广播" />
                             <Button Content="求和" Style="{StaticResource SecondaryButtonStyle}" FontSize="12"
-                                    Margin="0,4,8,0" Padding="10,5"
+                                    Margin="0,0,8,8" Padding="10,5"
                                     Command="{Binding OfferDrawCommand}" IsEnabled="{Binding CanOfferDraw}"
                                     ToolTip="联机时请对手 / 房主同意和棋" />
                             <Button Content="{Binding RematchButtonText}" Style="{StaticResource SecondaryButtonStyle}"
-                                    FontSize="12" Margin="0,4,8,0" Padding="10,5"
+                                    FontSize="12" Margin="0,0,8,8" Padding="10,5"
                                     Command="{Binding RematchCommand}" IsEnabled="{Binding CanRematch}"
                                     Visibility="{Binding ShowRematchButton, Converter={StaticResource BoolToVis}}"
                                     ToolTip="同机双人：直接重开；联机客户端玩家：请求房主开始下一局" />
