@@ -14,14 +14,23 @@
 
 ## A. AI 开工守则（动手前先读完这一节）
 
-### A.1 改完代码必须做的两件事
+### A.1 改完必须做的三件事（编译 · 自检 · **提交 git**）
 
 ```powershell
 .\build.ps1                                                    # ① 编译：必须 0 错误（有警告也顺手清掉）
 dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
                                                                # ② 自检：1775 项行为逐条真跑，退出码 0 = 全通过
+git add -A; git commit -m "<中文提交信息>"                           # ③ 提交：这一轮改动必须写进 git 历史
 ```
 
+* **③ 提交是硬性收尾：每一轮改动都做**（代码 / XAML / 文档 / 脚本都一样，哪怕只改一行、只修一个错别字）。
+  干完就 `git add -A; git commit -m "<中文说明>"`，**绝不允许把改动留在工作区等用户自己提交**。
+  用户的原话是"不然我每次都要多打一段字说明"——这条写在这里，就是替用户省掉那段话，以后每个 AI 默认照做。
+* 提交信息用**中文**、说清这次改了什么，风格照 `git log`（`feat:` / `fix:` / `docs:` / `refactor:`…，见第 8 节）；
+  一个功能 / 一轮修复一个提交，别把无关改动混在一起。
+* **顺序：先 ① ② 全绿再 ③**；纯文档改动（只动 `*.md`、没碰代码 / XAML / 默认配置）可以不重跑 ① ②，但照样要提交。
+* 提交前 `git status` 看一眼：确认改动都是这一轮的；如果夹着用户手改的无关文件，先问一句再提交。
+* **要不要 `git push` 由用户决定**（远端有 `origin` GitHub / `cnland` Gitee）——用户没让推就别推。
 * **改了行为就同步改自检断言**（自检就是"这份文档里承诺的行为"的执行版本，见第 6 节）。
 * **改了用户看得见的行为 / 设置项**，顺手更新 `docs/tools/<工具Id>.md`（一页一个工具）与 README 的「工具一览」表。
 * 界面相关的改动再按第 6 节跑一次截图冒烟（`YLT_SHOT`）。
@@ -45,6 +54,7 @@ dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.Fram
 | 12 | 想改配置的**即时性**（用户一敲键就刷新界面）时，属性必须写 `Set(ref 字段, 值)` | 自动属性只保证"最终会存下来"，不发通知（见 2.4 / 第 5 节） |
 | 13 | **唯一允许的第三方 NuGet 包是 `OsuParsers`**（osu!mania 三件套解析 `.osu` 用）。别再引入第二个包；它首次需要联网还原，之后走本机 NuGet 缓存（`build.ps1` 离线也能命中） | 见 2.17；离线构建 / 发布不能悄悄多出依赖 |
 | 14 | **`ParticleOverlay` 必须放在 Window 内的 Grid 里并铺满**（别塞进 StackPanel / 别写死宽高），且 `IsHitTestVisible="False"` | 它靠 `Window.GetWindow` 挂鼠标事件、靠 Grid 拉伸获得尺寸；塞错地方会塌成 0 或挡住点击（见 2.16） |
+| 15 | **改完必须提交 git**：`git add -A; git commit -m "<中文说明>"`，绝不留未提交的改动（见 A.1 ③） | 用户明确要求；漏提交 = 这一轮改动等于没交付，用户还得重新打字提醒 |
 
 ### A.3 别做 / 先问用户
 
