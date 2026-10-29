@@ -35,6 +35,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("board-room", "棋牌房间 VM：席位 / 观战 / 自动轮换（最慢，偶发时序失败可重跑）"),
     ("picture-viewer", "图片连续阅读器"),
     ("theme", "第二套 UI：液态玻璃主题"),
+    ("kps", "KPS 按键统计：统计引擎 / 预设 / 热键 / 全局输入"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -875,6 +876,11 @@ RunGroupModule("picture-viewer", "图片", PictureViewerChecks.Run);
 
 // ---------- 第二套 UI：液态玻璃主题（枚举 / 字典 key 对齐 / 默认主题颜色不变 / 配置往返） ----------
 RunGroupModule("theme", "主题", ThemeChecks.Run);
+
+// 「KPS 按键统计」：统计引擎（当前 KPS / 峰值 / 平均 / 折线采样）、内置预设与配置序列化、
+// 热键字符串解析、Raw Input 注册 + 真实 SendInput 注入（无头跑，不弹窗）。
+RunGroupModule("kps", "KPS统计", KpsChecks.Run, "[KPS] ");
+RunGroupModule("kps", "KPS输入", KpsInputChecks.Run);
 
 EnterGroup("shell");
 

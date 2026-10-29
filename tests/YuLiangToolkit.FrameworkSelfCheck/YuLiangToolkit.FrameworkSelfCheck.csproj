@@ -41,6 +41,8 @@
     <!-- 「棋牌」：五子棋胜负 / 禁手，象棋走法 / 将军 / 摆棋 / 让先 / 记谱，
          以及在本机 127.0.0.1 上真的开一局房间（主机 + 客户端双向同步）。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.BoardGames\YuLiangToolkit.Tools.BoardGames.csproj" />
+    <!-- 「KPS 按键统计」：统计引擎口径 / 内置预设 / 配置序列化 / 热键解析 / Raw Input 真实注入。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Kps\YuLiangToolkit.Tools.Kps.csproj" />
   </ItemGroup>
 
 </Project>

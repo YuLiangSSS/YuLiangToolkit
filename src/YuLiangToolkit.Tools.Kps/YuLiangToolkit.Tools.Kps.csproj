@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- KPS 按键统计 / 键位显示工具（功能灵感来自 DmNote，独立重写，未复制其源码；见 docs/tools/kps.md）。
+       新功能模板来自 src\YuLiangToolkit.Tools.Sample。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.Kps</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.Kps</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

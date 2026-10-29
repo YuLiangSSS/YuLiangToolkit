@@ -1,0 +1,19 @@
+<Window x:Class="YuLiangToolkit.Tools.Kps.Views.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="KPS Overlay"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        ResizeMode="NoResize"
+        Topmost="True"
+        SizeToContent="WidthAndHeight"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
+    <!-- 骨架占位：真正的 Overlay 窗口内容（键位网格 + KPS + 图表 + 拖动/锁定）由队友在独立 worktree 里实现。 -->
+    <Border x:Name="Root" Background="#AA101418" CornerRadius="10" Padding="14">
+        <TextBlock Text="KPS Overlay（骨架）" Foreground="White" FontSize="14" />
+    </Border>
+</Window>

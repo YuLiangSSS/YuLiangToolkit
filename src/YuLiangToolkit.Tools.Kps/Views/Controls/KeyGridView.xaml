@@ -1,0 +1,6 @@
+<UserControl x:Class="YuLiangToolkit.Tools.Kps.Views.Controls.KeyGridView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- 骨架占位：真正的键位网格由队友在独立 worktree 里实现（DataTemplate 绑定 KpsKeyCell）。 -->
+    <Border Background="Transparent" MinHeight="20" />
+</UserControl>
