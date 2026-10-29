@@ -44,7 +44,7 @@
 - ⚠ OsuParsers 解码器 static 状态、非线程安全：`OsuBeatmapFile` 里 `IoLock` 加锁 + 批量串行，别用 `Parallel.ForEachAsync`。
 - ⚠ `Save()` 全量重排：未知段落 / 未知键 / 部分注释会丢，别承诺原样保留。
 - 输出写原谱面目录、按元数据命名；别覆盖原文件（同名才覆盖），日志必须显示输出路径。
-- 星数别拿 osu!lazer 官方值对答案：Level 公式按 `StarRating.cs` 拟合，差 ~1.2 星。
+- 星数别拿 osu!lazer 官方值对答案：Level 公式按 `StarRating.cs` 拟合，差 ~1.2 星；等级系数只按凉雨 8K 谱面拟合，别把 Level 外推到 4K / 7K。
 
 ### 棋牌（五子棋 / 象棋）
 - 主机是唯一权威：客户端只从 `state` 重建，任意时刻状态都能整体重建房间与棋局。
