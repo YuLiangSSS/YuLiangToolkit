@@ -1,6 +1,8 @@
 <Window x:Class="YuLiangToolkit.Tools.Kps.Views.OverlayWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:YuLiangToolkit.Tools.Kps.Views.Controls"
+        xmlns:local="clr-namespace:YuLiangToolkit.Tools.Kps.Views"
         Title="KPS Overlay"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -11,9 +13,105 @@
         Topmost="True"
         SizeToContent="WidthAndHeight"
         UseLayoutRounding="True"
-        SnapsToDevicePixels="True">
-    <!-- 骨架占位：真正的 Overlay 窗口内容（键位网格 + KPS + 图表 + 拖动/锁定）由队友在独立 worktree 里实现。 -->
-    <Border x:Name="Root" Background="#AA101418" CornerRadius="10" Padding="14">
-        <TextBlock Text="KPS Overlay（骨架）" Foreground="White" FontSize="14" />
+        SnapsToDevicePixels="True"
+        WindowStartupLocation="Manual"
+        Focusable="False"
+        MouseLeftButtonDown="OnOverlayMouseLeftButtonDown"
+        MouseMove="OnOverlayMouseMove"
+        MouseLeftButtonUp="OnOverlayMouseLeftButtonUp"
+        MouseWheel="OnOverlayMouseWheel">
+
+    <!-- 说明：Overlay 是独立窗口，不能用 App.xaml 里的主题 DynamicResource（两套主题切换会闪 / 找不到资源），
+         所以颜色 / 字体全部写死显式值；绑定名 = KpsViewModel 的公开属性（窗口自身不依赖 ViewModel 类型）。 -->
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <local:OverlayStatsConverter x:Key="OverlayStats" />
+    </Window.Resources>
+
+    <!-- 根底板：背景色 / 圆角由 ApplyConfig 从 KpsConfig 刷新；整体做 LayoutTransform 缩放（窗口 SizeToContent 跟着变）。
+         未锁定时窗口可拖动 / 滚轮缩放，锁定后窗口级 WS_EX_TRANSPARENT 让鼠标完全穿透。 -->
+    <Border x:Name="Root" Background="#00000000" CornerRadius="12" Padding="14">
+        <Border.LayoutTransform>
+            <ScaleTransform ScaleX="{Binding OverlayScale, FallbackValue=1}"
+                            ScaleY="{Binding OverlayScale, FallbackValue=1}" />
+        </Border.LayoutTransform>
+
+        <StackPanel>
+            <!-- ① KPS 大数字 + 总计 / 峰值 / 平均（各自受 OverlayShow* 控制，整块受 OverlayShowKps 控制） -->
+            <StackPanel HorizontalAlignment="Center"
+                        Visibility="{Binding OverlayShowKps, Converter={StaticResource BoolToVis}, FallbackValue=Visible}">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <TextBlock Text="{Binding KpsText, FallbackValue=0.0, TargetNullValue=0.0}"
+                               FontFamily="Microsoft YaHei UI, Segoe UI" FontSize="34" FontWeight="Bold"
+                               Foreground="#FFFFFFFF" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="KPS" FontFamily="Microsoft YaHei UI, Segoe UI" FontSize="11" FontWeight="SemiBold"
+                               Foreground="#B3FFFFFF" VerticalAlignment="Bottom" Margin="6,0,0,5" />
+                </StackPanel>
+
+                <!-- 统计行：用 MultiBinding 拼成「总计 1,234 · 峰值 12」；全被关掉时整行折叠 -->
+                <TextBlock FontFamily="Microsoft YaHei UI, Segoe UI" FontSize="11"
+                           Foreground="#CCFFFFFF" HorizontalAlignment="Center" Margin="0,1,0,0">
+                    <TextBlock.Text>
+                        <MultiBinding Converter="{StaticResource OverlayStats}">
+                            <Binding Path="OverlayShowTotal" FallbackValue="True" />
+                            <Binding Path="TotalText" FallbackValue="0" />
+                            <Binding Path="OverlayShowPeak" FallbackValue="True" />
+                            <Binding Path="PeakText" FallbackValue="0" />
+                            <Binding Path="OverlayShowAverage" FallbackValue="False" />
+                            <Binding Path="AverageText" FallbackValue="0" />
+                        </MultiBinding>
+                    </TextBlock.Text>
+                    <TextBlock.Visibility>
+                        <MultiBinding Converter="{StaticResource OverlayStats}">
+                            <Binding Path="OverlayShowTotal" FallbackValue="True" />
+                            <Binding Path="TotalText" FallbackValue="0" />
+                            <Binding Path="OverlayShowPeak" FallbackValue="True" />
+                            <Binding Path="PeakText" FallbackValue="0" />
+                            <Binding Path="OverlayShowAverage" FallbackValue="False" />
+                            <Binding Path="AverageText" FallbackValue="0" />
+                        </MultiBinding>
+                    </TextBlock.Visibility>
+                </TextBlock>
+            </StackPanel>
+
+            <!-- ② 键位网格（与主界面预览共用 KeyGridView；整体显隐受 OverlayShowKeys 控制） -->
+            <controls:KeyGridView LayoutRows="{Binding LayoutRows}"
+                                  CellWidth="{Binding KeyWidth, FallbackValue=66}"
+                                  CellHeight="{Binding KeyHeight, FallbackValue=74}"
+                                  Gap="{Binding KeyGap, FallbackValue=6}"
+                                  CornerRadius="{Binding KeyCornerRadius, FallbackValue=10}"
+                                  KeyFontSize="{Binding KeyFontSize, FallbackValue=22}"
+                                  CounterFontSize="{Binding CounterFontSize, FallbackValue=11}"
+                                  ShowCounters="{Binding OverlayShowCounters, FallbackValue=True}"
+                                  PressedScale="{Binding PressedScale, FallbackValue=0.9}"
+                                  GlowEnabled="{Binding GlowEnabled, FallbackValue=True}"
+                                  FlashEnabled="{Binding FlashEnabled, FallbackValue=False}"
+                                  EffectDurationMs="{Binding EffectDurationMs, FallbackValue=110}"
+                                  NoteEffectEnabled="{Binding NoteEffectEnabled, FallbackValue=False}"
+                                  NoteEffectColor="{Binding NoteEffectColor}"
+                                  NoteEffectOpacity="{Binding NoteEffectOpacity, FallbackValue=0.7}"
+                                  NoteEffectDurationMs="{Binding NoteEffectDurationMs, FallbackValue=700}"
+                                  NoteEffectHeight="{Binding NoteEffectHeight, FallbackValue=0.55}"
+                                  NoteEffectReverse="{Binding NoteEffectReverse, FallbackValue=False}"
+                                  Visibility="{Binding OverlayShowKeys, Converter={StaticResource BoolToVis}, FallbackValue=Visible}"
+                                  Margin="0,6,0,0" />
+
+            <!-- ③ KPS 折线图（可选；颜色写死成浅蓝，不跟主题走） -->
+            <controls:KpsGraphView Values="{Binding GraphValues}"
+                                   MaxValue="{Binding GraphMax, FallbackValue=1}"
+                                   LineBrush="#FF7FD1FF"
+                                   FillBrush="#FF7FD1FF"
+                                   GridBrush="#33AAAAAA"
+                                   ShowGrid="True"
+                                   Height="54"
+                                   Margin="0,8,0,0"
+                                   Visibility="{Binding OverlayShowGraph, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}" />
+
+            <!-- ④ 未锁定提示（锁定后完全隐藏；拖动 / 滚轮缩放的唯一入口就是解锁） -->
+            <TextBlock Text="未锁定 · 拖动移动 · 滚轮缩放"
+                       FontFamily="Microsoft YaHei UI, Segoe UI" FontSize="10"
+                       Foreground="#99FFFFFF" HorizontalAlignment="Right" Margin="0,6,0,0"
+                       Visibility="{Binding OverlayUnlocked, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}" />
+        </StackPanel>
     </Border>
 </Window>
