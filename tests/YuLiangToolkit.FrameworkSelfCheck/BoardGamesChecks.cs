@@ -40,7 +40,38 @@ public static class BoardGamesChecks
         CheckXiangqi(check, plain);
         CheckRotationPlanner(check, plain);
         CheckConfigs(check, plain);
-        CheckNetwork(check, plain);
+    }
+
+    /// <summary>
+    /// 棋牌「房间联机 VM」集成自检：席位安排 / 观战只读 / 自动轮换 / 断线重连 / 象棋视角。
+    /// 单独一个分组的原因：这一批会真的开 TCP 回环、依赖异步状态传播，最慢且偶尔有时序 flake；
+    /// 改棋类规则的人不需要跟着跑它（见 AGENTS.md 的自检分组）。
+    /// </summary>
+    public static void RunRoom(Action<string, bool, string> check, Action<string, bool> plain)
+    {
+        _ = plain;
+        PrepareReconnectEnv();
+
+        Exception? failure = null;
+        var report = new List<string>();
+        var worker = Task.Run(async () =>
+        {
+            try
+            {
+                await RunRoomViewModelAsync(check, report).ConfigureAwait(false);
+                await RunXiangqiViewChecksAsync(check, report).ConfigureAwait(false);
+            }
+            catch (Exception ex) { failure = ex; }
+        });
+
+        if (!worker.Wait(TimeSpan.FromSeconds(180)))
+            failure = new TimeoutException("棋牌房间 VM 自检 180 秒没跑完（多半卡在连接上了）");
+
+        if (failure is not null)
+        {
+            check("[联机VM] 房间 VM 自检运行过程中抛出异常", false,
+                $"{failure.GetType().Name}: {failure.Message} @ {failure.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
+        }
     }
 
     // ---------------------------------------------------------------- 注册（两个工具 + 「棋牌」类别）
@@ -1828,13 +1859,21 @@ public static class BoardGamesChecks
 
     // ---------------------------------------------------------------- 网络层（帧格式 / 端点 / 回环真开房间 / 断线重连）
 
-    private static void CheckNetwork(Action<string, bool, string> checkWithDetail, Action<string, bool> plain)
+    private static void PrepareReconnectEnv()
     {
-        void check(string name, bool ok, string detail = "") => checkWithDetail(name, ok, detail);
-
         // 自检加速：自动重连间隔调小（基类的静态字段第一次用到时读，必须赶在构造 VM 之前设）
         Environment.SetEnvironmentVariable("YLT_BOARD_RECONNECT_MS", "300");
         Environment.SetEnvironmentVariable("YLT_BOARD_RECONNECT_TRIES", "30");
+    }
+
+    /// <summary>
+    /// 棋牌「网络 / 协议」自检：协议常量 / 帧格式 / 端点解析 + 本机回环多客户端会话
+    /// （加入 / 聊天广播 / 按 id 单发 / 断线保成员 / 同 id 重连 / 容量 / 关房 / 连接失败）。真实 TCP，较慢。
+    /// </summary>
+    public static void RunNet(Action<string, bool, string> check, Action<string, bool> plain)
+    {
+        _ = plain;
+        PrepareReconnectEnv();
 
         CheckProtocolAndEndpoint(check);
 
@@ -2207,8 +2246,6 @@ public static class BoardGamesChecks
         await RunGomokuSessionAsync(check, report).ConfigureAwait(false);
         await RunXiangqiSessionAsync(check, report).ConfigureAwait(false);
         await RunConnectFailureAsync(check, report).ConfigureAwait(false);
-        await RunRoomViewModelAsync(check, report).ConfigureAwait(false);
-        await RunXiangqiViewChecksAsync(check, report).ConfigureAwait(false);
     }
 
     /// <summary>A. 多客户端会话：3 客户端加入 / 聊天广播 / 状态广播 / 按 id 单发 / 断线保成员 / 同 id 重连 / 重复登录 / 主动 bye 移除。</summary>
@@ -2299,12 +2336,16 @@ public static class BoardGamesChecks
                 c1Chats.Any(c => c.Name == "房主" && c.Text == "房主说话")
                 && c2Chats.Any(c => c.Name == "房主") && c3Chats.Any(c => c.Name == "房主"), "");
             await host.BroadcastChatAsync("", "系统提示（聊天）", isSystem: true).ConfigureAwait(false);
-            await WaitUntilAsync(() => c1Chats.Any(c => c.Text == "系统提示（聊天）"), 8000).ConfigureAwait(false);
+            await WaitUntilAsync(
+                () => c1Chats.Any(c => c.Text == "系统提示（聊天）")
+                      && c2Chats.Any(c => c.Text == "系统提示（聊天）"), 8000).ConfigureAwait(false);
             check("[多客户端] 系统聊天（isSystem=true）也广播给所有客户端",
                 c1Chats.Any(c => c.Text == "系统提示（聊天）" && c.IsSystem)
                 && c2Chats.Any(c => c.Text == "系统提示（聊天）" && c.IsSystem), "");
             await host.BroadcastNoticeAsync("站位提示", "warn").ConfigureAwait(false);
-            await WaitUntilAsync(() => c2Chats.Any(c => c.Text == "站位提示"), 8000).ConfigureAwait(false);
+            await WaitUntilAsync(
+                () => c2Chats.Any(c => c.Text == "站位提示")
+                      && c3Chats.Any(c => c.Text == "站位提示"), 8000).ConfigureAwait(false);
             check("[多客户端] 主机的系统提示（notice）到客户端会变成系统聊天",
                 c2Chats.Any(c => c.Text == "站位提示" && c.IsSystem)
                 && c3Chats.Any(c => c.Text == "站位提示" && c.IsSystem), "");
@@ -3463,20 +3504,22 @@ public static class BoardGamesChecks
                 watcher.IsOnline && watcher.IsSpectator && !watcher.IsSeatedPlayer, "");
 
             // ===== 主动离开：席位清空、对局暂停（等房主换人） =====
-            // 玩家A 坐的是哪个席位取决于前面自动轮换的结果（不是固定第二个），断言要跟着“他原来那个席位”走，
-            // 否则轮到 A 坐一号位时这条会偶发失败（旧写法硬编码 SeatTwoName，flaky）。
-            var aWasSeatOne = hostVm.SeatOneName == "玩家A";
-            var aWasSeatTwo = hostVm.SeatTwoName == "玩家A";
+            // 这一小段不测自动轮换（前面已经测过）：先切回「手动安排」。
+            // 断言不预先假设 A 坐在哪个席位（前面轮换过，且状态包可能还在路上），
+            // 只要求「两席里已经没有 A + 对局进入暂停」——旧写法会在这里偶发误判。
+            hostVm.SelectedAutoRotateMode = hostVm.AutoRotateModeOptions.First(o => o.Value == "manual");
+            await WaitUntilAsync(() => playerA.SelectedAutoRotateMode.Value == "manual", 8000).ConfigureAwait(false);
+
             playerA.LeaveRoomCommand.Execute(null);
             await WaitUntilAsync(() => !playerA.IsOnline, 8000).ConfigureAwait(false);
-            await WaitUntilAsync(() => hostVm.SeatTwoName == "空位" || hostVm.SeatOneName == "空位", 10000)
-                .ConfigureAwait(false);
-            var aSeatCleared = aWasSeatOne ? hostVm.SeatOneName == "空位"
-                : aWasSeatTwo ? hostVm.SeatTwoName == "空位"
-                : hostVm.SeatOneName == "空位" && hostVm.SeatTwoName == "空位";
-            check("[联机VM] 席上玩家主动离开：房主清空他那一个席位、对局因缺人暂停",
+            await WaitUntilAsync(
+                () => hostVm.IsGamePaused
+                      && hostVm.SeatOneName != "玩家A" && hostVm.SeatTwoName != "玩家A"
+                      && SnapshotMembers(hostVm).Count == 3, 10000).ConfigureAwait(false);
+            check("[联机VM] 席上玩家主动离开：房主清空他的席位、对局因缺人暂停",
                 playerA.Mode == BoardPlayMode.Offline && !playerA.IsClient
-                && hostVm.IsGamePaused && aSeatCleared
+                && hostVm.IsGamePaused
+                && hostVm.SeatOneName != "玩家A" && hostVm.SeatTwoName != "玩家A"
                 && SnapshotMembers(hostVm).Count == 3,
                 $"{hostVm.SeatOneName}/{hostVm.SeatTwoName} · {hostVm.GamePauseStatusText}");
             check("[联机VM] 玩家离开后不能再走子（房间只认在线席位）",
@@ -3661,11 +3704,17 @@ public static class BoardGamesChecks
             check("[象棋视角] 房主不坐席位 = 观战：按观战视角设置摆（当前黑视角 → 翻转）",
                 hostX.IsSpectator && hostX.IsFlipped && hostX.ShowSpectatorViewOption,
                 $"{hostX.Cfg.SpectatorViewSide}/{hostX.IsFlipped}");
+
+            // 清空两席会把客户端也请下场（他会变成观战）。先把他重新安排到后手位（执黑），
+            // 再验证「房主切观战视角」只影响房主自己、不影响已入座的执黑玩家（否则会偶发失败）。
+            hostX.SelectedSeatTwoOption = hostX.SeatTwoChoices.FirstOrDefault(o => o.MemberId == clientId);
+            await WaitUntilAsync(
+                () => clientX.IsSeatedPlayer && clientX.LocalSide == "black" && clientX.IsFlipped, 8000)
+                .ConfigureAwait(false);
             hostX.SelectedSpectatorViewSide = hostX.SpectatorViewOptions.First(o => o.Value == "red");
             await WaitUntilAsync(() => !hostX.IsFlipped, 8000).ConfigureAwait(false);
-            // 客户端那边收状态包有网络延迟：等它把“执黑 → 黑方在下（翻转）”落实再断言，避免偶发失败
-            await WaitUntilAsync(() => clientX.IsFlipped, 8000).ConfigureAwait(false);
-            check("[象棋视角] 房主观战切回红方视角：不翻转，且不影响已入座的执黑玩家",
+            await Task.Delay(150).ConfigureAwait(false);   // 等客户端把最近一帧状态消化完
+            check("[象棋视角] 房主观战切回红方视角：不影响已入座的执黑玩家",
                 !hostX.IsFlipped && clientX.IsFlipped,
                 $"host={hostX.IsFlipped} client={clientX.IsFlipped}");
 

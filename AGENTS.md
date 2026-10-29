@@ -10,9 +10,9 @@
 | 技术栈 | Windows + .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM；唯一第三方包 `OsuParsers`（MIT） |
 | 主程序 | 根目录 `YuLiangTookit.csproj`（少一个 `l` 是历史拼写）：标题栏 / 主页 / 类别页 / 面包屑、两套主题、粒子 |
 | 核心库 | `src/YuLiangToolkit.Core/`：工具契约 / MVVM / 存储 / 配置 / FFmpeg / 粒子 / TCP 房间 |
-| 功能 | 13 个（10 个 `Tools.*`）：视频转音频 / 播放器 / 图片阅读器 / 重命名 / Flash / 聊天室 / osu! 下图器 / osu!mania 三件套 / 棋牌 / 示例模板（可删） |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`：1816 项逐条真跑，退出码 0 = 通过 |
-| 数据 | **在 exe 旁边**（`bin\Debug\net9.0-windows\Data`、`Config`）；仓库根 `Data/`、`Config/` 只有说明文件 |
+| 功能 | 13 个（10 个 `Tools.*`）：视频转音频 / 播放器 / 图片阅读器 / 重命名 / Flash / 聊天室 / osu! 下图器 / osu!mania 三件套 / 棋牌 / 示例模板 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`：1816 项，退出码 0 = 通过（按分组跑） |
+| 数据 | **在 exe 旁边**（`bin\Debug\net9.0-windows\Data`、`Config`）；仓库根同名目录只有说明 |
 
 ## 开工 / 收尾（硬性）
 
@@ -22,10 +22,10 @@ dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.Fram
 git add -A; git commit -m "<中文提交信息>"   # ③ 提交：每轮改动都要提交（硬性）
 ```
 
-1. **自检只跑相关的组**（可逗号多选；`-- --list` 列出全部）：`core`（存储/配置/MVVM/滚动链/窗口）· `shell`（搜索/排序/分类导航/粒子/完整性）· `batch-rename`、`flash-downloader`、`chat-room`、`map-downloader`、`media-player`、`osu-mania`（含星数）、`board-games`（含回环网络，偶发失败可重跑）、`picture-viewer`、`theme`。改哪个功能只跑哪个组；**全量 `-- --all` 只在发布前、改 `Core/` 公共轮子、或一次改多个功能时跑**；同一轮跑过且通过的组别反复跑。
+1. **自检只跑相关的组**（可逗号多选；`-- --list` 列出）：`core`（存储/配置/MVVM/滚动链）· `shell`（搜索/排序/分类/粒子/完整性）· `batch-rename` `flash-downloader` `chat-room` `map-downloader` `media-player` `osu-mania`（含星数）、`board-games`（规则/配置）、`board-net`（协议/多客户端/断线重连）、`board-room`（房间席位/观战/轮换；最慢，偶发失败可重跑）、`picture-viewer`、`theme`。改哪个功能只跑哪个组；**全量 `-- --all` 只在发布前、改 `Core/` 公共轮子或一次改多个功能时跑**；同一轮跑过的组不重复跑。
 2. 纯文档（只动 `*.md`）可跳 ① ②；只改 XAML / 文案 / 样式（不动逻辑）→ 只 build + 截图冒烟，不跑自检。照样提交；`git push` 由用户决定。
 3. 改行为 → 同步自检断言；改用户可见行为 → 更新 `docs/tools/<工具Id>.md` 与 README 工具表。
-4. 界面改动 → 跑截图冒烟；发布前 `.\publish.ps1` 打一次包，确认 Data/Config 建在发布目录旁。
+4. 界面改动 → 截图冒烟；发布前 `.\publish.ps1` 打一次包，确认 Data/Config 在发布目录旁。
 5. 版本号 / 自检项数只在必要处改（版本唯一来源 `Directory.Build.props`）。
 
 ### 截图冒烟（无头、不抢焦点）
@@ -55,8 +55,8 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 
 | 我要… | 看 |
 | --- | --- |
-| 项目全貌 / 流程 / 硬性规则 | 本文件 |
-| 轮子（工具契约 / MVVM / 存储 / 配置 / 粒子 / TCP 房间）、目录约定、新增功能 | `src/YuLiangToolkit.Core/` 源码注释；新功能复制 `src/YuLiangToolkit.Tools.Sample/` 模板 |
+| 全貌 / 流程 / 硬性规则 | 本文件 |
+| 轮子（工具契约 / MVVM / 存储 / 配置 / 粒子 / TCP 房间）、目录与新功能 | `src/YuLiangToolkit.Core/` 源码注释；新功能复制 `src/YuLiangToolkit.Tools.Sample/` 模板 |
 | 某个功能的实现细节 / 踩过的坑 | 对应源码 + [`docs/dev/pitfalls.md`](docs/dev/pitfalls.md) |
 | 面向用户的文档 | [`docs/tools/`](docs/tools/)（索引 [`docs/README.md`](docs/README.md)） |
-| 某版本改了什么 | `git log`（旧版完整手册在 git 历史里） |
+| 版本改动 | `git log`（旧版手册在 git 历史里） |

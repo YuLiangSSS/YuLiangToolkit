@@ -30,7 +30,9 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("map-downloader", "osu! 下图器"),
     ("media-player", "视频 / 音乐播放器"),
     ("osu-mania", "osu!mania 三件套（含星数计算）"),
-    ("board-games", "棋牌：五子棋 / 象棋（含真实回环网络，偶发时序失败可重跑）"),
+    ("board-games", "棋牌：五子棋 / 象棋（规则 / 配置 / 轮换纯逻辑）"),
+    ("board-net", "棋牌网络 / 协议：多客户端回环 / 断线重连 / 连接失败（真实 TCP）"),
+    ("board-room", "棋牌房间 VM：席位 / 观战 / 自动轮换（最慢，偶发时序失败可重跑）"),
     ("picture-viewer", "图片连续阅读器"),
     ("theme", "第二套 UI：液态玻璃主题"),
 };
@@ -858,8 +860,14 @@ RunGroupModule("osu-mania", "星数", StarRatingChecks.Run);
 // ---------- osu!mania 三件套（解析桥 / 转 K / 转 LN / 等级 / 批量，见 docs/dev/pitfalls.md） ----------
 RunGroupModule("osu-mania", "osu工具", OsuManiaChecks.Run);
 
-// ---------- 棋牌：五子棋 / 象棋 / 房间网络层（见 docs/dev/pitfalls.md） ----------
+// ---------- 棋牌：规则 / 配置 / 轮换纯逻辑（见 docs/dev/pitfalls.md） ----------
 RunGroupModule("board-games", "棋牌", BoardGamesChecks.Run);
+
+// ---------- 棋牌网络 / 协议：本机回环多客户端会话（真实 TCP） ----------
+RunGroupModule("board-net", "棋牌网络", BoardGamesChecks.RunNet);
+
+// ---------- 棋牌房间 VM：席位 / 观战 / 自动轮换（含真实回环网络，最慢） ----------
+RunGroupModule("board-room", "棋牌房间", BoardGamesChecks.RunRoom);
 
 // ---------- 图片连续阅读器（滚动偏移数学 / 中键单点-按住状态机 / 页序 / 真实扫描 / 无头 VM） ----------
 RunGroupModule("picture-viewer", "图片", PictureViewerChecks.Run);
