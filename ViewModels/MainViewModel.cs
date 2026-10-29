@@ -5,6 +5,7 @@ using YuLiangToolkit.App.Models;
 using YuLiangToolkit.App.Themes;
 using YuLiangToolkit.App.Views;
 using YuLiangToolkit.Core.Configuration;
+using YuLiangToolkit.Core.Effects;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Core.Services;
 using YuLiangToolkit.Core.Storage;
@@ -44,16 +45,19 @@ public class NavItem
     public void Navigate() => _navigate();
 }
 
-/// <summary>当前页面类型：主页 / 类别页 / 工具页（决定卡片墙、面包屑、侧边栏选中态）。</summary>
+/// <summary>当前页面类型：主页 / 类别页 / 工具页 / 主页设置页（决定卡片墙、面包屑、侧边栏选中态）。</summary>
 public enum ShellPageKind
 {
     Home,
     Category,
     Tool,
+
+    /// <summary>主页设置页（v0.26.0 起从独立小窗改成页面，面包屑「主页 › 主页设置」）。</summary>
+    Settings,
 }
 
 /// <summary>
-/// 主窗口视图模型：管理侧边栏、目录树导航（主页 / 类别页 / 工具页）、面包屑、主页搜索排序与设置窗口。
+/// 主窗口视图模型：管理侧边栏、目录树导航（主页 / 类别页 / 工具页 / 主页设置页）、面包屑、主页搜索排序、光标特效设置。
 ///
 /// <para><b>目录结构</b>：工具可以声明任意层级的 <see cref="ITool.CategoryPath"/>，由
 /// <see cref="ToolCatalog"/> 建树。主页显示「根层类别卡片 + 根层工具卡片」；
@@ -61,7 +65,7 @@ public enum ShellPageKind
 /// 没有声明 CategoryPath 的老工具仍然直接挂在主页根层，行为不变。</para>
 ///
 /// <para><b>主页状态存哪</b>：搜索词只留在内存（重启不保留，免得下次打开发现“我的功能不见了”）；
-/// 排序方式、每个功能的“上次使用时间”、粒子开关存进 <c>Config\shell\config.json</c>
+/// 排序方式、每个功能的“上次使用时间”、界面主题、光标特效（自动 / 点击）存进 <c>Config\shell\config.json</c>
 /// （见 <see cref="ShellConfig"/>，外壳也算一个“功能”，所以同样走 <see cref="ToolConfig"/> 自动落盘）。</para>
 /// </summary>
 public class MainViewModel : ObservableObject
@@ -99,8 +103,11 @@ public class MainViewModel : ObservableObject
 
     private ShellPageKind _pageKind = ShellPageKind.Home;
 
-    /// <summary>主页设置窗口（同一时间只开一个，关掉后清空）。</summary>
-    private ShellSettingsWindow? _settingsWindow;
+    /// <summary>设置页里的「自动效果」勾选项（清单驱动，见 <see cref="CursorEffects"/>）。</summary>
+    public IReadOnlyList<ShellEffectOption> AutoEffectOptions { get; private set; } = Array.Empty<ShellEffectOption>();
+
+    /// <summary>设置页里的「点击效果」勾选项（可多选；与自动效果互不影响）。</summary>
+    public IReadOnlyList<ShellEffectOption> ClickEffectOptions { get; private set; } = Array.Empty<ShellEffectOption>();
 
     public ObservableCollection<NavItem> NavItems { get; } = new();
 
@@ -169,6 +176,9 @@ public class MainViewModel : ObservableObject
 
     /// <summary>当前是不是工具页。</summary>
     public bool IsToolPage => _pageKind == ShellPageKind.Tool;
+
+    /// <summary>当前是不是「主页设置」页（v0.26.0 起设置是页面而不是独立小窗）。</summary>
+    public bool IsSettingsPage => _pageKind == ShellPageKind.Settings;
 
     // ---------- 类别页标题区 ----------
 
@@ -303,22 +313,80 @@ public class MainViewModel : ObservableObject
         }
     }
 
-    // ---------- 主页设置（粒子开关等） ----------
+    // ---------- 光标特效（自动效果 / 点击效果，v0.26.0） ----------
+    //
+    // 两套特效完全独立、各自可多选（清单见 Core/Effects/CursorEffects.cs）：
+    //   自动效果：particle-trail 粒子拖尾 / cursor-glow 鼠标散光；
+    //   点击效果：particle-burst 粒子爆炸 / dispersion 散光扩散 / glow-flash 光晕闪烁。
+    // 勾选状态存进 Config\shell\config.json 的 autoEffects / clickEffects（字符串数组）。
+    // 设置页按清单自动渲染，以后加新特效不用改设置页 XAML。
+
+    /// <summary>自动效果 Id 列表（逗号分隔，绑给 <c>ParticleOverlay.AutoEffects</c>）。</summary>
+    public string AutoEffectIds => CursorEffects.Join(SelectedEffectIds(AutoEffectOptions));
+
+    /// <summary>点击效果 Id 列表（逗号分隔，绑给 <c>ParticleOverlay.ClickEffects</c>）。</summary>
+    public string ClickEffectIds => CursorEffects.Join(SelectedEffectIds(ClickEffectOptions));
 
     /// <summary>
-    /// 是否绘制鼠标粒子效果（默认开）。改动直接写进 <c>Config\shell\config.json</c> 的
-    /// <see cref="ShellConfig.ShowParticles"/>，由 <see cref="ToolConfigStore"/> 自动落盘。
+    /// 当前勾选里有没有「粒子类」效果（拖尾 / 爆炸）—— 设置页用它决定「粒子颜色」卡是否可用：
+    /// 只开散光 / 闪光时，粒子颜色没有意义，置灰即可。
     /// </summary>
-    public bool ParticlesEnabled
+    public bool HasParticleEffectSelected
+        => IsEffectSelected(AutoEffectOptions, CursorEffects.ParticleTrail)
+           || IsEffectSelected(ClickEffectOptions, CursorEffects.ParticleBurst);
+
+    /// <summary>构建特效勾选项 + 迁移老配置（老版本只有 <c>showParticles</c> 布尔开关）。</summary>
+    private void InitializeEffects()
     {
-        get => _shell.ShowParticles;
-        set
-        {
-            if (_shell.ShowParticles == value) return;
-            _shell.ShowParticles = value;
-            OnPropertyChanged();
-        }
+        // 老配置没有 autoEffects / clickEffects 字段时：沿用老的 showParticles 语义
+        // （开 = 粒子拖尾 + 粒子爆炸；关 = 两个都空），保证升级后行为不变。
+        var fallbackAuto = _shell.ShowParticles
+            ? CursorEffects.DefaultSelection(CursorEffectTrigger.Auto)
+            : Array.Empty<string>();
+        var fallbackClick = _shell.ShowParticles
+            ? CursorEffects.DefaultSelection(CursorEffectTrigger.Click)
+            : Array.Empty<string>();
+
+        var auto = CursorEffects.Normalize(_shell.AutoEffects, CursorEffectTrigger.Auto, fallbackAuto);
+        var click = CursorEffects.Normalize(_shell.ClickEffects, CursorEffectTrigger.Click, fallbackClick);
+
+        // 立刻写回配置：老配置文件在这一步补上两个数组字段（之后不再靠 showParticles 迁移）。
+        _shell.AutoEffects = auto.ToList();
+        _shell.ClickEffects = click.ToList();
+
+        AutoEffectOptions = BuildEffectOptions(CursorEffectTrigger.Auto, auto);
+        ClickEffectOptions = BuildEffectOptions(CursorEffectTrigger.Click, click);
     }
+
+    private IReadOnlyList<ShellEffectOption> BuildEffectOptions(
+        CursorEffectTrigger trigger, IReadOnlyList<string> selected)
+        => CursorEffects.For(trigger)
+            .Select(definition => new ShellEffectOption(
+                definition,
+                selected.Contains(definition.Id, StringComparer.OrdinalIgnoreCase),
+                OnEffectSelectionChanged))
+            .ToList();
+
+    /// <summary>任一特效勾选变化：写配置（自动落盘）+ 通知渲染层与「粒子颜色」可用性。</summary>
+    private void OnEffectSelectionChanged()
+    {
+        _shell.AutoEffects = SelectedEffectIds(AutoEffectOptions).ToList();
+        _shell.ClickEffects = SelectedEffectIds(ClickEffectOptions).ToList();
+
+        OnPropertyChanged(nameof(AutoEffectIds));
+        OnPropertyChanged(nameof(ClickEffectIds));
+        OnPropertyChanged(nameof(HasParticleEffectSelected));
+    }
+
+    private static IReadOnlyList<string> SelectedEffectIds(IReadOnlyList<ShellEffectOption> options)
+        => CursorEffects.For(options.Count > 0 ? options[0].Definition.Trigger : CursorEffectTrigger.Auto)
+            .Where(definition => IsEffectSelected(options, definition.Id))
+            .Select(definition => definition.Id)
+            .ToList();
+
+    private static bool IsEffectSelected(IReadOnlyList<ShellEffectOption> options, string id)
+        => options.Any(option => option.IsSelected
+                                 && string.Equals(option.Id, id, StringComparison.OrdinalIgnoreCase));
 
     // ---------- 界面风格（第二套 UI：液态玻璃，v0.25.0） ----------
 
@@ -516,6 +584,7 @@ public class MainViewModel : ObservableObject
     {
         _shellStore = ToolConfigStore.For(ShellToolId);
         _shell = _shellStore.Load<ShellConfig>();
+        InitializeEffects();
 
         // 开发 / 截图：YLT_THEME=liquid-glass 临时切到第二套 UI（不写配置；见 ShellConfig.UiTheme）
         _themeOverride = ThemeManager.ParseThemeName(Environment.GetEnvironmentVariable("YLT_THEME"));
@@ -553,7 +622,7 @@ public class MainViewModel : ObservableObject
         {
             if (p is BreadcrumbItem item) NavigateBreadcrumb(item);
         });
-        OpenSettingsCommand = new RelayCommand(_ => OpenSettings());
+        OpenSettingsCommand = new RelayCommand(_ => OpenSettings());   // 进「主页设置」页面（v0.26.0 起不再是独立窗口）
         OpenBackgroundToolCommand = new RelayCommand(_ =>
         {
             if (_keptAliveTool is { } tool) OpenTool(tool);
@@ -690,6 +759,9 @@ public class MainViewModel : ObservableObject
             case ShellPageKind.Category:
                 NavigateToNode(_currentNode.Parent ?? _catalogRoot);
                 break;
+            case ShellPageKind.Settings:
+                GoHome();
+                break;
             default:
                 GoHome();
                 break;
@@ -743,6 +815,10 @@ public class MainViewModel : ObservableObject
                 case ShellLocationKind.Tool when location.Tool is { } tool:
                     OpenTool(tool, markUsed: false);
                     break;
+
+                case ShellLocationKind.Settings:
+                    NavigateToSettings();
+                    break;
             }
         }
         finally
@@ -754,10 +830,15 @@ public class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(CanGoForward));
     }
 
-    /// <summary>点面包屑：主页回主页、类别进类别页、工具打开工具。</summary>
+    /// <summary>点面包屑：主页回主页、类别进类别页、工具打开工具、主页设置进设置页。</summary>
     private void NavigateBreadcrumb(BreadcrumbItem item)
     {
         if (item.IsCurrent) return;
+        if (item.IsSettings)
+        {
+            NavigateToSettings();
+            return;
+        }
         if (item.Tool is { } tool)
         {
             OpenTool(tool);
@@ -891,10 +972,20 @@ public class MainViewModel : ObservableObject
         }
     }
 
-    /// <summary>重算顶部面包屑：主页永远第一枚；类别页按祖先链；工具页 = 父类别路径 + 工具名（当前项）。</summary>
+    /// <summary>
+    /// 重算顶部面包屑：主页永远第一枚；类别页按祖先链；工具页 = 父类别路径 + 工具名（当前项）；
+    /// 主页设置页 = 主页 + 主页设置（当前项，v0.26.0）。
+    /// </summary>
     private void UpdateBreadcrumbs()
     {
         Breadcrumbs.Clear();
+
+        if (_pageKind == ShellPageKind.Settings)
+        {
+            Breadcrumbs.Add(BreadcrumbItem.ForHome(_catalogRoot, isCurrent: false, isFirst: true));
+            Breadcrumbs.Add(BreadcrumbItem.ForSettings(isCurrent: true, isFirst: false));
+            return;
+        }
 
         if (_pageKind == ShellPageKind.Tool && _currentTool is { } tool)
         {
@@ -942,6 +1033,13 @@ public class MainViewModel : ObservableObject
                 CurrentNodeSummary = "";
                 break;
 
+            case ShellPageKind.Settings:
+                CurrentNodeName = "主页设置";
+                CurrentNodeEmoji = "⚙";
+                CurrentNodeDescription = "外壳设置：界面风格、自动 / 点击特效、粒子颜色与窗口行为";
+                CurrentNodeSummary = "";
+                break;
+
             default:
                 CurrentNodeName = "工具集主页";
                 CurrentNodeEmoji = "🏠";
@@ -953,45 +1051,38 @@ public class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsHomePage));
         OnPropertyChanged(nameof(IsCategoryPage));
         OnPropertyChanged(nameof(IsToolPage));
+        OnPropertyChanged(nameof(IsSettingsPage));
         OnPropertyChanged(nameof(ShowTagBar));
     }
 
-    // ---------- 设置窗口 ----------
+    // ---------- 主页设置页（v0.26.0 起从独立小窗改成页面） ----------
 
     /// <summary>
-    /// 打开「主页设置」窗口（同一时间只开一个；已经开着就激活它）。
-    /// 返回窗口实例，方便 <c>YLT_OPEN_SETTINGS</c> 截图模式直接抓它。
+    /// 打开「主页设置」页面（主页右上角 ⚙ / 托盘菜单都走它）。
+    /// v0.26.0 起设置是主窗口里的一个页面：面包屑显示「主页 › 主页设置」，后退 / 前进也能回到它。
     /// </summary>
-    public ShellSettingsWindow? OpenSettings(bool activate = true)
-    {
-        if (_settingsWindow is { IsLoaded: true } existing)
-        {
-            if (activate) existing.Activate();
-            return existing;
-        }
+    public void OpenSettings() => NavigateToSettings();
 
-        var window = new ShellSettingsWindow
-        {
-            DataContext = this,
-            Owner = Application.Current?.MainWindow,
-            ShowActivated = activate,
-        };
-        window.Closed += (_, _) =>
-        {
-            if (ReferenceEquals(_settingsWindow, window)) _settingsWindow = null;
-        };
-        _settingsWindow = window;
-        window.Show();
-        return window;
-    }
-
-    /// <summary>
-    /// 关掉「主页设置」窗口（如果有）。主窗口最小化到托盘时调用 ——
-    /// 不然设置窗口作为主窗口的从属窗口会单独留在屏幕上。
-    /// </summary>
-    public void CloseSettingsWindow()
+    /// <summary>导航到「主页设置」页（重复进入不新增历史，由 <see cref="RecordHistory"/> 去重）。</summary>
+    private void NavigateToSettings()
     {
-        if (_settingsWindow is { IsLoaded: true } window) window.Close();
+        if (_pageKind == ShellPageKind.Settings) return;
+
+        CloseCurrentTool();
+        _pageKind = ShellPageKind.Settings;
+        _currentTool = null;
+
+        // 设置页不是功能列表里的一项：清掉侧边栏选中态，避免看起来像还在某个工具里
+        _syncingNav = true;
+        SelectedNavItem = null;
+        _syncingNav = false;
+
+        CurrentView = new ShellSettingsView { DataContext = this };
+        UpdateBreadcrumbs();
+        RefreshHeader();
+        RecordHistory(ShellLocation.Settings);
+        CurrentTitle = "主页设置";
+        UpdateMiniPanel();
     }
 
     // ---------- 工具切换 / 后台保活 ----------

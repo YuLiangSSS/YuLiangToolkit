@@ -1,0 +1,211 @@
+<UserControl x:Class="YuLiangToolkit.App.Views.ShellSettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:YuLiangToolkit.App.Views">
+    <!--
+      主页设置页（v0.26.0 起从独立小窗改成主窗口里的页面）：
+      从主页右上角「⚙ 主页设置」或托盘菜单进入，面包屑显示「主页 › 主页设置」，后退 / 前进也能回到这一页。
+      所有设置项都直接绑 MainViewModel（改一下自动落盘，没有保存按钮）；主题 token 全部 DynamicResource。
+
+      ★ 扩展点：特效列表（自动效果 / 点击效果）的每一项来自 Core/Effects/CursorEffects.cs 的清单，
+        ItemsControl 直接按清单渲染 —— 以后加新特效只改清单 + 渲染层，不用改这个 XAML。
+    -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="30,26,30,30" MaxWidth="920" HorizontalAlignment="Left">
+
+            <!-- ===== 标题 + 返回主页 ===== -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="⚙" FontSize="22" VerticalAlignment="Center" />
+                        <TextBlock Text="主页设置" FontSize="22" FontWeight="SemiBold" Margin="10,0,0,0"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                    <TextBlock FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0"
+                               Text="外壳自己的设置：界面风格、鼠标自动 / 点击特效、粒子颜色、窗口与托盘。改一下立即生效并自动保存。" />
+                </StackPanel>
+                <Button Grid.Column="1" Content="返回主页" Style="{StaticResource SecondaryButtonStyle}"
+                        VerticalAlignment="Top" Command="{Binding GoHomeCommand}" ToolTip="回到主页（也可以点面包屑的「🏠 主页」或后退按钮）" />
+            </Grid>
+
+            <!-- ===== 界面风格 ===== -->
+            <TextBlock Text="界面风格" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource AccentBrush}" Margin="0,22,0,0" />
+            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
+                <StackPanel>
+                    <RadioButton Style="{StaticResource RadioButtonStyle}" GroupName="UiTheme"
+                                 AutomationProperties.Name="默认（深色）"
+                                 IsChecked="{Binding DefaultThemeSelected}"
+                                 ToolTip="经典深色界面：纯色面板，最省资源（第一套 UI）">
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="46" Height="32" CornerRadius="7" Background="#16181D"
+                                    BorderBrush="#2C333F" BorderThickness="1" Margin="0,0,10,0">
+                                <StackPanel Margin="7,6">
+                                    <Border Height="7" CornerRadius="2" Background="#2A3242" />
+                                    <Border Height="5" CornerRadius="2" Background="#1F242C" Margin="0,4,0,0" />
+                                </StackPanel>
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="默认（深色）" FontWeight="SemiBold" />
+                                <TextBlock Text="经典纯色面板，最省资源" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton Style="{StaticResource RadioButtonStyle}" GroupName="UiTheme"
+                                 AutomationProperties.Name="液态玻璃（实验）"
+                                 IsChecked="{Binding LiquidGlassThemeSelected}" Margin="0,12,0,0"
+                                 ToolTip="液态玻璃：半透明玻璃面板 + 流动色彩光晕（第二套 UI，参考 Glassium）">
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="46" Height="32" CornerRadius="7" BorderThickness="1" Margin="0,0,10,0"
+                                    BorderBrush="#66FFFFFF">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Color="#3D7BFF" Offset="0" />
+                                        <GradientStop Color="#8B5CF6" Offset="0.55" />
+                                        <GradientStop Color="#FF5CD6" Offset="1" />
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <Border Margin="6,5" CornerRadius="4" Background="#55FFFFFF"
+                                        BorderBrush="#99FFFFFF" BorderThickness="1" />
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="液态玻璃（实验）" FontWeight="SemiBold" />
+                                <TextBlock Text="半透明玻璃 + 流动光晕，参考 Glassium" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </StackPanel>
+                    </RadioButton>
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,10,0,0"
+                               Text="换主题立即生效、不用重启；选择会自动存进 Config\shell\config.json 的 uiTheme（旧配置没有这一项时按「默认」处理）。液态玻璃会多画一层流动光晕，低配机器觉得费电 / 掉帧就切回默认。" />
+                </StackPanel>
+            </Border>
+
+            <!-- ===== 自动效果（可多选，也可以全不选） ===== -->
+            <TextBlock Text="自动效果" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource AccentBrush}" Margin="0,22,0,0" />
+            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
+                <StackPanel>
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,0,0,4"
+                               Text="鼠标移动时持续生效的特效，可以同时勾选多个；全部不勾 = 没有任何自动效果（仍然可以单独开下面的点击效果）。" />
+                    <ItemsControl ItemsSource="{Binding AutoEffectOptions}" Margin="0,4,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="0,7,0,0">
+                                    <CheckBox Style="{StaticResource CheckBoxStyle}"
+                                              Content="{Binding Name}"
+                                              IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                              ToolTip="{Binding Description}" />
+                                    <TextBlock Text="{Binding Description}" FontSize="11"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               TextWrapping="Wrap" Margin="25,2,0,0" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- ===== 点击效果（可多选；与自动效果无关） ===== -->
+            <TextBlock Text="点击效果" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource AccentBrush}" Margin="0,22,0,0" />
+            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
+                <StackPanel>
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,0,0,4"
+                               Text="鼠标按下时触发一次的特效，可以同时勾选多个（例如既爆炸粒子、又散光 + 闪一下）；和自动效果完全独立：自动效果关掉时点击效果照常生效。" />
+                    <ItemsControl ItemsSource="{Binding ClickEffectOptions}" Margin="0,4,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Margin="0,7,0,0">
+                                    <CheckBox Style="{StaticResource CheckBoxStyle}"
+                                              Content="{Binding Name}"
+                                              IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                              ToolTip="{Binding Description}" />
+                                    <TextBlock Text="{Binding Description}" FontSize="11"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               TextWrapping="Wrap" Margin="25,2,0,0" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- ===== 粒子颜色 ===== -->
+            <TextBlock Text="粒子颜色" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource AccentBrush}" Margin="0,22,0,0" />
+            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14"
+                    IsEnabled="{Binding HasParticleEffectSelected}">
+                <StackPanel>
+                    <CheckBox Content="启用自定义颜色" Style="{StaticResource CheckBoxStyle}"
+                              IsChecked="{Binding ParticleCustomColorsEnabled}"
+                              ToolTip="关掉时用默认的淡紫白粒子" />
+                    <StackPanel IsEnabled="{Binding ParticleCustomColorsEnabled}" Margin="0,2,0,0">
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0" Content="颜色 1" Style="{StaticResource CheckBoxStyle}"
+                                      IsChecked="{Binding ParticleColor1Enabled}" VerticalAlignment="Center"
+                                      ToolTip="取消勾选 = 不使用这个颜色" />
+                            <views:ColorPickerButton Grid.Column="1" Margin="12,0,0,0"
+                                                     HorizontalAlignment="Left"
+                                                     SelectedColor="{Binding ParticleColor1Value, Mode=TwoWay}" />
+                        </Grid>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <CheckBox Grid.Column="0" Content="颜色 2" Style="{StaticResource CheckBoxStyle}"
+                                      IsChecked="{Binding ParticleColor2Enabled}" VerticalAlignment="Center"
+                                      ToolTip="取消勾选 = 不使用这个颜色" />
+                            <views:ColorPickerButton Grid.Column="1" Margin="12,0,0,0"
+                                                     HorizontalAlignment="Left"
+                                                     SelectedColor="{Binding ParticleColor2Value, Mode=TwoWay}" />
+                        </Grid>
+                        <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap" Margin="0,10,0,0"
+                                   Text="两种颜色都勾选：每颗粒子在两种颜色之间随机取色（渐变过渡）；只勾选一种：固定用那种颜色（单色）；两种都不勾：回到默认的淡紫白。颜色对「粒子拖尾」「粒子爆炸」生效；散光 / 闪光会取颜色 1 作为主色调。" />
+                    </StackPanel>
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,10,0,0"
+                               Text="只勾了散光 / 闪光（没有粒子类效果）时这里不可用 —— 粒子颜色对它们没有影响。"
+                               Visibility="{Binding HasParticleEffectSelected, Converter={StaticResource InverseBoolToVis}}" />
+                </StackPanel>
+            </Border>
+
+            <!-- ===== 窗口与托盘 ===== -->
+            <TextBlock Text="窗口与托盘" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource AccentBrush}" Margin="0,22,0,0" />
+            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
+                <StackPanel>
+                    <TextBlock Text="点击右上角 × 时" FontSize="12.5" FontWeight="SemiBold" />
+                    <RadioButton Content="关闭应用" Style="{StaticResource RadioButtonStyle}"
+                                 IsChecked="{Binding ExitOnClose}" Margin="0,9,0,0"
+                                 ToolTip="和以前一样：直接退出程序" />
+                    <RadioButton Content="最小化到托盘" Style="{StaticResource RadioButtonStyle}"
+                                 IsChecked="{Binding MinimizeToTrayOnClose}" Margin="0,9,0,0"
+                                 ToolTip="窗口藏到任务栏右侧，应用继续在后台运行" />
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,9,0,0"
+                               Text="选「最小化到托盘」后，× 只把窗口藏到任务栏右侧的小图标里，应用继续在后台运行：单击 / 双击托盘图标恢复窗口，右键托盘图标可以「显示主窗口 / 主页设置 / 退出」。设置自动保存，重启后保持。" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock FontSize="11" Foreground="{DynamicResource FaintTextBrush}" TextWrapping="Wrap" Margin="0,14,0,0"
+                       Text="主页设置只影响外壳本身（界面风格、自动 / 点击特效、粒子颜色、关闭行为等）；各功能自己的选项在对应功能页面里。" />
+
+            <Button Content="返回主页" Style="{StaticResource SecondaryButtonStyle}"
+                    HorizontalAlignment="Left" Margin="0,18,0,0" Command="{Binding GoHomeCommand}" />
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -37,11 +37,17 @@ public sealed class Particle
     /// <summary>寿命（60fps 基准帧，生成时取 30~89）。</summary>
     public double LifeSpan { get; internal set; }
 
+    /// <summary>
+    /// 这个粒子的初始直径（DIP）。默认 <see cref="ParticleEngine.BaseSize"/>（拖尾粒子 5px）；
+    /// 点击爆炸引擎会用更大的值（3.5~8px，随机），让两种效果一眼能区分。
+    /// </summary>
+    public double BaseSize { get; internal set; } = ParticleEngine.BaseSize;
+
     /// <summary>存活进度 0~1（0 = 刚生成，1 = 该消失了）。</summary>
     public double Progress => LifeSpan <= 0 ? 1 : Math.Clamp(Age / LifeSpan, 0, 1);
 
-    /// <summary>当前直径（DIP）：从 <see cref="ParticleEngine.BaseSize"/> 线性缩到 0。</summary>
-    public double Size => ParticleEngine.BaseSize * (1 - Progress);
+    /// <summary>当前直径（DIP）：从 <see cref="BaseSize"/> 线性缩到 0。</summary>
+    public double Size => BaseSize * (1 - Progress);
 
     /// <summary>当前不透明度 0~1：从 1 线性淡到 0（画的时候自己乘 255 / 查调色板）。</summary>
     public double Alpha => 1 - Progress;

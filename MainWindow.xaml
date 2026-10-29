@@ -175,12 +175,16 @@
         <Border Grid.RowSpan="4" Panel.ZIndex="890" IsHitTestVisible="False"
                 BorderBrush="{DynamicResource WindowEdgeBorderBrush}" BorderThickness="1" />
 
-        <!-- 鼠标粒子覆盖层：铺满整个窗口（含标题栏 / 状态栏），不吃鼠标事件。
-             IsActive 绑主页设置里的 ParticlesEnabled（默认开，存 Config\shell\config.json）；
-             自定义颜色：总开关 + 两种颜色 + 各自是否启用（只启用一种 = 单色粒子），见 docs/dev/pitfalls.md。 -->
+        <!-- 光标特效覆盖层：铺满整个窗口（含标题栏 / 状态栏），不吃鼠标事件。
+             两套特效完全独立、各自可多选（主页设置页里勾选，存 Config\shell\config.json）：
+               AutoEffects  = 自动效果（particle-trail 粒子拖尾 / cursor-glow 鼠标散光）；
+               ClickEffects = 点击效果（particle-burst 粒子爆炸 / dispersion 散光扩散 / glow-flash 光晕闪烁）。
+             自定义颜色对粒子类效果生效（见 docs/shell.md）。 -->
         <core:ParticleOverlay Grid.RowSpan="4" Panel.ZIndex="900"
                               IsHitTestVisible="False"
-                              IsActive="{Binding ParticlesEnabled}"
+                              IsActive="True"
+                              AutoEffects="{Binding AutoEffectIds}"
+                              ClickEffects="{Binding ClickEffectIds}"
                               UseCustomColors="{Binding ParticleCustomColorsEnabled}"
                               Color1="{Binding ParticleColor1Value}"
                               Color2="{Binding ParticleColor2Value}"

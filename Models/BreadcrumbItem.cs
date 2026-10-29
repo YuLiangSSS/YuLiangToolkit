@@ -6,12 +6,14 @@ namespace YuLiangToolkit.App.Models;
 /// 顶部工具条上的一枚面包屑（可点击分层导航）。
 ///
 /// <para>规则：主页永远是最左边第一枚；类别页 = 主页 + 各级祖先 + 当前类别（当前项高亮、不可点）；
-/// 工具页 = 主页 + 父类别路径 + 工具名（工具名当前项）。点祖先 → 回到对应类别 / 主页。</para>
+/// 工具页 = 主页 + 父类别路径 + 工具名（工具名当前项）；
+/// 主页设置页 = 主页 + 主页设置（v0.26.0 起设置从独立小窗改成页面）。
+/// 点祖先 → 回到对应类别 / 主页 / 设置页。</para>
 /// </summary>
 public sealed class BreadcrumbItem
 {
     private BreadcrumbItem(string title, string emoji, bool isCurrent, bool isFirst,
-        ToolCatalogNode? node, ITool? tool)
+        ToolCatalogNode? node, ITool? tool, bool isSettings = false)
     {
         Title = title;
         Emoji = emoji;
@@ -19,15 +21,16 @@ public sealed class BreadcrumbItem
         IsFirst = isFirst;
         Node = node;
         Tool = tool;
+        IsSettings = isSettings;
     }
 
-    /// <summary>显示名（主页 / 类别名 / 工具名）。</summary>
+    /// <summary>显示名（主页 / 主页设置 / 类别名 / 工具名）。</summary>
     public string Title { get; }
 
-    /// <summary>显示图标（🏠 / 类别 emoji / 工具 emoji）。</summary>
+    /// <summary>显示图标（🏠 / ⚙ / 类别 emoji / 工具 emoji）。</summary>
     public string Emoji { get; }
 
-    /// <summary>按钮上的文字："🏠 主页" / "🎵 音游工具"。</summary>
+    /// <summary>按钮上的文字："🏠 主页" / "⚙ 主页设置"。</summary>
     public string DisplayText => string.IsNullOrWhiteSpace(Emoji) ? Title : $"{Emoji} {Title}";
 
     /// <summary>是不是当前所在层级（当前项高亮、不可点）。</summary>
@@ -42,11 +45,14 @@ public sealed class BreadcrumbItem
     /// <summary>非第一枚时显示 "›" 分隔符。</summary>
     public bool ShowSeparator => !IsFirst;
 
-    /// <summary>点击后要导航到的类别节点（工具项为 null）。</summary>
+    /// <summary>点击后要导航到的类别节点（工具 / 设置页为 null）。</summary>
     public ToolCatalogNode? Node { get; }
 
-    /// <summary>点击后要打开的工具（类别项为 null）。</summary>
+    /// <summary>点击后要打开的工具（类别 / 设置页为 null）。</summary>
     public ITool? Tool { get; }
+
+    /// <summary>这一枚是不是「主页设置」页（点它回到设置页）。</summary>
+    public bool IsSettings { get; }
 
     /// <summary>是不是「主页」那一枚。</summary>
     public bool IsHome => Tool is null && Node is { IsRoot: true };
@@ -54,6 +60,10 @@ public sealed class BreadcrumbItem
     /// <summary>生成「主页」面包屑（<paramref name="root"/> 是目录树根节点）。</summary>
     public static BreadcrumbItem ForHome(ToolCatalogNode root, bool isCurrent, bool isFirst = true)
         => new("主页", "🏠", isCurrent, isFirst, root, null);
+
+    /// <summary>生成「主页设置」面包屑（当前项）。</summary>
+    public static BreadcrumbItem ForSettings(bool isCurrent, bool isFirst)
+        => new("主页设置", "⚙", isCurrent, isFirst, null, null, isSettings: true);
 
     /// <summary>生成「类别」面包屑。</summary>
     public static BreadcrumbItem ForCategory(ToolCatalogNode node, bool isCurrent, bool isFirst)

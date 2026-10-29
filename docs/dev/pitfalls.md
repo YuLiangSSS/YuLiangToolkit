@@ -34,6 +34,11 @@
 - ⚠ `ParticleOverlay` 订阅 `CompositionTarget.Rendering`（静态）+ Window 鼠标事件，必须成对挂摘，否则泄漏 + 关窗后还在跑。
 - 粒子发射点用 `GetCursorPos` + `PointFromScreen`：`DragMove` 期间 `GetPosition` 返回 (0,0)，粒子会从左上角冒。
 - 粒子别每帧 new 控件 / 画刷：`DrawingContext.DrawEllipse` + 冻结画刷，否则 UI 线程卡。
+- 光标特效分「自动效果」（`autoEffects`）/「点击效果」（`clickEffects`）两套 **独立多选** 的 Id 数组；
+  特效 Id 就是配置格式（清单在 `Core/Effects/CursorEffects.cs`），加特效 = 清单加一条 + `ParticleOverlay` 加渲染分支，
+  设置页按清单自动渲染、不用改 XAML。
+- `ParticleOverlay` 只在「自动拖尾在生成」或「有一次性特效在播」时订阅 `CompositionTarget.Rendering`，
+  播完立刻退订；别改成常驻 60fps（鼠标散光只在鼠标移动时重绘一次）。
 
 ### osu!mania 三件套
 - ⚠ OsuParsers 解码器 static 状态、非线程安全：`OsuBeatmapFile` 里 `IoLock` 加锁 + 批量串行，别用 `Parallel.ForEachAsync`。

@@ -418,12 +418,9 @@ public partial class MainWindow : Window, IFullscreenHost
         base.OnClosing(e);
     }
 
-    /// <summary>把主窗口藏到任务栏右侧的托盘（进程不退；先顺手关掉从属的设置窗口）。</summary>
-    public void HideToTray()
-    {
-        if (DataContext is MainViewModel vm) vm.CloseSettingsWindow();
-        Hide();
-    }
+    /// <summary>把主窗口藏到任务栏右侧的托盘（进程不退）。</summary>
+    /// <remarks>v0.26.0 起「主页设置」是主窗口里的一个页面（不是从属小窗），藏窗口时不用再单独关它。</remarks>
+    public void HideToTray() => Hide();
 
     /// <summary>从托盘恢复窗口：显示、把最小化还原、提到前台。</summary>
     public void ShowFromTray()
@@ -534,6 +531,17 @@ public partial class MainWindow : Window, IFullscreenHost
                 var w = (int)Math.Max(1, ActualWidth);
                 var h = (int)Math.Max(1, ActualHeight);
                 var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
+
+                // 先铺一层窗口底色：RenderTargetBitmap 只渲染传入的视觉树、**不含 Window.Background**，
+                // 不铺的话默认主题（内容区透明）在 PNG 里就是透明像素 → 看图软件垫白底，截图看着发白。
+                // 这层只影响调试截图，不影响界面本身。
+                var background = new DrawingVisual();
+                using (var drawing = background.RenderOpen())
+                {
+                    drawing.DrawRectangle(Background ?? Brushes.Black, null, new Rect(0, 0, w, h));
+                }
+                rtb.Render(background);
+
                 if (Content is Visual visual) rtb.Render(visual);
                 var encoder = new PngBitmapEncoder();
                 encoder.Frames.Add(BitmapFrame.Create(rtb));

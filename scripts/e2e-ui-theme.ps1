@@ -3,6 +3,15 @@
     [string]$OutDir = "C:\Users\16320\Desktop\Project\YuLiangToolkit\shots"
 )
 
+# ============================================================================
+# 端到端验证「主页设置」页面（v0.26.0）：
+#   1) 界面风格单选（默认 / 液态玻璃）立即生效并写进 Config\shell\config.json；
+#   2) 自动效果 / 点击效果勾选可以互相独立（关掉自动拖尾、点击效果仍然勾着）；
+#   3) 点击效果可多选；全程不重启、设置页就在主窗口里（面包屑 主页 › 主页设置）。
+# ⚠ 会真的打开窗口并自动点控件（抢焦点）；跑之前确认没在干别的。
+# 数据根用临时 YLT_HOME，不碰你真实配置；退出码 0 = 全部通过。
+# ============================================================================
+
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
@@ -11,9 +20,8 @@ Add-Type -AssemblyName System.Drawing
 Add-Type -TypeDefinition @"
 using System;
 using System.Text;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
-public static class ThemeE2EWin32
+public static class ShellSettingsE2EWin32
 {
     public delegate bool EnumProc(IntPtr hWnd, IntPtr lParam);
     [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, IntPtr lParam);
@@ -41,125 +49,138 @@ public static class ThemeE2EWin32
 }
 "@
 
-function Wait-Until([scriptblock]$Probe, [int]$TimeoutMs = 10000, [string]$What = "条件") {
+function Wait-Until([scriptblock]$Probe, [int]$TimeoutMs = 15000, [string]$What = "条件") {
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    $last = $null
     while ($sw.ElapsedMilliseconds -lt $TimeoutMs) {
-        try { $last = & $Probe; if ($last) { return $last } } catch { $last = $null }
+        try { $value = & $Probe; if ($value) { return $value } } catch { }
         Start-Sleep -Milliseconds 150
     }
-    throw "等待超时：$What（最后一次=$last）"
+    throw "等待超时：$What"
 }
 
-function Find-Radio($Window, [string]$NamePattern) {
-    $cond = New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-        [System.Windows.Automation.ControlType]::RadioButton)
-    $radios = $Window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $cond)
-    foreach ($r in $radios) {
-        try { if ($r.Current.Name -like $NamePattern) { return $r } } catch { }
-    }
-    return $null
+function Find-Control($Window, $ControlType, [string]$Name) {
+    $cond = New-Object System.Windows.Automation.AndCondition(
+        (New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::ControlTypeProperty, $ControlType)),
+        (New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::NameProperty, $Name)))
+    return $Window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
 }
 
 function Select-Radio($Radio) {
-    $pattern = $Radio.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)
-    $pattern.Select()
+    $Radio.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+}
+
+function Toggle-CheckBox($CheckBox) {
+    $CheckBox.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle()
+}
+
+function Read-Config([string]$Root) {
+    $path = Join-Path $Root "Config\shell\config.json"
+    if (-not (Test-Path $path)) { return $null }
+    try { return Get-Content $path -Raw -Encoding UTF8 | ConvertFrom-Json } catch { return $null }
+}
+
+function Wait-Config([string]$Root, [scriptblock]$Probe, [int]$TimeoutMs = 10000) {
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    while ($sw.ElapsedMilliseconds -lt $TimeoutMs) {
+        $cfg = Read-Config $Root
+        if ($null -ne $cfg -and (& $Probe $cfg)) { return $cfg }
+        Start-Sleep -Milliseconds 150
+    }
+    throw "等待超时：配置写入（$Root 的 Config\shell\config.json 没出现期望值）"
 }
 
 function Capture-Window([IntPtr]$Hwnd, [string]$Path) {
     if ($Hwnd -eq [IntPtr]::Zero) { throw "拿不到窗口句柄" }
-    $rect = New-Object ThemeE2EWin32+RECT
-    [void][ThemeE2EWin32]::GetWindowRect($Hwnd, [ref]$rect)
+    $rect = New-Object ShellSettingsE2EWin32+RECT
+    [void][ShellSettingsE2EWin32]::GetWindowRect($Hwnd, [ref]$rect)
     $w = $rect.Right - $rect.Left
     $h = $rect.Bottom - $rect.Top
     $bmp = New-Object System.Drawing.Bitmap($w, $h)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     $hdc = $g.GetHdc()
-    try {
-        # PW_RENDERFULLCONTENT=2：即使被别的窗口挡住也能按窗口自身内容渲染（WPF 可用）
-        [void][ThemeE2EWin32]::PrintWindow($Hwnd, $hdc, 2)
-    } finally {
-        $g.ReleaseHdc($hdc)
-        $g.Dispose()
-    }
+    try { [void][ShellSettingsE2EWin32]::PrintWindow($Hwnd, $hdc, 2) }
+    finally { $g.ReleaseHdc($hdc); $g.Dispose() }
     $bmp.Save($Path, [System.Drawing.Imaging.ImageFormat]::Png)
     $bmp.Dispose()
-    return "$w x $h"
 }
 
-function Read-ThemeConfig([string]$Root) {
-    $cfgPath = Join-Path $Root "Config\shell\config.json"
-    if (-not (Test-Path $cfgPath)) { return $null }
-    for ($i = 0; $i -lt 40; $i++) {
-        try {
-            $json = Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
-            if ($json.PSObject.Properties.Name -contains "uiTheme") { return $json.uiTheme }
-        } catch { }
-        Start-Sleep -Milliseconds 150
-    }
-    return $null
+function Assert([bool]$Ok, [string]$Name, [string]$Detail = "") {
+    if (-not $Ok) { throw "断言失败：$Name $Detail" }
+    Write-Output "PASS | $Name $Detail"
 }
 
-$TestHome = Join-Path $env:TEMP ("ylt-theme-e2e-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
-New-Item -ItemType Directory -Force -Path $TestHome | Out-Null
+$testHome = Join-Path $env:TEMP ("ylt-shell-settings-e2e-" + [guid]::NewGuid().ToString("N").Substring(0, 8))
+New-Item -ItemType Directory -Force -Path $testHome | Out-Null
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-$env:YLT_HOME = $TestHome
-$env:YLT_OPEN_SETTINGS = "1"
+$env:YLT_HOME = $testHome
+$env:YLT_OPEN_SETTINGS = "1"     # 启动后直接进「主页设置」页面
 $env:YLT_NO_SINGLE_INSTANCE = "1"
-Remove-Item Env:YLT_SHOT, Env:YLT_THEME, Env:YLT_NAV_TOOL, Env:YLT_SHOT_TOOL -ErrorAction SilentlyContinue
+Remove-Item Env:YLT_SHOT, Env:YLT_THEME, Env:YLT_NAV_TOOL, Env:YLT_SHOT_TOOL, Env:YLT_EFFECT_DEMO, Env:YLT_PARTICLE_DEMO -ErrorAction SilentlyContinue
 
 $proc = $null
 try {
     $proc = Start-Process $Exe -PassThru
     $pid32 = [uint32]$proc.Id
 
-    # 设置窗口是 Owner 窗口：UIA 的 RootElement 子项有时看不到它，直接从 Win32 句柄拿 AutomationElement
-    $settingsHwnd = Wait-Until {
-        $h = [ThemeE2EWin32]::FindVisibleWindow($pid32, "主页设置")
-        if ($h -ne [IntPtr]::Zero) { return $h }
-        return $null
-    } 20000 "设置窗口出现"
     $mainHwnd = Wait-Until {
-        $h = [ThemeE2EWin32]::FindVisibleWindow($pid32, "YuLiang 工具集")
+        $h = [ShellSettingsE2EWin32]::FindVisibleWindow($pid32, "YuLiang 工具集")
         if ($h -ne [IntPtr]::Zero) { return $h }
         return $null
     } 20000 "主窗口出现"
-    "窗口句柄: 设置=$settingsHwnd 主窗口=$mainHwnd"
+    $window = [System.Windows.Automation.AutomationElement]::FromHandle($mainHwnd)
 
-    $settings = [System.Windows.Automation.AutomationElement]::FromHandle($settingsHwnd)
-    Start-Sleep -Milliseconds 600
+    # 等设置页渲染出来（能按名字找到「液态玻璃（实验）」单选按钮）
+    $glassRadio = Wait-Until {
+        $r = Find-Control $window ([System.Windows.Automation.ControlType]::RadioButton) "液态玻璃（实验）"
+        if ($r) { return $r }
+        return $null
+    } 15000 "设置页的界面风格单选"
+    $defaultRadio = Find-Control $window ([System.Windows.Automation.ControlType]::RadioButton) "默认（深色）"
+    Assert ($null -ne $defaultRadio) "主页设置页已打开（在主窗口里，面包屑 主页 › 主页设置）"
 
-    $glassRadio = Find-Radio $settings "*液态玻璃*"
-    $defaultRadio = Find-Radio $settings "*默认*"
-    if ($null -eq $glassRadio -or $null -eq $defaultRadio) { throw "找不到主题单选按钮" }
-    "单选按钮: 液态玻璃=[$($glassRadio.Current.Name)] / 默认=[$($defaultRadio.Current.Name)]"
+    $initial = Wait-Config $testHome { param($cfg) $cfg.uiTheme -eq "Default" }
+    Assert ($initial.uiTheme -eq "Default") "默认配置 = 默认主题"
 
-    # ① 运行中切到液态玻璃（不重启）
+    # ① 切到液态玻璃：立即写配置
     Select-Radio $glassRadio
-    Start-Sleep -Milliseconds 1800
-    $theme1 = Read-ThemeConfig $TestHome
-    "切到液态玻璃后配置 uiTheme = $theme1"
-    [void](Capture-Window $settingsHwnd (Join-Path $OutDir "e2e-switched-glass-settings.png"))
-    if ($mainHwnd -ne [IntPtr]::Zero) { [void](Capture-Window $mainHwnd (Join-Path $OutDir "e2e-switched-glass-main.png")) }
+    $cfg = Wait-Config $testHome { param($cfg) $cfg.uiTheme -eq "LiquidGlass" }
+    Assert ($cfg.uiTheme -eq "LiquidGlass") "点「液态玻璃」→ uiTheme 写进配置（不重启就生效）"
+    Capture-Window $mainHwnd (Join-Path $OutDir "e2e-shell-settings-glass.png")
 
     # ② 切回默认
     Select-Radio $defaultRadio
-    Start-Sleep -Milliseconds 1800
-    $theme2 = Read-ThemeConfig $TestHome
-    "切回默认后配置 uiTheme = $theme2"
-    [void](Capture-Window $settingsHwnd (Join-Path $OutDir "e2e-switched-default-settings.png"))
-    if ($mainHwnd -ne [IntPtr]::Zero) { [void](Capture-Window $mainHwnd (Join-Path $OutDir "e2e-switched-default-main.png")) }
+    $cfg = Wait-Config $testHome { param($cfg) $cfg.uiTheme -eq "Default" }
+    Assert ($cfg.uiTheme -eq "Default") "点「默认」→ uiTheme 切回默认"
 
-    if ($theme1 -ne "LiquidGlass") { throw "第一次切换没有写进配置：$theme1" }
-    if ($theme2 -ne "Default") { throw "第二次切换没有写进配置：$theme2" }
+    # ③ 自动效果 / 点击效果互相独立：关掉「粒子拖尾」，勾上「散光扩散」
+    $trail = Wait-Until { Find-Control $window ([System.Windows.Automation.ControlType]::CheckBox) "粒子拖尾" } 10000 "粒子拖尾勾选框"
+    $dispersion = Find-Control $window ([System.Windows.Automation.ControlType]::CheckBox) "散光扩散"
+    Assert ($null -ne $dispersion) "点击效果「散光扩散」勾选框存在（点击效果可多选）"
 
-    "E2E OK：设置窗口内切换主题 -> 配置实时写入 -> 截图已生成"
-    Get-ChildItem (Join-Path $OutDir "e2e-switched-*.png") | Select-Object Name, Length
-} finally {
+    $before = Wait-Config $testHome { param($cfg) $cfg.autoEffects -contains "particle-trail" }
+    Assert ($before.autoEffects -contains "particle-trail") "初始自动效果含粒子拖尾"
+
+    Toggle-CheckBox $trail
+    $cfg = Wait-Config $testHome { param($cfg) -not ($cfg.autoEffects -contains "particle-trail") }
+    Assert (-not ($cfg.autoEffects -contains "particle-trail")) "取消「粒子拖尾」→ autoEffects 去掉它（自动效果可以全关）"
+    Assert ($cfg.clickEffects -contains "particle-burst") "自动效果关掉后，点击效果「粒子爆炸」仍然保留（两者独立）"
+
+    Toggle-CheckBox $dispersion
+    $cfg = Wait-Config $testHome { param($cfg) $cfg.clickEffects -contains "dispersion" }
+    Assert ($cfg.clickEffects -contains "dispersion") "勾上「散光扩散」→ clickEffects 多出 dispersion（多选生效）"
+    Assert ($cfg.clickEffects -contains "particle-burst") "点击效果可同时勾选多个（粒子爆炸 + 散光扩散并存）"
+
+    Capture-Window $mainHwnd (Join-Path $OutDir "e2e-shell-settings-effects.png")
+
+    Write-Output "E2E OK：设置页换主题 / 自动效果与点击效果独立 / 点击效果多选 → 配置实时写入"
+    exit 0
+}
+finally {
     Remove-Item Env:YLT_HOME, Env:YLT_OPEN_SETTINGS, Env:YLT_NO_SINGLE_INSTANCE -ErrorAction SilentlyContinue
     if ($proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
     Start-Sleep -Milliseconds 500
-    Remove-Item -Recurse -Force $TestHome -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force $testHome -ErrorAction SilentlyContinue
 }

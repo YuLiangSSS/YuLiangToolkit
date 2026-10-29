@@ -1,5 +1,6 @@
 using YuLiangToolkit.App.Themes;
 using YuLiangToolkit.Core.Configuration;
+using YuLiangToolkit.Core.Effects;
 
 namespace YuLiangToolkit.App.Models;
 
@@ -47,8 +48,28 @@ public sealed class ShellConfig : ToolConfig
     /// <summary>功能 Id → 上次打开时间（本地时间）。</summary>
     public Dictionary<string, DateTime> LastUsed { get; set; } = new();
 
-    /// <summary>是否在界面上绘制鼠标粒子效果（主页设置里的开关，默认开）。</summary>
+    /// <summary>
+    /// 是否绘制鼠标粒子效果（**老版本的开关，v0.26.0 起只用于配置迁移**，界面不再直接改它）。
+    /// 新配置改用 <see cref="AutoEffects"/> / <see cref="ClickEffects"/> 两个 Id 列表：
+    /// 老配置里没有这两个字段时按它迁移（开着 = 粒子拖尾 + 粒子爆炸，关着 = 两个都空），
+    /// 保证老用户升级后的行为与以前一致。
+    /// </summary>
     public bool ShowParticles { get; set; } = true;
+
+    /// <summary>
+    /// 自动效果 Id 列表（<c>null</c> = 老配置没有这个字段，加载时按 <see cref="ShowParticles"/> 迁移；
+    /// 显式空数组 = 用户就是不要自动效果）。可选值见 <see cref="CursorEffects"/>：
+    /// <c>particle-trail</c> 粒子拖尾、<c>cursor-glow</c> 鼠标散光。
+    /// </summary>
+    public List<string>? AutoEffects { get; set; }
+
+    /// <summary>
+    /// 点击效果 Id 列表（可多选；<c>null</c> = 老配置没有这个字段，按 <see cref="ShowParticles"/> 迁移）。
+    /// 可选值见 <see cref="CursorEffects"/>：<c>particle-burst</c> 粒子爆炸、
+    /// <c>dispersion</c> 散光扩散、<c>glow-flash</c> 光晕闪烁。
+    /// 与自动效果互不影响：自动效果全关、点击效果照样能触发。
+    /// </summary>
+    public List<string>? ClickEffects { get; set; }
 
     /// <summary>
     /// 界面主题（「主页设置 → 界面风格」，默认 <see cref="UiTheme.Default"/>）。

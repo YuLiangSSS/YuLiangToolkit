@@ -853,6 +853,7 @@ RunGroupModule("shell", "导航", NavigationChecks.Run, "[导航] ");
 
 // ---------- 粒子效果（引擎的生成 / 寿命 / 衰减 / 开关 / 上限；纯逻辑无界面） ----------
 RunGroupModule("shell", "粒子", ParticleChecks.Run);
+RunGroupModule("shell", "光标特效", ShellEffectsChecks.Run);
 
 // ---------- 星数计算（数值基准回归） ----------
 RunGroupModule("osu-mania", "星数", StarRatingChecks.Run);

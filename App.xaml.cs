@@ -151,16 +151,16 @@ public partial class App : Application
             if (pictureTool is not null) vm.OpenToolCommand.Execute(pictureTool);
         }
 
-        // 开发调试：YLT_OPEN_SETTINGS=1 打开「主页设置」窗口（配合 YLT_SHOT 截那个窗口本身）
-        var settingsWindow = string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("YLT_OPEN_SETTINGS"))
-            ? null
-            : vm.OpenSettings(activate: string.IsNullOrWhiteSpace(shotPath));
+        // 开发调试：YLT_OPEN_SETTINGS=1 进入「主页设置」页面（v0.26.0 起设置是页面而不是独立窗口；
+        // 配 YLT_SHOT 时截的就是主窗口这一页，命令见 docs/shell.md）
+        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("YLT_OPEN_SETTINGS")))
+        {
+            vm.OpenSettings();
+        }
 
         if (!string.IsNullOrWhiteSpace(shotPath))
         {
-            // 设置窗口开着就截它（RenderTargetBitmap 只渲染传入的视觉树，不截会被主窗口盖住）
-            if (settingsWindow is not null) settingsWindow.CaptureTo(shotPath);
-            else window.CaptureTo(shotPath);
+            window.CaptureTo(shotPath);
         }
         else
         {

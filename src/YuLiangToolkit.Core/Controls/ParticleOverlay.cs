@@ -3,87 +3,94 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using YuLiangToolkit.Core.Controls.CursorEffects;
+using YuLiangToolkit.Core.Effects;
+using CursorEffectCatalog = YuLiangToolkit.Core.Effects.CursorEffects;
 using YuLiangToolkit.Core.Particles;
 
 namespace YuLiangToolkit.Core.Controls;
 
 /// <summary>
-/// 鼠标粒子覆盖层：铺在窗口最上面，用 <see cref="FrameworkElement.OnRender"/> + <c>DrawingContext</c>
-/// 直接画圆点（**每个粒子不是控件**，不往可视化树里塞 Ellipse —— 早期版本那样每帧 new 一堆控件，
-/// 粒子上限一放开就会卡）。粒子数学全在 <see cref="ParticleEngine"/> 里（纯逻辑、可无头自检），
-/// 本控件只负责：接鼠标事件、按刷新率算帧步长、把粒子画成「淡紫柔光 + 近白圆点」。
+/// 光标特效覆盖层（v0.26.0 由原来的「粒子覆盖层」扩展而来）：铺在窗口最上面，
+/// 用 <see cref="FrameworkElement.OnRender"/> + <c>DrawingContext</c> 直接画，
+/// 不往可视化树里塞任何控件。
 ///
-/// <para><b>XAML 用法</b>（放到窗口根 Grid 的最后，注意 Grid.RowSpan 要盖满整个窗口）：</para>
+/// <para><b>特效由清单驱动、可以任意组合</b>（见 <see cref="CursorEffects"/>）：</para>
+/// <list type="bullet">
+///   <item><b>自动效果</b>（<see cref="AutoEffects"/>，多选）：<c>particle-trail</c> 粒子拖尾（原有效果）、
+///   <c>cursor-glow</c> 鼠标散光（鼠标位置一圈微弱圆光）；</item>
+///   <item><b>点击效果</b>（<see cref="ClickEffects"/>，可多选）：<c>particle-burst</c> 粒子爆炸、
+///   <c>dispersion</c> 散光扩散（Glassium 风格彩色色散环）、<c>glow-flash</c> 光晕闪烁。</item>
+/// </list>
+/// <para>两套特效**完全独立**：自动效果全部不勾也能有点击爆发；点击效果可以同时勾好几个。
+/// 新增一种特效的步骤见 <see cref="CursorEffects"/> 的注释（加清单 + 加渲染器 + 加对应字段/分支）。</para>
+///
+/// <para><b>XAML 用法</b>（放在窗口根 Grid 的最后，Grid.RowSpan 盖满整个窗口）：</para>
 /// <code>
-/// &lt;Window xmlns:core="clr-namespace:YuLiangToolkit.Core.Controls;assembly=YuLiangToolkit.Core"&gt;
-///   &lt;Grid&gt;
-///     ...
-///     &lt;core:ParticleOverlay Grid.RowSpan="4" Panel.ZIndex="900"
-///                            IsHitTestVisible="False"
-///                            IsActive="{Binding ParticlesEnabled}" /&gt;
-///   &lt;/Grid&gt;
-/// &lt;/Window&gt;
+/// &lt;core:ParticleOverlay Grid.RowSpan="4" Panel.ZIndex="900" IsHitTestVisible="False"
+///                        IsActive="True"
+///                        AutoEffects="{Binding AutoEffectIds}"
+///                        ClickEffects="{Binding ClickEffectIds}"
+///                        UseCustomColors="{Binding ParticleCustomColorsEnabled}" ... /&gt;
 /// </code>
-/// <para>只绑定 <see cref="IsActive"/> 就能用；<see cref="ParticleColor"/> / <see cref="GlowColor"/>
-/// 有深色主题合适的默认值，一般不用写。控件自己会兜底 <c>IsHitTestVisible = false</c>，但 XAML 里
-/// 顺手写上更直观。</para>
 ///
-/// <para><b>自定义颜色（v0.22.0）</b>：<see cref="UseCustomColors"/> = true 后由
-/// <see cref="Color1"/> / <see cref="Color2"/> / <see cref="UseColor1"/> / <see cref="UseColor2"/> 决定取色：
-/// 只启用一种 → 单色；两种都启用 → 每颗粒子生成时的随机 <see cref="Particle.ColorMix"/> 在两种颜色之间
-/// 线性插值（用 <see cref="ParticleColorRange"/> 算）；两种都不启用 → 退回默认淡紫白。
-/// 画刷按「颜色档 × 透明度档」预生成，切换颜色只重建一次调色板，绘制时仍零分配。</para>
+/// <para><b>性能</b>：只在「有自动拖尾在生成」或「有爆炸/散光/闪光在播」时才订阅
+/// <c>CompositionTarget.Rendering</c>（没有特效应画时立刻退订，空闲零 CPU）；
+/// 鼠标散光只在鼠标移动时重绘一次，不常驻 60fps。所有画刷 / 画笔预生成并冻结，绘制路径零 new。</para>
 ///
-/// <para><b>行为</b>：鼠标在窗口内 → 每帧从鼠标位置生成粒子（跟随移动）；左键 → 速度 + 数量爆发；
-/// 右键 → 数量爆发；鼠标离开窗口 / 窗口失活 / 最小化 → 暂停并清空；<see cref="IsActive"/> = false →
-/// 立即清空并停掉渲染循环（<c>CompositionTarget.Rendering</c> 只是订阅，空闲时不会自己跑）。</para>
-///
-/// <para><b>调试</b>：设环境变量 <c>YLT_PARTICLE_DEMO=1</c> 后，只要 <see cref="IsActive"/> 为 true
-/// 就在窗口中部按固定轨迹自动生成粒子（不需要鼠标、也不需要窗口激活），用于 <c>YLT_SHOT</c> 截图验收；
-/// 正常情况下这个变量不存在，行为与鼠标模式完全一致。</para>
-///
-/// <para>所有事件都在 <c>Loaded</c> 时挂到所在 Window、<c>Unloaded</c> / <c>Closed</c> 时成对摘掉，
-/// 不残留对窗口/静态 <c>CompositionTarget.Rendering</c> 的引用（后者是静态事件，忘摘就是内存泄漏）。</para>
+/// <para><b>调试</b>：<c>YLT_PARTICLE_DEMO=1</c>（或 <c>YLT_EFFECT_DEMO=1</c>）进入演示模式 ——
+/// 不需要鼠标、按固定轨迹自动产生拖尾并周期性触发点击特效，供 <c>YLT_SHOT</c> 截图验收；
+/// <c>YLT_PARTICLE_TRACE=&lt;文件&gt;</c> 把鼠标坐标 / 每 20 帧的发射点与存活数写进文件。</para>
 /// </summary>
 public sealed class ParticleOverlay : FrameworkElement
 {
     // ================================================================== 依赖属性
 
     /// <summary>
-    /// 是否启用粒子（默认 <c>false</c>）。由主页设置里的开关绑定（例如 <c>{Binding ParticlesEnabled}</c>）。
-    /// 设为 false 时立即清空现存粒子、停掉每帧更新并重绘一次（把上一帧擦掉）。
+    /// 总开关（默认 <c>false</c>）。为 false 时所有特效立即清空并停止渲染循环。
+    /// 具体开哪些特效由 <see cref="AutoEffects"/> / <see cref="ClickEffects"/> 决定。
     /// </summary>
     public static readonly DependencyProperty IsActiveProperty = DependencyProperty.Register(
         nameof(IsActive), typeof(bool), typeof(ParticleOverlay),
         new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.None, OnIsActiveChanged));
 
     /// <summary>
-    /// 粒子主色（默认接近白色的淡紫 <c>#F2EEFF</c>，在深色主题上自然）。
-    /// 运行时改它只影响之后的绘制，不需要重建任何状态。
+    /// 自动效果的 Id 列表（逗号分隔，见 <see cref="CursorEffects"/>；空串 = 没有自动效果）。
+    /// 例如 <c>"particle-trail,cursor-glow"</c>。未知 Id 会被忽略。
     /// </summary>
+    public static readonly DependencyProperty AutoEffectsProperty = DependencyProperty.Register(
+        nameof(AutoEffects), typeof(string), typeof(ParticleOverlay),
+        new FrameworkPropertyMetadata("", FrameworkPropertyMetadataOptions.None, OnEffectsChanged));
+
+    /// <summary>
+    /// 点击效果的 Id 列表（逗号分隔，可多选；空串 = 点击没有任何特效）。
+    /// 例如 <c>"particle-burst,dispersion,glow-flash"</c>。未知 Id 会被忽略。
+    /// </summary>
+    public static readonly DependencyProperty ClickEffectsProperty = DependencyProperty.Register(
+        nameof(ClickEffects), typeof(string), typeof(ParticleOverlay),
+        new FrameworkPropertyMetadata("", FrameworkPropertyMetadataOptions.None, OnEffectsChanged));
+
+    /// <summary>粒子主色（默认接近白色的淡紫 <c>#F2EEFF</c>，在深色主题上自然）。</summary>
     public static readonly DependencyProperty ParticleColorProperty = DependencyProperty.Register(
         nameof(ParticleColor), typeof(Color), typeof(ParticleOverlay),
         new FrameworkPropertyMetadata(Color.FromRgb(0xF2, 0xEE, 0xFF),
             FrameworkPropertyMetadataOptions.AffectsRender, OnColorChanged));
 
-    /// <summary>
-    /// 柔光（外圈）颜色（默认主题淡紫 <c>#C9BDFF</c>，透明度很低，只用来让圆点边缘不那么生硬）。
-    /// </summary>
+    /// <summary>柔光（外圈）颜色（默认主题淡紫 <c>#C9BDFF</c>，透明度很低，让圆点边缘不那么生硬）。</summary>
     public static readonly DependencyProperty GlowColorProperty = DependencyProperty.Register(
         nameof(GlowColor), typeof(Color), typeof(ParticleOverlay),
         new FrameworkPropertyMetadata(Color.FromRgb(0xC9, 0xBD, 0xFF),
             FrameworkPropertyMetadataOptions.AffectsRender, OnColorChanged));
 
-    // ---------- 自定义粒子颜色（v0.22.0） ----------
+    // ---------- 自定义粒子颜色（v0.22.0；对所有「粒子类」特效生效：拖尾 + 爆炸） ----------
     //
     // 语义（主页设置「粒子颜色」卡片直接绑这几个 DP）：
     //   UseCustomColors=false          → 用 ParticleColor / GlowColor（原来的淡紫白，行为不变）；
     //   UseCustomColors=true, 只勾一种 → 粒子固定是那种颜色（柔光用同色）；
     //   UseCustomColors=true, 勾两种   → 每颗粒子生成时的随机 ColorMix 在两种颜色之间线性插值；
     //   两种都没勾                     → 退回默认淡紫白（界面会提示）。
-    // 画刷按「颜色档 × 透明度档」预生成（冻结），OnRender 里只查表，保持每帧零分配。
 
-    /// <summary>是否启用自定义粒子颜色（默认 false = 原来的淡紫白）。</summary>
+    /// <summary>是否启用自定义特效颜色（默认 false = 原来的淡紫白）。</summary>
     public static readonly DependencyProperty UseCustomColorsProperty = DependencyProperty.Register(
         nameof(UseCustomColors), typeof(bool), typeof(ParticleOverlay),
         new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsRender, OnColorChanged));
@@ -110,11 +117,25 @@ public sealed class ParticleOverlay : FrameworkElement
         nameof(UseColor2), typeof(bool), typeof(ParticleOverlay),
         new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.AffectsRender, OnColorChanged));
 
-    /// <summary>是否启用粒子效果。见 <see cref="IsActiveProperty"/>。</summary>
+    /// <summary>总开关，见 <see cref="IsActiveProperty"/>。</summary>
     public bool IsActive
     {
         get => (bool)GetValue(IsActiveProperty);
         set => SetValue(IsActiveProperty, value);
+    }
+
+    /// <summary>自动效果 Id 列表（逗号分隔），见 <see cref="AutoEffectsProperty"/>。</summary>
+    public string AutoEffects
+    {
+        get => (string)GetValue(AutoEffectsProperty);
+        set => SetValue(AutoEffectsProperty, value);
+    }
+
+    /// <summary>点击效果 Id 列表（逗号分隔），见 <see cref="ClickEffectsProperty"/>。</summary>
+    public string ClickEffects
+    {
+        get => (string)GetValue(ClickEffectsProperty);
+        set => SetValue(ClickEffectsProperty, value);
     }
 
     /// <summary>粒子主色，见 <see cref="ParticleColorProperty"/>。</summary>
@@ -131,7 +152,7 @@ public sealed class ParticleOverlay : FrameworkElement
         set => SetValue(GlowColorProperty, value);
     }
 
-    /// <summary>是否启用自定义粒子颜色，见 <see cref="UseCustomColorsProperty"/>。</summary>
+    /// <summary>是否启用自定义特效颜色，见 <see cref="UseCustomColorsProperty"/>。</summary>
     public bool UseCustomColors
     {
         get => (bool)GetValue(UseCustomColorsProperty);
@@ -180,10 +201,27 @@ public sealed class ParticleOverlay : FrameworkElement
     /// <summary>柔光半径相对主圆点半径的倍数。</summary>
     private const double GlowRadiusScale = 1.9;
 
-    private readonly ParticleEngine _engine = new();
+    /// <summary>自动拖尾引擎（纯逻辑；自动效果关掉时完全不工作）。</summary>
+    private readonly ParticleEngine _trailEngine = new();
 
-    /// <summary>开发调试：<c>YLT_PARTICLE_DEMO=1</c> 时不用鼠标、按固定轨迹自动发射（供截图验收）。</summary>
+    /// <summary>点击爆炸引擎（纯逻辑；和自动拖尾互相独立）。</summary>
+    private readonly ParticleBurstEngine _burstEngine = new();
+
+    private readonly CursorGlowRenderer _cursorGlow = new();
+    private readonly DispersionRippleRenderer _dispersion = new();
+    private readonly GlowFlashRenderer _flash = new();
+
+    /// <summary>开发调试：<c>YLT_PARTICLE_DEMO=1</c> / <c>YLT_EFFECT_DEMO=1</c> 时不用鼠标、自动演示（供截图）。</summary>
     private readonly bool _demoMode = IsDemoModeEnabled();
+
+    /// <summary>当前勾选了哪些自动效果（来自 <see cref="AutoEffects"/>）。</summary>
+    private bool _trailEnabled;
+    private bool _glowEnabled;
+
+    /// <summary>当前勾选了哪些点击效果（来自 <see cref="ClickEffects"/>）。</summary>
+    private bool _burstEnabled;
+    private bool _dispersionEnabled;
+    private bool _flashEnabled;
 
     /// <summary>颜色档数 × 透明度档数的冻结画刷表；第一维是颜色档（1 = 单色 / 默认）。</summary>
     private Brush[,] _coreBrushes = null!;
@@ -196,25 +234,29 @@ public sealed class ParticleOverlay : FrameworkElement
     private bool _loaded;
     private bool _hooked;          // 窗口事件是否已挂上（成对解绑的开关）
     private bool _renderingHooked; // CompositionTarget.Rendering 是否已挂上
-    private bool _pointerInside;   // 鼠标是否在窗口内（离开窗口即暂停，对齐早期版本）
+    private bool _pointerInside;   // 鼠标是否在窗口内（离开窗口即清空）
     private bool _windowActive;    // 窗口是否激活（失活即暂停）
     private bool _idle = true;     // 上一帧是否"没在生成"（重新开始时把计时归零，避免粒子一上来瞬移）
 
+    private Point _pointerPosition;   // 鼠标在覆盖层里的最新位置（散光 / 点击特效用）
+    private double _effectSeconds;    // 累计秒数（散光呼吸脉动用）
+
     private long _lastTick;        // 上一帧的 Stopwatch 时间戳（0 = 重新计时）
     private double _demoSeconds;   // 演示轨迹的累计时间
-    private int _demoFrames;       // 演示模式帧计数（隔一段时间来一次小爆发）
+    private int _demoFrames;       // 演示模式帧计数（周期性触发展示效果）
 
     // ================================================================== 构造
 
     /// <summary>创建覆盖层。放在窗口可视化树里即可，不需要任何初始化调用。</summary>
     public ParticleOverlay()
     {
-        // 不挡鼠标（XAML 里也会写，这里兜底）；粒子飞出边界不画到窗口外面
+        // 不挡鼠标（XAML 里也会写，这里兜底）；特效飞出边界不画到窗口外面
         IsHitTestVisible = false;
         Focusable = false;
         ClipToBounds = true;
 
         RebuildPalettes();
+        ApplyEffectSelection();
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -235,12 +277,12 @@ public sealed class ParticleOverlay : FrameworkElement
 
         if (_window is not null) HookWindow(_window);
 
-        _engine.Active = IsActive;
+        _trailEngine.Active = IsActive && _trailEnabled;
         UpdateRenderingSubscription();
 
         // 演示模式要主动踢一脚：没有这一帧的 InvalidateVisual，就没有第一次渲染回调，
         // 后面每帧自我延续的渲染循环也就起不来（截图模式下窗口不激活，更要靠它）。
-        if (IsActive) InvalidateVisual();
+        if (IsActive && (_trailEnabled || _demoMode)) InvalidateVisual();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e) => Detach();
@@ -255,14 +297,13 @@ public sealed class ParticleOverlay : FrameworkElement
         _hooked = false;
         _window = null;
 
-        _engine.Active = false;   // setter 里会 Clear
-        _engine.Clear();
+        ResetAllEffects();
         _pointerInside = false;
         _windowActive = false;
         _idle = true;
         _lastTick = 0;
 
-        InvalidateVisual();       // 把上一帧的粒子擦掉（元素已离开可视化树时是安全空操作）
+        InvalidateVisual();       // 把上一帧的特效擦掉（元素已离开可视化树时是安全空操作）
     }
 
     private void HookWindow(Window window)
@@ -295,23 +336,26 @@ public sealed class ParticleOverlay : FrameworkElement
 
     private void OnWindowClosed(object? sender, EventArgs e) => Detach();
 
-    // ================================================================== 开关
+    // ================================================================== 开关 / 特效选择
 
     private static void OnIsActiveChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         => ((ParticleOverlay)d).ApplyActiveState();
 
+    private static void OnEffectsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        => ((ParticleOverlay)d).ApplyEffectSelection();
+
+    /// <summary>总开关变化：关掉时清空一切并停渲染；打开时按选择恢复自动拖尾并订阅渲染。</summary>
     private void ApplyActiveState()
     {
         var active = IsActive;
-        _engine.Active = active;   // 关闭时 setter 内部已 Clear
+        _trailEngine.Active = active && _trailEnabled;
 
         if (!active)
         {
+            ResetTransientEffects();
             _pointerInside = false;
             _idle = true;
             _lastTick = 0;
-            _engine.Clear();
-            InvalidateVisual();    // 立刻擦掉上一帧
         }
 
         UpdateRenderingSubscription();
@@ -319,8 +363,65 @@ public sealed class ParticleOverlay : FrameworkElement
     }
 
     /// <summary>
-    /// 只有「开关开着 + 已加载 + 窗口没最小化 + （窗口激活 或 演示模式）」时才订阅渲染回调；
-    /// 关闭/失活/最小化时**主动退订**，连空转都不留。
+    /// 重新解析 <see cref="AutoEffects"/> / <see cref="ClickEffects"/>：未知 Id 忽略，
+    /// 被关掉的特效立刻清空；拖尾引擎跟着开关。新增渲染分支加在这里。
+    /// </summary>
+    private void ApplyEffectSelection()
+    {
+        var auto = CursorEffectCatalog.Normalize(
+            CursorEffectCatalog.Split(AutoEffects), CursorEffectTrigger.Auto, Array.Empty<string>());
+        var click = CursorEffectCatalog.Normalize(
+            CursorEffectCatalog.Split(ClickEffects), CursorEffectTrigger.Click, Array.Empty<string>());
+
+        _trailEnabled = auto.Contains(CursorEffectCatalog.ParticleTrail, StringComparer.OrdinalIgnoreCase);
+        _glowEnabled = auto.Contains(CursorEffectCatalog.CursorGlow, StringComparer.OrdinalIgnoreCase);
+        _burstEnabled = click.Contains(CursorEffectCatalog.ParticleBurst, StringComparer.OrdinalIgnoreCase);
+        _dispersionEnabled = click.Contains(CursorEffectCatalog.Dispersion, StringComparer.OrdinalIgnoreCase);
+        _flashEnabled = click.Contains(CursorEffectCatalog.GlowFlash, StringComparer.OrdinalIgnoreCase);
+
+        _trailEngine.Active = _loaded ? IsActive && _trailEnabled : _trailEnabled;
+        if (!_trailEnabled) _trailEngine.Clear();
+        if (!_burstEnabled) _burstEngine.Clear();
+        if (!_dispersionEnabled) _dispersion.Clear();
+        if (!_flashEnabled) _flash.Clear();
+        _cursorGlow.Visible = false;   // 每帧渲染时按开关和鼠标状态再置
+
+        UpdateRenderingSubscription();
+        InvalidateVisual();
+    }
+
+    /// <summary>清空所有一次性特效（爆炸 / 散光 / 闪光）。</summary>
+    private void ResetTransientEffects()
+    {
+        _burstEngine.Clear();
+        _dispersion.Clear();
+        _flash.Clear();
+    }
+
+    /// <summary>清空所有特效（拖尾 + 一次性 + 散光显隐）。</summary>
+    private void ResetAllEffects()
+    {
+        _trailEngine.Active = false;   // setter 里会 Clear
+        _trailEngine.Clear();
+        ResetTransientEffects();
+        _cursorGlow.Visible = false;
+    }
+
+    // ================================================================== 渲染订阅
+
+    /// <summary>自动拖尾还在连续生成吗（只有它需要 60fps 循环）。</summary>
+    private bool HasContinuousWork()
+        => _trailEnabled && IsActive && (_demoMode || _pointerInside);
+
+    /// <summary>有一次性特效（爆炸 / 散光 / 闪光）在播吗。</summary>
+    private bool HasTransientWork()
+        => (_burstEnabled && _burstEngine.HasParticles)
+           || (_dispersionEnabled && _dispersion.HasVisual)
+           || (_flashEnabled && _flash.HasVisual);
+
+    /// <summary>
+    /// 只有「总开关开着 + 已加载 + 窗口没最小化 + （窗口激活 或 演示模式）+ 确实有东西要画」时
+    /// 才订阅渲染回调；其余情况**主动退订**，连空转都不留（鼠标散光只在移动时重绘一次）。
     /// </summary>
     private void UpdateRenderingSubscription()
     {
@@ -328,7 +429,8 @@ public sealed class ParticleOverlay : FrameworkElement
                            && IsActive
                            && _window is not null
                            && _window.WindowState != WindowState.Minimized
-                           && (_demoMode || _windowActive);
+                           && (_demoMode || _windowActive)
+                           && (HasContinuousWork() || HasTransientWork());
 
         if (shouldRender == _renderingHooked) return;
 
@@ -404,8 +506,7 @@ public sealed class ParticleOverlay : FrameworkElement
 
         var position = GetPointerPosition(e);
         Trace($"move pos={position.X:0.#},{position.Y:0.#} event={e.GetPosition(this).X:0.#},{e.GetPosition(this).Y:0.#}");
-        _pointerInside = true;
-        _engine.SetEmitter(position.X, position.Y);
+        TrackPointer(position);
         Wake();
     }
 
@@ -415,9 +516,16 @@ public sealed class ParticleOverlay : FrameworkElement
 
         var position = GetPointerPosition(e);
         Trace($"enter pos={position.X:0.#},{position.Y:0.#} event={e.GetPosition(this).X:0.#},{e.GetPosition(this).Y:0.#}");
-        _pointerInside = true;
-        _engine.SetEmitter(position.X, position.Y);
+        TrackPointer(position);
         Wake();
+    }
+
+    /// <summary>记住最新鼠标位置：拖尾引擎发射点 + 散光 / 点击特效的落点。</summary>
+    private void TrackPointer(Point position)
+    {
+        _pointerInside = true;
+        _pointerPosition = position;
+        if (_trailEnabled) _trailEngine.SetEmitter(position.X, position.Y);
     }
 
     // ---------- 调试（YLT_PARTICLE_TRACE=文件） ----------
@@ -435,34 +543,52 @@ public sealed class ParticleOverlay : FrameworkElement
 
         // 与早期版本一致：鼠标离开窗口就清空，回来重新开始（不是"暂停在原地"）
         _pointerInside = false;
-        _engine.Clear();
+        ResetAllEffects();
+        _trailEngine.Clear();
         _idle = true;
         _lastTick = 0;
+        UpdateRenderingSubscription();
         InvalidateVisual();
     }
 
     private void OnWindowMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        => HandleMouseClick(e, isRight: false);
+
+    private void OnWindowMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        => HandleMouseClick(e, isRight: true);
+
+    /// <summary>鼠标按下：先更新发射点，再按「自动拖尾的爆发」+「点击效果」分别触发（互不依赖）。</summary>
+    private void HandleMouseClick(MouseEventArgs e, bool isRight)
     {
         if (!_loaded || !IsActive || _demoMode) return;
 
         var position = GetPointerPosition(e);
-        Trace($"ldown pos={position.X:0.#},{position.Y:0.#} event={e.GetPosition(this).X:0.#},{e.GetPosition(this).Y:0.#} src={e.OriginalSource?.GetType().Name}");
-        _pointerInside = true;
-        _engine.SetEmitter(position.X, position.Y);
-        _engine.BoostSpeedAndCount();   // 左键：速度 + 数量都拉满
+        Trace($"{(isRight ? "rdown" : "ldown")} pos={position.X:0.#},{position.Y:0.#} "
+              + $"event={e.GetPosition(this).X:0.#},{e.GetPosition(this).Y:0.#} src={e.OriginalSource?.GetType().Name}");
+        TrackPointer(position);
+
+        if (_trailEnabled)
+        {
+            if (isRight) _trailEngine.BoostCount();              // 右键：只加拖尾数量
+            else _trailEngine.BoostSpeedAndCount();              // 左键：速度 + 数量都拉满
+        }
+
+        TriggerClickEffects(position, isRight);
         Wake();
     }
 
-    private void OnWindowMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    /// <summary>
+    /// 触发当前勾选的点击效果（与自动效果无关；可以一次触发多个）。
+    /// 新增点击特效时：清单里加一条 Id，这里加一个受开关控制的分支，再在 <see cref="OnRender"/> 里画出来。
+    /// </summary>
+    private void TriggerClickEffects(Point position, bool isRight)
     {
-        if (!_loaded || !IsActive || _demoMode) return;
+        if (!IsActive) return;
 
-        var position = GetPointerPosition(e);
-        Trace($"rdown pos={position.X:0.#},{position.Y:0.#} event={e.GetPosition(this).X:0.#},{e.GetPosition(this).Y:0.#}");
-        _pointerInside = true;
-        _engine.SetEmitter(position.X, position.Y);
-        _engine.BoostCount();           // 右键：只加数量
-        Wake();
+        if (_burstEnabled) _burstEngine.Burst(position.X, position.Y,
+            isRight ? ParticleBurstEngine.RightBurstCount : ParticleBurstEngine.DefaultBurstCount);
+        if (_dispersionEnabled) _dispersion.Trigger(position);
+        if (_flashEnabled) _flash.Trigger(position);
     }
 
     /// <summary>鼠标进来/点击之后把渲染循环"叫醒"：空闲时事件不会自己来，靠一次重绘引起下一帧。</summary>
@@ -488,7 +614,7 @@ public sealed class ParticleOverlay : FrameworkElement
         _pointerInside = false;
         _idle = true;
         _lastTick = 0;
-        _engine.Clear();          // 失活时清空（对齐早期版本离开窗口就清空；回来重新开始）
+        ResetAllEffects();          // 失活时清空（对齐早期版本离开窗口就清空；回来重新开始）
         InvalidateVisual();
         UpdateRenderingSubscription();
     }
@@ -500,7 +626,7 @@ public sealed class ParticleOverlay : FrameworkElement
             _pointerInside = false;
             _idle = true;
             _lastTick = 0;
-            _engine.Clear();
+            ResetAllEffects();
             InvalidateVisual();
         }
 
@@ -518,7 +644,7 @@ public sealed class ParticleOverlay : FrameworkElement
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[ParticleOverlay] 粒子帧更新失败：{ex}");
+            Debug.WriteLine($"[ParticleOverlay] 特效帧更新失败：{ex}");
         }
     }
 
@@ -531,11 +657,15 @@ public sealed class ParticleOverlay : FrameworkElement
         if (window.WindowState == WindowState.Minimized) return;
 
         var generating = _demoMode || (window.IsActive && _pointerInside);
-        if (!generating)
+        var trailWork = _trailEnabled && generating;
+        var transientWork = HasTransientWork();
+
+        if (!trailWork && !transientWork)
         {
-            // 没在生成：把计时归零，等下一次 Wake()，这样不会把空闲时间算进第一帧
+            // 没东西要画：把计时归零并退出渲染循环，等下一次 Wake() / 再订阅
             _idle = true;
             _lastTick = 0;
+            UpdateRenderingSubscription();
             return;
         }
 
@@ -550,19 +680,32 @@ public sealed class ParticleOverlay : FrameworkElement
         }
         _lastTick = now;
         frameSteps = Math.Clamp(frameSteps, 0.05, ParticleEngine.MaxFrameStep);
+        _effectSeconds += frameSteps / ParticleEngine.ReferenceFps;
 
         if (_demoMode) UpdateDemoEmitter(frameSteps);
 
-        _engine.Update(frameSteps);
+        if (trailWork) _trailEngine.Update(frameSteps);
+        if (_burstEnabled) _burstEngine.Update(frameSteps);
+        if (_dispersionEnabled) _dispersion.Update(frameSteps);
+        if (_flashEnabled) _flash.Update(frameSteps);
+
         _idle = false;
         if (_traceFrame++ % 20 == 0)
         {
-            Trace($"frame emitter={_engine.EmitterX:0.#},{_engine.EmitterY:0.#} alive={_engine.Particles.Count} ptr={_pointerInside}");
+            Trace($"frame emitter={_trailEngine.EmitterX:0.#},{_trailEngine.EmitterY:0.#} "
+                  + $"trail={_trailEngine.Particles.Count} burst={_burstEngine.Particles.Count} ptr={_pointerInside}");
         }
+
+        // 一次性特效播完后如果也没有自动拖尾在跑，就退订（最后一帧先画完再退订）
+        if (!HasTransientWork() && !HasContinuousWork()) UpdateRenderingSubscription();
+
         InvalidateVisual();   // 主动重绘 → 下一帧渲染回调继续来（自维持循环）
     }
 
-    /// <summary>演示模式：发射点沿窗口中部一个李萨如轨迹跑，隔一阵来一次小爆发 —— 无鼠标也能截图看效果。</summary>
+    /// <summary>
+    /// 演示模式：发射点沿窗口中部一个李萨如轨迹跑，周期性触发点击特效 ——
+    /// 无鼠标、无窗口激活也能截图看到「自动效果 + 点击效果」的真实样子。
+    /// </summary>
     private void UpdateDemoEmitter(double frameSteps)
     {
         _demoSeconds += frameSteps / ParticleEngine.ReferenceFps;
@@ -576,24 +719,55 @@ public sealed class ParticleOverlay : FrameworkElement
 
         // 轨迹速度按"鼠标挥动"的量级来（约 5px/帧），截图里是一条连续的弧，不是一颗颗孤立的点
         var t = _demoSeconds;
-        _engine.SetEmitter(
+        var emitter = new Point(
             centerX + Math.Cos(t * 1.1) * radiusX,
             centerY + Math.Sin(t * 1.5) * radiusY);
 
+        _pointerInside = true;
+        _pointerPosition = emitter;
+        if (_trailEnabled) _trailEngine.SetEmitter(emitter.X, emitter.Y);
+
         _demoFrames++;
-        if (_demoFrames % 12 == 0) _engine.BoostCount();   // 周期性来一小团，截图里看得出“爆一下”
+        if (_trailEnabled && _demoFrames % 12 == 0) _trailEngine.BoostCount();   // 周期性一小团
+        if (_demoFrames % 36 == 0) TriggerClickEffects(emitter, isRight: _demoFrames % 72 == 0);   // 周期性来一次点击特效
     }
 
     // ================================================================== 绘制
 
-    /// <summary>把当前所有粒子画成圆点：外层淡紫柔光 + 内层近白实心，透明度/大小随寿命衰减。</summary>
+    /// <summary>
+    /// 把当前所有特效画出来（顺序：鼠标散光在最底、粒子在上、点击特效最上）。
+    /// 新增特效的绘制入口也在这里加（按「底层 → 上层」排）。
+    /// </summary>
     protected override void OnRender(DrawingContext drawingContext)
     {
         base.OnRender(drawingContext);
 
-        var particles = _engine.Particles;
-        if (particles.Count == 0) return;
+        // 1) 自动散光：柔和圆光垫在粒子下面
+        if (_glowEnabled && IsActive && (_pointerInside || _demoMode))
+        {
+            _cursorGlow.Center = _pointerPosition;
+            _cursorGlow.Visible = true;
+            _cursorGlow.Render(drawingContext, _effectSeconds);
+        }
+        else
+        {
+            _cursorGlow.Visible = false;
+        }
 
+        // 2) 自动拖尾 + 3) 点击爆炸：同一套调色板
+        DrawParticles(drawingContext, _trailEngine.Particles);
+        if (_burstEnabled) DrawParticles(drawingContext, _burstEngine.Particles);
+
+        // 4) 点击散光扩散：用主色画刷当中心亮核
+        if (_dispersionEnabled) _dispersion.Render(drawingContext, _coreBrushes[0, PaletteLevels - 1]);
+
+        // 5) 点击光晕闪烁
+        if (_flashEnabled) _flash.Render(drawingContext);
+    }
+
+    /// <summary>把一组粒子画成圆点：外层柔光 + 内层实心，透明度/大小随寿命衰减。</summary>
+    private void DrawParticles(DrawingContext drawingContext, IReadOnlyList<Particle> particles)
+    {
         for (var i = 0; i < particles.Count; i++)
         {
             var particle = particles[i];
@@ -623,7 +797,7 @@ public sealed class ParticleOverlay : FrameworkElement
     }
 
     /// <summary>
-    /// 按当前设置重建「颜色档 × 透明度档」的冻结画刷表。
+    /// 按当前设置重建「颜色档 × 透明度档」的冻结画刷表，并同步散光 / 闪光渲染器的颜色。
     /// 开关 / 颜色一变就重建一次（不是每帧），然后重绘把上一帧擦掉。
     /// </summary>
     private void RebuildPalettes()
@@ -643,6 +817,11 @@ public sealed class ParticleOverlay : FrameworkElement
                 _glowBrushes[colorIndex, alphaIndex] = glow[alphaIndex];
             }
         }
+
+        // 散光 / 闪光用第一档颜色（默认 = 粒子主色；自定义双色时取颜色 1），和粒子观感一致
+        var primary = coreColors[0];
+        _cursorGlow.SetColor(primary);
+        _flash.SetColor(primary);
     }
 
     /// <summary>按当前设置算出要预生成的颜色档列表（主色 + 柔光色各一份、数量相同）。</summary>
@@ -716,7 +895,8 @@ public sealed class ParticleOverlay : FrameworkElement
 
     private static bool IsDemoModeEnabled()
     {
-        var value = Environment.GetEnvironmentVariable("YLT_PARTICLE_DEMO");
-        return string.Equals(value?.Trim(), "1", StringComparison.Ordinal);
+        static bool IsOne(string? value) => string.Equals(value?.Trim(), "1", StringComparison.Ordinal);
+        return IsOne(Environment.GetEnvironmentVariable("YLT_PARTICLE_DEMO"))
+               || IsOne(Environment.GetEnvironmentVariable("YLT_EFFECT_DEMO"));
     }
 }

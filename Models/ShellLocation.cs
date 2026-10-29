@@ -2,7 +2,7 @@ using YuLiangToolkit.Core.Tools;
 
 namespace YuLiangToolkit.App.Models;
 
-/// <summary>导航历史里的页面类型（和 <see cref="ViewModels.ShellPageKind"/> 一一对应，但只有这三种）。</summary>
+/// <summary>导航历史里的页面类型（和 <see cref="ViewModels.ShellPageKind"/> 一一对应）。</summary>
 public enum ShellLocationKind
 {
     /// <summary>主页。</summary>
@@ -13,15 +13,18 @@ public enum ShellLocationKind
 
     /// <summary>工具页。</summary>
     Tool,
+
+    /// <summary>主页设置页（v0.26.0 起从独立小窗改成页面，面包屑「主页 › 主页设置」）。</summary>
+    Settings,
 }
 
 /// <summary>
-/// 外壳导航历史里的「一个页面位置」：主页 / 某个类别页 / 某个工具页。
+/// 外壳导航历史里的「一个页面位置」：主页 / 某个类别页 / 某个工具页 / 主页设置页。
 ///
 /// <para>给 <see cref="YuLiangToolkit.Core.Mvvm.NavigationHistory{T}"/> 当记录用：
-/// **相等性只看 <see cref="Key"/>**（主页固定 <c>home</c>、类别按完整路径、工具按 Id），
-/// 所以同一个页面反复进入不会产生重复历史；类别页 / 工具页会顺带记住节点 / 工具对象，
-/// 后退时直接拿它重建页面，不用再从路径反查。</para>
+/// **相等性只看 <see cref="Key"/>**（主页固定 <c>home</c>、设置页固定 <c>settings</c>、
+/// 类别按完整路径、工具按 Id），所以同一个页面反复进入不会产生重复历史；
+/// 类别页 / 工具页会顺带记住节点 / 工具对象，后退时直接拿它重建页面，不用再从路径反查。</para>
 /// </summary>
 public sealed class ShellLocation : IEquatable<ShellLocation>
 {
@@ -38,20 +41,23 @@ public sealed class ShellLocation : IEquatable<ShellLocation>
     /// <summary>页面类型。</summary>
     public ShellLocationKind Kind { get; }
 
-    /// <summary>稳定标识（相等性依据）：<c>home</c> / <c>category:路径</c> / <c>tool:工具Id</c>。</summary>
+    /// <summary>稳定标识（相等性依据）：<c>home</c> / <c>settings</c> / <c>category:路径</c> / <c>tool:工具Id</c>。</summary>
     public string Key { get; }
 
-    /// <summary>面包屑/提示里用的短标题（主页 / 类别名 / 工具名）。</summary>
+    /// <summary>面包屑/提示里用的短标题（主页 / 主页设置 / 类别名 / 工具名）。</summary>
     public string Title { get; }
 
-    /// <summary>类别页对应的目录节点（主页 / 工具页为 null）。</summary>
+    /// <summary>类别页对应的目录节点（主页 / 设置页 / 工具页为 null）。</summary>
     public ToolCatalogNode? Node { get; }
 
-    /// <summary>工具页对应的工具（主页 / 类别页为 null）。</summary>
+    /// <summary>工具页对应的工具（主页 / 设置页 / 类别页为 null）。</summary>
     public ITool? Tool { get; }
 
     /// <summary>主页（全局唯一）。</summary>
     public static ShellLocation Home { get; } = new(ShellLocationKind.Home, "home", "主页");
+
+    /// <summary>主页设置页（全局唯一；面包屑显示「主页 › 主页设置」）。</summary>
+    public static ShellLocation Settings { get; } = new(ShellLocationKind.Settings, "settings", "主页设置");
 
     /// <summary>某个类别页（按完整路径区分层级）。</summary>
     public static ShellLocation ForCategory(ToolCatalogNode node)

@@ -2,9 +2,9 @@
 
 一个可扩展的 WPF 工具集应用：主页是工具卡片墙（**搜索 / 排序 / 标签**），左侧导航自动列出所有已发现的工具。
 功能多了会按类别收进**类别页**（支持任意层级分类，顶部是可点击的面包屑 `主页 › 音游工具 › 工具名`）；
-右上角「⚙ 主页设置」里可以切换**两套界面风格（默认深色 / 液态玻璃）**、开关**鼠标粒子效果**、自定义**粒子颜色（1~2 种颜色随机渐变）**，还能选**点 × 时「关闭应用 / 最小化到托盘」**；程序在**任务栏右侧有托盘小图标**（单击恢复窗口，右键菜单：显示主窗口 / 主页设置 / 退出）；顶部工具条还有**浏览器式「← 后退 / → 前进」**，跳错页面可以快速回退。
+右上角「⚙ 主页设置」进入**设置页面**（面包屑 `主页 › 主页设置`）：可以切换**两套界面风格（默认深色 / 液态玻璃）**、分别勾选**自动效果（粒子拖尾 / 鼠标散光）**与**点击效果（粒子爆炸 / 散光扩散 / 光晕闪烁，可多选、与自动效果独立）**、自定义**粒子颜色（1~2 种颜色随机渐变）**，还能选**点 × 时「关闭应用 / 最小化到托盘」**；程序在**任务栏右侧有托盘小图标**（单击恢复窗口，右键菜单：显示主窗口 / 主页设置 / 退出）；顶部工具条还有**浏览器式「← 后退 / → 前进」**，跳错页面可以快速回退。
 默认深色主题，另有一套**液态玻璃主题**（半透明玻璃面板 + 流动彩色光晕，参考 [Glassium](https://github.com/Kerxs/glassium)，
-主页设置里一键切换、立即生效）；自定义标题栏（最小化 / 最大化 / 关闭按钮画在界面里，没有系统窗口顶栏；**最大化时按住标题栏往外拖，
+主页设置页面里一键切换、立即生效）；自定义标题栏（最小化 / 最大化 / 关闭按钮画在界面里，没有系统窗口顶栏；**最大化时按住标题栏往外拖，
 会先还原成原来的窗口大小再跟着鼠标走** —— 和普通 Windows 窗口一样）。
 
 ## 工具一览
@@ -61,7 +61,7 @@ dotnet run --project YuLiangTookit.csproj
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；
   踩坑细节按需查 **[docs/dev/pitfalls.md](docs/dev/pitfalls.md)**（只在排错 / 改危险代码时读）；
-- ✅ **自检**：1816 项行为逐条真跑（退出码 0 = 全通过）。改哪个功能只跑对应的组（省时间）：
+- ✅ **自检**：1859 项行为逐条真跑（退出码 0 = 全通过）。改哪个功能只跑对应的组（省时间）：
 
   ```powershell
   dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj -- theme
@@ -92,7 +92,7 @@ docs/                                   # 每个工具一页的详细说明（�
 docs/dev/pitfalls.md                    # 踩坑清单（按需读）
 Data/  Config/                           # 只有说明文件【运行时目录在 exe 旁边】
 src/
-├── YuLiangToolkit.Core/                 # 核心库：工具契约 / 多级分类目录树 / MVVM 基类 / 存储 / 配置 / FFmpeg 封装 / 粒子 / 通用 TCP 房间
+├── YuLiangToolkit.Core/                 # 核心库：工具契约 / 多级分类目录树 / MVVM 基类 / 存储 / 配置 / FFmpeg 封装 / 粒子与光标特效 / 通用 TCP 房间
 ├── YuLiangToolkit.Tools.VideoToAudio/   # 功能：视频转音频
 ├── YuLiangToolkit.Tools.MediaPlayer/    # 功能：视频 / 音乐播放器
 ├── YuLiangToolkit.Tools.PictureViewer/  # 功能：图片连续阅读器（连续长带 / 双页翻页 / 单页 + 缩放 / 惯性 / 双击打开 / 图片边框）
@@ -103,7 +103,7 @@ src/
 ├── YuLiangToolkit.Tools.OsuMania/       # 功能：音游工具（osu! Key 转换器 / LN 转换器 / 等级计算器）
 ├── YuLiangToolkit.Tools.BoardGames/     # 功能：棋牌（联机五子棋 / 联机象棋 + 房间联机底座）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（1816 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（1859 项行为逐条验证）
 ```
 
 ## 如何添加一个新工具
