@@ -1,6 +1,9 @@
-// Data / Config 轮子自检：把项目约定里承诺的行为逐条真跑一遍。
-// 运行： dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
-// （默认在临时目录里造数据根，不碰仓库的 Data/Config；退出码 0 = 全部通过）
+// 项目自检：把项目约定里承诺的行为逐条真跑一遍。
+// 运行（按分组跑，省时间也省输出 token）：
+//   dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj -- theme
+//   dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj -- core,shell
+//   不带参数 / --all = 跑全部分组；加 -- --list 列出所有分组。
+// （默认在临时目录里造数据根，不碰仓库的 Data/Config；退出码 0 = 本次跑的分组全部通过）
 using System.IO;
 using System.Windows;
 using System.Windows.Media;
@@ -15,6 +18,65 @@ using YuLiangToolkit.FrameworkSelfCheck;
 using YuLiangToolkit.Tools.BatchRename;
 using YuLiangToolkit.Tools.BatchRename.ViewModels;
 
+// ---------- 自检分组：不带参数 = 全跑；`-- <组名...>` 只跑指定组（`-- --list` 查看） ----------
+// 改哪个功能只跑哪个组；全量留给发布前 / 改 Core 公共轮子时跑。
+var selfCheckGroups = new (string Id, string Label)[]
+{
+    ("core", "存储 / 配置 / MVVM / 滚动链 / 窗口拖拽还原"),
+    ("shell", "外壳：搜索·排序·标签 / 分类导航 / 粒子 / 窗口 / 完整性"),
+    ("batch-rename", "批量重命名"),
+    ("flash-downloader", "Flash 下载器"),
+    ("chat-room", "联机聊天室"),
+    ("map-downloader", "osu! 下图器"),
+    ("media-player", "视频 / 音乐播放器"),
+    ("osu-mania", "osu!mania 三件套（含星数计算）"),
+    ("board-games", "棋牌：五子棋 / 象棋（含真实回环网络，偶发时序失败可重跑）"),
+    ("picture-viewer", "图片连续阅读器"),
+    ("theme", "第二套 UI：液态玻璃主题"),
+};
+var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+var runAllGroups = true;
+foreach (var argument in args)
+{
+    if (argument is "--all" or "-a")
+    {
+        requestedGroups.Clear();
+        runAllGroups = true;
+        continue;
+    }
+
+    if (argument is "--list" or "-l" or "--help" or "-h")
+    {
+        Console.WriteLine("用法：dotnet run --project tests\\YuLiangToolkit.FrameworkSelfCheck\\YuLiangToolkit.FrameworkSelfCheck.csproj -- <组名...>");
+        Console.WriteLine("  不带参数 / --all = 跑全部分组；多个组用逗号或空格分隔。可用分组：");
+        foreach (var (id, label) in selfCheckGroups)
+            Console.WriteLine($"  {id,-18} {label}");
+        return 0;
+    }
+
+    if (argument.StartsWith("-", StringComparison.Ordinal))
+        continue;
+
+    runAllGroups = false;
+    foreach (var part in argument.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
+        requestedGroups.Add(part.Trim());
+}
+
+// 组名写错直接报错，否则会「以为跑了、其实一个断言都没跑」
+var unknownGroups = requestedGroups
+    .Where(g => !selfCheckGroups.Any(x => x.Id.Equals(g, StringComparison.OrdinalIgnoreCase)))
+    .ToList();
+if (unknownGroups.Count > 0)
+{
+    Console.WriteLine($"未知自检分组：{string.Join(", ", unknownGroups)}");
+    Console.WriteLine($"可用分组：{string.Join(", ", selfCheckGroups.Select(g => g.Id))}");
+    return 2;
+}
+
+requestedGroups = new HashSet<string>(
+    selfCheckGroups.Where(g => requestedGroups.Contains(g.Id)).Select(g => g.Id),
+    StringComparer.OrdinalIgnoreCase);
+
 // 自检必须跑在临时数据根里：YLT_HOME 要在任何 AppPaths 访问之前设好
 if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("YLT_HOME")))
 {
@@ -22,12 +84,55 @@ if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("YLT_HOME")))
 }
 
 var results = new List<string>();
-void Check(string name, bool ok, string detail = "") =>
+var skippedGroups = new List<string>();
+var runCurrentGroup = true;
+
+void EnterGroup(string id)
+{
+    var run = runAllGroups || requestedGroups.Contains(id);
+    if (!run && !skippedGroups.Contains(id)) skippedGroups.Add(id);
+    runCurrentGroup = run;
+}
+
+bool RunGroup(string id)
+{
+    EnterGroup(id);
+    return runCurrentGroup;
+}
+
+void Check(string name, bool ok, string detail = "")
+{
+    // 没选中的分组连结果都不收（省时间也省输出 token）
+    if (!runCurrentGroup) return;
     results.Add($"{(ok ? "PASS" : "FAIL")} | {name}{(detail.Length > 0 ? "  :: " + detail : "")}");
+}
+
+// 外部检查模块统一入口：按分组决定跑不跑；模块内抛异常只记一条 FAIL，不中断别的分组
+void RunGroupModule(string groupId, string errorLabel,
+    Action<Action<string, bool, string>, Action<string, bool>> run, string namePrefix = "")
+{
+    if (!RunGroup(groupId)) return;
+    try
+    {
+        run(
+            (name, ok, detail) => Check(namePrefix + name, ok, detail),
+            (name, ok) => Check(namePrefix + name, ok));
+    }
+    catch (Exception ex)
+    {
+        Check($"[{errorLabel}] 运行过程中抛出异常（{ex.GetType().Name}）", false,
+            $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
+    }
+}
 
 Console.WriteLine($"数据根目录: {AppPaths.Root}");
 Console.WriteLine($"完整性自检: {IntegrityCheck.Summary()}");
+Console.WriteLine(runAllGroups
+    ? $"自检范围: 全部 {selfCheckGroups.Length} 组"
+    : $"自检范围: {string.Join(", ", requestedGroups)}（未选中的分组不会运行；--all 全跑）");
 Console.WriteLine();
+
+EnterGroup("core");
 
 // ---------- 1. 强类型配置：首次加载落盘默认值 ----------
 var store = ToolConfigStore.For("test-tool");
@@ -149,6 +254,8 @@ Check("LoadWithDefaults 补齐缺失键并落盘",
     seeded.Contains("flag") && seeded.Contains("text") && seededOnDisk?.Count == 2
     && seeded.GetBool("flag") == false,
     seeded.ToJson().Replace(Environment.NewLine, " "));
+
+EnterGroup("shell");
 
 // ---------- 14. 主页搜索（ToolFilter：纯逻辑，不需要开界面） ----------
 var fakeTools = new ITool[]
@@ -307,6 +414,8 @@ Check("拖标题栏还原：工作区不在 (0,0)（任务栏在左边 / 上边�
 var dragNoWidth = WindowDragRestore.Compute(960, 20, 0, 20, 0, 1280, 820, dragArea, 1024, 700);
 Check("拖标题栏还原：拿不到当前窗口宽度 → 按正中间算",
     dragNoWidth.Left == 320, $"left={dragNoWidth.Left}");
+
+EnterGroup("batch-rename");
 
 // ---------- 18. 批量重命名：单条规则的行为（纯逻辑，不碰界面） ----------
 // 规则清单就是一张 RenameRule 数组，BuildName 按数组顺序逐条套用。
@@ -720,164 +829,45 @@ Check($"流水账最多保留 {RenameHistory.MaxSessions} 批（不会无限长�
 
 
 // ---------- Flash 下载器（站点解析 / 命名 / ini / 批量计划 / 真下载 / 本地服务器 / 自动下载） ----------
-// 这一批里有真下载 / 真起 HTTP 服务器，包一层便于出错时看清是哪一条挂的（顺便打印已有结果）
-try
-{
-    FlashDownloaderChecks.Run(
-        (name, ok, detail) => Check($"[Flash下载器] {name}", ok, detail),
-        (name, ok) => Check($"[Flash下载器] {name}", ok));
-}
-catch (Exception ex)
-{
-    Check($"[Flash下载器] 运行过程中抛出异常（{ex.GetType().Name}）", false,
-        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
-    Console.WriteLine(string.Join(Environment.NewLine, results));
-}
+// 这一批里有真下载 / 真起 HTTP 服务器；模块内抛异常只记一条 FAIL，不中断别的分组
+RunGroupModule("flash-downloader", "Flash下载器", FlashDownloaderChecks.Run, "[Flash下载器] ");
 
 // ---------- 滚轮滚动链（内层列表滚到头之后交给外层页面） ----------
 // 用真的 ScrollViewer 量一次布局再断言“该滚谁”，见 ScrollChainingChecks 里的说明。
-try
-{
-    ScrollChainingChecks.Run(
-        (name, ok, detail) => Check($"[滚动链] {name}", ok, detail),
-        (name, ok) => Check($"[滚动链] {name}", ok));
-}
-catch (Exception ex)
-{
-    Check($"[滚动链] 运行过程中抛出异常（{ex.GetType().Name}）", false,
-        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
-}
+RunGroupModule("core", "滚动链", ScrollChainingChecks.Run, "[滚动链] ");
 
 // ---------- 联机聊天室（协议 / CRC / 流量上限 / 会话文件夹 / 回环真连一轮） ----------
-// 最后跑：这一组会真的开 TCP 监听（只绑 127.0.0.1）并写一堆临时文件。
-try
-{
-    ChatRoomChecks.Run(
-        (name, ok, detail) => Check($"[聊天室] {name}", ok, detail),
-        (name, ok) => Check($"[聊天室] {name}", ok));
-}
-catch (Exception ex)
-{
-    Check($"[聊天室] 运行过程中抛出异常（{ex.GetType().Name}）", false,
-        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
-}
+// 会真的开 TCP 监听（只绑 127.0.0.1）并写一堆临时文件。
+RunGroupModule("chat-room", "聊天室", ChatRoomChecks.Run, "[聊天室] ");
 
 // ---------- osu! 下图器（查询串 / 命名 / 本地筛选 / 打自检自己起的假镜像真下载） ----------
-try
-{
-    MapDownloaderChecks.Run(
-        (name, ok, detail) => Check(name, ok, detail),
-        (name, ok) => Check(name, ok));
-}
-catch (Exception ex)
-{
-    Check($"[下图器] 运行过程中抛出异常（{ex.GetType().Name}）", false,
-        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
-}
+RunGroupModule("map-downloader", "下图器", MapDownloaderChecks.Run);
 
 // ---------- 视频 / 音乐播放器（扩展名归类 / 快进快退 / 扫文件夹 / 播放顺序 / 假播放器跑 VM） ----------
-try
-{
-    MediaPlayerChecks.Run(
-        (name, ok, detail) => Check(name, ok, detail),
-        (name, ok) => Check(name, ok));
-}
-catch (Exception ex)
-{
-    Check($"[播放器] 运行过程中抛出异常（{ex.GetType().Name}）", false,
-        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
-}
+RunGroupModule("media-player", "播放器", MediaPlayerChecks.Run);
 
 // ---------- 外壳分类导航（任意层级目录树 / 面包屑 / 类别计数） ----------
-try
-{
-    NavigationChecks.Run(
-        (name, ok, detail) => Check($"[导航] {name}", ok, detail),
-        (name, ok) => Check($"[导航] {name}", ok));
-}
-catch (Exception ex)
-{
-    Check($"[导航] 运行过程中抛出异常（{ex.GetType().Name}）", false,
-        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
-}
+RunGroupModule("shell", "导航", NavigationChecks.Run, "[导航] ");
 
 // ---------- 粒子效果（引擎的生成 / 寿命 / 衰减 / 开关 / 上限；纯逻辑无界面） ----------
-try
-{
-    ParticleChecks.Run(
-        (name, ok, detail) => Check(name, ok, detail),
-        (name, ok) => Check(name, ok));
-}
-catch (Exception ex)
-{
-    Check($"[粒子] 运行过程中抛出异常（{ex.GetType().Name}）", false,
-        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
-}
+RunGroupModule("shell", "粒子", ParticleChecks.Run);
 
 // ---------- 星数计算（数值基准回归） ----------
-try
-{
-    StarRatingChecks.Run(
-        (name, ok, detail) => Check(name, ok, detail),
-        (name, ok) => Check(name, ok));
-}
-catch (Exception ex)
-{
-    Check($"[星数] 运行过程中抛出异常（{ex.GetType().Name}）", false,
-        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
-}
+RunGroupModule("osu-mania", "星数", StarRatingChecks.Run);
 
 // ---------- osu!mania 三件套（解析桥 / 转 K / 转 LN / 等级 / 批量，见 docs/dev/pitfalls.md） ----------
-try
-{
-    OsuManiaChecks.Run(
-        (name, ok, detail) => Check(name, ok, detail),
-        (name, ok) => Check(name, ok));
-}
-catch (Exception ex)
-{
-    Check($"[osu工具] 运行过程中抛出异常（{ex.GetType().Name}）", false,
-        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
-}
+RunGroupModule("osu-mania", "osu工具", OsuManiaChecks.Run);
 
 // ---------- 棋牌：五子棋 / 象棋 / 房间网络层（见 docs/dev/pitfalls.md） ----------
-try
-{
-    BoardGamesChecks.Run(
-        (name, ok, detail) => Check(name, ok, detail),
-        (name, ok) => Check(name, ok));
-}
-catch (Exception ex)
-{
-    Check($"[棋牌] 运行过程中抛出异常（{ex.GetType().Name}）", false,
-        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
-}
+RunGroupModule("board-games", "棋牌", BoardGamesChecks.Run);
 
 // ---------- 图片连续阅读器（滚动偏移数学 / 中键单点-按住状态机 / 页序 / 真实扫描 / 无头 VM） ----------
-try
-{
-    PictureViewerChecks.Run(
-        (name, ok, detail) => Check(name, ok, detail),
-        (name, ok) => Check(name, ok));
-}
-catch (Exception ex)
-{
-    Check($"[图片] 运行过程中抛出异常（{ex.GetType().Name}）", false,
-        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
-}
+RunGroupModule("picture-viewer", "图片", PictureViewerChecks.Run);
 
-// ---------- 第二套 UI：液态玻璃主题（枚举/字典 key 对齐/默认主题颜色不变/配置往返） ----------
-try
-{
-    ThemeChecks.Run(
-        (name, ok, detail) => Check(name, ok, detail),
-        (name, ok) => Check(name, ok));
-}
-catch (Exception ex)
-{
-    Check($"[主题] 运行过程中抛出异常（{ex.GetType().Name}）", false,
-        $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
-}
+// ---------- 第二套 UI：液态玻璃主题（枚举 / 字典 key 对齐 / 默认主题颜色不变 / 配置往返） ----------
+RunGroupModule("theme", "主题", ThemeChecks.Run);
+
+EnterGroup("shell");
 
 // ---------- 完整性自检（全屏藏任务栏的前置条件） ----------
 // 只读：读自己的令牌 + FindWindow，**不隐藏任何窗口**（见 docs/dev/pitfalls.md）。
@@ -905,9 +895,14 @@ Check("[完整性] 报告有结论行、级别与当前进程一致",
 Console.WriteLine(string.Join(Environment.NewLine, results));
 var failed = results.Count(r => r.StartsWith("FAIL"));
 Console.WriteLine();
-Console.WriteLine(failed == 0
-    ? $"全部通过（{results.Count} 项）· 数据根：{AppPaths.Root}"
-    : $"失败 {failed} / {results.Count} 项 · 数据根：{AppPaths.Root}");
+var summary = runAllGroups
+    ? (failed == 0
+        ? $"全部通过（{results.Count} 项）· 分组：全部 {selfCheckGroups.Length} 组"
+        : $"失败 {failed} / {results.Count} 项 · 分组：全部")
+    : (failed == 0
+        ? $"本次分组通过（{results.Count} 项）· 分组：{string.Join(" / ", requestedGroups)}（未运行 {skippedGroups.Count} 组，--all 可全跑）"
+        : $"失败 {failed} / {results.Count} 项 · 分组：{string.Join(" / ", requestedGroups)}");
+Console.WriteLine($"{summary} · 数据根：{AppPaths.Root}");
 return failed == 0 ? 0 : 1;
 
 /// <summary>自检用的假工具：只填展示字段，用来验证搜索/排序逻辑。</summary>

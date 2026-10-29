@@ -1,4 +1,5 @@
 using System.IO;
+using System.Threading;
 using System.Windows;
 using System.Windows.Media;
 using YuLiangToolkit.App.Models;
@@ -10,7 +11,7 @@ namespace YuLiangToolkit.FrameworkSelfCheck;
 /// <summary>
 /// 「第二套 UI：液态玻璃主题」的纯逻辑自检（v0.25.0）。
 ///
-/// <para>钉住四类东西（都不需要开窗口，控制台里直接跑）：</para>
+/// <para>钉住四类东西（核心断言不需要开窗口；冷启动时会摸一下离屏窗口注册 pack URI，见 WarmUpWpf）：</para>
 /// <list type="bullet">
 ///   <item><b>主题枚举 / 名字 / 字典路径</b>：<see cref="UiTheme"/> 枚举名就是配置文件里存的字符串
 ///   （<c>"Default"</c> / <c>"LiquidGlass"</c>），改名字 = 改配置格式；<c>YLT_THEME</c> 的宽松解析；
@@ -104,6 +105,8 @@ internal static class ThemeChecks
 
     private static void CheckDictionaries(CheckFn check)
     {
+        WarmUpWpf();   // 只跑 -- theme 时前面没有 WPF 检查，pack:// 方案还没注册，见方法注释
+
         ResourceDictionary? def = null;
         ResourceDictionary? glass = null;
         var defError = "";
@@ -167,6 +170,35 @@ internal static class ThemeChecks
             && ColorOf(glass, "TextPrimaryBrush").R > 0xD0
             && ColorOf(glass, "TextPrimaryBrush").G > 0xD0
             && ColorOf(glass, "TextPrimaryBrush").B > 0xD0);
+    }
+
+    /// <summary>
+    /// 冷启动兜底：只跑 <c>-- theme</c> 时，前面没有任何 WPF 检查，WPF 的 <c>pack://</c> 方案还没注册，
+    /// <see cref="ResourceDictionary"/> 用相对 pack URI 会抛「URI prefix is not recognized」。
+    /// 在 STA 线程里摸一个离屏窗口把 WPF 初始化起来（做法同 <see cref="ScrollChainingChecks"/>），不显示界面。
+    /// </summary>
+    private static void WarmUpWpf()
+    {
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var window = new Window
+                {
+                    Width = 40, Height = 40, ShowActivated = false, ShowInTaskbar = false,
+                    WindowStyle = WindowStyle.None, Left = -4000, Top = -4000,
+                };
+                window.Show();
+                window.Close();
+            }
+            catch (Exception)
+            {
+                // 摸窗口失败也无妨：后面加载字典失败会走 defError 分支，把真实原因报出来
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
     }
 
     private static string OnlyIn(IReadOnlyList<string> left, IReadOnlyList<string> right)

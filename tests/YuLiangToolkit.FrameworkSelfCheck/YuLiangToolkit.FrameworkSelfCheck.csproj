@@ -1,9 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- 自检程序（纯控制台，不在 GUI 里跑）：Data/Config 轮子 + 主页搜索/排序逻辑。
-       运行： dotnet run  加上本项目 csproj 路径即可（见 AGENTS.md）。
+  <!-- 自检程序（纯控制台，不在 GUI 里跑）：按“分组”跑，只跑改动相关的部分（见 AGENTS.md）。
+       运行： dotnet run 后接本项目 csproj 路径，再传组名（例如 theme、core,shell）。
+       不传组名 = 全部分组；组名清单见 Program.cs 顶部的 selfCheckGroups。
        默认在系统临时目录里造一个数据根，不会碰仓库里的 Data/Config；
-       想指定目录就设环境变量 YLT_HOME。退出码 0 = 全部通过。 -->
+       想指定目录就设环境变量 YLT_HOME。退出码 0 = 本次跑的分组全部通过。 -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
