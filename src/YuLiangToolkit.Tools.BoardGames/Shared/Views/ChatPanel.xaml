@@ -9,7 +9,7 @@
         <StackPanel>
             <Grid>
                 <TextBlock Text="房间聊天" FontSize="13" FontWeight="SemiBold"
-                           Foreground="{StaticResource TextPrimaryBrush}" />
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
                 <Button Content="清空" Style="{StaticResource SecondaryButtonStyle}" FontSize="11"
                         Padding="10,3" HorizontalAlignment="Right" VerticalAlignment="Center"
                         Command="{Binding ClearChatCommand}" />
@@ -42,14 +42,14 @@
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
                                     <Setter Property="FontSize" Value="12" />
-                                    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsSystem}" Value="True">
                                             <Setter Property="FontSize" Value="11" />
-                                            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding IsMine}" Value="True">
-                                            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>

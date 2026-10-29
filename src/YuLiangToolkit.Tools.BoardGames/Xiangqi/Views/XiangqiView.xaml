@@ -4,7 +4,7 @@
              xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
              xmlns:shared="clr-namespace:YuLiangToolkit.Tools.BoardGames.Shared.Views"
              xmlns:views="clr-namespace:YuLiangToolkit.Tools.BoardGames.Xiangqi.Views"
-             Background="{StaticResource WindowBackgroundBrush}">
+             Background="Transparent">
 
     <!-- 「联机中国象棋」界面。整体一页（外层 ScrollViewer），布局：
          标题行 → 左棋盘卡 + 右栏（房间 → 对局 → 摆棋与让子 → 设置）→ 下方跨列棋谱（聊天由共享 ChatPanel 接在最下）。
@@ -17,19 +17,19 @@
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="🀄" FontSize="24" VerticalAlignment="Center" />
                     <TextBlock Text="联机中国象棋" FontSize="20" FontWeight="SemiBold" Margin="10,0,0,0"
-                               VerticalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}" />
-                    <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="6"
+                               VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="6"
                             Padding="9,3" Margin="14,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="{Binding ModeBadgeText}" FontSize="12" FontWeight="SemiBold">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
-                                    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding ModeBadgeBrushKey}" Value="SuccessBrush">
-                                            <Setter Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding ModeBadgeBrushKey}" Value="DangerBrush">
-                                            <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -37,10 +37,10 @@
                         </TextBlock>
                     </Border>
                     <TextBlock Text="{Binding MyRoleText}" FontSize="12" Margin="14,0,0,0"
-                               VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
+                               VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
                 </StackPanel>
                 <TextBlock FontSize="11.5" TextWrapping="Wrap" Margin="0,6,0,0"
-                           Foreground="{StaticResource TextSecondaryBrush}"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
                            Text="自由摆棋 · 让子 / 让先 · 多人观战 · 房主安排上场 · 中文记谱 · 悔棋 / 认输 / 求和 / 断线自动重连" />
             </StackPanel>
 
@@ -57,9 +57,9 @@
                     <StackPanel>
                         <Grid>
                             <TextBlock Text="{Binding TurnText}" FontSize="13.5" FontWeight="SemiBold"
-                                       TextWrapping="Wrap" Foreground="{StaticResource TextPrimaryBrush}" />
+                                       TextWrapping="Wrap" Foreground="{DynamicResource TextPrimaryBrush}" />
                             <TextBlock Text="{Binding CheckText}" FontSize="12" HorizontalAlignment="Right"
-                                       VerticalAlignment="Center" Foreground="{StaticResource DangerBrush}"
+                                       VerticalAlignment="Center" Foreground="{DynamicResource DangerBrush}"
                                        Visibility="{Binding CheckText, Converter={StaticResource EmptyToVisInverse}}" />
                         </Grid>
 
@@ -81,10 +81,10 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding MoveCountText}" FontSize="11"
-                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <TextBlock Text="{Binding ResultText}" FontSize="11.5" FontWeight="SemiBold"
                                            Margin="12,0,0,0" TextWrapping="Wrap"
-                                           Foreground="{StaticResource SuccessBrush}"
+                                           Foreground="{DynamicResource SuccessBrush}"
                                            Visibility="{Binding ResultText, Converter={StaticResource EmptyToVisInverse}}" />
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -95,7 +95,7 @@
                                           ToolTip="观战视角：红方在下 / 黑方在下（会记住）" />
                                 <TextBlock Text="{Binding ViewSideHintText}" FontSize="11" TextWrapping="Wrap"
                                            VerticalAlignment="Center" MaxWidth="220"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                            Visibility="{Binding ViewSideHintText, Converter={StaticResource EmptyToVisInverse}}" />
                                 <Button Content="翻转棋盘" Style="{StaticResource SecondaryButtonStyle}"
                                         Padding="10,4" FontSize="11.5" VerticalAlignment="Center"
@@ -151,34 +151,34 @@
                         <StackPanel>
                             <Grid>
                                 <TextBlock Text="对局" FontSize="13" FontWeight="SemiBold"
-                                           Foreground="{StaticResource TextPrimaryBrush}" />
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
                                 <TextBlock Text="{Binding ModeBadgeText}" HorizontalAlignment="Right"
-                                           FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                                           FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Grid>
 
                             <!-- 断线 / 对局暂停（红底状态块，基类统一维护） -->
-                            <Border Background="#3A1F22" BorderBrush="{StaticResource DangerBrush}" BorderThickness="1"
+                            <Border Background="#3A1F22" BorderBrush="{DynamicResource DangerBrush}" BorderThickness="1"
                                     CornerRadius="6" Padding="10,8" Margin="0,8,0,0"
                                     Visibility="{Binding IsGamePaused, Converter={StaticResource BoolToVis}}">
                                 <StackPanel>
                                     <TextBlock Text="{Binding GamePauseStatusText}" FontSize="12" FontWeight="SemiBold"
-                                               TextWrapping="Wrap" Foreground="{StaticResource DangerBrush}" />
+                                               TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}" />
                                     <TextBlock Text="{Binding ReconnectStatusText}" FontSize="10.5" TextWrapping="Wrap"
-                                               Margin="0,4,0,0" Foreground="{StaticResource TextSecondaryBrush}"
+                                               Margin="0,4,0,0" Foreground="{DynamicResource TextSecondaryBrush}"
                                                Visibility="{Binding IsReconnecting, Converter={StaticResource BoolToVis}}" />
                                 </StackPanel>
                             </Border>
 
                             <TextBlock Text="{Binding TurnText}" FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap"
-                                       Margin="0,8,0,0" Foreground="{StaticResource TextPrimaryBrush}" />
+                                       Margin="0,8,0,0" Foreground="{DynamicResource TextPrimaryBrush}" />
                             <TextBlock Text="{Binding CheckText}" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0"
-                                       Foreground="{StaticResource DangerBrush}"
+                                       Foreground="{DynamicResource DangerBrush}"
                                        Visibility="{Binding CheckText, Converter={StaticResource EmptyToVisInverse}}" />
                             <TextBlock Text="{Binding ResultText}" FontSize="12.5" FontWeight="SemiBold"
-                                       TextWrapping="Wrap" Margin="0,4,0,0" Foreground="{StaticResource SuccessBrush}"
+                                       TextWrapping="Wrap" Margin="0,4,0,0" Foreground="{DynamicResource SuccessBrush}"
                                        Visibility="{Binding ResultText, Converter={StaticResource EmptyToVisInverse}}" />
                             <TextBlock Text="{Binding SeatStatusText}" FontSize="11" TextWrapping="Wrap"
-                                       Margin="0,6,0,0" Foreground="{StaticResource TextSecondaryBrush}" />
+                                       Margin="0,6,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
                         </StackPanel>
                     </Border>
 
@@ -188,10 +188,10 @@
                         <StackPanel>
                             <Grid>
                                 <TextBlock Text="摆棋与让子" FontSize="13" FontWeight="SemiBold"
-                                           Foreground="{StaticResource TextPrimaryBrush}" />
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
                                 <TextBlock Text="{Binding SetupSummaryText}" HorizontalAlignment="Right"
                                            FontSize="10.5" TextTrimming="CharacterEllipsis" MaxWidth="240"
-                                           VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
+                                           VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Grid>
 
                             <!-- 展开态（未开局 / 主动重新摆棋）：调色板 + 让子 + 让先 -->
@@ -213,7 +213,7 @@
 
                                 <TextBlock Text="调色板：选一枚棋子，再点棋盘落子（选「删」再点 = 删掉那格）"
                                            FontSize="11" TextWrapping="Wrap" Margin="0,12,0,4"
-                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <ListBox ItemsSource="{Binding PaletteItems}" SelectedItem="{Binding SelectedPalette}"
                                          Background="Transparent" BorderThickness="0" Focusable="False"
                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -231,8 +231,8 @@
                                                 <Setter.Value>
                                                     <ControlTemplate TargetType="ListBoxItem">
                                                         <Border x:Name="Chip" Width="42" Height="38" CornerRadius="6"
-                                                                Background="{StaticResource InputBackgroundBrush}"
-                                                                BorderBrush="{StaticResource BorderBrush}"
+                                                                Background="{DynamicResource InputBackgroundBrush}"
+                                                                BorderBrush="{DynamicResource BorderBrush}"
                                                                 BorderThickness="1">
                                                             <ContentPresenter HorizontalAlignment="Center"
                                                                               VerticalAlignment="Center" />
@@ -240,13 +240,13 @@
                                                         <ControlTemplate.Triggers>
                                                             <Trigger Property="IsMouseOver" Value="True">
                                                                 <Setter TargetName="Chip" Property="Background"
-                                                                        Value="{StaticResource CardHoverBackgroundBrush}" />
+                                                                        Value="{DynamicResource CardHoverBackgroundBrush}" />
                                                             </Trigger>
                                                             <Trigger Property="IsSelected" Value="True">
                                                                 <Setter TargetName="Chip" Property="BorderBrush"
-                                                                        Value="{StaticResource AccentBrush}" />
+                                                                        Value="{DynamicResource AccentBrush}" />
                                                                 <Setter TargetName="Chip" Property="Background"
-                                                                        Value="{StaticResource CardHoverBackgroundBrush}" />
+                                                                        Value="{DynamicResource CardHoverBackgroundBrush}" />
                                                             </Trigger>
                                                         </ControlTemplate.Triggers>
                                                     </ControlTemplate>
@@ -260,13 +260,13 @@
                                                        ToolTip="{Binding ToolTip}" FontFamily="Microsoft YaHei">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
-                                                        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                                        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding IsRed}" Value="True">
-                                                                <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                                                <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
                                                             </DataTrigger>
                                                             <DataTrigger Binding="{Binding IsDelete}" Value="True">
-                                                                <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                                                             </DataTrigger>
                                                         </Style.Triggers>
                                                     </Style>
@@ -282,7 +282,7 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="让子方" FontSize="12" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,8,0" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,8,0" />
                                     <ComboBox Grid.Column="1" Height="32" Style="{StaticResource ComboBoxStyle}"
                                               ItemsSource="{Binding HandicapGiverOptions}" DisplayMemberPath="Label"
                                               SelectedItem="{Binding SelectedHandicapGiver}"
@@ -311,7 +311,7 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="让先步数" FontSize="12" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,8,0" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,8,0" />
                                     <Slider Grid.Column="1" Minimum="0" Maximum="5" TickFrequency="1"
                                             IsSnapToTickEnabled="True" SmallChange="1" LargeChange="1"
                                             Style="{StaticResource SliderStyle}"
@@ -319,7 +319,7 @@
                                             ToolTip="被让方（让子方的对面）开局可以连走几步；0 = 不让先" />
                                 </Grid>
                                 <TextBlock Text="{Binding OpeningFreeMovesText}" FontSize="10.5" TextWrapping="Wrap"
-                                           Margin="0,2,0,0" Foreground="{StaticResource TextSecondaryBrush}" />
+                                           Margin="0,2,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
 
                                 <Grid Margin="0,10,0,0">
                                     <Grid.ColumnDefinitions>
@@ -327,7 +327,7 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="房主默认坐席" FontSize="12" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,8,0" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,8,0" />
                                     <ComboBox Grid.Column="1" Height="32" Style="{StaticResource ComboBoxStyle}"
                                               ItemsSource="{Binding HostSideOptions}" DisplayMemberPath="Label"
                                               SelectedItem="{Binding SelectedHostSide}"
@@ -335,17 +335,17 @@
                                               ToolTip="房主开房时默认坐先手位（红）或后手位（黑）；进房间后不能改，下次开房生效" />
                                 </Grid>
 
-                                <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="6"
+                                <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="6"
                                         Padding="10,8" Margin="0,10,0,0">
                                     <StackPanel>
                                         <TextBlock Text="{Binding SetupStatusText}" FontSize="11.5" TextWrapping="Wrap"
                                                    FontWeight="SemiBold">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
-                                                    <Setter Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding HasSetupError}" Value="True">
-                                                            <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
@@ -353,7 +353,7 @@
                                         </TextBlock>
                                         <TextBlock Text="{Binding SetupFenText}" FontFamily="Consolas" FontSize="10"
                                                    TextWrapping="Wrap" Margin="0,4,0,0"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                                     </StackPanel>
                                 </Border>
 
@@ -368,21 +368,21 @@
                             <StackPanel Margin="0,10,0,0"
                                         Visibility="{Binding ShowSetupCollapsedSummary, Converter={StaticResource BoolToVis}}">
                                 <TextBlock Text="{Binding SetupSummaryText}" FontSize="11" TextWrapping="Wrap"
-                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <Button Content="重新摆棋（会结束本局）" Style="{StaticResource SecondaryButtonStyle}"
                                         Margin="0,8,0,0" HorizontalAlignment="Stretch" FontSize="12" Padding="6,5"
                                         Command="{Binding RequestRestartSetupCommand}"
                                         Visibility="{Binding ShowRestartSetupButton, Converter={StaticResource BoolToVis}}"
                                         ToolTip="结束当前对局并回到摆棋（会先问一次）" />
                                 <TextBlock FontSize="10.5" TextWrapping="Wrap" Margin="0,6,0,0"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                            Visibility="{Binding CanRestartSetup, Converter={StaticResource InverseBoolToVis}}"
                                            Text="联机对局中摆棋已锁定；房主可在右侧「房间成员」里点「结束本局（作废）」后重新摆棋。" />
 
                                 <StackPanel Margin="0,8,0,0"
                                             Visibility="{Binding IsRestartSetupConfirming, Converter={StaticResource BoolToVis}}">
                                     <TextBlock Text="确定结束当前对局、重新摆棋吗？" FontSize="12" FontWeight="SemiBold"
-                                               TextWrapping="Wrap" Foreground="{StaticResource DangerBrush}" />
+                                               TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}" />
                                     <Grid Margin="0,8,0,0">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
@@ -405,7 +405,7 @@
                     <Border Grid.Row="4" Style="{StaticResource CardStyle}" Margin="0,12,0,0">
                         <StackPanel>
                             <TextBlock Text="设置" FontSize="13" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}" />
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
                             <Grid Margin="0,10,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -427,7 +427,7 @@
                                           IsChecked="{Binding ShowCoordinates}" />
                             </Grid>
                             <TextBlock FontSize="10.5" TextWrapping="Wrap" Margin="0,8,0,0"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                        Text="棋子朝向会跟随你所执的一方（执红红在下、执黑黑在下）；观战可在棋盘下方切换红 / 黑视角，同机双人与离线可手动翻转。" />
                         </StackPanel>
                     </Border>
@@ -439,7 +439,7 @@
                 <StackPanel>
                     <Grid>
                         <TextBlock Text="棋谱（中文记谱）" FontSize="13" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
                         <Button Content="复制棋谱" Style="{StaticResource SecondaryButtonStyle}" Padding="12,5"
                                 HorizontalAlignment="Right" Command="{Binding CopyNotationCommand}" />
                     </Grid>
@@ -452,7 +452,7 @@
                             <Style TargetType="ListBoxItem">
                                 <Setter Property="Padding" Value="10,5" />
                                 <Setter Property="Margin" Value="10,1" />
-                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
                                 <Setter Property="HorizontalContentAlignment" Value="Left" />
                                 <Setter Property="Template">
                                     <Setter.Value>
@@ -464,7 +464,7 @@
                                             <ControlTemplate.Triggers>
                                                 <Trigger Property="IsMouseOver" Value="True">
                                                     <Setter TargetName="Row" Property="Background"
-                                                            Value="{StaticResource CardHoverBackgroundBrush}" />
+                                                            Value="{DynamicResource CardHoverBackgroundBrush}" />
                                                 </Trigger>
                                             </ControlTemplate.Triggers>
                                         </ControlTemplate>

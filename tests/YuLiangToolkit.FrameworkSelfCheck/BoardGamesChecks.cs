@@ -1,4 +1,4 @@
-using System.Buffers.Binary;
+﻿using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -3463,14 +3463,22 @@ public static class BoardGamesChecks
                 watcher.IsOnline && watcher.IsSpectator && !watcher.IsSeatedPlayer, "");
 
             // ===== 主动离开：席位清空、对局暂停（等房主换人） =====
+            // 玩家A 坐的是哪个席位取决于前面自动轮换的结果（不是固定第二个），断言要跟着“他原来那个席位”走，
+            // 否则轮到 A 坐一号位时这条会偶发失败（旧写法硬编码 SeatTwoName，flaky）。
+            var aWasSeatOne = hostVm.SeatOneName == "玩家A";
+            var aWasSeatTwo = hostVm.SeatTwoName == "玩家A";
             playerA.LeaveRoomCommand.Execute(null);
             await WaitUntilAsync(() => !playerA.IsOnline, 8000).ConfigureAwait(false);
             await WaitUntilAsync(() => hostVm.SeatTwoName == "空位" || hostVm.SeatOneName == "空位", 10000)
                 .ConfigureAwait(false);
+            var aSeatCleared = aWasSeatOne ? hostVm.SeatOneName == "空位"
+                : aWasSeatTwo ? hostVm.SeatTwoName == "空位"
+                : hostVm.SeatOneName == "空位" && hostVm.SeatTwoName == "空位";
             check("[联机VM] 席上玩家主动离开：房主清空他那一个席位、对局因缺人暂停",
                 playerA.Mode == BoardPlayMode.Offline && !playerA.IsClient
-                && hostVm.IsGamePaused && hostVm.SeatTwoName == "空位"
-                && SnapshotMembers(hostVm).Count == 3, $"{hostVm.GamePauseStatusText}");
+                && hostVm.IsGamePaused && aSeatCleared
+                && SnapshotMembers(hostVm).Count == 3,
+                $"{hostVm.SeatOneName}/{hostVm.SeatTwoName} · {hostVm.GamePauseStatusText}");
             check("[联机VM] 玩家离开后不能再走子（房间只认在线席位）",
                 !playerA.IsOnline && !playerA.CanPlayNow, "");
 
@@ -3655,8 +3663,11 @@ public static class BoardGamesChecks
                 $"{hostX.Cfg.SpectatorViewSide}/{hostX.IsFlipped}");
             hostX.SelectedSpectatorViewSide = hostX.SpectatorViewOptions.First(o => o.Value == "red");
             await WaitUntilAsync(() => !hostX.IsFlipped, 8000).ConfigureAwait(false);
+            // 客户端那边收状态包有网络延迟：等它把“执黑 → 黑方在下（翻转）”落实再断言，避免偶发失败
+            await WaitUntilAsync(() => clientX.IsFlipped, 8000).ConfigureAwait(false);
             check("[象棋视角] 房主观战切回红方视角：不翻转，且不影响已入座的执黑玩家",
-                !hostX.IsFlipped && clientX.IsFlipped, "");
+                !hostX.IsFlipped && clientX.IsFlipped,
+                $"host={hostX.IsFlipped} client={clientX.IsFlipped}");
 
             // 换座：房主改执黑、客户端改执红 → 朝向跟着变
             hostX.SelectedSeatOneOption = hostX.SeatOneChoices.FirstOrDefault(o => o.MemberId == clientId);

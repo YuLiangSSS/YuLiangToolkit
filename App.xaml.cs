@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using YuLiangToolkit.App.Themes;
 using YuLiangToolkit.App.ViewModels;
 using YuLiangToolkit.App.Views;
 using YuLiangToolkit.Core.Configuration;
@@ -86,6 +87,11 @@ public partial class App : Application
         var tools = ToolDiscovery.Discover();
 
         var vm = new MainViewModel(tools);
+
+        // 建主窗口之前先应用主题（默认 / 液态玻璃）：窗口 XAML 一解析就要用主题里的颜色，
+        // 反过来的话第一帧会闪一下默认主题（见 Views/Themes/ThemeManager.cs）。
+        ThemeManager.Apply(vm.UiTheme);
+
         var window = new MainWindow { DataContext = vm };
         MainWindow = window;
 

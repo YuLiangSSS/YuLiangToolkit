@@ -14,7 +14,7 @@
             <StackPanel>
                 <TextBlock Text="🎵 视频转音频" FontSize="21" FontWeight="SemiBold" />
                 <TextBlock Text="批量提取文件夹内视频的音频：MP3 有损压缩（可选码率）、FLAC 无损、或直接复制原始音轨（不重新编码，最快最保真）"
-                           FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
+                           FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
                            TextWrapping="Wrap" Margin="0,5,0,0" />
             </StackPanel>
 
@@ -45,7 +45,7 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="源文件夹" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBlock Text="源文件夹" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBox Grid.Column="1" Text="{Binding Cfg.InputFolder, UpdateSourceTrigger=PropertyChanged}"
                                  Style="{StaticResource TextBoxStyle}" />
                         <Button Grid.Column="2" Content="浏览…" Style="{StaticResource SecondaryButtonStyle}"
@@ -65,12 +65,12 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="输出目录" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBlock Text="输出目录" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
                         <Grid Grid.Column="1">
                             <TextBox Text="{Binding Cfg.OutputFolder, UpdateSourceTrigger=PropertyChanged}"
                                      Style="{StaticResource TextBoxStyle}"
                                      IsEnabled="{Binding Cfg.UseSourceFolder, Converter={StaticResource InverseBoolConverter}}" />
-                            <TextBlock Text="（与源文件夹相同）" Foreground="{StaticResource TextSecondaryBrush}"
+                            <TextBlock Text="（与源文件夹相同）" Foreground="{DynamicResource TextSecondaryBrush}"
                                        IsHitTestVisible="False" VerticalAlignment="Center" Margin="12,0,0,0"
                                        Visibility="{Binding Cfg.OutputFolder, Converter={StaticResource EmptyToVis}}" />
                         </Grid>
@@ -89,18 +89,18 @@
                                  IsChecked="{Binding Cfg.IsMp3Mode}" Style="{StaticResource RadioButtonStyle}" />
                     <StackPanel Orientation="Horizontal" Margin="30,7,0,0"
                                 Visibility="{Binding Cfg.IsMp3Mode, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="码率" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="码率" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
                         <ListBox ItemsSource="{Binding BitrateOptions}" SelectedItem="{Binding Cfg.Bitrate}"
                                  Style="{StaticResource SegmentedListBoxStyle}" Margin="10,0,0,0"
                                  ToolTip="MP3 码率越高音质越好、体积越大" />
-                        <TextBlock Text="kbps" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                        <TextBlock Text="kbps" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="8,0,0,0" />
                     </StackPanel>
                     <RadioButton Content="无损转换为 FLAC（音质无损失，文件较大）" GroupName="mode"
                                  IsChecked="{Binding Cfg.IsFlacMode}" Style="{StaticResource RadioButtonStyle}" Margin="0,12,0,0" />
                     <RadioButton Content="无损提取原始音轨（不重新编码，最快；输出保留原编码，如 m4a/opus/ogg）" GroupName="mode"
                                  IsChecked="{Binding Cfg.IsCopyMode}" Style="{StaticResource RadioButtonStyle}" Margin="0,12,0,0" />
 
-                    <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,14,0,0">
+                    <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,14,0,0">
                         <StackPanel>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -108,7 +108,7 @@
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="并行转换数" Foreground="{StaticResource TextSecondaryBrush}"
+                                <TextBlock Text="并行转换数" Foreground="{DynamicResource TextSecondaryBrush}"
                                            VerticalAlignment="Center" FontSize="12.5" />
                                 <ComboBox Grid.Column="1" ItemsSource="{Binding ParallelismOptions}"
                                           SelectedItem="{Binding SelectedParallelism}" DisplayMemberPath="Label"
@@ -116,7 +116,7 @@
                                           ToolTip="同时启动多个 FFmpeg 进程，多核 CPU 下可显著提速。1000 个文件批量转换建议 4~8；「自动」按 CPU 核心数" />
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="24,0,0,0"
                                             Visibility="{Binding Cfg.IsFlacMode, Converter={StaticResource BoolToVis}}">
-                                    <TextBlock Text="FLAC 压缩级别" Foreground="{StaticResource TextSecondaryBrush}"
+                                    <TextBlock Text="FLAC 压缩级别" Foreground="{DynamicResource TextSecondaryBrush}"
                                                VerticalAlignment="Center" FontSize="12.5" />
                                     <ComboBox ItemsSource="{Binding FlacLevelOptions}"
                                               SelectedItem="{Binding SelectedFlacLevel}" DisplayMemberPath="Label"
@@ -125,7 +125,7 @@
                                 </StackPanel>
                             </Grid>
                             <TextBlock Text="提示：并行数越高，多核 CPU 下批量越快（复制原始音轨模式本身最快，无需编码）。"
-                                       FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
+                                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
                                        TextWrapping="Wrap" Margin="0,8,0,0" />
                         </StackPanel>
                     </Border>
@@ -146,10 +146,10 @@
                             <ColumnDefinition Width="2*" />
                             <ColumnDefinition Width="86" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="文件名" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                        <TextBlock Grid.Column="1" Text="大小" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                        <TextBlock Grid.Column="2" Text="输出文件" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                        <TextBlock Grid.Column="3" Text="状态" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Right" />
+                        <TextBlock Text="文件名" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Grid.Column="1" Text="大小" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Grid.Column="2" Text="输出文件" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Grid.Column="3" Text="状态" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextAlignment="Right" />
                     </Grid>
                     <ListBox Grid.Row="1" ItemsSource="{Binding Files}" Style="{StaticResource FileListStyle}"
                              core:ScrollChaining.Enabled="True"
@@ -167,12 +167,12 @@
                                         <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
                                                    ToolTip="{Binding FilePath}" />
                                         <TextBlock Grid.Column="1" Text="{Binding SizeText}"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                                         <TextBlock Grid.Column="2" Text="{Binding OutputName}" TextTrimming="CharacterEllipsis"
-                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                                    ToolTip="{Binding Detail}" />
                                         <TextBlock Grid.Column="3" Text="{Binding Status}" TextAlignment="Right"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                                     </Grid>
                                 </Border>
                                 <DataTemplate.Triggers>
@@ -203,7 +203,7 @@
                         <ProgressBar Minimum="0" Maximum="1" Value="{Binding Progress}"
                                      Style="{StaticResource ProgressBarStyle}" Height="8" VerticalAlignment="Center" />
                         <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Margin="12,0,0,0"
-                                   Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" MinWidth="70" TextAlignment="Right" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" MinWidth="70" TextAlignment="Right" />
                     </Grid>
                     <TextBlock Text="{Binding StatusText}" Margin="0,9,0,0" TextWrapping="Wrap" FontSize="12" />
                     <TextBox Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True" Style="{StaticResource LogTextBoxStyle}"

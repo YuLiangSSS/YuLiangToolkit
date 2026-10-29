@@ -19,7 +19,7 @@
             <!-- 标题 -->
             <StackPanel>
                 <TextBlock Text="🧪 框架示例" FontSize="21" FontWeight="SemiBold" />
-                <TextBlock FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
                            Text="演示两套轮子：① 选项（Checkbox / Textbox / 下拉框 / 滑块）改一下就写进 Config\sample-framework\config.json；② 资源文件放在 Data\sample-framework\ 里用 ToolStorage 读写。写新功能时复制本项目即可。" />
             </StackPanel>
 
@@ -37,10 +37,10 @@
                         <StackPanel>
                             <TextBlock Text="① 强类型配置（改一下 → 自动存 config.json）" FontSize="13" FontWeight="SemiBold" />
                             <TextBlock Text="Config\sample-framework\config.json"
-                                       FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,12" />
+                                       FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,12" />
 
                             <TextBlock Text="备注（Textbox，输入即保存）" FontSize="12"
-                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,6" />
+                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6" />
                             <!-- x:Name 会变成 UI 自动化里的 AutomationId，写自动化测试/脚本时用得上 -->
                             <TextBox x:Name="NoteBox" Text="{Binding Cfg.Note, UpdateSourceTrigger=PropertyChanged}"
                                      Style="{StaticResource TextBoxStyle}" />
@@ -60,12 +60,12 @@
                                     <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="模式" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBlock Text="模式" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <ComboBox x:Name="ModeCombo" Grid.Column="1" ItemsSource="{Binding ModeOptions}" DisplayMemberPath="Label"
                                           SelectedItem="{Binding SelectedMode}" Style="{StaticResource ComboBoxStyle}"
                                           MinWidth="140" />
                                 <TextBlock Grid.Column="2" Text="重复次数" VerticalAlignment="Center" Margin="24,0,0,0"
-                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <TextBox x:Name="RepeatBox" Grid.Column="3" Text="{Binding Cfg.Repeat, UpdateSourceTrigger=PropertyChanged}"
                                          Style="{StaticResource TextBoxStyle}" Width="64" Margin="10,0,0,0" />
                             </Grid>
@@ -76,16 +76,16 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="阈值" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBlock Text="阈值" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <Slider Grid.Column="1" Minimum="0" Maximum="1" SmallChange="0.01" LargeChange="0.1"
                                         Value="{Binding Cfg.Threshold}" Style="{StaticResource SliderStyle}"
                                         ToolTip="拖动过程中也会即时保存（防抖 400ms 合并写入）" />
                                 <TextBlock Grid.Column="2" Text="{Binding Cfg.Threshold, StringFormat={}{0:0.00}}"
                                            VerticalAlignment="Center" MinWidth="42" TextAlignment="Right"
-                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Grid>
 
-                            <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,12,0,0"
+                            <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,12,0,0"
                                        Text="提示：勾选 / 输入后不用点任何「保存」；关掉功能或退出程序时还会强制落盘一次，防抖窗口内的改动也不会丢。" />
                         </StackPanel>
                     </Border>
@@ -94,7 +94,7 @@
                     <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
                         <StackPanel>
                             <TextBlock Text="② 动态配置（不建类也能存 → options.json）" FontSize="13" FontWeight="SemiBold" />
-                            <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,12"
+                            <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,12"
                                        Text="XAML 里直接绑定索引器：{Binding Dyn[键名]}；代码里用 Dyn.GetInt/GetBool/SetValue" />
 
                             <!-- TargetNullValue=False：键还不存在时复选框拿到 false 而不是 null，点一下就是勾上 -->
@@ -134,7 +134,7 @@
                         <StackPanel>
                             <TextBlock Text="③ 功能数据文件夹（Data\sample-framework\）" FontSize="13" FontWeight="SemiBold" />
                             <TextBlock Text="{Binding StoragePathText}" FontSize="10.5"
-                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"
                                        TextTrimming="CharacterEllipsis" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -186,13 +186,13 @@
                                                         <ColumnDefinition Width="{Binding Converter={StaticResource ScrollBarWidth}}" />
                                                     </Grid.ColumnDefinitions>
                                                     <TextBlock x:Name="HeaderName" Text="文件名" FontSize="11"
-                                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                                     <TextBlock x:Name="HeaderSize" Grid.Column="1" Text="大小" FontSize="11"
-                                                               HorizontalAlignment="Left" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                               HorizontalAlignment="Left" Foreground="{DynamicResource TextSecondaryBrush}" />
                                                     <TextBlock x:Name="HeaderTime" Grid.Column="2" Text="修改时间" FontSize="11"
-                                                               HorizontalAlignment="Left" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                               HorizontalAlignment="Left" Foreground="{DynamicResource TextSecondaryBrush}" />
                                                     <TextBlock Grid.Column="3" Text="{Binding DataSummary}" FontSize="11"
-                                                               HorizontalAlignment="Left" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                               HorizontalAlignment="Left" Foreground="{DynamicResource TextSecondaryBrush}" />
                                                 </Grid>
 
                                                 <!-- 数据行（可滚动）
@@ -225,9 +225,9 @@
                                     <TextBlock Text="{Binding RelativePath}" FontSize="12.5" TextTrimming="CharacterEllipsis"
                                                ToolTip="{Binding FullPath}" />
                                     <TextBlock Grid.Column="1" Text="{Binding SizeText}" FontSize="12.5"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                     <TextBlock Grid.Column="2" Text="{Binding ModifiedText}" FontSize="12.5"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                 </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
@@ -255,7 +255,7 @@
                                      Style="{StaticResource ProgressBarStyle}" VerticalAlignment="Center" />
                         <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Margin="12,0,0,0" MinWidth="70"
                                    TextAlignment="Right" VerticalAlignment="Center"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Grid>
                     <TextBlock Text="{Binding StatusText}" Margin="0,9,0,0" TextWrapping="Wrap" FontSize="12" />
                     <TextBox Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
@@ -270,10 +270,10 @@
             </Border>
 
             <!-- ===== 复制模板提示 ===== -->
-            <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0">
+            <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0">
                 <StackPanel>
                     <TextBlock Text="把本功能当模板" FontSize="12" FontWeight="SemiBold" />
-                    <TextBlock FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,6,0,0"
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,6,0,0"
                                Text="复制 src\YuLiangToolkit.Tools.Sample 整个文件夹 → 改名 → 改 csproj 里的 AssemblyName/RootNamespace → 加进 YuLiangToolkit.sln 与主项目引用，即得到一个新功能；把 SampleTool.cs / SampleConfig.cs / SampleViewModel.cs / SampleView.xaml 里的 Id 与内容换成自己的即可。详细步骤见根目录 AGENTS.md。" />
                 </StackPanel>
             </Border>

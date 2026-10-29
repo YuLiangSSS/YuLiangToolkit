@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Media;
 using YuLiangToolkit.App.Models;
+using YuLiangToolkit.App.Themes;
 using YuLiangToolkit.App.Views;
 using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Mvvm;
@@ -70,6 +71,12 @@ public class MainViewModel : ObservableObject
 
     private readonly ToolConfigStore _shellStore;
     private readonly ShellConfig _shell;
+
+    /// <summary>
+    /// 开发 / 截图用的临时主题覆盖（环境变量 <c>YLT_THEME=liquid-glass</c>）。
+    /// 有覆盖时只影响本次运行、**不写配置**；用户在设置里点一次主题就清掉覆盖、改回正常持久化。
+    /// </summary>
+    private UiTheme? _themeOverride;
     private readonly List<ToolCard> _allCards = new();
     private readonly Dictionary<string, ToolCard> _cardById = new(StringComparer.OrdinalIgnoreCase);
     private bool _syncingNav;
@@ -313,6 +320,47 @@ public class MainViewModel : ObservableObject
         }
     }
 
+    // ---------- 界面风格（第二套 UI：液态玻璃，v0.25.0） ----------
+
+    /// <summary>
+    /// 当前界面主题（读写 <see cref="ShellConfig.UiTheme"/>，由 <see cref="ToolConfigStore"/> 自动落盘）。
+    /// 真正的换肤由 <see cref="ThemeManager.Apply"/> 完成（替换 App.xaml 里合并的主题字典），
+    /// 界面其余部分只用 DynamicResource 跟着变，所以不用重启、设置窗口自己也即时变样。
+    /// <para>启动时 App.OnStartup 会在建主窗口之前按它应用一次。</para>
+    /// </summary>
+    public UiTheme UiTheme => _themeOverride ?? _shell.UiTheme;
+
+    /// <summary>设置窗口「默认」单选按钮（与 <see cref="LiquidGlassThemeSelected"/> 二选一，只处理 true）。</summary>
+    public bool DefaultThemeSelected
+    {
+        get => UiTheme == UiTheme.Default;
+        set { if (value) SelectUiTheme(UiTheme.Default); }
+    }
+
+    /// <summary>设置窗口「液态玻璃」单选按钮。</summary>
+    public bool LiquidGlassThemeSelected
+    {
+        get => UiTheme == UiTheme.LiquidGlass;
+        set { if (value) SelectUiTheme(UiTheme.LiquidGlass); }
+    }
+
+    /// <summary>当前是不是液态玻璃主题（主窗口 / 设置窗口用它显示 LiquidBackdrop 流动背景）。</summary>
+    public bool IsLiquidGlass => UiTheme == UiTheme.LiquidGlass;
+
+    /// <summary>用户在设置里换主题：清掉调试覆盖 → 写配置（自动落盘）→ 立即切换界面。</summary>
+    private void SelectUiTheme(UiTheme theme)
+    {
+        _themeOverride = null;
+        if (_shell.UiTheme != theme) _shell.UiTheme = theme;
+
+        ThemeManager.Apply(theme);
+
+        OnPropertyChanged(nameof(UiTheme));
+        OnPropertyChanged(nameof(DefaultThemeSelected));
+        OnPropertyChanged(nameof(LiquidGlassThemeSelected));
+        OnPropertyChanged(nameof(IsLiquidGlass));
+    }
+
     // ---------- 粒子颜色（v0.22.0） ----------
 
     /// <summary>
@@ -468,6 +516,9 @@ public class MainViewModel : ObservableObject
     {
         _shellStore = ToolConfigStore.For(ShellToolId);
         _shell = _shellStore.Load<ShellConfig>();
+
+        // 开发 / 截图：YLT_THEME=liquid-glass 临时切到第二套 UI（不写配置；见 ShellConfig.UiTheme）
+        _themeOverride = ThemeManager.ParseThemeName(Environment.GetEnvironmentVariable("YLT_THEME"));
 
         GoHomeCommand = new RelayCommand(_ => GoHome());
         OpenToolCommand = new RelayCommand(p =>

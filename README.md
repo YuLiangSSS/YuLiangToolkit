@@ -2,8 +2,9 @@
 
 一个可扩展的 WPF 工具集应用：主页是工具卡片墙（**搜索 / 排序 / 标签**），左侧导航自动列出所有已发现的工具。
 功能多了会按类别收进**类别页**（支持任意层级分类，顶部是可点击的面包屑 `主页 › 音游工具 › 工具名`）；
-右上角「⚙ 主页设置」里可以开关**鼠标粒子效果**、自定义**粒子颜色（1~2 种颜色随机渐变）**，还能选**点 × 时「关闭应用 / 最小化到托盘」**；程序在**任务栏右侧有托盘小图标**（单击恢复窗口，右键菜单：显示主窗口 / 主页设置 / 退出）；顶部工具条还有**浏览器式「← 后退 / → 前进」**，跳错页面可以快速回退。
-深色主题 + 自定义标题栏（最小化 / 最大化 / 关闭按钮画在界面里，没有系统窗口顶栏；**最大化时按住标题栏往外拖，
+右上角「⚙ 主页设置」里可以切换**两套界面风格（默认深色 / 液态玻璃）**、开关**鼠标粒子效果**、自定义**粒子颜色（1~2 种颜色随机渐变）**，还能选**点 × 时「关闭应用 / 最小化到托盘」**；程序在**任务栏右侧有托盘小图标**（单击恢复窗口，右键菜单：显示主窗口 / 主页设置 / 退出）；顶部工具条还有**浏览器式「← 后退 / → 前进」**，跳错页面可以快速回退。
+默认深色主题，另有一套**液态玻璃主题**（半透明玻璃面板 + 流动彩色光晕，参考 [Glassium](https://github.com/Kerxs/glassium)，
+主页设置里一键切换、立即生效）；自定义标题栏（最小化 / 最大化 / 关闭按钮画在界面里，没有系统窗口顶栏；**最大化时按住标题栏往外拖，
 会先还原成原来的窗口大小再跟着鼠标走** —— 和普通 Windows 窗口一样）。
 
 ## 工具一览
@@ -60,7 +61,7 @@ dotnet run --project YuLiangTookit.csproj
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：所有「轮子」（工具契约、MVVM 基类、Data/Config 配置框架、
   FFmpeg 封装、UI 样式清单）的用途 + 签名 + 一行用法，加上新增功能的完整步骤和踩过的坑；
-- ✅ **自检**：1775 项行为逐条真跑（退出码 0 = 全通过），改了行为就该顺手跑一次：
+- ✅ **自检**：1816 项行为逐条真跑（退出码 0 = 全通过），改了行为就该顺手跑一次：
 
   ```powershell
   dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
@@ -79,7 +80,8 @@ dotnet run --project YuLiangTookit.csproj
 ## 项目结构
 
 ```
-YuLiangTookit.csproj                     # 主程序（WPF 壳：自定义标题栏、主页/类别页/面包屑、侧边栏导航、深色主题）
+YuLiangTookit.csproj                     # 主程序（WPF 壳：自定义标题栏、主页/类别页/面包屑、侧边栏导航、两套主题）
+Views/Themes/                            # 主题 token：默认深色 / 液态玻璃 + 运行时换肤 ThemeManager（主页设置里切换）
 build.ps1 / publish.ps1                  # 一键构建 / 一键发布（发布到 dist\YuLiangToolkit\）
 AGENTS.md                               # 轮子速查 / 开发约定（改代码先读这个）
 SingleInstance.cs                       # 单实例唤醒（Mutex + 命名管道：再启动一次只唤醒已开窗口）
@@ -100,7 +102,7 @@ src/
 ├── YuLiangToolkit.Tools.OsuMania/       # 功能：音游工具（osu! Key 转换器 / LN 转换器 / 等级计算器）
 ├── YuLiangToolkit.Tools.BoardGames/     # 功能：棋牌（联机五子棋 / 联机象棋 + 房间联机底座）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（1775 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（1816 项行为逐条验证）
 ```
 
 ## 如何添加一个新工具

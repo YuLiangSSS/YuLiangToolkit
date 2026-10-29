@@ -20,11 +20,11 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel>
                     <TextBlock Text="⭐ osu! 等级计算器" FontSize="21" FontWeight="SemiBold" />
-                    <TextBlock FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                    <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
                                Text="拖入 .osu 批量计算 mania 星数（Star Rating）与等级（Level）：只读谱面，不会修改或生成任何文件。" />
                 </StackPanel>
                 <Border Grid.Column="1" Style="{StaticResource CardStyle}" VerticalAlignment="Center" Padding="12,8">
-                    <TextBlock Text="{Binding RowCountText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" />
+                    <TextBlock Text="{Binding RowCountText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
                 </Border>
             </Grid>
 
@@ -38,12 +38,12 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="① 谱面与计算结果" FontSize="13" FontWeight="SemiBold" />
                         <TextBlock Grid.Column="1" Text="{Binding SummaryText}" FontSize="12"
-                                   Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
                     </Grid>
 
                     <!-- 拖放区（事件挂在 UserControl 根上） -->
-                    <Border Margin="0,12,0,0" Background="{StaticResource InputBackgroundBrush}" CornerRadius="8"
-                            Padding="16,13" BorderThickness="1" BorderBrush="{StaticResource BorderBrush}">
+                    <Border Margin="0,12,0,0" Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8"
+                            Padding="16,13" BorderThickness="1" BorderBrush="{DynamicResource BorderBrush}">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -54,7 +54,7 @@
                                 <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="把 .osu 文件或文件夹拖到这里" FontSize="13" />
                                     <TextBlock Text="文件夹会递归查找 .osu；重复文件自动去重，也可以点右侧按钮选择"
-                                               FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,3,0,0" TextWrapping="Wrap" />
+                                               FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0" TextWrapping="Wrap" />
                                 </StackPanel>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -95,15 +95,15 @@
                                                         <ColumnDefinition Width="150" />
                                                         <ColumnDefinition Width="{Binding Converter={StaticResource ScrollBarWidth}}" />
                                                     </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="Level" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                    <TextBlock Grid.Column="1" Text="StarRating" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                    <TextBlock Grid.Column="2" Text="OD" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                    <TextBlock Grid.Column="3" Text="Key数" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                    <TextBlock Grid.Column="4" Text="Title" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                    <TextBlock Grid.Column="5" Text="Difficulty" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                    <TextBlock Grid.Column="6" Text="Artist" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                    <TextBlock Grid.Column="7" Text="Creator" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                    <TextBlock Grid.Column="8" Text="状态" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                    <TextBlock Text="Level" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="1" Text="StarRating" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="2" Text="OD" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="3" Text="Key数" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="4" Text="Title" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="5" Text="Difficulty" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="6" Text="Artist" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="7" Text="Creator" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="8" Text="状态" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
                                                 </Grid>
 
                                                 <ScrollViewer x:Name="ScrollViewer" Grid.Row="1" Focusable="False"
@@ -137,16 +137,16 @@
                                         <TextBlock Text="{Binding LevelText}" FontWeight="SemiBold" />
                                         <TextBlock Grid.Column="1" Text="{Binding StarRatingText}" />
                                         <TextBlock Grid.Column="2" Text="{Binding OdText}"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                                         <TextBlock Grid.Column="3" Text="{Binding KeyCountText}"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                                         <TextBlock Grid.Column="4" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
                                         <TextBlock Grid.Column="5" Text="{Binding Difficulty}" TextTrimming="CharacterEllipsis"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                                         <TextBlock Grid.Column="6" Text="{Binding Artist}" TextTrimming="CharacterEllipsis"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                                         <TextBlock Grid.Column="7" Text="{Binding Creator}" TextTrimming="CharacterEllipsis"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                                         <TextBlock x:Name="Status" Grid.Column="8" Text="{Binding StatusText}"
                                                    TextTrimming="CharacterEllipsis" />
                                     </Grid>
@@ -154,7 +154,7 @@
                                 <DataTemplate.Triggers>
                                     <DataTrigger Binding="{Binding IsFailed}" Value="True">
                                         <Setter TargetName="Row" Property="Background" Value="#3A2222" />
-                                        <Setter TargetName="Status" Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                        <Setter TargetName="Status" Property="Foreground" Value="{DynamicResource DangerBrush}" />
                                     </DataTrigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>
@@ -185,7 +185,7 @@
                                      Style="{StaticResource ProgressBarStyle}" Height="8" VerticalAlignment="Center" />
                         <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Margin="12,0,0,0" MinWidth="70"
                                    TextAlignment="Right" VerticalAlignment="Center"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Grid>
 
                     <TextBlock Text="{Binding StatusText}" Margin="0,10,0,0" TextWrapping="Wrap" FontSize="12" />
@@ -198,10 +198,10 @@
                         <Button Content="清空日志" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding ClearLogCommand}" />
                     </StackPanel>
 
-                    <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0"
+                    <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0"
                             Visibility="{Binding IsHelpVisible, Converter={StaticResource BoolToVis}}">
                         <TextBlock Text="{Binding HelpText}" TextWrapping="Wrap" FontSize="11.5"
-                                   Foreground="{StaticResource TextSecondaryBrush}" LineHeight="19" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" LineHeight="19" />
                     </Border>
                 </StackPanel>
             </Border>
@@ -223,8 +223,8 @@
                 </StackPanel>
             </Grid>
 
-            <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0">
-                <TextBlock FontSize="11.5" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}"
+            <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0">
+                <TextBlock FontSize="11.5" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"
                            Text="说明：星数用 StarRating 算法（Star Rating Rebirth / srcalc 思路的 C# 重写，其中数学工具来自 ppy osu!lazer，MIT）计算，它不是 osu! 官方 mania 难度算法，与游戏内显示的 SR 可能有 1 星以上差异；等级是按这套 SR 拟合的旧公式换算。两者都只读谱面。只支持 osu!mania（Mode=3），非 mania / 损坏 / 键数不在 1~10 的文件会在状态列标红。" />
             </Border>
 

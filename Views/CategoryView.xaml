@@ -12,7 +12,7 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <Border Width="64" Height="64" CornerRadius="16" Background="#232A36" VerticalAlignment="Top">
+                <Border Width="64" Height="64" CornerRadius="16" Background="{DynamicResource EmojiTileBackgroundBrush}" VerticalAlignment="Top">
                     <TextBlock Text="{Binding CurrentNodeEmoji}" FontSize="30"
                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
@@ -21,11 +21,11 @@
                     <TextBlock Text="{Binding CurrentNodeName}" FontSize="22" FontWeight="SemiBold"
                                TextTrimming="CharacterEllipsis" />
                     <TextBlock Text="{Binding CurrentNodeDescription}" FontSize="12.5"
-                               Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
                                Margin="0,6,0,0"
                                Visibility="{Binding HasCurrentNodeDescription, Converter={StaticResource BoolToVis}}" />
                     <TextBlock Text="{Binding CurrentNodeSummary}" FontSize="11.5"
-                               Foreground="{StaticResource AccentBrush}" Margin="0,7,0,0" />
+                               Foreground="{DynamicResource AccentBrush}" Margin="0,7,0,0" />
                 </StackPanel>
 
                 <Button Grid.Column="2" Content="← 返回上一级" Style="{StaticResource SecondaryButtonStyle}"
@@ -51,7 +51,7 @@
                                  Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                                  ToolTip="在本类别（含子类别）里按名称、分类、标签、描述、Id 搜索；Ctrl+F 聚焦、Esc 清空" />
                         <TextBlock Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                    Text="在这个分类里搜索…（名称 / 标签 / 描述，Ctrl+F）"
                                    Visibility="{Binding SearchText, Converter={StaticResource EmptyToVis}}" />
                     </Grid>
@@ -62,7 +62,7 @@
                             Visibility="{Binding HasSearchText, Converter={StaticResource BoolToVis}}" />
 
                     <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="18,0,0,0" VerticalAlignment="Center">
-                        <TextBlock Text="排序" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="排序" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
                         <ComboBox ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SelectedSort}"
                                   DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}"
                                   MinWidth="120" Margin="8,0,0,0" />
@@ -70,7 +70,7 @@
 
                     <TextBlock Grid.Column="4" Text="{Binding FilterSummary}" VerticalAlignment="Center"
                                Margin="18,0,4,0" MinWidth="120" TextAlignment="Right" FontSize="11.5"
-                               Foreground="{StaticResource TextSecondaryBrush}" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
                 </Grid>
             </Border>
 
@@ -79,7 +79,7 @@
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                     <TextBlock Text="子分类" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
                     <TextBlock Text="点进去看更深一层的工具" FontSize="11.5"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="10,0,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="10,0,0,0"
                                VerticalAlignment="Center" />
                 </StackPanel>
                 <ItemsControl ItemsSource="{Binding CategoryCards}">
@@ -99,7 +99,7 @@
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <Border Width="52" Height="52" CornerRadius="12" Background="#232A36" VerticalAlignment="Top">
+                                    <Border Width="52" Height="52" CornerRadius="12" Background="{DynamicResource EmojiTileBackgroundBrush}" VerticalAlignment="Top">
                                         <TextBlock Text="{Binding Emoji}" FontSize="24"
                                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     </Border>
@@ -107,12 +107,12 @@
                                         <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"
                                                    TextTrimming="CharacterEllipsis" />
                                         <TextBlock Text="{Binding Description}" FontSize="11.5"
-                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                                    TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
                                                    MaxHeight="34" Margin="0,5,0,0"
                                                    Visibility="{Binding HasDescription, Converter={StaticResource BoolToVis}}" />
                                         <TextBlock Text="{Binding CountText}" FontSize="10"
-                                                   Foreground="{StaticResource AccentBrush}"
+                                                   Foreground="{DynamicResource AccentBrush}"
                                                    TextTrimming="CharacterEllipsis" Margin="0,8,0,0" />
                                     </StackPanel>
                                 </Grid>
@@ -142,7 +142,7 @@
                                         <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <Border Width="52" Height="52" CornerRadius="12" Background="#232A36" VerticalAlignment="Top">
+                                    <Border Width="52" Height="52" CornerRadius="12" Background="{DynamicResource EmojiTileBackgroundBrush}" VerticalAlignment="Top">
                                         <TextBlock Text="{Binding Emoji}" FontSize="24"
                                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     </Border>
@@ -150,13 +150,13 @@
                                         <TextBlock Text="{Binding Name}" FontSize="15" FontWeight="SemiBold"
                                                    TextTrimming="CharacterEllipsis" />
                                         <TextBlock Text="{Binding Description}" FontSize="11.5"
-                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                                    TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
                                                    MaxHeight="34" Margin="0,5,0,0" />
                                         <TextBlock Text="{Binding TagsText}" FontSize="10"
-                                                   Foreground="{StaticResource AccentBrush}"
+                                                   Foreground="{DynamicResource AccentBrush}"
                                                    TextTrimming="CharacterEllipsis" Margin="0,8,0,0" />
-                                        <TextBlock Text="{Binding LastUsedText}" FontSize="10" Foreground="#5A6472"
+                                        <TextBlock Text="{Binding LastUsedText}" FontSize="10" Foreground="{DynamicResource FaintTextBrush}"
                                                    Margin="0,4,0,0"
                                                    Visibility="{Binding ShowLastUsed, Converter={StaticResource BoolToVis}}" />
                                     </StackPanel>
@@ -173,7 +173,7 @@
                 <StackPanel>
                     <TextBlock Text="这个分类下没有可显示的内容" FontSize="14" FontWeight="SemiBold" />
                     <TextBlock Text="{Binding NoResultHint}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"
-                               Foreground="{StaticResource TextSecondaryBrush}" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
                     <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
                         <Button Content="清空搜索" Style="{StaticResource SecondaryButtonStyle}"
                                 Command="{Binding ClearSearchCommand}" Margin="0,0,10,0"

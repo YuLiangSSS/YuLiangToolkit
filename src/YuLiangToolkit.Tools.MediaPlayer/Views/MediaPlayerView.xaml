@@ -29,7 +29,7 @@
         <Style x:Key="VideoSurfaceStyle" TargetType="Border">
             <Setter Property="Background" Value="#0C0F14" />
             <Setter Property="CornerRadius" Value="12" />
-            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsFullscreen}" Value="True">
@@ -70,7 +70,7 @@
             <Setter Property="Height" Value="44" />
             <Setter Property="Margin" Value="3,0" />
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -81,10 +81,10 @@
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource CardHoverBackgroundBrush}" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CardHoverBackgroundBrush}" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource BorderBrush}" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BorderBrush}" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.35" />
@@ -100,7 +100,7 @@
             <Setter Property="Width" Value="56" />
             <Setter Property="Height" Value="56" />
             <Setter Property="Margin" Value="6,0" />
-            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
             <Setter Property="Foreground" Value="White" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
@@ -112,10 +112,10 @@
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource AccentHoverBrush}" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentHoverBrush}" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource AccentPressedBrush}" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentPressedBrush}" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.35" />
@@ -135,7 +135,7 @@
 
         <Style x:Key="SettingsLabelStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="12" />
-            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
     </UserControl.Resources>
@@ -170,7 +170,7 @@
                                 <TextBlock Text="{Binding TitleText}" FontSize="18" FontWeight="SemiBold"
                                            Margin="0,16,0,0" TextAlignment="Center" TextWrapping="Wrap" />
                                 <TextBlock Text="{Binding SubtitleText}" FontSize="11.5" TextWrapping="Wrap"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                            Margin="0,8,0,0" TextAlignment="Center" />
                             </StackPanel>
                         </Border>
@@ -194,7 +194,7 @@
                         <Button HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,14,14"
                                 Width="38" Height="38" Style="{StaticResource TransportButtonStyle}"
                                 Background="#66000000"
-                                FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{StaticResource TextPrimaryBrush}"
+                                FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{DynamicResource TextPrimaryBrush}"
                                 Content="{Binding FullscreenGlyph}" Command="{Binding ToggleFullscreenCommand}"
                                 ToolTip="{Binding FullscreenTooltip}"
                                 Visibility="{Binding ShowCornerFullscreenButton, Converter={StaticResource BoolToVis}}" />
@@ -215,7 +215,7 @@
                     <!-- 全屏时在进度条上方显示正在放什么（普通模式下面板里已经有标题了） -->
                     <TextBlock Grid.Row="0" Text="{Binding TitleText}" FontSize="13" FontWeight="SemiBold"
                                Margin="6,0,6,2" TextTrimming="CharacterEllipsis"
-                               Foreground="{StaticResource TextPrimaryBrush}"
+                               Foreground="{DynamicResource TextPrimaryBrush}"
                                Visibility="{Binding IsFullscreen, Converter={StaticResource BoolToVis}}" />
 
                 <!-- 进度条（点 / 拖可以跳转，见代码后置的 OnSeek*） -->
@@ -227,7 +227,7 @@
                     </Grid.ColumnDefinitions>
 
                     <TextBlock Text="{Binding PositionText}" MinWidth="48" FontSize="11.5" VerticalAlignment="Center"
-                               Foreground="{StaticResource TextSecondaryBrush}" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
 
                     <Grid x:Name="SeekArea" Grid.Column="1" Height="20" Margin="10,0" Background="Transparent"
                           Cursor="Hand" ToolTip="点一下或按住拖动，跳到任意位置"
@@ -240,7 +240,7 @@
 
                     <TextBlock Grid.Column="2" Text="{Binding DurationText}" MinWidth="48" TextAlignment="Right"
                                FontSize="11.5" VerticalAlignment="Center"
-                               Foreground="{StaticResource TextSecondaryBrush}" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
                 </Grid>
 
                 <!-- 控制按钮：设置 ｜ 快退 · **播放/暂停（正中）** · 快进 · 停止 ｜ 播放顺序 · 音量 · 退出全屏
@@ -267,7 +267,7 @@
                                 Margin="0,0,3,0" Style="{StaticResource TransportButtonStyle}"
                                 Command="{Binding SeekBackwardCommand}" ToolTip="{Binding SeekBackwardTooltip}">
                             <Path Data="M 7,0 L 0,6.5 L 7,13 Z M 14,0 L 7,6.5 L 14,13 Z"
-                                  Fill="{StaticResource TextPrimaryBrush}" />
+                                  Fill="{DynamicResource TextPrimaryBrush}" />
                         </Button>
                     </Grid>
 
@@ -291,13 +291,13 @@
                                     Style="{StaticResource TransportButtonStyle}"
                                     Command="{Binding SeekForwardCommand}" ToolTip="{Binding SeekForwardTooltip}">
                                 <Path Data="M 0,0 L 7,6.5 L 0,13 Z M 7,0 L 14,6.5 L 7,13 Z"
-                                      Fill="{StaticResource TextPrimaryBrush}" />
+                                      Fill="{DynamicResource TextPrimaryBrush}" />
                             </Button>
 
                             <!-- 停止：位置回到开头 -->
                             <Button Style="{StaticResource TransportButtonStyle}"
                                     Command="{Binding StopCommand}" ToolTip="停止（位置回到开头）">
-                                <Path Data="M 0.5,0.5 H 12.5 V 12.5 H 0.5 Z" Fill="{StaticResource TextPrimaryBrush}" />
+                                <Path Data="M 0.5,0.5 H 12.5 V 12.5 H 0.5 Z" Fill="{DynamicResource TextPrimaryBrush}" />
                             </Button>
                         </StackPanel>
 
@@ -308,7 +308,7 @@
                                     Command="{Binding CyclePlayModeCommand}"
                                     ToolTip="{Binding PlayModeTooltip}" />
                             <TextBlock Text="音量" FontSize="10.5" VerticalAlignment="Center" Margin="10,0,6,0"
-                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                             <Slider Width="92" Minimum="0" Maximum="100" Value="{Binding VolumeValue}"
                                     Style="{StaticResource SliderStyle}" VerticalAlignment="Center" ToolTip="音量" />
 
@@ -324,7 +324,7 @@
 
                 <!-- 状态栏（每个功能自己一句“正在干什么”，主窗口底部那条是外壳的） -->
                 <TextBlock Grid.Row="3" Text="{Binding StatusText}" Margin="6,12,6,0" FontSize="11"
-                           TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextSecondaryBrush}" />
+                           TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextSecondaryBrush}" />
                 </Grid>
                 </Border>
             </Grid>
@@ -332,7 +332,7 @@
             <!-- ===== 设置面板：盖住左边整列（不弹子窗口） =====
                  为什么不做子窗口：WPF 的子窗口要自己管生命周期（关工具时还得负责关掉它），
                  而这一屏内容一页就放得下 —— 盖一层反而最简单、也不会丢焦点。 -->
-            <Border Background="#FF151820" CornerRadius="12" BorderBrush="{StaticResource BorderBrush}"
+            <Border Background="#FF151820" CornerRadius="12" BorderBrush="{DynamicResource BorderBrush}"
                     BorderThickness="1"
                     Visibility="{Binding IsSettingsVisible, Converter={StaticResource BoolToVis}}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
@@ -341,11 +341,11 @@
 
                         <TextBlock Text="播放器设置" FontSize="17" FontWeight="SemiBold" />
                         <TextBlock Text="{Binding SettingsPathText}" FontSize="10.5" Margin="0,5,0,0"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                    TextTrimming="CharacterEllipsis" />
                         <TextBlock Text="改一下就自动保存（不用点保存按钮）；关掉工具 / 退出程序时还会强制落盘一次。"
                                    FontSize="10.5" Margin="0,4,0,0" TextWrapping="Wrap"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
 
                         <!-- ===== 读取 ===== -->
                         <TextBlock Text="打开文件夹时" Style="{StaticResource SettingsSectionStyle}" />
@@ -362,7 +362,7 @@
                                       Style="{StaticResource ComboBoxStyle}" />
                         </Grid>
                         <TextBlock Text="{Binding IncludeModeHint}" FontSize="10.5" Margin="132,7,0,0"
-                                   TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" />
+                                   TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
 
                         <CheckBox Content="连子文件夹一起读取（递归）" Margin="132,14,0,0"
                                   IsChecked="{Binding ScanRecursive}"
@@ -382,7 +382,7 @@
                         </Grid>
                         <TextBlock Text="「打开文件」按钮和拖进来的文件一律追加（那个设置只管文件夹）。"
                                    FontSize="10.5" Margin="132,7,0,0" TextWrapping="Wrap"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
 
                         <!-- ===== 播放 ===== -->
                         <TextBlock Text="播放" Style="{StaticResource SettingsSectionStyle}" />
@@ -405,7 +405,7 @@
                         </Grid>
                         <TextBlock Text="0.1 ~ 60 秒，精确到 0.1 秒。快退 / 快进按钮：左键跳这个秒数，右键换上一首 / 下一首。"
                                    FontSize="10.5" Margin="132,7,0,0" TextWrapping="Wrap"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
 
                         <Grid Margin="0,14,0,0">
                             <Grid.ColumnDefinitions>
@@ -435,7 +435,7 @@
                         </Grid>
                         <TextBlock Text="左边的时间：默认从 0:00 数到总时长；选「剩余时间」就从总时长倒着数到 0:00（还差多少播完）。右边始终显示总时长。"
                                    FontSize="10.5" Margin="132,7,0,0" TextWrapping="Wrap"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
 
                         <Grid Margin="0,14,0,0">
                             <Grid.ColumnDefinitions>
@@ -449,7 +449,7 @@
                                     VerticalAlignment="Center" />
                             <TextBlock Grid.Column="2" Text="{Binding VolumeText}" MinWidth="46" Margin="10,0,0,0"
                                        FontSize="11.5" TextAlignment="Right" VerticalAlignment="Center"
-                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                         </Grid>
 
                         <!-- ===== 后台 ===== -->
@@ -460,7 +460,7 @@
                                   ToolTip="打开后：切到别的工具 / 回主页时声音不断，左下角会出现一个迷你播放条" />
                         <TextBlock Text="打开时左下角会浮出一个小窗：滚动显示标题，带快退 / 播放暂停 / 快进，点标题回到播放器。"
                                    FontSize="10.5" Margin="132,7,0,0" TextWrapping="Wrap"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
 
                         <!-- ===== 下次打开 ===== -->
                         <TextBlock Text="下次打开这个工具时" Style="{StaticResource SettingsSectionStyle}" />
@@ -471,7 +471,7 @@
                                   IsChecked="{Binding ResumeLastPlayed}"
                                   Style="{StaticResource CheckBoxStyle}" />
                         <TextBlock Text="{Binding LastFolderText}" FontSize="10.5" Margin="132,7,0,0"
-                                   TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" />
+                                   TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
 
                         <!-- ===== 底部按钮 ===== -->
                         <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
@@ -490,8 +490,8 @@
         </Grid>
 
         <!-- ==================== 右：播放列表（全屏时收起，见 ShowPlaylist） ==================== -->
-        <Border Grid.Column="1" Width="320" Margin="0,16,18,14" Background="{StaticResource CardBackgroundBrush}"
-                CornerRadius="12" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+        <Border Grid.Column="1" Width="320" Margin="0,16,18,14" Background="{DynamicResource CardBackgroundBrush}"
+                CornerRadius="12" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                 Visibility="{Binding ShowPlaylist, Converter={StaticResource BoolToVis}}">
             <Grid Margin="12,14,12,12">
                 <Grid.RowDefinitions>
@@ -505,7 +505,7 @@
                 <StackPanel Grid.Row="0">
                     <TextBlock Text="播放列表" FontSize="13" FontWeight="SemiBold" />
                     <TextBlock Text="{Binding PlaylistSummary}" FontSize="10.5" Margin="0,4,0,0"
-                               Foreground="{StaticResource TextSecondaryBrush}" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
                 </StackPanel>
 
                 <!-- 打开 / 移除 / 清空 -->
@@ -549,9 +549,9 @@
                                     <!-- 行号；正在播的那行换成 ▶ -->
                                     <TextBlock x:Name="NumberText" Text="{Binding Number}" FontSize="10.5"
                                                VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                     <TextBlock x:Name="PlayingMark" Text="▶" FontSize="9.5" VerticalAlignment="Center"
-                                               Foreground="{StaticResource AccentBrush}" Visibility="Collapsed" />
+                                               Foreground="{DynamicResource AccentBrush}" Visibility="Collapsed" />
 
                                     <TextBlock Grid.Column="1" Text="{Binding KindGlyph}" FontSize="10.5"
                                                Margin="0,0,6,0" VerticalAlignment="Center" />
@@ -560,7 +560,7 @@
                                                ToolTip="{Binding Tooltip}" />
                                     <TextBlock Grid.Column="3" Text="{Binding KindText}" FontSize="10"
                                                Margin="6,0,0,0" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                 </Grid>
                                 <DataTemplate.Triggers>
                                     <DataTrigger Binding="{Binding IsPlaying}" Value="True">
@@ -576,7 +576,7 @@
                     <TextBlock Text="列表是空的&#10;点上面的「文件夹」或「文件」加进来，&#10;也可以把文件 / 文件夹直接拖进这个窗口"
                                Visibility="{Binding IsPlaylistEmpty, Converter={StaticResource BoolToVis}}"
                                FontSize="11.5" TextAlignment="Center" TextWrapping="Wrap" LineHeight="19"
-                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                IsHitTestVisible="False" />
                 </Grid>
@@ -584,9 +584,9 @@
                 <!-- 选中行的说明 / 快捷键提示 -->
                 <StackPanel Grid.Row="3" Margin="4,10,4,0">
                     <TextBlock Text="{Binding SelectedItemText}" FontSize="10.5" TextWrapping="Wrap"
-                               Foreground="{StaticResource TextSecondaryBrush}" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
                     <TextBlock FontSize="10" Margin="0,4,0,0" TextWrapping="Wrap"
-                               Foreground="{StaticResource TextSecondaryBrush}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
                                Text="快捷键：空格 播放/暂停 · ←/→ 快退/快进 · Delete 从列表移除" />
                 </StackPanel>
             </Grid>

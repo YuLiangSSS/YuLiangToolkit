@@ -15,14 +15,14 @@
                 ToolTip="点击选择颜色">
             <Button.Template>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd" Background="{StaticResource InputBackgroundBrush}"
-                            BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                    <Border x:Name="Bd" Background="{DynamicResource InputBackgroundBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                             CornerRadius="8" Padding="8,5">
                         <ContentPresenter />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -33,16 +33,16 @@
                         Background="{Binding SelectedColor, ElementName=Root, Converter={StaticResource ColorToBrush}}" />
                 <TextBlock Text="{Binding HexText, ElementName=Root}" Margin="8,0,0,0" FontSize="12"
                            FontFamily="Consolas" VerticalAlignment="Center"
-                           Foreground="{StaticResource TextPrimaryBrush}" />
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
                 <TextBlock Text="▾" Margin="6,0,0,0" FontSize="10" VerticalAlignment="Center"
-                           Foreground="{StaticResource TextSecondaryBrush}" />
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
             </StackPanel>
         </Button>
 
         <Popup x:Name="PickerPopup" StaysOpen="False" AllowsTransparency="True"
                PlacementTarget="{Binding ElementName=OpenButton}" Placement="Bottom">
-            <Border Background="{StaticResource WindowBackgroundBrush}"
-                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+            <Border Background="{DynamicResource WindowBackgroundBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                     CornerRadius="10" Padding="12" Margin="0,6,0,0">
                 <Border.Effect>
                     <DropShadowEffect BlurRadius="16" ShadowDepth="3" Opacity="0.45" Color="Black" />
@@ -66,7 +66,7 @@
                                             <ControlTemplate.Triggers>
                                                 <Trigger Property="IsMouseOver" Value="True">
                                                     <Setter TargetName="Chip" Property="BorderBrush"
-                                                            Value="{StaticResource AccentBrush}" />
+                                                            Value="{DynamicResource AccentBrush}" />
                                                 </Trigger>
                                             </ControlTemplate.Triggers>
                                         </ControlTemplate>
@@ -82,13 +82,13 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="#" FontFamily="Consolas" VerticalAlignment="Center"
-                                   Margin="0,0,4,0" Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Margin="0,0,4,0" Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBox x:Name="HexBox" Grid.Column="1" Height="30" Style="{StaticResource TextBoxStyle}"
                                  MaxLength="7" PreviewKeyDown="OnHexKeyDown" LostFocus="OnHexLostFocus"
                                  ToolTip="十六进制颜色，例如 #4C8DFF（回车确认）" />
                     </Grid>
 
-                    <TextBlock x:Name="ErrorText" FontSize="11" Foreground="{StaticResource DangerBrush}"
+                    <TextBlock x:Name="ErrorText" FontSize="11" Foreground="{DynamicResource DangerBrush}"
                                Margin="0,6,0,0" Visibility="Collapsed" Text="格式不对，请填 #RRGGBB" />
                 </StackPanel>
             </Border>

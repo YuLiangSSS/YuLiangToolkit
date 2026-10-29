@@ -21,7 +21,7 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel>
                     <TextBlock Text="🎧 osu! 下图器" FontSize="21" FontWeight="SemiBold" />
-                    <TextBlock FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                    <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
                                Text="搜谱面集 → 勾选（或全量）下载 .osz。下载走第三方镜像 dl.sayobot.cn（不是官方站），带视频的包大得多。" />
                 </StackPanel>
                 <Border Grid.Column="1" Style="{StaticResource CardStyle}" VerticalAlignment="Center" Padding="12,8">
@@ -33,7 +33,7 @@
             <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
                 <StackPanel>
                     <TextBlock Text="① API 凭据（存 Config\map-downloader\config.json，本机自用）" FontSize="13" FontWeight="SemiBold" />
-                    <TextBlock FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,12"
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,12"
                                Text="osu! 的搜索接口要先换一个 Access Token：去官网注册一个 OAuth 应用（Client Credentials），把 Client ID 与 Client Secret 填进来即可。" />
 
                     <Grid>
@@ -121,7 +121,7 @@
                             <TextBox Text="{Binding Cfg.DateTo, UpdateSourceTrigger=PropertyChanged}"
                                      Width="104" Style="{StaticResource TextBoxStyle}" ToolTip="yyyy-MM-dd，留空 = 不限" />
                             <TextBlock Text="{Binding LocalFilterHint}" FontSize="11" Margin="10,0,0,0" VerticalAlignment="Center"
-                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                         </StackPanel>
                         <CheckBox Grid.Column="7" Content="包含 NSFW" VerticalAlignment="Center" Margin="16,0,0,0"
                                   IsChecked="{Binding Cfg.IncludeNsfw}" Style="{StaticResource CheckBoxStyle}" />
@@ -135,7 +135,7 @@
                                 Command="{Binding FetchAllCommand}"
                                 ToolTip="沿着游标把所有页都取回来（再点一次 = 停止）" />
                         <TextBlock Text="{Binding ResultSummary}" VerticalAlignment="Center" Margin="14,0,0,0"
-                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
                     </StackPanel>
                 </StackPanel>
             </Border>
@@ -150,7 +150,7 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="③ 搜索结果（勾上要下的那些行）" FontSize="13" FontWeight="SemiBold" />
                         <TextBlock Grid.Column="1" Text="{Binding SelectionText}" VerticalAlignment="Center"
-                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
                     </Grid>
 
                     <!-- ===== 结果表：表头写在 ListBox 自己的 ControlTemplate 里 =====
@@ -187,14 +187,14 @@
                                                         <!-- ListBox 给滚动条预留的位置 -->
                                                         <ColumnDefinition Width="{Binding Converter={StaticResource ScrollBarWidth}}" />
                                                     </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="ID" Grid.Column="1" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                    <TextBlock Text="标题" Grid.Column="2" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                    <TextBlock Text="艺术家" Grid.Column="3" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                    <TextBlock Text="Mapper" Grid.Column="4" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                    <TextBlock Text="状态" Grid.Column="5" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                    <TextBlock Text="日期" Grid.Column="6" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                    <TextBlock Text="难度" Grid.Column="7" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                    <TextBlock Text="CS" Grid.Column="8" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                    <TextBlock Text="ID" Grid.Column="1" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Text="标题" Grid.Column="2" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Text="艺术家" Grid.Column="3" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Text="Mapper" Grid.Column="4" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Text="状态" Grid.Column="5" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Text="日期" Grid.Column="6" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Text="难度" Grid.Column="7" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Text="CS" Grid.Column="8" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
                                                 </Grid>
 
                                                 <!-- ⚠ x:Name 必须叫 "ScrollViewer"：ListBox 是按这个名字找「滚动宿主」的 -->
@@ -228,22 +228,22 @@
                                     <CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}"
                                               VerticalAlignment="Center" Style="{StaticResource CheckBoxStyle}" />
                                     <TextBlock Grid.Column="1" Text="{Binding Id}" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                     <TextBlock Grid.Column="2" Text="{Binding Title}" VerticalAlignment="Center"
                                                TextTrimming="CharacterEllipsis" />
                                     <TextBlock Grid.Column="3" Text="{Binding Artist}" VerticalAlignment="Center"
                                                TextTrimming="CharacterEllipsis"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                     <TextBlock Grid.Column="4" Text="{Binding Creator}" VerticalAlignment="Center"
                                                TextTrimming="CharacterEllipsis"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                     <TextBlock Grid.Column="5" Text="{Binding StatusText}" VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="6" Text="{Binding DateText}" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                     <TextBlock Grid.Column="7" Text="{Binding DifficultyCount}" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                     <TextBlock Grid.Column="8" Text="{Binding KeyRangeText}" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                 </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
@@ -281,10 +281,10 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="保存到" VerticalAlignment="Center" Margin="0,0,8,0"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBlock Grid.Column="1" Text="{Binding FolderText}" VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis" ToolTip="{Binding FolderText}"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                         <StackPanel Grid.Column="2" Orientation="Horizontal">
                             <Button Content="选择目录" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding ChooseFolderCommand}" />
                             <Button Content="打开目录" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
@@ -308,11 +308,11 @@
                                      Style="{StaticResource ProgressBarStyle}" VerticalAlignment="Center" />
                         <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Margin="12,0,0,0" MinWidth="70"
                                    TextAlignment="Right" VerticalAlignment="Center"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Grid>
 
                     <TextBlock Text="{Binding DownloadSummaryText}" Margin="0,10,0,0" FontSize="12"
-                               Foreground="{StaticResource TextSecondaryBrush}" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
                     <TextBlock Text="{Binding StatusText}" Margin="0,6,0,0" TextWrapping="Wrap" FontSize="12" />
 
                     <TextBox Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
@@ -327,8 +327,8 @@
                 </StackPanel>
             </Border>
 
-            <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0">
-                <TextBlock FontSize="11.5" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}"
+            <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0">
+                <TextBlock FontSize="11.5" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"
                            Text="提示：搜索走 osu! 官方 API（只读公开数据，需要自己注册的 Client ID / Secret）；.osz 文件走第三方镜像下载，勾选多行时最多同时下 5 个（可在 config.json 里改 parallelDownloads）。日期与 Key 数是拉回来之后在本地筛的。" />
             </Border>
 

@@ -12,13 +12,13 @@
 
         <Style x:Key="ParamLabelStyle" TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center" />
-            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
         </Style>
         <Style x:Key="ParamValueStyle" TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="TextAlignment" Value="Right" />
             <Setter Property="MinWidth" Value="64" />
-            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
         </Style>
     </UserControl.Resources>
 
@@ -33,11 +33,11 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel>
                     <TextBlock Text="🎹 osu! Key 转换器" FontSize="21" FontWeight="SemiBold" />
-                    <TextBlock FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                    <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
                                Text="把低键数的 osu!mania 谱面转成更高键数（只支持低转高）：新谱面写在原文件所在目录，自动按元数据改名，不会覆盖原谱。" />
                 </StackPanel>
                 <Border Grid.Column="1" Style="{StaticResource CardStyle}" VerticalAlignment="Center" Padding="12,8">
-                    <TextBlock Text="{Binding FileCountText}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" />
+                    <TextBlock Text="{Binding FileCountText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
                 </Border>
             </Grid>
 
@@ -47,8 +47,8 @@
                     <TextBlock Text="① 谱面文件" FontSize="13" FontWeight="SemiBold" />
 
                     <!-- 拖放区（真正的拖放事件挂在 UserControl 根上；这里只是视觉提示） -->
-                    <Border Margin="0,12,0,0" Background="{StaticResource InputBackgroundBrush}" CornerRadius="8"
-                            Padding="16,13" BorderThickness="1" BorderBrush="{StaticResource BorderBrush}">
+                    <Border Margin="0,12,0,0" Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8"
+                            Padding="16,13" BorderThickness="1" BorderBrush="{DynamicResource BorderBrush}">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -59,7 +59,7 @@
                                 <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
                                     <TextBlock Text="把 .osu 文件或文件夹拖到这里" FontSize="13" />
                                     <TextBlock Text="文件夹会递归查找 .osu；重复文件自动去重，也可以点右侧按钮选择"
-                                               FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,3,0,0" TextWrapping="Wrap" />
+                                               FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0" TextWrapping="Wrap" />
                                 </StackPanel>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -96,10 +96,10 @@
                                                         <!-- ListBox 给滚动条预留的位置 -->
                                                         <ColumnDefinition Width="{Binding Converter={StaticResource ScrollBarWidth}}" />
                                                     </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="文件名" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                    <TextBlock Grid.Column="1" Text="路径" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                    <TextBlock Grid.Column="2" Text="键数" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                                                    <TextBlock Grid.Column="3" Text="状态" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                    <TextBlock Text="文件名" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="1" Text="路径" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="2" Text="键数" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="3" Text="状态" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
                                                 </Grid>
 
                                                 <!-- ⚠ x:Name 必须叫 "ScrollViewer"：ListBox 按这个名字找滚动宿主 -->
@@ -129,21 +129,21 @@
                                         <TextBlock Text="{Binding FileName}" TextTrimming="CharacterEllipsis"
                                                    ToolTip="{Binding FilePath}" />
                                         <TextBlock Grid.Column="1" Text="{Binding FilePath}" FontSize="11.5"
-                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                                    TextTrimming="CharacterEllipsis" ToolTip="{Binding FilePath}" />
                                         <TextBlock Grid.Column="2" Text="{Binding KeyCountText}"
-                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                                         <TextBlock x:Name="Status" Grid.Column="3" Text="{Binding StatusText}"
                                                    TextTrimming="CharacterEllipsis" ToolTip="{Binding StatusTooltip}" />
                                     </Grid>
                                 </Border>
                                 <DataTemplate.Triggers>
                                     <DataTrigger Binding="{Binding IsConverted}" Value="True">
-                                        <Setter TargetName="Status" Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                        <Setter TargetName="Status" Property="Foreground" Value="{DynamicResource SuccessBrush}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding IsFailed}" Value="True">
                                         <Setter TargetName="Row" Property="Background" Value="#3A2222" />
-                                        <Setter TargetName="Status" Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                        <Setter TargetName="Status" Property="Foreground" Value="{DynamicResource DangerBrush}" />
                                     </DataTrigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>
@@ -163,7 +163,7 @@
                         <StackPanel>
                             <TextBlock Text="② 转换参数" FontSize="13" FontWeight="SemiBold" />
                             <TextBlock Text="参数改一下就自动存进 Config\osu-key-converter\config.json"
-                                       FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" />
+                                       FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" />
                         </StackPanel>
                         <Button Grid.Column="1" Content="参数说明 ▾" Style="{StaticResource SecondaryButtonStyle}"
                                 VerticalAlignment="Center" Command="{Binding ToggleHelpCommand}" />
@@ -234,7 +234,7 @@
                                      Width="130" Style="{StaticResource TextBoxStyle}"
                                      ToolTip="默认 114514：固定种子结果可复现；清空 = 每次随机" />
                             <TextBlock Grid.Column="2" Text="固定种子时，同一张谱每次转出来完全一样" FontSize="11"
-                                       Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0" />
+                                       Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0" />
                         </Grid>
 
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
@@ -245,7 +245,7 @@
                                      IsEnabled="{Binding Cfg.UseCreator}"
                                      ToolTip="不勾选时会在原谱师后追加 &quot; &amp; KeyConverter&quot;" />
                             <TextBlock Text="不勾选 = 原谱师后追加 &quot; &amp; KeyConverter&quot;" FontSize="11"
-                                       Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0" />
+                                       Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0" />
                         </StackPanel>
 
                         <TextBlock Text="源键数过滤（不勾 = 全部转换）" Style="{StaticResource ParamLabelStyle}" FontSize="12.5"
@@ -264,10 +264,10 @@
                     </StackPanel>
 
                     <!-- 参数说明（折叠） -->
-                    <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,10,0,0"
+                    <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,10,0,0"
                             Visibility="{Binding IsHelpVisible, Converter={StaticResource BoolToVis}}">
                         <TextBlock Text="{Binding HelpText}" TextWrapping="Wrap" FontSize="11.5"
-                                   Foreground="{StaticResource TextSecondaryBrush}" LineHeight="19" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" LineHeight="19" />
                     </Border>
                 </StackPanel>
             </Border>
@@ -286,11 +286,11 @@
                                      Style="{StaticResource ProgressBarStyle}" Height="8" VerticalAlignment="Center" />
                         <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Margin="12,0,0,0" MinWidth="70"
                                    TextAlignment="Right" VerticalAlignment="Center"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Grid>
 
                     <TextBlock Text="{Binding SummaryText}" Margin="0,10,0,0" FontSize="12"
-                               Foreground="{StaticResource TextSecondaryBrush}" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
                     <TextBlock Text="{Binding StatusText}" Margin="0,6,0,0" TextWrapping="Wrap" FontSize="12" />
 
                     <TextBox Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
@@ -320,8 +320,8 @@
             </Grid>
 
             <!-- ===== 底部说明 ===== -->
-            <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0">
-                <TextBlock FontSize="11.5" TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}"
+            <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0">
+                <TextBlock FontSize="11.5" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"
                            Text="提示：只支持「低键数 → 高键数」，且源谱面不超过 9K；目标键数不大于源键数、或源谱面不在勾选的键数范围内时会自动跳过（日志里会写原因）。处理全程串行，单个文件失败不会中断整批。" />
             </Border>
 

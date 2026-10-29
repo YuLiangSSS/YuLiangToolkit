@@ -22,14 +22,14 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel>
                     <TextBlock Text="⚡ Flash 下载器" FontSize="21" FontWeight="SemiBold" />
-                    <TextBlock FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                    <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
                                Text="支持 4399 / 7k7k / 17yy / ArmorGames / Kongregate：粘贴游戏页网址 → 下载成 swf 或网页版 → 用 Flash 独立播放器 / 本地服务器离线玩。多文件游戏用「关联文件下载器」把缺的文件补进来。" />
                 </StackPanel>
-                <Border Grid.Column="1" Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Padding="12,8"
-                        VerticalAlignment="Top" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                <Border Grid.Column="1" Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="12,8"
+                        VerticalAlignment="Top" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
                     <StackPanel>
                         <TextBlock Text="{Binding ServerStatus}" FontSize="11.5" TextWrapping="Wrap" MaxWidth="360" />
-                        <TextBlock Text="{Binding FlashPlayerText}" FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}"
+                        <TextBlock Text="{Binding FlashPlayerText}" FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                    TextTrimming="CharacterEllipsis" MaxWidth="360" Margin="0,4,0,0"
                                    ToolTip="{Binding FlashPlayerPath}" />
                     </StackPanel>
@@ -44,7 +44,7 @@
                             <ColumnDefinition Width="80" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="游戏 URL" VerticalAlignment="Center" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBlock Text="游戏 URL" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBox x:Name="UrlBox" Grid.Column="1" Style="{StaticResource TextBoxStyle}"
                                  Text="{Binding GameUrl, UpdateSourceTrigger=PropertyChanged}"
                                  ToolTip="例：https://www.4399.com/flash/6853.htm ；7k7k / 17yy / ArmorGames / Kongregate 的游戏页网址也可以" />
@@ -96,7 +96,7 @@
                                     Command="{Binding CopyServerUrlCommand}" />
                         </StackPanel>
                         <TextBlock Grid.Column="1" VerticalAlignment="Center" FontSize="11.5"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                    Text="网页游戏必须开着服务器；关掉本工具 localhost 就失效了" />
                     </Grid>
                 </StackPanel>
@@ -122,9 +122,9 @@
                             <StackPanel>
                                 <TextBlock Text="游戏列表" FontSize="13" FontWeight="SemiBold" />
                                 <TextBlock Text="{Binding GamesSummary}" FontSize="10.5"
-                                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap" />
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap" />
                                 <TextBlock Text="{Binding GamesDirectory}" FontSize="10.5"
-                                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2,0,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0"
                                            TextTrimming="CharacterEllipsis" ToolTip="{Binding GamesDirectory}" />
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
@@ -150,7 +150,7 @@
                                          ToolTip="按名字 / 站点后缀 / 4399 / ArmorGames / 网页 搜索；空格分隔多个关键词（需同时命中）；Esc 清空" />
                                 <TextBlock Text="搜索游戏…（名字 / 后缀 / 站点）"
                                            Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                            Visibility="{Binding GameSearchText, Converter={StaticResource EmptyToVis}}" />
                             </Grid>
 
@@ -189,18 +189,18 @@
                                             <TextBlock Text="{Binding DisplayText}" TextTrimming="CharacterEllipsis"
                                                        FontSize="12.5" ToolTip="{Binding FullPath}" />
                                             <TextBlock Text="{Binding DetailText}" FontSize="10.5"
-                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                                        TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
                                             <TextBlock Text="{Binding Warning}" FontSize="10.5" TextWrapping="Wrap" Margin="0,3,0,0"
-                                                       Foreground="{StaticResource DangerBrush}"
+                                                       Foreground="{DynamicResource DangerBrush}"
                                                        Visibility="{Binding HasWarning, Converter={StaticResource BoolToVis}}" />
                                         </StackPanel>
                                         <TextBlock Grid.Column="1" Text="{Binding SiteText}" FontSize="11"
-                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                                    VerticalAlignment="Center" Margin="6,0,8,0" TextAlignment="Right" />
-                                        <Border Grid.Column="2" Background="{StaticResource InputBackgroundBrush}" CornerRadius="5"
+                                        <Border Grid.Column="2" Background="{DynamicResource InputBackgroundBrush}" CornerRadius="5"
                                                 Padding="7,3" VerticalAlignment="Center" BorderThickness="1"
-                                                BorderBrush="{StaticResource BorderBrush}">
+                                                BorderBrush="{DynamicResource BorderBrush}">
                                             <TextBlock Text="{Binding TypeBadge}" FontSize="10.5" />
                                         </Border>
                                     </Grid>
@@ -210,7 +210,7 @@
 
                         <!-- 搜索筛没了的时候提示一句（免得以为游戏丢了） -->
                         <TextBlock Text="{Binding GamesEmptyHint}" FontSize="11.5" TextWrapping="Wrap"
-                                   Margin="20,8,20,0" Foreground="{StaticResource TextSecondaryBrush}"
+                                   Margin="20,8,20,0" Foreground="{DynamicResource TextSecondaryBrush}"
                                    Visibility="{Binding GamesEmptyHint, Converter={StaticResource EmptyToVisInverse}}" />
 
                         <!-- 操作按钮：分两行，行距 8（以前挤在一起了） -->
@@ -236,7 +236,7 @@
                         </StackPanel>
 
                         <!-- 选中游戏的信息（相当于原工具的「修改信息」弹窗） -->
-                        <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Margin="18,12,18,16" Padding="12,10">
+                        <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Margin="18,12,18,16" Padding="12,10">
                             <TextBox Style="{StaticResource LogTextBoxStyle}" Background="Transparent" BorderThickness="0"
                                      MaxHeight="112" Text="{Binding SelectedSummary, Mode=OneWay}"
                                      ToolTip="SWFNetPath.ini 里的信息（网络路径 / 宽高 / 是否新页面）" />
@@ -256,7 +256,7 @@
                     <Border Grid.Column="0" Style="{StaticResource CardStyle}" VerticalAlignment="Top">
                         <StackPanel>
                             <TextBlock Text="关联文件下载器" FontSize="13" FontWeight="SemiBold" />
-                            <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,10"
+                            <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,10"
                                        Text="多文件游戏（只下主 swf 玩不了的那种）：一行一个相对路径，例如 assets/level1.swf，路径相对 swf 所在目录。" />
 
                             <TextBox x:Name="BatchInputBox" Style="{StaticResource TextBoxStyle}" Height="80"
@@ -289,7 +289,7 @@
                                              Style="{StaticResource ProgressBarStyle}" VerticalAlignment="Center" />
                                 <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Margin="10,0,0,0" MinWidth="60"
                                            TextAlignment="Right" VerticalAlignment="Center"
-                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Grid>
 
                             <ListBox ItemsSource="{Binding RelatedRows}" Style="{StaticResource FileListStyle}"
@@ -306,19 +306,19 @@
                                             <TextBlock Text="{Binding RelativePath}" TextTrimming="CharacterEllipsis"
                                                        ToolTip="{Binding LocalPath}" FontSize="11.5" />
                                             <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontSize="11.5"
-                                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                                         </Grid>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
 
-                            <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,8,0,0"
+                            <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,8,0,0"
                                        Text="不知道要下哪些文件？用 ProcessMonitor 看 Flash 播放器加载失败的那些文件，或者直接用下面的「自动下载所需文件」。" />
 
                             <!-- 自动下载所需文件 -->
-                            <Separator Margin="0,12,0,10" Background="{StaticResource BorderBrush}" />
+                            <Separator Margin="0,12,0,10" Background="{DynamicResource BorderBrush}" />
                             <TextBlock Text="自动下载所需文件（网页游戏）" FontSize="12.5" FontWeight="SemiBold" />
-                            <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,8"
+                            <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,8"
                                        Text="开启后：游戏向本地服务器要文件 → 本地没有就先去网上下 → 再答复游戏（加载会慢一点）。需要先在左边选中一个名字以 h 结尾的网页游戏。" />
                             <StackPanel Orientation="Horizontal">
                                 <Button x:Name="AutoDownloadButton" Content="{Binding AutoDownloadButtonText}"
@@ -339,18 +339,18 @@
                         <Border Style="{StaticResource CardStyle}" VerticalAlignment="Top">
                             <StackPanel>
                                 <TextBlock Text="自由下载工具" FontSize="13" FontWeight="SemiBold" />
-                                <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,10"
+                                <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,10"
                                            Text="给一个网址 + 上一级网址（防盗链用的 Referer）+ 文件名，直接存进游戏目录。不支持的网站可以按使用说明手工建文件夹。" />
-                                <TextBlock Text="网址" FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBlock Text="网址" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <TextBox Style="{StaticResource TextBoxStyle}" Margin="0,3,0,0"
                                          Text="{Binding FreeUrl, UpdateSourceTrigger=PropertyChanged}" />
                                 <TextBlock Text="上一级网址（Referer）" FontSize="11.5"
-                                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,0" />
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0" />
                                 <TextBox Style="{StaticResource TextBoxStyle}" Margin="0,3,0,0"
                                          Text="{Binding FreeReferer, UpdateSourceTrigger=PropertyChanged}"
                                          ToolTip="游戏的上一级页面；留空也能下，但很多站会拒绝" />
                                 <TextBlock Text="文件名（含扩展名）" FontSize="11.5"
-                                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,0" />
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0" />
                                 <Grid Margin="0,3,0,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -372,7 +372,7 @@
                             <StackPanel>
                                 <TextBlock Text="设置" FontSize="13" FontWeight="SemiBold" />
 
-                                <TextBlock Text="游戏目录" FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,12,0,0" />
+                                <TextBlock Text="游戏目录" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,12,0,0" />
                                 <TextBlock Text="{Binding GamesDirectory}" FontSize="11.5" TextTrimming="CharacterEllipsis"
                                            ToolTip="{Binding GamesDirectory}" Margin="0,3,0,0" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
@@ -383,7 +383,7 @@
                                 </StackPanel>
 
                                 <TextBlock Text="Flash 播放器（FlashPlayer.exe / ruffle.exe）" FontSize="11.5"
-                                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,12,0,0" />
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,12,0,0" />
                                 <TextBlock Text="{Binding FlashPlayerText}" FontSize="11.5" TextTrimming="CharacterEllipsis"
                                            ToolTip="{Binding FlashPlayerPath}" Margin="0,3,0,0" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
@@ -411,15 +411,15 @@
                                         <ColumnDefinition Width="56" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="并发" VerticalAlignment="Center" FontSize="11.5"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                     <TextBox Grid.Column="1" Style="{StaticResource TextBoxStyle}" Margin="6,0,10,0"
                                              Text="{Binding Cfg.MaxParallel, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock Grid.Column="2" Text="超时" VerticalAlignment="Center" FontSize="11.5"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                     <TextBox Grid.Column="3" Style="{StaticResource TextBoxStyle}" Margin="6,0,10,0"
                                              Text="{Binding Cfg.ReadTimeoutSeconds, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock Grid.Column="4" Text="端口" VerticalAlignment="Center" FontSize="11.5"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                     <TextBox Grid.Column="5" Style="{StaticResource TextBoxStyle}" Margin="6,0,0,0"
                                              Text="{Binding Cfg.ServerStartPort, UpdateSourceTrigger=PropertyChanged}"
                                              ToolTip="从 1055 开始找，被占用了会自动往后试 100 个" />
@@ -450,7 +450,7 @@
                              core:ScrollChaining.Enabled="True"
                              Text="{Binding LogText, Mode=OneWay}" />
                     <TextBlock Text="{Binding StatusText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0"
-                               Foreground="{StaticResource TextSecondaryBrush}" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
                 </StackPanel>
             </Border>
 

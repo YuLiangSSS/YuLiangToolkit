@@ -27,30 +27,30 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel>
                     <TextBlock Text="💬 联机聊天室" FontSize="21" FontWeight="SemiBold" />
-                    <TextBlock FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                    <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
                                Text="主机开一个 TCP 端口等人连，客户端填「IP（或内网穿透给的域名）+ 端口」就能聊。文字、图片、音频、视频、任意文件都能发；每次连接单独一个记录文件夹，并带单次流量上限。" />
                 </StackPanel>
 
-                <Border Grid.Column="1" Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Padding="12,8"
-                        VerticalAlignment="Top" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" MinWidth="250"
+                <Border Grid.Column="1" Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="12,8"
+                        VerticalAlignment="Top" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" MinWidth="250"
                         Margin="16,0,0,0">
                     <StackPanel>
                         <TextBlock Text="{Binding StatusBadgeText}" FontSize="13" FontWeight="SemiBold">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
-                                    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsOnline}" Value="True">
-                                            <Setter Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </TextBlock.Style>
                         </TextBlock>
                         <TextBlock Text="{Binding SelfDisplay}" FontSize="11.5" Margin="0,4,0,0" />
-                        <TextBlock Text="{Binding PeerSummary}" FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}"
+                        <TextBlock Text="{Binding PeerSummary}" FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                    TextWrapping="Wrap" MaxWidth="360" Margin="0,4,0,0" />
-                        <TextBlock Text="{Binding ListenSummary}" FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}"
+                        <TextBlock Text="{Binding ListenSummary}" FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                    TextWrapping="Wrap" MaxWidth="360" Margin="0,2,0,0"
                                    Visibility="{Binding ListenSummary, Converter={StaticResource EmptyToVisInverse}}" />
                     </StackPanel>
@@ -62,7 +62,7 @@
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="{Binding NoticeText}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" MaxWidth="760" />
                     <TextBlock Text="{Binding ActivityText}" FontSize="10.5" Margin="18,0,0,0" VerticalAlignment="Center"
-                               Foreground="{StaticResource TextSecondaryBrush}" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
                 </StackPanel>
             </Border>
 
@@ -92,12 +92,12 @@
                                       IsChecked="{Binding SimpleMode}"
                                       ToolTip="不用你选监听地址和端口：点「开房间」后工具自动挑一个空闲端口，并把本机 IPv4 / IPv6 地址列出来" />
                         </Grid>
-                        <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
+                        <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
                                    Text="开监听后把下面这串地址发给对方。局域网直接可用；外网请用端口映射 / 内网穿透工具，把它给的「域名 + 端口」发给对方。" />
 
                         <!-- 傻瓜模式：这里只放一句话说明，具体的地址端口在下面的「连接信息」里 -->
                         <TextBlock Text="{Binding SimpleModeHint}" FontSize="10.5" Margin="0,8,0,0" TextWrapping="Wrap"
-                                   Foreground="{StaticResource AccentBrush}"
+                                   Foreground="{DynamicResource AccentBrush}"
                                    Visibility="{Binding SimpleMode, Converter={StaticResource BoolToVis}}" />
 
                         <!-- 普通模式才显示：监听地址 + 端口 + 一键绑定 + 本机地址提示 -->
@@ -113,7 +113,7 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="监听" VerticalAlignment="Center" FontSize="11.5"
-                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <TextBox Grid.Column="1" Height="30" Style="{StaticResource TextBoxStyle}"
                                          Text="{Binding ListenAddress, UpdateSourceTrigger=PropertyChanged}"
                                          ToolTip="0.0.0.0 = 本机所有 IPv4 网卡（推荐）；:: = 同时支持 IPv6；也可以只绑某张网卡的地址（点下面的按钮一键填）" />
@@ -124,7 +124,7 @@
 
                             <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                 <TextBlock Text="绑定：" FontSize="10.5" VerticalAlignment="Center"
-                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <Button Content="全部 IPv4" Padding="8,2" FontSize="10.5" Margin="4,0,0,0"
                                         Style="{StaticResource SecondaryButtonStyle}" Command="{Binding SetListenAllCommand}"
                                         ToolTip="监听 0.0.0.0：本机所有 IPv4 网卡，局域网直连用这个" />
@@ -138,7 +138,7 @@
 
                             <!-- 本机有哪些地址可以填（原来那是下拉列表里的内容，改成输入框后放这里当提示） -->
                             <TextBlock Text="{Binding LocalAddressHint}" FontSize="10" Margin="0,6,0,0" TextWrapping="Wrap"
-                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
@@ -154,16 +154,16 @@
 
                         <!-- ===== 连接信息：开完房间直接摊出来（IPv4 / IPv6 / 端口 / 内网穿透怎么填） ===== -->
                         <Border Margin="0,10,0,0" Padding="12,10" CornerRadius="8"
-                                Background="{StaticResource InputBackgroundBrush}"
-                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                Background="{DynamicResource InputBackgroundBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                                 Visibility="{Binding HasShareInfo, Converter={StaticResource BoolToVis}}">
                             <StackPanel>
                                 <TextBlock Text="📋 连接信息（复制给要连进来的人）" FontSize="11.5" FontWeight="SemiBold" />
                                 <TextBlock Text="{Binding ListenModeText}" FontSize="11" Margin="0,4,0,0"
-                                           Foreground="{StaticResource AccentBrush}" TextWrapping="Wrap" />
+                                           Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" />
 
                                 <TextBlock Text="局域网 IPv4" FontSize="10.5" Margin="0,8,0,3"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                            Visibility="{Binding HasIpv4Rows, Converter={StaticResource BoolToVis}}" />
                                 <ItemsControl ItemsSource="{Binding ShareIpv4Rows}"
                                               Visibility="{Binding HasIpv4Rows, Converter={StaticResource BoolToVis}}">
@@ -179,7 +179,7 @@
                                                            VerticalAlignment="Center" TextWrapping="Wrap" />
                                                 <TextBlock Grid.Column="1" Text="{Binding DetailText}" FontSize="10"
                                                            Margin="8,0,8,0" VerticalAlignment="Center" TextWrapping="Wrap"
-                                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
                                                 <Button Grid.Column="2" Content="复制" Padding="8,1" FontSize="10.5"
                                                         Style="{StaticResource SecondaryButtonStyle}"
                                                         Command="{Binding DataContext.CopyTextCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
@@ -190,7 +190,7 @@
                                 </ItemsControl>
 
                                 <TextBlock Text="IPv6" FontSize="10.5" Margin="0,8,0,3"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                            Visibility="{Binding HasIpv6Rows, Converter={StaticResource BoolToVis}}" />
                                 <ItemsControl ItemsSource="{Binding ShareIpv6Rows}"
                                               Visibility="{Binding HasIpv6Rows, Converter={StaticResource BoolToVis}}">
@@ -206,7 +206,7 @@
                                                            VerticalAlignment="Center" TextWrapping="Wrap" />
                                                 <TextBlock Grid.Column="1" Text="{Binding DetailText}" FontSize="10"
                                                            Margin="8,0,8,0" VerticalAlignment="Center" TextWrapping="Wrap"
-                                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
                                                 <Button Grid.Column="2" Content="复制" Padding="8,1" FontSize="10.5"
                                                         Style="{StaticResource SecondaryButtonStyle}"
                                                         Command="{Binding DataContext.CopyTextCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
@@ -219,21 +219,21 @@
                                      ⚠ 这里必须用 EmptyToVisInverse（非空才显示）：EmptyToVis 是反过来的
                                      ——它在字符串为空时显示，是给输入框占位符用的（踩过：提示一直不出现）。 -->
                                 <TextBlock Text="{Binding Ipv6NoticeText}" FontSize="10.5" Margin="0,4,0,0" TextWrapping="Wrap"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                            Visibility="{Binding Ipv6NoticeText, Converter={StaticResource EmptyToVisInverse}}" />
 
                                 <!-- 只绑了本机 / 一个地址都没探到时，解释一句（而不是列一堆连不上的地址） -->
                                 <TextBlock Text="{Binding ShareNoticeText}" FontSize="10.5" Margin="0,4,0,0" TextWrapping="Wrap"
-                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
                                            Visibility="{Binding ShareNoticeText, Converter={StaticResource EmptyToVisInverse}}" />
 
                                 <TextBlock Text="{Binding PunchHintText}" FontSize="10.5" Margin="0,8,0,0" TextWrapping="Wrap"
-                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
                             </StackPanel>
                         </Border>
 
                         <TextBlock Text="{Binding AdvertiseText}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"
-                                   Foreground="{StaticResource AccentBrush}" />
+                                   Foreground="{DynamicResource AccentBrush}" />
                     </StackPanel>
                 </Border>
 
@@ -241,7 +241,7 @@
                 <Border Grid.Column="2" Style="{StaticResource CardStyle}">
                     <StackPanel>
                         <TextBlock Text="🔌 我是客户端（连别人的房间）" FontSize="12.5" FontWeight="SemiBold" />
-                        <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
+                        <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
                                    Text="内网穿透：穿透工具把主机那台机器的端口映射出来后，把「它给的域名/IP + 端口」填在下面（本功能走普通 TCP，穿透工具按 TCP 类型映射）。" />
 
                         <Grid Margin="0,8,0,0">
@@ -251,7 +251,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="主机" VerticalAlignment="Center" FontSize="11.5"
-                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                             <TextBox Grid.Column="1" Height="30" Style="{StaticResource TextBoxStyle}"
                                      Text="{Binding HostAddress, UpdateSourceTrigger=PropertyChanged}"
                                      ToolTip="IPv4（192.168.1.5）/ IPv6（[fe80::1]）/ 域名（内网穿透工具给的，如 xxx.frp.io）" />
@@ -270,7 +270,7 @@
                                     Command="{Binding PingCommand}" ToolTip="发一个心跳包，测一下到对方的往返时间" />
                         </StackPanel>
 
-                        <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,8,0,0"
+                        <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,8,0,0"
                                    Text="连上之后双方互发消息：你发的所有内容主机都收得到；主机的消息会广播给房间里的每个客户端。" />
                     </StackPanel>
                 </Border>
@@ -288,7 +288,7 @@
                         <StackPanel>
                             <TextBlock Text="聊天记录" FontSize="13" FontWeight="SemiBold" />
                             <TextBlock Text="{Binding HistorySummary}" FontSize="10.5" TextWrapping="Wrap"
-                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" />
+                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
                             <Button Content="清空聊天" Style="{StaticResource SecondaryButtonStyle}"
@@ -319,7 +319,7 @@
                                     <!-- ===== 系统提示：居中灰字 ===== -->
                                     <TextBlock Text="{Binding Text}" FontSize="11" TextWrapping="Wrap"
                                                HorizontalAlignment="Center" TextAlignment="Center"
-                                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,3"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3"
                                                Visibility="{Binding IsSystem, Converter={StaticResource BoolToVis}}" />
 
                                     <!-- ===== 普通消息：靠左 / 靠右 ===== -->
@@ -338,22 +338,22 @@
                                         <!-- 发送者 + 时间 -->
                                         <StackPanel Orientation="Horizontal" Margin="2,0,2,3">
                                             <TextBlock Text="{Binding SenderLine}" FontSize="10.5"
-                                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                                             <TextBlock Text="{Binding TimeText}" FontSize="10.5" Margin="8,0,0,0"
-                                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                                         </StackPanel>
 
                                         <!-- 文字气泡 -->
                                         <Border CornerRadius="8" Padding="11,7" Margin="0,0,0,2"
-                                                Background="{StaticResource InputBackgroundBrush}"
-                                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                                Background="{DynamicResource InputBackgroundBrush}"
+                                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                                                 Visibility="{Binding HasText, Converter={StaticResource BoolToVis}}">
                                             <Border.Style>
                                                 <Style TargetType="Border">
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding IsMine}" Value="True">
-                                                            <Setter Property="Background" Value="{StaticResource AccentPressedBrush}" />
-                                                            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                                            <Setter Property="Background" Value="{DynamicResource AccentPressedBrush}" />
+                                                            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
                                                 </Style>
@@ -363,8 +363,8 @@
 
                                         <!-- 图片：显示自动压缩的预览图，双击打开原图 -->
                                         <Border CornerRadius="6" Margin="0,2,0,2" Padding="3"
-                                                Background="{StaticResource InputBackgroundBrush}"
-                                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                                Background="{DynamicResource InputBackgroundBrush}"
+                                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                                                 HorizontalAlignment="Left" Cursor="Hand"
                                                 MouseLeftButtonDown="OnImageClick"
                                                 ToolTip="{Binding FileSummary}"
@@ -375,12 +375,12 @@
 
                                         <!-- 音频：点一下播 -->
                                         <Border CornerRadius="6" Margin="0,2,0,2" Padding="8"
-                                                Background="{StaticResource InputBackgroundBrush}"
-                                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                                Background="{DynamicResource InputBackgroundBrush}"
+                                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                                                 Visibility="{Binding HasAudio, Converter={StaticResource BoolToVis}}">
                                             <StackPanel>
                                                 <TextBlock Text="{Binding FileSummary}" FontSize="10.5"
-                                                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,5" />
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,5" />
                                                 <StackPanel Orientation="Horizontal">
                                                     <Button Content="▶ 播放 / 暂停" Padding="10,3" FontSize="11"
                                                             Style="{StaticResource SecondaryButtonStyle}"
@@ -397,8 +397,8 @@
 
                                         <!-- 视频：点一下播 -->
                                         <Border CornerRadius="6" Margin="0,2,0,2" Padding="3"
-                                                Background="{StaticResource InputBackgroundBrush}"
-                                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                                Background="{DynamicResource InputBackgroundBrush}"
+                                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                                                 Visibility="{Binding HasVideo, Converter={StaticResource BoolToVis}}">
                                             <StackPanel>
                                                 <MediaElement Source="{Binding LocalPath}" LoadedBehavior="Manual"
@@ -406,7 +406,7 @@
                                                               MaxWidth="380" MaxHeight="260" />
                                                 <StackPanel Orientation="Horizontal" Margin="6,4,6,4">
                                                     <TextBlock Text="{Binding FileSummary}" FontSize="10.5" VerticalAlignment="Center"
-                                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                                     <Button Content="▶ 播放 / 暂停" Padding="10,3" FontSize="11" Margin="10,0,0,0"
                                                             Style="{StaticResource SecondaryButtonStyle}" Click="OnToggleMediaClick" />
                                                     <Button Content="打开" Padding="10,3" FontSize="11" Margin="6,0,0,0"
@@ -418,8 +418,8 @@
 
                                         <!-- 其它文件（图片 / 音频 / 视频之外的那一行；没有文件时这一块自己藏起来） -->
                                         <Border CornerRadius="6" Margin="0,2,0,2" Padding="10,8"
-                                                Background="{StaticResource InputBackgroundBrush}"
-                                                BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                                                Background="{DynamicResource InputBackgroundBrush}"
+                                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
                                             <Border.Style>
                                                 <Style TargetType="Border">
                                                     <Setter Property="Visibility" Value="Visible" />
@@ -445,7 +445,7 @@
                                                              Style="{StaticResource ProgressBarStyle}"
                                                              Visibility="{Binding File.IsActive, Converter={StaticResource BoolToVis}}" />
                                                 <TextBlock Text="{Binding File.ProgressText}" FontSize="10.5" Margin="0,4,0,0"
-                                                           TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                           TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
                                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                                     <Button Content="打开文件" Padding="10,3" FontSize="11"
                                                             Style="{StaticResource SecondaryButtonStyle}"
@@ -471,7 +471,7 @@
                                      ToolTip="回车发送，Shift+回车换行" />
                             <TextBlock Text="说点什么…（回车发送，Shift+回车换行）" Margin="12,8,0,0"
                                        VerticalAlignment="Top" IsHitTestVisible="False"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
                                        Visibility="{Binding MessageText, Converter={StaticResource EmptyToVis}}" />
                         </Grid>
 
@@ -492,11 +492,11 @@
                                      Text="{Binding TransferNote, UpdateSourceTrigger=PropertyChanged}"
                                      ToolTip="发文件时附带的留言（发完自动清空）" />
                             <TextBlock Grid.Column="1" Text="发文件时想说的一句话…" Margin="24,0,0,0" VerticalAlignment="Center"
-                                       IsHitTestVisible="False" Foreground="{StaticResource TextSecondaryBrush}"
+                                       IsHitTestVisible="False" Foreground="{DynamicResource TextSecondaryBrush}"
                                        Visibility="{Binding TransferNote, Converter={StaticResource EmptyToVis}}" />
                         </Grid>
 
-                        <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,0" TextWrapping="Wrap"
+                        <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0" TextWrapping="Wrap"
                                    Text="收 / 发都在同一个列表里：自己发的靠右（蓝底），对方发的靠左。图片自动压一份预览（不额外占流量），双击预览图打开原图。" />
                     </StackPanel>
                 </StackPanel>
@@ -519,12 +519,12 @@
                 <Border Grid.Column="0" Style="{StaticResource CardStyle}">
                     <StackPanel>
                         <TextBlock Text="流量（单次连接）" FontSize="13" FontWeight="SemiBold" />
-                        <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
+                        <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
                                    Text="「一次连接」= 一次会话（一个记录文件夹）。到上限就停止发送，不会一口气把流量跑光。" />
 
                         <TextBlock Text="{Binding TrafficSummaryText}" FontSize="12.5" Margin="0,10,0,0" />
                         <TextBlock Text="{Binding TrafficRateText}" FontSize="11" Margin="0,3,0,0"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
 
                         <ProgressBar Value="{Binding TrafficRatio, Mode=OneWay}" Maximum="1" Height="8" Margin="0,8,0,0"
                                      Style="{StaticResource ProgressBarStyle}" />
@@ -534,19 +534,19 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="{Binding TrafficLimitText}" FontSize="10.5" TextWrapping="Wrap"
-                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                             <TextBlock Grid.Column="1" Text="{Binding TrafficRatioText}" FontSize="10.5" Margin="6,0,0,0"
-                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                         </Grid>
 
                         <TextBlock Text="⚠ 本次流量已到上限：已停止发送。可以调大上限（立刻生效）或重新连接。" FontSize="11"
-                                   Margin="0,8,0,0" TextWrapping="Wrap" Foreground="{StaticResource DangerBrush}"
+                                   Margin="0,8,0,0" TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}"
                                    Visibility="{Binding IsTrafficExhausted, Converter={StaticResource BoolToVis}}" />
 
                         <!-- 底部三栏比较窄，标签一律放在输入框**上面**（不占横向宽度）：
                              1024 宽的最小窗口下，侧边标签会把下拉框挤到只剩几十像素、文字被裁掉。 -->
                         <TextBlock Text="上限（MB）" FontSize="11.5" Margin="0,10,0,0"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                         <Grid Margin="0,4,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -556,11 +556,11 @@
                                      Text="{Binding TrafficLimitMb, UpdateSourceTrigger=PropertyChanged}"
                                      ToolTip="一次连接最多能跑多少流量；填 0 = 不限（不建议）" />
                             <TextBlock Grid.Column="1" Text="MB" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11.5"
-                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                         </Grid>
 
                         <TextBlock Text="算哪个方向" FontSize="11.5" Margin="0,8,0,0"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                         <ComboBox Margin="0,4,0,0" Height="30" ItemsSource="{Binding TrafficScopeOptions}"
                                   SelectedItem="{Binding SelectedTrafficScope}" DisplayMemberPath="Label"
                                   Style="{StaticResource ComboBoxStyle}" />
@@ -568,7 +568,7 @@
                         <CheckBox Margin="0,10,0,0" Style="{StaticResource CheckBoxStyle}"
                                   IsChecked="{Binding Cfg.NotifyPeerOnLimit}" Content="到上限时通知对方" />
                         <TextBlock FontSize="10.5" Margin="24,2,0,0" TextWrapping="Wrap"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                    Text="打开时对方会看到「本端流量到顶，暂停发送」，免得以为你掉线了。" />
                     </StackPanel>
                 </Border>
@@ -579,25 +579,25 @@
                         <TextBlock Text="发送选项" FontSize="13" FontWeight="SemiBold" />
 
                         <TextBlock Text="昵称" FontSize="11.5" Margin="0,10,0,0"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBox Margin="0,4,0,0" Height="30" Style="{StaticResource TextBoxStyle}"
                                  Text="{Binding Nickname, UpdateSourceTrigger=PropertyChanged}" />
 
                         <TextBlock Text="头像（一个 emoji）" FontSize="11.5" Margin="0,8,0,0"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBox Margin="0,4,0,0" Height="30" Style="{StaticResource TextBoxStyle}"
                                  Text="{Binding Emoji, UpdateSourceTrigger=PropertyChanged}" ToolTip="填一个 emoji 就行" />
 
                         <TextBlock Text="发图压缩" FontSize="11.5" Margin="0,8,0,0"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                         <ComboBox Margin="0,4,0,0" Height="30" ItemsSource="{Binding ImageQualityOptions}"
                                   SelectedItem="{Binding SelectedImageQuality}" DisplayMemberPath="Label"
                                   Style="{StaticResource ComboBoxStyle}" />
                         <TextBlock Text="{Binding ImageQualityHint}" FontSize="10.5" Margin="0,3,0,0" TextWrapping="Wrap"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
 
                         <TextBlock Text="大文件确认（MB）" FontSize="11.5" Margin="0,8,0,0"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                         <Grid Margin="0,4,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -607,14 +607,14 @@
                                      Text="{Binding Cfg.ConfirmFileMb, UpdateSourceTrigger=PropertyChanged}"
                                      ToolTip="超过这个大小（MB）先问一句再发；填 0 = 不确认" />
                             <TextBlock Grid.Column="1" Text="MB" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11.5"
-                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                         </Grid>
 
                         <CheckBox Margin="0,10,0,0" Style="{StaticResource CheckBoxStyle}" IsChecked="{Binding Cfg.AutoStart}"
                                   Content="打开工具时自动开局" />
 
                         <TextBlock Text="表情（点一下插到输入框）" FontSize="11.5" Margin="0,10,0,0"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                         <ItemsControl ItemsSource="{Binding QuickEmojis}" Margin="0,4,0,0">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
@@ -644,11 +644,11 @@
                             <StackPanel>
                                 <TextBlock Text="文件传输" FontSize="13" FontWeight="SemiBold" />
                                 <TextBlock FontSize="10.5" Margin="0,4,0,0" TextWrapping="Wrap"
-                                           Foreground="{StaticResource TextSecondaryBrush}">
+                                           Foreground="{DynamicResource TextSecondaryBrush}">
                                     <Run Text="发送：" /><Run Text="{Binding UploadSummary, Mode=OneWay}" />
                                 </TextBlock>
                                 <TextBlock FontSize="10.5" Margin="0,2,0,0" TextWrapping="Wrap"
-                                           Foreground="{StaticResource TextSecondaryBrush}">
+                                           Foreground="{DynamicResource TextSecondaryBrush}">
                                     <Run Text="接收：" /><Run Text="{Binding DownloadSummary, Mode=OneWay}" />
                                 </TextBlock>
                             </StackPanel>
@@ -671,13 +671,13 @@
                                         <ProgressBar Value="{Binding Ratio, Mode=OneWay}" Maximum="1" Height="4" Margin="0,5,0,0"
                                                      Style="{StaticResource ProgressBarStyle}" />
                                         <TextBlock Text="{Binding ProgressText}" FontSize="10.5" Margin="0,3,0,0"
-                                                   TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                   TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
                                     </StackPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
 
-                        <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"
+                        <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
                                    Margin="18,8,18,14"
                                    Text="同一时刻只传一个文件（避免把这一条连接的带宽抢光），后面的自动排队。" />
                     </StackPanel>
@@ -703,7 +703,7 @@
                             <StackPanel>
                                 <TextBlock Text="房间成员" FontSize="13" FontWeight="SemiBold" />
                                 <TextBlock Text="{Binding MemberListSummary}" FontSize="10.5" Margin="0,4,0,0"
-                                           Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                           Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
                             </StackPanel>
                             <Button Grid.Column="1" Content="刷新" Style="{StaticResource SecondaryButtonStyle}"
                                     VerticalAlignment="Top" Command="{Binding RefreshMembersCommand}" />
@@ -722,7 +722,7 @@
                                         </Grid.ColumnDefinitions>
                                         <StackPanel>
                                             <TextBlock Text="{Binding Display}" FontSize="12" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}"
+                                            <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                                        Margin="0,2,0,0">
                                                 <Run Text="{Binding RoleText, Mode=OneWay}" />
                                                 <Run Text="　" />
@@ -730,7 +730,7 @@
                                             </TextBlock>
                                             <TextBlock Text="{Binding EndpointText}" FontSize="10" Margin="0,1,0,0"
                                                        TextTrimming="CharacterEllipsis"
-                                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                                         </StackPanel>
                                         <Button Grid.Column="1" Content="移出" Padding="10,3" FontSize="11"
                                                 Style="{StaticResource SecondaryButtonStyle}" VerticalAlignment="Center"
@@ -755,10 +755,10 @@
                             <StackPanel>
                                 <TextBlock Text="历史记录" FontSize="13" FontWeight="SemiBold" />
                                 <TextBlock Text="{Binding HistorySummary}" FontSize="10.5" Margin="0,4,0,0" TextWrapping="Wrap"
-                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <TextBlock Text="{Binding SessionRootText}" FontSize="10" Margin="0,2,0,0"
                                            TextTrimming="CharacterEllipsis" ToolTip="{Binding SessionRootText}"
-                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
                                 <Button Content="刷新" Style="{StaticResource SecondaryButtonStyle}"
@@ -783,10 +783,10 @@
                                         <StackPanel>
                                             <TextBlock Text="{Binding SessionName}" FontSize="12" />
                                             <TextBlock Text="{Binding SummaryText}" FontSize="10.5" Margin="0,2,0,0"
-                                                       TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" />
+                                                       TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
                                             <TextBlock Text="{Binding DirectoryPath}" FontSize="10" Margin="0,2,0,0"
                                                        TextTrimming="CharacterEllipsis" ToolTip="{Binding DirectoryPath}"
-                                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                                         </StackPanel>
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                             <Button Content="查看" Padding="10,3" FontSize="11"
@@ -810,7 +810,7 @@
             <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
                 <StackPanel>
                     <TextBlock Text="协议与日志" FontSize="13" FontWeight="SemiBold" />
-                    <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
+                    <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
                                Text="协议是「4 字节长度 + JSON 头 + 裸载荷」的 TCP 流：文字走 JSON 载荷、文件走裸字节（不膨胀）。说明文件在 Data\chat-room\Protocol\chat-protocol.json，首次运行自动释放。" />
                     <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                         <Button Content="查看协议说明" Style="{StaticResource SecondaryButtonStyle}"

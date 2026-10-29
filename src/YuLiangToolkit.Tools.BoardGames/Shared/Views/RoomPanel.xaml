@@ -11,18 +11,18 @@
             <!-- 标题 + 状态徽标 -->
             <Grid>
                 <TextBlock Text="房间" FontSize="13" FontWeight="SemiBold"
-                           Foreground="{StaticResource TextPrimaryBrush}" />
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
                 <TextBlock Text="{Binding ModeBadgeText}" HorizontalAlignment="Right"
                            FontSize="12" FontWeight="SemiBold" ToolTip="当前玩法状态">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock">
-                            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding ModeBadgeBrushKey}" Value="SuccessBrush">
-                                    <Setter Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding ModeBadgeBrushKey}" Value="DangerBrush">
-                                    <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
@@ -31,14 +31,14 @@
             </Grid>
 
             <!-- 断线重连 / 对局暂停（WIP 3.6：状态一句人话、能看见重连进度） -->
-            <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="6" Padding="8,6"
+            <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="6" Padding="8,6"
                     Margin="0,8,0,0"
                     Visibility="{Binding IsGamePaused, Converter={StaticResource BoolToVis}}">
                 <StackPanel>
                     <TextBlock Text="{Binding GamePauseStatusText}" FontSize="11.5" FontWeight="SemiBold"
-                               TextWrapping="Wrap" Foreground="{StaticResource DangerBrush}" />
+                               TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}" />
                     <TextBlock Text="{Binding ReconnectStatusText}" FontSize="10.5" TextWrapping="Wrap"
-                               Margin="0,2,0,0" Foreground="{StaticResource TextSecondaryBrush}"
+                               Margin="0,2,0,0" Foreground="{DynamicResource TextSecondaryBrush}"
                                Visibility="{Binding ReconnectStatusText, Converter={StaticResource EmptyToVisInverse}}" />
                 </StackPanel>
             </Border>
@@ -50,14 +50,14 @@
                         Command="{Binding StartLocalCommand}" IsEnabled="{Binding CanJoin}" />
 
                 <TextBlock Text="开房间（你等对方连进来）" FontSize="11"
-                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,10,0,0" />
+                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,10,0,0" />
                 <Grid Margin="0,4,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="玩家名" VerticalAlignment="Center" FontSize="11.5"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,8,0" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,8,0" />
                     <TextBox Grid.Column="1" Text="{Binding PlayerName, UpdateSourceTrigger=PropertyChanged}"
                              Style="{StaticResource TextBoxStyle}" ToolTip="对方看到的名字" />
                 </Grid>
@@ -68,18 +68,18 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="端口" VerticalAlignment="Center" FontSize="11.5"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,8,0" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,8,0" />
                     <TextBox Grid.Column="1" Text="{Binding ListenPortText, UpdateSourceTrigger=PropertyChanged}"
                              Style="{StaticResource TextBoxStyle}" ToolTip="0 = 让系统自动挑一个空闲端口" />
                     <TextBlock Grid.Column="2" Text="0 = 自动挑" VerticalAlignment="Center" FontSize="10"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="8,0,0,0" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,0" />
                 </Grid>
                 <Button Content="开房间" Style="{StaticResource PrimaryButtonStyle}" Margin="0,8,0,0"
                         HorizontalAlignment="Stretch" Command="{Binding StartHostCommand}"
                         IsEnabled="{Binding CanJoin}" />
 
                 <TextBlock Text="加入房间（填对方发来的地址）" FontSize="11"
-                           Foreground="{StaticResource TextSecondaryBrush}" Margin="0,10,0,0" />
+                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,10,0,0" />
                 <TextBox Text="{Binding JoinAddress, UpdateSourceTrigger=PropertyChanged}"
                          Style="{StaticResource TextBoxStyle}" Margin="0,4,0,0"
                          ToolTip="例如 192.168.1.5:5310、[::1]:5310、穿透域名:端口" />
@@ -92,7 +92,7 @@
             <StackPanel Visibility="{Binding HasShareRows, Converter={StaticResource BoolToVis}}" Margin="0,8,0,0">
                 <Grid>
                     <TextBlock Text="地址（复制发给对方）" FontSize="11" VerticalAlignment="Center"
-                               Foreground="{StaticResource TextSecondaryBrush}" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
                     <Button Content="复制邀请" Style="{StaticResource SecondaryButtonStyle}" FontSize="11"
                             Padding="10,3" HorizontalAlignment="Right" VerticalAlignment="Center"
                             Command="{Binding CopyInviteCommand}" ToolTip="把推荐地址连带一句邀请文案复制到剪贴板" />
@@ -107,10 +107,10 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel VerticalAlignment="Center">
                                     <TextBlock Text="{Binding AddressText}" FontSize="12"
-                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
                                                TextTrimming="CharacterEllipsis" />
                                     <TextBlock Text="{Binding DetailText}" FontSize="10"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                 </StackPanel>
                                 <Button Grid.Column="1" Content="复制" Style="{StaticResource SecondaryButtonStyle}"
                                         FontSize="11" Padding="8,2" VerticalAlignment="Center"
@@ -121,26 +121,26 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 <TextBlock Text="{Binding ShareMoreText}" FontSize="10" TextWrapping="Wrap" Margin="0,3,0,0"
-                           Foreground="{StaticResource TextSecondaryBrush}"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
                            Visibility="{Binding HasMoreShareRows, Converter={StaticResource BoolToVis}}" />
             </StackPanel>
 
             <!-- 状态 / 提示（压紧：两行正文 + 一行执子） -->
-            <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="6"
+            <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="6"
                     Padding="8,6" Margin="0,8,0,0">
                 <StackPanel>
                     <TextBlock Text="{Binding ConnectionSummary}" FontSize="10.5" TextWrapping="Wrap"
-                               Foreground="{StaticResource TextSecondaryBrush}" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
                     <TextBlock Text="{Binding NoticeText}" FontSize="10.5" TextWrapping="Wrap" Margin="0,2,0,0">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
-                                <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding NoticeBrushKey}" Value="SuccessBrush">
-                                        <Setter Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding NoticeBrushKey}" Value="DangerBrush">
-                                        <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -152,20 +152,20 @@
                     <StackPanel Orientation="Horizontal" Margin="0,3,0,0"
                                 Visibility="{Binding IsLocalMode, Converter={StaticResource InverseBoolToVis}}">
                         <TextBlock Text="{Binding LocalSideText}" FontSize="10.5"
-                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
                         <TextBlock Text="{Binding PeerSideText}" FontSize="10.5" Margin="10,0,0,0"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                     </StackPanel>
                 </StackPanel>
             </Border>
 
             <!-- 对方向你请求（悔棋 / 和棋 / 再来一局） -->
-            <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="6" Padding="8,6"
+            <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="6" Padding="8,6"
                     Margin="0,6,0,0"
                     Visibility="{Binding HasPendingPrompt, Converter={StaticResource BoolToVis}}">
                 <StackPanel>
                     <TextBlock Text="{Binding PendingPromptText}" FontSize="11" TextWrapping="Wrap"
-                               Foreground="{StaticResource TextPrimaryBrush}" />
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,5,0,0">
                         <Button Content="同意" Style="{StaticResource PrimaryButtonStyle}" FontSize="11"
                                 Padding="14,3" Command="{Binding AcceptPendingCommand}" />
@@ -177,7 +177,7 @@
 
             <!-- 自己发的请求等回应 -->
             <TextBlock Text="{Binding PendingWaitText}" FontSize="10.5" TextWrapping="Wrap" Margin="0,5,0,0"
-                       Foreground="{StaticResource TextSecondaryBrush}"
+                       Foreground="{DynamicResource TextSecondaryBrush}"
                        Visibility="{Binding HasPendingWait, Converter={StaticResource BoolToVis}}" />
 
             <!-- 离开房间 / 停止重连 -->

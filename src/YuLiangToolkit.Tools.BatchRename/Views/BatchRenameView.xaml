@@ -18,7 +18,7 @@
         <!-- 字段左侧的说明文字 -->
         <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="12" />
-            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
 
@@ -60,7 +60,7 @@
         <!-- 规则标题行：整行可点（展开/收起），所以做成一个扁平按钮 -->
         <Style x:Key="RuleHeaderButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Template">
@@ -84,19 +84,19 @@
             <Setter Property="Width" Value="26" />
             <Setter Property="Height" Value="24" />
             <Setter Property="FontSize" Value="12" />
-            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd" Background="Transparent" BorderBrush="{StaticResource BorderBrush}"
+                        <Border x:Name="Bd" Background="Transparent" BorderBrush="{DynamicResource BorderBrush}"
                                 BorderThickness="1" CornerRadius="6">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource CardHoverBackgroundBrush}" />
-                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CardHoverBackgroundBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Bd" Property="Background" Value="#1B2029" />
@@ -117,7 +117,7 @@
             <!-- ================= 标题 ================= -->
             <StackPanel>
                 <TextBlock Text="🏷️ 批量重命名" FontSize="21" FontWeight="SemiBold" />
-                <TextBlock FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
                            Text="按同一套规则给一批文件改名：查找替换 / 加前后缀 / 自动编号 / 改扩展名 / 大小写。改之前先把新名字列出来给你看，改完还能一键撤销（记录落盘，关掉程序也认）。" />
             </StackPanel>
 
@@ -131,7 +131,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel>
                             <TextBlock Text="① 要改名的文件" FontSize="13" FontWeight="SemiBold" />
-                            <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"
+                            <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"
                                        Text="可以直接把文件 / 文件夹从资源管理器拖进这个窗口" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -169,9 +169,9 @@
                             <ColumnDefinition Width="2*" />
                             <ColumnDefinition Width="92" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="1" Text="原文件名" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                        <TextBlock Grid.Column="3" Text="新文件名" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
-                        <TextBlock Grid.Column="4" Text="状态" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                        <TextBlock Grid.Column="1" Text="原文件名" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Grid.Column="3" Text="新文件名" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Grid.Column="4" Text="状态" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Grid>
 
                     <!-- 高度随内容长（空列表时就矮矮的一条），加满到 300 之后自己滚动，
@@ -199,34 +199,34 @@
 
                                     <TextBlock Grid.Column="1" Text="{Binding OriginalName}" TextTrimming="CharacterEllipsis"
                                                VerticalAlignment="Center" ToolTip="{Binding FullPathText}" />
-                                    <TextBlock Grid.Column="2" Text="→" Foreground="{StaticResource TextSecondaryBrush}"
+                                    <TextBlock Grid.Column="2" Text="→" Foreground="{DynamicResource TextSecondaryBrush}"
                                                VerticalAlignment="Center" />
                                     <TextBlock x:Name="NewNameText" Grid.Column="3" Text="{Binding NewName}"
                                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                                                ToolTip="{Binding Message}" />
                                     <TextBlock x:Name="StatusText" Grid.Column="4" Text="{Binding StatusText}"
                                                FontSize="11" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
                                                ToolTip="{Binding Message}" />
                                 </Grid>
                                 <DataTemplate.Triggers>
                                     <DataTrigger Binding="{Binding Status}" Value="Ok">
-                                        <Setter TargetName="NewNameText" Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                        <Setter TargetName="NewNameText" Property="Foreground" Value="{DynamicResource SuccessBrush}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding Status}" Value="Done">
                                         <Setter TargetName="NewNameText" Property="Opacity" Value="0.55" />
-                                        <Setter TargetName="StatusText" Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                        <Setter TargetName="StatusText" Property="Foreground" Value="{DynamicResource SuccessBrush}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding Status}" Value="Conflict">
-                                        <Setter TargetName="NewNameText" Property="Foreground" Value="{StaticResource DangerBrush}" />
-                                        <Setter TargetName="StatusText" Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                        <Setter TargetName="NewNameText" Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                        <Setter TargetName="StatusText" Property="Foreground" Value="{DynamicResource DangerBrush}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding Status}" Value="Error">
-                                        <Setter TargetName="NewNameText" Property="Foreground" Value="{StaticResource DangerBrush}" />
-                                        <Setter TargetName="StatusText" Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                        <Setter TargetName="NewNameText" Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                        <Setter TargetName="StatusText" Property="Foreground" Value="{DynamicResource DangerBrush}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding Status}" Value="Failed">
-                                        <Setter TargetName="StatusText" Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                        <Setter TargetName="StatusText" Property="Foreground" Value="{DynamicResource DangerBrush}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding IsChecked}" Value="False">
                                         <Setter TargetName="NewNameText" Property="Opacity" Value="0.4" />
@@ -242,7 +242,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="{Binding SummaryText}" FontSize="11.5" VerticalAlignment="Center"
-                                   Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
                         <StackPanel Grid.Column="1" Orientation="Horizontal">
                             <Button Content="全选" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding CheckAllCommand}" />
                             <Button Content="全不选" Style="{StaticResource SecondaryButtonStyle}" Margin="6,0,0,0"
@@ -275,7 +275,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel>
                             <TextBlock Text="② 命名规则" FontSize="13" FontWeight="SemiBold" />
-                            <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap"
+                            <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap"
                                        Text="规则从上到下依次套用，同一种规则可以加多条。按住每行左边的 ≡ 上下拖动就能调整顺序；点标题行展开改参数。" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -293,11 +293,11 @@
                     </Grid>
 
                     <!-- 空状态引导 -->
-                    <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Padding="16,16" Margin="0,12,0,0"
+                    <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="16,16" Margin="0,12,0,0"
                             Visibility="{Binding HasNoRules, Converter={StaticResource BoolToVis}}">
                         <StackPanel>
                             <TextBlock Text="规则清单还是空的" FontSize="12.5" FontWeight="SemiBold" />
-                            <TextBlock FontSize="11.5" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,6,0,0"
+                            <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,6,0,0"
                                        Text="在上面选一个类型，点「添加规则」，规则就会出现在这里 —— 然后填参数、拖顺序、加第二条。举个例子：①「清理」去掉名字里的下划线 → ②「查找替换」把 IMG 换成 照片 → ③「自动编号」编成 001 起 → ④「扩展名」统一转小写。" />
                         </StackPanel>
                     </Border>
@@ -331,14 +331,14 @@
                                                 <Setter Property="Background" Value="Transparent" />
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding ShowDropTop}" Value="True">
-                                                        <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+                                                        <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
                                         </Border.Style>
                                     </Border>
 
-                                    <Border x:Name="RuleCard" Background="{StaticResource InputBackgroundBrush}"
+                                    <Border x:Name="RuleCard" Background="{DynamicResource InputBackgroundBrush}"
                                             CornerRadius="8">
                                         <StackPanel>
                                             <!-- 标题行：拖动把手 + 启用勾选 + 类型与摘要 + 上移/下移/删除 -->
@@ -358,7 +358,7 @@
                                                         PreviewMouseMove="OnRuleHandleMouseMove">
                                                     <TextBlock Text="☰" FontSize="15" HorizontalAlignment="Center"
                                                                VerticalAlignment="Center"
-                                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                                 </Border>
 
                                                 <CheckBox Grid.Column="1" IsChecked="{Binding Rule.Enabled}"
@@ -380,11 +380,11 @@
                                                                    FontWeight="SemiBold" VerticalAlignment="Center" />
                                                         <TextBlock Grid.Column="1" Text="{Binding Rule.Summary}" Margin="12,0,0,0"
                                                                    FontSize="11.5" VerticalAlignment="Center"
-                                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}"
                                                                    TextTrimming="CharacterEllipsis" />
                                                         <TextBlock x:Name="ExpandHint" Grid.Column="2" Text="▾" Margin="10,0,0,0"
                                                                    FontSize="11" VerticalAlignment="Center"
-                                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                                                     </Grid>
                                                 </Button>
 
@@ -403,7 +403,7 @@
                                             </Grid>
 
                                             <!-- 参数区（点标题行展开） -->
-                                            <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
+                                            <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0"
                                                     Padding="16,13,16,14"
                                                     Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
                                                 <StackPanel>
@@ -433,7 +433,7 @@
                                                                       Style="{StaticResource CheckBoxStyle}"
                                                                       ToolTip="不勾选则每个名字只替换第一处" />
                                                         </StackPanel>
-                                                        <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,0"
+                                                        <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0"
                                                                    TextWrapping="Wrap"
                                                                    Visibility="{Binding Rule.UseRegex, Converter={StaticResource BoolToVis}}"
                                                                    Text="正则例子：^IMG_(\d+) → $1 ；\s+ → 一个空格（把连续空白压成一个）" />
@@ -572,7 +572,7 @@
                                                                      Style="{StaticResource TextBoxStyle}"
                                                                      ToolTip="序号与原名之间插什么，默认下划线；可以留空" />
                                                         </Grid>
-                                                        <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,0"
+                                                        <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0"
                                                                    TextWrapping="Wrap"
                                                                    Text="编号跟着列表走：在列表里上移 / 下移或换排序方式，编号也会跟着变。" />
                                                     </StackPanel>
@@ -619,7 +619,7 @@
                                                 <Setter Property="Background" Value="Transparent" />
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding ShowDropBottom}" Value="True">
-                                                        <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+                                                        <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
@@ -639,12 +639,12 @@
                     </ListBox>
 
                     <!-- 重名处理 -->
-                    <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0">
+                    <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0">
                         <StackPanel>
                             <TextBlock Text="重名怎么办" Style="{StaticResource GroupTitleStyle}" />
                             <CheckBox Content="自动加 (1)、(2) 避让（不勾则重名的文件会被拦下不改）"
                                       IsChecked="{Binding Cfg.AutoResolveConflicts}" Style="{StaticResource CheckBoxStyle}" />
-                            <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,0" TextWrapping="Wrap"
+                            <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0" TextWrapping="Wrap"
                                        Text="默认不勾：只要有两个文件会算成同一个名字，它们就会被标成「冲突」并跳过，避免你还没看清就改错了。" />
                         </StackPanel>
                     </Border>
@@ -664,7 +664,7 @@
                                      Style="{StaticResource ProgressBarStyle}" VerticalAlignment="Center" />
                         <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Margin="12,0,0,0" MinWidth="70"
                                    TextAlignment="Right" VerticalAlignment="Center"
-                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Grid>
 
                     <TextBlock Text="{Binding StatusText}" Margin="0,9,0,0" TextWrapping="Wrap" FontSize="12" />
@@ -708,7 +708,7 @@
                     <Grid Margin="18,14,18,8">
                         <StackPanel>
                             <TextBlock Text="④ 历史记录" FontSize="13" FontWeight="SemiBold" />
-                            <TextBlock FontSize="10.5" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"
+                            <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"
                                        Text="最近 20 批改名；记录写在 Data\batch-rename\rename-history.json，关掉程序再打开照样能撤销" />
                         </StackPanel>
                     </Grid>
@@ -725,7 +725,7 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{Binding TimeText}" Foreground="{StaticResource TextSecondaryBrush}"
+                                    <TextBlock Text="{Binding TimeText}" Foreground="{DynamicResource TextSecondaryBrush}"
                                                VerticalAlignment="Center" FontSize="12" />
                                     <TextBlock Grid.Column="1" Text="{Binding Summary}" VerticalAlignment="Center"
                                                FontSize="12" TextTrimming="CharacterEllipsis" />
@@ -738,7 +738,7 @@
                         </ListBox.ItemTemplate>
                     </ListBox>
 
-                    <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="18,8,18,14" TextWrapping="Wrap"
+                    <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="18,8,18,14" TextWrapping="Wrap"
                                Text="撤销同样只改文件名；如果某个文件之后被手动动过或删掉了，那一条会被跳过并在日志里说明。" />
                 </StackPanel>
             </Border>

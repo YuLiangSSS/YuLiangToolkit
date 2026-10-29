@@ -14,13 +14,13 @@
         <Border Style="{StaticResource CardStyle}" Padding="14,12">
             <StackPanel>
                 <TextBlock Text="上场安排" FontSize="13" FontWeight="SemiBold"
-                           Foreground="{StaticResource TextPrimaryBrush}" />
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
 
                 <!-- 本端身份 + 一句说明 -->
                 <TextBlock Text="{Binding MyRoleText}" FontSize="12.5" FontWeight="SemiBold" Margin="0,6,0,0"
-                           TextWrapping="Wrap" Foreground="{StaticResource AccentBrush}" />
+                           TextWrapping="Wrap" Foreground="{DynamicResource AccentBrush}" />
                 <TextBlock Text="{Binding SeatStatusText}" FontSize="10.5" Margin="0,2,0,0"
-                           TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" />
+                           TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
 
                 <!-- 先手位 -->
                 <Grid Margin="0,6,0,0">
@@ -29,7 +29,7 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="{Binding SeatOneSideText}" VerticalAlignment="Center" FontSize="11.5"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,8,0" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,8,0" />
                     <!-- 房主可改：下拉选人；对局中 / 别人看：只读名字 -->
                     <ComboBox Grid.Column="1" Height="32" Style="{StaticResource ComboBoxStyle}"
                               ItemsSource="{Binding SeatOneChoices}" DisplayMemberPath="DisplayName"
@@ -39,14 +39,14 @@
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
                                 Visibility="{Binding CanEditSeats, Converter={StaticResource InverseBoolToVis}}">
                         <TextBlock Text="{Binding SeatOneName}" FontSize="12"
-                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
                         <TextBlock Text="{Binding SeatOneOnlineText}" FontSize="10.5" Margin="8,0,0,0">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
-                                    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding SeatOneOnline}" Value="False">
-                                            <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -62,7 +62,7 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="{Binding SeatTwoSideText}" VerticalAlignment="Center" FontSize="11.5"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,8,0" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,8,0" />
                     <ComboBox Grid.Column="1" Height="32" Style="{StaticResource ComboBoxStyle}"
                               ItemsSource="{Binding SeatTwoChoices}" DisplayMemberPath="DisplayName"
                               SelectedItem="{Binding SelectedSeatTwoOption}"
@@ -71,14 +71,14 @@
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
                                 Visibility="{Binding CanEditSeats, Converter={StaticResource InverseBoolToVis}}">
                         <TextBlock Text="{Binding SeatTwoName}" FontSize="12"
-                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
                         <TextBlock Text="{Binding SeatTwoOnlineText}" FontSize="10.5" Margin="8,0,0,0">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
-                                    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding SeatTwoOnline}" Value="False">
-                                            <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -100,7 +100,7 @@
 
                 <!-- 房主控制：开始下一局 / 结束本局（作废） -->
                 <StackPanel Visibility="{Binding HostControlsVisible, Converter={StaticResource BoolToVis}}">
-                    <Border Height="1" Background="{StaticResource BorderBrush}" Margin="0,9,0,8" />
+                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,9,0,8" />
                     <Button Content="{Binding StartNextGameText}" Style="{StaticResource PrimaryButtonStyle}"
                             HorizontalAlignment="Stretch" Command="{Binding StartNextGameCommand}"
                             IsEnabled="{Binding CanStartNextGame}"
@@ -113,11 +113,11 @@
                 </StackPanel>
 
                 <!-- 观战提示（客户端 / 房主自己不下场时） -->
-                <Border Background="{StaticResource InputBackgroundBrush}" CornerRadius="6" Padding="8,6"
+                <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="6" Padding="8,6"
                         Margin="0,9,0,0"
                         Visibility="{Binding IsSpectator, Converter={StaticResource BoolToVis}}">
                     <TextBlock Text="{Binding SpectatorHintText}" FontSize="10.5" TextWrapping="Wrap"
-                               Foreground="{StaticResource TextSecondaryBrush}" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
                 </Border>
             </StackPanel>
         </Border>
@@ -127,9 +127,9 @@
             <StackPanel>
                 <Grid>
                     <TextBlock Text="房间成员" FontSize="13" FontWeight="SemiBold"
-                               Foreground="{StaticResource TextPrimaryBrush}" />
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
                     <TextBlock Text="{Binding MemberCountText}" HorizontalAlignment="Right" FontSize="11.5"
-                               Foreground="{StaticResource TextSecondaryBrush}" ToolTip="当前人数 / 房间上限" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" ToolTip="当前人数 / 房间上限" />
                 </Grid>
 
                 <!-- 成员列表（可滚动；滚到头把滚轮交给外层页面） -->
@@ -162,23 +162,23 @@
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="{Binding NameText}" FontSize="12"
-                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                               Foreground="{DynamicResource TextPrimaryBrush}"
                                                TextTrimming="CharacterEllipsis" />
                                     <TextBlock Text="{Binding RoleText}" FontSize="10.5" Margin="8,1,0,0"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                     <TextBlock Text="{Binding SeatText}" FontSize="10.5" Margin="8,1,0,0"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                     <TextBlock Text="{Binding GamesPlayedText}" FontSize="10.5" Margin="8,1,0,0"
-                                               Foreground="{StaticResource TextSecondaryBrush}" />
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                 </StackPanel>
                                 <TextBlock Grid.Column="1" Text="{Binding OnlineText}" FontSize="10.5"
                                            VerticalAlignment="Center" Margin="8,0,0,0">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
-                                            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsOnline}" Value="True">
-                                                    <Setter Property="Foreground" Value="{StaticResource SuccessBrush}" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -191,10 +191,10 @@
 
                 <!-- 自动轮换设置（只有房主能改） -->
                 <StackPanel Visibility="{Binding HostControlsVisible, Converter={StaticResource BoolToVis}}">
-                    <Border Height="1" Background="{StaticResource BorderBrush}" Margin="0,9,0,8" />
+                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,9,0,8" />
 
                     <TextBlock Text="自动上场" FontSize="11"
-                               Foreground="{StaticResource TextSecondaryBrush}" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
                     <ComboBox Height="32" Margin="0,4,0,0" Style="{StaticResource ComboBoxStyle}"
                               ItemsSource="{Binding AutoRotateModeOptions}" DisplayMemberPath="Label"
                               SelectedItem="{Binding SelectedAutoRotateMode}"
@@ -206,7 +206,7 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="补位方式" VerticalAlignment="Center" FontSize="11"
-                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,8,0" />
+                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,8,0" />
                         <ComboBox Grid.Column="1" Height="32" Style="{StaticResource ComboBoxStyle}"
                                   ItemsSource="{Binding AutoPickModeOptions}" DisplayMemberPath="Label"
                                   SelectedItem="{Binding SelectedAutoPickMode}"
@@ -214,7 +214,7 @@
                     </Grid>
 
                     <TextBlock Text="{Binding AutoRotateHintText}" FontSize="10.5" Margin="0,5,0,0"
-                               TextWrapping="Wrap" Foreground="{StaticResource TextSecondaryBrush}" />
+                               TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
                 </StackPanel>
             </StackPanel>
         </Border>

@@ -4,7 +4,7 @@
 > 改这个项目之前先读本文件，**不要再去通读 `src/`**：这里把所有已经造好的「轮子」（可复用组件）的
 > **用途 + 签名 + 一行用法**、Data/Config 目录约定、新增功能的标准流程、以及踩过的坑都写全了。
 >
-> * **当前版本 v0.24.0** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
+> * **当前版本 v0.25.0** —— 唯一来源是 `Directory.Build.props` 的 `<Version>`（状态栏读它）。**别在别处写死版本号。**
 > * 十三个功能：视频转音频 · **视频 / 音乐播放器** · **图片连续阅读器** · 批量重命名 · Flash 下载器 · 联机聊天室 · osu! 下图器 · **osu! Key 转换器** · **osu! LN 转换器** · **osu! 等级计算器** · **联机五子棋** · **联机象棋** · 框架示例（模板，可整目录删除）。
 >   osu! 的四个工具归入「音游工具」分类；**联机五子棋 / 联机象棋归入「棋牌」分类**（主页多级目录 → 类别页 → 工具，见 2.15 / 2.18）。
 > * 平台：Windows + .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM；**唯一第三方依赖是 `OsuParsers`**（osu `.osu` 解析/写回，MIT，见 2.17），其余轮子都手写在 `Core/`。
@@ -19,7 +19,7 @@
 ```powershell
 .\build.ps1                                                    # ① 编译：必须 0 错误（有警告也顺手清掉）
 dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
-                                                               # ② 自检：1775 项行为逐条真跑，退出码 0 = 全通过
+                                                               # ② 自检：1816 项行为逐条真跑，退出码 0 = 全通过
 git add -A; git commit -m "<中文提交信息>"                           # ③ 提交：这一轮改动必须写进 git 历史
 ```
 
@@ -55,10 +55,11 @@ git add -A; git commit -m "<中文提交信息>"                           # ③
 | 13 | **唯一允许的第三方 NuGet 包是 `OsuParsers`**（osu!mania 三件套解析 `.osu` 用）。别再引入第二个包；它首次需要联网还原，之后走本机 NuGet 缓存（`build.ps1` 离线也能命中） | 见 2.17；离线构建 / 发布不能悄悄多出依赖 |
 | 14 | **`ParticleOverlay` 必须放在 Window 内的 Grid 里并铺满**（别塞进 StackPanel / 别写死宽高），且 `IsHitTestVisible="False"` | 它靠 `Window.GetWindow` 挂鼠标事件、靠 Grid 拉伸获得尺寸；塞错地方会塌成 0 或挡住点击（见 2.16） |
 | 15 | **改完必须提交 git**：`git add -A; git commit -m "<中文说明>"`，绝不留未提交的改动（见 A.1 ③） | 用户明确要求；漏提交 = 这一轮改动等于没交付，用户还得重新打字提醒 |
+| 16 | **改主题 token 时三处一起改**：`Views/Themes/DefaultTheme.xaml` + `LiquidGlassTheme.xaml` + `ThemeManager.RequiredTokenKeys` | 两套字典 key 少一个，切主题时那个颜色会静默退回控件默认值（文字变黑之类）；自检 `ThemeChecks` 会逐项对比 key 集合（见 2.20） |
 
 ### A.3 别做 / 先问用户
 
-* **`scripts/` 下的调试脚本会弹窗抢焦点**（`e2e-batch-rename-drag.ps1` 会真的动鼠标 2 秒）：跑之前确认用户没在忙别的（见 `scripts/README.md`）。
+* **`scripts/` 下的调试脚本会弹窗抢焦点**（`e2e-batch-rename-drag.ps1` 会真的动鼠标 2 秒、`e2e-ui-theme.ps1` 会自动点设置窗口里的单选按钮）：跑之前确认用户没在忙别的（见 `scripts/README.md`）。
 * **截图 / 界面验证必须用 `Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait`**：它是 GUI 子系统程序，PowerShell 直接跑不会等它，你会误判"截图没生成"。
 * 自检里**不要调 `PlayEntry()`**（会真启动 FlashPlayer 窗口，无头自检卡死）；簿记入口 `MarkPlayed()` 是公开的，自检只调它。
 * 别在业务代码里从 URL 反推本地路径（见 2.11 / 第 5 节，反推过一次就把文件写到游戏目录外面了）。
@@ -73,6 +74,7 @@ git add -A; git commit -m "<中文提交信息>"                           # ③
 | 改某个具体功能（批量重命名 / Flash / 聊天室 / osu! / 播放器 / 图片阅读器） | **2.10 – 2.19**（每节都写了分层、约定、坑） |
 | **给功能做多级分类 / 类别页 / 可点击面包屑** | **2.15** |
 | **粒子效果 / 主页设置窗口** | **2.16** |
+| **换肤：默认深色 / 液态玻璃主题 · 主题 token · 运行时换主题** | **2.20** |
 | **osu!mania 三件套（Key 转换 / LN 转换 / 等级计算）** | **2.17** |
 | **棋牌：联机五子棋 / 联机象棋 / 多人观战 / 房主席位 / 自动轮换 / 房间协议** | **2.18** |
 | **连续看图 / 六种阅读方式 / 双页翻页 / 双击图片打开 / 图片边框** | **2.19** |
@@ -87,7 +89,7 @@ git add -A; git commit -m "<中文提交信息>"                           # ③
 > 第 0–9 节是稳定编号，**源码注释里到处用 `AGENTS.md 的 2.11 节` 这种引用指向它**（搜索 `AGENTS.md` 就能找到全部引用点）。
 > 重排或删除章节编号会让这些引用失效——要改就一起改。
 >
-> ⚠️ **本文件约 2465 行 / 270 KB**：作为"工作区指令"自动注入时可能被上下文预算截断（只保留前半段）。
+> ⚠️ **本文件约 2572 行 / 282 KB**：作为"工作区指令"自动注入时可能被上下文预算截断（只保留前半段）。
 > 一旦发现后半段不见了，**用读取工具按行号接着读**；定位章节最稳的办法是搜索标题（`## 3.` / `### 2.17`），
 > 别依赖行号（本文件一直在长，行号会漂）。
 
@@ -120,13 +122,13 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | 项 | 内容 |
 | --- | --- |
 | 技术栈 | .NET 9（`net9.0-windows`）+ WPF + 手写 MVVM；唯一第三方依赖 `OsuParsers`（MIT，osu 谱面解析/写回） |
-| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.24.0 就是读它；**别在别处写死**） |
+| 版本 | `Directory.Build.props` 的 `<Version>`（状态栏显示的 v0.25.0 就是读它；**别在别处写死**） |
 | 解决方案 | `YuLiangToolkit.sln`（13 个项目：主程序 + Core + 10 个功能 + 自检） |
-| 主程序 | `YuLiangTookit.csproj`（注意：文件名少一个 `l`，是历史拼写）→ 自定义标题栏外壳、主页/类别页/侧边栏/面包屑、深色主题、窗口级粒子层 |
+| 主程序 | `YuLiangTookit.csproj`（注意：文件名少一个 `l`，是历史拼写）→ 自定义标题栏外壳、主页/类别页/侧边栏/面包屑、**两套界面主题**（默认深色 / 液态玻璃，见 2.20）、窗口级粒子层 |
 | 核心库 | `src/YuLiangToolkit.Core/`（工具契约、目录树、MVVM 基类、存储、配置、FFmpeg 封装、粒子引擎/覆盖层、通用 TCP 房间底座 `Core/Net`） |
 | 功能 | `Tools.VideoToAudio`（视频转音频）、`Tools.MediaPlayer`（视频 / 音乐播放器）、`Tools.PictureViewer`（图片连续阅读器）、`Tools.BatchRename`（批量重命名）、`Tools.FlashDownloader`（Flash 下载器）、`Tools.ChatRoom`（联机聊天室）、`Tools.MapDownloader`（osu! 下图器）、`Tools.OsuMania`（osu! Key / LN / 等级三个工具）、`Tools.BoardGames`（联机五子棋 / 联机象棋）、`Tools.Sample`（框架示例，可删） |
 | 数据/配置 | **在 exe 旁边**（`bin\Debug\net9.0-windows\Data`、`…\Config`）——见第 3 节；仓库根的 `Data/`、`Config/` 只剩说明文件 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**1775 项**行为逐条验证，纯控制台）——见第 6 节 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`（**1816 项**行为逐条验证，纯控制台）——见第 6 节 |
 | 构建 | `.\build.ps1`（离线，走本机 NuGet 缓存；会设 `DOTNET_CLI_HOME` 到 `.dotnet-cli-home`） |
 | 运行 | `dotnet run --project YuLiangTookit.csproj` 或直接跑 `bin\Debug\net9.0-windows\YuLiangTookit.exe` |
 
@@ -174,6 +176,7 @@ git status; git add -A; git commit -m "..."; git log --oneline --stat -3
 | `YLT_MINI_DEMO=1` | 启动时先开一下播放器再回主页，制造「正在后台播放」的状态 —— 左下角迷你播放条会出现（截图核对用） |
 | `YLT_NAV_CATEGORY=<路径>` | 启动后直接进某个类别页（如 `音游工具` 或任意深度的 `音游工具/谱面处理`；见 2.15） |
 | `YLT_OPEN_SETTINGS=1` | 启动后直接打开「主页设置」窗口（截图核对粒子开关用；见 2.16） |
+| `YLT_THEME=default\|liquid-glass` | 启动时临时指定界面主题（默认深色 / 液态玻璃），**不写配置**、只影响本次运行；截图对比两套 UI 用（见 2.20） |
 | `YLT_PARTICLE_DEMO=1` | 粒子覆盖层进入演示模式：没有鼠标输入也持续在窗口中部生成粒子（无头截图用，见 2.16） |
 | `YLT_PARTICLE_TRACE=<文件>` | 把粒子覆盖层收到的鼠标事件坐标与每 20 帧的发射点/存活数追加进文件（排查「粒子从错误位置冒出来」用，见 2.16） |
 | `YLT_OSU_DEMO=1` | 打开三个 osu 工具时自动准备一份合成 4K 谱面/示例结果（截图与冒烟用，不发网络请求；见 2.17） |
@@ -198,7 +201,7 @@ AGENTS.md                         # ← 本文件：给 AI / 未来自己的开�
 README.md                         # 面向使用者的说明：工具一览表 + 快速开始（**保持短**）
 docs/                             # 面向使用者的详细文档（一页一个工具，GitHub 上就是 wiki 的效果）
 │  ├─ README.md                   #   文档索引
-│  ├─ shell.md                    #   主页搜索/排序/标签 · 多级分类/面包屑 · 主页设置 · Data/Config 目录约定
+│  ├─ shell.md                    #   主页搜索/排序/标签 · 多级分类/面包屑 · 主页设置（含界面风格）· Data/Config 目录约定
 │  ├─ tools/<工具Id>.md           #   每个工具一页：能做什么 / 怎么用 / 设置项 / 数据在哪 / 注意
 │  └─ assets/100-percent-ai-coding.png   # README 标题旁那行手写体徽标（System.Drawing 画的）
 build.ps1                         # 一键还原 + 构建（保持纯 ASCII，见第 8 节）
@@ -338,8 +341,13 @@ src/
 │  ├─ ViewModels/ PictureViewerViewModel.cs（配置 / 页清单 / 六种方式选项 / 无头可测的加载流程）
 │  └─ Views/    PictureViewerView.xaml(.cs) + .Paged.cs  # 连续长带 / 翻页视图 / 翻页动画 / 鼠标键盘
 App.xaml / App.xaml.cs             # 全局样式资源 + 启动/退出钩子（截图模式设为不抢焦点）
+Views/Themes/DefaultTheme.xaml     # 第一套 UI 的主题 token（默认深色；颜色 = v0.24.0 原值）
+Views/Themes/LiquidGlassTheme.xaml # 第二套 UI 的主题 token（液态玻璃；key 必须与默认主题完全一致）
+Views/Themes/ThemeManager.cs       # 运行时换肤：整体替换 App.xaml 的合并主题字典（见 2.20）
+Views/Themes/UiTheme.cs            # 主题枚举（配置里按 "Default" / "LiquidGlass" 存）
+Views/LiquidBackdrop.xaml(.cs)     # 玻璃主题的流动彩色光晕背景层（漂移的径向渐变，不用 BlurEffect）
 MainWindow.xaml(.cs)               # 自定义标题栏外壳
-Models/ShellConfig.cs              # 外壳配置：主页排序偏好 + 各功能上次使用时间（存 Config/shell/）
+Models/ShellConfig.cs              # 外壳配置：主页排序偏好 + 各功能上次使用时间 + 粒子开关 + 界面主题 uiTheme（存 Config/shell/）
 ViewModels/MainViewModel.cs        # 侧边栏/主页/功能切换、搜索词与排序状态
 ViewModels/ToolCard.cs             # 主页卡片模型（含预拼搜索索引、标签、上次使用文案）
 ViewModels/ToolFilter.cs           # 主页过滤/排序/标签收集（纯逻辑，可自检）
@@ -599,12 +607,12 @@ public sealed class FlashDownloaderViewModel : ToolViewModelBase
 
 | 轮子 | 说明 |
 | --- | --- |
-| `MainViewModel` | `NavItems`（侧边栏：首页 + 根层类别 + 根层工具）· `Tools` · 目录树 `ToolCatalogNode`（`CurrentNode`/`Breadcrumbs`）· `ToolCards`/`CategoryCards`（过滤+排序后的卡片）· `AllTags` · `SearchText` · `SortOptions`/`SelectedSort` · `CurrentView` · `SelectedNavItem` · `StatusText` · `CurrentTitle` · `ParticlesEnabled` · `MinimizeToTrayOnClose`/`ExitOnClose`（× 关闭行为，绑主页设置的两个单选项）· `CloseSettingsWindow()` · `GoHomeCommand` · `OpenToolCommand` · `NavigateCategoryCommand`/`NavigateParentCommand`（只在类别页顶部 / 空状态用）/`NavigateBreadcrumbCommand` · `CanGoBack`/`CanGoForward` · `GoBackCommand`/`GoForwardCommand` · `OpenSettingsCommand` · `ClearSearchCommand` · `SearchTagCommand`；**切换功能时会调用上一个 VM 的 `NotifyClosed()`**；打开功能时记录“上次使用” |
+| `MainViewModel` | `NavItems`（侧边栏：首页 + 根层类别 + 根层工具）· `Tools` · 目录树 `ToolCatalogNode`（`CurrentNode`/`Breadcrumbs`）· `ToolCards`/`CategoryCards`（过滤+排序后的卡片）· `AllTags` · `SearchText` · `SortOptions`/`SelectedSort` · `CurrentView` · `SelectedNavItem` · `StatusText` · `CurrentTitle` · `ParticlesEnabled` · `UiTheme`/`DefaultThemeSelected`/`LiquidGlassThemeSelected`/`IsLiquidGlass`（界面风格，见 2.20）· `MinimizeToTrayOnClose`/`ExitOnClose`（× 关闭行为，绑主页设置的两个单选项）· `CloseSettingsWindow()` · `GoHomeCommand` · `OpenToolCommand` · `NavigateCategoryCommand`/`NavigateParentCommand`（只在类别页顶部 / 空状态用）/`NavigateBreadcrumbCommand` · `CanGoBack`/`CanGoForward` · `GoBackCommand`/`GoForwardCommand` · `OpenSettingsCommand` · `ClearSearchCommand` · `SearchTagCommand`；**切换功能时会调用上一个 VM 的 `NotifyClosed()`**；打开功能时记录“上次使用” |
 | `MainWindow` | `WindowStyle=None` + `WindowChrome(CaptionHeight=0)`；标题栏拖拽/双击最大化在代码里手动实现（**最大化时按住标题栏往外拖 = 先还原成窗口再跟着鼠标走**，见下方说明）；`WM_GETMINMAXINFO` 把最大化钳制到工作区；工具条左边是浏览器式「← 后退 / → 前进」按钮，右边是可点击面包屑（主页 › 类别 › 工具）；根部有窗口级 `ParticleOverlay`（见 2.16）；`OnClosing` 按主页设置决定「关闭应用 / 最小化到托盘」；`HideToTray()` / `ShowFromTray()`（托盘单击恢复）；`CaptureTo(png)` 是截图模式实现 |
 | `TrayIcon` | Core/Services/：**手写 Win32 `Shell_NotifyIcon`（不引 WinForms）** 的任务栏托盘小图标；`Activated`（左键/双击）、`Func<IReadOnlyList<TrayMenuItem>>` 右键菜单（原生弹出菜单）、`Tooltip`、explorer 重启（`TaskbarCreated`）自动恢复、首次添加失败每 2 秒重试 5 次；图标三档兜底：`Assets\app.ico` → exe 内嵌图标 → 系统默认（见 2.16） |
 | `HomeView` | 主页：搜索框 + 全部类别卡片 + 标签条 + 根层工具卡片 + 空状态；代码后置只做 Ctrl+F 聚焦 / Esc 清空 / 进入主页自动聚焦搜索框 |
 | `CategoryView` | 类别页（任意层级）：类别 emoji/名称/描述/统计 + 子类别卡片 + 直接工具卡片 + 类别内搜索 + 空状态（见 2.15） |
-| `ShellSettingsWindow` | 「主页设置」窗口（三组）：外观（粒子开关）+ 粒子颜色（1~2 种颜色，见 2.16）+ 窗口与托盘（× = 关闭应用 / 最小化到托盘） |
+| `ShellSettingsWindow` | 「主页设置」窗口（四组）：**界面风格**（默认 / 液态玻璃，见 2.20）+ 外观（粒子开关）+ 粒子颜色（1~2 种颜色，见 2.16）+ 窗口与托盘（× = 关闭应用 / 最小化到托盘） |
 
 > 主窗口的启动位置：`WindowStartupLocation="Manual"`，构造函数里按 `SystemParameters.WorkArea`（已扣掉任务栏）算 `Left/Top`
 > —— `CenterScreen` 会把任务栏那 48px 也算进屏幕高度，窗口看着偏低（v0.9.6 修，1920×1080 + 底部任务栏时窗口开在 `320,106`）。
@@ -655,11 +663,20 @@ var tags   = ToolFilter.CollectTags(cards);                          // 标签�
 * 排序：默认按 `ITool.Order`；“最近使用”把刚打开过的排最前，从未用过的垫底，并只在此时于卡片上显示“x 分钟前用过”。
 * **搜索词不持久化**（重启回到全部功能，免得下次打开以为功能丢了）；排序方式与使用时间持久化。
 
-### 2.9 UI 样式资源（App.xaml，全部 `StaticResource` 可用）
+### 2.9 UI 样式资源（App.xaml；主题 token 用 `DynamicResource`，见 2.20）
 
-**颜色/画刷**：`WindowBackgroundBrush` `HeaderBackgroundBrush` `SidebarBackgroundBrush` `CardBackgroundBrush`
-`CardHoverBackgroundBrush` `BorderBrush` `AccentBrush` `AccentHoverBrush` `AccentPressedBrush`
-`TextPrimaryBrush` `TextSecondaryBrush` `DangerBrush` `SuccessBrush` `InputBackgroundBrush`
+**颜色/画刷**（**都在 `Views/Themes/` 的主题字典里**，两套 UI 同名同值域）：
+`WindowBackgroundBrush` `HeaderBackgroundBrush` `SidebarBackgroundBrush` `CardBackgroundBrush` `CardHoverBackgroundBrush`
+`BorderBrush` `SeparatorBrush` `AccentBrush` `AccentHoverBrush` `AccentPressedBrush`
+`TextPrimaryBrush` `TextSecondaryBrush` `FaintTextBrush` `DangerBrush` `DangerPressedBrush` `SuccessBrush` `InputBackgroundBrush`
+`ControlBorderHoverBrush` `WindowButtonHoverBackgroundBrush` `WindowButtonPressedBackgroundBrush` `CheckBoxBorderBrush`
+`ScrollBarTrackBrush` `ScrollBarThumbBrush` `ScrollBarThumbHoverBrush` `SidebarItemHoverBackgroundBrush` `SidebarItemSelectedBackgroundBrush`
+`ListRowHoverBackgroundBrush` `ListRowSelectedBackgroundBrush` `ListRowSelectedBorderBrush` `TagChipBackgroundBrush` `TagChipBorderBrush` `TagChipHoverBackgroundBrush`
+`EmojiTileBackgroundBrush` `SliderThumbBackgroundBrush` `SliderThumbBorderBrush` `MiniPlayerBackgroundBrush` `MiniPlayerHoverBackgroundBrush` `ShellSurfaceBrush`
+`SecondaryButtonBackgroundBrush` `PrimaryButtonBackgroundBrush` `PrimaryButtonHoverBackgroundBrush` `PrimaryButtonPressedBackgroundBrush` `PrimaryButtonBorderBrush`
+`GlassHighlightBrush` `WindowEdgeBorderBrush`（后两个在默认主题里是**透明**）。
+几何 token：`CardCornerRadius` / `ControlCornerRadius`（CornerRadius）。
+**界面里一律用 `{DynamicResource 名字}` 引用**（这样运行时换主题能立即生效）；只有样式/转换器本身用 `StaticResource`。
 
 **控件样式**：`CardStyle`（卡片 Border）· `TextBoxStyle` · `LogTextBoxStyle`（日志/预览只读框）·
 `PrimaryButtonStyle` · `SecondaryButtonStyle` · `WindowButtonStyle` · `WindowCloseButtonStyle` ·
@@ -1462,7 +1479,7 @@ HTTP/1.1 响应，下载器只认状态码和 body，到哪儿都能跑。
 | `Particle` / `ParticleEngine` | Core/Particles/ | 可注入随机种子；常量：默认速度 0.15 / 上限 3 / 每帧衰 0.1；数量 1→10、每帧衰 0.5；寿命 30~89 帧；初始直径 5；`Update(frameSteps)` 按 60fps 归一（单步上限 4、有生成累加器）；`Active` / `Speed` / `Count` / `EmitterX/Y` / `Particles` / `TotalSpawned`；`SetEmitter` `BoostSpeedAndCount` `BoostCount` `Clear` `Reset` `Reseed`；每颗粒子还有随机 `ColorMix`（0~1，自定义颜色取色用） |
 | `ParticleOverlay` | Core/Controls/ | `FrameworkElement` + `OnRender`；DP：`IsActive`（默认 false）、`ParticleColor`（默认 #F2EEFF 淡紫白）、`GlowColor`（柔光）；Loaded 挂 Window 鼠标/Rendering 事件、Unloaded/Closed 全摘；DPI/最大化/全屏自适应；**鼠标位置用 Win32 `GetCursorPos` + `PointFromScreen` 取真实值**（`DragMove` 的假 (0,0) 事件不再把发射点甩到左上角，见下面注意）；`YLT_PARTICLE_DEMO=1` 无鼠标演示、`YLT_PARTICLE_TRACE=<文件>` 排错；**自定义颜色** DP：`UseCustomColors` / `Color1` / `Color2` / `UseColor1` / `UseColor2`（单色 / 区间随机，画刷按颜色档 × 透明度档预生成） |
 | `ShellConfig.ShowParticles` 等 | Models/ShellConfig.cs | `ShowParticles` 默认 `true`；自定义颜色：`ParticleCustomColors`（默认 false）+ `ParticleColor1Enabled` / `ParticleColor2Enabled` + `ParticleColor1` / `ParticleColor2`（`#RRGGBB`，默认 #F2EEFF / #8FB4FF）；`MainViewModel` 的 get/set 直接读写（自动落盘） |
-| `ShellSettingsWindow` | Views/ | 「主页设置」窗口：外观（粒子开关）+ 粒子颜色（`ColorPickerButton` 选色）+ 窗口与托盘；`Owner=主窗口`、`CenterOwner`、`ShowInTaskbar=false`；Esc / 完成关闭；以后设置项加在这里 |
+| `ShellSettingsWindow` | Views/ | 「主页设置」窗口：**界面风格**（默认 / 液态玻璃，见 2.20）+ 外观（粒子开关）+ 粒子颜色（`ColorPickerButton` 选色）+ 窗口与托盘；`Owner=主窗口`、`CenterOwner`、`ShowInTaskbar=false`；Esc / 完成关闭；以后设置项加在这里 |
 | `MainWindow` 接线 | MainWindow.xaml | 根部 `<core:ParticleOverlay Grid.RowSpan="4" Panel.ZIndex="900" IsHitTestVisible="False" IsActive="{Binding ParticlesEnabled}" UseCustomColors="{Binding ParticleCustomColorsEnabled}" Color1="{Binding ParticleColor1Value}" Color2="{Binding ParticleColor2Value}" UseColor1="{Binding ParticleColor1Enabled}" UseColor2="{Binding ParticleColor2Enabled}" />` |
 
 **注意**
@@ -1918,6 +1935,75 @@ protected abstract void BeginNewGame(bool swapSides);   // 开始下一局 / 本
 
 ---
 
+### 2.20 第二套 UI：液态玻璃主题（v0.25.0）
+
+**定位**：主页设置 →「界面风格」可以在两套 UI 之间随时切换，**点一下立即换肤、不用重启**：
+
+- **默认（深色）**：第一套 UI，纯色面板；颜色值 = v0.24.0 原值，切回来外观分毫不变；
+- **液态玻璃（实验）**：参考 [Kerxs/glassium](https://github.com/Kerxs/glassium) 的 Liquid Glass 观感做的 WPF 版 ——
+  半透明玻璃面板 + 上亮下暗的渐变描边 + 斜向高光 + 流动彩色光晕背景 + 更大圆角。
+
+存 `Config\shell\config.json` 的 `uiTheme`（枚举原名 `"Default"` / `"LiquidGlass"`；**旧配置没有这个字段时按默认处理**）。
+
+**换肤机制（主题 token + 一个合并字典）**
+
+| 文件 | 作用 |
+| --- | --- |
+| `Views/Themes/DefaultTheme.xaml` | 第一套 UI 的主题 token：**45 个画刷 + 2 个 `CornerRadius`**（`CardCornerRadius` / `ControlCornerRadius`） |
+| `Views/Themes/LiquidGlassTheme.xaml` | 第二套 UI 的同名 token —— **key 必须与默认主题完全一致** |
+| `Views/Themes/ThemeManager.cs` | `Apply(UiTheme)` 把 App.xaml 里 `MergedDictionaries[0]` 整体换成对应字典；另有 `Current` / `Changed` / `ParseThemeName` / `SourceFor` / `LoadThemeDictionary` / `RequiredTokenKeys` / `RequiredRadiusKeys`（都是纯函数或只碰资源，自检直接断言） |
+| `Views/Themes/UiTheme.cs` | 枚举 `Default` / `LiquidGlass`（**枚举名就是配置里存的字符串，别改名**） |
+| `Views/LiquidBackdrop.xaml(.cs)` | 玻璃主题的“场景”背景层：深色蓝紫底 + 5 块缓慢漂移的彩色径向光晕 + 顶部柔光 + 暗角 |
+
+App.xaml 结构：`Application.Resources` → `ResourceDictionary` → `MergedDictionaries` 里放**当前主题**，
+下面才是转换器与全部控件样式。**所有样式 / 外壳界面里的主题颜色都写成 `{DynamicResource 名字}`**，
+换字典后 WPF 会重新解析，已经开着的窗口（包括设置窗口自己）一起变。
+
+**新增 / 修改 token 的标准流程（三处一起改）**
+
+1. 两套字典各加/改一行（key 同名）；
+2. `ThemeManager.RequiredTokenKeys`（或 `RequiredRadiusKeys`）里加名字；
+3. 跑自检：`ThemeChecks` 会核对「两套字典 key 完全一致 + key 集合 = 必需清单 + 默认主题关键颜色 = v0.24.0 原值」。
+
+**默认主题必须不变**：默认字典里那些画刷的值就是 v0.24.0 的原色；两个“玻璃专用”token
+（`GlassHighlightBrush` / `WindowEdgeBorderBrush`）在默认主题里是**全透明**，模板里那层高光 / 整窗玻璃边等于不存在。
+改默认主题颜色 = 直接改第一套 UI 的外观，先想清楚。
+
+**玻璃主题怎么画出来的（四层）**
+
+1. `LiquidBackdrop`：铺满窗口最底层的流动光晕（`Grid.RowSpan="4"`、`IsHitTestVisible="False"`）；
+   刻意**不用 `BlurEffect`**（大块高斯模糊太吃 GPU），只用径向渐变 + `TranslateTransform` / `Opacity` 动画；
+   **不可见时停掉 Storyboard**（默认主题下 Collapsed，不能让它 60fps 空跑）；
+2. 半透明渐变面板：`CardBackgroundBrush` / `HeaderBackgroundBrush` / `SidebarBackgroundBrush` 等换成乳白/深色玻璃渐变；
+3. 渐变描边：`BorderBrush` 上下亮、中间暗（圆角处自然形成一圈亮边）；`SeparatorBrush` 是分区之间的亮边；
+4. 模板高光：`PrimaryButtonStyle` / `SecondaryButtonStyle` / `ToolCardButtonStyle` 模板里多一层
+   `Background="{DynamicResource GlassHighlightBrush}"` 的 Border（默认主题是透明画刷 = 没效果）。
+
+**运行时切换的两条路径**
+
+- 启动：`App.OnStartup` 在 `new MainWindow()` **之前** `ThemeManager.Apply(vm.UiTheme)`
+  （否则窗口 XAML 一解析就会先用默认主题，第一帧会闪）；
+- 设置里：`MainViewModel.DefaultThemeSelected` / `LiquidGlassThemeSelected`（和关闭行为一样**只处理 true**）
+  → 写 `_shell.UiTheme`（自动落盘）→ `ThemeManager.Apply` → 通知 `IsLiquidGlass`
+  （主窗口 / 设置窗口的 `LiquidBackdrop` 显隐跟着变）。
+- 调试 / 截图：`YLT_THEME=default|liquid-glass` 临时指定主题（**不写配置**，用户在设置里点一下就清掉覆盖）。
+
+**注意 / 边界**
+
+* WPF 没有 WebGPU 那种真折射：玻璃是“半透明渐变 + 亮边 + 高光 + 彩色光晕”画出来的，**不依赖 Win11 的 Mica/Acrylic**，
+  Win10 与截图（`RenderTargetBitmap`）里同样能看到完整效果；
+* 玻璃主题会多画一层动画（5 块光晕），低配机器觉得费电 / 掉帧就切回默认；默认主题下这层是停掉的；
+* 截图模式仍只渲染窗口 `Content`（不含 `Window.Background`），所以**默认主题的内容区在 PNG 里是透明的**
+  （老问题，不是本轮引入；用看图软件会自动垫白底）；玻璃主题的背景层在 Content 里，PNG 是完整不透明的；
+* Storyboard 的 `TargetName` 必须都在同一个 XAML 命名域里；一个 `TranslateTransform` 可以同时做 X / Y 动画，
+  别写两个不存在的名字（v0.25.0 踩过：`BlueMoveY` 找不到 → 启动直接崩）；
+* 设置窗口里的两个主题单选按钮要写 `AutomationProperties.Name`（内容是 StackPanel 时 WPF 算不出自动化名称，
+  UIA 脚本会找不到控件）；
+* 自检 `ThemeChecks`（41 项）覆盖上述约定；真窗口换肤用 `scripts/e2e-ui-theme.ps1`
+  （UIA 点单选按钮 → 读 `Config\shell\config.json` → `PrintWindow` 截图两套 UI）。
+
+---
+
 ## 3. Data / Config 目录约定（v0.2.0 起；v0.4.1 起位置在 **exe 旁边**）
 
 **运行时目录 = exe 所在目录**（`bin\Debug\net9.0-windows\`、`bin\Release\…`、`publish.ps1` 出来的 `dist\YuLiangToolkit\`）。
@@ -2201,7 +2287,7 @@ Data/chat-room/
 # 1) 编译（0 警告 0 错误）
 .\build.ps1
 
-# 2) 轮子自检：1775 项行为逐条真跑（Data/Config 轮子 + 主页搜索排序 + 多级分类导航/面包屑 + 最大化窗口拖标题栏的还原位置
+# 2) 轮子自检：1816 项行为逐条真跑（Data/Config 轮子 + 主页搜索排序 + 多级分类导航/面包屑 + 最大化窗口拖标题栏的还原位置
 #    + 批量重命名规则/冲突/执行/撤销
 #    + Flash 下载器的站点解析/命名/ini/批量计划/真下载/本地服务器/自动下载
 #    + 联机聊天室的协议/CRC/流量上限/会话文件夹/傻瓜模式挑监听/双栈真连两族/回环真连一局
@@ -2212,6 +2298,7 @@ Data/chat-room/
 #    + osu!mania 三件套的解析往返/转 K/转 LN/等级/批量/线程安全 + StarRating 参考值
 #    + 棋牌：五子棋禁手/象棋全规则/自由摆棋让子让先/多人观战/房主席位/自动轮换/回环联机与断线重连，
 #    + 图片连续阅读器的滚动偏移数学/中键单点-按住状态机/页序自然排序/真扫临时图片文件夹/无头 VM，
+#    + 第二套 UI 的主题枚举/两套字典 key 对齐/默认主题关键颜色不变/液态玻璃半透明与渐变/配置往返，
 #    退出码 0 = 全通过
 dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj
 
@@ -2333,6 +2420,16 @@ $env:YLT_PICTURE_SETTINGS="1"; $env:YLT_SHOT="shots\picture-settings.png"
 Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
 Remove-Item Env:YLT_PICTURE_SETTINGS, Env:YLT_PICTURE_MODE, Env:YLT_PICTURE_DEMO, Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 
+# 3m) 第二套 UI（液态玻璃，见 2.20）：同一屏各截一套主题对比（YLT_THEME 只影响本次运行、不写配置）
+$env:YLT_THEME="default"; $env:YLT_SHOT="shots\theme-default.png"
+Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
+$env:YLT_THEME="liquid-glass"; $env:YLT_SHOT="shots\theme-glass.png"
+Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
+$env:YLT_OPEN_SETTINGS="1"; $env:YLT_SHOT="shots\theme-glass-settings.png"
+Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait
+Remove-Item Env:YLT_OPEN_SETTINGS, Env:YLT_THEME, Env:YLT_SHOT
+#   真窗口换肤验证（会弹窗、自动点单选按钮）：scripts\e2e-ui-theme.ps1（切玻璃 → 切回默认，核对配置实时写入 + PrintWindow 截图）
+
 # 4) 发布冒烟：发布到 dist\YuLiangToolkit\，跑一次确认 Data/Config 建在它自己旁边
 .\publish.ps1
 $env:YLT_SHOT="shots\published.png"; .\dist\YuLiangToolkit\YuLiangTookit.exe
@@ -2365,7 +2462,7 @@ $env:YLT_SHOT="shots\published.png"; .\dist\YuLiangToolkit\YuLiangTookit.exe
 
 | 功能 | Id | 选项存储 | 数据目录 | 备注 |
 | --- | --- | --- | --- | --- |
-| 主页 / 外壳 | `shell` | `Config\shell\config.json`（排序偏好 + 各功能上次使用时间 + 粒子开关 `showParticles`） | — | 多级分类目录/类别页/可点击面包屑（2.15）、主页设置窗口、窗口级粒子（2.16）；**搜索词不持久化** |
+| 主页 / 外壳 | `shell` | `Config\shell\config.json`（排序偏好 + 各功能上次使用时间 + 粒子开关 `showParticles` + **界面主题 `uiTheme`**） | — | 多级分类目录/类别页/可点击面包屑（2.15）、主页设置窗口（含**界面风格：默认 / 液态玻璃**，2.20）、窗口级粒子（2.16）；**搜索词不持久化** |
 | 视频转音频 | `video-to-audio` | `Config\video-to-audio\config.json`（含从 `%AppData%` 老设置的一次性迁移） | `Data\video-to-audio\`（暂未使用） | `Order = 10`；FFmpeg 路径是全局设置，仍在 `%AppData%\YuLiangToolkit\settings.json`；标签：视频/音频/批量转换/FFmpeg/mp3/flac/提取音轨 |
 | 批量重命名 | `batch-rename` | `Config\batch-rename\config.json`（**规则清单 `rules` 数组** + 冲突开关 + 排序偏好 + 上次文件夹） | `Data\batch-rename\rename-history.json`（改名流水账，撤销靠它，最多 20 批） | `Order = 40`；规则可增删、可重复、可拖动排序，**数组顺序 = 执行顺序**（见 2.10）；标签：重命名/改名/批量/文件/序号/编号/查找替换/正则/扩展名/撤销 |
 | Flash 下载器 | `flash-downloader` | `Config\flash-downloader\config.json`（游戏目录 / 并发 / 超时 / 端口 / 播放器路径 / 上次输入） | `Data\flash-downloader\games\`（游戏本体 + `SWFNetPath.ini`）、`Data\flash-downloader\tools\`（播放页 / 替代 API / FlashPlayer.exe） | `Order = 20`；支持 4399 / 7k7k / 17yy / ArmorGames / Kongregate，本地服务器 + 自动下载所需文件（见 2.11）；**目录可在界面上改**；标签：flash/swf/小游戏/下载/4399/7k7k/17yy/ArmorGames/Kongregate/本地服务器/离线玩/h5/unity/网页游戏 |
@@ -2432,7 +2529,8 @@ git diff                        # 看未暂存改动
 
 | 版本 | 内容 |
 | --- | --- |
-| **v0.24.0**（当前） | **象棋棋盘朝向：执子方视角 + 观战自由选红/黑视角**（见 2.18）。① 坐席玩家棋盘**自动朝向自己**：执红红在下、执黑黑在下；只做坐标映射，棋子文字 / 楚河汉界 / 坐标始终正向（不转字）——不再受旧「自动翻转」开关控制（`XiangqiConfig.AutoFlip` 删除，旧配置里的字段读取时忽略）。② 坐席玩家不显示手动翻转按钮，棋盘下显示「视角：红/黑方在下（跟随你所执的一方）」；同机双人 / 离线保留手动「翻转棋盘」且刷新不重置。③ **观战者**（含不坐席位的房主）棋盘下新增「观战视角」下拉：红方视角（红在下）/ 黑方视角（黑在下），改完立即生效、存 `spectatorViewSide`（默认 red）下次还记得；视角只影响观战者自己，RefreshAll / 收状态包都不会重置；换座 / 被换下后自动重算。④ 演示开关 `YLT_XIANGQI_DEMO_SEAT=black`（房主执黑视角截图）/ `YLT_XIANGQI_DEMO_VIEW=red|black`（观战视角截图，不写配置）。⑤ 自检 1753 → **1775** 项（新增 22：视角配置默认/持久化/旧配置兼容、离线与同机手动翻转、真回环执红/执黑朝向、观战默认红与切黑、刷新不重置、房主不下场按观战视角、换座跟随）；文档 docs/tools/xiangqi.md 新增「棋盘朝向」一节。版本号 0.23.0 → 0.24.0 |
+| **v0.25.0**（当前） | **第二套 UI：液态玻璃主题 + 主页设置里换肤**（见 2.20）。① 主题 token 从 App.xaml 拆到 `Views/Themes/DefaultTheme.xaml`（默认深色，颜色值 = v0.24.0 原值，切回默认外观分毫不变）与 `LiquidGlassTheme.xaml`（液态玻璃：半透明玻璃面板、上亮下暗的渐变描边、斜向高光、更大圆角、更亮文字/强调色），两套字典 47 个 key 完全一致；② App.xaml 里所有样式/界面引用改成 `DynamicResource`，`ThemeManager.Apply` 在运行时整体替换合并字典 → 设置里点一下立即换肤、不用重启（设置窗口自己也跟着变）；③ 新增 `Views/LiquidBackdrop`：玻璃主题的“场景”（深色蓝紫底 + 5 块缓慢漂移的彩色径向光晕 + 顶部柔光 + 暗角，刻意不用 `BlurEffect`），主窗口与设置窗口都铺一层；默认主题下它 Collapsed 且代码停掉动画（不白跑 CPU）；④ 主页设置新增「界面风格」：默认（深色）/ 液态玻璃（实验）两个单选，存 `Config\shell\config.json` 的 `uiTheme`（枚举原名 `"Default"` / `"LiquidGlass"`，旧配置缺字段按默认处理）；⑤ 换肤入口：`App.OnStartup` 建主窗口前先 `ThemeManager.Apply(vm.UiTheme)`，`MainViewModel.DefaultThemeSelected` / `LiquidGlassThemeSelected` 写配置 + 立即 Apply；调试开关 `YLT_THEME=default\|liquid-glass`（只影响本次运行、不写配置）；⑥ 外壳硬编码颜色收口成 45 个画刷 token + 2 个圆角 token，并给主/次按钮与工具卡片模板加一层 `GlassHighlightBrush` 高光（默认主题是透明画刷，第一套 UI 外观不变）；⑦ 自检 1775 → **1816** 项（`ThemeChecks` 41：枚举/名字/字典 key 完全一致/默认主题关键颜色不变/液态玻璃半透明与渐变/配置往返/旧配置兼容/Apply 状态机）；另修两条棋牌自检的时序 flaky（离开席位断言按玩家实际席位、观战切回红方时等客户端朝向包到达）；截图冒烟：默认/玻璃 × 主页/类别页/工具页/设置窗口；UIA e2e 真窗口在设置里切主题 → 配置实时写入 + 两个窗口即时变样。版本号 0.24.0 → 0.25.0 |
+| v0.24.0 | **象棋棋盘朝向：执子方视角 + 观战自由选红/黑视角**（见 2.18）。① 坐席玩家棋盘**自动朝向自己**：执红红在下、执黑黑在下；只做坐标映射，棋子文字 / 楚河汉界 / 坐标始终正向（不转字）——不再受旧「自动翻转」开关控制（`XiangqiConfig.AutoFlip` 删除，旧配置里的字段读取时忽略）。② 坐席玩家不显示手动翻转按钮，棋盘下显示「视角：红/黑方在下（跟随你所执的一方）」；同机双人 / 离线保留手动「翻转棋盘」且刷新不重置。③ **观战者**（含不坐席位的房主）棋盘下新增「观战视角」下拉：红方视角（红在下）/ 黑方视角（黑在下），改完立即生效、存 `spectatorViewSide`（默认 red）下次还记得；视角只影响观战者自己，RefreshAll / 收状态包都不会重置；换座 / 被换下后自动重算。④ 演示开关 `YLT_XIANGQI_DEMO_SEAT=black`（房主执黑视角截图）/ `YLT_XIANGQI_DEMO_VIEW=red|black`（观战视角截图，不写配置）。⑤ 自检 1753 → **1775** 项（新增 22：视角配置默认/持久化/旧配置兼容、离线与同机手动翻转、真回环执红/执黑朝向、观战默认红与切黑、刷新不重置、房主不下场按观战视角、换座跟随）；文档 docs/tools/xiangqi.md 新增「棋盘朝向」一节。版本号 0.23.0 → 0.24.0 |
 | v0.23.0 | **棋牌多人房间：观战 + 房主安排上场 + 自动轮换**（见 2.18）。① 协议升 v2：房间不再固定两人——一个房间最多 **16 人**（房主 + 15 客户端），两个「上场位」上的人比赛、其余观战；`BoardRoomState`/`BoardMemberInfo`/`BoardStateEnvelope`（seq/room/game）+ `WrapState/ReadState`；成员有稳定 `MemberId`、进房顺序、上场次数；`hello` 带 MemberId、`welcome` 带 YourMemberId+State、`snapshot` 改 `state`。② `BoardRoomSession` 重写为多客户端：成员表 / 同 id 重连复用 / 30s 僵死连接顶替 / 容量拒绝 / 聊天主机中转 / 按 MemberId 单发请求与回应；握手顺序（登记成员 → MemberJoined → stateFactory → welcome）保证新成员 welcome 状态含全部成员。③ 基类 `BoardGameRoomViewModelBase` 重写：多人房间权威模型、两席安排/交换/清空、开始下一局/作废本局（二次确认）、请求路由（房主是玩家/裁判）、暂停（仅席上玩家掉线，观战掉线不暂停）、成员/身份派生属性；新增 `BoardRotationPlanner` 纯逻辑与 `BoardMemberItem`，新增共用 `RosterPanel`（上场安排 + 房间成员两张卡，成员列表/自动上场/补位方式/开始下一局）。④ **自动轮换**：手动 / 输的下场 / 双方都下场 × 轮流 / 随机补位（没上过场优先、平局与人不够有回退、Reason 中文说明）；一局结束自动加分并排好下一局席位，房主点「开始下一局」。⑤ 两个游戏 VM/View 迁移到新基类：身份与权限全部用 `LocalSide/IsSeatedPlayer/IsSpectator/ShowPlayerActions`，观战 VM 层硬拦截；开始按钮只在 RosterPanel；象棋房主视角不再显示「再来一局」；`YLT_BOARD_DEMO_ROOM=1|spectator` 演示 4 人房。⑥ 主动 bye 时序加固（客户端发 bye 后等 80ms 排空再关，避免被误判成网络断开）；开房第一帧房主成员行即显示「你」。⑦ 自检 1600 → **1753** 项（棋牌 560：注册 25 + 五子棋 92 + 五子棋 v2 8 + 象棋 141 + 象棋 v2 5 + 自动轮换 46 + 成员 13 + 配置 26 + 协议/端点/帧 61 + 多客户端会话 43 + 房间 VM 真回环 78 + 容量 6 + 关房 5 + 断网 6 + 连接失败 5）；截图冒烟：多人房间房主/观战视角、棋盘按钮、1280×820 与 1024×700。版本号 0.22.1 → 0.23.0 |
 | v0.22.1 | **最大化窗口拖标题栏 = 拖出来变窗口**（见 2.7）：① 以前最大化后标题栏完全拖不动（`Window.DragMove()` 对最大化窗口无效，代码里整段跳过），做不出「普通窗口按住标题栏拖出来就变回窗口」的手感；② 现在最大化时按住标题栏**先不还原**（记下按点 + 抓住鼠标），超过系统拖拽判定距离才把窗口按最大化前的大小还原 —— 只点一下 / 只抖几个像素不还原，和普通窗口一致；③ 还原位置抽成纯逻辑 `Core/Services/WindowDragRestore.cs`（水平按抓取点比例、竖直保持偏移，最后夹回工作区；`PointToScreen` 的物理像素要换算成 DIP），还原后再 `DragMove()` 继续原生拖动；④ 自检 1591 → **1600** 项（9 项还原位置断言：中间 / 靠右 / 边缘夹取 / 工作区偏移 / 尺寸过大过小 / 尺寸缺失兜底）；E2E 真窗口验证「点标题栏不还原 / 往外拖还原并跟随光标 / 双击最大化还原 / 最大化按钮正常」。版本号 0.22.0 → 0.22.1 |
 | v0.22.0 | **粒子自定义颜色**（见 2.16）：① 主页设置新增「粒子颜色」：总开关「启用自定义颜色」（默认关，保持原来的淡紫白）；颜色 1 / 颜色 2 各有一个启用勾选框 + 拾色按钮（预设色板 + 手填 `#RRGGBB`）；② 只启用一种 = 单色粒子；两种都启用 = 每颗粒子生成时用随机系数在两种颜色之间线性插值（RGB/A 各通道，柔光同色）；两种都不勾 = 回到默认颜色；③ 存 `Config\shell\config.json` 的 `particleCustomColors` / `particleColor1Enabled` / `particleColor2Enabled` / `particleColor1` / `particleColor2`；④ 新增 `ColorPickerButton` + `ColorToBrushConverter`、`ParticleColorRange`（纯逻辑插值）、`Particle.ColorMix`；画刷按颜色档 × 透明度档预生成，仍是每帧零分配；⑤ 自检 1582 → **1591** 项（随机 ColorMix / 插值 / 单色固定 / 颜色解析 / 配置落盘）；设置窗口 + 双色/单色粒子截图冒烟。版本号 0.21.0 → 0.22.0 |

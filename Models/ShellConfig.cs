@@ -1,3 +1,4 @@
+using YuLiangToolkit.App.Themes;
 using YuLiangToolkit.Core.Configuration;
 
 namespace YuLiangToolkit.App.Models;
@@ -48,6 +49,13 @@ public sealed class ShellConfig : ToolConfig
 
     /// <summary>是否在界面上绘制鼠标粒子效果（主页设置里的开关，默认开）。</summary>
     public bool ShowParticles { get; set; } = true;
+
+    /// <summary>
+    /// 界面主题（「主页设置 → 界面风格」，默认 <see cref="UiTheme.Default"/>）。
+    /// 选 <see cref="UiTheme.LiquidGlass"/> 切换成第二套 UI（液态玻璃）。
+    /// 旧配置文件没有这个字段时读出来就是默认值 —— 老用户升级后外观不变。
+    /// </summary>
+    public UiTheme UiTheme { get; set; } = UiTheme.Default;
 
     // ---------- 粒子颜色（v0.22.0，主页设置「粒子颜色」卡片） ----------
 

@@ -9,8 +9,8 @@
         MinWidth="1024" MinHeight="700"
         WindowStyle="None"
         ResizeMode="CanResize"
-        Background="{StaticResource WindowBackgroundBrush}"
-        Foreground="{StaticResource TextPrimaryBrush}"
+        Background="{DynamicResource WindowBackgroundBrush}"
+        Foreground="{DynamicResource TextPrimaryBrush}"
         FontFamily="Microsoft YaHei UI, Segoe UI"
         UseLayoutRounding="True"
         TextOptions.TextFormattingMode="Display"
@@ -32,8 +32,14 @@
             <RowDefinition x:Name="StatusRow" Height="Auto" />
         </Grid.RowDefinitions>
 
+        <!-- 液态玻璃主题的流动光晕背景（第二套 UI）：铺满整窗的最底层，不吃鼠标。
+             默认主题下 IsLiquidGlass=false → Collapsed，且控件会停掉动画（见 LiquidBackdrop.xaml.cs）；
+             标题栏/侧边栏/状态栏在玻璃主题里是半透明画刷，所以光晕能从它们后面透出来。 -->
+        <views:LiquidBackdrop Grid.RowSpan="4" Panel.ZIndex="-100"
+                              Visibility="{Binding IsLiquidGlass, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}" />
+
         <!-- 自定义标题栏（手动拖拽 + 双击最大化；最大化时按住拖出来会先还原成窗口） -->
-        <Border Grid.Row="0" Background="{StaticResource HeaderBackgroundBrush}"
+        <Border Grid.Row="0" Background="{DynamicResource HeaderBackgroundBrush}"
                 MouseLeftButtonDown="OnTitleBarMouseLeftDown"
                 MouseMove="OnTitleBarMouseMove"
                 MouseLeftButtonUp="OnTitleBarMouseLeftUp"
@@ -59,8 +65,8 @@
         </Border>
 
         <!-- 工具条：浏览器式「← 后退 / → 前进」+ 可点击分层面包屑（主页 > 类别 > … > 工具） -->
-        <Border Grid.Row="1" Background="{StaticResource HeaderBackgroundBrush}"
-                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,1" Padding="16,8">
+        <Border Grid.Row="1" Background="{DynamicResource HeaderBackgroundBrush}"
+                BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,1,0,1" Padding="16,8">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -95,7 +101,7 @@
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBlock Text="›" FontSize="14" Margin="8,0" VerticalAlignment="Center"
-                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
                                                Visibility="{Binding ShowSeparator, Converter={StaticResource BoolToVis}}" />
                                     <!-- 祖先层级：点一下跳回去 -->
                                     <Button Content="{Binding DisplayText}" Style="{StaticResource TagChipButtonStyle}"
@@ -103,11 +109,12 @@
                                             CommandParameter="{Binding}"
                                             Visibility="{Binding IsClickable, Converter={StaticResource BoolToVis}}" />
                                     <!-- 当前项：高亮、不可点 -->
-                                    <Border Background="#1D2735" BorderBrush="#2C3B52" BorderThickness="1"
+                                    <Border Background="{DynamicResource TagChipBackgroundBrush}"
+                                            BorderBrush="{DynamicResource TagChipBorderBrush}" BorderThickness="1"
                                             CornerRadius="11" Padding="10,4"
                                             Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVis}}">
                                         <TextBlock Text="{Binding DisplayText}" FontSize="11" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center" />
+                                                   Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
                                     </Border>
                                 </StackPanel>
                             </DataTemplate>
@@ -125,11 +132,11 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <Border Grid.Column="0" Background="{StaticResource SidebarBackgroundBrush}"
-                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
+            <Border Grid.Column="0" Background="{DynamicResource SidebarBackgroundBrush}"
+                    BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,0,1,0">
                 <DockPanel>
                     <TextBlock DockPanel.Dock="Top" Text="功能列表" FontSize="11"
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="22,16,0,8" />
+                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="22,16,0,8" />
                     <ListBox ItemsSource="{Binding NavItems}" SelectedItem="{Binding SelectedNavItem}"
                              Style="{StaticResource SidebarListStyle}">
                         <ListBox.ItemTemplate>
@@ -158,10 +165,15 @@
         </Grid>
 
         <!-- 状态栏 -->
-        <Border Grid.Row="3" Background="{StaticResource HeaderBackgroundBrush}"
-                BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Padding="20,7">
-            <TextBlock Text="{Binding StatusText}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+        <Border Grid.Row="3" Background="{DynamicResource HeaderBackgroundBrush}"
+                BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,1,0,0" Padding="20,7">
+            <TextBlock Text="{Binding StatusText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
         </Border>
+
+        <!-- 液态玻璃主题的整窗外圈 1px 玻璃边（默认主题的 token 是 Transparent = 完全不可见，
+             第一套 UI 外观不变）：让窗口和后面的桌面之间有清楚的“玻璃壳”边线。 -->
+        <Border Grid.RowSpan="4" Panel.ZIndex="890" IsHitTestVisible="False"
+                BorderBrush="{DynamicResource WindowEdgeBorderBrush}" BorderThickness="1" />
 
         <!-- 鼠标粒子覆盖层：铺满整个窗口（含标题栏 / 状态栏），不吃鼠标事件。
              IsActive 绑主页设置里的 ParticlesEnabled（默认开，存 Config\shell\config.json）；
