@@ -114,22 +114,68 @@ public sealed class KpsConfig : ToolConfig
         set => SetAndSave(ref _keyCounterColor, value);
     }
 
+    private bool _squareKeys = true;
+
+    /// <summary>
+    /// 正方形按键：键宽 = 键高（默认开，和 DmNote 默认的 60×60 方键观感一致）。
+    /// 关掉之后「键宽 / 键高」两个滑块可以分别调（做长条键 / 宽键）。
+    /// </summary>
+    public bool SquareKeys
+    {
+        get => _squareKeys;
+        set
+        {
+            if (!SetAndSave(ref _squareKeys, value)) return;
+            if (value) SyncKeyHeightToWidth();
+        }
+    }
+
     private double _keyWidth = 66;
 
-    /// <summary>按键宽度（DIP，不含倍数）。</summary>
+    /// <summary>按键宽度（DIP，不含倍数）。正方形模式下改它会同时改键高。</summary>
     public double KeyWidth
     {
         get => _keyWidth;
-        set => SetAndSave(ref _keyWidth, Math.Clamp(value, 24, 240));
+        set
+        {
+            var width = Math.Clamp(value, 24, 240);
+            if (!SetAndSave(ref _keyWidth, width)) return;
+            if (_squareKeys) SyncKeyHeightToWidth();
+        }
     }
 
-    private double _keyHeight = 74;
+    private double _keyHeight = 66;
 
-    /// <summary>按键高度（DIP）。</summary>
+    /// <summary>按键高度（DIP）。正方形模式下跟随键宽；关掉联动后才可以单独调。</summary>
     public double KeyHeight
     {
         get => _keyHeight;
-        set => SetAndSave(ref _keyHeight, Math.Clamp(value, 24, 240));
+        set
+        {
+            var height = Math.Clamp(value, 24, 240);
+            if (!SetAndSave(ref _keyHeight, height)) return;
+            if (_squareKeys && Math.Abs(_keyWidth - height) > 0.001)
+            {
+                SetAndSave(ref _keyWidth, height, nameof(KeyWidth));
+            }
+        }
+    }
+
+    /// <summary>把键高同步成键宽（正方形模式开 / 改键宽时调用）。</summary>
+    private void SyncKeyHeightToWidth()
+    {
+        if (Math.Abs(_keyHeight - _keyWidth) < 0.001) return;
+        SetAndSave(ref _keyHeight, _keyWidth, nameof(KeyHeight));
+    }
+
+    /// <summary>
+    /// 校正正方形联动（加载配置后由 ViewModel 调用一次）：
+    /// 老配置只有 keyWidth / keyHeight 两个字段、没有 squareKeys，读进来可能宽高不一致；
+    /// 这里以键宽为准拉成正方形（用户手改配置时也兜底）。
+    /// </summary>
+    public void EnforceSquareKeys()
+    {
+        if (_squareKeys) SyncKeyHeightToWidth();
     }
 
     private double _keyGap = 6;

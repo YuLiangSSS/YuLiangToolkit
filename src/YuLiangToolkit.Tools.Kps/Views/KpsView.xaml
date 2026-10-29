@@ -374,6 +374,10 @@
                         <TextBlock Margin="0,4,0,10" Style="{StaticResource CaptionText}"
                                    Text="下面的改动会同步到主界面预览和 Overlay；颜色格式 #AARRGGBB（前两位是透明度）。" />
 
+                        <CheckBox Content="正方形按键（键宽 = 键高，推荐）" IsChecked="{Binding Cfg.SquareKeys}"
+                                  Style="{StaticResource CheckBoxStyle}" Margin="0,0,0,6"
+                                  ToolTip="默认正方形，和 DmNote 默认的方键观感一致；取消勾选后可以单独调键宽 / 键高（做长条键 / 宽键）" />
+
                         <Grid Margin="0,4">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="86" />
@@ -394,7 +398,9 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="键高" Style="{StaticResource SettingLabel}" />
                             <Slider Grid.Column="1" Minimum="24" Maximum="140" Value="{Binding Cfg.KeyHeight}"
-                                    Style="{StaticResource SliderStyle}" />
+                                    Style="{StaticResource SliderStyle}"
+                                    IsEnabled="{Binding Cfg.SquareKeys, Converter={StaticResource InverseBoolConverter}}"
+                                    ToolTip="正方形模式下键高跟随键宽；取消「正方形按键」后才能单独调" />
                             <TextBlock Grid.Column="2" Text="{Binding Cfg.KeyHeight, StringFormat={}{0:0}}"
                                        Style="{StaticResource SettingValue}" />
                         </Grid>

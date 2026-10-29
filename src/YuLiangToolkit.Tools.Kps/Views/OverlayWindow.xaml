@@ -77,7 +77,7 @@
             <!-- ② 键位网格（与主界面预览共用 KeyGridView；整体显隐受 OverlayShowKeys 控制） -->
             <controls:KeyGridView LayoutRows="{Binding LayoutRows}"
                                   CellWidth="{Binding KeyWidth, FallbackValue=66}"
-                                  CellHeight="{Binding KeyHeight, FallbackValue=74}"
+                                  CellHeight="{Binding KeyHeight, FallbackValue=66}"
                                   Gap="{Binding KeyGap, FallbackValue=6}"
                                   CornerRadius="{Binding KeyCornerRadius, FallbackValue=10}"
                                   KeyFontSize="{Binding KeyFontSize, FallbackValue=22}"

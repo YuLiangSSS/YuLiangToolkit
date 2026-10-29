@@ -128,6 +128,9 @@ public sealed class KpsViewModel : ToolViewModelBase
         Cfg.CustomPresets ??= new List<KpsPreset>();
         Cfg.PresetLayouts ??= new Dictionary<string, List<KpsKeyRow>>();
         Cfg.SavedKeyCounters ??= new Dictionary<string, long>();
+
+        // 正方形按键：老配置没有 squareKeys 字段、宽高可能不一致，这里拉回正方形
+        Cfg.EnforceSquareKeys();
     }
 
     // ===================== 生命周期 =====================
@@ -1018,6 +1021,7 @@ public sealed class KpsViewModel : ToolViewModelBase
         nameof(KpsConfig.KeyIdleColor), nameof(KpsConfig.KeyPressedColor), nameof(KpsConfig.KeyBorderColor),
         nameof(KpsConfig.KeyTextColor), nameof(KpsConfig.KeyPressedTextColor), nameof(KpsConfig.KeyCounterColor),
         nameof(KpsConfig.KeyWidth), nameof(KpsConfig.KeyHeight), nameof(KpsConfig.KeyGap),
+        nameof(KpsConfig.SquareKeys),
         nameof(KpsConfig.KeyCornerRadius), nameof(KpsConfig.KeyFontSize), nameof(KpsConfig.CounterFontSize),
         nameof(KpsConfig.ShowKeyCounters),
         nameof(KpsConfig.EffectScale), nameof(KpsConfig.EffectGlow), nameof(KpsConfig.EffectFlash),

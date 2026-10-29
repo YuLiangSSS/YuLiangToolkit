@@ -426,6 +426,37 @@ public static class KpsChecks
             && defaults.GraphSeconds == 30
             && defaults.CustomPresets.Count == 0 && defaults.SavedKeyCounters.Count == 0);
 
+        // 正方形按键：默认宽高联动；关掉之后两个滑块才能独立调（KPS 工具「按键外观」里的开关）
+        var square = new KpsConfig();
+        C("正方形按键：默认开启且键宽 = 键高",
+            square.SquareKeys
+            && Math.Abs(square.KeyWidth - square.KeyHeight) < 0.001
+            && Math.Abs(square.KeyWidth - 66) < 0.001,
+            $"{square.KeyWidth:0} × {square.KeyHeight:0}");
+        square.KeyWidth = 88;
+        C("正方形按键：改键宽会自动把键高跟成正方形",
+            Math.Abs(square.KeyWidth - 88) < 0.001 && Math.Abs(square.KeyHeight - 88) < 0.001,
+            $"{square.KeyWidth:0} × {square.KeyHeight:0}");
+        square.SquareKeys = false;
+        square.KeyHeight = 120;
+        C("正方形按键：关掉联动后键宽 / 键高可以分别调",
+            Math.Abs(square.KeyWidth - 88) < 0.001 && Math.Abs(square.KeyHeight - 120) < 0.001,
+            $"{square.KeyWidth:0} × {square.KeyHeight:0}");
+        square.SquareKeys = true;
+        C("正方形按键：重新打开联动后立刻拉回正方形",
+            Math.Abs(square.KeyWidth - square.KeyHeight) < 0.001
+            && Math.Abs(square.KeyWidth - 88) < 0.001,
+            $"{square.KeyWidth:0} × {square.KeyHeight:0}");
+
+        var legacySquare = JsonSerializer.Deserialize<KpsConfig>(
+            """{"squareKeys":true,"keyWidth":72,"keyHeight":96}""", JsonFileStore.Options);
+        legacySquare?.EnforceSquareKeys();
+        C("正方形按键：读进宽高不一致的配置后仍是正方形",
+            legacySquare is not null
+            && Math.Abs(legacySquare.KeyWidth - legacySquare.KeyHeight) < 0.001
+            && legacySquare.KeyWidth > 24,
+            legacySquare is null ? "(反序列化失败)" : $"{legacySquare.KeyWidth:0} × {legacySquare.KeyHeight:0}");
+
         var config = new KpsConfig
         {
             ActivePresetId = "my-preset",
