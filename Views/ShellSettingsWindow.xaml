@@ -42,8 +42,10 @@
                 </Grid>
             </Border>
 
-            <!-- 设置内容 -->
-            <StackPanel Grid.Row="1" Margin="24,18,24,22">
+            <!-- 设置内容：窗口高度超过工作区时（小屏 / 高缩放比例）内容可以滚，
+                 不会把「完成」按钮挤出屏幕（最大高度由代码后置按 SystemParameters.WorkArea 夹住） -->
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="24,18,24,22">
                 <TextBlock Text="界面风格" FontSize="13" FontWeight="SemiBold"
                            Foreground="{DynamicResource AccentBrush}" />
                 <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
@@ -170,9 +172,10 @@
                 <TextBlock FontSize="11" Foreground="{DynamicResource FaintTextBrush}" TextWrapping="Wrap" Margin="0,14,0,0"
                            Text="主页设置只影响外壳本身（界面风格、粒子效果、关闭行为等）；各功能自己的选项在对应功能页面里。" />
 
-                <Button Content="完成" Style="{StaticResource PrimaryButtonStyle}"
-                        HorizontalAlignment="Right" Margin="0,18,0,0" Click="OnCloseClick" />
-            </StackPanel>
+                    <Button Content="完成" Style="{StaticResource PrimaryButtonStyle}"
+                            HorizontalAlignment="Right" Margin="0,18,0,0" Click="OnCloseClick" />
+                </StackPanel>
+            </ScrollViewer>
         </Grid>
     </Border>
 </Window>

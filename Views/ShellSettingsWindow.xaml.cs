@@ -30,6 +30,10 @@ public partial class ShellSettingsWindow : Window
     {
         InitializeComponent();
         PreviewKeyDown += OnPreviewKeyDown;
+
+        // 设置项多了「界面风格」一组之后，窗口在小屏 / 高 DPI 下会超过工作区高度：
+        // 按工作区夹一个最大高度，内容区是可滚动的 ScrollViewer（见 XAML），「完成」按钮不会被挤出屏幕。
+        MaxHeight = Math.Max(320, SystemParameters.WorkArea.Height - 40);
     }
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
