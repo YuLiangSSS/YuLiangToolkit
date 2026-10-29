@@ -1,21 +1,836 @@
 <UserControl x:Class="YuLiangToolkit.Tools.Kps.Views.KpsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="clr-namespace:YuLiangToolkit.Tools.Kps.ViewModels">
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="28,22,28,26">
-            <TextBlock Text="🎹 KPS 按键统计" FontSize="21" FontWeight="SemiBold" />
-            <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
-                       Text="实时 KPS / 每键计数 / 键位可视化 + 置顶透明 Overlay。功能灵感来自开源项目 DmNote（GPL-3.0），本实现为独立重写。" />
+             xmlns:controls="clr-namespace:YuLiangToolkit.Tools.Kps.Views.Controls">
 
-            <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
+    <UserControl.Resources>
+        <!-- 说明文字 -->
+        <Style x:Key="CaptionText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <!-- 卡片小标题 -->
+        <Style x:Key="CardTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <!-- 统计大数字 -->
+        <Style x:Key="StatValue" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="26" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+        </Style>
+
+        <!-- 设置行左侧标签 -->
+        <Style x:Key="SettingLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Width" Value="86" />
+        </Style>
+
+        <!-- 设置行数值 -->
+        <Style x:Key="SettingValue" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="MinWidth" Value="46" />
+            <Setter Property="TextAlignment" Value="Right" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="28,22,28,28">
+
+            <!-- ===================== 标题 + 主操作 ===================== -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
                 <StackPanel>
-                    <TextBlock Text="骨架页面（正在开发）" FontSize="13" FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding Cfg.FilePath}" FontSize="10.5" Margin="0,6,0,0"
-                               Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding StatusText}" FontSize="12" Margin="0,10,0,0" />
+                    <TextBlock Text="🎹 KPS 按键统计" FontSize="21" FontWeight="SemiBold" />
+                    <TextBlock Margin="0,5,0,0" MaxWidth="620" Style="{StaticResource CaptionText}"
+                               Text="实时 KPS / 每键计数器 / 键位可视化 + 置顶透明 Overlay；支持 4K~8K 预设、改键、单键图片、按下效果、音符效果、键音与全局热键。功能灵感来自开源项目 DmNote（独立重写，未复制其源码，详见页面底部）。" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                    <Button Content="{Binding ListeningButtonText}" Style="{StaticResource PrimaryButtonStyle}"
+                            Command="{Binding ToggleListeningCommand}" MinWidth="96" />
+                    <Button Content="显示 / 隐藏 Overlay" Style="{StaticResource PrimaryButtonStyle}" Margin="8,0,0,0"
+                            Command="{Binding ToggleOverlayCommand}"
+                            ToolTip="也可以按全局热键（默认 Ctrl+Shift+O）" />
+                    <Button Content="{Binding OverlayLockButtonText}" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                            Command="{Binding ToggleOverlayLockCommand}" />
+                    <Button Content="居中 Overlay" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                            Command="{Binding CenterOverlayCommand}" />
+                    <Button Content="重置统计" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                            Command="{Binding ResetStatsCommand}" />
+                </StackPanel>
+            </Grid>
+
+            <!-- ===================== 状态条 ===================== -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,14,0,0" Padding="16,12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="24" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="{Binding ListeningStatusText}" FontSize="12.5" />
+                        <TextBlock Text="{Binding HotkeyStatusText}" Margin="0,4,0,0" Style="{StaticResource CaptionText}" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="{Binding OverlayVisibleText}" VerticalAlignment="Center"
+                               FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Grid.Column="3" Text="{Binding StatusText}" VerticalAlignment="Center"
+                               FontSize="12" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" MaxWidth="300" />
+                </Grid>
+            </Border>
+
+            <!-- 捕获提示（改键 / 设置热键时） -->
+            <Border Margin="0,10,0,0" Padding="14,10" CornerRadius="8"
+                    Background="{DynamicResource InputBackgroundBrush}"
+                    Visibility="{Binding HasCaptureHint, Converter={StaticResource BoolToVis}}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding CaptureHintText}" VerticalAlignment="Center" FontSize="12.5" />
+                    <Button Grid.Column="1" Content="取消" Style="{StaticResource SecondaryButtonStyle}"
+                            Command="{Binding CancelCaptureKeyCommand}" />
+                </Grid>
+            </Border>
+
+            <!-- ===================== 统计 + 折线图 ===================== -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="180" />
+                        <ColumnDefinition Width="1" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="360" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel>
+                        <TextBlock Text="当前 KPS" Style="{StaticResource CaptionText}" />
+                        <TextBlock Text="{Binding KpsText}" FontSize="48" FontWeight="Bold" Margin="0,-6,0,0" />
+                        <TextBlock Text="{Binding DurationText, StringFormat=统计时长 {0}}" Style="{StaticResource CaptionText}" />
+                    </StackPanel>
+
+                    <Border Grid.Column="1" Width="1" Background="{DynamicResource SeparatorBrush}" Margin="0,4" />
+
+                    <Grid Grid.Column="2" Margin="18,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="峰值 KPS" Style="{StaticResource CaptionText}" />
+                            <TextBlock Text="{Binding PeakText}" Style="{StaticResource StatValue}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="平均 KPS" Style="{StaticResource CaptionText}" />
+                            <TextBlock Text="{Binding AverageText}" Style="{StaticResource StatValue}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="总按键数" Style="{StaticResource CaptionText}" />
+                            <TextBlock Text="{Binding TotalText}" Style="{StaticResource StatValue}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Grid.Column="3">
+                        <TextBlock Text="最近 KPS 折线" Style="{StaticResource CaptionText}" />
+                        <controls:KpsGraphView Height="96" Margin="0,6,0,0"
+                                               Values="{Binding GraphValues}" MaxValue="{Binding GraphMax}"
+                                               LineBrush="{DynamicResource AccentBrush}"
+                                               FillBrush="{DynamicResource AccentBrush}"
+                                               GridBrush="{DynamicResource SeparatorBrush}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ===================== 键位预览 + 编辑面板 ===================== -->
+            <Grid Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="470" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 左：预览 -->
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}">
+                    <StackPanel>
+                        <Grid>
+                            <StackPanel>
+                                <TextBlock Text="键位预览" Style="{StaticResource CardTitle}" />
+                                <TextBlock Text="点一个按键选中它，然后在右边改键 / 改文字 / 换图片。" Margin="0,4,0,0"
+                                           Style="{StaticResource CaptionText}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                                <TextBlock Text="预设" VerticalAlignment="Center" Margin="0,0,8,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+                                <ComboBox Width="210" ItemsSource="{Binding PresetOptions}" DisplayMemberPath="Label"
+                                          SelectedItem="{Binding SelectedPreset}" Style="{StaticResource ComboBoxStyle}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="10" Padding="22,26" Margin="0,12,0,0"
+                                MinHeight="150">
+                            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                                <controls:KeyGridView HorizontalAlignment="Center"
+                                                      LayoutRows="{Binding LayoutRows}"
+                                                      CellWidth="{Binding KeyWidth}"
+                                                      CellHeight="{Binding KeyHeight}"
+                                                      Gap="{Binding KeyGap}"
+                                                      CornerRadius="{Binding KeyCornerRadius}"
+                                                      KeyFontSize="{Binding KeyFontSize}"
+                                                      CounterFontSize="{Binding CounterFontSize}"
+                                                      ShowCounters="{Binding Cfg.ShowKeyCounters}"
+                                                      PressedScale="{Binding PressedScale}"
+                                                      GlowEnabled="{Binding GlowEnabled}"
+                                                      FlashEnabled="{Binding FlashEnabled}"
+                                                      EffectDurationMs="{Binding EffectDurationMs}"
+                                                      NoteEffectEnabled="{Binding NoteEffectEnabled}"
+                                                      NoteEffectColor="{Binding NoteEffectColor}"
+                                                      NoteEffectOpacity="{Binding NoteEffectOpacity}"
+                                                      NoteEffectDurationMs="{Binding NoteEffectDurationMs}"
+                                                      NoteEffectHeight="{Binding NoteEffectHeight}"
+                                                      NoteEffectReverse="{Binding NoteEffectReverse}"
+                                                      IsEditorMode="True"
+                                                      SelectedCell="{Binding SelectedCell}"
+                                                      CellClickCommand="{Binding SelectKeyCommand}" />
+                            </ScrollViewer>
+                        </Border>
+
+                        <WrapPanel Margin="0,12,0,0">
+                            <Button Content="添加行" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding AddRowCommand}" />
+                            <Button Content="添加按键" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding AddKeyCommand}" />
+                            <Button Content="删除按键" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding DeleteKeyCommand}" />
+                            <Button Content="← 左移" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding MoveKeyLeftCommand}" />
+                            <Button Content="右移 →" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding MoveKeyRightCommand}" />
+                            <Button Content="↑ 上移行" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding MoveRowUpCommand}" />
+                            <Button Content="↓ 下移行" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding MoveRowDownCommand}" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- 右：预设 / 选中按键 / 行列表 -->
+                <StackPanel Grid.Column="2">
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="预设" Style="{StaticResource CardTitle}" />
+                            <TextBlock Margin="0,4,0,10" Style="{StaticResource CaptionText}"
+                                       Text="内置 4K / 5K / 6K / 8K / 方向键；每套预设的布局改动会分别记住，也可以另存成自己的预设。" />
+                            <WrapPanel>
+                                <Button Content="恢复该预设默认布局" Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding ResetPresetLayoutCommand}" />
+                                <Button Content="删除当前预设" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                        Command="{Binding DeletePresetCommand}" />
+                            </WrapPanel>
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Text="{Binding NewPresetName, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource TextBoxStyle}" ToolTip="给你的预设起个名字（留空自动命名）" />
+                                <Button Grid.Column="1" Content="另存为预设" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="8,0,0,0" Command="{Binding SavePresetCommand}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="选中按键" Style="{StaticResource CardTitle}" />
+                            <TextBlock Text="{Binding SelectedCellText}" Margin="0,4,0,0" Style="{StaticResource CaptionText}" />
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Button Content="改键…" Style="{StaticResource PrimaryButtonStyle}"
+                                        Command="{Binding BeginCaptureKeyCommand}" />
+                                <TextBlock Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center" FontSize="12.5"
+                                           Text="{Binding SelectedPhysicalKeyText}" />
+                                <Button Grid.Column="2" Content="取消捕获" Style="{StaticResource SecondaryButtonStyle}"
+                                        HorizontalAlignment="Right" Command="{Binding CancelCaptureKeyCommand}"
+                                        Visibility="{Binding HasCaptureHint, Converter={StaticResource BoolToVis}}" />
+                            </Grid>
+
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="86" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="显示文字" Style="{StaticResource SettingLabel}" />
+                                <TextBox Grid.Column="1" Text="{Binding SelectedLabel, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource TextBoxStyle}" ToolTip="留空 = 自动显示键名" />
+                            </Grid>
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="86" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="宽度倍数" Style="{StaticResource SettingLabel}" />
+                                <Slider Grid.Column="1" Minimum="1" Maximum="4" TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding SelectedWidthUnitsValue}" Style="{StaticResource SliderStyle}"
+                                        ToolTip="空格键之类可以设 2~4 倍宽" />
+                                <TextBlock Grid.Column="2" Text="{Binding SelectedWidthUnits, StringFormat=×{0}}"
+                                           Style="{StaticResource SettingValue}" />
+                            </Grid>
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="86" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="按下颜色" Style="{StaticResource SettingLabel}" />
+                                <TextBox Grid.Column="1" Text="{Binding SelectedColorHex, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource TextBoxStyle}" ToolTip="留空 = 用全局按下颜色；格式 #AARRGGBB" />
+                            </Grid>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <CheckBox Content="启用这个键（关掉后布局里不占位）" IsChecked="{Binding SelectedEnabled}"
+                                          Style="{StaticResource CheckBoxStyle}" />
+                            </StackPanel>
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="86" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="按键图片" Style="{StaticResource SettingLabel}" />
+                                <Button Grid.Column="1" Content="选择图片…" Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding PickImageCommand}" />
+                                <Button Grid.Column="2" Content="清除" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="8,0,0,0" Command="{Binding ClearImageCommand}" />
+                                <TextBlock Grid.Column="3" Text="{Binding SelectedImageText}" Margin="10,0,0,0"
+                                           VerticalAlignment="Center" Style="{StaticResource CaptionText}"
+                                           TextTrimming="CharacterEllipsis" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="行列表" Style="{StaticResource CardTitle}" />
+                            <ItemsControl ItemsSource="{Binding LayoutRows}" Margin="0,6,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="62" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding DisplayName}" FontSize="12.5" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="1" Text="{Binding RowKeysText}" FontSize="12.5"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                            <Button Grid.Column="2" Content="删除行" Style="{StaticResource SecondaryButtonStyle}"
+                                                    Padding="10,3"
+                                                    Command="{Binding DataContext.DeleteRowCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+
+            <!-- ===================== 外观 / 按下效果 / 音符效果 ===================== -->
+            <Grid Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}">
+                    <StackPanel>
+                        <TextBlock Text="按键外观" Style="{StaticResource CardTitle}" />
+                        <TextBlock Margin="0,4,0,10" Style="{StaticResource CaptionText}"
+                                   Text="下面的改动会同步到主界面预览和 Overlay；颜色格式 #AARRGGBB（前两位是透明度）。" />
+
+                        <Grid Margin="0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="键宽" Style="{StaticResource SettingLabel}" />
+                            <Slider Grid.Column="1" Minimum="24" Maximum="140" Value="{Binding Cfg.KeyWidth}"
+                                    Style="{StaticResource SliderStyle}" />
+                            <TextBlock Grid.Column="2" Text="{Binding Cfg.KeyWidth, StringFormat={}{0:0}}"
+                                       Style="{StaticResource SettingValue}" />
+                        </Grid>
+                        <Grid Margin="0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="键高" Style="{StaticResource SettingLabel}" />
+                            <Slider Grid.Column="1" Minimum="24" Maximum="140" Value="{Binding Cfg.KeyHeight}"
+                                    Style="{StaticResource SliderStyle}" />
+                            <TextBlock Grid.Column="2" Text="{Binding Cfg.KeyHeight, StringFormat={}{0:0}}"
+                                       Style="{StaticResource SettingValue}" />
+                        </Grid>
+                        <Grid Margin="0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="间距" Style="{StaticResource SettingLabel}" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="24" Value="{Binding Cfg.KeyGap}"
+                                    Style="{StaticResource SliderStyle}" />
+                            <TextBlock Grid.Column="2" Text="{Binding Cfg.KeyGap, StringFormat={}{0:0}}"
+                                       Style="{StaticResource SettingValue}" />
+                        </Grid>
+                        <Grid Margin="0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="圆角" Style="{StaticResource SettingLabel}" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="30" Value="{Binding Cfg.KeyCornerRadius}"
+                                    Style="{StaticResource SliderStyle}" />
+                            <TextBlock Grid.Column="2" Text="{Binding Cfg.KeyCornerRadius, StringFormat={}{0:0}}"
+                                       Style="{StaticResource SettingValue}" />
+                        </Grid>
+                        <Grid Margin="0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="字号" Style="{StaticResource SettingLabel}" />
+                            <Slider Grid.Column="1" Minimum="8" Maximum="48" Value="{Binding Cfg.KeyFontSize}"
+                                    Style="{StaticResource SliderStyle}" />
+                            <TextBlock Grid.Column="2" Text="{Binding Cfg.KeyFontSize, StringFormat={}{0:0}}"
+                                       Style="{StaticResource SettingValue}" />
+                        </Grid>
+                        <Grid Margin="0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="计数字号" Style="{StaticResource SettingLabel}" />
+                            <Slider Grid.Column="1" Minimum="6" Maximum="24" Value="{Binding Cfg.CounterFontSize}"
+                                    Style="{StaticResource SliderStyle}" />
+                            <TextBlock Grid.Column="2" Text="{Binding Cfg.CounterFontSize, StringFormat={}{0:0}}"
+                                       Style="{StaticResource SettingValue}" />
+                        </Grid>
+
+                        <CheckBox Content="显示每键计数器（累计次数）" IsChecked="{Binding Cfg.ShowKeyCounters}"
+                                  Style="{StaticResource CheckBoxStyle}" Margin="0,10,0,0" />
+
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" Text="{Binding Cfg.KeyIdleColor, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource TextBoxStyle}" ToolTip="空闲背景色" />
+                            <TextBlock Grid.Column="1" Text="空闲底" Style="{StaticResource CaptionText}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                            <TextBox Grid.Column="3" Text="{Binding Cfg.KeyPressedColor, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource TextBoxStyle}" ToolTip="按下背景色" />
+                            <TextBlock Grid.Column="4" Text="按下底" Style="{StaticResource CaptionText}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" Text="{Binding Cfg.KeyTextColor, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource TextBoxStyle}" ToolTip="未按下文字色" />
+                            <TextBlock Grid.Column="1" Text="文字色" Style="{StaticResource CaptionText}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                            <TextBox Grid.Column="3" Text="{Binding Cfg.KeyPressedTextColor, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource TextBoxStyle}" ToolTip="按下文字色" />
+                            <TextBlock Grid.Column="4" Text="按下字" Style="{StaticResource CaptionText}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" Text="{Binding Cfg.KeyBorderColor, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource TextBoxStyle}" ToolTip="边框色" />
+                            <TextBlock Grid.Column="1" Text="边框色" Style="{StaticResource CaptionText}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                            <TextBox Grid.Column="3" Text="{Binding Cfg.KeyCounterColor, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource TextBoxStyle}" ToolTip="计数器文字色" />
+                            <TextBlock Grid.Column="4" Text="计数色" Style="{StaticResource CaptionText}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="2" Style="{StaticResource CardStyle}">
+                    <StackPanel>
+                        <TextBlock Text="按下效果 / 音符效果" Style="{StaticResource CardTitle}" />
+                        <TextBlock Margin="0,4,0,10" Style="{StaticResource CaptionText}"
+                                   Text="音符效果 = 按住按键时格子里有一道音符反复滑过（DmNote 的下落音符的简化版）。" />
+
+                        <StackPanel Orientation="Horizontal">
+                            <CheckBox Content="按下缩放" IsChecked="{Binding Cfg.EffectScale}" Style="{StaticResource CheckBoxStyle}" Margin="0,0,20,0" />
+                            <CheckBox Content="按下发光" IsChecked="{Binding Cfg.EffectGlow}" Style="{StaticResource CheckBoxStyle}" Margin="0,0,20,0" />
+                            <CheckBox Content="按下闪光" IsChecked="{Binding Cfg.EffectFlash}" Style="{StaticResource CheckBoxStyle}" />
+                        </StackPanel>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="动画时长" Style="{StaticResource SettingLabel}" />
+                            <Slider Grid.Column="1" Minimum="40" Maximum="300" Value="{Binding Cfg.EffectDurationMs}"
+                                    Style="{StaticResource SliderStyle}" />
+                            <TextBlock Grid.Column="2" Text="{Binding Cfg.EffectDurationMs, StringFormat={}{0:0} ms}"
+                                       Style="{StaticResource SettingValue}" MinWidth="66" />
+                        </Grid>
+
+                        <Separator Margin="0,12" Background="{DynamicResource SeparatorBrush}" />
+                        <CheckBox Content="启用音符效果" IsChecked="{Binding Cfg.NoteEffectEnabled}"
+                                  Style="{StaticResource CheckBoxStyle}" />
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="音符颜色" Style="{StaticResource SettingLabel}" />
+                            <TextBox Grid.Column="1" Text="{Binding Cfg.NoteEffectColor, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource TextBoxStyle}" ToolTip="#AARRGGBB" />
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="透明度" Style="{StaticResource SettingLabel}" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="1" SmallChange="0.05"
+                                    Value="{Binding Cfg.NoteEffectOpacity}" Style="{StaticResource SliderStyle}" />
+                            <TextBlock Grid.Column="2" Text="{Binding Cfg.NoteEffectOpacity, StringFormat={}{0:0.00}}"
+                                       Style="{StaticResource SettingValue}" />
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="滑过时间" Style="{StaticResource SettingLabel}" />
+                            <Slider Grid.Column="1" Minimum="150" Maximum="2000" Value="{Binding Cfg.NoteEffectDurationMs}"
+                                    Style="{StaticResource SliderStyle}" />
+                            <TextBlock Grid.Column="2" Text="{Binding Cfg.NoteEffectDurationMs, StringFormat={}{0:0} ms}"
+                                       Style="{StaticResource SettingValue}" MinWidth="66" />
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="音符高度" Style="{StaticResource SettingLabel}" />
+                            <Slider Grid.Column="1" Minimum="0.15" Maximum="0.9" SmallChange="0.05"
+                                    Value="{Binding Cfg.NoteEffectHeight}" Style="{StaticResource SliderStyle}" />
+                            <TextBlock Grid.Column="2" Text="{Binding Cfg.NoteEffectHeight, StringFormat={}{0:0.00}}"
+                                       Style="{StaticResource SettingValue}" />
+                        </Grid>
+                        <CheckBox Content="反向（从下往上滑）" IsChecked="{Binding Cfg.NoteEffectReverse}"
+                                  Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0" />
+
+                        <Separator Margin="0,12" Background="{DynamicResource SeparatorBrush}" />
+                        <TextBlock Text="统计口径" Style="{StaticResource CardTitle}" />
+                        <CheckBox Content="只统计当前布局里绑定的键" IsChecked="{Binding Cfg.CountOnlyBoundKeys}"
+                                  Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0" />
+                        <CheckBox Content="把每键计数保存到配置（重启后保留）" IsChecked="{Binding Cfg.PersistKeyCounters}"
+                                  Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0" />
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="折线时长" Style="{StaticResource SettingLabel}" />
+                            <Slider Grid.Column="1" Minimum="10" Maximum="120" Value="{Binding Cfg.GraphSeconds}"
+                                    Style="{StaticResource SliderStyle}" />
+                            <TextBlock Grid.Column="2" Text="{Binding Cfg.GraphSeconds, StringFormat={}{0:0} s}"
+                                       Style="{StaticResource SettingValue}" MinWidth="52" />
+                        </Grid>
+                        <TextBlock Margin="0,8,0,0" Style="{StaticResource CaptionText}"
+                                   Text="KPS = 最近 1 秒按下的次数；平均 KPS 只对「有过按键」的采样取平均（和 DmNote 一致）。" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- ===================== Overlay ===================== -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+                <StackPanel>
+                    <Grid>
+                        <StackPanel>
+                            <TextBlock Text="Overlay 窗口" Style="{StaticResource CardTitle}" />
+                            <TextBlock Margin="0,4,0,0" Style="{StaticResource CaptionText}"
+                                       Text="透明置顶窗口：默认锁定（鼠标点击穿透，打游戏点不到它）。按热键解锁后可直接拖动、滚轮缩放，位置会自动记住。" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
+                            <Button Content="{Binding OverlayVisibleText}" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding ToggleOverlayCommand}" />
+                            <Button Content="居中" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding CenterOverlayCommand}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0">
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="86" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="缩放" Style="{StaticResource SettingLabel}" />
+                                <Slider Grid.Column="1" Minimum="0.4" Maximum="3" SmallChange="0.05"
+                                        Value="{Binding Cfg.OverlayScale}" Style="{StaticResource SliderStyle}" />
+                                <TextBlock Grid.Column="2" Text="{Binding Cfg.OverlayScale, StringFormat={}{0:0.00}×}"
+                                           Style="{StaticResource SettingValue}" />
+                            </Grid>
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="86" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="不透明度" Style="{StaticResource SettingLabel}" />
+                                <Slider Grid.Column="1" Minimum="0.1" Maximum="1" SmallChange="0.05"
+                                        Value="{Binding Cfg.OverlayOpacity}" Style="{StaticResource SliderStyle}" />
+                                <TextBlock Grid.Column="2" Text="{Binding Cfg.OverlayOpacity, StringFormat={}{0:0.00}}"
+                                           Style="{StaticResource SettingValue}" />
+                            </Grid>
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="86" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="背景色" Style="{StaticResource SettingLabel}" />
+                                <TextBox Grid.Column="1" Text="{Binding Cfg.OverlayBackgroundColor, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource TextBoxStyle}"
+                                         ToolTip="默认 #00000000 = 全透明；可填 #AARRGGBB 半透明底板" />
+                            </Grid>
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="86" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="缩放基准" Style="{StaticResource SettingLabel}" />
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding ScaleAnchorOptions}" DisplayMemberPath="Label"
+                                          SelectedItem="{Binding SelectedScaleAnchor}" Style="{StaticResource ComboBoxStyle}" />
+                            </Grid>
+                            <CheckBox Content="始终置顶" IsChecked="{Binding Cfg.OverlayTopmost}"
+                                      Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="Overlay 上显示哪些内容" Style="{StaticResource CardTitle}" />
+                            <WrapPanel Margin="0,8,0,0">
+                                <CheckBox Content="当前 KPS" IsChecked="{Binding Cfg.OverlayShowKps}" Style="{StaticResource CheckBoxStyle}" Margin="0,0,18,8" />
+                                <CheckBox Content="键位格子" IsChecked="{Binding Cfg.OverlayShowKeys}" Style="{StaticResource CheckBoxStyle}" Margin="0,0,18,8" />
+                                <CheckBox Content="总按键数" IsChecked="{Binding Cfg.OverlayShowTotal}" Style="{StaticResource CheckBoxStyle}" Margin="0,0,18,8" />
+                                <CheckBox Content="峰值 KPS" IsChecked="{Binding Cfg.OverlayShowPeak}" Style="{StaticResource CheckBoxStyle}" Margin="0,0,18,8" />
+                                <CheckBox Content="平均 KPS" IsChecked="{Binding Cfg.OverlayShowAverage}" Style="{StaticResource CheckBoxStyle}" Margin="0,0,18,8" />
+                                <CheckBox Content="KPS 折线图" IsChecked="{Binding Cfg.OverlayShowGraph}" Style="{StaticResource CheckBoxStyle}" Margin="0,0,18,8" />
+                                <CheckBox Content="每键计数器" IsChecked="{Binding Cfg.OverlayShowCounters}" Style="{StaticResource CheckBoxStyle}" Margin="0,0,18,8" />
+                            </WrapPanel>
+                            <TextBlock Margin="0,8,0,0" Style="{StaticResource CaptionText}"
+                                       Text="提示：独占全屏（Exclusive Fullscreen）游戏会盖住一切置顶窗口 —— 请改用无边框窗口 / 窗口化；本工具没有做 OBS 浏览器源（按需求不包含直播插件部分）。" />
+                        </StackPanel>
+                    </Grid>
                 </StackPanel>
             </Border>
+
+            <!-- ===================== 热键 + 键音 ===================== -->
+            <Grid Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}">
+                    <StackPanel>
+                        <TextBlock Text="全局热键" Style="{StaticResource CardTitle}" />
+                        <TextBlock Margin="0,4,0,10" Style="{StaticResource CaptionText}"
+                                   Text="热键在游戏里也生效。点「设置」后按下组合键（至少一个 Ctrl / Alt / Shift / Win 修饰键）；留空 = 不注册。" />
+
+                        <Grid Margin="0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="显示/隐藏 Overlay" Style="{StaticResource SettingLabel}" Width="130" />
+                            <TextBox Grid.Column="1" IsReadOnly="True" Text="{Binding Cfg.HotkeyToggleOverlay}"
+                                     Style="{StaticResource TextBoxStyle}" />
+                            <Button Grid.Column="2" Content="设置…" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding SetHotkeyCommand}" CommandParameter="overlay" />
+                            <Button Grid.Column="3" Content="清除" Style="{StaticResource SecondaryButtonStyle}" Margin="6,0,0,0"
+                                    Command="{Binding ClearHotkeyCommand}" CommandParameter="overlay" />
+                        </Grid>
+                        <Grid Margin="0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="锁定/解锁 Overlay" Style="{StaticResource SettingLabel}" Width="130" />
+                            <TextBox Grid.Column="1" IsReadOnly="True" Text="{Binding Cfg.HotkeyToggleLock}"
+                                     Style="{StaticResource TextBoxStyle}" />
+                            <Button Grid.Column="2" Content="设置…" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding SetHotkeyCommand}" CommandParameter="lock" />
+                            <Button Grid.Column="3" Content="清除" Style="{StaticResource SecondaryButtonStyle}" Margin="6,0,0,0"
+                                    Command="{Binding ClearHotkeyCommand}" CommandParameter="lock" />
+                        </Grid>
+                        <Grid Margin="0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="重置统计" Style="{StaticResource SettingLabel}" Width="130" />
+                            <TextBox Grid.Column="1" IsReadOnly="True" Text="{Binding Cfg.HotkeyResetStats}"
+                                     Style="{StaticResource TextBoxStyle}" />
+                            <Button Grid.Column="2" Content="设置…" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding SetHotkeyCommand}" CommandParameter="reset" />
+                            <Button Grid.Column="3" Content="清除" Style="{StaticResource SecondaryButtonStyle}" Margin="6,0,0,0"
+                                    Command="{Binding ClearHotkeyCommand}" CommandParameter="reset" />
+                        </Grid>
+                        <Grid Margin="0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="暂停/继续监听" Style="{StaticResource SettingLabel}" Width="130" />
+                            <TextBox Grid.Column="1" IsReadOnly="True" Text="{Binding Cfg.HotkeyToggleListening}"
+                                     Style="{StaticResource TextBoxStyle}" />
+                            <Button Grid.Column="2" Content="设置…" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding SetHotkeyCommand}" CommandParameter="listen" />
+                            <Button Grid.Column="3" Content="清除" Style="{StaticResource SecondaryButtonStyle}" Margin="6,0,0,0"
+                                    Command="{Binding ClearHotkeyCommand}" CommandParameter="listen" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="2" Style="{StaticResource CardStyle}">
+                    <StackPanel>
+                        <TextBlock Text="键音" Style="{StaticResource CardTitle}" />
+                        <TextBlock Margin="0,4,0,10" Style="{StaticResource CaptionText}"
+                                   Text="按下按键时播放声音（DmNote 键音的简化版）：不选文件时用内置合成点击声；自定义只支持 WAV。" />
+                        <CheckBox Content="启用键音" IsChecked="{Binding Cfg.KeySoundEnabled}"
+                                  Style="{StaticResource CheckBoxStyle}" />
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="音量" Style="{StaticResource SettingLabel}" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding Cfg.KeySoundVolume}"
+                                    Style="{StaticResource SliderStyle}" />
+                            <TextBlock Grid.Column="2" Text="{Binding Cfg.KeySoundVolume, StringFormat={}{0:0}}"
+                                       Style="{StaticResource SettingValue}" />
+                        </Grid>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="音效文件" Style="{StaticResource SettingLabel}" />
+                            <TextBox Grid.Column="1" IsReadOnly="True" Text="{Binding Cfg.KeySoundPath}"
+                                     Style="{StaticResource TextBoxStyle}" ToolTip="空 = 内置合成点击声" />
+                        </Grid>
+                        <WrapPanel Margin="0,10,0,0">
+                            <Button Content="选择 WAV…" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding BrowseSoundCommand}" />
+                            <Button Content="清除" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding ClearSoundCommand}" />
+                            <Button Content="试听" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding TestSoundCommand}" />
+                        </WrapPanel>
+                        <TextBlock Margin="0,10,0,0" Style="{StaticResource CaptionText}"
+                                   Text="提示：键音走系统音频（延迟比 ASIO 高），只适合当反馈音；本项目不引第三方包，没有 ASIO 输出。" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- ===================== 来源 / 数据位置 ===================== -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+                <StackPanel>
+                    <TextBlock Text="来源与说明" Style="{StaticResource CardTitle}" />
+                    <TextBlock Margin="0,6,0,0" Style="{StaticResource CaptionText}"
+                               Text="本工具的功能设计参考（致敬）开源项目 DmNote：https://github.com/DmNote-App/DmNote （GPL-3.0）。YuLiangToolkit 里的这个实现是针对 WPF 的独立重写：没有复制 DmNote 的源码，只复刻了它公开的功能行为（KPS 统计口径、键位显示、Overlay 等）。" />
+                    <TextBlock Margin="0,6,0,0" Style="{StaticResource CaptionText}"
+                               Text="按需求未实现「直播插件相关」部分：OBS 浏览器源 / OBS 模式、JS 插件、自定义 CSS、自动更新、多语言。键位布局是简化的按行排列（不是 DmNote 的自由画布）。" />
+                    <TextBlock Margin="0,6,0,0" Style="{StaticResource CaptionText}"
+                               Text="数据目录（按键图片等）与配置目录都在程序 exe 旁边；改选项会自动保存，不用点保存。" />
+                    <WrapPanel Margin="0,12,0,0">
+                        <Button Content="打开 DmNote 项目主页" Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding OpenSourceCommand}" />
+                        <Button Content="打开数据文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                Command="{Binding OpenDataFolderCommand}" />
+                        <Button Content="打开配置文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                Command="{Binding OpenConfigFolderCommand}" />
+                    </WrapPanel>
+                    <TextBlock Margin="0,8,0,0" Style="{StaticResource CaptionText}" Text="{Binding StoragePathText}" />
+                    <TextBlock Margin="0,2,0,0" Style="{StaticResource CaptionText}" Text="{Binding ConfigPathText}" />
+                </StackPanel>
+            </Border>
+
         </StackPanel>
     </ScrollViewer>
 </UserControl>

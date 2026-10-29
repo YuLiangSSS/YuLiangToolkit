@@ -5,6 +5,15 @@
 
 仓库里还包含 / 依赖以下第三方作品，它们**遵循各自的许可**（不因本项目的 Unlicense 而改变）：
 
+## DmNote（仅功能设计参考，不含源码）
+
+- 位置：`src/YuLiangToolkit.Tools.Kps/`（KPS 按键统计）
+- 来源：<https://github.com/DmNote-App/DmNote>
+- 许可：GPL-3.0，Copyright (C) 2024 DM NOTE
+- 说明：本项目里的 KPS 工具只参考了 DmNote 公开的功能行为与统计口径（KPS 1 秒滑动窗口、
+  平均 KPS 只算有按键的采样、计数器持久化等），**没有复制、移植或包含其任何源码**，实现为独立重写；
+  因此本项目不继承 GPL-3.0，该工具仍按 Unlicense 发布。详见 [docs/tools/kps.md](docs/tools/kps.md#来源与致谢)。
+
 ## OsuParsers 1.7.2（NuGet 依赖）
 
 - 用途：osu!mania 三件套（Key 转换 / LN 转换 / 等级计算）读写 `.osu` 谱面文件

@@ -1,4 +1,4 @@
-﻿# YuLiangToolkit（凉雨工具集|自用小工具）99.99% AI Coding
+# YuLiangToolkit（凉雨工具集|自用小工具）99.99% AI Coding
 
 一个可扩展的 WPF 工具集应用：主页是工具卡片墙（**搜索 / 排序 / 标签**），左侧导航自动列出所有已发现的工具。
 功能多了会按类别收进**类别页**（支持任意层级分类，顶部是可点击的面包屑 `主页 › 音游工具 › 工具名`）；
@@ -23,12 +23,13 @@
 | [**🎹 osu! Key 转换器**](docs/tools/osu-key-converter.md) | 把低键数 mania 谱面「复制列 / 插空白列」加成高键数（2~10 可选），支持批量 |
 | [**🍜 osu! LN 转换器**](docs/tools/osu-ln-transformer.md) | 按 14 档强度把普通键改成 LN（长条），可选保留原 LN / 修尾巴误差 |
 | [**⭐ osu! 等级计算器**](docs/tools/osu-level-calculator.md) | 拖入 mania 谱面算星数与等级，批量表格；**等级按 8K 谱面拟合（只对 8K 有参考意义）**，SR（xxy rating）通用 |
+| [**🎹 KPS 按键统计**](docs/tools/kps.md) | 实时 KPS / 峰值 / 平均 + 每键计数器 + 键位可视化 + **透明置顶 Overlay**（可锁定点击穿透 / 拖动 / 滚轮缩放）；4K~8K 预设、改键、单键图片、音符效果、键音、全局热键（功能灵感来源 DmNote，独立重写） |
 | [**⚫ 联机五子棋**](docs/tools/gomoku.md) | 开 TCP 房间联机下五子棋：**最多 16 人多人观战 + 房主安排上场 / 自动轮换**、可选禁手（三三 / 四四 / 长连）、悔棋、聊天、同机双人 |
 | [**🀄 联机象棋**](docs/tools/xiangqi.md) | 开 TCP 房间联机下中国象棋：**多人观战 + 房主安排上场 / 自动轮换**、自由摆棋 + 一键默认开局、让子 / 让先、中文记谱 |
 | [**🧪 框架示例**](docs/tools/sample-framework.md) | 开发用模板（Data / Config 轮子演示，可整目录删除） |
 
 > 🎵 **音游工具**是主页上的一个分类：点「音游工具」类别卡片进类别页，再点工具卡片打开；
-> 顶部的面包屑（`主页 › 音游工具 › 工具名`）每一层都能点回去。osu! 相关的四个工具都收在这个分类里。
+> 顶部的面包屑（`主页 › 音游工具 › 工具名`）每一层都能点回去。osu! 相关的四个工具和「KPS 按键统计」都收在这个分类里。
 >
 > 🎲 **棋牌**也是主页上的一个分类：联机五子棋与联机象棋都收在里面。一个房间最多 16 人，
 > 两人上场、其余观战；房主安排谁上场，也可以开自动轮换（输的下场 / 双方都下场）。
@@ -102,6 +103,7 @@ src/
 ├── YuLiangToolkit.Tools.MapDownloader/  # 功能：osu! 下图器（搜谱面集 + 批量下 .osz）
 ├── YuLiangToolkit.Tools.OsuMania/       # 功能：音游工具（osu! Key 转换器 / LN 转换器 / 等级计算器）
 ├── YuLiangToolkit.Tools.BoardGames/     # 功能：棋牌（联机五子棋 / 联机象棋 + 房间联机底座）
+├── YuLiangToolkit.Tools.Kps/            # 功能：KPS 按键统计（Raw Input 全局输入 + KPS 统计 + 置顶透明 Overlay + 全局热键）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
 tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（1859 项行为逐条验证）
 ```

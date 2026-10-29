@@ -38,5 +38,11 @@ public sealed class KpsTool : ITool
     public int Order => 150;
 
     public FrameworkElement CreateView()
-        => new KpsView { DataContext = new KpsViewModel() };
+    {
+        // 监听 / 统计 / Overlay 归会话管：页面重开时复用同一个 ViewModel（统计与 Overlay 不断）
+        var session = KpsSession.Current;
+        var viewModel = session.EnsureViewModel();
+        session.Activate(viewModel);
+        return new KpsView { DataContext = viewModel };
+    }
 }

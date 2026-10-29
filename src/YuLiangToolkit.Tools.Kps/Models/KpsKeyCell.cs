@@ -195,10 +195,24 @@ public sealed class KpsKeyCell : ObservableObject
 /// <summary>界面上一行按键的运行时视图模型（主界面预览与 Overlay 共用）。</summary>
 public sealed class KpsRowView
 {
-    public KpsRowView(IReadOnlyList<KpsKeyCell> cells)
+    public KpsRowView(KpsKeyRow model, int rowIndex, IReadOnlyList<KpsKeyCell> cells)
     {
+        Model = model;
+        RowIndex = rowIndex;
         Cells = cells;
     }
+
+    /// <summary>对应的可序列化配置行（编辑 / 删除行时定位用）。</summary>
+    public KpsKeyRow Model { get; }
+
+    /// <summary>行号（从 0 开始，界面显示「第 N 行」用）。</summary>
+    public int RowIndex { get; }
+
+    /// <summary>界面显示名（例如「第 2 行」）。</summary>
+    public string DisplayName => $"第 {RowIndex + 1} 行";
+
+    /// <summary>这一行按键的文字摘要（例如「D F J K」）。</summary>
+    public string RowKeysText => string.Join("  ", Cells.Select(cell => cell.Label));
 
     public IReadOnlyList<KpsKeyCell> Cells { get; }
 }
