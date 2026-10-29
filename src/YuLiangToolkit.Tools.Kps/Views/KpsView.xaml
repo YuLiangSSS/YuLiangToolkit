@@ -233,7 +233,7 @@
                         <StackPanel>
                             <TextBlock Text="预设" Style="{StaticResource CardTitle}" />
                             <TextBlock Margin="0,4,0,10" Style="{StaticResource CaptionText}"
-                                       Text="内置 4K / 5K / 6K / 8K / 方向键；每套预设的布局改动会分别记住，也可以另存成自己的预设。" />
+                                       Text="内置 4K / 5K / 6K / 8K / 方向键 / 4K+侧键 / 8K+侧键（共 7 套）；每套预设的布局改动会分别记住，也可以另存成自己的预设。" />
                             <WrapPanel>
                                 <Button Content="恢复该预设默认布局" Style="{StaticResource SecondaryButtonStyle}"
                                         Command="{Binding ResetPresetLayoutCommand}" />

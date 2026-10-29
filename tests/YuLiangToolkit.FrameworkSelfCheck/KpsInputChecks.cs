@@ -324,12 +324,13 @@ public static class KpsInputChecks
                     return;
                 }
 
-                var gotDown = PumpUntil(dispatcher, () => downs.Count > 0, 2000);
+                var gotDown = PumpUntil(dispatcher, () => downs.Contains(VkF24), 2000);
                 C("Raw Input 收到 KeyDown（VK_F24=0x87）",
-                    gotDown && downs[0] == VkF24,
+                    gotDown && downs.Contains(VkF24),
                     gotDown
-                        ? $"VirtualKey=0x{downs[0]:X2}"
-                        : $"2 秒内没收到 KeyDown（后端={keyboard.BackendName}，LastError={keyboard.LastError ?? "(空)"}）");
+                        ? $"收到 F24（全部 KeyDown：{DescribeKeys(downs)}）"
+                        : $"2 秒内没收到 F24 KeyDown（全部 KeyDown：{DescribeKeys(downs)}；" +
+                          $"后端={keyboard.BackendName}，LastError={keyboard.LastError ?? "(空)"}）");
                 C("Raw Input 按下集合包含 F24", keyboard.PressedKeys.Contains(VkF24),
                     string.Join(",", keyboard.PressedKeys.Select(k => $"0x{k:X2}")));
 
@@ -341,14 +342,18 @@ public static class KpsInputChecks
                     return;
                 }
 
-                var gotUp = PumpUntil(dispatcher, () => ups.Count > 0, 2000);
+                var gotUp = PumpUntil(dispatcher, () => ups.Contains(VkF24), 2000);
                 C("Raw Input 收到 KeyUp（VK_F24=0x87）",
-                    gotUp && ups[0] == VkF24,
-                    gotUp ? $"VirtualKey=0x{ups[0]:X2}" : "2 秒内没收到 KeyUp");
+                    gotUp && ups.Contains(VkF24),
+                    gotUp ? $"收到 F24（全部 KeyUp：{DescribeKeys(ups)}）"
+                          : $"2 秒内没收到 F24 KeyUp（全部 KeyUp：{DescribeKeys(ups)}）");
                 C("Raw Input 抬起后按下集合移除 F24", !keyboard.PressedKeys.Contains(VkF24),
                     string.Join(",", keyboard.PressedKeys.Select(k => $"0x{k:X2}")));
 
                 // ---- 长按去重：连续两次 KeyDown + 一次 KeyUp，只应各算一次 ----
+                // 先把队列里可能残留的事件泵干净再清空计数（上一阶段的 WM_INPUT 可能延迟到达）；
+                // 断言只统计 F24：自检并不独占系统输入，其它程序/自动化可能同时按别的键。
+                PumpFor(dispatcher, 200);
                 downs.Clear();
                 ups.Clear();
                 InjectKey(VkF24, keyUp: false);
@@ -356,8 +361,12 @@ public static class KpsInputChecks
                 InjectKey(VkF24, keyUp: true);
                 PumpFor(dispatcher, 700);
 
-                C("Raw Input 长按重复按下只算一次", downs.Count == 1, $"KeyDown 次数={downs.Count}");
-                C("Raw Input 长按抬起算一次", ups.Count == 1, $"KeyUp 次数={ups.Count}");
+                var f24Downs = downs.Count(vk => vk == VkF24);
+                var f24Ups = ups.Count(vk => vk == VkF24);
+                C("Raw Input 长按重复按下只算一次", f24Downs == 1,
+                    $"F24 KeyDown={f24Downs}（全部 KeyDown={downs.Count}：{DescribeKeys(downs)}）");
+                C("Raw Input 长按抬起算一次", f24Ups == 1,
+                    $"F24 KeyUp={f24Ups}（全部 KeyUp={ups.Count}：{DescribeKeys(ups)}）");
 
                 // ---- 停止 ----
                 keyboard.Stop();
@@ -365,19 +374,31 @@ public static class KpsInputChecks
                 C("Raw Input Stop 后后端名复位", keyboard.BackendName == "未启动", keyboard.BackendName);
                 C("Raw Input Stop 可重复调用", DoesNotThrow(keyboard.Stop));
 
+                PumpFor(dispatcher, 100);
                 downs.Clear();
                 ups.Clear();
                 InjectKey(VkF24, keyUp: false);
                 InjectKey(VkF24, keyUp: true);
                 PumpFor(dispatcher, 500);
-                C("Raw Input Stop 后不再上报事件", downs.Count == 0 && ups.Count == 0,
-                    $"KeyDown={downs.Count}，KeyUp={ups.Count}");
+                C("Raw Input Stop 后不再上报 F24 事件",
+                    downs.All(vk => vk != VkF24) && ups.All(vk => vk != VkF24),
+                    $"F24 KeyDown={downs.Count(vk => vk == VkF24)}，F24 KeyUp={ups.Count(vk => vk == VkF24)}" +
+                    $"（全部 KeyDown={downs.Count}：{DescribeKeys(downs)}）");
             }
             finally
             {
+                // 兜底松开 F24：避免测试异常时把系统键状态留在「按下」，后续运行会收到自动重复
+                try { InjectKey(VkF24, keyUp: true); } catch { /* 释放失败不抛 */ }
                 keyboard.Stop();
             }
         }, c);
+    }
+
+    /// <summary>把事件里的键码拼成可读文本（自检失败时排查「哪个键混进来了」）。</summary>
+    private static string DescribeKeys(IEnumerable<int> virtualKeys)
+    {
+        var names = virtualKeys.Select(vk => $"{KeyNames.Display(vk)}(0x{vk:X2})").ToArray();
+        return names.Length == 0 ? "(空)" : string.Join(", ", names);
     }
 
     private static bool InjectKey(int virtualKey, bool keyUp)

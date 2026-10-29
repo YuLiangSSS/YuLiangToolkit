@@ -56,6 +56,22 @@
 - 横向右→左：图片物理倒序、阅读偏移 = `ScrollableWidth − HorizontalOffset`（与物理偏移互为反数）；别用 `FlowDirection`。
 - 缩放后两轴都可能能滚：图片宽高必须都显式给，否则另一轴拖不动。
 
+### KPS 按键统计
+- 监听 / 统计 / Overlay 在 `KpsSession`（进程单例）里，工具页只是设置面板：切走页面时 Overlay 还开着就继续跑；
+  页面关 + Overlay 关才 `SuspendAll`。ViewModel 由会话持有并在重开时复用（`Activate` 里补 `NotifyOpened`），
+  别在 `OnClosed` 里把会话/统计 Dispose 掉。
+- ⚠ 同进程注册 Raw Input **不要加 `RIDEV_NOLEGACY`**：那会吞掉 WPF 自己的传统键盘消息（文本框打不了字）。
+  DmNote 能加是因为键盘监听跑在独立 daemon 进程里。
+- ⚠ Overlay 是独立置顶窗口：主窗口关闭时必须由会话的 `Shutdown` 关掉它，否则「最后一个窗口关闭」永远不成立、
+  进程退不掉（已在 `MainWindow.Closed` / `Application.Exit` 兜底）。改窗口生命周期先想这条。
+- 统计口径：峰值只在 50ms `Tick()` 采样更新、平均只算 `kps>0` 的采样；UI 定时器必须 **50ms Tick + 10Hz 刷新**，
+  别随帧率调 `Tick()`（口径会变），也别每按键 LINQ 全量扫。
+- 计数器持久化：会话计数在 `SuspendAll` / 退出时并入 `Config.SavedKeyCounters` 再 `Reset` 引擎；不要每按一键写配置。
+- 自检的 Raw Input 断言要**过滤目标 VK**（`VK_F24`）：自检跑的时候用户/别的程序可能按别的键，只断言
+  「收到 F24 / F24 只算一次」，否则会偶发失败（已踩过）。
+- 调试开关：`YLT_KPS_DEMO=1` 造假统计（截图冒烟）、`YLT_KPS_SHOT_OVERLAY=<png>` 把 Overlay 渲染成 PNG 后退出，
+  用法同 `YLT_SHOT`（见 AGENTS.md）。
+
 ### 液态玻璃主题
 - ⚠ 改 token 三处一起改：两套字典 + `ThemeManager.RequiredTokenKeys`（几何 key 在 `RequiredRadiusKeys`）；少一个静默退回控件默认值。
 - 启动在 `new MainWindow()` 之前 `ThemeManager.Apply`；⚠ Storyboard 的 `TargetName` 必须同一命名域（写错启动崩）。
