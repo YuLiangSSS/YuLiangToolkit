@@ -37,7 +37,7 @@
                                      ToolTip="从 Spug 控制台复制完整调用地址，例如 https://push.spug.cc/sms/你的模板编码" />
                             <TextBlock Text="https://push.spug.cc/sms/模板编码" IsHitTestVisible="False"
                                        Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
-                                       Visibility="{Binding Cfg.SmsUrl, Converter={StaticResource EmptyToVis}}" />
+                                       Visibility="{Binding Text, ElementName=SmsUrlBox, Converter={StaticResource EmptyToVis}}" />
                         </Grid>
 
                         <Grid Margin="0,12,0,0">
@@ -51,7 +51,7 @@
                                          Style="{StaticResource TextBoxStyle}" ToolTip="接收短信的手机号（11 位，接口的 to 参数）" />
                                 <TextBlock Text="例如 13800138000" IsHitTestVisible="False"
                                            Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
-                                           Visibility="{Binding Cfg.Phone, Converter={StaticResource EmptyToVis}}" />
+                                           Visibility="{Binding Text, ElementName=PhoneBox, Converter={StaticResource EmptyToVis}}" />
                             </Grid>
                         </Grid>
 
@@ -67,7 +67,7 @@
                                          ToolTip="模板含 ${number} 时必填（有效分钟数）；模板只含 ${code} 时留空则不传 number" />
                                 <TextBlock Text="模板只含 ${code} 可留空" IsHitTestVisible="False"
                                            Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
-                                           Visibility="{Binding Cfg.SmsMinutes, Converter={StaticResource EmptyToVis}}" />
+                                           Visibility="{Binding Text, ElementName=SmsMinutesBox, Converter={StaticResource EmptyToVis}}" />
                             </Grid>
                         </Grid>
                         <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="86,6,0,0"
@@ -96,7 +96,7 @@
                                      ToolTip="从 Spug 控制台复制完整调用地址，例如 https://push.spug.cc/mail/你的模板编码" />
                             <TextBlock Text="https://push.spug.cc/mail/模板编码" IsHitTestVisible="False"
                                        Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
-                                       Visibility="{Binding Cfg.MailUrl, Converter={StaticResource EmptyToVis}}" />
+                                       Visibility="{Binding Text, ElementName=MailUrlBox, Converter={StaticResource EmptyToVis}}" />
                         </Grid>
 
                         <Grid Margin="0,12,0,0">
@@ -110,7 +110,7 @@
                                          Style="{StaticResource TextBoxStyle}" ToolTip="接收邮件的邮箱（接口的 to 参数）" />
                                 <TextBlock Text="例如 you@example.com" IsHitTestVisible="False"
                                            Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
-                                           Visibility="{Binding Cfg.Email, Converter={StaticResource EmptyToVis}}" />
+                                           Visibility="{Binding Text, ElementName=EmailBox, Converter={StaticResource EmptyToVis}}" />
                             </Grid>
                         </Grid>
 
@@ -127,7 +127,7 @@
                                          Style="{StaticResource TextBoxStyle}" ToolTip="Spug 的 scene 参数，最多 12 个字符，不能含链接 / 域名" />
                                 <TextBlock Text="登录验证" IsHitTestVisible="False"
                                            Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
-                                           Visibility="{Binding Cfg.MailScene, Converter={StaticResource EmptyToVis}}" />
+                                           Visibility="{Binding Text, ElementName=MailSceneBox, Converter={StaticResource EmptyToVis}}" />
                             </Grid>
                             <TextBlock Grid.Column="2" Text="有效分钟" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
                                        VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,10,0" />
@@ -136,7 +136,7 @@
                                          Style="{StaticResource TextBoxStyle}" ToolTip="Spug 的 minute 参数，支持数字或中文数字（如 5 / 五分钟）" />
                                 <TextBlock Text="5" IsHitTestVisible="False"
                                            Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
-                                           Visibility="{Binding Cfg.MailMinutes, Converter={StaticResource EmptyToVis}}" />
+                                           Visibility="{Binding Text, ElementName=MailMinutesBox, Converter={StaticResource EmptyToVis}}" />
                             </Grid>
                         </Grid>
 
@@ -169,7 +169,7 @@
                                      ToolTip="收到短信 / 邮件后，把其中的验证码填到这里" />
                             <TextBlock Text="输入收到的验证码（4~6 位）" IsHitTestVisible="False"
                                        Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
-                                       Visibility="{Binding VerifyCode, Converter={StaticResource EmptyToVis}}" />
+                                       Visibility="{Binding Text, ElementName=VerifyCodeBox, Converter={StaticResource EmptyToVis}}" />
                         </Grid>
                         <Button x:Name="VerifyButton" Grid.Column="1" Content="验证" Style="{StaticResource PrimaryButtonStyle}"
                                 Command="{Binding VerifyCommand}" Margin="10,0,0,0" />
