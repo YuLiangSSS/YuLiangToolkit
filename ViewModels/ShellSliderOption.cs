@@ -10,16 +10,14 @@ namespace YuLiangToolkit.App.ViewModels;
 /// <para>取值范围 / 步进来自 <see cref="CursorEffectRange"/>（源头上是
 /// <see cref="CursorEffectTuning"/> 里的静态字段），所以设置页 XAML 和配置校验不会再各写一套数字。</para>
 ///
-/// <para><see cref="IsEnabled"/> 由 <see cref="MainViewModel"/> 跟着「对应特效有没有勾选」刷新：
-/// 没勾特效时整行置灰（模板里用 DataTrigger 把 Opacity 降到 45%），
-/// 勾上后马上可调，不用等重启。</para>
+/// <para>滑块挂在对应特效项（<see cref="ShellEffectOption.Sliders"/>）下面：设置页只在勾选了那个特效时
+/// 才显示它的参数滑块，没勾选时整块不占地方。</para>
 /// </summary>
 public sealed class ShellSliderOption : ObservableObject
 {
     private readonly Action<double> _changed;
     private readonly int _decimals;
     private double _value;
-    private bool _isEnabled = true;
 
     /// <summary>用一条参数定义 + 初始值 + 变化回调构造（<paramref name="range"/> 提供范围 / 步进）。</summary>
     public ShellSliderOption(
@@ -92,12 +90,6 @@ public sealed class ShellSliderOption : ObservableObject
     }
 
     /// <summary>对应特效勾选了没有（没勾时整行置灰；由 <see cref="MainViewModel"/> 维护）。</summary>
-    public bool IsEnabled
-    {
-        get => _isEnabled;
-        set => Set(ref _isEnabled, value);
-    }
-
     /// <summary>按步进吸附到最近的刻度并夹进范围（手改配置 / 程序赋值也走这里，保证值永远合法）。</summary>
     private double Snap(double value)
     {

@@ -109,12 +109,6 @@ public class MainViewModel : ObservableObject
     /// <summary>设置页里的「点击效果」勾选项（可多选；与自动效果互不影响）。</summary>
     public IReadOnlyList<ShellEffectOption> ClickEffectOptions { get; private set; } = Array.Empty<ShellEffectOption>();
 
-    /// <summary>设置页里的「自动效果参数」滑块（粒子拖尾数量 / 大小、鼠标散光半径；v0.37.0）。</summary>
-    public IReadOnlyList<ShellSliderOption> AutoEffectSliders { get; private set; } = Array.Empty<ShellSliderOption>();
-
-    /// <summary>设置页里的「点击效果参数」滑块（爆炸数量 / 范围、散光扩散半径、光晕闪烁半径、反色圆环半径）。</summary>
-    public IReadOnlyList<ShellSliderOption> ClickEffectSliders { get; private set; } = Array.Empty<ShellSliderOption>();
-
     public ObservableCollection<NavItem> NavItems { get; } = new();
 
     /// <summary>全部已发现的功能（未过滤）。</summary>
@@ -425,12 +419,13 @@ public class MainViewModel : ObservableObject
         _shell.AutoEffects = auto.ToList();
         _shell.ClickEffects = click.ToList();
 
-        AutoEffectOptions = BuildEffectOptions(CursorEffectTrigger.Auto, auto);
-        ClickEffectOptions = BuildEffectOptions(CursorEffectTrigger.Click, click);
+        // 每个特效的参数滑块直接挂到它自己的 ShellEffectOption 上：设置页把滑块嵌在勾选框下面，
+        // 只有勾选了该特效才显示（v0.37.3 起不再把所有参数堆在卡片底部）。
+        var autoSliders = BuildAutoEffectSliders();
+        var clickSliders = BuildClickEffectSliders();
 
-        AutoEffectSliders = BuildAutoEffectSliders();
-        ClickEffectSliders = BuildClickEffectSliders();
-        UpdateSliderAvailability();
+        AutoEffectOptions = BuildEffectOptions(CursorEffectTrigger.Auto, auto, autoSliders);
+        ClickEffectOptions = BuildEffectOptions(CursorEffectTrigger.Click, click, clickSliders);
     }
 
     /// <summary>
@@ -463,9 +458,6 @@ public class MainViewModel : ObservableObject
             NotifyTuningChanged();
         }
     }
-
-    /// <summary>反色圆环有没有勾选（决定上面那个「重叠变正色」复选框是否可用）。</summary>
-    public bool HasInvertCircleSelected => IsEffectSelected(ClickEffectOptions, CursorEffects.InvertCircle);
 
     /// <summary>构造一条滑块：值变 → 写配置 + 通知 <see cref="EffectTuning"/> 让渲染层跟着改。</summary>
     private ShellSliderOption Slider(
@@ -524,24 +516,19 @@ public class MainViewModel : ObservableObject
     /// <summary>滑块改动后通知渲染层（<c>ParticleOverlay.Tuning</c> 绑定的是这个属性）。</summary>
     private void NotifyTuningChanged() => OnPropertyChanged(nameof(EffectTuning));
 
-    /// <summary>按「对应特效有没有勾选」刷新滑块的可用状态（没勾就置灰，勾上马上可调）。</summary>
-    private void UpdateSliderAvailability()
-    {
-        foreach (var slider in AutoEffectSliders) slider.IsEnabled = IsEffectSelectedById(slider.EffectId);
-        foreach (var slider in ClickEffectSliders) slider.IsEnabled = IsEffectSelectedById(slider.EffectId);
-    }
-
-    /// <summary>某个特效 Id 当前是否勾选（自动 / 点击两套清单里查）。</summary>
-    private bool IsEffectSelectedById(string effectId)
-        => IsEffectSelected(AutoEffectOptions, effectId) || IsEffectSelected(ClickEffectOptions, effectId);
-
+    /// <summary>按清单建特效勾选项，并把属于它的参数滑块一起挂上（设置页嵌在勾选框下面显示）。</summary>
     private IReadOnlyList<ShellEffectOption> BuildEffectOptions(
-        CursorEffectTrigger trigger, IReadOnlyList<string> selected)
+        CursorEffectTrigger trigger,
+        IReadOnlyList<string> selected,
+        IReadOnlyList<ShellSliderOption> sliders)
         => CursorEffects.For(trigger)
             .Select(definition => new ShellEffectOption(
                 definition,
                 selected.Contains(definition.Id, StringComparer.OrdinalIgnoreCase),
-                OnEffectSelectionChanged))
+                OnEffectSelectionChanged,
+                sliders.Where(slider =>
+                        string.Equals(slider.EffectId, definition.Id, StringComparison.OrdinalIgnoreCase))
+                    .ToList()))
             .ToList();
 
     /// <summary>任一特效勾选变化：写配置（自动落盘）+ 通知渲染层与「粒子颜色」可用性。</summary>
@@ -553,8 +540,6 @@ public class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(AutoEffectIds));
         OnPropertyChanged(nameof(ClickEffectIds));
         OnPropertyChanged(nameof(HasParticleEffectSelected));
-        OnPropertyChanged(nameof(HasInvertCircleSelected));
-        UpdateSliderAvailability();
     }
 
     private static IReadOnlyList<string> SelectedEffectIds(IReadOnlyList<ShellEffectOption> options)

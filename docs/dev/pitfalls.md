@@ -42,6 +42,8 @@
 - 特效可调参数（数量 / 大小 / 范围 / 各半径）的默认值与范围集中在 `Core/Effects/CursorEffectTuning.cs`：
   设置页滑块、配置校验、渲染层都读它，**别在 XAML / VM / 渲染器里另写一套数字**；
   新加参数时同步改 `ShellConfig` 字段、`MainViewModel` 滑块列表、`ParticleOverlay.ApplyTuning`，自检会兜住默认值 / 越界夹取。
+  参数滑块挂在 `ShellEffectOption.Sliders` 上、由设置页嵌在对应勾选框下面（勾选才显示）——
+  别再改回「卡片底部统一一组滑块 + 置灰」，那是 v0.37.0~0.37.2 的旧布局。
 - 反色圆环（`invert-circle`）没有现成 API：用 `VisualBrush` 把内容根节点取景到 `RenderTargetBitmap` 再逐像素取反。
   ⚠ `VisualBrush` 取景会把整棵内容树软件渲染一遍（实测约 20~35ms，区域设小也省不下来），**不能每帧取**：
   只在鼠标按下 / 松开时各取一次（`InvertCircleRenderer`），动画本身只改蒙版半径；窗口缩放直接结束这一圈。

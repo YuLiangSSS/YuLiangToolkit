@@ -380,7 +380,7 @@ internal static class ShellEffectsChecks
 
         check("滑块：初始值 / 范围 / 单位 / 文案正确",
             slider.Value == 24 && slider.Minimum == 4 && slider.Maximum == 160 && slider.Step == 1
-            && slider.LargeStep == 10 && slider.ValueText == "24 颗" && slider.IsEnabled
+            && slider.LargeStep == 10 && slider.ValueText == "24 颗"
             && slider.EffectId == CursorEffects.ParticleBurst);
 
         slider.Value = 30;
@@ -481,12 +481,20 @@ internal static class ShellEffectsChecks
     {
         var changes = 0;
         var definition = CursorEffects.Find(CursorEffects.CursorGlow)!;
-        var option = new ShellEffectOption(definition, isSelected: false, () => changes++);
+        var slider = new ShellSliderOption(
+            "glow-radius", CursorEffects.CursorGlow, "鼠标散光 · 半径", "说明",
+            CursorEffectTuning.GlowRadiusRange, 46, " DIP", _ => { });
+        var option = new ShellEffectOption(definition, isSelected: false, () => changes++, new[] { slider });
 
         check("设置项初始状态 / 元数据正确",
             !option.IsSelected && option.Id == CursorEffects.CursorGlow
             && option.Name == definition.Name && option.Description == definition.Description
             && option.IsAuto);
+
+        check("特效项携带自己的参数滑块 + 反色标记（设置页嵌在勾选框下面，没勾选不显示）",
+            option.Sliders.Count == 1 && option.Sliders[0].Id == "glow-radius"
+            && !option.IsInvertCircle
+            && new ShellEffectOption(CursorEffects.Find(CursorEffects.InvertCircle)!, isSelected: true, () => { }).IsInvertCircle);
 
         option.IsSelected = true;
         check("勾选后触发一次变化回调", option.IsSelected && changes == 1);

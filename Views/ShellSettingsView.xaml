@@ -9,23 +9,15 @@
 
       ★ 扩展点：特效列表（自动效果 / 点击效果）的每一项来自 Core/Effects/CursorEffects.cs 的清单，
         ItemsControl 直接按清单渲染 —— 以后加新特效只改清单 + 渲染层，不用改这个 XAML。
-        特效参数滑块（v0.37.0）同理：范围 / 步进来自 Core/Effects/CursorEffectTuning.cs，
-        显示名 / 说明来自 MainViewModel 的 AutoEffectSliders / ClickEffectSliders，这里只放一个共用模板。
+        特效参数滑块（v0.37.3）同理：范围 / 步进来自 Core/Effects/CursorEffectTuning.cs，
+        显示名 / 说明来自 MainViewModel 建好、挂在每个特效项（ShellEffectOption.Sliders）上的列表，
+        这里只放一个共用模板；**没勾选对应特效时参数块整个不显示**。
     -->
     <UserControl.Resources>
         <!-- 一条特效参数滑块（自动 / 点击两张卡共用）：名称 + 当前值 + 滑块 + 一句说明。
-             没勾选对应特效时由 MainViewModel 把 IsEnabled 置 false，这里用 DataTrigger 整行变淡。 -->
+             只会在勾选了所属特效时被渲染出来（外层用 Visibility 控制），所以这里不再做置灰。 -->
         <DataTemplate x:Key="EffectSliderTemplate">
-            <StackPanel Margin="0,10,0,0" IsEnabled="{Binding IsEnabled}">
-                <StackPanel.Style>
-                    <Style TargetType="StackPanel">
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding IsEnabled}" Value="False">
-                                <Setter Property="Opacity" Value="0.45" />
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </StackPanel.Style>
+            <StackPanel Margin="0,10,0,0">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -156,16 +148,16 @@
                                     <TextBlock Text="{Binding Description}" FontSize="11"
                                                Foreground="{DynamicResource TextSecondaryBrush}"
                                                TextWrapping="Wrap" Margin="25,2,0,0" />
+                                    <!-- 这个特效自己的参数：勾选后才出现，嵌在勾选框正下方 -->
+                                    <StackPanel Margin="25,4,0,2"
+                                                Visibility="{Binding IsSelected, Converter={StaticResource BoolToVis}}">
+                                        <ItemsControl ItemsSource="{Binding Sliders}"
+                                                      ItemTemplate="{StaticResource EffectSliderTemplate}" />
+                                    </StackPanel>
                                 </StackPanel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-
-                    <!-- 自动效果参数（v0.37.0）：没勾对应特效时整行置灰 -->
-                    <TextBlock Text="参数（只对勾选的自动效果生效，改一下立即生效并自动保存）" FontSize="11.5"
-                               Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,14,0,0" />
-                    <ItemsControl ItemsSource="{Binding AutoEffectSliders}"
-                                  ItemTemplate="{StaticResource EffectSliderTemplate}" Margin="0,2,0,0" />
                 </StackPanel>
             </Border>
 
@@ -188,26 +180,28 @@
                                     <TextBlock Text="{Binding Description}" FontSize="11"
                                                Foreground="{DynamicResource TextSecondaryBrush}"
                                                TextWrapping="Wrap" Margin="25,2,0,0" />
+                                    <!-- 这个特效自己的参数：勾选后才出现，嵌在勾选框正下方 -->
+                                    <StackPanel Margin="25,4,0,2"
+                                                Visibility="{Binding IsSelected, Converter={StaticResource BoolToVis}}">
+                                        <ItemsControl ItemsSource="{Binding Sliders}"
+                                                      ItemTemplate="{StaticResource EffectSliderTemplate}" />
+
+                                        <!-- 反色圆环专属开关：两圈重叠时再反一次变回正色（v0.37.2） -->
+                                        <StackPanel Margin="0,12,0,0"
+                                                    Visibility="{Binding IsInvertCircle, Converter={StaticResource BoolToVis}}">
+                                            <CheckBox Content="两圆重叠时变回正色" Style="{StaticResource CheckBoxStyle}"
+                                                      IsChecked="{Binding DataContext.InvertCircleOverlapCancels,
+                                                                  RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                      ToolTip="勾选：两个反色圆叠在同一片区域时，重叠处会再反一次 → 恢复原来的颜色（像橡皮一样互相抵消）。" />
+                                            <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       TextWrapping="Wrap" Margin="25,2,0,0"
+                                                       Text="勾选 = 重叠处变回正色（反色反两次就是原色，3 圈及以上按覆盖次数的奇偶算）；不勾 = 后触发的圆直接盖住先前的，重叠处仍是反色。" />
+                                        </StackPanel>
+                                    </StackPanel>
                                 </StackPanel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-
-                    <!-- 点击效果参数（v0.37.0）：没勾对应特效时整行置灰 -->
-                    <TextBlock Text="参数（只对勾选的点击效果生效，改一下立即生效并自动保存）" FontSize="11.5"
-                               Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,14,0,0" />
-                    <ItemsControl ItemsSource="{Binding ClickEffectSliders}"
-                                  ItemTemplate="{StaticResource EffectSliderTemplate}" Margin="0,2,0,0" />
-
-                    <!-- 反色圆环专属开关（v0.37.2）：两圈重叠时再反一次变回正色；没勾反色圆环时整行置灰 -->
-                    <StackPanel IsEnabled="{Binding HasInvertCircleSelected}" Margin="0,14,0,0">
-                        <CheckBox Content="反色圆环：两圆重叠时变回正色" Style="{StaticResource CheckBoxStyle}"
-                                  IsChecked="{Binding InvertCircleOverlapCancels}"
-                                  ToolTip="勾选：两个反色圆叠在同一片区域时，重叠处会再反一次 → 恢复原来的颜色（像橡皮一样互相抵消）。" />
-                        <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
-                                   Margin="25,2,0,0"
-                                   Text="勾选 = 重叠处变回正色（反色反两次就是原色，3 圈及以上按覆盖次数的奇偶算）；不勾 = 后触发的圆直接盖住先前的，重叠处仍是反色。" />
-                    </StackPanel>
                 </StackPanel>
             </Border>
 
