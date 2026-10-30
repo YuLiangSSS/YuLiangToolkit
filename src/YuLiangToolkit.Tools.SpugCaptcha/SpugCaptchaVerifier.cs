@@ -34,6 +34,32 @@ public static class SpugCaptchaVerifier
     public static string GenerateCode() => Random.Shared.Next(0, 1_000_000).ToString("D6");
 
     /// <summary>
+    /// 决定本次发送用哪个验证码：<paramref name="customInput"/> 留空 → 随机生成 6 位；
+    /// 填了就校验格式（4~6 位数字或字母）并原样使用。返回 false 时 <paramref name="error"/> 是可显示的原因。
+    /// </summary>
+    public static bool TryResolveCode(string? customInput, out string code, out string error)
+    {
+        var text = (customInput ?? "").Trim();
+        if (text.Length == 0)
+        {
+            code = GenerateCode();
+            error = "";
+            return true;
+        }
+
+        if (!SpugApi.IsValidCode(text))
+        {
+            code = "";
+            error = "自定义验证码格式不对：应为 4~6 位数字或字母";
+            return false;
+        }
+
+        code = text;
+        error = "";
+        return true;
+    }
+
+    /// <summary>
     /// 把用户输入与待验证记录比对：忽略首尾空格和大小写，自动匹配短信 / 邮箱通道。
     /// 输入为空、格式不对、没发过验证码、对不上，都会返回可读的失败原因。
     /// </summary>

@@ -188,6 +188,19 @@ internal static class SpugChecks
         check("[Spug] 本地验证码生成：6 位纯数字",
             codes.All(code => code.Length == 6 && code.All(char.IsDigit)),
             string.Join(",", codes.Take(3)));
+
+        var randomResolved = SpugCaptchaVerifier.TryResolveCode("", out var randomCode, out var randomError);
+        check("[Spug] 验证码选择：留空 → 随机生成 6 位、没有错误",
+            randomResolved && randomError.Length == 0 && randomCode.Length == 6 && randomCode.All(char.IsDigit),
+            randomCode);
+
+        var customResolved = SpugCaptchaVerifier.TryResolveCode("  AB12  ", out var customCode, out var customError);
+        check("[Spug] 验证码选择：填了自定义 → 用自定义值（去首尾空格）",
+            customResolved && customError.Length == 0 && customCode == "AB12", customCode);
+
+        var badResolved = SpugCaptchaVerifier.TryResolveCode("abc", out _, out var badCodeError);
+        check("[Spug] 验证码选择：自定义格式不对 → 拒绝并给原因",
+            !badResolved && badCodeError.Contains("4~6 位"), badCodeError);
     }
 
     // ---------------------------------------------------------------- 本地验证

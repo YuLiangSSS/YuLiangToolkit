@@ -5,8 +5,8 @@ namespace YuLiangToolkit.Tools.SpugCaptcha.ViewModels;
 /// <summary>
 /// Spug 验证码测试工具的 ViewModel：左右两栏各自的发送流程 + 底部本地验证 + 信息日志。
 ///
-/// <para>流程：校验输入 → 本地生成 6 位验证码 → 调 Spug 接口（短信 GET / 邮箱 POST JSON）→
-/// 按响应 JSON 的 <c>code == 200</c> 判断是否受理；受理后把生成的验证码记在内存里，
+/// <para>流程：校验输入 → 决定本次验证码（填了自定义用自定义，留空随机生成 6 位）→ 调 Spug 接口（短信 GET / 邮箱 POST JSON）→
+/// 按响应 JSON 的 <c>code == 200</c> 判断是否受理；受理后把验证码记在内存里，
 /// 用户收到后到底部输入 → 本地比对 → 显示成功 / 失败。</para>
 ///
 /// <para>验证码是敏感信息：只存在内存里（<see cref="PendingCode"/>），<b>不写配置</b>、也不显示在日志里。
@@ -18,6 +18,9 @@ public sealed class SpugCaptchaViewModel : ToolViewModelBase
 
     private PendingCode? _pendingSms;
     private PendingCode? _pendingMail;
+
+    private string _smsCodeInput = "";
+    private string _mailCodeInput = "";
 
     private string _smsStatusText = "尚未发送";
     private string _mailStatusText = "尚未发送";
@@ -42,7 +45,8 @@ public sealed class SpugCaptchaViewModel : ToolViewModelBase
 
         Log("===== Spug 验证码测试工具 =====");
         Log("用法：粘贴 Spug 控制台复制的模板 URL → 填手机号 / 邮箱 → 发送验证码 → 收到后填到底部「验证码验证」并点「验证」。");
-        Log("说明：Spug 没有校验验证码的接口，本工具只在本机比对刚生成的验证码；模板里的 ${code} / ${number} 是 Spug 服务端占位符。");
+        Log("验证码：两栏的「验证码（可选）」留空就每次随机生成 6 位；填 4~6 位数字/字母则用你指定的值（不写进配置）。");
+        Log("说明：Spug 没有校验验证码的接口，本工具只在本机比对刚发送的验证码；模板里的 ${code} / ${number} 是 Spug 服务端占位符。");
         Log($"配置：{ConfigPathText}（推送 URL 是调用凭证，会明文保存在本机，请勿外传）");
 
         if (Environment.GetEnvironmentVariable("YLT_SPUG_DEMO") == "1") SeedDemo();
@@ -97,6 +101,20 @@ public sealed class SpugCaptchaViewModel : ToolViewModelBase
         set => Set(ref _verifyCode, value);
     }
 
+    /// <summary>短信栏「验证码（可选）」：留空则随机生成；填了就用自定义值（只在本轮运行里有效，不写配置）。</summary>
+    public string SmsCodeInput
+    {
+        get => _smsCodeInput;
+        set => Set(ref _smsCodeInput, value);
+    }
+
+    /// <summary>邮箱栏「验证码（可选）」：留空则随机生成；填了就用自定义值（只在本轮运行里有效，不写配置）。</summary>
+    public string MailCodeInput
+    {
+        get => _mailCodeInput;
+        set => Set(ref _mailCodeInput, value);
+    }
+
     /// <summary>验证结果显示文字（成功 / 失败原因）。</summary>
     public string VerifyResultText
     {
@@ -131,9 +149,16 @@ public sealed class SpugCaptchaViewModel : ToolViewModelBase
         }
 
         var phone = Cfg.Phone.Trim();
-        var code = SpugCaptchaVerifier.GenerateCode();
+        var customCode = (SmsCodeInput ?? "").Trim();
+        if (!SpugCaptchaVerifier.TryResolveCode(customCode, out var code, out var codeError))
+        {
+            SetSmsFailure(codeError);
+            return;
+        }
+
+        var codeSource = customCode.Length == 0 ? "随机生成（不显示）" : "自定义";
         Log($"[{DateTime.Now:HH:mm:ss}] 短信 → {SpugApi.MaskPhone(phone)}：GET {SpugApi.MaskUrl(Cfg.SmsUrl)}"
-            + $"（参数 to / code{(minutes is null ? "" : " / number")}）");
+            + $"（参数 to / code{(minutes is null ? "" : " / number")}；验证码：{codeSource}）");
 
         var result = await _sender.SendSmsAsync(Cfg.SmsUrl, phone, code, minutes);
         if (!result.Success)
@@ -184,9 +209,16 @@ public sealed class SpugCaptchaViewModel : ToolViewModelBase
         }
 
         var email = Cfg.Email.Trim();
-        var code = SpugCaptchaVerifier.GenerateCode();
+        var customCode = (MailCodeInput ?? "").Trim();
+        if (!SpugCaptchaVerifier.TryResolveCode(customCode, out var code, out var codeError))
+        {
+            SetMailFailure(codeError);
+            return;
+        }
+
+        var codeSource = customCode.Length == 0 ? "随机生成（不显示）" : "自定义";
         Log($"[{DateTime.Now:HH:mm:ss}] 邮箱 → {SpugApi.MaskEmail(email)}：POST {SpugApi.MaskUrl(Cfg.MailUrl)}"
-            + $"（JSON 参数 to / scene / code / minute，场景「{scene}」）");
+            + $"（JSON 参数 to / scene / code / minute，场景「{scene}」；验证码：{codeSource}）");
 
         var result = await _sender.SendMailAsync(Cfg.MailUrl, email, scene, code, minute);
         if (!result.Success)

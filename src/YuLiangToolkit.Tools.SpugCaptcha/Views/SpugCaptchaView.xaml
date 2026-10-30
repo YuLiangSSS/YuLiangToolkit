@@ -63,15 +63,31 @@
                             <TextBlock Text="有效分钟数" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
                             <Grid Grid.Column="1">
                                 <TextBox x:Name="SmsMinutesBox" Text="{Binding Cfg.SmsMinutes, UpdateSourceTrigger=PropertyChanged}"
-                                         Style="{StaticResource TextBoxStyle}" Width="96" HorizontalAlignment="Left"
+                                         Style="{StaticResource TextBoxStyle}" Width="180" HorizontalAlignment="Left"
                                          ToolTip="模板含 ${number} 时必填（有效分钟数）；模板只含 ${code} 时留空则不传 number" />
-                                <TextBlock Text="模板只含 ${code} 可留空" IsHitTestVisible="False"
+                                <TextBlock Text="例如 5（可留空）" IsHitTestVisible="False"
                                            Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
                                            Visibility="{Binding Text, ElementName=SmsMinutesBox, Converter={StaticResource EmptyToVis}}" />
                             </Grid>
                         </Grid>
                         <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="86,6,0,0"
                                    Text="模板含 ${number} 时必填；只含 ${code} 的模板留空即可（不传 number）。" />
+
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="验证码（可选）" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                            <Grid Grid.Column="1">
+                                <TextBox x:Name="SmsCodeBox" Text="{Binding SmsCodeInput, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource TextBoxStyle}" MaxLength="6"
+                                         ToolTip="想指定验证码就填这里（4~6 位数字或字母）；留空则每次随机生成 6 位数字" />
+                                <TextBlock Text="留空则随机生成" IsHitTestVisible="False"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
+                                           Visibility="{Binding Text, ElementName=SmsCodeBox, Converter={StaticResource EmptyToVis}}" />
+                            </Grid>
+                        </Grid>
 
                         <Button x:Name="SendSmsButton" Content="发送验证码" Style="{StaticResource PrimaryButtonStyle}"
                                 Command="{Binding SendSmsCommand}" HorizontalAlignment="Left" Margin="0,14,0,0" />
@@ -137,6 +153,22 @@
                                 <TextBlock Text="5" IsHitTestVisible="False"
                                            Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
                                            Visibility="{Binding Text, ElementName=MailMinutesBox, Converter={StaticResource EmptyToVis}}" />
+                            </Grid>
+                        </Grid>
+
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="验证码（可选）" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                            <Grid Grid.Column="1">
+                                <TextBox x:Name="MailCodeBox" Text="{Binding MailCodeInput, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource TextBoxStyle}" MaxLength="6"
+                                         ToolTip="想指定验证码就填这里（4~6 位数字或字母）；留空则每次随机生成 6 位数字" />
+                                <TextBlock Text="留空则随机生成" IsHitTestVisible="False"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
+                                           Visibility="{Binding Text, ElementName=MailCodeBox, Converter={StaticResource EmptyToVis}}" />
                             </Grid>
                         </Grid>
 
