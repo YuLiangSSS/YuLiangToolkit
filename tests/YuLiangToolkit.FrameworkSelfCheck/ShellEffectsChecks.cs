@@ -146,27 +146,27 @@ internal static class ShellEffectsChecks
 
     private static void CheckInvertAnimation(CheckFn check)
     {
-        // ---- easeOutQuint：端点 / 越界 / NaN 都被夹住 ----
-        check("easeOutQuint：0→0、1→1、越界与 NaN 被夹住",
-            Math.Abs(Easings.OutQuint(0)) < 1e-12
-            && Math.Abs(Easings.OutQuint(1) - 1) < 1e-12
-            && Math.Abs(Easings.OutQuint(-3)) < 1e-12
-            && Math.Abs(Easings.OutQuint(2) - 1) < 1e-12
-            && Math.Abs(Easings.OutQuint(double.NaN)) < 1e-12);
+        // ---- easeOutCubic：端点 / 越界 / NaN 都被夹住 ----
+        check("easeOutCubic：0→0、1→1、越界与 NaN 被夹住",
+            Math.Abs(Easings.OutCubic(0)) < 1e-12
+            && Math.Abs(Easings.OutCubic(1) - 1) < 1e-12
+            && Math.Abs(Easings.OutCubic(-3)) < 1e-12
+            && Math.Abs(Easings.OutCubic(2) - 1) < 1e-12
+            && Math.Abs(Easings.OutCubic(double.NaN)) < 1e-12);
 
         var monotonic = true;
         for (var i = 1; i <= 200; i++)
         {
-            if (Easings.OutQuint(i / 200.0) < Easings.OutQuint((i - 1) / 200.0) - 1e-12) monotonic = false;
+            if (Easings.OutCubic(i / 200.0) < Easings.OutCubic((i - 1) / 200.0) - 1e-12) monotonic = false;
         }
-        check("easeOutQuint：单调递增（半径不会中途反向抖一下）", monotonic);
+        check("easeOutCubic：单调递增（半径不会中途反向抖一下）", monotonic);
 
-        // easeOut 的「先快后慢」：前 1/4 时间走掉大部分行程、后 1/4 时间几乎不动
-        var firstQuarter = Easings.OutQuint(0.25);
-        var lastQuarter = 1.0 - Easings.OutQuint(0.75);
-        check("easeOutQuint：前段快、后段慢（曲线形状符合「一开始快最后慢」）",
-            firstQuarter > 0.7 && lastQuarter < 0.05,
-            $"前 1/4 行程={firstQuarter:0.###}，后 1/4 行程={lastQuarter:0.###}");
+        // 仍是「先快后慢」，但起步不冲、减速更平顺：前 1/4 时间走约 58%，后 1/4 时间只走约 1.6%
+        var firstQuarter = Easings.OutCubic(0.25);
+        var lastQuarter = 1.0 - Easings.OutCubic(0.75);
+        check("easeOutCubic：先快后慢，且起步 / 减速都比五次方柔和",
+            firstQuarter is > 0.5 and < 0.7 && lastQuarter < 0.05,
+            $"前 1/4 行程={firstQuarter:0.###}（quint 是 0.76），后 1/4 行程={lastQuarter:0.###}");
 
         // ---- 时间线：两段时长 ----
         check("反色圆环时间线：扩散 + 收缩 = 总时长（都 > 0）",
@@ -176,7 +176,7 @@ internal static class ShellEffectsChecks
                         - (InvertCircleAnimation.GrowFrames + InvertCircleAnimation.ShrinkFrames)) < 1e-9,
             $"扩散 {InvertCircleAnimation.GrowFrames} 帧 + 收缩 {InvertCircleAnimation.ShrinkFrames} 帧");
 
-        const double maxRadius = 200;
+        const double maxRadius = 150;
         var growEnd = InvertCircleAnimation.GrowFrames;
         var total = InvertCircleAnimation.TotalFrames;
 
@@ -209,23 +209,28 @@ internal static class ShellEffectsChecks
         }
         check("反色圆环半径：扩散段单调变大、收缩段单调变小", growMonotonic && shrinkMonotonic);
 
-        // 收缩「一开始半径减少很慢、后面减少变快」：后半程掉掉的半径远多于前半程
+        // 收缩「一开始半径减少很慢、后面减少变快」：后半程掉掉的半径明显多于前半程
         var halfway = InvertCircleAnimation.RadiusAt(growEnd + InvertCircleAnimation.ShrinkFrames / 2, maxRadius);
         var almostDone = InvertCircleAnimation.RadiusAt(total - 1, maxRadius);
         var firstHalfDrop = maxRadius - halfway;
         var secondHalfDrop = halfway - almostDone;
         check("反色圆环收缩：先缩得慢、最后缩得快",
-            firstHalfDrop < maxRadius * 0.05 && secondHalfDrop > firstHalfDrop * 10,
+            firstHalfDrop < maxRadius * 0.2 && secondHalfDrop > firstHalfDrop * 4,
             $"前半程掉 {firstHalfDrop:0.##}，后半程掉 {secondHalfDrop:0.##}");
 
-        // ---- 最大半径按窗口短边夹取 ----
+        // ---- 最大半径按窗口短边夹取，且面积约为 v0.36.0 的一半（半径 × 1/√2） ----
+        var defaultRadius = InvertCircleAnimation.ResolveMaxRadius(1280, 820);
         check("反色圆环最大半径：按短边比例、夹在上下限之间",
             Math.Abs(InvertCircleAnimation.ResolveMaxRadius(1024, 700)
                      - 700 * InvertCircleAnimation.RadiusRatio) < 1e-9
             && Math.Abs(InvertCircleAnimation.ResolveMaxRadius(1920, 1080) - InvertCircleAnimation.LargestRadius) < 1e-9
             && Math.Abs(InvertCircleAnimation.ResolveMaxRadius(100, 100) - InvertCircleAnimation.SmallestRadius) < 1e-9
             && Math.Abs(InvertCircleAnimation.ResolveMaxRadius(double.NaN, 500) - InvertCircleAnimation.SmallestRadius) < 1e-9,
-            $"默认窗口 1024×700 → {InvertCircleAnimation.ResolveMaxRadius(1024, 700):0.##}");
+            $"默认窗口 1280×820 → {defaultRadius:0.##}");
+
+        check("反色圆环尺寸：默认窗口最大半径约 151（v0.36.0 是 213，面积正好减半）",
+            Math.Abs(defaultRadius - 213.2 / Math.Sqrt(2)) < 1e-6,
+            $"{defaultRadius:0.##}");
 
         check("反色圆环：播完判定（到总时长算播完、NaN 也算播完）",
             !InvertCircleAnimation.IsFinished(total - 0.1)

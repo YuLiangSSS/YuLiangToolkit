@@ -12,18 +12,20 @@ namespace YuLiangToolkit.Core.Effects;
 public static class Easings
 {
     /// <summary>
-    /// easeOutQuint：<c>t=0 → 0</c>、<c>t=1 → 1</c>，前段变化极快、越接近终点越慢
-    /// （<c>1 - (1-t)^5</c>）。
+    /// easeOutCubic：<c>t=0 → 0</c>、<c>t=1 → 1</c>，前段快、后段慢（<c>1 - (1-t)^3</c>）。
     ///
-    /// <para>点击反色圆环用它做「扩散」和「收缩」两个阶段：扩散时半径先暴涨后变慢，
-    /// 收缩时反过来读同一条曲线（剩余半径 = <c>OutQuint(1-t)</c>），就得到「先缩得慢、最后缩得快」。
-    /// 比 easeOutExpo 温和一点（Expo 在开头几乎是一瞬间到位），观感更像一圈涟漪而不是闪一下。</para>
+    /// <para>点击反色圆环用它做「扩散」和「收缩」两个阶段：扩散时半径先快后慢，
+    /// 收缩时反过来读同一条曲线（剩余半径 = <c>OutCubic(1-t)</c>），就得到「先缩得慢、最后缩得快」。</para>
+    ///
+    /// <para>为什么不是更容易「弹」的 <c>easeOutQuint</c> / <c>easeOutExpo</c>：v0.36.0 实测五次方曲线
+    /// 开头半径暴涨、后面几乎爬行，视觉上「起步太冲、减速太突然」。三次方曲线起点速度只有五次方的
+    /// 五分之三、结尾速度按二次曲线收敛到 0，还是明确的「先快后慢」，但过渡平顺得多。</para>
     /// </summary>
-    public static double OutQuint(double t)
+    public static double OutCubic(double t)
     {
         if (double.IsNaN(t)) return 0;
         t = Math.Clamp(t, 0.0, 1.0);
         var inverse = 1.0 - t;
-        return 1.0 - inverse * inverse * inverse * inverse * inverse;
+        return 1.0 - inverse * inverse * inverse;
     }
 }
