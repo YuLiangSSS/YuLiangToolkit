@@ -87,6 +87,7 @@ public sealed partial class MediaPlayerViewModel
         _pendingResume = TimeSpan.Zero;
         _player.Volume = VolumeValue / 100.0;
         _player.Load(item.FullPath, autoPlay: true);
+        ReviveMiniPanel();   // 真的开始出声了：小窗被 × 收起来的状态复位
         StatusText = $"正在播放：{item.Title}";
     }
 
@@ -128,6 +129,7 @@ public sealed partial class MediaPlayerViewModel
         {
             _player.Play();
             IsPlaying = true;
+            ReviveMiniPanel();   // 真的开始出声了：小窗被 × 收起来的状态复位
             StatusText = $"正在播放：{CurrentItem.Title}";
         }
     }

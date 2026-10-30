@@ -458,7 +458,7 @@
                                   IsChecked="{Binding BackgroundPlayback}"
                                   Style="{StaticResource CheckBoxStyle}"
                                   ToolTip="打开后：切到别的工具 / 回主页时声音不断，左下角会出现一个迷你播放条" />
-                        <TextBlock Text="打开时左下角会浮出一个小窗：滚动显示标题，带快退 / 播放暂停 / 快进，点标题回到播放器。"
+                        <TextBlock Text="打开时左下角会浮出一个小窗：滚动显示标题，带快退 / 播放暂停 / 快进，点标题回到播放器；右上角 × 直接关掉小窗并停止播放。"
                                    FontSize="10.5" Margin="132,7,0,0" TextWrapping="Wrap"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
 

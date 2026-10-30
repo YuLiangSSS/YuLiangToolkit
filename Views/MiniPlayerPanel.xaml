@@ -78,25 +78,42 @@
         </Style>
     </UserControl.Resources>
 
-    <!-- 迷你播放条：一行「来回滚」的标题 + 快退 / 播放暂停 / 快进。
+    <!-- 迷你播放条：一行「来回滚」的标题 + 快退 / 播放暂停 / 快进，右上角一个 ×。
          DataContext = 播放器的 ViewModel（外壳的 MiniPanelSource 给过来的）。 -->
     <Border Width="264" Background="{DynamicResource MiniPlayerBackgroundBrush}" CornerRadius="12" Padding="10,8,10,10"
             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
         <StackPanel>
-            <Button Style="{StaticResource MiniTitleButton}"
-                    Command="{Binding DataContext.OpenBackgroundToolCommand,
-                              RelativeSource={RelativeSource AncestorType=Window}}"
-                    ToolTip="回到播放器">
-                <Grid x:Name="TitleClip" Height="18" ClipToBounds="True">
-                    <TextBlock x:Name="TitleText" Text="{Binding TitleText}" FontSize="12" FontWeight="SemiBold"
-                               HorizontalAlignment="Left" VerticalAlignment="Center"
-                               Foreground="{DynamicResource TextPrimaryBrush}">
-                        <TextBlock.RenderTransform>
-                            <TranslateTransform x:Name="TitleShift" />
-                        </TextBlock.RenderTransform>
-                    </TextBlock>
-                </Grid>
-            </Button>
+            <!-- 标题行：标题按钮占满剩余宽度，右上角单独放 ×（关闭小窗 + 停止播放） -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Button Grid.Column="0" Style="{StaticResource MiniTitleButton}"
+                        Command="{Binding DataContext.OpenBackgroundToolCommand,
+                                  RelativeSource={RelativeSource AncestorType=Window}}"
+                        ToolTip="回到播放器">
+                    <Grid x:Name="TitleClip" Height="18" ClipToBounds="True">
+                        <TextBlock x:Name="TitleText" Text="{Binding TitleText}" FontSize="12" FontWeight="SemiBold"
+                                   HorizontalAlignment="Left" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextPrimaryBrush}">
+                            <TextBlock.RenderTransform>
+                                <TranslateTransform x:Name="TitleShift" />
+                            </TextBlock.RenderTransform>
+                        </TextBlock>
+                    </Grid>
+                </Button>
+
+                <!-- 右上角 ×：关掉小窗并把音乐停掉（只关这一次，下次开始播放再切走还会浮出来） -->
+                <Button Grid.Column="1" x:Name="MiniClose" Style="{StaticResource MiniIconButton}"
+                        Width="20" Height="20" Margin="4,0,0,0" VerticalAlignment="Top"
+                        Command="{Binding CloseMiniPanelCommand}"
+                        ToolTip="关闭小窗并停止播放">
+                    <Path Data="M 0,0 L 9,9 M 9,0 L 0,9" Stroke="{DynamicResource TextSecondaryBrush}"
+                          StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                </Button>
+            </Grid>
 
             <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                 <!-- 左键快退、右键上一首（右键在代码后置里接） -->

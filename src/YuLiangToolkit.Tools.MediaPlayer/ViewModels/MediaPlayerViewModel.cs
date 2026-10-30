@@ -47,6 +47,7 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
         // 播放控制
         PlayPauseCommand = new RelayCommand(_ => TogglePlayPause());
         StopCommand = new RelayCommand(_ => StopPlayback());
+        CloseMiniPanelCommand = new RelayCommand(_ => CloseMiniPanel());
         SeekBackwardCommand = new RelayCommand(_ => SeekBy(-SeekStepSeconds));
         SeekForwardCommand = new RelayCommand(_ => SeekBy(SeekStepSeconds));
         PreviousCommand = new RelayCommand(_ => MoveTrack(-1), _ => Items.Count > 0);
@@ -97,6 +98,9 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
     public AsyncRelayCommand OpenFilesCommand { get; }
     public RelayCommand PlayPauseCommand { get; }
     public RelayCommand StopCommand { get; }
+
+    /// <summary>左下角迷你条右上角的 ×：关掉小窗 + 停止播放（见 <see cref="CloseMiniPanel"/>）。</summary>
+    public RelayCommand CloseMiniPanelCommand { get; }
     public RelayCommand SeekBackwardCommand { get; }
     public RelayCommand SeekForwardCommand { get; }
     public RelayCommand PreviousCommand { get; }
@@ -576,13 +580,40 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
     /// <summary>切走时要不要留着这个视图（= 后台播放 + 当前有曲目）。</summary>
     public bool KeepAliveOnLeave => Cfg.BackgroundPlayback && CurrentItem is not null;
 
-    /// <summary>不在前台时要不要显示左下角迷你播放条。</summary>
-    public bool ShowMiniPanel => Cfg.BackgroundPlayback && CurrentItem is not null;
+    /// <summary>这次被 × 收起来了：先别再浮出来（真正开始播放时复位）。</summary>
+    private bool _miniPanelDismissed;
+
+    /// <summary>不在前台时要不要显示左下角迷你播放条（点过 × 之后这一次不再显示）。</summary>
+    public bool ShowMiniPanel => Cfg.BackgroundPlayback && CurrentItem is not null && !_miniPanelDismissed;
 
     /// <summary>上面两个值可能变了（外壳据此决定留不留视图、显不显示迷你条）。</summary>
     public event EventHandler? BackgroundStateChanged;
 
     private void RaiseBackgroundState() => BackgroundStateChanged?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>
+    /// 迷你条右上角的 ×：**停掉声音，并让左下角小窗收起来**。
+    /// <para>小窗显不显示由外壳按 <see cref="ShowMiniPanel"/> 决定，所以停完再通知一次
+    /// <see cref="BackgroundStateChanged"/>；播放列表 / 当前曲目都还留着（点播放能再来一遍）。
+    /// 只是「这一次」收起来：下次真正开始出声（<see cref="PlayItem"/> / 继续播放）会复位，
+    /// 再切走时小窗照常浮出来。</para>
+    /// </summary>
+    public void CloseMiniPanel()
+    {
+        StopPlayback();                         // 先停声音（位置归零，曲目还在）
+
+        if (_miniPanelDismissed) return;
+        _miniPanelDismissed = true;
+        RaiseBackgroundState();                 // 外壳据此收起左下角小窗
+    }
+
+    /// <summary>真的开始出声了 → 清掉「小窗被 × 收起来」的状态（下次切走照常浮出来）。</summary>
+    private void ReviveMiniPanel()
+    {
+        if (!_miniPanelDismissed) return;
+        _miniPanelDismissed = false;
+        RaiseBackgroundState();
+    }
 
     /// <summary>把设置恢复成出厂值（**不动播放列表**，也不动快进快退之外的播放状态）。</summary>
     public void ResetSettings()

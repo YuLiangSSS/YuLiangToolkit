@@ -852,6 +852,20 @@ internal static class MediaPlayerChecks
         check("后台播放：有曲目 → 切走要保活，并且该显示左下角小窗",
             vm.KeepAliveOnLeave && vm.ShowMiniPanel);
 
+        // ---- 小窗右上角的 ×：关掉小窗 + 停止播放 ----
+        var closeEvents = 0;
+        vm.BackgroundStateChanged += (_, _) => closeEvents++;
+        vm.CloseMiniPanelCommand.Execute(null);
+        check("小窗 ×：点一下 → 停止播放（播放器收到 Stop、进度归零、不再出声）",
+            !vm.IsPlaying && fake.StopCount == 1 && fake.Position == TimeSpan.Zero && !fake.IsPlaying,
+            $"stop={fake.StopCount}, playing={fake.IsPlaying}");
+        check("小窗 ×：点一下 → 通知外壳收起小窗；曲目 / 保活都还在（回到播放器还能接着用）",
+            closeEvents > 0 && !vm.ShowMiniPanel && vm.KeepAliveOnLeave && vm.CurrentItem is not null);
+
+        vm.PlayItem(vm.Items[1]);
+        fake.RaiseOpened(TimeSpan.FromSeconds(180), hasVideo: false);
+        check("小窗 ×：再开始播放 → 资格复位（下次切走小窗照常浮出来）", vm.ShowMiniPanel && fake.IsPlaying);
+
         var stateEvents = 0;
         vm.BackgroundStateChanged += (_, _) => stateEvents++;
         vm.BackgroundPlayback = false;
