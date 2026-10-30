@@ -66,10 +66,40 @@ public sealed class ShellConfig : ToolConfig
     /// <summary>
     /// 点击效果 Id 列表（可多选；<c>null</c> = 老配置没有这个字段，按 <see cref="ShowParticles"/> 迁移）。
     /// 可选值见 <see cref="CursorEffects"/>：<c>particle-burst</c> 粒子爆炸、
-    /// <c>dispersion</c> 散光扩散、<c>glow-flash</c> 光晕闪烁。
+    /// <c>dispersion</c> 散光扩散、<c>glow-flash</c> 光晕闪烁、<c>invert-circle</c> 反色圆环。
     /// 与自动效果互不影响：自动效果全关、点击效果照样能触发。
     /// </summary>
     public List<string>? ClickEffects { get; set; }
+
+    // ---------- 光标特效可调参数（v0.37.0，主页设置里的滑块） ----------
+    //
+    // 默认值 = v0.36.x 的固定外观；老配置没有这些字段时读出来就是默认值、行为不变。
+    // 取值范围 / 步进集中在 Core/Effects/CursorEffectTuning.cs：设置页按它生成滑块，
+    // 渲染层（ParticleOverlay.Tuning）再按它夹取，避免两处各写一套数字。
+
+    /// <summary>粒子拖尾：每基准帧生成数量（个/帧，默认 1）。</summary>
+    public double TrailParticleCount { get; set; } = 1.0;
+
+    /// <summary>粒子拖尾：粒子大小倍率（默认 1.0 = 原来的 5px）。</summary>
+    public double TrailParticleSize { get; set; } = 1.0;
+
+    /// <summary>鼠标散光：光晕半径 DIP（默认 46）。</summary>
+    public double CursorGlowRadius { get; set; } = 46.0;
+
+    /// <summary>粒子爆炸：一次炸开多少颗（默认 24；右键按同比例更多）。</summary>
+    public double BurstParticleCount { get; set; } = 24.0;
+
+    /// <summary>粒子爆炸：扩散范围倍率（默认 1.0 = 原来的速度 / 射程）。</summary>
+    public double BurstRange { get; set; } = 1.0;
+
+    /// <summary>散光扩散：外圈最大半径 DIP（默认 98）。</summary>
+    public double DispersionRadius { get; set; } = 98.0;
+
+    /// <summary>光晕闪烁：光团最大半径 DIP（默认 64）。</summary>
+    public double GlowFlashRadius { get; set; } = 64.0;
+
+    /// <summary>反色圆环：最大半径 DIP（默认 150，约等于 v0.36.x 的自动半径）。</summary>
+    public double InvertCircleRadius { get; set; } = 150.0;
 
     /// <summary>
     /// 界面主题（「主页设置 → 界面风格」，默认 <see cref="UiTheme.Default"/>）。

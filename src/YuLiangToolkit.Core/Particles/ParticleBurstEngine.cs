@@ -46,10 +46,17 @@ public sealed class ParticleBurstEngine
     /// <summary>每基准帧的速度衰减系数（爆炸感：先冲出去再慢下来）。</summary>
     public const double DragPerFrame = 0.985;
 
+    /// <summary>「爆炸范围」倍率的可调下限（主页设置滑块；1.0 = 原来的速度 / 射程）。</summary>
+    public const double MinSpeedScale = 0.1;
+
+    /// <summary>「爆炸范围」倍率的可调上限。</summary>
+    public const double MaxSpeedScale = 5.0;
+
     // ---------------- 状态 ----------------
 
     private readonly List<Particle> _particles = new(256);
     private Random _random;
+    private double _speedScale = 1.0;
 
     /// <summary>用随机种子构造（自检可复现）。</summary>
     public ParticleBurstEngine(int seed)
@@ -74,6 +81,16 @@ public sealed class ParticleBurstEngine
     /// <summary>累计触发了多少次爆炸（诊断/自检用）。</summary>
     public int TotalBursts { get; private set; }
 
+    /// <summary>
+    /// 爆炸粒子的速度倍率（主页设置「粒子爆炸范围」滑块）：初始速度和射程一起放大 / 缩小。
+    /// 夹在 <see cref="MinSpeedScale"/> ~ <see cref="MaxSpeedScale"/>；只影响之后新炸出的粒子。
+    /// </summary>
+    public double SpeedScale
+    {
+        get => _speedScale;
+        set => _speedScale = double.IsNaN(value) ? 1.0 : Math.Clamp(value, MinSpeedScale, MaxSpeedScale);
+    }
+
     /// <summary>换随机种子（自检可复现；正常代码不需要调用）。</summary>
     public void Reseed(int seed) => _random = new Random(seed);
 
@@ -95,7 +112,7 @@ public sealed class ParticleBurstEngine
                 X = x,
                 Y = y,
                 Angle = _random.NextDouble() * Math.PI * 2,
-                Speed = MinSpeed + _random.NextDouble() * (MaxSpeed - MinSpeed),
+                Speed = (MinSpeed + _random.NextDouble() * (MaxSpeed - MinSpeed)) * _speedScale,
                 ColorMix = _random.NextDouble(),
                 Age = 0,
                 LifeSpan = MinLifeSpan + _random.NextDouble() * (MaxLifeSpan - MinLifeSpan),

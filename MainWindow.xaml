@@ -196,6 +196,7 @@
                               IsActive="True"
                               AutoEffects="{Binding AutoEffectIds}"
                               ClickEffects="{Binding ClickEffectIds}"
+                              Tuning="{Binding EffectTuning}"
                               CaptureSource="{Binding ElementName=RootGrid}"
                               CaptureBackground="{DynamicResource WindowBackgroundBrush}"
                               UseCustomColors="{Binding ParticleCustomColorsEnabled}"

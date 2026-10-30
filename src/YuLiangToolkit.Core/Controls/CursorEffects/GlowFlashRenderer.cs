@@ -17,12 +17,28 @@ internal sealed class GlowFlashRenderer
     /// <summary>同时最多保留几团。</summary>
     private const int MaxFlashes = 6;
 
-    /// <summary>起始 / 终止半径（DIP）。</summary>
+    /// <summary>起始半径（DIP）。</summary>
     private const double StartRadius = 14;
-    private const double EndRadius = 64;
+
+    /// <summary>光团最大半径默认值（= v0.36.x 的固定外观）。</summary>
+    public const double DefaultRadius = 64;
+
+    /// <summary>光团最大半径可调下限（主页设置滑块）。</summary>
+    public const double MinRadius = 6;
+
+    /// <summary>光团最大半径可调上限。</summary>
+    public const double MaxRadius = 400;
 
     private readonly List<Flash> _flashes = new(MaxFlashes);
     private Brush? _brush;
+    private double _radius = DefaultRadius;
+
+    /// <summary>光团最大半径（DIP，主页设置「光晕闪烁半径」滑块；越界自动夹住）。</summary>
+    public double Radius
+    {
+        get => _radius;
+        set => _radius = double.IsNaN(value) ? DefaultRadius : Math.Clamp(value, MinRadius, MaxRadius);
+    }
 
     /// <summary>现在有没有还在闪的光团。</summary>
     public bool HasVisual => _flashes.Count > 0;
@@ -83,7 +99,8 @@ internal sealed class GlowFlashRenderer
             if (progress >= 1) continue;
 
             var eased = 1 - Math.Pow(1 - progress, 2.0);
-            var radius = StartRadius + (EndRadius - StartRadius) * eased;
+            var startRadius = Math.Min(StartRadius, _radius * 0.5);   // 半径调得很小时起点也跟着缩
+            var radius = startRadius + (_radius - startRadius) * eased;
             var opacity = Math.Pow(1 - progress, 1.6);
 
             drawingContext.PushOpacity(opacity);

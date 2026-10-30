@@ -82,16 +82,18 @@ internal sealed class InvertCircleRenderer
 
     /// <summary>
     /// 在 <paramref name="center"/> 触发一圈反色，并立刻取景一次。
-    /// <paramref name="overlaySize"/> 用来算这次的最大半径，<paramref name="dpiScale"/> 决定取景位图的
-    /// 像素密度（高 DPI 下反色内容才不会糊）。没有取景源时直接忽略（例如无头自检里 new 出来的覆盖层）。
+    /// <paramref name="radius"/> 是最大半径（DIP，来自主页设置「反色圆环半径」滑块），
+    /// <paramref name="overlaySize"/> 只用来把取景区域夹进窗口，
+    /// <paramref name="dpiScale"/> 决定取景位图的像素密度（高 DPI 下反色内容才不会糊）。
+    /// 没有取景源时直接忽略（例如无头自检里 new 出来的覆盖层）。
     /// </summary>
-    public void Trigger(Point center, Size overlaySize, double dpiScale)
+    public void Trigger(Point center, Size overlaySize, double dpiScale, double radius)
     {
         Clear();
         if (_source is null) return;
 
         _center = center;
-        _maxRadius = InvertCircleAnimation.ResolveMaxRadius(overlaySize.Width, overlaySize.Height);
+        _maxRadius = double.IsNaN(radius) ? 1 : Math.Clamp(radius, 1, 2000);
         _age = 0;
         _dpiScale = double.IsNaN(dpiScale) || dpiScale <= 0 ? 1.0 : dpiScale;
 

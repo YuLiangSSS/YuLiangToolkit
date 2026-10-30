@@ -17,6 +17,8 @@ namespace YuLiangToolkit.FrameworkSelfCheck;
 ///   <item><b>反色圆环时间线</b>（<see cref="InvertCircleAnimation"/> / <see cref="Easings"/>）：
 ///   easeOutQuint 的端点与「先快后慢」形状、半径在扩散段单调变大 / 收缩段单调变小、
 ///   收缩段「先缩得慢、最后缩得快」、最大半径按窗口尺寸夹取；</item>
+///   <item><b>可调参数</b>（<see cref="CursorEffectTuning"/> / <see cref="ShellSliderOption"/>，v0.37.0）：
+///   默认值 = 旧外观、每条参数范围合法、越界 / NaN 被夹住、滑块吸附 / 回调 / 文案；</item>
 ///   <item><b>点击爆炸引擎</b>（<see cref="ParticleBurstEngine"/>）：一次爆发数量、从点击点出发、
 ///   寿命/大小/速度范围、逐帧老化回收、上限、清空、固定种子可复现、右键 = 更多；</item>
 ///   <item><b>配置</b>：<see cref="ShellConfig"/> 的 <c>autoEffects</c> / <c>clickEffects</c> 数组往返、
@@ -37,10 +39,61 @@ internal static class ShellEffectsChecks
         CheckCatalog(Check);
         CheckNormalize(Check);
         CheckInvertAnimation(Check);
+        CheckTuning(Check);
         CheckBurstEngine(Check);
         CheckConfigRoundTrip(Check);
         CheckEffectOption(Check);
+        CheckSliderOption(Check);
         CheckSettingsLocation(Check);
+    }
+
+    // ---------------------------------------------------------------- 可调参数（v0.37.0 滑块）
+
+    private static void CheckTuning(CheckFn check)
+    {
+        var defaults = CursorEffectTuning.Default;
+        check("可调参数默认值 = v0.36.x 的固定外观（老配置升级后外观不变）",
+            defaults.TrailParticleCount == 1 && defaults.TrailParticleSize == 1
+            && defaults.CursorGlowRadius == 46 && defaults.BurstParticleCount == 24
+            && defaults.BurstRange == 1 && defaults.DispersionRadius == 98
+            && defaults.GlowFlashRadius == 64 && defaults.InvertCircleRadius == 150);
+        check("默认值本身就在各自范围内（Normalized 不会改动默认值）",
+            CursorEffectTuning.Default.Normalized() == CursorEffectTuning.Default);
+
+        var ranges = new (string Name, CursorEffectRange Range)[]
+        {
+            ("拖尾数量", CursorEffectTuning.TrailCountRange),
+            ("拖尾大小", CursorEffectTuning.TrailSizeRange),
+            ("鼠标散光半径", CursorEffectTuning.GlowRadiusRange),
+            ("爆炸数量", CursorEffectTuning.BurstCountRange),
+            ("爆炸范围", CursorEffectTuning.BurstRangeRange),
+            ("散光扩散半径", CursorEffectTuning.DispersionRadiusRange),
+            ("光晕闪烁半径", CursorEffectTuning.GlowFlashRadiusRange),
+            ("反色圆环半径", CursorEffectTuning.InvertRadiusRange),
+        };
+        check("每条参数的范围合法（min < max、步进 > 0）",
+            ranges.All(x => x.Range.Minimum < x.Range.Maximum && x.Range.Step > 0));
+        check("可调范围够大（滑块能覆盖到旧观感的数倍）",
+            CursorEffectTuning.TrailCountRange.Maximum >= 10
+            && CursorEffectTuning.BurstCountRange.Maximum >= 100
+            && CursorEffectTuning.BurstRangeRange.Maximum >= 2
+            && CursorEffectTuning.DispersionRadiusRange.Maximum >= 300
+            && CursorEffectTuning.InvertRadiusRange.Maximum >= 300,
+            $"数量 {CursorEffectTuning.TrailCountRange.Minimum}~{CursorEffectTuning.TrailCountRange.Maximum}，"
+            + $"爆炸 {CursorEffectTuning.BurstCountRange.Minimum}~{CursorEffectTuning.BurstCountRange.Maximum}");
+
+        var huge = new CursorEffectTuning(1e6, 1e6, 1e6, 1e6, 1e6, 1e6, 1e6, 1e6).Normalized();
+        var tiny = new CursorEffectTuning(-1e6, -1e6, -1e6, -1e6, -1e6, -1e6, -1e6, -1e6).Normalized();
+        var broken = new CursorEffectTuning(double.NaN, double.NaN, double.NaN, double.NaN,
+            double.NaN, double.NaN, double.NaN, double.NaN).Normalized();
+        check("越界 / NaN 参数被夹回各自范围（手改配置也不会崩）",
+            huge.TrailParticleCount == CursorEffectTuning.TrailCountRange.Maximum
+            && huge.BurstParticleCount == CursorEffectTuning.BurstCountRange.Maximum
+            && huge.InvertCircleRadius == CursorEffectTuning.InvertRadiusRange.Maximum
+            && tiny.TrailParticleCount == CursorEffectTuning.TrailCountRange.Minimum
+            && tiny.BurstRange == CursorEffectTuning.BurstRangeRange.Minimum
+            && broken.GlowFlashRadius == CursorEffectTuning.GlowFlashRadiusRange.Minimum
+            && broken.BurstParticleCount == CursorEffectTuning.BurstCountRange.Minimum);
     }
 
     // ---------------------------------------------------------------- 清单
@@ -218,19 +271,10 @@ internal static class ShellEffectsChecks
             firstHalfDrop < maxRadius * 0.2 && secondHalfDrop > firstHalfDrop * 4,
             $"前半程掉 {firstHalfDrop:0.##}，后半程掉 {secondHalfDrop:0.##}");
 
-        // ---- 最大半径按窗口短边夹取，且面积约为 v0.36.0 的一半（半径 × 1/√2） ----
-        var defaultRadius = InvertCircleAnimation.ResolveMaxRadius(1280, 820);
-        check("反色圆环最大半径：按短边比例、夹在上下限之间",
-            Math.Abs(InvertCircleAnimation.ResolveMaxRadius(1024, 700)
-                     - 700 * InvertCircleAnimation.RadiusRatio) < 1e-9
-            && Math.Abs(InvertCircleAnimation.ResolveMaxRadius(1920, 1080) - InvertCircleAnimation.LargestRadius) < 1e-9
-            && Math.Abs(InvertCircleAnimation.ResolveMaxRadius(100, 100) - InvertCircleAnimation.SmallestRadius) < 1e-9
-            && Math.Abs(InvertCircleAnimation.ResolveMaxRadius(double.NaN, 500) - InvertCircleAnimation.SmallestRadius) < 1e-9,
-            $"默认窗口 1280×820 → {defaultRadius:0.##}");
-
-        check("反色圆环尺寸：默认窗口最大半径约 151（v0.36.0 是 213，面积正好减半）",
-            Math.Abs(defaultRadius - 213.2 / Math.Sqrt(2)) < 1e-6,
-            $"{defaultRadius:0.##}");
+        // 半径完全由调用方传入（主页设置滑块），这里验证 maxRadius 参数被正确使用
+        check("反色圆环半径：最大半径由参数决定（主页设置滑块直接生效）",
+            Math.Abs(InvertCircleAnimation.RadiusAt(growEnd, 200) - 200) < 1e-6
+            && Math.Abs(InvertCircleAnimation.RadiusAt(growEnd, 60) - 60) < 1e-6);
 
         check("反色圆环：播完判定（到总时长算播完、NaN 也算播完）",
             !InvertCircleAnimation.IsFinished(total - 0.1)
@@ -301,6 +345,61 @@ internal static class ShellEffectsChecks
         var zero = new ParticleBurstEngine(seed: 1);
         check("数量 0 不生成粒子、但记一次爆发",
             zero.Burst(1, 2, 0) == 0 && zero.Particles.Count == 0 && zero.TotalBursts == 1);
+
+        // 「爆炸范围」滑块：速度倍率（默认 1.0 保持原行为）
+        var scaled = new ParticleBurstEngine(seed: 20261030) { SpeedScale = 2.0 };
+        scaled.Burst(0, 0, 24);
+        check("爆炸范围倍率放大粒子速度（2× → 射程约 2×）",
+            scaled.Particles.All(p => p.Speed >= ParticleBurstEngine.MinSpeed * 2 - 1e-9
+                                      && p.Speed <= ParticleBurstEngine.MaxSpeed * 2 + 1e-9)
+            && scaled.Particles.Any(p => p.Speed > ParticleBurstEngine.MaxSpeed),
+            $"最大 {scaled.Particles.Max(p => p.Speed):0.##}（原上限 {ParticleBurstEngine.MaxSpeed}）");
+
+        scaled.SpeedScale = double.NaN;
+        check("爆炸范围 NaN 倍率回到 1.0（不会把速度算成 NaN）", scaled.SpeedScale == 1.0);
+        scaled.SpeedScale = 1000;
+        check("爆炸范围倍率有上限（不会飞出去几万像素）",
+            scaled.SpeedScale == ParticleBurstEngine.MaxSpeedScale,
+            $"实际 {scaled.SpeedScale}");
+    }
+
+    // ---------------------------------------------------------------- 滑块设置项（v0.37.0）
+
+    private static void CheckSliderOption(CheckFn check)
+    {
+        var changes = 0;
+        var last = 0.0;
+        var slider = new ShellSliderOption(
+            "burst-count", CursorEffects.ParticleBurst, "粒子爆炸 · 数量", "一次点击炸开多少颗",
+            CursorEffectTuning.BurstCountRange, 24, " 颗",
+            value => { last = value; changes++; });
+
+        check("滑块：初始值 / 范围 / 单位 / 文案正确",
+            slider.Value == 24 && slider.Minimum == 4 && slider.Maximum == 160 && slider.Step == 1
+            && slider.LargeStep == 10 && slider.ValueText == "24 颗" && slider.IsEnabled
+            && slider.EffectId == CursorEffects.ParticleBurst);
+
+        slider.Value = 30;
+        check("滑块：赋值触发一次回调、文案跟着变",
+            changes == 1 && last == 30 && slider.Value == 30 && slider.ValueText == "30 颗");
+        slider.Value = 30;
+        check("滑块：重复赋同值不再回调（Set 去重）", changes == 1);
+
+        slider.Value = 1e9;
+        check("滑块：超上限被夹住", slider.Value == 160 && last == 160);
+        slider.Value = -5;
+        check("滑块：超下限被夹住", slider.Value == 4 && last == 4);
+        slider.Value = 27.4;
+        check("滑块：按步进吸附（1 档 → 27）", slider.Value == 27 && last == 27);
+
+        // 小数步进：0.05 档，显示两位小数
+        var fine = new ShellSliderOption(
+            "burst-range", CursorEffects.ParticleBurst, "粒子爆炸 · 范围", "射程倍率",
+            CursorEffectTuning.BurstRangeRange, 1.0, " ×", _ => { });
+        check("滑块：小数步进显示两位小数（1.00 ×）", fine.ValueText == "1.00 ×");
+        fine.Value = 1.234;
+        check("滑块：0.05 步进吸附到 1.25", fine.Value == 1.25 && fine.ValueText == "1.25 ×",
+            $"实际 {fine.Value}");
     }
 
     // ---------------------------------------------------------------- 配置往返
@@ -322,6 +421,14 @@ internal static class ShellEffectsChecks
                 CursorEffects.ParticleBurst, CursorEffects.Dispersion,
                 CursorEffects.GlowFlash, CursorEffects.InvertCircle,
             },
+            TrailParticleCount = 6.5,
+            TrailParticleSize = 1.4,
+            CursorGlowRadius = 120,
+            BurstParticleCount = 80,
+            BurstRange = 1.95,
+            DispersionRadius = 240,
+            GlowFlashRadius = 180,
+            InvertCircleRadius = 90,
         });
         var json = File.ReadAllText(path);
         var saved = JsonFileStore.Read<ShellConfig>(path);
@@ -336,10 +443,23 @@ internal static class ShellEffectsChecks
             }) == true,
             json.Replace(Environment.NewLine, " "));
 
+        check("特效参数（滑块）按字段存盘、读回一致",
+            json.Contains("\"trailParticleCount\"") && json.Contains("\"invertCircleRadius\"")
+            && saved is { TrailParticleCount: 6.5, TrailParticleSize: 1.4, CursorGlowRadius: 120 }
+            && saved is { BurstParticleCount: 80, BurstRange: 1.95, DispersionRadius: 240 }
+            && saved is { GlowFlashRadius: 180, InvertCircleRadius: 90 });
+
         File.WriteAllText(path, "{ \"showParticles\": false }");
         var legacy = JsonFileStore.Read<ShellConfig>(path);
         check("老配置（只有 showParticles）读出来特效列表是 null（外壳按老开关迁移）",
             legacy is { ShowParticles: false, AutoEffects: null, ClickEffects: null });
+        check("老配置缺特效参数字段 → 用默认值（外观与升级前一致）",
+            legacy is
+            {
+                TrailParticleCount: 1, TrailParticleSize: 1, CursorGlowRadius: 46,
+                BurstParticleCount: 24, BurstRange: 1, DispersionRadius: 98,
+                GlowFlashRadius: 64, InvertCircleRadius: 150,
+            });
 
         File.WriteAllText(path, "{ \"autoEffects\": [], \"clickEffects\": [] }");
         var explicitEmpty = JsonFileStore.Read<ShellConfig>(path);

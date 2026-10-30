@@ -13,8 +13,14 @@ namespace YuLiangToolkit.Core.Controls.CursorEffects;
 /// </summary>
 internal sealed class CursorGlowRenderer
 {
-    /// <summary>光晕半径（DIP）。</summary>
-    private const double Radius = 46;
+    /// <summary>光晕半径（DIP）默认值（= v0.36.x 的固定外观）。</summary>
+    public const double DefaultRadius = 46;
+
+    /// <summary>光晕半径可调下限（主页设置滑块）。</summary>
+    public const double MinRadius = 8;
+
+    /// <summary>光晕半径可调上限。</summary>
+    public const double MaxRadius = 400;
 
     /// <summary>呼吸脉动的幅度（±5%，太强会像闪烁）。</summary>
     private const double PulseAmplitude = 0.05;
@@ -24,6 +30,14 @@ internal sealed class CursorGlowRenderer
 
     private Brush? _softBrush;
     private Brush? _coreBrush;
+    private double _radius = DefaultRadius;
+
+    /// <summary>光晕半径（DIP，主页设置「鼠标散光半径」滑块；越界自动夹住）。</summary>
+    public double Radius
+    {
+        get => _radius;
+        set => _radius = double.IsNaN(value) ? DefaultRadius : Math.Clamp(value, MinRadius, MaxRadius);
+    }
 
     /// <summary>要不要画（为 false 时 <see cref="Render"/> 什么都不做）。</summary>
     public bool Visible { get; set; }

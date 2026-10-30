@@ -109,6 +109,12 @@ public class MainViewModel : ObservableObject
     /// <summary>设置页里的「点击效果」勾选项（可多选；与自动效果互不影响）。</summary>
     public IReadOnlyList<ShellEffectOption> ClickEffectOptions { get; private set; } = Array.Empty<ShellEffectOption>();
 
+    /// <summary>设置页里的「自动效果参数」滑块（粒子拖尾数量 / 大小、鼠标散光半径；v0.37.0）。</summary>
+    public IReadOnlyList<ShellSliderOption> AutoEffectSliders { get; private set; } = Array.Empty<ShellSliderOption>();
+
+    /// <summary>设置页里的「点击效果参数」滑块（爆炸数量 / 范围、散光扩散半径、光晕闪烁半径、反色圆环半径）。</summary>
+    public IReadOnlyList<ShellSliderOption> ClickEffectSliders { get; private set; } = Array.Empty<ShellSliderOption>();
+
     public ObservableCollection<NavItem> NavItems { get; } = new();
 
     /// <summary>全部已发现的功能（未过滤）。</summary>
@@ -421,7 +427,93 @@ public class MainViewModel : ObservableObject
 
         AutoEffectOptions = BuildEffectOptions(CursorEffectTrigger.Auto, auto);
         ClickEffectOptions = BuildEffectOptions(CursorEffectTrigger.Click, click);
+
+        AutoEffectSliders = BuildAutoEffectSliders();
+        ClickEffectSliders = BuildClickEffectSliders();
+        UpdateSliderAvailability();
     }
+
+    /// <summary>
+    /// 当前特效参数（绑给 <c>ParticleOverlay.Tuning</c>）：任何滑块一改就通知，渲染层立即生效。
+    /// 值从配置读，越界 / 手改坏的值由 <see cref="CursorEffectTuning.Normalized"/> 兜住。
+    /// </summary>
+    public CursorEffectTuning EffectTuning => new CursorEffectTuning(
+        _shell.TrailParticleCount,
+        _shell.TrailParticleSize,
+        _shell.CursorGlowRadius,
+        _shell.BurstParticleCount,
+        _shell.BurstRange,
+        _shell.DispersionRadius,
+        _shell.GlowFlashRadius,
+        _shell.InvertCircleRadius).Normalized();
+
+    /// <summary>构造一条滑块：值变 → 写配置 + 通知 <see cref="EffectTuning"/> 让渲染层跟着改。</summary>
+    private ShellSliderOption Slider(
+        string id,
+        string effectId,
+        string label,
+        string description,
+        CursorEffectRange range,
+        double value,
+        string unit,
+        Action<double> write)
+        => new(id, effectId, label, description, range, value, unit, write);
+
+    /// <summary>自动效果参数：粒子拖尾（数量 / 大小）+ 鼠标散光（半径）。</summary>
+    private IReadOnlyList<ShellSliderOption> BuildAutoEffectSliders() => new List<ShellSliderOption>
+    {
+        Slider("trail-count", CursorEffects.ParticleTrail, "粒子拖尾 · 数量",
+            "鼠标移动时每帧冒出的粒子数（个/帧）；调大更密，0.5 一档。",
+            CursorEffectTuning.TrailCountRange, _shell.TrailParticleCount, " 个/帧",
+            value => { _shell.TrailParticleCount = value; NotifyTuningChanged(); }),
+        Slider("trail-size", CursorEffects.ParticleTrail, "粒子拖尾 · 大小",
+            "粒子初始直径的倍率（1.0 = 原来的 5px 左右）。",
+            CursorEffectTuning.TrailSizeRange, _shell.TrailParticleSize, " ×",
+            value => { _shell.TrailParticleSize = value; NotifyTuningChanged(); }),
+        Slider("glow-radius", CursorEffects.CursorGlow, "鼠标散光 · 半径",
+            "鼠标位置那圈发散光的半径（DIP），调大更明显。",
+            CursorEffectTuning.GlowRadiusRange, _shell.CursorGlowRadius, " DIP",
+            value => { _shell.CursorGlowRadius = value; NotifyTuningChanged(); }),
+    };
+
+    /// <summary>点击效果参数：爆炸（数量 / 范围）、散光扩散半径、光晕闪烁半径、反色圆环半径。</summary>
+    private IReadOnlyList<ShellSliderOption> BuildClickEffectSliders() => new List<ShellSliderOption>
+    {
+        Slider("burst-count", CursorEffects.ParticleBurst, "粒子爆炸 · 数量",
+            "一次点击炸开多少颗（颗）；右键按同样比例更多。",
+            CursorEffectTuning.BurstCountRange, _shell.BurstParticleCount, " 颗",
+            value => { _shell.BurstParticleCount = value; NotifyTuningChanged(); }),
+        Slider("burst-range", CursorEffects.ParticleBurst, "粒子爆炸 · 范围",
+            "爆炸粒子飞出的距离倍率（1.0 = 原来的射程）。",
+            CursorEffectTuning.BurstRangeRange, _shell.BurstRange, " ×",
+            value => { _shell.BurstRange = value; NotifyTuningChanged(); }),
+        Slider("dispersion-radius", CursorEffects.Dispersion, "散光扩散 · 半径",
+            "点击处色散光环扩散到的最大半径（DIP）。",
+            CursorEffectTuning.DispersionRadiusRange, _shell.DispersionRadius, " DIP",
+            value => { _shell.DispersionRadius = value; NotifyTuningChanged(); }),
+        Slider("flash-radius", CursorEffects.GlowFlash, "光晕闪烁 · 半径",
+            "点击处那团柔光闪到多大（DIP）。",
+            CursorEffectTuning.GlowFlashRadiusRange, _shell.GlowFlashRadius, " DIP",
+            value => { _shell.GlowFlashRadius = value; NotifyTuningChanged(); }),
+        Slider("invert-radius", CursorEffects.InvertCircle, "反色圆环 · 半径",
+            "反色圆形区域的最大半径（DIP，直径 = 2 倍）；默认 150。",
+            CursorEffectTuning.InvertRadiusRange, _shell.InvertCircleRadius, " DIP",
+            value => { _shell.InvertCircleRadius = value; NotifyTuningChanged(); }),
+    };
+
+    /// <summary>滑块改动后通知渲染层（<c>ParticleOverlay.Tuning</c> 绑定的是这个属性）。</summary>
+    private void NotifyTuningChanged() => OnPropertyChanged(nameof(EffectTuning));
+
+    /// <summary>按「对应特效有没有勾选」刷新滑块的可用状态（没勾就置灰，勾上马上可调）。</summary>
+    private void UpdateSliderAvailability()
+    {
+        foreach (var slider in AutoEffectSliders) slider.IsEnabled = IsEffectSelectedById(slider.EffectId);
+        foreach (var slider in ClickEffectSliders) slider.IsEnabled = IsEffectSelectedById(slider.EffectId);
+    }
+
+    /// <summary>某个特效 Id 当前是否勾选（自动 / 点击两套清单里查）。</summary>
+    private bool IsEffectSelectedById(string effectId)
+        => IsEffectSelected(AutoEffectOptions, effectId) || IsEffectSelected(ClickEffectOptions, effectId);
 
     private IReadOnlyList<ShellEffectOption> BuildEffectOptions(
         CursorEffectTrigger trigger, IReadOnlyList<string> selected)
@@ -441,6 +533,7 @@ public class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(AutoEffectIds));
         OnPropertyChanged(nameof(ClickEffectIds));
         OnPropertyChanged(nameof(HasParticleEffectSelected));
+        UpdateSliderAvailability();
     }
 
     private static IReadOnlyList<string> SelectedEffectIds(IReadOnlyList<ShellEffectOption> options)

@@ -31,12 +31,17 @@ namespace YuLiangToolkit.Core.Controls;
 /// 否则取景会把自己画进去），并用 <see cref="CaptureBackground"/> 补上窗口底色。没设置取景源时
 /// 反色圆环不显示（其余特效不受影响）。</para>
 ///
+/// <para><b>可调参数</b>：粒子数量 / 大小、爆炸数量 / 范围、散光 / 反色半径等由
+/// <see cref="Tuning"/>（<see cref="CursorEffectTuning"/>）控制，主页设置页用滑块改；
+/// 每次改动会立即重配引擎与渲染器，不需要重开窗口。</para>
+///
 /// <para><b>XAML 用法</b>（放在窗口根 Grid 的最后、与内容根节点平级，铺满整个窗口）：</para>
 /// <code>
 /// &lt;core:ParticleOverlay Panel.ZIndex="900" IsHitTestVisible="False"
 ///                        IsActive="True"
 ///                        AutoEffects="{Binding AutoEffectIds}"
 ///                        ClickEffects="{Binding ClickEffectIds}"
+///                        Tuning="{Binding EffectTuning}"
 ///                        CaptureSource="{Binding ElementName=RootGrid}"
 ///                        CaptureBackground="{DynamicResource WindowBackgroundBrush}"
 ///                        UseCustomColors="{Binding ParticleCustomColorsEnabled}" ... /&gt;
@@ -109,6 +114,17 @@ public sealed class ParticleOverlay : FrameworkElement
     public static readonly DependencyProperty CaptureBackgroundProperty = DependencyProperty.Register(
         nameof(CaptureBackground), typeof(Brush), typeof(ParticleOverlay),
         new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.None, OnCaptureSettingsChanged));
+
+    // ---------- 可调参数（v0.37.0，主页设置里的滑块） ----------
+
+    /// <summary>
+    /// 特效可调参数（<see cref="CursorEffectTuning"/>）：粒子数量 / 大小、爆炸数量 / 范围、
+    /// 散光 / 反色的半径等。设置页滑块的每一次改动都会换一个新实例，覆盖层随之重配引擎 / 渲染器。
+    /// 为 <c>null</c> 时用 <see cref="CursorEffectTuning.Default"/>（= v0.36.x 的固定外观）。
+    /// </summary>
+    public static readonly DependencyProperty TuningProperty = DependencyProperty.Register(
+        nameof(Tuning), typeof(CursorEffectTuning), typeof(ParticleOverlay),
+        new FrameworkPropertyMetadata(CursorEffectTuning.Default, FrameworkPropertyMetadataOptions.None, OnTuningChanged));
 
     // ---------- 自定义粒子颜色（v0.22.0；对所有「粒子类」特效生效：拖尾 + 爆炸） ----------
     //
@@ -194,6 +210,13 @@ public sealed class ParticleOverlay : FrameworkElement
         set => SetValue(CaptureBackgroundProperty, value);
     }
 
+    /// <summary>特效可调参数，见 <see cref="TuningProperty"/>。</summary>
+    public CursorEffectTuning Tuning
+    {
+        get => (CursorEffectTuning)GetValue(TuningProperty);
+        set => SetValue(TuningProperty, value);
+    }
+
     /// <summary>是否启用自定义特效颜色，见 <see cref="UseCustomColorsProperty"/>。</summary>
     public bool UseCustomColors
     {
@@ -243,6 +266,9 @@ public sealed class ParticleOverlay : FrameworkElement
     /// <summary>柔光半径相对主圆点半径的倍数。</summary>
     private const double GlowRadiusScale = 1.9;
 
+    /// <summary>右键「来更多」相对左键的爆炸数量倍率（沿用 v0.36.x 的 40 / 24）。</summary>
+    private const double RightBurstRatio = ParticleBurstEngine.RightBurstCount / (double)ParticleBurstEngine.DefaultBurstCount;
+
     /// <summary>自动拖尾引擎（纯逻辑；自动效果关掉时完全不工作）。</summary>
     private readonly ParticleEngine _trailEngine = new();
 
@@ -253,6 +279,9 @@ public sealed class ParticleOverlay : FrameworkElement
     private readonly DispersionRippleRenderer _dispersion = new();
     private readonly GlowFlashRenderer _flash = new();
     private readonly InvertCircleRenderer _invert = new();
+
+    /// <summary>当前生效的特效参数（见 <see cref="Tuning"/>；构造时先放默认值）。</summary>
+    private CursorEffectTuning _tuning = CursorEffectTuning.Default;
 
     /// <summary>开发调试：<c>YLT_PARTICLE_DEMO=1</c> / <c>YLT_EFFECT_DEMO=1</c> 时不用鼠标、自动演示（供截图）。</summary>
     private readonly bool _demoMode = IsDemoModeEnabled();
@@ -301,6 +330,7 @@ public sealed class ParticleOverlay : FrameworkElement
 
         RebuildPalettes();
         ApplyCaptureSettings();
+        ApplyTuning();
         ApplyEffectSelection();
 
         Loaded += OnLoaded;
@@ -407,11 +437,29 @@ public sealed class ParticleOverlay : FrameworkElement
     private static void OnCaptureSettingsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         => ((ParticleOverlay)d).ApplyCaptureSettings();
 
+    private static void OnTuningChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        => ((ParticleOverlay)d).ApplyTuning();
+
     /// <summary>把取景源 / 底色同步给反色渲染器（换源会清掉正在播的一圈，避免拿旧视觉取景）。</summary>
     private void ApplyCaptureSettings()
     {
         _invert.SetSource(CaptureSource);
         _invert.SetBackground(CaptureBackground);
+    }
+
+    /// <summary>
+    /// 把可调参数（主页设置里的滑块）同步给粒子引擎 / 各渲染器：立即生效，不重建画刷、不重排已有粒子。
+    /// 越界值由 <see cref="CursorEffectTuning.Normalized"/> 夹好，手改配置也不会把界面画崩。
+    /// </summary>
+    private void ApplyTuning()
+    {
+        _tuning = (Tuning ?? CursorEffectTuning.Default).Normalized();
+        _trailEngine.BaseSpawn = _tuning.TrailParticleCount;
+        _trailEngine.SizeScale = _tuning.TrailParticleSize;
+        _burstEngine.SpeedScale = _tuning.BurstRange;
+        _dispersion.Radius = _tuning.DispersionRadius;
+        _flash.Radius = _tuning.GlowFlashRadius;
+        _cursorGlow.Radius = _tuning.CursorGlowRadius;
     }
 
     /// <summary>总开关变化：关掉时清空一切并停渲染；打开时按选择恢复自动拖尾并订阅渲染。</summary>
@@ -675,8 +723,12 @@ public sealed class ParticleOverlay : FrameworkElement
     {
         if (!IsActive) return;
 
-        if (_burstEnabled) _burstEngine.Burst(position.X, position.Y,
-            isRight ? ParticleBurstEngine.RightBurstCount : ParticleBurstEngine.DefaultBurstCount);
+        if (_burstEnabled)
+        {
+            var count = Math.Max(1, (int)Math.Round(_tuning.BurstParticleCount));
+            if (isRight) count = Math.Max(1, (int)Math.Round(count * RightBurstRatio));
+            _burstEngine.Burst(position.X, position.Y, count);
+        }
         if (_dispersionEnabled) _dispersion.Trigger(position);
         if (_flashEnabled) _flash.Trigger(position);
 
@@ -684,7 +736,7 @@ public sealed class ParticleOverlay : FrameworkElement
         if (_invertEnabled)
         {
             var dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
-            _invert.Trigger(position, new Size(ActualWidth, ActualHeight), dpi);
+            _invert.Trigger(position, new Size(ActualWidth, ActualHeight), dpi, _tuning.InvertCircleRadius);
         }
     }
 

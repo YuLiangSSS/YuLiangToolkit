@@ -22,7 +22,15 @@ internal sealed class DispersionRippleRenderer
 
     /// <summary>扩散起始半径 / 终止半径（DIP）。</summary>
     private const double StartRadius = 12;
-    private const double EndRadius = 98;
+
+    /// <summary>外圈半径默认值（= v0.36.x 的固定外观）。</summary>
+    public const double DefaultRadius = 98;
+
+    /// <summary>外圈半径可调下限（主页设置滑块）。</summary>
+    public const double MinRadius = 10;
+
+    /// <summary>外圈半径可调上限。</summary>
+    public const double MaxRadius = 500;
 
     /// <summary>色散三环的颜色与粗细（红/绿/蓝，各偏一点，形成色边）。</summary>
     private static readonly Pen[] SpectralPens =
@@ -36,6 +44,14 @@ internal sealed class DispersionRippleRenderer
     private static readonly Pen CorePen = CreatePen(Color.FromArgb(0xCC, 0xFF, 0xFF, 0xFF), 1.1);
 
     private readonly List<Ripple> _ripples = new(MaxRipples);
+    private double _radius = DefaultRadius;
+
+    /// <summary>扩散外圈的最大半径（DIP，主页设置「散光扩散半径」滑块；越界自动夹住）。</summary>
+    public double Radius
+    {
+        get => _radius;
+        set => _radius = double.IsNaN(value) ? DefaultRadius : Math.Clamp(value, MinRadius, MaxRadius);
+    }
 
     /// <summary>现在有没有还在扩散的光环。</summary>
     public bool HasVisual => _ripples.Count > 0;
@@ -74,7 +90,8 @@ internal sealed class DispersionRippleRenderer
 
             // 先快后慢的扩散（easeOut），透明度快速衰减
             var eased = 1 - Math.Pow(1 - progress, 2.4);
-            var radius = StartRadius + (EndRadius - StartRadius) * eased;
+            var startRadius = Math.Min(StartRadius, _radius * 0.5);   // 半径调得很小时起点也跟着缩
+            var radius = startRadius + (_radius - startRadius) * eased;
             var fade = Math.Pow(1 - progress, 1.5);
 
             drawingContext.PushOpacity(fade);

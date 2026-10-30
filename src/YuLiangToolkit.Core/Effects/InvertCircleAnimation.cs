@@ -11,8 +11,8 @@ namespace YuLiangToolkit.Core.Effects;
 /// <para><b>为什么是三次方</b>：v0.36.0 先用的是 easeOutQuint（五次方），实测开头变大太冲、
 /// 减速段又太突然；换成 easeOutCubic 后起点速度降到原来的 3/5，减速也更线性，观感平滑不少。</para>
 ///
-/// <para><b>尺寸</b>：最大半径取窗口短边 × <see cref="RadiusRatio"/>（默认窗口约 150.8 DIP，直径约 302），
-/// 相对 v0.36.0 的半径 ÷ √2 —— **面积正好缩一半**。</para>
+/// <para><b>尺寸</b>：最大半径由主页设置「反色圆环半径」滑块决定（默认 150 DIP，直径约 300），
+/// 默认值沿用 v0.36.x 的观感（比 v0.36.0 首次上线时的 213 DIP 面积小一半）。</para>
 ///
 /// <para><b>时间单位</b>与粒子引擎一致：60fps 基准帧（覆盖层把真实经过时间换算成帧步长再传进来）。</para>
 /// </summary>
@@ -26,30 +26,6 @@ public static class InvertCircleAnimation
 
     /// <summary>整个反色圆环持续的基准帧数（约 0.83 秒）。</summary>
     public const double TotalFrames = GrowFrames + ShrinkFrames;
-
-    /// <summary>窗口很小时的最小最大半径（DIP；保证小窗里也看得清）。</summary>
-    public const double SmallestRadius = 106.07;
-
-    /// <summary>窗口很大时的最大半径上限（DIP；再大就糊成一片了）。</summary>
-    public const double LargestRadius = 169.71;
-
-    /// <summary>
-    /// 最大半径相对窗口短边的比例：0.183847763…（= v0.36.0 的 0.26 ÷ √2，**面积缩小一半**）。
-    /// 默认 1280×820 窗口约 150.8 DIP（直径约 302）。
-    /// </summary>
-    public const double RadiusRatio = 0.18384776310850235;
-
-    /// <summary>
-    /// 按窗口尺寸算这一击的最大半径（DIP）：窗口短边 × <see cref="RadiusRatio"/>，
-    /// 夹在 <see cref="SmallestRadius"/> ~ <see cref="LargestRadius"/> 之间。
-    /// 尺寸还没量出来 / 非法时按最小半径处理。
-    /// </summary>
-    public static double ResolveMaxRadius(double width, double height)
-    {
-        var shortest = Math.Min(width, height);
-        if (double.IsNaN(shortest) || double.IsInfinity(shortest) || shortest <= 1) return SmallestRadius;
-        return Math.Clamp(shortest * RadiusRatio, SmallestRadius, LargestRadius);
-    }
 
     /// <summary>
     /// 某一时刻的半径（DIP）：<paramref name="age"/> 是已经走过的基准帧数。

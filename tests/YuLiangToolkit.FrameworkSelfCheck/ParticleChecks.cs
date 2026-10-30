@@ -30,6 +30,7 @@ internal static class ParticleChecks
         void Check(string name, bool ok, string detail = "") => check("[粒子] " + name, ok, detail);
 
         CheckDefaultState(Check);
+        CheckTunable(Check);
         CheckSpawnAndMotion(Check);
         CheckLifetime(Check);
         CheckBoosts(Check);
@@ -75,6 +76,61 @@ internal static class ParticleChecks
         check("未启用时左/右键爆发不生效",
             Math.Abs(engine.Speed - ParticleEngine.DefaultSpeed) < 1e-9
             && Math.Abs(engine.Count - ParticleEngine.DefaultSpawnPerFrame) < 1e-9);
+    }
+
+    // ---------------------------------------------------------------- 可调参数（v0.37.0 滑块）
+
+    /// <summary>主页设置里的「粒子拖尾数量 / 大小」滑块：默认值保持早期行为，改值立即生效、有上下限。</summary>
+    private static void CheckTunable(CheckFn check)
+    {
+        var engine = Running(seed: 20261030);
+        check("可调参数默认值 = 早期行为（安静 1 个/帧、大小 1.0×）",
+            Math.Abs(engine.BaseSpawn - ParticleEngine.DefaultSpawnPerFrame) < 1e-9
+            && Math.Abs(engine.SizeScale - 1) < 1e-9);
+
+        engine.BaseSpawn = 6;
+        engine.Update();
+        check("拖尾数量滑块：改成 6 个/帧后当帧生成 6 个",
+            Math.Abs(engine.Count - 6) < 1e-9 && engine.TotalSpawned == 6,
+            $"实际 {engine.TotalSpawned} 个");
+
+        engine.BoostCount();
+        check("数量滑块低于爆发上限时，爆发照旧拉满 10",
+            Math.Abs(engine.Count - ParticleEngine.MaxSpawnPerFrame) < 1e-9);
+        for (var i = 0; i < 40; i++) engine.Update();
+        check("爆发后数量衰减回滑块设定的基准值 6",
+            Math.Abs(engine.Count - 6) < 1e-9, $"实际 {engine.Count:0.##}");
+
+        var half = Running(seed: 20261034);
+        half.BaseSpawn = 6;
+        half.Update(0.5);
+        check("数量滑块与帧步长无关（半帧生成 3 个）", half.TotalSpawned == 3);
+
+        var high = Running(seed: 20261031);
+        high.BaseSpawn = 20;
+        high.BoostCount();
+        check("数量滑块高于爆发上限时，爆发不会把数量压回去",
+            Math.Abs(high.Count - 20) < 1e-9);
+
+        var sized = Running(seed: 20261032);
+        sized.SizeScale = 1.5;
+        sized.Update();
+        check("拖尾大小滑块：新粒子初始直径 = 5 × 1.5",
+            Math.Abs(sized.Particles[0].BaseSize - ParticleEngine.BaseSize * 1.5) < 1e-9,
+            $"{sized.Particles[0].BaseSize:0.##}px");
+
+        var clampedHigh = Running(seed: 20261033);
+        clampedHigh.BaseSpawn = 1000;
+        clampedHigh.SizeScale = 1000;
+        check("拖尾数量 / 大小有上下限（滑块再大也不会失控）",
+            Math.Abs(clampedHigh.BaseSpawn - ParticleEngine.MaxBaseSpawn) < 1e-9
+            && Math.Abs(clampedHigh.SizeScale - ParticleEngine.MaxSizeScale) < 1e-9);
+
+        clampedHigh.BaseSpawn = double.NaN;
+        clampedHigh.SizeScale = double.NaN;
+        check("拖尾数量 / 大小 NaN 回到默认值",
+            Math.Abs(clampedHigh.BaseSpawn - ParticleEngine.DefaultSpawnPerFrame) < 1e-9
+            && Math.Abs(clampedHigh.SizeScale - 1) < 1e-9);
     }
 
     // ---------------------------------------------------------------- 生成 / 运动 / 外观

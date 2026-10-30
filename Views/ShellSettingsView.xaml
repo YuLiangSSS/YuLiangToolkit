@@ -9,7 +9,44 @@
 
       ★ 扩展点：特效列表（自动效果 / 点击效果）的每一项来自 Core/Effects/CursorEffects.cs 的清单，
         ItemsControl 直接按清单渲染 —— 以后加新特效只改清单 + 渲染层，不用改这个 XAML。
+        特效参数滑块（v0.37.0）同理：范围 / 步进来自 Core/Effects/CursorEffectTuning.cs，
+        显示名 / 说明来自 MainViewModel 的 AutoEffectSliders / ClickEffectSliders，这里只放一个共用模板。
     -->
+    <UserControl.Resources>
+        <!-- 一条特效参数滑块（自动 / 点击两张卡共用）：名称 + 当前值 + 滑块 + 一句说明。
+             没勾选对应特效时由 MainViewModel 把 IsEnabled 置 false，这里用 DataTrigger 整行变淡。 -->
+        <DataTemplate x:Key="EffectSliderTemplate">
+            <StackPanel Margin="0,10,0,0" IsEnabled="{Binding IsEnabled}">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding Label}" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Text="{Binding ValueText}" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
+                </Grid>
+                <Slider Style="{StaticResource SliderStyle}" Margin="0,3,0,0"
+                        Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"
+                        Value="{Binding Value, Mode=TwoWay}"
+                        SmallChange="{Binding Step}" LargeChange="{Binding LargeStep}"
+                        TickFrequency="{Binding Step}" IsSnapToTickEnabled="True"
+                        ToolTip="{Binding Description}" />
+                <TextBlock Text="{Binding Description}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                           TextWrapping="Wrap" Margin="0,2,0,0" />
+            </StackPanel>
+        </DataTemplate>
+    </UserControl.Resources>
+
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Margin="30,26,30,30" MaxWidth="920" HorizontalAlignment="Left">
 
@@ -26,7 +63,7 @@
                                    VerticalAlignment="Center" />
                     </StackPanel>
                     <TextBlock FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0"
-                               Text="外壳自己的设置：界面风格、主页显示、鼠标自动 / 点击特效、粒子颜色、窗口与托盘。改一下立即生效并自动保存。" />
+                               Text="外壳自己的设置：界面风格、主页显示、鼠标自动 / 点击特效（含数量 / 范围 / 半径滑块）、粒子颜色、窗口与托盘。改一下立即生效并自动保存。" />
                 </StackPanel>
                 <Button Grid.Column="1" Content="返回主页" Style="{StaticResource SecondaryButtonStyle}"
                         VerticalAlignment="Top" Command="{Binding GoHomeCommand}" ToolTip="回到主页（也可以点面包屑的「🏠 主页」或后退按钮）" />
@@ -123,6 +160,12 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+
+                    <!-- 自动效果参数（v0.37.0）：没勾对应特效时整行置灰 -->
+                    <TextBlock Text="参数（只对勾选的自动效果生效，改一下立即生效并自动保存）" FontSize="11.5"
+                               Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,14,0,0" />
+                    <ItemsControl ItemsSource="{Binding AutoEffectSliders}"
+                                  ItemTemplate="{StaticResource EffectSliderTemplate}" Margin="0,2,0,0" />
                 </StackPanel>
             </Border>
 
@@ -149,6 +192,12 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+
+                    <!-- 点击效果参数（v0.37.0）：没勾对应特效时整行置灰 -->
+                    <TextBlock Text="参数（只对勾选的点击效果生效，改一下立即生效并自动保存）" FontSize="11.5"
+                               Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,14,0,0" />
+                    <ItemsControl ItemsSource="{Binding ClickEffectSliders}"
+                                  ItemTemplate="{StaticResource EffectSliderTemplate}" Margin="0,2,0,0" />
                 </StackPanel>
             </Border>
 

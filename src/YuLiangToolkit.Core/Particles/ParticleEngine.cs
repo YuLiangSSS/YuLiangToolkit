@@ -8,7 +8,8 @@ namespace YuLiangToolkit.Core.Particles;
 /// <list type="bullet">
 ///   <item>每帧从鼠标位置生成粒子，方向随机 0~2π、自身速度 1~3、寿命 <see cref="MinLifeSpan"/>~<see cref="MaxLifeSpan"/>；</item>
 ///   <item>全局速度默认 <see cref="DefaultSpeed"/>，最大 <see cref="MaxSpeed"/>，每帧衰减 <see cref="SpeedDecayPerFrame"/>；</item>
-///   <item>每帧生成数量默认 <see cref="DefaultSpawnPerFrame"/>，最大 <see cref="MaxSpawnPerFrame"/>，每帧衰减 <see cref="SpawnDecayPerFrame"/>；</item>
+///   <item>每帧生成数量默认 <see cref="DefaultSpawnPerFrame"/>，最大 <see cref="MaxSpawnPerFrame"/>，每帧衰减 <see cref="SpawnDecayPerFrame"/>；
+///   安静值可用 <see cref="BaseSpawn"/> 调（主页设置滑块），粒子大小可用 <see cref="SizeScale"/> 调；</item>
 ///   <item>左键 = 速度 + 数量都拉满（<see cref="BoostSpeedAndCount"/>），右键 = 只拉数量（<see cref="BoostCount"/>）；</item>
 ///   <item>粒子随寿命线性缩小到 0、淡出到透明（<see cref="Particle.Size"/>/<see cref="Particle.Alpha"/> 按需算）；</item>
 ///   <item>关掉开关就清空、不再生成（<see cref="Active"/> = false）。</item>
@@ -50,6 +51,18 @@ public sealed class ParticleEngine
     /// <summary>每基准帧生成数量的上限（左/右键爆发时拉满）。</summary>
     public const int MaxSpawnPerFrame = 10;
 
+    /// <summary>「安静时每帧生成数量」的可调下限（主页设置滑块；0.5 的步进可以调得很细）。</summary>
+    public const double MinBaseSpawn = 0.5;
+
+    /// <summary>「安静时每帧生成数量」的可调上限（再高就只是更快撞到 <see cref="MaxParticles"/> 上限）。</summary>
+    public const double MaxBaseSpawn = 20.0;
+
+    /// <summary>粒子大小的可调倍率下限（主页设置滑块）。</summary>
+    public const double MinSizeScale = 0.2;
+
+    /// <summary>粒子大小的可调倍率上限。</summary>
+    public const double MaxSizeScale = 3.0;
+
     /// <summary>生成数量每基准帧的衰减量（早期版本 <c>ParticleCountDecay</c>；内部用 double，取整时向下取）。</summary>
     public const double SpawnDecayPerFrame = 0.5;
 
@@ -76,6 +89,12 @@ public sealed class ParticleEngine
 
     private double _speed = DefaultSpeed;
     private double _count = DefaultSpawnPerFrame;
+
+    /// <summary>安静时每基准帧生成数量（可调；左/右键爆发后会衰减回这个值）。</summary>
+    private double _baseSpawn = DefaultSpawnPerFrame;
+
+    /// <summary>粒子初始大小的倍率（可调；1.0 = 原来的 5px）。</summary>
+    private double _sizeScale = 1.0;
 
     /// <summary>生成累加器：不足 1 个的零头留到下一帧（保证高刷屏生成速率不变）。</summary>
     private double _pendingSpawn;
@@ -112,8 +131,34 @@ public sealed class ParticleEngine
     /// <summary>当前全局速度（只读；介于 <see cref="DefaultSpeed"/> 与 <see cref="MaxSpeed"/> 之间）。</summary>
     public double Speed => _speed;
 
-    /// <summary>当前每基准帧生成数量（只读；介于 <see cref="DefaultSpawnPerFrame"/> 与 <see cref="MaxSpawnPerFrame"/> 之间）。</summary>
+    /// <summary>当前每基准帧生成数量（只读；介于 <see cref="BaseSpawn"/> 与 max(<see cref="MaxSpawnPerFrame"/>, <see cref="BaseSpawn"/>) 之间）。</summary>
     public double Count => _count;
+
+    /// <summary>
+    /// 安静时每基准帧生成数量（主页设置「粒子拖尾数量」滑块；默认 <see cref="DefaultSpawnPerFrame"/>）。
+    /// 夹在 <see cref="MinBaseSpawn"/> ~ <see cref="MaxBaseSpawn"/>；改小后当前数量会在下一帧跟着衰减。
+    /// </summary>
+    public double BaseSpawn
+    {
+        get => _baseSpawn;
+        set
+        {
+            _baseSpawn = double.IsNaN(value)
+                ? DefaultSpawnPerFrame
+                : Math.Clamp(value, MinBaseSpawn, MaxBaseSpawn);
+            if (_count < _baseSpawn) _count = _baseSpawn;
+        }
+    }
+
+    /// <summary>
+    /// 粒子初始大小的倍率（主页设置「粒子拖尾大小」滑块；默认 1.0 = 原来的 5px）。
+    /// 夹在 <see cref="MinSizeScale"/> ~ <see cref="MaxSizeScale"/>，只影响之后新生成的粒子。
+    /// </summary>
+    public double SizeScale
+    {
+        get => _sizeScale;
+        set => _sizeScale = double.IsNaN(value) ? 1.0 : Math.Clamp(value, MinSizeScale, MaxSizeScale);
+    }
 
     /// <summary>发射点 X（鼠标坐标，控件坐标）。</summary>
     public double EmitterX { get; set; }
@@ -163,14 +208,14 @@ public sealed class ParticleEngine
     {
         if (!_active) return;   // 与早期版本一致：开关关着时点击不生效
         _speed = MaxSpeed;
-        _count = MaxSpawnPerFrame;
+        _count = Math.Max(MaxSpawnPerFrame, _baseSpawn);
     }
 
     /// <summary>右键爆发：只把每帧数量拉到最大（等价早期版本 <c>TriggerParticleCountBoost</c>）。</summary>
     public void BoostCount()
     {
         if (!_active) return;
-        _count = MaxSpawnPerFrame;
+        _count = Math.Max(MaxSpawnPerFrame, _baseSpawn);
     }
 
     /// <summary>按 60fps 基准帧推进一帧（等价 <c>Update(1.0)</c>）。</summary>
@@ -205,10 +250,10 @@ public sealed class ParticleEngine
         }
 
         // 2) 生成数量衰减（double 递减、取整时向下取整 —— 与早期版本「-0.5 再 (int) 截断」等效）
-        if (_count > DefaultSpawnPerFrame)
+        if (_count > _baseSpawn)
         {
             _count -= SpawnDecayPerFrame * frameSteps;
-            if (_count < DefaultSpawnPerFrame) _count = DefaultSpawnPerFrame;
+            if (_count < _baseSpawn) _count = _baseSpawn;
         }
 
         // 3) 按时间累加生成（不足 1 个的零头留到下一帧；高刷屏不会因此多生成）
@@ -256,14 +301,15 @@ public sealed class ParticleEngine
             ColorMix = _random.NextDouble(),                // 0~1：界面层用来在两种自定义颜色之间取色
             Age = 0,
             LifeSpan = _random.Next((int)MinLifeSpan, (int)MaxLifeSpan),   // 早期版本：30~89
+            BaseSize = ParticleEngine.BaseSize * _sizeScale,               // 大小滑块（默认 1.0 = 5px）
         });
         TotalSpawned++;
     }
 
-    /// <summary>速度与数量回到默认值（不动粒子列表）。</summary>
+    /// <summary>速度与数量回到基准值（不动粒子列表）。</summary>
     private void ResetBurst()
     {
         _speed = DefaultSpeed;
-        _count = DefaultSpawnPerFrame;
+        _count = _baseSpawn;
     }
 }
