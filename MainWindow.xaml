@@ -23,168 +23,181 @@
                             UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
 
-    <Grid x:Name="RootGrid">
-        <Grid.RowDefinitions>
-            <!-- 全屏时这几行的高度会被代码改成 0（藏掉标题栏 / 工具条 / 状态栏），退出全屏再还原 -->
-            <RowDefinition x:Name="TitleRow" Height="40" />
-            <RowDefinition x:Name="ToolbarRow" Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition x:Name="StatusRow" Height="Auto" />
-        </Grid.RowDefinitions>
+    <!-- 最外层容器：只做两件事 ——
+         ① 装「窗口内容根节点」RootGrid（标题栏 / 工具条 / 主体 / 状态栏 / 玻璃背景 / 玻璃边）；
+         ② 把光标特效覆盖层放在它**外面、和它平级**：反色圆环特效要把 RootGrid 单独取景，
+            如果覆盖层还在 RootGrid 里面，取景时就会把覆盖层自己（粒子 / 上一帧的反色）也画进去。
+         这两者是兄弟节点后，取景看到的永远是「干净的内容」，不会自己叠自己。 -->
+    <Grid>
+        <Grid x:Name="RootGrid">
+            <Grid.RowDefinitions>
+                <!-- 全屏时这几行的高度会被代码改成 0（藏掉标题栏 / 工具条 / 状态栏），退出全屏再还原 -->
+                <RowDefinition x:Name="TitleRow" Height="40" />
+                <RowDefinition x:Name="ToolbarRow" Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition x:Name="StatusRow" Height="Auto" />
+            </Grid.RowDefinitions>
 
-        <!-- 液态玻璃主题的流动光晕背景（第二套 UI）：铺满整窗的最底层，不吃鼠标。
-             默认主题下 IsLiquidGlass=false → Collapsed，且控件会停掉动画（见 LiquidBackdrop.xaml.cs）；
-             标题栏/侧边栏/状态栏在玻璃主题里是半透明画刷，所以光晕能从它们后面透出来。 -->
-        <views:LiquidBackdrop Grid.RowSpan="4" Panel.ZIndex="-100"
-                              Visibility="{Binding IsLiquidGlass, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}" />
+            <!-- 液态玻璃主题的流动光晕背景（第二套 UI）：铺满整窗的最底层，不吃鼠标。
+                 默认主题下 IsLiquidGlass=false → Collapsed，且控件会停掉动画（见 LiquidBackdrop.xaml.cs）；
+                 标题栏/侧边栏/状态栏在玻璃主题里是半透明画刷，所以光晕能从它们后面透出来。 -->
+            <views:LiquidBackdrop Grid.RowSpan="4" Panel.ZIndex="-100"
+                                  Visibility="{Binding IsLiquidGlass, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}" />
 
-        <!-- 自定义标题栏（手动拖拽 + 双击最大化；最大化时按住拖出来会先还原成窗口） -->
-        <Border Grid.Row="0" Background="{DynamicResource HeaderBackgroundBrush}"
-                MouseLeftButtonDown="OnTitleBarMouseLeftDown"
-                MouseMove="OnTitleBarMouseMove"
-                MouseLeftButtonUp="OnTitleBarMouseLeftUp"
-                LostMouseCapture="OnTitleBarLostMouseCapture">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
-                    <TextBlock Text="🧰" FontSize="18" VerticalAlignment="Center" />
-                    <TextBlock Text="YuLiang 工具集" FontSize="14" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center" />
-                </StackPanel>
-                <StackPanel x:Name="WindowButtonsPanel" Grid.Column="1" Orientation="Horizontal">
-                    <Button x:Name="MinimizeButton" Style="{StaticResource WindowButtonStyle}"
-                            Content="&#xE921;" Click="OnMinimizeClick" ToolTip="最小化" />
-                    <Button x:Name="MaximizeButton" Style="{StaticResource WindowButtonStyle}"
-                            Content="&#xE922;" Click="OnMaximizeClick" ToolTip="最大化 / 还原" />
-                    <Button Style="{StaticResource WindowCloseButtonStyle}"
-                            Content="&#xE8BB;" Click="OnCloseClick" ToolTip="关闭" />
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <!-- 工具条：浏览器式「← 后退 / → 前进」+ 可点击分层面包屑（主页 > 类别 > … > 工具） -->
-        <Border Grid.Row="1" Background="{DynamicResource HeaderBackgroundBrush}"
-                BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,1,0,1" Padding="16,8">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-
-                <!-- 后退 / 前进：按「访问顺序」在主页 / 类别页 / 工具页之间跳，和浏览器一样；
-                     没有可回退 / 前进的页面时按钮变灰（IsEnabled 绑 CanGoBack / CanGoForward）。
-                     全屏时整行被藏掉，逻辑不受影响 -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,12,0">
-                    <Button Content="←" Style="{StaticResource SecondaryButtonStyle}"
-                            Command="{Binding GoBackCommand}" IsEnabled="{Binding CanGoBack}"
-                            Width="34" Height="30" Padding="0" FontSize="15" Margin="0,0,6,0"
-                            ToolTip="后退：回到上一个页面（主页 / 类别页 / 工具页都算）" />
-                    <Button Content="→" Style="{StaticResource SecondaryButtonStyle}"
-                            Command="{Binding GoForwardCommand}" IsEnabled="{Binding CanGoForward}"
-                            Width="34" Height="30" Padding="0" FontSize="15"
-                            ToolTip="前进：回到后退之前所在的页面" />
-                </StackPanel>
-
-                <!-- 面包屑：祖先项可点（标签芯片样式），当前项高亮且不可点 -->
-                <ScrollViewer Grid.Column="1" VerticalAlignment="Center"
-                              HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled"
-                              Focusable="False">
-                    <ItemsControl ItemsSource="{Binding Breadcrumbs}" VerticalAlignment="Center">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal" />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="›" FontSize="14" Margin="8,0" VerticalAlignment="Center"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               Visibility="{Binding ShowSeparator, Converter={StaticResource BoolToVis}}" />
-                                    <!-- 祖先层级：点一下跳回去 -->
-                                    <Button Content="{Binding DisplayText}" Style="{StaticResource TagChipButtonStyle}"
-                                            Command="{Binding DataContext.NavigateBreadcrumbCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                            CommandParameter="{Binding}"
-                                            Visibility="{Binding IsClickable, Converter={StaticResource BoolToVis}}" />
-                                    <!-- 当前项：高亮、不可点 -->
-                                    <Border Background="{DynamicResource TagChipBackgroundBrush}"
-                                            BorderBrush="{DynamicResource TagChipBorderBrush}" BorderThickness="1"
-                                            CornerRadius="11" Padding="10,4"
-                                            Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVis}}">
-                                        <TextBlock Text="{Binding DisplayText}" FontSize="11" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
-                                    </Border>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
-            </Grid>
-        </Border>
-
-        <!-- 主体：侧边栏 + 内容 -->
-        <Grid Grid.Row="2">
-            <Grid.ColumnDefinitions>
-                <!-- 全屏时把它改成 0，把侧边栏让出去 -->
-                <ColumnDefinition x:Name="SidebarColumn" Width="232" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-
-            <Border Grid.Column="0" Background="{DynamicResource SidebarBackgroundBrush}"
-                    BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,0,1,0">
-                <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="功能列表" FontSize="11"
-                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="22,16,0,8" />
-                    <ListBox ItemsSource="{Binding NavItems}" SelectedItem="{Binding SelectedNavItem}"
-                             Style="{StaticResource SidebarListStyle}">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding Emoji}" FontSize="15" Width="26" />
-                                    <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </DockPanel>
+            <!-- 自定义标题栏（手动拖拽 + 双击最大化；最大化时按住拖出来会先还原成窗口） -->
+            <Border Grid.Row="0" Background="{DynamicResource HeaderBackgroundBrush}"
+                    MouseLeftButtonDown="OnTitleBarMouseLeftDown"
+                    MouseMove="OnTitleBarMouseMove"
+                    MouseLeftButtonUp="OnTitleBarMouseLeftUp"
+                    LostMouseCapture="OnTitleBarLostMouseCapture">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                        <TextBlock Text="🧰" FontSize="18" VerticalAlignment="Center" />
+                        <TextBlock Text="YuLiang 工具集" FontSize="14" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <StackPanel x:Name="WindowButtonsPanel" Grid.Column="1" Orientation="Horizontal">
+                        <Button x:Name="MinimizeButton" Style="{StaticResource WindowButtonStyle}"
+                                Content="&#xE921;" Click="OnMinimizeClick" ToolTip="最小化" />
+                        <Button x:Name="MaximizeButton" Style="{StaticResource WindowButtonStyle}"
+                                Content="&#xE922;" Click="OnMaximizeClick" ToolTip="最大化 / 还原" />
+                        <Button Style="{StaticResource WindowCloseButtonStyle}"
+                                Content="&#xE8BB;" Click="OnCloseClick" ToolTip="关闭" />
+                    </StackPanel>
+                </Grid>
             </Border>
 
-            <ContentControl Grid.Column="1" Content="{Binding CurrentView}" />
+            <!-- 工具条：浏览器式「← 后退 / → 前进」+ 可点击分层面包屑（主页 > 类别 > … > 工具） -->
+            <Border Grid.Row="1" Background="{DynamicResource HeaderBackgroundBrush}"
+                    BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,1,0,1" Padding="16,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
 
-            <!-- 左下角迷你播放条：开着「后台播放」切到别的页面时浮出来。
-                 它的 DataContext 是那个后台工具的 ViewModel（不是 MainViewModel），
-                 所以“显示与否”要绕回 Window 的 DataContext 取。 -->
-            <views:MiniPlayerPanel Grid.ColumnSpan="2" HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                                   Margin="12,0,0,12" Panel.ZIndex="20"
-                                   DataContext="{Binding MiniPanelSource}"
-                                   Visibility="{Binding DataContext.MiniPanelVisible,
-                                                RelativeSource={RelativeSource AncestorType=Window},
-                                                Converter={StaticResource BoolToVis}}" />
+                    <!-- 后退 / 前进：按「访问顺序」在主页 / 类别页 / 工具页之间跳，和浏览器一样；
+                         没有可回退 / 前进的页面时按钮变灰（IsEnabled 绑 CanGoBack / CanGoForward）。
+                         全屏时整行被藏掉，逻辑不受影响 -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="0,0,12,0">
+                        <Button Content="←" Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding GoBackCommand}" IsEnabled="{Binding CanGoBack}"
+                                Width="34" Height="30" Padding="0" FontSize="15" Margin="0,0,6,0"
+                                ToolTip="后退：回到上一个页面（主页 / 类别页 / 工具页都算）" />
+                        <Button Content="→" Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding GoForwardCommand}" IsEnabled="{Binding CanGoForward}"
+                                Width="34" Height="30" Padding="0" FontSize="15"
+                                ToolTip="前进：回到后退之前所在的页面" />
+                    </StackPanel>
+
+                    <!-- 面包屑：祖先项可点（标签芯片样式），当前项高亮且不可点 -->
+                    <ScrollViewer Grid.Column="1" VerticalAlignment="Center"
+                                  HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled"
+                                  Focusable="False">
+                        <ItemsControl ItemsSource="{Binding Breadcrumbs}" VerticalAlignment="Center">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="›" FontSize="14" Margin="8,0" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Visibility="{Binding ShowSeparator, Converter={StaticResource BoolToVis}}" />
+                                        <!-- 祖先层级：点一下跳回去 -->
+                                        <Button Content="{Binding DisplayText}" Style="{StaticResource TagChipButtonStyle}"
+                                                Command="{Binding DataContext.NavigateBreadcrumbCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}"
+                                                Visibility="{Binding IsClickable, Converter={StaticResource BoolToVis}}" />
+                                        <!-- 当前项：高亮、不可点 -->
+                                        <Border Background="{DynamicResource TagChipBackgroundBrush}"
+                                                BorderBrush="{DynamicResource TagChipBorderBrush}" BorderThickness="1"
+                                                CornerRadius="11" Padding="10,4"
+                                                Visibility="{Binding IsCurrent, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock Text="{Binding DisplayText}" FontSize="11" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
+                                        </Border>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- 主体：侧边栏 + 内容 -->
+            <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <!-- 全屏时把它改成 0，把侧边栏让出去 -->
+                    <ColumnDefinition x:Name="SidebarColumn" Width="232" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0" Background="{DynamicResource SidebarBackgroundBrush}"
+                        BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,0,1,0">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="功能列表" FontSize="11"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="22,16,0,8" />
+                        <ListBox ItemsSource="{Binding NavItems}" SelectedItem="{Binding SelectedNavItem}"
+                                 Style="{StaticResource SidebarListStyle}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Emoji}" FontSize="15" Width="26" />
+                                        <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </Border>
+
+                <ContentControl Grid.Column="1" Content="{Binding CurrentView}" />
+
+                <!-- 左下角迷你播放条：开着「后台播放」切到别的页面时浮出来。
+                     它的 DataContext 是那个后台工具的 ViewModel（不是 MainViewModel），
+                     所以“显示与否”要绕回 Window 的 DataContext 取。 -->
+                <views:MiniPlayerPanel Grid.ColumnSpan="2" HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                       Margin="12,0,0,12" Panel.ZIndex="20"
+                                       DataContext="{Binding MiniPanelSource}"
+                                       Visibility="{Binding DataContext.MiniPanelVisible,
+                                                    RelativeSource={RelativeSource AncestorType=Window},
+                                                    Converter={StaticResource BoolToVis}}" />
+            </Grid>
+
+            <!-- 状态栏 -->
+            <Border Grid.Row="3" Background="{DynamicResource HeaderBackgroundBrush}"
+                    BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,1,0,0" Padding="20,7">
+                <TextBlock Text="{Binding StatusText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </Border>
+
+            <!-- 液态玻璃主题的整窗外圈 1px 玻璃边（默认主题的 token 是 Transparent = 完全不可见，
+                 第一套 UI 外观不变）：让窗口和后面的桌面之间有清楚的“玻璃壳”边线。 -->
+            <Border Grid.RowSpan="4" Panel.ZIndex="890" IsHitTestVisible="False"
+                    BorderBrush="{DynamicResource WindowEdgeBorderBrush}" BorderThickness="1" />
         </Grid>
 
-        <!-- 状态栏 -->
-        <Border Grid.Row="3" Background="{DynamicResource HeaderBackgroundBrush}"
-                BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,1,0,0" Padding="20,7">
-            <TextBlock Text="{Binding StatusText}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-        </Border>
-
-        <!-- 液态玻璃主题的整窗外圈 1px 玻璃边（默认主题的 token 是 Transparent = 完全不可见，
-             第一套 UI 外观不变）：让窗口和后面的桌面之间有清楚的“玻璃壳”边线。 -->
-        <Border Grid.RowSpan="4" Panel.ZIndex="890" IsHitTestVisible="False"
-                BorderBrush="{DynamicResource WindowEdgeBorderBrush}" BorderThickness="1" />
-
-        <!-- 光标特效覆盖层：铺满整个窗口（含标题栏 / 状态栏），不吃鼠标事件。
+        <!-- 光标特效覆盖层：铺满整个窗口（含标题栏 / 状态栏），不吃鼠标事件；和内容根节点平级，
+             这样反色圆环取景时只看到「内容」，不会把自己画进去。
              两套特效完全独立、各自可多选（主页设置页里勾选，存 Config\shell\config.json）：
                AutoEffects  = 自动效果（particle-trail 粒子拖尾 / cursor-glow 鼠标散光）；
-               ClickEffects = 点击效果（particle-burst 粒子爆炸 / dispersion 散光扩散 / glow-flash 光晕闪烁）。
+               ClickEffects = 点击效果（particle-burst 粒子爆炸 / dispersion 散光扩散 / glow-flash 光晕闪烁 /
+                              invert-circle 反色圆环）。
+             CaptureSource / CaptureBackground 只给反色圆环取景用：内容根节点 + 窗口底色
+             （RootGrid 自己通常不带背景，不补底色反色区域会出现透明空洞）。
              自定义颜色对粒子类效果生效（见 docs/shell.md）。 -->
-        <core:ParticleOverlay Grid.RowSpan="4" Panel.ZIndex="900"
+        <core:ParticleOverlay Panel.ZIndex="900"
                               IsHitTestVisible="False"
                               IsActive="True"
                               AutoEffects="{Binding AutoEffectIds}"
                               ClickEffects="{Binding ClickEffectIds}"
+                              CaptureSource="{Binding ElementName=RootGrid}"
+                              CaptureBackground="{DynamicResource WindowBackgroundBrush}"
                               UseCustomColors="{Binding ParticleCustomColorsEnabled}"
                               Color1="{Binding ParticleColor1Value}"
                               Color2="{Binding ParticleColor2Value}"

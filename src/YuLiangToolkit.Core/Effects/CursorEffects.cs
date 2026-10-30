@@ -34,7 +34,7 @@ public sealed record CursorEffectDefinition(
 /// 光标特效清单与纯逻辑工具（不碰 WPF，自检可直接断言）。
 ///
 /// <para><b>两套特效互相独立</b>：自动效果（粒子拖尾 / 鼠标散光）与点击效果（粒子爆炸 /
-/// 散光扩散 / 光晕闪烁）各自是「可多选」的 Id 列表 —— 可以只开点击爆炸、不开自动拖尾，
+/// 散光扩散 / 光晕闪烁 / 反色圆环）各自是「可多选」的 Id 列表 —— 可以只开点击爆炸、不开自动拖尾，
 /// 也可以同时勾选全部。配置里存 <c>autoEffects</c> / <c>clickEffects</c> 两个字符串数组。</para>
 ///
 /// <para><b>缺省 / 迁移规则</b>（见 <see cref="Normalize"/>，外壳配置加载时用）：
@@ -65,6 +65,9 @@ public static class CursorEffects
     /// <summary>光晕闪烁：点击处柔光亮一下再淡出。</summary>
     public const string GlowFlash = "glow-flash";
 
+    /// <summary>反色圆环：点击处一块反色（颜色反转）的圆形区域先扩散、再收缩到消失。</summary>
+    public const string InvertCircle = "invert-circle";
+
     /// <summary>全部特效清单（设置页按触发方式分组显示）。</summary>
     public static IReadOnlyList<CursorEffectDefinition> All { get; } = new CursorEffectDefinition[]
     {
@@ -78,6 +81,8 @@ public static class CursorEffects
             CursorEffectTrigger.Click, 20),
         new(GlowFlash, "光晕闪烁", "点击处柔光亮一下再淡出",
             CursorEffectTrigger.Click, 30),
+        new(InvertCircle, "反色圆环", "点击处一块反色的圆形区域先扩大再收缩（只反色窗口内容）",
+            CursorEffectTrigger.Click, 40),
     };
 
     /// <summary>取某一触发方式的全部特效（按 <see cref="CursorEffectDefinition.Order"/> 排序）。</summary>

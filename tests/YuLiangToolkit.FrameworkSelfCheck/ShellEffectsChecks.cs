@@ -14,6 +14,9 @@ namespace YuLiangToolkit.FrameworkSelfCheck;
 /// <list type="bullet">
 ///   <item><b>特效清单</b>（<see cref="CursorEffects"/>）：Id 唯一、说明非空、自动/点击分组正确、
 ///   默认勾选有效、未知 Id / 错误触发方式的 Id 会被过滤、输出顺序稳定（存盘不会因点击顺序抖动）；</item>
+///   <item><b>反色圆环时间线</b>（<see cref="InvertCircleAnimation"/> / <see cref="Easings"/>）：
+///   easeOutQuint 的端点与「先快后慢」形状、半径在扩散段单调变大 / 收缩段单调变小、
+///   收缩段「先缩得慢、最后缩得快」、最大半径按窗口尺寸夹取；</item>
 ///   <item><b>点击爆炸引擎</b>（<see cref="ParticleBurstEngine"/>）：一次爆发数量、从点击点出发、
 ///   寿命/大小/速度范围、逐帧老化回收、上限、清空、固定种子可复现、右键 = 更多；</item>
 ///   <item><b>配置</b>：<see cref="ShellConfig"/> 的 <c>autoEffects</c> / <c>clickEffects</c> 数组往返、
@@ -33,6 +36,7 @@ internal static class ShellEffectsChecks
 
         CheckCatalog(Check);
         CheckNormalize(Check);
+        CheckInvertAnimation(Check);
         CheckBurstEngine(Check);
         CheckConfigRoundTrip(Check);
         CheckEffectOption(Check);
@@ -56,11 +60,21 @@ internal static class ShellEffectsChecks
         var click = CursorEffects.For(CursorEffectTrigger.Click);
         check("自动效果清单：粒子拖尾 + 鼠标散光",
             auto.Select(x => x.Id).SequenceEqual(new[] { CursorEffects.ParticleTrail, CursorEffects.CursorGlow }));
-        check("点击效果清单：粒子爆炸 + 散光扩散 + 光晕闪烁",
+        check("点击效果清单：粒子爆炸 + 散光扩散 + 光晕闪烁 + 反色圆环",
             click.Select(x => x.Id).SequenceEqual(new[]
-                { CursorEffects.ParticleBurst, CursorEffects.Dispersion, CursorEffects.GlowFlash }));
+            {
+                CursorEffects.ParticleBurst, CursorEffects.Dispersion,
+                CursorEffects.GlowFlash, CursorEffects.InvertCircle,
+            }));
         check("清单按 Order 排序", auto.Zip(auto.Skip(1)).All(pair => pair.First.Order <= pair.Second.Order)
                                    && click.Zip(click.Skip(1)).All(pair => pair.First.Order <= pair.Second.Order));
+
+        var invert = CursorEffects.Find(CursorEffects.InvertCircle);
+        check("反色圆环：点击效果、Id 稳定 \"invert-circle\"、显示名 / 说明提到反色",
+            invert is { Trigger: CursorEffectTrigger.Click }
+            && invert.Id == "invert-circle"
+            && invert.Name.Contains("反色")
+            && invert.Description.Contains("反色"));
 
         check("按 Id 找定义（大小写不敏感）",
             CursorEffects.Find("PARTICLE-TRAIL")?.Id == CursorEffects.ParticleTrail
@@ -126,6 +140,98 @@ internal static class ShellEffectsChecks
             && CursorEffects.Split("").Count == 0
             && CursorEffects.Split(null).Count == 0);
         check("Join 空列表 = 空串", CursorEffects.Join(Array.Empty<string>()) == "" && CursorEffects.Join(null) == "");
+    }
+
+    // ---------------------------------------------------------------- 反色圆环（缓动 + 时间线）
+
+    private static void CheckInvertAnimation(CheckFn check)
+    {
+        // ---- easeOutQuint：端点 / 越界 / NaN 都被夹住 ----
+        check("easeOutQuint：0→0、1→1、越界与 NaN 被夹住",
+            Math.Abs(Easings.OutQuint(0)) < 1e-12
+            && Math.Abs(Easings.OutQuint(1) - 1) < 1e-12
+            && Math.Abs(Easings.OutQuint(-3)) < 1e-12
+            && Math.Abs(Easings.OutQuint(2) - 1) < 1e-12
+            && Math.Abs(Easings.OutQuint(double.NaN)) < 1e-12);
+
+        var monotonic = true;
+        for (var i = 1; i <= 200; i++)
+        {
+            if (Easings.OutQuint(i / 200.0) < Easings.OutQuint((i - 1) / 200.0) - 1e-12) monotonic = false;
+        }
+        check("easeOutQuint：单调递增（半径不会中途反向抖一下）", monotonic);
+
+        // easeOut 的「先快后慢」：前 1/4 时间走掉大部分行程、后 1/4 时间几乎不动
+        var firstQuarter = Easings.OutQuint(0.25);
+        var lastQuarter = 1.0 - Easings.OutQuint(0.75);
+        check("easeOutQuint：前段快、后段慢（曲线形状符合「一开始快最后慢」）",
+            firstQuarter > 0.7 && lastQuarter < 0.05,
+            $"前 1/4 行程={firstQuarter:0.###}，后 1/4 行程={lastQuarter:0.###}");
+
+        // ---- 时间线：两段时长 ----
+        check("反色圆环时间线：扩散 + 收缩 = 总时长（都 > 0）",
+            InvertCircleAnimation.GrowFrames > 0
+            && InvertCircleAnimation.ShrinkFrames > 0
+            && Math.Abs(InvertCircleAnimation.TotalFrames
+                        - (InvertCircleAnimation.GrowFrames + InvertCircleAnimation.ShrinkFrames)) < 1e-9,
+            $"扩散 {InvertCircleAnimation.GrowFrames} 帧 + 收缩 {InvertCircleAnimation.ShrinkFrames} 帧");
+
+        const double maxRadius = 200;
+        var growEnd = InvertCircleAnimation.GrowFrames;
+        var total = InvertCircleAnimation.TotalFrames;
+
+        check("反色圆环半径：开始为 0、扩散结束达到最大、播完回到 0",
+            InvertCircleAnimation.RadiusAt(0, maxRadius) == 0
+            && Math.Abs(InvertCircleAnimation.RadiusAt(growEnd, maxRadius) - maxRadius) < 1e-6
+            && InvertCircleAnimation.RadiusAt(total, maxRadius) == 0
+            && InvertCircleAnimation.RadiusAt(-1, maxRadius) == 0
+            && InvertCircleAnimation.RadiusAt(double.NaN, maxRadius) == 0
+            && InvertCircleAnimation.RadiusAt(5, double.NaN) == 0,
+            $"最大半径 {maxRadius}");
+
+        // 扩散段单调变大、收缩段单调变小（不出现忽大忽小）
+        var growMonotonic = true;
+        var previous = 0.0;
+        for (var age = 0.0; age <= growEnd; age += 0.25)
+        {
+            var radius = InvertCircleAnimation.RadiusAt(age, maxRadius);
+            if (radius < previous - 1e-9) growMonotonic = false;
+            previous = radius;
+        }
+
+        var shrinkMonotonic = true;
+        previous = maxRadius;
+        for (var age = growEnd; age <= total; age += 0.25)
+        {
+            var radius = InvertCircleAnimation.RadiusAt(age, maxRadius);
+            if (radius > previous + 1e-9) shrinkMonotonic = false;
+            previous = radius;
+        }
+        check("反色圆环半径：扩散段单调变大、收缩段单调变小", growMonotonic && shrinkMonotonic);
+
+        // 收缩「一开始半径减少很慢、后面减少变快」：后半程掉掉的半径远多于前半程
+        var halfway = InvertCircleAnimation.RadiusAt(growEnd + InvertCircleAnimation.ShrinkFrames / 2, maxRadius);
+        var almostDone = InvertCircleAnimation.RadiusAt(total - 1, maxRadius);
+        var firstHalfDrop = maxRadius - halfway;
+        var secondHalfDrop = halfway - almostDone;
+        check("反色圆环收缩：先缩得慢、最后缩得快",
+            firstHalfDrop < maxRadius * 0.05 && secondHalfDrop > firstHalfDrop * 10,
+            $"前半程掉 {firstHalfDrop:0.##}，后半程掉 {secondHalfDrop:0.##}");
+
+        // ---- 最大半径按窗口短边夹取 ----
+        check("反色圆环最大半径：按短边比例、夹在上下限之间",
+            Math.Abs(InvertCircleAnimation.ResolveMaxRadius(1024, 700)
+                     - 700 * InvertCircleAnimation.RadiusRatio) < 1e-9
+            && Math.Abs(InvertCircleAnimation.ResolveMaxRadius(1920, 1080) - InvertCircleAnimation.LargestRadius) < 1e-9
+            && Math.Abs(InvertCircleAnimation.ResolveMaxRadius(100, 100) - InvertCircleAnimation.SmallestRadius) < 1e-9
+            && Math.Abs(InvertCircleAnimation.ResolveMaxRadius(double.NaN, 500) - InvertCircleAnimation.SmallestRadius) < 1e-9,
+            $"默认窗口 1024×700 → {InvertCircleAnimation.ResolveMaxRadius(1024, 700):0.##}");
+
+        check("反色圆环：播完判定（到总时长算播完、NaN 也算播完）",
+            !InvertCircleAnimation.IsFinished(total - 0.1)
+            && InvertCircleAnimation.IsFinished(total)
+            && InvertCircleAnimation.IsFinished(total + 5)
+            && InvertCircleAnimation.IsFinished(double.NaN));
     }
 
     // ---------------------------------------------------------------- 点击爆炸引擎
@@ -206,14 +312,23 @@ internal static class ShellEffectsChecks
         JsonFileStore.Write(path, new ShellConfig
         {
             AutoEffects = new List<string> { CursorEffects.ParticleTrail, CursorEffects.CursorGlow },
-            ClickEffects = new List<string> { CursorEffects.ParticleBurst, CursorEffects.Dispersion, CursorEffects.GlowFlash },
+            ClickEffects = new List<string>
+            {
+                CursorEffects.ParticleBurst, CursorEffects.Dispersion,
+                CursorEffects.GlowFlash, CursorEffects.InvertCircle,
+            },
         });
         var json = File.ReadAllText(path);
         var saved = JsonFileStore.Read<ShellConfig>(path);
         check("autoEffects / clickEffects 按数组存盘、读回一致",
             json.Contains("\"autoEffects\"") && json.Contains("\"clickEffects\"")
+            && json.Contains("\"invert-circle\"")
             && saved?.AutoEffects?.SequenceEqual(new[] { CursorEffects.ParticleTrail, CursorEffects.CursorGlow }) == true
-            && saved?.ClickEffects?.Count == 3,
+            && saved?.ClickEffects?.SequenceEqual(new[]
+            {
+                CursorEffects.ParticleBurst, CursorEffects.Dispersion,
+                CursorEffects.GlowFlash, CursorEffects.InvertCircle,
+            }) == true,
             json.Replace(Environment.NewLine, " "));
 
         File.WriteAllText(path, "{ \"showParticles\": false }");

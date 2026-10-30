@@ -382,7 +382,7 @@ public class MainViewModel : ObservableObject
     //
     // 两套特效完全独立、各自可多选（清单见 Core/Effects/CursorEffects.cs）：
     //   自动效果：particle-trail 粒子拖尾 / cursor-glow 鼠标散光；
-    //   点击效果：particle-burst 粒子爆炸 / dispersion 散光扩散 / glow-flash 光晕闪烁。
+    //   点击效果：particle-burst 粒子爆炸 / dispersion 散光扩散 / glow-flash 光晕闪烁 / invert-circle 反色圆环。
     // 勾选状态存进 Config\shell\config.json 的 autoEffects / clickEffects（字符串数组）。
     // 设置页按清单自动渲染，以后加新特效不用改设置页 XAML。
 

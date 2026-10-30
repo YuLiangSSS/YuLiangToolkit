@@ -133,7 +133,7 @@
                 <StackPanel>
                     <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                TextWrapping="Wrap" Margin="0,0,0,4"
-                               Text="鼠标按下时触发一次的特效，可以同时勾选多个（例如既爆炸粒子、又散光 + 闪一下）；和自动效果完全独立：自动效果关掉时点击效果照常生效。" />
+                               Text="鼠标按下时触发一次的特效，可以同时勾选多个（例如既爆炸粒子、又散光 + 反色）；和自动效果完全独立：自动效果关掉时点击效果照常生效。" />
                     <ItemsControl ItemsSource="{Binding ClickEffectOptions}" Margin="0,4,0,0">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -192,7 +192,7 @@
                     </StackPanel>
                     <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                TextWrapping="Wrap" Margin="0,10,0,0"
-                               Text="只勾了散光 / 闪光（没有粒子类效果）时这里不可用 —— 粒子颜色对它们没有影响。"
+                               Text="只勾了散光 / 闪光 / 反色（没有粒子类效果）时这里不可用 —— 粒子颜色对它们没有影响。"
                                Visibility="{Binding HasParticleEffectSelected, Converter={StaticResource InverseBoolToVis}}" />
                 </StackPanel>
             </Border>

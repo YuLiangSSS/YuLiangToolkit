@@ -20,23 +20,32 @@ namespace YuLiangToolkit.Core.Controls;
 ///   <item><b>自动效果</b>（<see cref="AutoEffects"/>，多选）：<c>particle-trail</c> 粒子拖尾（原有效果）、
 ///   <c>cursor-glow</c> 鼠标散光（鼠标位置一圈微弱圆光）；</item>
 ///   <item><b>点击效果</b>（<see cref="ClickEffects"/>，可多选）：<c>particle-burst</c> 粒子爆炸、
-///   <c>dispersion</c> 散光扩散（Glassium 风格彩色色散环）、<c>glow-flash</c> 光晕闪烁。</item>
+///   <c>dispersion</c> 散光扩散（Glassium 风格彩色色散环）、<c>glow-flash</c> 光晕闪烁、
+///   <c>invert-circle</c> 反色圆环（点击处一块颜色反转的圆形区域，先扩散再收缩）。</item>
 /// </list>
 /// <para>两套特效**完全独立**：自动效果全部不勾也能有点击爆发；点击效果可以同时勾好几个。
 /// 新增一种特效的步骤见 <see cref="CursorEffects"/> 的注释（加清单 + 加渲染器 + 加对应字段/分支）。</para>
 ///
-/// <para><b>XAML 用法</b>（放在窗口根 Grid 的最后，Grid.RowSpan 盖满整个窗口）：</para>
+/// <para><b>反色圆环的取景</b>：需要把「窗口内容」单独渲染出来反色，所以要用
+/// <see cref="CaptureSource"/> 指定内容根节点（**本覆盖层必须与它是兄弟节点，不能包在它里面**，
+/// 否则取景会把自己画进去），并用 <see cref="CaptureBackground"/> 补上窗口底色。没设置取景源时
+/// 反色圆环不显示（其余特效不受影响）。</para>
+///
+/// <para><b>XAML 用法</b>（放在窗口根 Grid 的最后、与内容根节点平级，铺满整个窗口）：</para>
 /// <code>
-/// &lt;core:ParticleOverlay Grid.RowSpan="4" Panel.ZIndex="900" IsHitTestVisible="False"
+/// &lt;core:ParticleOverlay Panel.ZIndex="900" IsHitTestVisible="False"
 ///                        IsActive="True"
 ///                        AutoEffects="{Binding AutoEffectIds}"
 ///                        ClickEffects="{Binding ClickEffectIds}"
+///                        CaptureSource="{Binding ElementName=RootGrid}"
+///                        CaptureBackground="{DynamicResource WindowBackgroundBrush}"
 ///                        UseCustomColors="{Binding ParticleCustomColorsEnabled}" ... /&gt;
 /// </code>
 ///
-/// <para><b>性能</b>：只在「有自动拖尾在生成」或「有爆炸/散光/闪光在播」时才订阅
+/// <para><b>性能</b>：只在「有自动拖尾在生成」或「有爆炸/散光/闪光/反色在播」时才订阅
 /// <c>CompositionTarget.Rendering</c>（没有特效应画时立刻退订，空闲零 CPU）；
-/// 鼠标散光只在鼠标移动时重绘一次，不常驻 60fps。所有画刷 / 画笔预生成并冻结，绘制路径零 new。</para>
+/// 鼠标散光只在鼠标移动时重绘一次，不常驻 60fps。所有画刷 / 画笔预生成并冻结，绘制路径零 new；
+/// 反色圆环只在点击（和松开后的补取）时把内容渲染一次（约一帧的开销），动画本身只改蒙版半径，稳定 60fps。</para>
 ///
 /// <para><b>调试</b>：<c>YLT_PARTICLE_DEMO=1</c>（或 <c>YLT_EFFECT_DEMO=1</c>）进入演示模式 ——
 /// 不需要鼠标、按固定轨迹自动产生拖尾并周期性触发点击特效，供 <c>YLT_SHOT</c> 截图验收；
@@ -81,6 +90,25 @@ public sealed class ParticleOverlay : FrameworkElement
         nameof(GlowColor), typeof(Color), typeof(ParticleOverlay),
         new FrameworkPropertyMetadata(Color.FromRgb(0xC9, 0xBD, 0xFF),
             FrameworkPropertyMetadataOptions.AffectsRender, OnColorChanged));
+
+    // ---------- 反色圆环的取景源（v0.36.0） ----------
+
+    /// <summary>
+    /// 反色圆环的取景源：窗口**内容根节点**（例如 <c>MainWindow</c> 里的 <c>RootGrid</c>）。
+    /// 它必须与本覆盖层是**兄弟节点**，不能是覆盖层的祖先 —— 否则取景时会把覆盖层自己
+    /// （粒子和上一帧的反色）也画进去，越叠越花。为 <c>null</c> 时只影响 <c>invert-circle</c>。
+    /// </summary>
+    public static readonly DependencyProperty CaptureSourceProperty = DependencyProperty.Register(
+        nameof(CaptureSource), typeof(Visual), typeof(ParticleOverlay),
+        new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.None, OnCaptureSettingsChanged));
+
+    /// <summary>
+    /// 取景时补在内容根节点下面的窗口底色（通常绑 <c>WindowBackgroundBrush</c>）：
+    /// 内容根节点自己一般不带背景，不补的话反色区域里没画到的部分会变成透明空洞。
+    /// </summary>
+    public static readonly DependencyProperty CaptureBackgroundProperty = DependencyProperty.Register(
+        nameof(CaptureBackground), typeof(Brush), typeof(ParticleOverlay),
+        new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.None, OnCaptureSettingsChanged));
 
     // ---------- 自定义粒子颜色（v0.22.0；对所有「粒子类」特效生效：拖尾 + 爆炸） ----------
     //
@@ -152,6 +180,20 @@ public sealed class ParticleOverlay : FrameworkElement
         set => SetValue(GlowColorProperty, value);
     }
 
+    /// <summary>反色圆环的取景源（窗口内容根节点），见 <see cref="CaptureSourceProperty"/>。</summary>
+    public Visual? CaptureSource
+    {
+        get => (Visual?)GetValue(CaptureSourceProperty);
+        set => SetValue(CaptureSourceProperty, value);
+    }
+
+    /// <summary>取景时补在内容根节点下面的窗口底色，见 <see cref="CaptureBackgroundProperty"/>。</summary>
+    public Brush? CaptureBackground
+    {
+        get => (Brush?)GetValue(CaptureBackgroundProperty);
+        set => SetValue(CaptureBackgroundProperty, value);
+    }
+
     /// <summary>是否启用自定义特效颜色，见 <see cref="UseCustomColorsProperty"/>。</summary>
     public bool UseCustomColors
     {
@@ -210,6 +252,7 @@ public sealed class ParticleOverlay : FrameworkElement
     private readonly CursorGlowRenderer _cursorGlow = new();
     private readonly DispersionRippleRenderer _dispersion = new();
     private readonly GlowFlashRenderer _flash = new();
+    private readonly InvertCircleRenderer _invert = new();
 
     /// <summary>开发调试：<c>YLT_PARTICLE_DEMO=1</c> / <c>YLT_EFFECT_DEMO=1</c> 时不用鼠标、自动演示（供截图）。</summary>
     private readonly bool _demoMode = IsDemoModeEnabled();
@@ -222,6 +265,7 @@ public sealed class ParticleOverlay : FrameworkElement
     private bool _burstEnabled;
     private bool _dispersionEnabled;
     private bool _flashEnabled;
+    private bool _invertEnabled;
 
     /// <summary>颜色档数 × 透明度档数的冻结画刷表；第一维是颜色档（1 = 单色 / 默认）。</summary>
     private Brush[,] _coreBrushes = null!;
@@ -256,10 +300,21 @@ public sealed class ParticleOverlay : FrameworkElement
         ClipToBounds = true;
 
         RebuildPalettes();
+        ApplyCaptureSettings();
         ApplyEffectSelection();
 
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+        SizeChanged += OnOverlaySizeChanged;
+    }
+
+    /// <summary>
+    /// 覆盖层尺寸（= 窗口客户区尺寸）变化：反色取景是按旧尺寸拍的，比例已经不对，
+    /// 直接结束这一圈（其余特效不受影响）；窗口缩放通常发生在动画之外，清了不心疼。
+    /// </summary>
+    private void OnOverlaySizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (e.WidthChanged || e.HeightChanged) _invert.Clear();
     }
 
     // ================================================================== 生命周期 / 事件挂摘
@@ -313,6 +368,9 @@ public sealed class ParticleOverlay : FrameworkElement
         window.PreviewMouseMove += OnWindowMouseMove;
         window.PreviewMouseLeftButtonDown += OnWindowMouseLeftButtonDown;
         window.PreviewMouseRightButtonDown += OnWindowMouseRightButtonDown;
+        // 松开时补一次反色取景：导航 / 勾选这类「点击动作改内容」通常发生在松开的时候
+        window.PreviewMouseLeftButtonUp += OnWindowMouseLeftButtonUp;
+        window.PreviewMouseRightButtonUp += OnWindowMouseRightButtonUp;
         window.MouseEnter += OnWindowMouseEnter;
         window.MouseLeave += OnWindowMouseLeave;
         window.Deactivated += OnWindowDeactivated;
@@ -326,6 +384,8 @@ public sealed class ParticleOverlay : FrameworkElement
         window.PreviewMouseMove -= OnWindowMouseMove;
         window.PreviewMouseLeftButtonDown -= OnWindowMouseLeftButtonDown;
         window.PreviewMouseRightButtonDown -= OnWindowMouseRightButtonDown;
+        window.PreviewMouseLeftButtonUp -= OnWindowMouseLeftButtonUp;
+        window.PreviewMouseRightButtonUp -= OnWindowMouseRightButtonUp;
         window.MouseEnter -= OnWindowMouseEnter;
         window.MouseLeave -= OnWindowMouseLeave;
         window.Deactivated -= OnWindowDeactivated;
@@ -343,6 +403,16 @@ public sealed class ParticleOverlay : FrameworkElement
 
     private static void OnEffectsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         => ((ParticleOverlay)d).ApplyEffectSelection();
+
+    private static void OnCaptureSettingsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        => ((ParticleOverlay)d).ApplyCaptureSettings();
+
+    /// <summary>把取景源 / 底色同步给反色渲染器（换源会清掉正在播的一圈，避免拿旧视觉取景）。</summary>
+    private void ApplyCaptureSettings()
+    {
+        _invert.SetSource(CaptureSource);
+        _invert.SetBackground(CaptureBackground);
+    }
 
     /// <summary>总开关变化：关掉时清空一切并停渲染；打开时按选择恢复自动拖尾并订阅渲染。</summary>
     private void ApplyActiveState()
@@ -378,24 +448,27 @@ public sealed class ParticleOverlay : FrameworkElement
         _burstEnabled = click.Contains(CursorEffectCatalog.ParticleBurst, StringComparer.OrdinalIgnoreCase);
         _dispersionEnabled = click.Contains(CursorEffectCatalog.Dispersion, StringComparer.OrdinalIgnoreCase);
         _flashEnabled = click.Contains(CursorEffectCatalog.GlowFlash, StringComparer.OrdinalIgnoreCase);
+        _invertEnabled = click.Contains(CursorEffectCatalog.InvertCircle, StringComparer.OrdinalIgnoreCase);
 
         _trailEngine.Active = _loaded ? IsActive && _trailEnabled : _trailEnabled;
         if (!_trailEnabled) _trailEngine.Clear();
         if (!_burstEnabled) _burstEngine.Clear();
         if (!_dispersionEnabled) _dispersion.Clear();
         if (!_flashEnabled) _flash.Clear();
+        if (!_invertEnabled) _invert.Clear();
         _cursorGlow.Visible = false;   // 每帧渲染时按开关和鼠标状态再置
 
         UpdateRenderingSubscription();
         InvalidateVisual();
     }
 
-    /// <summary>清空所有一次性特效（爆炸 / 散光 / 闪光）。</summary>
+    /// <summary>清空所有一次性特效（爆炸 / 散光 / 闪光 / 反色）。</summary>
     private void ResetTransientEffects()
     {
         _burstEngine.Clear();
         _dispersion.Clear();
         _flash.Clear();
+        _invert.Clear();
     }
 
     /// <summary>清空所有特效（拖尾 + 一次性 + 散光显隐）。</summary>
@@ -413,11 +486,12 @@ public sealed class ParticleOverlay : FrameworkElement
     private bool HasContinuousWork()
         => _trailEnabled && IsActive && (_demoMode || _pointerInside);
 
-    /// <summary>有一次性特效（爆炸 / 散光 / 闪光）在播吗。</summary>
+    /// <summary>有一次性特效（爆炸 / 散光 / 闪光 / 反色）在播吗。</summary>
     private bool HasTransientWork()
         => (_burstEnabled && _burstEngine.HasParticles)
            || (_dispersionEnabled && _dispersion.HasVisual)
-           || (_flashEnabled && _flash.HasVisual);
+           || (_flashEnabled && _flash.HasVisual)
+           || (_invertEnabled && _invert.HasVisual);
 
     /// <summary>
     /// 只有「总开关开着 + 已加载 + 窗口没最小化 + （窗口激活 或 演示模式）+ 确实有东西要画」时
@@ -557,6 +631,22 @@ public sealed class ParticleOverlay : FrameworkElement
     private void OnWindowMouseRightButtonDown(object sender, MouseButtonEventArgs e)
         => HandleMouseClick(e, isRight: true);
 
+    private void OnWindowMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        => RefreshInvertCapture();
+
+    private void OnWindowMouseRightButtonUp(object sender, MouseButtonEventArgs e)
+        => RefreshInvertCapture();
+
+    /// <summary>
+    /// 鼠标松开后补一次反色取景：点击动作（导航 / 勾选 / 换主题等）通常在这时才改内容，
+    /// 反色区域要跟着新内容走，不能一直反着按下瞬间的旧画面。
+    /// </summary>
+    private void RefreshInvertCapture()
+    {
+        if (!_loaded || !IsActive || _demoMode || !_invertEnabled) return;
+        _invert.RequestRefresh();
+    }
+
     /// <summary>鼠标按下：先更新发射点，再按「自动拖尾的爆发」+「点击效果」分别触发（互不依赖）。</summary>
     private void HandleMouseClick(MouseEventArgs e, bool isRight)
     {
@@ -589,6 +679,13 @@ public sealed class ParticleOverlay : FrameworkElement
             isRight ? ParticleBurstEngine.RightBurstCount : ParticleBurstEngine.DefaultBurstCount);
         if (_dispersionEnabled) _dispersion.Trigger(position);
         if (_flashEnabled) _flash.Trigger(position);
+
+        // 反色圆环：需要「窗口内容根节点」取景（见 CaptureSource）；没设取景源时渲染器自己忽略
+        if (_invertEnabled)
+        {
+            var dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+            _invert.Trigger(position, new Size(ActualWidth, ActualHeight), dpi);
+        }
     }
 
     /// <summary>鼠标进来/点击之后把渲染循环"叫醒"：空闲时事件不会自己来，靠一次重绘引起下一帧。</summary>
@@ -688,6 +785,10 @@ public sealed class ParticleOverlay : FrameworkElement
         if (_burstEnabled) _burstEngine.Update(frameSteps);
         if (_dispersionEnabled) _dispersion.Update(frameSteps);
         if (_flashEnabled) _flash.Update(frameSteps);
+        if (_invertEnabled)
+        {
+            _invert.Update(frameSteps);
+        }
 
         _idle = false;
         if (_traceFrame++ % 20 == 0)
@@ -735,12 +836,15 @@ public sealed class ParticleOverlay : FrameworkElement
     // ================================================================== 绘制
 
     /// <summary>
-    /// 把当前所有特效画出来（顺序：鼠标散光在最底、粒子在上、点击特效最上）。
+    /// 把当前所有特效画出来（顺序：反色垫最底、鼠标散光其次、粒子在上、点击特效最上）。
     /// 新增特效的绘制入口也在这里加（按「底层 → 上层」排）。
     /// </summary>
     protected override void OnRender(DrawingContext drawingContext)
     {
         base.OnRender(drawingContext);
+
+        // 0) 点击反色圆环：垫在最底层 —— 先把下面那块内容反色盖上去，粒子 / 散光再叠在反色区域上面
+        if (_invertEnabled) _invert.Render(drawingContext);
 
         // 1) 自动散光：柔和圆光垫在粒子下面
         if (_glowEnabled && IsActive && (_pointerInside || _demoMode))

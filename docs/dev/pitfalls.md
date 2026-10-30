@@ -39,6 +39,11 @@
   设置页按清单自动渲染、不用改 XAML。
 - `ParticleOverlay` 只在「自动拖尾在生成」或「有一次性特效在播」时订阅 `CompositionTarget.Rendering`，
   播完立刻退订；别改成常驻 60fps（鼠标散光只在鼠标移动时重绘一次）。
+- 反色圆环（`invert-circle`）没有现成 API：用 `VisualBrush` 把内容根节点取景到 `RenderTargetBitmap` 再逐像素取反。
+  ⚠ `VisualBrush` 取景会把整棵内容树软件渲染一遍（实测约 20~35ms，区域设小也省不下来），**不能每帧取**：
+  只在鼠标按下 / 松开时各取一次（`InvertCircleRenderer`），动画本身只改蒙版半径；窗口缩放直接结束这一圈。
+  ⚠ 覆盖层必须和取景根节点（`MainWindow.xaml` 的 `RootGrid`）是**兄弟节点**，否则取景会把覆盖层自己
+  （粒子 / 上一帧的反色）也画进去；根节点透明，取景时还要补 `WindowBackgroundBrush` 底色。
 
 ### osu!mania 三件套
 - ⚠ OsuParsers 解码器 static 状态、非线程安全：`OsuBeatmapFile` 里 `IoLock` 加锁 + 批量串行，别用 `Parallel.ForEachAsync`。
