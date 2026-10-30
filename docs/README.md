@@ -20,6 +20,7 @@
 | 🎹 KPS 按键统计 | 实时 KPS / 每键计数器 / 键位可视化 + 透明置顶 Overlay；4K~8K 预设、改键、单键图片、音符效果、键音、全局热键（功能灵感来源 DmNote，独立重写） | [tools/kps.md](tools/kps.md) |
 | ⚫ 联机五子棋 | 开 TCP 房间和朋友下五子棋：可选禁手（三三 / 四四 / 长连）、悔棋、聊天 | [tools/gomoku.md](tools/gomoku.md) |
 | 🀄 联机象棋 | 开 TCP 房间下中国象棋：自由摆棋 + 一键默认开局、让子 / 让先、中文记谱 | [tools/xiangqi.md](tools/xiangqi.md) |
+| 📨 Spug 验证码测试 | 联调 Spug 推送助手（push.spug.cc）的短信 / 邮箱验证码模板：发验证码、本地比对验证；推送 URL 是调用凭证，别外传 | [tools/spug-captcha.md](tools/spug-captcha.md) |
 | 🧪 框架示例 | 开发用模板（Data/Config 轮子演示，可整目录删除） | [tools/sample-framework.md](tools/sample-framework.md) |
 
 > 🎵 上面四个 osu! 工具和「KPS 按键统计」在主页上收在「**音游工具**」类别里：点类别卡片进类别页，顶部面包屑可点回上一级。

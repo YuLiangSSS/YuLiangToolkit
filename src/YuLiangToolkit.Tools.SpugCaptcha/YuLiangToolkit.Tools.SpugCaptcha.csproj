@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Spug 验证码测试工具：短信 / 邮箱验证码联调（详见 docs/tools/spug-captcha.md）。
+       新功能模板说明：AssemblyName 必须以 YuLiangToolkit. 开头，ToolDiscovery 才会扫到；
+       XAML 编译进本程序集，App.xaml 里的全局样式可直接 StaticResource。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.SpugCaptcha</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.SpugCaptcha</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

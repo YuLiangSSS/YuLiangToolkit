@@ -35,6 +35,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.Pictur
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.Kps", "src\YuLiangToolkit.Tools.Kps\YuLiangToolkit.Tools.Kps.csproj", "{CDCBED1E-09DC-4BFD-B3CB-10F3632B2686}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.SpugCaptcha", "src\YuLiangToolkit.Tools.SpugCaptcha\YuLiangToolkit.Tools.SpugCaptcha.csproj", "{78ECB500-BBE4-470B-AE34-DF5C56A47AC9}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -213,6 +215,18 @@ Global
 		{CDCBED1E-09DC-4BFD-B3CB-10F3632B2686}.Release|x64.Build.0 = Release|Any CPU
 		{CDCBED1E-09DC-4BFD-B3CB-10F3632B2686}.Release|x86.ActiveCfg = Release|Any CPU
 		{CDCBED1E-09DC-4BFD-B3CB-10F3632B2686}.Release|x86.Build.0 = Release|Any CPU
+		{78ECB500-BBE4-470B-AE34-DF5C56A47AC9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{78ECB500-BBE4-470B-AE34-DF5C56A47AC9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{78ECB500-BBE4-470B-AE34-DF5C56A47AC9}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{78ECB500-BBE4-470B-AE34-DF5C56A47AC9}.Debug|x64.Build.0 = Debug|Any CPU
+		{78ECB500-BBE4-470B-AE34-DF5C56A47AC9}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{78ECB500-BBE4-470B-AE34-DF5C56A47AC9}.Debug|x86.Build.0 = Debug|Any CPU
+		{78ECB500-BBE4-470B-AE34-DF5C56A47AC9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{78ECB500-BBE4-470B-AE34-DF5C56A47AC9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{78ECB500-BBE4-470B-AE34-DF5C56A47AC9}.Release|x64.ActiveCfg = Release|Any CPU
+		{78ECB500-BBE4-470B-AE34-DF5C56A47AC9}.Release|x64.Build.0 = Release|Any CPU
+		{78ECB500-BBE4-470B-AE34-DF5C56A47AC9}.Release|x86.ActiveCfg = Release|Any CPU
+		{78ECB500-BBE4-470B-AE34-DF5C56A47AC9}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -231,5 +245,6 @@ Global
 		{FAE00F01-E00F-47F5-A2F4-464DE50BF6FC} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{EDDAD83E-2FC9-4713-A3B3-7A0FBCA182C2} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{CDCBED1E-09DC-4BFD-B3CB-10F3632B2686} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{78ECB500-BBE4-470B-AE34-DF5C56A47AC9} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

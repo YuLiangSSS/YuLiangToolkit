@@ -36,6 +36,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("picture-viewer", "图片连续阅读器"),
     ("theme", "第二套 UI：液态玻璃主题"),
     ("kps", "KPS 按键统计：统计引擎 / 预设 / 热键 / 全局输入"),
+    ("spug", "Spug 验证码测试：URL 校验 / 请求构造 / 响应解析 / 本地验证"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -881,6 +882,10 @@ RunGroupModule("theme", "主题", ThemeChecks.Run);
 // 热键字符串解析、Raw Input 注册 + 真实 SendInput 注入（无头跑，不弹窗）。
 RunGroupModule("kps", "KPS统计", KpsChecks.Run, "[KPS] ");
 RunGroupModule("kps", "KPS输入", KpsInputChecks.Run);
+
+// 「Spug 验证码测试」：URL / 参数校验、短信 GET 拼接、邮箱 POST JSON、响应解析、本地验证、打码、配置；
+// 发送器用假 HttpMessageHandler 真跑请求层，**不碰外网**（真联网留给人工用工具验收）。
+RunGroupModule("spug", "Spug验证码", SpugChecks.Run);
 
 EnterGroup("shell");
 

@@ -26,6 +26,7 @@
 | [**🎹 KPS 按键统计**](docs/tools/kps.md) | 实时 KPS / 峰值 / 平均 + 每键计数器 + 键位可视化 + **透明置顶 Overlay**（可锁定点击穿透 / 拖动 / 滚轮缩放）；4K~8K 预设、改键、单键图片、音符效果、键音、全局热键（功能灵感来源 DmNote，独立重写） |
 | [**⚫ 联机五子棋**](docs/tools/gomoku.md) | 开 TCP 房间联机下五子棋：**最多 16 人多人观战 + 房主安排上场 / 自动轮换**、可选禁手（三三 / 四四 / 长连）、悔棋、聊天、同机双人 |
 | [**🀄 联机象棋**](docs/tools/xiangqi.md) | 开 TCP 房间联机下中国象棋：**多人观战 + 房主安排上场 / 自动轮换**、自由摆棋 + 一键默认开局、让子 / 让先、中文记谱 |
+| [**📨 Spug 验证码测试**](docs/tools/spug-captcha.md) | 联调 Spug 推送助手（push.spug.cc）的短信 / 邮箱验证码模板：发验证码 + 本地比对验证 + 接口日志；推送 URL 是调用凭证，别外传 |
 | [**🧪 框架示例**](docs/tools/sample-framework.md) | 开发用模板（Data / Config 轮子演示，可整目录删除） |
 
 > 🎵 **音游工具**是主页上的一个分类：点「音游工具」类别卡片进类别页，再点工具卡片打开；
@@ -62,7 +63,7 @@ dotnet run --project YuLiangTookit.csproj
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；
   踩坑细节按需查 **[docs/dev/pitfalls.md](docs/dev/pitfalls.md)**（只在排错 / 改危险代码时读）；
-- ✅ **自检**：2046 项行为逐条真跑（退出码 0 = 全通过）。改哪个功能只跑对应的组（省时间）：
+- ✅ **自检**：2084 项行为逐条真跑（退出码 0 = 全通过）。改哪个功能只跑对应的组（省时间）：
 
   ```powershell
   dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj -- theme
@@ -104,8 +105,9 @@ src/
 ├── YuLiangToolkit.Tools.OsuMania/       # 功能：音游工具（osu! Key 转换器 / LN 转换器 / 等级计算器）
 ├── YuLiangToolkit.Tools.BoardGames/     # 功能：棋牌（联机五子棋 / 联机象棋 + 房间联机底座）
 ├── YuLiangToolkit.Tools.Kps/            # 功能：KPS 按键统计（Raw Input 全局输入 + KPS 统计 + 置顶透明 Overlay + 全局热键）
+├── YuLiangToolkit.Tools.SpugCaptcha/    # 功能：Spug 验证码测试（短信 / 邮箱验证码模板联调 + 本地比对验证）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（2046 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（2084 项行为逐条验证）
 ```
 
 ## 如何添加一个新工具

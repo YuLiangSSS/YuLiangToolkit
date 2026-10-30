@@ -43,6 +43,9 @@
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.BoardGames\YuLiangToolkit.Tools.BoardGames.csproj" />
     <!-- 「KPS 按键统计」：统计引擎口径 / 内置预设 / 配置序列化 / 热键解析 / Raw Input 真实注入。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Kps\YuLiangToolkit.Tools.Kps.csproj" />
+    <!-- 「Spug 验证码测试」：URL / 参数校验、短信 GET 拼接、邮箱 POST JSON、响应解析、本地验证、打码、配置；
+         假 HttpMessageHandler 真跑请求层，不碰外网。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.SpugCaptcha\YuLiangToolkit.Tools.SpugCaptcha.csproj" />
   </ItemGroup>
 
 </Project>
