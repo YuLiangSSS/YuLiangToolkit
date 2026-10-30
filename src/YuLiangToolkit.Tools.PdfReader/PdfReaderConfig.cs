@@ -44,6 +44,12 @@ public sealed class PdfReaderConfig : ToolConfig
     /// <summary>左键拖动松手后的惯性（默认开）；关掉 = 松手即停。</summary>
     public bool InertiaEnabled { get; set; } = true;
 
+    /// <summary>
+    /// 滚轮惯性（默认开）：滚一格后按滚轮步长给一个初速度继续滑一段再减速停下。
+    /// <b>和 <see cref="InertiaEnabled"/>（拖动惯性）是两个独立设置</b>，可以只开其中一个。
+    /// </summary>
+    public bool WheelInertiaEnabled { get; set; } = true;
+
     /// <summary>连续滚动模式滚轮一格的像素（20 ~ 600，默认 120）。</summary>
     public int WheelStepPixels { get; set; } = DefaultWheelStepPixels;
 
@@ -232,6 +238,7 @@ public sealed class PdfReaderConfig : ToolConfig
     {
         ReadMode = PdfReadMode.Vertical;
         InertiaEnabled = true;
+        WheelInertiaEnabled = true;
         WheelStepPixels = DefaultWheelStepPixels;
         ZoomPercent = DefaultZoomPercent;
         SpreadGapPixels = DefaultSpreadGapPixels;

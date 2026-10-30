@@ -155,6 +155,9 @@ public partial class PdfReaderView : UserControl
     private DispatcherTimer? _fullscreenHintTimer;
 
     private bool _unloaded;
+
+    /// <summary>调试 / 截图：滚轮模拟只触发一次（<c>YLT_PDF_WHEEL_SIM</c>）。</summary>
+    private bool _wheelSimScheduled;
     private bool _demoStarted;
     private bool _loadingProgrammatically;
 
@@ -457,6 +460,30 @@ public partial class PdfReaderView : UserControl
             PageJumpBox.Text = jump.Trim();
             TryJumpToPageInput();
         }
+
+        // 截图 / 调试：YLT_PDF_WHEEL_SIM=-120 打开后模拟「向下滚一格」，用来核对滚轮惯性
+        if (!_wheelSimScheduled && int.TryParse(Environment.GetEnvironmentVariable("YLT_PDF_WHEEL_SIM"), out var wheelSimDelta))
+        {
+            _wheelSimScheduled = true;
+            var timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(300) };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                SimulateWheel(wheelSimDelta);
+            };
+            timer.Start();
+        }
+    }
+
+    /// <summary>调试 / 截图用：构造一个滚轮事件走正常处理链路（方向 / 惯性 / 页码都会跟着变）。</summary>
+    private void SimulateWheel(int delta)
+    {
+        var args = new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, delta)
+        {
+            RoutedEvent = UIElement.PreviewMouseWheelEvent,
+            Source = _spreadActive ? SpreadHost : ContinuousScroll,
+        };
+        OnPreviewMouseWheel(this, args);
     }
 
     private async Task RunProgrammaticallyAsync(Func<Task> load)
@@ -1381,7 +1408,7 @@ public partial class PdfReaderView : UserControl
         if (Vm is not { } vm || !vm.HasDocument || vm.IsBusy) return;
         if (Mouse.Captured is not null && !ReferenceEquals(Mouse.Captured, this)) return;
 
-        var source = e.OriginalSource as DependencyObject;
+        var source = (e.OriginalSource ?? e.Source) as DependencyObject;
         if (!IsFromViewport(source) || IsInsideOverlayPanel(source)) return;
 
         e.Handled = true;
@@ -1401,7 +1428,9 @@ public partial class PdfReaderView : UserControl
         {
             if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
             {
-                SetSpreadPan(_spreadPanX, _spreadPanY + (e.Delta < 0 ? step : -step));
+                var beforePan = _spreadPanY;
+                SetSpreadPan(_spreadPanX, beforePan + (e.Delta < 0 ? step : -step));
+                StartWheelInertia(0, _spreadPanY - beforePan, step);
                 return;
             }
 
@@ -1411,11 +1440,15 @@ public partial class PdfReaderView : UserControl
 
         if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
         {
-            SetCrossOffset(GetCrossOffset() + (e.Delta < 0 ? step : -step));
+            var beforeCross = GetCrossOffset();
+            SetCrossOffset(beforeCross + (e.Delta < 0 ? step : -step));
+            StartWheelInertia(0, GetCrossOffset() - beforeCross, step);
             return;
         }
 
-        SetReadingOffset(GetReadingOffset() + (e.Delta < 0 ? step : -step));
+        var beforeMain = GetReadingOffset();
+        SetReadingOffset(beforeMain + (e.Delta < 0 ? step : -step));
+        StartWheelInertia(GetReadingOffset() - beforeMain, 0, step);
     }
 
     private void OnPreviewMouseDown(object sender, MouseButtonEventArgs e)
@@ -1557,6 +1590,31 @@ public partial class PdfReaderView : UserControl
         _inertiaMainVelocity = mainVelocity;
         _inertiaCrossVelocity = crossVelocity;
 
+        StartInertiaTimer();
+    }
+
+    /// <summary>
+    /// 滚轮惯性：滚一格后用滚轮步长算初速度继续滑一段（和拖动惯性分开，设置里可关）。
+    /// <paramref name="appliedMain"/> / <paramref name="appliedCross"/> 是这一格**实际**走掉的偏移
+    /// （撞到边界可能不足一格甚至为 0），方向直接取它的符号，横向 / 反向阅读模式也不会滑反。
+    /// </summary>
+    private void StartWheelInertia(double appliedMain, double appliedCross, double stepPixels)
+    {
+        if (Vm is not { } vm || !vm.Cfg.WheelInertiaEnabled) return;
+        if (Math.Abs(appliedMain) < 0.01 && Math.Abs(appliedCross) < 0.01) return;   // 已经在头 / 尾了
+
+        var velocity = PdfInertia.WheelVelocity(stepPixels);
+        _inertiaMainVelocity = Math.Abs(appliedMain) >= 0.01 ? Math.Sign(appliedMain) * velocity : 0;
+        _inertiaCrossVelocity = Math.Abs(appliedCross) >= 0.01 ? Math.Sign(appliedCross) * velocity : 0;
+
+        if (!_inertia.IsFastEnough(_inertiaMainVelocity, _inertiaCrossVelocity)) return;
+
+        StartInertiaTimer();
+    }
+
+    /// <summary>启动 / 重启惯性动画（拖动松手与滚轮惯性共用同一套定时器与衰减逻辑）。</summary>
+    private void StartInertiaTimer()
+    {
         _inertiaTimer ??= new DispatcherTimer(DispatcherPriority.Input)
         {
             Interval = TimeSpan.FromMilliseconds(16),

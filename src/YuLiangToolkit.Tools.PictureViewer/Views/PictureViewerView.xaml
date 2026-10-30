@@ -396,6 +396,11 @@
                                   Style="{StaticResource CheckBoxStyle}"
                                   ToolTip="关掉 = 松手即停；开着 = 按甩动速度继续滑一段、逐渐减速" />
 
+                        <CheckBox Content="滚轮惯性（滚一格继续滑一段）"
+                                  IsChecked="{Binding Cfg.WheelInertiaEnabled}"
+                                  Style="{StaticResource CheckBoxStyle}" Margin="0,10,0,0"
+                                  ToolTip="滚一下滚轮后按滚轮步长再滑一段并减速停下，滚一下能滚很远；和上面的拖动惯性是两个独立设置，只对连续滚动方向生效" />
+
                         <CheckBox Content="惯性越滑越快（连续甩动会叠加）"
                                   IsChecked="{Binding Cfg.InertiaAccelerate}"
                                   Style="{StaticResource CheckBoxStyle}" Margin="0,10,0,0"

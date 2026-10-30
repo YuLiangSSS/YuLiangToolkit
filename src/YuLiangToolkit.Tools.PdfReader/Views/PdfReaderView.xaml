@@ -203,7 +203,7 @@
                                   SelectedItem="{Binding SelectedMode}"
                                   ToolTip="{Binding ModeHint}" />
 
-                        <CheckBox x:Name="InertiaCheckBox" Content="惯性" Margin="12,0,0,0"
+                        <CheckBox x:Name="InertiaCheckBox" Content="拖动惯性" Margin="12,0,0,0"
                                   VerticalAlignment="Center"
                                   Style="{StaticResource CheckBoxStyle}"
                                   Foreground="{DynamicResource TextPrimaryBrush}"
@@ -482,6 +482,23 @@
                                            VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="46"
                                            Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Grid>
+
+                            <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,14,0,10" />
+
+                            <TextBlock Text="惯性" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,2" />
+                            <CheckBox Content="拖动惯性（松手后继续滑一会儿）" FontSize="11.5"
+                                      Style="{StaticResource CheckBoxStyle}"
+                                      Foreground="{DynamicResource TextPrimaryBrush}"
+                                      IsChecked="{Binding Cfg.InertiaEnabled}"
+                                      ToolTip="按住左键拖动松手后，按甩动速度继续滑一段（连续滚动 / 双页平移都生效）" />
+                            <CheckBox Content="滚轮惯性（滚一格继续滑一段）" FontSize="11.5" Margin="0,8,0,0"
+                                      Style="{StaticResource CheckBoxStyle}"
+                                      Foreground="{DynamicResource TextPrimaryBrush}"
+                                      IsChecked="{Binding Cfg.WheelInertiaEnabled}"
+                                      ToolTip="滚一格后按滚轮步长再滑一段并减速停下，滚一下能滚很远；只对连续滚动生效，双页翻页仍是滚一格翻一屏" />
+                            <TextBlock FontSize="10.5" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Text="两个是独立设置：拖动惯性只管左键拖动松手；滚轮惯性只管滚轮一格后继续滑。工具条上的「拖动惯性」勾选框和这里同步。" />
 
                             <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,14,0,10" />
 

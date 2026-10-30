@@ -9,8 +9,8 @@
 | --- | --- | --- |
 | 🎥 视频转音频 | 抽视频里的音轨：MP3 / FLAC / 原样提取 | [tools/video-to-audio.md](tools/video-to-audio.md) |
 | 🎬 视频 / 音乐播放器 | 本地播放器：播放列表、循环随机、可调步长的快进快退 | [tools/media-player.md](tools/media-player.md) |
-| 🖼️ 图片连续阅读器 | 把一个文件夹的图片首尾相接成一条长带（无缝、无间距），滚轮连续看条漫 / 长图 / 漫画；六种阅读方式（连续滚动三种方向 / 双页翻页左右 / 单页浏览），支持缩放、自由拖拽、拖动惯性、F11 全屏沉浸阅读（工具条自动隐藏）、🕘 最近浏览（上限可调）、双击图片打开与三层图片边框 | [tools/picture-viewer.md](tools/picture-viewer.md) |
-| 📄 PDF 阅读器 | 简单 PDF 阅读器：纵向 / 横向连续滚动 + 双页并排一次翻两页，支持缩放、Ctrl+F 文字搜索、书签目录、双页页面间距、自动记住每本 PDF 上次阅读位置、页码跳转、🕘 最近浏览（上限可调）、F11 全屏沉浸阅读（工具条自动隐藏）与双击 .pdf 关联；只读不改原文件 | [tools/pdf-reader.md](tools/pdf-reader.md) |
+| 🖼️ 图片连续阅读器 | 把一个文件夹的图片首尾相接成一条长带（无缝、无间距），滚轮连续看条漫 / 长图 / 漫画；六种阅读方式（连续滚动三种方向 / 双页翻页左右 / 单页浏览），支持缩放、自由拖拽、拖动惯性 / 滚轮惯性、F11 全屏沉浸阅读（工具条自动隐藏）、🕘 最近浏览（上限可调）、双击图片打开与三层图片边框 | [tools/picture-viewer.md](tools/picture-viewer.md) |
+| 📄 PDF 阅读器 | 简单 PDF 阅读器：纵向 / 横向连续滚动 + 双页并排一次翻两页，支持缩放、Ctrl+F 文字搜索、书签目录、双页页面间距、拖动惯性 / 滚轮惯性、自动记住每本 PDF 上次阅读位置、页码跳转、🕘 最近浏览（上限可调）、F11 全屏沉浸阅读（工具条自动隐藏）与双击 .pdf 关联；只读不改原文件 | [tools/pdf-reader.md](tools/pdf-reader.md) |
 | ⚡ Flash 下载器 | 4399 / 7k7k / 17yy / ArmorGames / Kongregate 小游戏下载到本地离线玩 | [tools/flash-downloader.md](tools/flash-downloader.md) |
 | 💬 联机聊天室 | 主机开端口、客户端连进来，局域网 / 内网穿透都能用，带流量上限 | [tools/chat-room.md](tools/chat-room.md) |
 | 🏷️ 批量重命名 | 规则清单 + 预览 + 两阶段改名 + 撤销 | [tools/batch-rename.md](tools/batch-rename.md) |

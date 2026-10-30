@@ -27,6 +27,24 @@ public sealed class PictureInertia
     /// </summary>
     public const double DefaultMaxSpeed = 6.0;
 
+    /// <summary>
+    /// 滚轮惯性：滚一格给的主轴初速度（像素 / 毫秒）= 滚轮步长 × 这个系数。
+    /// 120px 的默认步长 → 约 1.7 px/ms，按默认摩擦大约再滑 480px（≈ 4 格）；滚一下能滚很远又不会失控。
+    /// </summary>
+    public const double DefaultWheelVelocityPerPixel = 0.014;
+
+    /// <summary>滚轮惯性速度上限（像素 / 毫秒）：滚轮步长调很大时也不会一滚到底。</summary>
+    public const double DefaultWheelMaxVelocity = 4.0;
+
+    /// <summary>由滚轮步长算滚轮惯性初速度（夹在 [最低速度, 滚轮上限]；0 / NaN / 负数都安全）。</summary>
+    public static double WheelVelocity(double wheelStepPixels)
+    {
+        if (double.IsNaN(wheelStepPixels) || double.IsInfinity(wheelStepPixels)) return DefaultMinimumSpeed;
+
+        var velocity = Math.Abs(wheelStepPixels) * DefaultWheelVelocityPerPixel;
+        return Math.Clamp(velocity, DefaultMinimumSpeed, DefaultWheelMaxVelocity);
+    }
+
     private readonly List<(double Time, double Main, double Cross)> _samples = new();
 
     /// <summary>摩擦系数（每毫秒）。越大停得越快。</summary>

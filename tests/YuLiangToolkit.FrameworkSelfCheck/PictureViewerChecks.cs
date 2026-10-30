@@ -1230,6 +1230,95 @@ internal static class PictureViewerChecks
             }
         }
 
+        // ---------------------------------------------------------------- 15. 滚轮惯性（纯逻辑 + 独立配置 + JSON）
+        // 视图层：滚一格后按「实际走过的偏移」符号给主轴一个初速度，再按摩擦减速；
+        // 这里只断言纯数学与配置，不碰 WPF（双页翻页 / 缩放不产生滚轮惯性在视图里）。
+        var wheelCfg = new PictureViewerConfig();
+        Check("[图片] 滚轮惯性：配置默认开，和拖动惯性是两个独立设置（默认都开）",
+            wheelCfg.WheelInertiaEnabled && wheelCfg.InertiaEnabled);
+
+        var wheelIndependentCfg = new PictureViewerConfig { InertiaEnabled = false };
+        Check("[图片] 滚轮惯性：关掉拖动惯性不影响滚轮惯性",
+            wheelIndependentCfg.WheelInertiaEnabled && !wheelIndependentCfg.InertiaEnabled);
+        wheelIndependentCfg.WheelInertiaEnabled = false;
+        wheelIndependentCfg.InertiaEnabled = true;
+        Check("[图片] 滚轮惯性：关掉滚轮惯性也不影响拖动惯性",
+            !wheelIndependentCfg.WheelInertiaEnabled && wheelIndependentCfg.InertiaEnabled);
+
+        var wheelResetCfg = new PictureViewerConfig { InertiaEnabled = false, WheelInertiaEnabled = false };
+        wheelResetCfg.ResetToDefaults();
+        Check("[图片] 滚轮惯性：恢复默认设置把两个惯性开关都恢复成开",
+            wheelResetCfg.WheelInertiaEnabled && wheelResetCfg.InertiaEnabled);
+
+        Check("[图片] 滚轮惯性常量：每像素 0.014、封顶 4.0、最低速度 0.02",
+            Math.Abs(PictureInertia.DefaultWheelVelocityPerPixel - 0.014) <= 1e-12
+            && Math.Abs(PictureInertia.DefaultWheelMaxVelocity - 4.0) <= 1e-12
+            && Math.Abs(PictureInertia.DefaultMinimumSpeed - 0.02) <= 1e-12);
+
+        Check("[图片] 滚轮初速度：默认步长 120px → 120 × 0.014 ≈ 1.68 px/ms",
+            Math.Abs(PictureInertia.WheelVelocity(120) - 1.68) <= 1e-12,
+            PictureInertia.WheelVelocity(120).ToString("F6"));
+
+        Check("[图片] 滚轮初速度：最小步长 20px → 0.28 px/ms",
+            Math.Abs(PictureInertia.WheelVelocity(20) - 0.28) <= 1e-12);
+
+        Check("[图片] 滚轮初速度：步长越大初速度越大（20 < 120 < 200）且都没到封顶",
+            PictureInertia.WheelVelocity(20) < PictureInertia.WheelVelocity(120)
+            && PictureInertia.WheelVelocity(120) < PictureInertia.WheelVelocity(200)
+            && PictureInertia.WheelVelocity(200) < PictureInertia.DefaultWheelMaxVelocity);
+
+        Check("[图片] 滚轮初速度：0 / NaN / ±无穷都退回最低速度（坏步长不产生速度）",
+            Math.Abs(PictureInertia.WheelVelocity(0) - PictureInertia.DefaultMinimumSpeed) <= 1e-12
+            && Math.Abs(PictureInertia.WheelVelocity(double.NaN) - PictureInertia.DefaultMinimumSpeed) <= 1e-12
+            && Math.Abs(PictureInertia.WheelVelocity(double.PositiveInfinity) - PictureInertia.DefaultMinimumSpeed) <= 1e-12
+            && Math.Abs(PictureInertia.WheelVelocity(double.NegativeInfinity) - PictureInertia.DefaultMinimumSpeed) <= 1e-12);
+
+        Check("[图片] 滚轮初速度：负数按绝对值算（-120 与 120 相同，方向由实际偏移符号决定）",
+            Math.Abs(PictureInertia.WheelVelocity(-120) - PictureInertia.WheelVelocity(120)) <= 1e-12);
+
+        Check("[图片] 滚轮初速度：极小步长（1px）也夹到最低速度",
+            Math.Abs(PictureInertia.WheelVelocity(1) - PictureInertia.DefaultMinimumSpeed) <= 1e-12);
+
+        Check("[图片] 滚轮初速度：极大步长封顶 4.0 px/ms（99999 / 600 都不会一滚到底）",
+            Math.Abs(PictureInertia.WheelVelocity(99999) - PictureInertia.DefaultWheelMaxVelocity) <= 1e-12
+            && Math.Abs(PictureInertia.WheelVelocity(600) - PictureInertia.DefaultWheelMaxVelocity) <= 1e-12);
+
+        var wheelStartVelocity = PictureInertia.WheelVelocity(120);
+        var wheelInertia = new PictureInertia();
+        var (wheelDecayedMain, _) = wheelInertia.Decay(wheelStartVelocity, 0, 16);
+        Check("[图片] 滚轮初速度手感：一格速度在 (0.02, 4.0) 内、16ms 后仍在滑但已减速",
+            wheelStartVelocity > PictureInertia.DefaultMinimumSpeed
+            && wheelStartVelocity < PictureInertia.DefaultWheelMaxVelocity
+            && wheelDecayedMain > 0 && wheelDecayedMain < wheelStartVelocity,
+            $"v={wheelStartVelocity:F4}，16ms 后={wheelDecayedMain:F4}");
+
+        Check("[图片] 滚轮初速度足够触发惯性滑行（IsFastEnough = true）",
+            wheelInertia.IsFastEnough(wheelStartVelocity, 0)
+            && PictureInertia.IsFastEnough(wheelStartVelocity, 0, PictureInertia.DefaultMinimumSpeed));
+
+        var wheelJsonDefault = new PictureViewerConfig().ToJson();
+        Check("[图片] 滚轮惯性落盘字段：JSON 里 wheelInertiaEnabled 与 inertiaEnabled 各存一份（默认 true）",
+            wheelJsonDefault.Contains("\"wheelInertiaEnabled\": true", StringComparison.Ordinal)
+            && wheelJsonDefault.Contains("\"inertiaEnabled\": true", StringComparison.Ordinal));
+
+        var wheelStore = ToolConfigStore.For("picture-viewer-wheel-check");
+        var wheelPersistedCfg = wheelStore.Load<PictureViewerConfig>();
+        wheelPersistedCfg.InertiaEnabled = true;
+        wheelPersistedCfg.WheelInertiaEnabled = false;
+        wheelPersistedCfg.SaveNow();
+        var wheelJson = File.Exists(wheelStore.FilePath) ? File.ReadAllText(wheelStore.FilePath) : "";
+        Check("[图片] 滚轮惯性落盘：JSON 里 wheelInertiaEnabled=false、inertiaEnabled=true（互不影响）",
+            wheelJson.Contains("\"wheelInertiaEnabled\": false", StringComparison.Ordinal)
+            && wheelJson.Contains("\"inertiaEnabled\": true", StringComparison.Ordinal),
+            wheelJson.Length <= 300 ? wheelJson : wheelJson[..300]);
+
+        var wheelRereadCfg = JsonFileStore.Read<PictureViewerConfig>(wheelStore.FilePath);
+        Check("[图片] 滚轮惯性往返：读盘后两个开关各自保持正确值",
+            wheelRereadCfg is not null
+            && !wheelRereadCfg.WheelInertiaEnabled
+            && wheelRereadCfg.InertiaEnabled);
+        wheelStore.StopWatching();
+
         // ---------------------------------------------------------------- 收尾：清掉临时测试文件夹
         try { Directory.Delete(folder, recursive: true); } catch { /* 临时目录，删不掉无所谓 */ }
         try { Directory.Delete(emptyFolder, recursive: true); } catch { /* 同上 */ }

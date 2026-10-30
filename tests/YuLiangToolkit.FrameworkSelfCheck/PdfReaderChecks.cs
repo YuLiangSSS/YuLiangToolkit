@@ -2627,6 +2627,97 @@ internal static class PdfReaderChecks
         }
 
         // ================================================================
+        // 15. 滚轮惯性（纯逻辑 + 独立配置 + JSON）
+        // ================================================================
+        // 视图层：滚一格后按「实际走过的偏移」符号给主轴一个初速度再按摩擦减速；
+        // 这里只断言纯数学与配置，不碰 WPF（双页翻页 / Ctrl+滚轮缩放不产生滚轮惯性在视图里）。
+        var wheelCfg = new PdfReaderConfig();
+        Check("滚轮惯性：配置默认开，和拖动惯性是两个独立设置（默认都开）",
+            wheelCfg.WheelInertiaEnabled && wheelCfg.InertiaEnabled);
+
+        var wheelIndependentCfg = new PdfReaderConfig { InertiaEnabled = false };
+        Check("滚轮惯性：关掉拖动惯性不影响滚轮惯性",
+            wheelIndependentCfg.WheelInertiaEnabled && !wheelIndependentCfg.InertiaEnabled);
+        wheelIndependentCfg.WheelInertiaEnabled = false;
+        wheelIndependentCfg.InertiaEnabled = true;
+        Check("滚轮惯性：关掉滚轮惯性也不影响拖动惯性",
+            !wheelIndependentCfg.WheelInertiaEnabled && wheelIndependentCfg.InertiaEnabled);
+
+        var wheelResetCfg = new PdfReaderConfig { InertiaEnabled = false, WheelInertiaEnabled = false };
+        wheelResetCfg.ResetToDefaults();
+        Check("滚轮惯性：恢复默认设置把两个惯性开关都恢复成开",
+            wheelResetCfg.WheelInertiaEnabled && wheelResetCfg.InertiaEnabled);
+
+        Check("滚轮惯性常量：每像素 0.014、封顶 4.0、最低速度 0.02",
+            Math.Abs(PdfInertia.DefaultWheelVelocityPerPixel - 0.014) <= 1e-12
+            && Math.Abs(PdfInertia.DefaultWheelMaxVelocity - 4.0) <= 1e-12
+            && Math.Abs(PdfInertia.DefaultMinimumSpeed - 0.02) <= 1e-12);
+
+        Check("滚轮初速度：默认步长 120px → 120 × 0.014 ≈ 1.68 px/ms",
+            Math.Abs(PdfInertia.WheelVelocity(120) - 1.68) <= 1e-12,
+            PdfInertia.WheelVelocity(120).ToString("F6"));
+
+        Check("滚轮初速度：最小步长 20px → 0.28 px/ms",
+            Math.Abs(PdfInertia.WheelVelocity(20) - 0.28) <= 1e-12);
+
+        Check("滚轮初速度：步长越大初速度越大（20 < 120 < 200）且都没到封顶",
+            PdfInertia.WheelVelocity(20) < PdfInertia.WheelVelocity(120)
+            && PdfInertia.WheelVelocity(120) < PdfInertia.WheelVelocity(200)
+            && PdfInertia.WheelVelocity(200) < PdfInertia.DefaultWheelMaxVelocity);
+
+        Check("滚轮初速度：0 / NaN / ±无穷都退回最低速度（坏步长不产生速度）",
+            Math.Abs(PdfInertia.WheelVelocity(0) - PdfInertia.DefaultMinimumSpeed) <= 1e-12
+            && Math.Abs(PdfInertia.WheelVelocity(double.NaN) - PdfInertia.DefaultMinimumSpeed) <= 1e-12
+            && Math.Abs(PdfInertia.WheelVelocity(double.PositiveInfinity) - PdfInertia.DefaultMinimumSpeed) <= 1e-12
+            && Math.Abs(PdfInertia.WheelVelocity(double.NegativeInfinity) - PdfInertia.DefaultMinimumSpeed) <= 1e-12);
+
+        Check("滚轮初速度：负数按绝对值算（-120 与 120 相同，方向由实际偏移符号决定）",
+            Math.Abs(PdfInertia.WheelVelocity(-120) - PdfInertia.WheelVelocity(120)) <= 1e-12);
+
+        Check("滚轮初速度：极小步长（1px）也夹到最低速度",
+            Math.Abs(PdfInertia.WheelVelocity(1) - PdfInertia.DefaultMinimumSpeed) <= 1e-12);
+
+        Check("滚轮初速度：极大步长封顶 4.0 px/ms（99999 / 600 都不会一滚到底）",
+            Math.Abs(PdfInertia.WheelVelocity(99999) - PdfInertia.DefaultWheelMaxVelocity) <= 1e-12
+            && Math.Abs(PdfInertia.WheelVelocity(600) - PdfInertia.DefaultWheelMaxVelocity) <= 1e-12);
+
+        var wheelStartVelocity = PdfInertia.WheelVelocity(120);
+        var wheelInertia = new PdfInertia();
+        var (wheelDecayedMain, _) = wheelInertia.Decay(wheelStartVelocity, 0, 16);
+        Check("滚轮初速度手感：一格速度在 (0.02, 4.0) 内、16ms 后仍在滑但已减速",
+            wheelStartVelocity > PdfInertia.DefaultMinimumSpeed
+            && wheelStartVelocity < PdfInertia.DefaultWheelMaxVelocity
+            && wheelDecayedMain > 0 && wheelDecayedMain < wheelStartVelocity,
+            $"v={wheelStartVelocity:F4}，16ms 后={wheelDecayedMain:F4}");
+
+        Check("滚轮初速度足够触发惯性滑行（IsFastEnough = true）",
+            wheelInertia.IsFastEnough(wheelStartVelocity, 0)
+            && PdfInertia.IsFastEnough(wheelStartVelocity, 0, PdfInertia.DefaultMinimumSpeed));
+
+        var wheelJsonDefault = new PdfReaderConfig().ToJson();
+        Check("滚轮惯性落盘字段：JSON 里 wheelInertiaEnabled 与 inertiaEnabled 各存一份（默认 true）",
+            wheelJsonDefault.Contains("\"wheelInertiaEnabled\": true", StringComparison.Ordinal)
+            && wheelJsonDefault.Contains("\"inertiaEnabled\": true", StringComparison.Ordinal));
+
+        var wheelStore = ToolConfigStore.For("pdf-reader-wheel-check");
+        var wheelPersistedCfg = wheelStore.Load<PdfReaderConfig>();
+        wheelPersistedCfg.InertiaEnabled = true;
+        wheelPersistedCfg.WheelInertiaEnabled = false;
+        wheelPersistedCfg.SaveNow();
+        var wheelJson = File.Exists(wheelStore.FilePath) ? File.ReadAllText(wheelStore.FilePath) : "";
+        Check("滚轮惯性落盘：JSON 里 wheelInertiaEnabled=false、inertiaEnabled=true（互不影响）",
+            wheelJson.Contains("\"wheelInertiaEnabled\": false", StringComparison.Ordinal)
+            && wheelJson.Contains("\"inertiaEnabled\": true", StringComparison.Ordinal),
+            CompactJson(wheelJson));
+
+        var wheelRereadCfg = JsonFileStore.Read<PdfReaderConfig>(wheelStore.FilePath);
+        Check("滚轮惯性往返：读盘后两个开关各自保持正确值",
+            wheelRereadCfg is not null
+            && !wheelRereadCfg.WheelInertiaEnabled
+            && wheelRereadCfg.InertiaEnabled);
+        wheelStore.StopWatching();
+
+        // ================================================================
         // 局部小工具（只在这个文件里用）
         // ================================================================
 

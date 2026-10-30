@@ -69,6 +69,9 @@ public partial class PictureViewerView : UserControl
     private bool _layoutQueued;
     private bool _demoStarted;
     private bool _measureScheduled;
+
+    /// <summary>调试 / 截图：滚轮模拟只触发一次（<c>YLT_PICTURE_WHEEL_SIM</c>）。</summary>
+    private bool _wheelSimScheduled;
     private DispatcherTimer? _borderRebuildTimer;
     private double _maxPixelWidth;
     private double _maxPixelHeight;
@@ -880,8 +883,8 @@ public partial class PictureViewerView : UserControl
     {
         if (Vm is not { } vm || !vm.HasPages) return;                       // 没图时不吃滚轮
         if (Mouse.Captured is not null && !ReferenceEquals(Mouse.Captured, this)) return;   // 别的控件（输入框 / 下拉弹层）正掌握鼠标
-        if (!IsFromViewport(e.OriginalSource as DependencyObject)) return;  // 鼠标在工具条 / 设置面板上时别抢滚轮
-        if (IsInsideSettings(e.OriginalSource as DependencyObject)) return;
+        if (!IsFromViewport(e.OriginalSource as DependencyObject ?? e.Source as DependencyObject)) return;  // 鼠标在工具条 / 设置面板上时别抢滚轮
+        if (IsInsideSettings(e.OriginalSource as DependencyObject ?? e.Source as DependencyObject)) return;
 
         if (_pagedActive)
         {
@@ -926,11 +929,15 @@ public partial class PictureViewerView : UserControl
         var step = vm.Cfg.WheelStepEffective;
         if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
         {
-            SetCrossOffset(PictureScrollMath.WheelOffset(GetCrossOffset(), e.Delta, step, GetCrossMaximum()));
+            var beforeCross = GetCrossOffset();
+            SetCrossOffset(PictureScrollMath.WheelOffset(beforeCross, e.Delta, step, GetCrossMaximum()));
+            StartWheelInertia(0, GetCrossOffset() - beforeCross, step);
             return;
         }
 
-        SetReadingOffset(PictureScrollMath.WheelOffset(GetReadingOffset(), e.Delta, step, GetReadingMaximum()));
+        var beforeMain = GetReadingOffset();
+        SetReadingOffset(PictureScrollMath.WheelOffset(beforeMain, e.Delta, step, GetReadingMaximum()));
+        StartWheelInertia(GetReadingOffset() - beforeMain, 0, step);
     }
 
     // ---------------------------------------------------------------- 鼠标：中键锚点 / 左键拖拽
@@ -1121,6 +1128,31 @@ public partial class PictureViewerView : UserControl
         _inertiaMainVelocity = mainVelocity;
         _inertiaCrossVelocity = crossVelocity;
 
+        StartInertiaTimer();
+    }
+
+    /// <summary>
+    /// 滚轮惯性：滚一格后用滚轮步长算初速度继续滑一段（和拖动惯性分开，设置里可关）。
+    /// <paramref name="appliedMain"/> / <paramref name="appliedCross"/> 是这一格**实际**走掉的偏移
+    /// （撞到边界可能不足一格甚至为 0），方向直接取它的符号，反向阅读模式也不会滑反。
+    /// </summary>
+    private void StartWheelInertia(double appliedMain, double appliedCross, double stepPixels)
+    {
+        if (Vm is not { } vm || !vm.Cfg.WheelInertiaEnabled) return;
+        if (Math.Abs(appliedMain) < 0.01 && Math.Abs(appliedCross) < 0.01) return;   // 已经在头 / 尾了
+
+        var velocity = PictureInertia.WheelVelocity(stepPixels);
+        _inertiaMainVelocity = Math.Abs(appliedMain) >= 0.01 ? Math.Sign(appliedMain) * velocity : 0;
+        _inertiaCrossVelocity = Math.Abs(appliedCross) >= 0.01 ? Math.Sign(appliedCross) * velocity : 0;
+
+        if (!_inertia.IsFastEnough(_inertiaMainVelocity, _inertiaCrossVelocity)) return;
+
+        StartInertiaTimer();
+    }
+
+    /// <summary>启动 / 重启惯性动画（拖动松手与滚轮惯性共用同一套定时器与衰减逻辑）。</summary>
+    private void StartInertiaTimer()
+    {
         _inertiaTimer ??= new DispatcherTimer(DispatcherPriority.Input)
         {
             Interval = TimeSpan.FromMilliseconds(16),
@@ -1566,12 +1598,36 @@ public partial class PictureViewerView : UserControl
         if (PictureViewerViewModel.IsEnvironmentOn("YLT_PICTURE_SETTINGS")) vm.IsSettingsVisible = true;
         if (PictureViewerViewModel.IsEnvironmentOn("YLT_PICTURE_RECENT")) vm.IsRecentVisible = true;
 
+        // 截图 / 调试：YLT_PICTURE_WHEEL_SIM=-120 打开后模拟「向下滚一格」，用来核对滚轮惯性
+        if (!_wheelSimScheduled && int.TryParse(Environment.GetEnvironmentVariable("YLT_PICTURE_WHEEL_SIM"), out var wheelSimDelta))
+        {
+            _wheelSimScheduled = true;
+            var timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(300) };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                SimulateWheel(wheelSimDelta);
+            };
+            timer.Start();
+        }
+
         var measurePath = Environment.GetEnvironmentVariable("YLT_PICTURE_MEASURE");
         if (!string.IsNullOrWhiteSpace(measurePath) && !_measureScheduled)
         {
             _measureScheduled = true;
             ScheduleMeasure(measurePath);
         }
+    }
+
+    /// <summary>调试 / 截图用：构造一个滚轮事件走正常处理链路（方向 / 惯性 / 页码都会跟着变）。</summary>
+    private void SimulateWheel(int delta)
+    {
+        var args = new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, delta)
+        {
+            RoutedEvent = UIElement.PreviewMouseWheelEvent,
+            Source = _pagedActive ? PagedCanvas : ImageScrollViewer,
+        };
+        OnPreviewMouseWheel(this, args);
     }
 
     private void ScheduleMeasure(string path)

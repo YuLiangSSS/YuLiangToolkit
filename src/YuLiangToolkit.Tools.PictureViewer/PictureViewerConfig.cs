@@ -38,6 +38,12 @@ public sealed class PictureViewerConfig : ToolConfig
     public bool InertiaEnabled { get; set; } = true;
 
     /// <summary>
+    /// 滚轮惯性（默认开）：滚一格后按滚轮步长给一个初速度继续滑一段再减速停下。
+    /// <b>和 <see cref="InertiaEnabled"/>（拖动惯性）是两个独立设置</b>，可以只开其中一个。
+    /// </summary>
+    public bool WheelInertiaEnabled { get; set; } = true;
+
+    /// <summary>
     /// 惯性「越滑越快」：下一次甩动时把还在滑的残余速度**加**上去，而不是清零重置
     /// （手机漫画 App 的手感）。默认开；关掉则每次松手都只用这一次甩动的速度。
     /// </summary>
@@ -182,6 +188,7 @@ public sealed class PictureViewerConfig : ToolConfig
         AutoUnloadOffscreen = true;
         ZoomPercent = PictureScrollMath.DefaultZoomPercent;
         InertiaEnabled = true;
+        WheelInertiaEnabled = true;
         InertiaAccelerate = true;
         PagedWheel = PictureWheelAction.TurnPage;
         PageTurnAnimation = true;

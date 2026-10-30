@@ -68,6 +68,11 @@
 - ⚠ 阅读偏移自己记（`_readingOffset`），别每帧反读 `ScrollViewer`：`ScrollToXxx` 排队到布局阶段才生效。
 - 横向右→左：图片物理倒序、阅读偏移 = `ScrollableWidth − HorizontalOffset`（与物理偏移互为反数）；别用 `FlowDirection`。
 - 缩放后两轴都可能能滚：图片宽高必须都显式给，否则另一轴拖不动。
+- 滚轮惯性（`WheelInertiaEnabled`，和拖动惯性 `InertiaEnabled` 是**两个独立设置**）：滚轮处理里用
+  「这一格**实际**走过的偏移差」判断方向（反向阅读 / Shift 横滚不会滑反），再用
+  `PictureInertia.WheelVelocity(步长)` 给初速度，复用拖动惯性那套 `_inertiaTimer` + `OnInertiaTick`（16ms 衰减）；
+  翻页 / 单张模式、Ctrl+滚轮缩放不启动。调试：`YLT_PICTURE_WHEEL_SIM=-120` 打开后模拟滚一格（走正常处理链路），
+  可和 `wheelInertiaEnabled=false` 的截图对比。
 - 全屏（F11）不自己操作窗口：`Window.GetWindow(this) as IFullscreenHost` 交给外壳藏壳 / 铺满屏幕（任务栏由外壳藏）。
   视图 `Unloaded` 顺序必须是「先 `vm.ExitFullscreen()`（事件还订阅着，外壳能还原）→ 再摘事件」，
   反过来会留下一个“藏了壳”的窗口（播放器踩过的坑，两个阅读器复制同一套）。
@@ -97,6 +102,10 @@
   别用 `HasUsableLength(0) == false` 把它当「没给」退回默认。
 - ⚠ 双页放大后拖动是**平移**（`_spreadPanX/Y` + `PdfSpreadLayout.ClampPan`），连续模式缩放后多出来的是**跨轴偏移**；
   两套偏移都自己记，惯性用 `PdfInertia` 的双轴接口，别从 ScrollViewer / RenderTransform 反读。
+- 滚轮惯性（`WheelInertiaEnabled`，和拖动惯性 `InertiaEnabled` 独立）：用「实际走过的偏移差」判断方向后调
+  `StartWheelInertia`，复用拖动惯性定时器；连续滚动（含 Shift 横滚、双页放大后 Shift 平移）会滑，双页默认翻页不滑。
+  调试：`YLT_PDF_WHEEL_SIM=-120` 模拟滚一格；合成 `MouseWheelEventArgs` 的 `OriginalSource` 是 null，
+  两个滚轮处理都改成 `(e.OriginalSource ?? e.Source)` 兜底才能走正常链路。
 - ⚠ 文字层在后台 `Task.Run` 提取：切 PDF / 关页面要 `Cancel` 旧的 `CancellationTokenSource` 并比对 `_textLayerCts`，
   否则旧文档的结果可能覆盖新文档；完成回 UI 一律走 `Ui(...)`。
 - 文件关联接线：`App.xaml.cs` 启动参数 + 第二实例 `HandleSecondInstance` 两处都要认 `.pdf`，
