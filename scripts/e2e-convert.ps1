@@ -1,5 +1,5 @@
-﻿param(
-    [string]$Exe = "C:\Users\16320\Desktop\Project\YuLiangTookit\bin\Debug\net9.0-windows\YuLiangTookit.exe",
+param(
+    [string]$Exe = "C:\Users\16320\Desktop\Project\YuLiangTookit\bin\Debug\net9.0-windows10.0.19041.0\YuLiangTookit.exe",
     [string]$InputDir = "C:\Users\16320\Desktop\Project\YuLiangTookit\testdata"
 )
 

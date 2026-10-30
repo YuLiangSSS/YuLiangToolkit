@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「PDF 阅读器」：简单三件事 —— 上下 / 左右连续滚动看 PDF，双页并排翻页阅读，左键拖动带惯性。
+       分层：纯逻辑（PdfReadMode / PdfContinuousLayout / PdfSpreadLayout / PdfInertia）不碰界面，
+       自检直接断言；界面后台只做必须碰 WPF 的事（排版、虚拟化、鼠标 / 键盘、翻页动画），
+       PDF 解码交给系统自带的 Windows.Data.Pdf（WinRT），不引入任何第三方 PDF 库。
+       ⚠ Windows.Data.Pdf 是 Windows 10 1607+ 的系统 API，所以本项目和主程序都升到
+         net9.0-windows10.0.19041.0（见 docs/dev/pitfalls.md「PDF 阅读器」）。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.PdfReader</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.PdfReader</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

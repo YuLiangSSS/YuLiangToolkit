@@ -16,6 +16,7 @@
 | [**🎥 视频转音频**](docs/tools/video-to-audio.md) | 抽视频里的音轨：有损 MP3 / 无损 FLAC / 原样提取，批量 + 进度 + 取消 |
 | [**🎬 视频 / 音乐播放器**](docs/tools/media-player.md) | 本地播放器：播放列表、单曲 / 随机、**沉浸式全屏（鼠标一动浮出控制条）**、**后台播放（切页不断，左下角迷你条）**、可调步长的快进快退 |
 | [**🖼️ 图片连续阅读器**](docs/tools/picture-viewer.md) | 把一个文件夹的图片首尾相接拼成一条长带（无缝、无间距），滚轮连续看条漫 / 长图 / 漫画，可切纵向 / 横向 / 日式从右到左，也可切**双页翻页 / 单页浏览**；支持 **25% ~ 800% 缩放**、放大后**自由拖拽**、可开关的**拖动惯性（连续甩会越滑越快）**；可**关联图片后缀，双击图片直接打开并定位到那张**（默认**复用同一个窗口**，也能在设置里切成**多开**）；**点工具条上的文件夹路径可在资源管理器打开所在目录**；还能调**三层图片边框（RGBA 颜色 + 调色板）**并**一键恢复默认** |
+| [**📄 PDF 阅读器**](docs/tools/pdf-reader.md) | 简单 PDF 阅读器：纵向 / 横向连续滚动看整本，或双页并排一次翻两页；左键拖动带惯性（甩着看），只渲染看得见的页省内存，用 Windows 自带的 `Windows.Data.Pdf` 渲染；只读不改原文件 |
 | [**⚡ Flash 下载器**](docs/tools/flash-downloader.md) | 4399 / 7k7k / 17yy / ArmorGames / Kongregate 的小游戏下载到本地离线玩 |
 | [**💬 联机聊天室**](docs/tools/chat-room.md) | 主机开端口、客户端连进来，文字 / 图片 / 文件随便传，带单次流量上限 |
 | [**🏷️ 批量重命名**](docs/tools/batch-rename.md) | 规则清单 + 实时预览 + 两阶段改名 + 可撤销 |
@@ -53,7 +54,7 @@ dotnet run --project YuLiangTookit.csproj
 .\publish.ps1
 ```
 
-要求：.NET 9 SDK（`global.json` 已锁定 9.0.317）。
+要求：.NET 9 SDK（`global.json` 已锁定 9.0.317）；系统需 **Windows 10 2004（build 19041）及以上**（PDF 阅读器用系统自带的 `Windows.Data.Pdf`）。
 只有「视频转音频」依赖 FFmpeg（应用会自动检测 `PATH` 里的 `ffmpeg.exe`，也可以在工具里手动指定）——
 见 [视频转音频](docs/tools/video-to-audio.md)。osu! 三个转换 / 计算工具用 `OsuParsers`（MIT）解析 `.osu`：
 从源码构建时**首次需要联网还原一次** NuGet 包，之后走本机缓存（`build.ps1` 离线也能命中）。
@@ -63,7 +64,7 @@ dotnet run --project YuLiangTookit.csproj
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；
   踩坑细节按需查 **[docs/dev/pitfalls.md](docs/dev/pitfalls.md)**（只在排错 / 改危险代码时读）；
-- ✅ **自检**：2087 项行为逐条真跑（退出码 0 = 全通过）。改哪个功能只跑对应的组（省时间）：
+- ✅ **自检**：2285 项行为逐条真跑（退出码 0 = 全通过）。改哪个功能只跑对应的组（省时间）：
 
   ```powershell
   dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj -- theme
@@ -71,7 +72,7 @@ dotnet run --project YuLiangTookit.csproj
 
 ## 数据与配置
 
-**运行时目录就在 exe 旁边**（`bin\Debug\net9.0-windows\` 或发布出来的目录），首次运行自动生成：
+**运行时目录就在 exe 旁边**（`bin\Debug\net9.0-windows10.0.19041.0\` 或发布出来的目录），首次运行自动生成：
 
 - `Data\<功能Id>\` —— 功能自己的东西（下载的游戏、聊天记录、播放列表快照…）；
 - `Config\<功能Id>\config.json` —— 那个功能所有选项的值，**改一下就自动保存，没有「保存」按钮**。
@@ -98,6 +99,7 @@ src/
 ├── YuLiangToolkit.Tools.VideoToAudio/   # 功能：视频转音频
 ├── YuLiangToolkit.Tools.MediaPlayer/    # 功能：视频 / 音乐播放器
 ├── YuLiangToolkit.Tools.PictureViewer/  # 功能：图片连续阅读器（连续长带 / 双页翻页 / 单页 + 缩放 / 惯性 / 双击打开 / 图片边框）
+├── YuLiangToolkit.Tools.PdfReader/      # 功能：PDF 阅读器（上下 / 左右连续滚动 + 双页翻页 + 拖动惯性）
 ├── YuLiangToolkit.Tools.BatchRename/    # 功能：批量重命名（规则清单引擎 + 两阶段改名 + 撤销）
 ├── YuLiangToolkit.Tools.FlashDownloader/# 功能：Flash 下载器（五站点解析 + 本地服务器 + 自动补全资源）
 ├── YuLiangToolkit.Tools.ChatRoom/       # 功能：联机聊天室（TCP 直连 / 内网穿透 + 传文件 + 流量上限）
@@ -107,7 +109,7 @@ src/
 ├── YuLiangToolkit.Tools.Kps/            # 功能：KPS 按键统计（Raw Input 全局输入 + KPS 统计 + 置顶透明 Overlay + 全局热键）
 ├── YuLiangToolkit.Tools.SpugCaptcha/    # 功能：Spug 验证码测试（短信 / 邮箱验证码模板联调 + 本地比对验证）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（2087 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（2285 项行为逐条验证）
 ```
 
 ## 如何添加一个新工具

@@ -56,6 +56,22 @@
 - 横向右→左：图片物理倒序、阅读偏移 = `ScrollableWidth − HorizontalOffset`（与物理偏移互为反数）；别用 `FlowDirection`。
 - 缩放后两轴都可能能滚：图片宽高必须都显式给，否则另一轴拖不动。
 
+### PDF 阅读器
+- ⚠ PDF 渲染用系统自带的 `Windows.Data.Pdf`（WinRT，不引第三方包）：**主程序 / 自检目标框架因此升到
+  `net9.0-windows10.0.19041.0`**（工具库仍是 `net9.0-windows`），构建输出会多 `Microsoft.Windows.SDK.NET.dll` /
+  `WinRT.Runtime.dll`。改 TFM 时主程序、自检、PdfReader 三处要一起改，否则 ProjectReference 不兼容。
+- ⚠ `Windows.Data.Pdf.PdfDocument` **没有 Close/Dispose**（WinRT 对象靠 GC），只有 `PdfPage` 是 `IDisposable`；
+  别写 `using var doc = ...`（编不过）。
+- ⚠ `IAsyncAction` / `DataReaderLoadOperation` 不是 `Task`，**不能 `.ConfigureAwait(false)`**；直接 `await`。
+- ⚠ 双页 `SpreadHost` 刚从 Collapsed 变 Visible 时 `ActualWidth` 还是 0：必须等 `SpreadViewport.SizeChanged`
+  补一次排版，否则双页模式只有页码没有页（踩过）。连续滚动那套的 ScrollViewer 一开始就可见，没这个问题。
+- 只渲染可见页（前后各一屏缓冲、串行渲染、滚出范围把 `Image.Source` 置空）：几百上千页的 PDF 也不会把内存吃满。
+- 换窗口大小 / 换阅读方式时用「**阅读偏移最前面那一页**」定位，别用视口中心页 —— 横向连续一屏能并排两三页，
+  用中心页会在重排时把整条长带往后跳一页（第一页跑到左边看不见）。
+- 调试开关：`YLT_PDF_DEMO=1` 生成演示 PDF（`Data\pdf-reader\demo.pdf`）、`YLT_PDF_OPEN=<路径>` 直接打开、
+  `YLT_PDF_MODE=vertical|horizontal|spread` 临时切方式（**不写配置**）、`YLT_PDF_PAGE=n` 定位到第 n 页、
+  `YLT_PDF_SCROLL=0~1` 加载后滚到指定比例（截图核对版式用）。
+
 ### KPS 按键统计
 - 监听 / 统计 / Overlay 在 `KpsSession`（进程单例）里，工具页只是设置面板：切走页面时 Overlay 还开着就继续跑；
   页面关 + Overlay 关才 `SuspendAll`。ViewModel 由会话持有并在重开时复用（`Activate` 里补 `NotifyOpened`），
@@ -79,7 +95,7 @@
 ## 别做 · 先问用户
 
 - `scripts/` 调试脚本会弹窗抢焦点、真动鼠标：跑前确认用户没在忙。
-- 截图 / 界面验证必须 `Start-Process .\bin\Debug\net9.0-windows\YuLiangTookit.exe -Wait`（GUI 程序，直接跑不等它结束）。
+- 截图 / 界面验证必须 `Start-Process .\bin\Debug\net9.0-windows10.0.19041.0\YuLiangTookit.exe -Wait`（GUI 程序，直接跑不等它结束）。
 - 自检别调 `PlayEntry()`（会真启动 FlashPlayer，无头自检卡死）；只调 `MarkPlayed()`。
 - 别从 URL 反推本地路径（曾把文件写到游戏目录外）。
 - 别引第三方库：新轮子手写进 `Core/`（参考 `ScrollChaining`、`Crc32`、`ParticleEngine`）。
@@ -102,7 +118,7 @@
 ### 构建与工具链
 - 主项目在仓库根，`DefaultItemExcludes` 排除 `src\`、`Data\`、`Config\`、`tests\` 等；新增顶层目录同步加。
 - 构建 `.\build.ps1`（`DOTNET_CLI_HOME` → `.dotnet-cli-home`）；发布 `.\publish.ps1` → `dist\YuLiangToolkit\`。
-- 目标框架 `net9.0-windows`；库项目也要 `UseWPF=true`（Core 用 `Application.Current.Dispatcher`）。
+- 目标框架：主程序 / 自检 `net9.0-windows10.0.19041.0`（PDF 阅读器要 Windows.Data.Pdf），工具库 `net9.0-windows`；库项目也要 `UseWPF=true`（Core 用 `Application.Current.Dispatcher`）。
 - `Directory.Build.targets` 补 `System.IO` / `System.Text` 隐式 using；往数据目录放文件请程序首次运行自己写（`RuntimeReadme`）或发布脚本 `Copy-Item`。
 
 ### 截图与脚本

@@ -2,7 +2,10 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <!-- Win10 19041+（而不是 net9.0-windows）：「PDF 阅读器」用系统自带的 Windows.Data.Pdf 渲染，
+         需要 Windows SDK 投影（Microsoft.Windows.SDK.NET.dll / WinRT.Runtime.dll 随构建输出）。
+         不引第三方 NuGet 包，代价只是主程序最低系统版本变成 Windows 10 2004。 -->
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -31,6 +34,7 @@
     <ProjectReference Include="src\YuLiangToolkit.Tools.VideoToAudio\YuLiangToolkit.Tools.VideoToAudio.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.MediaPlayer\YuLiangToolkit.Tools.MediaPlayer.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.PictureViewer\YuLiangToolkit.Tools.PictureViewer.csproj" />
+    <ProjectReference Include="src\YuLiangToolkit.Tools.PdfReader\YuLiangToolkit.Tools.PdfReader.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.BatchRename\YuLiangToolkit.Tools.BatchRename.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.FlashDownloader\YuLiangToolkit.Tools.FlashDownloader.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.ChatRoom\YuLiangToolkit.Tools.ChatRoom.csproj" />

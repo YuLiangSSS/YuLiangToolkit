@@ -7,7 +7,9 @@
        想指定目录就设环境变量 YLT_HOME。退出码 0 = 本次跑的分组全部通过。 -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <!-- 和主程序保持一致：引用了「PDF 阅读器」，要能跑 Windows.Data.Pdf 的真实渲染自检，
+         所以同样是 net9.0-windows10.0.19041.0。 -->
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <RootNamespace>YuLiangToolkit.FrameworkSelfCheck</RootNamespace>
     <AssemblyName>YuLiangToolkit.FrameworkSelfCheck</AssemblyName>
@@ -35,6 +37,9 @@
     <!-- 「图片连续阅读器」：页序自然排序 / 三种滚动方式的偏移数学 / 中键单点-按住状态机
          / 排版尺寸 / 真扫一个临时图片文件夹。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.PictureViewer\YuLiangToolkit.Tools.PictureViewer.csproj" />
+    <!-- 「PDF 阅读器」：滚动排版 / 双页配对 / 惯性纯逻辑 + 生成一份最小 PDF 真走一遍
+         Windows.Data.Pdf 渲染链路（无头，不弹窗）。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.PdfReader\YuLiangToolkit.Tools.PdfReader.csproj" />
     <!-- 「osu!mania 转谱」：OsuParsers 解析桥往返 / 星数 / 等级公式 / 转 K / 转 LN，
          全部是纯逻辑（合成谱面文本在临时目录里造，不碰仓库 Data/Config）。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.OsuMania\YuLiangToolkit.Tools.OsuMania.csproj" />

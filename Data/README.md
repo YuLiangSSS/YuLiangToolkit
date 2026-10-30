@@ -1,7 +1,7 @@
 # Data —— 功能数据（说明文件，不是运行时目录）
 
 > ⚠️ **真正的运行时 `Data` 在 exe 旁边**，不在仓库里：
-> `bin\Debug\net9.0-windows\Data\`、`bin\Release\net9.0-windows\Data\`，或 `publish.ps1` 出来的 `dist\YuLiangToolkit\Data\`。
+> `bin\Debug\net9.0-windows10.0.19041.0\Data\`、`bin\Release\net9.0-windows10.0.19041.0\Data\`，或 `publish.ps1` 出来的 `dist\YuLiangToolkit\Data\`。
 > 这个仓库文件夹只保留说明，方便你（和以后接手的人）知道约定长什么样。
 
 ## 目录约定（运行时那份）

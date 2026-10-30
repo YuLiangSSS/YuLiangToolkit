@@ -3,7 +3,7 @@ namespace YuLiangToolkit.Core.Storage;
 /// <summary>
 /// 数据根目录解析：<c>Data</c>（功能数据）与 <c>Config</c>（功能配置）两个大文件夹都在这个根目录下。
 ///
-/// <para><b>默认就在 exe 旁边</b>（<c>bin\Debug\net9.0-windows\Data</c>、<c>...\Config</c>），
+/// <para><b>默认就在 exe 旁边</b>（<c>bin\Debug\net9.0-windows10.0.19041.0\Data</c>、<c>...\Config</c>），
 /// 这样测试 exe 与发布都一致：整个程序目录拷走 = 数据和配置一起带走。</para>
 ///
 /// <para><b>解析顺序</b>（先命中先用）：</para>
@@ -96,7 +96,7 @@ public static class AppPaths
             catch { /* 路径非法则继续后面的策略 */ }
         }
 
-        // 2) 默认：exe 同级目录（bin\Debug\net9.0-windows\ 或发布出来的目录）
+        // 2) 默认：exe 同级目录（bin\Debug\net9.0-windows10.0.19041.0\ 或发布出来的目录）
         var baseDir = AppContext.BaseDirectory;
         if (IsWritable(baseDir)) return baseDir;
 

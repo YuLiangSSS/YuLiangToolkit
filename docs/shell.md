@@ -110,7 +110,7 @@
 
 ## 数据与配置：都在 exe 旁边
 
-**运行时目录 = exe 所在目录**（`bin\Debug\net9.0-windows\`、`bin\Release\…`、`publish.ps1` 出来的
+**运行时目录 = exe 所在目录**（`bin\Debug\net9.0-windows10.0.19041.0\`、`bin\Release\…`、`publish.ps1` 出来的
 `dist\YuLiangToolkit\`）。首次运行 exe 时自动生成 `Data` 与 `Config`，并各带一份「怎么用这两个文件夹.md」：
 
 ```

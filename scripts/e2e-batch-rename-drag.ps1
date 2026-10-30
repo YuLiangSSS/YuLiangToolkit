@@ -13,7 +13,7 @@
 # WARNING: this moves the real mouse cursor and steals focus for a few seconds.
 
 param(
-    [string]$Exe = "C:\Users\16320\Desktop\Project\YuLiangTookit\bin\Debug\net9.0-windows\YuLiangTookit.exe",
+    [string]$Exe = "C:\Users\16320\Desktop\Project\YuLiangTookit\bin\Debug\net9.0-windows10.0.19041.0\YuLiangTookit.exe",
     [string]$Config = "C:\Users\16320\Desktop\Project\YuLiangTookit\Config\batch-rename\config.json"
 )
 

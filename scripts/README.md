@@ -6,7 +6,7 @@
 > 如果你正在干别的（尤其打游戏），**别跑**。只想看界面长相的话用无头截图：
 > ```powershell
 > $env:YLT_SHOT_TOOL="sample-framework"; $env:YLT_SHOT="shots\check.png"
-> .\bin\Debug\net9.0-windows\YuLiangTookit.exe
+> .\bin\Debug\net9.0-windows10.0.19041.0\YuLiangTookit.exe
 > ```
 
 | 脚本 | 作用 | 备注 |

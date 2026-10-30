@@ -1,7 +1,7 @@
 # Config —— 功能配置（说明文件，不是运行时目录）
 
 > ⚠️ **真正的运行时 `Config` 在 exe 旁边**，不在仓库里：
-> `bin\Debug\net9.0-windows\Config\`、`bin\Release\net9.0-windows\Config\`，或 `publish.ps1` 出来的 `dist\YuLiangToolkit\Config\`。
+> `bin\Debug\net9.0-windows10.0.19041.0\Config\`、`bin\Release\net9.0-windows10.0.19041.0\Config\`，或 `publish.ps1` 出来的 `dist\YuLiangToolkit\Config\`。
 > 这个仓库文件夹只保留说明，方便你（和以后接手的人）知道约定长什么样。
 
 这个目录记录**每个功能的每个选项**：Checkbox 勾没勾、Textbox 填了什么、下拉框选了哪一项……

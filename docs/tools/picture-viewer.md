@@ -152,7 +152,7 @@
 | `Config\picture-viewer\config.json` | 上面全部设置（改一下自动保存） |
 | `Data\picture-viewer\` | 只有**开发演示模式**（`YLT_PICTURE_DEMO=1`）才会生成演示图片；正常使用不会往这里写东西 |
 
-> `Data` / `Config` 就在 **exe 旁边**（`bin\Debug\net9.0-windows\` 或发布出来的目录），
+> `Data` / `Config` 就在 **exe 旁边**（`bin\Debug\net9.0-windows10.0.19041.0\` 或发布出来的目录），
 > 整个程序目录拷走就能迁移数据。目录约定见 [shell.md](../shell.md#数据与配置都在-exe-旁边)。
 
 ## 注意与限制
