@@ -10,11 +10,25 @@
     </UserControl.Resources>
 
     <!-- 样式全部来自 App.xaml（CardStyle / TextBoxStyle / ComboBoxStyle / PrimaryButtonStyle …） -->
+    <!-- 布局（v0.41.0 起可拖拽）：整页是「标题 / ① 凭据 / ② 搜索条件 / ③ 结果 / ④ 进度与日志 / 提示」几块，
+         结果与日志之间是 core:PaneSplitter，拖动即可调大小（蓝线 + ↕ 光标），
+         松手自动记住（Config\layout.json），双击缝隙恢复这一处；
+         全部恢复默认：主页设置 →「界面布局 → 恢复默认布局」。约定见 docs/dev/layout.md。
+         ⚠ 可拖的上下两块（结果 / 日志）是固定像素行，所以整页仍在 ScrollViewer 里滚动。 -->
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="28,22,28,26">
+        <Grid Margin="28,22,28,26">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />                                <!-- 标题 -->
+                <RowDefinition Height="Auto" />                                <!-- ① API 凭据 -->
+                <RowDefinition Height="Auto" />                                <!-- ② 搜索条件 -->
+                <RowDefinition Height="540" MinHeight="320" />                 <!-- ③ 搜索结果（上下可拖） -->
+                <RowDefinition Height="12" />                                  <!-- 结果 / 日志 分隔条 -->
+                <RowDefinition Height="260" MinHeight="160" />                 <!-- ④ 进度与日志（上下可拖） -->
+                <RowDefinition Height="Auto" />                                <!-- 底部提示 -->
+            </Grid.RowDefinitions>
 
             <!-- ===== 标题 ===== -->
-            <Grid>
+            <Grid Grid.Row="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -30,7 +44,7 @@
             </Grid>
 
             <!-- ===== ① API 凭据 ===== -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
+            <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,16,0,0">
                 <StackPanel>
                     <TextBlock Text="① API 凭据（存 Config\map-downloader\config.json，本机自用）" FontSize="13" FontWeight="SemiBold" />
                     <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,12"
@@ -63,7 +77,7 @@
             </Border>
 
             <!-- ===== ② 搜索条件 ===== -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+            <Border Grid.Row="2" Style="{StaticResource CardStyle}" Margin="0,12,0,0">
                 <StackPanel>
                     <TextBlock Text="② 搜索条件" FontSize="13" FontWeight="SemiBold" />
 
@@ -141,9 +155,17 @@
             </Border>
 
             <!-- ===== ③ 结果 ===== -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
-                <StackPanel>
-                    <Grid>
+            <!-- 结果表放 * 行、删掉写死的 Height=330：区域被拖高 / 拖矮时只有表格跟着伸缩；
+                 卡片被拖矮时裁掉溢出内容。 -->
+            <Border Grid.Row="3" Style="{StaticResource CardStyle}" Margin="0,12,0,0" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />                <!-- 标题 + 已选统计 -->
+                        <RowDefinition Height="*" MinHeight="120" />   <!-- 结果表（随区域伸缩） -->
+                        <RowDefinition Height="Auto" />                <!-- 选择 / 下载按钮 -->
+                        <RowDefinition Height="Auto" />                <!-- 保存目录 -->
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
@@ -158,8 +180,9 @@
                          宽度天然一致，不用监听布局事件；列定义两边必须**一字不差**。
                          左边距 33 = 行内容的缩进（外边距10 + 内边距10 + 边框1 + 强调条3 + 内容缩进9），
                          右边距 21 = 行的右边距 + 内边距 + 边框，末尾再占一列滚动条宽度（见 ScrollBarWidthConverter）。 -->
-                    <ListBox x:Name="ResultList" ItemsSource="{Binding Sets}" Height="330" Margin="8,10,8,0"
-                             core:ScrollChaining.Enabled="True"
+                    <!-- 结果表：放 * 行、去掉写死的 Height=330（区域拖高 / 拖矮时表格自己伸缩） -->
+                    <ListBox x:Name="ResultList" ItemsSource="{Binding Sets}" Grid.Row="1" Margin="8,10,8,0"
+                             MinHeight="120" core:ScrollChaining.Enabled="True"
                              ToolTip="勾选左侧方框 = 选中要下载的谱面集">
                         <ListBox.Style>
                             <Style TargetType="ListBox" BasedOn="{StaticResource FileListStyle}">
@@ -250,7 +273,7 @@
                     </ListBox>
 
                     <!-- 选择与下载 -->
-                    <Grid Margin="18,12,18,0">
+                    <Grid Grid.Row="2" Margin="18,12,18,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
@@ -274,7 +297,7 @@
                         </StackPanel>
                     </Grid>
 
-                    <Grid Margin="18,10,18,14">
+                    <Grid Grid.Row="3" Margin="18,10,18,14">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
@@ -291,15 +314,28 @@
                                     Command="{Binding OpenFolderCommand}" />
                         </StackPanel>
                     </Grid>
-                </StackPanel>
+                </Grid>
             </Border>
 
-            <!-- ===== ④ 进度与日志 ===== -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
-                <StackPanel>
-                    <TextBlock Text="④ 进度与日志" FontSize="13" FontWeight="SemiBold" />
+            <!-- 上下分隔条：拖动改「搜索结果」与「进度与日志」的高度（双击恢复这一处） -->
+            <core:PaneSplitter Grid.Row="4" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="map-downloader.结果与日志" />
 
-                    <Grid Margin="0,12,0,0" Visibility="{Binding ProgressVisible, Converter={StaticResource BoolToVis}}">
+            <!-- ===== ④ 进度与日志 ===== -->
+            <!-- 日志框放 * 行、删掉写死的 Height=120（区域拖高 / 拖矮时只有日志跟着伸缩）。 -->
+            <Border Grid.Row="5" Style="{StaticResource CardStyle}" Margin="0" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />                <!-- 标题 -->
+                        <RowDefinition Height="Auto" />                <!-- 进度条（下载中才显示） -->
+                        <RowDefinition Height="Auto" />                <!-- 下载汇总 -->
+                        <RowDefinition Height="Auto" />                <!-- 状态 -->
+                        <RowDefinition Height="*" MinHeight="60" />    <!-- 日志（随区域伸缩） -->
+                        <RowDefinition Height="Auto" />                <!-- 取消 / 清空日志 -->
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="④ 进度与日志" FontSize="13" FontWeight="SemiBold" />
+
+                    <Grid Grid.Row="1" Margin="0,12,0,0" Visibility="{Binding ProgressVisible, Converter={StaticResource BoolToVis}}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
@@ -311,27 +347,27 @@
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Grid>
 
-                    <TextBlock Text="{Binding DownloadSummaryText}" Margin="0,10,0,0" FontSize="12"
+                    <TextBlock Grid.Row="2" Text="{Binding DownloadSummaryText}" Margin="0,10,0,0" FontSize="12"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
-                    <TextBlock Text="{Binding StatusText}" Margin="0,6,0,0" TextWrapping="Wrap" FontSize="12" />
+                    <TextBlock Grid.Row="3" Text="{Binding StatusText}" Margin="0,6,0,0" TextWrapping="Wrap" FontSize="12" />
 
-                    <TextBox Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
-                             Style="{StaticResource LogTextBoxStyle}" Height="120" Margin="0,10,0,0"
+                    <TextBox Grid.Row="4" Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
+                             Style="{StaticResource LogTextBoxStyle}" Margin="0,10,0,0" MinHeight="60"
                              core:ScrollChaining.Enabled="True" />
 
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                    <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
                         <Button Content="取消" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding CancelCommand}" />
                         <Button Content="清空日志" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
                                 Command="{Binding ClearLogCommand}" />
                     </StackPanel>
-                </StackPanel>
+                </Grid>
             </Border>
 
-            <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0">
+            <Border Grid.Row="6" Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0">
                 <TextBlock FontSize="11.5" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"
                            Text="提示：搜索走 osu! 官方 API（只读公开数据，需要自己注册的 Client ID / Secret）；.osz 文件走第三方镜像下载，勾选多行时最多同时下 5 个（可在 config.json 里改 parallelDownloads）。日期与 Key 数是拉回来之后在本地筛的。" />
             </Border>
 
-        </StackPanel>
+        </Grid>
     </ScrollViewer>
 </UserControl>

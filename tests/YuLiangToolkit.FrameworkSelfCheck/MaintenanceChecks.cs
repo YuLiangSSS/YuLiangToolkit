@@ -1,6 +1,7 @@
 using YuLiangToolkit.App.Models;
 using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Maintenance;
+using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Core.Tools;
 
@@ -515,6 +516,104 @@ public static class MaintenanceChecks
             && diskShell is { ShowHomeTags: true }
             && diskShell.SortMode == ToolSortMode.Default
             && diskShell.LastUsed.Count == 0);
+
+        // ===================== 8. 界面布局记忆（v0.41.0：工具页分隔条 / 恢复默认布局） =====================
+        RunLayoutChecks(C, P);
+    }
+
+    /// <summary>
+    /// 「界面布局 → 恢复默认布局」的底层：<see cref="LayoutMemory"/> 的落盘 / 比例 / 分组 / 清空，
+    /// 以及 <see cref="PaneSplitter.ComputeDrag"/> 的拖拽换算（纯函数）。
+    /// <para>布局文件放在 <c>Config\layout.json</c>（外壳级，不放进某个功能目录），
+    /// 这样「重建配置」不会顺手删掉布局，「恢复默认布局」能一次全清。</para>
+    /// </summary>
+    private static void RunLayoutChecks(Action<string, bool, string> check, Action<string, bool> simpleCheck)
+    {
+        void C(string name, bool ok, string detail = "") => check(name, ok, detail);
+        void P(string name, bool ok) => simpleCheck(name, ok);
+
+        // 每次用唯一分组名，避免和真实布局键冲突（自检跑在临时 YLT_HOME 里，本来也互不影响）
+        var group = "layout-check-" + Guid.NewGuid().ToString("N")[..8];
+
+        C("LayoutMemory 文件路径 = Config\\layout.json（外壳级，不在功能目录里）",
+            string.Equals(LayoutMemory.FilePath, Path.Combine(AppPaths.ConfigRoot, "layout.json"),
+                StringComparison.OrdinalIgnoreCase),
+            LayoutMemory.FilePath);
+
+        LayoutMemory.ResetAll();
+        P("恢复默认布局后：没有任何记住的布局", !LayoutMemory.HasSaved && LayoutMemory.SavedCount == 0);
+
+        var pixelKey = group + ".left.px";
+        P("SetPixel 写入成功并读回同一个值",
+            LayoutMemory.SetPixel(pixelKey, 456.5) && LayoutMemory.GetPixel(pixelKey) == 456.5);
+        P("布局文件已写盘", File.Exists(LayoutMemory.FilePath));
+        P("HasSaved / SavedGroups 反映刚刚记住的页面",
+            LayoutMemory.HasSaved && LayoutMemory.SavedGroups.Contains(group, StringComparer.OrdinalIgnoreCase));
+        P("同一个值重复写不重复落盘（返回 false）", !LayoutMemory.SetPixel(pixelKey, 456.5));
+        P("非法像素值被忽略（NaN / 0 / 负数）",
+            !LayoutMemory.SetPixel(group + ".bad1", double.NaN)
+            && !LayoutMemory.SetPixel(group + ".bad2", 0)
+            && !LayoutMemory.SetPixel(group + ".bad3", -10)
+            && LayoutMemory.GetPixel(group + ".bad1") is null);
+
+        var ratioKey = group + ".cols.r";
+        P("SetRatio / GetRatio 正常读回", LayoutMemory.SetRatio(ratioKey, 0.3) && LayoutMemory.GetRatio(ratioKey) == 0.3);
+        P("SetRatio 夹到 0.02~0.98", LayoutMemory.SetRatio(ratioKey, 5) && LayoutMemory.GetRatio(ratioKey) == 0.98);
+        P("Remove 删掉指定键", LayoutMemory.Remove(ratioKey) && LayoutMemory.GetRatio(ratioKey) is null);
+
+        // 一处「两侧都固定像素」的分隔条会存 .a + .b 两个键，统计时应算 1 处
+        var pair = group + ".rows";
+        LayoutMemory.SetPixel(pair + ".a", 500);
+        LayoutMemory.SetPixel(pair + ".b", 200);
+        C("同一分隔条的 .a + .b 两个键按 1 处统计、分组正确",
+            LayoutMemory.SavedCount == 2 && LayoutMemory.SavedGroups.Count == 1,
+            $"count={LayoutMemory.SavedCount}, groups={string.Join(",", LayoutMemory.SavedGroups)}");
+
+        var resetEvents = 0;
+        EventHandler onReset = (_, _) => resetEvents++;
+        LayoutMemory.ResetCompleted += onReset;
+        try
+        {
+            var ok = LayoutMemory.ResetAll();
+            C("ResetAll：清空内存 + 删文件 + 触发一次 ResetCompleted",
+                ok && !LayoutMemory.HasSaved && LayoutMemory.SavedCount == 0
+                && LayoutMemory.SavedGroups.Count == 0 && !File.Exists(LayoutMemory.FilePath)
+                && resetEvents == 1,
+                $"ok={ok}, events={resetEvents}, file={File.Exists(LayoutMemory.FilePath)}");
+        }
+        finally
+        {
+            LayoutMemory.ResetCompleted -= onReset;
+        }
+
+        // ---- PaneSplitter.ComputeDrag：拖拽换算（纯函数） ----
+        var star = PaneSplitter.ComputeDrag(300, 500, 50, true, true, 100, 100);
+        P("ComputeDrag：两侧都 * → 按比例分（前块变 350、后块 450）",
+            star.Mode == PaneSplitter.PaneDragMode.Star && star.Prev == 350 && star.Next == 450);
+
+        var prevPixel = PaneSplitter.ComputeDrag(300, 500, 50, false, true, 100, 100);
+        P("ComputeDrag：前块固定、后块 * → 只改前块像素",
+            prevPixel.Mode == PaneSplitter.PaneDragMode.PrevPixel && prevPixel.Prev == 350 && prevPixel.Next == 500);
+
+        var nextPixel = PaneSplitter.ComputeDrag(300, 500, 50, true, false, 100, 100);
+        P("ComputeDrag：前块 *、后块固定 → 只改后块像素（往右拖后块变小）",
+            nextPixel.Mode == PaneSplitter.PaneDragMode.NextPixel && nextPixel.Prev == 300 && nextPixel.Next == 450);
+
+        var bothPixel = PaneSplitter.ComputeDrag(300, 500, 50, false, false, 100, 100);
+        P("ComputeDrag：两侧都固定 → 一块大多少另一块小多少（总和 800 不变）",
+            bothPixel.Mode == PaneSplitter.PaneDragMode.BothPixel
+            && bothPixel.Prev == 350 && bothPixel.Next == 450);
+
+        var clampedHigh = PaneSplitter.ComputeDrag(300, 500, 1000, false, false, 100, 100);
+        P("ComputeDrag：拖过头时两侧都夹在最小值（100 / 700）",
+            clampedHigh.Prev == 700 && clampedHigh.Next == 100);
+
+        var clampedLow = PaneSplitter.ComputeDrag(300, 500, -1000, false, false, 100, 100);
+        P("ComputeDrag：往反方向拖过头也夹在最小值（100 / 700）",
+            clampedLow.Prev == 100 && clampedLow.Next == 700);
+
+        P("ComputeDrag：总量 <= 1（还没布局）返回 None",
+            PaneSplitter.ComputeDrag(0, 1, 50, false, true, 10, 10).Mode == PaneSplitter.PaneDragMode.None);
     }
 
     // ---------- 断言小工具 ----------

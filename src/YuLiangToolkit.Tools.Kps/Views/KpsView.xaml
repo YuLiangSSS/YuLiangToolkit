@@ -1,7 +1,8 @@
 <UserControl x:Class="YuLiangToolkit.Tools.Kps.Views.KpsView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:controls="clr-namespace:YuLiangToolkit.Tools.Kps.Views.Controls">
+             xmlns:controls="clr-namespace:YuLiangToolkit.Tools.Kps.Views.Controls"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core">
 
     <UserControl.Resources>
         <!-- 说明文字 -->
@@ -42,11 +43,25 @@
         </Style>
     </UserControl.Resources>
 
+    <!-- 布局（v0.41.0 起可拖拽）：整页是「标题 / 状态 / 统计 / 主区域（键位预览 | 编辑面板） / 详细设置」几块，
+         主区域左右可拖、主区域与详细设置上下可拖 —— 分隔条是 core:PaneSplitter，拖动即可调大小
+         （蓝线 + ↔ / ↕ 光标），松手自动记住（Config\layout.json），双击缝隙恢复这一处；
+         全部恢复默认：主页设置 →「界面布局 → 恢复默认布局」。约定见 docs/dev/layout.md。
+         ⚠ 可拖的上下两块（主区域 / 详细设置）是固定像素行，所以整页仍在 ScrollViewer 里滚动。 -->
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="28,22,28,28">
+        <Grid Margin="28,22,28,28">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />                                  <!-- 标题 -->
+                <RowDefinition Height="Auto" />                                  <!-- 状态条 -->
+                <RowDefinition Height="Auto" />                                  <!-- 捕获提示（改键 / 设热键） -->
+                <RowDefinition Height="Auto" />                                  <!-- 统计 + 折线图 -->
+                <RowDefinition Height="640" MinHeight="420" />                   <!-- 主区域：键位预览 | 编辑面板（左右可拖） -->
+                <RowDefinition Height="12" />                                    <!-- 主区域 / 详细设置 分隔条（上下可拖） -->
+                <RowDefinition Height="680" MinHeight="380" />                   <!-- 详细设置（外观 / 效果 / Overlay / 热键 / 键音 / 来源） -->
+            </Grid.RowDefinitions>
 
             <!-- ===================== 标题 + 主操作 ===================== -->
-            <Grid>
+            <Grid Grid.Row="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -72,7 +87,7 @@
             </Grid>
 
             <!-- ===================== 状态条 ===================== -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,14,0,0" Padding="16,12">
+            <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,14,0,0" Padding="16,12">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -92,7 +107,7 @@
             </Border>
 
             <!-- 捕获提示（改键 / 设置热键时） -->
-            <Border Margin="0,10,0,0" Padding="14,10" CornerRadius="8"
+            <Border Grid.Row="2" Margin="0,10,0,0" Padding="14,10" CornerRadius="8"
                     Background="{DynamicResource InputBackgroundBrush}"
                     Visibility="{Binding HasCaptureHint, Converter={StaticResource BoolToVis}}">
                 <Grid>
@@ -107,7 +122,7 @@
             </Border>
 
             <!-- ===================== 统计 + 折线图 ===================== -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+            <Border Grid.Row="3" Style="{StaticResource CardStyle}" Margin="0,12,0,0">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="180" />
@@ -156,17 +171,22 @@
             </Border>
 
             <!-- ===================== 键位预览 + 编辑面板 ===================== -->
-            <Grid Margin="0,12,0,0">
+            <Grid Grid.Row="4" Margin="0,12,0,0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="16" />
-                    <ColumnDefinition Width="470" />
+                    <ColumnDefinition Width="*" MinWidth="240" />       <!-- 左：键位预览，随窗口缩放 -->
+                    <ColumnDefinition Width="12" />                     <!-- 左右分隔条 -->
+                    <ColumnDefinition Width="470" MinWidth="300" />     <!-- 右：编辑面板（可拖宽） -->
                 </Grid.ColumnDefinitions>
 
-                <!-- 左：预览 -->
-                <Border Grid.Column="0" Style="{StaticResource CardStyle}">
-                    <StackPanel>
-                        <Grid>
+                <!-- 左：预览（键位预览吃掉多出来的高度；卡片被拖矮时裁掉溢出） -->
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />                <!-- 标题 + 预设 -->
+                            <RowDefinition Height="*" MinHeight="120" />  <!-- 键位预览（随主区域伸缩） -->
+                            <RowDefinition Height="Auto" />                <!-- 添加 / 移动按钮 -->
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0">
                             <StackPanel>
                                 <TextBlock Text="键位预览" Style="{StaticResource CardTitle}" />
                                 <TextBlock Text="点一个按键选中它，然后在右边改键 / 改文字 / 换图片。" Margin="0,4,0,0"
@@ -180,7 +200,7 @@
                             </StackPanel>
                         </Grid>
 
-                        <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="10" Padding="22,26" Margin="0,12,0,0"
+                        <Border Grid.Row="1" Background="{DynamicResource InputBackgroundBrush}" CornerRadius="10" Padding="22,26" Margin="0,12,0,0"
                                 MinHeight="150">
                             <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                                 <controls:KeyGridView HorizontalAlignment="Center"
@@ -208,7 +228,7 @@
                             </ScrollViewer>
                         </Border>
 
-                        <WrapPanel Margin="0,8,0,0">
+                        <WrapPanel Grid.Row="2" Margin="0,8,0,0">
                             <Button Content="添加行" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                     Command="{Binding AddRowCommand}" />
                             <Button Content="添加按键" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
@@ -224,11 +244,17 @@
                             <Button Content="↓ 下移行" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
                                     Command="{Binding MoveRowDownCommand}" />
                         </WrapPanel>
-                    </StackPanel>
+                    </Grid>
                 </Border>
 
-                <!-- 右：预设 / 选中按键 / 行列表 -->
-                <StackPanel Grid.Column="2">
+                <!-- 左右分隔条：拖动改「键位预览」与「编辑面板」的宽度（双击恢复这一处） -->
+                <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                   Key="kps.主区域左右" />
+
+                <!-- 右：预设 / 选中按键 / 行列表（内容可能比主区域高：内部滚动，滚到头再交给整页） -->
+                <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              core:ScrollChaining.Enabled="True">
+                    <StackPanel>
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel>
                             <TextBlock Text="预设" Style="{StaticResource CardTitle}" />
@@ -357,11 +383,21 @@
                             </ItemsControl>
                         </StackPanel>
                     </Border>
-                </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
             </Grid>
 
+            <!-- 上下分隔条：拖动改「主区域（键位预览 / 编辑）」与「详细设置」的高度（双击恢复这一处） -->
+            <core:PaneSplitter Grid.Row="5" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="kps.主区域与设置" />
+
             <!-- ===================== 外观 / 按下效果 / 音符效果 ===================== -->
-            <Grid Margin="0,12,0,0">
+            <!-- 详细设置（外观 / 效果 / Overlay / 热键 / 键音 / 来源）是一整块独立的可上下拖区域：
+                 内容比区域高时自己内部滚动（滚到头再交给整页）。 -->
+            <ScrollViewer Grid.Row="6" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          core:ScrollChaining.Enabled="True">
+                <StackPanel>
+                <Grid Margin="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="16" />
@@ -837,6 +873,8 @@
                 </StackPanel>
             </Border>
 
-        </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
     </ScrollViewer>
 </UserControl>

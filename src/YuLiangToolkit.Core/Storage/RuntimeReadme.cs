@@ -67,6 +67,7 @@ public static class RuntimeReadme
 
             Config\
             ├─ shell\config.json            主页：排序偏好 + 各功能上次使用时间
+            ├─ layout.json                  各工具页区块（分隔条）拖出来的大小；主页设置 → 界面布局 → 恢复默认布局
             ├─ video-to-audio\config.json   视频转音频的全部选项
             └─ <功能Id>\config.json         以后新功能自己的选项
 

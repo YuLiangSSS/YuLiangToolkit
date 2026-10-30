@@ -19,6 +19,9 @@ obj/
 # ================= 开发调试产物 =================
 shots/*.png
 shots/*.txt
+# 子目录里的截图（例如 shots/layout/ 按页面分类的冒烟截图）也不入库
+shots/**/*.png
+shots/**/*.txt
 # 换方向核对时写出的「切换前」几何快照（YLT_PICTURE_MEASURE + YLT_PICTURE_SWITCH_MODE）
 shots/*.before
 # 截图用的临时数据根（YLT_HOME），里面有 Data/Config

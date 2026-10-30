@@ -8,10 +8,24 @@
     </UserControl.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="28,22,28,26">
+        <!-- 布局（v0.41.0 起可拖拽）：「源文件与输出 | 转换设置」左右可拖，
+             「文件列表 / 进度与日志」上下可拖；拖动调大小（蓝线 + ↔ / ↕ 光标），
+             松手自动记住（Config\layout.json），双击这条缝只恢复这一处；
+             全部恢复默认：主页设置 →「界面布局 → 恢复默认布局」。约定见 docs/dev/layout.md。
+             可拖的上下两块是固定像素行，所以整页仍在 ScrollViewer 里滚动。 -->
+        <Grid Margin="28,22,28,26">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />                <!-- 标题 -->
+                <RowDefinition Height="Auto" />                <!-- FFmpeg 状态 -->
+                <RowDefinition Height="Auto" />                <!-- 源文件与输出 / 转换设置（内部左右可拖） -->
+                <RowDefinition Height="360" MinHeight="220" /> <!-- 文件列表（可上下拖） -->
+                <RowDefinition Height="12" />                  <!-- 文件列表 / 进度日志 分隔条 -->
+                <RowDefinition Height="260" MinHeight="180" /> <!-- 进度与日志（可上下拖） -->
+                <RowDefinition Height="Auto" />                <!-- 操作按钮 -->
+            </Grid.RowDefinitions>
 
             <!-- 标题 -->
-            <StackPanel>
+            <StackPanel Grid.Row="0">
                 <TextBlock Text="🎵 视频转音频" FontSize="21" FontWeight="SemiBold" />
                 <TextBlock Text="批量提取文件夹内视频的音频：MP3 有损压缩（可选码率）、FLAC 无损、或直接复制原始音轨（不重新编码，最快最保真）"
                            FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
@@ -19,7 +33,7 @@
             </StackPanel>
 
             <!-- FFmpeg 状态 -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0" Padding="16,10">
+            <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,16,0,0" Padding="16,10">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -35,109 +49,124 @@
                 </Grid>
             </Border>
 
-            <!-- 源文件与输出 -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
-                <StackPanel>
-                    <TextBlock Text="源文件与输出" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,12" />
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="86" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="源文件夹" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <TextBox Grid.Column="1" Text="{Binding Cfg.InputFolder, UpdateSourceTrigger=PropertyChanged}"
-                                 Style="{StaticResource TextBoxStyle}" />
-                        <Button Grid.Column="2" Content="浏览…" Style="{StaticResource SecondaryButtonStyle}"
-                                Command="{Binding BrowseInputCommand}" Margin="8,0,0,0" />
-                    </Grid>
+            <!-- ================= 源文件与输出 | 转换设置（左右可拖） ================= -->
+            <!-- 左 *：路径 / 输出跟着窗口变宽；右 540 固定像素、可拖（双击恢复这一处） -->
+            <Grid Grid.Row="2" Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="380" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="540" MinWidth="420" />
+                </Grid.ColumnDefinitions>
 
-                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                        <CheckBox Content="包含子文件夹" IsChecked="{Binding Cfg.IncludeSubfolders}"
-                                  Style="{StaticResource CheckBoxStyle}" Margin="0,0,22,0" />
-                        <CheckBox Content="仅 .mp4（不勾选则含 mkv/mov/webm/avi 等）" IsChecked="{Binding Cfg.OnlyMp4}"
-                                  Style="{StaticResource CheckBoxStyle}" />
-                    </StackPanel>
-
-                    <Grid Margin="0,10,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="86" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="输出目录" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <Grid Grid.Column="1">
-                            <TextBox Text="{Binding Cfg.OutputFolder, UpdateSourceTrigger=PropertyChanged}"
-                                     Style="{StaticResource TextBoxStyle}"
-                                     IsEnabled="{Binding Cfg.UseSourceFolder, Converter={StaticResource InverseBoolConverter}}" />
-                            <TextBlock Text="（与源文件夹相同）" Foreground="{DynamicResource TextSecondaryBrush}"
-                                       IsHitTestVisible="False" VerticalAlignment="Center" Margin="12,0,0,0"
-                                       Visibility="{Binding Cfg.OutputFolder, Converter={StaticResource EmptyToVis}}" />
+                <!-- 源文件与输出 -->
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}" VerticalAlignment="Top" ClipToBounds="True">
+                    <StackPanel>
+                        <TextBlock Text="源文件与输出" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,12" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="源文件夹" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Grid.Column="1" Text="{Binding Cfg.InputFolder, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource TextBoxStyle}" />
+                            <Button Grid.Column="2" Content="浏览…" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding BrowseInputCommand}" Margin="8,0,0,0" />
                         </Grid>
-                        <Button Grid.Column="2" Content="浏览…" Style="{StaticResource SecondaryButtonStyle}"
-                                Command="{Binding BrowseOutputCommand}" Margin="8,0,0,0"
-                                IsEnabled="{Binding Cfg.UseSourceFolder, Converter={StaticResource InverseBoolConverter}}" />
-                    </Grid>
-                </StackPanel>
-            </Border>
 
-            <!-- 转换设置 -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
-                <StackPanel>
-                    <TextBlock Text="转换设置" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,12" />
-                    <RadioButton Content="有损压缩为 MP3（体积小，适合日常播放）" GroupName="mode"
-                                 IsChecked="{Binding Cfg.IsMp3Mode}" Style="{StaticResource RadioButtonStyle}" />
-                    <StackPanel Orientation="Horizontal" Margin="30,7,0,0"
-                                Visibility="{Binding Cfg.IsMp3Mode, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="码率" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                        <ListBox ItemsSource="{Binding BitrateOptions}" SelectedItem="{Binding Cfg.Bitrate}"
-                                 Style="{StaticResource SegmentedListBoxStyle}" Margin="10,0,0,0"
-                                 ToolTip="MP3 码率越高音质越好、体积越大" />
-                        <TextBlock Text="kbps" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="8,0,0,0" />
-                    </StackPanel>
-                    <RadioButton Content="无损转换为 FLAC（音质无损失，文件较大）" GroupName="mode"
-                                 IsChecked="{Binding Cfg.IsFlacMode}" Style="{StaticResource RadioButtonStyle}" Margin="0,12,0,0" />
-                    <RadioButton Content="无损提取原始音轨（不重新编码，最快；输出保留原编码，如 m4a/opus/ogg）" GroupName="mode"
-                                 IsChecked="{Binding Cfg.IsCopyMode}" Style="{StaticResource RadioButtonStyle}" Margin="0,12,0,0" />
+                        <!-- 两个勾选项在左右分栏后会变窄：用 WrapPanel，窗口窄 / 拖窄左栏时自动折行，不会被裁掉 -->
+                        <WrapPanel Margin="0,10,0,0">
+                            <CheckBox Content="包含子文件夹" IsChecked="{Binding Cfg.IncludeSubfolders}"
+                                      Style="{StaticResource CheckBoxStyle}" Margin="0,0,22,6" />
+                            <CheckBox Content="仅 .mp4（不勾选则含 mkv/mov/webm/avi 等）" IsChecked="{Binding Cfg.OnlyMp4}"
+                                      Style="{StaticResource CheckBoxStyle}" Margin="0,0,0,6" />
+                        </WrapPanel>
 
-                    <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,14,0,0">
-                        <StackPanel>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="并行转换数" Foreground="{DynamicResource TextSecondaryBrush}"
-                                           VerticalAlignment="Center" FontSize="12.5" />
-                                <ComboBox Grid.Column="1" ItemsSource="{Binding ParallelismOptions}"
-                                          SelectedItem="{Binding SelectedParallelism}" DisplayMemberPath="Label"
-                                          Style="{StaticResource ComboBoxStyle}" Margin="10,0,0,0" MinWidth="76"
-                                          ToolTip="同时启动多个 FFmpeg 进程，多核 CPU 下可显著提速。1000 个文件批量转换建议 4~8；「自动」按 CPU 核心数" />
-                                <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="24,0,0,0"
-                                            Visibility="{Binding Cfg.IsFlacMode, Converter={StaticResource BoolToVis}}">
-                                    <TextBlock Text="FLAC 压缩级别" Foreground="{DynamicResource TextSecondaryBrush}"
-                                               VerticalAlignment="Center" FontSize="12.5" />
-                                    <ComboBox ItemsSource="{Binding FlacLevelOptions}"
-                                              SelectedItem="{Binding SelectedFlacLevel}" DisplayMemberPath="Label"
-                                              Style="{StaticResource ComboBoxStyle}" Margin="10,0,0,0" MinWidth="110"
-                                              ToolTip="FLAC 为无损格式：压缩级别只影响体积与速度，不影响音质。0 最快、8 最小，默认 5 平衡" />
-                                </StackPanel>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="输出目录" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Grid Grid.Column="1">
+                                <TextBox Text="{Binding Cfg.OutputFolder, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource TextBoxStyle}"
+                                         IsEnabled="{Binding Cfg.UseSourceFolder, Converter={StaticResource InverseBoolConverter}}" />
+                                <TextBlock Text="（与源文件夹相同）" Foreground="{DynamicResource TextSecondaryBrush}"
+                                           IsHitTestVisible="False" VerticalAlignment="Center" Margin="12,0,0,0"
+                                           Visibility="{Binding Cfg.OutputFolder, Converter={StaticResource EmptyToVis}}" />
                             </Grid>
-                            <TextBlock Text="提示：并行数越高，多核 CPU 下批量越快（复制原始音轨模式本身最快，无需编码）。"
-                                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
-                                       TextWrapping="Wrap" Margin="0,8,0,0" />
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
-            </Border>
+                            <Button Grid.Column="2" Content="浏览…" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding BrowseOutputCommand}" Margin="8,0,0,0"
+                                    IsEnabled="{Binding Cfg.UseSourceFolder, Converter={StaticResource InverseBoolConverter}}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
 
-            <!-- 文件列表 -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0" Padding="0">
+                <!-- 左右分隔条：拖动改「源文件与输出」与「转换设置」两栏的宽度（双击恢复这一处） -->
+                <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                   Key="video-to-audio.源文件与转换设置" />
+
+                <!-- 转换设置 -->
+                <Border Grid.Column="2" Style="{StaticResource CardStyle}" VerticalAlignment="Top" ClipToBounds="True">
+                    <StackPanel>
+                        <TextBlock Text="转换设置" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,12" />
+                        <RadioButton Content="有损压缩为 MP3（体积小，适合日常播放）" GroupName="mode"
+                                     IsChecked="{Binding Cfg.IsMp3Mode}" Style="{StaticResource RadioButtonStyle}" />
+                        <StackPanel Orientation="Horizontal" Margin="30,7,0,0"
+                                    Visibility="{Binding Cfg.IsMp3Mode, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="码率" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                            <ListBox ItemsSource="{Binding BitrateOptions}" SelectedItem="{Binding Cfg.Bitrate}"
+                                     Style="{StaticResource SegmentedListBoxStyle}" Margin="10,0,0,0"
+                                     ToolTip="MP3 码率越高音质越好、体积越大" />
+                            <TextBlock Text="kbps" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                        </StackPanel>
+                        <RadioButton Content="无损转换为 FLAC（音质无损失，文件较大）" GroupName="mode"
+                                     IsChecked="{Binding Cfg.IsFlacMode}" Style="{StaticResource RadioButtonStyle}" Margin="0,12,0,0" />
+                        <RadioButton Content="无损提取原始音轨（不重新编码，最快；输出保留原编码，如 m4a/opus/ogg）" GroupName="mode"
+                                     IsChecked="{Binding Cfg.IsCopyMode}" Style="{StaticResource RadioButtonStyle}" Margin="0,12,0,0" />
+
+                        <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,14,0,0">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="并行转换数" Foreground="{DynamicResource TextSecondaryBrush}"
+                                               VerticalAlignment="Center" FontSize="12.5" />
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding ParallelismOptions}"
+                                              SelectedItem="{Binding SelectedParallelism}" DisplayMemberPath="Label"
+                                              Style="{StaticResource ComboBoxStyle}" Margin="10,0,0,0" MinWidth="76"
+                                              ToolTip="同时启动多个 FFmpeg 进程，多核 CPU 下可显著提速。1000 个文件批量转换建议 4~8；「自动」按 CPU 核心数" />
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="24,0,0,0"
+                                                Visibility="{Binding Cfg.IsFlacMode, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="FLAC 压缩级别" Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   VerticalAlignment="Center" FontSize="12.5" />
+                                        <ComboBox ItemsSource="{Binding FlacLevelOptions}"
+                                                  SelectedItem="{Binding SelectedFlacLevel}" DisplayMemberPath="Label"
+                                                  Style="{StaticResource ComboBoxStyle}" Margin="10,0,0,0" MinWidth="110"
+                                                  ToolTip="FLAC 为无损格式：压缩级别只影响体积与速度，不影响音质。0 最快、8 最小，默认 5 平衡" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock Text="提示：并行数越高，多核 CPU 下批量越快（复制原始音轨模式本身最快，无需编码）。"
+                                           FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                                           TextWrapping="Wrap" Margin="0,8,0,0" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- 文件列表（可上下拖）：表头 / 列表(*)，列表吃掉区块多出来的高度 -->
+            <Border Grid.Row="3" Style="{StaticResource CardStyle}" Margin="0,12,0,0" Padding="0" ClipToBounds="True">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="220" />
+                        <RowDefinition Height="*" MinHeight="120" />
                     </Grid.RowDefinitions>
                     <Grid Margin="18,12,18,6">
                         <Grid.ColumnDefinitions>
@@ -192,9 +221,18 @@
                 </Grid>
             </Border>
 
-            <!-- 进度与日志 -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
-                <StackPanel>
+            <!-- 上下分隔条：拖动改「文件列表」与「进度与日志」的高度（双击恢复这一处） -->
+            <core:PaneSplitter Grid.Row="4" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="video-to-audio.文件列表与日志" />
+
+            <!-- 进度与日志（可上下拖）：进度 / 状态 / 日志(*)，日志吃掉多出来的高度 -->
+            <Border Grid.Row="5" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="80" />
+                    </Grid.RowDefinitions>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
@@ -205,14 +243,14 @@
                         <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Margin="12,0,0,0"
                                    Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" MinWidth="70" TextAlignment="Right" />
                     </Grid>
-                    <TextBlock Text="{Binding StatusText}" Margin="0,9,0,0" TextWrapping="Wrap" FontSize="12" />
-                    <TextBox Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True" Style="{StaticResource LogTextBoxStyle}"
-                             Height="130" Margin="0,10,0,0" />
-                </StackPanel>
+                    <TextBlock Grid.Row="1" Text="{Binding StatusText}" Margin="0,9,0,0" TextWrapping="Wrap" FontSize="12" />
+                    <TextBox Grid.Row="2" Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True" Style="{StaticResource LogTextBoxStyle}"
+                             Margin="0,10,0,0" />
+                </Grid>
             </Border>
 
             <!-- 操作按钮 -->
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
                 <Button Content="打开输出目录" Style="{StaticResource SecondaryButtonStyle}"
                         Command="{Binding OpenOutputFolderCommand}" />
                 <Button Content="扫描文件" Style="{StaticResource SecondaryButtonStyle}"
@@ -225,6 +263,6 @@
                         IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
             </StackPanel>
 
-        </StackPanel>
+        </Grid>
     </ScrollViewer>
 </UserControl>

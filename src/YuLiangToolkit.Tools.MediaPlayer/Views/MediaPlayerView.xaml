@@ -15,12 +15,17 @@
 
     <UserControl.Resources>
 
-        <!-- 播放区那一列的边距：平时四周留白，全屏时清零（画面直接顶到屏幕边上） -->
+        <!-- 播放区那一列的边距：平时四周留白，全屏时清零（画面直接顶到屏幕边上）。
+             右边距是 0：中间那条 12 宽的分隔条列已经隔开了两块，蓝线正好落在播放区 / 播放列表的中间
+             （再留 14 右边距的话缝会变成 26，蓝线会贴着播放列表的边框，像多了一条线）。
+             全屏时还要跨掉「分隔条 + 播放列表」两列：播放列表全屏时收起（见 ShowPlaylist），
+             跨过去画面才能真正铺满整页 —— 不然右边会空出一条固定宽度的缝。 -->
         <Style x:Key="PlayerSurfaceStyle" TargetType="Grid">
-            <Setter Property="Margin" Value="18,16,14,14" />
+            <Setter Property="Margin" Value="18,16,0,14" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsFullscreen}" Value="True">
                     <Setter Property="Margin" Value="0" />
+                    <Setter Property="Grid.ColumnSpan" Value="3" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -140,10 +145,15 @@
         </Style>
     </UserControl.Resources>
 
+    <!-- 布局（v0.41.0 起可拖拽）：整页左右两块「播放区 | 播放列表」，
+         两块之间是一条 core:PaneSplitter 独占的列（12 宽）——拖动改宽度（蓝线 + ↔ 光标），
+         松手自动记住（Config\layout.json），双击恢复这一处；
+         全部恢复默认：主页设置 →「界面布局 → 恢复默认布局」。约定见 docs/dev/layout.md。 -->
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" MinWidth="380" />      <!-- 播放区：随窗口缩放 -->
+            <ColumnDefinition Width="12" />                    <!-- 分隔条独占一列 -->
+            <ColumnDefinition Width="338" MinWidth="240" />    <!-- 播放列表：固定宽度、可拖（338 = 卡片 320 + 右侧 18 边距） -->
         </Grid.ColumnDefinitions>
 
         <!-- ==================== 左：播放区（设置面板会盖住整列） ==================== -->
@@ -489,9 +499,16 @@
             </Border>
         </Grid>
 
+        <!-- 左右分隔条：拖动改「播放区」与「播放列表」的宽度（双击恢复这一处；
+             全屏时播放列表收起，这条缝跟着一起藏起来，画面靠 PlayerSurfaceStyle 的 ColumnSpan 铺满） -->
+        <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                           Key="media-player.播放区与播放列表"
+                           Visibility="{Binding ShowPlaylist, Converter={StaticResource BoolToVis}}" />
+
         <!-- ==================== 右：播放列表（全屏时收起，见 ShowPlaylist） ==================== -->
-        <Border Grid.Column="1" Width="320" Margin="0,16,18,14" Background="{DynamicResource CardBackgroundBrush}"
+        <Border Grid.Column="2" Margin="0,16,18,14" Background="{DynamicResource CardBackgroundBrush}"
                 CornerRadius="12" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                ClipToBounds="True"
                 Visibility="{Binding ShowPlaylist, Converter={StaticResource BoolToVis}}">
             <Grid Margin="12,14,12,12">
                 <Grid.RowDefinitions>
@@ -508,25 +525,25 @@
                                Foreground="{DynamicResource TextSecondaryBrush}" />
                 </StackPanel>
 
-                <!-- 打开 / 移除 / 清空 -->
-                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,6">
-                    <Button Content="📂 文件夹" Margin="0,0,6,0" FontSize="11" Padding="9,5"
+                <!-- 打开 / 移除 / 清空。用 WrapPanel：播放列表被拖窄时按钮自动折到第二行，不会被裁掉 -->
+                <WrapPanel Grid.Row="1" Margin="0,10,0,0">
+                    <Button Content="📂 文件夹" Margin="0,0,6,6" FontSize="11" Padding="9,5"
                             Style="{StaticResource SecondaryButtonStyle}"
                             Command="{Binding OpenFolderCommand}"
                             ToolTip="打开一个或多个文件夹（按设置里的读取方式过滤，可递归）" />
-                    <Button Content="🎵 文件" Margin="0,0,6,0" FontSize="11" Padding="9,5"
+                    <Button Content="🎵 文件" Margin="0,0,6,6" FontSize="11" Padding="9,5"
                             Style="{StaticResource SecondaryButtonStyle}"
                             Command="{Binding OpenFilesCommand}"
                             ToolTip="手动挑几个媒体文件（也可以直接把文件拖进窗口）" />
-                    <Button Content="✕ 移除" Margin="0,0,6,0" FontSize="11" Padding="9,5"
+                    <Button Content="✕ 移除" Margin="0,0,6,6" FontSize="11" Padding="9,5"
                             Style="{StaticResource SecondaryButtonStyle}"
                             Command="{Binding RemoveSelectedCommand}"
                             ToolTip="从列表里拿掉选中的那一行（不删磁盘文件）" />
-                    <Button Content="清空" FontSize="11" Padding="9,5"
+                    <Button Content="清空" Margin="0,0,0,6" FontSize="11" Padding="9,5"
                             Style="{StaticResource SecondaryButtonStyle}"
                             Command="{Binding ClearPlaylistCommand}"
                             ToolTip="清空整个列表（不删磁盘文件）" />
-                </StackPanel>
+                </WrapPanel>
 
                 <!-- 列表本体 + 空状态 -->
                 <Grid Grid.Row="2">

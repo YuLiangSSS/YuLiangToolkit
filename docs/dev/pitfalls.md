@@ -167,6 +167,7 @@
 - `Dyn[键]` 键不存在返回 null：绑 `IsChecked` 得 null、点一下变 false；用 `LoadDynamicConfigWithDefaults` 预置或 `TargetNullValue=False`。
 
 ### WPF 与界面
+- 工具页有多个区块时**别把区块大小写死**：用 `core:PaneSplitter` + `App.xaml` 的 `PaneSplitterVerticalStyle` / `PaneSplitterHorizontalStyle`（蓝线 / ↔ ↕ 光标 / 自动记忆 / 双击复位），约定见 [layout.md](layout.md)。分隔条必须独占一行 / 一列，相邻两块要给 `MinWidth` / `MinHeight`，否则窗口小时会被拖没；写死像素的上下两块才适合放进 `ScrollViewer` 里上下拖，`*` 行在里面会塌成内容高度。
 - ComboBox 绑 `OptionItem<T>` 必须 `DisplayMemberPath="Label"`，否则显示类型名。
 - 索引器绑定 `{Binding Dyn[键]}` 依赖 `OnPropertyChanged("Item[]")`；占位提示压内容用 `EmptyToVis`。
 - 标题栏 `CaptionHeight` 必须 0，否则按钮被命中成拖拽（HTCAPTION）；无边框最大化靠 `WM_GETMINMAXINFO` 钳制任务栏。

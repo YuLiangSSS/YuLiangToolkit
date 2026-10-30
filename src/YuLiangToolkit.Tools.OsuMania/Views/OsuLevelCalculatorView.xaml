@@ -9,11 +9,23 @@
         <views:ScrollBarWidthConverter x:Key="ScrollBarWidth" />
     </UserControl.Resources>
 
+    <!-- 布局（v0.41.0 起可拖拽）：整页是「标题 / 主体 / 操作 / 说明」四块，
+         主体里「① 谱面与计算结果」与「② 进度与日志」上下排，中间是 core:PaneSplitter ——
+         拖动即可调大小（蓝线 + ↕ 光标），松手自动记住（Config\layout.json），双击缝隙恢复这一处；
+         全部恢复默认：主页设置 →「界面布局 → 恢复默认布局」。约定见 docs/dev/layout.md。
+         ⚠ 可拖的上下两块是固定像素 / * 组合，所以整页仍在 ScrollViewer 里滚动；
+         结果表 / 日志框都放 * 行，被拖矮时自己内部滚动，不再写死高度。 -->
     <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="28,22,28,26">
+        <Grid Margin="28,22,28,26">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />                                  <!-- 标题 -->
+                <RowDefinition Height="740" MinHeight="460" />                   <!-- 主体（上下可拖） -->
+                <RowDefinition Height="Auto" />                                  <!-- ③ 操作 -->
+                <RowDefinition Height="Auto" />                                  <!-- 底部说明 -->
+            </Grid.RowDefinitions>
 
             <!-- ===== 标题 ===== -->
-            <Grid>
+            <Grid Grid.Row="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -28,186 +40,219 @@
                 </Border>
             </Grid>
 
-            <!-- ===== ① 谱面与结果表 ===== -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
-                <StackPanel>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="① 谱面与计算结果" FontSize="13" FontWeight="SemiBold" />
-                        <TextBlock Grid.Column="1" Text="{Binding SummaryText}" FontSize="12"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
-                    </Grid>
+            <!-- ===== 主体：① 结果表（上） / ② 进度与日志（下，上下可拖） ===== -->
+            <Grid Grid.Row="1" Margin="0,16,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="400" MinHeight="310" />   <!-- ① 谱面与结果表（可上下拖） -->
+                    <RowDefinition Height="12" />                    <!-- 分隔条独占一行 -->
+                    <RowDefinition Height="*" MinHeight="270" />     <!-- ② 进度与日志（可上下拖） -->
+                </Grid.RowDefinitions>
 
-                    <!-- 拖放区（事件挂在 UserControl 根上） -->
-                    <Border Margin="0,12,0,0" Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8"
-                            Padding="16,13" BorderThickness="1" BorderBrush="{DynamicResource BorderBrush}">
-                        <Grid>
+                <!-- ===== ① 谱面与结果表 ===== -->
+                <Border Grid.Row="0" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" MinHeight="160" />
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="📂" FontSize="18" VerticalAlignment="Center" />
-                                <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                                    <TextBlock Text="把 .osu 文件或文件夹拖到这里" FontSize="13" />
-                                    <TextBlock Text="文件夹会递归查找 .osu；重复文件自动去重，也可以点右侧按钮选择"
-                                               FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0" TextWrapping="Wrap" />
-                                </StackPanel>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                <Button Content="选择文件…" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding SelectFilesCommand}" />
-                                <Button Content="清空表格" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
-                                        Command="{Binding ClearRowsCommand}" />
-                            </StackPanel>
+                            <TextBlock Text="① 谱面与计算结果" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock Grid.Column="1" Text="{Binding SummaryText}" FontSize="12"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
                         </Grid>
-                    </Border>
 
-                    <!-- ===== 结果表：表头写在 ListBox 模板里，与数据行同列容器 =====
-                         左边距 33 = 行缩进（外边距10+边框1+内边距10+强调条3+内容9），右边距 21 = 行右边距+边框+内边距；
-                         末尾占一列滚动条宽度。列宽必须与数据行一字不差。 -->
-                    <ListBox x:Name="ResultList" ItemsSource="{Binding Rows}" SelectedItem="{Binding SelectedRow}"
-                             Height="250" Margin="8,10,8,0" core:ScrollChaining.Enabled="True"
-                             ToolTip="一行 = 一张谱面；加载失败的谱面会标红并在状态列写原因">
-                        <ListBox.Style>
-                            <Style TargetType="ListBox" BasedOn="{StaticResource FileListStyle}">
-                                <Setter Property="Template">
-                                    <Setter.Value>
-                                        <ControlTemplate TargetType="ListBox">
-                                            <Grid>
-                                                <Grid.RowDefinitions>
-                                                    <RowDefinition Height="Auto" />
-                                                    <RowDefinition Height="*" />
-                                                </Grid.RowDefinitions>
+                        <!-- 拖放区（事件挂在 UserControl 根上） -->
+                        <Border Grid.Row="1" Margin="0,12,0,0" Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8"
+                                Padding="16,13" BorderThickness="1" BorderBrush="{DynamicResource BorderBrush}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="📂" FontSize="18" VerticalAlignment="Center" />
+                                    <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="把 .osu 文件或文件夹拖到这里" FontSize="13" />
+                                        <TextBlock Text="文件夹会递归查找 .osu；重复文件自动去重，也可以点右侧按钮选择"
+                                                   FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button Content="选择文件…" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding SelectFilesCommand}" />
+                                    <Button Content="清空表格" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                            Command="{Binding ClearRowsCommand}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
 
-                                                <Grid Grid.Row="0" Margin="33,0,21,6">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="64" />
-                                                        <ColumnDefinition Width="72" />
-                                                        <ColumnDefinition Width="56" />
-                                                        <ColumnDefinition Width="56" />
-                                                        <ColumnDefinition Width="2*" />
-                                                        <ColumnDefinition Width="1.4*" />
-                                                        <ColumnDefinition Width="110" />
-                                                        <ColumnDefinition Width="96" />
-                                                        <ColumnDefinition Width="150" />
-                                                        <ColumnDefinition Width="{Binding Converter={StaticResource ScrollBarWidth}}" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock Text="Level" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                                    <TextBlock Grid.Column="1" Text="StarRating" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                                    <TextBlock Grid.Column="2" Text="OD" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                                    <TextBlock Grid.Column="3" Text="Key数" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                                    <TextBlock Grid.Column="4" Text="Title" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                                    <TextBlock Grid.Column="5" Text="Difficulty" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                                    <TextBlock Grid.Column="6" Text="Artist" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                                    <TextBlock Grid.Column="7" Text="Creator" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                                    <TextBlock Grid.Column="8" Text="状态" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <!-- ===== 结果表：表头写在 ListBox 模板里，与数据行同列容器 =====
+                             左边距 33 = 行缩进（外边距10+边框1+内边距10+强调条3+内容9），右边距 21 = 行右边距+边框+内边距；
+                             末尾占一列滚动条宽度。列宽必须与数据行一字不差。
+                             ⚠ 高度交给 * 行（被上下拖拽改变），卡片矮了表格自己滚。 -->
+                        <ListBox x:Name="ResultList" Grid.Row="2" ItemsSource="{Binding Rows}" SelectedItem="{Binding SelectedRow}"
+                                 Margin="8,10,8,0" core:ScrollChaining.Enabled="True"
+                                 ToolTip="一行 = 一张谱面；加载失败的谱面会标红并在状态列写原因">
+                            <ListBox.Style>
+                                <Style TargetType="ListBox" BasedOn="{StaticResource FileListStyle}">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBox">
+                                                <Grid>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="*" />
+                                                    </Grid.RowDefinitions>
+
+                                                    <Grid Grid.Row="0" Margin="33,0,21,6">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="64" />
+                                                            <ColumnDefinition Width="72" />
+                                                            <ColumnDefinition Width="56" />
+                                                            <ColumnDefinition Width="56" />
+                                                            <ColumnDefinition Width="2*" />
+                                                            <ColumnDefinition Width="1.4*" />
+                                                            <ColumnDefinition Width="110" />
+                                                            <ColumnDefinition Width="96" />
+                                                            <ColumnDefinition Width="150" />
+                                                            <ColumnDefinition Width="{Binding Converter={StaticResource ScrollBarWidth}}" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="Level" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                        <TextBlock Grid.Column="1" Text="StarRating" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                        <TextBlock Grid.Column="2" Text="OD" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                        <TextBlock Grid.Column="3" Text="Key数" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                        <TextBlock Grid.Column="4" Text="Title" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                        <TextBlock Grid.Column="5" Text="Difficulty" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                        <TextBlock Grid.Column="6" Text="Artist" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                        <TextBlock Grid.Column="7" Text="Creator" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                        <TextBlock Grid.Column="8" Text="状态" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    </Grid>
+
+                                                    <ScrollViewer x:Name="ScrollViewer" Grid.Row="1" Focusable="False"
+                                                                  HorizontalScrollBarVisibility="Disabled"
+                                                                  VerticalScrollBarVisibility="Auto"
+                                                                  Padding="0" Background="Transparent">
+                                                        <ItemsPresenter />
+                                                    </ScrollViewer>
                                                 </Grid>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.Style>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Border x:Name="Row" Background="Transparent" CornerRadius="6" ToolTip="{Binding Tooltip}">
+                                        <!-- ⚠ 列宽必须与上面表头一字不差 -->
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="64" />
+                                                <ColumnDefinition Width="72" />
+                                                <ColumnDefinition Width="56" />
+                                                <ColumnDefinition Width="56" />
+                                                <ColumnDefinition Width="2*" />
+                                                <ColumnDefinition Width="1.4*" />
+                                                <ColumnDefinition Width="110" />
+                                                <ColumnDefinition Width="96" />
+                                                <ColumnDefinition Width="150" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding LevelText}" FontWeight="SemiBold" />
+                                            <TextBlock Grid.Column="1" Text="{Binding StarRatingText}" />
+                                            <TextBlock Grid.Column="2" Text="{Binding OdText}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Grid.Column="3" Text="{Binding KeyCountText}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Grid.Column="4" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="5" Text="{Binding Difficulty}" TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Grid.Column="6" Text="{Binding Artist}" TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Grid.Column="7" Text="{Binding Creator}" TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock x:Name="Status" Grid.Column="8" Text="{Binding StatusText}"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </Grid>
+                                    </Border>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsFailed}" Value="True">
+                                            <Setter TargetName="Row" Property="Background" Value="#3A2222" />
+                                            <Setter TargetName="Status" Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Border>
 
-                                                <ScrollViewer x:Name="ScrollViewer" Grid.Row="1" Focusable="False"
-                                                              HorizontalScrollBarVisibility="Disabled"
-                                                              VerticalScrollBarVisibility="Auto"
-                                                              Padding="0" Background="Transparent">
-                                                    <ItemsPresenter />
-                                                </ScrollViewer>
-                                            </Grid>
-                                        </ControlTemplate>
-                                    </Setter.Value>
-                                </Setter>
-                            </Style>
-                        </ListBox.Style>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Border x:Name="Row" Background="Transparent" CornerRadius="6" ToolTip="{Binding Tooltip}">
-                                    <!-- ⚠ 列宽必须与上面表头一字不差 -->
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="64" />
-                                            <ColumnDefinition Width="72" />
-                                            <ColumnDefinition Width="56" />
-                                            <ColumnDefinition Width="56" />
-                                            <ColumnDefinition Width="2*" />
-                                            <ColumnDefinition Width="1.4*" />
-                                            <ColumnDefinition Width="110" />
-                                            <ColumnDefinition Width="96" />
-                                            <ColumnDefinition Width="150" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{Binding LevelText}" FontWeight="SemiBold" />
-                                        <TextBlock Grid.Column="1" Text="{Binding StarRatingText}" />
-                                        <TextBlock Grid.Column="2" Text="{Binding OdText}"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                                        <TextBlock Grid.Column="3" Text="{Binding KeyCountText}"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                                        <TextBlock Grid.Column="4" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Grid.Column="5" Text="{Binding Difficulty}" TextTrimming="CharacterEllipsis"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                                        <TextBlock Grid.Column="6" Text="{Binding Artist}" TextTrimming="CharacterEllipsis"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                                        <TextBlock Grid.Column="7" Text="{Binding Creator}" TextTrimming="CharacterEllipsis"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                                        <TextBlock x:Name="Status" Grid.Column="8" Text="{Binding StatusText}"
-                                                   TextTrimming="CharacterEllipsis" />
-                                    </Grid>
-                                </Border>
-                                <DataTemplate.Triggers>
-                                    <DataTrigger Binding="{Binding IsFailed}" Value="True">
-                                        <Setter TargetName="Row" Property="Background" Value="#3A2222" />
-                                        <Setter TargetName="Status" Property="Foreground" Value="{DynamicResource DangerBrush}" />
-                                    </DataTrigger>
-                                </DataTemplate.Triggers>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </StackPanel>
-            </Border>
+                <!-- 上下分隔条：拖动改「① 结果表」与「② 进度与日志」的高度（双击恢复这一处） -->
+                <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                                   Key="osu-level-calculator.结果表与日志" />
 
-            <!-- ===== ② 进度与日志 ===== -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
-                <StackPanel>
+                <!-- ===== ② 进度与日志 ===== -->
+                <Border Grid.Row="2" Style="{StaticResource CardStyle}" ClipToBounds="True">
                     <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="② 进度与日志" FontSize="13" FontWeight="SemiBold" />
-                        <Button Grid.Column="1" Content="参数说明 ▾" Style="{StaticResource SecondaryButtonStyle}"
-                                VerticalAlignment="Center" Command="{Binding ToggleHelpCommand}" />
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" MinHeight="100" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="② 进度与日志" FontSize="13" FontWeight="SemiBold" />
+                            <Button Grid.Column="1" Content="参数说明 ▾" Style="{StaticResource SecondaryButtonStyle}"
+                                    VerticalAlignment="Center" Command="{Binding ToggleHelpCommand}" />
+                        </Grid>
+
+                        <Grid Grid.Row="1" Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ProgressBar Minimum="0" Maximum="1" Value="{Binding Progress}"
+                                         Style="{StaticResource ProgressBarStyle}" Height="8" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Margin="12,0,0,0" MinWidth="70"
+                                       TextAlignment="Right" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </Grid>
+
+                        <TextBlock Grid.Row="2" Text="{Binding StatusText}" Margin="0,10,0,0" TextWrapping="Wrap" FontSize="12" />
+
+                        <!-- 日志框吃掉卡片剩下的高度（被上下拖拽时自己滚）。
+                             ⚠ 多行日志要顶对齐 + 上下内边距：LogTextBoxStyle 继承单行输入框的
+                             VerticalContentAlignment=Center，卡片被拖高后日志会浮在正中间。 -->
+                        <TextBox Grid.Row="3" Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
+                                 Style="{StaticResource LogTextBoxStyle}" Margin="0,10,0,0"
+                                 VerticalContentAlignment="Top" Padding="10,8"
+                                 core:ScrollChaining.Enabled="True" />
+
+                        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                            <Button Content="清空日志" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding ClearLogCommand}" />
+                        </StackPanel>
+
+                        <Border Grid.Row="5" Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0"
+                                Visibility="{Binding IsHelpVisible, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="{Binding HelpText}" TextWrapping="Wrap" FontSize="11.5"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" LineHeight="19" />
+                        </Border>
                     </Grid>
-
-                    <Grid Margin="0,12,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-                        <ProgressBar Minimum="0" Maximum="1" Value="{Binding Progress}"
-                                     Style="{StaticResource ProgressBarStyle}" Height="8" VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Margin="12,0,0,0" MinWidth="70"
-                                   TextAlignment="Right" VerticalAlignment="Center"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                    </Grid>
-
-                    <TextBlock Text="{Binding StatusText}" Margin="0,10,0,0" TextWrapping="Wrap" FontSize="12" />
-
-                    <TextBox Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
-                             Style="{StaticResource LogTextBoxStyle}" Height="130" Margin="0,10,0,0"
-                             core:ScrollChaining.Enabled="True" />
-
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-                        <Button Content="清空日志" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding ClearLogCommand}" />
-                    </StackPanel>
-
-                    <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0"
-                            Visibility="{Binding IsHelpVisible, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="{Binding HelpText}" TextWrapping="Wrap" FontSize="11.5"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" LineHeight="19" />
-                    </Border>
-                </StackPanel>
-            </Border>
+                </Border>
+            </Grid>
 
             <!-- ===== ③ 操作 ===== -->
-            <Grid Margin="0,16,0,0">
+            <Grid Grid.Row="2" Margin="0,16,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
@@ -223,11 +268,11 @@
                 </StackPanel>
             </Grid>
 
-            <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0">
+            <Border Grid.Row="3" Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0">
                 <TextBlock FontSize="11.5" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"
                            Text="说明：星数用 StarRating 算法（Star Rating Rebirth / srcalc 思路的 C# 重写，其中数学工具来自 ppy osu!lazer，MIT）计算，它不是 osu! 官方 mania 难度算法，与游戏内显示的 SR 可能有 1 星以上差异；等级是按这套 SR 拟合的旧公式换算。两者都只读谱面。只支持 osu!mania（Mode=3），非 mania / 损坏 / 键数不在 1~10 的文件会在状态列标红。" />
             </Border>
 
-        </StackPanel>
+        </Grid>
     </ScrollViewer>
 </UserControl>

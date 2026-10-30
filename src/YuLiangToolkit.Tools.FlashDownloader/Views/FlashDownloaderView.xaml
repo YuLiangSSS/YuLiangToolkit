@@ -11,11 +11,25 @@
          ⑤ 底部：配置 + 日志。
          样式全部来自 App.xaml（CardStyle / TextBoxStyle / PrimaryButtonStyle …）。 -->
 
+    <!-- 布局（v0.41.0 起可拖拽）：整页是「标题 / URL / 主区域 / 日志」四块，
+         主区域里再分「游戏列表 | 关联文件下载器 | 自由下载+设置」三栏 ——
+         区块之间的缝隙都是 core:PaneSplitter，拖动即可调大小（蓝线 + ↔ / ↕ 光标），
+         松手自动记住（Config\layout.json），双击缝隙恢复这一处；
+         全部恢复默认：主页设置 →「界面布局 → 恢复默认布局」。
+         约定见 docs/dev/layout.md（新工具页照这个来）。
+         ⚠ 可拖的上下两块（主区域 / 日志）必须是固定像素行，所以整页仍在 ScrollViewer 里滚动。 -->
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="28,20,28,24">
+        <Grid Margin="28,20,28,24">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />                                  <!-- 标题 -->
+                <RowDefinition Height="Auto" />                                  <!-- ① URL 卡 -->
+                <RowDefinition x:Name="MainAreaRow" Height="700" MinHeight="420" />  <!-- ③④ 主区域（可上下拖） -->
+                <RowDefinition Height="12" />                                    <!-- 主区域 / 日志 分隔条 -->
+                <RowDefinition x:Name="LogAreaRow" Height="200" MinHeight="120" />  <!-- ⑤ 日志（可上下拖） -->
+            </Grid.RowDefinitions>
 
             <!-- ===== 标题 ===== -->
-            <Grid>
+            <Grid Grid.Row="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -37,7 +51,7 @@
             </Grid>
 
             <!-- ===== ① URL 与主按钮 ===== -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,14,0,0">
+            <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,14,0,0">
                 <StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -103,19 +117,30 @@
                 </StackPanel>
             </Border>
 
-            <!-- ===== ③④ 游戏列表 + 右侧工具 ===== -->
-            <Grid Margin="0,12,0,0">
+            <!-- ===== ③④ 游戏列表 + 右侧工具（左右可拖） ===== -->
+            <Grid Grid.Row="2" Margin="0,12,0,0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="14" />
-                    <ColumnDefinition Width="560" />
+                    <ColumnDefinition Width="*" MinWidth="160" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="560" MinWidth="380" />
                 </Grid.ColumnDefinitions>
 
                 <!-- ===== 左：游戏列表 ===== -->
-                <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="0">
-                    <StackPanel>
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                    <Grid>
+                        <!-- 左栏内部随「主区域」高度伸缩：只有游戏列表吃掉多出来的高度，其它块保持自然高度。
+                             主区域被拖矮时列表跟着变矮，但至少留 96（拖到更矮由主区域的 MinHeight 兜住）。 -->
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" MinHeight="96" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
                         <!-- 标题行：标题 + 统计 + 刷新/全部删除 -->
-                        <Grid Margin="18,14,18,0">
+                        <Grid Grid.Row="0" Margin="18,14,18,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -137,7 +162,7 @@
                         </Grid>
 
                         <!-- 搜索 + 排序 -->
-                        <Grid Margin="18,12,18,0">
+                        <Grid Grid.Row="1" Margin="18,12,18,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -172,8 +197,8 @@
                                     ToolTip="{Binding SortDirectionToolTip}" />
                         </Grid>
 
-                        <ListBox x:Name="GameList" ItemsSource="{Binding Games}" SelectedItem="{Binding SelectedGame}"
-                                 Style="{StaticResource FileListStyle}" MinHeight="230" MaxHeight="330"
+                        <ListBox x:Name="GameList" Grid.Row="2" ItemsSource="{Binding Games}" SelectedItem="{Binding SelectedGame}"
+                                 Style="{StaticResource FileListStyle}"
                                  Margin="8,10,8,0"
                                  core:ScrollChaining.Enabled="True"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -210,12 +235,12 @@
                         </ListBox>
 
                         <!-- 搜索筛没了的时候提示一句（免得以为游戏丢了） -->
-                        <TextBlock Text="{Binding GamesEmptyHint}" FontSize="11.5" TextWrapping="Wrap"
+                        <TextBlock Grid.Row="3" Text="{Binding GamesEmptyHint}" FontSize="11.5" TextWrapping="Wrap"
                                    Margin="20,8,20,0" Foreground="{DynamicResource TextSecondaryBrush}"
                                    Visibility="{Binding GamesEmptyHint, Converter={StaticResource EmptyToVisInverse}}" />
 
                         <!-- 操作按钮：分两行，行距 8（以前挤在一起了）；按钮自己带下边距，折行时不会贴住 -->
-                        <StackPanel Margin="18,12,18,0">
+                        <StackPanel Grid.Row="4" Margin="18,12,18,0">
                             <WrapPanel>
                                 <Button x:Name="PlayButton" Content="游玩" Style="{StaticResource PrimaryButtonStyle}"
                                         Margin="0,0,8,8" Command="{Binding PlayCommand}" />
@@ -237,25 +262,33 @@
                         </StackPanel>
 
                         <!-- 选中游戏的信息（相当于原工具的「修改信息」弹窗） -->
-                        <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Margin="18,12,18,16" Padding="12,10">
+                        <Border Grid.Row="5" Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Margin="18,12,18,16" Padding="12,10">
                             <TextBox Style="{StaticResource LogTextBoxStyle}" Background="Transparent" BorderThickness="0"
                                      MaxHeight="112" Text="{Binding SelectedSummary, Mode=OneWay}"
                                      ToolTip="SWFNetPath.ini 里的信息（网络路径 / 宽高 / 是否新页面）" />
                         </Border>
-                    </StackPanel>
+                    </Grid>
                 </Border>
+
+                <!-- 左右分隔条：拖动改「游戏列表」与右侧工具区的宽度（双击恢复这一处） -->
+                <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                   Key="flash-downloader.主区域左右" />
 
                 <!-- ===== 右：三个工具面板（两栏排布，少滚动一点） ===== -->
                 <Grid Grid.Column="2">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" MinWidth="200" />
                         <ColumnDefinition Width="12" />
-                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" MinWidth="200" />
                     </Grid.ColumnDefinitions>
 
                     <!-- 左栏：关联文件下载器（含自动下载所需文件） -->
-                    <Border Grid.Column="0" Style="{StaticResource CardStyle}" VerticalAlignment="Top">
-                        <StackPanel>
+                    <!-- 两栏内容都可能比主区域高：各自内部滚动（滚到头再交给整页，ScrollChaining） -->
+                    <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  core:ScrollChaining.Enabled="True">
+                        <Border Style="{StaticResource CardStyle}" VerticalAlignment="Top">
+                            <StackPanel>
                             <TextBlock Text="关联文件下载器" FontSize="13" FontWeight="SemiBold" />
                             <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,10"
                                        Text="多文件游戏（只下主 swf 玩不了的那种）：一行一个相对路径，例如 assets/level1.swf，路径相对 swf 所在目录。" />
@@ -333,10 +366,18 @@
                             <TextBox Style="{StaticResource LogTextBoxStyle}" Height="80" Margin="0,8,0,0"
                                      Text="{Binding AutoDownloadText, Mode=OneWay}" />
                         </StackPanel>
-                    </Border>
+                        </Border>
+                    </ScrollViewer>
+
+                    <!-- 两栏之间的分隔条：拖动改「关联文件下载器」与「自由下载 + 设置」的宽度 -->
+                    <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                       Key="flash-downloader.右侧两栏" />
 
                     <!-- 右栏：自由下载工具 + 设置 -->
-                    <StackPanel Grid.Column="2">
+                    <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  core:ScrollChaining.Enabled="True">
+                    <StackPanel>
                         <Border Style="{StaticResource CardStyle}" VerticalAlignment="Top">
                             <StackPanel>
                                 <TextBlock Text="自由下载工具" FontSize="13" FontWeight="SemiBold" />
@@ -431,13 +472,23 @@
                             </StackPanel>
                         </Border>
                     </StackPanel>
+                    </ScrollViewer>
                 </Grid>
             </Grid>
 
+            <!-- 上下分隔条：拖动改「主区域」与「日志」的高度（双击恢复这一处） -->
+            <core:PaneSplitter Grid.Row="3" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="flash-downloader.主区域与日志" />
+
             <!-- ===== ⑤ 日志 ===== -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
-                <StackPanel>
-                    <Grid>
+            <Border Grid.Row="4" Style="{StaticResource CardStyle}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="60" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0">
                         <TextBlock Text="日志" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                             <Button Content="清空日志" Style="{StaticResource SecondaryButtonStyle}"
@@ -447,14 +498,14 @@
                                     ToolTip="播放页 / 替代 API / Flash 播放器都在 Data\flash-downloader\tools" />
                         </StackPanel>
                     </Grid>
-                    <TextBox x:Name="LogBox" Style="{StaticResource LogTextBoxStyle}" Height="110" Margin="0,10,0,0"
+                    <TextBox x:Name="LogBox" Grid.Row="1" Style="{StaticResource LogTextBoxStyle}" Margin="0,10,0,0"
                              core:ScrollChaining.Enabled="True"
                              Text="{Binding LogText, Mode=OneWay}" />
-                    <TextBlock Text="{Binding StatusText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0"
+                    <TextBlock Grid.Row="2" Text="{Binding StatusText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,8,0,0"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
-                </StackPanel>
+                </Grid>
             </Border>
 
-        </StackPanel>
+        </Grid>
     </ScrollViewer>
 </UserControl>

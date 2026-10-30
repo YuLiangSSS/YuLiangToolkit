@@ -11,7 +11,7 @@
 | 主程序 | 根目录 `YuLiangTookit.csproj`（少一个 `l` 是历史拼写）：标题栏 / 主页 / 类别页 / 面包屑、两套主题、粒子 |
 | 核心库 | `src/YuLiangToolkit.Core/`：工具契约 / MVVM / 存储 / 配置 / 维护（缓存清理·配置重建）/ FFmpeg / 粒子 / TCP 房间 |
 | 功能 | 16 个（13 个 `Tools.*`）：视频转音频 / 播放器 / 图片阅读器 / PDF 阅读器 / 重命名 / Flash / 聊天室 / osu! 下图器 / osu!mania 三件套 / 棋牌 / KPS 按键统计 / Spug 验证码测试 / 示例模板 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`：2826 项，退出码 0 = 通过（按分组跑） |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`：2847 项，退出码 0 = 通过（按分组跑） |
 | 数据 | **在 exe 旁边**（`bin\Debug\net9.0-windows10.0.19041.0\Data`、`Config`、`Cache`）；仓库根同名目录只有说明 |
 
 ## 开工 / 收尾（硬性）
@@ -42,6 +42,7 @@ git add -A; git commit -m "<中文提交信息>"   # ③ 提交：每轮改动�
 9. **`ParticleOverlay` 必须放 Window 内 Grid 铺满 + `IsHitTestVisible="False"`**。
 10. **缓存写 `Cache\<工具Id>\`**（`ToolCache`），「主页设置 → 清理缓存 / 重建配置」按已发现工具自动覆盖新工具；缓存混在 Config 里就实现 `IToolCacheSource` 报告清理项（详见 `Core/Maintenance/` 注释）。
 11. **改完必须提交 git**；其他别做 / 先问用户的见踩坑清单。
+12. **有多个区块的工具页必须可拖拽**（v0.41.0 起）：区块之间用 `core:PaneSplitter` + `App.xaml` 的分隔条样式（蓝线 / ↔ ↕ 光标 / 自动记住 / 双击复位），**别再把区块大小写死**；新页面照 `docs/dev/layout.md` 做，布局恢复默认在「主页设置 → 界面布局」。
 
 ## 找东西
 
@@ -50,6 +51,7 @@ git add -A; git commit -m "<中文提交信息>"   # ③ 提交：每轮改动�
 | 全貌 / 流程 / 硬性规则 | 本文件 |
 | 验证纪律（本轮该跑哪些组 / 全量例外 / 预算） | [`docs/dev/verification.md`](docs/dev/verification.md) |
 | 轮子（工具契约 / MVVM / 存储 / 配置 / 粒子 / TCP 房间）、目录与新功能 | `src/YuLiangToolkit.Core/` 源码注释；新功能复制 `src/YuLiangToolkit.Tools.Sample/` 模板 |
+| 工具页区块可拖拽 / 布局记忆 / 恢复默认 | [`docs/dev/layout.md`](docs/dev/layout.md) |
 | 某个功能的实现细节 / 踩过的坑 | 对应源码 + [`docs/dev/pitfalls.md`](docs/dev/pitfalls.md) |
 | 面向用户的文档 | [`docs/tools/`](docs/tools/)（索引 [`docs/README.md`](docs/README.md)） |
 | 版本改动 | `git log`（旧版手册在 git 历史里） |

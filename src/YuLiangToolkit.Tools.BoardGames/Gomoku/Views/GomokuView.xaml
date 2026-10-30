@@ -6,9 +6,13 @@
              xmlns:views="clr-namespace:YuLiangToolkit.Tools.BoardGames.Gomoku.Views"
              Background="Transparent">
 
-    <!-- 联机五子棋主界面（WIP 4.6）：一页放完 —— 左棋盘、右房间 + 对局 + 设置、下方棋谱。
-         注意：整页在 ScrollViewer 里，所以行高一律 Auto（不要 Height="*"），
-         棋盘用固定 640×640 的自绘控件套 Viewbox 缩放；内层列表挂滚动链（AGENTS.md）。 -->
+    <!-- 联机五子棋主界面（WIP 4.6）：一页放完 —— 左棋盘、右侧栏（房间 / 名单 / 对局 / 设置 / 棋谱 + 聊天）。
+         布局（v0.41.0 起可拖拽）：主区域「棋盘 | 侧栏」之间是竖分隔条（左右拖），
+         侧栏内部「信息区 | 聊天」之间是横分隔条（上下拖）—— 拖动即调大小（蓝线 + ↔ / ↕ 光标），
+         松手自动记住（Config\layout.json），双击分隔条恢复这一处；全部恢复默认：
+         主页设置 →「界面布局 → 恢复默认布局」。约定见 docs/dev/layout.md。
+         注意：整页在 ScrollViewer 里，可上下拖的两块用固定像素行（拖完页面总高度会变、外层自己出滚动条），
+         侧栏信息区内部自己滚动；棋盘用固定 640×640 的自绘控件套 Viewbox 缩放；内层列表挂滚动链（AGENTS.md）。 -->
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Margin="28,22,28,26">
 
@@ -36,12 +40,12 @@
                 </StackPanel>
             </Grid>
 
-            <!-- ================= 主区域：左棋盘 / 右栏 ================= -->
+            <!-- ================= 主区域：左棋盘 / 右侧栏（左右可拖） ================= -->
             <Grid Margin="0,16,0,0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="16" />
-                    <ColumnDefinition Width="380" />
+                    <ColumnDefinition Width="*" MinWidth="320" />     <!-- 左：棋盘（随窗口缩放、吸收宽度变化） -->
+                    <ColumnDefinition Width="12" />                  <!-- 棋盘 / 侧栏 分隔条独占一列 -->
+                    <ColumnDefinition Width="380" MinWidth="300" />   <!-- 右：侧栏（固定宽度、可拖） -->
                 </Grid.ColumnDefinitions>
 
                 <!-- 左：棋盘 + 对局操作（状态行在棋盘上方、操作按钮紧贴棋盘下方，1280×820 首屏可见） -->
@@ -69,10 +73,11 @@
                                        Visibility="{Binding IsGamePaused, Converter={StaticResource BoolToVis}}" />
                         </Grid>
 
-                        <!-- 棋盘：固定 640×640 自绘，外层 Viewbox 限高 480 缩放
-                             （实测 1280×820：520 会把棋盘下按钮挤出首屏，480 留出余量；1024×700 自动缩到约 300） -->
+                        <!-- 棋盘：固定 640×640 自绘，外层 Viewbox 按可用宽度缩放（上限 750，窗口越宽棋盘越大：
+                             1500 宽时约 750、1280 宽时约 540，不再在卡片里空一大片；1024 宽时约 290 自动缩小）。
+                             上限同时让整张棋盘卡和右侧栏（620+12+300）高度接近，两栏不会一边一大片空白。 -->
                         <Viewbox Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Top"
-                                 MaxWidth="480" MaxHeight="480">
+                                 MaxWidth="750" MaxHeight="750">
                             <views:GomokuBoardView x:Name="Board"
                                                    Width="640" Height="640"
                                                    State="{Binding BoardState}"
@@ -107,8 +112,24 @@
                     </StackPanel>
                 </Border>
 
-                <!-- 右栏：房间 / 对局 / 设置 -->
-                <StackPanel Grid.Column="2">
+                <!-- 棋盘 / 侧栏 分隔条：左右拖动改棋盘区与右侧栏的宽度（双击恢复这一处） -->
+                <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                   Key="gomoku.棋盘与侧栏" />
+
+                <!-- ================= 右栏：上部信息区（房间 / 名单 / 对局 / 设置 / 棋谱）+ 下部聊天 =================
+                     信息区与聊天之间是横分隔条：上下拖即可改两块的高矮（双击恢复这一处）。 -->
+                <Grid Grid.Column="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="620" MinHeight="280" />   <!-- 信息区（内容多时自己滚动） -->
+                        <RowDefinition Height="12" />                    <!-- 信息区 / 聊天 分隔条独占一行 -->
+                        <RowDefinition Height="300" MinHeight="220" />   <!-- 聊天（拖动改高矮） -->
+                    </Grid.RowDefinitions>
+
+                    <!-- 信息区：固定像素行里的内容自己滚动，滚到头再交给整页（ScrollChaining） -->
+                    <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  core:ScrollChaining.Enabled="True">
+                    <StackPanel>
 
                     <!-- 房间（开房 / 加入 / 状态 / 离开） -->
                     <shared:RoomPanel />
@@ -250,9 +271,16 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- 房间聊天（共享面板，放整页最底部：聊天不挡对局操作） -->
-                    <shared:ChatPanel Margin="0,12,0,0" />
-                </StackPanel>
+                    </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- 信息区 / 聊天 分隔条：上下拖动改两块高度（双击恢复这一处） -->
+                    <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                                       Key="gomoku.侧栏信息与聊天" />
+
+                    <!-- 房间聊天（共享面板；固定行里聊天记录放 * 行，拖分隔条时记录区跟着变高矮） -->
+                    <shared:ChatPanel Grid.Row="2" />
+                </Grid>
             </Grid>
 
         </StackPanel>

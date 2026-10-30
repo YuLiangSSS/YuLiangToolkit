@@ -404,6 +404,27 @@
                 </StackPanel>
             </Border>
 
+            <!-- ===== 界面布局（v0.41.0：工具页可拖拽分隔条的尺寸记忆，一键恢复默认） ===== -->
+            <TextBlock Text="界面布局" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource AccentBrush}" Margin="0,22,0,0" />
+            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
+                <StackPanel>
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               Text="有多个区块的工具页，区块之间可以拖动调整大小（跟画图软件拉图形一样）：鼠标移到区块之间的缝隙上，会亮起一条蓝色竖线 / 横线，光标变成 ↔ / ↕，按住拖动即可。松手后自动记住（存在 Config\layout.json），下次打开还是调好的样子；双击某一条分隔条只恢复那一处。下面可以一次把所有页面恢复成默认布局。" />
+                    <TextBlock Text="{Binding Maintenance.LayoutSummaryText}" FontSize="12" FontWeight="SemiBold"
+                               TextWrapping="Wrap" Margin="0,10,0,0" />
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button Content="恢复默认布局" Style="{StaticResource PrimaryButtonStyle}"
+                                Command="{Binding Maintenance.ResetLayoutCommand}"
+                                ToolTip="清掉所有工具页记住的分隔条尺寸（会先弹确认）；只影响区块大小，不动任何设置 / 缓存 / 数据" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding Maintenance.LayoutStatusText}" FontSize="11.5"
+                               Foreground="{DynamicResource SuccessBrush}" TextWrapping="Wrap" Margin="0,10,0,0"
+                               Visibility="{Binding Maintenance.LayoutStatusText, Converter={StaticResource EmptyToVisInverse}}" />
+                </StackPanel>
+            </Border>
+
             <TextBlock FontSize="11" Foreground="{DynamicResource FaintTextBrush}" TextWrapping="Wrap" Margin="0,14,0,0"
                        Text="主页设置只影响外壳本身（界面风格、主页显示、自动 / 点击特效、粒子颜色、关闭行为等）；各功能自己的选项在对应功能页面里，也可以在「重建配置」里一键恢复默认。" />
 

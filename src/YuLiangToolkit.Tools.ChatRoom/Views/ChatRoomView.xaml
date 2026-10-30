@@ -12,15 +12,28 @@
          ④ 底部：流量（上限 + 用量指示）/ 发送选项 / 文件传输 + 房间成员 / 历史记录 + 协议与日志
          样式全部来自 App.xaml（CardStyle / TextBoxStyle / PrimaryButtonStyle …），不自造风格。
 
-         ⚠ 布局注意：这一页整体在 ScrollViewer 里，**卡片内部不要用 Height="*" 的行**——
-         ScrollViewer 量内容时给的是无限高度，星号行会退化成内容高度，卡片被撑得极高，
-         上半个卡片被顶到视口外面（踩过：截图里聊天区一片空白）。行高一律 Auto + 给列表 Min/MaxHeight。 -->
+         ⚠ 布局注意（v0.41.0 起可拖拽）：整页在 ScrollViewer 里，可上下拖的「② 聊天 / ③ 底部三栏」
+         都是**固定像素行**（不是 * 行），所以卡片内部可以放心用 * 行让列表 / 日志吃掉多出来的高度；
+         别把整页改成 * 行（ScrollViewer 量内容时给无限高度，星号行会退化，卡片被撑得极高）。
+         ②③ 之间是上下分隔条，① 主机/客户端、④ 成员/历史之间是左右分隔条；
+         拖动调大小（蓝线 + ↔ / ↕ 光标），松手自动记住（Config\layout.json），双击恢复这一处；
+         全部恢复默认：主页设置 →「界面布局 → 恢复默认布局」。约定见 docs/dev/layout.md。 -->
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="28,20,28,24">
+        <Grid Margin="28,20,28,24">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />                 <!-- 标题 + 状态徽标 -->
+                <RowDefinition Height="Auto" />                 <!-- 状态栏 -->
+                <RowDefinition Height="Auto" />                 <!-- ① 连接条（内部左右可拖） -->
+                <RowDefinition Height="600" MinHeight="400" />  <!-- ② 聊天（可上下拖） -->
+                <RowDefinition Height="12" />                   <!-- 聊天 / 底部三栏 分隔条 -->
+                <RowDefinition Height="470" MinHeight="320" />  <!-- ③ 底部三栏（可上下拖） -->
+                <RowDefinition Height="Auto" />                 <!-- ④ 成员 + 历史 -->
+                <RowDefinition Height="Auto" />                 <!-- ⑤ 协议与日志 -->
+            </Grid.RowDefinitions>
 
             <!-- ===================== 标题 + 状态 ===================== -->
-            <Grid>
+            <Grid Grid.Row="0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
@@ -58,7 +71,7 @@
             </Grid>
 
             <!-- 状态栏 -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,14,0,0" Padding="14,10">
+            <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,14,0,0" Padding="14,10">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="{Binding NoticeText}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" MaxWidth="760" />
                     <TextBlock Text="{Binding ActivityText}" FontSize="10.5" Margin="18,0,0,0" VerticalAlignment="Center"
@@ -67,15 +80,16 @@
             </Border>
 
             <!-- ===================== ① 连接条 ===================== -->
-            <Grid Margin="0,12,0,0">
+            <!-- 左右可拖：主机（*，跟着窗口变宽）| 客户端（固定像素、可拖） -->
+            <Grid Grid.Row="2" Margin="0,12,0,0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="14" />
-                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" MinWidth="380" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="480" MinWidth="380" />
                 </Grid.ColumnDefinitions>
 
                 <!-- 主机 -->
-                <Border Grid.Column="0" Style="{StaticResource CardStyle}">
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}" ClipToBounds="True">
                     <StackPanel>
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -237,8 +251,12 @@
                     </StackPanel>
                 </Border>
 
+                <!-- 左右分隔条：拖动改「主机」与「客户端」两栏的宽度（双击恢复这一处） -->
+                <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                   Key="chat-room.主机与客户端" />
+
                 <!-- 客户端 -->
-                <Border Grid.Column="2" Style="{StaticResource CardStyle}">
+                <Border Grid.Column="2" Style="{StaticResource CardStyle}" ClipToBounds="True">
                     <StackPanel>
                         <TextBlock Text="🔌 我是客户端（连别人的房间）" FontSize="12.5" FontWeight="SemiBold" />
                         <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
@@ -277,8 +295,14 @@
             </Grid>
 
             <!-- ===================== ② 聊天 ===================== -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0" Padding="0">
-                <StackPanel>
+            <!-- 固定像素行里：工具条 / 消息列表(*) / 输入区，聊天列表吃掉区块多出来的高度 -->
+            <Border Grid.Row="3" Style="{StaticResource CardStyle}" Margin="0,12,0,0" Padding="0" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="160" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
                     <!-- 工具条 -->
                     <Grid Margin="18,14,18,0">
                         <Grid.ColumnDefinitions>
@@ -299,10 +323,10 @@
                         </StackPanel>
                     </Grid>
 
-                    <!-- 消息列表：Auto 行 + Min/MaxHeight（见文件头的布局说明） -->
-                    <ListBox x:Name="MessageList" ItemsSource="{Binding Messages}"
+                    <!-- 消息列表：吃掉区块剩下的高度（区块可上下拖），最少留 160 -->
+                    <ListBox x:Name="MessageList" Grid.Row="1" ItemsSource="{Binding Messages}"
                              Style="{StaticResource FileListStyle}"
-                             MinHeight="380" MaxHeight="560" Margin="8,10,8,0"
+                             MinHeight="160" Margin="8,10,8,0"
                              core:ScrollChaining.Enabled="True"
                              HorizontalContentAlignment="Stretch"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -463,7 +487,7 @@
                     </ListBox>
 
                     <!-- 输入区 -->
-                    <StackPanel Margin="18,10,18,16">
+                    <StackPanel Grid.Row="2" Margin="18,10,18,16">
                         <Grid>
                             <TextBox x:Name="InputBox" Height="58" AcceptsReturn="True" TextWrapping="Wrap"
                                      VerticalScrollBarVisibility="Auto" Style="{StaticResource TextBoxStyle}"
@@ -499,14 +523,18 @@
                         <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0" TextWrapping="Wrap"
                                    Text="收 / 发都在同一个列表里：自己发的靠右（蓝底），对方发的靠左。图片自动压一份预览（不额外占流量），双击预览图打开原图。" />
                     </StackPanel>
-                </StackPanel>
+                </Grid>
             </Border>
+
+            <!-- 上下分隔条：拖动改「② 聊天」与「③ 底部三栏」的高度（双击恢复这一处） -->
+            <core:PaneSplitter Grid.Row="4" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="chat-room.聊天与底部" />
 
             <!-- ===================== ③ 底部三栏 =====================
                  中间那栏的「发图压缩」是这三个下拉里文字最长的（"只压过大的图（推荐）"），
                  所以它要比左右两栏**宽一点**（5:6:5）；等宽或更窄会把下拉框挤到文字显示不全。
                  栏间距 10px：1024 宽的最小窗口下，这一点点差距正好是输入框能不能放开 4 位数的区别。 -->
-            <Grid Margin="0,12,0,0">
+            <Grid Grid.Row="5">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="5*" />
                     <ColumnDefinition Width="10" />
@@ -516,126 +544,139 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- 流量 -->
-                <Border Grid.Column="0" Style="{StaticResource CardStyle}">
-                    <StackPanel>
-                        <TextBlock Text="流量（单次连接）" FontSize="13" FontWeight="SemiBold" />
-                        <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
-                                   Text="「一次连接」= 一次会话（一个记录文件夹）。到上限就停止发送，不会一口气把流量跑光。" />
+                <!-- 卡片被拖得比内容还矮时内部滚动（滚到头再交给整页，见 ScrollChaining） -->
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                  core:ScrollChaining.Enabled="True">
+                        <StackPanel>
+                            <TextBlock Text="流量（单次连接）" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Text="「一次连接」= 一次会话（一个记录文件夹）。到上限就停止发送，不会一口气把流量跑光。" />
 
-                        <TextBlock Text="{Binding TrafficSummaryText}" FontSize="12.5" Margin="0,10,0,0" />
-                        <TextBlock Text="{Binding TrafficRateText}" FontSize="11" Margin="0,3,0,0"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-
-                        <ProgressBar Value="{Binding TrafficRatio, Mode=OneWay}" Maximum="1" Height="8" Margin="0,8,0,0"
-                                     Style="{StaticResource ProgressBarStyle}" />
-                        <Grid Margin="0,4,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Text="{Binding TrafficLimitText}" FontSize="10.5" TextWrapping="Wrap"
+                            <TextBlock Text="{Binding TrafficSummaryText}" FontSize="12.5" Margin="0,10,0,0" />
+                            <TextBlock Text="{Binding TrafficRateText}" FontSize="11" Margin="0,3,0,0"
                                        Foreground="{DynamicResource TextSecondaryBrush}" />
-                            <TextBlock Grid.Column="1" Text="{Binding TrafficRatioText}" FontSize="10.5" Margin="6,0,0,0"
+
+                            <ProgressBar Value="{Binding TrafficRatio, Mode=OneWay}" Maximum="1" Height="8" Margin="0,8,0,0"
+                                         Style="{StaticResource ProgressBarStyle}" />
+                            <Grid Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding TrafficLimitText}" FontSize="10.5" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Grid.Column="1" Text="{Binding TrafficRatioText}" FontSize="10.5" Margin="6,0,0,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Grid>
+
+                            <TextBlock Text="⚠ 本次流量已到上限：已停止发送。可以调大上限（立刻生效）或重新连接。" FontSize="11"
+                                       Margin="0,8,0,0" TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}"
+                                       Visibility="{Binding IsTrafficExhausted, Converter={StaticResource BoolToVis}}" />
+
+                            <!-- 底部三栏比较窄，标签一律放在输入框**上面**（不占横向宽度）：
+                                 1024 宽的最小窗口下，侧边标签会把下拉框挤到只剩几十像素、文字被裁掉。 -->
+                            <TextBlock Text="上限（MB）" FontSize="11.5" Margin="0,10,0,0"
                                        Foreground="{DynamicResource TextSecondaryBrush}" />
-                        </Grid>
+                            <Grid Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Height="30" MinWidth="140" Style="{StaticResource TextBoxStyle}"
+                                         Text="{Binding TrafficLimitMb, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="一次连接最多能跑多少流量；填 0 = 不限（不建议）" />
+                                <TextBlock Grid.Column="1" Text="MB" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Grid>
 
-                        <TextBlock Text="⚠ 本次流量已到上限：已停止发送。可以调大上限（立刻生效）或重新连接。" FontSize="11"
-                                   Margin="0,8,0,0" TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}"
-                                   Visibility="{Binding IsTrafficExhausted, Converter={StaticResource BoolToVis}}" />
-
-                        <!-- 底部三栏比较窄，标签一律放在输入框**上面**（不占横向宽度）：
-                             1024 宽的最小窗口下，侧边标签会把下拉框挤到只剩几十像素、文字被裁掉。 -->
-                        <TextBlock Text="上限（MB）" FontSize="11.5" Margin="0,10,0,0"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <Grid Margin="0,4,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBox Height="30" MinWidth="140" Style="{StaticResource TextBoxStyle}"
-                                     Text="{Binding TrafficLimitMb, UpdateSourceTrigger=PropertyChanged}"
-                                     ToolTip="一次连接最多能跑多少流量；填 0 = 不限（不建议）" />
-                            <TextBlock Grid.Column="1" Text="MB" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11.5"
+                            <TextBlock Text="算哪个方向" FontSize="11.5" Margin="0,8,0,0"
                                        Foreground="{DynamicResource TextSecondaryBrush}" />
-                        </Grid>
+                            <ComboBox Margin="0,4,0,0" Height="30" ItemsSource="{Binding TrafficScopeOptions}"
+                                      SelectedItem="{Binding SelectedTrafficScope}" DisplayMemberPath="Label"
+                                      Style="{StaticResource ComboBoxStyle}" />
 
-                        <TextBlock Text="算哪个方向" FontSize="11.5" Margin="0,8,0,0"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <ComboBox Margin="0,4,0,0" Height="30" ItemsSource="{Binding TrafficScopeOptions}"
-                                  SelectedItem="{Binding SelectedTrafficScope}" DisplayMemberPath="Label"
-                                  Style="{StaticResource ComboBoxStyle}" />
-
-                        <CheckBox Margin="0,10,0,0" Style="{StaticResource CheckBoxStyle}"
-                                  IsChecked="{Binding Cfg.NotifyPeerOnLimit}" Content="到上限时通知对方" />
-                        <TextBlock FontSize="10.5" Margin="24,2,0,0" TextWrapping="Wrap"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                   Text="打开时对方会看到「本端流量到顶，暂停发送」，免得以为你掉线了。" />
-                    </StackPanel>
+                            <CheckBox Margin="0,10,0,0" Style="{StaticResource CheckBoxStyle}"
+                                      IsChecked="{Binding Cfg.NotifyPeerOnLimit}" Content="到上限时通知对方" />
+                            <TextBlock FontSize="10.5" Margin="24,2,0,0" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Text="打开时对方会看到「本端流量到顶，暂停发送」，免得以为你掉线了。" />
+                        </StackPanel>
+                    </ScrollViewer>
                 </Border>
 
                 <!-- 发送选项 -->
-                <Border Grid.Column="2" Style="{StaticResource CardStyle}">
-                    <StackPanel>
-                        <TextBlock Text="发送选项" FontSize="13" FontWeight="SemiBold" />
+                <Border Grid.Column="2" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                  core:ScrollChaining.Enabled="True">
+                        <StackPanel>
+                            <TextBlock Text="发送选项" FontSize="13" FontWeight="SemiBold" />
 
-                        <TextBlock Text="昵称" FontSize="11.5" Margin="0,10,0,0"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <TextBox Margin="0,4,0,0" Height="30" Style="{StaticResource TextBoxStyle}"
-                                 Text="{Binding Nickname, UpdateSourceTrigger=PropertyChanged}" />
-
-                        <TextBlock Text="头像（一个 emoji）" FontSize="11.5" Margin="0,8,0,0"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <TextBox Margin="0,4,0,0" Height="30" Style="{StaticResource TextBoxStyle}"
-                                 Text="{Binding Emoji, UpdateSourceTrigger=PropertyChanged}" ToolTip="填一个 emoji 就行" />
-
-                        <TextBlock Text="发图压缩" FontSize="11.5" Margin="0,8,0,0"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <ComboBox Margin="0,4,0,0" Height="30" ItemsSource="{Binding ImageQualityOptions}"
-                                  SelectedItem="{Binding SelectedImageQuality}" DisplayMemberPath="Label"
-                                  Style="{StaticResource ComboBoxStyle}" />
-                        <TextBlock Text="{Binding ImageQualityHint}" FontSize="10.5" Margin="0,3,0,0" TextWrapping="Wrap"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-
-                        <TextBlock Text="大文件确认（MB）" FontSize="11.5" Margin="0,8,0,0"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <Grid Margin="0,4,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBox Height="30" MinWidth="140" Style="{StaticResource TextBoxStyle}"
-                                     Text="{Binding Cfg.ConfirmFileMb, UpdateSourceTrigger=PropertyChanged}"
-                                     ToolTip="超过这个大小（MB）先问一句再发；填 0 = 不确认" />
-                            <TextBlock Grid.Column="1" Text="MB" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11.5"
+                            <TextBlock Text="昵称" FontSize="11.5" Margin="0,10,0,0"
                                        Foreground="{DynamicResource TextSecondaryBrush}" />
-                        </Grid>
+                            <TextBox Margin="0,4,0,0" Height="30" Style="{StaticResource TextBoxStyle}"
+                                     Text="{Binding Nickname, UpdateSourceTrigger=PropertyChanged}" />
 
-                        <CheckBox Margin="0,10,0,0" Style="{StaticResource CheckBoxStyle}" IsChecked="{Binding Cfg.AutoStart}"
-                                  Content="打开工具时自动开局" />
+                            <TextBlock Text="头像（一个 emoji）" FontSize="11.5" Margin="0,8,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Margin="0,4,0,0" Height="30" Style="{StaticResource TextBoxStyle}"
+                                     Text="{Binding Emoji, UpdateSourceTrigger=PropertyChanged}" ToolTip="填一个 emoji 就行" />
 
-                        <TextBlock Text="表情（点一下插到输入框）" FontSize="11.5" Margin="0,10,0,0"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <ItemsControl ItemsSource="{Binding QuickEmojis}" Margin="0,4,0,0">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <WrapPanel />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Button Content="{Binding}" Padding="6,2" Margin="0,0,4,4" FontSize="14"
-                                            Style="{StaticResource SecondaryButtonStyle}"
-                                            Command="{Binding DataContext.InsertEmojiCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}" />
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
+                            <TextBlock Text="发图压缩" FontSize="11.5" Margin="0,8,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <ComboBox Margin="0,4,0,0" Height="30" ItemsSource="{Binding ImageQualityOptions}"
+                                      SelectedItem="{Binding SelectedImageQuality}" DisplayMemberPath="Label"
+                                      Style="{StaticResource ComboBoxStyle}" />
+                            <TextBlock Text="{Binding ImageQualityHint}" FontSize="10.5" Margin="0,3,0,0" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                            <TextBlock Text="大文件确认（MB）" FontSize="11.5" Margin="0,8,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Grid Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Height="30" MinWidth="140" Style="{StaticResource TextBoxStyle}"
+                                         Text="{Binding Cfg.ConfirmFileMb, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="超过这个大小（MB）先问一句再发；填 0 = 不确认" />
+                                <TextBlock Grid.Column="1" Text="MB" VerticalAlignment="Center" Margin="8,0,0,0" FontSize="11.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Grid>
+
+                            <CheckBox Margin="0,10,0,0" Style="{StaticResource CheckBoxStyle}" IsChecked="{Binding Cfg.AutoStart}"
+                                      Content="打开工具时自动开局" />
+
+                            <TextBlock Text="表情（点一下插到输入框）" FontSize="11.5" Margin="0,10,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <ItemsControl ItemsSource="{Binding QuickEmojis}" Margin="0,4,0,0">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Content="{Binding}" Padding="6,2" Margin="0,0,4,4" FontSize="14"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                Command="{Binding DataContext.InsertEmojiCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
                 </Border>
 
                 <!-- 文件传输 -->
-                <Border Grid.Column="4" Style="{StaticResource CardStyle}" Padding="0">
-                    <StackPanel>
+                <!-- 固定像素行里：标题 / 传输列表(*) / 底部说明，列表吃掉多出来的高度 -->
+                <Border Grid.Column="4" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" MinHeight="120" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
                         <Grid Margin="18,14,18,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -656,8 +697,8 @@
                                     VerticalAlignment="Top" Command="{Binding ClearTransfersCommand}" />
                         </Grid>
 
-                        <ListBox ItemsSource="{Binding Transfers}" Style="{StaticResource FileListStyle}"
-                                 MinHeight="150" MaxHeight="230" Margin="8,10,8,0"
+                        <ListBox Grid.Row="1" ItemsSource="{Binding Transfers}" Style="{StaticResource FileListStyle}"
+                                 MinHeight="120" Margin="8,10,8,0"
                                  core:ScrollChaining.Enabled="True"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                             <ListBox.ItemTemplate>
@@ -677,23 +718,24 @@
                             </ListBox.ItemTemplate>
                         </ListBox>
 
-                        <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                        <TextBlock Grid.Row="2" FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
                                    Margin="18,8,18,14"
                                    Text="同一时刻只传一个文件（避免把这一条连接的带宽抢光），后面的自动排队。" />
-                    </StackPanel>
+                    </Grid>
                 </Border>
             </Grid>
 
             <!-- ===================== ④ 房间成员 + 历史记录 ===================== -->
-            <Grid Margin="0,12,0,0">
+            <!-- 左右可拖：成员（固定像素、可拖）| 历史记录（*，跟着窗口变宽） -->
+            <Grid Grid.Row="6" Margin="0,12,0,0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="290" />
+                    <ColumnDefinition Width="300" MinWidth="220" />
                     <ColumnDefinition Width="12" />
-                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" MinWidth="380" />
                 </Grid.ColumnDefinitions>
 
                 <!-- 房间成员 -->
-                <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="0">
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
                     <StackPanel>
                         <Grid Margin="18,14,18,0">
                             <Grid.ColumnDefinitions>
@@ -744,8 +786,12 @@
                     </StackPanel>
                 </Border>
 
+                <!-- 左右分隔条：拖动改「房间成员」与「历史记录」两栏的宽度（双击恢复这一处） -->
+                <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                   Key="chat-room.成员与历史" />
+
                 <!-- 历史记录 -->
-                <Border Grid.Column="2" Style="{StaticResource CardStyle}" Padding="0">
+                <Border Grid.Column="2" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
                     <StackPanel>
                         <Grid Margin="18,14,18,0">
                             <Grid.ColumnDefinitions>
@@ -807,7 +853,7 @@
             </Grid>
 
             <!-- ===================== ⑤ 协议与日志 ===================== -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+            <Border Grid.Row="7" Style="{StaticResource CardStyle}" Margin="0,12,0,0">
                 <StackPanel>
                     <TextBlock Text="协议与日志" FontSize="13" FontWeight="SemiBold" />
                     <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
@@ -822,6 +868,6 @@
                              Text="{Binding LogText, Mode=OneWay}" core:ScrollChaining.Enabled="True" />
                 </StackPanel>
             </Border>
-        </StackPanel>
+        </Grid>
     </ScrollViewer>
 </UserControl>

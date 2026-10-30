@@ -114,6 +114,7 @@ public sealed class MaintenanceViewModel : ObservableObject
         SelectAllConfigCommand = new RelayCommand(_ => SetAllConfigSelected(true));
         SelectNoneConfigCommand = new RelayCommand(_ => SetAllConfigSelected(false));
         ResetConfigCommand = new RelayCommand(_ => ResetConfig());
+        ResetLayoutCommand = new RelayCommand(_ => ResetLayout());
 
         CacheItems.CollectionChanged += (_, _) => UpdateSummaries();
         ConfigItems.CollectionChanged += (_, _) => UpdateSummaries();
@@ -188,6 +189,24 @@ public sealed class MaintenanceViewModel : ObservableObject
         private set => Set(ref _configStatusText, value);
     }
 
+    // ---------- 界面布局（分隔条拖出来的尺寸；v0.41.0） ----------
+
+    private string _layoutSummaryText = "";
+    /// <summary>当前记住了哪些页面 / 几处分隔条位置（「恢复默认布局」按钮上方那行）。</summary>
+    public string LayoutSummaryText
+    {
+        get => _layoutSummaryText;
+        private set => Set(ref _layoutSummaryText, value);
+    }
+
+    private string _layoutStatusText = "";
+    /// <summary>上一次恢复默认布局的结果提示。</summary>
+    public string LayoutStatusText
+    {
+        get => _layoutStatusText;
+        private set => Set(ref _layoutStatusText, value);
+    }
+
     // ---------- 命令 ----------
 
     /// <summary>重新扫描缓存与配置（打开设置页 / 操作完成后自动调用）。</summary>
@@ -201,6 +220,9 @@ public sealed class MaintenanceViewModel : ObservableObject
     public RelayCommand SelectAllConfigCommand { get; }
     public RelayCommand SelectNoneConfigCommand { get; }
     public RelayCommand ResetConfigCommand { get; }
+
+    /// <summary>「恢复默认布局」：清掉所有工具页记住的分隔条尺寸（<c>Config\layout.json</c>）。</summary>
+    public RelayCommand ResetLayoutCommand { get; }
 
     // ---------- 行为 ----------
 
@@ -237,6 +259,7 @@ public sealed class MaintenanceViewModel : ObservableObject
         }
 
         UpdateSummaries();
+        UpdateLayoutSummary();
     }
 
     /// <summary>勾选 / 取消全部缓存项。</summary>
@@ -320,6 +343,55 @@ public sealed class MaintenanceViewModel : ObservableObject
 
         // 重新扫描（勾选状态会保留，方便接着重建别的功能）
         Refresh();
+    }
+
+    /// <summary>
+    /// 「恢复默认布局」= 清掉所有工具页记住的分隔条尺寸（<c>Config\layout.json</c>），
+    /// 再打开的页面就按默认大小显示。先确认一次（不会动任何设置 / 数据）。
+    /// </summary>
+    private void ResetLayout()
+    {
+        if (!LayoutMemory.HasSaved)
+        {
+            LayoutStatusText = "现在就是默认布局，没有需要恢复的东西。";
+            UpdateLayoutSummary();
+            return;
+        }
+
+        var count = LayoutMemory.SavedCount;
+        var groups = LayoutMemory.SavedGroups;
+        var names = groups.Select(DescribeGroup).ToList();
+        var message = $"要把记住的 {count} 处分隔条位置全部恢复默认吗？\n\n"
+                      + $"涉及：{string.Join("、", names)}\n\n"
+                      + "只影响区块大小，不会动任何设置、缓存、数据；以后拖分隔条会重新记住。";
+        if (!Confirm(message, "恢复默认布局")) return;
+
+        var ok = LayoutMemory.ResetAll();
+        LayoutStatusText = ok
+            ? $"已恢复默认布局（{count} 处分隔条位置已清空）。"
+            : $"布局已恢复默认，但配置文件 Config\\layout.json 删不掉（可能被占用），下次拖分隔条时会覆盖。";
+        UpdateLayoutSummary();
+    }
+
+    /// <summary>把布局键里的工具 Id 换成界面上看到的功能名（设置页摘要用）。</summary>
+    private string DescribeGroup(string id)
+    {
+        if (id.Equals("shell", StringComparison.OrdinalIgnoreCase)) return "主页 / 外壳设置";
+        return _tools.FirstOrDefault(tool => string.Equals(tool.Id, id, StringComparison.OrdinalIgnoreCase))?.Name ?? id;
+    }
+
+    /// <summary>「恢复默认布局」上方那行：记住过哪些页面、几处。</summary>
+    private void UpdateLayoutSummary()
+    {
+        var groups = LayoutMemory.SavedGroups;
+        if (groups.Count == 0)
+        {
+            LayoutSummaryText = "当前是默认布局：各页面都按默认尺寸显示。"; 
+            return;
+        }
+
+        LayoutSummaryText = $"已记住 {LayoutMemory.SavedCount} 处分隔条位置："
+                            + string.Join("、", groups.Select(DescribeGroup)) + "。";
     }
 
     /// <summary>挂上选中变化通知（摘要文案里的「已选 N」要实时更新）。</summary>

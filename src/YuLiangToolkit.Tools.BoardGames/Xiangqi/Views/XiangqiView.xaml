@@ -7,8 +7,14 @@
              Background="Transparent">
 
     <!-- 「联机中国象棋」界面。整体一页（外层 ScrollViewer），布局：
-         标题行 → 左棋盘卡 + 右栏（房间 → 对局 → 摆棋与让子 → 设置）→ 下方跨列棋谱（聊天由共享 ChatPanel 接在最下）。
-         ⚠ 外层是 ScrollViewer：卡片内部不要用 Height="*" 的行；棋盘用 Viewbox 缩放；棋盘卡里的按钮不能被折叠线裁掉。 -->
+         标题行 → 左棋盘卡 + 右侧栏（摆棋与让子 → 房间 → 成员/席位 → 对局 → 设置 + 房间聊天）→ 下方跨列棋谱。
+         布局（v0.41.0 起可拖拽）：主区域「棋盘 | 侧栏」之间是竖分隔条（左右拖），
+         侧栏内部「信息区 | 聊天」之间是横分隔条（上下拖）—— 拖动即调大小（蓝线 + ↔ / ↕ 光标），
+         松手自动记住（Config\layout.json），双击分隔条恢复这一处；全部恢复默认：
+         主页设置 →「界面布局 → 恢复默认布局」。约定见 docs/dev/layout.md。
+         ⚠ 外层是 ScrollViewer：卡片内部不要用 Height="*" 的行；可上下拖的两块用固定像素行
+         （拖完页面总高度会变、外层自己出滚动条）；侧栏信息区内部自己滚动；棋盘用 Viewbox 缩放；
+         棋盘卡里的按钮不能被折叠线裁掉。 -->
     <ScrollViewer x:Name="OuterScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel x:Name="RootPanel" Margin="28,22,28,26">
 
@@ -44,12 +50,12 @@
                            Text="自由摆棋 · 让子 / 让先 · 多人观战 · 房主安排上场 · 中文记谱 · 悔棋 / 认输 / 求和 / 断线自动重连" />
             </StackPanel>
 
-            <!-- ============ 主体：左棋盘 + 右栏卡片 ============ -->
+            <!-- ============ 主体：左棋盘 + 右侧栏（左右可拖） ============ -->
             <Grid Margin="0,16,0,0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="16" />
-                    <ColumnDefinition Width="392" />
+                    <ColumnDefinition Width="*" MinWidth="320" />     <!-- 左：棋盘（随窗口缩放、吸收宽度变化） -->
+                    <ColumnDefinition Width="12" />                  <!-- 棋盘 / 侧栏 分隔条独占一列 -->
+                    <ColumnDefinition Width="392" MinWidth="300" />   <!-- 右：侧栏（固定宽度、可拖） -->
                 </Grid.ColumnDefinitions>
 
                 <!-- ===== 左：棋盘卡（轮次 / 手数 / 结果 / 将军 / 操作按钮都压在这张卡里） ===== -->
@@ -63,9 +69,11 @@
                                        Visibility="{Binding CheckText, Converter={StaticResource EmptyToVisInverse}}" />
                         </Grid>
 
-                        <!-- 棋盘固定设计尺寸 500×565，用 Viewbox 缩放：MaxWidth/MaxHeight 保证 1280×820 首屏放得下 -->
-                        <Viewbox Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Center"
-                                 MaxWidth="430" MaxHeight="478" Margin="0,8,0,0">
+                        <!-- 棋盘固定设计尺寸 500×565，用 Viewbox 按可用空间缩放（大窗口放大、小窗口缩小）：
+                             上限 637×720 —— 既让棋盘填满左侧卡（1500 宽时约 637×720，不再两边空一大片），
+                             又让整张棋盘卡和右侧栏（596+12+300）高度接近，两栏不会一边一大片空白。 -->
+                        <Viewbox Stretch="Uniform" HorizontalAlignment="Center"
+                                 MaxWidth="637" MaxHeight="720" Margin="0,8,0,0">
                             <views:XiangqiBoardView x:Name="BoardView" Width="500" Height="565"
                                                     State="{Binding BoardState}"
                                                     Flipped="{Binding IsFlipped}"
@@ -130,8 +138,26 @@
                     </StackPanel>
                 </Border>
 
-                <!-- ===== 右栏（摆棋卡在未开局时排最上面；房间 → 成员/席位 → 对局 → 设置） ===== -->
+                <!-- 棋盘 / 侧栏 分隔条：左右拖动改棋盘区与右侧栏的宽度（双击恢复这一处） -->
+                <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                   Key="xiangqi.棋盘与侧栏" />
+
+                <!-- ===== 右栏：上部信息区（摆棋 / 房间 / 成员 / 对局 / 设置）+ 下部聊天 =====
+                     摆棋卡在未开局时排最上面；信息区与聊天之间是横分隔条：上下拖即可改两块的高矮。
+                     信息区默认高度 596 ≈「摆棋与让子」卡（约 587）刚好整张露完，裁切线落在两张卡之间的
+                     空隙里、不会把下一张「房间」卡的标题切一半；内容更多时信息区自己滚动。 -->
                 <Grid Grid.Column="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="596" MinHeight="280" />   <!-- 信息区（拖动时与聊天此消彼长） -->
+                        <RowDefinition Height="12" />                    <!-- 信息区 / 聊天 分隔条独占一行 -->
+                        <RowDefinition Height="300" MinHeight="220" />   <!-- 聊天（拖动改高矮） -->
+                    </Grid.RowDefinitions>
+
+                    <!-- 信息区：固定像素行里的内容自己滚动，滚到头再交给整页（ScrollChaining） -->
+                    <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  core:ScrollChaining.Enabled="True">
+                    <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
@@ -140,7 +166,7 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <!-- 房间（共享面板：开房 / 加入 / 地址分享 / 离开；ChatPanel 由共享层接在页面最下面） -->
+                    <!-- 房间（共享面板：开房 / 加入 / 地址分享 / 离开；房间聊天在信息区下方的横分隔条下面） -->
                     <shared:RoomPanel Grid.Row="1" Margin="0,12,0,0" />
 
                     <!-- 成员 / 席位 / 房主安排上场 / 自动轮换（共享面板；开始对局只在这里） -->
@@ -431,10 +457,19 @@
                                        Text="棋子朝向会跟随你所执的一方（执红红在下、执黑黑在下）；观战可在棋盘下方切换红 / 黑视角，同机双人与离线可手动翻转。" />
                         </StackPanel>
                     </Border>
+                    </Grid>
+                    </ScrollViewer>
+
+                    <!-- 信息区 / 聊天 分隔条：上下拖动改两块高度（双击恢复这一处） -->
+                    <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                                       Key="xiangqi.侧栏信息与聊天" />
+
+                    <!-- 房间聊天（共享面板；固定行里聊天记录放 * 行，拖分隔条时记录区跟着变高矮） -->
+                    <shared:ChatPanel Grid.Row="2" />
                 </Grid>
             </Grid>
 
-            <!-- ============ 棋谱（跨两列） ============ -->
+            <!-- ============ 棋谱（跨两列；内容多时列表自己滚动） ============ -->
             <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
                 <StackPanel>
                     <Grid>
@@ -480,9 +515,6 @@
                     </ListBox>
                 </StackPanel>
             </Border>
-
-            <!-- ============ 房间聊天（页面最下；共享 ChatPanel，DataContext 同样是本 VM） ============ -->
-            <shared:ChatPanel Margin="0,16,0,0" />
         </StackPanel>
     </ScrollViewer>
 </UserControl>
