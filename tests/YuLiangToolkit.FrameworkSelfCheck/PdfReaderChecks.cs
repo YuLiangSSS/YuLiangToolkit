@@ -1963,6 +1963,355 @@ internal static class PdfReaderChecks
         }
 
         // ================================================================
+        // 13. 记住上次阅读位置（配置 / 淘汰 / JSON 往返 / VM 恢复）+ 页码跳转解析
+        // ================================================================
+        // ---- 13a. NormalizePositionKey：完整路径 + 小写；相对路径补全；空 / 非法 → 空串 ----
+        Check("位置 key：null / 空 / 纯空白 → 空串",
+            PdfReaderConfig.NormalizePositionKey(null) == ""
+            && PdfReaderConfig.NormalizePositionKey("") == ""
+            && PdfReaderConfig.NormalizePositionKey("   ") == "");
+
+        Check("位置 key：完整路径转小写（Windows 路径不区分大小写）",
+            PdfReaderConfig.NormalizePositionKey(@"C:\Temp\A B\Demo.PDF") == @"c:\temp\a b\demo.pdf",
+            PdfReaderConfig.NormalizePositionKey(@"C:\Temp\A B\Demo.PDF"));
+
+        Check("位置 key：前后引号 / 空白容错（文件对话框 / 拖进来的路径）",
+            PdfReaderConfig.NormalizePositionKey("  \"C:\\Temp\\A.PDF\"  ") == @"c:\temp\a.pdf");
+
+        Check("位置 key：正斜杠路径也统一成反斜杠（Path.GetFullPath 规范化）",
+            PdfReaderConfig.NormalizePositionKey("C:/Temp/A.PDF") == @"c:\temp\a.pdf");
+
+        var relativePositionKey = PdfReaderConfig.NormalizePositionKey(@"sub\Demo.PDF");
+        Check("位置 key：相对路径也会补成完整路径再转小写",
+            relativePositionKey == Path.GetFullPath(@"sub\Demo.PDF").ToLowerInvariant()
+            && Path.IsPathFullyQualified(relativePositionKey)
+            && relativePositionKey.EndsWith(@"sub\demo.pdf", StringComparison.Ordinal),
+            relativePositionKey);
+
+        Check("位置 key：已经规范化的 key 再规范化不变（幂等）",
+            PdfReaderConfig.NormalizePositionKey(relativePositionKey) == relativePositionKey
+            && PdfReaderConfig.NormalizePositionKey(@"c:\temp\a.pdf") == @"c:\temp\a.pdf");
+
+        var invalidPositionKey = "C:\\bad" + '\0' + ".pdf";
+        var invalidKeyError = Catch(() => { _ = PdfReaderConfig.NormalizePositionKey(invalidPositionKey); });
+        Check("位置 key：非法路径不抛异常（返回空串）",
+            invalidKeyError is null && PdfReaderConfig.NormalizePositionKey(invalidPositionKey) == "",
+            invalidKeyError?.Message ?? "ok");
+
+        // ---- 13b. 配置里的阅读位置字典：记住 / 查找 / 覆盖 / 忘记 / 坏值不崩 ----
+        var positionCfg = new PdfReaderConfig();
+        Check("位置记忆：新配置的 ReadingPositions 非 null 且为空、上限常量 = 200",
+            positionCfg.ReadingPositions is not null && positionCfg.ReadingPositions.Count == 0
+            && PdfReaderConfig.MaxReadingPositions == 200);
+
+        var positionKeyA = @"C:\SelfCheck\Positions\Book A.PDF";
+        var savedAtA = new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        positionCfg.RememberReadingPosition(positionKeyA, new PdfReadingPosition
+        {
+            PageIndex = 5,
+            ReadingRatio = 0.42,
+            Mode = PdfReadMode.Horizontal,
+            SavedAtUtc = savedAtA,
+        });
+        var positionFoundA = positionCfg.FindReadingPosition(positionKeyA);
+        Check("位置记忆：Remember 后能 Find 回来（页号 / 比例 / 方式 / 保存时间原样）",
+            positionFoundA is not null
+            && positionFoundA.PageIndex == 5
+            && Math.Abs(positionFoundA.ReadingRatio - 0.42) <= 1e-12
+            && positionFoundA.Mode == PdfReadMode.Horizontal
+            && positionFoundA.SavedAtUtc == savedAtA,
+            positionFoundA is null ? "没找到" : $"{positionFoundA.PageIndex} / {positionFoundA.ReadingRatio} / {positionFoundA.Mode}");
+
+        Check("位置记忆：大小写不同的同一路径也能找到",
+            positionCfg.FindReadingPosition(@"c:\selfcheck\positions\book a.pdf") is not null);
+
+        positionCfg.RememberReadingPosition(positionKeyA.ToLowerInvariant(), new PdfReadingPosition
+        {
+            PageIndex = 6,
+            ReadingRatio = 0.5,
+            Mode = PdfReadMode.Spread,
+        });
+        Check("位置记忆：同一本再 Remember 是覆盖、不增加条数",
+            positionCfg.ReadingPositions?.Count == 1
+            && positionCfg.FindReadingPosition(positionKeyA)?.PageIndex == 6
+            && positionCfg.FindReadingPosition(positionKeyA)?.Mode == PdfReadMode.Spread);
+
+        positionCfg.ForgetReadingPosition(positionKeyA.ToUpperInvariant());
+        Check("位置记忆：Forget 能删掉（大小写不敏感）",
+            (positionCfg.ReadingPositions?.Count ?? 0) == 0 && positionCfg.FindReadingPosition(positionKeyA) is null);
+
+        var nullPositionError = Catch(() =>
+        {
+            positionCfg.RememberReadingPosition(null, new PdfReadingPosition());
+            positionCfg.RememberReadingPosition("   ", new PdfReadingPosition());
+            positionCfg.RememberReadingPosition(positionKeyA, null);
+            _ = positionCfg.FindReadingPosition(null);
+            positionCfg.ForgetReadingPosition(null);
+            positionCfg.ForgetReadingPosition(@"C:\SelfCheck\Positions\不存在.pdf");
+        });
+        Check("位置记忆：null / 空路径 / null 位置都不新增、不抛异常",
+            nullPositionError is null
+            && (positionCfg.ReadingPositions?.Count ?? 0) == 0
+            && positionCfg.FindReadingPosition(positionKeyA) is null,
+            nullPositionError?.Message ?? "ok");
+
+        // ---- 13c. 上限淘汰：连续记 205 本，按 SavedAtUtc 淘汰最老的 5 本 ----
+        var evictCfg = new PdfReaderConfig();
+        var evictBaseUtc = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        for (var i = 0; i < PdfReaderConfig.MaxReadingPositions + 5; i++)
+        {
+            evictCfg.RememberReadingPosition($@"C:\SelfCheck\Evict\book-{i}.pdf", new PdfReadingPosition
+            {
+                PageIndex = i,
+                ReadingRatio = i / 205.0,
+                SavedAtUtc = evictBaseUtc.AddMinutes(i),
+            });
+        }
+        Check("位置记忆淘汰：连续记 205 本 → 只留上限 200 本",
+            evictCfg.ReadingPositions.Count == PdfReaderConfig.MaxReadingPositions,
+            $"{evictCfg.ReadingPositions.Count} 本");
+
+        Check("位置记忆淘汰：保存时间最早的 5 本被淘汰、其余 200 本都在",
+            Enumerable.Range(0, 5).All(i => evictCfg.FindReadingPosition($@"C:\SelfCheck\Evict\book-{i}.pdf") is null)
+            && Enumerable.Range(5, 200).All(i => evictCfg.FindReadingPosition($@"C:\SelfCheck\Evict\book-{i}.pdf") is not null));
+
+        Check("位置记忆淘汰：最新记的一本还在、页号正确",
+            evictCfg.FindReadingPosition(@"C:\SelfCheck\Evict\book-204.pdf")?.PageIndex == 204);
+
+        // ---- 13d. JSON 往返：在自检临时根里走一遍 ToolConfigStore 的 Load → SaveNow → 读回 ----
+        var positionsStore = ToolConfigStore.For("pdf-reader-positions-check");
+        var positionsCfg = positionsStore.Load<PdfReaderConfig>();
+        positionsCfg.ReadingPositions.Clear();
+        positionsCfg.RememberReadingPosition(@"C:\SelfCheck\Json\one.pdf", new PdfReadingPosition
+        {
+            PageIndex = 3,
+            ReadingRatio = 0.25,
+            Mode = PdfReadMode.Spread,
+            SavedAtUtc = new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc),
+        });
+        positionsCfg.RememberReadingPosition(@"C:\SelfCheck\Json\two.pdf", new PdfReadingPosition
+        {
+            PageIndex = 7,
+            ReadingRatio = 1.0,
+            Mode = PdfReadMode.Horizontal,
+            SavedAtUtc = new DateTime(2026, 2, 2, 0, 0, 0, DateTimeKind.Utc),
+        });
+        positionsCfg.SaveNow();
+        var positionsJson = File.Exists(positionsStore.FilePath) ? File.ReadAllText(positionsStore.FilePath) : "";
+        Check("位置记忆落盘：JSON 里有 readingPositions、页号 / 比例，枚举按名字存字符串",
+            positionsJson.Contains("\"readingPositions\"", StringComparison.Ordinal)
+            && positionsJson.Contains("\"pageIndex\": 3", StringComparison.Ordinal)
+            && positionsJson.Contains("\"readingRatio\": 0.25", StringComparison.Ordinal)
+            && positionsJson.Contains("\"mode\": \"Spread\"", StringComparison.Ordinal)
+            && positionsJson.Contains("\"mode\": \"Horizontal\"", StringComparison.Ordinal),
+            CompactJson(positionsJson));
+
+        Check("位置记忆落盘：ModeEffective 计算属性有 [JsonIgnore]（不写进 JSON）",
+            !positionsJson.Contains("modeEffective", StringComparison.OrdinalIgnoreCase));
+
+        var positionsReread = JsonFileStore.Read<PdfReaderConfig>(positionsStore.FilePath);
+        Check("位置记忆往返：重新读盘后两本都在、页号 / 比例 / 方式 / 时间一致",
+            positionsReread is not null
+            && positionsReread.FindReadingPosition(@"C:\SelfCheck\Json\one.pdf") is { PageIndex: 3, Mode: PdfReadMode.Spread } oneBack
+            && Math.Abs(oneBack.ReadingRatio - 0.25) <= 1e-12
+            && oneBack.SavedAtUtc == new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc)
+            && positionsReread.FindReadingPosition(@"C:\SelfCheck\Json\two.pdf") is { PageIndex: 7, Mode: PdfReadMode.Horizontal } twoBack
+            && Math.Abs(twoBack.ReadingRatio - 1.0) <= 1e-12,
+            positionsReread is null ? "读回为 null" : $"{positionsReread.ReadingPositions.Count} 本");
+
+        Check("位置记忆往返：字典 key 是规范化后的小写完整路径",
+            positionsReread is not null
+            && positionsReread.ReadingPositions.ContainsKey(PdfReaderConfig.NormalizePositionKey(@"C:\SelfCheck\Json\one.pdf"))
+            && positionsReread.ReadingPositions.Keys.All(key => key == key.ToLowerInvariant() && Path.IsPathFullyQualified(key)),
+            positionsReread is null ? "读回为 null" : string.Join(" | ", positionsReread.ReadingPositions.Keys));
+        positionsStore.StopWatching();
+
+        // ---- 13e. PdfReadingPosition 本身：默认值 / 近期时间 / ModeEffective 归一化 ----
+        var defaultPosition = new PdfReadingPosition();
+        Check("阅读位置：默认页 0 / 比例 0 / 方式纵向 / 保存时间是近期（> 2000 年、<= 现在）",
+            defaultPosition.PageIndex == 0
+            && defaultPosition.ReadingRatio == 0
+            && defaultPosition.Mode == PdfReadMode.Vertical
+            && defaultPosition.ModeEffective == PdfReadMode.Vertical
+            && defaultPosition.SavedAtUtc > new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+            && defaultPosition.SavedAtUtc <= DateTime.UtcNow,
+            defaultPosition.SavedAtUtc.ToString("O"));
+
+        Check("阅读位置：ModeEffective 把坏枚举值归一化（99 → 纵向），合法值保持不变",
+            new PdfReadingPosition { Mode = (PdfReadMode)99 }.ModeEffective == PdfReadMode.Vertical
+            && new PdfReadingPosition { Mode = (PdfReadMode)(-1) }.ModeEffective == PdfReadMode.Vertical
+            && new PdfReadingPosition { Mode = PdfReadMode.Horizontal }.ModeEffective == PdfReadMode.Horizontal
+            && new PdfReadingPosition { Mode = PdfReadMode.Spread }.ModeEffective == PdfReadMode.Spread);
+
+        // ---- 13f. 页码跳转解析：1 起输入 → 0 起页号；越界 / 非数字 / 没开文档都算非法 ----
+        var jumpPdfPath = SelfCheckScratch.MakeFile("pdf-pages-jump.pdf");
+        File.WriteAllBytes(jumpPdfPath, PdfDemoPdf.Create(3));
+        var jumpVm = new PdfReaderViewModel();
+        try
+        {
+            jumpVm.LoadPdfAsync(jumpPdfPath).GetAwaiter().GetResult();
+            Check("页码跳转：3 页 PDF 输入 1 / 2 / 3 分别解析成 0 / 1 / 2 起页号",
+                jumpVm.TryParsePageNumber("1", out var jumpPage1) && jumpPage1 == 0
+                && jumpVm.TryParsePageNumber("2", out var jumpPage2) && jumpPage2 == 1
+                && jumpVm.TryParsePageNumber("3", out var jumpPage3) && jumpPage3 == 2);
+
+            Check("页码跳转：前后空格容错（\" 2 \" → 1）",
+                jumpVm.TryParsePageNumber(" 2 ", out var trimmedPage) && trimmedPage == 1);
+
+            Check("页码跳转：0 / 超页数 / 负数 / 小数 / 非数字 / 空 / null 都算非法（pageIndex = -1）",
+                !jumpVm.TryParsePageNumber("0", out var badPage0) && badPage0 == -1
+                && !jumpVm.TryParsePageNumber("4", out var badPage4) && badPage4 == -1
+                && !jumpVm.TryParsePageNumber("-1", out var badPageNeg) && badPageNeg == -1
+                && !jumpVm.TryParsePageNumber("2.5", out var badPageFloat) && badPageFloat == -1
+                && !jumpVm.TryParsePageNumber("abc", out var badPageText) && badPageText == -1
+                && !jumpVm.TryParsePageNumber("", out var badPageEmpty) && badPageEmpty == -1
+                && !jumpVm.TryParsePageNumber(null, out var badPageNull) && badPageNull == -1);
+
+            Check("页码跳转：最后一页 = 总页数（3 页时 \"3\" 合法且等于 PageCount - 1）",
+                jumpVm.TryParsePageNumber("3", out var lastPage) && lastPage == jumpVm.PageCount - 1);
+        }
+        finally
+        {
+            jumpVm.NotifyClosed();
+        }
+
+        // ---- 13g. VM 位置记忆往返：A 记住位置 → 新 VM 打开 A 恢复 → 切到 B 后仍能恢复 A ----
+        var positionPdfA = SelfCheckScratch.MakeFile("pdf-pos-a.pdf");
+        var positionPdfB = SelfCheckScratch.MakeFile("pdf-pos-b.pdf");
+        File.WriteAllBytes(positionPdfA, PdfDemoPdf.Create(3));
+        File.WriteAllBytes(positionPdfB, PdfDemoPdf.Create(3));
+
+        var posVm1 = new PdfReaderViewModel();
+        try
+        {
+            posVm1.LoadPdfAsync(positionPdfA).GetAwaiter().GetResult();
+            posVm1.NoteReadingPosition(2, 0.75);
+            posVm1.FlushReadingPosition(saveNow: true);   // headless 下 DispatcherTimer 不会 Tick，必须显式落盘
+
+            var rememberedA = posVm1.Cfg.FindReadingPosition(positionPdfA);
+            Check("位置记忆 VM：滚动报告后记住（页 2 / 比例 0.75 / 当前阅读方式）",
+                rememberedA is not null && rememberedA.PageIndex == 2
+                && Math.Abs(rememberedA.ReadingRatio - 0.75) <= 1e-12
+                && rememberedA.ModeEffective == posVm1.CurrentReadMode
+                && (posVm1.Cfg.ReadingPositions?.Count ?? 0) == 1,
+                rememberedA is null ? "没记住" : $"{rememberedA.PageIndex} / {rememberedA.ReadingRatio:F2} / {rememberedA.Mode}");
+
+            posVm1.Cfg.SaveNow();
+            var posDiskJson = File.Exists(posVm1.ConfigStore.FilePath) ? File.ReadAllText(posVm1.ConfigStore.FilePath) : "";
+            Check("位置记忆 VM：SaveNow 后磁盘 JSON 里真有这本书的位置",
+                posDiskJson.Contains("\"readingPositions\"", StringComparison.Ordinal)
+                && posDiskJson.Contains("\"pageIndex\": 2", StringComparison.Ordinal)
+                && posDiskJson.Contains("\"readingRatio\": 0.75", StringComparison.Ordinal),
+                CompactJson(posDiskJson));
+        }
+        finally
+        {
+            posVm1.NotifyClosed();
+        }
+
+        var posVm2 = new PdfReaderViewModel();
+        try
+        {
+            posVm2.LoadPdfAsync(positionPdfA).GetAwaiter().GetResult();
+            var restoredA = posVm2.ConsumeRestorePosition();
+            Check("位置记忆 VM：重新打开同一本 → 恢复上次位置（页 2 / 0.75 / 同一阅读方式）",
+                restoredA is not null && restoredA.PageIndex == 2
+                && Math.Abs(restoredA.ReadingRatio - 0.75) <= 1e-12
+                && restoredA.ModeEffective == posVm2.CurrentReadMode,
+                restoredA is null ? "没恢复" : $"{restoredA.PageIndex} / {restoredA.ReadingRatio:F2}");
+
+            var restoredAgain = posVm2.ConsumeRestorePosition();
+            Check("位置记忆 VM：恢复位置可重复取（不是取一次就清空，界面重建 / 换方式还要用）",
+                restoredAgain is not null && restoredAgain.PageIndex == 2);
+
+            posVm2.NoteReadingPosition(1, 0.25);
+            posVm2.FlushReadingPosition(saveNow: true);
+            Check("位置记忆 VM：切书前把 A 的新位置也记住（页 1 / 0.25）",
+                posVm2.Cfg.FindReadingPosition(positionPdfA) is { PageIndex: 1 } updatedA
+                && Math.Abs(updatedA.ReadingRatio - 0.25) <= 1e-12);
+
+            posVm2.LoadPdfAsync(positionPdfB).GetAwaiter().GetResult();
+            Check("位置记忆 VM：打开另一本后没有它的位置记录（Consume 返回 null）",
+                posVm2.FileName == Path.GetFileName(positionPdfB)
+                && posVm2.ConsumeRestorePosition() is null);
+        }
+        finally
+        {
+            posVm2.NotifyClosed();
+        }
+
+        var posVm3 = new PdfReaderViewModel();
+        try
+        {
+            posVm3.LoadPdfAsync(positionPdfA).GetAwaiter().GetResult();
+            var restoredAfterSwitch = posVm3.ConsumeRestorePosition();
+            Check("位置记忆 VM：切到别的书后再打开 A，仍恢复（而且是切走前的最新位置）",
+                restoredAfterSwitch is not null && restoredAfterSwitch.PageIndex == 1
+                && Math.Abs(restoredAfterSwitch.ReadingRatio - 0.25) <= 1e-12,
+                restoredAfterSwitch is null ? "没恢复" : $"{restoredAfterSwitch.PageIndex} / {restoredAfterSwitch.ReadingRatio:F2}");
+
+            var beforeFlushCount = posVm3.Cfg.ReadingPositions?.Count ?? 0;
+            posVm3.FlushReadingPosition(saveNow: true);
+            Check("位置记忆 VM：没有待写位置时 Flush 是空操作（不抛、不新增）",
+                (posVm3.Cfg.ReadingPositions?.Count ?? 0) == beforeFlushCount);
+        }
+        finally
+        {
+            posVm3.NotifyClosed();
+        }
+
+        // ---- 13h. 夹取与边界：坏页号 / 坏比例在落盘前就夹回合法范围 ----
+        var clampPdfPath = SelfCheckScratch.MakeFile("pdf-pos-clamp.pdf");
+        File.WriteAllBytes(clampPdfPath, PdfDemoPdf.Create(3));
+        var clampVm = new PdfReaderViewModel();
+        try
+        {
+            clampVm.LoadPdfAsync(clampPdfPath).GetAwaiter().GetResult();
+            clampVm.NoteReadingPosition(99, 1.7);
+            clampVm.FlushReadingPosition(saveNow: true);
+            var clampedHigh = clampVm.ConsumeRestorePosition();
+            Check("位置夹取：页号 99 / 比例 1.7 → 最后一页末尾（页 2 / 比例 1）",
+                clampedHigh is not null && clampedHigh.PageIndex == 2
+                && Math.Abs(clampedHigh.ReadingRatio - 1.0) <= 1e-12,
+                clampedHigh is null ? "null" : $"{clampedHigh.PageIndex} / {clampedHigh.ReadingRatio}");
+
+            clampVm.NoteReadingPosition(-5, double.NaN);
+            clampVm.FlushReadingPosition(saveNow: true);
+            var clampedLow = clampVm.ConsumeRestorePosition();
+            Check("位置夹取：负页号 / NaN 比例 → 开头（页 0 / 比例 0）",
+                clampedLow is not null && clampedLow.PageIndex == 0
+                && Math.Abs(clampedLow.ReadingRatio) <= 1e-12,
+                clampedLow is null ? "null" : $"{clampedLow.PageIndex} / {clampedLow.ReadingRatio}");
+        }
+        finally
+        {
+            clampVm.NotifyClosed();
+        }
+
+        // ---- 13i. 没有打开 PDF 时：记录 / 落盘 / 恢复 / 跳页解析都安全 ----
+        var idleVm = new PdfReaderViewModel();
+        try
+        {
+            var idlePositionCount = idleVm.Cfg.ReadingPositions.Count;
+            var idleError = Catch(() =>
+            {
+                idleVm.NoteReadingPosition(0, 0.5);
+                idleVm.FlushReadingPosition(saveNow: true);
+                idleVm.FlushReadingPosition();
+            });
+            Check("位置记忆：没有打开 PDF 时 Note / Flush 不抛异常、不新增记录、Consume 返回 null、跳页解析失败",
+                idleError is null
+                && idleVm.Cfg.ReadingPositions.Count == idlePositionCount
+                && idleVm.ConsumeRestorePosition() is null
+                && !idleVm.TryParsePageNumber("1", out var idlePage) && idlePage == -1,
+                idleError?.Message ?? "ok");
+        }
+        finally
+        {
+            idleVm.NotifyClosed();
+        }
+
+        // ================================================================
         // 局部小工具（只在这个文件里用）
         // ================================================================
 

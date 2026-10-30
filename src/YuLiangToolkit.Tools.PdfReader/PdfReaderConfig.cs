@@ -33,6 +33,9 @@ public sealed class PdfReaderConfig : ToolConfig
     /// <summary>长带两端 / 铺满方向上留的边距（像素）：固定 24。</summary>
     public const int SideMarginPixels = 24;
 
+    /// <summary>最多记住多少本 PDF 的阅读位置（超出按最后阅读时间淘汰最老的，避免配置文件无限长）。</summary>
+    public const int MaxReadingPositions = 200;
+
     // ---------- 持久化字段 ----------
 
     /// <summary>阅读方式：纵向 上→下（默认）/ 横向 左→右 / 双页 翻页。枚举按 C# 原名存字符串。</summary>
@@ -55,6 +58,63 @@ public sealed class PdfReaderConfig : ToolConfig
 
     /// <summary>上次打开 PDF 所在文件夹（只用来当文件对话框的起始目录，不会自动打开）。</summary>
     public string LastFolder { get; set; } = "";
+
+    /// <summary>
+    /// 每本 PDF 的上次阅读位置：key = <see cref="NormalizePositionKey"/> 规范化后的完整路径（小写），
+    /// value = 页号 / 阅读比例 / 当时的阅读方式 / 保存时间。打开同一本 PDF 时自动回到这里。
+    /// </summary>
+    public Dictionary<string, PdfReadingPosition> ReadingPositions { get; set; } = new();
+
+    // ---------- 阅读位置（记住上次读到哪） ----------
+
+    /// <summary>把路径规范成配置里的 key：完整路径 + 小写（Windows 路径不区分大小写）。非法路径返回空串。</summary>
+    public static string NormalizePositionKey(string? filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath)) return "";
+        try { return Path.GetFullPath(filePath.Trim().Trim('"')).ToLowerInvariant(); }
+        catch { return ""; }
+    }
+
+    /// <summary>查某本 PDF 记住的阅读位置；没有记录 / 路径非法返回 null。</summary>
+    public PdfReadingPosition? FindReadingPosition(string? filePath)
+    {
+        var key = NormalizePositionKey(filePath);
+        if (key.Length == 0 || ReadingPositions is null) return null;
+        return ReadingPositions.TryGetValue(key, out var position) ? position : null;
+    }
+
+    /// <summary>
+    /// 记住某本 PDF 的阅读位置（同一本覆盖旧值；超过 <see cref="MaxReadingPositions"/> 本时淘汰最老的）。
+    /// 改完主动通知属性变更 → 配置自动落盘（见 AGENTS.md：没有保存按钮）。
+    /// </summary>
+    public void RememberReadingPosition(string? filePath, PdfReadingPosition? position)
+    {
+        var key = NormalizePositionKey(filePath);
+        if (key.Length == 0 || position is null) return;
+
+        ReadingPositions ??= new Dictionary<string, PdfReadingPosition>();
+        ReadingPositions[key] = position;
+
+        if (ReadingPositions.Count > MaxReadingPositions)
+        {
+            var staleKeys = ReadingPositions
+                .OrderBy(pair => pair.Value?.SavedAtUtc ?? DateTime.MinValue)
+                .Take(ReadingPositions.Count - MaxReadingPositions)
+                .Select(pair => pair.Key)
+                .ToList();
+            foreach (var stale in staleKeys) ReadingPositions.Remove(stale);
+        }
+
+        OnPropertyChanged(nameof(ReadingPositions));   // 配置靠属性变更自动落盘
+    }
+
+    /// <summary>忘掉某本 PDF 的阅读位置（一般用不到，留着给以后清理入口）。</summary>
+    public void ForgetReadingPosition(string? filePath)
+    {
+        var key = NormalizePositionKey(filePath);
+        if (key.Length == 0 || ReadingPositions is null) return;
+        if (ReadingPositions.Remove(key)) OnPropertyChanged(nameof(ReadingPositions));
+    }
 
     // ---------- 计算属性（只读 → 不会被写进 JSON） ----------
 

@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Threading;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Tools.PdfReader.Rendering;
 using YuLiangToolkit.Tools.PdfReader.Text;
@@ -396,6 +397,112 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
     /// <summary>打开 Windows「默认应用」设置（UserChoice 只能由用户自己确认）。</summary>
     public RelayCommand OpenDefaultAppsCommand { get; }
 
+    // ---------------------------------------------------------------- 记住上次阅读位置
+
+    /// <summary>界面最近一次报告的阅读位置（还没落盘）；由 <see cref="NoteReadingPosition"/> 更新。</summary>
+    private PdfReadingPosition? _pendingReadingPosition;
+
+    /// <summary>上次把阅读位置写进配置的时间（限制写盘频率：滚动时每帧都报，不能每帧都改配置）。</summary>
+    private long _lastReadingPositionFlushMs;
+
+    /// <summary>滚动停下 1.2 秒后落一次盘（滚动过程中反复重启；只靠关工具落盘的话进程被结束 / 断电会丢）。</summary>
+    private DispatcherTimer? _readingPositionTimer;
+
+    /// <summary>滚动 / 翻页时界面报告「当前看到第几页 + 整体阅读比例」，关工具 / 换文件时强制落盘。</summary>
+    public void NoteReadingPosition(int pageIndex, double readingRatio)
+    {
+        var session = _session;
+        if (session is null || session.PageCount <= 0) return;
+
+        var page = Math.Clamp(pageIndex, 0, session.PageCount - 1);
+        var ratio = double.IsNaN(readingRatio) || double.IsInfinity(readingRatio)
+            ? 0
+            : Math.Clamp(readingRatio, 0, 1);
+
+        _pendingReadingPosition = new PdfReadingPosition
+        {
+            PageIndex = page,
+            ReadingRatio = ratio,
+            Mode = CurrentReadMode,
+            SavedAtUtc = DateTime.UtcNow,
+        };
+
+        // 先兜一个「滚动停下 1.2s 就落盘」的计时器；再按 2 秒节流直接落一次（连续滚很久也不至于太久没写盘）
+        ScheduleReadingPositionFlush();
+
+        var now = Environment.TickCount64;
+        if (now - _lastReadingPositionFlushMs >= 2000) FlushReadingPosition();
+    }
+
+    private void ScheduleReadingPositionFlush()
+    {
+        _readingPositionTimer ??= new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromSeconds(1.2),
+        };
+        if (_readingPositionTimer.Tag is null)
+        {
+            _readingPositionTimer.Tick += (_, _) =>
+            {
+                _readingPositionTimer?.Stop();
+                FlushReadingPosition();
+            };
+            _readingPositionTimer.Tag = true;
+        }
+
+        _readingPositionTimer.Stop();
+        _readingPositionTimer.Start();
+    }
+
+    /// <summary>把缓存的阅读位置写进配置；<paramref name="saveNow"/> = true 时立刻落盘（关工具 / 换文件时用，防止退出丢）。</summary>
+    public void FlushReadingPosition(bool saveNow = false)
+    {
+        var session = _session;
+        var position = _pendingReadingPosition;
+        if (session is null || position is null) return;
+
+        _pendingReadingPosition = null;
+        _lastReadingPositionFlushMs = Environment.TickCount64;
+        try
+        {
+            Cfg.RememberReadingPosition(session.FilePath, position);
+            if (saveNow) Cfg.SaveNow();
+        }
+        catch { /* 配置写入失败不影响阅读 */ }
+    }
+
+    /// <summary>
+    /// 打开 PDF 后由界面取一次「上次读到哪」：没有记录返回 null；
+    /// 存坏的页号 / 比例在这里夹回合法范围（手改配置文件也不会跳飞）。
+    /// </summary>
+    public PdfReadingPosition? ConsumeRestorePosition()
+    {
+        var session = _session;
+        if (session is null || session.PageCount <= 0) return null;
+
+        var stored = Cfg.FindReadingPosition(session.FilePath);
+        if (stored is null) return null;
+
+        stored.PageIndex = Math.Clamp(stored.PageIndex, 0, session.PageCount - 1);
+        stored.ReadingRatio = double.IsNaN(stored.ReadingRatio) || double.IsInfinity(stored.ReadingRatio)
+            ? 0
+            : Math.Clamp(stored.ReadingRatio, 0, 1);
+        return stored;
+    }
+
+    /// <summary>
+    /// 把「跳页」输入框里的页码（1 起）解析成 0 起页号：非数字 / 小于 1 / 超过总页数都算非法。
+    /// 抽在 VM 里是为了自检能直接断言（界面只负责把输入框文字递进来）。
+    /// </summary>
+    public bool TryParsePageNumber(string? text, out int pageIndex)
+    {
+        pageIndex = -1;
+        if (!int.TryParse(text?.Trim(), out var page)) return false;
+        if (page < 1 || page > PageCount) return false;
+        pageIndex = page - 1;
+        return true;
+    }
+
     // ---------------------------------------------------------------- 命令 / 加载
 
     /// <summary>打开 PDF（Ctrl+O 也走它）。</summary>
@@ -420,6 +527,9 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
         if (string.IsNullOrWhiteSpace(path)) return;
         if (IsBusy) return;
 
+        // 换书之前先把「上一本读到哪」落盘，否则切走瞬间的位置会丢
+        FlushReadingPosition(saveNow: true);
+
         IsBusy = true;
         StatusText = "正在打开 PDF…";
         try
@@ -428,6 +538,8 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
             var old = _session;
             _session = session;
             _filePath = session.FilePath;
+            _pendingReadingPosition = null;   // 新书的位置等界面报告，别把上一本的缓存写到新书上
+            _lastReadingPositionFlushMs = 0;
             var folder = Path.GetDirectoryName(session.FilePath);
             if (!string.IsNullOrWhiteSpace(folder)) Cfg.LastFolder = folder;
 
@@ -621,6 +733,11 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
     {
         // 切走工具时一定退出全屏，否则外壳会一直停在被藏起来的状态
         ExitFullscreen();
+
+        // 关工具 / 切走前把最后阅读位置立刻落盘（外壳会在界面卸载前调 NotifyClosed）
+        FlushReadingPosition(saveNow: true);
+        _readingPositionTimer?.Stop();
+        _readingPositionTimer = null;
 
         CancelTextLayer();
 

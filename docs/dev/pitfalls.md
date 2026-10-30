@@ -97,6 +97,11 @@
 - 调试 / 截图：`YLT_PICTURE_FULLSCREEN=1` / `YLT_PDF_FULLSCREEN=1` 全屏启动；`YLT_PICTURE_CONTROLS=0` /
   `YLT_PDF_CONTROLS=0` 强制收起工具条拍“沉浸”帧 —— 截图时鼠标可能正好在窗口里触发 `PreviewMouseMove` 又把工具条叫出来，
   所以视图里有个 `_forceHideControlsForScreenshot` 标志，置位后忽略鼠标活动。
+- 记住上次阅读位置（`config.json` 的 `readingPositions`）：界面每帧都可调 `NoteReadingPosition`，VM 里 1.2s `DispatcherTimer`
+  + 2 秒节流落盘；但**退出程序时 `View.Unloaded` 不一定触发**（实测截图 / 关窗路径没跑到），所以另外在 `Window.Closing`
+  里 `FlushReadingPosition(saveNow: true)` 兜底 —— 只靠配置自动落盘会丢最后一秒的位置。恢复优先级：`YLT_PDF_PAGE` > 上次位置 > 第一页；
+  **模式没变才按 `ReadingRatio` 恢复**，换了阅读方式按页号恢复。
+- 调试 / 截图新增：`YLT_PDF_JUMP=4` 打开后直接走一次「跳页输入框」跳到第 4 页；`YLT_PDF_PAGE=4` 会覆盖恢复位置。
 
 ### KPS 按键统计
 - 监听 / 统计 / Overlay 在 `KpsSession`（进程单例）里，工具页只是设置面板：切走页面时 Overlay 还开着就继续跑；

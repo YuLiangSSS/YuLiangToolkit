@@ -202,6 +202,8 @@
 
                         <CheckBox x:Name="InertiaCheckBox" Content="惯性" Margin="12,0,0,0"
                                   VerticalAlignment="Center"
+                                  Style="{StaticResource CheckBoxStyle}"
+                                  Foreground="{DynamicResource TextPrimaryBrush}"
                                   IsChecked="{Binding Cfg.InertiaEnabled}"
                                   ToolTip="按住左键拖动松手后，按甩动速度继续滑一段（连续滚动 / 双页平移都生效）" />
 
@@ -252,10 +254,34 @@
                         </StackPanel>
                     </StackPanel>
 
-                    <TextBlock x:Name="TextLayerHintText" Grid.Column="1" HorizontalAlignment="Right"
-                               VerticalAlignment="Center" FontSize="10.5"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               TextTrimming="CharacterEllipsis" MaxWidth="420" Margin="12,0,0,0" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right"
+                                VerticalAlignment="Center" Margin="12,0,0,0">
+                        <!-- 跳页：输入页码（1 起）回车 / 点按钮跳到对应页 -->
+                        <TextBlock Text="跳页" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <Grid Width="56" VerticalAlignment="Center">
+                            <TextBox x:Name="PageJumpBox" Height="28" Padding="8,0"
+                                     VerticalContentAlignment="Center" TextAlignment="Center"
+                                     Style="{StaticResource TextBoxStyle}"
+                                     PreviewKeyDown="OnPageJumpBoxPreviewKeyDown"
+                                     ToolTip="输入页码后回车跳到该页（1 ~ 总页数）" />
+                            <TextBlock Text="页码" Margin="8,0" VerticalAlignment="Center"
+                                       IsHitTestVisible="False" FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Visibility="{Binding Text, ElementName=PageJumpBox, Converter={StaticResource EmptyToVis}}" />
+                        </Grid>
+                        <Button x:Name="PageJumpButton" Width="30" Height="28" Padding="0" Margin="5,0,0,0"
+                                Style="{StaticResource SecondaryButtonStyle}" Click="OnPageJumpClick"
+                                ToolTip="跳到输入的页码">
+                            <Path Data="M 3,9 L 13,9 M 9,4 L 13,9 L 9,14" Stroke="{DynamicResource TextPrimaryBrush}"
+                                  StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Stretch="Uniform" Width="11" Height="11" />
+                        </Button>
+
+                        <TextBlock x:Name="TextLayerHintText" VerticalAlignment="Center" FontSize="10.5"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   TextTrimming="CharacterEllipsis" MaxWidth="300" Margin="12,0,0,0" />
+                    </StackPanel>
                 </Grid>
             </StackPanel>
         </Border>
@@ -405,6 +431,8 @@
 
                             <TextBlock Text="文件关联" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,6" />
                             <CheckBox Content="双击 .pdf 文件用本工具打开" FontSize="11.5"
+                                      Style="{StaticResource CheckBoxStyle}"
+                                      Foreground="{DynamicResource TextPrimaryBrush}"
                                       IsChecked="{Binding IsFileAssociationEnabled}" />
                             <TextBlock Text="{Binding FileAssociationStatus}" FontSize="10.5" TextWrapping="Wrap"
                                        Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0" />

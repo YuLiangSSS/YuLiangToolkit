@@ -143,6 +143,9 @@ public partial class PdfReaderView : UserControl
 
     private Window? _hostWindow;
 
+    /// <summary>窗口关闭时可能已经拿不到 DataContext，留一份 VM 引用专门用来落盘阅读位置。</summary>
+    private PdfReaderViewModel? _vmForClose;
+
     /// <summary>宿主窗口（外壳）的全屏开关；视图卸载时就置空（别再往上找 Window，那时已经摘下来了）。</summary>
     private IFullscreenHost? _fullscreenHost;
 
@@ -242,7 +245,12 @@ public partial class PdfReaderView : UserControl
         {
             _hostWindow.PreviewKeyDown -= OnHostPreviewKeyDown;
             _hostWindow.PreviewKeyDown += OnHostPreviewKeyDown;
+
+            // 关窗口 / 退出程序时把最后阅读位置立刻写盘（这条路径不一定会走到 View.Unloaded）
+            _hostWindow.Closing -= OnHostWindowClosing;
+            _hostWindow.Closing += OnHostWindowClosing;
         }
+        _vmForClose = vm;
 
         vm.PdfPicker = PickPdf;
         vm.DocumentChanged -= OnDocumentChanged;
@@ -440,6 +448,14 @@ public partial class PdfReaderView : UserControl
             SearchBox.Text = search.Trim();
             RunSearch(SearchBox.Text, autoJump: true);
         }
+
+        // 截图 / 调试：YLT_PDF_JUMP=4 打开后直接走一次「跳页输入框」跳到第 4 页
+        var jump = Environment.GetEnvironmentVariable("YLT_PDF_JUMP");
+        if (!string.IsNullOrWhiteSpace(jump))
+        {
+            PageJumpBox.Text = jump.Trim();
+            TryJumpToPageInput();
+        }
     }
 
     private async Task RunProgrammaticallyAsync(Func<Task> load)
@@ -462,14 +478,17 @@ public partial class PdfReaderView : UserControl
         if (_hostWindow is not null)
         {
             _hostWindow.PreviewKeyDown -= OnHostPreviewKeyDown;
+            _hostWindow.Closing -= OnHostWindowClosing;
             _hostWindow = null;
         }
+        _vmForClose = null;
 
         if (Vm is { } vm)
         {
             // ⚠ 顺序不能反：先 ExitFullscreen（此时还订阅着，事件能传出去让外壳还原窗口），再摘事件。
             // 反过来的话外壳会一直停在“藏了壳”的全屏状态，切到别的页面就没有标题栏了。
             vm.ExitFullscreen();
+            vm.FlushReadingPosition(saveNow: true);   // 关窗口 / 切走的最后兜底：记住读到哪
             vm.FullscreenChanged -= OnFullscreenChanged;
 
             vm.DocumentChanged -= OnDocumentChanged;
@@ -511,6 +530,10 @@ public partial class PdfReaderView : UserControl
         PageIndicatorPanel.Visibility = Visibility.Collapsed;
         HintPanel.Visibility = Visibility.Collapsed;
     }
+
+    /// <summary>主窗口关闭 / 退出程序时把最后阅读位置立刻写盘（这条路径不一定会走到 View.Unloaded）。</summary>
+    private void OnHostWindowClosing(object? sender, System.ComponentModel.CancelEventArgs e)
+        => (Vm ?? _vmForClose)?.FlushReadingPosition(saveNow: true);
 
     private string? PickPdf()
     {
@@ -614,10 +637,19 @@ public partial class PdfReaderView : UserControl
                 return;
             }
 
-            // 换模式时停在当前页；打开新 PDF 时吃一次「截图定位页」环境变量
-            var targetPage = keepPage
-                ? CurrentPageIndex()
-                : vm.ConsumePendingPageIndex() ?? 0;
+            // 换模式时停在当前页；打开新 PDF 时：截图定位页（环境变量）> 上次阅读位置 > 第一页
+            PdfReadingPosition? restore = null;
+            int targetPage;
+            if (keepPage)
+            {
+                targetPage = CurrentPageIndex();
+            }
+            else
+            {
+                var pendingPage = vm.ConsumePendingPageIndex();
+                if (pendingPage is null) restore = vm.ConsumeRestorePosition();
+                targetPage = pendingPage ?? restore?.PageIndex ?? 0;
+            }
 
             if (PdfReadModes.IsSpread(vm.CurrentReadMode))
             {
@@ -636,7 +668,10 @@ public partial class PdfReaderView : UserControl
                 _spreadActive = false;
                 SpreadHost.Visibility = Visibility.Collapsed;
                 ContinuousScroll.Visibility = Visibility.Visible;
-                await BuildContinuousAsync(targetPage);
+                var restoreRatio = restore is { } stored && stored.ModeEffective == vm.CurrentReadMode
+                    ? stored.ReadingRatio
+                    : (double?)null;
+                await BuildContinuousAsync(targetPage, restoreReadingRatio: restoreRatio);
             }
 
             _builtSession = session;
@@ -672,7 +707,10 @@ public partial class PdfReaderView : UserControl
 
     // ---------------------------------------------------------------- 连续滚动：排版 / 渲染
 
-    private async Task BuildContinuousAsync(int targetPage, (double Main, double Cross)? center = null)
+    private async Task BuildContinuousAsync(
+        int targetPage,
+        (double Main, double Cross)? center = null,
+        double? restoreReadingRatio = null)
     {
         var vm = Vm;
         if (vm?.Session is not { } session)
@@ -711,6 +749,12 @@ public partial class PdfReaderView : UserControl
         if (center is { } viewCenter)
         {
             ApplyViewportCenter(viewCenter.Main, viewCenter.Cross);
+        }
+        else if (restoreReadingRatio is { } storedRatio)
+        {
+            // 上次也是连续滚动：按整体阅读比例恢复（比只回到页开头更接近离开时的位置）
+            SetReadingOffset(PdfContinuousLayout.OffsetForRatio(storedRatio, MaximumOffset));
+            SetCrossOffset(0);
         }
         else
         {
@@ -1986,6 +2030,7 @@ public partial class PdfReaderView : UserControl
             ? Visibility.Visible
             : Visibility.Collapsed;
         InertiaCheckBox.IsEnabled = hasDocument;
+        UpdatePageJumpChrome();
 
         UpdateHint();
     }
@@ -2087,6 +2132,10 @@ public partial class PdfReaderView : UserControl
                 ({ } l, null) => $"第 {l + 1} 页 / 共 {count} 页",
                 _ => $"共 {count} 页",
             };
+
+            var currentStart = PdfSpreadLayout.NormalizeStart(_spreadStart, count);
+            UpdatePageJumpTooltip(currentStart);
+            Vm?.NoteReadingPosition(currentStart, PdfSpreadLayout.ProgressRatio(currentStart, count));
             return;
         }
 
@@ -2098,6 +2147,66 @@ public partial class PdfReaderView : UserControl
 
         var page = PdfContinuousLayout.PageIndexAtOffset(_layout, _builtMode, GetReadingOffset());
         PageIndicatorText.Text = $"第 {page + 1} / {count} 页";
+        UpdatePageJumpTooltip(page);
+        Vm?.NoteReadingPosition(page, PdfContinuousLayout.RatioOf(GetReadingOffset(), MaximumOffset));
+    }
+
+    /// <summary>跳页输入框的可用状态（没打开 PDF 时禁用并清空）。</summary>
+    private void UpdatePageJumpChrome()
+    {
+        if (PageJumpBox is null) return;
+
+        var hasDocument = Vm?.HasDocument == true;
+        PageJumpBox.IsEnabled = hasDocument;
+        PageJumpButton.IsEnabled = hasDocument;
+        if (!hasDocument) PageJumpBox.Clear();
+    }
+
+    /// <summary>跳页输入框的悬停提示带上总页数 / 当前页（不用额外占界面位置）。</summary>
+    private void UpdatePageJumpTooltip(int currentPageIndex)
+    {
+        if (PageJumpBox is null) return;
+
+        var count = Vm?.PageCount ?? 0;
+        PageJumpBox.ToolTip = count > 0
+            ? $"输入页码后回车跳到该页（1 ~ {count}）；当前第 {Math.Clamp(currentPageIndex + 1, 1, count)} 页"
+            : "输入页码后回车跳到该页";
+    }
+
+    private void OnPageJumpBoxPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            TryJumpToPageInput();
+        }
+        else if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            PageJumpBox.Clear();
+            Keyboard.ClearFocus();
+        }
+    }
+
+    private void OnPageJumpClick(object sender, RoutedEventArgs e) => TryJumpToPageInput();
+
+    /// <summary>读「跳页」输入框 → 校验页码 → 跳到对应页；非法页码弹提示并把输入框全选。</summary>
+    private void TryJumpToPageInput()
+    {
+        var vm = Vm;
+        if (vm?.HasDocument != true) return;
+
+        if (!vm.TryParsePageNumber(PageJumpBox.Text, out var pageIndex))
+        {
+            ShowErrorToast($"页码要填 1 ~ {vm.PageCount} 之间的整数");
+            PageJumpBox.SelectAll();
+            PageJumpBox.Focus();
+            return;
+        }
+
+        JumpToPage(pageIndex);
+        PageJumpBox.Clear();
+        Keyboard.ClearFocus();
     }
 
     private void UpdateProgress()
