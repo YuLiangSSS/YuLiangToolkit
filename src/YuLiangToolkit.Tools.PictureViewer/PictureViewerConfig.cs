@@ -79,6 +79,97 @@ public sealed class PictureViewerConfig : ToolConfig
     /// <summary>上次打开的文件夹（只用来当文件对话框的起始目录，不会自动打开）。</summary>
     public string LastFolder { get; set; } = "";
 
+    /// <summary>「最近浏览」默认记多少条。</summary>
+    public const int DefaultRecentLimit = 50;
+
+    /// <summary>「最近浏览」上限的最大值；范围 0 ~ 100。</summary>
+    public const int MaxRecentLimit = 100;
+
+    /// <summary>「最近浏览」最多记多少条：0 = 不记录（并清空列表），默认 50，允许 0 ~ 100。</summary>
+    public int RecentLimit { get; set; } = DefaultRecentLimit;
+
+    /// <summary>最近打开过的图片文件夹（新 → 旧；同一路径只留一条，最多 <see cref="RecentLimitEffective"/> 条）。</summary>
+    public List<PictureRecentEntry> RecentEntries { get; set; } = new();
+
+    // ---------- 最近浏览 ----------
+
+    /// <summary>生效的上限（夹到 0 ~ 100，手改坏配置也不会存出离谱的条数）。</summary>
+    [JsonIgnore]
+    public int RecentLimitEffective => Math.Clamp(RecentLimit, 0, MaxRecentLimit);
+
+    /// <summary>现在要不要记录最近浏览（上限 0 = 不记录）。</summary>
+    [JsonIgnore]
+    public bool RecordsRecent => RecentLimitEffective > 0;
+
+    /// <summary>把路径规范成完整路径（用于去重）；非法路径返回空串。</summary>
+    public static string NormalizeRecentPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return "";
+        try
+        {
+            var full = Path.GetFullPath(path.Trim().Trim('"'));
+            return full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+        catch { return ""; }
+    }
+
+    /// <summary>
+    /// 记一次「打开过的文件夹」：放到最前面、同一路径去重、超过上限就砍掉最旧的。
+    /// 上限是 0 时按「不记录」处理（顺手把已有列表清空，界面上的「最近」会变空）。
+    /// </summary>
+    public void RememberRecent(string? path, DateTime? lastOpenedUtc = null)
+    {
+        var full = NormalizeRecentPath(path);
+        if (full.Length == 0) return;
+
+        RecentEntries ??= new List<PictureRecentEntry>();
+        if (!RecordsRecent)
+        {
+            ClearRecent();
+            return;
+        }
+
+        RecentEntries.RemoveAll(entry => string.Equals(NormalizeRecentPath(entry.Path), full, StringComparison.OrdinalIgnoreCase));
+        RecentEntries.Insert(0, new PictureRecentEntry { Path = full, LastOpenedUtc = lastOpenedUtc ?? DateTime.UtcNow });
+        TrimRecentToLimit();
+        OnPropertyChanged(nameof(RecentEntries));
+    }
+
+    /// <summary>按当前上限裁剪列表；上限 0 = 清空。</summary>
+    public void TrimRecentToLimit()
+    {
+        RecentEntries ??= new List<PictureRecentEntry>();
+
+        var limit = RecentLimitEffective;
+        if (limit == 0)
+        {
+            if (RecentEntries.Count > 0) RecentEntries.Clear();
+            return;
+        }
+
+        if (RecentEntries.Count > limit) RecentEntries.RemoveRange(limit, RecentEntries.Count - limit);
+    }
+
+    /// <summary>从最近浏览里去掉某个文件夹（文件夹已被删除时用）。</summary>
+    public void RemoveRecent(string? path)
+    {
+        var full = NormalizeRecentPath(path);
+        if (full.Length == 0 || RecentEntries is null) return;
+
+        var removed = RecentEntries.RemoveAll(entry => string.Equals(NormalizeRecentPath(entry.Path), full, StringComparison.OrdinalIgnoreCase));
+        if (removed > 0) OnPropertyChanged(nameof(RecentEntries));
+    }
+
+    /// <summary>清空最近浏览（工具条「最近」面板里的「清空」按钮）。</summary>
+    public void ClearRecent()
+    {
+        RecentEntries ??= new List<PictureRecentEntry>();
+        if (RecentEntries.Count == 0) return;
+        RecentEntries.Clear();
+        OnPropertyChanged(nameof(RecentEntries));
+    }
+
+
     /// <summary>
     /// 「恢复默认设置」：把所有阅读 / 显示相关的项改回默认（默认阅读方式 = 纵向 上→下）。
     /// 不动文件关联（那是系统级开关，去设置里单独勾），也不动当前已经打开的文件夹（界面上的页清单）。
@@ -106,6 +197,8 @@ public sealed class PictureViewerConfig : ToolConfig
         SingleInstanceEnabled = true;
 
         LastFolder = "";
+        RecentLimit = DefaultRecentLimit;
+        TrimRecentToLimit();   // 只按新上限裁剪，不主动清掉用户的最近浏览记录
     }
 
     // ---------- 计算属性（只读 → 不会被写进 JSON） ----------

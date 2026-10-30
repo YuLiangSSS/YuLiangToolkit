@@ -65,6 +65,92 @@ public sealed class PdfReaderConfig : ToolConfig
     /// </summary>
     public Dictionary<string, PdfReadingPosition> ReadingPositions { get; set; } = new();
 
+    /// <summary>「最近浏览」默认记多少条。</summary>
+    public const int DefaultRecentLimit = 50;
+
+    /// <summary>「最近浏览」上限的最大值；范围 0 ~ 100。</summary>
+    public const int MaxRecentLimit = 100;
+
+    /// <summary>「最近浏览」最多记多少条：0 = 不记录（并清空列表），默认 50，允许 0 ~ 100。</summary>
+    public int RecentLimit { get; set; } = DefaultRecentLimit;
+
+    /// <summary>最近打开过的 PDF（新 → 旧；同一路径只留一条，最多 <see cref="RecentLimitEffective"/> 条）。</summary>
+    public List<PdfRecentEntry> RecentEntries { get; set; } = new();
+
+    // ---------- 最近浏览 ----------
+
+    /// <summary>生效的上限（夹到 0 ~ 100，手改坏配置也不会存出离谱的条数）。</summary>
+    [JsonIgnore]
+    public int RecentLimitEffective => Math.Clamp(RecentLimit, 0, MaxRecentLimit);
+
+    /// <summary>现在要不要记录最近浏览（上限 0 = 不记录）。</summary>
+    [JsonIgnore]
+    public bool RecordsRecent => RecentLimitEffective > 0;
+
+    /// <summary>把路径规范成完整路径（用于去重）；非法路径返回空串。</summary>
+    public static string NormalizeRecentPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return "";
+        try { return Path.GetFullPath(path.Trim().Trim('"')); }
+        catch { return ""; }
+    }
+
+    /// <summary>
+    /// 记一次「打开过的 PDF」：放到最前面、同一路径去重、超过上限就砍掉最旧的。
+    /// 上限是 0 时按「不记录」处理（顺手清空已有列表）。
+    /// </summary>
+    public void RememberRecent(string? path, DateTime? lastOpenedUtc = null)
+    {
+        var full = NormalizeRecentPath(path);
+        if (full.Length == 0) return;
+
+        RecentEntries ??= new List<PdfRecentEntry>();
+        if (!RecordsRecent)
+        {
+            ClearRecent();
+            return;
+        }
+
+        RecentEntries.RemoveAll(entry => string.Equals(NormalizeRecentPath(entry.Path), full, StringComparison.OrdinalIgnoreCase));
+        RecentEntries.Insert(0, new PdfRecentEntry { Path = full, LastOpenedUtc = lastOpenedUtc ?? DateTime.UtcNow });
+        TrimRecentToLimit();
+        OnPropertyChanged(nameof(RecentEntries));
+    }
+
+    /// <summary>按当前上限裁剪列表；上限 0 = 清空。</summary>
+    public void TrimRecentToLimit()
+    {
+        RecentEntries ??= new List<PdfRecentEntry>();
+
+        var limit = RecentLimitEffective;
+        if (limit == 0)
+        {
+            if (RecentEntries.Count > 0) RecentEntries.Clear();
+            return;
+        }
+
+        if (RecentEntries.Count > limit) RecentEntries.RemoveRange(limit, RecentEntries.Count - limit);
+    }
+
+    /// <summary>从最近浏览里去掉某个 PDF（文件已不存在时用）。</summary>
+    public void RemoveRecent(string? path)
+    {
+        var full = NormalizeRecentPath(path);
+        if (full.Length == 0 || RecentEntries is null) return;
+
+        var removed = RecentEntries.RemoveAll(entry => string.Equals(NormalizeRecentPath(entry.Path), full, StringComparison.OrdinalIgnoreCase));
+        if (removed > 0) OnPropertyChanged(nameof(RecentEntries));
+    }
+
+    /// <summary>清空最近浏览（工具条「最近」面板里的「清空」按钮）。</summary>
+    public void ClearRecent()
+    {
+        RecentEntries ??= new List<PdfRecentEntry>();
+        if (RecentEntries.Count == 0) return;
+        RecentEntries.Clear();
+        OnPropertyChanged(nameof(RecentEntries));
+    }
+
     // ---------- 阅读位置（记住上次读到哪） ----------
 
     /// <summary>把路径规范成配置里的 key：完整路径 + 小写（Windows 路径不区分大小写）。非法路径返回空串。</summary>
@@ -149,6 +235,8 @@ public sealed class PdfReaderConfig : ToolConfig
         WheelStepPixels = DefaultWheelStepPixels;
         ZoomPercent = DefaultZoomPercent;
         SpreadGapPixels = DefaultSpreadGapPixels;
+        RecentLimit = DefaultRecentLimit;
+        TrimRecentToLimit();   // 只按新上限裁剪，不主动清掉用户的最近浏览记录
     }
 
     /// <summary>把当前缩放百分比按步数增减并夹好（放大镜按钮 / Ctrl+滚轮用）。</summary>

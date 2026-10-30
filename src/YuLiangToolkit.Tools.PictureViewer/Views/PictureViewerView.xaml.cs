@@ -1393,6 +1393,12 @@ public partial class PictureViewerView : UserControl
                 e.Handled = true;
                 return;
             }
+            if (vm.IsRecentVisible)
+            {
+                vm.IsRecentVisible = false;
+                e.Handled = true;
+                return;
+            }
             if (vm.IsFullscreen)
             {
                 e.Handled = true;
@@ -1558,6 +1564,7 @@ public partial class PictureViewerView : UserControl
         }
 
         if (PictureViewerViewModel.IsEnvironmentOn("YLT_PICTURE_SETTINGS")) vm.IsSettingsVisible = true;
+        if (PictureViewerViewModel.IsEnvironmentOn("YLT_PICTURE_RECENT")) vm.IsRecentVisible = true;
 
         var measurePath = Environment.GetEnvironmentVariable("YLT_PICTURE_MEASURE");
         if (!string.IsNullOrWhiteSpace(measurePath) && !_measureScheduled)

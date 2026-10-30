@@ -171,9 +171,12 @@
                         <Button Content="📑 目录" Style="{StaticResource SecondaryButtonStyle}" Height="28"
                                 Padding="10,0" Command="{Binding ToggleOutlineCommand}"
                                 ToolTip="书签目录 / 大纲：点条目跳到对应页" />
+                        <Button Content="🕘 最近" Style="{StaticResource SecondaryButtonStyle}" Height="28"
+                                Padding="10,0" Margin="6,0,0,0" Command="{Binding ToggleRecentCommand}"
+                                ToolTip="最近打开过的 PDF（点一下重新打开，自动回到上次阅读位置；上限在 ⚙ 设置 里调）" />
                         <Button Content="⚙ 设置" Style="{StaticResource SecondaryButtonStyle}" Height="28"
                                 Padding="10,0" Margin="6,0,0,0" Command="{Binding ToggleSettingsCommand}"
-                                ToolTip="双页页面间距 / 文件关联 / 恢复默认设置" />
+                                ToolTip="双页页面间距 / 最近浏览上限 / 文件关联 / 恢复默认设置" />
                         <Button x:Name="FullscreenButton" Width="34" Height="28" Padding="0" Margin="6,0,0,0"
                                 Style="{StaticResource SecondaryButtonStyle}"
                                 Command="{Binding ToggleFullscreenCommand}"
@@ -390,6 +393,59 @@
                 </DockPanel>
             </Border>
 
+            <!-- 最近浏览（工具条 🕘 最近 打开；点一条重新打开，自动回到上次阅读位置） -->
+            <Border x:Name="RecentPanel" Width="380" HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Margin="0,12,12,0" Padding="14,12" MaxHeight="{Binding ActualHeight, ElementName=ViewportGrid}"
+                    Style="{StaticResource CardStyle}" Panel.ZIndex="90"
+                    Visibility="{Binding IsRecentVisible, Converter={StaticResource BoolToVis}}">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+                        <TextBlock Text="🕘 最近浏览" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="清空" Style="{StaticResource SecondaryButtonStyle}" Height="24"
+                                    Padding="8,0" FontSize="10.5" Command="{Binding ClearRecentCommand}"
+                                    ToolTip="清空最近浏览记录（不会删本地文件）" />
+                            <Button Style="{StaticResource SmallIconButtonStyle}" Margin="6,0,0,0"
+                                    Command="{Binding ToggleRecentCommand}" ToolTip="关闭最近浏览（Esc）">
+                                <Path Data="M 2,2 L 12,12 M 12,2 L 2,12" Stroke="{DynamicResource TextPrimaryBrush}"
+                                      StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Stretch="Uniform" Width="9" Height="9" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock DockPanel.Dock="Bottom" FontSize="10.5" TextWrapping="Wrap" Margin="0,8,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Text="最多记多少条在 ⚙ 设置 → 最近浏览（0 ~ 100，0 = 不记录）。" />
+
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel>
+                            <TextBlock Text="{Binding RecentEmptyText}" FontSize="11.5" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="2,6,2,6"
+                                       Visibility="{Binding HasRecentItems, Converter={StaticResource InverseBoolToVis}}" />
+                            <ItemsControl ItemsSource="{Binding RecentItems}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource SecondaryButtonStyle}"
+                                                HorizontalContentAlignment="Left" Padding="10,7" Margin="0,0,0,4"
+                                                Command="{Binding DataContext.OpenRecentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding Path}" ToolTip="{Binding Path}">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Name}" FontSize="12"
+                                                           TextTrimming="CharacterEllipsis" MaxWidth="320" />
+                                                <TextBlock Text="{Binding Detail}" FontSize="10.5"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                                           TextTrimming="CharacterEllipsis" MaxWidth="320" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
             <!-- ================= 设置面板（右侧浮层） ================= -->
             <Border x:Name="SettingsPanel" Width="350" HorizontalAlignment="Right"
                     VerticalAlignment="Top" Margin="0,12,12,0" Padding="16,14"
@@ -423,6 +479,25 @@
                                         Value="{Binding SpreadGapPixels, Mode=TwoWay}"
                                         ToolTip="0 ~ 64 像素" />
                                 <TextBlock Grid.Column="1" Text="{Binding SpreadGapText}" FontSize="11"
+                                           VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="46"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Grid>
+
+                            <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,14,0,10" />
+
+                            <TextBlock Text="最近浏览" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,2" />
+                            <TextBlock Text="{Binding RecentSectionHint}" FontSize="10.5"
+                                       TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Slider Grid.Column="0" Minimum="0" Maximum="100" TickFrequency="1"
+                                        IsSnapToTickEnabled="True" Style="{StaticResource SliderStyle}"
+                                        Value="{Binding RecentLimit, Mode=TwoWay}"
+                                        ToolTip="最多记多少本最近浏览（0 = 不记录并清空列表）" />
+                                <TextBlock Grid.Column="1" Text="{Binding RecentLimitText}" FontSize="11"
                                            VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="46"
                                            Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Grid>

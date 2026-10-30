@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
@@ -31,8 +32,15 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
 
         OpenFolderCommand = new AsyncRelayCommand(_ => OpenFolderAsync());
         OpenFolderInExplorerCommand = new RelayCommand(_ => OpenFolderInExplorer());
-        ToggleSettingsCommand = new RelayCommand(_ => IsSettingsVisible = !IsSettingsVisible);
+        ToggleSettingsCommand = new RelayCommand(_ =>
+        {
+            IsRecentVisible = false;
+            IsSettingsVisible = !IsSettingsVisible;
+        });
         CloseSettingsCommand = new RelayCommand(_ => IsSettingsVisible = false);
+        ToggleRecentCommand = new RelayCommand(_ => ToggleRecent());
+        ClearRecentCommand = new RelayCommand(_ => ClearRecent());
+        OpenRecentCommand = new RelayCommand(p => _ = OpenRecentAsync(p as string));
         ZoomInCommand = new RelayCommand(_ => StepZoom(1));
         ZoomOutCommand = new RelayCommand(_ => StepZoom(-1));
 
@@ -40,6 +48,10 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
         ApplyZoomOverrideFromEnvironment();
         ApplyBorderOverrideFromEnvironment();
         ApplyFullscreenOverrideFromEnvironment();
+
+        // 最近浏览：按当前上限裁剪一次（手改坏配置时不会带出一长串），再把显示列表填好
+        Cfg.TrimRecentToLimit();
+        RefreshRecentItems();
 
         // 边框颜色编辑器：三个颜色各一个（R/G/B/A 数字 + 调色板 + 预览都绑它）
         BorderInnerColorEditor = new RgbaColorEditor(Cfg.BorderInnerColor);
@@ -212,6 +224,117 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
         set => Set(ref _isSettingsVisible, value);
     }
 
+    // ---------------------------------------------------------------- 最近浏览
+
+    private bool _isRecentVisible;
+
+    /// <summary>「最近浏览」面板是否展开。</summary>
+    public bool IsRecentVisible
+    {
+        get => _isRecentVisible;
+        set => Set(ref _isRecentVisible, value);
+    }
+
+    /// <summary>最近浏览面板里的行（新 → 旧；显示名 + 路径）。</summary>
+    public ObservableCollection<PictureRecentDisplayItem> RecentItems { get; } = new();
+
+    /// <summary>有没有最近浏览记录（空状态文字用）。</summary>
+    public bool HasRecentItems => RecentItems.Count > 0;
+
+    /// <summary>最近浏览面板的空状态文字（上限 0 时说明为什么不记录）。</summary>
+    public string RecentEmptyText => Cfg.RecentLimitEffective == 0
+        ? "最近浏览上限是 0（不记录）。到 ⚙ 设置 → 最近浏览 里调大即可。"
+        : "还没有最近浏览记录。打开一个文件夹后会自动记在这里。";
+
+    /// <summary>设置面板里「最近浏览」的说明文字。</summary>
+    public string RecentSectionHint =>
+        "工具条「🕘 最近」最多记多少个打开过的文件夹：0 ~ 100，0 = 不记录并清空列表；默认 50。";
+
+    /// <summary>上限的数字显示（设置面板 / 滑块右边）。</summary>
+    public string RecentLimitText => Cfg.RecentLimitEffective == 0 ? "不记录" : $"{Cfg.RecentLimitEffective} 条";
+
+    /// <summary>
+    /// 「最近浏览」上限（0 ~ 100，默认 50）。改小会立刻把多余的老记录裁掉；改成 0 = 不记录并清空列表。
+    /// </summary>
+    public int RecentLimit
+    {
+        get => Cfg.RecentLimitEffective;
+        set
+        {
+            var clamped = Math.Clamp(value, 0, PictureViewerConfig.MaxRecentLimit);
+            Cfg.RecentLimit = clamped;
+            Cfg.TrimRecentToLimit();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(RecentLimitText));
+            RefreshRecentItems();
+        }
+    }
+
+    public RelayCommand ToggleRecentCommand { get; }
+    public RelayCommand ClearRecentCommand { get; }
+    public RelayCommand OpenRecentCommand { get; }
+
+    /// <summary>展开 / 收起「最近浏览」面板；展开前重新读一次配置（可能在别处被改过）。</summary>
+    public void ToggleRecent()
+    {
+        if (!IsRecentVisible)
+        {
+            Cfg.TrimRecentToLimit();
+            RefreshRecentItems();
+            IsSettingsVisible = false;   // 两个右侧浮层别叠在一起
+        }
+        IsRecentVisible = !IsRecentVisible;
+    }
+
+    /// <summary>清空最近浏览记录（不会删本地文件夹）。</summary>
+    public void ClearRecent()
+    {
+        Cfg.ClearRecent();
+        RefreshRecentItems();
+        StatusText = "已清空最近浏览";
+    }
+
+    /// <summary>点最近浏览里的一条：文件夹还在就打开它；已经不在了就移除并提示。</summary>
+    public async Task OpenRecentAsync(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+
+        if (!Directory.Exists(path))
+        {
+            Cfg.RemoveRecent(path);
+            RefreshRecentItems();
+            StatusText = $"最近打开过的文件夹已经不在了：{path}";
+            return;
+        }
+
+        await LoadFolderAsync(path);
+    }
+
+    /// <summary>按配置里的记录重建显示列表（新 → 旧）。</summary>
+    public void RefreshRecentItems()
+    {
+        RecentItems.Clear();
+
+        foreach (var entry in Cfg.RecentEntries ?? new List<PictureRecentEntry>())
+        {
+            if (entry is null || string.IsNullOrWhiteSpace(entry.Path)) continue;
+
+            var path = entry.Path;
+            var name = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (string.IsNullOrEmpty(name)) name = path;
+            RecentItems.Add(new PictureRecentDisplayItem(path, name, path));
+        }
+
+        OnPropertyChanged(nameof(HasRecentItems));
+        OnPropertyChanged(nameof(RecentEmptyText));
+    }
+
+    private void RememberFolderInRecent(string folder)
+    {
+        Cfg.RememberRecent(folder);
+        RefreshRecentItems();
+    }
+
     /// <summary>页清单变了（界面重建长带）。</summary>
     public event EventHandler? PagesChanged;
 
@@ -331,6 +454,11 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
             Pages = pages;
             FolderPath = pages.Count > 0 ? full : "";
             if (pages.Count > 0 && Cfg.LastFolder != full) Cfg.LastFolder = full;
+            if (pages.Count > 0)
+            {
+                RememberFolderInRecent(full);
+                IsRecentVisible = false;   // 正常打开后收起列表（从列表里点开的也一样）
+            }
 
             _pendingPageIndex = FindPageIndex(pages, preferredImagePath);
             _launchTargetFound = _pendingPageIndex is not null;
@@ -744,6 +872,7 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
     {
         // 切走工具时一定退出全屏，否则外壳会一直停在被藏起来的状态
         ExitFullscreen();
+        IsRecentVisible = false;
     }
 
     // ---------------------------------------------------------------- 环境变量（开发用）
@@ -800,3 +929,6 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
         return value.Trim().ToLowerInvariant() is not ("0" or "false" or "off" or "no");
     }
 }
+
+/// <summary>「最近浏览」面板里的一行：完整路径 + 显示名 + 副标题（路径）。</summary>
+public sealed record PictureRecentDisplayItem(string Path, string Name, string Detail);

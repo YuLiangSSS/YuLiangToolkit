@@ -114,7 +114,13 @@
   + 2 秒节流落盘；但**退出程序时 `View.Unloaded` 不一定触发**（实测截图 / 关窗路径没跑到），所以另外在 `Window.Closing`
   里 `FlushReadingPosition(saveNow: true)` 兜底 —— 只靠配置自动落盘会丢最后一秒的位置。恢复优先级：`YLT_PDF_PAGE` > 上次位置 > 第一页；
   **模式没变才按 `ReadingRatio` 恢复**，换了阅读方式按页号恢复。
-- 调试 / 截图新增：`YLT_PDF_JUMP=4` 打开后直接走一次「跳页输入框」跳到第 4 页；`YLT_PDF_PAGE=4` 会覆盖恢复位置。
+- 最近浏览（`recentLimit` / `recentEntries`）：路径统一 `NormalizeRecentPath`（完整路径、去重；图片记录会去掉尾部斜杠）；
+  配置属性虽是自动属性不发通知，但 `ToolConfigStore` 加载后有后台 400ms 差异检查，所以滑块改上限也能自动落盘。
+  ⚠ 两个工具的「最近」面板都用 `SmallIconButtonStyle` 画关闭按钮 —— **这个样式只定义在 PDF 视图的 Resources 里**，
+  图片视图没有，用了会 XamlParseException 闪退（已踩，图片侧改用 `SecondaryButtonStyle` 的 ✕）。
+- 调试 / 截图：`YLT_PDF_JUMP=4` 打开后直接走一次「跳页输入框」跳到第 4 页；`YLT_PDF_PAGE=4` 会覆盖恢复位置。
+  截图最近浏览面板 / 设置：`YLT_PDF_RECENT=1` / `YLT_PICTURE_RECENT=1`（打开面板）、`YLT_PDF_SETTINGS=1` / `YLT_PICTURE_SETTINGS=1`；
+  两个面板别同时开（env 要清），否则互相盖住。
 
 ### KPS 按键统计
 - 监听 / 统计 / Overlay 在 `KpsSession`（进程单例）里，工具页只是设置面板：切走页面时 Overlay 还开着就继续跑；

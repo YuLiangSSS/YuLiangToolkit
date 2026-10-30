@@ -2312,6 +2312,321 @@ internal static class PdfReaderChecks
         }
 
         // ================================================================
+        // 14. 最近浏览（配置 / 上限 0~100 / JSON 往返 / VM 记录与去重）
+        // ================================================================
+        // ---- 14a. 配置默认值 / 上限夹取 / 是否记录 ----
+        var recentCfg = new PdfReaderConfig();
+        Check("最近浏览：默认上限 50、常量 50 / 100、初始列表非 null 且空",
+            recentCfg.RecentLimit == 50
+            && recentCfg.RecentLimit == PdfReaderConfig.DefaultRecentLimit
+            && PdfReaderConfig.MaxRecentLimit == 100
+            && recentCfg.RecentLimitEffective == 50
+            && recentCfg.RecordsRecent
+            && recentCfg.RecentEntries is not null && recentCfg.RecentEntries.Count == 0);
+
+        Check("最近浏览：生效上限夹到 0~100（-5→0、0→0、101→100、int.Max→100、50/100 原样）",
+            new PdfReaderConfig { RecentLimit = -5 }.RecentLimitEffective == 0
+            && !new PdfReaderConfig { RecentLimit = -5 }.RecordsRecent
+            && new PdfReaderConfig { RecentLimit = 0 }.RecentLimitEffective == 0
+            && !new PdfReaderConfig { RecentLimit = 0 }.RecordsRecent
+            && new PdfReaderConfig { RecentLimit = 101 }.RecentLimitEffective == 100
+            && new PdfReaderConfig { RecentLimit = int.MaxValue }.RecentLimitEffective == PdfReaderConfig.MaxRecentLimit
+            && new PdfReaderConfig { RecentLimit = 50 }.RecentLimitEffective == 50
+            && new PdfReaderConfig { RecentLimit = 100 }.RecentLimitEffective == 100
+            && new PdfReaderConfig { RecentLimit = 50 }.RecordsRecent);
+
+        // ---- 14b. NormalizeRecentPath：完整路径；空 / 非法 → 空串 ----
+        Check("最近路径：null / 空 / 纯空白 → 空串",
+            PdfReaderConfig.NormalizeRecentPath(null) == ""
+            && PdfReaderConfig.NormalizeRecentPath("") == ""
+            && PdfReaderConfig.NormalizeRecentPath("   ") == "");
+
+        Check("最近路径：前后引号 / 空白容错",
+            PdfReaderConfig.NormalizeRecentPath("  \"C:\\Temp\\Recent A.pdf\"  ") == @"C:\Temp\Recent A.pdf");
+
+        var relativeRecent = PdfReaderConfig.NormalizeRecentPath(@"sub\Recent.PDF");
+        Check("最近路径：相对路径补成完整路径",
+            Path.IsPathFullyQualified(relativeRecent)
+            && relativeRecent == Path.GetFullPath(@"sub\Recent.PDF"),
+            relativeRecent);
+
+        Check("最近路径：同一路径大小写不同按 Windows 规则视为同一处",
+            string.Equals(
+                PdfReaderConfig.NormalizeRecentPath(@"C:\Temp\Recent A.pdf"),
+                PdfReaderConfig.NormalizeRecentPath(@"c:\temp\recent a.PDF"),
+                StringComparison.OrdinalIgnoreCase));
+
+        var invalidRecentPath = "C:\\bad" + '\0' + "recent.pdf";
+        var invalidRecentError = Catch(() => { _ = PdfReaderConfig.NormalizeRecentPath(invalidRecentPath); });
+        Check("最近路径：非法路径不抛异常（返回空串）",
+            invalidRecentError is null && PdfReaderConfig.NormalizeRecentPath(invalidRecentPath) == "",
+            invalidRecentError?.Message ?? "ok");
+
+        // ---- 14c. RememberRecent：置顶 / 去重 / 裁剪 / 上限 0 不记录 ----
+        var rememberCfg = new PdfReaderConfig();
+        var recentA = @"C:\SelfCheck\Recent\doc-a.pdf";
+        var recentB = @"C:\SelfCheck\Recent\doc-b.pdf";
+        var recentFirstUtc = new DateTime(2026, 3, 1, 10, 0, 0, DateTimeKind.Utc);
+        rememberCfg.RememberRecent(recentA, recentFirstUtc);
+        Check("最近浏览：第一次记录 → 1 条、在最前、路径是完整路径、打开时间原样",
+            rememberCfg.RecentEntries.Count == 1
+            && rememberCfg.RecentEntries[0].Path == PdfReaderConfig.NormalizeRecentPath(recentA)
+            && rememberCfg.RecentEntries[0].LastOpenedUtc == recentFirstUtc,
+            string.Join(" | ", rememberCfg.RecentEntries.Select(e => e.Path)));
+
+        var recentSecondUtc = recentFirstUtc.AddMinutes(5);
+        rememberCfg.RememberRecent(@"c:\selfcheck\recent\DOC-A.PDF", recentSecondUtc);
+        Check("最近浏览：同一路径大小写不同仍只留 1 条、并更新打开时间",
+            rememberCfg.RecentEntries.Count == 1
+            && rememberCfg.RecentEntries[0].LastOpenedUtc == recentSecondUtc);
+
+        rememberCfg.RememberRecent(recentB, recentSecondUtc.AddMinutes(1));
+        Check("最近浏览：记第 2 个后新的在最前",
+            rememberCfg.RecentEntries.Count == 2
+            && rememberCfg.RecentEntries[0].Path == PdfReaderConfig.NormalizeRecentPath(recentB)
+            && string.Equals(rememberCfg.RecentEntries[1].Path,
+                PdfReaderConfig.NormalizeRecentPath(recentA), StringComparison.OrdinalIgnoreCase));
+
+        var trimmedByRemember = new PdfReaderConfig { RecentLimit = 3 };
+        for (var i = 0; i < 5; i++)
+            trimmedByRemember.RememberRecent($@"C:\SelfCheck\Recent\limit3-{i}.pdf", recentFirstUtc.AddMinutes(i));
+        Check("最近浏览：上限 3 时连续记 5 个 → 只留最新 3 个（最老 2 个被淘汰）",
+            trimmedByRemember.RecentEntries.Count == 3
+            && trimmedByRemember.RecentEntries[0].Path == PdfReaderConfig.NormalizeRecentPath(@"C:\SelfCheck\Recent\limit3-4.pdf")
+            && trimmedByRemember.RecentEntries[2].Path == PdfReaderConfig.NormalizeRecentPath(@"C:\SelfCheck\Recent\limit3-2.pdf")
+            && trimmedByRemember.RecentEntries.All(e =>
+                !e.Path.EndsWith("limit3-0.pdf", StringComparison.Ordinal)
+                && !e.Path.EndsWith("limit3-1.pdf", StringComparison.Ordinal)),
+            string.Join(" | ", trimmedByRemember.RecentEntries.Select(e => e.Path)));
+
+        var zeroLimitCfg = new PdfReaderConfig();
+        zeroLimitCfg.RememberRecent(recentA, recentFirstUtc);
+        zeroLimitCfg.RememberRecent(recentB, recentSecondUtc);
+        zeroLimitCfg.RecentLimit = 0;
+        zeroLimitCfg.RememberRecent(@"C:\SelfCheck\Recent\doc-c.pdf", recentSecondUtc);
+        Check("最近浏览：上限 0 = 不记录并清空（再记住也不新增）",
+            zeroLimitCfg.RecentEntries.Count == 0 && !zeroLimitCfg.RecordsRecent);
+
+        var hugeLimitCfg = new PdfReaderConfig { RecentLimit = 101 };
+        for (var i = 0; i < 105; i++)
+            hugeLimitCfg.RememberRecent($@"C:\SelfCheck\Recent\huge-{i}.pdf", recentFirstUtc.AddMinutes(i));
+        Check("最近浏览：上限 101 生效值夹到 100，记 105 个只留 100 个",
+            hugeLimitCfg.RecentLimitEffective == 100 && hugeLimitCfg.RecentEntries.Count == 100,
+            $"{hugeLimitCfg.RecentEntries.Count} 条");
+
+        // ---- 14d. TrimRecentToLimit：手工塞 5 条，按上限保留前 N 条 ----
+        var manualTrimCfg = new PdfReaderConfig { RecentLimit = 2 };
+        manualTrimCfg.RecentEntries = new List<PdfRecentEntry>
+        {
+            new() { Path = @"C:\SelfCheck\Recent\manual-0.pdf", LastOpenedUtc = recentFirstUtc },
+            new() { Path = @"C:\SelfCheck\Recent\manual-1.pdf", LastOpenedUtc = recentFirstUtc.AddMinutes(1) },
+            new() { Path = @"C:\SelfCheck\Recent\manual-2.pdf", LastOpenedUtc = recentFirstUtc.AddMinutes(2) },
+            new() { Path = @"C:\SelfCheck\Recent\manual-3.pdf", LastOpenedUtc = recentFirstUtc.AddMinutes(3) },
+            new() { Path = @"C:\SelfCheck\Recent\manual-4.pdf", LastOpenedUtc = recentFirstUtc.AddMinutes(4) },
+        };
+        manualTrimCfg.TrimRecentToLimit();
+        Check("最近浏览裁剪：上限 2 时手工 5 条只留前 2 条（保持顺序）",
+            manualTrimCfg.RecentEntries.Count == 2
+            && manualTrimCfg.RecentEntries[0].Path.EndsWith("manual-0.pdf", StringComparison.Ordinal)
+            && manualTrimCfg.RecentEntries[1].Path.EndsWith("manual-1.pdf", StringComparison.Ordinal));
+
+        manualTrimCfg.RecentLimit = 0;
+        manualTrimCfg.TrimRecentToLimit();
+        Check("最近浏览裁剪：上限 0 时直接清空", manualTrimCfg.RecentEntries.Count == 0);
+
+        // ---- 14e. RemoveRecent / ClearRecent ----
+        var removeCfg = new PdfReaderConfig();
+        removeCfg.RememberRecent(recentA, recentFirstUtc);
+        removeCfg.RememberRecent(recentB, recentSecondUtc);
+        removeCfg.RemoveRecent(@"C:\SelfCheck\Recent\DOC-A.PDF");
+        Check("最近浏览删除：按路径删（大小写不敏感）只删指定那条",
+            removeCfg.RecentEntries.Count == 1
+            && removeCfg.RecentEntries[0].Path == PdfReaderConfig.NormalizeRecentPath(recentB));
+
+        var removeMissingError = Catch(() =>
+        {
+            removeCfg.RemoveRecent(@"C:\SelfCheck\Recent\不存在.pdf");
+            removeCfg.RemoveRecent(null);
+            removeCfg.RemoveRecent("   ");
+        });
+        Check("最近浏览删除：删不存在的路径 / null 不抛异常、条数不变",
+            removeMissingError is null && removeCfg.RecentEntries.Count == 1,
+            removeMissingError?.Message ?? "ok");
+
+        removeCfg.ClearRecent();
+        var clearAgainError = Catch(() =>
+        {
+            removeCfg.ClearRecent();
+            removeCfg.ClearRecent();
+        });
+        Check("最近浏览清空：清空后 0 条、重复清空也不抛异常",
+            removeCfg.RecentEntries.Count == 0 && clearAgainError is null,
+            clearAgainError?.Message ?? "ok");
+
+        // ---- 14f. JSON 往返（自检临时根里的 ToolConfigStore） ----
+        var recentStore = ToolConfigStore.For("pdf-reader-recent-check");
+        var persistedRecentCfg = recentStore.Load<PdfReaderConfig>();
+        persistedRecentCfg.RecentLimit = 7;
+        persistedRecentCfg.ClearRecent();
+        var jsonRecentUtc = new DateTime(2026, 4, 1, 12, 0, 0, DateTimeKind.Utc);
+        persistedRecentCfg.RememberRecent(@"C:\SelfCheck\Recent\json-doc-a.pdf", jsonRecentUtc);
+        persistedRecentCfg.RememberRecent(@"C:\SelfCheck\Recent\json-doc-b.pdf", jsonRecentUtc.AddMinutes(1));
+        persistedRecentCfg.SaveNow();
+        var recentJson = File.Exists(recentStore.FilePath) ? File.ReadAllText(recentStore.FilePath) : "";
+        Check("最近浏览落盘：JSON 里有 recentLimit / recentEntries / lastOpenedUtc，计算属性不写",
+            recentJson.Contains("\"recentLimit\": 7", StringComparison.Ordinal)
+            && recentJson.Contains("\"recentEntries\"", StringComparison.Ordinal)
+            && recentJson.Contains("\"lastOpenedUtc\"", StringComparison.Ordinal)
+            && !recentJson.Contains("recentLimitEffective", StringComparison.OrdinalIgnoreCase)
+            && !recentJson.Contains("recordsRecent", StringComparison.OrdinalIgnoreCase),
+            CompactJson(recentJson));
+
+        var rereadRecentCfg = JsonFileStore.Read<PdfReaderConfig>(recentStore.FilePath);
+        Check("最近浏览往返：读盘后 recentLimit=7、2 条记录、路径完整、时间能读回",
+            rereadRecentCfg is not null
+            && rereadRecentCfg.RecentLimit == 7
+            && rereadRecentCfg.RecentEntries.Count == 2
+            && rereadRecentCfg.RecentEntries[0].Path == PdfReaderConfig.NormalizeRecentPath(@"C:\SelfCheck\Recent\json-doc-b.pdf")
+            && rereadRecentCfg.RecentEntries[0].LastOpenedUtc == jsonRecentUtc.AddMinutes(1)
+            && rereadRecentCfg.RecentEntries[1].Path == PdfReaderConfig.NormalizeRecentPath(@"C:\SelfCheck\Recent\json-doc-a.pdf"),
+            rereadRecentCfg is null ? "读回 null" : $"{rereadRecentCfg.RecentEntries.Count} 条");
+        recentStore.StopWatching();
+
+        // ---- 14g. ResetToDefaults：上限回 50，但保留已有最近浏览记录 ----
+        var resetRecentCfg = new PdfReaderConfig
+        {
+            RecentLimit = 7,
+            ReadMode = PdfReadMode.Spread,
+            ZoomPercent = 300,
+            SpreadGapPixels = 20,
+            InertiaEnabled = false,
+            WheelStepPixels = 500,
+            LastFolder = @"D:\some",
+        };
+        resetRecentCfg.RememberRecent(recentA, recentFirstUtc);
+        resetRecentCfg.RememberRecent(recentB, recentSecondUtc);
+        resetRecentCfg.RememberRecent(@"C:\SelfCheck\Recent\doc-c.pdf", recentSecondUtc.AddMinutes(1));
+        resetRecentCfg.ResetToDefaults();
+        Check("最近浏览恢复默认：上限回 50、已有 3 条记录保留（只按上限裁剪不清空）",
+            resetRecentCfg.RecentLimit == 50 && resetRecentCfg.RecentLimitEffective == 50
+            && resetRecentCfg.RecentEntries.Count == 3);
+        Check("恢复默认设置：其它显示项回默认、且不清「上次打开的文件夹」",
+            resetRecentCfg.ReadMode == PdfReadMode.Vertical
+            && resetRecentCfg.InertiaEnabled
+            && resetRecentCfg.WheelStepEffective == 120
+            && resetRecentCfg.ZoomPercentEffective == 100
+            && resetRecentCfg.SpreadGapEffective == 2
+            && resetRecentCfg.LastFolder == @"D:\some");
+
+        // ---- 14h. VM：打开 PDF 后记录 / 去重 / 打开最近 / 缺文件移除 / 裁剪切空 ----
+        var pdfRecentA = SelfCheckScratch.MakeFile("pdf-recent-a.pdf");
+        var pdfRecentB = SelfCheckScratch.MakeFile("pdf-recent-b.pdf");
+        var pdfRecentC = SelfCheckScratch.MakeFile("pdf-recent-c.pdf");
+        File.WriteAllBytes(pdfRecentA, PdfDemoPdf.Create(3));
+        File.WriteAllBytes(pdfRecentB, PdfDemoPdf.Create(3));
+        File.WriteAllBytes(pdfRecentC, PdfDemoPdf.Create(3));
+
+        var recentPdfVm = new PdfReaderViewModel();
+        try
+        {
+            recentPdfVm.Cfg.RecentLimit = 50;
+            recentPdfVm.Cfg.ClearRecent();
+            recentPdfVm.RefreshRecentItems();
+            Check("最近浏览 VM：初始没有记录、空状态提示「打开 PDF 后自动记」、上限文字 50 条",
+                !recentPdfVm.HasRecentItems && recentPdfVm.RecentItems.Count == 0
+                && recentPdfVm.RecentEmptyText.Contains("还没有最近浏览")
+                && recentPdfVm.RecentLimitText == "50 条"
+                && !recentPdfVm.IsRecentVisible);
+
+            recentPdfVm.IsSettingsVisible = true;
+            recentPdfVm.IsOutlineVisible = true;
+            recentPdfVm.ToggleRecent();
+            Check("最近浏览 VM：打开最近面板会同时关掉设置 / 目录面板",
+                recentPdfVm.IsRecentVisible && !recentPdfVm.IsSettingsVisible && !recentPdfVm.IsOutlineVisible);
+
+            recentPdfVm.LoadPdfAsync(pdfRecentA).GetAwaiter().GetResult();
+            Check("最近浏览 VM：打开 PDF 后记 1 条（文件名 / 完整路径）并自动收起面板",
+                recentPdfVm.RecentItems.Count == 1
+                && recentPdfVm.RecentItems[0].Name == Path.GetFileName(pdfRecentA)
+                && recentPdfVm.RecentItems[0].Path == PdfReaderConfig.NormalizeRecentPath(pdfRecentA)
+                && recentPdfVm.Cfg.RecentEntries[0].Path == PdfReaderConfig.NormalizeRecentPath(pdfRecentA)
+                && recentPdfVm.HasRecentItems
+                && !recentPdfVm.IsRecentVisible,
+                string.Join(" | ", recentPdfVm.RecentItems.Select(item => item.Path)));
+
+            recentPdfVm.LoadPdfAsync(pdfRecentB).GetAwaiter().GetResult();
+            Check("最近浏览 VM：再打开另一本 → 新的在最前、共 2 条",
+                recentPdfVm.RecentItems.Count == 2
+                && recentPdfVm.RecentItems[0].Path == PdfReaderConfig.NormalizeRecentPath(pdfRecentB)
+                && recentPdfVm.RecentItems[1].Path == PdfReaderConfig.NormalizeRecentPath(pdfRecentA));
+
+            recentPdfVm.OpenRecentAsync(pdfRecentA).GetAwaiter().GetResult();
+            Check("最近浏览 VM：点最近记录重新打开 A → 当前文件 A、A 置顶、不产生重复",
+                recentPdfVm.FileName == Path.GetFileName(pdfRecentA)
+                && recentPdfVm.RecentItems.Count == 2
+                && recentPdfVm.RecentItems[0].Path == PdfReaderConfig.NormalizeRecentPath(pdfRecentA),
+                $"{recentPdfVm.FileName} / {recentPdfVm.RecentItems.Count} 条");
+
+            recentPdfVm.LoadPdfAsync(pdfRecentC).GetAwaiter().GetResult();
+            File.Delete(pdfRecentC);
+            recentPdfVm.OpenRecentAsync(pdfRecentC).GetAwaiter().GetResult();
+            Check("最近浏览 VM：点已不存在的 PDF → 从列表移除并提示",
+                recentPdfVm.RecentItems.All(item => item.Path != PdfReaderConfig.NormalizeRecentPath(pdfRecentC))
+                && recentPdfVm.Cfg.RecentEntries.All(entry => entry.Path != PdfReaderConfig.NormalizeRecentPath(pdfRecentC))
+                && recentPdfVm.StatusText.Contains("已经不在了"),
+                recentPdfVm.StatusText);
+
+            recentPdfVm.RecentLimit = 1;
+            Check("最近浏览 VM：上限调成 1 立刻裁剪到只剩最新那条、文字变 1 条",
+                recentPdfVm.RecentLimit == 1 && recentPdfVm.RecentItems.Count == 1
+                && recentPdfVm.RecentItems[0].Path == PdfReaderConfig.NormalizeRecentPath(pdfRecentA)
+                && recentPdfVm.RecentLimitText == "1 条",
+                recentPdfVm.RecentLimitText);
+
+            recentPdfVm.RecentLimit = 9999;
+            Check("最近浏览 VM：上限超 100 夹到 100、文字 100 条",
+                recentPdfVm.RecentLimit == 100 && recentPdfVm.Cfg.RecentLimit == 100
+                && recentPdfVm.RecentLimitText == "100 条");
+
+            recentPdfVm.RecentLimit = -5;
+            Check("最近浏览 VM：上限负数夹到 0、清空列表、文字变「不记录」",
+                recentPdfVm.RecentLimit == 0 && recentPdfVm.RecentItems.Count == 0
+                && recentPdfVm.Cfg.RecentEntries.Count == 0
+                && recentPdfVm.RecentLimitText == "不记录"
+                && recentPdfVm.RecentEmptyText.Contains("上限是 0"),
+                recentPdfVm.RecentLimitText);
+
+            recentPdfVm.LoadPdfAsync(pdfRecentA).GetAwaiter().GetResult();
+            Check("最近浏览 VM：上限 0 时打开 PDF 不记录", recentPdfVm.RecentItems.Count == 0);
+
+            recentPdfVm.RecentLimit = 50;
+            recentPdfVm.LoadPdfAsync(pdfRecentA).GetAwaiter().GetResult();
+            recentPdfVm.LoadPdfAsync(pdfRecentB).GetAwaiter().GetResult();
+            recentPdfVm.ClearRecent();
+            Check("最近浏览 VM：ClearRecent 清空并给状态栏提示",
+                !recentPdfVm.HasRecentItems && recentPdfVm.RecentItems.Count == 0
+                && recentPdfVm.Cfg.RecentEntries.Count == 0
+                && recentPdfVm.StatusText.Contains("已清空最近浏览"),
+                recentPdfVm.StatusText);
+
+            recentPdfVm.LoadPdfAsync(pdfRecentA).GetAwaiter().GetResult();
+            recentPdfVm.ToggleRecentCommand.Execute(null);
+            var recentOpenedByCommand = recentPdfVm.IsRecentVisible;
+            recentPdfVm.ClearRecentCommand.Execute(null);
+            Check("最近浏览 VM：工具条命令能打开最近面板 / 清空记录",
+                recentOpenedByCommand && recentPdfVm.RecentItems.Count == 0
+                && recentPdfVm.Cfg.RecentEntries.Count == 0,
+                recentPdfVm.StatusText);
+
+            recentPdfVm.NotifyClosed();
+            Check("最近浏览 VM：切走工具后最近面板收起", !recentPdfVm.IsRecentVisible);
+        }
+        finally
+        {
+            recentPdfVm.Dispose();
+        }
+
+        // ================================================================
         // 局部小工具（只在这个文件里用）
         // ================================================================
 

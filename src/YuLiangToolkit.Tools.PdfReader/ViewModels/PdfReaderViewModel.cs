@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Threading;
 using YuLiangToolkit.Core.Mvvm;
@@ -27,10 +28,21 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
             (PdfReadMode.Spread, PdfReadModes.Describe(PdfReadMode.Spread)));
 
         OpenPdfCommand = new AsyncRelayCommand(_ => OpenPdfAsync());
-        ToggleSettingsCommand = new RelayCommand(_ => IsSettingsVisible = !IsSettingsVisible);
+        ToggleSettingsCommand = new RelayCommand(_ =>
+        {
+            IsRecentVisible = false;
+            IsSettingsVisible = !IsSettingsVisible;
+        });
         CloseSettingsCommand = new RelayCommand(_ => IsSettingsVisible = false);
-        ToggleOutlineCommand = new RelayCommand(_ => IsOutlineVisible = !IsOutlineVisible);
+        ToggleOutlineCommand = new RelayCommand(_ =>
+        {
+            IsRecentVisible = false;
+            IsOutlineVisible = !IsOutlineVisible;
+        });
         CloseOutlineCommand = new RelayCommand(_ => IsOutlineVisible = false);
+        ToggleRecentCommand = new RelayCommand(_ => ToggleRecent());
+        ClearRecentCommand = new RelayCommand(_ => ClearRecent());
+        OpenRecentCommand = new RelayCommand(p => _ = OpenRecentAsync(p as string));
         ResetSettingsCommand = new RelayCommand(_ => ResetSettings());
         ZoomInCommand = new RelayCommand(_ => StepZoom(1));
         ZoomOutCommand = new RelayCommand(_ => StepZoom(-1));
@@ -41,6 +53,10 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
         ApplyZoomOverrideFromEnvironment();
         ApplyFullscreenOverrideFromEnvironment();
         _pendingPageIndex = ParsePageOverrideFromEnvironment();
+
+        // 最近浏览：按当前上限裁剪一次（手改坏配置时不会带出一长串），再把显示列表填好
+        Cfg.TrimRecentToLimit();
+        RefreshRecentItems();
 
         // 双击 .pdf 启动（文件关联 / 命令行）时，主程序把路径放在这里；只生效一次。
         _launchPdfPath = PdfFilePathLaunch.PendingPdfPath;
@@ -397,6 +413,119 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
     /// <summary>打开 Windows「默认应用」设置（UserChoice 只能由用户自己确认）。</summary>
     public RelayCommand OpenDefaultAppsCommand { get; }
 
+    // ---------------------------------------------------------------- 最近浏览
+
+    private bool _isRecentVisible;
+
+    /// <summary>「最近浏览」面板是否展开。</summary>
+    public bool IsRecentVisible
+    {
+        get => _isRecentVisible;
+        set => Set(ref _isRecentVisible, value);
+    }
+
+    /// <summary>最近浏览面板里的行（新 → 旧；显示名 + 路径）。</summary>
+    public ObservableCollection<PdfRecentDisplayItem> RecentItems { get; } = new();
+
+    /// <summary>有没有最近浏览记录（空状态文字用）。</summary>
+    public bool HasRecentItems => RecentItems.Count > 0;
+
+    /// <summary>最近浏览面板的空状态文字（上限 0 时说明为什么不记录）。</summary>
+    public string RecentEmptyText => Cfg.RecentLimitEffective == 0
+        ? "最近浏览上限是 0（不记录）。到 ⚙ 设置 → 最近浏览 里调大即可。"
+        : "还没有最近浏览记录。打开一个 PDF 后会自动记在这里。";
+
+    /// <summary>设置面板里「最近浏览」的说明文字。</summary>
+    public string RecentSectionHint =>
+        "工具条「🕘 最近」最多记多少本打开过的 PDF：0 ~ 100，0 = 不记录并清空列表；默认 50。";
+
+    /// <summary>上限的数字显示（设置面板 / 滑块右边）。</summary>
+    public string RecentLimitText => Cfg.RecentLimitEffective == 0 ? "不记录" : $"{Cfg.RecentLimitEffective} 条";
+
+    /// <summary>
+    /// 「最近浏览」上限（0 ~ 100，默认 50）。改小会立刻把多余的老记录裁掉；改成 0 = 不记录并清空列表。
+    /// </summary>
+    public int RecentLimit
+    {
+        get => Cfg.RecentLimitEffective;
+        set
+        {
+            var clamped = Math.Clamp(value, 0, PdfReaderConfig.MaxRecentLimit);
+            Cfg.RecentLimit = clamped;
+            Cfg.TrimRecentToLimit();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(RecentLimitText));
+            RefreshRecentItems();
+        }
+    }
+
+    public RelayCommand ToggleRecentCommand { get; }
+    public RelayCommand ClearRecentCommand { get; }
+    public RelayCommand OpenRecentCommand { get; }
+
+    /// <summary>展开 / 收起「最近浏览」面板；展开前重新读一次配置（可能在别处被改过）。</summary>
+    public void ToggleRecent()
+    {
+        if (!IsRecentVisible)
+        {
+            Cfg.TrimRecentToLimit();
+            RefreshRecentItems();
+            IsSettingsVisible = false;   // 两个右侧浮层别叠在一起
+            IsOutlineVisible = false;
+        }
+        IsRecentVisible = !IsRecentVisible;
+    }
+
+    /// <summary>清空最近浏览记录（不会删本地文件）。</summary>
+    public void ClearRecent()
+    {
+        Cfg.ClearRecent();
+        RefreshRecentItems();
+        StatusText = "已清空最近浏览";
+    }
+
+    /// <summary>点最近浏览里的一条：文件还在就打开它（会顺带恢复上次阅读位置）；已经不在了就移除并提示。</summary>
+    public async Task OpenRecentAsync(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+
+        if (!File.Exists(path))
+        {
+            Cfg.RemoveRecent(path);
+            RefreshRecentItems();
+            StatusText = $"最近打开过的 PDF 已经不在了：{path}";
+            return;
+        }
+
+        await LoadPdfAsync(path);
+    }
+
+    /// <summary>按配置里的记录重建显示列表（新 → 旧）。</summary>
+    public void RefreshRecentItems()
+    {
+        RecentItems.Clear();
+
+        foreach (var entry in Cfg.RecentEntries ?? new List<PdfRecentEntry>())
+        {
+            if (entry is null || string.IsNullOrWhiteSpace(entry.Path)) continue;
+
+            var path = entry.Path;
+            var name = Path.GetFileName(path);
+            if (string.IsNullOrEmpty(name)) name = path;
+            var folder = Path.GetDirectoryName(path) ?? "";
+            RecentItems.Add(new PdfRecentDisplayItem(path, name, folder));
+        }
+
+        OnPropertyChanged(nameof(HasRecentItems));
+        OnPropertyChanged(nameof(RecentEmptyText));
+    }
+
+    private void RememberPdfInRecent(string path)
+    {
+        Cfg.RememberRecent(path);
+        RefreshRecentItems();
+    }
+
     // ---------------------------------------------------------------- 记住上次阅读位置
 
     /// <summary>界面最近一次报告的阅读位置（还没落盘）；由 <see cref="NoteReadingPosition"/> 更新。</summary>
@@ -540,6 +669,11 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
             _filePath = session.FilePath;
             _pendingReadingPosition = null;   // 新书的位置等界面报告，别把上一本的缓存写到新书上
             _lastReadingPositionFlushMs = 0;
+
+            // 最近浏览：换书成功后记一笔（上限 0 = 不记录并清空列表）
+            RememberPdfInRecent(session.FilePath);
+            IsRecentVisible = false;          // 打开成功后收起最近浏览面板
+
             var folder = Path.GetDirectoryName(session.FilePath);
             if (!string.IsNullOrWhiteSpace(folder)) Cfg.LastFolder = folder;
 
@@ -738,6 +872,7 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
         FlushReadingPosition(saveNow: true);
         _readingPositionTimer?.Stop();
         _readingPositionTimer = null;
+        IsRecentVisible = false;
 
         CancelTextLayer();
 
@@ -807,3 +942,6 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
         return value.Trim().ToLowerInvariant() is not ("0" or "false" or "off" or "no");
     }
 }
+
+/// <summary>「最近浏览」面板里的一行：完整路径 + 显示名 + 副标题（所在文件夹）。</summary>
+public sealed record PdfRecentDisplayItem(string Path, string Name, string Detail);

@@ -441,6 +441,7 @@ public partial class PdfReaderView : UserControl
 
         if (PdfReaderViewModel.IsEnvironmentOn("YLT_PDF_OUTLINE")) vm.IsOutlineVisible = true;
         if (PdfReaderViewModel.IsEnvironmentOn("YLT_PDF_SETTINGS")) vm.IsSettingsVisible = true;
+        if (PdfReaderViewModel.IsEnvironmentOn("YLT_PDF_RECENT")) vm.IsRecentVisible = true;
 
         var search = Environment.GetEnvironmentVariable("YLT_PDF_SEARCH");
         if (!string.IsNullOrWhiteSpace(search))
@@ -1907,6 +1908,12 @@ public partial class PdfReaderView : UserControl
             {
                 ClearSearch(clearText: true);
                 Keyboard.ClearFocus();
+                e.Handled = true;
+                return;
+            }
+            if (vm.IsRecentVisible)
+            {
+                vm.IsRecentVisible = false;
                 e.Handled = true;
                 return;
             }

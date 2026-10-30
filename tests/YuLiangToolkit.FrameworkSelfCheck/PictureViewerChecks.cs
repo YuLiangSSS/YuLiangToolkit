@@ -900,6 +900,336 @@ internal static class PictureViewerChecks
             Environment.SetEnvironmentVariable("YLT_PICTURE_FULLSCREEN", previousPictureFullscreenEnv);
         }
 
+        // ---------------------------------------------------------------- 14. 最近浏览（配置 / 上限 0~100 / VM 记录与去重）
+        // ---- 14a. 配置默认值 / 上限夹取 / 是否记录 ----
+        var recentCfg = new PictureViewerConfig();
+        Check("[图片] 最近浏览：默认上限 50、常量 50 / 100、初始列表非 null 且空",
+            recentCfg.RecentLimit == 50
+            && recentCfg.RecentLimit == PictureViewerConfig.DefaultRecentLimit
+            && PictureViewerConfig.MaxRecentLimit == 100
+            && recentCfg.RecentLimitEffective == 50
+            && recentCfg.RecordsRecent
+            && recentCfg.RecentEntries is not null && recentCfg.RecentEntries.Count == 0);
+
+        Check("[图片] 最近浏览：生效上限夹到 0~100（-5→0、0→0、101→100、int.Max→100、50/100 原样）",
+            new PictureViewerConfig { RecentLimit = -5 }.RecentLimitEffective == 0
+            && !new PictureViewerConfig { RecentLimit = -5 }.RecordsRecent
+            && new PictureViewerConfig { RecentLimit = 0 }.RecentLimitEffective == 0
+            && !new PictureViewerConfig { RecentLimit = 0 }.RecordsRecent
+            && new PictureViewerConfig { RecentLimit = 101 }.RecentLimitEffective == 100
+            && new PictureViewerConfig { RecentLimit = int.MaxValue }.RecentLimitEffective == PictureViewerConfig.MaxRecentLimit
+            && new PictureViewerConfig { RecentLimit = 50 }.RecentLimitEffective == 50
+            && new PictureViewerConfig { RecentLimit = 100 }.RecentLimitEffective == 100
+            && new PictureViewerConfig { RecentLimit = 50 }.RecordsRecent);
+
+        // ---- 14b. NormalizeRecentPath：完整路径 + 去掉尾部斜杠；空 / 非法 → 空串 ----
+        Check("[图片] 最近路径：null / 空 / 纯空白 → 空串",
+            PictureViewerConfig.NormalizeRecentPath(null) == ""
+            && PictureViewerConfig.NormalizeRecentPath("") == ""
+            && PictureViewerConfig.NormalizeRecentPath("   ") == "");
+
+        Check("[图片] 最近路径：前后引号 / 空白容错",
+            PictureViewerConfig.NormalizeRecentPath("  \"C:\\Temp\\Recent A\"  ") == @"C:\Temp\Recent A");
+
+        var relativeRecent = PictureViewerConfig.NormalizeRecentPath(@"sub\Recent");
+        Check("[图片] 最近路径：相对路径补成完整路径",
+            Path.IsPathFullyQualified(relativeRecent)
+            && relativeRecent == Path.GetFullPath(@"sub\Recent").TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+            relativeRecent);
+
+        Check("[图片] 最近路径：尾部目录分隔符会被去掉（同一文件夹两种写法可去重）",
+            PictureViewerConfig.NormalizeRecentPath(@"C:\Temp\Recent A\") == @"C:\Temp\Recent A"
+            && PictureViewerConfig.NormalizeRecentPath(@"C:\Temp\Recent A//") == @"C:\Temp\Recent A");
+
+        Check("[图片] 最近路径：同一路径大小写不同按 Windows 规则视为同一处",
+            string.Equals(
+                PictureViewerConfig.NormalizeRecentPath(@"C:\Temp\Recent A"),
+                PictureViewerConfig.NormalizeRecentPath(@"c:\temp\recent a"),
+                StringComparison.OrdinalIgnoreCase));
+
+        var invalidRecentPath = "C:\\bad" + '\0' + "recent";
+        string invalidRecentNormalized;
+        try { invalidRecentNormalized = PictureViewerConfig.NormalizeRecentPath(invalidRecentPath); }
+        catch (Exception ex) { invalidRecentNormalized = "抛异常：" + ex.GetType().Name; }
+        Check("[图片] 最近路径：非法路径不抛异常（返回空串）", invalidRecentNormalized == "",
+            invalidRecentNormalized);
+
+        // ---- 14c. RememberRecent：置顶 / 去重 / 裁剪 / 上限 0 不记录 ----
+        var rememberCfg = new PictureViewerConfig();
+        var recentA = @"C:\SelfCheck\Recent\folder-a";
+        var recentB = @"C:\SelfCheck\Recent\folder-b";
+        var recentFirstUtc = new DateTime(2026, 3, 1, 10, 0, 0, DateTimeKind.Utc);
+        rememberCfg.RememberRecent(recentA, recentFirstUtc);
+        Check("[图片] 最近浏览：第一次记录 → 1 条、在最前、路径是完整路径、打开时间原样",
+            rememberCfg.RecentEntries.Count == 1
+            && rememberCfg.RecentEntries[0].Path == PictureViewerConfig.NormalizeRecentPath(recentA)
+            && rememberCfg.RecentEntries[0].LastOpenedUtc == recentFirstUtc,
+            string.Join(" | ", rememberCfg.RecentEntries.Select(e => e.Path)));
+
+        var recentSecondUtc = recentFirstUtc.AddMinutes(5);
+        rememberCfg.RememberRecent(@"c:\selfcheck\recent\FOLDER-A", recentSecondUtc);
+        Check("[图片] 最近浏览：同一路径大小写不同仍只留 1 条、并更新打开时间",
+            rememberCfg.RecentEntries.Count == 1
+            && rememberCfg.RecentEntries[0].LastOpenedUtc == recentSecondUtc);
+
+        rememberCfg.RememberRecent(recentB, recentSecondUtc.AddMinutes(1));
+        Check("[图片] 最近浏览：记第 2 个后新的在最前",
+            rememberCfg.RecentEntries.Count == 2
+            && rememberCfg.RecentEntries[0].Path == PictureViewerConfig.NormalizeRecentPath(recentB)
+            && string.Equals(rememberCfg.RecentEntries[1].Path,
+                PictureViewerConfig.NormalizeRecentPath(recentA), StringComparison.OrdinalIgnoreCase));
+
+        var trimmedByRemember = new PictureViewerConfig { RecentLimit = 3 };
+        for (var i = 0; i < 5; i++)
+            trimmedByRemember.RememberRecent($@"C:\SelfCheck\Recent\limit3-{i}", recentFirstUtc.AddMinutes(i));
+        Check("[图片] 最近浏览：上限 3 时连续记 5 个 → 只留最新 3 个（最老 2 个被淘汰）",
+            trimmedByRemember.RecentEntries.Count == 3
+            && trimmedByRemember.RecentEntries[0].Path == PictureViewerConfig.NormalizeRecentPath(@"C:\SelfCheck\Recent\limit3-4")
+            && trimmedByRemember.RecentEntries[2].Path == PictureViewerConfig.NormalizeRecentPath(@"C:\SelfCheck\Recent\limit3-2")
+            && trimmedByRemember.RecentEntries.All(e =>
+                !e.Path.EndsWith("limit3-0", StringComparison.Ordinal)
+                && !e.Path.EndsWith("limit3-1", StringComparison.Ordinal)),
+            string.Join(" | ", trimmedByRemember.RecentEntries.Select(e => e.Path)));
+
+        var zeroLimitCfg = new PictureViewerConfig();
+        zeroLimitCfg.RememberRecent(recentA, recentFirstUtc);
+        zeroLimitCfg.RememberRecent(recentB, recentSecondUtc);
+        zeroLimitCfg.RecentLimit = 0;
+        zeroLimitCfg.RememberRecent(@"C:\SelfCheck\Recent\folder-c", recentSecondUtc);
+        Check("[图片] 最近浏览：上限 0 = 不记录并清空（再记住也不新增）",
+            zeroLimitCfg.RecentEntries.Count == 0 && !zeroLimitCfg.RecordsRecent);
+
+        var hugeLimitCfg = new PictureViewerConfig { RecentLimit = 101 };
+        for (var i = 0; i < 105; i++)
+            hugeLimitCfg.RememberRecent($@"C:\SelfCheck\Recent\huge-{i}", recentFirstUtc.AddMinutes(i));
+        Check("[图片] 最近浏览：上限 101 生效值夹到 100，记 105 个只留 100 个",
+            hugeLimitCfg.RecentLimitEffective == 100 && hugeLimitCfg.RecentEntries.Count == 100,
+            $"{hugeLimitCfg.RecentEntries.Count} 条");
+
+        // ---- 14d. TrimRecentToLimit：手工塞 5 条，按上限保留前 N 条 ----
+        var manualTrimCfg = new PictureViewerConfig { RecentLimit = 2 };
+        manualTrimCfg.RecentEntries = new List<PictureRecentEntry>
+        {
+            new() { Path = @"C:\SelfCheck\Recent\manual-0", LastOpenedUtc = recentFirstUtc },
+            new() { Path = @"C:\SelfCheck\Recent\manual-1", LastOpenedUtc = recentFirstUtc.AddMinutes(1) },
+            new() { Path = @"C:\SelfCheck\Recent\manual-2", LastOpenedUtc = recentFirstUtc.AddMinutes(2) },
+            new() { Path = @"C:\SelfCheck\Recent\manual-3", LastOpenedUtc = recentFirstUtc.AddMinutes(3) },
+            new() { Path = @"C:\SelfCheck\Recent\manual-4", LastOpenedUtc = recentFirstUtc.AddMinutes(4) },
+        };
+        manualTrimCfg.TrimRecentToLimit();
+        Check("[图片] 最近浏览裁剪：上限 2 时手工 5 条只留前 2 条（保持顺序）",
+            manualTrimCfg.RecentEntries.Count == 2
+            && manualTrimCfg.RecentEntries[0].Path.EndsWith("manual-0", StringComparison.Ordinal)
+            && manualTrimCfg.RecentEntries[1].Path.EndsWith("manual-1", StringComparison.Ordinal));
+
+        manualTrimCfg.RecentLimit = 0;
+        manualTrimCfg.TrimRecentToLimit();
+        Check("[图片] 最近浏览裁剪：上限 0 时直接清空", manualTrimCfg.RecentEntries.Count == 0);
+
+        // ---- 14e. RemoveRecent / ClearRecent ----
+        var removeCfg = new PictureViewerConfig();
+        removeCfg.RememberRecent(recentA, recentFirstUtc);
+        removeCfg.RememberRecent(recentB, recentSecondUtc);
+        removeCfg.RemoveRecent(@"C:\SelfCheck\Recent\FOLDER-A");
+        Check("[图片] 最近浏览删除：按路径删（大小写不敏感）只删指定那条",
+            removeCfg.RecentEntries.Count == 1
+            && removeCfg.RecentEntries[0].Path == PictureViewerConfig.NormalizeRecentPath(recentB));
+
+        string? removeMissingError = null;
+        try
+        {
+            removeCfg.RemoveRecent(@"C:\SelfCheck\Recent\不存在");
+            removeCfg.RemoveRecent(null);
+            removeCfg.RemoveRecent("   ");
+        }
+        catch (Exception ex) { removeMissingError = ex.Message; }
+        Check("[图片] 最近浏览删除：删不存在的路径 / null 不抛异常、条数不变",
+            removeMissingError is null && removeCfg.RecentEntries.Count == 1, removeMissingError ?? "ok");
+
+        removeCfg.ClearRecent();
+        string? clearAgainError = null;
+        try
+        {
+            removeCfg.ClearRecent();
+            removeCfg.ClearRecent();
+        }
+        catch (Exception ex) { clearAgainError = ex.Message; }
+        Check("[图片] 最近浏览清空：清空后 0 条、重复清空也不抛异常",
+            removeCfg.RecentEntries.Count == 0 && clearAgainError is null, clearAgainError ?? "ok");
+
+        // ---- 14f. JSON 往返（自检临时根里的 ToolConfigStore） ----
+        var recentStore = ToolConfigStore.For("picture-viewer-recent-check");
+        var persistedRecentCfg = recentStore.Load<PictureViewerConfig>();
+        persistedRecentCfg.RecentLimit = 7;
+        persistedRecentCfg.ClearRecent();
+        var jsonRecentUtc = new DateTime(2026, 4, 1, 12, 0, 0, DateTimeKind.Utc);
+        persistedRecentCfg.RememberRecent(@"C:\SelfCheck\Recent\json-folder-a", jsonRecentUtc);
+        persistedRecentCfg.RememberRecent(@"C:\SelfCheck\Recent\json-folder-b", jsonRecentUtc.AddMinutes(1));
+        persistedRecentCfg.SaveNow();
+        var recentJson = File.Exists(recentStore.FilePath) ? File.ReadAllText(recentStore.FilePath) : "";
+        Check("[图片] 最近浏览落盘：JSON 里有 recentLimit / recentEntries / lastOpenedUtc，计算属性不写",
+            recentJson.Contains("\"recentLimit\": 7", StringComparison.Ordinal)
+            && recentJson.Contains("\"recentEntries\"", StringComparison.Ordinal)
+            && recentJson.Contains("\"lastOpenedUtc\"", StringComparison.Ordinal)
+            && !recentJson.Contains("recentLimitEffective", StringComparison.OrdinalIgnoreCase)
+            && !recentJson.Contains("recordsRecent", StringComparison.OrdinalIgnoreCase),
+            recentJson.Length <= 300 ? recentJson : recentJson[..300]);
+
+        var rereadRecentCfg = JsonFileStore.Read<PictureViewerConfig>(recentStore.FilePath);
+        Check("[图片] 最近浏览往返：读盘后 recentLimit=7、2 条记录、路径完整、时间能读回",
+            rereadRecentCfg is not null
+            && rereadRecentCfg.RecentLimit == 7
+            && rereadRecentCfg.RecentEntries.Count == 2
+            && rereadRecentCfg.RecentEntries[0].Path == PictureViewerConfig.NormalizeRecentPath(@"C:\SelfCheck\Recent\json-folder-b")
+            && rereadRecentCfg.RecentEntries[0].LastOpenedUtc == jsonRecentUtc.AddMinutes(1)
+            && rereadRecentCfg.RecentEntries[1].Path == PictureViewerConfig.NormalizeRecentPath(@"C:\SelfCheck\Recent\json-folder-a"),
+            rereadRecentCfg is null ? "读回 null" : $"{rereadRecentCfg.RecentEntries.Count} 条");
+        recentStore.StopWatching();
+
+        // ---- 14g. ResetToDefaults：上限回 50，但保留已有最近浏览记录 ----
+        var resetRecentCfg = new PictureViewerConfig
+        {
+            RecentLimit = 7,
+            ScrollMode = PictureScrollMode.SinglePage,
+            WheelStepPixels = 300,
+            ZoomPercent = 250,
+            InertiaEnabled = false,
+            LastFolder = @"D:\some",
+        };
+        resetRecentCfg.RememberRecent(recentA, recentFirstUtc);
+        resetRecentCfg.RememberRecent(recentB, recentSecondUtc);
+        resetRecentCfg.RememberRecent(@"C:\SelfCheck\Recent\folder-c", recentSecondUtc.AddMinutes(1));
+        resetRecentCfg.ResetToDefaults();
+        Check("[图片] 最近浏览恢复默认：上限回 50、已有 3 条记录保留（只按上限裁剪不清空）",
+            resetRecentCfg.RecentLimit == 50 && resetRecentCfg.RecentLimitEffective == 50
+            && resetRecentCfg.RecentEntries.Count == 3);
+        Check("[图片] 恢复默认设置：其它显示项也一起回默认（阅读方式 / 缩放 / 惯性 / 上次文件夹）",
+            resetRecentCfg.ScrollModeEffective == PictureScrollMode.Vertical
+            && resetRecentCfg.ZoomPercentEffective == 100
+            && resetRecentCfg.InertiaEnabled
+            && resetRecentCfg.LastFolder == "");
+
+        // ---- 14h. VM：打开文件夹后记录 / 去重 / 裁剪 / 打开最近 / 清空 ----
+        var pictureRecentA = SelfCheckScratch.MakeDirectory("picture-recent-a");
+        var pictureRecentB = SelfCheckScratch.MakeDirectory("picture-recent-b");
+        var pictureRecentGone = SelfCheckScratch.MakeDirectory("picture-recent-gone");
+        try
+        {
+            foreach (var dir in new[] { pictureRecentA, pictureRecentB, pictureRecentGone })
+            {
+                WritePng(Path.Combine(dir, "1.png"), 2, 3);
+                WritePng(Path.Combine(dir, "2.png"), 4, 5);
+            }
+
+            var recentVm = new PictureViewerViewModel();
+            try
+            {
+                recentVm.Cfg.RecentLimit = 50;
+                recentVm.Cfg.ClearRecent();
+                recentVm.RefreshRecentItems();
+                Check("[图片] 最近浏览 VM：初始没有记录、空状态提示「打开文件夹后自动记」、上限文字 50 条",
+                    !recentVm.HasRecentItems && recentVm.RecentItems.Count == 0
+                    && recentVm.RecentEmptyText.Contains("还没有最近浏览")
+                    && recentVm.RecentLimitText == "50 条"
+                    && !recentVm.IsRecentVisible);
+
+                recentVm.ToggleRecent();
+                Check("[图片] 最近浏览 VM：ToggleRecent 打开面板、并关掉设置面板",
+                    recentVm.IsRecentVisible && !recentVm.IsSettingsVisible);
+
+                recentVm.LoadFolderAsync(pictureRecentA).GetAwaiter().GetResult();
+                Check("[图片] 最近浏览 VM：打开文件夹后记 1 条（名字 / 完整路径）并自动收起面板",
+                    recentVm.RecentItems.Count == 1
+                    && recentVm.RecentItems[0].Name == Path.GetFileName(pictureRecentA)
+                    && recentVm.RecentItems[0].Path == PictureViewerConfig.NormalizeRecentPath(pictureRecentA)
+                    && recentVm.Cfg.RecentEntries[0].Path == PictureViewerConfig.NormalizeRecentPath(pictureRecentA)
+                    && recentVm.HasRecentItems
+                    && !recentVm.IsRecentVisible,
+                    string.Join(" | ", recentVm.RecentItems.Select(item => item.Path)));
+
+                recentVm.LoadFolderAsync(pictureRecentB).GetAwaiter().GetResult();
+                Check("[图片] 最近浏览 VM：再打开另一个文件夹 → 新的在最前、共 2 条",
+                    recentVm.RecentItems.Count == 2
+                    && recentVm.RecentItems[0].Path == PictureViewerConfig.NormalizeRecentPath(pictureRecentB)
+                    && recentVm.RecentItems[1].Path == PictureViewerConfig.NormalizeRecentPath(pictureRecentA));
+
+                recentVm.RecentLimit = 1;
+                Check("[图片] 最近浏览 VM：上限调成 1 立刻裁剪到只剩最新的 B、文字变 1 条",
+                    recentVm.RecentLimit == 1 && recentVm.RecentItems.Count == 1
+                    && recentVm.RecentItems[0].Path == PictureViewerConfig.NormalizeRecentPath(pictureRecentB)
+                    && recentVm.RecentLimitText == "1 条",
+                    recentVm.RecentLimitText);
+
+                recentVm.RecentLimit = 9999;
+                Check("[图片] 最近浏览 VM：上限超 100 夹到 100、文字 100 条",
+                    recentVm.RecentLimit == 100 && recentVm.Cfg.RecentLimit == 100
+                    && recentVm.RecentLimitText == "100 条");
+
+                recentVm.RecentLimit = -5;
+                Check("[图片] 最近浏览 VM：上限负数夹到 0、清空列表、文字变「不记录」",
+                    recentVm.RecentLimit == 0 && recentVm.RecentItems.Count == 0
+                    && recentVm.Cfg.RecentEntries.Count == 0
+                    && recentVm.RecentLimitText == "不记录"
+                    && recentVm.RecentEmptyText.Contains("上限是 0"),
+                    recentVm.RecentLimitText);
+
+                recentVm.LoadFolderAsync(pictureRecentA).GetAwaiter().GetResult();
+                Check("[图片] 最近浏览 VM：上限 0 时打开文件夹不记录", recentVm.RecentItems.Count == 0);
+
+                recentVm.RecentLimit = 50;
+                recentVm.LoadFolderAsync(pictureRecentA).GetAwaiter().GetResult();
+                recentVm.LoadFolderAsync(pictureRecentB).GetAwaiter().GetResult();
+                recentVm.ClearRecent();
+                Check("[图片] 最近浏览 VM：ClearRecent 清空并给状态栏提示",
+                    !recentVm.HasRecentItems && recentVm.RecentItems.Count == 0
+                    && recentVm.Cfg.RecentEntries.Count == 0
+                    && recentVm.StatusText.Contains("已清空最近浏览"),
+                    recentVm.StatusText);
+
+                // 点最近记录：文件夹还在 → 重新加载并置顶；文件夹已删 → 移除记录并提示
+                recentVm.LoadFolderAsync(pictureRecentA).GetAwaiter().GetResult();
+                recentVm.LoadFolderAsync(pictureRecentB).GetAwaiter().GetResult();
+                recentVm.OpenRecentAsync(pictureRecentA).GetAwaiter().GetResult();
+                Check("[图片] 最近浏览 VM：点最近记录重新打开 A → 当前文件夹 A、A 置顶",
+                    recentVm.FolderPath == PictureViewerConfig.NormalizeRecentPath(pictureRecentA)
+                    && recentVm.RecentItems.Count == 2
+                    && recentVm.RecentItems[0].Path == PictureViewerConfig.NormalizeRecentPath(pictureRecentA),
+                    recentVm.FolderPath);
+
+                recentVm.LoadFolderAsync(pictureRecentGone).GetAwaiter().GetResult();
+                Directory.Delete(pictureRecentGone, recursive: true);
+                recentVm.OpenRecentAsync(pictureRecentGone).GetAwaiter().GetResult();
+                Check("[图片] 最近浏览 VM：点已不存在的文件夹 → 从列表移除并提示",
+                    recentVm.RecentItems.All(item => item.Path != PictureViewerConfig.NormalizeRecentPath(pictureRecentGone))
+                    && recentVm.StatusText.Contains("已经不在了"),
+                    recentVm.StatusText);
+
+                recentVm.LoadFolderAsync(pictureRecentA).GetAwaiter().GetResult();
+                recentVm.LoadFolderAsync(pictureRecentB).GetAwaiter().GetResult();
+                recentVm.ToggleRecentCommand.Execute(null);
+                var recentOpenedByCommand = recentVm.IsRecentVisible;
+                recentVm.ClearRecentCommand.Execute(null);
+                Check("[图片] 最近浏览 VM：工具条命令能打开最近面板 / 清空记录",
+                    recentOpenedByCommand && recentVm.RecentItems.Count == 0
+                    && recentVm.Cfg.RecentEntries.Count == 0,
+                    recentVm.StatusText);
+
+                recentVm.NotifyClosed();
+                Check("[图片] 最近浏览 VM：切走工具后最近面板收起", !recentVm.IsRecentVisible);
+            }
+            finally
+            {
+                recentVm.Dispose();
+            }
+        }
+        finally
+        {
+            foreach (var dir in new[] { pictureRecentA, pictureRecentB, pictureRecentGone })
+            {
+                try { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); } catch { /* 临时目录，删不掉无所谓 */ }
+            }
+        }
+
         // ---------------------------------------------------------------- 收尾：清掉临时测试文件夹
         try { Directory.Delete(folder, recursive: true); } catch { /* 临时目录，删不掉无所谓 */ }
         try { Directory.Delete(emptyFolder, recursive: true); } catch { /* 同上 */ }
