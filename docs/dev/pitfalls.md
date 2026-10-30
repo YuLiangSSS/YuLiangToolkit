@@ -145,6 +145,10 @@
   （否则一进来滑块在最右边、往右拖反而往回滚），轨道翻页按钮换成 `PageLeft` / `PageRight`
   （`PageUp` / `PageDown` 会被外层 ScrollViewer 当竖向翻页，点横条没反应）。横向滑块还要把竖条用的
   `MinHeight=24` 放开。v0.33.0 主页标签墙的横向滚动条踩过，别删 Orientation 触发器里那几行。
+- 横向 `ScrollBar` 的**粗细别写死** `Height=10`：Aero2 主题样式会给横向条设
+  `MinHeight = SystemParameters.HorizontalScrollBarHeight`（默认 17 DIP），`Height=10` 会被它顶回 17，
+  看起来像"设了没生效"。要跟系统一致就显式写 `Height` / `MinHeight = {x:Static SystemParameters.HorizontalScrollBarHeight}`
+  （v0.33.0 已按这个写）。
 - 横向滚动容器别让内层 `ScrollViewer` 吃掉滚轮：它 `OnMouseWheel` 是无条件 `e.Handled = true` 的
   （见 `ScrollChaining`），普通滚轮要在 `PreviewMouseWheel` 里转给外层页面；`Shift + 滚轮` 想横滚也得自己算
   （WPF 原生 `ScrollViewer` 不支持 Shift + 滚轮，跟很多应用的习惯不一样）。

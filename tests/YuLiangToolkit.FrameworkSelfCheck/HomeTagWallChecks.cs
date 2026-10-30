@@ -50,15 +50,25 @@ internal static class HomeTagWallChecks
             $"{size.Width}×{size.Height}");
 
         // ---------- 3. 行内一个挨一个紧密排；换行后回到最左边（不按列对齐） ----------
-        // 7 个等宽标签按 2 / 2 / 3 分行，期望槽位：
-        // [0](0,0) [1](28,0) | [2](0,18) [3](28,18) | [4](0,36) [5](28,36) [6](56,36)
+        // 7 个等宽标签分到 3 行（等代价的最优解不止一种 → 只断言布局不变式，不锁死具体分行）
         var slots = Slots(panel);
-        check("同一行左右紧挨（第 2 个 x=28），换行后从最左边重新开始（第 3 个 x=0，不与上一行对齐）",
-            Math.Abs(slots[1].X - 28) < 0.01
-            && Math.Abs(slots[2].X) < 0.01 && Math.Abs(slots[2].Y - 18) < 0.01
-            && Math.Abs(slots[3].X - 28) < 0.01
-            && Math.Abs(slots[4].X) < 0.01 && Math.Abs(slots[4].Y - 36) < 0.01
-            && Math.Abs(slots[5].X - 28) < 0.01 && Math.Abs(slots[6].X - 56) < 0.01,
+        var rows = slots.GroupBy(slot => Math.Round(slot.Y, 3)).OrderBy(group => group.Key).ToList();
+        var tight = rows.All(row =>
+        {
+            var items = row.OrderBy(slot => slot.X).ToList();
+            if (Math.Abs(items[0].X) > 0.01) return false;                              // 每行都从最左边开始
+            for (var i = 1; i < items.Count; i++)
+            {
+                // 行内紧挨着（每个标签占位 28 宽）
+                if (Math.Abs(items[i].X - (items[i - 1].X + 28)) > 0.01) return false;
+            }
+            return true;
+        });
+        check("行内左右紧挨（步长 28）、每行都从最左边重新开始（不按列对齐）",
+            rows.Count == 3 && rows.Sum(row => row.Count()) == 7 && tight
+            && Math.Abs(rows[0].Key) < 0.01
+            && Math.Abs(rows[1].Key - 18) < 0.01
+            && Math.Abs(rows[2].Key - 36) < 0.01,
             Describe(slots));
 
         // ---------- 4. 宽度不同的标签：按「离目标行宽最近」分到两行（10+50 | 20+30），短标签不被拉宽 ----------

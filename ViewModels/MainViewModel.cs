@@ -308,7 +308,18 @@ public class MainViewModel : ObservableObject
         get => _homeTagsVisibleOverride ?? _shell.ShowHomeTags;
         set
         {
-            if (_shell.ShowHomeTags == value) return;
+            // 用户在设置页手动改过 → 以配置为准，清掉截图 / 调试用的临时覆盖
+            var hadOverride = _homeTagsVisibleOverride is not null;
+            _homeTagsVisibleOverride = null;
+
+            if (_shell.ShowHomeTags == value)
+            {
+                if (!hadOverride) return;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(ShowTagBar));
+                return;
+            }
+
             _shell.ShowHomeTags = value;
             if (!value) IsTagBarExpanded = false;   // 藏起来时顺手收起，免得下次显示直接是一大坨
             OnPropertyChanged();
@@ -319,7 +330,8 @@ public class MainViewModel : ObservableObject
     private bool _isTagBarExpanded;
 
     /// <summary>
-    /// 标签墙当前是不是「展开全部」（只存内存，不写配置：每次进主页默认还是 3 行）。
+    /// 标签墙当前是不是「展开全部」（只存内存、不写配置：应用启动时默认还是 3 行；
+    /// 本次运行里切来切去会记住，回到主页不强制收起）。
     /// </summary>
     public bool IsTagBarExpanded
     {
@@ -646,13 +658,14 @@ public class MainViewModel : ObservableObject
         _themeOverride = ThemeManager.ParseThemeName(Environment.GetEnvironmentVariable("YLT_THEME"));
 
         // 截图 / 调试：YLT_HOME_TAGS=hidden 临时隐藏标签墙（验证「设置里关掉」的样子）、
-        // =expanded 临时展开；只影响本次运行，不写配置。
+        // =expanded 临时展开（同时强制显示，免得配置里刚好关着标签墙时截图截不到）；只影响本次运行，不写配置。
         switch (Environment.GetEnvironmentVariable("YLT_HOME_TAGS")?.Trim().ToLowerInvariant())
         {
             case "hidden" or "hide" or "off":
                 _homeTagsVisibleOverride = false;
                 break;
             case "expanded" or "expand" or "open":
+                _homeTagsVisibleOverride = true;
                 _isTagBarExpanded = true;
                 break;
         }

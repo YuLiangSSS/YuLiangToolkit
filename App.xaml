@@ -616,15 +616,20 @@
                                 <Trigger Property="IsMouseOver" Value="True">
                                     <Setter TargetName="TrackBorder" Property="Opacity" Value="1" />
                                 </Trigger>
-                                <!-- 横向滚动条要单独掰三处（否则能显示出来但方向 / 点击都不对）：
+                                <!-- 横向滚动条要单独掰四处（否则能显示出来但方向 / 点击 / 粗细都不对）：
                                      ① IsDirectionReversed 不会被 Track 继承：竖向要 True（值变大 = 滑块往下走），
                                         横向要 False（值变大 = 滑块往右走），否则一进来滑块就在右端、往右拖反而往回滚；
                                      ② 轨道翻页按钮要用 PageLeft / PageRight —— PageUp / PageDown 会被外层
                                         ScrollViewer 当成竖向翻页（横条点了没反应）；
-                                     ③ 滑块最小高度是给竖条的（24），横条只有 10px 高，放开让滑块填满轨道。 -->
+                                     ③ 滑块 MinHeight 是给竖条的（24），横条细，放开让它填满轨道；
+                                     ④ 高度别写死 10：Aero2 主题给横向 ScrollBar 设了
+                                        MinHeight = SystemParameters.HorizontalScrollBarHeight（默认 17），
+                                        Height=10 会被它顶回 17（看起来像“设了没生效”）。这里显式跟系统高度一致；
+                                        竖向条完全没动，保持原来的样子。 -->
                                 <Trigger Property="Orientation" Value="Horizontal">
                                     <Setter Property="Width" Value="Auto" />
-                                    <Setter Property="Height" Value="10" />
+                                    <Setter Property="Height" Value="{x:Static SystemParameters.HorizontalScrollBarHeight}" />
+                                    <Setter Property="MinHeight" Value="{x:Static SystemParameters.HorizontalScrollBarHeight}" />
                                     <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False" />
                                     <Setter TargetName="DecreasePageButton" Property="Command"
                                             Value="{x:Static ScrollBar.PageLeftCommand}" />

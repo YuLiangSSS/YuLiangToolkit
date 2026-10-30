@@ -384,6 +384,15 @@ Check("主页标签墙默认显示（老配置升上来行为不变；配置键 
     && JsonFileStore.Serialize(new ShellConfig()).Contains("\"showHomeTags\": true"),
     JsonFileStore.Serialize(new ShellConfig()).Replace(Environment.NewLine, " "));
 
+// 真读一份「旧配置」：没有 showHomeTags 键时必须回落到默认值 true（不能靠“属性初始值”碰运气）
+var legacyTagsDir = SelfCheckScratch.MakeDirectory("shell-tags-legacy");
+var legacyTagsPath = Path.Combine(legacyTagsDir, "config.json");
+File.WriteAllText(legacyTagsPath, "{ \"sortMode\": \"NameAsc\" }");
+var legacyTags = JsonFileStore.Read<ShellConfig>(legacyTagsPath);
+Check("旧配置文件没有 showHomeTags 键 → 读回 true（升级后标签墙照常显示）",
+    legacyTags is { ShowHomeTags: true, SortMode: ToolSortMode.NameAsc },
+    JsonFileStore.Serialize(legacyTags).Replace(Environment.NewLine, " "));
+
 shell.ShowHomeTags = false;
 Thread.Sleep(900);
 var savedTags = JsonFileStore.Read<ShellConfig>(shellStore.FilePath);

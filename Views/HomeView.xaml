@@ -30,7 +30,7 @@
 
                 <Button Grid.Column="1" Content="⚙ 主页设置" Style="{StaticResource SecondaryButtonStyle}"
                         VerticalAlignment="Top" Command="{Binding OpenSettingsCommand}"
-                        ToolTip="打开主页设置页面（界面风格 / 自动与点击特效 / 粒子颜色 / 关闭行为）" />
+                        ToolTip="打开主页设置页面（界面风格 / 主页显示 / 自动与点击特效 / 粒子颜色 / 关闭行为）" />
             </Grid>
 
             <!-- ===== 搜索 + 排序条 ===== -->
