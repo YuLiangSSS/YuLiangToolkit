@@ -30,7 +30,8 @@ public sealed record CursorEffectTuning(
     double BurstRange = 1.0,
     double DispersionRadius = 98.0,
     double GlowFlashRadius = 64.0,
-    double InvertCircleRadius = 150.0)
+    double InvertCircleRadius = 150.0,
+    bool InvertCircleOverlapCancels = true)
 {
     // ---------------- 取值范围（滑块 / 校验共用） ----------------
 
@@ -61,7 +62,7 @@ public sealed record CursorEffectTuning(
     /// <summary>全部参数取默认值（= v0.36.x 的固定外观）。</summary>
     public static CursorEffectTuning Default { get; } = new();
 
-    /// <summary>把每个参数夹回各自的取值范围；<c>NaN</c> 用下限。</summary>
+    /// <summary>把每个参数夹回各自的取值范围；<c>NaN</c> 用下限。布尔开关（重叠是否变回正色）原样保留。</summary>
     public CursorEffectTuning Normalized() => new(
         TrailCountRange.Clamp(TrailParticleCount),
         TrailSizeRange.Clamp(TrailParticleSize),
@@ -70,5 +71,6 @@ public sealed record CursorEffectTuning(
         BurstRangeRange.Clamp(BurstRange),
         DispersionRadiusRange.Clamp(DispersionRadius),
         GlowFlashRadiusRange.Clamp(GlowFlashRadius),
-        InvertRadiusRange.Clamp(InvertCircleRadius));
+        InvertRadiusRange.Clamp(InvertCircleRadius),
+        InvertCircleOverlapCancels);
 }

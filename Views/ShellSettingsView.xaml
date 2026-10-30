@@ -198,6 +198,16 @@
                                Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,14,0,0" />
                     <ItemsControl ItemsSource="{Binding ClickEffectSliders}"
                                   ItemTemplate="{StaticResource EffectSliderTemplate}" Margin="0,2,0,0" />
+
+                    <!-- 反色圆环专属开关（v0.37.2）：两圈重叠时再反一次变回正色；没勾反色圆环时整行置灰 -->
+                    <StackPanel IsEnabled="{Binding HasInvertCircleSelected}" Margin="0,14,0,0">
+                        <CheckBox Content="反色圆环：两圆重叠时变回正色" Style="{StaticResource CheckBoxStyle}"
+                                  IsChecked="{Binding InvertCircleOverlapCancels}"
+                                  ToolTip="勾选：两个反色圆叠在同一片区域时，重叠处会再反一次 → 恢复原来的颜色（像橡皮一样互相抵消）。" />
+                        <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                                   Margin="25,2,0,0"
+                                   Text="勾选 = 重叠处变回正色（反色反两次就是原色，3 圈及以上按覆盖次数的奇偶算）；不勾 = 后触发的圆直接盖住先前的，重叠处仍是反色。" />
+                    </StackPanel>
                 </StackPanel>
             </Border>
 

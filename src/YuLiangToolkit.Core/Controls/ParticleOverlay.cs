@@ -460,6 +460,7 @@ public sealed class ParticleOverlay : FrameworkElement
         _dispersion.Radius = _tuning.DispersionRadius;
         _flash.Radius = _tuning.GlowFlashRadius;
         _cursorGlow.Radius = _tuning.CursorGlowRadius;
+        _invert.OverlapCancels = _tuning.InvertCircleOverlapCancels;
     }
 
     /// <summary>总开关变化：关掉时清空一切并停渲染；打开时按选择恢复自动拖尾并订阅渲染。</summary>

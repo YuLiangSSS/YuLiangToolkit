@@ -445,7 +445,27 @@ public class MainViewModel : ObservableObject
         _shell.BurstRange,
         _shell.DispersionRadius,
         _shell.GlowFlashRadius,
-        _shell.InvertCircleRadius).Normalized();
+        _shell.InvertCircleRadius,
+        _shell.InvertCircleOverlapCancels).Normalized();
+
+    /// <summary>
+    /// 反色圆环：两个圆重叠时，重叠处是否**再反一次变回正色**（主页设置「反色圆环」参数下面的复选框）。
+    /// 写配置并通知渲染层（<see cref="EffectTuning"/>）立即生效；关掉 = 后触发的圆直接盖住先前的。
+    /// </summary>
+    public bool InvertCircleOverlapCancels
+    {
+        get => _shell.InvertCircleOverlapCancels;
+        set
+        {
+            if (_shell.InvertCircleOverlapCancels == value) return;
+            _shell.InvertCircleOverlapCancels = value;
+            OnPropertyChanged();
+            NotifyTuningChanged();
+        }
+    }
+
+    /// <summary>反色圆环有没有勾选（决定上面那个「重叠变正色」复选框是否可用）。</summary>
+    public bool HasInvertCircleSelected => IsEffectSelected(ClickEffectOptions, CursorEffects.InvertCircle);
 
     /// <summary>构造一条滑块：值变 → 写配置 + 通知 <see cref="EffectTuning"/> 让渲染层跟着改。</summary>
     private ShellSliderOption Slider(
@@ -533,6 +553,7 @@ public class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(AutoEffectIds));
         OnPropertyChanged(nameof(ClickEffectIds));
         OnPropertyChanged(nameof(HasParticleEffectSelected));
+        OnPropertyChanged(nameof(HasInvertCircleSelected));
         UpdateSliderAvailability();
     }
 

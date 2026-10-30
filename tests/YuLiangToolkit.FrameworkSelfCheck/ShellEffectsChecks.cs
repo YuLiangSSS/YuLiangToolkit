@@ -59,6 +59,10 @@ internal static class ShellEffectsChecks
             && defaults.GlowFlashRadius == 64 && defaults.InvertCircleRadius == 150);
         check("默认值本身就在各自范围内（Normalized 不会改动默认值）",
             CursorEffectTuning.Default.Normalized() == CursorEffectTuning.Default);
+        check("反色圆环「重叠变正色」开关：默认打开，Normalized 原样保留",
+            CursorEffectTuning.Default.InvertCircleOverlapCancels
+            && !(CursorEffectTuning.Default with { InvertCircleOverlapCancels = false })
+                .Normalized().InvertCircleOverlapCancels);
 
         var ranges = new (string Name, CursorEffectRange Range)[]
         {
@@ -429,6 +433,7 @@ internal static class ShellEffectsChecks
             DispersionRadius = 240,
             GlowFlashRadius = 180,
             InvertCircleRadius = 90,
+            InvertCircleOverlapCancels = false,
         });
         var json = File.ReadAllText(path);
         var saved = JsonFileStore.Read<ShellConfig>(path);
@@ -445,9 +450,11 @@ internal static class ShellEffectsChecks
 
         check("特效参数（滑块）按字段存盘、读回一致",
             json.Contains("\"trailParticleCount\"") && json.Contains("\"invertCircleRadius\"")
+            && json.Contains("\"invertCircleOverlapCancels\"")
             && saved is { TrailParticleCount: 6.5, TrailParticleSize: 1.4, CursorGlowRadius: 120 }
             && saved is { BurstParticleCount: 80, BurstRange: 1.95, DispersionRadius: 240 }
-            && saved is { GlowFlashRadius: 180, InvertCircleRadius: 90 });
+            && saved is { GlowFlashRadius: 180, InvertCircleRadius: 90 }
+            && saved.InvertCircleOverlapCancels == false);
 
         File.WriteAllText(path, "{ \"showParticles\": false }");
         var legacy = JsonFileStore.Read<ShellConfig>(path);
@@ -459,7 +466,8 @@ internal static class ShellEffectsChecks
                 TrailParticleCount: 1, TrailParticleSize: 1, CursorGlowRadius: 46,
                 BurstParticleCount: 24, BurstRange: 1, DispersionRadius: 98,
                 GlowFlashRadius: 64, InvertCircleRadius: 150,
-            });
+            }
+            && legacy.InvertCircleOverlapCancels);
 
         File.WriteAllText(path, "{ \"autoEffects\": [], \"clickEffects\": [] }");
         var explicitEmpty = JsonFileStore.Read<ShellConfig>(path);

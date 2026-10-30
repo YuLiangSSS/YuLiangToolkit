@@ -102,6 +102,12 @@ public sealed class ShellConfig : ToolConfig
     public double InvertCircleRadius { get; set; } = 150.0;
 
     /// <summary>
+    /// 反色圆环：两个圆叠到同一片区域时，重叠处是否**再反一次变回正色**（奇偶叠加，v0.37.2，默认开）。
+    /// 关掉 = 后触发的圆直接盖住先前的（重叠处仍是反色，和 v0.37.1 之前一样）。
+    /// </summary>
+    public bool InvertCircleOverlapCancels { get; set; } = true;
+
+    /// <summary>
     /// 界面主题（「主页设置 → 界面风格」，默认 <see cref="UiTheme.Default"/>）。
     /// 选 <see cref="UiTheme.LiquidGlass"/> 切换成第二套 UI（液态玻璃）。
     /// 旧配置文件没有这个字段时读出来就是默认值 —— 老用户升级后外观不变。

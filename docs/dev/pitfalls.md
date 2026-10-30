@@ -47,6 +47,9 @@
   只在鼠标按下 / 松开时各取一次（`InvertCircleRenderer`），动画本身只改蒙版半径；窗口缩放直接结束这一圈。
   ⚠ 覆盖层必须和取景根节点（`MainWindow.xaml` 的 `RootGrid`）是**兄弟节点**，否则取景会把覆盖层自己
   （粒子 / 上一帧的反色）也画进去；根节点透明，取景时还要补 `WindowBackgroundBrush` 底色。
+- 反色圆环支持连点、多圈并存（各圈各自取景 + 时间线，最多 8 圈）；「两圈重叠变回正色」用
+  `CombinedGeometry` 的 Xor / Exclude / Intersect 按覆盖次数奇偶画（每圈同时留正色 / 反色两份位图），
+  别图省事改成简单叠图；关掉开关时才走简单叠图（后画的盖住先前的）。
 
 ### osu!mania 三件套
 - ⚠ OsuParsers 解码器 static 状态、非线程安全：`OsuBeatmapFile` 里 `IoLock` 加锁 + 批量串行，别用 `Parallel.ForEachAsync`。
