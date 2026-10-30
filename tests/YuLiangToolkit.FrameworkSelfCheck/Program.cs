@@ -877,7 +877,7 @@ RunGroupModule("shell", "导航", NavigationChecks.Run, "[导航] ");
 RunGroupModule("shell", "粒子", ParticleChecks.Run);
 RunGroupModule("shell", "光标特效", ShellEffectsChecks.Run);
 
-// ---------- 主页标签墙（v0.33.0：3 行 + 横向滚动；FixedRowsPanel 的列宽 / 行高 / 换列排列，无头 STA 线程） ----------
+// ---------- 主页标签墙（v0.33.0：3 行 + 横向滚动；FixedRowsPanel 的行内紧密排列 / 行高 / 逐行平衡，无头 STA 线程） ----------
 RunGroupModule("shell", "标签墙", HomeTagWallChecks.Run, "[标签墙] ");
 
 // ---------- 星数计算（数值基准回归） ----------

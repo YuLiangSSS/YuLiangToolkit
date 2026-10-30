@@ -4,7 +4,7 @@
              xmlns:views="clr-namespace:YuLiangToolkit.App.Views">
     <UserControl.Resources>
         <!-- 主页「快速筛选」标签芯片：3 行横向条和展开后的换行视图共用这一套模板（间距靠 Margin，
-             横向条里 FixedRowsPanel 把 Margin 也算进测量，所以两边的行 / 列间距一致）。 -->
+             横向条里 FixedRowsPanel 把 Margin 也算进测量，所以两边的行距 / 标签间距一致）。 -->
         <DataTemplate x:Key="TagChipTemplate">
             <Button Content="{Binding}" Margin="0,0,8,8"
                     Style="{StaticResource TagChipButtonStyle}"
@@ -126,7 +126,8 @@
 
             <!-- ===== 标签快捷筛选（未搜索时显示；点标签即搜索）。放在分类之后：先让用户看到「音游工具」入口 =====
                  标签有一百多个，整堵墙太占地方（v0.33.0）：
-                   · 默认只排 3 行，下面配一条横向滚动条，左右拖看更多；
+                   · 默认只排 3 行，下面配一条横向滚动条，左右拖看更多；三行像文字换行一样一行行紧密排，
+                     换行后回最左边（不按列对齐）；
                    · 点「展开全部」按原来的换行方式铺开，再点「收起」回到 3 行；
                    · 不需要这个功能的人可以在「主页设置 → 主页显示」里把整块隐藏。 -->
             <StackPanel Margin="0,6,0,0" Visibility="{Binding ShowTagBar, Converter={StaticResource BoolToVis}}">

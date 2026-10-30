@@ -8,9 +8,9 @@ namespace YuLiangToolkit.FrameworkSelfCheck;
 /// <summary>
 /// 主页标签墙的面板 <see cref="FixedRowsPanel"/> 纯布局自检（v0.33.0：3 行 + 横向滚动）。
 ///
-/// <para>被测的是「列宽 / 行高 / 换列位置」这套排列算法，跟主题、Application、ItemsControl 都无关：
-/// 在 STA 线程里直接造面板 + 固定尺寸子元素，Measure / Arrange 一遍再读每项的布局槽位断言。
-/// 主页 XAML 用的就是默认 3 行，所以这个面板排错 = 标签墙会歪 / 挤 / 多一行少一行。</para>
+/// <para>被测的是「按行紧密排列 / 行与行不对齐 / 每行多宽 / 行高」这套算法，跟主题、Application、
+/// ItemsControl 都无关：在 STA 线程里直接造面板 + 固定尺寸子元素，Measure / Arrange 一遍再读
+/// 每项的布局槽位断言。主页 XAML 用的就是默认 3 行，所以这个面板排错 = 标签墙会歪 / 挤 / 对齐错。</para>
 /// </summary>
 internal static class HomeTagWallChecks
 {
@@ -41,48 +41,47 @@ internal static class HomeTagWallChecks
             defaultPanel.Rows == 3 && emptySize is { Width: 0, Height: 0 },
             $"Rows={defaultPanel.Rows}, {emptySize.Width}×{emptySize.Height}");
 
-        // ---------- 2. 7 个固定尺寸标签 + 3 行 → 3 列，尺寸 = 列宽和 × 行高和 ----------
-        // 每个子元素 20×10 + Margin(0,0,8,8) → 占位 28×18（Margin 也算进测量，就是标签墙的行列间距）。
+        // ---------- 2. 7 个固定尺寸标签（20×10 + Margin 0,0,8,8 = 占位 28×18）→ 3 行，尺寸 = 最大行宽 × 行高之和 ----------
         var panel = BuildPanel(rows: 3, margins: true,
             (20, 10), (20, 10), (20, 10), (20, 10), (20, 10), (20, 10), (20, 10));
         var size = MeasureAndArrange(panel);
-        check("7 个标签按 3 行排成 3 列（3×28 宽、3×18 高）",
+        check("7 个标签按 3 行排：宽度取最宽那行（84）、高度 = 三行行高之和（54）",
             Math.Abs(size.Width - 84) < 0.01 && Math.Abs(size.Height - 54) < 0.01,
             $"{size.Width}×{size.Height}");
 
-        // ---------- 3. 竖着填：同一列 x 相同、y 依次递增；满 3 个换到下一列并从顶部开始 ----------
+        // ---------- 3. 行内一个挨一个紧密排；换行后回到最左边（不按列对齐） ----------
+        // 7 个等宽标签按 2 / 2 / 3 分行，期望槽位：
+        // [0](0,0) [1](28,0) | [2](0,18) [3](28,18) | [4](0,36) [5](28,36) [6](56,36)
         var slots = Slots(panel);
-        check("第一列从上往下排，第 4 个换到下一列顶部",
-            SameX(slots[0], slots[1], slots[2])
-            && slots[0].Y < slots[1].Y && slots[1].Y < slots[2].Y
-            && slots[3].X > slots[2].X && Math.Abs(slots[3].Y) < 0.01
-            && SameX(slots[3], slots[4], slots[5])
-            && slots[6].X > slots[5].X && Math.Abs(slots[6].Y) < 0.01,
+        check("同一行左右紧挨（第 2 个 x=28），换行后从最左边重新开始（第 3 个 x=0，不与上一行对齐）",
+            Math.Abs(slots[1].X - 28) < 0.01
+            && Math.Abs(slots[2].X) < 0.01 && Math.Abs(slots[2].Y - 18) < 0.01
+            && Math.Abs(slots[3].X - 28) < 0.01
+            && Math.Abs(slots[4].X) < 0.01 && Math.Abs(slots[4].Y - 36) < 0.01
+            && Math.Abs(slots[5].X - 28) < 0.01 && Math.Abs(slots[6].X - 56) < 0.01,
             Describe(slots));
 
-        // ---------- 4. 列宽取该列最宽；短标签保持自己的宽度、不被拉成等宽格子 ----------
+        // ---------- 4. 宽度不同的标签：按「离目标行宽最近」分到两行（10+50 | 20+30），短标签不被拉宽 ----------
         var mixed = BuildPanel(rows: 2, margins: false,
             (10, 10), (50, 10), (20, 10), (30, 10));
         var mixedSize = MeasureAndArrange(mixed);
         var mixedSlots = Slots(mixed);
-        check("列宽 = 该列最宽标签（2 列 50+30），短标签仍是自然宽度（10 而不是 50）",
-            Math.Abs(mixedSize.Width - 80) < 0.01
+        check("两行尽量均匀（60 | 50），短标签保持自然宽度（10 而不是 50）",
+            Math.Abs(mixedSize.Width - 60) < 0.01
             && Math.Abs(mixedSlots[0].Width - 10) < 0.01
-            && Math.Abs(mixedSlots[1].Width - 50) < 0.01
-            && Math.Abs(mixedSlots[2].X - 50) < 0.01,
+            && Math.Abs(mixedSlots[1].X - 10) < 0.01 && Math.Abs(mixedSlots[1].Width - 50) < 0.01
+            && Math.Abs(mixedSlots[2].X) < 0.01 && Math.Abs(mixedSlots[2].Y - 10) < 0.01,
             $"desired={mixedSize.Width}×{mixedSize.Height}, " + Describe(mixedSlots));
 
-        // ---------- 5. 行高取该行最高的那个：跨列的行必须在同一条线上（不会各排各的） ----------
+        // ---------- 5. 行高各算各的：第一行最高 30、第二行最高 60（上下不要求对齐） ----------
         var tallRows = BuildPanel(rows: 2, margins: false,
             (10, 10), (10, 20), (10, 30), (10, 40), (10, 50), (10, 60));
         var tallSize = MeasureAndArrange(tallRows);
         var tallSlots = Slots(tallRows);
-        // 第 0 行最高 50、第 1 行最高 60 → 总高 110；第 2 / 6 项（换列后的第 1 行）y 都从 50 开始
-        check("行高取该行最高标签，跨列的第 1 行都从 y=50 开始（总高 110）",
-            Math.Abs(tallSize.Height - 110) < 0.01
-            && Math.Abs(tallSlots[1].Y - 50) < 0.01
-            && Math.Abs(tallSlots[3].Y - 50) < 0.01
-            && Math.Abs(tallSlots[5].Y - 50) < 0.01,
+        check("行高取本行最高标签：总高 30+60=90，第二行从 y=30 开始（按行排、不按列对齐）",
+            Math.Abs(tallSize.Height - 90) < 0.01
+            && Math.Abs(tallSlots[0].Y) < 0.01 && Math.Abs(tallSlots[2].Y) < 0.01
+            && Math.Abs(tallSlots[3].Y - 30) < 0.01,
             $"desired={tallSize.Width}×{tallSize.Height}, " + Describe(tallSlots));
 
         // ---------- 6. Rows=1 = 一行横排；Rows=0 被依赖属性校验拒绝 ----------
@@ -93,9 +92,10 @@ internal static class HomeTagWallChecks
         try { new FixedRowsPanel().Rows = 0; }
         catch (ArgumentException) { rejected = true; }
 
-        check("Rows=1 排成一行（高度 = 单个标签高）；Rows=0 被拒绝（抛 ArgumentException）",
+        check("Rows=1 排成一行（宽 60、高 10）；Rows=0 被拒绝（抛 ArgumentException）",
             Math.Abs(oneRowSize.Width - 60) < 0.01 && Math.Abs(oneRowSize.Height - 10) < 0.01
             && oneRowSlots.All(slot => Math.Abs(slot.Y) < 0.01)
+            && Math.Abs(oneRowSlots[2].X - 30) < 0.01
             && rejected,
             $"desired={oneRowSize.Width}×{oneRowSize.Height}, Rows=0 被拒绝={rejected}");
     }
@@ -126,9 +126,6 @@ internal static class HomeTagWallChecks
 
     private static List<Rect> Slots(FixedRowsPanel panel)
         => panel.Children.Cast<FrameworkElement>().Select(LayoutInformation.GetLayoutSlot).ToList();
-
-    private static bool SameX(params Rect[] rects)
-        => rects.All(rect => Math.Abs(rect.X - rects[0].X) < 0.01);
 
     private static string Describe(IReadOnlyList<Rect> slots)
         => string.Join(" ", slots.Select((slot, index) => $"[{index}]({slot.X:0.#},{slot.Y:0.#})"));
