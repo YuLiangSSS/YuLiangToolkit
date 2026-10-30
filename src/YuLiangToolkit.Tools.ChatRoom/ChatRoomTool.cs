@@ -1,4 +1,5 @@
 using System.Windows;
+using YuLiangToolkit.Core.Maintenance;
 using YuLiangToolkit.Core.Tools;
 using YuLiangToolkit.Tools.ChatRoom.ViewModels;
 using YuLiangToolkit.Tools.ChatRoom.Views;
@@ -12,7 +13,7 @@ namespace YuLiangToolkit.Tools.ChatRoom;
 /// <para>协议与实现细节见 <c>docs/dev/pitfalls.md</c>；
 /// 线上协议本身有一份人能读的说明（<c>Data\chat-room\Protocol\chat-protocol.json</c>）。</para>
 /// </summary>
-public class ChatRoomTool : ITool
+public class ChatRoomTool : ITool, IToolCacheSource
 {
     /// <summary>功能 Id：同时是 <c>Data\chat-room</c> 与 <c>Config\chat-room</c> 的文件夹名。</summary>
     public string Id => ChatRoomConfig.ToolId;
@@ -39,4 +40,37 @@ public class ChatRoomTool : ITool
 
     public FrameworkElement CreateView()
         => new ChatRoomView { DataContext = new ChatRoomViewModel() };
+
+    /// <summary>
+    /// 告诉主页「设置 → 清理缓存」本功能有哪些可以清的东西。
+    ///
+    /// <para>本功能的「最近会话列表」（最近连过 / 开过的主机名）存在
+    /// <c>Config\chat-room\config.json</c> 里；这里只清这份「最近」列表，
+    /// 聊天记录文件（<c>Data\chat-room</c> 下的历史消息）不动，昵称 / 端口等设置也不动。
+    /// 列表为空时返回空数组。</para>
+    ///
+    /// <para><b>以后新工具怎么接</b>：让工具类多实现 <see cref="IToolCacheSource"/>，
+    /// 在这里返回「Id + 名称 + 说明 + 当前数量 + 清理动作」（<see cref="ToolCacheItem"/>）即可，
+    /// 外壳会自动收集所有实现了该接口的工具，不实现就等于没有缓存项。</para>
+    /// </summary>
+    public IReadOnlyList<ToolCacheItem> DescribeCacheItems()
+    {
+        // 直接读盘上的配置（不触发工具加载），拿「最近会话列表」条数。
+        var count = ToolConfigPeek.Read<ChatRoomConfig>(ChatRoomConfig.ToolId)?.RecentSessions?.Count ?? 0;
+        if (count == 0) return Array.Empty<ToolCacheItem>();
+
+        return new[]
+        {
+            new ToolCacheItem
+            {
+                Id = "recent-sessions",
+                Name = "最近会话列表",
+                Description = "存在 Config\\chat-room\\config.json 里，只清「最近」列表；聊天记录文件与其它设置不动",
+                Detail = $"{count} 个会话",
+                // 清空后配置照常自动落盘；聊天记录文件不受影响。
+                Clear = () => ToolConfigPeek.Mutate<ChatRoomConfig>(
+                    ChatRoomConfig.ToolId, config => { config.RecentSessions?.Clear(); }),
+            },
+        };
+    }
 }

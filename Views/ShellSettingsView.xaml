@@ -55,7 +55,7 @@
                                    VerticalAlignment="Center" />
                     </StackPanel>
                     <TextBlock FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0"
-                               Text="外壳自己的设置：界面风格、主页显示、鼠标自动 / 点击特效（含数量 / 范围 / 半径滑块）、粒子颜色、窗口与托盘。改一下立即生效并自动保存。" />
+                               Text="外壳自己的设置：界面风格、主页显示、鼠标自动 / 点击特效（含数量 / 范围 / 半径滑块）、粒子颜色、窗口与托盘；最下面是清理缓存与重建配置（恢复默认设置）。改一下立即生效并自动保存。" />
                 </StackPanel>
                 <Button Grid.Column="1" Content="返回主页" Style="{StaticResource SecondaryButtonStyle}"
                         VerticalAlignment="Top" Command="{Binding GoHomeCommand}" ToolTip="回到主页（也可以点面包屑的「🏠 主页」或后退按钮）" />
@@ -268,8 +268,141 @@
                 </StackPanel>
             </Border>
 
+            <!-- ===== 清理缓存（v0.39.0；列表由 Core/Maintenance 按已发现工具现算，新工具自动加入） ===== -->
+            <TextBlock Text="清理缓存" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource AccentBrush}" Margin="0,22,0,0" />
+            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
+                <StackPanel>
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               Text="缓存是各功能放在 Cache\&lt;功能Id&gt;\ 里、随时可以删的临时文件（缩略图、解压产物、网络缓存…），删了最多下次重新生成。列表里也包括存在 Config 里的「最近浏览 / 最近会话」这类记录。Data 里的下载内容 / 聊天记录等用户数据、各功能的设置都不会被清掉。" />
+                    <TextBlock Text="{Binding Maintenance.CacheSummaryText}" FontSize="12" FontWeight="SemiBold"
+                               Margin="0,10,0,0" />
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button Content="全选" Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding Maintenance.SelectAllCacheCommand}" />
+                        <Button Content="全不选" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                Command="{Binding Maintenance.SelectNoneCacheCommand}" />
+                        <Button Content="重新扫描" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                ToolTip="重新看一下 Cache 和配置目录（在资源管理器里手动删过东西时用）"
+                                Command="{Binding Maintenance.RefreshCommand}" />
+                    </StackPanel>
+
+                    <ItemsControl ItemsSource="{Binding Maintenance.CacheItems}" Margin="0,6,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <CheckBox Style="{StaticResource CheckBoxStyle}"
+                                                  IsChecked="{Binding IsSelected, Mode=TwoWay}">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding ToolName}" FontSize="12.5" FontWeight="SemiBold"
+                                                           VerticalAlignment="Center" />
+                                                <TextBlock Text=" · " FontSize="12.5" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <TextBlock Text="{Binding Name}" FontSize="12.5"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </CheckBox>
+                                        <TextBlock Text="{Binding Description}" FontSize="11"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   TextWrapping="Wrap" Margin="25,2,0,0" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding SizeText}" FontSize="11.5"
+                                               FontWeight="SemiBold" VerticalAlignment="Center" Margin="12,0,0,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Text="{Binding Maintenance.CacheEmptyHint}" FontSize="11.5"
+                               Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,10,0,0"
+                               Visibility="{Binding Maintenance.HasCacheItems, Converter={StaticResource InverseBoolToVis}}" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                        <Button Content="清理选中缓存" Style="{StaticResource PrimaryButtonStyle}"
+                                Command="{Binding Maintenance.ClearCacheCommand}"
+                                ToolTip="清掉勾选的缓存（会先弹确认）；图片 / PDF 阅读器的最近浏览、聊天室的最近会话也会一起清" />
+                        <Button Content="打开缓存文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="10,0,0,0"
+                                Command="{Binding Maintenance.OpenCacheFolderCommand}"
+                                ToolTip="在资源管理器里打开 Cache 目录，可以自己看 / 手动删" />
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding Maintenance.CacheStatusText}" FontSize="11.5"
+                               Foreground="{DynamicResource SuccessBrush}" TextWrapping="Wrap" Margin="0,10,0,0"
+                               Visibility="{Binding Maintenance.CacheStatusText, Converter={StaticResource EmptyToVisInverse}}" />
+                </StackPanel>
+            </Border>
+
+            <!-- ===== 重建配置（v0.39.0；一个功能一行，可全选；第一行是主页设置自己的外壳配置） ===== -->
+            <TextBlock Text="重建配置（恢复默认设置）" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource AccentBrush}" Margin="0,22,0,0" />
+            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
+                <StackPanel>
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               Text="重建 = 删掉这些功能的 Config\&lt;功能Id&gt;\ 里的配置文件，并把内存里已加载的配置改回默认值（会立刻写回一份默认 JSON）—— 效果等于「恢复默认设置」，重启后也保持。勾选要重建的功能（或点「全选」）后点下面的按钮；第一项是「主页 / 外壳设置」，重建它会把这个设置页里的选项也一起恢复默认。损坏备份 *.bad-*.json 不会被删。" />
+                    <TextBlock Text="{Binding Maintenance.ConfigSummaryText}" FontSize="12" FontWeight="SemiBold"
+                               Margin="0,10,0,0" />
+                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                        <Button Content="全选" Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding Maintenance.SelectAllConfigCommand}" />
+                        <Button Content="全不选" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                Command="{Binding Maintenance.SelectNoneConfigCommand}" />
+                        <Button Content="重新扫描" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                ToolTip="重新看一下各功能的配置目录（在资源管理器里手动删过东西时用）"
+                                Command="{Binding Maintenance.RefreshCommand}" />
+                    </StackPanel>
+
+                    <ItemsControl ItemsSource="{Binding Maintenance.ConfigItems}" Margin="0,6,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <CheckBox Style="{StaticResource CheckBoxStyle}"
+                                                  Content="{Binding ToolName}"
+                                                  IsChecked="{Binding IsSelected, Mode=TwoWay}" />
+                                        <TextBlock Text="{Binding Detail}" FontSize="11"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   TextWrapping="Wrap" Margin="25,2,0,0" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding SizeText}" FontSize="11.5"
+                                               VerticalAlignment="Center" Margin="12,0,0,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Text="{Binding Maintenance.ConfigEmptyHint}" FontSize="11.5"
+                               Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,10,0,0"
+                               Visibility="{Binding Maintenance.HasConfigItems, Converter={StaticResource InverseBoolToVis}}" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                        <Button Content="重建选中配置" Style="{StaticResource PrimaryButtonStyle}"
+                                Command="{Binding Maintenance.ResetConfigCommand}"
+                                ToolTip="删掉勾选功能的配置文件并恢复默认设置（会先弹确认）" />
+                    </StackPanel>
+                    <TextBlock FontSize="11" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" Margin="0,10,0,0"
+                               Text="注意：重建会丢掉自定义过的选项（只删配置文件，不动 Data 里的用户数据）。点按钮后还会再确认一次。" />
+
+                    <TextBlock Text="{Binding Maintenance.ConfigStatusText}" FontSize="11.5"
+                               Foreground="{DynamicResource SuccessBrush}" TextWrapping="Wrap" Margin="0,8,0,0"
+                               Visibility="{Binding Maintenance.ConfigStatusText, Converter={StaticResource EmptyToVisInverse}}" />
+                </StackPanel>
+            </Border>
+
             <TextBlock FontSize="11" Foreground="{DynamicResource FaintTextBrush}" TextWrapping="Wrap" Margin="0,14,0,0"
-                       Text="主页设置只影响外壳本身（界面风格、主页显示、自动 / 点击特效、粒子颜色、关闭行为等）；各功能自己的选项在对应功能页面里。" />
+                       Text="主页设置只影响外壳本身（界面风格、主页显示、自动 / 点击特效、粒子颜色、关闭行为等）；各功能自己的选项在对应功能页面里，也可以在「重建配置」里一键恢复默认。" />
 
             <Button Content="返回主页" Style="{StaticResource SecondaryButtonStyle}"
                     HorizontalAlignment="Left" Margin="0,18,0,0" Command="{Binding GoHomeCommand}" />

@@ -26,12 +26,13 @@ shots/.demo-home/
 testdata/out/
 
 # ================= 运行时生成的配置与数据 =================
-# 真正的运行时 Data/Config 在 **exe 旁边**（bin/Debug|Release/net9.0-windows/、dist/），
-# 已经被上面的 bin/ 和下面的 dist/ 覆盖；仓库根这两个文件夹现在只有说明文件（要入库）。
+# 真正的运行时 Data/Config/Cache 在 **exe 旁边**（bin/Debug|Release/net9.0-windows/、dist/），
+# 已经被上面的 bin/ 和下面的 dist/ 覆盖；仓库根这三个文件夹现在只有说明文件（要入库）。
 # 下面几条是兜底：万一有配置/数据落回仓库根，也不会误提交（里面的路径是本机的）。
 Config/*/*.json
 Config/*/*.tmp
 Data/*/
+Cache/*/
 
 # ================= 发布输出（publish.ps1） =================
 dist/

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Reflection;
 using YuLiangToolkit.Core.Storage;
 
 namespace YuLiangToolkit.Core.Configuration;
@@ -43,6 +44,12 @@ public sealed class ToolConfigStore
     private string? _lastJson;
 
     private bool _watching;
+
+    /// <summary>
+    /// 「重建配置」的代际计数（受 <see cref="_gate"/> 保护）：重建期间自增，
+    /// 后台自动保存发现代际变了就放弃这次写盘，免得把重建前的旧值又写回文件。
+    /// </summary>
+    private int _resetGeneration;
 
     /// <summary>已加载的强类型配置实例（按类型缓存，保证“一类型一实例”）。</summary>
     private readonly Dictionary<Type, object> _instances = new();
@@ -108,6 +115,16 @@ public sealed class ToolConfigStore
     }
 
     /// <summary>
+    /// 查已经建过的配置存储（<b>不会新建</b>）。维护 / 清理功能用它判断“这个功能此刻有没有加载配置”，
+    /// 避免为了读一下状态反而把配置文件建出来。
+    /// </summary>
+    public static ToolConfigStore? TryGet(string toolId, string fileName = "config.json")
+    {
+        var key = AppPaths.SanitizeFolderName(toolId) + "|" + fileName;
+        return Cache.TryGetValue(key, out var store) ? store : null;
+    }
+
+    /// <summary>
     /// 读取强类型配置：文件不存在 → 用默认值（可用 <paramref name="createDefault"/> 从旧配置迁移），
     /// 并立刻写盘一次，保证配置文件马上出现在 <c>Config\&lt;功能名&gt;\</c> 里。
     /// 以后给配置类新增属性不会影响老文件（缺失的属性自动用类里的默认值）。
@@ -142,6 +159,15 @@ public sealed class ToolConfigStore
         lock (_gate) _instances[typeof(T)] = config;
         TrackModel(config);
         return config;
+    }
+
+    /// <summary>
+    /// 已加载的强类型配置实例（<b>不会新建、不会读盘</b>）；没加载过返回 null。
+    /// 维护 / 清理功能用它在“功能此刻没打开”时也能安全地读写配置（读不到再退回读 JSON 文件）。
+    /// </summary>
+    public T? TryGetTracked<T>() where T : ToolConfig
+    {
+        lock (_gate) return _instances.TryGetValue(typeof(T), out var existing) ? (T)existing : null;
     }
 
     /// <summary>
@@ -235,6 +261,168 @@ public sealed class ToolConfigStore
         }
     }
 
+    // ---------- 重建配置（恢复默认值） ----------
+    //
+    // 「主页设置 → 重建配置」的底层能力。关键点：不只删文件，还要把**内存里已经加载的配置对象原地改回默认值**
+    // ——否则工具/设置页还拿着老对象，后台自动保存下一秒又把老值写回文件，等于白重建。
+    // 改回默认值的做法：new 一个同类型对象，把它的可写属性逐个抄到老对象上（与 JSON 落盘规则一致：
+    // 只读属性 & [JsonIgnore] 不参与），然后通知“所有属性都变了”刷新界面。
+
+    /// <summary>
+    /// 重建本存储的配置：把已加载的配置对象<b>原地改回默认值</b>，删掉自己的配置文件，
+    /// 再立刻写回一份默认 JSON（下次打开工具读到的就是默认值）。
+    /// 同一功能目录里的其它配置文件（例如 options.json）由 <see cref="ResetTool"/> 统一处理。
+    /// <para>损坏备份 <c>*.bad-*.json</c> 不删（那是救命用的）。</para>
+    /// </summary>
+    /// <returns>是否成功；失败原因见 <see cref="LastError"/>。</returns>
+    public bool ResetToDefaults()
+    {
+        bool ok;
+        // 整个重建过程占住写盘锁：后台定时器那一拍要么在之前写完、要么等重建完再动，
+        // 不会出现“重建刚删完文件，旧值又被写回来”。
+        lock (_writeGate)
+        {
+            lock (_gate) _resetGeneration++;
+
+            ok = ApplyDefaultsToModels();
+
+            try
+            {
+                lock (_gate) _lastJson = null;
+                if (File.Exists(FilePath)) File.Delete(FilePath);
+            }
+            catch (Exception ex)
+            {
+                LastError = $"删除 {FilePath} 失败：{ex.Message}";
+                ok = false;
+            }
+
+            // 有模型时立刻写回默认 JSON；没有模型（功能从没打开过）就等首次加载自动生成。
+            if (CurrentJson() is not null) ok &= SaveNow();
+
+            lock (_gate) _resetGeneration++;
+        }
+        return ok;
+    }
+
+    /// <summary>
+    /// 重建某个功能的**全部**配置：目录里所有配置文件（<c>*.json</c> / 残留 <c>*.tmp</c>，不含损坏备份）
+    /// 都删掉，内存里已加载的配置对象原地改回默认值并写回默认 JSON。
+    /// <para><b>没加载过的功能也安全</b>：只删文件，下次打开自动生成默认值。
+    /// 新增功能不用登记，按「工具 Id = Config 小文件夹名」的约定自动被覆盖。</para>
+    /// </summary>
+    public static bool ResetTool(string toolId)
+    {
+        var ok = true;
+        var stores = StoresOf(toolId);
+
+        // ① 每个已创建的 store：原地改回默认值 + 删自己的文件 + 写回默认 JSON
+        foreach (var store in stores)
+        {
+            try { ok &= store.ResetToDefaults(); }
+            catch { ok = false; }
+        }
+
+        // ② 目录里没被任何 store 管着的配置文件（例如尚未加载的 options.json）直接删
+        try
+        {
+            var dir = AppPaths.ToolConfigDir(toolId);
+            if (System.IO.Directory.Exists(dir))
+            {
+                var tracked = new HashSet<string>(stores.Select(store => store.FilePath),
+                    StringComparer.OrdinalIgnoreCase);
+                foreach (var file in System.IO.Directory.GetFiles(dir, "*", SearchOption.TopDirectoryOnly))
+                {
+                    if (!IsResettableConfigFile(file)) continue;
+                    if (tracked.Contains(file)) continue;
+                    try { File.Delete(file); }
+                    catch { ok = false; }
+                }
+            }
+        }
+        catch { ok = false; }
+
+        return ok;
+    }
+
+    /// <summary>
+    /// 「重建配置」会删哪些文件：本功能配置目录里的 <c>*.json</c> 与 <c>*.tmp</c>；
+    /// 损坏备份 <c>*.bad-时间戳.json</c> 保留（用户可能还要从里面抄回设置）。
+    /// </summary>
+    public static bool IsResettableConfigFile(string path)
+    {
+        var name = Path.GetFileName(path);
+        if (string.IsNullOrEmpty(name)) return false;
+        if (name.Contains(".bad-", StringComparison.OrdinalIgnoreCase)) return false;
+        return name.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+               || name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>某功能当前进程里所有已创建的配置存储（可能 config.json / options.json 各一个）。</summary>
+    private static List<ToolConfigStore> StoresOf(string toolId)
+    {
+        var folder = AppPaths.SanitizeFolderName(toolId);
+        return Cache.Values
+            .Where(store => string.Equals(AppPaths.SanitizeFolderName(store.ToolId), folder,
+                StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    /// <summary>把已加载的模型全部改回默认值（强类型配置按属性抄；动态配置清空 = 回默认）。</summary>
+    private bool ApplyDefaultsToModels()
+    {
+        List<object> models;
+        lock (_gate)
+        {
+            models = _instances.Values.ToList();
+            if (_model is not null && !models.Contains(_model)) models.Add(_model);
+        }
+
+        var ok = true;
+        foreach (var model in models)
+        {
+            try
+            {
+                switch (model)
+                {
+                    case ToolConfig config:
+                        CopyDefaultValues(config);
+                        break;
+                    case DynamicToolConfig dynamicConfig:
+                        dynamicConfig.Clear();
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                LastError = $"重置内存配置失败：{ex.Message}";
+                ok = false;
+            }
+        }
+        return ok;
+    }
+
+    /// <summary>
+    /// 新建一个同类型的默认对象，把它可写、会落盘的属性值抄到 <paramref name="target"/>（保持对象身份不变），
+    /// 最后通知界面“所有属性都变了”。
+    /// </summary>
+    private static void CopyDefaultValues(ToolConfig target)
+    {
+        var type = target.GetType();
+        if (Activator.CreateInstance(type) is not ToolConfig fresh) return;
+
+        foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (!property.CanWrite || property.GetIndexParameters().Length > 0) continue;
+            // 与 JsonFileStore 的规则保持一致：只读属性本来就不落盘；带 setter 的计算属性按约定要加 [JsonIgnore]
+            if (property.IsDefined(typeof(System.Text.Json.Serialization.JsonIgnoreAttribute), inherit: true)) continue;
+
+            property.SetValue(target, property.GetValue(fresh));
+        }
+
+        target.NotifyAllPropertiesChanged();
+    }
+
     /// <summary>当前进程里所有已创建的配置存储（诊断用）。</summary>
     public static IReadOnlyList<ToolConfigStore> All => Cache.Values.ToList();
 
@@ -254,18 +442,33 @@ public sealed class ToolConfigStore
 
     // ---------- 内部实现 ----------
 
-    /// <summary>后台检查：把当前内容序列化出来和上次写盘的内容比对，不同就写盘。</summary>
+    /// <summary>
+    /// 后台检查：把当前内容序列化出来和上次写盘的内容比对，不同就写盘。
+    /// <para>写盘前再核对 <see cref="_resetGeneration"/>：重建配置期间 / 刚重建完的这一拍，
+    /// 拿到的可能是“重建前算出来的旧 JSON”，必须放弃，否则会把旧值写回去。</para>
+    /// </summary>
     private void Tick()
     {
         try
         {
+            int generation;
+            lock (_gate) generation = _resetGeneration;
+
             var json = CurrentJson();
             if (json is null) return;
             lock (_gate)
             {
                 if (json == _lastJson) return;
             }
-            WriteJsonInternal(json);
+
+            lock (_writeGate)
+            {
+                lock (_gate)
+                {
+                    if (_resetGeneration != generation) return;   // 期间发生了重建 → 这拍作废
+                }
+                WriteJsonInternal(json);
+            }
         }
         catch { /* 后台线程绝不抛异常 */ }
     }

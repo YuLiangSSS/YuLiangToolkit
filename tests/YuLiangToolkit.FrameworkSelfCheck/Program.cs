@@ -33,6 +33,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("board-games", "棋牌：五子棋 / 象棋（规则 / 配置 / 轮换纯逻辑）"),
     ("board-net", "棋牌网络 / 协议：多客户端回环 / 断线重连 / 连接失败（真实 TCP）"),
     ("board-room", "棋牌房间 VM：席位 / 观战 / 自动轮换（最慢，偶发时序失败可重跑）"),
+    ("maintenance", "缓存清理 / 重建配置（Cache / Config 维护）"),
     ("picture-viewer", "图片连续阅读器"),
     ("pdf-reader", "PDF 阅读器：滚动排版 / 双页配对 / 惯性 / 真实 PDF 渲染"),
     ("theme", "第二套 UI：液态玻璃主题"),
@@ -903,6 +904,9 @@ RunGroupModule("board-net", "棋牌网络", BoardGamesChecks.RunNet);
 
 // ---------- 棋牌房间 VM：席位 / 观战 / 自动轮换（含真实回环网络，最慢） ----------
 RunGroupModule("board-room", "棋牌房间", BoardGamesChecks.RunRoom);
+
+// ---------- 缓存清理 / 重建配置（Cache 路径约定 / ToolCache / 汇总与清理 / 配置重建与只读预览） ----------
+RunGroupModule("maintenance", "缓存/配置维护", MaintenanceChecks.Run, "[维护] ");
 
 // ---------- 图片连续阅读器（滚动偏移数学 / 中键单点-按住状态机 / 页序 / 真实扫描 / 无头 VM） ----------
 RunGroupModule("picture-viewer", "图片", PictureViewerChecks.Run);

@@ -10,10 +10,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- 本目录下 src/ 里的库项目源码不能被这个主项目重复编译进来；
-         仓库根的 Data/ 与 Config/ 只是“说明 + 可选种子”（真正运行时的 Data/Config 在 exe 旁边），
+         仓库根的 Data/、Config/、Cache/ 只是“说明 + 可选种子”（真正运行时的三个目录在 exe 旁边），
          tests/ 是自检程序，都不参与编译；
          MapDownloader/ 是改写「osu! 下图器」时参考的原版 WinForms 小项目（不是本项目的一部分） -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);src\**;Data\**;Config\**;tests\**;FlashGameDownloader\**;MapDownloader\**;PictureView\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);src\**;Data\**;Config\**;Cache\**;tests\**;FlashGameDownloader\**;MapDownloader\**;PictureView\**</DefaultItemExcludes>
     <!-- exe / 任务栏 / 托盘图标（Assets\app.ico：深色圆角底 + 蓝色工具箱，16px 也认得出）。
          这只是静态素材，不是用户数据；下面 CopyToOutputDirectory 让托盘能从 exe 旁边直接加载。 -->
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>

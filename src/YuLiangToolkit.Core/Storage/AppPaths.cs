@@ -1,9 +1,10 @@
 namespace YuLiangToolkit.Core.Storage;
 
 /// <summary>
-/// 数据根目录解析：<c>Data</c>（功能数据）与 <c>Config</c>（功能配置）两个大文件夹都在这个根目录下。
+/// 数据根目录解析：<c>Data</c>（功能数据）、<c>Config</c>（功能配置）、<c>Cache</c>（可随时删的缓存）
+/// 三个大文件夹都在这个根目录下。
 ///
-/// <para><b>默认就在 exe 旁边</b>（<c>bin\Debug\net9.0-windows10.0.19041.0\Data</c>、<c>...\Config</c>），
+/// <para><b>默认就在 exe 旁边</b>（<c>bin\Debug\net9.0-windows10.0.19041.0\Data</c>、<c>...\Config</c>、<c>...\Cache</c>），
 /// 这样测试 exe 与发布都一致：整个程序目录拷走 = 数据和配置一起带走。</para>
 ///
 /// <para><b>解析顺序</b>（先命中先用）：</para>
@@ -25,6 +26,13 @@ public static class AppPaths
     /// <summary>功能配置文件夹名（每个功能一个同名小文件夹）。</summary>
     public const string ConfigFolderName = "Config";
 
+    /// <summary>
+    /// 功能缓存文件夹名（每个功能一个同名小文件夹）。
+    /// <b>这里的东西随时可以删</b>：丢了只会变慢 / 重新生成，不会丢用户数据；
+    /// 主页设置的「清理缓存」就是清这个目录（约定见 AGENTS.md）。
+    /// </summary>
+    public const string CacheFolderName = "Cache";
+
     private static readonly Lazy<string> LazyRoot = new(ResolveRoot, isThreadSafe: true);
 
     /// <summary>数据根目录（<see cref="DataRoot"/> 与 <see cref="ConfigRoot"/> 的父目录）。</summary>
@@ -35,6 +43,9 @@ public static class AppPaths
 
     /// <summary>功能配置根目录：<c>&lt;Root&gt;\Config</c>。</summary>
     public static string ConfigRoot => Path.Combine(Root, ConfigFolderName);
+
+    /// <summary>缓存根目录：<c>&lt;Root&gt;\Cache</c>（内容随时可删，见 <see cref="CacheFolderName"/>）。</summary>
+    public static string CacheRoot => Path.Combine(Root, CacheFolderName);
 
     /// <summary>是否退到了 <c>%AppData%</c>（exe 目录不可写时的兜底方案）。</summary>
     public static bool IsUserDataFallback { get; private set; }
@@ -50,6 +61,13 @@ public static class AppPaths
     public static string ToolConfigDir(string toolId)
         => Path.Combine(ConfigRoot, SanitizeFolderName(toolId));
 
+    /// <summary>
+    /// 某个功能的缓存小文件夹：<c>Cache\&lt;功能名&gt;</c>（只拼路径，不创建）。
+    /// 新功能写缓存请走 <see cref="ToolCache"/>，这样「清理缓存」自动认得。
+    /// </summary>
+    public static string ToolCacheDir(string toolId)
+        => Path.Combine(CacheRoot, SanitizeFolderName(toolId));
+
     /// <summary>把工具 Id 规范成安全的文件夹名（去掉非法字符，空则回退 <c>unknown</c>）。</summary>
     public static string SanitizeFolderName(string? toolId)
     {
@@ -62,11 +80,12 @@ public static class AppPaths
         return name.Length == 0 ? "unknown" : name;
     }
 
-    /// <summary>确保 <c>Data</c> 与 <c>Config</c> 两个根文件夹存在（失败不影响运行）。</summary>
+    /// <summary>确保 <c>Data</c>、<c>Config</c>、<c>Cache</c> 三个根文件夹存在（失败不影响运行）。</summary>
     public static void EnsureCreated()
     {
         TryCreateDirectory(DataRoot);
         TryCreateDirectory(ConfigRoot);
+        TryCreateDirectory(CacheRoot);
     }
 
     /// <summary>当前数据根目录的可读描述（状态栏 / 关于页 / 排错用）。</summary>

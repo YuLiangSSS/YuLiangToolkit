@@ -11,14 +11,18 @@ namespace YuLiangToolkit.Core.Storage;
 /// </summary>
 public static class RuntimeReadme
 {
-    /// <summary>说明文件名（两个目录各一份）。</summary>
+    /// <summary>说明文件名（三个目录各一份）。</summary>
     public const string FileName = "怎么用这两个文件夹.md";
 
-    /// <summary>确保 Data 与 Config 目录里有说明文件（已存在则跳过）。</summary>
+    /// <summary>缓存目录的说明文件名（缓存说明只有一份，所以名字不同）。</summary>
+    public const string CacheReadmeFileName = "怎么用这个文件夹.md";
+
+    /// <summary>确保 Data / Config / Cache 目录里有说明文件（已存在则跳过）。</summary>
     public static void EnsureSeeded()
     {
         WriteIfMissing(Path.Combine(AppPaths.DataRoot, FileName), BuildDataReadme());
         WriteIfMissing(Path.Combine(AppPaths.ConfigRoot, FileName), BuildConfigReadme());
+        WriteIfMissing(Path.Combine(AppPaths.CacheRoot, CacheReadmeFileName), BuildCacheReadme());
     }
 
     private static void WriteIfMissing(string path, string content)
@@ -71,10 +75,40 @@ public static class RuntimeReadme
         ## 注意
 
         * 文件是 camelCase、带缩进、中文不转义的 JSON，**可以直接用记事本改**，改完重开功能即生效。
-        * 想恢复某个功能的默认选项：删掉它那个 `config.json`，下次打开会自动重建。
+        * 想恢复某个功能的默认选项：把它那个 `config.json` 删掉，下次打开会自动重建；
+          也可以在「主页设置 → 重建配置」里勾选功能一键恢复默认（会同时重置内存里已加载的配置）。
         * 文件写坏了也不怕：会被自动改名备份成 `xxx.bad-时间戳.json` 并回退默认值。
+          重建配置**不会删**这些损坏备份。
         * 这里的内容是**每台机器自己的状态**，不进版本库（仓库里那份 Config 只有说明文件）。
+        * 缓存类的东西不放在这里（放 Cache 目录），见隔壁 `Cache\怎么用这个文件夹.md`。
 
         详细约定（配置类怎么写、有哪些轮子）见仓库根目录的 `AGENTS.md`（开发入口）与源码注释。
+        """;
+
+    private static string BuildCacheReadme() => $"""
+        # Cache —— 缓存目录（就在 exe 旁边，**随时可以删**）
+
+        这里放「丢了不心疼」的中间产物：缩略图、解压出来的临时文件、网络请求缓存之类。
+        删了最多下次重新生成，**不会丢你的数据或设置**（用户数据在 `Data\`，设置在 `Config\`）。
+
+            Cache\
+            ├─ picture-viewer\     某个功能的缓存（按功能 Id 分文件夹）
+            └─ <功能Id>\           以后新功能自己的缓存
+
+        当前实际位置：{AppPaths.CacheRoot}
+
+        ## 怎么清理
+
+        * 简单粗暴：在资源管理器里直接删掉某个功能的小文件夹（或整个 Cache 文件夹），程序下次用到会重新建。
+        * 方便一点：主页右上角「⚙ 主页设置 → 清理缓存」，可以逐项勾选 / 全选后确认清理；
+          图片阅读器 / PDF 阅读器的「最近浏览」、聊天室的「最近会话」也会列在那里（它们存在 Config 里）。
+        * 程序只删「缓存」：Data 里的下载内容、聊天记录等用户数据不受影响。
+
+        ## 给以后写新功能的人
+
+        缓存请写到 `Cache\<功能Id>\`（代码里用 `ToolCache.For(工具Id)` / `AppPaths.ToolCacheDir`），
+        「清理缓存」会按功能 Id **自动认出来**，不用改设置页。
+        如果缓存混在 Config 里（例如「最近浏览」这种列表），让工具类实现 `IToolCacheSource` 报告清理项即可。
+        详细约定见仓库根目录的 `AGENTS.md`。
         """;
 }

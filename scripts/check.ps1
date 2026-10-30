@@ -128,6 +128,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/KpsChecks.cs'             @('kps') 'L3' 'kps assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/KpsInputChecks.cs'        @('kps') 'L3' 'kps assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/SpugChecks.cs'            @('spug') 'L3' 'spug assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/MaintenanceChecks.cs'     @('maintenance') 'L3' 'maintenance assertions')
 
     # ---------- tests: anything else in the self-check project is unknown wiring ----------
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/*.cs' @('ALL') 'L4' 'unmapped self-check source' -Fallback)

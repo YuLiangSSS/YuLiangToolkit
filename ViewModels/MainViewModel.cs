@@ -6,6 +6,7 @@ using YuLiangToolkit.App.Themes;
 using YuLiangToolkit.App.Views;
 using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Effects;
+using YuLiangToolkit.Core.Maintenance;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Core.Services;
 using YuLiangToolkit.Core.Storage;
@@ -108,6 +109,12 @@ public class MainViewModel : ObservableObject
 
     /// <summary>设置页里的「点击效果」勾选项（可多选；与自动效果互不影响）。</summary>
     public IReadOnlyList<ShellEffectOption> ClickEffectOptions { get; private set; } = Array.Empty<ShellEffectOption>();
+
+    /// <summary>
+    /// 主页设置页底部「清理缓存 / 重建配置」两块面板（v0.39.0）。
+    /// 列表按「已发现工具」现算，所以以后新增的工具自动覆盖，不需要改设置页（详见 <see cref="MaintenanceViewModel"/>）。
+    /// </summary>
+    public MaintenanceViewModel Maintenance { get; }
 
     public ObservableCollection<NavItem> NavItems { get; } = new();
 
@@ -813,6 +820,12 @@ public class MainViewModel : ObservableObject
 
         AllTags = ToolFilter.CollectTags(_allCards);
 
+        // 「清理缓存 / 重建配置」面板：功能列表按目录树顺序，外壳自己也算一个配置
+        // （Config\shell\config.json 就是主页设置本身，重建它 = 主页设置恢复默认）。
+        var configTargets = new List<ToolRef> { new(ShellToolId, "主页 / 外壳设置") };
+        configTargets.AddRange(_catalogRoot.AllTools.Select(tool => new ToolRef(tool.Id, tool.Name)));
+        Maintenance = new MaintenanceViewModel(Tools.ToList(), configTargets, ResetToolConfig);
+
         // 开发调试：YLT_HOME_SEARCH=关键词 可以在启动时预置搜索词（截图验证“筛选后/无结果”状态用）
         var presetSearch = Environment.GetEnvironmentVariable("YLT_HOME_SEARCH");
         if (!string.IsNullOrWhiteSpace(presetSearch)) _searchText = presetSearch;
@@ -1217,7 +1230,7 @@ public class MainViewModel : ObservableObject
             case ShellPageKind.Settings:
                 CurrentNodeName = "主页设置";
                 CurrentNodeEmoji = "⚙";
-                CurrentNodeDescription = "外壳设置：界面风格、主页显示、自动 / 点击特效、粒子颜色与窗口行为";
+                CurrentNodeDescription = "外壳设置：界面风格、主页显示、特效 / 粒子颜色、窗口行为，以及清理缓存与重建配置";
                 CurrentNodeSummary = "";
                 break;
 
@@ -1259,11 +1272,58 @@ public class MainViewModel : ObservableObject
         _syncingNav = false;
 
         CurrentView = new ShellSettingsView { DataContext = this };
+        Maintenance.Refresh();   // 每次进设置页都重新扫一遍缓存 / 配置现状（文件可能被别人改过）
         UpdateBreadcrumbs();
         RefreshHeader();
         RecordHistory(ShellLocation.Settings);
         CurrentTitle = "主页设置";
         UpdateMiniPanel();
+    }
+
+    // ---------- 缓存清理 / 配置重建（v0.39.0，板块见 MaintenanceViewModel） ----------
+
+    /// <summary>
+    /// 「重建配置」真正执行的地方：删配置文件 + 把内存里的配置改回默认值（<see cref="ToolConfigStore.ResetTool"/>）。
+    /// 外壳自己的配置被重建时要额外刷新界面（主题、特效、排序依据…），否则界面还在用重置前的状态。
+    /// </summary>
+    private bool ResetToolConfig(string toolId)
+    {
+        var ok = ToolConfigStore.ResetTool(toolId);
+        if (string.Equals(toolId, ShellToolId, StringComparison.OrdinalIgnoreCase))
+        {
+            RefreshAfterShellConfigReset();
+        }
+        return ok;
+    }
+
+    /// <summary>
+    /// 外壳配置（<c>Config\shell\config.json</c>）被「重建配置」重置后刷新界面。
+    ///
+    /// <para><see cref="ShellConfig"/> 是<b>原地</b>改回默认值的（对象身份不变），所以大部分绑定靠
+    /// 属性变更通知自动刷新；这里补三类非绑定 / 需要重建的状态：</para>
+    /// <list type="number">
+    ///   <item>主题要重新 <see cref="ThemeManager.Apply"/>（换肤不是绑定）；</item>
+    ///   <item>特效勾选项 / 参数滑块是按配置现建的，要重新 <see cref="InitializeEffects"/>；</item>
+    ///   <item>「最近使用」被清空 → 卡片上的时间与排序依据要重算。</item>
+    /// </list>
+    /// </summary>
+    public void RefreshAfterShellConfigReset()
+    {
+        _themeOverride = null;              // 调试覆盖也清掉，以重建后的配置为准
+        _homeTagsVisibleOverride = null;
+        IsTagBarExpanded = false;           // 回到默认：标签墙 3 行
+        ThemeManager.Apply(_shell.UiTheme);
+
+        InitializeEffects();
+        OnPropertyChanged(nameof(AutoEffectOptions));
+        OnPropertyChanged(nameof(ClickEffectOptions));
+        NotifyTuningChanged();
+
+        foreach (var card in _allCards) card.LastUsed = null;   // LastUsed 字典已被重置为空
+
+        OnPropertyChanged(string.Empty);    // 其余所有绑定（主题单选、粒子颜色、关闭行为、标签墙…）全部重读
+        RefreshToolCards();
+        RefreshHeader();
     }
 
     // ---------- 工具切换 / 后台保活 ----------

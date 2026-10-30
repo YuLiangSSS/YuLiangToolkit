@@ -9,10 +9,10 @@
 | --- | --- |
 | 技术栈 | Windows 10 2004+ + .NET 9（主程序 / 自检 `net9.0-windows10.0.19041.0`，工具库 `net9.0-windows`）+ WPF + 手写 MVVM；唯一第三方包 `OsuParsers`（MIT）；PDF 渲染用系统 `Windows.Data.Pdf`，文字搜索 / 书签目录是手写 PDF 解析器 |
 | 主程序 | 根目录 `YuLiangTookit.csproj`（少一个 `l` 是历史拼写）：标题栏 / 主页 / 类别页 / 面包屑、两套主题、粒子 |
-| 核心库 | `src/YuLiangToolkit.Core/`：工具契约 / MVVM / 存储 / 配置 / FFmpeg / 粒子 / TCP 房间 |
+| 核心库 | `src/YuLiangToolkit.Core/`：工具契约 / MVVM / 存储 / 配置 / 维护（缓存清理·配置重建）/ FFmpeg / 粒子 / TCP 房间 |
 | 功能 | 16 个（13 个 `Tools.*`）：视频转音频 / 播放器 / 图片阅读器 / PDF 阅读器 / 重命名 / Flash / 聊天室 / osu! 下图器 / osu!mania 三件套 / 棋牌 / KPS 按键统计 / Spug 验证码测试 / 示例模板 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`：2729 项，退出码 0 = 通过（按分组跑） |
-| 数据 | **在 exe 旁边**（`bin\Debug\net9.0-windows10.0.19041.0\Data`、`Config`）；仓库根同名目录只有说明 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`：2792 项，退出码 0 = 通过（按分组跑） |
+| 数据 | **在 exe 旁边**（`bin\Debug\net9.0-windows10.0.19041.0\Data`、`Config`、`Cache`）；仓库根同名目录只有说明 |
 
 ## 开工 / 收尾（硬性）
 
@@ -31,7 +31,7 @@ git add -A; git commit -m "<中文提交信息>"   # ③ 提交：每轮改动�
 
 ## 硬性规则（违反 = 破坏项目或删用户数据；更多细节见踩坑清单）
 
-1. **运行时数据在 exe 旁边**；仓库根 `Data/`、`Config/` 只放说明。绝不用 `<None CopyToOutputDirectory>` 拷 Data/Config；`dotnet clean` / 删 `bin`、`dist` = 删用户数据。
+1. **运行时数据在 exe 旁边**；仓库根 `Data/`、`Config/`、`Cache/` 只放说明。绝不用 `<None CopyToOutputDirectory>` 拷 Data/Config；`dotnet clean` / 删 `bin`、`dist` = 删用户数据。
 2. **别再引入第三方 NuGet 包**；新轮子优先手写进 `Core/`（唯一例外 `OsuParsers`）。
 3. **带 setter 的计算属性必须 `[JsonIgnore]`**；配置自动落盘（无保存按钮）；要「一敲键就刷新」用 `Set(ref 字段, 值)`。
 4. **后台线程改界面走 `Ui(...)` / `UiAsync(...)`**；切走时在 `NotifyClosed()` 里摘缓存对象上的事件；绕过 `ToolConfigStore` 的持久化入口自己接 `FlushAll`。
@@ -40,7 +40,8 @@ git add -A; git commit -m "<中文提交信息>"   # ③ 提交：每轮改动�
 7. **新增顶层目录**时同步改主项目 `DefaultItemExcludes` **和** `.gitignore`。
 8. **别用 PowerShell 改 XAML / 源码**（5.1 按 GBK 读会乱码）；`.ps1` 纯 ASCII 或 UTF-8 with BOM。
 9. **`ParticleOverlay` 必须放 Window 内 Grid 铺满 + `IsHitTestVisible="False"`**。
-10. **改完必须提交 git**；其他别做 / 先问用户的见踩坑清单。
+10. **缓存写 `Cache\<工具Id>\`**（`ToolCache`），「主页设置 → 清理缓存 / 重建配置」按已发现工具自动覆盖新工具；缓存混在 Config 里就实现 `IToolCacheSource` 报告清理项（详见 `Core/Maintenance/` 注释）。
+11. **改完必须提交 git**；其他别做 / 先问用户的见踩坑清单。
 
 ## 找东西
 

@@ -68,6 +68,12 @@ public abstract class ToolConfig : ObservableObject
     protected bool SetAndSave<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
         => Set(ref field, value, propertyName);
 
+    /// <summary>
+    /// 重建配置用（<see cref="ToolConfigStore.ResetToDefaults"/> 会调它）：让界面重新读一遍所有属性。
+    /// 传空属性名 = WPF 认为“所有属性都变了”，这样自动属性也能刷新（它们平时不发通知）。
+    /// </summary>
+    internal void NotifyAllPropertiesChanged() => OnPropertyChanged(string.Empty);
+
     /// <summary>当前的 JSON 文本（用于界面预览 / 排错）。</summary>
     public string ToJson() => JsonFileStore.ToJson(this);
 

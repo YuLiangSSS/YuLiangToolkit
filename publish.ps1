@@ -1,6 +1,6 @@
 # YuLiangToolkit one-click publish script.
 # Builds a Release copy into dist\YuLiangToolkit (framework-dependent by default).
-# Data\ and Config\ are created next to the published exe on first run; this script only
+# Data\ Config\ Cache\ are created next to the published exe on first run; this script only
 # drops the README files there (never the runtime *.json configs).
 # NOTE: keep this file ASCII-only so Windows PowerShell 5.1 parses it correctly.
 param(
@@ -34,10 +34,10 @@ try {
     dotnet @dotnetArgs
     if ($LASTEXITCODE -ne 0) { throw "publish failed" }
 
-    # Ship the two README files next to the exe. Runtime state (Config\*\*.json, Data\*\)
+    # Ship the three README files next to the exe. Runtime state (Config\*\*.json, Data\*\, Cache\*\)
     # is NOT copied - the app writes its own docs on first run (see RuntimeReadme).
-    New-Item -ItemType Directory -Path (Join-Path $OutputDir "Data"), (Join-Path $OutputDir "Config") -Force | Out-Null
-    foreach ($pair in @(@("Data\README.md", "Data"), @("Config\README.md", "Config"))) {
+    New-Item -ItemType Directory -Path (Join-Path $OutputDir "Data"), (Join-Path $OutputDir "Config"), (Join-Path $OutputDir "Cache") -Force | Out-Null
+    foreach ($pair in @(@("Data\README.md", "Data"), @("Config\README.md", "Config"), @("Cache\README.md", "Cache"))) {
         $src = Join-Path $root $pair[0]
         if (Test-Path $src) {
             Copy-Item $src (Join-Path $OutputDir $pair[1]) -Force
@@ -57,7 +57,7 @@ try {
     Write-Host "==> OK" -ForegroundColor Green
     Write-Host "    folder : $full"
     Write-Host "    exe    : $full\YuLiangTookit.exe"
-    Write-Host "    Data / Config will be created next to the exe on first run."
+    Write-Host "    Data / Config / Cache will be created next to the exe on first run."
 }
 finally {
     Pop-Location
