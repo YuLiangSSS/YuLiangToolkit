@@ -78,6 +78,13 @@ public sealed class ShellConfig : ToolConfig
     /// </summary>
     public UiTheme UiTheme { get; set; } = UiTheme.Default;
 
+    /// <summary>
+    /// 主页「快速筛选」标签墙是否显示（「主页设置 → 主页显示」，默认 <c>true</c> = 和以前一样显示）。
+    /// 标签多的时候整块墙比较占地方，不需要的人可以在设置里关掉；
+    /// 关掉后搜索框仍然能按标签搜到功能。旧配置文件没有这个字段时按默认值 true 处理（行为不变）。
+    /// </summary>
+    public bool ShowHomeTags { get; set; } = true;
+
     // ---------- 粒子颜色（v0.22.0，主页设置「粒子颜色」卡片） ----------
 
     /// <summary>是否启用自定义粒子颜色（默认关 = 原来的淡紫白，行为完全不变）。</summary>

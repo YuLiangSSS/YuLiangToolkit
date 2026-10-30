@@ -596,16 +596,18 @@
                                 <!-- 悬浮时显示的轨道底色 -->
                                 <Border x:Name="TrackBorder" Background="{DynamicResource ScrollBarTrackBrush}"
                                         CornerRadius="4" Margin="1" Opacity="0" />
+                                <!-- Track 的 Orientation / Value / ViewportSize 由 Track 自己从模板父级 ScrollBar
+                                     继承（Track.OnPreApplyTemplate 里绑的），所以这里不用再写 Orientation。 -->
                                 <Track x:Name="PART_Track" IsDirectionReversed="True">
                                     <Track.DecreaseRepeatButton>
-                                        <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}"
+                                        <RepeatButton x:Name="DecreasePageButton" Command="{x:Static ScrollBar.PageUpCommand}"
                                                       Style="{StaticResource ScrollBarPageButtonStyle}" />
                                     </Track.DecreaseRepeatButton>
                                     <Track.Thumb>
-                                        <Thumb Style="{StaticResource ScrollBarThumbStyle}" />
+                                        <Thumb x:Name="TrackThumb" Style="{StaticResource ScrollBarThumbStyle}" />
                                     </Track.Thumb>
                                     <Track.IncreaseRepeatButton>
-                                        <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}"
+                                        <RepeatButton x:Name="IncreasePageButton" Command="{x:Static ScrollBar.PageDownCommand}"
                                                       Style="{StaticResource ScrollBarPageButtonStyle}" />
                                     </Track.IncreaseRepeatButton>
                                 </Track>
@@ -614,9 +616,21 @@
                                 <Trigger Property="IsMouseOver" Value="True">
                                     <Setter TargetName="TrackBorder" Property="Opacity" Value="1" />
                                 </Trigger>
+                                <!-- 横向滚动条要单独掰三处（否则能显示出来但方向 / 点击都不对）：
+                                     ① IsDirectionReversed 不会被 Track 继承：竖向要 True（值变大 = 滑块往下走），
+                                        横向要 False（值变大 = 滑块往右走），否则一进来滑块就在右端、往右拖反而往回滚；
+                                     ② 轨道翻页按钮要用 PageLeft / PageRight —— PageUp / PageDown 会被外层
+                                        ScrollViewer 当成竖向翻页（横条点了没反应）；
+                                     ③ 滑块最小高度是给竖条的（24），横条只有 10px 高，放开让滑块填满轨道。 -->
                                 <Trigger Property="Orientation" Value="Horizontal">
                                     <Setter Property="Width" Value="Auto" />
                                     <Setter Property="Height" Value="10" />
+                                    <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False" />
+                                    <Setter TargetName="DecreasePageButton" Property="Command"
+                                            Value="{x:Static ScrollBar.PageLeftCommand}" />
+                                    <Setter TargetName="IncreasePageButton" Property="Command"
+                                            Value="{x:Static ScrollBar.PageRightCommand}" />
+                                    <Setter TargetName="TrackThumb" Property="MinHeight" Value="0" />
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>

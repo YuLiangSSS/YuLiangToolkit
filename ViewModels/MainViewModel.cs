@@ -240,8 +240,8 @@ public class MainViewModel : ObservableObject
     /// <summary>搜索框里有没有内容（用来显示“清空”按钮）。</summary>
     public bool HasSearchText => !string.IsNullOrWhiteSpace(_searchText);
 
-    /// <summary>没在搜索时才显示标签快捷筛选条（有搜索词时让位给结果）。</summary>
-    public bool ShowTagBar => !HasSearchText;
+    /// <summary>没在搜索、且设置里没关掉标签墙时，才显示标签快捷筛选条（有搜索词时让位给结果）。</summary>
+    public bool ShowTagBar => !HasSearchText && ShowHomeTags;
 
     private string _filterSummary = "";
     /// <summary>搜索框右侧计数，例如 "匹配 2 / 12 个功能"。</summary>
@@ -289,6 +289,59 @@ public class MainViewModel : ObservableObject
         get => _toolSectionTitle;
         private set => Set(ref _toolSectionTitle, value);
     }
+
+    // ---------- 主页标签墙（v0.33.0：3 行 + 横向滚动 / 展开 / 设置里可隐藏） ----------
+
+    /// <summary>
+    /// 截图 / 调试用：<c>YLT_HOME_TAGS=hidden</c> 临时隐藏标签墙（看设置里关掉后的样子），
+    /// <c>YLT_HOME_TAGS=expanded</c> 临时展开；只影响本次运行、**不写配置**。
+    /// </summary>
+    private bool? _homeTagsVisibleOverride;
+
+    /// <summary>
+    /// 主页「快速筛选」标签墙要不要显示（「主页设置 → 主页显示」；读写
+    /// <see cref="ShellConfig.ShowHomeTags"/>，自动落盘）。关掉后整块标签墙隐藏，
+    /// 搜索框仍然能按标签搜到功能（标签本身还是卡片搜索索引的一部分）。
+    /// </summary>
+    public bool ShowHomeTags
+    {
+        get => _homeTagsVisibleOverride ?? _shell.ShowHomeTags;
+        set
+        {
+            if (_shell.ShowHomeTags == value) return;
+            _shell.ShowHomeTags = value;
+            if (!value) IsTagBarExpanded = false;   // 藏起来时顺手收起，免得下次显示直接是一大坨
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ShowTagBar));
+        }
+    }
+
+    private bool _isTagBarExpanded;
+
+    /// <summary>
+    /// 标签墙当前是不是「展开全部」（只存内存，不写配置：每次进主页默认还是 3 行）。
+    /// </summary>
+    public bool IsTagBarExpanded
+    {
+        get => _isTagBarExpanded;
+        private set
+        {
+            if (!Set(ref _isTagBarExpanded, value)) return;
+            OnPropertyChanged(nameof(TagBarToggleText));
+            OnPropertyChanged(nameof(TagBarToggleToolTip));
+        }
+    }
+
+    /// <summary>展开 / 收起按钮的文案（展开 = 铺开全部标签，收起 = 回到 3 行 + 横向滚动）。</summary>
+    public string TagBarToggleText => _isTagBarExpanded ? "收起 ▴" : "展开全部 ▾";
+
+    /// <summary>展开 / 收起按钮的鼠标提示。</summary>
+    public string TagBarToggleToolTip => _isTagBarExpanded
+        ? "收起标签，回到 3 行 + 横向滚动"
+        : "一次性铺开全部标签（按原来的换行方式），再点一下收起";
+
+    /// <summary>标签数量文案（标签墙标题行右侧，例如「共 151 个标签」）。</summary>
+    public string TagCountText => $"共 {AllTags.Count} 个标签";
 
     // ---------- 排序 ----------
 
@@ -534,6 +587,9 @@ public class MainViewModel : ObservableObject
     public RelayCommand ClearSearchCommand { get; }
     public RelayCommand SearchTagCommand { get; }
 
+    /// <summary>标签墙「展开全部 / 收起」（3 行横向滚动 ↔ 原来的换行铺开；只改内存状态，不写配置）。</summary>
+    public RelayCommand ToggleTagBarExpandedCommand { get; }
+
     /// <summary>进某个类别页（参数可为 <see cref="CategoryCard"/> / <see cref="ToolCatalogNode"/> / 类别名）。</summary>
     public RelayCommand NavigateCategoryCommand { get; }
 
@@ -589,6 +645,18 @@ public class MainViewModel : ObservableObject
         // 开发 / 截图：YLT_THEME=liquid-glass 临时切到第二套 UI（不写配置；见 ShellConfig.UiTheme）
         _themeOverride = ThemeManager.ParseThemeName(Environment.GetEnvironmentVariable("YLT_THEME"));
 
+        // 截图 / 调试：YLT_HOME_TAGS=hidden 临时隐藏标签墙（验证「设置里关掉」的样子）、
+        // =expanded 临时展开；只影响本次运行，不写配置。
+        switch (Environment.GetEnvironmentVariable("YLT_HOME_TAGS")?.Trim().ToLowerInvariant())
+        {
+            case "hidden" or "hide" or "off":
+                _homeTagsVisibleOverride = false;
+                break;
+            case "expanded" or "expand" or "open":
+                _isTagBarExpanded = true;
+                break;
+        }
+
         GoHomeCommand = new RelayCommand(_ => GoHome());
         OpenToolCommand = new RelayCommand(p =>
         {
@@ -600,6 +668,7 @@ public class MainViewModel : ObservableObject
         {
             if (p is string tag && !string.IsNullOrWhiteSpace(tag)) SearchText = tag;
         });
+        ToggleTagBarExpandedCommand = new RelayCommand(_ => IsTagBarExpanded = !IsTagBarExpanded);
         NavigateCategoryCommand = new RelayCommand(p =>
         {
             switch (p)
@@ -1036,7 +1105,7 @@ public class MainViewModel : ObservableObject
             case ShellPageKind.Settings:
                 CurrentNodeName = "主页设置";
                 CurrentNodeEmoji = "⚙";
-                CurrentNodeDescription = "外壳设置：界面风格、自动 / 点击特效、粒子颜色与窗口行为";
+                CurrentNodeDescription = "外壳设置：界面风格、主页显示、自动 / 点击特效、粒子颜色与窗口行为";
                 CurrentNodeSummary = "";
                 break;
 

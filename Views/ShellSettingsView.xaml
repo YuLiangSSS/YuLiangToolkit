@@ -26,7 +26,7 @@
                                    VerticalAlignment="Center" />
                     </StackPanel>
                     <TextBlock FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0"
-                               Text="外壳自己的设置：界面风格、鼠标自动 / 点击特效、粒子颜色、窗口与托盘。改一下立即生效并自动保存。" />
+                               Text="外壳自己的设置：界面风格、主页显示、鼠标自动 / 点击特效、粒子颜色、窗口与托盘。改一下立即生效并自动保存。" />
                 </StackPanel>
                 <Button Grid.Column="1" Content="返回主页" Style="{StaticResource SecondaryButtonStyle}"
                         VerticalAlignment="Top" Command="{Binding GoHomeCommand}" ToolTip="回到主页（也可以点面包屑的「🏠 主页」或后退按钮）" />
@@ -83,6 +83,20 @@
                     <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                TextWrapping="Wrap" Margin="0,10,0,0"
                                Text="换主题立即生效、不用重启；选择会自动存进 Config\shell\config.json 的 uiTheme（旧配置没有这一项时按「默认」处理）。液态玻璃会多画一层流动光晕，低配机器觉得费电 / 掉帧就切回默认。" />
+                </StackPanel>
+            </Border>
+
+            <!-- ===== 主页显示 ===== -->
+            <TextBlock Text="主页显示" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource AccentBrush}" Margin="0,22,0,0" />
+            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
+                <StackPanel>
+                    <CheckBox Content="显示标签快捷筛选条" Style="{StaticResource CheckBoxStyle}"
+                              IsChecked="{Binding ShowHomeTags}"
+                              ToolTip="主页「全部分类」下面那块标签墙；关掉后整块隐藏（搜索框仍然能按标签搜到功能）" />
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,8,0,0"
+                               Text="主页分类下面那块「快速筛选」标签墙。标签有一百多个，默认只排 3 行 + 横向滚动条，点「展开全部」才会按原来的换行方式铺开。觉得占地方就关掉它：整块标签会隐藏，搜索框仍然能按标签搜到功能（标签本身不会被删）。存 Config\shell\config.json 的 showHomeTags，重启后保持。" />
                 </StackPanel>
             </Border>
 
@@ -202,7 +216,7 @@
             </Border>
 
             <TextBlock FontSize="11" Foreground="{DynamicResource FaintTextBrush}" TextWrapping="Wrap" Margin="0,14,0,0"
-                       Text="主页设置只影响外壳本身（界面风格、自动 / 点击特效、粒子颜色、关闭行为等）；各功能自己的选项在对应功能页面里。" />
+                       Text="主页设置只影响外壳本身（界面风格、主页显示、自动 / 点击特效、粒子颜色、关闭行为等）；各功能自己的选项在对应功能页面里。" />
 
             <Button Content="返回主页" Style="{StaticResource SecondaryButtonStyle}"
                     HorizontalAlignment="Left" Margin="0,18,0,0" Command="{Binding GoHomeCommand}" />

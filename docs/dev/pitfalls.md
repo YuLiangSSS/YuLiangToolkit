@@ -140,6 +140,14 @@
 - 枚举避开 `SequencePosition`（撞系统同名类型，已改 `SequencePlacement`）与 `Path`、`Timer`、`Index`。
 - `ListBox.ScrollIntoView` 会顺 `BringIntoView` 顶掉外层页面；滚内层找内部 `ScrollViewer`。
 - 图标别用 `⏪ ⏩ ⏹ 🔁 🔂 🔀`（无码位 → 豆腐块）：用矢量 `Path`、`Segoe MDL2 Assets` 码位或写字。
+- 全局 `ScrollBar` 样式（`App.xaml` 里无 `x:Key` 的那个）要同时管横竖：`Track` 的 `Orientation` / `Value` / `ViewportSize`
+  会自己从模板父级继承（`Track.OnPreApplyTemplate`），但**横向**要多掰两处 —— Track 的 `IsDirectionReversed` 设 `False`
+  （否则一进来滑块在最右边、往右拖反而往回滚），轨道翻页按钮换成 `PageLeft` / `PageRight`
+  （`PageUp` / `PageDown` 会被外层 ScrollViewer 当竖向翻页，点横条没反应）。横向滑块还要把竖条用的
+  `MinHeight=24` 放开。v0.33.0 主页标签墙的横向滚动条踩过，别删 Orientation 触发器里那几行。
+- 横向滚动容器别让内层 `ScrollViewer` 吃掉滚轮：它 `OnMouseWheel` 是无条件 `e.Handled = true` 的
+  （见 `ScrollChaining`），普通滚轮要在 `PreviewMouseWheel` 里转给外层页面；`Shift + 滚轮` 想横滚也得自己算
+  （WPF 原生 `ScrollViewer` 不支持 Shift + 滚轮，跟很多应用的习惯不一样）。
 
 ### 构建与工具链
 - 主项目在仓库根，`DefaultItemExcludes` 排除 `src\`、`Data\`、`Config\`、`tests\` 等；新增顶层目录同步加。

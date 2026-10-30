@@ -378,6 +378,25 @@ Check("粒子颜色设置自动落盘并读回（颜色按 #RRGGBB 存）",
     && File.ReadAllText(shellStore.FilePath).Contains("\"#FF5A5A\""),
     JsonFileStore.Serialize(savedColors).Replace(Environment.NewLine, " "));
 
+// ---------- 17.2.1 主页标签墙（v0.33.0：默认 3 行 + 横向滚动 / 可展开 / 设置里可整体隐藏） ----------
+Check("主页标签墙默认显示（老配置升上来行为不变；配置键 showHomeTags）",
+    new ShellConfig().ShowHomeTags
+    && JsonFileStore.Serialize(new ShellConfig()).Contains("\"showHomeTags\": true"),
+    JsonFileStore.Serialize(new ShellConfig()).Replace(Environment.NewLine, " "));
+
+shell.ShowHomeTags = false;
+Thread.Sleep(900);
+var savedTags = JsonFileStore.Read<ShellConfig>(shellStore.FilePath);
+Check("主页设置里隐藏标签墙后自动落盘并读回（showHomeTags = false）",
+    savedTags is { ShowHomeTags: false }
+    && File.ReadAllText(shellStore.FilePath).Contains("\"showHomeTags\": false"),
+    JsonFileStore.Serialize(savedTags).Replace(Environment.NewLine, " "));
+
+shell.ShowHomeTags = true;
+Thread.Sleep(900);
+Check("重新打开标签墙后落盘（showHomeTags = true）",
+    JsonFileStore.Read<ShellConfig>(shellStore.FilePath)?.ShowHomeTags == true);
+
 // ---------- 17.3 最大化窗口拖标题栏 → 还原位置（纯逻辑，见 AGENTS.md） ----------
 // 场景：1920x1032 的工作区里，1280x820 的窗口最大化后（实际 1920 宽），按住标题栏某个点往外拖。
 var dragArea = new Rect(0, 0, 1920, 1032);
@@ -857,6 +876,9 @@ RunGroupModule("shell", "导航", NavigationChecks.Run, "[导航] ");
 // ---------- 粒子效果（引擎的生成 / 寿命 / 衰减 / 开关 / 上限；纯逻辑无界面） ----------
 RunGroupModule("shell", "粒子", ParticleChecks.Run);
 RunGroupModule("shell", "光标特效", ShellEffectsChecks.Run);
+
+// ---------- 主页标签墙（v0.33.0：3 行 + 横向滚动；FixedRowsPanel 的列宽 / 行高 / 换列排列，无头 STA 线程） ----------
+RunGroupModule("shell", "标签墙", HomeTagWallChecks.Run, "[标签墙] ");
 
 // ---------- 星数计算（数值基准回归） ----------
 RunGroupModule("osu-mania", "星数", StarRatingChecks.Run);
