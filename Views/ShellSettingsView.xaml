@@ -40,7 +40,9 @@
     </UserControl.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="30,26,30,30" MaxWidth="920" HorizontalAlignment="Left">
+        <!-- 页面内容随窗口铺满（和主页 / 类别页 / 工具页一致）：不再限制最大宽度、也不靠左对齐。
+             以前这里写的是 MaxWidth="920" + HorizontalAlignment="Left"，窗口一拉宽右半边就空着。 -->
+        <StackPanel Margin="30,26,30,30">
 
             <!-- ===== 标题 + 返回主页 ===== -->
             <Grid>
@@ -55,6 +57,7 @@
                                    VerticalAlignment="Center" />
                     </StackPanel>
                     <TextBlock FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0"
+                               TextWrapping="Wrap"
                                Text="外壳自己的设置：界面风格、主页显示、鼠标自动 / 点击特效（含数量 / 范围 / 半径滑块）、粒子颜色、窗口与托盘；最下面是清理缓存与重建配置（恢复默认设置）。改一下立即生效并自动保存。" />
                 </StackPanel>
                 <Button Grid.Column="1" Content="返回主页" Style="{StaticResource SecondaryButtonStyle}"
