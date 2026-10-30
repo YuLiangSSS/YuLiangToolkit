@@ -34,9 +34,11 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
         ZoomInCommand = new RelayCommand(_ => StepZoom(1));
         ZoomOutCommand = new RelayCommand(_ => StepZoom(-1));
         OpenDefaultAppsCommand = new RelayCommand(_ => PdfFileAssociation.OpenDefaultAppsSettings());
+        ToggleFullscreenCommand = new RelayCommand(_ => ToggleFullscreen());
 
         ApplyModeOverrideFromEnvironment();
         ApplyZoomOverrideFromEnvironment();
+        ApplyFullscreenOverrideFromEnvironment();
         _pendingPageIndex = ParsePageOverrideFromEnvironment();
 
         // 双击 .pdf 启动（文件关联 / 命令行）时，主程序把路径放在这里；只生效一次。
@@ -539,8 +541,87 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
         LayoutChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    // ---------------------------------------------------------------- 全屏（沉浸阅读）
+
+    private bool _isFullscreen;
+    private bool _controlsVisible = true;
+
+    /// <summary>
+    /// 是不是全屏。ViewModel 只记状态，真正的窗口操作由界面（外壳的 <c>IFullscreenHost</c>）做，
+    /// 自检里没有窗口也能断言状态机；全屏只是藏外壳 / 工具条，**当前阅读方式不变**。
+    /// </summary>
+    public bool IsFullscreen
+    {
+        get => _isFullscreen;
+        private set
+        {
+            if (!Set(ref _isFullscreen, value)) return;
+            ControlsVisible = true;
+            OnPropertyChanged(nameof(FullscreenGlyph));
+            OnPropertyChanged(nameof(FullscreenTooltip));
+            OnPropertyChanged(nameof(IsToolbarVisible));
+            OnPropertyChanged(nameof(ToolbarRowHeight));
+            FullscreenChanged?.Invoke(this, value);
+        }
+    }
+
+    /// <summary>全屏时工具条要不要露出来：鼠标一动露，停 2.5 秒缩回（普通模式永远露着）。</summary>
+    public bool ControlsVisible
+    {
+        get => _controlsVisible;
+        private set
+        {
+            if (!Set(ref _controlsVisible, value)) return;
+            OnPropertyChanged(nameof(IsToolbarVisible));   // 工具条显隐绑的是 IsToolbarVisible
+        }
+    }
+
+    /// <summary>鼠标动了 / 刚进全屏 → 把工具条亮出来。</summary>
+    public void ShowControls()
+    {
+        if (!ControlsVisible) ControlsVisible = true;
+    }
+
+    /// <summary>鼠标闲置够久 → 把工具条缩回去（普通模式 / 正开着设置面板或搜索时不动）。</summary>
+    public void HideControls()
+    {
+        if (IsFullscreen && !IsSettingsVisible && !IsOutlineVisible) ControlsVisible = false;
+    }
+
+    /// <summary>全屏按钮的图标：Segoe MDL2 的「全屏」E740 / 「退出全屏」E73F。</summary>
+    public string FullscreenGlyph => IsFullscreen ? "\uE73F" : "\uE740";
+
+    /// <summary>全屏按钮的悬停提示。</summary>
+    public string FullscreenTooltip => IsFullscreen
+        ? "退出全屏（F11 / Esc）"
+        : "全屏沉浸阅读（F11；鼠标移到顶部调设置）";
+
+    /// <summary>工具条现在可不可见（全屏时跟着鼠标显隐）。</summary>
+    public bool IsToolbarVisible => !IsFullscreen || ControlsVisible;
+
+    /// <summary>工具条那两行的高度：全屏时归零，让阅读区铺满（工具条改为浮层，见 View 的 DataTrigger）。</summary>
+    public GridLength ToolbarRowHeight => IsFullscreen ? new GridLength(0) : GridLength.Auto;
+
+    /// <summary>全屏状态变了（界面据此去操作真实窗口：藏标题栏 / 侧边栏、铺满屏幕）。参数是目标状态。</summary>
+    public event EventHandler<bool>? FullscreenChanged;
+
+    /// <summary>切换全屏（按钮 / F11 / Esc 都走它）。</summary>
+    public void ToggleFullscreen() => IsFullscreen = !IsFullscreen;
+
+    /// <summary>强制退出全屏（切走工具、界面卸载时调用，避免留下一个“藏了壳”的窗口）。</summary>
+    public void ExitFullscreen()
+    {
+        if (IsFullscreen) IsFullscreen = false;
+    }
+
+    /// <summary>全屏按钮（工具条第一行最右边）。</summary>
+    public RelayCommand ToggleFullscreenCommand { get; }
+
     protected override void OnClosed()
     {
+        // 切走工具时一定退出全屏，否则外壳会一直停在被藏起来的状态
+        ExitFullscreen();
+
         CancelTextLayer();
 
         var session = _session;
@@ -584,6 +665,13 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
         if (!int.TryParse(cleaned, out var percent)) return;
 
         Cfg.ZoomPercent = Math.Clamp(percent, PdfReaderConfig.MinZoomPercent, PdfReaderConfig.MaxZoomPercent);
+    }
+
+    /// <summary>开发 / 截图用：<c>YLT_PDF_FULLSCREEN=1</c> 直接以全屏启动（截图核对沉浸式版式）。</summary>
+    private void ApplyFullscreenOverrideFromEnvironment()
+    {
+        if (IsEnvironmentOn("YLT_PDF_FULLSCREEN"))
+            _isFullscreen = true;   // 界面 Loaded 时会把它同步给外壳（见 PdfReaderView）
     }
 
     /// <summary>开发 / 截图用：<c>YLT_PDF_PAGE=3</c> 打开后直接定位到第 3 页（从 1 数）。</summary>

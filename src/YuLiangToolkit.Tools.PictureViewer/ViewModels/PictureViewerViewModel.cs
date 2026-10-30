@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Windows;
 using YuLiangToolkit.Core.Mvvm;
 
 namespace YuLiangToolkit.Tools.PictureViewer.ViewModels;
@@ -38,6 +39,7 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
         ApplyModeOverrideFromEnvironment();
         ApplyZoomOverrideFromEnvironment();
         ApplyBorderOverrideFromEnvironment();
+        ApplyFullscreenOverrideFromEnvironment();
 
         // 边框颜色编辑器：三个颜色各一个（R/G/B/A 数字 + 调色板 + 预览都绑它）
         BorderInnerColorEditor = new RgbaColorEditor(Cfg.BorderInnerColor);
@@ -51,6 +53,7 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
         PickFillColorCommand = new RelayCommand(p => PickBorderColor(ColorPart.Fill, p));
         PickOuterBorderColorCommand = new RelayCommand(p => PickBorderColor(ColorPart.Outer, p));
         ResetSettingsCommand = new RelayCommand(_ => ResetSettings());
+        ToggleFullscreenCommand = new RelayCommand(_ => ToggleFullscreen());
 
         // 双击图片启动（文件关联 / 命令行）时，主程序把图片路径放在这里；只生效一次。
         _launchImagePath = PictureFilePathLaunch.PendingImagePath;
@@ -656,6 +659,93 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
         }
     }
 
+    // ---------------------------------------------------------------- 全屏（沉浸阅读）
+
+    private bool _isFullscreen;
+    private bool _controlsVisible = true;
+
+    /// <summary>
+    /// 是不是全屏。ViewModel 只记状态，真正的窗口操作由界面（外壳的 <c>IFullscreenHost</c>）做，
+    /// 这样自检里没有窗口也能断言状态机（见 <see cref="FullscreenChanged"/>）。
+    ///
+    /// <para>全屏只是把外壳 / 工具条藏起来、把阅读区铺满屏幕，**当前阅读方式不变**。</para>
+    /// </summary>
+    public bool IsFullscreen
+    {
+        get => _isFullscreen;
+        private set
+        {
+            if (!Set(ref _isFullscreen, value)) return;
+            ControlsVisible = true;                  // 进 / 出全屏都先把工具条亮出来
+            OnPropertyChanged(nameof(FullscreenGlyph));
+            OnPropertyChanged(nameof(FullscreenTooltip));
+            OnPropertyChanged(nameof(IsToolbarVisible));
+            OnPropertyChanged(nameof(ToolbarRowHeight));
+            FullscreenChanged?.Invoke(this, value);
+        }
+    }
+
+    /// <summary>
+    /// 全屏时工具条要不要露出来：鼠标一动就露，停 2.5 秒自动缩回去（普通模式永远露着）。
+    /// 计时器在界面代码后置里（和播放器同一套手感）。
+    /// </summary>
+    public bool ControlsVisible
+    {
+        get => _controlsVisible;
+        private set
+        {
+            if (!Set(ref _controlsVisible, value)) return;
+            OnPropertyChanged(nameof(IsToolbarVisible));   // 工具条显隐绑的是 IsToolbarVisible
+        }
+    }
+
+    /// <summary>鼠标动了 / 刚进全屏 → 把工具条亮出来。</summary>
+    public void ShowControls()
+    {
+        if (!ControlsVisible) ControlsVisible = true;
+    }
+
+    /// <summary>鼠标闲置够久 → 把工具条缩回去（普通模式 / 正开着设置面板时不缩）。</summary>
+    public void HideControls()
+    {
+        if (IsFullscreen && !IsSettingsVisible) ControlsVisible = false;
+    }
+
+    /// <summary>全屏按钮的图标：Segoe MDL2 的「全屏」E740 / 「退出全屏」E73F。</summary>
+    public string FullscreenGlyph => IsFullscreen ? "\uE73F" : "\uE740";
+
+    /// <summary>全屏按钮的悬停提示。</summary>
+    public string FullscreenTooltip => IsFullscreen
+        ? "退出全屏（F11 / Esc）"
+        : "全屏沉浸阅读（F11；鼠标移到顶部调设置）";
+
+    /// <summary>工具条现在可不可见（全屏时跟着鼠标显隐）。</summary>
+    public bool IsToolbarVisible => !IsFullscreen || ControlsVisible;
+
+    /// <summary>工具条那一行的高度：全屏时归零，让阅读区铺满（工具条改为浮层，见 View 的 DataTrigger）。</summary>
+    public GridLength ToolbarRowHeight => IsFullscreen ? new GridLength(0) : GridLength.Auto;
+
+    /// <summary>全屏状态变了（界面据此去操作真实窗口：藏标题栏 / 侧边栏、铺满屏幕）。参数是目标状态。</summary>
+    public event EventHandler<bool>? FullscreenChanged;
+
+    /// <summary>切换全屏（按钮 / F11 / Esc 都走它）。</summary>
+    public void ToggleFullscreen() => IsFullscreen = !IsFullscreen;
+
+    /// <summary>强制退出全屏（切走工具、界面卸载时调用，避免留下一个“藏了壳”的窗口）。</summary>
+    public void ExitFullscreen()
+    {
+        if (IsFullscreen) IsFullscreen = false;
+    }
+
+    /// <summary>全屏按钮（工具条最右边）。</summary>
+    public RelayCommand ToggleFullscreenCommand { get; }
+
+    protected override void OnClosed()
+    {
+        // 切走工具时一定退出全屏，否则外壳会一直停在被藏起来的状态
+        ExitFullscreen();
+    }
+
     // ---------------------------------------------------------------- 环境变量（开发用）
 
     /// <summary>开发 / 截图用：<c>YLT_PICTURE_MODE=vertical|ltr|rtl|spread-ltr|spread-rtl|single</c> 直接指定阅读方式。</summary>
@@ -693,6 +783,13 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
         if (!int.TryParse(cleaned, out var percent)) return;
 
         Cfg.ZoomPercent = PictureScrollMath.EffectiveZoomPercent(percent);
+    }
+
+    /// <summary>开发 / 截图用：<c>YLT_PICTURE_FULLSCREEN=1</c> 直接以全屏启动（截图核对沉浸式版式）。</summary>
+    private void ApplyFullscreenOverrideFromEnvironment()
+    {
+        if (IsEnvironmentOn("YLT_PICTURE_FULLSCREEN"))
+            _isFullscreen = true;   // 界面 Loaded 时会把它同步给外壳（见 PictureViewerView）
     }
 
     /// <summary>环境变量开关：不设 / 空 / 0 / false 都算关。</summary>

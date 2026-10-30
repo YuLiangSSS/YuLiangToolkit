@@ -55,6 +55,11 @@
 - ⚠ 阅读偏移自己记（`_readingOffset`），别每帧反读 `ScrollViewer`：`ScrollToXxx` 排队到布局阶段才生效。
 - 横向右→左：图片物理倒序、阅读偏移 = `ScrollableWidth − HorizontalOffset`（与物理偏移互为反数）；别用 `FlowDirection`。
 - 缩放后两轴都可能能滚：图片宽高必须都显式给，否则另一轴拖不动。
+- 全屏（F11）不自己操作窗口：`Window.GetWindow(this) as IFullscreenHost` 交给外壳藏壳 / 铺满屏幕（任务栏由外壳藏）。
+  视图 `Unloaded` 顺序必须是「先 `vm.ExitFullscreen()`（事件还订阅着，外壳能还原）→ 再摘事件」，
+  反过来会留下一个“藏了壳”的窗口（播放器踩过的坑，两个阅读器复制同一套）。
+- 全屏工具条是浮层：行高绑 VM 的 `ToolbarRowHeight`（全屏 = 0），Border 用 DataTrigger 换到 Row1 + `Panel.ZIndex` 置顶；
+  ⚠ `ControlsVisible` 改变时必须同时通知 `IsToolbarVisible`，否则「鼠标停 2.5 秒自动隐藏」不生效（工具条显隐绑的是后者）。
 
 ### PDF 阅读器
 - ⚠ PDF 渲染用系统自带的 `Windows.Data.Pdf`（WinRT，不引第三方包）：**主程序 / 自检目标框架因此升到
@@ -86,6 +91,12 @@
 - 调试开关（截图用）：`YLT_PDF_ZOOM=200`（**会写配置**，截图前删 config）、`YLT_PDF_SEARCH=关键词`、
   `YLT_PDF_OUTLINE=1`、`YLT_PDF_SETTINGS=1`。
 - 渲染宽度上限 2000 px / 单页像素 800 万（缩放清晰度与内存的折中）；`PdfReaderChecks` 的「渲染宽度夹取」断言跟着这两个常量走。
+- 全屏沉浸阅读（F11）和图片阅读器同一套：`IFullscreenHost` + 工具条浮层 + 鼠标 2.5 秒自动隐藏 + 指针隐藏；
+  ⚠ 视图 `Unloaded` 同样是「先 `ExitFullscreen()`（事件还订阅着）→ 再摘事件」。PDF 工具条是两行，全屏时仍浮在顶部；
+  全屏时底部操作提示条收起、页码 / 进度条保留。
+- 调试 / 截图：`YLT_PICTURE_FULLSCREEN=1` / `YLT_PDF_FULLSCREEN=1` 全屏启动；`YLT_PICTURE_CONTROLS=0` /
+  `YLT_PDF_CONTROLS=0` 强制收起工具条拍“沉浸”帧 —— 截图时鼠标可能正好在窗口里触发 `PreviewMouseMove` 又把工具条叫出来，
+  所以视图里有个 `_forceHideControlsForScreenshot` 标志，置位后忽略鼠标活动。
 
 ### KPS 按键统计
 - 监听 / 统计 / Overlay 在 `KpsSession`（进程单例）里，工具页只是设置面板：切走页面时 Overlay 还开着就继续跑；

@@ -10,6 +10,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.Win32;
+using YuLiangToolkit.Core.Tools;
 using YuLiangToolkit.Tools.PdfReader.Rendering;
 using YuLiangToolkit.Tools.PdfReader.Text;
 using YuLiangToolkit.Tools.PdfReader.ViewModels;
@@ -141,6 +142,15 @@ public partial class PdfReaderView : UserControl
     // ---------------------------------------------------------------- 其他
 
     private Window? _hostWindow;
+
+    /// <summary>宿主窗口（外壳）的全屏开关；视图卸载时就置空（别再往上找 Window，那时已经摘下来了）。</summary>
+    private IFullscreenHost? _fullscreenHost;
+
+    /// <summary>全屏时鼠标不动多久就把工具条 + 鼠标指针一起藏起来。</summary>
+    private static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(2.5);
+    private DispatcherTimer? _idleTimer;
+    private DispatcherTimer? _fullscreenHintTimer;
+
     private bool _unloaded;
     private bool _demoStarted;
     private bool _loadingProgrammatically;
@@ -246,6 +256,12 @@ public partial class PdfReaderView : UserControl
         vm.TextLayerChanged -= OnTextLayerChanged;
         vm.TextLayerChanged += OnTextLayerChanged;
 
+        // 全屏：ViewModel 只切状态，真正的窗口操作交给外壳（MainWindow 实现了 IFullscreenHost）
+        _fullscreenHost = Window.GetWindow(this) as IFullscreenHost;
+        vm.FullscreenChanged -= OnFullscreenChanged;
+        vm.FullscreenChanged += OnFullscreenChanged;
+        if (vm.IsFullscreen) OnFullscreenChanged(vm, true);   // 截图 / 视图重建时同步一次
+
         UpdateModeChrome();
         UpdateEmptyStatus();
         UpdateSearchChrome();
@@ -260,12 +276,14 @@ public partial class PdfReaderView : UserControl
             if (vm.HasDocument) await BuildAsync(keepPage: false);
             else UpdateEmptyStatus();
             MaybeShowStatusError();
+            ApplyFullscreenDebugHooks();
             return;
         }
 
         if (vm.HasDocument)
         {
             await BuildAsync(keepPage: true);
+            ApplyFullscreenDebugHooks();
             return;
         }
 
@@ -285,6 +303,122 @@ public partial class PdfReaderView : UserControl
 
         MaybeShowStatusError();
         ApplyDebugUiHooks();
+        ApplyFullscreenDebugHooks();
+    }
+
+    // ---------------------------------------------------------------- 全屏（沉浸阅读）
+
+    /// <summary>全屏状态变了 → 让外壳去藏 / 恢复标题栏、侧边栏、状态栏并把窗口铺满屏幕。</summary>
+    private void OnFullscreenChanged(object? sender, bool on)
+    {
+        _fullscreenHost?.SetFullscreen(on);
+        UpdateModeChrome();
+
+        if (!on)
+        {
+            _idleTimer?.Stop();
+            Cursor = null;    // 退出全屏把鼠标指针还回来（不然会一直是“隐藏”状态）
+            HideFullscreenHint();
+            return;
+        }
+
+        // 刚进全屏先把工具条亮一下，2.5 秒后自动缩；视图重建时若已藏着就只补倒计时
+        if (Vm?.ControlsVisible == true) WakeControls();
+        else StartIdleTimer();
+
+        ShowFullscreenHint();
+    }
+
+    /// <summary>进入全屏时在右下角提示 4 秒「F11 / Esc 退出 · 鼠标移到顶部显示工具条」。</summary>
+    private void ShowFullscreenHint()
+    {
+        if (FullscreenHintPanel is null) return;
+
+        FullscreenHintPanel.Visibility = Visibility.Visible;
+
+        _fullscreenHintTimer ??= new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromSeconds(4),
+        };
+        if (_fullscreenHintTimer.Tag is null)
+        {
+            _fullscreenHintTimer.Tick += (_, _) => HideFullscreenHint();
+            _fullscreenHintTimer.Tag = true;
+        }
+
+        _fullscreenHintTimer.Stop();
+        _fullscreenHintTimer.Start();
+    }
+
+    private void HideFullscreenHint()
+    {
+        _fullscreenHintTimer?.Stop();
+        if (FullscreenHintPanel is not null) FullscreenHintPanel.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>鼠标一动：亮出工具条、恢复鼠标指针，并重新计时（不在全屏时什么都不做）。</summary>
+    private void WakeControls()
+    {
+        if (_forceHideControlsForScreenshot) return;
+        if (Vm is not { } vm || !vm.IsFullscreen) return;
+
+        vm.ShowControls();
+        Cursor = null;
+        StartIdleTimer();
+    }
+
+    /// <summary>截图模式：强制收起工具条后忽略鼠标活动（拍“沉浸”那一帧时鼠标可能正好在窗口里）。</summary>
+    private bool _forceHideControlsForScreenshot;
+
+    /// <summary>开始 / 重新开始“鼠标闲置”倒计时（只挂一次 Tick）。</summary>
+    private void StartIdleTimer()
+    {
+        _idleTimer ??= new DispatcherTimer(DispatcherPriority.Background) { Interval = IdleDelay };
+        if (_idleTimer.Tag is null)
+        {
+            _idleTimer.Tick += OnIdleTick;
+            _idleTimer.Tag = true;
+        }
+
+        _idleTimer.Stop();
+        _idleTimer.Start();
+    }
+
+    private void OnIdleTick(object? sender, EventArgs e)
+    {
+        _idleTimer?.Stop();
+
+        if (Vm is not { } vm || !vm.IsFullscreen) return;
+
+        // 鼠标停在工具条上 / 正在工具条里输入（搜索框、缩放框）/ 面板开着 → 别缩，重新计时
+        if (ToolbarBorder.IsMouseOver || ToolbarBorder.IsKeyboardFocusWithin
+            || vm.IsSettingsVisible || vm.IsOutlineVisible)
+        {
+            StartIdleTimer();
+            return;
+        }
+
+        vm.HideControls();
+        if (!vm.ControlsVisible) Cursor = Cursors.None;   // 指针也一起藏起来（沉浸式）
+    }
+
+    /// <summary>截图 / 调试：全屏启动后按 <c>YLT_PDF_CONTROLS=0</c> 直接把工具条收起来（拍“沉浸”那一帧）。</summary>
+    private void ApplyFullscreenDebugHooks()
+    {
+        if (Vm is not { } vm || !vm.IsFullscreen) return;
+
+        var text = Environment.GetEnvironmentVariable("YLT_PDF_CONTROLS");
+        if (text is "0" or "off" or "false" or "no")
+        {
+            _forceHideControlsForScreenshot = true;
+            vm.HideControls();
+            Cursor = Cursors.None;
+            HideFullscreenHint();   // 拍“沉浸”帧时连提示也别露
+        }
+        else
+        {
+            WakeControls();
+        }
     }
 
     /// <summary>
@@ -333,6 +467,11 @@ public partial class PdfReaderView : UserControl
 
         if (Vm is { } vm)
         {
+            // ⚠ 顺序不能反：先 ExitFullscreen（此时还订阅着，事件能传出去让外壳还原窗口），再摘事件。
+            // 反过来的话外壳会一直停在“藏了壳”的全屏状态，切到别的页面就没有标题栏了。
+            vm.ExitFullscreen();
+            vm.FullscreenChanged -= OnFullscreenChanged;
+
             vm.DocumentChanged -= OnDocumentChanged;
             vm.ModeChanged -= OnModeChanged;
             vm.ZoomChanged -= OnZoomChanged;
@@ -340,6 +479,13 @@ public partial class PdfReaderView : UserControl
             vm.TextLayerChanged -= OnTextLayerChanged;
             vm.PdfPicker = null;
         }
+        _fullscreenHost = null;
+
+        _idleTimer?.Stop();
+        _idleTimer = null;
+        _fullscreenHintTimer?.Stop();
+        _fullscreenHintTimer = null;
+        Cursor = null;
 
         if (_dragging)
         {
@@ -1247,6 +1393,8 @@ public partial class PdfReaderView : UserControl
 
     private void OnPreviewMouseMove(object sender, MouseEventArgs e)
     {
+        WakeControls();   // 全屏时鼠标一动先把工具条亮出来（窗口模式里是空转）
+
         if (!_dragging) return;
 
         var position = e.GetPosition(this);
@@ -1698,9 +1846,17 @@ public partial class PdfReaderView : UserControl
             return;
         }
 
+        // F11：全屏 / 退出全屏（没打开 PDF 也能切，壳不会藏）
+        if (Keyboard.Modifiers == ModifierKeys.None && e.Key == Key.F11)
+        {
+            e.Handled = true;
+            vm.ToggleFullscreen();
+            return;
+        }
+
         if (!vm.HasDocument || vm.IsBusy) return;
 
-        // Esc：关搜索 / 目录 / 设置
+        // Esc：关搜索 → 关目录 / 设置面板 → 退出全屏
         if (Keyboard.Modifiers == ModifierKeys.None && e.Key == Key.Escape)
         {
             if (SearchBox.IsKeyboardFocusWithin)
@@ -1715,6 +1871,12 @@ public partial class PdfReaderView : UserControl
                 vm.IsOutlineVisible = false;
                 vm.IsSettingsVisible = false;
                 e.Handled = true;
+                return;
+            }
+            if (vm.IsFullscreen)
+            {
+                e.Handled = true;
+                vm.ToggleFullscreen();
                 return;
             }
         }
@@ -1815,10 +1977,14 @@ public partial class PdfReaderView : UserControl
 
     private void UpdateModeChrome()
     {
-        var hasDocument = Vm?.HasDocument == true;
+        var vm = Vm;
+        var hasDocument = vm?.HasDocument == true;
 
         PageIndicatorPanel.Visibility = hasDocument ? Visibility.Visible : Visibility.Collapsed;
-        HintPanel.Visibility = hasDocument ? Visibility.Visible : Visibility.Collapsed;
+        // 全屏沉浸阅读时底部提示条也藏起来（页码保留，底部进度条保留）
+        HintPanel.Visibility = hasDocument && vm?.IsFullscreen != true
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         InertiaCheckBox.IsEnabled = hasDocument;
 
         UpdateHint();

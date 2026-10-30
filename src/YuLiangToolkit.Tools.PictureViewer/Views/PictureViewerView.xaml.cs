@@ -7,6 +7,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using YuLiangToolkit.Core.Tools;
 using YuLiangToolkit.Tools.PictureViewer.ViewModels;
 
 namespace YuLiangToolkit.Tools.PictureViewer.Views;
@@ -114,6 +115,14 @@ public partial class PictureViewerView : UserControl
 
     private Window? _hostWindow;
 
+    /// <summary>宿主窗口（外壳）的全屏开关；视图卸载时就置空（别再往上找 Window，那时已经摘下来了）。</summary>
+    private IFullscreenHost? _fullscreenHost;
+
+    /// <summary>全屏时鼠标不动多久就把工具条 + 鼠标指针一起藏起来。</summary>
+    private static readonly TimeSpan IdleDelay = TimeSpan.FromSeconds(2.5);
+    private DispatcherTimer? _idleTimer;
+    private DispatcherTimer? _fullscreenHintTimer;
+
     /// <summary>开发排错用：<c>YLT_PICTURE_INPUT_TRACE=文件</c> 时把每次鼠标按下 / 松开 / 丢捕获写进去。</summary>
     private string? _inputTracePath;
 
@@ -192,6 +201,12 @@ public partial class PictureViewerView : UserControl
         vm.BorderChanged -= OnBorderChanged;
         vm.BorderChanged += OnBorderChanged;
 
+        // 全屏：ViewModel 只切状态，真正的窗口操作交给外壳（MainWindow 实现了 IFullscreenHost）
+        _fullscreenHost = Window.GetWindow(this) as IFullscreenHost;
+        vm.FullscreenChanged -= OnFullscreenChanged;
+        vm.FullscreenChanged += OnFullscreenChanged;
+        if (vm.IsFullscreen) OnFullscreenChanged(vm, true);   // 截图 / 视图重建时同步一次
+
         // 双击图片启动（文件关联 / 命令行带了一张图）：先加载它所在的文件夹，再跳到那一张。
         var launchRequest = vm.HasLaunchImage;
         if (launchRequest)
@@ -210,6 +225,8 @@ public partial class PictureViewerView : UserControl
             _demoStarted = true;
             await vm.TryStartDemoAsync();
         }
+
+        ApplyFullscreenDebugHooks();
     }
 
     /// <summary>
@@ -238,6 +255,12 @@ public partial class PictureViewerView : UserControl
         }
         _hostWindow = null;
 
+        _idleTimer?.Stop();
+        _idleTimer = null;
+        _fullscreenHintTimer?.Stop();
+        _fullscreenHintTimer = null;
+        Cursor = null;
+
         ExitAnchor();
         if (_dragging) EndDrag();
         ExitPagedMode();
@@ -253,12 +276,18 @@ public partial class PictureViewerView : UserControl
 
         if (Vm is { } vm)
         {
+            // ⚠ 顺序不能反：先 ExitFullscreen（此时还订阅着，事件能传出去让外壳还原窗口），再摘事件。
+            // 反过来的话外壳会一直停在“藏了壳”的全屏状态，切到别的页面就没有标题栏了。
+            vm.ExitFullscreen();
+            vm.FullscreenChanged -= OnFullscreenChanged;
+
             vm.PagesChanged -= OnPagesChanged;
             vm.ModeChanged -= OnModeChanged;
             vm.ZoomChanged -= OnZoomChanged;
             vm.BorderChanged -= OnBorderChanged;
             vm.FolderPicker = null;
         }
+        _fullscreenHost = null;
 
         ClearSlots();
     }
@@ -989,6 +1018,7 @@ public partial class PictureViewerView : UserControl
 
     private void OnPreviewMouseMove(object sender, MouseEventArgs e)
     {
+        WakeControls();   // 全屏时鼠标一动先把工具条亮出来（窗口模式里是空转）
         if (!_dragging) return;
 
         var position = e.GetPosition(this);
@@ -1222,6 +1252,117 @@ public partial class PictureViewerView : UserControl
         ArrowRight.Visibility = horizontal ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    /// <summary>全屏状态变了 → 让外壳去藏 / 恢复标题栏、侧边栏、状态栏并把窗口铺满屏幕。</summary>
+    private void OnFullscreenChanged(object? sender, bool on)
+    {
+        _fullscreenHost?.SetFullscreen(on);
+
+        if (!on)
+        {
+            _idleTimer?.Stop();
+            Cursor = null;    // 退出全屏把鼠标指针还回来（不然会一直是“隐藏”状态）
+            HideFullscreenHint();
+            return;
+        }
+
+        // 刚进全屏先把工具条亮一下，2.5 秒后自动缩；视图重建时若已藏着就只补倒计时
+        if (Vm?.ControlsVisible == true) WakeControls();
+        else StartIdleTimer();
+
+        ShowFullscreenHint();
+    }
+
+    /// <summary>进入全屏时在右下角提示 4 秒「F11 / Esc 退出 · 鼠标移到顶部显示工具条」。</summary>
+    private void ShowFullscreenHint()
+    {
+        if (FullscreenHintPanel is null) return;
+
+        FullscreenHintPanel.Visibility = Visibility.Visible;
+
+        _fullscreenHintTimer ??= new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromSeconds(4),
+        };
+        if (_fullscreenHintTimer.Tag is null)
+        {
+            _fullscreenHintTimer.Tick += (_, _) => HideFullscreenHint();
+            _fullscreenHintTimer.Tag = true;
+        }
+
+        _fullscreenHintTimer.Stop();
+        _fullscreenHintTimer.Start();
+    }
+
+    private void HideFullscreenHint()
+    {
+        _fullscreenHintTimer?.Stop();
+        if (FullscreenHintPanel is not null) FullscreenHintPanel.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>鼠标一动：亮出工具条、恢复鼠标指针，并重新计时（不在全屏时什么都不做）。</summary>
+    private void WakeControls()
+    {
+        if (_forceHideControlsForScreenshot) return;
+        if (Vm is not { } vm || !vm.IsFullscreen) return;
+
+        vm.ShowControls();
+        Cursor = null;
+        StartIdleTimer();
+    }
+
+    /// <summary>截图模式：强制收起工具条后忽略鼠标活动（拍“沉浸”那一帧时鼠标可能正好在窗口里）。</summary>
+    private bool _forceHideControlsForScreenshot;
+
+    /// <summary>开始 / 重新开始“鼠标闲置”倒计时（只挂一次 Tick）。</summary>
+    private void StartIdleTimer()
+    {
+        _idleTimer ??= new DispatcherTimer(DispatcherPriority.Background) { Interval = IdleDelay };
+        if (_idleTimer.Tag is null)
+        {
+            _idleTimer.Tick += OnIdleTick;
+            _idleTimer.Tag = true;
+        }
+
+        _idleTimer.Stop();
+        _idleTimer.Start();
+    }
+
+    private void OnIdleTick(object? sender, EventArgs e)
+    {
+        _idleTimer?.Stop();
+
+        if (Vm is not { } vm || !vm.IsFullscreen) return;
+
+        // 鼠标停在工具条上 / 正在工具条里输入（缩放框）/ 设置面板开着 → 别缩，重新计时
+        if (ToolbarBorder.IsMouseOver || ToolbarBorder.IsKeyboardFocusWithin || vm.IsSettingsVisible)
+        {
+            StartIdleTimer();
+            return;
+        }
+
+        vm.HideControls();
+        if (!vm.ControlsVisible) Cursor = Cursors.None;   // 指针也一起藏起来（沉浸式）
+    }
+
+    /// <summary>截图 / 调试：全屏启动后按 <c>YLT_PICTURE_CONTROLS=0</c> 直接把工具条收起来（拍“沉浸”那一帧）。</summary>
+    private void ApplyFullscreenDebugHooks()
+    {
+        if (Vm is not { } vm || !vm.IsFullscreen) return;
+
+        var text = Environment.GetEnvironmentVariable("YLT_PICTURE_CONTROLS");
+        if (text is "0" or "off" or "false" or "no")
+        {
+            _forceHideControlsForScreenshot = true;
+            vm.HideControls();
+            Cursor = Cursors.None;
+            HideFullscreenHint();   // 拍“沉浸”帧时连提示也别露
+        }
+        else
+        {
+            WakeControls();
+        }
+    }
+
     // ---------------------------------------------------------------- 键盘
 
     private void OnHostPreviewKeyDown(object sender, KeyEventArgs e)
@@ -1235,13 +1376,27 @@ public partial class PictureViewerView : UserControl
             return;
         }
 
-        // Esc 优先：设置面板里的输入框正抓着焦点时也要能关闭（文档承诺了）
+        // F11：全屏 / 退出全屏
+        if (Keyboard.Modifiers == ModifierKeys.None && e.Key == Key.F11)
+        {
+            e.Handled = true;
+            vm.ToggleFullscreen();
+            return;
+        }
+
+        // Esc 优先：锚点 → 全屏 → 设置面板（设置面板里的输入框正抓着焦点时也要能关闭）
         if (Keyboard.Modifiers == ModifierKeys.None && e.Key == Key.Escape)
         {
             if (_anchor.IsActive)
             {
                 ExitAnchor();
                 e.Handled = true;
+                return;
+            }
+            if (vm.IsFullscreen)
+            {
+                e.Handled = true;
+                vm.ToggleFullscreen();
                 return;
             }
             if (vm.IsSettingsVisible)

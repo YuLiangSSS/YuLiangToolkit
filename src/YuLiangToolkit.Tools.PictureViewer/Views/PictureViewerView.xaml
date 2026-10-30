@@ -56,13 +56,47 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
+            <!-- 普通模式：工具条占一行；全屏时高度归零，工具条变浮层（见下面 Border 的 DataTrigger） -->
+            <RowDefinition x:Name="ToolbarRow" Height="{Binding ToolbarRowHeight}" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
         <!-- ================= 顶部工具条 ================= -->
-        <Border Grid.Row="0" Background="{DynamicResource HeaderBackgroundBrush}"
-                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="14,8">
+        <Border x:Name="ToolbarBorder">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Background" Value="{DynamicResource HeaderBackgroundBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+                    <Setter Property="BorderThickness" Value="0,0,0,1" />
+                    <Setter Property="Padding" Value="14,8" />
+                    <Setter Property="HorizontalAlignment" Value="Stretch" />
+                    <Setter Property="VerticalAlignment" Value="Stretch" />
+                    <Setter Property="Visibility" Value="Visible" />
+                    <Style.Triggers>
+                        <!-- 全屏：工具条浮在阅读区顶部（圆角半透明卡片 + 阴影），不占阅读高度 -->
+                        <DataTrigger Binding="{Binding IsFullscreen}" Value="True">
+                            <Setter Property="Grid.Row" Value="1" />
+                            <Setter Property="Panel.ZIndex" Value="60" />
+                            <Setter Property="VerticalAlignment" Value="Top" />
+                            <Setter Property="Margin" Value="10,10,10,0" />
+                            <Setter Property="CornerRadius" Value="12" />
+                            <Setter Property="BorderThickness" Value="1" />
+                            <Setter Property="BorderBrush" Value="#33FFFFFF" />
+                            <Setter Property="Background" Value="#F0141720" />
+                            <Setter Property="Padding" Value="12,8" />
+                            <Setter Property="Effect">
+                                <Setter.Value>
+                                    <DropShadowEffect BlurRadius="18" ShadowDepth="2" Opacity="0.45" Color="#000000" />
+                                </Setter.Value>
+                            </Setter>
+                        </DataTrigger>
+                        <!-- 全屏时鼠标闲置自动缩回去 -->
+                        <DataTrigger Binding="{Binding IsToolbarVisible}" Value="False">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -128,6 +162,13 @@
                             ToolTip="{Binding ModeHint}" />
                     <Button Content="⚙ 设置" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
                             Command="{Binding ToggleSettingsCommand}" ToolTip="阅读方式 / 缩放 / 滚轮步长 / 中键判定 / 离屏释放" />
+                    <Button x:Name="FullscreenButton" Width="34" Height="30" Padding="0" Margin="8,0,0,0"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Command="{Binding ToggleFullscreenCommand}"
+                            ToolTip="{Binding FullscreenTooltip}">
+                        <TextBlock Text="{Binding FullscreenGlyph}" FontFamily="Segoe MDL2 Assets"
+                                   FontSize="14" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    </Button>
                 </StackPanel>
             </Grid>
         </Border>
@@ -204,6 +245,14 @@
                     <Ellipse Width="5" Height="5" Fill="#CCFFFFFF" />
                 </Grid>
             </Canvas>
+
+            <!-- 全屏进入提示（几秒后自动消失）：告诉用户怎么退出 / 怎么叫出工具条 -->
+            <Border x:Name="FullscreenHintPanel" Background="#CC000000" CornerRadius="10" Padding="12,6"
+                    HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,12,44"
+                    IsHitTestVisible="False" Visibility="Collapsed">
+                <TextBlock FontSize="11" Foreground="#CCFFFFFF"
+                           Text="F11 / Esc 退出全屏 · 鼠标移到顶部显示工具条" />
+            </Border>
 
             <!-- 空状态：还没打开文件夹 -->
             <Border x:Name="EmptyPanel" Background="#0E1014"

@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.IO;
+using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using YuLiangToolkit.Core.Configuration;
@@ -741,6 +743,162 @@ internal static class PictureViewerChecks
             tool.Tags.Contains("漫画") && tool.Tags.Contains("滚动") && tool.Tags.Contains("中键"),
             string.Join(",", tool.Tags));
         Check("[图片] 默认挂在主页根层（没有 CategoryPath）", ((ITool)tool).CategoryPath.Count == 0);
+
+        // ---------------------------------------------------------------- 13. 全屏（沉浸阅读）状态机
+        // 只断言 ViewModel 的状态机：真正的窗口操作（藏标题栏 / 侧边栏、铺满屏幕）在 View / 外壳
+        // IFullscreenHost 里做，自检没有窗口；这里把「进 / 出全屏、工具条自动显隐、切走还原」钉死。
+        var previousPictureFullscreenEnv = Environment.GetEnvironmentVariable("YLT_PICTURE_FULLSCREEN");
+        Environment.SetEnvironmentVariable("YLT_PICTURE_FULLSCREEN", null);
+        try
+        {
+            var fsVm = new PictureViewerViewModel();
+            try
+            {
+                Check("[图片] 全屏初始：不是全屏、工具条可见、图标 E740、提示含「全屏」、行高 Auto",
+                    !fsVm.IsFullscreen && fsVm.ControlsVisible && fsVm.IsToolbarVisible
+                    && fsVm.FullscreenGlyph == "\uE740"
+                    && fsVm.FullscreenTooltip.Contains("全屏")
+                    && !fsVm.FullscreenTooltip.Contains("退出全屏")
+                    && fsVm.ToolbarRowHeight.Equals(GridLength.Auto),
+                    $"{fsVm.FullscreenGlyph} / {fsVm.FullscreenTooltip}");
+
+                fsVm.HideControls();
+                Check("[图片] 窗口模式下调 HideControls 不生效（普通模式工具条永远露着）",
+                    fsVm.ControlsVisible && fsVm.IsToolbarVisible);
+
+                var fullscreenEvents = new List<bool>();
+                fsVm.FullscreenChanged += (_, on) => fullscreenEvents.Add(on);
+                var changedProperties = new List<string>();
+                ((INotifyPropertyChanged)fsVm).PropertyChanged += (_, e) => changedProperties.Add(e.PropertyName ?? "");
+
+                fsVm.ToggleFullscreen();
+                Check("[图片] 切换全屏：进入全屏并发出 FullscreenChanged(true)",
+                    fsVm.IsFullscreen && fullscreenEvents.Count == 1 && fullscreenEvents[0],
+                    string.Join(",", fullscreenEvents));
+                Check("[图片] 全屏后：图标 E73F、提示语变成「退出全屏」",
+                    fsVm.FullscreenGlyph == "\uE73F" && fsVm.FullscreenTooltip.Contains("退出全屏"),
+                    fsVm.FullscreenTooltip);
+                Check("[图片] 全屏后：工具条先亮着、行高归零（阅读区铺满）",
+                    fsVm.ControlsVisible && fsVm.IsToolbarVisible
+                    && fsVm.ToolbarRowHeight.Equals(new GridLength(0)),
+                    $"{fsVm.ToolbarRowHeight}");
+                Check("[图片] 全屏状态变化会通知界面刷新图标 / 提示 / 工具条 / 行高",
+                    new[] { "IsFullscreen", "FullscreenGlyph", "FullscreenTooltip", "IsToolbarVisible", "ToolbarRowHeight" }
+                        .All(changedProperties.Contains),
+                    string.Join(",", changedProperties.Distinct()));
+
+                changedProperties.Clear();
+                fsVm.HideControls();
+                Check("[图片] 全屏闲置后自动收起工具条（ControlsVisible=false → IsToolbarVisible=false）",
+                    !fsVm.ControlsVisible && !fsVm.IsToolbarVisible);
+                Check("[图片] 收起工具条会通知 ControlsVisible 与 IsToolbarVisible",
+                    changedProperties.Contains("ControlsVisible") && changedProperties.Contains("IsToolbarVisible"),
+                    string.Join(",", changedProperties.Distinct()));
+
+                changedProperties.Clear();
+                fsVm.HideControls();
+                Check("[图片] 已经收起后再闲置：不重复发通知",
+                    changedProperties.Count == 0, string.Join(",", changedProperties));
+
+                fsVm.ShowControls();
+                Check("[图片] 鼠标动了 ShowControls 又把工具条亮出来（仍在全屏）",
+                    fsVm.ControlsVisible && fsVm.IsToolbarVisible && fsVm.IsFullscreen);
+
+                fsVm.IsSettingsVisible = true;
+                fsVm.HideControls();
+                Check("[图片] 全屏但设置面板开着：HideControls 不收起工具条（避免设置面板跟着闪）",
+                    fsVm.ControlsVisible && fsVm.IsToolbarVisible);
+                fsVm.IsSettingsVisible = false;
+                fsVm.HideControls();
+                Check("[图片] 关掉设置面板后再闲置：工具条正常收起",
+                    !fsVm.ControlsVisible && !fsVm.IsToolbarVisible);
+                fsVm.ShowControls();
+
+                fsVm.HideControls();     // 先藏起来，验证退出全屏时会被强制恢复
+                fsVm.ExitFullscreen();
+                Check("[图片] 退出全屏：状态 / 图标 / 行高 / 工具条全部还原，并发出事件 false",
+                    !fsVm.IsFullscreen && fsVm.FullscreenGlyph == "\uE740"
+                    && fsVm.ToolbarRowHeight.Equals(GridLength.Auto)
+                    && fsVm.ControlsVisible && fsVm.IsToolbarVisible
+                    && fsVm.FullscreenTooltip.Contains("全屏")
+                    && fullscreenEvents.Count == 2 && !fullscreenEvents[1],
+                    string.Join(",", fullscreenEvents));
+
+                var eventCountBeforeExtraExit = fullscreenEvents.Count;
+                fsVm.ExitFullscreen();
+                Check("[图片] 已经退出全屏时再 ExitFullscreen 不重复发事件",
+                    fullscreenEvents.Count == eventCountBeforeExtraExit);
+
+                fsVm.HideControls();
+                Check("[图片] 退出全屏后 HideControls 也不生效（回到普通窗口模式）",
+                    fsVm.ControlsVisible && fsVm.IsToolbarVisible);
+
+                fsVm.ToggleFullscreenCommand.Execute(null);
+                var enteredByCommand = fsVm.IsFullscreen;
+                fsVm.ToggleFullscreenCommand.Execute(null);
+                Check("[图片] 工具条全屏按钮（ToggleFullscreenCommand）能进能出",
+                    enteredByCommand && !fsVm.IsFullscreen);
+
+                fsVm.ToggleFullscreen();
+                var eventCountBeforeClose = fullscreenEvents.Count;
+                fsVm.NotifyClosed();
+                Check("[图片] 切走工具（NotifyClosed）会退出全屏并还原工具条",
+                    !fsVm.IsFullscreen && fsVm.ControlsVisible && fsVm.IsToolbarVisible
+                    && fullscreenEvents.Count == eventCountBeforeClose + 1 && !fullscreenEvents[^1],
+                    string.Join(",", fullscreenEvents));
+            }
+            finally
+            {
+                fsVm.Dispose();
+            }
+
+            // 调试环境变量：YLT_PICTURE_FULLSCREEN=1 → 新建 VM 直接全屏（截图核对沉浸式版式用）
+            Environment.SetEnvironmentVariable("YLT_PICTURE_FULLSCREEN", "1");
+            try
+            {
+                var envVm = new PictureViewerViewModel();
+                try
+                {
+                    Check("[图片] YLT_PICTURE_FULLSCREEN=1 新建 VM 直接全屏（图标 / 工具条行高都按全屏算）",
+                        envVm.IsFullscreen && envVm.FullscreenGlyph == "\uE73F"
+                        && envVm.FullscreenTooltip.Contains("退出全屏")
+                        && envVm.ControlsVisible && envVm.IsToolbarVisible
+                        && envVm.ToolbarRowHeight.Equals(new GridLength(0)));
+                    envVm.NotifyClosed();
+                    Check("[图片] 环境变量全屏启动的 VM 切走后也退出全屏", !envVm.IsFullscreen);
+                }
+                finally
+                {
+                    envVm.Dispose();
+                }
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("YLT_PICTURE_FULLSCREEN", null);
+            }
+
+            Environment.SetEnvironmentVariable("YLT_PICTURE_FULLSCREEN", "0");
+            try
+            {
+                var offVm = new PictureViewerViewModel();
+                Check("[图片] YLT_PICTURE_FULLSCREEN=0 不算全屏", !offVm.IsFullscreen);
+                offVm.Dispose();
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("YLT_PICTURE_FULLSCREEN", null);
+            }
+
+            var normalVm = new PictureViewerViewModel();
+            Check("[图片] 不设环境变量时新建 VM 默认普通窗口（不全屏）",
+                !normalVm.IsFullscreen && normalVm.ControlsVisible
+                && normalVm.ToolbarRowHeight.Equals(GridLength.Auto));
+            normalVm.Dispose();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("YLT_PICTURE_FULLSCREEN", previousPictureFullscreenEnv);
+        }
 
         // ---------------------------------------------------------------- 收尾：清掉临时测试文件夹
         try { Directory.Delete(folder, recursive: true); } catch { /* 临时目录，删不掉无所谓 */ }
