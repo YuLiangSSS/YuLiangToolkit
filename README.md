@@ -64,10 +64,11 @@ dotnet run --project YuLiangTookit.csproj
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；
   踩坑细节按需查 **[docs/dev/pitfalls.md](docs/dev/pitfalls.md)**（只在排错 / 改危险代码时读）；
-- ✅ **自检**：2579 项行为逐条真跑（退出码 0 = 全通过）。改哪个功能只跑对应的组（省时间）：
+- ✅ **自检**：2579 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
 
   ```powershell
-  dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj -- theme
+  .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
+  .\scripts\check.ps1 -List    # 看「文件 → 自检组」映射（分级规则见 docs/dev/verification.md）
   ```
 
 ## 数据与配置
@@ -86,13 +87,15 @@ dotnet run --project YuLiangTookit.csproj
 YuLiangTookit.csproj                     # 主程序（WPF 壳：自定义标题栏、主页/类别页/面包屑、侧边栏导航、两套主题）
 Views/Themes/                            # 主题 token：默认深色 / 液态玻璃 + 运行时换肤 ThemeManager（主页设置里切换）
 build.ps1 / publish.ps1                  # 一键构建 / 一键发布（发布到 dist\YuLiangToolkit\）
-AGENTS.md                               # 精简开发入口地图（流程 / 硬性规则 / 找东西；细节按需查 docs/dev/pitfalls.md）
+scripts/check.ps1                       # 日常自检触发器：按改动自动选组，只跑受影响的组（全量例外见 docs/dev/verification.md）
+AGENTS.md                               # 精简开发入口地图（流程 / 硬性规则 / 找东西；细节按需查 docs/dev/）
 SingleInstance.cs                       # 单实例唤醒（Mutex + 命名管道：再启动一次只唤醒已开窗口）
 README.md                               # 本文件：工具一览 + 快速开始
 LICENSE                                 # Unlicense（随便用，不用署名）
 THIRD-PARTY-NOTICES.md                  # 第三方组件的 MIT 许可（OsuParsers / ppy 数学工具）
 docs/                                   # 每个工具一页的详细说明（见 docs/README.md）
 docs/dev/pitfalls.md                    # 踩坑清单（按需读）
+docs/dev/verification.md                # 验证纪律：自检分级 / 路径→组映射 / 全量例外
 Data/  Config/                           # 只有说明文件【运行时目录在 exe 旁边】
 src/
 ├── YuLiangToolkit.Core/                 # 核心库：工具契约 / 多级分类目录树 / MVVM 基类 / 存储 / 配置 / FFmpeg 封装 / 粒子与光标特效 / 通用 TCP 房间

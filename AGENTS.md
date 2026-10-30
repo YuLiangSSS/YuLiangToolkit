@@ -1,7 +1,7 @@
 # AGENTS.md — YuLiangToolkit（凉雨工具集）开发入口
 
 > **入口地图**，不是手册：动手前读本文件；实现细节看源码 XML 注释，排错查 [`docs/dev/pitfalls.md`](docs/dev/pitfalls.md)。
-> 本文件 ≤120 行 / ≤5KB，**别塞细节**；版本唯一来源 `Directory.Build.props`；注释 / 提交 / 文档 / 回答一律用**中文**。
+> 本文件 ≤120行/≤5KB，**别塞细节**；注释 / 提交 / 文档 / 回答一律用**中文**。
 
 ## 项目速览
 
@@ -17,26 +17,17 @@
 ## 开工 / 收尾（硬性）
 
 ```powershell
-.\build.ps1                          # ① 编译：0 错误（顺手清警告）
-dotnet run --project tests\YuLiangToolkit.FrameworkSelfCheck\YuLiangToolkit.FrameworkSelfCheck.csproj -- <组名>   # ② 只跑相关自检组
+.\build.ps1                          # ① 编译：0 错误
+.\scripts\check.ps1                  # ② 按改动自动选组：build + 只跑受影响的自检组
 git add -A; git commit -m "<中文提交信息>"   # ③ 提交：每轮改动都要提交（硬性）
 ```
 
-1. **自检只跑相关的组**（可逗号多选；`-- --list` 列出）：`core`（存储/配置/MVVM/滚动链）· `shell`（搜索/排序/分类/粒子/完整性）· `batch-rename` `flash-downloader` `chat-room` `map-downloader` `media-player` `osu-mania`（含星数）、`board-games`（规则/配置）、`board-net`（协议/多客户端/断线重连）、`board-room`（房间席位/观战/轮换；最慢，偶发失败可重跑）、`picture-viewer`、`pdf-reader`、`theme`、`kps`（KPS 统计口径/预设/全局输入/热键）、`spug`（Spug 验证码测试：URL/请求/响应/本地验证）。改哪个功能只跑哪个组；**全量 `-- --all` 只在发布前、改 `Core/` 公共轮子或一次改多个功能时跑**；同一轮跑过的组不重复跑。
-2. 纯文档（只动 `*.md`）可跳 ① ②；只改 XAML / 文案 / 样式（不动逻辑）→ 只 build + 截图冒烟，不跑自检。照样提交；`git push` 由用户决定。
+1. **验证按影响面分级，默认只部分自检**：`check.ps1` 从 `git status` 映射出受影响的组并跑（先 build）；**别凭猜选组、也别每轮全量**。`-All` 只给四个触发点：发布前 · 改 `src/YuLiangToolkit.Core/` 公共轮子 · 改自检接线（`Program.cs` / `SelfCheckScratch.cs` / 自检 csproj） · 一次动多个功能（选到 ≥8 组脚本会自动升全量）或映射不到影响面。分级/映射/预算见 [`docs/dev/verification.md`](docs/dev/verification.md)。
+2. 纯文档（只动 `*.md`）可跳 ① ②；只改 XAML / 文案 / 样式（不动逻辑）→ 只 build + 截图冒烟（命令见验证纪律页），不跑自检（例外见验证纪律页）。照样提交；`git push` 由用户决定。
 3. 改行为 → 同步自检断言；改用户可见行为 → 更新 `docs/tools/<工具Id>.md` 与 README 工具表。
 4. 界面改动 → 截图冒烟；发布前 `.\publish.ps1` 打一次包，确认 Data/Config 在发布目录旁。
-5. 版本号 / 自检项数只在必要处改（版本唯一来源 `Directory.Build.props`）。
-
-### 截图冒烟（无头、不抢焦点）
-
-```powershell
-$env:YLT_SHOT_TOOL="<工具Id>"; $env:YLT_SHOT="shots\check.png"
-Start-Process .\bin\Debug\net9.0-windows10.0.19041.0\YuLiangTookit.exe -Wait
-Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
-```
-
-其余 `YLT_*` 调试开关在源码里 grep；截图放 `shots/`（不入库）。
+5. **验证一次即止**：同轮跑过的组不重跑；偶发时序失败最多原样重跑一次；退出码 0 就是结论，不手工再验一遍；全量每轮最多一次。
+6. 版本号 / 自检项数只在必要处改（版本唯一来源 `Directory.Build.props`）。
 
 ## 硬性规则（违反 = 破坏项目或删用户数据；更多细节见踩坑清单）
 
@@ -49,13 +40,14 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 7. **新增顶层目录**时同步改主项目 `DefaultItemExcludes` **和** `.gitignore`。
 8. **别用 PowerShell 改 XAML / 源码**（5.1 按 GBK 读会乱码）；`.ps1` 纯 ASCII 或 UTF-8 with BOM。
 9. **`ParticleOverlay` 必须放 Window 内 Grid 铺满 + `IsHitTestVisible="False"`**。
-10. **改完必须提交 git**（见上，用户明确要求过）；其他别做 / 先问用户的见踩坑清单。
+10. **改完必须提交 git**；其他别做 / 先问用户的见踩坑清单。
 
 ## 找东西
 
 | 我要… | 看 |
 | --- | --- |
 | 全貌 / 流程 / 硬性规则 | 本文件 |
+| 验证纪律（本轮该跑哪些组 / 全量例外 / 预算） | [`docs/dev/verification.md`](docs/dev/verification.md) |
 | 轮子（工具契约 / MVVM / 存储 / 配置 / 粒子 / TCP 房间）、目录与新功能 | `src/YuLiangToolkit.Core/` 源码注释；新功能复制 `src/YuLiangToolkit.Tools.Sample/` 模板 |
 | 某个功能的实现细节 / 踩过的坑 | 对应源码 + [`docs/dev/pitfalls.md`](docs/dev/pitfalls.md) |
 | 面向用户的文档 | [`docs/tools/`](docs/tools/)（索引 [`docs/README.md`](docs/README.md)） |

@@ -44,3 +44,4 @@
 | 想干什么 | 看哪里 |
 | --- | --- |
 | 踩过的坑、别做什么 | [dev/pitfalls.md](dev/pitfalls.md) |
+| 验证纪律：这轮该跑哪些自检组 / 全量例外 / 验证预算 | [dev/verification.md](dev/verification.md) |
