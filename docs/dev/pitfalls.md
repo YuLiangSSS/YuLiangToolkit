@@ -71,6 +71,21 @@
 - 调试开关：`YLT_PDF_DEMO=1` 生成演示 PDF（`Data\pdf-reader\demo.pdf`）、`YLT_PDF_OPEN=<路径>` 直接打开、
   `YLT_PDF_MODE=vertical|horizontal|spread` 临时切方式（**不写配置**）、`YLT_PDF_PAGE=n` 定位到第 n 页、
   `YLT_PDF_SCROLL=0~1` 加载后滚到指定比例（截图核对版式用）。
+- ⚠ 文字搜索 / 书签目录没有系统 API：`Text/Extraction/` 是**手写的 PDF 解析器**（传统 xref 表 / xref 流 / 对象流 /
+  Flate / ToUnicode / 页树 / 大纲），`Windows.Data.Pdf` 只负责渲染。解析器**永不向外抛异常**（失败 → `PdfTextLayer.Empty(中文原因)`），
+  搜索 / 目录只是增强功能，提取失败绝不能影响翻页；改解析器先把 `PdfTextChecks` 跑绿（里面自带手写 PDF 生成器）。
+- ⚠ 双页排版不是「左右各半个固定槽位」：两页先按可用高度等比、再整体适配「两页 + 间距」的宽度并居中 ——
+  改回固定槽位的话，高度受限时页在槽里居中会留一大片空白（用户报过「两页隔太远」）。间距 0 是合法值，
+  别用 `HasUsableLength(0) == false` 把它当「没给」退回默认。
+- ⚠ 双页放大后拖动是**平移**（`_spreadPanX/Y` + `PdfSpreadLayout.ClampPan`），连续模式缩放后多出来的是**跨轴偏移**；
+  两套偏移都自己记，惯性用 `PdfInertia` 的双轴接口，别从 ScrollViewer / RenderTransform 反读。
+- ⚠ 文字层在后台 `Task.Run` 提取：切 PDF / 关页面要 `Cancel` 旧的 `CancellationTokenSource` 并比对 `_textLayerCts`，
+  否则旧文档的结果可能覆盖新文档；完成回 UI 一律走 `Ui(...)`。
+- 文件关联接线：`App.xaml.cs` 启动参数 + 第二实例 `HandleSecondInstance` 两处都要认 `.pdf`，
+  `NormalizeLaunchArguments` 也要把 PDF 路径转成绝对路径；单实例开关是程序级的（读图片阅读器配置），PDF 没有单独开关。
+- 调试开关（截图用）：`YLT_PDF_ZOOM=200`（**会写配置**，截图前删 config）、`YLT_PDF_SEARCH=关键词`、
+  `YLT_PDF_OUTLINE=1`、`YLT_PDF_SETTINGS=1`。
+- 渲染宽度上限 2000 px / 单页像素 800 万（缩放清晰度与内存的折中）；`PdfReaderChecks` 的「渲染宽度夹取」断言跟着这两个常量走。
 
 ### KPS 按键统计
 - 监听 / 统计 / Overlay 在 `KpsSession`（进程单例）里，工具页只是设置面板：切走页面时 Overlay 还开着就继续跑；

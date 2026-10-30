@@ -84,9 +84,14 @@ public static class PdfSpreadLayout
     }
 
     /// <summary>
-    /// 按视口尺寸算这一屏的排版：内容 = 视口，左右各一个槽位（中间留缝、四周留白），
-    /// 每页按自己的宽高比塞进槽位并水平 / 垂直居中（不拉伸、不变形）。
-    /// 视口没量出来（≤ 0）或没有页时返回空结果。
+    /// 按视口尺寸 + 间距 + 缩放算这一屏的排版。
+    ///
+    /// <para><b>排版规则</b>：同一屏的两页先按「可用高度」等比放到一样高，再检查两页并排（中间留 gap）
+    /// 会不会超出可用宽度 —— 超了就把两页一起按比例缩小，让「两页 + 间距」正好占满可用宽度；
+    /// 整组在视口里水平 / 垂直居中。所以 100% 时页面少留横向空白（双页看起来是贴着的），
+    /// 间距 <paramref name="pageGap"/> 是两页之间**真正**的空隙。缩放 &gt; 100% 后内容超出视口，可平移。</para>
+    ///
+    /// <para>视口没量出来（≤ 0）或没有页时返回空结果；单页（最后不足两页 / 只有一页）单独居中。</para>
     /// </summary>
     public static PdfSpreadLayoutResult Compute(
         IReadOnlyList<PdfPageInfo>? pages,
@@ -94,28 +99,97 @@ public static class PdfSpreadLayout
         double viewportWidth,
         double viewportHeight,
         double pageGap = DefaultPageGap,
-        double sideMargin = DefaultSideMargin)
+        double sideMargin = DefaultSideMargin,
+        double zoomScale = 1.0)
     {
         var width = HasUsableLength(viewportWidth) ? viewportWidth : 0;
         var height = HasUsableLength(viewportHeight) ? viewportHeight : 0;
         if (width <= 0 || height <= 0 || pages is null || pages.Count == 0)
             return new PdfSpreadLayoutResult(width, height, null, null);
 
-        var gap = HasUsableLength(pageGap) ? Math.Max(0, pageGap) : DefaultPageGap;
+        // ⚠ 0 是合法间距（两页贴在一起），只有负数 / NaN / ∞ 才回退默认值
+        var gap = pageGap >= 0 && !double.IsNaN(pageGap) && !double.IsInfinity(pageGap)
+            ? pageGap
+            : DefaultPageGap;
         var margin = HasUsableLength(sideMargin) ? Math.Max(0, sideMargin) : DefaultSideMargin;
-        var usableWidth = Math.Max(MinimumUsableLength, width - margin * 2);
-        var usableHeight = Math.Max(MinimumUsableLength, height - margin * 2);
-        var slotWidth = Math.Max(MinimumUsableLength, (usableWidth - gap) / 2);
+        var zoom = PdfContinuousLayout.EffectiveZoom(zoomScale);
+
+        var usableWidth = Math.Max(MinimumUsableLength, (width - margin * 2) * zoom);
+        var usableHeight = Math.Max(MinimumUsableLength, (height - margin * 2) * zoom);
+        var contentWidth = Math.Max(width, margin * 2 + usableWidth);
+        var contentHeight = Math.Max(height, margin * 2 + usableHeight);
 
         var (leftPage, rightPage) = VisiblePages(startPageIndex, pages.Count);
-        var leftSlot = leftPage is { } leftIndex
-            ? FitIntoSlot(pages[leftIndex], leftIndex, margin, margin, slotWidth, usableHeight)
-            : null;
-        var rightSlot = rightPage is { } rightIndex
-            ? FitIntoSlot(pages[rightIndex], rightIndex, margin + slotWidth + gap, margin, slotWidth, usableHeight)
-            : null;
+        if (leftPage is null)
+            return new PdfSpreadLayoutResult(contentWidth, contentHeight, null, null);
 
-        return new PdfSpreadLayoutResult(width, height, leftSlot, rightSlot);
+        PdfSpreadSlot leftSlot;
+        PdfSpreadSlot? rightSlot = null;
+
+        if (rightPage is not { } rightIndex)
+        {
+            // 单页（最后一屏不足两页）：整页塞进可用区域并居中
+            var (singleWidth, singleHeight) = FitSize(pages[leftPage.Value], usableWidth, usableHeight);
+            leftSlot = new PdfSpreadSlot(
+                leftPage.Value,
+                (contentWidth - singleWidth) / 2,
+                (contentHeight - singleHeight) / 2,
+                singleWidth,
+                singleHeight);
+        }
+        else
+        {
+            var left = pages[leftPage.Value];
+            var right = pages[rightIndex];
+
+            // 先让两页一样高（可用高度），再按「两页 + 间距不超过可用宽度」整体缩放
+            var naturalLeftWidth = WidthForHeight(left, usableHeight);
+            var naturalRightWidth = WidthForHeight(right, usableHeight);
+            var naturalWidths = Math.Max(MinimumUsableLength, naturalLeftWidth + naturalRightWidth);
+            var naturalTotal = naturalWidths + gap;
+            var scale = naturalTotal > usableWidth
+                ? Math.Clamp((usableWidth - gap) / naturalWidths, 0.01, 1.0)
+                : 1.0;
+
+            var pageHeight = Math.Max(MinimumUsableLength, usableHeight * scale);
+            var leftWidth = Math.Max(MinimumUsableLength, naturalLeftWidth * scale);
+            var rightWidth = Math.Max(MinimumUsableLength, naturalRightWidth * scale);
+            var totalWidth = leftWidth + rightWidth + gap;
+
+            var x = (contentWidth - totalWidth) / 2;
+            var y = (contentHeight - pageHeight) / 2;
+            leftSlot = new PdfSpreadSlot(leftPage.Value, x, y, leftWidth, pageHeight);
+            rightSlot = new PdfSpreadSlot(rightIndex, x + leftWidth + gap, y, rightWidth, pageHeight);
+        }
+
+        return new PdfSpreadLayoutResult(contentWidth, contentHeight, leftSlot, rightSlot);
+    }
+
+    /// <summary>一页以指定高度等比显示时的宽度（页面尺寸坏掉时按方形算）。</summary>
+    private static double WidthForHeight(PdfPageInfo page, double height)
+    {
+        var safeHeight = Math.Max(MinimumUsableLength, height);
+        return page.HasValidSize
+            ? Math.Max(MinimumUsableLength, safeHeight * page.AspectRatio)
+            : safeHeight;
+    }
+
+    /// <summary>
+    /// 双页放大后的平移夹取（平移量按“已经往右 / 下移过去多少”算，≥ 0）：
+    /// 内容不比视口大时那个方向不能平移（返回 0）。
+    /// </summary>
+    public static (double X, double Y) ClampPan(
+        double panX,
+        double panY,
+        double contentWidth,
+        double contentHeight,
+        double viewportWidth,
+        double viewportHeight)
+    {
+        var maxX = Math.Max(0, contentWidth - Math.Max(0, viewportWidth));
+        var maxY = Math.Max(0, contentHeight - Math.Max(0, viewportHeight));
+        return (double.IsNaN(panX) ? 0 : Math.Clamp(panX, 0, maxX),
+                double.IsNaN(panY) ? 0 : Math.Clamp(panY, 0, maxY));
     }
 
     /// <summary>

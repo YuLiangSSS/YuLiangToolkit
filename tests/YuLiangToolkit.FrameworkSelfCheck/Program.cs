@@ -879,6 +879,12 @@ RunGroupModule("picture-viewer", "图片", PictureViewerChecks.Run);
 // ---------- PDF 阅读器（上下 / 左右滚动排版 / 双页配对与翻页 / 拖动惯性 / 生成最小 PDF 真渲染一页） ----------
 RunGroupModule("pdf-reader", "PDF", PdfReaderChecks.Run);
 
+// PDF 文字层 / 书签目录 / 搜索：手写 PDF 解析（xref / 对象流 / Flate / ToUnicode / 页目录），纯无头断言。
+RunGroupModule("pdf-reader", "PDF文字", PdfTextChecks.Run);
+
+// PDF 文件关联：只断言纯逻辑（后缀判断 / 命令行拼装 / 常量），**绝不写注册表**。
+RunGroupModule("pdf-reader", "PDF关联", PdfAssociationChecks.Run);
+
 // ---------- 第二套 UI：液态玻璃主题（枚举 / 字典 key 对齐 / 默认主题颜色不变 / 配置往返） ----------
 RunGroupModule("theme", "主题", ThemeChecks.Run);
 

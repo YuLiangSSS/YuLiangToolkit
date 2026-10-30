@@ -425,6 +425,204 @@ internal static class PdfReaderChecks
             && PdfContinuousLayout.ReadingViewport(800, 600, PdfReadMode.Horizontal) == 800);
 
         // ================================================================
+        // 4b. 缩放（PdfContinuousLayout.EffectiveZoom + 带 zoomScale 的排版 + 跨轴拖动）
+        // ================================================================
+        Check("缩放常量：25% ~ 800%（和配置 Min/MaxZoomPercent 联动）",
+            Math.Abs(PdfContinuousLayout.MinZoomScale - 0.25) <= 1e-12
+            && Math.Abs(PdfContinuousLayout.MaxZoomScale - 8.0) <= 1e-12
+            && Math.Abs(PdfContinuousLayout.MinZoomScale - PdfReaderConfig.MinZoomPercent / 100.0) <= 1e-12
+            && Math.Abs(PdfContinuousLayout.MaxZoomScale - PdfReaderConfig.MaxZoomPercent / 100.0) <= 1e-12,
+            $"{PdfContinuousLayout.MinZoomScale} ~ {PdfContinuousLayout.MaxZoomScale}");
+
+        Check("EffectiveZoom：NaN / 0 / 负数 / 无穷都按 100%（1.0）处理",
+            Math.Abs(PdfContinuousLayout.EffectiveZoom(double.NaN) - 1.0) <= 1e-12
+            && Math.Abs(PdfContinuousLayout.EffectiveZoom(0) - 1.0) <= 1e-12
+            && Math.Abs(PdfContinuousLayout.EffectiveZoom(-5) - 1.0) <= 1e-12
+            && Math.Abs(PdfContinuousLayout.EffectiveZoom(double.PositiveInfinity) - 1.0) <= 1e-12
+            && Math.Abs(PdfContinuousLayout.EffectiveZoom(double.NegativeInfinity) - 1.0) <= 1e-12);
+
+        Check("EffectiveZoom：太小夹到 25%（0.01 / 0.1 / 0.25 都 → 0.25）",
+            Math.Abs(PdfContinuousLayout.EffectiveZoom(0.01) - 0.25) <= 1e-12
+            && Math.Abs(PdfContinuousLayout.EffectiveZoom(0.1) - 0.25) <= 1e-12
+            && Math.Abs(PdfContinuousLayout.EffectiveZoom(0.25) - 0.25) <= 1e-12);
+
+        Check("EffectiveZoom：太大夹到 800%（8.5 / 99 都 → 8.0，8.0 原样）",
+            Math.Abs(PdfContinuousLayout.EffectiveZoom(99) - 8.0) <= 1e-12
+            && Math.Abs(PdfContinuousLayout.EffectiveZoom(8.5) - 8.0) <= 1e-12
+            && Math.Abs(PdfContinuousLayout.EffectiveZoom(8.0) - 8.0) <= 1e-12);
+
+        Check("EffectiveZoom：合法值原样保留（1.0 / 1.5 / 2.0）",
+            Math.Abs(PdfContinuousLayout.EffectiveZoom(1.0) - 1.0) <= 1e-12
+            && Math.Abs(PdfContinuousLayout.EffectiveZoom(1.5) - 1.5) <= 1e-12
+            && Math.Abs(PdfContinuousLayout.EffectiveZoom(2.0) - 2.0) <= 1e-12);
+
+        // ---- 纵向 zoom=200%：页宽 = 752×2 = 1504；页高 = 1504 ÷ (400/600) = 2256；
+        // 内容宽 = 24×2 + 1504 = 1552；内容高 = 3×2256 + 2×16 + 2×24 = 6848；
+        // 跨轴（左右）最多能拖 1552 − 800 = 752。
+        var verticalZoom200 = PdfContinuousLayout.Compute(
+            PdfReadMode.Vertical, threePortraitPages, 800, 600, zoomScale: 2.0);
+        Check("纵向缩放 200%：3 页都排出来，页宽 1504（752×2）",
+            verticalZoom200.PageCount == 3
+            && verticalZoom200.Boxes.All(b => Math.Abs(b.Width - 1504) <= Tolerance),
+            string.Join(" / ", verticalZoom200.Boxes.Select(b => b.Width.ToString("F2"))));
+
+        Check("纵向缩放 200%：页高 = 1504 ÷ (400/600) = 2256",
+            verticalZoom200.Boxes.Count == 3
+            && verticalZoom200.Boxes.All(b => Math.Abs(b.Height - 2256) <= Tolerance),
+            string.Join(" / ", verticalZoom200.Boxes.Select(b => b.Height.ToString("F2"))));
+
+        Check("纵向缩放 200%：放大后不再水平居中，左边距固定 24",
+            verticalZoom200.Boxes.Count == 3
+            && verticalZoom200.Boxes.All(b => Math.Abs(b.X - 24) <= Tolerance));
+
+        Check("纵向缩放 200%：页 Y 依次 24 / 2296 / 4568",
+            verticalZoom200.Boxes.Count == 3
+            && Math.Abs(verticalZoom200.Boxes[0].Y - 24) <= Tolerance
+            && Math.Abs(verticalZoom200.Boxes[1].Y - 2296) <= Tolerance
+            && Math.Abs(verticalZoom200.Boxes[2].Y - 4568) <= Tolerance,
+            string.Join(" / ", verticalZoom200.Boxes.Select(b => b.Y.ToString("F0"))));
+
+        Near("纵向缩放 200%：内容宽 = 24×2 + 1504 = 1552", verticalZoom200.ContentWidth, 1552, "ContentWidth");
+        Near("纵向缩放 200%：内容高 = 3×2256 + 2×16 + 2×24 = 6848", verticalZoom200.ContentHeight, 6848, "ContentHeight");
+        Near("纵向缩放 200%：阅读轴长 = 内容高 = 6848",
+            PdfContinuousLayout.ReadingLength(verticalZoom200, PdfReadMode.Vertical), 6848, "ReadingLength");
+        Near("纵向缩放 200%：最大阅读偏移 = 6848 − 600 = 6248",
+            PdfContinuousLayout.MaximumOffset(verticalZoom200, PdfReadMode.Vertical, 800, 600), 6248, "MaximumOffset");
+        Near("纵向缩放 200%：跨轴长 = 内容宽 = 1552",
+            PdfContinuousLayout.CrossLength(verticalZoom200, PdfReadMode.Vertical), 1552, "CrossLength");
+        Near("纵向缩放 200%：跨轴视口 = 视口宽 = 800",
+            PdfContinuousLayout.CrossViewport(800, 600, PdfReadMode.Vertical), 800, "CrossViewport");
+        Near("纵向缩放 200%：跨轴可拖范围 = 1552 − 800 = 752",
+            PdfContinuousLayout.MaximumCrossOffset(verticalZoom200, PdfReadMode.Vertical, 800, 600), 752, "MaximumCrossOffset");
+
+        Check("纵向缩放 200%：页在阅读轴上的起止 = 24~2280 / 2296~4552 / 4568~6824",
+            verticalZoom200.Boxes.Count == 3
+            && Math.Abs(verticalZoom200.Boxes[0].MainStart(false) - 24) <= Tolerance
+            && Math.Abs(verticalZoom200.Boxes[0].MainEnd(false) - 2280) <= Tolerance
+            && Math.Abs(verticalZoom200.Boxes[1].MainStart(false) - 2296) <= Tolerance
+            && Math.Abs(verticalZoom200.Boxes[1].MainEnd(false) - 4552) <= Tolerance
+            && Math.Abs(verticalZoom200.Boxes[2].MainStart(false) - 4568) <= Tolerance
+            && Math.Abs(verticalZoom200.Boxes[2].MainEnd(false) - 6824) <= Tolerance,
+            string.Join(" / ", verticalZoom200.Boxes.Select(b => $"{b.MainStart(false):F0}~{b.MainEnd(false):F0}")));
+
+        Check("纵向缩放 200%：定位 / 可见页仍正确（页 3 开头 4568、贴底只看到第 3 页）",
+            Math.Abs(PdfContinuousLayout.OffsetOfPage(verticalZoom200, PdfReadMode.Vertical, 2) - 4568) <= Tolerance
+            && PdfContinuousLayout.PageIndexAtOffset(verticalZoom200, PdfReadMode.Vertical, 4568) == 2
+            && PdfContinuousLayout.VisibleRange(verticalZoom200, PdfReadMode.Vertical, 6248, 600) == (2, 2));
+
+        // ---- 纵向 zoom=50%：页宽 376、页高 564；页比视口窄 → 水平居中（x = (800−376)/2 = 212）
+        var verticalZoom50 = PdfContinuousLayout.Compute(
+            PdfReadMode.Vertical, threePortraitPages, 800, 600, zoomScale: 0.5);
+        Check("纵向缩放 50%：页宽 376、页高 564（三页一致）",
+            verticalZoom50.Boxes.Count == 3
+            && verticalZoom50.Boxes.All(b => Math.Abs(b.Width - 376) <= Tolerance)
+            && verticalZoom50.Boxes.All(b => Math.Abs(b.Height - 564) <= Tolerance),
+            string.Join(" / ", verticalZoom50.Boxes.Select(b => $"{b.Width:F0}×{b.Height:F0}")));
+
+        Check("纵向缩放 50%：页水平居中（x = (800 − 376) / 2 = 212）",
+            verticalZoom50.Boxes.Count == 3
+            && verticalZoom50.Boxes.All(b => Math.Abs(b.X - 212) <= Tolerance),
+            string.Join(" / ", verticalZoom50.Boxes.Select(b => b.X.ToString("F1"))));
+
+        Check("纵向缩放 50%：页 Y 依次 24 / 604 / 1184",
+            verticalZoom50.Boxes.Count == 3
+            && Math.Abs(verticalZoom50.Boxes[0].Y - 24) <= Tolerance
+            && Math.Abs(verticalZoom50.Boxes[1].Y - 604) <= Tolerance
+            && Math.Abs(verticalZoom50.Boxes[2].Y - 1184) <= Tolerance,
+            string.Join(" / ", verticalZoom50.Boxes.Select(b => b.Y.ToString("F0"))));
+
+        Near("纵向缩放 50%：内容宽 = 视口宽 800（居中后两边对称留白）", verticalZoom50.ContentWidth, 800, "ContentWidth");
+        Near("纵向缩放 50%：内容高 = 3×564 + 2×16 + 2×24 = 1772", verticalZoom50.ContentHeight, 1772, "ContentHeight");
+        Near("纵向缩放 50%：最大阅读偏移 = 1772 − 600 = 1172",
+            PdfContinuousLayout.MaximumOffset(verticalZoom50, PdfReadMode.Vertical, 800, 600), 1172, "MaximumOffset");
+        Near("纵向缩放 50%：跨轴长 = 800 = 视口宽",
+            PdfContinuousLayout.CrossLength(verticalZoom50, PdfReadMode.Vertical), 800, "CrossLength");
+        Near("纵向缩放 50%：跨轴不用拖（内容没比视口宽）",
+            PdfContinuousLayout.MaximumCrossOffset(verticalZoom50, PdfReadMode.Vertical, 800, 600), 0, "MaximumCrossOffset");
+        Check("纵向缩放 50%：进度换算仍按新范围（50% → 586 / 1172 = 0.5）",
+            Math.Abs(PdfContinuousLayout.OffsetForRatio(0.5, 1172) - 586) <= Tolerance
+            && Math.Abs(PdfContinuousLayout.RatioOf(586, 1172) - 0.5) <= Tolerance);
+
+        // ---- 横向 zoom=200%：页高 = 552×2 = 1104；页宽 = 1104 × (400/600) = 736；
+        // 内容高 = 24×2 + 1104 = 1152；内容宽 = 3×736 + 2×16 + 2×24 = 2288；
+        // 跨轴（上下）最多能拖 1152 − 600 = 552。
+        var horizontalZoom200 = PdfContinuousLayout.Compute(
+            PdfReadMode.Horizontal, threePortraitPages, 800, 600, zoomScale: 2.0);
+        Check("横向缩放 200%：页高 1104、页宽 736（三页一致）",
+            horizontalZoom200.Boxes.Count == 3
+            && horizontalZoom200.Boxes.All(b => Math.Abs(b.Height - 1104) <= Tolerance)
+            && horizontalZoom200.Boxes.All(b => Math.Abs(b.Width - 736) <= Tolerance),
+            string.Join(" / ", horizontalZoom200.Boxes.Select(b => $"{b.Width:F0}×{b.Height:F0}")));
+
+        Check("横向缩放 200%：上边距固定 24、页 X 依次 24 / 776 / 1528",
+            horizontalZoom200.Boxes.Count == 3
+            && horizontalZoom200.Boxes.All(b => Math.Abs(b.Y - 24) <= Tolerance)
+            && Math.Abs(horizontalZoom200.Boxes[0].X - 24) <= Tolerance
+            && Math.Abs(horizontalZoom200.Boxes[1].X - 776) <= Tolerance
+            && Math.Abs(horizontalZoom200.Boxes[2].X - 1528) <= Tolerance,
+            string.Join(" / ", horizontalZoom200.Boxes.Select(b => b.X.ToString("F0"))));
+
+        Near("横向缩放 200%：内容高 = 24×2 + 1104 = 1152", horizontalZoom200.ContentHeight, 1152, "ContentHeight");
+        Near("横向缩放 200%：内容宽 = 3×736 + 2×16 + 2×24 = 2288", horizontalZoom200.ContentWidth, 2288, "ContentWidth");
+        Near("横向缩放 200%：最大阅读偏移 = 2288 − 800 = 1488",
+            PdfContinuousLayout.MaximumOffset(horizontalZoom200, PdfReadMode.Horizontal, 800, 600), 1488, "MaximumOffset");
+        Near("横向缩放 200%：跨轴长 = 内容高 = 1152",
+            PdfContinuousLayout.CrossLength(horizontalZoom200, PdfReadMode.Horizontal), 1152, "CrossLength");
+        Near("横向缩放 200%：跨轴视口 = 视口高 = 600",
+            PdfContinuousLayout.CrossViewport(800, 600, PdfReadMode.Horizontal), 600, "CrossViewport");
+        Near("横向缩放 200%：跨轴可拖范围 = 1152 − 600 = 552",
+            PdfContinuousLayout.MaximumCrossOffset(horizontalZoom200, PdfReadMode.Horizontal, 800, 600), 552, "MaximumCrossOffset");
+
+        Check("横向缩放 200%：页在阅读轴上的起止 = 24~760 / 776~1512 / 1528~2264",
+            horizontalZoom200.Boxes.Count == 3
+            && Math.Abs(horizontalZoom200.Boxes[0].MainEnd(true) - 760) <= Tolerance
+            && Math.Abs(horizontalZoom200.Boxes[1].MainStart(true) - 776) <= Tolerance
+            && Math.Abs(horizontalZoom200.Boxes[2].MainEnd(true) - 2264) <= Tolerance,
+            string.Join(" / ", horizontalZoom200.Boxes.Select(b => $"{b.MainStart(true):F0}~{b.MainEnd(true):F0}")));
+
+        // ---- 横向 zoom=50%：页高 276、页宽 184；页比视口矮 → 垂直居中（y = (600−276)/2 = 162）
+        var horizontalZoom50 = PdfContinuousLayout.Compute(
+            PdfReadMode.Horizontal, threePortraitPages, 800, 600, zoomScale: 0.5);
+        Check("横向缩放 50%：页高 276、页宽 184、上边距居中 y = 162",
+            horizontalZoom50.Boxes.Count == 3
+            && horizontalZoom50.Boxes.All(b => Math.Abs(b.Height - 276) <= Tolerance)
+            && horizontalZoom50.Boxes.All(b => Math.Abs(b.Width - 184) <= Tolerance)
+            && horizontalZoom50.Boxes.All(b => Math.Abs(b.Y - 162) <= Tolerance),
+            string.Join(" / ", horizontalZoom50.Boxes.Select(b => $"{b.Width:F0}×{b.Height:F0}@{b.Y:F0}")));
+
+        Check("横向缩放 50%：页 X 依次 24 / 224 / 424、内容 = 视口 800×600、两个方向都不用拖",
+            horizontalZoom50.Boxes.Count == 3
+            && Math.Abs(horizontalZoom50.Boxes[0].X - 24) <= Tolerance
+            && Math.Abs(horizontalZoom50.Boxes[1].X - 224) <= Tolerance
+            && Math.Abs(horizontalZoom50.Boxes[2].X - 424) <= Tolerance
+            && Math.Abs(horizontalZoom50.ContentWidth - 800) <= Tolerance
+            && Math.Abs(horizontalZoom50.ContentHeight - 600) <= Tolerance
+            && Math.Abs(PdfContinuousLayout.MaximumOffset(horizontalZoom50, PdfReadMode.Horizontal, 800, 600)) <= Tolerance
+            && Math.Abs(PdfContinuousLayout.MaximumCrossOffset(horizontalZoom50, PdfReadMode.Horizontal, 800, 600)) <= Tolerance,
+            $"内容 {horizontalZoom50.ContentWidth:F0}×{horizontalZoom50.ContentHeight:F0}");
+
+        // ---- zoomScale 传进 Compute 也会先过 EffectiveZoom：0.01 → 25%、99 → 800%、NaN → 100%
+        var zoomClampedLow = PdfContinuousLayout.Compute(PdfReadMode.Vertical, threePortraitPages, 800, 600, zoomScale: 0.01);
+        Check("Compute 的 zoomScale 会夹取：0.01 当 25%（页宽 = 752×0.25 = 188、水平居中 x = 306）",
+            zoomClampedLow.Boxes.Count == 3
+            && zoomClampedLow.Boxes.All(b => Math.Abs(b.Width - 188) <= Tolerance)
+            && zoomClampedLow.Boxes.All(b => Math.Abs(b.X - 306) <= Tolerance),
+            $"宽 {zoomClampedLow.Boxes.FirstOrDefault()?.Width:F2}，x {zoomClampedLow.Boxes.FirstOrDefault()?.X:F2}");
+
+        var zoomClampedHigh = PdfContinuousLayout.Compute(PdfReadMode.Vertical, threePortraitPages, 800, 600, zoomScale: 99);
+        Check("Compute 的 zoomScale 会夹取：99 当 800%（页宽 = 752×8 = 6016、内容宽 = 48 + 6016 = 6064）",
+            zoomClampedHigh.Boxes.Count == 3
+            && zoomClampedHigh.Boxes.All(b => Math.Abs(b.Width - 6016) <= Tolerance)
+            && Math.Abs(zoomClampedHigh.ContentWidth - 6064) <= Tolerance,
+            $"宽 {zoomClampedHigh.Boxes.FirstOrDefault()?.Width:F0}，内容宽 {zoomClampedHigh.ContentWidth:F0}");
+
+        var zoomNaN = PdfContinuousLayout.Compute(PdfReadMode.Vertical, threePortraitPages, 800, 600, zoomScale: double.NaN);
+        Check("Compute 的 zoomScale = NaN 当 100%（和默认排版一致）",
+            zoomNaN.Boxes.Count == 3
+            && zoomNaN.Boxes.All(b => Math.Abs(b.Width - 752) <= Tolerance)
+            && zoomNaN.Boxes.All(b => Math.Abs(b.X - 24) <= Tolerance));
+
+        // ================================================================
         // 5. 双页翻页（PdfSpreadLayout）—— 配对 / 翻页步进 / 槽位排版
         // ================================================================
         Check("双页配对：页数 5 时最后一屏从第 4 页开始（最后一屏只有左页）",
@@ -571,6 +769,16 @@ internal static class PdfReaderChecks
             lastSpread.Left is { PageIndex: 4 } && lastSpread.Right is null,
             $"左 {lastSpread.Left?.PageIndex.ToString() ?? "null"} / 右 {lastSpread.Right?.PageIndex.ToString() ?? "null"}");
 
+        Check("双页排版：最后一屏单页按可用高度等比放大并居中（501.33×752 @ 249.33,24）",
+            lastSpread.Left is { } lastSingle
+            && Math.Abs(lastSingle.Width - 501.3333) <= 0.01
+            && Math.Abs(lastSingle.Height - 752) <= Tolerance
+            && Math.Abs(lastSingle.X - 249.3333) <= 0.01
+            && Math.Abs(lastSingle.Y - 24) <= Tolerance,
+            lastSpread.Left is { } lastSingleDetail
+                ? $"{lastSingleDetail.Width:F2}×{lastSingleDetail.Height:F2} @ {lastSingleDetail.X:F2},{lastSingleDetail.Y:F2}"
+                : "(左槽为空)");
+
         var emptySpread = PdfSpreadLayout.Compute(Array.Empty<PdfPageInfo>(), 0, 1000, 800);
         Check("双页排版：0 页 → 内容 = 视口、左右都空，不崩",
             emptySpread.Left is null && emptySpread.Right is null
@@ -584,12 +792,14 @@ internal static class PdfReaderChecks
 
         var brokenSizeSpread = PdfSpreadLayout.Compute(
             new[] { new PdfPageInfo(0, double.NaN, double.NaN) }, 0, 1000, 800);
-        Check("双页排版：坏页尺寸直接铺满槽位（468×752），不除以 0",
+        Check("双页排版：坏页尺寸按可用区域兜底（952×752 @ 24,24），不除以 0",
             brokenSizeSpread.Left is { } brokenSlot
-            && Math.Abs(brokenSlot.Width - 468) <= Tolerance
-            && Math.Abs(brokenSlot.Height - 752) <= Tolerance,
+            && Math.Abs(brokenSlot.Width - 952) <= Tolerance
+            && Math.Abs(brokenSlot.Height - 752) <= Tolerance
+            && Math.Abs(brokenSlot.X - 24) <= Tolerance
+            && Math.Abs(brokenSlot.Y - 24) <= Tolerance,
             brokenSizeSpread.Left is { } brokenDetail
-                ? $"{brokenDetail.Width:F2}×{brokenDetail.Height:F2}"
+                ? $"{brokenDetail.Width:F2}×{brokenDetail.Height:F2} @ {brokenDetail.X:F2},{brokenDetail.Y:F2}"
                 : "(左槽为空)");
 
         var fitPortrait = PdfSpreadLayout.FitSize(portrait, 468, 752);
@@ -626,6 +836,125 @@ internal static class PdfReaderChecks
             Math.Abs(brokenFitSlot.X - 100) <= Tolerance && Math.Abs(brokenFitSlot.Y - 50) <= Tolerance
             && Math.Abs(brokenFitSlot.Width - 468) <= Tolerance && Math.Abs(brokenFitSlot.Height - 752) <= Tolerance,
             $"({brokenFitSlot.X:F2}, {brokenFitSlot.Y:F2}) {brokenFitSlot.Width:F2}×{brokenFitSlot.Height:F2}");
+
+        // ---- 双页缩放 + 左右页面间距 ----
+        // 1000×800 视口、margin 24、gap=0、zoom=100%：可用宽 952、槽宽 476、左槽 x=24、右槽 x=500，
+        // 400×600 页塞进 476×752 = 476×714（垂直居中 y = 24 + (752−714)/2 = 43）。
+        var spreadNoGap = PdfSpreadLayout.Compute(spreadPages, 0, 1000, 800, pageGap: 0);
+        Check("双页间距 0（zoom 100%）：槽宽 476、左槽 x=24 y=43、右槽 x=500、内容 = 视口",
+            spreadNoGap.Left is { } noGapLeft && spreadNoGap.Right is { } noGapRight
+            && Math.Abs(noGapLeft.X - 24) <= Tolerance
+            && Math.Abs(noGapLeft.Y - 43) <= Tolerance
+            && Math.Abs(noGapLeft.Width - 476) <= Tolerance
+            && Math.Abs(noGapLeft.Height - 714) <= Tolerance
+            && Math.Abs(noGapRight.X - 500) <= Tolerance
+            && Math.Abs(noGapRight.Y - 43) <= Tolerance
+            && Math.Abs(spreadNoGap.ContentWidth - 1000) <= Tolerance
+            && Math.Abs(spreadNoGap.ContentHeight - 800) <= Tolerance,
+            $"左 {spreadNoGap.Left?.X:F0},{spreadNoGap.Left?.Y:F0} {spreadNoGap.Left?.Width:F0}×{spreadNoGap.Left?.Height:F0}；右 x={spreadNoGap.Right?.X:F0}");
+
+        Check("双页间距 0：左右页宽高比仍是 400:600（476×714 不拉伸）",
+            spreadNoGap.Left is { } noGapRatio
+            && Math.Abs(noGapRatio.Width / noGapRatio.Height - 2.0 / 3.0) <= 0.001);
+
+        var spreadWideGap = PdfSpreadLayout.Compute(spreadPages, 0, 1000, 800, pageGap: 64);
+        Check("双页间距 64：槽宽 (952−64)/2 = 444、左页 444×666、右槽 x = 24+444+64 = 532",
+            spreadWideGap.Left is { } wideGapLeft && spreadWideGap.Right is { } wideGapRight
+            && Math.Abs(wideGapLeft.Width - 444) <= Tolerance
+            && Math.Abs(wideGapLeft.Height - 666) <= Tolerance
+            && Math.Abs(wideGapLeft.Y - 67) <= Tolerance
+            && Math.Abs(wideGapRight.X - 532) <= Tolerance,
+            $"槽宽 {spreadWideGap.Left?.Width:F0}、右 x {spreadWideGap.Right?.X:F0}");
+
+        Check("双页间距越大、右页越靠右（0 → 500，默认 16 → 508，64 → 532）",
+            spreadNoGap.Right?.X == 500 && spread.Right?.X == 508 && spreadWideGap.Right?.X == 532,
+            $"{spreadNoGap.Right?.X} / {spread.Right?.X} / {spreadWideGap.Right?.X}");
+
+        // zoom=200%、gap=0：可用 1904×1504、槽宽 952；页面 952×1428；
+        // 内容 = 24×2 + 1904 = 1952 宽、24×2 + 1504 = 1552 高。
+        var spreadZoom200 = PdfSpreadLayout.Compute(spreadPages, 0, 1000, 800, pageGap: 0, zoomScale: 2.0);
+        Check("双页缩放 200%：内容 = 1952×1552（视口×2 再加两侧留白）",
+            Math.Abs(spreadZoom200.ContentWidth - 1952) <= Tolerance
+            && Math.Abs(spreadZoom200.ContentHeight - 1552) <= Tolerance,
+            $"{spreadZoom200.ContentWidth:F0}×{spreadZoom200.ContentHeight:F0}");
+
+        Check("双页缩放 200%：左页 952×1428、x=24、y=62；右槽 x = 24 + 952 = 976",
+            spreadZoom200.Left is { } zoom200Left && spreadZoom200.Right is { } zoom200Right
+            && Math.Abs(zoom200Left.Width - 952) <= Tolerance
+            && Math.Abs(zoom200Left.Height - 1428) <= Tolerance
+            && Math.Abs(zoom200Left.X - 24) <= Tolerance
+            && Math.Abs(zoom200Left.Y - 62) <= Tolerance
+            && Math.Abs(zoom200Right.X - 976) <= Tolerance
+            && Math.Abs(zoom200Right.Width - 952) <= Tolerance,
+            $"左 {spreadZoom200.Left?.Width:F0}×{spreadZoom200.Left?.Height:F0}@{spreadZoom200.Left?.X:F0},{spreadZoom200.Left?.Y:F0}；右 x={spreadZoom200.Right?.X:F0}");
+
+        Check("双页缩放 200%：左右页比例仍是 400:600（952×1428）",
+            spreadZoom200.Left is { } zoom200Ratio
+            && Math.Abs(zoom200Ratio.Width / zoom200Ratio.Height - 2.0 / 3.0) <= 0.001);
+
+        // zoom=50%、gap=0：可用 476×376、槽宽 238；整块水平居中 x = (1000−476)/2 = 262、
+        // 垂直 y = (800−376)/2 = 212；页面 238×357，y = 212 + (376−357)/2 = 221.5。
+        var spreadZoom50 = PdfSpreadLayout.Compute(spreadPages, 0, 1000, 800, pageGap: 0, zoomScale: 0.5);
+        Check("双页缩放 50%：内容仍是视口 1000×800（小图居中，不塌）",
+            Math.Abs(spreadZoom50.ContentWidth - 1000) <= Tolerance
+            && Math.Abs(spreadZoom50.ContentHeight - 800) <= Tolerance);
+
+        Check("双页缩放 50%：左页 238×357、x=262、y=221.5；右槽 x = 262 + 238 = 500",
+            spreadZoom50.Left is { } zoom50Left && spreadZoom50.Right is { } zoom50Right
+            && Math.Abs(zoom50Left.Width - 238) <= Tolerance
+            && Math.Abs(zoom50Left.Height - 357) <= Tolerance
+            && Math.Abs(zoom50Left.X - 262) <= Tolerance
+            && Math.Abs(zoom50Left.Y - 221.5) <= Tolerance
+            && Math.Abs(zoom50Right.X - 500) <= Tolerance
+            && Math.Abs(zoom50Right.Y - 221.5) <= Tolerance,
+            $"左 x={spreadZoom50.Left?.X:F1} y={spreadZoom50.Left?.Y:F1} {spreadZoom50.Left?.Width:F0}×{spreadZoom50.Left?.Height:F0}");
+
+        Check("双页缩放 50%：单页仍是 400:600 比例（238×357）",
+            spreadZoom50.Left is { } zoom50Ratio
+            && Math.Abs(zoom50Ratio.Width / zoom50Ratio.Height - 2.0 / 3.0) <= 0.001);
+
+        // zoomScale 在双页排版里同样先过 EffectiveZoom：99 → 800%、NaN → 100%
+        // 800% + gap0：可用 7616×6016，两页等比后 476×714 × 8 = 3808×5712，整组居中 x=24 y=176。
+        var spreadZoomClamped = PdfSpreadLayout.Compute(spreadPages, 0, 1000, 800, pageGap: 0, zoomScale: 99);
+        Check("双页缩放 99 夹到 800%：内容 7664×6064、左页 3808×5712、x=24 y=176、右页 x=3832",
+            Math.Abs(spreadZoomClamped.ContentWidth - 7664) <= Tolerance
+            && Math.Abs(spreadZoomClamped.ContentHeight - 6064) <= Tolerance
+            && spreadZoomClamped.Left is { } clampedLeft
+            && Math.Abs(clampedLeft.Width - 3808) <= Tolerance
+            && Math.Abs(clampedLeft.Height - 5712) <= Tolerance
+            && Math.Abs(clampedLeft.X - 24) <= Tolerance
+            && Math.Abs(clampedLeft.Y - 176) <= Tolerance
+            && spreadZoomClamped.Right is { } clampedRight
+            && Math.Abs(clampedRight.X - 3832) <= Tolerance,
+            $"内容 {spreadZoomClamped.ContentWidth:F0}×{spreadZoomClamped.ContentHeight:F0}，左页 {spreadZoomClamped.Left?.Width:F0}×{spreadZoomClamped.Left?.Height:F0}");
+
+        var spreadZoomNaN = PdfSpreadLayout.Compute(spreadPages, 0, 1000, 800, pageGap: 0, zoomScale: double.NaN);
+        Check("双页缩放 NaN 当 100%（和 zoom=1 的排版一致）",
+            spreadZoomNaN.Left is { } nanLeft
+            && Math.Abs(nanLeft.Width - 476) <= Tolerance
+            && Math.Abs(nanLeft.X - 24) <= Tolerance);
+
+        // ---- 双页放大后的平移夹取（ClampPan） ----
+        Check("ClampPan：内容 1952×1552 / 视口 1000×800，平移 (500,300) 合法原样返回",
+            PdfSpreadLayout.ClampPan(500, 300, 1952, 1552, 1000, 800) == (500.0, 300.0),
+            $"{PdfSpreadLayout.ClampPan(500, 300, 1952, 1552, 1000, 800)}");
+
+        Check("ClampPan：平移越界夹到最大值（-5 → 0、9999 → 952 / 752）",
+            PdfSpreadLayout.ClampPan(-5, 9999, 1952, 1552, 1000, 800) == (0.0, 752.0),
+            $"{PdfSpreadLayout.ClampPan(-5, 9999, 1952, 1552, 1000, 800)}");
+
+        Check("ClampPan：内容不比视口大 → 两个方向都不能平移 (0, 0)",
+            PdfSpreadLayout.ClampPan(500, 300, 800, 600, 1000, 800) == (0.0, 0.0)
+            && PdfSpreadLayout.ClampPan(0, 0, 1000, 800, 1000, 800) == (0.0, 0.0));
+
+        Check("ClampPan：NaN 平移量当 0（界面坏值不跳）",
+            PdfSpreadLayout.ClampPan(double.NaN, double.NaN, 1952, 1552, 1000, 800) == (0.0, 0.0)
+            && PdfSpreadLayout.ClampPan(double.NaN, 300, 1952, 1552, 1000, 800) == (0.0, 300.0),
+            $"{PdfSpreadLayout.ClampPan(double.NaN, 300, 1952, 1552, 1000, 800)}");
+
+        Check("ClampPan：视口 0（还没量出来）时最大平移 = 内容尺寸",
+            PdfSpreadLayout.ClampPan(99999, 99999, 1952, 1552, 0, 0) == (1952.0, 1552.0),
+            $"{PdfSpreadLayout.ClampPan(99999, 99999, 1952, 1552, 0, 0)}");
 
         // ================================================================
         // 6. 拖动惯性（PdfInertia）—— 采样 / 衰减 / 合成 / 封顶
@@ -821,6 +1150,83 @@ internal static class PdfReaderChecks
             && new PdfReaderConfig { ReadMode = PdfReadMode.Spread }.ReadModeEffective == PdfReadMode.Spread
             && new PdfReaderConfig { ReadMode = (PdfReadMode)99 }.ReadModeEffective == PdfReadMode.Vertical);
 
+        Check("配置默认值（缩放 / 双页间距）：ZoomPercent=100 → ZoomScale 1.0、SpreadGapPixels=2；常量 25~800 / 0~64",
+            freshConfig.ZoomPercent == 100
+            && freshConfig.ZoomPercent == PdfReaderConfig.DefaultZoomPercent
+            && freshConfig.ZoomPercentEffective == 100
+            && Math.Abs(freshConfig.ZoomScale - 1.0) <= 1e-12
+            && freshConfig.SpreadGapPixels == 2
+            && freshConfig.SpreadGapPixels == PdfReaderConfig.DefaultSpreadGapPixels
+            && freshConfig.SpreadGapEffective == 2
+            && PdfReaderConfig.MinZoomPercent == 25 && PdfReaderConfig.MaxZoomPercent == 800
+            && PdfReaderConfig.MinSpreadGapPixels == 0 && PdfReaderConfig.MaxSpreadGapPixels == 64
+            && PdfReaderConfig.ContinuousPageGapPixels == 16 && PdfReaderConfig.SideMarginPixels == 24,
+            $"{freshConfig.ZoomPercent}% / {freshConfig.SpreadGapPixels}px");
+
+        Check("配置：缩放百分比生效值夹到 25~800（5 / 0 / -100 → 25，9999 / int.MaxValue → 800，边界原样）",
+            new PdfReaderConfig { ZoomPercent = 100 }.ZoomPercentEffective == 100
+            && new PdfReaderConfig { ZoomPercent = 25 }.ZoomPercentEffective == 25
+            && new PdfReaderConfig { ZoomPercent = 800 }.ZoomPercentEffective == 800
+            && new PdfReaderConfig { ZoomPercent = 5 }.ZoomPercentEffective == 25
+            && new PdfReaderConfig { ZoomPercent = 0 }.ZoomPercentEffective == 25
+            && new PdfReaderConfig { ZoomPercent = -100 }.ZoomPercentEffective == 25
+            && new PdfReaderConfig { ZoomPercent = 9999 }.ZoomPercentEffective == 800
+            && new PdfReaderConfig { ZoomPercent = int.MaxValue }.ZoomPercentEffective == 800);
+
+        Check("配置：ZoomScale 把生效百分比换成排版系数（100% → 1.0、200% → 2.0、25% → 0.25、800% → 8.0、坏值也夹）",
+            Math.Abs(new PdfReaderConfig().ZoomScale - 1.0) <= 1e-12
+            && Math.Abs(new PdfReaderConfig { ZoomPercent = 200 }.ZoomScale - 2.0) <= 1e-12
+            && Math.Abs(new PdfReaderConfig { ZoomPercent = 25 }.ZoomScale - 0.25) <= 1e-12
+            && Math.Abs(new PdfReaderConfig { ZoomPercent = 800 }.ZoomScale - 8.0) <= 1e-12
+            && Math.Abs(new PdfReaderConfig { ZoomPercent = 9999 }.ZoomScale - 8.0) <= 1e-12);
+
+        Check("配置：双页间距生效值夹到 0~64（-5 / int.MinValue → 0，99 / int.MaxValue → 64，边界原样）",
+            new PdfReaderConfig { SpreadGapPixels = 2 }.SpreadGapEffective == 2
+            && new PdfReaderConfig { SpreadGapPixels = 0 }.SpreadGapEffective == 0
+            && new PdfReaderConfig { SpreadGapPixels = 64 }.SpreadGapEffective == 64
+            && new PdfReaderConfig { SpreadGapPixels = -5 }.SpreadGapEffective == 0
+            && new PdfReaderConfig { SpreadGapPixels = int.MinValue }.SpreadGapEffective == 0
+            && new PdfReaderConfig { SpreadGapPixels = 99 }.SpreadGapEffective == 64
+            && new PdfReaderConfig { SpreadGapPixels = int.MaxValue }.SpreadGapEffective == 64);
+
+        Check("StepZoomPercent：放大 / 缩小一步 10%（100→110、100→90、100→100，两端夹住）",
+            PdfReaderConfig.StepZoomPercent(100, 1) == 110
+            && PdfReaderConfig.StepZoomPercent(100, -1) == 90
+            && PdfReaderConfig.StepZoomPercent(100, 0) == 100
+            && PdfReaderConfig.StepZoomPercent(795, 1) == 800
+            && PdfReaderConfig.StepZoomPercent(800, 1) == 800
+            && PdfReaderConfig.StepZoomPercent(25, -1) == 25
+            && PdfReaderConfig.StepZoomPercent(100, -100) == 25,
+            $"{PdfReaderConfig.StepZoomPercent(795, 1)} / {PdfReaderConfig.StepZoomPercent(100, -100)}");
+
+        Check("StepZoomPercent：可以自定义步长（25% 步长：100→125、790→800、30 减一步 → 25）",
+            PdfReaderConfig.StepZoomPercent(100, 1, 25) == 125
+            && PdfReaderConfig.StepZoomPercent(790, 1, 25) == 800
+            && PdfReaderConfig.StepZoomPercent(30, -1, 25) == 25);
+
+        Check("StepZoomPercent：当前值本身是坏值时先夹到 25~800 再步进",
+            PdfReaderConfig.StepZoomPercent(9999, 0) == 800
+            && PdfReaderConfig.StepZoomPercent(-100, 0) == 25);
+
+        var resetConfig = new PdfReaderConfig
+        {
+            ReadMode = PdfReadMode.Spread,
+            InertiaEnabled = false,
+            WheelStepPixels = 500,
+            ZoomPercent = 300,
+            SpreadGapPixels = 20,
+            LastFolder = @"C:\Users\keep\PDFs",
+        };
+        resetConfig.ResetToDefaults();
+        Check("ResetToDefaults：5 个显示设置全回默认（纵向 / 惯性开 / 滚轮 120 / 缩放 100 / 间距 2）",
+            resetConfig.ReadMode == PdfReadMode.Vertical && resetConfig.InertiaEnabled
+            && resetConfig.WheelStepPixels == 120 && resetConfig.ZoomPercent == 100
+            && resetConfig.SpreadGapPixels == 2,
+            $"{resetConfig.ReadMode} / {resetConfig.InertiaEnabled} / {resetConfig.WheelStepPixels} / {resetConfig.ZoomPercent} / {resetConfig.SpreadGapPixels}");
+
+        Check("ResetToDefaults：保留「上次打开的文件夹」（那不是显示设置，清了反而添麻烦）",
+            resetConfig.LastFolder == @"C:\Users\keep\PDFs");
+
         var defaultConfigJson = freshConfig.ToJson();
         Check("配置序列化：ReadMode 按 C# 原名存字符串（\"readMode\": \"Vertical\"，不是数字 0）",
             defaultConfigJson.Contains("\"readMode\": \"Vertical\"")
@@ -832,6 +1238,24 @@ internal static class PdfReaderChecks
             !defaultConfigJson.Contains("effective", StringComparison.OrdinalIgnoreCase)
             && !defaultConfigJson.Contains("ReadModeEffective", StringComparison.Ordinal),
             CompactJson(defaultConfigJson));
+
+        var zoomGapJson = new PdfReaderConfig
+        {
+            ReadMode = PdfReadMode.Spread,
+            ZoomPercent = 250,
+            SpreadGapPixels = 8,
+        }.ToJson();
+        Check("配置序列化：缩放 / 双页间距写进 JSON（camelCase：zoomPercent / spreadGapPixels），枚举仍是字符串",
+            zoomGapJson.Contains("\"zoomPercent\": 250")
+            && zoomGapJson.Contains("\"spreadGapPixels\": 8")
+            && zoomGapJson.Contains("\"readMode\": \"Spread\""),
+            CompactJson(zoomGapJson));
+
+        Check("配置序列化：ZoomScale / ZoomPercentEffective / SpreadGapEffective 这些计算属性被 [JsonIgnore]（不写进 JSON）",
+            !zoomGapJson.Contains("zoomScale", StringComparison.OrdinalIgnoreCase)
+            && !zoomGapJson.Contains("zoomPercentEffective", StringComparison.OrdinalIgnoreCase)
+            && !zoomGapJson.Contains("spreadGapEffective", StringComparison.OrdinalIgnoreCase),
+            CompactJson(zoomGapJson));
 
         var serializedConfigPath = SelfCheckScratch.MakeFile("pdf-reader-config.json");
         var spreadConfig = new PdfReaderConfig
@@ -866,9 +1290,14 @@ internal static class PdfReaderChecks
             && persistedConfig.InertiaEnabled
             && persistedConfig.WheelStepEffective == 120);
 
+        Check("配置持久化：首次 Load 也带默认缩放 100% / 双页间距 2",
+            persistedConfig.ZoomPercent == 100 && persistedConfig.SpreadGapPixels == 2);
+
         persistedConfig.ReadMode = PdfReadMode.Spread;
         persistedConfig.InertiaEnabled = false;
         persistedConfig.WheelStepPixels = 333;
+        persistedConfig.ZoomPercent = 250;
+        persistedConfig.SpreadGapPixels = 8;
         persistedConfig.LastFolder = SelfCheckScratch.Root;
         persistedConfig.SaveNow();
         var persistedJson = File.Exists(configStore.FilePath) ? File.ReadAllText(configStore.FilePath) : "";
@@ -876,6 +1305,11 @@ internal static class PdfReaderChecks
             persistedJson.Contains("\"readMode\": \"Spread\"")
             && persistedJson.Contains("\"inertiaEnabled\": false")
             && persistedJson.Contains("\"wheelStepPixels\": 333"),
+            CompactJson(persistedJson));
+
+        Check("配置持久化：缩放 / 双页间距也落盘（zoomPercent 250 / spreadGapPixels 8）",
+            persistedJson.Contains("\"zoomPercent\": 250")
+            && persistedJson.Contains("\"spreadGapPixels\": 8"),
             CompactJson(persistedJson));
 
         var rereadConfig = JsonFileStore.Read<PdfReaderConfig>(configStore.FilePath);
@@ -887,6 +1321,13 @@ internal static class PdfReaderChecks
             && rereadConfig.WheelStepEffective == 333
             && rereadConfig.LastFolder == SelfCheckScratch.Root,
             rereadConfig is null ? "读回为 null" : rereadConfig.FilePath);
+
+        Check("配置持久化：读回的缩放 / 间距正确（250 → ZoomScale 2.5、间距 8）",
+            rereadConfig is not null
+            && rereadConfig.ZoomPercent == 250
+            && Math.Abs(rereadConfig.ZoomScale - 2.5) <= 1e-12
+            && rereadConfig.SpreadGapPixels == 8
+            && rereadConfig.SpreadGapEffective == 8);
         configStore.StopWatching();
 
         // ================================================================
@@ -944,6 +1385,11 @@ internal static class PdfReaderChecks
             && CountOccurrences(demoText, "/Type /Page ") == 3,
             $"Page 对象 {CountOccurrences(demoText, "/Type /Page ")} 个");
 
+            Check("演示 PDF：自带书签目录（/Outlines + 3 条 /Title，给截图 / 手测目录面板用）",
+                demoText.Contains("/Outlines", StringComparison.Ordinal)
+                && CountOccurrences(demoText, "/Title (") == 3,
+                $"{CountOccurrences(demoText, "/Title (")} 条书签");
+
         Check("演示 PDF：Create(0) 兜底成 1 页（不生成 0 页空文档）",
             Encoding.ASCII.GetString(PdfDemoPdf.Create(0)).Contains("/Count 1", StringComparison.Ordinal));
 
@@ -987,10 +1433,10 @@ internal static class PdfReaderChecks
                 $"{session.Pages[0].WidthDip:F2}×{session.Pages[0].HeightDip:F2}");
 
             // ---- 渲染宽度夹取（纯函数，先写死几条基准回归） ----
-            Check("渲染宽度夹取常量：上限 1600 / 下限 128 / 单页像素上限 600 万",
-                PdfDocumentSession.MaxRenderWidth == 1600
+            Check("渲染宽度夹取常量：上限 2000 / 下限 128 / 单页像素上限 800 万",
+                PdfDocumentSession.MaxRenderWidth == 2000
                 && PdfDocumentSession.MinRenderWidth == 128
-                && PdfDocumentSession.MaxRenderPixels == 6_000_000);
+                && PdfDocumentSession.MaxRenderPixels == 8_000_000);
 
             Check("渲染宽度夹取：正常请求 800 → 800（400×600 页按 2:3 算约 800×1200 像素，远小于上限）",
                 PdfDocumentSession.EffectiveRenderWidth(session.Pages[0], 800) == 800,
@@ -1001,19 +1447,23 @@ internal static class PdfReaderChecks
                 && PdfDocumentSession.EffectiveRenderWidth(session.Pages[0], 0) == 128
                 && PdfDocumentSession.EffectiveRenderWidth(session.Pages[0], -100) == 128);
 
-            Check("渲染宽度夹取：太大夹到上限 1600（传 99999 还是 1600）",
-                PdfDocumentSession.EffectiveRenderWidth(session.Pages[0], 99999) == 1600,
+            Check("渲染宽度夹取：太大夹到上限 2000（传 99999 还是 2000）",
+                PdfDocumentSession.EffectiveRenderWidth(session.Pages[0], 99999) == 2000,
                 PdfDocumentSession.EffectiveRenderWidth(session.Pages[0], 99999).ToString());
+
+            Check("渲染宽度夹取：400×600 页正好请到上限 2000 也允许（2000×3000 = 600 万像素 < 800 万）",
+                PdfDocumentSession.EffectiveRenderWidth(session.Pages[0], 2000) == 2000
+                && PdfDocumentSession.EffectiveRenderWidth(session.Pages[0], 2500) == 2000);
 
             var tallPage = new PdfPageInfo(0, 100, 2000);
             var tallWidth = PdfDocumentSession.EffectiveRenderWidth(tallPage, 1600);
-            Check("渲染宽度夹取：极高页按 MaxRenderPixels 再缩（100×2000 页请求 1600 → 547）",
-                tallWidth == 547,
+            Check("渲染宽度夹取：极高页按 MaxRenderPixels 再缩（100×2000 页请求 1600 → 632）",
+                tallWidth == 632,
                 $"实际 {tallWidth}，像素约 {(long)tallWidth * (long)(tallWidth * 2000.0 / 100):N0}");
 
-            Check("渲染宽度夹取：坏页尺寸只做上下限夹取（800 → 800、99999 → 1600）",
+            Check("渲染宽度夹取：坏页尺寸只做上下限夹取（800 → 800、99999 → 2000）",
                 PdfDocumentSession.EffectiveRenderWidth(new PdfPageInfo(0, double.NaN, 600), 800) == 800
-                && PdfDocumentSession.EffectiveRenderWidth(new PdfPageInfo(0, 0, 0), 99999) == 1600);
+                && PdfDocumentSession.EffectiveRenderWidth(new PdfPageInfo(0, 0, 0), 99999) == 2000);
 
             // ---- 真实渲染（Windows.Data.Pdf → PNG → 冻结 BitmapSource） ----
             BitmapSource? page0Bitmap = null;
@@ -1087,6 +1537,23 @@ internal static class PdfReaderChecks
                         page0Color.B > page0Color.R + 40,
                         $"R={page0Color.R} G={page0Color.G} B={page0Color.B}");
                 }
+
+                // 新渲染上限 2000 也真跑一遍（400×600 页按 2:3 = 2000×3000 = 600 万像素 < 800 万上限）
+                BitmapSource? page0LargeBitmap = null;
+                Exception? renderLargeError = null;
+                try
+                {
+                    page0LargeBitmap = session.RenderPageAsync(0, 2000).GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    renderLargeError = ex;
+                }
+                Check("真实渲染：新上限 2000 生效（请求 2000 宽 → 位图宽 2000、高约 3000）",
+                    renderLargeError is null && page0LargeBitmap is { PixelWidth: 2000 }
+                    && page0LargeBitmap.PixelHeight > 0
+                    && Math.Abs((double)page0LargeBitmap.PixelWidth / page0LargeBitmap.PixelHeight - 2.0 / 3.0) <= 0.02,
+                    renderLargeError?.ToString() ?? $"{page0LargeBitmap?.PixelWidth}×{page0LargeBitmap?.PixelHeight}");
             }
 
             // ---- 页号越界 / 关闭后的行为 ----
@@ -1195,11 +1662,12 @@ internal static class PdfReaderChecks
         try
         {
             var vm = new PdfReaderViewModel();
-            Check("VM 默认状态：没打开文档、页数 0、工具名 / 引导文案",
+            Check("VM 默认状态：没打开文档、页数 0、工具名 / 引导文案、目录为空",
                 !vm.HasDocument && vm.PageCount == 0
                 && vm.FileTitleText == "PDF 阅读器"
                 && vm.FilePathText.Contains("打开一个 PDF")
-                && vm.LoadedHintText == "",
+                && vm.LoadedHintText == ""
+                && vm.OutlineEntries.Count == 0 && !vm.HasOutline,
                 $"{vm.FileTitleText} / {vm.FilePathText}");
 
             Check("VM 阅读方式下拉：三种选项、当前名字与配置生效值一致",
@@ -1248,6 +1716,78 @@ internal static class PdfReaderChecks
             Check("VM 跳页参数只消费一次（界面重建不会反复跳回去）",
                 vm.ConsumePendingPageIndex() is null,
                 pendingPage?.ToString() ?? "(null)");
+
+            // ---- 本轮新增：缩放 / 面板 / 双页间距 / 恢复默认（VM 旧断言保持不动） ----
+            Check("VM 缩放：初始 100%、ZoomText 与生效百分比一致、始终在 25~800 内",
+                vm.ZoomText == "100%"
+                && vm.ZoomText == $"{vm.ZoomPercentEffective}%"
+                && vm.ZoomPercentEffective == 100
+                && vm.ZoomPercentEffective >= PdfReaderConfig.MinZoomPercent
+                && vm.ZoomPercentEffective <= PdfReaderConfig.MaxZoomPercent,
+                vm.ZoomText);
+
+            var zoomTextBeforeInvalid = vm.ZoomText;
+            vm.ZoomText = "abc";
+            Check("VM 缩放输入框：非法输入还原成当前值（不崩、不改配置）",
+                vm.ZoomText == zoomTextBeforeInvalid && vm.Cfg.ZoomPercent == vm.ZoomPercentEffective,
+                vm.ZoomText);
+
+            vm.ZoomText = "300%";
+            Check("VM 缩放输入框：接受带 % 的数字（300% → 300）", vm.ZoomPercentEffective == 300, vm.ZoomText);
+            vm.ZoomText = "9999";
+            Check("VM 缩放输入框：超过 800 夹到 800", vm.ZoomPercentEffective == 800, vm.ZoomText);
+            vm.ZoomText = "5";
+            Check("VM 缩放输入框：低于 25 夹到 25", vm.ZoomPercentEffective == 25, vm.ZoomText);
+
+            vm.ZoomInCommand.Execute(null);
+            Check("VM 放大按钮：25% + 10% = 35%", vm.ZoomPercentEffective == 35, vm.ZoomText);
+            vm.ZoomOutCommand.Execute(null);
+            Check("VM 缩小按钮：35% − 10% = 25%（回到下限）", vm.ZoomPercentEffective == 25, vm.ZoomText);
+            vm.ZoomOutCommand.Execute(null);
+            Check("VM 缩小按钮：已经在 25% 时保持不动（不会掉出下限）", vm.ZoomPercentEffective == 25, vm.ZoomText);
+
+            Check("VM 设置 / 目录面板默认都收着", !vm.IsSettingsVisible && !vm.IsOutlineVisible);
+            vm.ToggleSettingsCommand.Execute(null);
+            vm.ToggleOutlineCommand.Execute(null);
+            Check("VM 面板开关命令：点一下都展开", vm.IsSettingsVisible && vm.IsOutlineVisible);
+            vm.CloseSettingsCommand.Execute(null);
+            vm.CloseOutlineCommand.Execute(null);
+            Check("VM 面板关闭命令：点一下都收起", !vm.IsSettingsVisible && !vm.IsOutlineVisible);
+
+            Check("VM 双页间距：默认 2 px（SpreadGapText = \"2 px\"）",
+                vm.SpreadGapPixels == 2 && vm.SpreadGapText == "2 px", vm.SpreadGapText);
+            var layoutChangedCount = 0;
+            vm.LayoutChanged += (_, _) => layoutChangedCount++;
+            vm.SpreadGapPixels = 9999;
+            Check("VM 双页间距滑块：超上限夹到 64、文本跟着变、通知界面重排",
+                vm.SpreadGapPixels == 64 && vm.SpreadGapText == "64 px" && layoutChangedCount > 0,
+                vm.SpreadGapText);
+            vm.SpreadGapPixels = 8;
+            Check("VM 双页间距滑块：调到 8 写回配置", vm.Cfg.SpreadGapPixels == 8 && vm.SpreadGapText == "8 px",
+                vm.SpreadGapText);
+            vm.SpreadGapPixels = -5;
+            Check("VM 双页间距滑块：低于 0 夹到 0", vm.SpreadGapPixels == 0 && vm.SpreadGapText == "0 px",
+                vm.SpreadGapText);
+
+            Check("VM 目录：打开文档不会自动弹出目录面板，HasOutline 与条目数一致",
+                !vm.IsOutlineVisible && vm.HasOutline == (vm.OutlineEntries.Count > 0),
+                $"条目 {vm.OutlineEntries.Count}、HasOutline={vm.HasOutline}");
+            Check("VM 文件关联启动参数：没有待打开的文件（HasLaunchPdf=false）", !vm.HasLaunchPdf);
+
+            vm.Cfg.LastFolder = SelfCheckScratch.Root;
+            vm.Cfg.ReadMode = PdfReadMode.Spread;
+            vm.Cfg.ZoomPercent = 300;
+            vm.Cfg.SpreadGapPixels = 20;
+            vm.Cfg.InertiaEnabled = false;
+            vm.Cfg.WheelStepPixels = 500;
+            vm.ResetSettingsCommand.Execute(null);
+            Check("VM 恢复默认设置：5 个显示设置回默认、LastFolder 保留、状态栏说明",
+                vm.Cfg.ReadMode == PdfReadMode.Vertical && vm.Cfg.ZoomPercent == 100
+                && vm.Cfg.SpreadGapPixels == 2 && vm.Cfg.InertiaEnabled
+                && vm.Cfg.WheelStepPixels == 120 && vm.Cfg.LastFolder == SelfCheckScratch.Root
+                && vm.ZoomText == "100%" && vm.SpreadGapText == "2 px"
+                && vm.StatusText.Contains("已恢复默认设置"),
+                $"{vm.ZoomText} / {vm.SpreadGapText} / {vm.StatusText}");
 
             vm.NotifyClosed();
             Check("VM 关闭时释放文档（HasDocument 变 false、页数归 0）",

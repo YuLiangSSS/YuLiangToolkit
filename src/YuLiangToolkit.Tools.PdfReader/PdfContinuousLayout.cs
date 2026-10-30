@@ -39,9 +39,21 @@ public static class PdfContinuousLayout
     /// <summary>视口尺寸太小时的兜底页宽 / 页高，避免除 0。</summary>
     private const double MinimumUsableLength = 1;
 
+    /// <summary>缩放系数的生效范围（25% ~ 800%，和配置的百分比一致）。</summary>
+    public const double MinZoomScale = PdfReaderConfig.MinZoomPercent / 100.0;
+    public const double MaxZoomScale = PdfReaderConfig.MaxZoomPercent / 100.0;
+
+    /// <summary>把任意缩放系数夹到 25% ~ 800%；坏值按 1.0（100%）处理。</summary>
+    public static double EffectiveZoom(double zoomScale)
+    {
+        if (double.IsNaN(zoomScale) || double.IsInfinity(zoomScale) || zoomScale <= 0) return 1.0;
+        return Math.Clamp(zoomScale, MinZoomScale, MaxZoomScale);
+    }
+
     /// <summary>
-    /// 按当前阅读方式、页尺寸、视口尺寸算一条长带。
+    /// 按当前阅读方式、页尺寸、视口尺寸、缩放算一条长带。
     /// 视口没量出来（≤ 0）或没有页时返回空排版；页尺寸坏掉的页按正方形兜底。
+    /// <paramref name="zoomScale"/> 只放大「页本身」，四周留白不跟着放大（100% = 页刚好铺满一屏）。
     /// </summary>
     public static PdfContinuousLayoutResult Compute(
         PdfReadMode mode,
@@ -49,20 +61,22 @@ public static class PdfContinuousLayout
         double viewportWidth,
         double viewportHeight,
         double pageGap = DefaultPageGap,
-        double sideMargin = DefaultSideMargin)
+        double sideMargin = DefaultSideMargin,
+        double zoomScale = 1.0)
     {
         var normalized = PdfReadModes.Normalize(mode);
         var horizontal = PdfReadModes.IsHorizontal(normalized);
         var gap = HasUsableLength(pageGap) ? Math.Max(0, pageGap) : DefaultPageGap;
         var margin = HasUsableLength(sideMargin) ? Math.Max(0, sideMargin) : DefaultSideMargin;
+        var zoom = EffectiveZoom(zoomScale);
 
         var viewportMain = horizontal ? Safe(viewportWidth) : Safe(viewportHeight);
         var viewportCross = horizontal ? Safe(viewportHeight) : Safe(viewportWidth);
         if (viewportMain <= 0 || viewportCross <= 0)
             return new PdfContinuousLayoutResult(0, 0, Array.Empty<PdfPageBox>());
 
-        // 铺满方向：纵向 = 页宽铺满视口宽；横向 = 页高铺满视口高
-        var usableCross = Math.Max(MinimumUsableLength, viewportCross - margin * 2);
+        // 铺满方向：纵向 = 页宽铺满视口宽；横向 = 页高铺满视口高；再乘缩放
+        var usableCross = Math.Max(MinimumUsableLength, (viewportCross - margin * 2) * zoom);
 
         if (pages is null || pages.Count == 0)
         {
@@ -72,6 +86,8 @@ public static class PdfContinuousLayout
 
         var boxes = new List<PdfPageBox>(pages.Count);
         var cursor = margin;
+        // 缩放 < 100% 时页比视口窄 / 矮，居中放；100% 时正好铺满（左右各留 margin）
+        var crossStart = Math.Max(margin, (viewportCross - usableCross) / 2);
         for (var i = 0; i < pages.Count; i++)
         {
             var page = pages[i];
@@ -84,15 +100,16 @@ public static class PdfContinuousLayout
             main = Math.Max(MinimumUsableLength, main);
 
             if (horizontal)
-                boxes.Add(new PdfPageBox(i, cursor, margin, main, cross));
+                boxes.Add(new PdfPageBox(i, cursor, crossStart, main, cross));
             else
-                boxes.Add(new PdfPageBox(i, margin, cursor, cross, main));
+                boxes.Add(new PdfPageBox(i, crossStart, cursor, cross, main));
 
             cursor += main + gap;
         }
 
-        var contentWidth = horizontal ? Math.Max(viewportWidth, cursor - gap + margin) : Math.Max(viewportWidth, margin * 2 + usableCross);
-        var contentHeight = horizontal ? Math.Max(viewportHeight, margin * 2 + usableCross) : Math.Max(viewportHeight, cursor - gap + margin);
+        var contentCross = Math.Max(viewportCross, crossStart * 2 + usableCross);
+        var contentWidth = horizontal ? Math.Max(viewportWidth, cursor - gap + margin) : contentCross;
+        var contentHeight = horizontal ? contentCross : Math.Max(viewportHeight, cursor - gap + margin);
         return new PdfContinuousLayoutResult(contentWidth, contentHeight, boxes);
     }
 
@@ -116,6 +133,31 @@ public static class PdfContinuousLayout
     {
         var length = ReadingLength(layout, mode);
         var viewport = ReadingViewport(viewportWidth, viewportHeight, mode);
+        return Math.Max(0, length - viewport);
+    }
+
+    /// <summary>
+    /// 跨轴长度：纵向连续滚动看内容宽（放大后可左右拖），横向连续滚动看内容高（放大后可上下拖）。
+    /// </summary>
+    public static double CrossLength(PdfContinuousLayoutResult? layout, PdfReadMode mode)
+    {
+        if (layout is null) return 0;
+        return PdfReadModes.IsHorizontal(mode) ? layout.ContentHeight : layout.ContentWidth;
+    }
+
+    /// <summary>视口在跨轴上的长度：纵向看视口宽，横向看视口高。</summary>
+    public static double CrossViewport(double viewportWidth, double viewportHeight, PdfReadMode mode)
+    {
+        var value = PdfReadModes.IsHorizontal(mode) ? viewportHeight : viewportWidth;
+        return HasUsableLength(value) ? value : 0;
+    }
+
+    /// <summary>跨轴偏移的最大值（缩放 &gt; 100% 时跨轴也能滚；内容不够一屏时为 0）。</summary>
+    public static double MaximumCrossOffset(
+        PdfContinuousLayoutResult? layout, PdfReadMode mode, double viewportWidth, double viewportHeight)
+    {
+        var length = CrossLength(layout, mode);
+        var viewport = CrossViewport(viewportWidth, viewportHeight, mode);
         return Math.Max(0, length - viewport);
     }
 

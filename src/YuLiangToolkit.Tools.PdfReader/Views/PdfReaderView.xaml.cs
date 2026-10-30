@@ -11,27 +11,29 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using YuLiangToolkit.Tools.PdfReader.Rendering;
+using YuLiangToolkit.Tools.PdfReader.Text;
 using YuLiangToolkit.Tools.PdfReader.ViewModels;
 
 namespace YuLiangToolkit.Tools.PdfReader.Views;
 
 /// <summary>
-/// 「PDF 阅读器」的界面后台。这个工具的核心是「PDF 按需渲染 + 自己接管滚动」，所以代码后置比一般功能重一些，
-/// 分工仍然是清楚的：
+/// 「PDF 阅读器」的界面后台。这个工具的核心是「PDF 按需渲染 + 自己接管滚动 / 缩放 / 翻页」，所以代码后置比一般功能重：
 ///
 /// <list type="bullet">
-///   <item><b>纯逻辑</b>（页怎么排、滚多少、双页怎么配对、惯性怎么衰减）全在
-///         <see cref="PdfContinuousLayout"/>、<see cref="PdfSpreadLayout"/>、<see cref="PdfInertia"/> 里，自检直接断言；</item>
-///   <item><b>这里</b>只做必须碰界面的部分：把可见页渲染成 Image、滚动偏移、鼠标拖拽 / 惯性、双页翻页动画、键盘；</item>
-///   <item><b>ViewModel</b> 只放设置、打开的 PDF 与状态文案。</item>
+///   <item><b>纯逻辑</b>（页怎么排、滚多少、双页怎么配对、惯性怎么衰减、文字怎么搜）全在
+///         <see cref="PdfContinuousLayout"/>、<see cref="PdfSpreadLayout"/>、<see cref="PdfInertia"/>、
+///         <see cref="PdfTextSearch"/> 里，自检直接断言；</item>
+///   <item><b>这里</b>只做必须碰界面的部分：把可见页渲染成 Image、滚动 / 平移偏移、鼠标拖拽 / 惯性、
+///         双页翻页动画、缩放、搜索跳页、目录面板、键盘；</item>
+///   <item><b>ViewModel</b> 管设置、打开的 PDF、文字层 / 目录、文件关联状态。</item>
 /// </list>
 ///
-/// <para><b>「只渲染可见页」</b>：PDF 可能几百上千页，不可能每页都渲染成位图。连续模式用 Canvas 摆一条长带，
-/// 只给视口附近（前后各一屏缓冲）的页创建 Image 并按需渲染，滚出范围的释放掉 —— 大文件也不会把内存吃满。
-/// 所以快速甩动时可能短暂看到占位底色，停一下就会补齐。</para>
+/// <para><b>「只渲染可见页」</b>：连续模式用 Canvas 摆一条长带，只给视口附近（前后各一屏缓冲）的页创建 Image
+/// 并按需渲染，滚出范围的释放掉 —— 大文件也不会把内存吃满；缩放后按新的显示尺寸重新渲染可见页。</para>
 ///
-/// <para><b>「阅读偏移」</b>：0 = 第一页开头，最大值 = 最后一页末尾；由 <see cref="PdfContinuousLayout"/> 算，
-/// 界面自己记（不每帧反读 ScrollViewer 的物理偏移，原因见 docs/dev/pitfalls.md「图片连续阅读器」那条）。</para>
+/// <para><b>「两个轴」</b>：连续模式的阅读轴是纵向（横向模式是水平轴），缩放后另一个轴也能滚；
+/// 双页模式放大后可以按住左键拖动平移。偏移量都自己记（不每帧反读 ScrollViewer，原因见
+/// docs/dev/pitfalls.md「图片连续阅读器」那条）。</para>
 /// </summary>
 public partial class PdfReaderView : UserControl
 {
@@ -61,15 +63,20 @@ public partial class PdfReaderView : UserControl
     /// <summary>拖拽判定阈值：手抖 / 单击不算拖拽。</summary>
     private const double DragThresholdPixels = 4;
 
-    // ---------------------------------------------------------------- 拖动惯性
+    /// <summary>搜索输入防抖（毫秒）：边打字边搜，但不要每个字符都全量扫一遍。</summary>
+    private const int SearchDebounceMilliseconds = 280;
+
+    // ---------------------------------------------------------------- 拖动惯性（两个轴）
 
     private readonly PdfInertia _inertia = new();
     private DispatcherTimer? _inertiaTimer;
-    private double _inertiaVelocity;
+    private double _inertiaMainVelocity;
+    private double _inertiaCrossVelocity;
     private long _inertiaLastTimestamp;
 
     /// <summary>「还在滑的残余速度」：下一次拖拽开始时先存下来，松手时叠加（越甩越快）。</summary>
-    private double _carriedVelocity;
+    private double _carriedMainVelocity;
+    private double _carriedCrossVelocity;
 
     // ---------------------------------------------------------------- 连续滚动状态
 
@@ -79,6 +86,9 @@ public partial class PdfReaderView : UserControl
 
     /// <summary>「阅读偏移」的唯一真值（0 = 第一页开头）。</summary>
     private double _readingOffset;
+
+    /// <summary>跨轴偏移（纵向模式的水平偏移 / 横向模式的垂直偏移；缩放后可滚）。</summary>
+    private double _crossOffset;
 
     private readonly Dictionary<int, PageHost> _pageHosts = new();
     private readonly Queue<int> _renderQueue = new();
@@ -103,21 +113,37 @@ public partial class PdfReaderView : UserControl
     private PageHost? _spreadLeft;
     private PageHost? _spreadRight;
 
+    /// <summary>双页缩放后的平移（0 = 左上对齐；放大后拖动 / 惯性改它）。</summary>
+    private double _spreadPanX;
+    private double _spreadPanY;
+    private double _spreadContentWidth;
+    private double _spreadContentHeight;
+    private TranslateTransform? _spreadPanTransform;
+
     // ---------------------------------------------------------------- 左键拖拽
 
     private bool _dragging;
     private bool _dragMoved;
     private bool _releasingMouse;
     private Point _dragStart;
-    private double _dragStartOffset;
+    private double _dragStartReading;
+    private double _dragStartCross;
+    private double _dragStartPanX;
+    private double _dragStartPanY;
+
+    // ---------------------------------------------------------------- 文字搜索
+
+    private IReadOnlyList<PdfSearchHit> _searchHits = Array.Empty<PdfSearchHit>();
+    private int _searchIndex = -1;
+    private DispatcherTimer? _searchDebounceTimer;
+    private string? _pendingSearchQuery;
 
     // ---------------------------------------------------------------- 其他
 
     private Window? _hostWindow;
     private bool _unloaded;
     private bool _demoStarted;
-    private bool _loadingFromDemo;
-    private bool _loadingFromEnvironment;
+    private bool _loadingProgrammatically;
 
     /// <summary>上一次真正搭出界面的文档：打开新 PDF 失败时它不变，就不用重建。</summary>
     private PdfDocumentSession? _builtSession;
@@ -167,13 +193,31 @@ public partial class PdfReaderView : UserControl
         }
     }
 
+    // ---------------------------------------------------------------- 连续模式：偏移 / 尺寸
+
     /// <summary>连续模式下视口在阅读轴上的长度（纵向看高，横向看宽）。</summary>
     private double ReadingViewportLength => _horizontal ? ViewportGrid.ActualWidth : ViewportGrid.ActualHeight;
+
+    /// <summary>连续模式下视口在跨轴上的长度（纵向看宽，横向看高）。</summary>
+    private double CrossViewportLength => _horizontal ? ViewportGrid.ActualHeight : ViewportGrid.ActualWidth;
+
+    private double ReadingLength => PdfContinuousLayout.ReadingLength(_layout, _builtMode);
+
+    private double CrossLength => PdfContinuousLayout.CrossLength(_layout, _builtMode);
 
     /// <summary>当前长带的最大阅读偏移（内容不够一屏时为 0）。</summary>
     private double MaximumOffset => _layout is null
         ? 0
         : PdfContinuousLayout.MaximumOffset(_layout, _builtMode, ViewportGrid.ActualWidth, ViewportGrid.ActualHeight);
+
+    /// <summary>当前长带的最大跨轴偏移（缩放 ≤ 100% 时为 0）。</summary>
+    private double MaximumCrossOffset => _layout is null
+        ? 0
+        : PdfContinuousLayout.MaximumCrossOffset(_layout, _builtMode, ViewportGrid.ActualWidth, ViewportGrid.ActualHeight);
+
+    private double GetReadingOffset() => PdfContinuousLayout.ClampOffset(_readingOffset, MaximumOffset);
+
+    private double GetCrossOffset() => PdfContinuousLayout.ClampOffset(_crossOffset, MaximumCrossOffset);
 
     // ---------------------------------------------------------------- 生命周期
 
@@ -195,10 +239,29 @@ public partial class PdfReaderView : UserControl
         vm.DocumentChanged += OnDocumentChanged;
         vm.ModeChanged -= OnModeChanged;
         vm.ModeChanged += OnModeChanged;
+        vm.ZoomChanged -= OnZoomChanged;
+        vm.ZoomChanged += OnZoomChanged;
+        vm.LayoutChanged -= OnLayoutChanged;
+        vm.LayoutChanged += OnLayoutChanged;
+        vm.TextLayerChanged -= OnTextLayerChanged;
+        vm.TextLayerChanged += OnTextLayerChanged;
 
         UpdateModeChrome();
         UpdateEmptyStatus();
+        UpdateSearchChrome();
+        UpdateOutlineChrome();
+        UpdateTextLayerHint();
         MaybeShowStatusError();
+
+        // 双击 .pdf 启动（文件关联 / 命令行）：先打开它，再搭界面
+        if (vm.HasLaunchPdf)
+        {
+            await RunProgrammaticallyAsync(vm.LoadLaunchPdfAsync);
+            if (vm.HasDocument) await BuildAsync(keepPage: false);
+            else UpdateEmptyStatus();
+            MaybeShowStatusError();
+            return;
+        }
 
         if (vm.HasDocument)
         {
@@ -209,36 +272,52 @@ public partial class PdfReaderView : UserControl
         if (_demoStarted) return;
         _demoStarted = true;
 
-        // 开发 / 截图：YLT_PDF_DEMO=1 → 生成一份演示 PDF 并打开（正常使用不会走到这里）
-        _loadingFromDemo = true;
+        // 开发 / 截图：YLT_PDF_DEMO=1 → 生成演示 PDF；YLT_PDF_OPEN=路径 → 直接打开指定 PDF
+        await RunProgrammaticallyAsync(vm.TryStartDemoAsync);
+        if (!vm.HasDocument) await RunProgrammaticallyAsync(vm.TryOpenFromEnvironmentAsync);
+
+        if (vm.HasDocument) await BuildAsync(keepPage: false);
+        else
+        {
+            UpdateEmptyStatus();
+            UpdateOutlineChrome();
+        }
+
+        MaybeShowStatusError();
+        ApplyDebugUiHooks();
+    }
+
+    /// <summary>
+    /// 开发 / 截图钩子（不设环境变量时全是空转）：
+    /// <c>YLT_PDF_SEARCH=文字</c> 打开后直接搜一次、<c>YLT_PDF_OUTLINE=1</c> 打开目录面板、
+    /// <c>YLT_PDF_SETTINGS=1</c> 打开设置面板。
+    /// </summary>
+    private void ApplyDebugUiHooks()
+    {
+        var vm = Vm;
+        if (vm is null || !vm.HasDocument) return;
+
+        if (PdfReaderViewModel.IsEnvironmentOn("YLT_PDF_OUTLINE")) vm.IsOutlineVisible = true;
+        if (PdfReaderViewModel.IsEnvironmentOn("YLT_PDF_SETTINGS")) vm.IsSettingsVisible = true;
+
+        var search = Environment.GetEnvironmentVariable("YLT_PDF_SEARCH");
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            SearchBox.Text = search.Trim();
+            RunSearch(SearchBox.Text, autoJump: true);
+        }
+    }
+
+    private async Task RunProgrammaticallyAsync(Func<Task> load)
+    {
+        _loadingProgrammatically = true;
         try
         {
-            await vm.TryStartDemoAsync();
+            await load();
         }
         finally
         {
-            _loadingFromDemo = false;
-        }
-
-        if (vm.HasDocument) await BuildAsync(keepPage: false);
-        else UpdateEmptyStatus();
-        MaybeShowStatusError();
-
-        // 开发 / 截图：YLT_PDF_OPEN=路径 直接打开指定 PDF（不弹对话框）
-        if (!vm.HasDocument)
-        {
-            _loadingFromEnvironment = true;
-            try
-            {
-                await vm.TryOpenFromEnvironmentAsync();
-            }
-            finally
-            {
-                _loadingFromEnvironment = false;
-            }
-
-            if (vm.HasDocument) await BuildAsync(keepPage: false);
-            MaybeShowStatusError();
+            _loadingProgrammatically = false;
         }
     }
 
@@ -256,6 +335,9 @@ public partial class PdfReaderView : UserControl
         {
             vm.DocumentChanged -= OnDocumentChanged;
             vm.ModeChanged -= OnModeChanged;
+            vm.ZoomChanged -= OnZoomChanged;
+            vm.LayoutChanged -= OnLayoutChanged;
+            vm.TextLayerChanged -= OnTextLayerChanged;
             vm.PdfPicker = null;
         }
 
@@ -271,7 +353,8 @@ public partial class PdfReaderView : UserControl
         _visibleRefreshTimer?.Stop();
         _visibleRefreshTimer = null;
         _needsVisibleRefresh = false;
-
+        _searchDebounceTimer?.Stop();
+        _searchDebounceTimer = null;
         _errorToastTimer?.Stop();
         _errorToastTimer = null;
 
@@ -302,6 +385,9 @@ public partial class PdfReaderView : UserControl
     {
         UpdateModeChrome();
         UpdateEmptyStatus();
+        UpdateSearchChrome();
+        UpdateOutlineChrome();
+        UpdateTextLayerHint();
         MaybeShowStatusError();
 
         var vm = Vm;
@@ -312,11 +398,12 @@ public partial class PdfReaderView : UserControl
             ClearSpreadVisuals();
             _spreadActive = false;
             _builtSession = null;
+            ClearSearch(clearText: false);
             return;
         }
 
-        // 演示 / 环境变量直接打开时由 OnLoaded 自己负责搭界面，避免「先建一次再被第二次覆盖」
-        if (_loadingFromDemo || _loadingFromEnvironment) return;
+        // 程序自己加载（演示 / 环境变量 / 双击启动）由 OnLoaded 负责搭界面，避免重复重建
+        if (_loadingProgrammatically) return;
 
         // 打开新 PDF 失败时 _session 还是原来那份：状态文案弹提示就行，别把阅读位置重置回第一页
         if (ReferenceEquals(vm.Session, _builtSession)) return;
@@ -327,8 +414,33 @@ public partial class PdfReaderView : UserControl
     private void OnModeChanged(object? sender, EventArgs e)
     {
         UpdateModeChrome();
-        UpdateHint();
         if (Vm?.HasDocument == true) _ = BuildAsync(keepPage: true);
+    }
+
+    private void OnZoomChanged(object? sender, EventArgs e)
+    {
+        UpdateModeChrome();
+        if (Vm?.HasDocument == true) _ = RebuildKeepingCenterAsync();
+    }
+
+    private void OnLayoutChanged(object? sender, EventArgs e)
+    {
+        // 目前只有「双页页面间距」：只影响双页画面，重排时保持平移中心
+        if (Vm?.HasDocument == true && _spreadActive) _ = RebuildSpreadKeepingCenterAsync();
+    }
+
+    private void OnTextLayerChanged(object? sender, EventArgs e)
+    {
+        UpdateOutlineChrome();
+        UpdateTextLayerHint();
+        UpdateSearchChrome();
+
+        // 提取期间用户已经输入了搜索词：提取完自动跑一次并跳到第一个命中
+        if (_pendingSearchQuery is { } query)
+        {
+            _pendingSearchQuery = null;
+            RunSearch(query, autoJump: true);
+        }
     }
 
     // ---------------------------------------------------------------- 建视图（连续 / 双页统一切换）
@@ -385,6 +497,7 @@ public partial class PdfReaderView : UserControl
             UpdateModeChrome();
             UpdatePageIndicator();
             UpdateProgress();
+            UpdateTextLayerHint();
         }
         finally
         {
@@ -399,11 +512,7 @@ public partial class PdfReaderView : UserControl
         }
     }
 
-    /// <summary>
-    /// 当前阅读位置对应的页号（换阅读方式 / 窗口缩放时尽量停在这一页）。
-    /// 用「阅读偏移最前面那一页」而不是视口中心页：横向连续滚动一屏能并排看到两三页，
-    /// 用中心页会在窗口尺寸变化时把整条长带往后跳一页（第一页跑到左边看不见了）。
-    /// </summary>
+    /// <summary>当前阅读位置对应的页号（换阅读方式 / 窗口缩放时尽量停在这一页）。</summary>
     private int CurrentPageIndex()
     {
         var vm = Vm;
@@ -412,12 +521,12 @@ public partial class PdfReaderView : UserControl
         if (_spreadActive) return _spreadStart;
         if (_layout is null || _layout.IsEmpty) return 0;
 
-        return PdfContinuousLayout.PageIndexAtOffset(_layout, _builtMode, _readingOffset);
+        return PdfContinuousLayout.PageIndexAtOffset(_layout, _builtMode, GetReadingOffset());
     }
 
     // ---------------------------------------------------------------- 连续滚动：排版 / 渲染
 
-    private async Task BuildContinuousAsync(int targetPage)
+    private async Task BuildContinuousAsync(int targetPage, (double Main, double Cross)? center = null)
     {
         var vm = Vm;
         if (vm?.Session is not { } session)
@@ -440,12 +549,28 @@ public partial class PdfReaderView : UserControl
         _builtMode = vm.CurrentReadMode;
         _horizontal = PdfReadModes.IsHorizontal(_builtMode);
 
-        _layout = PdfContinuousLayout.Compute(_builtMode, session.Pages, width, height);
+        _layout = PdfContinuousLayout.Compute(
+            _builtMode,
+            session.Pages,
+            width,
+            height,
+            PdfReaderConfig.ContinuousPageGapPixels,
+            PdfReaderConfig.SideMarginPixels,
+            vm.Cfg.ZoomScale);
+
         PageCanvas.Width = _layout.ContentWidth;
         PageCanvas.Height = _layout.ContentHeight;
         ContinuousScroll.UpdateLayout();
 
-        SetReadingOffset(PdfContinuousLayout.OffsetOfPage(_layout, _builtMode, targetPage));
+        if (center is { } viewCenter)
+        {
+            ApplyViewportCenter(viewCenter.Main, viewCenter.Cross);
+        }
+        else
+        {
+            SetReadingOffset(PdfContinuousLayout.OffsetOfPage(_layout, _builtMode, targetPage));
+            SetCrossOffset(0);
+        }
 
         await Dispatcher.Yield(DispatcherPriority.Loaded);
         if (generation != _generation || _layout is null) return;
@@ -473,6 +598,7 @@ public partial class PdfReaderView : UserControl
 
         _layout = null;
         _readingOffset = 0;
+        _crossOffset = 0;
         _visibleFirst = -1;
         _visibleLast = -1;
 
@@ -493,12 +619,70 @@ public partial class PdfReaderView : UserControl
         }
 
         _readingOffset = PdfContinuousLayout.ClampOffset(offset, MaximumOffset);
-        if (_horizontal) ContinuousScroll.ScrollToHorizontalOffset(_readingOffset);
-        else ContinuousScroll.ScrollToVerticalOffset(_readingOffset);
-
+        ApplyScrollOffsets();
         UpdatePageIndicator();
         UpdateProgress();
         ScheduleVisibleRefresh();
+    }
+
+    /// <summary>改跨轴偏移（缩放后纵向模式的左右 / 横向模式的上下）。</summary>
+    private void SetCrossOffset(double offset)
+    {
+        if (_layout is null)
+        {
+            _crossOffset = 0;
+            return;
+        }
+
+        _crossOffset = PdfContinuousLayout.ClampOffset(offset, MaximumCrossOffset);
+        ApplyScrollOffsets();
+        ScheduleVisibleRefresh();
+    }
+
+    private void ApplyScrollOffsets()
+    {
+        if (_horizontal)
+        {
+            ContinuousScroll.ScrollToHorizontalOffset(_readingOffset);
+            ContinuousScroll.ScrollToVerticalOffset(_crossOffset);
+        }
+        else
+        {
+            ContinuousScroll.ScrollToHorizontalOffset(_crossOffset);
+            ContinuousScroll.ScrollToVerticalOffset(_readingOffset);
+        }
+    }
+
+    private (double Main, double Cross) CaptureViewportCenter()
+    {
+        if (_layout is null) return (0.5, 0.5);
+
+        var readingLength = ReadingLength;
+        var readingViewport = ReadingViewportLength;
+        var main = readingLength > 0
+            ? Math.Clamp((GetReadingOffset() + readingViewport / 2) / readingLength, 0, 1)
+            : 0.5;
+
+        var crossLength = CrossLength;
+        var crossViewport = CrossViewportLength;
+        var cross = crossLength > crossViewport && crossLength > 0
+            ? Math.Clamp((GetCrossOffset() + crossViewport / 2) / crossLength, 0, 1)
+            : 0.5;
+
+        return (main, cross);
+    }
+
+    private void ApplyViewportCenter(double mainRatio, double crossRatio)
+    {
+        if (_layout is null) return;
+
+        var readingLength = ReadingLength;
+        var readingViewport = ReadingViewportLength;
+        SetReadingOffset(mainRatio * readingLength - readingViewport / 2);
+
+        var crossLength = CrossLength;
+        var crossViewport = CrossViewportLength;
+        SetCrossOffset(crossLength > crossViewport ? crossRatio * crossLength - crossViewport / 2 : 0);
     }
 
     private void OnContinuousScrollChanged(object sender, ScrollChangedEventArgs e)
@@ -540,7 +724,7 @@ public partial class PdfReaderView : UserControl
         var viewport = ReadingViewportLength;
         if (viewport <= 0) return;
 
-        var (first, last) = PdfContinuousLayout.VisibleRange(_layout, _builtMode, _readingOffset, viewport);
+        var (first, last) = PdfContinuousLayout.VisibleRange(_layout, _builtMode, GetReadingOffset(), viewport);
         _visibleFirst = first;
         _visibleLast = last;
 
@@ -661,8 +845,8 @@ public partial class PdfReaderView : UserControl
 
     // ---------------------------------------------------------------- 双页翻页
 
-    /// <summary>按当前 <see cref="_spreadStart"/> 重排双页画面（不带动画）。</summary>
-    private async Task ShowSpreadAsync()
+    /// <summary>按当前 <see cref="_spreadStart"/> / 间距 / 缩放重排双页画面（不带动画）。</summary>
+    private async Task ShowSpreadAsync(double? panCenterX = null, double? panCenterY = null)
     {
         if (!_spreadActive) return;
 
@@ -680,7 +864,17 @@ public partial class PdfReaderView : UserControl
         ClearSpreadVisuals();
         var generation = _spreadGeneration;
 
-        var layout = PdfSpreadLayout.Compute(session.Pages, _spreadStart, width, height);
+        var layout = PdfSpreadLayout.Compute(
+            session.Pages,
+            _spreadStart,
+            width,
+            height,
+            vm.Cfg.SpreadGapEffective,
+            PdfReaderConfig.SideMarginPixels,
+            vm.Cfg.ZoomScale);
+
+        _spreadContentWidth = layout.ContentWidth;
+        _spreadContentHeight = layout.ContentHeight;
         SpreadCanvas.Width = layout.ContentWidth;
         SpreadCanvas.Height = layout.ContentHeight;
 
@@ -695,6 +889,11 @@ public partial class PdfReaderView : UserControl
             _spreadRight = CreatePageHost(rightSlot.PageIndex, rightSlot.X, rightSlot.Y, rightSlot.Width, rightSlot.Height);
             SpreadCanvas.Children.Add(_spreadRight.Container);
         }
+
+        if (panCenterX is { } centerX && panCenterY is { } centerY)
+            SetSpreadPanCenter(centerX, centerY);
+        else
+            SetSpreadPan(0, 0);
 
         UpdateSpreadChrome();
         UpdatePageIndicator();
@@ -724,12 +923,53 @@ public partial class PdfReaderView : UserControl
         _spreadRight = null;
         _spreadAnimating = false;
         _pendingSpreadForward = null;
+        _spreadPanX = 0;
+        _spreadPanY = 0;
+        _spreadContentWidth = 0;
+        _spreadContentHeight = 0;
+        _spreadPanTransform = null;
 
         if (SpreadCanvas is not null)
         {
             SpreadCanvas.Children.Clear();
             SpreadCanvas.RenderTransform = new TranslateTransform();
         }
+    }
+
+    /// <summary>双页平移：内容跟着手走（放大到超出视口后才有得动）。</summary>
+    private void SetSpreadPan(double x, double y)
+    {
+        var (clampedX, clampedY) = PdfSpreadLayout.ClampPan(
+            x, y, _spreadContentWidth, _spreadContentHeight,
+            SpreadViewport.ActualWidth, SpreadViewport.ActualHeight);
+
+        _spreadPanX = clampedX;
+        _spreadPanY = clampedY;
+
+        _spreadPanTransform ??= new TranslateTransform();
+        SpreadCanvas.RenderTransform = _spreadPanTransform;
+        _spreadPanTransform.X = -_spreadPanX;
+        _spreadPanTransform.Y = -_spreadPanY;
+    }
+
+    private (double X, double Y) CaptureSpreadPanCenter()
+    {
+        var width = SpreadViewport.ActualWidth;
+        var height = SpreadViewport.ActualHeight;
+        var centerX = _spreadContentWidth > width && _spreadContentWidth > 0
+            ? Math.Clamp((_spreadPanX + width / 2) / _spreadContentWidth, 0, 1)
+            : 0.5;
+        var centerY = _spreadContentHeight > height && _spreadContentHeight > 0
+            ? Math.Clamp((_spreadPanY + height / 2) / _spreadContentHeight, 0, 1)
+            : 0.5;
+        return (centerX, centerY);
+    }
+
+    private void SetSpreadPanCenter(double centerX, double centerY)
+    {
+        SetSpreadPan(
+            centerX * _spreadContentWidth - SpreadViewport.ActualWidth / 2,
+            centerY * _spreadContentHeight - SpreadViewport.ActualHeight / 2);
     }
 
     /// <summary>翻一屏（一次翻两页）：先把新页渲染好，再让旧页滑出、新页滑入。</summary>
@@ -757,7 +997,17 @@ public partial class PdfReaderView : UserControl
             var height = SpreadViewport.ActualHeight;
             if (width <= 1 || height <= 1) return;
 
-            var layout = PdfSpreadLayout.Compute(session.Pages, target, width, height);
+            var layout = PdfSpreadLayout.Compute(
+                session.Pages,
+                target,
+                width,
+                height,
+                vm.Cfg.SpreadGapEffective,
+                PdfReaderConfig.SideMarginPixels,
+                vm.Cfg.ZoomScale);
+
+            _spreadContentWidth = layout.ContentWidth;
+            _spreadContentHeight = layout.ContentHeight;
             SpreadCanvas.Width = layout.ContentWidth;
             SpreadCanvas.Height = layout.ContentHeight;
 
@@ -791,12 +1041,17 @@ public partial class PdfReaderView : UserControl
             var slide = forward ? -SpreadSlidePixels : SpreadSlidePixels;   // 旧页往哪边滑出
             var duration = SpreadAnimationMilliseconds;
             var animations = new List<Task>();
-            foreach (var oldHost in oldHosts)
-                animations.Add(PlaySlideAsync(oldHost.Container, 0, slide, 1, 0, duration));
-            foreach (var newHost in newHosts)
-                animations.Add(PlaySlideAsync(newHost.Container, -slide, 0, 0, 1, duration));
-            await Task.WhenAll(animations);
-            if (generation != _spreadGeneration) return;
+            var zoomed = _spreadPanX > 0.5 || _spreadPanY > 0.5
+                         || _spreadContentWidth > width + 0.5 || _spreadContentHeight > height + 0.5;
+            if (!zoomed)
+            {
+                foreach (var oldHost in oldHosts)
+                    animations.Add(PlaySlideAsync(oldHost.Container, 0, slide, 1, 0, duration));
+                foreach (var newHost in newHosts)
+                    animations.Add(PlaySlideAsync(newHost.Container, -slide, 0, 0, 1, duration));
+                await Task.WhenAll(animations);
+                if (generation != _spreadGeneration) return;
+            }
 
             foreach (var oldHost in oldHosts) SpreadCanvas.Children.Remove(oldHost.Container);
             foreach (var newHost in newHosts)
@@ -808,6 +1063,9 @@ public partial class PdfReaderView : UserControl
             _spreadLeft = newLeft;
             _spreadRight = newRight;
             _spreadStart = target;
+
+            // 翻页后回到左上角（放大状态下也不要把上一屏的平移带过去）
+            SetSpreadPan(0, 0);
             UpdateSpreadChrome();
             UpdatePageIndicator();
             UpdateProgress();
@@ -824,7 +1082,7 @@ public partial class PdfReaderView : UserControl
         }
     }
 
-    /// <summary>双页跳到某一屏（Home / End 用）。</summary>
+    /// <summary>双页跳到某一屏（Home / End / 搜索 / 目录用）。</summary>
     private void GoToSpreadStart(int pageIndex)
     {
         if (!_spreadActive) return;
@@ -853,200 +1111,43 @@ public partial class PdfReaderView : UserControl
         ToolbarNextButton.IsEnabled = canNext;
     }
 
-    // ---------------------------------------------------------------- 拖拽 + 惯性（只在连续滚动模式）
+    // ---------------------------------------------------------------- 缩放 / 窗口尺寸变化后的重排
 
-    private void OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    private async Task RebuildKeepingCenterAsync()
     {
-        if (Vm is not { } vm || !vm.HasDocument || vm.IsBusy) return;
-        if (Mouse.Captured is not null && !ReferenceEquals(Mouse.Captured, this)) return;
-        if (!IsFromViewport(e.OriginalSource as DependencyObject)) return;
+        if (_unloaded) return;
+        var vm = Vm;
+        if (vm?.HasDocument != true || vm.IsBusy) return;
 
-        e.Handled = true;
-        AbortInertia();
+        if (_building)
+        {
+            _buildQueued = true;
+            _buildQueuedKeepPage = true;
+            return;
+        }
 
         if (_spreadActive)
         {
-            _ = TurnSpreadAsync(forward: e.Delta < 0);
+            await RebuildSpreadKeepingCenterAsync();
             return;
         }
 
-        var step = vm.Cfg.WheelStepEffective;
-        SetReadingOffset(_readingOffset + (e.Delta < 0 ? step : -step));
-    }
-
-    private void OnPreviewMouseDown(object sender, MouseButtonEventArgs e)
-    {
-        var vm = Vm;
-        if (vm?.HasDocument != true) return;
-
-        // 别的控件正握着鼠标（ComboBox 下拉弹层 / 输入框选字）时整个都别碰
-        if (Mouse.Captured is not null && !ReferenceEquals(Mouse.Captured, this)) return;
-        if (e.ChangedButton != MouseButton.Left) return;
-
-        var source = e.OriginalSource as DependencyObject;
-        if (!IsFromViewport(source)) return;
-        if (IsOnClickableControl(source)) return;   // 翻页按钮的点击不能被拖拽吃掉
-        if (_spreadActive) return;                  // 双页模式不拖画面
-
-        e.Handled = true;
-        BeginDrag(e);
-    }
-
-    private void OnPreviewMouseMove(object sender, MouseEventArgs e)
-    {
-        if (!_dragging) return;
-
-        var position = e.GetPosition(this);
-        var dx = position.X - _dragStart.X;
-        var dy = position.Y - _dragStart.Y;
-        if (!_dragMoved && Math.Abs(dx) + Math.Abs(dy) < DragThresholdPixels) return;
-
-        _dragMoved = true;
-        e.Handled = true;
-
-        // 内容跟着手走：纵向模式看上下、横向模式看左右
-        var delta = _horizontal ? -dx : -dy;
-        SetReadingOffset(_dragStartOffset + delta);
-
-        // 惯性速度用「实际生效的偏移」采样：撞到边界就不动了，松手自然不会在边上滑
-        _inertia.Note(NowMilliseconds(), _readingOffset, 0);
-    }
-
-    private void OnPreviewMouseUp(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ChangedButton != MouseButton.Left || !_dragging) return;
-
-        var moved = _dragMoved;
-        var (velocity, _) = moved ? _inertia.ComputeVelocity() : (0.0, 0.0);
-        EndDrag();
-
-        if (moved)
+        if (_layout is null)
         {
-            e.Handled = true;
-            StartInertia(velocity);
-        }
-        else
-        {
-            AbortInertia();   // 只是点了一下：把残余速度扔掉，别继续滑
-        }
-    }
-
-    private void OnLostMouseCapture(object sender, MouseEventArgs e)
-    {
-        if (_releasingMouse) return;
-        if (!_dragging) return;
-
-        _dragging = false;
-        _dragMoved = false;
-        Cursor = null;
-    }
-
-    private void BeginDrag(MouseButtonEventArgs e)
-    {
-        // 连续甩动越滑越快：先把残余速度接过来（惯性设置开着才叠加），再停掉当前惯性
-        var accumulate = Vm?.Cfg.InertiaEnabled == true;
-        _carriedVelocity = accumulate ? _inertiaVelocity : 0;
-        CancelInertia();
-
-        _dragging = true;
-        _dragMoved = false;
-        _dragStart = e.GetPosition(this);
-        _dragStartOffset = _readingOffset;
-        _inertia.Reset();
-        _inertia.Note(NowMilliseconds(), _readingOffset, 0);
-
-        Cursor = Cursors.SizeAll;
-        CaptureMouse();
-    }
-
-    private void EndDrag()
-    {
-        _dragging = false;
-        _dragMoved = false;
-        Cursor = null;
-        ReleaseMouseCaptureSafely();
-    }
-
-    private void ReleaseMouseCaptureSafely()
-    {
-        if (!IsMouseCaptured) return;
-        _releasingMouse = true;
-        try { ReleaseMouseCapture(); }
-        finally { _releasingMouse = false; }
-    }
-
-    private void StartInertia(double sampleVelocity)
-    {
-        if (Vm is not { } vm || !vm.Cfg.InertiaEnabled)
-        {
-            AbortInertia();
+            await BuildAsync(keepPage: true);
             return;
         }
 
-        var (velocity, _) = PdfInertia.Combine(
-            sampleVelocity, 0, _carriedVelocity, 0, accumulate: true, PdfInertia.DefaultMaxSpeed);
-        _carriedVelocity = 0;
-
-        if (!_inertia.IsFastEnough(velocity, 0)) return;
-
-        _inertiaVelocity = velocity;
-
-        _inertiaTimer ??= new DispatcherTimer(DispatcherPriority.Input)
-        {
-            Interval = TimeSpan.FromMilliseconds(16),
-        };
-        if (_inertiaTimer.Tag is null)
-        {
-            _inertiaTimer.Tick += OnInertiaTick;
-            _inertiaTimer.Tag = true;
-        }
-
-        _inertiaLastTimestamp = Stopwatch.GetTimestamp();
-        _inertiaTimer.Start();
+        var center = CaptureViewportCenter();
+        await BuildContinuousAsync(CurrentPageIndex(), center);
     }
 
-    private void OnInertiaTick(object? sender, EventArgs e)
+    private async Task RebuildSpreadKeepingCenterAsync()
     {
-        if (_spreadActive || _layout is null)
-        {
-            CancelInertia();
-            return;
-        }
-
-        var now = Stopwatch.GetTimestamp();
-        var elapsed = (now - _inertiaLastTimestamp) * 1000.0 / Stopwatch.Frequency;
-        _inertiaLastTimestamp = now;
-        if (elapsed <= 0 || elapsed > 100) elapsed = 16.0;   // 掉帧 / 休眠回来：别一下跳很远
-
-        var (velocity, _) = _inertia.Decay(_inertiaVelocity, 0, elapsed);
-
-        var before = _readingOffset;
-        var target = before + velocity * elapsed;
-        SetReadingOffset(target);
-        var after = _readingOffset;
-
-        // 撞到边界（请求了但实际没动）就把速度清掉，别在边上“嗡嗡”震
-        if (Math.Abs(after - target) > 0.5) velocity = 0;
-        _inertiaVelocity = velocity;
-
-        if (!_inertia.IsFastEnough(velocity, 0)) CancelInertia();
+        if (!_spreadActive) return;
+        var center = CaptureSpreadPanCenter();
+        await ShowSpreadAsync(center.X, center.Y);
     }
-
-    /// <summary>停下惯性动画（保留「残余速度」，下一次拖拽还能叠加）。</summary>
-    private void CancelInertia()
-    {
-        _inertiaTimer?.Stop();
-        _inertiaVelocity = 0;
-    }
-
-    /// <summary>彻底停下惯性：动画 + 残余速度一起清掉（滚轮 / 换模式 / 切工具时用）。</summary>
-    private void AbortInertia()
-    {
-        CancelInertia();
-        _carriedVelocity = 0;
-    }
-
-    // ---------------------------------------------------------------- 视口尺寸变化
 
     private void OnViewportSizeChanged(object sender, SizeChangedEventArgs e)
     {
@@ -1079,27 +1180,499 @@ public partial class PdfReaderView : UserControl
         if (vm?.HasDocument != true || vm.IsBusy) return;
         if (ViewportGrid.ActualWidth <= 1 || ViewportGrid.ActualHeight <= 1) return;
 
-        if (_building)
+        await RebuildKeepingCenterAsync();
+    }
+
+    // ---------------------------------------------------------------- 拖拽 + 惯性
+
+    private void OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (Vm is not { } vm || !vm.HasDocument || vm.IsBusy) return;
+        if (Mouse.Captured is not null && !ReferenceEquals(Mouse.Captured, this)) return;
+
+        var source = e.OriginalSource as DependencyObject;
+        if (!IsFromViewport(source) || IsInsideOverlayPanel(source)) return;
+
+        e.Handled = true;
+        AbortInertia();
+
+        // Ctrl+滚轮 = 以画面中心缩放（两种模式都生效）
+        if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
         {
-            _buildQueued = true;
-            _buildQueuedKeepPage = true;
+            if (e.Delta > 0) vm.ZoomInCommand.Execute(null);
+            else if (e.Delta < 0) vm.ZoomOutCommand.Execute(null);
             return;
         }
+
+        var step = vm.Cfg.WheelStepEffective;
 
         if (_spreadActive)
         {
-            await ShowSpreadAsync();
+            if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+            {
+                SetSpreadPan(_spreadPanX, _spreadPanY + (e.Delta < 0 ? step : -step));
+                return;
+            }
+
+            _ = TurnSpreadAsync(forward: e.Delta < 0);
             return;
         }
 
-        if (_layout is null)
+        if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
         {
-            await BuildAsync(keepPage: true);
+            SetCrossOffset(GetCrossOffset() + (e.Delta < 0 ? step : -step));
             return;
         }
 
-        // 连续模式：窗口大小变了长带要重排；尽量停在同一页
-        await BuildContinuousAsync(CurrentPageIndex());
+        SetReadingOffset(GetReadingOffset() + (e.Delta < 0 ? step : -step));
+    }
+
+    private void OnPreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        var vm = Vm;
+        if (vm?.HasDocument != true) return;
+
+        // 别的控件正握着鼠标（ComboBox 下拉弹层 / 输入框选字）时整个都别碰
+        if (Mouse.Captured is not null && !ReferenceEquals(Mouse.Captured, this)) return;
+        if (e.ChangedButton != MouseButton.Left) return;
+
+        var source = e.OriginalSource as DependencyObject;
+        if (!IsFromViewport(source)) return;
+        if (IsOnClickableControl(source)) return;   // 翻页按钮的点击不能被拖拽吃掉
+        if (IsInsideOverlayPanel(source)) return;   // 目录 / 设置面板上的点击不拖画面
+
+        e.Handled = true;
+        BeginDrag(e);
+    }
+
+    private void OnPreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_dragging) return;
+
+        var position = e.GetPosition(this);
+        var dx = position.X - _dragStart.X;
+        var dy = position.Y - _dragStart.Y;
+        if (!_dragMoved && Math.Abs(dx) + Math.Abs(dy) < DragThresholdPixels) return;
+
+        _dragMoved = true;
+        e.Handled = true;
+
+        if (_spreadActive)
+        {
+            // 双页放大后：内容跟着手走
+            SetSpreadPan(_dragStartPanX - dx, _dragStartPanY - dy);
+        }
+        else
+        {
+            // 阅读轴沿用原来的方向规则，跨轴按「内容跟着手走」算
+            var reading = _dragStartReading + (_horizontal ? -dx : -dy);
+            var cross = _dragStartCross + (_horizontal ? -dy : -dx);
+            SetReadingOffset(reading);
+            SetCrossOffset(cross);
+        }
+
+        // 惯性速度用「实际生效的偏移」采样：撞到边界就不动了，松手自然不会在边上滑
+        var (mainOffset, crossOffset) = GetInertiaOffsets();
+        _inertia.Note(NowMilliseconds(), mainOffset, crossOffset);
+    }
+
+    private void OnPreviewMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left || !_dragging) return;
+
+        var moved = _dragMoved;
+        var (mainVelocity, crossVelocity) = moved ? _inertia.ComputeVelocity() : (0.0, 0.0);
+        EndDrag();
+
+        if (moved)
+        {
+            e.Handled = true;
+            StartInertia(mainVelocity, crossVelocity);
+        }
+        else
+        {
+            AbortInertia();   // 只是点了一下：把残余速度扔掉，别继续滑
+        }
+    }
+
+    private void OnLostMouseCapture(object sender, MouseEventArgs e)
+    {
+        if (_releasingMouse) return;
+        if (!_dragging) return;
+
+        _dragging = false;
+        _dragMoved = false;
+        Cursor = null;
+    }
+
+    private void BeginDrag(MouseButtonEventArgs e)
+    {
+        // 连续甩动越滑越快：先把残余速度接过来（惯性设置开着才叠加），再停掉当前惯性
+        var accumulate = Vm?.Cfg.InertiaEnabled == true;
+        _carriedMainVelocity = accumulate ? _inertiaMainVelocity : 0;
+        _carriedCrossVelocity = accumulate ? _inertiaCrossVelocity : 0;
+        CancelInertia();
+
+        _dragging = true;
+        _dragMoved = false;
+        _dragStart = e.GetPosition(this);
+        _dragStartReading = GetReadingOffset();
+        _dragStartCross = GetCrossOffset();
+        _dragStartPanX = _spreadPanX;
+        _dragStartPanY = _spreadPanY;
+        _inertia.Reset();
+        var (mainOffset, crossOffset) = GetInertiaOffsets();
+        _inertia.Note(NowMilliseconds(), mainOffset, crossOffset);
+
+        Cursor = Cursors.SizeAll;
+        CaptureMouse();
+    }
+
+    private void EndDrag()
+    {
+        _dragging = false;
+        _dragMoved = false;
+        Cursor = null;
+        ReleaseMouseCaptureSafely();
+    }
+
+    private void ReleaseMouseCaptureSafely()
+    {
+        if (!IsMouseCaptured) return;
+        _releasingMouse = true;
+        try { ReleaseMouseCapture(); }
+        finally { _releasingMouse = false; }
+    }
+
+    private void StartInertia(double sampleMainVelocity, double sampleCrossVelocity)
+    {
+        if (Vm is not { } vm || !vm.Cfg.InertiaEnabled)
+        {
+            AbortInertia();
+            return;
+        }
+
+        var (mainVelocity, crossVelocity) = PdfInertia.Combine(
+            sampleMainVelocity, sampleCrossVelocity,
+            _carriedMainVelocity, _carriedCrossVelocity,
+            accumulate: true, PdfInertia.DefaultMaxSpeed);
+        _carriedMainVelocity = 0;
+        _carriedCrossVelocity = 0;
+
+        if (!_inertia.IsFastEnough(mainVelocity, crossVelocity)) return;
+
+        _inertiaMainVelocity = mainVelocity;
+        _inertiaCrossVelocity = crossVelocity;
+
+        _inertiaTimer ??= new DispatcherTimer(DispatcherPriority.Input)
+        {
+            Interval = TimeSpan.FromMilliseconds(16),
+        };
+        if (_inertiaTimer.Tag is null)
+        {
+            _inertiaTimer.Tick += OnInertiaTick;
+            _inertiaTimer.Tag = true;
+        }
+
+        _inertiaLastTimestamp = Stopwatch.GetTimestamp();
+        _inertiaTimer.Start();
+    }
+
+    private void OnInertiaTick(object? sender, EventArgs e)
+    {
+        if ((!_spreadActive && _layout is null) || (_spreadActive && _spreadContentWidth <= 0))
+        {
+            CancelInertia();
+            return;
+        }
+
+        var now = Stopwatch.GetTimestamp();
+        var elapsed = (now - _inertiaLastTimestamp) * 1000.0 / Stopwatch.Frequency;
+        _inertiaLastTimestamp = now;
+        if (elapsed <= 0 || elapsed > 100) elapsed = 16.0;   // 掉帧 / 休眠回来：别一下跳很远
+
+        var (main, cross) = _inertia.Decay(_inertiaMainVelocity, _inertiaCrossVelocity, elapsed);
+
+        var (beforeMain, beforeCross) = GetInertiaOffsets();
+        var targetMain = beforeMain + main * elapsed;
+        var targetCross = beforeCross + cross * elapsed;
+
+        ApplyInertiaOffsets(targetMain, targetCross);
+
+        var (afterMain, afterCross) = GetInertiaOffsets();
+        // 撞到边界（请求了但实际没动）就把这一轴速度清掉，别在边上“嗡嗡”震
+        if (Math.Abs(afterMain - targetMain) > 0.5) main = 0;
+        if (Math.Abs(afterCross - targetCross) > 0.5) cross = 0;
+
+        _inertiaMainVelocity = main;
+        _inertiaCrossVelocity = cross;
+
+        if (!_inertia.IsFastEnough(main, cross)) CancelInertia();
+    }
+
+    /// <summary>停下惯性动画（保留「残余速度」，下一次拖拽还能叠加）。</summary>
+    private void CancelInertia()
+    {
+        _inertiaTimer?.Stop();
+        _inertiaMainVelocity = 0;
+        _inertiaCrossVelocity = 0;
+    }
+
+    /// <summary>彻底停下惯性：动画 + 残余速度一起清掉（滚轮 / 换模式 / 切工具时用）。</summary>
+    private void AbortInertia()
+    {
+        CancelInertia();
+        _carriedMainVelocity = 0;
+        _carriedCrossVelocity = 0;
+    }
+
+    /// <summary>惯性采样 / 施加用的「当前偏移」：连续模式是两个轴，双页模式是平移。</summary>
+    private (double Main, double Cross) GetInertiaOffsets()
+        => _spreadActive ? (_spreadPanX, _spreadPanY) : (GetReadingOffset(), GetCrossOffset());
+
+    private void ApplyInertiaOffsets(double main, double cross)
+    {
+        if (_spreadActive) SetSpreadPan(main, cross);
+        else
+        {
+            SetReadingOffset(main);
+            SetCrossOffset(cross);
+        }
+    }
+
+    // ---------------------------------------------------------------- 文字搜索
+
+    private void OnSearchTextChanged(object sender, TextChangedEventArgs e) => ScheduleSearch();
+
+    private void ScheduleSearch()
+    {
+        var query = SearchBox.Text.Trim();
+        if (string.IsNullOrEmpty(query))
+        {
+            ClearSearch(clearText: false);
+            return;
+        }
+
+        _pendingSearchQuery = query;
+
+        if (_searchDebounceTimer is null)
+        {
+            _searchDebounceTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(SearchDebounceMilliseconds),
+            };
+            _searchDebounceTimer.Tick += (_, _) =>
+            {
+                _searchDebounceTimer?.Stop();
+                var pending = _pendingSearchQuery;
+                _pendingSearchQuery = null;
+                if (!string.IsNullOrEmpty(pending)) RunSearch(pending, autoJump: false);
+            };
+        }
+
+        _searchDebounceTimer.Stop();
+        _searchDebounceTimer.Start();
+    }
+
+    private void OnSearchBoxPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            var forward = (Keyboard.Modifiers & ModifierKeys.Shift) != ModifierKeys.Shift;
+            RunSearch(SearchBox.Text.Trim(), autoJump: true, forward: forward);
+        }
+        else if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            ClearSearch(clearText: true);
+            Keyboard.ClearFocus();
+        }
+    }
+
+    /// <summary>跑一次搜索；<paramref name="autoJump"/> = 搜完直接跳到第一个 / 最后一个命中。</summary>
+    private void RunSearch(string query, bool autoJump, bool forward = true)
+    {
+        _pendingSearchQuery = null;
+
+        var vm = Vm;
+        if (vm is null || !vm.HasDocument)
+        {
+            _searchHits = Array.Empty<PdfSearchHit>();
+            _searchIndex = -1;
+            UpdateSearchChrome();
+            return;
+        }
+
+        query = query.Trim();
+        if (query.Length == 0)
+        {
+            _searchHits = Array.Empty<PdfSearchHit>();
+            _searchIndex = -1;
+            UpdateSearchChrome();
+            return;
+        }
+
+        if (vm.TextLayer is null)
+        {
+            _searchHits = Array.Empty<PdfSearchHit>();
+            _searchIndex = -1;
+            if (vm.IsTextLayerLoading) _pendingSearchQuery = query;   // 提取完自动再搜
+            UpdateSearchChrome();
+            return;
+        }
+
+        _searchHits = vm.Search(query);
+        _searchIndex = _searchHits.Count == 0 ? -1 : (forward ? 0 : _searchHits.Count - 1);
+        UpdateSearchChrome();
+
+        if (autoJump && _searchIndex >= 0) JumpToHit(_searchIndex);
+    }
+
+    private void OnSearchNextClick(object sender, RoutedEventArgs e) => StepSearch(1);
+
+    private void OnSearchPrevClick(object sender, RoutedEventArgs e) => StepSearch(-1);
+
+    private void StepSearch(int delta)
+    {
+        if (_searchHits.Count == 0)
+        {
+            RunSearch(SearchBox.Text.Trim(), autoJump: true, forward: delta >= 0);
+            return;
+        }
+
+        var count = _searchHits.Count;
+        _searchIndex = ((_searchIndex + delta) % count + count) % count;
+        UpdateSearchChrome();
+        JumpToHit(_searchIndex);
+    }
+
+    private void JumpToHit(int index)
+    {
+        if (index < 0 || index >= _searchHits.Count) return;
+        JumpToPage(_searchHits[index].PageIndex);
+        UpdateSearchChrome();
+    }
+
+    private void OnSearchClearClick(object sender, RoutedEventArgs e) => ClearSearch(clearText: true);
+
+    private void ClearSearch(bool clearText)
+    {
+        _searchHits = Array.Empty<PdfSearchHit>();
+        _searchIndex = -1;
+        if (clearText) SearchBox.Text = "";
+        UpdateSearchChrome();
+    }
+
+    private void UpdateSearchChrome()
+    {
+        if (SearchBox is null) return;
+
+        var vm = Vm;
+        var hasDocument = vm?.HasDocument == true;
+        SearchBox.IsEnabled = hasDocument;
+        SearchPrevButton.IsEnabled = hasDocument && _searchHits.Count > 0;
+        SearchNextButton.IsEnabled = hasDocument && _searchHits.Count > 0;
+        SearchClearButton.IsEnabled = hasDocument
+                                       && (SearchBox.Text.Length > 0 || _searchHits.Count > 0);
+
+        if (!hasDocument)
+        {
+            SearchCountText.Text = "";
+            return;
+        }
+
+        var query = SearchBox.Text.Trim();
+        if (_searchHits.Count > 0)
+        {
+            SearchCountText.Text = $"{_searchIndex + 1} / {_searchHits.Count} 处";
+            return;
+        }
+
+        if (query.Length == 0)
+        {
+            SearchCountText.Text = vm?.IsTextLayerLoading == true ? "提取文字…" : "";
+            return;
+        }
+
+        SearchCountText.Text = vm?.IsTextLayerLoading == true
+            ? "正在提取文字…"
+            : vm?.TextLayer is null || !vm.TextLayer.HasText
+                ? "无可搜索文字"
+                : "没有找到";
+    }
+
+    /// <summary>跳到指定页（连续模式滚到该页开头；双页模式翻到该页所在的一屏）。</summary>
+    private void JumpToPage(int pageIndex)
+    {
+        var vm = Vm;
+        if (vm?.Session is not { } session) return;
+
+        var page = Math.Clamp(pageIndex, 0, session.PageCount - 1);
+
+        if (_spreadActive)
+        {
+            _spreadStart = PdfSpreadLayout.StartForPage(page, session.PageCount);
+            _pendingSpreadForward = null;
+            _ = ShowSpreadAsync();
+            return;
+        }
+
+        if (_layout is null) return;
+
+        SetReadingOffset(PdfContinuousLayout.OffsetOfPage(_layout, _builtMode, page));
+        SetCrossOffset(0);
+    }
+
+    // ---------------------------------------------------------------- 目录 / 设置面板
+
+    private void UpdateOutlineChrome()
+    {
+        if (OutlineEmptyText is null) return;
+
+        var vm = Vm;
+        var hasOutline = vm?.HasOutline == true;
+        OutlineEmptyText.Visibility = hasOutline ? Visibility.Collapsed : Visibility.Visible;
+        OutlineEmptyText.Text = vm is null
+            ? ""
+            : vm.IsTextLayerLoading
+                ? "正在读取目录…"
+                : (!string.IsNullOrWhiteSpace(vm.TextLayerStatusText)
+                    ? vm.TextLayerStatusText
+                    : "这个 PDF 没有书签目录。");
+    }
+
+    private void UpdateTextLayerHint()
+    {
+        if (TextLayerHintText is null) return;
+
+        var vm = Vm;
+        TextLayerHintText.Text = vm?.HasDocument != true
+            ? ""
+            : vm.IsTextLayerLoading
+                ? "正在提取文字与目录…"
+                : vm.TextLayer is null
+                    ? "文字层不可用"
+                    : !vm.TextLayer.HasText
+                        ? "这个 PDF 没有可搜索的文字"
+                        : vm.HasOutline
+                            ? $"目录 {vm.OutlineEntries.Count} 项 · Ctrl+F 搜索"
+                            : "Ctrl+F 搜索文字";
+    }
+
+    private void OnOutlineItemClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: int pageIndex }) JumpToPage(pageIndex);
+    }
+
+    private void OnCloseOutlineClick(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm) vm.IsOutlineVisible = false;
+    }
+
+    private void OnCloseSettingsClick(object sender, RoutedEventArgs e)
+    {
+        if (Vm is { } vm) vm.IsSettingsVisible = false;
     }
 
     // ---------------------------------------------------------------- 键盘
@@ -1116,7 +1689,35 @@ public partial class PdfReaderView : UserControl
             return;
         }
 
+        // Ctrl+F：聚焦搜索框（正在输入框里也允许，方便再按一次全选）
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.F)
+        {
+            e.Handled = true;
+            SearchBox.Focus();
+            SearchBox.SelectAll();
+            return;
+        }
+
         if (!vm.HasDocument || vm.IsBusy) return;
+
+        // Esc：关搜索 / 目录 / 设置
+        if (Keyboard.Modifiers == ModifierKeys.None && e.Key == Key.Escape)
+        {
+            if (SearchBox.IsKeyboardFocusWithin)
+            {
+                ClearSearch(clearText: true);
+                Keyboard.ClearFocus();
+                e.Handled = true;
+                return;
+            }
+            if (vm.IsOutlineVisible || vm.IsSettingsVisible)
+            {
+                vm.IsOutlineVisible = false;
+                vm.IsSettingsVisible = false;
+                e.Handled = true;
+                return;
+            }
+        }
 
         // 正在输入框 / 下拉框里时别抢键
         if (Keyboard.FocusedElement is TextBox or ComboBox or ComboBoxItem or ListBox or ListBoxItem
@@ -1161,24 +1762,24 @@ public partial class PdfReaderView : UserControl
             case Key.Up:
             case Key.Left:
                 e.Handled = true;
-                SetReadingOffset(_readingOffset - smallStep);
+                SetReadingOffset(GetReadingOffset() - smallStep);
                 break;
 
             case Key.Down:
             case Key.Right:
                 e.Handled = true;
-                SetReadingOffset(_readingOffset + smallStep);
+                SetReadingOffset(GetReadingOffset() + smallStep);
                 break;
 
             case Key.PageUp:
                 e.Handled = true;
-                SetReadingOffset(_readingOffset - bigStep);
+                SetReadingOffset(GetReadingOffset() - bigStep);
                 break;
 
             case Key.PageDown:
             case Key.Space:
                 e.Handled = true;
-                SetReadingOffset(_readingOffset + bigStep);
+                SetReadingOffset(GetReadingOffset() + bigStep);
                 break;
 
             case Key.Home:
@@ -1193,6 +1794,23 @@ public partial class PdfReaderView : UserControl
         }
     }
 
+    /// <summary>缩放输入框：回车立刻生效并离开焦点；Esc 还原成当前值。</summary>
+    private void OnZoomBoxPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            ZoomBox.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+            Keyboard.ClearFocus();
+        }
+        else if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            ZoomBox.GetBindingExpression(TextBox.TextProperty)?.UpdateTarget();   // 还原显示
+            Keyboard.ClearFocus();
+        }
+    }
+
     // ---------------------------------------------------------------- 界面 chrome（提示 / 页码 / 进度）
 
     private void UpdateModeChrome()
@@ -1201,7 +1819,7 @@ public partial class PdfReaderView : UserControl
 
         PageIndicatorPanel.Visibility = hasDocument ? Visibility.Visible : Visibility.Collapsed;
         HintPanel.Visibility = hasDocument ? Visibility.Visible : Visibility.Collapsed;
-        InertiaCheckBox.IsEnabled = hasDocument && !_spreadActive;
+        InertiaCheckBox.IsEnabled = hasDocument;
 
         UpdateHint();
     }
@@ -1210,9 +1828,9 @@ public partial class PdfReaderView : UserControl
     {
         HintText.Text = Mode switch
         {
-            PdfReadMode.Horizontal => "滚轮左右滚 · 左键按住拖动，松手惯性滑一段 · Home/End 到开头/结尾",
-            PdfReadMode.Spread => "滚轮 / ← → / PageUp PageDown / 空格 翻页 · 屏幕两侧按钮也可以",
-            _ => "滚轮上下滚 · 左键按住拖动，松手惯性滑一段 · Home/End 到开头/结尾",
+            PdfReadMode.Horizontal => "滚轮左右滚 · 左键拖动带惯性 · Ctrl+滚轮缩放 · 目录 / 搜索点顶部",
+            PdfReadMode.Spread => "滚轮 / ← → / PageUp PageDown / 空格 翻页 · 放大后左键拖动平移 · Ctrl+滚轮缩放",
+            _ => "滚轮上下滚 · 左键拖动带惯性 · Ctrl+滚轮缩放 · 目录 / 搜索点顶部",
         };
     }
 
@@ -1312,7 +1930,7 @@ public partial class PdfReaderView : UserControl
             return;
         }
 
-        var page = PdfContinuousLayout.PageIndexAtOffset(_layout, _builtMode, _readingOffset);
+        var page = PdfContinuousLayout.PageIndexAtOffset(_layout, _builtMode, GetReadingOffset());
         PageIndicatorText.Text = $"第 {page + 1} / {count} 页";
     }
 
@@ -1322,7 +1940,7 @@ public partial class PdfReaderView : UserControl
 
         var ratio = _spreadActive
             ? PdfSpreadLayout.ProgressRatio(_spreadStart, Vm?.PageCount ?? 0)
-            : PdfContinuousLayout.RatioOf(_readingOffset, MaximumOffset);
+            : PdfContinuousLayout.RatioOf(GetReadingOffset(), MaximumOffset);
 
         ReadingProgressFill.HorizontalAlignment = HorizontalAlignment.Left;
         ReadingProgressFill.Width = Math.Clamp(ratio, 0, 1) * Math.Max(0, ViewportGrid.ActualWidth);
@@ -1413,12 +2031,25 @@ public partial class PdfReaderView : UserControl
         return source is Visual && ViewportGrid.IsAncestorOf(source);
     }
 
-    /// <summary>这一下点击是不是落在按钮上（翻页按钮的点击不能被拖拽吃掉）。</summary>
+    /// <summary>这一下点击是不是落在按钮之类的可点击控件上（翻页按钮的点击不能被拖拽吃掉）。</summary>
     private bool IsOnClickableControl(DependencyObject? source)
     {
         while (source is not null && !ReferenceEquals(source, ViewportGrid))
         {
-            if (source is ButtonBase) return true;
+            if (source is ButtonBase or TextBoxBase or Slider or ComboBox) return true;
+            source = source is Visual visual
+                ? VisualTreeHelper.GetParent(visual)
+                : LogicalTreeHelper.GetParent(source);
+        }
+        return false;
+    }
+
+    /// <summary>点击 / 滚轮是不是落在「目录 / 设置」浮层上（浮层里的操作不能带动后面的页面）。</summary>
+    private bool IsInsideOverlayPanel(DependencyObject? source)
+    {
+        while (source is not null && !ReferenceEquals(source, ViewportGrid))
+        {
+            if (ReferenceEquals(source, OutlinePanel) || ReferenceEquals(source, SettingsPanel)) return true;
             source = source is Visual visual
                 ? VisualTreeHelper.GetParent(visual)
                 : LogicalTreeHelper.GetParent(source);

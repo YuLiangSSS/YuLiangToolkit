@@ -1,13 +1,18 @@
+using System.Windows;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Tools.PdfReader.Rendering;
+using YuLiangToolkit.Tools.PdfReader.Text;
 
 namespace YuLiangToolkit.Tools.PdfReader.ViewModels;
 
+/// <summary>目录面板里的一行（缩进已经算好，XAML 直接绑到 Button 的 Padding）。</summary>
+public sealed record PdfOutlineEntryView(string Title, int PageIndex, int Level, Thickness IndentPadding);
+
 /// <summary>
-/// 「PDF 阅读器」的 ViewModel：只管**设置 / 打开哪个 PDF / 页数 / 状态文案**。
+/// 「PDF 阅读器」的 ViewModel：管**设置 / 打开的 PDF / 缩放 / 双页间距 / 文字层（搜索 + 目录）/ 文件关联状态**。
 ///
 /// <para>排版、虚拟化、鼠标拖拽 / 惯性、双页翻页动画这些必须碰 WPF 视觉树的事情全在
-/// <c>Views/PdfReaderView.xaml.cs</c> 里；这里保持无头可测（自检可以直接 new 出来打开 PDF）。</para>
+/// <c>Views/PdfReaderView.xaml.cs</c> 里；这里保持无头可测（自检可以直接 new 出来打开 PDF、查文字层）。</para>
 /// </summary>
 public sealed class PdfReaderViewModel : ToolViewModelBase
 {
@@ -21,9 +26,24 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
             (PdfReadMode.Spread, PdfReadModes.Describe(PdfReadMode.Spread)));
 
         OpenPdfCommand = new AsyncRelayCommand(_ => OpenPdfAsync());
+        ToggleSettingsCommand = new RelayCommand(_ => IsSettingsVisible = !IsSettingsVisible);
+        CloseSettingsCommand = new RelayCommand(_ => IsSettingsVisible = false);
+        ToggleOutlineCommand = new RelayCommand(_ => IsOutlineVisible = !IsOutlineVisible);
+        CloseOutlineCommand = new RelayCommand(_ => IsOutlineVisible = false);
+        ResetSettingsCommand = new RelayCommand(_ => ResetSettings());
+        ZoomInCommand = new RelayCommand(_ => StepZoom(1));
+        ZoomOutCommand = new RelayCommand(_ => StepZoom(-1));
+        OpenDefaultAppsCommand = new RelayCommand(_ => PdfFileAssociation.OpenDefaultAppsSettings());
 
         ApplyModeOverrideFromEnvironment();
+        ApplyZoomOverrideFromEnvironment();
         _pendingPageIndex = ParsePageOverrideFromEnvironment();
+
+        // 双击 .pdf 启动（文件关联 / 命令行）时，主程序把路径放在这里；只生效一次。
+        _launchPdfPath = PdfFilePathLaunch.PendingPdfPath;
+        PdfFilePathLaunch.PendingPdfPath = null;
+
+        _fileAssociationStatus = PdfFileAssociation.DescribeState();
     }
 
     // ---------------------------------------------------------------- 配置与选项
@@ -40,7 +60,7 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
     /// <summary>当前生效的阅读方式（配置值，截图时可能被环境变量临时覆盖）。</summary>
     public PdfReadMode CurrentReadMode => _modeOverride ?? Cfg.ReadModeEffective;
 
-    /// <summary>下拉框的桥接属性：一改就写进配置，并通知界面重建视图（尽量保持当前页）。</summary>
+    /// <summary>下拉框的桥接属性：一改就写进配置，并通知界面重建视图（尽量保持当前位置）。</summary>
     public OptionItem<PdfReadMode> SelectedMode
     {
         get => OptionItem<PdfReadMode>.Find(ModeOptions, CurrentReadMode) ?? ModeOptions[0];
@@ -67,13 +87,129 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
     /// <summary>当前是不是双页翻页（界面用它决定显示翻页按钮还是滚动提示）。</summary>
     public bool IsSpreadMode => PdfReadModes.IsSpread(CurrentReadMode);
 
+    // ---------------------------------------------------------------- 缩放
+
+    /// <summary>
+    /// 工具条上那个百分比输入框的文字（默认「100%」）。
+    /// 输入 25 ~ 800 的数字（带不带 % 都行）按回车 / 离开输入框生效；非法输入会还原成当前值。
+    /// </summary>
+    public string ZoomText
+    {
+        get => $"{Cfg.ZoomPercentEffective}%";
+        set
+        {
+            var text = (value ?? "").Trim().TrimEnd('%', '％').Trim();
+            if (!int.TryParse(text, out var percent))
+            {
+                OnPropertyChanged();   // 输入不合法：把框里的字还原
+                return;
+            }
+
+            SetZoomPercent(percent);
+        }
+    }
+
+    /// <summary>当前缩放百分比（已经夹到 25 ~ 800）。</summary>
+    public int ZoomPercentEffective => Cfg.ZoomPercentEffective;
+
+    private void SetZoomPercent(int percent)
+    {
+        var effective = Math.Clamp(percent, PdfReaderConfig.MinZoomPercent, PdfReaderConfig.MaxZoomPercent);
+        if (effective == Cfg.ZoomPercentEffective)
+        {
+            OnPropertyChanged(nameof(ZoomText));
+            return;
+        }
+
+        Cfg.ZoomPercent = effective;
+        OnPropertyChanged(nameof(ZoomText));
+        OnPropertyChanged(nameof(ZoomPercentEffective));
+        ZoomChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void StepZoom(int steps)
+        => SetZoomPercent(PdfReaderConfig.StepZoomPercent(Cfg.ZoomPercentEffective, steps));
+
+    /// <summary>缩放变了（界面重排 / 重新渲染可见页，并尽量保持画面中心不动）。</summary>
+    public event EventHandler? ZoomChanged;
+
+    /// <summary>放大 10%（工具条放大镜 / Ctrl+滚轮）。</summary>
+    public RelayCommand ZoomInCommand { get; }
+
+    /// <summary>缩小 10%。</summary>
+    public RelayCommand ZoomOutCommand { get; }
+
+    // ---------------------------------------------------------------- 双页页面间距
+
+    /// <summary>
+    /// 双页翻页时左右两页之间的间距（像素，0 ~ 64，默认 2 = 贴近）。
+    /// 设置面板的滑块直接绑它；改一下立刻重排当前双页视图并写配置。
+    /// </summary>
+    public int SpreadGapPixels
+    {
+        get => Cfg.SpreadGapEffective;
+        set
+        {
+            var clamped = Math.Clamp(value, PdfReaderConfig.MinSpreadGapPixels, PdfReaderConfig.MaxSpreadGapPixels);
+            if (clamped == Cfg.SpreadGapEffective) return;
+
+            Cfg.SpreadGapPixels = clamped;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(SpreadGapText));
+            LayoutChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>间距的显示文本（设置面板滑块右侧的「2 px」）。</summary>
+    public string SpreadGapText => $"{SpreadGapPixels} px";
+
+    /// <summary>影响排版但不影响缩放的设置变了（目前是双页间距），界面重排当前视图。</summary>
+    public event EventHandler? LayoutChanged;
+
+    // ---------------------------------------------------------------- 界面状态
+
+    private bool _isSettingsVisible;
+    private bool _isOutlineVisible;
+
+    /// <summary>设置面板是否展开（双击间距 / 文件关联 / 恢复默认都放这里）。</summary>
+    public bool IsSettingsVisible
+    {
+        get => _isSettingsVisible;
+        set => Set(ref _isSettingsVisible, value);
+    }
+
+    /// <summary>目录 / 书签面板是否展开。</summary>
+    public bool IsOutlineVisible
+    {
+        get => _isOutlineVisible;
+        set => Set(ref _isOutlineVisible, value);
+    }
+
+    /// <summary>展开 / 收起设置面板。</summary>
+    public RelayCommand ToggleSettingsCommand { get; }
+
+    /// <summary>收起设置面板。</summary>
+    public RelayCommand CloseSettingsCommand { get; }
+
+    /// <summary>展开 / 收起目录面板。</summary>
+    public RelayCommand ToggleOutlineCommand { get; }
+
+    /// <summary>收起目录面板。</summary>
+    public RelayCommand CloseOutlineCommand { get; }
+
+    /// <summary>恢复默认设置（阅读方式 / 惯性 / 滚轮 / 缩放 / 双页间距）。</summary>
+    public RelayCommand ResetSettingsCommand { get; }
+
     // ---------------------------------------------------------------- 事件 / 界面注入
 
     /// <summary>打开 / 关闭 PDF 之后（界面据此重建视图）。</summary>
     public event EventHandler? DocumentChanged;
 
-    /// <summary>阅读方式变了（界面重建视图并尽量停在原来的页）。</summary>
+    /// <summary>阅读方式变了（界面重建视图并尽量停在当前页）。</summary>
     public event EventHandler? ModeChanged;
+
+    /// <summary>文字层（每页文字 + 目录）加载完成 / 被替换（搜索与目录面板据此刷新）。</summary>
+    public event EventHandler? TextLayerChanged;
 
     /// <summary>
     /// 选 PDF 的对话框。由界面在 Loaded 时注入（真实实现是 <c>OpenFileDialog</c>）；
@@ -109,12 +245,156 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
         ? "打开一个 PDF，用上下 / 左右滚动或双页翻着看"
         : _filePath;
 
-    /// <summary>有 PDF 时工具条的提示文案（沿用基类 StatusText，打开成功后写观看方式提示）。</summary>
+    /// <summary>打开 PDF 后的一行提示（页数 + 当前阅读方式怎么操作）；没打开时为空串。</summary>
     public string LoadedHintText => _session is null
         ? ""
         : $"共 {PageCount} 页 · {PdfReadModes.Hint(CurrentReadMode)}";
 
-    // ---------------------------------------------------------------- 命令
+    // ---------------------------------------------------------------- 文字层（搜索 + 目录）
+
+    private PdfTextLayer? _textLayer;
+    private CancellationTokenSource? _textLayerCts;
+    private IReadOnlyList<PdfOutlineEntryView> _outlineEntries = Array.Empty<PdfOutlineEntryView>();
+    private bool _isTextLayerLoading;
+    private string _textLayerStatusText = "";
+
+    /// <summary>当前 PDF 的文字层（提取中 / 失败时为 null）。</summary>
+    public PdfTextLayer? TextLayer => _textLayer;
+
+    /// <summary>文字层是否还在后台提取（界面显示「正在提取文字…」）。</summary>
+    public bool IsTextLayerLoading
+    {
+        get => _isTextLayerLoading;
+        private set
+        {
+            if (Set(ref _isTextLayerLoading, value)) OnPropertyChanged(nameof(TextLayerStatusText));
+        }
+    }
+
+    /// <summary>目录面板的行（层级缩进已算好；没有目录时为空）。</summary>
+    public IReadOnlyList<PdfOutlineEntryView> OutlineEntries
+    {
+        get => _outlineEntries;
+        private set
+        {
+            _outlineEntries = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasOutline));
+        }
+    }
+
+    /// <summary>这个 PDF 有没有书签目录。</summary>
+    public bool HasOutline => _outlineEntries.Count > 0;
+
+    /// <summary>搜索栏 / 目录面板里的一句话状态（提取中 / 没有目录 / 扫描版没有文字）。</summary>
+    public string TextLayerStatusText
+    {
+        get => _textLayerStatusText;
+        private set => Set(ref _textLayerStatusText, value);
+    }
+
+    /// <summary>
+    /// 在整个 PDF 里搜索文字（大小写不敏感、支持中文）。没有文字层 / 空查询 → 空结果。
+    /// 界面拿到结果后自己维护「第几个命中」并跳页。
+    /// </summary>
+    public IReadOnlyList<PdfSearchHit> Search(string? query) => PdfTextSearch.Find(_textLayer, query);
+
+    private void StartTextLayer(PdfDocumentSession session)
+    {
+        CancelTextLayer();
+
+        var cts = new CancellationTokenSource();
+        _textLayerCts = cts;
+
+        _textLayer = null;
+        OutlineEntries = Array.Empty<PdfOutlineEntryView>();
+        IsTextLayerLoading = true;
+        TextLayerStatusText = "正在提取文字与目录…";
+        TextLayerChanged?.Invoke(this, EventArgs.Empty);
+
+        var path = session.FilePath;
+        _ = Task.Run(async () =>
+        {
+            var layer = await PdfTextLayer.LoadAsync(path, cts.Token).ConfigureAwait(false);
+
+            Ui(() =>
+            {
+                if (cts.IsCancellationRequested || !ReferenceEquals(_textLayerCts, cts)) return;
+
+                _textLayer = layer;
+                IsTextLayerLoading = false;
+                OutlineEntries = layer.Outline
+                    .Select(item => new PdfOutlineEntryView(
+                        item.Title,
+                        item.PageIndex,
+                        item.Level,
+                        new Thickness(Math.Min(6, Math.Max(0, item.Level - 1)) * 14, 0, 0, 0)))
+                    .ToList();
+
+                TextLayerStatusText = layer.HasText
+                    ? (layer.HasOutline ? "" : "这个 PDF 没有书签目录。")
+                    : (string.IsNullOrWhiteSpace(layer.Note)
+                        ? "这个 PDF 提取不到文字（可能是扫描版，只能翻页看）。"
+                        : layer.Note);
+
+                TextLayerChanged?.Invoke(this, EventArgs.Empty);
+                OnPropertyChanged(nameof(TextLayer));
+                OnPropertyChanged(nameof(IsTextLayerLoading));
+            });
+        });
+    }
+
+    private void CancelTextLayer()
+    {
+        try
+        {
+            _textLayerCts?.Cancel();
+            _textLayerCts?.Dispose();
+        }
+        catch { /* 退出流程忽略 */ }
+        _textLayerCts = null;
+    }
+
+    // ---------------------------------------------------------------- 文件关联（双击 .pdf 打开）
+
+    private bool? _fileAssociationEnabled;
+    private string _fileAssociationStatus;
+
+    /// <summary>是否已把 .pdf 登记到本工具（读注册表；带缓存）。</summary>
+    public bool IsFileAssociationEnabled
+    {
+        get
+        {
+            _fileAssociationEnabled ??= PdfFileAssociation.IsRegistered();
+            return _fileAssociationEnabled.Value;
+        }
+        set
+        {
+            var current = IsFileAssociationEnabled;
+            if (value == current) return;
+
+            var result = value ? PdfFileAssociation.Register() : PdfFileAssociation.Unregister();
+            _fileAssociationStatus = result.Message;
+            OnPropertyChanged(nameof(FileAssociationStatus));
+
+            if (!result.Success)
+            {
+                OnPropertyChanged();   // 失败时勾选状态保持原样
+                return;
+            }
+
+            _fileAssociationEnabled = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>文件关联区的状态说明（已登记 / 需要去系统「默认应用」确认一次）。</summary>
+    public string FileAssociationStatus => _fileAssociationStatus;
+
+    /// <summary>打开 Windows「默认应用」设置（UserChoice 只能由用户自己确认）。</summary>
+    public RelayCommand OpenDefaultAppsCommand { get; }
+
+    // ---------------------------------------------------------------- 命令 / 加载
 
     /// <summary>打开 PDF（Ctrl+O 也走它）。</summary>
     public AsyncRelayCommand OpenPdfCommand { get; }
@@ -146,8 +426,10 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
             var old = _session;
             _session = session;
             _filePath = session.FilePath;
-            if (!string.IsNullOrWhiteSpace(Path.GetDirectoryName(session.FilePath)))
-                Cfg.LastFolder = Path.GetDirectoryName(session.FilePath)!;
+            var folder = Path.GetDirectoryName(session.FilePath);
+            if (!string.IsNullOrWhiteSpace(folder)) Cfg.LastFolder = folder;
+
+            StartTextLayer(session);
 
             StatusText = $"已打开「{FileName}」共 {PageCount} 页 · {CurrentModeText}";
             NotifyDocumentState();
@@ -172,7 +454,21 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
         OnPropertyChanged(nameof(FileTitleText));
         OnPropertyChanged(nameof(FileName));
         OnPropertyChanged(nameof(FilePathText));
-        OnPropertyChanged(nameof(LoadedHintText));
+    }
+
+    /// <summary>这次创建 ViewModel 时是不是带着「要打开的 PDF」（主程序从命令行 / 文件关联拿到）。</summary>
+    public bool HasLaunchPdf => !string.IsNullOrWhiteSpace(_launchPdfPath);
+
+    private string? _launchPdfPath;
+
+    /// <summary>打开命令行 / 双击传进来的 PDF（取一次就清空）。</summary>
+    public async Task LoadLaunchPdfAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_launchPdfPath)) return;
+
+        var path = _launchPdfPath;
+        _launchPdfPath = null;
+        await LoadPdfAsync(path);
     }
 
     /// <summary>
@@ -222,8 +518,31 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
         return index;
     }
 
+    /// <summary>把所有显示设置改回默认（阅读方式纵向、缩放 100%、双页间距 2、惯性开、滚轮 120）。</summary>
+    private void ResetSettings()
+    {
+        Cfg.ResetToDefaults();
+
+        OnPropertyChanged(nameof(SelectedMode));
+        OnPropertyChanged(nameof(CurrentReadMode));
+        OnPropertyChanged(nameof(CurrentModeText));
+        OnPropertyChanged(nameof(ModeHint));
+        OnPropertyChanged(nameof(IsSpreadMode));
+        OnPropertyChanged(nameof(ZoomText));
+        OnPropertyChanged(nameof(ZoomPercentEffective));
+        OnPropertyChanged(nameof(SpreadGapPixels));
+        OnPropertyChanged(nameof(SpreadGapText));
+
+        StatusText = "已恢复默认设置（纵向 上→下 · 缩放 100% · 双页间距 2 px · 惯性开）";
+        ModeChanged?.Invoke(this, EventArgs.Empty);
+        ZoomChanged?.Invoke(this, EventArgs.Empty);
+        LayoutChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     protected override void OnClosed()
     {
+        CancelTextLayer();
+
         var session = _session;
         _session = null;
         try { session?.Dispose(); } catch { /* 退出流程忽略 */ }
@@ -253,6 +572,18 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
         OnPropertyChanged(nameof(CurrentModeText));
         OnPropertyChanged(nameof(ModeHint));
         OnPropertyChanged(nameof(IsSpreadMode));
+    }
+
+    /// <summary>开发 / 截图用：<c>YLT_PDF_ZOOM=200</c> 直接指定缩放百分比（截图核对放大后的排版）。</summary>
+    private void ApplyZoomOverrideFromEnvironment()
+    {
+        var text = Environment.GetEnvironmentVariable("YLT_PDF_ZOOM");
+        if (string.IsNullOrWhiteSpace(text)) return;
+
+        var cleaned = text.Trim().TrimEnd('%', '％').Trim();
+        if (!int.TryParse(cleaned, out var percent)) return;
+
+        Cfg.ZoomPercent = Math.Clamp(percent, PdfReaderConfig.MinZoomPercent, PdfReaderConfig.MaxZoomPercent);
     }
 
     /// <summary>开发 / 截图用：<c>YLT_PDF_PAGE=3</c> 打开后直接定位到第 3 页（从 1 数）。</summary>

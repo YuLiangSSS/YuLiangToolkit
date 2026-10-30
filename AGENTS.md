@@ -7,11 +7,11 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 技术栈 | Windows 10 2004+ + .NET 9（主程序 / 自检 `net9.0-windows10.0.19041.0`，工具库 `net9.0-windows`）+ WPF + 手写 MVVM；唯一第三方包 `OsuParsers`（MIT）；PDF 渲染用系统自带 `Windows.Data.Pdf` |
+| 技术栈 | Windows 10 2004+ + .NET 9（主程序 / 自检 `net9.0-windows10.0.19041.0`，工具库 `net9.0-windows`）+ WPF + 手写 MVVM；唯一第三方包 `OsuParsers`（MIT）；PDF 渲染用系统 `Windows.Data.Pdf`，文字搜索 / 书签目录是手写 PDF 解析器 |
 | 主程序 | 根目录 `YuLiangTookit.csproj`（少一个 `l` 是历史拼写）：标题栏 / 主页 / 类别页 / 面包屑、两套主题、粒子 |
 | 核心库 | `src/YuLiangToolkit.Core/`：工具契约 / MVVM / 存储 / 配置 / FFmpeg / 粒子 / TCP 房间 |
 | 功能 | 16 个（13 个 `Tools.*`）：视频转音频 / 播放器 / 图片阅读器 / PDF 阅读器 / 重命名 / Flash / 聊天室 / osu! 下图器 / osu!mania 三件套 / 棋牌 / KPS 按键统计 / Spug 验证码测试 / 示例模板 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`：2285 项，退出码 0 = 通过（按分组跑） |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`：2526 项，退出码 0 = 通过（按分组跑） |
 | 数据 | **在 exe 旁边**（`bin\Debug\net9.0-windows10.0.19041.0\Data`、`Config`）；仓库根同名目录只有说明 |
 
 ## 开工 / 收尾（硬性）

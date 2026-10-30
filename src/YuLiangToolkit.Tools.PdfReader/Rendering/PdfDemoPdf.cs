@@ -38,12 +38,17 @@ public static class PdfDemoPdf
     {
         if (pageCount <= 0) pageCount = 1;
 
-        // 对象编号约定：1 = Catalog，2 = Pages，3 = Helvetica 字体；之后每页占两个对象（Page / Contents）
-        var objects = new List<string>(3 + pageCount * 2);
+        // 对象编号约定：1 = Catalog，2 = Pages，3 = Helvetica 字体；之后每页占两个对象（Page / Contents）；
+        // 再后面是书签目录（/Outlines）——演示 PDF 自带 3 条目录，方便手测 / 截图「📑 目录」面板。
+        var outlineItemCount = Math.Min(3, pageCount);
+        var outlineItemBase = 4 + pageCount * 2;                 // 第 j 条目录的对象编号 = base + j
+        var outlineRootId = outlineItemBase + outlineItemCount;
+
+        var objects = new List<string>(3 + pageCount * 2 + outlineItemCount + 1);
 
         var kids = new StringBuilder();
         for (var i = 0; i < pageCount; i++) kids.Append(4 + i * 2).Append(" 0 R ");
-        objects.Add("<< /Type /Catalog /Pages 2 0 R >>");
+        objects.Add($"<< /Type /Catalog /Pages 2 0 R /Outlines {outlineRootId} 0 R >>");
         objects.Add($"<< /Type /Pages /Kids [{kids.ToString().TrimEnd()}] /Count {pageCount} >>");
         objects.Add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
 
@@ -55,6 +60,25 @@ public static class PdfDemoPdf
                 $"/Resources << /Font << /F1 3 0 R >> >> /Contents {5 + i * 2} 0 R >>");
             objects.Add($"<< /Length {Encoding.ASCII.GetByteCount(content)} >>\nstream\n{content}endstream");
         }
+
+        // 书签目录：第 1 条 → 第一页，中间那条 → 中间页，最后一条 → 最后一页（都是 Level 1）
+        for (var j = 0; j < outlineItemCount; j++)
+        {
+            var targetPage = j == 0
+                ? 0
+                : j == outlineItemCount - 1
+                    ? pageCount - 1
+                    : pageCount / 2;
+            var title = $"Page {targetPage + 1}";
+            var prev = j > 0 ? $"/Prev {outlineItemBase + j - 1} 0 R " : "";
+            var next = j < outlineItemCount - 1 ? $"/Next {outlineItemBase + j + 1} 0 R " : "";
+            objects.Add(
+                $"<< /Title ({title}) /Parent {outlineRootId} 0 R /Dest [{4 + targetPage * 2} 0 R /Fit] {prev}{next}>>");
+        }
+
+        objects.Add(outlineItemCount > 0
+            ? $"<< /Type /Outlines /First {outlineItemBase} 0 R /Last {outlineItemBase + outlineItemCount - 1} 0 R /Count {outlineItemCount} >>"
+            : "<< /Type /Outlines /Count 0 >>");
 
         var builder = new StringBuilder("%PDF-1.4\n");
         var offsets = new List<int>(objects.Count);

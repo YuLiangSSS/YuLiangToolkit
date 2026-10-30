@@ -28,14 +28,14 @@ public sealed class PdfReaderException : Exception
 /// </summary>
 public sealed class PdfDocumentSession : IDisposable
 {
-    /// <summary>渲染宽度上限（像素）：再大也只是糊 / 吃内存，屏幕上看不出差别。</summary>
-    public const int MaxRenderWidth = 1600;
+    /// <summary>渲染宽度上限（像素）：再大也只是糊 / 吃内存，屏幕上看不出差别。放大到 400% 也够清楚。</summary>
+    public const int MaxRenderWidth = 2000;
 
     /// <summary>渲染宽度下限（像素）：太小的页也至少给这么多，避免糊成马赛克。</summary>
     public const int MinRenderWidth = 128;
 
-    /// <summary>单页渲染像素总数上限（约 600 万，≈ 24 MB 位图）：极高 / 极宽的页也不会一次吃掉太多内存。</summary>
-    public const long MaxRenderPixels = 6_000_000;
+    /// <summary>单页渲染像素总数上限（约 800 万，≈ 32 MB 位图）：极高 / 极宽的页也不会一次吃掉太多内存。</summary>
+    public const long MaxRenderPixels = 8_000_000;
 
     private readonly PdfDocument _document;
     private readonly SemaphoreSlim _renderGate = new(1, 1);

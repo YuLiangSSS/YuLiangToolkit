@@ -7,6 +7,7 @@ using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Services;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Core.Tools;
+using YuLiangToolkit.Tools.PdfReader;
 using YuLiangToolkit.Tools.PictureViewer;
 
 namespace YuLiangToolkit.App;
@@ -151,6 +152,17 @@ public partial class App : Application
             if (pictureTool is not null) vm.OpenToolCommand.Execute(pictureTool);
         }
 
+        // 双击 PDF 文件启动（文件关联 / 命令行参数）：直接进「PDF 阅读器」并打开这个文件。
+        var launchPdf = e.Args.FirstOrDefault(PdfFileAssociation.IsSupportedPdfFile);
+        if (!string.IsNullOrWhiteSpace(launchPdf) && string.IsNullOrWhiteSpace(launchImage))
+        {
+            try { PdfFilePathLaunch.PendingPdfPath = Path.GetFullPath(launchPdf.Trim().Trim('"')); }
+            catch { PdfFilePathLaunch.PendingPdfPath = launchPdf; }
+
+            var pdfTool = tools.FirstOrDefault(t => t.Id == PdfReaderConfig.ToolId);
+            if (pdfTool is not null) vm.OpenToolCommand.Execute(pdfTool);
+        }
+
         // 开发调试：YLT_OPEN_SETTINGS=1 进入「主页设置」页面（v0.26.0 起设置是页面而不是独立窗口；
         // 配 YLT_SHOT 时截的就是主窗口这一页，命令见 docs/shell.md）
         if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("YLT_OPEN_SETTINGS")))
@@ -170,9 +182,8 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// 第二实例发来的命令行：先把窗口从托盘 / 最小化恢复并置前；如果带了一张受支持的图片，
-    /// 就打开「图片连续阅读器」——新 ViewModel 会取走 <see cref="PictureFilePathLaunch.PendingImagePath"/>，
-    /// 加载那张图所在文件夹并定位到它（见 docs/dev/pitfalls.md）。
+    /// 第二实例发来的命令行：先把窗口从托盘 / 最小化恢复并置前；如果带了一张受支持的图片 / 一个 PDF，
+    /// 就打开对应工具（图片阅读器 / PDF 阅读器）——新 ViewModel 会取走 Pending 路径打开它。
     /// </summary>
     private static void HandleSecondInstance(
         string[] args, MainWindow window, MainViewModel viewModel, IReadOnlyList<ITool> tools)
@@ -180,17 +191,28 @@ public partial class App : Application
         SingleInstance.ActivateWindow(window);
 
         var image = args.FirstOrDefault(PictureFileAssociation.IsSupportedImageFile);
-        if (string.IsNullOrWhiteSpace(image)) return;
+        if (!string.IsNullOrWhiteSpace(image))
+        {
+            try { PictureFilePathLaunch.PendingImagePath = Path.GetFullPath(image.Trim().Trim('"')); }
+            catch { PictureFilePathLaunch.PendingImagePath = image; }
 
-        try { PictureFilePathLaunch.PendingImagePath = Path.GetFullPath(image.Trim().Trim('"')); }
-        catch { PictureFilePathLaunch.PendingImagePath = image; }
+            var pictureTool = tools.FirstOrDefault(t => t.Id == PictureViewerConfig.ToolId);
+            if (pictureTool is not null) viewModel.OpenToolCommand.Execute(pictureTool);
+            return;
+        }
 
-        var pictureTool = tools.FirstOrDefault(t => t.Id == PictureViewerConfig.ToolId);
-        if (pictureTool is not null) viewModel.OpenToolCommand.Execute(pictureTool);
+        var pdf = args.FirstOrDefault(PdfFileAssociation.IsSupportedPdfFile);
+        if (string.IsNullOrWhiteSpace(pdf)) return;
+
+        try { PdfFilePathLaunch.PendingPdfPath = Path.GetFullPath(pdf.Trim().Trim('"')); }
+        catch { PdfFilePathLaunch.PendingPdfPath = pdf; }
+
+        var pdfTool = tools.FirstOrDefault(t => t.Id == PdfReaderConfig.ToolId);
+        if (pdfTool is not null) viewModel.OpenToolCommand.Execute(pdfTool);
     }
 
     /// <summary>
-    /// 第二实例发消息前先把「受支持的图片路径」转成绝对路径：两个进程工作目录可能不同，
+    /// 第二实例发消息前先把「受支持的图片 / PDF 路径」转成绝对路径：两个进程工作目录可能不同，
     /// 直接发相对路径的话第一个实例会按自己的目录解析错。
     /// </summary>
     private static string[] NormalizeLaunchArguments(string[] args)
@@ -199,7 +221,9 @@ public partial class App : Application
         for (var i = 0; i < args.Length; i++)
         {
             var arg = args[i];
-            if (!PictureFileAssociation.IsSupportedImageFile(arg))
+            var isLaunchFile = PictureFileAssociation.IsSupportedImageFile(arg)
+                               || PdfFileAssociation.IsSupportedPdfFile(arg);
+            if (!isLaunchFile)
             {
                 result[i] = arg;
                 continue;
