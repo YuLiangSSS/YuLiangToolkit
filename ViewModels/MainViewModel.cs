@@ -707,15 +707,65 @@ public class MainViewModel : ObservableObject
     public Stretch BackgroundImageStretch => _shell.BackgroundImageFitWhole ? Stretch.Uniform : Stretch.UniformToFill;
 
     /// <summary>
-    /// 背景图模糊半径（由当前风格决定，不单独设置）：液态玻璃保持清晰、毛玻璃重模糊、亚克力轻模糊。
+    /// 背景图模糊半径（**按当前风格读配置**，每套半透明风格各自记住一个值，v0.43.1）：
+    /// 液态玻璃默认 0（清晰）、毛玻璃默认 28、亚克力默认 20。
     /// 模糊只作用在背景图上（静态一层，不跑动画），面板 / 文字永远清晰。
     /// </summary>
     public double BackgroundImageBlurRadius => UiTheme switch
     {
-        UiTheme.FrostedGlass => 28,
-        UiTheme.Acrylic => 20,
+        UiTheme.FrostedGlass => ShellBackdropSettings.ClampBlurRadius(_shell.FrostedGlassBlurRadius),
+        UiTheme.Acrylic => ShellBackdropSettings.ClampBlurRadius(_shell.AcrylicBlurRadius),
+        UiTheme.LiquidGlass => ShellBackdropSettings.ClampBlurRadius(_shell.LiquidGlassBlurRadius),
         _ => 0,
     };
+
+    // ---------- 背景图模糊度滑块（v0.43.1；选中哪个半透明风格，就在它下面出现一条） ----------
+    //
+    // 三条滑块共用设置页的 EffectSliderTemplate（和点击效果的参数滑块长得一样），
+    // 只有对应风格被选中时才由 XAML 显示（Visibility 绑 <风格>ThemeSelected）。
+    // 值分别存 ShellConfig 的三个字段，拖动立即生效并自动落盘。
+
+    /// <summary>液态玻璃风格下「背景图模糊度」滑块（选中液态玻璃时才显示）。</summary>
+    public ShellSliderOption LiquidGlassBlurOption { get; private set; } = null!;
+
+    /// <summary>毛玻璃风格下「背景图模糊度」滑块（选中毛玻璃时才显示）。</summary>
+    public ShellSliderOption FrostedGlassBlurOption { get; private set; } = null!;
+
+    /// <summary>亚克力风格下「背景图模糊度」滑块（选中亚克力时才显示）。</summary>
+    public ShellSliderOption AcrylicBlurOption { get; private set; } = null!;
+
+    /// <summary>按当前配置建三条模糊度滑块（构造时调用一次；重建配置后用 <see cref="SyncThemeBlurOptions"/> 同步）。</summary>
+    private void InitializeThemeBlurOptions()
+    {
+        LiquidGlassBlurOption = CreateThemeBlurOption(
+            "theme-blur-liquid", UiTheme.LiquidGlass, _shell.LiquidGlassBlurRadius,
+            value => _shell.LiquidGlassBlurRadius = value);
+        FrostedGlassBlurOption = CreateThemeBlurOption(
+            "theme-blur-frosted", UiTheme.FrostedGlass, _shell.FrostedGlassBlurRadius,
+            value => _shell.FrostedGlassBlurRadius = value);
+        AcrylicBlurOption = CreateThemeBlurOption(
+            "theme-blur-acrylic", UiTheme.Acrylic, _shell.AcrylicBlurRadius,
+            value => _shell.AcrylicBlurRadius = value);
+    }
+
+    private ShellSliderOption CreateThemeBlurOption(
+        string id, UiTheme theme, double value, Action<double> write)
+        => new(id, "theme", "背景图模糊度", ShellBackdropSettings.DescribeBlur(theme),
+            ShellBackdropSettings.BlurRadiusRange, value, ShellBackdropSettings.BlurUnit,
+            changed =>
+            {
+                write(changed);
+                // 主窗口的 GlassBackdrop 绑定的是 BackgroundImageBlurRadius，通知它重新套 BlurEffect
+                OnPropertyChanged(nameof(BackgroundImageBlurRadius));
+            });
+
+    /// <summary>「重建配置」把外壳配置改回默认后，把三条滑块的值同步回配置里的新值。</summary>
+    private void SyncThemeBlurOptions()
+    {
+        LiquidGlassBlurOption.Value = _shell.LiquidGlassBlurRadius;
+        FrostedGlassBlurOption.Value = _shell.FrostedGlassBlurRadius;
+        AcrylicBlurOption.Value = _shell.AcrylicBlurRadius;
+    }
 
     /// <summary>设置页里背景图的状态文字（文件名 + 大小 / 没设置 / 文件丢了）。</summary>
     public string BackgroundImageInfoText
@@ -998,6 +1048,7 @@ public class MainViewModel : ObservableObject
         _shellStore = ToolConfigStore.For(ShellToolId);
         _shell = _shellStore.Load<ShellConfig>();
         InitializeEffects();
+        InitializeThemeBlurOptions();     // 四套界面风格的「背景图模糊度」滑块（选中对应风格才显示）
         ApplyPaneSplitterHintOpacity();   // 工具页分隔条的「提示线」全局透明度（主页设置里可调）
 
         // 开发 / 截图：YLT_THEME=liquid-glass 临时切到第二套 UI（不写配置；见 ShellConfig.UiTheme）
@@ -1566,6 +1617,7 @@ public class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(AutoEffectOptions));
         OnPropertyChanged(nameof(ClickEffectOptions));
         NotifyTuningChanged();
+        SyncThemeBlurOptions();           // 三条模糊度滑块也回默认值
         ApplyPaneSplitterHintOpacity();   // 分隔条提示线也回默认（0.18）
 
         foreach (var card in _allCards) card.LastUsed = null;   // LastUsed 字典已被重置为空

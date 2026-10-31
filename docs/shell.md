@@ -56,8 +56,13 @@
     勾「**完整显示整张图（不裁剪，可能留边）**」则整张图完整显示、四周可能留边，同样不拉伸；
   - **只有半透明风格（液态玻璃 / 毛玻璃 / 亚克力）才会显示**背景图（从半透明面板后面透出来，还会按风格自动模糊 /
     加暗色压暗层保证白字可读）；默认（深色）风格下背景图不会显示——设置页里会提示当前风格会不会显示；
+  - **背景图模糊度可调**（v0.43.1）：在「界面风格」里选中某个半透明风格后，**它下面会出现「背景图模糊度」滑块**
+    （和下面自动 / 点击效果的参数滑块同一种样式），拖动立即生效并自动保存。范围 0~60 px（0 = 清晰、越大越朦胧），
+    三套风格**各记各的值**；默认液态玻璃 0 / 毛玻璃 28 / 亚克力 20（= v0.43.0 写死的外观，旧配置升级后不变）。
+    模糊只加在静态背景图上，面板和文字永远清晰；没有背景图时拖动看不出效果；
   - 换图会自动删掉上一张副本；「**清除背景图**」删掉数据目录里的副本、恢复纯色背景。配置字段是
-    `backgroundImage`（文件名，缺省 = 没设置）与 `backgroundImageFitWhole`（`true` = 完整显示 / `false` = 铺满）；
+    `backgroundImage`（文件名，缺省 = 没设置）、`backgroundImageFitWhole`（`true` = 完整显示 / `false` = 铺满）、
+    以及三套风格的模糊度 `liquidGlassBlurRadius` / `frostedGlassBlurRadius` / `acrylicBlurRadius`（缺省 = 0 / 28 / 20）；
     图片文件不在了会当成“没设置”，不影响启动。
 - **主页显示**：**显示 / 隐藏主页标签快捷筛选条**（默认显示，v0.33.0）。
   标签有一百多个，默认只排 3 行 + 横向滚动条；不需要这个功能的人可以整块隐藏它
@@ -106,7 +111,8 @@
 > `"autoEffects": ["particle-trail", "cursor-glow"]`、`"clickEffects": ["particle-burst", "dispersion", "invert-circle"]`。
 > `trailParticleCount` / `trailParticleSize` / `cursorGlowRadius` / `burstParticleCount` / `burstRange` /
 > `dispersionRadius` / `glowFlashRadius` / `invertCircleRadius` 是滑块的数值（缺字段 = 默认值）。
-> 窗口背景图是 `backgroundImage`（`Data\shell\background\` 里的文件名）+ `backgroundImageFitWhole`（铺满 / 完整显示）。
+> 窗口背景图是 `backgroundImage`（`Data\shell\background\` 里的文件名）+ `backgroundImageFitWhole`（铺满 / 完整显示），
+> 模糊度是 `liquidGlassBlurRadius` / `frostedGlassBlurRadius` / `acrylicBlurRadius`（0~60 px，各风格独立）。
 > 老版本的 `showParticles` 布尔开关会在升级后**自动迁移**（开 = 粒子拖尾 + 粒子爆炸，关 = 两个都空），
 > 之后以两个数组为准；未知 Id 会被忽略，不会崩。
 
@@ -252,7 +258,7 @@ v0.41.0 起，「有多个区块的工具页」区块之间都能拖动调整大
 │  └─ 怎么用这两个文件夹.md  ← 首次运行写入，只写缺失的，不覆盖你改过的
 ├─ Config\
 │  ├─ <功能Id>\config.json  ← 该功能所有选项的值（改一下自动保存，没有「保存」按钮）
-│  ├─ shell\config.json     ← 外壳自己的：主页排序偏好 + 各功能上次使用时间 + 自动/点击特效（`autoEffects` / `clickEffects`）+ 粒子颜色 + 界面主题（`uiTheme`）+ 背景图（`backgroundImage` / `backgroundImageFitWhole`）+ 标签墙显示（`showHomeTags`）+ 关闭按钮行为
+│  ├─ shell\config.json     ← 外壳自己的：主页排序偏好 + 各功能上次使用时间 + 自动/点击特效（`autoEffects` / `clickEffects`）+ 粒子颜色 + 界面主题（`uiTheme`）+ 背景图（`backgroundImage` / `backgroundImageFitWhole` / 三套风格的 `*BlurRadius`）+ 标签墙显示（`showHomeTags`）+ 关闭按钮行为
 │  └─ 怎么用这两个文件夹.md
 └─ Cache\
    └─ <功能Id>\…            ← 缩略图 / 临时文件之类，随时可删（「主页设置 → 清理缓存」清这里）

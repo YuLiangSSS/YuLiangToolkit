@@ -157,6 +157,7 @@
 - 窗口背景层是 `Views/GlassBackdrop.xaml`（v0.43.0 由 `LiquidBackdrop` 升级）：默认主题下整层 `Collapsed`，流动光晕只在液态玻璃时跑；
   背景图由 `MainViewModel` 解码（不锁文件、超宽图按 2560 解码），毛玻璃 / 亚克力给静态 `BlurEffect` + `BitmapCache`，别把模糊加在动画层上。
 - 背景图配置只存**纯文件名**（`Data\shell\background\`），`ShellBackgroundImage.IsSafeFileName` 挡 `..` / 绝对路径；换图先复制新图成功再删旧图。
+- 背景图模糊度按风格分别存在 `ShellConfig` 的 `liquidGlassBlurRadius` / `frostedGlassBlurRadius` / `acrylicBlurRadius`，范围 / 默认值集中在 `Models/ShellBackdropSettings.cs`；设置页滑块只在选中对应风格时显示（`ShellSliderOption` + `EffectSliderTemplate`），改值只通知 `BackgroundImageBlurRadius`，别再在渲染层写死半径。
 
 ## 别做 · 先问用户
 

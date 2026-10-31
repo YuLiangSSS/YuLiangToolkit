@@ -358,6 +358,35 @@ internal static class ThemeChecks
         File.WriteAllText(path, "{ \"uiTheme\": \"FrostedGlass\" }");
         check("旧配置（没有背景图字段）读出来 = 没有背景图、铺满窗口",
             JsonFileStore.Read<ShellConfig>(path) is { BackgroundImage: null, BackgroundImageFitWhole: false });
+
+        // ---- v0.43.1：每套半透明风格的背景图模糊度（0~60 px，默认 0 / 28 / 20） ----
+        var defaults = new ShellConfig();
+        check("背景图模糊度默认值：液态玻璃 0 / 毛玻璃 28 / 亚克力 20",
+            defaults.LiquidGlassBlurRadius == 0.0
+            && defaults.FrostedGlassBlurRadius == 28.0
+            && defaults.AcrylicBlurRadius == 20.0);
+        check("背景图模糊度默认值与 ShellBackdropSettings 一致",
+            ShellBackdropSettings.DefaultBlurRadius(UiTheme.LiquidGlass) == defaults.LiquidGlassBlurRadius
+            && ShellBackdropSettings.DefaultBlurRadius(UiTheme.FrostedGlass) == defaults.FrostedGlassBlurRadius
+            && ShellBackdropSettings.DefaultBlurRadius(UiTheme.Acrylic) == defaults.AcrylicBlurRadius);
+        check("背景图模糊度范围 0~60、1 px 一档",
+            ShellBackdropSettings.BlurRadiusRange.Minimum == 0
+            && ShellBackdropSettings.BlurRadiusRange.Maximum == 60
+            && ShellBackdropSettings.BlurRadiusRange.Step == 1);
+        check("背景图模糊度越界 / NaN 会被夹回范围（手改配置不会崩）",
+            ShellBackdropSettings.ClampBlurRadius(-5) == 0
+            && ShellBackdropSettings.ClampBlurRadius(1000) == 60
+            && ShellBackdropSettings.ClampBlurRadius(28.4) == 28.4
+            && ShellBackdropSettings.ClampBlurRadius(double.NaN) == 0);
+
+        JsonFileStore.Write(path, new ShellConfig { FrostedGlassBlurRadius = 42 });
+        check("背景图模糊度写入 / 读回配置（frostedGlassBlurRadius = 42）",
+            File.ReadAllText(path).Contains("\"frostedGlassBlurRadius\": 42")
+            && JsonFileStore.Read<ShellConfig>(path)?.FrostedGlassBlurRadius == 42);
+
+        File.WriteAllText(path, "{ \"uiTheme\": \"FrostedGlass\" }");
+        check("旧配置（没有模糊度字段）读出来 = 默认 28",
+            JsonFileStore.Read<ShellConfig>(path)?.FrostedGlassBlurRadius == 28.0);
     }
 
     // ---------------------------------------------------------------- 背景图文件名安全（v0.43.0）

@@ -130,6 +130,18 @@ public sealed class ShellConfig : ToolConfig
     public bool BackgroundImageFitWhole { get; set; }
 
     /// <summary>
+    /// 液态玻璃风格的背景图模糊度（v0.43.1，0~60 px，默认 0 = 清晰）。
+    /// 主页设置里选中「液态玻璃」时，它下面会出现这条滑块；范围 / 默认值见 <see cref="ShellBackdropSettings"/>。
+    /// </summary>
+    public double LiquidGlassBlurRadius { get; set; } = ShellBackdropSettings.DefaultBlurRadius(UiTheme.LiquidGlass);
+
+    /// <summary>毛玻璃风格的背景图模糊度（0~60 px，默认 28）。见 <see cref="LiquidGlassBlurRadius"/>。</summary>
+    public double FrostedGlassBlurRadius { get; set; } = ShellBackdropSettings.DefaultBlurRadius(UiTheme.FrostedGlass);
+
+    /// <summary>亚克力风格的背景图模糊度（0~60 px，默认 20）。见 <see cref="LiquidGlassBlurRadius"/>。</summary>
+    public double AcrylicBlurRadius { get; set; } = ShellBackdropSettings.DefaultBlurRadius(UiTheme.Acrylic);
+
+    /// <summary>
     /// 主页「快速筛选」标签墙是否显示（「主页设置 → 主页显示」，默认 <c>true</c> = 和以前一样显示）。
     /// 标签多的时候整块墙比较占地方，不需要的人可以在设置里关掉；
     /// 关掉后搜索框仍然能按标签搜到功能。旧配置文件没有这个字段时按默认值 true 处理（行为不变）。
