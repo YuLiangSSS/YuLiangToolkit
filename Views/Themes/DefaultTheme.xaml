@@ -2,10 +2,11 @@
   默认主题（第一套 UI）：经典深色界面。
 
   ★ 这里只放「主题 token」——颜色 / 圆角这类随主题整体切换的值；
-    控件样式本身（模板、字号、边距）在 App.xaml 里，两套主题共用同一批样式。
-  ★ 运行时由 ThemeManager.Apply(UiTheme) 把本字典整体替换成 LiquidGlassTheme.xaml，
-    所有引用它们的控件都用 {DynamicResource 名字} 绑定，所以换主题立即生效、不用重启。
-  ★ 两套字典的 key 必须**完全一致**（自检 ThemeChecks 会逐项对比），
+    控件样式本身（模板、字号、边距）在 App.xaml 里，四套主题共用同一批样式。
+  ★ 运行时由 ThemeManager.Apply(UiTheme) 把本字典整体替换成 LiquidGlassTheme.xaml /
+    FrostedGlassTheme.xaml / AcrylicTheme.xaml，所有引用它们的控件都用 {DynamicResource 名字} 绑定，
+    所以换主题立即生效、不用重启。
+  ★ 四套字典的 key 必须**完全一致**（自检 ThemeChecks 会逐项对比），
     少一个 key 的话玻璃主题下会用控件默认值（例如文字变黑），很难发现。
 -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -67,6 +68,13 @@
 
     <!-- 整窗最外圈那道 1px 玻璃边（默认主题透明 = 无边框，外观与以前一致） -->
     <SolidColorBrush x:Key="WindowEdgeBorderBrush" Color="Transparent" />
+
+    <!-- ================= 背景层 token（v0.43.0） ================= -->
+    <!-- 默认主题是纯色界面：不显示窗口背景图，也不用亚克力颗粒；这三个 token 只为
+         让四套主题字典的 key 完全一致（自检 ThemeChecks 会逐项对比）。 -->
+    <SolidColorBrush x:Key="BackdropBaseBrush" Color="#16181D" />
+    <SolidColorBrush x:Key="BackdropImageScrimBrush" Color="Transparent" />
+    <SolidColorBrush x:Key="BackdropNoiseBrush" Color="Transparent" />
 
     <!-- ================= 几何 token ================= -->
     <CornerRadius x:Key="CardCornerRadius">12</CornerRadius>

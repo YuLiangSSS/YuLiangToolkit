@@ -151,9 +151,12 @@
 - 调试开关：`YLT_KPS_DEMO=1` 造假统计（截图冒烟）、`YLT_KPS_SHOT_OVERLAY=<png>` 把 Overlay 渲染成 PNG 后退出，
   用法同 `YLT_SHOT`（见 AGENTS.md）。
 
-### 液态玻璃主题
-- ⚠ 改 token 三处一起改：两套字典 + `ThemeManager.RequiredTokenKeys`（几何 key 在 `RequiredRadiusKeys`）；少一个静默退回控件默认值。
+### 液态玻璃 / 毛玻璃 / 亚克力主题（半透明界面 + 背景图）
+- ⚠ 改 token 一起改：四套字典（`DefaultTheme` / `LiquidGlassTheme` / `FrostedGlassTheme` / `AcrylicTheme`）+ `ThemeManager.RequiredTokenKeys`（几何 key 在 `RequiredRadiusKeys`）；少一个静默退回控件默认值。
 - 启动在 `new MainWindow()` 之前 `ThemeManager.Apply`；⚠ Storyboard 的 `TargetName` 必须同一命名域（写错启动崩）。
+- 窗口背景层是 `Views/GlassBackdrop.xaml`（v0.43.0 由 `LiquidBackdrop` 升级）：默认主题下整层 `Collapsed`，流动光晕只在液态玻璃时跑；
+  背景图由 `MainViewModel` 解码（不锁文件、超宽图按 2560 解码），毛玻璃 / 亚克力给静态 `BlurEffect` + `BitmapCache`，别把模糊加在动画层上。
+- 背景图配置只存**纯文件名**（`Data\shell\background\`），`ShellBackgroundImage.IsSafeFileName` 挡 `..` / 绝对路径；换图先复制新图成功再删旧图。
 
 ## 别做 · 先问用户
 

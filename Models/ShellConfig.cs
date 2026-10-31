@@ -110,10 +110,24 @@ public sealed class ShellConfig : ToolConfig
 
     /// <summary>
     /// 界面主题（「主页设置 → 界面风格」，默认 <see cref="UiTheme.Default"/>）。
-    /// 选 <see cref="UiTheme.LiquidGlass"/> 切换成第二套 UI（液态玻璃）。
+    /// 除默认外还有液态玻璃 / 毛玻璃 / 亚克力三套半透明界面。
     /// 旧配置文件没有这个字段时读出来就是默认值 —— 老用户升级后外观不变。
     /// </summary>
     public UiTheme UiTheme { get; set; } = UiTheme.Default;
+
+    /// <summary>
+    /// 窗口背景图文件名（「主页设置 → 界面风格 → 背景图」，v0.43.0）。
+    /// 只存**文件名**（图片本体在 <c>Data\shell\background\</c>，见 <see cref="ShellBackgroundImage"/>），
+    /// 配置跟着整个程序目录搬走也不会失效；<c>null</c> / 空 = 没设置背景图（旧配置读出来就是这样）。
+    /// 只有半透明界面风格（液态玻璃 / 毛玻璃 / 亚克力）才会把它显示在面板后面。
+    /// </summary>
+    public string? BackgroundImage { get; set; }
+
+    /// <summary>
+    /// 背景图铺法（v0.43.0）：<c>false</c>（默认）= 铺满窗口、保持比例、裁掉超出部分（UniformToFill）；
+    /// <c>true</c> = 完整显示整张图、不裁剪（四周可能留边，Uniform）。两种都**不拉伸变形**。
+    /// </summary>
+    public bool BackgroundImageFitWhole { get; set; }
 
     /// <summary>
     /// 主页「快速筛选」标签墙是否显示（「主页设置 → 主页显示」，默认 <c>true</c> = 和以前一样显示）。

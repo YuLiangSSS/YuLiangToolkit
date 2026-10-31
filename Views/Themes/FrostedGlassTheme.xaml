@@ -1,0 +1,146 @@
+<!--
+  毛玻璃主题（第三套 UI）：安静、奶白磨砂质感。
+
+  ★ 这里只放「主题 token」——颜色 / 圆角这类随主题整体切换的值；
+    控件样式本身（模板、字号、边距）仍在 App.xaml 里，所有主题共用同一批样式。
+  ★ key 必须与 ThemeManager.RequiredTokenKeys + RequiredRadiusKeys 完全一致
+    （自检 ThemeChecks 会逐项对比：不多不少、大小写一致），
+    少一个 key 时 DynamicResource 会悄悄退回控件默认值（例如文字变黑），很难发现。
+  ★ 和液态玻璃的区别：背景图由控件层做 28px 重模糊、面板像磨砂白玻璃，
+    **不带动画光晕**；色调整体偏冷（蓝白），不再有彩色光斑。
+  ★ 背景三层（本次新增的 3 个 token）：
+      ① BackdropBaseBrush        —— 背景图 / 流动背景「后面」的底色层（斜向冷色渐变，兜底不透底）；
+      ② BackdropImageScrimBrush  —— 背景图上面那层暗色压暗层，保证白字可读；
+      ③ BackdropNoiseBrush       —— 覆盖整个背景的噪点 / 颗粒层；毛玻璃不需要颗粒，所以是 Transparent。
+-->
+
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ================= 基础颜色 ================= -->
+    <!-- 窗口兜底底色：偏冷的深蓝灰，透过磨砂面板看是一层「安静」的暗底 -->
+    <SolidColorBrush x:Key="WindowBackgroundBrush" Color="#10151D" />
+
+    <!-- 标题栏 / 状态栏：竖向渐变的白色雾面玻璃（上亮下暗），保证白字在任何背景上都读得清 -->
+    <LinearGradientBrush x:Key="HeaderBackgroundBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#3DFFFFFF" Offset="0" />
+        <GradientStop Color="#14FFFFFF" Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- 侧边栏：横向渐变的雾面白玻璃，靠右逐渐变透明，和内容区自然衔接 -->
+    <LinearGradientBrush x:Key="SidebarBackgroundBrush" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="#2EFFFFFF" Offset="0" />
+        <GradientStop Color="#0FFFFFFF" Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- 卡片 / 面板：奶白半透明磨砂玻璃，上亮下暗，四段渐变让质感更「厚」 -->
+    <LinearGradientBrush x:Key="CardBackgroundBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#5CFFFFFF" Offset="0" />
+        <GradientStop Color="#30F3F7FF" Offset="0.18" />
+        <GradientStop Color="#1AF3F7FF" Offset="0.6" />
+        <GradientStop Color="#2EFFFFFF" Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- 卡片悬停：整体提亮一档，保持同样的奶白半透明层次 -->
+    <LinearGradientBrush x:Key="CardHoverBackgroundBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#70FFFFFF" Offset="0" />
+        <GradientStop Color="#3DFFFFFF" Offset="0.18" />
+        <GradientStop Color="#24FFFFFF" Offset="0.6" />
+        <GradientStop Color="#3DFFFFFF" Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- 磨砂玻璃描边：上下两条边最亮（磨砂边缘被光「勾」出来），中间偏暗 -->
+    <LinearGradientBrush x:Key="BorderBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#A6FFFFFF" Offset="0" />
+        <GradientStop Color="#59FFFFFF" Offset="0.3" />
+        <GradientStop Color="#33FFFFFF" Offset="0.72" />
+        <GradientStop Color="#73FFFFFF" Offset="1" />
+    </LinearGradientBrush>
+
+    <SolidColorBrush x:Key="SeparatorBrush" Color="#59FFFFFF" />
+    <SolidColorBrush x:Key="AccentBrush" Color="#8FC7FF" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="#B7DBFF" />
+    <SolidColorBrush x:Key="AccentPressedBrush" Color="#6FA8E3" />
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F6FAFF" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="#D2DCEA" />
+    <SolidColorBrush x:Key="FaintTextBrush" Color="#A2B1C4" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#FF7A7A" />
+    <SolidColorBrush x:Key="DangerPressedBrush" Color="#E85F5F" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="#6FE39A" />
+    <SolidColorBrush x:Key="InputBackgroundBrush" Color="#29FFFFFF" />
+
+    <!-- ================= 控件细节颜色 ================= -->
+    <SolidColorBrush x:Key="ControlBorderHoverBrush" Color="#73FFFFFF" />
+    <SolidColorBrush x:Key="WindowButtonHoverBackgroundBrush" Color="#33FFFFFF" />
+    <SolidColorBrush x:Key="WindowButtonPressedBackgroundBrush" Color="#1FFFFFFF" />
+    <SolidColorBrush x:Key="CheckBoxBorderBrush" Color="#99FFFFFF" />
+    <SolidColorBrush x:Key="ScrollBarTrackBrush" Color="#1FFFFFFF" />
+    <SolidColorBrush x:Key="ScrollBarThumbBrush" Color="#38FFFFFF" />
+    <SolidColorBrush x:Key="ScrollBarThumbHoverBrush" Color="#7AFFFFFF" />
+    <SolidColorBrush x:Key="SidebarItemHoverBackgroundBrush" Color="#26FFFFFF" />
+    <SolidColorBrush x:Key="SidebarItemSelectedBackgroundBrush" Color="#3DFFFFFF" />
+    <SolidColorBrush x:Key="ListRowHoverBackgroundBrush" Color="#24FFFFFF" />
+    <SolidColorBrush x:Key="ListRowSelectedBackgroundBrush" Color="#3D8FC7FF" />
+    <SolidColorBrush x:Key="ListRowSelectedBorderBrush" Color="#B38FC7FF" />
+    <SolidColorBrush x:Key="TagChipBackgroundBrush" Color="#2690C4FF" />
+    <SolidColorBrush x:Key="TagChipBorderBrush" Color="#8090C4FF" />
+    <SolidColorBrush x:Key="TagChipHoverBackgroundBrush" Color="#4090C4FF" />
+    <SolidColorBrush x:Key="EmojiTileBackgroundBrush" Color="#33FFFFFF" />
+    <SolidColorBrush x:Key="SliderThumbBackgroundBrush" Color="#F5FFFFFF" />
+    <SolidColorBrush x:Key="SliderThumbBorderBrush" Color="#73FFFFFF" />
+    <SolidColorBrush x:Key="MiniPlayerBackgroundBrush" Color="#E01A2433" />
+    <SolidColorBrush x:Key="MiniPlayerHoverBackgroundBrush" Color="#33FFFFFF" />
+    <SolidColorBrush x:Key="ShellSurfaceBrush" Color="Transparent" />
+
+    <!-- 次级按钮：一层很淡的雾面白底 -->
+    <SolidColorBrush x:Key="SecondaryButtonBackgroundBrush" Color="#26FFFFFF" />
+
+    <!-- 主按钮：冷蓝 → 浅蓝的实心渐变，配白色半透明描边 -->
+    <LinearGradientBrush x:Key="PrimaryButtonBackgroundBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#FF6FB6FF" Offset="0" />
+        <GradientStop Color="#FF8CC8FF" Offset="1" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="PrimaryButtonHoverBackgroundBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#FF90C9FF" Offset="0" />
+        <GradientStop Color="#FFA9D8FF" Offset="1" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="PrimaryButtonPressedBackgroundBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#FF4F93D8" Offset="0" />
+        <GradientStop Color="#FF6FA8E8" Offset="1" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="PrimaryButtonBorderBrush" Color="#99FFFFFF" />
+
+    <!-- 模板里的斜向高光层：磨砂玻璃表面那一道淡淡的「反光」 -->
+    <LinearGradientBrush x:Key="GlassHighlightBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#47FFFFFF" Offset="0" />
+        <GradientStop Color="#1AFFFFFF" Offset="0.3" />
+        <GradientStop Color="#00FFFFFF" Offset="0.62" />
+        <GradientStop Color="#14FFFFFF" Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- 整窗最外圈那道 1px 磨砂亮边：让窗口和桌面之间有清楚的“玻璃壳”分层 -->
+    <SolidColorBrush x:Key="WindowEdgeBorderBrush" Color="#80FFFFFF" />
+
+    <!-- ================= 背景三层（本次新增 token） ================= -->
+    <!-- ① 底色层：背景图 / 流动背景后面的冷色斜向渐变，避免背景图半透明时露出桌面 -->
+    <LinearGradientBrush x:Key="BackdropBaseBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Color="#0C1119" Offset="0" />
+        <GradientStop Color="#1A2330" Offset="0.55" />
+        <GradientStop Color="#2A3546" Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- ② 暗色压暗层：盖在背景图上，压出冷暗调，保证白色文字可读 -->
+    <LinearGradientBrush x:Key="BackdropImageScrimBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#8C0E1522" Offset="0" />
+        <GradientStop Color="#66141C2A" Offset="0.55" />
+        <GradientStop Color="#73101924" Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- ③ 噪点 / 颗粒层：毛玻璃本身足够细腻，这里不需要颗粒，用 Transparent -->
+    <SolidColorBrush x:Key="BackdropNoiseBrush" Color="Transparent" />
+
+    <!-- ================= 几何 token ================= -->
+    <CornerRadius x:Key="CardCornerRadius">18</CornerRadius>
+    <CornerRadius x:Key="ControlCornerRadius">10</CornerRadius>
+
+</ResourceDictionary>

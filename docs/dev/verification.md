@@ -34,7 +34,7 @@
 | **L4** | 一次动 ≥8 组（脚本自动升级）· 改 `Core/` 公共轮子 · 改自检接线（`Program.cs` / `SelfCheckScratch.cs` / 自检 csproj） · 改主工程 `YuLiangTookit.csproj` · 发布前 · 映射不到 / bug 复发且影响面不清 | build + `--all`（+ 必要的人工清单/截图） | **全量是例外，不是日常** |
 
 > ⚠ 例外：`Views/Themes/**` 与 `App.xaml` **不能**按「XAML 改动」走 L1 —— `theme` 组就是为它们存在的，
-> 且 `App.xaml` 全局样式无断言，改完必须截「主页 + 至少一个工具页 + 两套主题」。
+> 且 `App.xaml` 全局样式无断言，改完必须截「主页 + 至少一个工具页 + 四套主题」。
 > 同理，跑 `shell` 组 ≠ 验过 `MainWindow` / `Converters` / `MainViewModel`（shell 组不断言它们）→ 按 L1 加截图。
 
 ## 一条命令：`scripts\check.ps1`
@@ -97,7 +97,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `Models/ShellCategories.cs` | `shell` + `board-games` | L2 |
 | `Views/Themes/**`（含 `ThemeManager.cs`） | `theme`（XAML 也不能跳过） | L2 |
 | `Views/**`（除上面）、`ViewModels/**`、`Models/**`（除上面）、`SingleInstance.cs` | `shell` | L2 |
-| `App.xaml` | `theme` + `shell` + **必须截图（两套主题）** | L3 |
+| `App.xaml` | `theme` + `shell` + **必须截图（四套主题）** | L3 |
 | `App.xaml.cs`、`MainWindow.*` | `shell` + 截图（无直接断言） | L2 |
 | `src/YuLiangToolkit.Core/**` | **ALL**（跨层公共轮子） | L4 |
 | `src/YuLiangToolkit.Tools.BatchRename/**` | `batch-rename` | L2 |

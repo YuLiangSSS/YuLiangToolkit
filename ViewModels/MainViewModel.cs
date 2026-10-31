@@ -590,7 +590,7 @@ public class MainViewModel : ObservableObject
         => options.Any(option => option.IsSelected
                                  && string.Equals(option.Id, id, StringComparison.OrdinalIgnoreCase));
 
-    // ---------- 界面风格（第二套 UI：液态玻璃，v0.25.0） ----------
+    // ---------- 界面风格（v0.25.0 第二套 UI：液态玻璃；v0.43.0 扩到四套 + 背景图） ----------
 
     /// <summary>
     /// 当前界面主题（读写 <see cref="ShellConfig.UiTheme"/>，由 <see cref="ToolConfigStore"/> 自动落盘）。
@@ -600,7 +600,7 @@ public class MainViewModel : ObservableObject
     /// </summary>
     public UiTheme UiTheme => _themeOverride ?? _shell.UiTheme;
 
-    /// <summary>设置窗口「默认」单选按钮（与 <see cref="LiquidGlassThemeSelected"/> 二选一，只处理 true）。</summary>
+    /// <summary>设置窗口「默认（深色）」单选按钮（四选一，只处理 true）。</summary>
     public bool DefaultThemeSelected
     {
         get => UiTheme == UiTheme.Default;
@@ -614,21 +614,229 @@ public class MainViewModel : ObservableObject
         set { if (value) SelectUiTheme(UiTheme.LiquidGlass); }
     }
 
-    /// <summary>当前是不是液态玻璃主题（主窗口 / 设置窗口用它显示 LiquidBackdrop 流动背景）。</summary>
-    public bool IsLiquidGlass => UiTheme == UiTheme.LiquidGlass;
+    /// <summary>设置窗口「毛玻璃」单选按钮（v0.43.0）。</summary>
+    public bool FrostedGlassThemeSelected
+    {
+        get => UiTheme == UiTheme.FrostedGlass;
+        set { if (value) SelectUiTheme(UiTheme.FrostedGlass); }
+    }
 
-    /// <summary>用户在设置里换主题：清掉调试覆盖 → 写配置（自动落盘）→ 立即切换界面。</summary>
+    /// <summary>设置窗口「亚克力」单选按钮（v0.43.0）。</summary>
+    public bool AcrylicThemeSelected
+    {
+        get => UiTheme == UiTheme.Acrylic;
+        set { if (value) SelectUiTheme(UiTheme.Acrylic); }
+    }
+
+    /// <summary>
+    /// 当前风格是不是**半透明界面**（液态玻璃 / 毛玻璃 / 亚克力）。
+    /// 默认（深色）风格是纯色面板 → 不显示背景图，也不显示背景层。
+    /// </summary>
+    public bool IsTranslucentTheme => ThemeManager.HasTranslucentSurface(UiTheme);
+
+    /// <summary>主窗口要不要显示最底下的背景层（背景图 / 底色 / 光晕）。默认主题 = false。</summary>
+    public bool ShowBackdrop => IsTranslucentTheme;
+
+    /// <summary>
+    /// 用户点击「换主题」：清掉调试覆盖 → 写配置（自动落盘）→ 立即切换界面。
+    /// 四套主题都走这一条，单选按钮的 bool 属性只处理 true（WPF 取消选中时会传 false）。
+    /// </summary>
     private void SelectUiTheme(UiTheme theme)
     {
         _themeOverride = null;
         if (_shell.UiTheme != theme) _shell.UiTheme = theme;
 
         ThemeManager.Apply(theme);
+        NotifyUiThemeChanged();
+    }
 
+    /// <summary>换主题 / 重建配置后，把所有跟主题相关的绑定值一次通知到位（单选按钮、背景层、背景图模糊度…）。</summary>
+    private void NotifyUiThemeChanged()
+    {
         OnPropertyChanged(nameof(UiTheme));
         OnPropertyChanged(nameof(DefaultThemeSelected));
         OnPropertyChanged(nameof(LiquidGlassThemeSelected));
-        OnPropertyChanged(nameof(IsLiquidGlass));
+        OnPropertyChanged(nameof(FrostedGlassThemeSelected));
+        OnPropertyChanged(nameof(AcrylicThemeSelected));
+        OnPropertyChanged(nameof(IsTranslucentTheme));
+        OnPropertyChanged(nameof(ShowBackdrop));
+        OnPropertyChanged(nameof(BackgroundImageBlurRadius));
+        OnPropertyChanged(nameof(BackgroundImageThemeHint));
+    }
+
+    // ---------- 背景图（v0.43.0，「主页设置 → 界面风格 → 背景图」） ----------
+    //
+    // 图片本体复制进 Data\shell\background\（文件操作见 ShellBackgroundImage），配置里只存文件名。
+    // 这里只负责：读配置 → 解码成 ImageSource → 给主窗口背景层绑定；
+    // 背景图只在半透明风格（液态玻璃 / 毛玻璃 / 亚克力）下显示，默认深色风格不显示。
+
+    /// <summary>解码时最大保留宽度（超大壁纸按这个宽度解码，省内存；之后换图 / 清掉都会重新加载）。</summary>
+    private const int MaxBackgroundDecodeWidth = 2560;
+
+    private ImageSource? _backgroundImageSource;
+
+    /// <summary>当前背景图（已解码并冻结；<c>null</c> = 没设置 / 文件不见了）。只读绑定。</summary>
+    public ImageSource? BackgroundImageSource => _backgroundImageSource;
+
+    /// <summary>有没有可用的背景图（设置页缩略图 / 主窗口背景层都用它控制显隐）。</summary>
+    public bool HasBackgroundImage => _backgroundImageSource is not null;
+
+    /// <summary>
+    /// 配置里是不是记着一份背景图（**文件丢了也算 true**）：让「清除背景图」在文件丢失时仍然可点，
+    /// 不然用户只能重新选一张才能消掉那段失效配置。
+    /// </summary>
+    public bool HasBackgroundImageSetting => !string.IsNullOrWhiteSpace(_shell.BackgroundImage);
+
+    /// <summary>
+    /// 背景图铺法：<c>false</c>（默认）= 铺满窗口、保持比例、多余部分裁掉；
+    /// <c>true</c> = 完整显示整张图（可能留边）。两种都不拉伸变形。读写 <see cref="ShellConfig.BackgroundImageFitWhole"/>。
+    /// </summary>
+    public bool BackgroundImageFitWhole
+    {
+        get => _shell.BackgroundImageFitWhole;
+        set
+        {
+            if (_shell.BackgroundImageFitWhole == value) return;
+            _shell.BackgroundImageFitWhole = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(BackgroundImageStretch));
+        }
+    }
+
+    /// <summary>WPF 的 <see cref="System.Windows.Media.Stretch"/>（铺满 = UniformToFill / 完整 = Uniform）。</summary>
+    public Stretch BackgroundImageStretch => _shell.BackgroundImageFitWhole ? Stretch.Uniform : Stretch.UniformToFill;
+
+    /// <summary>
+    /// 背景图模糊半径（由当前风格决定，不单独设置）：液态玻璃保持清晰、毛玻璃重模糊、亚克力轻模糊。
+    /// 模糊只作用在背景图上（静态一层，不跑动画），面板 / 文字永远清晰。
+    /// </summary>
+    public double BackgroundImageBlurRadius => UiTheme switch
+    {
+        UiTheme.FrostedGlass => 28,
+        UiTheme.Acrylic => 20,
+        _ => 0,
+    };
+
+    /// <summary>设置页里背景图的状态文字（文件名 + 大小 / 没设置 / 文件丢了）。</summary>
+    public string BackgroundImageInfoText
+    {
+        get
+        {
+            if (HasBackgroundImage)
+            {
+                var size = ShellBackgroundImage.SizeText(_shell.BackgroundImage);
+                return string.IsNullOrEmpty(size)
+                    ? _shell.BackgroundImage!
+                    : $"{_shell.BackgroundImage}（{size}）";
+            }
+
+            return string.IsNullOrWhiteSpace(_shell.BackgroundImage)
+                ? "还没有设置背景图。"
+                : "背景图文件不见了（可能被手动删了），请重新选择。";
+        }
+    }
+
+    /// <summary>设置页里那句提示：当前风格会不会显示背景图。</summary>
+    public string BackgroundImageThemeHint => IsTranslucentTheme
+        ? "当前风格是半透明的：背景图会显示在面板后面（铺满窗口或完整显示，由上面的勾选决定）。"
+        : "当前是「默认（深色）」风格：纯色面板，背景图不会显示；切到液态玻璃 / 毛玻璃 / 亚克力就会透出来。";
+
+    /// <summary>选一张图片作为窗口背景（复制进数据目录，原图之后可以随便移动 / 删除）。</summary>
+    public RelayCommand ChooseBackgroundImageCommand { get; }
+
+    /// <summary>清除背景图（删掉数据目录里的那份副本）。</summary>
+    public RelayCommand ClearBackgroundImageCommand { get; }
+
+    private void ChooseBackgroundImage()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "选择窗口背景图",
+            Filter = "图片文件|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff|所有文件|*.*",
+            CheckFileExists = true,
+            Multiselect = false,
+            InitialDirectory = ShellBackgroundImage.Exists(_shell.BackgroundImage)
+                ? Path.GetDirectoryName(ShellBackgroundImage.Resolve(_shell.BackgroundImage))!
+                : Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
+        };
+
+        if (dialog.ShowDialog() != true) return;
+
+        var oldFileName = _shell.BackgroundImage;
+        try
+        {
+            var newFileName = ShellBackgroundImage.Save(dialog.FileName);
+            _shell.BackgroundImage = newFileName;
+            ShellBackgroundImage.Delete(oldFileName);   // 新图复制成功后才删旧图，失败不会丢原来的背景
+            ReloadBackgroundImage();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"背景图设置失败：{ex.Message}", "背景图",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void ClearBackgroundImage()
+    {
+        var oldFileName = _shell.BackgroundImage;
+        if (string.IsNullOrWhiteSpace(oldFileName) && _backgroundImageSource is null) return;
+
+        _shell.BackgroundImage = null;
+        ShellBackgroundImage.Delete(oldFileName);
+        ReloadBackgroundImage();
+    }
+
+    /// <summary>
+    /// 按配置重新加载背景图（启动 / 换图 / 清除 / 「重建配置」恢复默认后调用）。
+    /// 文件不在了或图片损坏都当成“没有背景图”，不影响程序启动。
+    /// </summary>
+    private void ReloadBackgroundImage()
+    {
+        var path = ShellBackgroundImage.Resolve(_shell.BackgroundImage);
+        var image = path is null ? null : LoadBackgroundBitmap(path);
+
+        _backgroundImageSource = image;
+        OnPropertyChanged(nameof(BackgroundImageSource));
+        OnPropertyChanged(nameof(HasBackgroundImage));
+        OnPropertyChanged(nameof(HasBackgroundImageSetting));
+        OnPropertyChanged(nameof(BackgroundImageInfoText));
+        OnPropertyChanged(nameof(BackgroundImageStretch));
+    }
+
+    /// <summary>解码背景图：不锁文件（OnLoad）、超大图按 <see cref="MaxBackgroundDecodeWidth"/> 缩一下，冻结后跨绑定安全。</summary>
+    private static ImageSource? LoadBackgroundBitmap(string path)
+    {
+        try
+        {
+            // 先只读文件头拿像素宽度：小图不设 DecodePixelWidth（避免被放大解码），大图才缩。
+            var pixelWidth = 0;
+            try
+            {
+                var probe = System.Windows.Media.Imaging.BitmapFrame.Create(
+                    new Uri(path, UriKind.Absolute),
+                    System.Windows.Media.Imaging.BitmapCreateOptions.DelayCreation
+                    | System.Windows.Media.Imaging.BitmapCreateOptions.IgnoreColorProfile,
+                    System.Windows.Media.Imaging.BitmapCacheOption.None);
+                pixelWidth = probe.PixelWidth;
+            }
+            catch { /* 拿不到宽度就按不缩放解码（下面 EndInit 会再报错一次，由外层 catch 兜底） */ }
+
+            var bitmap = new System.Windows.Media.Imaging.BitmapImage();
+            bitmap.BeginInit();
+            bitmap.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;   // 不锁源文件
+            bitmap.CreateOptions = System.Windows.Media.Imaging.BitmapCreateOptions.IgnoreColorProfile;
+            if (pixelWidth > MaxBackgroundDecodeWidth)
+                bitmap.DecodePixelWidth = MaxBackgroundDecodeWidth;
+            bitmap.UriSource = new Uri(path, UriKind.Absolute);
+            bitmap.EndInit();
+            bitmap.Freeze();
+            return bitmap;
+        }
+        catch
+        {
+            return null;   // 损坏 / 不支持的格式：当成没有背景图
+        }
     }
 
     // ---------- 粒子颜色（v0.22.0） ----------
@@ -795,6 +1003,9 @@ public class MainViewModel : ObservableObject
         // 开发 / 截图：YLT_THEME=liquid-glass 临时切到第二套 UI（不写配置；见 ShellConfig.UiTheme）
         _themeOverride = ThemeManager.ParseThemeName(Environment.GetEnvironmentVariable("YLT_THEME"));
 
+        // 背景图（v0.43.0）：启动时按配置解码一次；文件不在 / 损坏就当作没有背景图
+        ReloadBackgroundImage();
+
         // 截图 / 调试：YLT_HOME_TAGS=hidden 临时隐藏标签墙（验证「设置里关掉」的样子）、
         // =expanded 临时展开（同时强制显示，免得配置里刚好关着标签墙时截图截不到）；只影响本次运行，不写配置。
         switch (Environment.GetEnvironmentVariable("YLT_HOME_TAGS")?.Trim().ToLowerInvariant())
@@ -847,6 +1058,10 @@ public class MainViewModel : ObservableObject
         {
             if (_keptAliveTool is { } tool) OpenTool(tool);
         });
+
+        // 背景图（v0.43.0）：选图 / 清除，都只改 Data\shell\background 里的那份副本
+        ChooseBackgroundImageCommand = new RelayCommand(_ => ChooseBackgroundImage());
+        ClearBackgroundImageCommand = new RelayCommand(_ => ClearBackgroundImage());
 
         BuildCatalog(tools);
 
@@ -1345,6 +1560,7 @@ public class MainViewModel : ObservableObject
         _homeTagsVisibleOverride = null;
         IsTagBarExpanded = false;           // 回到默认：标签墙 3 行
         ThemeManager.Apply(_shell.UiTheme);
+        ReloadBackgroundImage();            // 背景图也回默认（配置清空 → 不显示；旧图片文件留在 Data 里不删）
 
         InitializeEffects();
         OnPropertyChanged(nameof(AutoEffectOptions));

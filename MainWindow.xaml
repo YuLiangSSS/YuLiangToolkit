@@ -38,11 +38,16 @@
                 <RowDefinition x:Name="StatusRow" Height="Auto" />
             </Grid.RowDefinitions>
 
-            <!-- 液态玻璃主题的流动光晕背景（第二套 UI）：铺满整窗的最底层，不吃鼠标。
-                 默认主题下 IsLiquidGlass=false → Collapsed，且控件会停掉动画（见 LiquidBackdrop.xaml.cs）；
-                 标题栏/侧边栏/状态栏在玻璃主题里是半透明画刷，所以光晕能从它们后面透出来。 -->
-            <views:LiquidBackdrop Grid.RowSpan="4" Panel.ZIndex="-100"
-                                  Visibility="{Binding IsLiquidGlass, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}" />
+            <!-- 半透明界面风格的背景层（液态玻璃 / 毛玻璃 / 亚克力，v0.43.0）：铺满整窗的最底层，不吃鼠标。
+                 默认主题下 ShowBackdrop=false → Collapsed；
+                 背景图、铺法、按主题的模糊度都来自 MainViewModel（见 Views/GlassBackdrop.xaml 的分层注释）。
+                 标题栏/侧边栏/状态栏在玻璃主题里是半透明画刷，所以背景能从它们后面透出来。 -->
+            <views:GlassBackdrop Grid.RowSpan="4" Panel.ZIndex="-100"
+                                 Theme="{Binding UiTheme}"
+                                 ImageSource="{Binding BackgroundImageSource}"
+                                 ImageStretch="{Binding BackgroundImageStretch}"
+                                 ImageBlurRadius="{Binding BackgroundImageBlurRadius}"
+                                 Visibility="{Binding ShowBackdrop, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}" />
 
             <!-- 自定义标题栏（手动拖拽 + 双击最大化；最大化时按住拖出来会先还原成窗口） -->
             <Border Grid.Row="0" Background="{DynamicResource HeaderBackgroundBrush}"

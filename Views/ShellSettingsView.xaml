@@ -58,7 +58,7 @@
                     </StackPanel>
                     <TextBlock FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0"
                                TextWrapping="Wrap"
-                               Text="外壳自己的设置：界面风格、主页显示、鼠标自动 / 点击特效（含数量 / 范围 / 半径滑块）、粒子颜色、窗口与托盘；最下面是清理缓存与重建配置（恢复默认设置）。改一下立即生效并自动保存。" />
+                               Text="外壳自己的设置：界面风格（默认 / 液态玻璃 / 毛玻璃 / 亚克力）与窗口背景图、主页显示、鼠标自动 / 点击特效（含数量 / 范围 / 半径滑块）、粒子颜色、窗口与托盘；最下面是清理缓存与重建配置（恢复默认设置）。改一下立即生效并自动保存。" />
                 </StackPanel>
                 <Button Grid.Column="1" Content="返回主页" Style="{StaticResource SecondaryButtonStyle}"
                         VerticalAlignment="Top" Command="{Binding GoHomeCommand}" ToolTip="回到主页（也可以点面包屑的「🏠 主页」或后退按钮）" />
@@ -91,7 +91,7 @@
                     <RadioButton Style="{StaticResource RadioButtonStyle}" GroupName="UiTheme"
                                  AutomationProperties.Name="液态玻璃（实验）"
                                  IsChecked="{Binding LiquidGlassThemeSelected}" Margin="0,12,0,0"
-                                 ToolTip="液态玻璃：半透明玻璃面板 + 流动色彩光晕（第二套 UI，参考 Glassium）">
+                                 ToolTip="液态玻璃：半透明玻璃面板 + 流动色彩光晕（参考 Glassium）；想配背景图用这个或下面两套">
                         <StackPanel Orientation="Horizontal">
                             <Border Width="46" Height="32" CornerRadius="7" BorderThickness="1" Margin="0,0,10,0"
                                     BorderBrush="#66FFFFFF">
@@ -112,9 +112,111 @@
                             </StackPanel>
                         </StackPanel>
                     </RadioButton>
+
+                    <!-- 毛玻璃（v0.43.0）：安静冷色调，背景图会被重模糊，没有动画光晕 -->
+                    <RadioButton Style="{StaticResource RadioButtonStyle}" GroupName="UiTheme"
+                                 AutomationProperties.Name="毛玻璃"
+                                 IsChecked="{Binding FrostedGlassThemeSelected}" Margin="0,12,0,0"
+                                 ToolTip="毛玻璃：奶白磨砂面板 + 重模糊背景，安静不花哨、不跑动画">
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="46" Height="32" CornerRadius="7" BorderThickness="1" Margin="0,0,10,0"
+                                    BorderBrush="#8CFFFFFF">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Color="#C7DDF5" Offset="0" />
+                                        <GradientStop Color="#8FA9C8" Offset="0.55" />
+                                        <GradientStop Color="#5E748F" Offset="1" />
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <Border Margin="6,5" CornerRadius="4" Background="#8CFFFFFF"
+                                        BorderBrush="#B3FFFFFF" BorderThickness="1" />
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="毛玻璃" FontWeight="SemiBold" />
+                                <TextBlock Text="奶白磨砂 + 重模糊背景，安静省电" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </StackPanel>
+                    </RadioButton>
+
+                    <!-- 亚克力（v0.43.0）：深色着色 + 轻模糊 + 颗粒噪点 -->
+                    <RadioButton Style="{StaticResource RadioButtonStyle}" GroupName="UiTheme"
+                                 AutomationProperties.Name="亚克力"
+                                 IsChecked="{Binding AcrylicThemeSelected}" Margin="0,12,0,0"
+                                 ToolTip="亚克力：深色着色玻璃 + 轻模糊 + 细颗粒噪点，类似 Win11 亚克力">
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="46" Height="32" CornerRadius="7" BorderThickness="1" Margin="0,0,10,0"
+                                    BorderBrush="#7AA08CFF">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Color="#2A2140" Offset="0" />
+                                        <GradientStop Color="#3B2F5C" Offset="0.55" />
+                                        <GradientStop Color="#1B1730" Offset="1" />
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <Border Margin="6,5" CornerRadius="4" Background="#3DA08CFF"
+                                        BorderBrush="#8CA08CFF" BorderThickness="1" />
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="亚克力" FontWeight="SemiBold" />
+                                <TextBlock Text="深色着色 + 轻模糊 + 颗粒，类似 Win11 亚克力" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </StackPanel>
+                    </RadioButton>
+
                     <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                TextWrapping="Wrap" Margin="0,10,0,0"
-                               Text="换主题立即生效、不用重启；选择会自动存进 Config\shell\config.json 的 uiTheme（旧配置没有这一项时按「默认」处理）。液态玻璃会多画一层流动光晕，低配机器觉得费电 / 掉帧就切回默认。" />
+                               Text="换主题立即生效、不用重启；选择会自动存进 Config\shell\config.json 的 uiTheme（旧配置没有这一项时按「默认」处理）。只有液态玻璃 / 毛玻璃 / 亚克力这三套半透明风格能透出下面的背景图；默认（深色）是纯色面板，不显示背景图。液态玻璃会多画一层流动光晕，低配机器觉得费电 / 掉帧就换默认或毛玻璃（毛玻璃不跑动画）。" />
+                </StackPanel>
+            </Border>
+
+            <!-- ===== 背景图（v0.43.0）：上传一张图片铺在窗口最底层，半透明风格下面板能透出来 ===== -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
+                <StackPanel>
+                    <TextBlock Text="背景图" FontSize="12.5" FontWeight="SemiBold" />
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,4,0,0"
+                               Text="上传一张图片铺在窗口最底层（不是桌面壁纸，只影响这个程序）。图片会复制一份到 Data\shell\background\，之后原图移动 / 删除都不影响；换图会自动清掉上一张。背景自适应窗口、不拉伸：默认铺满窗口（保持比例，多出来的部分裁掉），也可以勾「完整显示整张图」改成四周留边。" />
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- 缩略图预览（没有背景图时显示占位文字） -->
+                        <Border Width="208" Height="117" CornerRadius="10" ClipToBounds="True"
+                                Background="{DynamicResource InputBackgroundBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                            <Grid>
+                                <Image Source="{Binding BackgroundImageSource}" Stretch="UniformToFill" />
+                                <TextBlock Text="还没有背景图" FontSize="12" HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" Foreground="{DynamicResource FaintTextBrush}"
+                                           Visibility="{Binding HasBackgroundImage, Converter={StaticResource InverseBoolToVis}}" />
+                            </Grid>
+                        </Border>
+
+                        <StackPanel Grid.Column="1" Margin="14,0,0,0">
+                            <TextBlock Text="{Binding BackgroundImageInfoText}" FontSize="12" FontWeight="SemiBold"
+                                       TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Margin="0,9,0,0">
+                                <Button Content="选择图片…" Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding ChooseBackgroundImageCommand}"
+                                        ToolTip="支持 PNG / JPG / BMP / GIF / TIFF；选好立即生效并自动保存" />
+                                <Button Content="清除背景图" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                        Command="{Binding ClearBackgroundImageCommand}"
+                                        IsEnabled="{Binding HasBackgroundImageSetting}"
+                                        ToolTip="删掉数据目录里的那份图片副本，恢复纯色背景" />
+                            </StackPanel>
+                            <CheckBox Content="完整显示整张图（不裁剪，可能留边）" Style="{StaticResource CheckBoxStyle}"
+                                      Margin="0,11,0,0" IsChecked="{Binding BackgroundImageFitWhole}"
+                                      IsEnabled="{Binding HasBackgroundImage}"
+                                      ToolTip="勾选 = 整张图完整显示（按窗口比例缩放、四周可能留黑边）；不勾 = 铺满窗口、保持比例、裁掉超出部分。两种都不拉伸变形" />
+                            <TextBlock Text="{Binding BackgroundImageThemeHint}" FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                                       Margin="0,8,0,0" />
+                        </StackPanel>
+                    </Grid>
                 </StackPanel>
             </Border>
 

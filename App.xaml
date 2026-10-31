@@ -6,11 +6,12 @@
     <Application.Resources>
         <ResourceDictionary>
 
-            <!-- ================= 主题 token（两套 UI 的唯一区别都在这里） ================= -->
-            <!-- 默认 = 经典深色；液态玻璃 = 半透明玻璃面板 + 流动光晕背景（参考 Kerxs/glassium）。
+            <!-- ================= 主题 token（四套 UI 的唯一区别都在这里） ================= -->
+            <!-- 默认 = 经典深色；液态玻璃 = 半透明玻璃面板 + 流动光晕背景（参考 Kerxs/glassium）；
+                 毛玻璃 = 奶白磨砂 + 重模糊背景；亚克力 = 深色着色 + 轻模糊 + 颗粒噪点（v0.43.0）。
                  运行时由 Views/Themes/ThemeManager.cs 整体替换这个合并字典，
                  下面所有样式/界面只用 {DynamicResource 名字} 引用 token，所以换主题立即生效。
-                 新增颜色请同时补两边，并加进 ThemeManager.RequiredTokenKeys（自检会核对）。 -->
+                 新增颜色请同时补四套字典，并加进 ThemeManager.RequiredTokenKeys（自检会核对）。 -->
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Views/Themes/DefaultTheme.xaml" />
             </ResourceDictionary.MergedDictionaries>

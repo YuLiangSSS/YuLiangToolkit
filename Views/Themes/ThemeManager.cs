@@ -4,17 +4,18 @@ namespace YuLiangToolkit.App.Themes;
 
 /// <summary>
 /// 运行时主题切换器：把 <c>App.xaml</c> 里那个合并的资源字典整体换成
-/// <c>Views/Themes/DefaultTheme.xaml</c> 或 <c>Views/Themes/LiquidGlassTheme.xaml</c>。
+/// <c>Views/Themes/DefaultTheme.xaml</c> / <c>LiquidGlassTheme.xaml</c> /
+/// <c>FrostedGlassTheme.xaml</c> / <c>AcrylicTheme.xaml</c> 之一。
 ///
 /// <para><b>为什么换字典就能换皮肤</b>：App.xaml 里的样式只引用「主题 token」（颜色 / 圆角），
 /// 所有引用都是 <c>{DynamicResource …}</c>；换掉合并字典后 WPF 会重新解析这些动态资源，
 /// 已经打开的窗口（含「主页设置」窗口自己）立即变成另一套 UI，不用重启。</para>
 ///
-/// <para><b>两套字典必须 key 完全一致</b>：缺 key 时 DynamicResource 会悄悄退回控件默认值
+/// <para><b>四套字典必须 key 完全一致</b>：缺 key 时 DynamicResource 会悄悄退回控件默认值
 /// （例如文字变黑），自检 <c>ThemeChecks</c> 会逐项对比，见 <see cref="RequiredTokenKeys"/>。</para>
 ///
 /// <para>本类同时提供几个**纯函数**（<see cref="SourceFor"/> / <see cref="DisplayName"/> /
-/// <see cref="ParseThemeName"/>），自检直接断言，不碰界面。</para>
+/// <see cref="ParseThemeName"/> / <see cref="HasTranslucentSurface"/>），自检直接断言，不碰界面。</para>
 /// </summary>
 public static class ThemeManager
 {
@@ -28,8 +29,8 @@ public static class ThemeManager
     public static event EventHandler<UiTheme>? Changed;
 
     /// <summary>
-    /// 两套主题字典必须都提供的 token（顺序即报错顺序；新增颜色时记得同时：
-    /// ① 两套字典各加一行；② 把这个名字加进这里 —— 否则自检的「两套字典 key 一致」检查发现不了）。
+    /// 四套主题字典必须都提供的 token（顺序即报错顺序；新增颜色时记得同时：
+    /// ① 四套字典各加一行；② 把这个名字加进这里 —— 否则自检的「字典 key 一致」检查发现不了）。
     /// </summary>
     public static IReadOnlyList<string> RequiredTokenKeys { get; } = new[]
     {
@@ -53,9 +54,11 @@ public static class ThemeManager
         "PrimaryButtonPressedBackgroundBrush", "PrimaryButtonBorderBrush",
         // ---- 玻璃高光（默认主题 = 透明） ----
         "GlassHighlightBrush", "WindowEdgeBorderBrush",
+        // ---- 背景层（v0.43.0：窗口背景图 / 亚克力颗粒；默认主题下不参与显示） ----
+        "BackdropBaseBrush", "BackdropImageScrimBrush", "BackdropNoiseBrush",
     };
 
-    /// <summary>两套主题字典必须都提供的圆角 token。</summary>
+    /// <summary>四套主题字典必须都提供的圆角 token。</summary>
     public static IReadOnlyList<string> RequiredRadiusKeys { get; } = new[]
     {
         "CardCornerRadius", "ControlCornerRadius",
@@ -64,19 +67,45 @@ public static class ThemeManager
     /// <summary>主题资源字典的 pack URI（主程序内嵌资源）。</summary>
     public static Uri SourceFor(UiTheme theme)
     {
-        var file = theme == UiTheme.LiquidGlass ? "LiquidGlassTheme.xaml" : "DefaultTheme.xaml";
+        var file = theme switch
+        {
+            UiTheme.LiquidGlass => "LiquidGlassTheme.xaml",
+            UiTheme.FrostedGlass => "FrostedGlassTheme.xaml",
+            UiTheme.Acrylic => "AcrylicTheme.xaml",
+            _ => "DefaultTheme.xaml",
+        };
         return new Uri($"/{AssemblyName};component/Views/Themes/{file}", UriKind.Relative);
     }
 
     /// <summary>主题的中文名（设置窗口 / 文档用）。</summary>
     public static string DisplayName(UiTheme theme)
-        => theme == UiTheme.LiquidGlass ? "液态玻璃" : "默认";
+        => theme switch
+        {
+            UiTheme.LiquidGlass => "液态玻璃",
+            UiTheme.FrostedGlass => "毛玻璃",
+            UiTheme.Acrylic => "亚克力",
+            _ => "默认",
+        };
 
     /// <summary>一句话说明（设置窗口里显示）。</summary>
     public static string Describe(UiTheme theme)
-        => theme == UiTheme.LiquidGlass
-            ? "半透明玻璃面板 + 流动色彩光晕，参考 Glassium 的 Liquid Glass 观感；换主题立即生效。"
-            : "经典深色纯色界面，最省 GPU；换主题立即生效。";
+        => theme switch
+        {
+            UiTheme.LiquidGlass =>
+                "半透明玻璃面板 + 流动色彩光晕，参考 Glassium 的 Liquid Glass 观感；换主题立即生效。",
+            UiTheme.FrostedGlass =>
+                "奶白磨砂玻璃 + 重模糊背景，安静不花哨、不跑动画；换主题立即生效。",
+            UiTheme.Acrylic =>
+                "深色亚克力 + 轻微着色与颗粒噪点，类似 Win11 亚克力；换主题立即生效。",
+            _ => "经典深色纯色界面，最省 GPU；换主题立即生效。",
+        };
+
+    /// <summary>
+    /// 这套主题是不是**半透明界面**（能透出后面的背景图 / 光晕）。
+    /// 默认主题是纯色面板 → false；液态玻璃 / 毛玻璃 / 亚克力 → true。
+    /// 主窗口用它决定是否显示背景层，设置页用它提示“背景图只有在半透明风格下才看得见”。
+    /// </summary>
+    public static bool HasTranslucentSurface(UiTheme theme) => theme != UiTheme.Default;
 
     /// <summary>
     /// 解析 <c>YLT_THEME</c> / 配置文件里的主题名（宽松：大小写、<c>-</c>/<c>_</c>/空格都无所谓）。
@@ -96,6 +125,8 @@ public static class ThemeManager
         {
             "default" or "0" or "经典" or "默认" or "深色" => UiTheme.Default,
             "liquidglass" or "liquid" or "glass" or "1" or "液态玻璃" or "玻璃" => UiTheme.LiquidGlass,
+            "frostedglass" or "frosted" or "2" or "毛玻璃" or "磨砂" or "磨砂玻璃" => UiTheme.FrostedGlass,
+            "acrylic" or "3" or "亚克力" => UiTheme.Acrylic,
             _ => null,
         };
     }
