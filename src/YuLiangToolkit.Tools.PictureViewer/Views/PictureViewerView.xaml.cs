@@ -73,6 +73,9 @@ public partial class PictureViewerView : UserControl
 
     /// <summary>调试 / 截图：滚轮模拟只触发一次（<c>YLT_PICTURE_WHEEL_SIM</c>）。</summary>
     private bool _wheelSimScheduled;
+
+    /// <summary>切走工具后再切回来（视图重新挂载）时，恢复上次的阅读进度（0~1）。</summary>
+    private double? _restoreReadingRatioOnLoad;
     private DispatcherTimer? _borderRebuildTimer;
     private double _maxPixelWidth;
     private double _maxPixelHeight;
@@ -281,6 +284,14 @@ public partial class PictureViewerView : UserControl
 
         if (Vm is { } vm)
         {
+            // 切走时记住阅读进度（连续模式=比例；翻页模式=当前页）；视图缓存后重新挂回来时用它恢复
+            if (vm.HasPages)
+            {
+                _restoreReadingRatioOnLoad = _pagedActive && vm.Pages.Count > 1
+                    ? (double)_pageIndex / (vm.Pages.Count - 1)
+                    : GetReadingRatio();
+            }
+
             // ⚠ 顺序不能反：先 ExitFullscreen（此时还订阅着，事件能传出去让外壳还原窗口），再摘事件。
             // 反过来的话外壳会一直停在“藏了壳”的全屏状态，切到别的页面就没有标题栏了。
             vm.ExitFullscreen();

@@ -156,6 +156,9 @@ public partial class PdfReaderView : UserControl
 
     private bool _unloaded;
 
+    /// <summary>切走工具后再切回来（视图重新挂载）时，从阅读位置记录里恢复「上次读到哪」。</summary>
+    private PdfReadingPosition? _restoreOnViewLoad;
+
     /// <summary>调试 / 截图：滚轮模拟只触发一次（<c>YLT_PDF_WHEEL_SIM</c>）。</summary>
     private bool _wheelSimScheduled;
     private bool _demoStarted;
@@ -294,7 +297,10 @@ public partial class PdfReaderView : UserControl
 
         if (vm.HasDocument)
         {
+            // 视图是被外壳缓存后重新挂回来的：文档还在（VM 没销毁），从阅读位置记录恢复上次读到哪
+            _restoreOnViewLoad = vm.ConsumeRestorePosition();
             await BuildAsync(keepPage: true);
+            _restoreOnViewLoad = null;
             ApplyFullscreenDebugHooks();
             return;
         }
@@ -897,6 +903,11 @@ public partial class PdfReaderView : UserControl
             if (keepPage)
             {
                 targetPage = CurrentPageIndex();
+                if (_restoreOnViewLoad is { } viewRestore)
+                {
+                    restore = viewRestore;
+                    targetPage = viewRestore.PageIndex;
+                }
             }
             else
             {

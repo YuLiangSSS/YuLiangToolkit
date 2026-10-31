@@ -55,7 +55,9 @@ public partial class PictureViewerView
         if (PictureScrollModes.IsPaged(vm.Cfg.ScrollModeEffective))
         {
             var wasContinuous = !_pagedActive;
-            var readingRatio = wasContinuous ? GetReadingRatioForMode(_builtMode) : (double?)null;
+            var readingRatio = wasContinuous
+                ? (_restoreReadingRatioOnLoad ?? GetReadingRatioForMode(_builtMode))
+                : (double?)null;
 
             if (wasContinuous)
             {
@@ -89,6 +91,7 @@ public partial class PictureViewerView
             // 等一帧：刚 Visible 时 ActualWidth/Height 还是 0，排不了版
             await Dispatcher.Yield(DispatcherPriority.Loaded);
             await ShowPagedAsync(resetPan: true);
+            _restoreReadingRatioOnLoad = null;   // 只在重新挂载后的第一次排布里用一次
             ApplyDebugHooks();
             return;
         }
@@ -105,7 +108,12 @@ public partial class PictureViewerView
         ImageScrollViewer.Visibility = Visibility.Visible;
         ReadingProgressPanel.Visibility = Visibility.Visible;
 
-        await BuildStripAsync(keepProgress && !wasPaged, forcedRatio: wasPaged ? targetRatio : null);
+        await BuildStripAsync(
+            keepProgress && !wasPaged,
+            forcedRatio: wasPaged
+                ? targetRatio
+                : _restoreReadingRatioOnLoad);
+        _restoreReadingRatioOnLoad = null;   // 只在重新挂载后的第一次排布里用一次
     }
 
     private void ExitPagedMode()

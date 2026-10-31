@@ -72,6 +72,7 @@ public partial class App : Application
         Exit += (_, _) =>
         {
             TaskbarHider.Restore();
+            try { (MainWindow?.DataContext as MainViewModel)?.ShutdownTools(); } catch { /* 退出流程忽略 */ }
             ToolConfigStore.FlushAll();
             Tray?.Dispose();
             Tray = null;
@@ -82,6 +83,7 @@ public partial class App : Application
         {
             IsExiting = true;   // 系统关机 / 注销：别再被「关闭=最小化到托盘」拦住
             TaskbarHider.Restore();
+            try { (MainWindow?.DataContext as MainViewModel)?.ShutdownTools(); } catch { /* 退出流程忽略 */ }
             ToolConfigStore.FlushAll();
         };
 
@@ -139,6 +141,35 @@ public partial class App : Application
         {
             var tool = tools.FirstOrDefault(t => t.Id == toolId);
             if (tool is not null) vm.OpenToolCommand.Execute(tool);
+        }
+
+        // 开发调试：YLT_STATE_SWITCH_TEST=1 验证「切走再切回，工具状态还在」：
+        // 打开工具后回主页、再打开回来；截图里如果还是原来那个文件 / 列表，就说明视图缓存生效了。
+        if (Environment.GetEnvironmentVariable("YLT_STATE_SWITCH_TEST") is "1" or "on" or "true")
+        {
+            var tool = tools.FirstOrDefault(t => t.Id == toolId);
+            if (tool is not null)
+            {
+                var switchTimer = new DispatcherTimer(DispatcherPriority.Background)
+                {
+                    Interval = TimeSpan.FromMilliseconds(300),
+                };
+                var switchStep = 0;
+                switchTimer.Tick += (_, _) =>
+                {
+                    switchStep++;
+                    if (switchStep == 1)
+                    {
+                        vm.GoHomeCommand.Execute(null);   // 切走（工具页应被缓存而不是销毁）
+                    }
+                    else if (switchStep == 2)
+                    {
+                        vm.OpenToolCommand.Execute(tool); // 切回来（应原样复用缓存的视图）
+                        switchTimer.Stop();
+                    }
+                };
+                switchTimer.Start();
+            }
         }
 
         // 双击图片文件启动（文件关联 / 命令行参数）：直接进「图片连续阅读器」，

@@ -1026,6 +1026,18 @@ public class MainViewModel : ObservableObject
     private FrameworkElement? _keptAliveView;
     private ITool? _keptAliveTool;
     private IBackgroundTool? _keptAliveBackground;
+
+    // ---------- 工具页状态缓存（切走不销毁，切回来原样复用） ----------
+
+    /// <summary>最多缓存多少个工具页（超出按最久未用淘汰，淘汰时才会真的 NotifyClosed）。</summary>
+    private const int MaxCachedToolViews = 12;
+
+    /// <summary>工具 Id → 上次离开时留着的视图（DataContext 就是原来那个 ViewModel，状态全在）。</summary>
+    private readonly Dictionary<string, FrameworkElement> _toolViewCache = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>缓存使用顺序（旧 → 新），用来按 LRU 淘汰。</summary>
+    private readonly List<string> _toolViewCacheOrder = new();
+
     private object? _miniPanelSource;
     private bool _miniPanelVisible;
 
@@ -1587,6 +1599,11 @@ public class MainViewModel : ObservableObject
     private bool ResetToolConfig(string toolId)
     {
         var ok = ToolConfigStore.ResetTool(toolId);
+        if (!string.Equals(toolId, ShellToolId, StringComparison.OrdinalIgnoreCase))
+        {
+            DropCachedToolView(toolId);   // 缓存里的旧界面 / 旧内存配置也要清掉，下次打开才是默认值
+        }
+
         if (string.Equals(toolId, ShellToolId, StringComparison.OrdinalIgnoreCase))
         {
             RefreshAfterShellConfigReset();
@@ -1638,22 +1655,94 @@ public class MainViewModel : ObservableObject
     {
         if (CurrentView is not FrameworkElement fe || fe.DataContext is not ToolViewModelBase vm) return;
 
-        vm.NotifyClosed();
-
         if (vm is IBackgroundTool background && background.KeepAliveOnLeave)
         {
             KeepAliveView(fe, vm, background);
             return;
         }
 
+        // 其它工具：把视图连同 ViewModel 一起留着，切回来原样挂回去 —— 打开的文件 / 文件夹 / 列表 /
+        // 游戏局面 / 下载进度都还在。真释放只发生在三种情况：缓存超上限被淘汰、重建配置、程序退出。
+        CacheToolView(fe, vm);
+
         // 当前这个工具不再要求后台保活：只有「保活的就是它自己」时才放掉（并且先停声）。
-        // ⚠ 别顺手把**别的**工具的后台播放（例如播放器）一起清掉 —— 清掉引用却不停 MediaElement，
-        //    会留下一个没人管的孤儿播放器：切几次页面后出现重复音频，过一会儿被 GC 收了又突然断音、
-        //    左下角小窗也一起消失。后台视图只由「回到该工具复用」/「换成别的后台视图」两条路径释放。
         if (ReferenceEquals(_keptAliveView, fe))
         {
             ClearKeptAlive(stopPlayback: true);
         }
+    }
+
+    /// <summary>把工具视图放进缓存（只留一份；同一工具已有旧视图时先真的 Dispose 掉旧的）。</summary>
+    private void CacheToolView(FrameworkElement view, ToolViewModelBase vm)
+    {
+        try { vm.ConfigStore.Flush(); } catch { /* 落盘失败不影响切换 */ }
+
+        var id = vm.ToolId;
+        if (_toolViewCache.TryGetValue(id, out var old) && !ReferenceEquals(old, view))
+        {
+            DisposeToolView(old);
+        }
+
+        _toolViewCache[id] = view;
+        _toolViewCacheOrder.Remove(id);
+        _toolViewCacheOrder.Add(id);
+
+        while (_toolViewCacheOrder.Count > MaxCachedToolViews)
+        {
+            var oldest = _toolViewCacheOrder[0];
+            _toolViewCacheOrder.RemoveAt(0);
+            if (_toolViewCache.Remove(oldest, out var evicted)) DisposeToolView(evicted);
+        }
+    }
+
+    /// <summary>从缓存取回某个工具的视图（取不到 / 工具 Id 对不上返回 null）。</summary>
+    private FrameworkElement? TryTakeCachedToolView(string toolId)
+    {
+        if (!_toolViewCache.Remove(toolId, out var view)) return null;
+
+        _toolViewCacheOrder.Remove(toolId);
+
+        if (view.DataContext is ToolViewModelBase vm
+            && string.Equals(vm.ToolId, toolId, StringComparison.OrdinalIgnoreCase))
+        {
+            vm.NotifyOpened();   // 恢复后台自动保存（离开时 Flush 过，但没 StopWatching 也不冲突）
+            return view;
+        }
+
+        DisposeToolView(view);
+        return null;
+    }
+
+    /// <summary>真的丢掉一个缓存视图：先让工具清理（停定时器 / 后台任务 / 释放文档），再 Dispose。</summary>
+    private static void DisposeToolView(FrameworkElement view)
+    {
+        if (view.DataContext is not ToolViewModelBase vm) return;
+        try { vm.NotifyClosed(); } catch { /* 清理失败不影响切换 */ }
+        try { vm.Dispose(); } catch { /* 同上 */ }
+    }
+
+    /// <summary>
+    /// 程序退出 / 系统关机前，把当前工具和所有缓存工具都关掉（本来就该在 App.Exit 里调）。
+    /// 不调用的话，缓存里的定时器 / 后台任务会一直活到进程结束。
+    /// </summary>
+    public void ShutdownTools()
+    {
+        if (CurrentView is FrameworkElement current) DisposeToolView(current);
+        CurrentView = null;
+
+        foreach (var view in _toolViewCache.Values.ToList()) DisposeToolView(view);
+        _toolViewCache.Clear();
+        _toolViewCacheOrder.Clear();
+
+        ClearKeptAlive(stopPlayback: true);
+    }
+
+    /// <summary>「重建配置」后把该工具缓存里的旧视图丢掉，下次打开按新配置重新建（否则界面还是旧设置）。</summary>
+    private void DropCachedToolView(string toolId)
+    {
+        if (!_toolViewCache.Remove(toolId, out var view)) return;
+        _toolViewCacheOrder.Remove(toolId);
+        DisposeToolView(view);
     }
 
     /// <summary>留住一个后台视图（只留一份；旧视图真要丢掉时先停声）。</summary>
@@ -1746,6 +1835,11 @@ public class MainViewModel : ObservableObject
         {
             reused = kept;
             ClearKeptAlive(stopPlayback: false);   // 马上复用它：**不能**停声
+        }
+        else
+        {
+            // 普通工具：从「离开时留下的视图缓存」里原样拿回来（ViewModel / 打开的文件 / 阅读位置都还在）
+            reused = TryTakeCachedToolView(tool.Id);
         }
 
         CurrentView = reused ?? tool.CreateView();
