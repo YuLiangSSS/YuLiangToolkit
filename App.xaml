@@ -646,8 +646,8 @@
 
             <!-- ================= 可拖拽分隔条（工具页区块调整大小） ================= -->
             <!-- 用法见 docs/dev/layout.md：放在 Grid 的**独立行 / 列**里，写 Key="<工具Id>.<区域名>"。
-                 外观：平时一条很淡的蓝线，鼠标移上去变亮、光标变 ↔ / ↕（跟画图软件拉大小一样）；
-                 拖完自动记住（Config\layout.json），双击这条缝恢复这一处默认大小。
+                 外观：平时**完全透明（看不见）**，鼠标移到缝隙上才亮起蓝色竖线 / 横线、光标变 ↔ / ↕
+                 （跟画图软件拉大小一样）；拖完自动记住（Config\layout.json），双击这条缝恢复这一处默认大小。
                  ⚠ 不要再自己写 GridSplitter / Thumb 模板，也不要在页面里另写 Direction。 -->
             <Style x:Key="PaneSplitterVerticalStyle" TargetType="{x:Type core:PaneSplitter}">
                 <Setter Property="Direction" Value="Columns" />
@@ -665,7 +665,7 @@
                             <Grid Background="Transparent">
                                 <Border x:Name="SplitterLine" Width="2" CornerRadius="1"
                                         HorizontalAlignment="Center" VerticalAlignment="Stretch"
-                                        Background="{DynamicResource AccentBrush}" Opacity="0.18" />
+                                        Background="{DynamicResource AccentBrush}" Opacity="0" />
                             </Grid>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
@@ -697,7 +697,7 @@
                             <Grid Background="Transparent">
                                 <Border x:Name="SplitterLine" Height="2" CornerRadius="1"
                                         HorizontalAlignment="Stretch" VerticalAlignment="Center"
-                                        Background="{DynamicResource AccentBrush}" Opacity="0.18" />
+                                        Background="{DynamicResource AccentBrush}" Opacity="0" />
                             </Grid>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
