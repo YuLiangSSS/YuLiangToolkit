@@ -59,7 +59,8 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- 源文件与输出 -->
-                <Border Grid.Column="0" Style="{StaticResource CardStyle}" VerticalAlignment="Top" ClipToBounds="True">
+                <!-- 不写 VerticalAlignment=Top：跟着这一行拉伸到和右边「转换设置」一样高，两块卡片底边对齐 -->
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}" ClipToBounds="True">
                     <StackPanel>
                         <TextBlock Text="源文件与输出" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,12" />
                         <Grid>
@@ -110,7 +111,7 @@
                                    Key="video-to-audio.源文件与转换设置" />
 
                 <!-- 转换设置 -->
-                <Border Grid.Column="2" Style="{StaticResource CardStyle}" VerticalAlignment="Top" ClipToBounds="True">
+                <Border Grid.Column="2" Style="{StaticResource CardStyle}" ClipToBounds="True">
                     <StackPanel>
                         <TextBlock Text="转换设置" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,12" />
                         <RadioButton Content="有损压缩为 MP3（体积小，适合日常播放）" GroupName="mode"
