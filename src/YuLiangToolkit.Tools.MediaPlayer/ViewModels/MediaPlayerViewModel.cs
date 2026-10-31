@@ -708,6 +708,18 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
         RaiseBackgroundState();
     }
 
+    /// <summary>
+    /// 外壳**真的要丢掉**这个后台视图时调用（换成别的后台视图 / 不再复用）：停声 + 摘掉播放器。
+    /// <para>⚠ 不能只丢引用：MediaElement 会继续出声，变成没人能控制的孤儿播放器
+    /// （切几次工具页就「同一首歌两份」，被 GC 收掉时又突然断音）。</para>
+    /// </summary>
+    public void StopBackgroundPlayback()
+    {
+        StopPlayback();
+        DetachPlayer();
+        RaiseBackgroundState();   // 外壳据此收起小窗
+    }
+
     /// <summary>把设置恢复成出厂值（**不动播放列表**，也不动快进快退之外的播放状态）。</summary>
     public void ResetSettings()
     {

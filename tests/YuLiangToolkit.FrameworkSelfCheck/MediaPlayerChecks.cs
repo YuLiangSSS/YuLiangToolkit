@@ -1081,6 +1081,27 @@ internal static class MediaPlayerChecks
         vm.NotifyOpened();
         check("后台播放：再切回来 → 还是同一个播放器，不需要重新加载", ReferenceEquals(vm.Player, fake));
 
+        // ---- 外壳真要丢弃这个后台视图 ----
+        // 换成别的后台视图 / 不再复用时，外壳必须让工具先停声 + 摘掉播放器；
+        // 只丢引用的话 MediaElement 会在后台继续响（切几次工具页 = 同一首歌两份），
+        // 被 GC 收掉时又突然断音、左下角小窗也一起消失（用户报的那个 bug）。
+        var discardEvents = 0;
+        vm.BackgroundStateChanged += (_, _) => discardEvents++;
+        var stopBeforeDiscard = fake.StopCount;
+        vm.StopBackgroundPlayback();
+        check("后台播放：外壳要丢弃后台视图 → 停声 + 摘掉播放器（不留孤儿播放器继续响）",
+            !vm.IsPlaying && vm.Player is null && !fake.IsPlaying
+            && fake.LoadedPath is null
+            && fake.StopCount == stopBeforeDiscard + 1     // 停声真的发生了一次
+            && discardEvents > 0,
+            $"player={(vm.Player is null ? "null" : "存在")}, playing={fake.IsPlaying}, stop={fake.StopCount}");
+
+        var stopAfterDiscard = fake.StopCount;
+        var eventsAfterDiscard = discardEvents;
+        vm.StopBackgroundPlayback();   // 释放流程可能重复走：再调一次不应抛 / 不应再动播放器
+        check("后台播放：丢弃视图可以重复调用（第二次是空操作，不抛异常也不重复停播放器）",
+            vm.Player is null && !vm.IsPlaying && fake.StopCount == stopAfterDiscard && discardEvents >= eventsAfterDiscard);
+
         // 关掉后台播放就是老行为：切走即停
         var stopVm = new MediaPlayerViewModel { Confirm = _ => true };
         stopVm.ClearPlaylistCommand.Execute(null);

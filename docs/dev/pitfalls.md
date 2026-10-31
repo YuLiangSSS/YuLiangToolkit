@@ -31,6 +31,9 @@
 - ⚠ 整窗全屏临时改 `WM_GETMINMAXINFO` 再最大化，并 `SetWindowRgn(hwnd, IntPtr.Zero)` 清工作区 Region，否则底部黑带。
 - 藏任务栏用 `TaskbarHider`：400ms 看门狗、`Hide()` 幂等、不能 `Thread.Sleep`；`YLT_TASKBAR_TRACE` 错误码 5 = 完整性级别低。
 - 切走还要干活：`IBackgroundTool.KeepAliveOnLeave` + 外壳存视图实例；`Unloaded` 时不能 `Close()` 播放器。
+- ⚠ 后台视图**只有两条腿释放**：① 回到该工具、把它原样挂回界面（声音接着放）；② 换成别的后台视图（先 `StopBackgroundPlayback()` 停声再丢）。
+  别在「切去别的工具」时顺手 `ClearKeptAlive()`：只丢引用不停 `MediaElement`，会留下没人能控制的孤儿播放器 ——
+  狂切工具页就是「同一首歌两份」，过一会儿被 GC 收掉又突然断音、左下角小窗也跟着消失（v0.44.1 修）。
 - ⚠ 重排列表后必须 `_queue.Reset()` 并把当前曲目重新 `SetCurrent(Items.IndexOf(当前))`，否则列表循环会按旧下标跳到错的歌、随机的一轮顺序作废。
 - `playlist.json` 的路径列表按**添加顺序**保存（别按界面显示顺序），否则「默认顺序」回不到最初的添加顺序。
 

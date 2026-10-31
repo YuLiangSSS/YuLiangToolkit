@@ -22,6 +22,14 @@ public interface IBackgroundTool
 
     /// <summary>上面两个值可能变化时触发（外壳只据此刷新小窗，不轮询）。</summary>
     event EventHandler? BackgroundStateChanged;
+
+    /// <summary>
+    /// 外壳要**真的扔掉**这个后台视图时调用（不会再挂回界面）：把声音停掉、把播放器摘干净。
+    /// <para>⚠ 必须实现：视图被丢弃但 MediaElement 还挂着媒体的话，会留下一个没人能控制的孤儿播放器
+    /// （切几次工具页后出现「同一首歌两份」、过一会儿又被 GC 收掉而突然断音）。</para>
+    /// <para>「打开这个工具、原样复用保活视图」时**不调用**它（声音要接着放）。</para>
+    /// </summary>
+    void StopBackgroundPlayback();
 }
 
 /// <summary>

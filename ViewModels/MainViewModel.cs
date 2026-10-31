@@ -1646,15 +1646,22 @@ public class MainViewModel : ObservableObject
             return;
         }
 
-        ClearKeptAlive();
+        // 当前这个工具不再要求后台保活：只有「保活的就是它自己」时才放掉（并且先停声）。
+        // ⚠ 别顺手把**别的**工具的后台播放（例如播放器）一起清掉 —— 清掉引用却不停 MediaElement，
+        //    会留下一个没人管的孤儿播放器：切几次页面后出现重复音频，过一会儿被 GC 收了又突然断音、
+        //    左下角小窗也一起消失。后台视图只由「回到该工具复用」/「换成别的后台视图」两条路径释放。
+        if (ReferenceEquals(_keptAliveView, fe))
+        {
+            ClearKeptAlive(stopPlayback: true);
+        }
     }
 
-    /// <summary>留住一个后台视图（只留一份；旧的直接丢掉，里面的播放器会随之释放）。</summary>
+    /// <summary>留住一个后台视图（只留一份；旧视图真要丢掉时先停声）。</summary>
     private void KeepAliveView(FrameworkElement view, ToolViewModelBase vm, IBackgroundTool background)
     {
         if (ReferenceEquals(_keptAliveView, view)) return;
 
-        ClearKeptAlive();
+        ClearKeptAlive(stopPlayback: true);   // 旧的背景视图不会再回来：先停声，避免两个播放器同时响
 
         _keptAliveView = view;
         _keptAliveTool = Tools.FirstOrDefault(t => t.Id == vm.ToolId);
@@ -1665,12 +1672,23 @@ public class MainViewModel : ObservableObject
         UpdateMiniPanel();
     }
 
-    /// <summary>放掉后台视图的引用（不主动停播放：要么它已经回到前台，要么让它自然释放）。</summary>
-    private void ClearKeptAlive()
+    /// <summary>
+    /// 放掉后台视图的引用。
+    /// <para><paramref name="stopPlayback"/> = true 表示这个视图**真的不要了**（不会再挂回界面）：
+    /// 必须让工具先停掉后台播放（<see cref="IBackgroundTool.StopBackgroundPlayback"/>），
+    /// 否则 MediaElement 还挂着媒体继续出声、又没人能控制它 —— 就是「重复音频 / 偶发断音」的来源。</para>
+    /// <para>只是「拿到引用、马上原样复用」时传 false（例如打开播放器复用保活的视图）。</para>
+    /// </summary>
+    private void ClearKeptAlive(bool stopPlayback)
     {
         if (_keptAliveBackground is not null)
         {
             _keptAliveBackground.BackgroundStateChanged -= OnBackgroundStateChanged;
+            if (stopPlayback)
+            {
+                try { _keptAliveBackground.StopBackgroundPlayback(); }
+                catch { /* 释放流程里别把切换页面搞崩 */ }
+            }
         }
 
         _keptAliveView = null;
@@ -1720,11 +1738,14 @@ public class MainViewModel : ObservableObject
         _syncingNav = false;
 
         // 之前被“后台保活”的正是这个工具的视图 → 原样挂回去：播放不断，列表 / 设置状态都还在
+        // （判据用**视图自己 DataContext 的 ToolId**，不依赖 _keptAliveTool 的工具查找结果）
         FrameworkElement? reused = null;
-        if (_keptAliveView is { } kept && _keptAliveTool?.Id == tool.Id)
+        if (_keptAliveView is { } kept
+            && kept.DataContext is ToolViewModelBase keptVm
+            && string.Equals(keptVm.ToolId, tool.Id, StringComparison.OrdinalIgnoreCase))
         {
             reused = kept;
-            ClearKeptAlive();
+            ClearKeptAlive(stopPlayback: false);   // 马上复用它：**不能**停声
         }
 
         CurrentView = reused ?? tool.CreateView();
