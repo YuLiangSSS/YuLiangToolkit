@@ -68,6 +68,7 @@ public class PaneSplitter : Thumb
     {
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+        IsVisibleChanged += OnIsVisibleChanged;
         DragDelta += OnDragDelta;
         DragCompleted += OnDragCompleted;
         MouseDoubleClick += OnMouseDoubleClick;
@@ -122,6 +123,15 @@ public class PaneSplitter : Thumb
     private void OnLayoutReset(object? sender, EventArgs e) => ApplyLayout();
 
     private void OnRestOpacityChanged(object? sender, EventArgs e) => ApplyRestLineOpacity();
+
+    /// <summary>
+    /// 分隔条跟着某个区块一起被隐藏 / 重新显示时（例如棋牌关掉「显示棋谱」）：
+    /// 重新显示时把记忆的尺寸再套一次，别让绑定给的默认值盖掉用户拖过的大小。
+    /// </summary>
+    private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is true) ApplyLayout();
+    }
 
     /// <summary>把「鼠标不在上面时的提示线透明度」套到模板里的提示线（0 = 完全看不见）。</summary>
     private void ApplyRestLineOpacity()
@@ -281,6 +291,8 @@ public class PaneSplitter : Thumb
 
     private void ApplyLayout()
     {
+        // 分隔条自己被藏起来（对应区块关掉）时不要套记忆尺寸：否则会把刚收成 0 的行又撑回来。
+        if (Visibility != Visibility.Visible) return;
         if (!TryResolve(out var ctx)) return;
         EnsureDefaults(ctx);
 
@@ -406,15 +418,26 @@ public class PaneSplitter : Thumb
     {
         if (ctx.Columns)
         {
-            ctx.PrevColumn!.Width = prev;
-            ctx.NextColumn!.Width = next;
+            SetColumnLength(ctx.PrevColumn!, prev);
+            SetColumnLength(ctx.NextColumn!, next);
         }
         else
         {
-            ctx.PrevRow!.Height = prev;
-            ctx.NextRow!.Height = next;
+            SetRowLength(ctx.PrevRow!, prev);
+            SetRowLength(ctx.NextRow!, next);
         }
     }
+
+    /// <summary>
+    /// 用 <c>SetCurrentValue</c> 而不是直接赋值：直接赋值会把 XAML 上的绑定（例如
+    /// 「显示棋谱」开关 → 行高）清掉，之后开关就再也收不起来；SetCurrentValue 保留绑定，
+    /// 拖动只改当前值，绑定源变化时仍能覆盖。
+    /// </summary>
+    private static void SetRowLength(RowDefinition definition, GridLength length)
+        => definition.SetCurrentValue(RowDefinition.HeightProperty, length);
+
+    private static void SetColumnLength(ColumnDefinition definition, GridLength length)
+        => definition.SetCurrentValue(ColumnDefinition.WidthProperty, length);
 
     private static void SetStarLengths(PaneContext ctx, double prevWeight, double nextWeight)
     {
@@ -428,13 +451,13 @@ public class PaneSplitter : Thumb
         var length = new GridLength(Math.Max(1, value));
         if (ctx.Columns)
         {
-            if (prev) ctx.PrevColumn!.Width = length;
-            else ctx.NextColumn!.Width = length;
+            if (prev) SetColumnLength(ctx.PrevColumn!, length);
+            else SetColumnLength(ctx.NextColumn!, length);
         }
         else
         {
-            if (prev) ctx.PrevRow!.Height = length;
-            else ctx.NextRow!.Height = length;
+            if (prev) SetRowLength(ctx.PrevRow!, length);
+            else SetRowLength(ctx.NextRow!, length);
         }
     }
 

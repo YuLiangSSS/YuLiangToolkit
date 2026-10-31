@@ -174,6 +174,7 @@
 - 工具页有多个区块时**别把区块大小写死**：用 `core:PaneSplitter` + `App.xaml` 的 `PaneSplitterVerticalStyle` / `PaneSplitterHorizontalStyle`（悬停蓝线 / ↔ ↕ 光标 / 自动记忆 / 双击复位），约定见 [layout.md](layout.md)。分隔条必须独占一行 / 一列，相邻两块要给 `MinWidth` / `MinHeight`，否则窗口小时会被拖没；写死像素的上下两块才适合放进 `ScrollViewer` 里上下拖，`*` 行在里面会塌成内容高度。
 - 分隔条模板里有**两层线**：`RestLine` = 提示线（透明度由 `PaneSplitterSettings` 控制，主页设置滑块调）、`SplitterLine` = 悬停亮线（模板触发器改它）。⚠ 别把悬停触发器改到 `RestLine` 上，也别在代码里改 `SplitterLine.Opacity`（局部值会盖过触发器），否则悬停就不亮了。
 - **每个页面级区块的相邻边界都要有分隔条**（v0.42.0 硬性要求）：别把两块塞进一个可拖块里再用 `*` 均分，用户要的是「每一块都能单独拖」；标题 / 状态条这类纯信息条不算。
+- 区块可以被开关整块关掉时（例如棋牌「显示棋谱」）：用 `BoolToPaneLength`（Converters/）把同一行 `RowDefinition` 的 `Height` + `MinHeight` 绑到开关上，分隔条也绑同源 `Visibility`；⚠ `PaneSplitter` 改行高必须用 `SetCurrentValue`（直接给 `Height` 赋值会清掉绑定，开关就再也收不起来），而且它在不可见时要跳过「套用记忆尺寸」，否则隐藏瞬间又被记忆值撑回来。
 - ComboBox 绑 `OptionItem<T>` 必须 `DisplayMemberPath="Label"`，否则显示类型名。
 - 索引器绑定 `{Binding Dyn[键]}` 依赖 `OnPropertyChanged("Item[]")`；占位提示压内容用 `EmptyToVis`。
 - 标题栏 `CaptionHeight` 必须 0，否则按钮被命中成拖拽（HTCAPTION）；无边框最大化靠 `WM_GETMINMAXINFO` 钳制任务栏。

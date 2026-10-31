@@ -44,11 +44,15 @@
             </Grid>
 
             <!-- ================= 页面级上下两块：主体（上）/ 棋谱（下） ================= -->
+            <!-- 「显示棋谱」关掉时：棋谱块 + 下面那条分隔条一起收成 0（不留一大片空白），
+                 再打开时按记忆的尺寸恢复。BoolToPaneLength 同时给 Height（GridLength）和 MinHeight（double）
+                 两个属性用；分隔条本身也绑同一个 Visibility（PaneSplitter 会跳过隐藏状态的套用记忆尺寸）。 -->
             <Grid Margin="0,16,0,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="932" MinHeight="620" />   <!-- 主体（棋盘 + 侧栏；拖动时与棋谱此消彼长） -->
-                    <RowDefinition Height="12" />                    <!-- 主体 / 棋谱 分隔条独占一行 -->
-                    <RowDefinition Height="280" MinHeight="200" />   <!-- 棋谱（拖动改高矮；列表跟着伸缩） -->
+                    <RowDefinition Height="{Binding ShowMoveList, Converter={StaticResource BoolToPaneLength}, ConverterParameter=12}" />  <!-- 主体 / 棋谱 分隔条独占一行 -->
+                    <RowDefinition Height="{Binding ShowMoveList, Converter={StaticResource BoolToPaneLength}, ConverterParameter=280}"
+                                   MinHeight="{Binding ShowMoveList, Converter={StaticResource BoolToPaneLength}, ConverterParameter=200}" />  <!-- 棋谱（拖动改高矮；关掉显示棋谱时收成 0） -->
                 </Grid.RowDefinitions>
 
             <!-- ================= 主体：左棋盘 / 右侧栏（左右可拖） =================
@@ -263,9 +267,11 @@
                 </Grid>
             </Grid>
 
-            <!-- 主体 / 棋谱 分隔条：上下拖动改「棋盘 + 侧栏」与「棋谱」的高度（双击恢复这一处） -->
+            <!-- 主体 / 棋谱 分隔条：上下拖动改「棋盘 + 侧栏」与「棋谱」的高度（双击恢复这一处）
+                 「显示棋谱」关掉时一起隐藏（行高也是 0，不会留缝） -->
             <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
-                               Key="gomoku.主体与棋谱" />
+                               Key="gomoku.主体与棋谱"
+                               Visibility="{Binding ShowMoveList, Converter={StaticResource BoolToVis}}" />
 
             <!-- ================= 棋谱（页面级块，跨两列；内容多时列表自己滚动） ================= -->
             <Border Grid.Row="2" Style="{StaticResource CardStyle}"

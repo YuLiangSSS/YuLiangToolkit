@@ -19,6 +19,8 @@
             <!-- bool 取反后直接给 Visibility 用（true=Collapsed）；别把 InverseBoolConverter 绑到 Visibility 上（见类注释） -->
             <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
             <conv:EmptyStringToVisibilityConverter x:Key="EmptyToVis" />
+            <!-- bool → 长度：可整块关掉的页面级区块（例如棋牌「显示棋谱」关掉时收起那行，不留空白） -->
+            <conv:BoolToPaneLengthConverter x:Key="BoolToPaneLength" />
             <!-- 与 EmptyToVis 相反：用于「有结果或者干脆没内容时隐藏」的空状态提示 -->
             <conv:EmptyStringToVisibilityConverter x:Key="EmptyToVisInverse" Invert="True" />
             <BooleanToVisibilityConverter x:Key="BoolToVis" />
