@@ -519,6 +519,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
@@ -550,8 +551,34 @@
                             ToolTip="清空整个列表（不删磁盘文件）" />
                 </WrapPanel>
 
+                <!-- 排序：换一种浏览顺序（默认顺序 / 名称 / 修改日期 / 文件大小）+ 右边按钮切正序 / 反序。
+                     只重排列表：正在播的那首不中断（播放器不重载），列表循环 / 随机的切歌顺序跟着新列表走
+                     （见 MediaPlayerViewModel.Playlist.cs 的 ApplyPlaylistSort 与 docs/tools/media-player.md）。 -->
+                <Grid Grid.Row="2" Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Text="排序" FontSize="10.5" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                    <ComboBox Grid.Column="1" Margin="8,0,6,0" Height="30"
+                              ItemsSource="{Binding PlaylistSortOptions}" DisplayMemberPath="Label"
+                              SelectedItem="{Binding SelectedPlaylistSort}"
+                              Style="{StaticResource ComboBoxStyle}"
+                              ToolTip="{Binding SortComboTooltip}" />
+
+                    <Button Grid.Column="2" Width="64" Height="30" Padding="0" FontSize="11"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            Content="{Binding SortDirectionText}"
+                            Command="{Binding ToggleSortDirectionCommand}"
+                            ToolTip="{Binding SortDirectionTooltip}" />
+                </Grid>
+
                 <!-- 列表本体 + 空状态 -->
-                <Grid Grid.Row="2">
+                <Grid Grid.Row="3">
                     <ListBox x:Name="PlaylistBox" ItemsSource="{Binding Items}"
                              SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
                              Style="{StaticResource FileListStyle}"
@@ -604,7 +631,7 @@
                 </Grid>
 
                 <!-- 选中行的说明 / 快捷键提示 -->
-                <StackPanel Grid.Row="3" Margin="4,10,4,0">
+                <StackPanel Grid.Row="4" Margin="4,10,4,0">
                     <TextBlock Text="{Binding SelectedItemText}" FontSize="10.5" TextWrapping="Wrap"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
                     <TextBlock FontSize="10" Margin="0,4,0,0" TextWrapping="Wrap"

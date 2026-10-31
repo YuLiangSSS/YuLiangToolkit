@@ -8,7 +8,10 @@ namespace YuLiangToolkit.Tools.MediaPlayer;
 /// </summary>
 public sealed class MediaPlaylistState
 {
-    /// <summary>列表里所有文件的完整路径（按列表顺序）。</summary>
+    /// <summary>
+    /// 列表里所有文件的完整路径，**按添加顺序**存（不是界面上的显示顺序）：
+    /// 下次打开先按这个顺序恢复，再套用配置里的排序方式 —— 所以「默认顺序」永远回得到最初那副样子。
+    /// </summary>
     public List<string> Paths { get; set; } = new();
 
     /// <summary>上次选中的那首（空 = 没选）。</summary>

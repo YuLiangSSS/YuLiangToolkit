@@ -14,13 +14,22 @@ namespace YuLiangToolkit.Tools.MediaPlayer;
 /// </summary>
 public sealed class MediaItem : ObservableObject
 {
-    public MediaItem(string fullPath, MediaKind kind)
+    /// <param name="fullPath">完整路径。</param>
+    /// <param name="kind">音频 / 视频。</param>
+    /// <param name="modified">
+    /// 磁盘上的「修改时间」（排序用）；<c>null</c> = 没读到（文件不在 / 读不到），
+    /// 排序时固定排在最后。扫描 / 恢复时才去读，别在界面线程逐个探测。
+    /// </param>
+    /// <param name="size">文件字节数（排序用；读不到时是 0）。</param>
+    public MediaItem(string fullPath, MediaKind kind, DateTime? modified = null, long size = 0)
     {
         FullPath = fullPath;
         Kind = kind;
         FileName = Path.GetFileName(fullPath);
         Title = Path.GetFileNameWithoutExtension(fullPath);
         Folder = Path.GetDirectoryName(fullPath) ?? "";
+        Modified = modified;
+        Size = size;
     }
 
     /// <summary>完整路径（播放器要的就是它）。</summary>
@@ -37,6 +46,37 @@ public sealed class MediaItem : ObservableObject
 
     /// <summary>音频 / 视频。</summary>
     public MediaKind Kind { get; }
+
+    /// <summary>磁盘上的修改时间（排序用；读不到时 <c>null</c>，排序时永远排最后）。</summary>
+    public DateTime? Modified { get; }
+
+    /// <summary>文件字节数（排序用；读不到时 0）。</summary>
+    public long Size { get; }
+
+    /// <summary>
+    /// 「添加顺序」序号（由 ViewModel 在条目第一次进列表时分配，此后不再变）：
+    /// 排序里的「默认顺序」就按它排，所以换过别的排序也能回到最初的添加顺序。
+    /// <c>-1</c> = 还没分配（自检 / 演示数据手工构造的条目）。
+    /// </summary>
+    public int AddedIndex { get; set; } = -1;
+
+    /// <summary>
+    /// 读一个文件的「修改时间 + 大小」给列表排序用。文件不在 / 读不到时安静地给
+    /// <c>null</c> / 0，**不抛异常**（播放列表里随时可能有被删掉的条目）。
+    /// </summary>
+    public static (DateTime? Modified, long Size) ReadMetadata(string fullPath)
+    {
+        try
+        {
+            var info = new FileInfo(fullPath);
+            if (!info.Exists) return (null, 0);
+            return (info.LastWriteTime, info.Length);
+        }
+        catch
+        {
+            return (null, 0);
+        }
+    }
 
     /// <summary>「音频」/「视频」。</summary>
     public string KindText => MediaTypes.KindText(Kind);

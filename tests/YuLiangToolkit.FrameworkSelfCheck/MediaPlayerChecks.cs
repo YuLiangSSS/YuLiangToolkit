@@ -28,6 +28,7 @@ internal static class MediaPlayerChecks
         CheckNaturalSort(assert);
         CheckScanner(assert);
         CheckMerger(assert);
+        CheckSorter(assert);
         CheckQueue(assert);
         CheckConfig(assert);
         CheckViewModel(assert);
@@ -303,6 +304,93 @@ internal static class MediaPlayerChecks
             cleared.Total == 0 && cleared.Displaced == 2);
     }
 
+    // ---------------------------------------------------------------- 列表排序
+
+    /// <summary>
+    /// 排序是纯逻辑：4 种排序键 + 正序 / 反序 + 并列兜底 + 读不到日期的条目排最后。
+    /// 「默认顺序」按条目第一次进列表时分配的 <see cref="MediaItem.AddedIndex"/>，
+    /// 所以换过别的排序也回得到最初的添加顺序。
+    /// </summary>
+    private static void CheckSorter(CheckFn check)
+    {
+        var early = new DateTime(2024, 1, 1);
+        var mid = new DateTime(2024, 6, 1);
+        var late = new DateTime(2024, 12, 1);
+
+        // 添加顺序 = 10、2、1、Live（故意跟名称顺序反着来，验证「默认顺序」不是名称顺序）
+        var ten = new MediaItem(@"C:\media\10 - 第十首.mp3", MediaKind.Audio, modified: late, size: 100)
+            { AddedIndex = 0 };
+        var two = new MediaItem(@"C:\media\2 - 第二首.mp3", MediaKind.Audio, modified: early, size: 300)
+            { AddedIndex = 1 };
+        var one = new MediaItem(@"C:\media\1 - 第一首.mp3", MediaKind.Audio, modified: mid, size: 200)
+            { AddedIndex = 2 };
+        var live = new MediaItem(@"C:\media\Live - 现场.mp4", MediaKind.Video, modified: null, size: 400)
+            { AddedIndex = 3 };
+        var items = new List<MediaItem> { ten, two, one, live };
+
+        static string Titles(IReadOnlyList<MediaItem> list) => string.Join("、", list.Select(i => i.Title));
+
+        var addedAsc = PlaylistSorter.Sort(items, PlaylistSortKey.Added, descending: false);
+        check("排序·默认顺序：按添加顺序（10 → 2 → 1 → Live），不是名称顺序",
+            addedAsc.Select(i => i.Title).SequenceEqual(new[] { "10 - 第十首", "2 - 第二首", "1 - 第一首", "Live - 现场" }),
+            Titles(addedAsc));
+
+        var addedDesc = PlaylistSorter.Sort(items, PlaylistSortKey.Added, descending: true);
+        check("排序·默认顺序·反序：最近添加的在前（Live → 1 → 2 → 10）",
+            addedDesc.Select(i => i.Title).SequenceEqual(new[] { "Live - 现场", "1 - 第一首", "2 - 第二首", "10 - 第十首" }),
+            Titles(addedDesc));
+
+        var nameAsc = PlaylistSorter.Sort(items, PlaylistSortKey.Name, descending: false);
+        check("排序·名称：自然序（1 → 2 → 10 → Live，按数字大小而不是字典序）",
+            nameAsc.Select(i => i.Title).SequenceEqual(new[] { "1 - 第一首", "2 - 第二首", "10 - 第十首", "Live - 现场" }),
+            Titles(nameAsc));
+
+        var nameDesc = PlaylistSorter.Sort(items, PlaylistSortKey.Name, descending: true);
+        check("排序·名称·反序：整个翻过来（Live → 10 → 2 → 1）",
+            nameDesc.Select(i => i.Title).SequenceEqual(new[] { "Live - 现场", "10 - 第十首", "2 - 第二首", "1 - 第一首" }),
+            Titles(nameDesc));
+
+        var dateAsc = PlaylistSorter.Sort(items, PlaylistSortKey.Modified, descending: false);
+        check("排序·修改日期：旧→新，读不到时间的条目固定排最后",
+            dateAsc.Select(i => i.Title).SequenceEqual(new[] { "2 - 第二首", "1 - 第一首", "10 - 第十首", "Live - 现场" }),
+            Titles(dateAsc));
+
+        var dateDesc = PlaylistSorter.Sort(items, PlaylistSortKey.Modified, descending: true);
+        check("排序·修改日期·反序：新→旧，读不到时间的条目**仍然**排最后（不会跳到最前）",
+            dateDesc.Select(i => i.Title).SequenceEqual(new[] { "10 - 第十首", "1 - 第一首", "2 - 第二首", "Live - 现场" }),
+            Titles(dateDesc));
+
+        var sizeAsc = PlaylistSorter.Sort(items, PlaylistSortKey.Size, descending: false);
+        check("排序·文件大小：小→大",
+            sizeAsc.Select(i => i.Title).SequenceEqual(new[] { "10 - 第十首", "1 - 第一首", "2 - 第二首", "Live - 现场" }),
+            Titles(sizeAsc));
+
+        var sizeDesc = PlaylistSorter.Sort(items, PlaylistSortKey.Size, descending: true);
+        check("排序·文件大小·反序：大→小",
+            sizeDesc.Select(i => i.Title).SequenceEqual(new[] { "Live - 现场", "2 - 第二首", "1 - 第一首", "10 - 第十首" }),
+            Titles(sizeDesc));
+
+        var n2 = new MediaItem(@"C:\media\2.mp3", MediaKind.Audio) { AddedIndex = 0 };
+        var n10 = new MediaItem(@"C:\media\10.mp3", MediaKind.Audio) { AddedIndex = 1 };
+        check("排序·名称：2.mp3 排在 10.mp3 前面（跟扫描用的自然序一致）",
+            PlaylistSorter.Sort(new[] { n10, n2 }, PlaylistSortKey.Name, descending: false)
+                .Select(i => i.FileName).SequenceEqual(new[] { "2.mp3", "10.mp3" }));
+
+        check("排序：空列表 / 单条原样返回，不抛异常",
+            PlaylistSorter.Sort(Array.Empty<MediaItem>(), PlaylistSortKey.Name, descending: false).Count == 0
+            && PlaylistSorter.Sort(new[] { one }, PlaylistSortKey.Size, descending: true).Count == 1);
+
+        check("排序：按钮 / 下拉文案（↑ 正序 / ↓ 反序；名称 A→Z、日期 旧→新、大小 小→大）",
+            PlaylistSorter.DirectionText(false) == "↑ 正序"
+            && PlaylistSorter.DirectionText(true) == "↓ 反序"
+            && PlaylistSorter.KeyText(PlaylistSortKey.Added) == "默认顺序"
+            && PlaylistSorter.KeyText(PlaylistSortKey.Modified) == "修改日期"
+            && PlaylistSorter.DirectionHint(PlaylistSortKey.Name, descending: false) == "A→Z"
+            && PlaylistSorter.DirectionHint(PlaylistSortKey.Modified, descending: true) == "新→旧"
+            && PlaylistSorter.DirectionHint(PlaylistSortKey.Size, descending: false) == "小→大"
+            && PlaylistSorter.Describe(PlaylistSortKey.Modified, descending: true).Contains("修改日期"));
+    }
+
     // ---------------------------------------------------------------- 播放顺序
 
     private static void CheckQueue(CheckFn check)
@@ -426,6 +514,10 @@ internal static class MediaPlayerChecks
             && cfg.ResumeLastPlayed
             && cfg.BackgroundPlayback);
 
+        check("配置默认值：列表排序 = 默认顺序、正序",
+            cfg.PlaylistSort == PlaylistSortKey.Added && !cfg.PlaylistSortDescending,
+            $"{cfg.PlaylistSort} / {cfg.PlaylistSortDescending}");
+
         cfg.SeekStepSeconds = 3.46;
         var step = cfg.SeekStepEffective;
         cfg.SeekStepSeconds = 0;
@@ -454,6 +546,8 @@ internal static class MediaPlayerChecks
         cfg.PlayOrder = PlayOrderMode.Shuffle;
         cfg.IncludeMode = MediaIncludeMode.AudioOnly;
         cfg.TimeDisplayMode = TimeDisplayMode.Remaining;
+        cfg.PlaylistSort = PlaylistSortKey.Size;
+        cfg.PlaylistSortDescending = true;
         cfg.SeekStepSeconds = 2.5;
         cfg.Volume = 55;
         var path = SelfCheckScratch.MakeFile("media-config.json");
@@ -461,9 +555,10 @@ internal static class MediaPlayerChecks
         var json = File.ReadAllText(path);
         var reloaded = JsonFileStore.Read<MediaPlayerConfig>(path);
 
-        check("配置：枚举按字符串存（\"Shuffle\" / \"AudioOnly\" / \"Remaining\"，不是数字）",
-            json.Contains("\"Shuffle\"") && json.Contains("\"AudioOnly\"") && json.Contains("\"Remaining\""),
-            json.Contains("\"Shuffle\"") ? "有" : "没找到");
+        check("配置：枚举按字符串存（\"Shuffle\" / \"AudioOnly\" / \"Remaining\" / \"Size\"，不是数字）",
+            json.Contains("\"Shuffle\"") && json.Contains("\"AudioOnly\"")
+            && json.Contains("\"Remaining\"") && json.Contains("\"Size\""),
+            json.Contains("\"Size\"") ? "有" : "没找到");
 
         check("配置落盘再读回来：播放顺序 / 读取方式 / 时间显示 / 步长 / 音量都对",
             reloaded is not null
@@ -471,7 +566,9 @@ internal static class MediaPlayerChecks
             && reloaded.IncludeMode == MediaIncludeMode.AudioOnly
             && reloaded.TimeDisplayMode == TimeDisplayMode.Remaining
             && reloaded.SeekStepEffective == 2.5
-            && reloaded.VolumeEffective == 55);
+            && reloaded.VolumeEffective == 55
+            && reloaded.PlaylistSort == PlaylistSortKey.Size
+            && reloaded.PlaylistSortDescending);
 
         check("配置：只读计算属性不写进 JSON（步长文本 / 扩展名提示都不该出现）",
             !json.Contains("seekStepText") && !json.Contains("includeModeHint"));
@@ -742,6 +839,108 @@ internal static class MediaPlayerChecks
             fakeForReopened.Position == TimeSpan.FromSeconds(42) && fakeForReopened.IsPlaying,
             $"{fakeForReopened.Position.TotalSeconds}s");
 
+        // ---- 列表排序（默认顺序 / 名称 / 修改日期 / 文件大小 + 正反序） ----
+        var sortRoot = SelfCheckScratch.MakeDirectory("ylt-media-sort");
+        var trackA = WriteFile(sortRoot, "01 甲.mp3");
+        var trackB = WriteFile(sortRoot, "02 乙.mp3");
+        var trackC = WriteFile(sortRoot, "03 丙.mp3");
+        File.SetLastWriteTime(trackA, new DateTime(2024, 3, 1, 12, 0, 0));
+        File.SetLastWriteTime(trackB, new DateTime(2024, 1, 1, 12, 0, 0));
+        File.SetLastWriteTime(trackC, new DateTime(2024, 2, 1, 12, 0, 0));
+
+        var sortVm = new MediaPlayerViewModel { Confirm = _ => true };
+        sortVm.ClearPlaylistCommand.Execute(null);   // 前面的用例存过快照，这里从空开始
+        sortVm.PlaylistSort = PlaylistSortKey.Added;
+        sortVm.PlaylistSortDescending = false;
+        var sortFake = new FakeMediaPlayback();
+        sortVm.AttachPlayer(sortFake);
+        sortVm.AddFilesAsync(new[] { trackA, trackB, trackC }).GetAwaiter().GetResult();
+
+        check("VM：排序默认「默认顺序」→ 按添加顺序排、按钮是「↑ 正序」",
+            sortVm.PlaylistSort == PlaylistSortKey.Added
+            && !sortVm.PlaylistSortDescending
+            && sortVm.SortDirectionText == "↑ 正序"
+            && sortVm.Items.Select(i => i.FileName).SequenceEqual(new[] { "01 甲.mp3", "02 乙.mp3", "03 丙.mp3" }),
+            string.Join(" → ", sortVm.Items.Select(i => i.FileName)));
+
+        sortVm.PlayItem(sortVm.Items[0]);   // 正在播「01 甲」
+        sortFake.RaiseOpened(TimeSpan.FromSeconds(120), hasVideo: false);
+        var loadsBeforeSort = sortFake.LoadCount;
+
+        sortVm.PlaylistSort = PlaylistSortKey.Modified;   // 修改日期正序：乙(1/1) → 丙(2/1) → 甲(3/1)
+        check("VM：改成按修改日期排 → 列表顺序变了、行号重排、正在播的那首不中断（没有重新 Load）",
+            sortVm.Items.Select(i => i.FileName).SequenceEqual(new[] { "02 乙.mp3", "03 丙.mp3", "01 甲.mp3" })
+            && sortVm.Items.Select(i => i.Number).SequenceEqual(new[] { 1, 2, 3 })
+            && sortVm.CurrentItem?.FileName == "01 甲.mp3"
+            && sortFake.LoadCount == loadsBeforeSort
+            && sortVm.IsPlaying
+            && sortVm.StatusText.Contains("修改日期"),
+            string.Join(" → ", sortVm.Items.Select(i => i.FileName)));
+
+        sortVm.NextCommand.Execute(null);
+        check("VM：排序后列表循环按新列表走（「01 甲」的下一首 = 新顺序里的「02 乙」）",
+            sortVm.CurrentItem?.FileName == "02 乙.mp3",
+            sortVm.CurrentItem?.FileName ?? "(null)");
+
+        sortVm.PlaylistSortDescending = true;   // 修改日期反序：甲 → 丙 → 乙
+        check("VM：反序 → 顺序翻过来、按钮变「↓ 反序」、写进配置，当前曲目还在",
+            sortVm.Items.Select(i => i.FileName).SequenceEqual(new[] { "01 甲.mp3", "03 丙.mp3", "02 乙.mp3" })
+            && sortVm.SortDirectionText == "↓ 反序"
+            && sortVm.Cfg.PlaylistSort == PlaylistSortKey.Modified
+            && sortVm.Cfg.PlaylistSortDescending
+            && sortVm.CurrentItem?.FileName == "02 乙.mp3",
+            string.Join(" → ", sortVm.Items.Select(i => i.FileName)));
+
+        sortVm.ToggleSortDirectionCommand.Execute(null);
+        check("VM：点方向按钮 → 又回到正序（不用进设置）",
+            !sortVm.PlaylistSortDescending && sortVm.SortDirectionText == "↑ 正序"
+            && sortVm.Items.Select(i => i.FileName).SequenceEqual(new[] { "02 乙.mp3", "03 丙.mp3", "01 甲.mp3" }),
+            sortVm.SortDirectionText);
+
+        sortVm.PlaylistSort = PlaylistSortKey.Added;
+        check("VM：「默认顺序」回到最初添加顺序（换过日期排序也回得来）",
+            sortVm.Items.Select(i => i.FileName).SequenceEqual(new[] { "01 甲.mp3", "02 乙.mp3", "03 丙.mp3" }),
+            string.Join(" → ", sortVm.Items.Select(i => i.FileName)));
+
+        sortVm.PlaylistSortDescending = true;
+        check("VM：默认顺序 + 反序 = 最近添加的在前（03 → 02 → 01）",
+            sortVm.Items.Select(i => i.FileName).SequenceEqual(new[] { "03 丙.mp3", "02 乙.mp3", "01 甲.mp3" }),
+            string.Join(" → ", sortVm.Items.Select(i => i.FileName)));
+        sortVm.PlaylistSortDescending = false;
+
+        // 已经按日期排好时再新加文件：自动排到对应位置，而不是一律接在末尾
+        sortVm.PlaylistSort = PlaylistSortKey.Modified;
+        var trackD = WriteFile(sortRoot, "04 丁.mp3");
+        File.SetLastWriteTime(trackD, new DateTime(2024, 4, 1, 12, 0, 0));
+        sortVm.AddFilesAsync(new[] { trackD }).GetAwaiter().GetResult();
+        check("VM：排序不是「默认顺序」时，新加的文件自动排到对应位置（不是一律接在末尾）",
+            sortVm.Items.Select(i => i.FileName).SequenceEqual(
+                new[] { "02 乙.mp3", "03 丙.mp3", "01 甲.mp3", "04 丁.mp3" }),
+            string.Join(" → ", sortVm.Items.Select(i => i.FileName)));
+
+        // playlist.json 永远按添加顺序存，所以「默认顺序」下次还能回去
+        sortVm.SavePlaylistState();
+        var savedSortState = JsonFileStore.Read<MediaPlaylistState>(sortVm.PlaylistStatePath);
+        check("VM：playlist.json 按添加顺序存（不是界面显示顺序）→「默认顺序」下次回得去",
+            savedSortState?.Paths is { Count: 4 } savedPaths
+            && savedPaths.Select(Path.GetFileName).SequenceEqual(
+                new[] { "01 甲.mp3", "02 乙.mp3", "03 丙.mp3", "04 丁.mp3" }),
+            savedSortState is null
+                ? "null"
+                : string.Join(" → ", savedSortState.Paths.Select(Path.GetFileName)));
+
+        var sortReopened = new MediaPlayerViewModel { Confirm = _ => true };
+        check("VM：重新打开 → 排序方式从配置恢复，列表直接按它排",
+            sortReopened.PlaylistSort == PlaylistSortKey.Modified
+            && !sortReopened.PlaylistSortDescending
+            && sortReopened.Items.Select(i => i.FileName).SequenceEqual(
+                new[] { "02 乙.mp3", "03 丙.mp3", "01 甲.mp3", "04 丁.mp3" }),
+            string.Join(" → ", sortReopened.Items.Select(i => i.FileName)));
+
+        // 收尾：配置是全局缓存的，别把排序留给后面的用例
+        sortReopened.PlaylistSort = PlaylistSortKey.Added;
+        sortReopened.PlaylistSortDescending = false;
+
         // ---- 文件不见了 ----
         var gone = Path.Combine(root, "已经删掉的歌.mp3");
         var ghost = new MediaItem(gone, MediaKind.Audio);
@@ -758,7 +957,7 @@ internal static class MediaPlayerChecks
         reopened.PlayMode = PlayOrderMode.Shuffle;
         reopened.TimeDisplay = TimeDisplayMode.Remaining;
         reopened.ResetSettingsCommand.Execute(null);
-        check("VM：恢复默认设置 → 音量 80 / 步长 5.0 / 列表循环 / 时间显示回到已播放 / 两种都收 / 递归 / 追加",
+        check("VM：恢复默认设置 → 音量 80 / 步长 5.0 / 列表循环 / 时间显示回到已播放 / 两种都收 / 递归 / 追加 / 排序回默认顺序",
             reopened.VolumeValue == 80
             && reopened.SeekStepSeconds == 5.0
             && reopened.PlayMode == PlayOrderMode.LoopAll
@@ -767,6 +966,8 @@ internal static class MediaPlayerChecks
             && reopened.Cfg.IncludeMode == MediaIncludeMode.AudioAndVideo
             && reopened.ScanRecursive
             && reopened.Cfg.AppendWhenOpeningFolder
+            && reopened.PlaylistSort == PlaylistSortKey.Added
+            && !reopened.PlaylistSortDescending
             && reopened.StatusText.Contains("恢复默认"),
             reopened.StatusText);
 

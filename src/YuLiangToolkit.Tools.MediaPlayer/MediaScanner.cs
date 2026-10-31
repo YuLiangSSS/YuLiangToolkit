@@ -65,7 +65,12 @@ public static class MediaScanner
     public static IReadOnlyList<MediaItem> BuildItems(string? folder, bool recursive, MediaIncludeMode include)
         => FromFiles(EnumerateFiles(folder, recursive, include), include);
 
-    /// <summary>一批现成的路径（打开文件 / 拖放进来）→ 列表条目；按设置过滤、去重、自然排序。</summary>
+    /// <summary>
+    /// 一批现成的路径（打开文件 / 拖放进来）→ 列表条目；按设置过滤、去重、自然排序。
+    /// <para>顺手读「修改时间 + 大小」给列表排序用：**调用方要在后台线程里跑它**
+    /// （打开文件夹 / 打开文件都包了 <c>Task.Run</c>）；几百上千个文件也只是文件系统元数据，
+    /// 但放界面线程逐个读仍然可能卡（网络盘尤其明显）。</para>
+    /// </summary>
     public static IReadOnlyList<MediaItem> FromFiles(IEnumerable<string> files, MediaIncludeMode include)
     {
         var items = new List<MediaItem>();
@@ -78,7 +83,8 @@ public static class MediaScanner
             if (!seen.Add(file)) continue;
             var kind = MediaTypes.KindOf(file);
             if (kind is null) continue;
-            items.Add(new MediaItem(file, kind.Value));
+            var (modified, size) = MediaItem.ReadMetadata(file);
+            items.Add(new MediaItem(file, kind.Value, modified, size));
         }
 
         items.Sort((a, b) => NaturalStringComparer.Instance.Compare(a.FullPath, b.FullPath));

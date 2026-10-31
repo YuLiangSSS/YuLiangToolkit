@@ -20,6 +20,12 @@ public sealed partial class MediaPlayerViewModel
     /// <summary>二次确认出口：默认直接同意（无头自检 / 自动化测试靠它跳过弹窗），界面里换成真的问一句。</summary>
     public Func<string, bool> Confirm { get; set; } = _ => true;
 
+    /// <summary>
+    /// 下一个「添加顺序」序号：条目第一次进列表时分配一次、此后不再变，
+    /// 排序里的「默认顺序」按它排。恢复上次列表时从 0 顺着编号，之后新加的接在后面。
+    /// </summary>
+    private int _nextAddedIndex;
+
     // ---------------------------------------------------------------- 打开
 
     /// <summary>「打开文件夹」按钮：可以一次选多个（选中的全部文件夹当作一批读进来）。</summary>
@@ -88,7 +94,8 @@ public sealed partial class MediaPlayerViewModel
                 return all;
             });
 
-            var items = MediaScanner.FromFiles(scanned, include);
+            // 过滤 / 去重 / 读修改时间与大小也放后台：几百上千个文件的元数据读取不能卡界面（见 MediaScanner.FromFiles）
+            var items = await Task.Run(() => MediaScanner.FromFiles(scanned, include));
             if (items.Count == 0)
             {
                 StatusText = $"没有读到文件（当前读取方式：{MediaTypes.Describe(include)}）";
@@ -156,7 +163,7 @@ public sealed partial class MediaPlayerViewModel
 
     /// <summary>
     /// 把一批条目并进列表（<see cref="PlaylistMerger"/> 决定覆盖还是追加、去掉重复），
-    /// 并把「正在播的是哪首 / 选中哪一行」按路径恢复回去。
+    /// 按当前排序方式排好，并把「正在播的是哪首 / 选中哪一行」按路径恢复回去。
     /// </summary>
     public void AppendItems(IReadOnlyList<MediaItem> incoming, bool append, string source)
     {
@@ -167,8 +174,13 @@ public sealed partial class MediaPlayerViewModel
 
         var report = PlaylistMerger.Merge(Items.ToList(), incoming, append);
 
+        // 新条目分配「添加顺序」序号（老条目第一次进列表时已经分配过，保持不变）
+        foreach (var item in report.Items) AssignAddedIndex(item);
+
+        // 排序方式不是「默认顺序」时，新加进来的直接排到对应位置
+        var ordered = PlaylistSorter.Sort(report.Items.ToList(), PlaylistSort, PlaylistSortDescending);
         Items.Clear();
-        foreach (var item in report.Items) Items.Add(item);
+        foreach (var item in ordered) Items.Add(item);
 
         _queue.Reset();
         RefreshPlaylistState();
@@ -193,6 +205,47 @@ public sealed partial class MediaPlayerViewModel
         StatusText = report.Describe(append);
         Log($"[{source}] {report.Describe(append)}");
         SavePlaylistState();
+    }
+
+    /// <summary>给还没编号的条目分配「添加顺序」序号（= 它第一次进列表的先后）。</summary>
+    private void AssignAddedIndex(MediaItem item)
+    {
+        if (item.AddedIndex >= 0) return;
+        item.AddedIndex = _nextAddedIndex++;
+    }
+
+    /// <summary>
+    /// 用户换了排序方式 / 方向：立刻重排列表。
+    /// <para>⚠ 正在播的那首**不打断**（播放器不重载、进度不动），只把播放队列对齐到新下标；
+    /// 列表循环 / 随机从此按新列表走（随机的一轮会重洗）。</para>
+    /// </summary>
+    private void ApplyPlaylistSort(bool announce = true)
+    {
+        var selectedPath = SelectedItem?.FullPath;
+        var current = CurrentItem;
+
+        if (Items.Count > 1)
+        {
+            var ordered = PlaylistSorter.Sort(Items.ToList(), PlaylistSort, PlaylistSortDescending);
+            Items.Clear();
+            foreach (var item in ordered) Items.Add(item);
+        }
+
+        _queue.Reset();
+        RefreshPlaylistState();
+
+        SelectedItem = selectedPath is null ? null : Items.FirstOrDefault(i => PathEquals(i.FullPath, selectedPath));
+        if (current is not null && Items.Contains(current))
+        {
+            CurrentItem = current;
+            _queue.SetCurrent(Items.IndexOf(current));
+        }
+
+        SavePlaylistState();
+        if (!announce) return;
+
+        StatusText = $"已按{PlaylistSorter.Describe(PlaylistSort, PlaylistSortDescending)}排列（{Items.Count} 个）";
+        Log(StatusText);
     }
 
     // ---------------------------------------------------------------- 增删
@@ -265,14 +318,21 @@ public sealed partial class MediaPlayerViewModel
 
     // ---------------------------------------------------------------- 记住上次
 
-    /// <summary>把当前列表与播放位置写进 <c>Data\media-player\playlist.json</c>（增删 / 关工具时调）。</summary>
+    /// <summary>
+    /// 把当前列表与播放位置写进 <c>Data\media-player\playlist.json</c>（增删 / 排序 / 关工具时调）。
+    /// <para>路径**按添加顺序**存（不是界面显示顺序）：下次打开先恢复添加顺序，再套用配置里的
+    /// 排序方式，所以「默认顺序」永远回得到最初那副样子。</para>
+    /// </summary>
     public void SavePlaylistState()
     {
         try
         {
             var state = new MediaPlaylistState
             {
-                Paths = Items.Select(i => i.FullPath).ToList(),
+                Paths = Items
+                    .OrderBy(i => i.AddedIndex < 0 ? int.MaxValue : i.AddedIndex)
+                    .Select(i => i.FullPath)
+                    .ToList(),
                 CurrentPath = CurrentItem?.FullPath ?? "",
                 PositionSeconds = Math.Max(0, _lastPosition.TotalSeconds),
             };
@@ -286,7 +346,8 @@ public sealed partial class MediaPlayerViewModel
 
     /// <summary>
     /// 打开工具时把上次的列表捞回来（<c>RestorePlaylist</c>）。文件已经不在的条目顺手丢掉；
-    /// <c>ResumeLastPlayed</c> 打开时只「选中 + 记住位置」，**不自动出声**（免得一进工具就吵）。
+    /// 恢复完按配置里的排序方式排好，<c>ResumeLastPlayed</c> 打开时只「选中 + 记住位置」，
+    /// **不自动出声**（免得一进工具就吵）。
     /// </summary>
     private void RestorePlaylistState()
     {
@@ -303,7 +364,9 @@ public sealed partial class MediaPlayerViewModel
                 continue;
             }
             if (MediaTypes.KindOf(path) is not { } kind) continue;
-            items.Add(new MediaItem(path, kind));
+            var (modified, size) = MediaItem.ReadMetadata(path);
+            // 快照是按添加顺序存的：顺着编号，之后新加的文件接在后面
+            items.Add(new MediaItem(path, kind, modified, size) { AddedIndex = items.Count });
         }
 
         if (items.Count == 0)
@@ -312,7 +375,9 @@ public sealed partial class MediaPlayerViewModel
             return;
         }
 
-        foreach (var item in items) Items.Add(item);
+        _nextAddedIndex = items.Count;
+        var ordered = PlaylistSorter.Sort(items, PlaylistSort, PlaylistSortDescending);
+        foreach (var item in ordered) Items.Add(item);
         RefreshPlaylistState();
 
         var suffix = missing > 0 ? $"（{missing} 个已不存在，已跳过）" : "";

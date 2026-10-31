@@ -60,6 +60,7 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
         RemoveSelectedCommand = new RelayCommand(_ => RemoveSelected(), _ => SelectedItem is not null);
         ClearPlaylistCommand = new RelayCommand(_ => ClearPlaylist(), _ => Items.Count > 0);
         RevealSelectedCommand = new RelayCommand(_ => RevealSelected(), _ => SelectedItem is not null);
+        ToggleSortDirectionCommand = new RelayCommand(_ => PlaylistSortDescending = !PlaylistSortDescending);
 
         // 设置 / 文件夹
         ToggleSettingsCommand = new RelayCommand(_ => IsSettingsVisible = !IsSettingsVisible);
@@ -78,6 +79,9 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
 
         // 截图 / 看版式用：塞几行假数据（不发任何请求、也不碰磁盘之外的路径）
         if (Environment.GetEnvironmentVariable("YLT_PLAYER_DEMO") is not null) SeedDemoItems();
+
+        // 截图用：直接套一种排序（YLT_PLAYER_SORT=Modified 或 ModifiedDesc），核对排序后的版式
+        ApplyDebugSortFromEnvironment();
 
         // 截图用：直接把设置面板打开（不然要点一下齿轮才看得到那一屏）
         if (Environment.GetEnvironmentVariable("YLT_PLAYER_SETTINGS") is not null) IsSettingsVisible = true;
@@ -111,6 +115,9 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
     public RelayCommand RemoveSelectedCommand { get; }
     public RelayCommand ClearPlaylistCommand { get; }
     public RelayCommand RevealSelectedCommand { get; }
+
+    /// <summary>点「↑ 正序 / ↓ 反序」按钮：在当前排序方式下翻一个方向。</summary>
+    public RelayCommand ToggleSortDirectionCommand { get; }
     public RelayCommand ToggleSettingsCommand { get; }
     public RelayCommand ResetSettingsCommand { get; }
     public RelayCommand OpenConfigFolderCommand { get; }
@@ -336,6 +343,92 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
     };
 
     public string PlayModeTooltip => PlayQueue.ModeTooltip(PlayMode);
+
+    // ---------- 播放列表排序 ----------
+
+    /// <summary>
+    /// 截图调试用的临时排序覆盖（<c>YLT_PLAYER_SORT</c>）：只在内存里生效、**不写进配置**，
+    /// 免得截图把用户的排序设置改掉。正常使用永远是 <c>null</c>。
+    /// </summary>
+    private PlaylistSortKey? _debugSort;
+    private bool? _debugSortDescending;
+
+    /// <summary>退出截图覆盖（用户真改了排序 / 恢复默认设置时；两个字段一起清，别只清一半）。</summary>
+    private void ClearDebugSortOverride()
+    {
+        _debugSort = null;
+        _debugSortDescending = null;
+    }
+
+    /// <summary>
+    /// 播放列表怎么排：默认顺序 / 名称 / 修改日期 / 文件大小（存进配置，下次打开还是这个排法）。
+    /// <para>改一下立刻重排，**正在播放的那首不打断**（播放器不重载）；切歌顺序跟着新列表走，
+    /// 见 <c>ApplyPlaylistSort</c>。</para>
+    /// </summary>
+    public PlaylistSortKey PlaylistSort
+    {
+        get => _debugSort ?? Cfg.PlaylistSort;
+        set
+        {
+            if (_debugSort is null && Cfg.PlaylistSort == value) return;
+            ClearDebugSortOverride();       // 用户真改了：退出截图覆盖
+            Cfg.PlaylistSort = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(SelectedPlaylistSort));
+            OnPropertyChanged(nameof(SortDirectionText));
+            OnPropertyChanged(nameof(SortDirectionTooltip));
+            OnPropertyChanged(nameof(SortComboTooltip));
+            ApplyPlaylistSort();
+        }
+    }
+
+    /// <summary>排序方向：false = 正序（默认），true = 反序。改一下立刻重排，规则同 <see cref="PlaylistSort"/>。</summary>
+    public bool PlaylistSortDescending
+    {
+        get => _debugSortDescending ?? Cfg.PlaylistSortDescending;
+        set
+        {
+            if (_debugSortDescending is null && Cfg.PlaylistSortDescending == value) return;
+            ClearDebugSortOverride();
+            Cfg.PlaylistSortDescending = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(SortDirectionText));
+            OnPropertyChanged(nameof(SortDirectionTooltip));
+            OnPropertyChanged(nameof(SortComboTooltip));
+            ApplyPlaylistSort();
+        }
+    }
+
+    /// <summary>方向按钮上的字：「↑ 正序」/「↓ 反序」。</summary>
+    public string SortDirectionText => PlaylistSorter.DirectionText(PlaylistSortDescending);
+
+    /// <summary>方向按钮的悬停提示（顺手把当前排序方式与方向都写清楚）。</summary>
+    public string SortDirectionTooltip
+        => $"{PlaylistSorter.Describe(PlaylistSort, PlaylistSortDescending)}"
+           + "　点一下切换正序 / 反序；只改浏览顺序，不打断正在播放的那首";
+
+    /// <summary>排序下拉框的悬停提示。</summary>
+    public string SortComboTooltip
+        => "换一种浏览顺序：默认顺序（添加顺序）/ 名称 / 修改日期 / 文件大小"
+           + "；只重排列表，正在播放的那首不中断，循环 / 随机的切歌顺序也跟着新列表走";
+
+    public IReadOnlyList<OptionItem<PlaylistSortKey>> PlaylistSortOptions { get; } = OptionItem.From(
+        (PlaylistSortKey.Added, "默认顺序"),
+        (PlaylistSortKey.Name, "名称"),
+        (PlaylistSortKey.Modified, "修改日期"),
+        (PlaylistSortKey.Size, "文件大小"));
+
+    /// <summary>列表上方「排序」下拉绑的选中项。</summary>
+    public OptionItem<PlaylistSortKey> SelectedPlaylistSort
+    {
+        get => OptionItem<PlaylistSortKey>.Find(PlaylistSortOptions, PlaylistSort) ?? PlaylistSortOptions[0];
+        set
+        {
+            if (value is null) return;
+            PlaylistSort = value.Value;
+            OnPropertyChanged();
+        }
+    }
 
     /// <summary>
     /// 进度条左边的时间怎么显示：正向计时（<see cref="TimeDisplayMode.Elapsed"/>，默认）/
@@ -628,6 +721,9 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
         Cfg.RestorePlaylist = true;
         Cfg.ResumeLastPlayed = true;
         Cfg.BackgroundPlayback = true;
+        Cfg.PlaylistSort = PlaylistSortKey.Added;
+        Cfg.PlaylistSortDescending = false;
+        ClearDebugSortOverride();          // 截图覆盖也一并清掉（两个字段一起）
 
         VolumeValue = Cfg.Volume;
         SeekStepSeconds = Cfg.SeekStepSeconds;
@@ -642,6 +738,12 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
         OnPropertyChanged(nameof(BackgroundPlayback));
         OnPropertyChanged(nameof(SelectedTimeDisplay));
         OnPropertyChanged(nameof(TimeDisplay));
+        OnPropertyChanged(nameof(PlaylistSort));
+        OnPropertyChanged(nameof(SelectedPlaylistSort));
+        OnPropertyChanged(nameof(SortDirectionText));
+        OnPropertyChanged(nameof(SortDirectionTooltip));
+        OnPropertyChanged(nameof(SortComboTooltip));
+        ApplyPlaylistSort(announce: false);   // 「恢复默认」= 回到添加顺序（列表内容不动，只重排）
         PositionText = MediaTimeDisplay.Format(_lastPosition, _lastDuration, Cfg.TimeDisplayMode);
         RaiseBackgroundState();
 
@@ -654,31 +756,71 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
     /// <summary>
     /// <c>YLT_PLAYER_DEMO=1</c> 时往列表里塞几行**假文件**：只想看列表与封面的版式时用，
     /// 不碰磁盘（点了会提示「文件不在了」），跟下载器的 <c>YLT_MAP_DEMO</c> 一个用途。
+    /// <para>顺手给每行编上「添加顺序」和错开的修改日期 / 大小，这样 <c>YLT_PLAYER_SORT</c>
+    /// 截图时能看出排序确实生效。</para>
     /// </summary>
     private void SeedDemoItems()
     {
+        // 演示模式 = 只看这几行假数据（别跟上次恢复的真实列表混在一起，截图才干净）
+        Items.Clear();
+        _nextAddedIndex = 0;
+
         var demo = new[]
         {
-            (Name: "01 - 夜航星", Kind: MediaKind.Audio),
-            (Name: "02 - 深海列车", Kind: MediaKind.Audio),
-            (Name: "03 - 长安十二时辰（主题曲）", Kind: MediaKind.Audio),
-            (Name: "Live - 千本樱（钢琴版）", Kind: MediaKind.Audio),
-            (Name: "纪录片 - 星空下的城市", Kind: MediaKind.Video),
-            (Name: "MV - 花火大会 4K", Kind: MediaKind.Video),
+            (Name: "01 - 夜航星", Kind: MediaKind.Audio, Modified: new DateTime(2024, 5, 2), Size: 8_400_000L),
+            (Name: "02 - 深海列车", Kind: MediaKind.Audio, Modified: new DateTime(2024, 1, 15), Size: 6_500_000L),
+            (Name: "03 - 长安十二时辰（主题曲）", Kind: MediaKind.Audio, Modified: new DateTime(2024, 7, 9), Size: 9_100_000L),
+            (Name: "Live - 千本樱（钢琴版）", Kind: MediaKind.Audio, Modified: new DateTime(2024, 3, 21), Size: 7_300_000L),
+            (Name: "纪录片 - 星空下的城市", Kind: MediaKind.Video, Modified: new DateTime(2024, 8, 30), Size: 42_000_000L),
+            (Name: "MV - 花火大会 4K", Kind: MediaKind.Video, Modified: new DateTime(2024, 2, 11), Size: 55_000_000L),
         };
 
         var folder = Storage.PathOf("demo");
-        foreach (var (name, kind) in demo)
+        foreach (var (name, kind, modified, size) in demo)
         {
             var ext = kind == MediaKind.Video ? ".mp4" : ".mp3";
-            Items.Add(new MediaItem(Path.Combine(folder, name + ext), kind));
+            Items.Add(new MediaItem(Path.Combine(folder, name + ext), kind, modified, size)
+            {
+                AddedIndex = Items.Count,
+            });
         }
 
+        // 按当前配置的排序方式摆好，免得「下拉显示修改日期、列表却是添加顺序」这种截图不一致
+        var ordered = PlaylistSorter.Sort(Items.ToList(), PlaylistSort, PlaylistSortDescending);
+        Items.Clear();
+        foreach (var item in ordered) Items.Add(item);
+
         RefreshPlaylistState();
+        _queue.Reset();
+        _queue.SetCurrent(0);
         SelectedItem = Items[0];
         CurrentItem = Items[0];
         StatusText = "演示数据（YLT_PLAYER_DEMO）：列表里这几行是假的，不读磁盘";
         UpdatePosition(TimeSpan.Zero, TimeSpan.FromSeconds(253));
+    }
+
+    /// <summary>
+    /// 截图用：<c>YLT_PLAYER_SORT=Modified</c> / <c>ModifiedDesc</c> / <c>Name</c>… 直接套一种排序，
+    /// 好核对排序后的列表版式与按钮文字。
+    /// <para>⚠ 只是**内存里的临时覆盖**（<see cref="_debugSort"/>），不写进用户的配置；正常使用不设这个环境变量。</para>
+    /// </summary>
+    private void ApplyDebugSortFromEnvironment()
+    {
+        var text = Environment.GetEnvironmentVariable("YLT_PLAYER_SORT");
+        if (string.IsNullOrWhiteSpace(text)) return;
+
+        var descending = text.EndsWith("Desc", StringComparison.OrdinalIgnoreCase);
+        var keyText = descending ? text[..^4] : text;
+        if (!Enum.TryParse<PlaylistSortKey>(keyText, ignoreCase: true, out var key)) return;
+
+        _debugSort = key;
+        _debugSortDescending = descending;
+        ApplyPlaylistSort(announce: false);
+        OnPropertyChanged(nameof(PlaylistSort));
+        OnPropertyChanged(nameof(SelectedPlaylistSort));
+        OnPropertyChanged(nameof(SortDirectionText));
+        OnPropertyChanged(nameof(SortDirectionTooltip));
+        OnPropertyChanged(nameof(SortComboTooltip));
     }
 
     // ---------- 生命周期 ----------

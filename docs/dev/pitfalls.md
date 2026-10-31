@@ -31,6 +31,8 @@
 - ⚠ 整窗全屏临时改 `WM_GETMINMAXINFO` 再最大化，并 `SetWindowRgn(hwnd, IntPtr.Zero)` 清工作区 Region，否则底部黑带。
 - 藏任务栏用 `TaskbarHider`：400ms 看门狗、`Hide()` 幂等、不能 `Thread.Sleep`；`YLT_TASKBAR_TRACE` 错误码 5 = 完整性级别低。
 - 切走还要干活：`IBackgroundTool.KeepAliveOnLeave` + 外壳存视图实例；`Unloaded` 时不能 `Close()` 播放器。
+- ⚠ 重排列表后必须 `_queue.Reset()` 并把当前曲目重新 `SetCurrent(Items.IndexOf(当前))`，否则列表循环会按旧下标跳到错的歌、随机的一轮顺序作废。
+- `playlist.json` 的路径列表按**添加顺序**保存（别按界面显示顺序），否则「默认顺序」回不到最初的添加顺序。
 
 ### 外壳：分类 · 粒子 · 主页设置
 - 老工具 `Category` 别自动当分类目录：树只认 `CategoryPath`（默认空）。

@@ -7,7 +7,7 @@ namespace YuLiangToolkit.Tools.MediaPlayer;
 /// 「视频 / 音乐播放器」的强类型配置 → <c>Config\media-player\config.json</c>。
 ///
 /// <para>分三块：**读取**（打开文件夹时收哪些文件、要不要进子文件夹、覆盖还是追加）、
-/// **播放**（音量、播放顺序、快进快退步长）、**恢复**（记住上次的列表与位置）。</para>
+/// **播放**（音量、播放顺序、列表排序、快进快退步长）、**恢复**（记住上次的列表与位置）。</para>
 ///
 /// <para>⚠ 「播放顺序」这类枚举按字符串存（<c>"RepeatOne"</c>），加减成员不会让老配置错位；
 /// 带 setter 的计算属性都标了 <c>[JsonIgnore]</c>（见 AGENTS.md）。</para>
@@ -38,6 +38,12 @@ public sealed class MediaPlayerConfig : ToolConfig
 
     /// <summary>播放顺序：列表循环 / 单曲循环 / 随机播放。</summary>
     public PlayOrderMode PlayOrder { get; set; } = PlayOrderMode.LoopAll;
+
+    /// <summary>播放列表怎么排：默认顺序 / 名称 / 修改日期 / 文件大小（只改显示与切歌顺序，不动文件）。</summary>
+    public PlaylistSortKey PlaylistSort { get; set; } = PlaylistSortKey.Added;
+
+    /// <summary>排序方向：false = 正序（默认），true = 反序。</summary>
+    public bool PlaylistSortDescending { get; set; }
 
     /// <summary>进度条左边那个时间怎么显示：正向计时（默认）/ 剩余倒计时（还差多少播完）。</summary>
     public TimeDisplayMode TimeDisplayMode { get; set; } = TimeDisplayMode.Elapsed;
