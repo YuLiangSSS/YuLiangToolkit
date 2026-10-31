@@ -283,24 +283,46 @@
                     </Grid.ColumnDefinitions>
 
                     <!-- 左栏：关联文件下载器（含自动下载所需文件） -->
-                    <!-- 两栏内容都可能比主区域高：各自内部滚动（滚到头再交给整页，ScrollChaining） -->
-                    <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto"
+                    <!-- 两栏内容都可能比主区域高：各自内部滚动（滚到头再交给整页，ScrollChaining）。
+                         卡片本身要铺满整列高度（和左边游戏列表、右边设置栏底边对齐）：
+                         视口比内容高时用 MinHeight 撑满，多出来的高度全部给最下面的「自动下载日志」；
+                         内容比视口高时 MinHeight 不生效，照常内部滚动（不会裁掉东西）。 -->
+                    <ScrollViewer x:Name="RelatedScroll" Grid.Column="0" VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled"
                                   core:ScrollChaining.Enabled="True">
-                        <Border Style="{StaticResource CardStyle}" VerticalAlignment="Top">
-                            <StackPanel>
-                            <TextBlock Text="关联文件下载器" FontSize="13" FontWeight="SemiBold" />
-                            <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,10"
+                        <Border Style="{StaticResource CardStyle}"
+                                MinHeight="{Binding ViewportHeight, ElementName=RelatedScroll}">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />   <!-- 0 标题 -->
+                                    <RowDefinition Height="Auto" />   <!-- 1 说明 -->
+                                    <RowDefinition Height="Auto" />   <!-- 2 批量输入 -->
+                                    <RowDefinition Height="Auto" />   <!-- 3 按钮 -->
+                                    <RowDefinition Height="Auto" />   <!-- 4 不覆盖已有文件 -->
+                                    <RowDefinition Height="Auto" />   <!-- 5 状态 -->
+                                    <RowDefinition Height="Auto" />   <!-- 6 进度 -->
+                                    <RowDefinition Height="Auto" />   <!-- 7 逐行结果 -->
+                                    <RowDefinition Height="Auto" />   <!-- 8 提示 -->
+                                    <RowDefinition Height="Auto" />   <!-- 9 分隔线 -->
+                                    <RowDefinition Height="Auto" />   <!-- 10 自动下载标题 -->
+                                    <RowDefinition Height="Auto" />   <!-- 11 自动下载说明 -->
+                                    <RowDefinition Height="Auto" />   <!-- 12 自动下载按钮 -->
+                                    <RowDefinition Height="Auto" />   <!-- 13 自动下载状态 -->
+                                    <RowDefinition Height="*" MinHeight="80" />   <!-- 14 自动下载日志：吃掉多出来的高度 -->
+                                </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Text="关联文件下载器" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock Grid.Row="1" FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,10"
                                        Text="多文件游戏（只下主 swf 玩不了的那种）：一行一个相对路径，例如 assets/level1.swf，路径相对 swf 所在目录。" />
 
-                            <TextBox x:Name="BatchInputBox" Style="{StaticResource TextBoxStyle}" Height="80"
+                            <TextBox Grid.Row="2" x:Name="BatchInputBox" Style="{StaticResource TextBoxStyle}" Height="80"
                                      AcceptsReturn="True" TextWrapping="NoWrap"
                                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
                                      VerticalContentAlignment="Top"
                                      Text="{Binding BatchInput, UpdateSourceTrigger=PropertyChanged}"
                                      ToolTip="一行一个相对路径；含 .. 或空格 / 特殊字符的行会被自动跳过并统计出来" />
 
-                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,10,0,0">
                                 <Button x:Name="BatchDownloadButton" Content="批量下载" Style="{StaticResource PrimaryButtonStyle}"
                                         Command="{Binding BatchDownloadCommand}"
                                         IsEnabled="{Binding IsBatchRunning, Converter={StaticResource InverseBoolConverter}}" />
@@ -309,12 +331,12 @@
                                 <Button Content="清空" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
                                         Command="{Binding ClearBatchInputCommand}" />
                             </StackPanel>
-                            <CheckBox Content="不覆盖已有文件" Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0"
+                            <CheckBox Grid.Row="4" Content="不覆盖已有文件" Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0"
                                       IsChecked="{Binding Cfg.SkipExistingFiles}" />
 
-                            <TextBlock Text="{Binding BatchStatusText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,10,0,0" />
+                            <TextBlock Grid.Row="5" Text="{Binding BatchStatusText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,10,0,0" />
 
-                            <Grid Margin="0,8,0,0" Visibility="{Binding IsBatchRunning, Converter={StaticResource BoolToVis}}">
+                            <Grid Grid.Row="6" Margin="0,8,0,0" Visibility="{Binding IsBatchRunning, Converter={StaticResource BoolToVis}}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -326,7 +348,7 @@
                                            Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Grid>
 
-                            <ListBox ItemsSource="{Binding RelatedRows}" Style="{StaticResource FileListStyle}"
+                            <ListBox Grid.Row="7" ItemsSource="{Binding RelatedRows}" Style="{StaticResource FileListStyle}"
                                      MinHeight="64" MaxHeight="110" Margin="0,10,0,0"
                                      core:ScrollChaining.Enabled="True"
                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled">
@@ -346,26 +368,28 @@
                                 </ListBox.ItemTemplate>
                             </ListBox>
 
-                            <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,8,0,0"
+                            <TextBlock Grid.Row="8" FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,8,0,0"
                                        Text="不知道要下哪些文件？用 ProcessMonitor 看 Flash 播放器加载失败的那些文件，或者直接用下面的「自动下载所需文件」。" />
 
                             <!-- 自动下载所需文件 -->
-                            <Separator Margin="0,12,0,10" Background="{DynamicResource BorderBrush}" />
-                            <TextBlock Text="自动下载所需文件（网页游戏）" FontSize="12.5" FontWeight="SemiBold" />
-                            <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,8"
+                            <Separator Grid.Row="9" Margin="0,12,0,10" Background="{DynamicResource BorderBrush}" />
+                            <TextBlock Grid.Row="10" Text="自动下载所需文件（网页游戏）" FontSize="12.5" FontWeight="SemiBold" />
+                            <TextBlock Grid.Row="11" FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,8"
                                        Text="开启后：游戏向本地服务器要文件 → 本地没有就先去网上下 → 再答复游戏（加载会慢一点）。需要先在左边选中一个名字以 h 结尾的网页游戏。" />
-                            <StackPanel Orientation="Horizontal">
+                            <StackPanel Grid.Row="12" Orientation="Horizontal">
                                 <Button x:Name="AutoDownloadButton" Content="{Binding AutoDownloadButtonText}"
                                         Style="{StaticResource PrimaryButtonStyle}"
                                         Command="{Binding ToggleAutoDownloadCommand}" />
                                 <Button Content="清除日志" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
                                         Command="{Binding ClearAutoDownloadLogCommand}" />
                             </StackPanel>
-                            <TextBlock Text="{Binding AutoDownloadStatus}" VerticalAlignment="Center" Margin="0,8,0,0"
+                            <TextBlock Grid.Row="13" Text="{Binding AutoDownloadStatus}" VerticalAlignment="Center" Margin="0,8,0,0"
                                        FontSize="11.5" TextWrapping="Wrap" />
-                            <TextBox Style="{StaticResource LogTextBoxStyle}" Height="80" Margin="0,8,0,0"
+                            <!-- 最下面的日志吃掉多余高度：卡片因此铺满整列，底边和左右两块对齐 -->
+                            <TextBox Grid.Row="14" Style="{StaticResource LogTextBoxStyle}" Margin="0,8,0,0"
+                                     VerticalContentAlignment="Top" Padding="10,8"
                                      Text="{Binding AutoDownloadText, Mode=OneWay}" />
-                        </StackPanel>
+                            </Grid>
                         </Border>
                     </ScrollViewer>
 

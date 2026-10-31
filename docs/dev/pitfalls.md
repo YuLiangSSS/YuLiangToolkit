@@ -13,6 +13,10 @@
 ### Flash 下载器
 - ⚠ `HttpListener` 的 `AbsolutePath` 是百分号编码（中文目录）：`FlashWebServer.Resolve` 先 `UrlDecode`；自己拼 URL 别重复转义。
 - 缺文件时同步带 Referer 下载、404 删本地占位；同文件并发只下一次（`_inFlight`）。
+- 主区域 / 日志这类「上下两块」是可拖分隔条（见 [layout.md](layout.md)）：整页还在 `ScrollViewer` 里，截图一屏看不全 →
+  `YLT_FLASH_SCROLL=bottom`（或像素值）可滚到指定位置再截图，核对区块底边对齐 / 比例。
+- 中间「关联文件下载器」卡片要铺满整列（底边和左右两块对齐）：卡片 `MinHeight` 绑外层 ScrollViewer 的
+  `ViewportHeight`，卡片内最后一行的自动下载日志放 `*` 行吃掉多余高度；内容比视口高时 MinHeight 不生效、照常内部滚动。
 
 ### 联机聊天室
 - ⚠ 绑 `::` 必须显式 `DualMode`（`TcpListener` 不会替你开），否则 IPv4 全连不进。

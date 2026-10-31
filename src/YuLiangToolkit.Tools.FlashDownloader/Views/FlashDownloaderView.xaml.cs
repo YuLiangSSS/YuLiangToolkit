@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using YuLiangToolkit.Tools.FlashDownloader.Core;
 using YuLiangToolkit.Tools.FlashDownloader.ViewModels;
 
@@ -27,6 +28,10 @@ public partial class FlashDownloaderView : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // 截图 / 调试：YLT_FLASH_SCROLL=bottom 滚到页面底部；=数字（像素）滚到指定位置。
+        // 长页面（主区域 + 日志）默认一屏看不全，用它核对「区块底边对齐 / 比例」。
+        ScheduleDebugScroll();
+
         // 验证用：YLT_FLASH_SELECT=<文件名或文件夹名> 时启动即选中那一行
         // （截图检查“选中高亮”用；也方便以后写 UI 自动化脚本，见 AGENTS.md）
         var wanted = Environment.GetEnvironmentVariable("YLT_FLASH_SELECT");
@@ -39,6 +44,50 @@ public partial class FlashDownloaderView : UserControl
 
         UrlBox.Focus();
         UrlBox.SelectAll();
+    }
+
+    /// <summary>
+    /// 截图 / 调试：<c>YLT_FLASH_SCROLL=bottom</c> 滚到页面底部，<c>=数字</c> 滚到指定像素位置。
+    /// 只影响调试运行（截图用），不改配置；页面较长时靠它核对区块底边对齐。
+    /// </summary>
+    private void ScheduleDebugScroll()
+    {
+        var wanted = Environment.GetEnvironmentVariable("YLT_FLASH_SCROLL");
+        if (string.IsNullOrWhiteSpace(wanted)) return;
+
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            // 整页的 ScrollViewer 就是这个 UserControl 的根内容（别再往上找，那是外壳）
+            var scroller = Content as ScrollViewer ?? FindAncestor<ScrollViewer>(this);
+            if (scroller is null) return;
+            scroller.UpdateLayout();
+
+            if (wanted.Trim().Equals("bottom", StringComparison.OrdinalIgnoreCase))
+            {
+                scroller.ScrollToEnd();
+            }
+            else if (double.TryParse(wanted, System.Globalization.NumberStyles.Float,
+                         System.Globalization.CultureInfo.InvariantCulture, out var offset))
+            {
+                scroller.ScrollToVerticalOffset(Math.Max(0, offset));
+            }
+        }));
+    }
+
+    /// <summary>沿可视化 / 逻辑树往上找第一个指定类型的祖先（找不到返回 null）。</summary>
+    private static T? FindAncestor<T>(DependencyObject element) where T : DependencyObject
+    {
+        for (var node = element; node is not null;)
+        {
+            var parent = node is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(node)
+                : null;
+            parent ??= LogicalTreeHelper.GetParent(node);
+            if (parent is null) return null;
+            if (parent is T hit) return hit;
+            node = parent;
+        }
+        return null;
     }
 
     private void OnGameListDoubleClick(object sender, MouseButtonEventArgs e)
