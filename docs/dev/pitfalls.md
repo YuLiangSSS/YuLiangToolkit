@@ -86,7 +86,13 @@
   视图 `Unloaded` 顺序必须是「先 `vm.ExitFullscreen()`（事件还订阅着，外壳能还原）→ 再摘事件」，
   反过来会留下一个“藏了壳”的窗口（播放器踩过的坑，两个阅读器复制同一套）。
 - 全屏工具条是浮层：行高绑 VM 的 `ToolbarRowHeight`（全屏 = 0），Border 用 DataTrigger 换到 Row1 + `Panel.ZIndex` 置顶；
-  ⚠ `ControlsVisible` 改变时必须同时通知 `IsToolbarVisible`，否则「鼠标停 2.5 秒自动隐藏」不生效（工具条显隐绑的是后者）。
+  **隐藏 / 显示用 `RenderTransform` 上下平移（约 180ms 滑出 / 160ms 滑回），别再拿 `Visibility` 切换**——Collapsed 就做不了动画，
+  也没法做「靠近顶部才滑出」的交互。全屏鼠标只有在**距顶 84px 热区**才滑出；离开顶部 / 工具条约 650ms 自动滑回；
+  阅读区中间晃鼠标只让指针显示，不弹工具条。⚠ 视图 `Loaded` 可能触发多次：用一个 `_fullscreenApplied` 守卫，
+  重复同步时不能把已滑出的工具条又藏回去（踩过：第二次 Loaded 直接藏回，截图里永远看不到工具条）。
+- 截图：`YLT_*_CONTROLS=1` 会把工具条**钉在滑出状态**（否则真实鼠标在窗口里触发的 move 会按热区规则把它收走），
+  `=0` 拍沉浸帧；`YLT_*_HOVER_TOP=1` / `_HOVER_MIDDLE=1` 模拟鼠标在顶部 / 中间，用来验「靠近顶部才滑出」
+  （跑之前先把真实鼠标移开顶部，否则真实 move 事件会覆盖模拟结果）。
 
 ### PDF 阅读器
 - ⚠ PDF 渲染用系统自带的 `Windows.Data.Pdf`（WinRT，不引第三方包）：**主程序 / 自检目标框架因此升到
@@ -122,12 +128,11 @@
 - 调试开关（截图用）：`YLT_PDF_ZOOM=200`（**会写配置**，截图前删 config）、`YLT_PDF_SEARCH=关键词`、
   `YLT_PDF_OUTLINE=1`、`YLT_PDF_SETTINGS=1`。
 - 渲染宽度上限 2000 px / 单页像素 800 万（缩放清晰度与内存的折中）；`PdfReaderChecks` 的「渲染宽度夹取」断言跟着这两个常量走。
-- 全屏沉浸阅读（F11）和图片阅读器同一套：`IFullscreenHost` + 工具条浮层 + 鼠标 2.5 秒自动隐藏 + 指针隐藏；
+- 全屏沉浸阅读（F11）和图片阅读器同一套：`IFullscreenHost` + 工具条浮层 + **鼠标靠近顶部才上下滑出 / 滑回** + 指针隐藏；
   ⚠ 视图 `Unloaded` 同样是「先 `ExitFullscreen()`（事件还订阅着）→ 再摘事件」。PDF 工具条是两行，全屏时仍浮在顶部；
-  全屏时底部操作提示条收起、页码 / 进度条保留。
-- 调试 / 截图：`YLT_PICTURE_FULLSCREEN=1` / `YLT_PDF_FULLSCREEN=1` 全屏启动；`YLT_PICTURE_CONTROLS=0` /
-  `YLT_PDF_CONTROLS=0` 强制收起工具条拍“沉浸”帧 —— 截图时鼠标可能正好在窗口里触发 `PreviewMouseMove` 又把工具条叫出来，
-  所以视图里有个 `_forceHideControlsForScreenshot` 标志，置位后忽略鼠标活动。
+  全屏时底部操作提示条收起、页码 / 进度条保留。动画 / 热区 / 重复 Loaded 守卫见上面图片阅读器那条（两边同一套代码）。
+- 调试 / 截图：`YLT_PICTURE_FULLSCREEN=1` / `YLT_PDF_FULLSCREEN=1` 全屏启动；`YLT_PICTURE_CONTROLS=1` /
+  `YLT_PDF_CONTROLS=1` 钉住滑出的工具条，`=0` 拍“沉浸”帧；`YLT_*_HOVER_TOP=1` / `_HOVER_MIDDLE=1` 验证「靠近顶部才滑出」。
 - 记住上次阅读位置（`config.json` 的 `readingPositions`）：界面每帧都可调 `NoteReadingPosition`，VM 里 1.2s `DispatcherTimer`
   + 2 秒节流落盘；但**退出程序时 `View.Unloaded` 不一定触发**（实测截图 / 关窗路径没跑到），所以另外在 `Window.Closing`
   里 `FlushReadingPosition(saveNow: true)` 兜底 —— 只靠配置自动落盘会丢最后一秒的位置。恢复优先级：`YLT_PDF_PAGE` > 上次位置 > 第一页；

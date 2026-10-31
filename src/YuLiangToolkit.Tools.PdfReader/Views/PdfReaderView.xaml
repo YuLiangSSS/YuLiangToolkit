@@ -91,6 +91,10 @@
 
         <!-- ================= 顶部工具条 ================= -->
         <Border x:Name="ToolbarBorder" Grid.ColumnSpan="5">
+            <!-- 全屏时工具条不用 Visibility 收放（那样没法滑出 / 滑回），改成整块上下平移 -->
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="ToolbarSlideTransform" />
+            </Border.RenderTransform>
             <Border.Style>
                 <Style TargetType="Border">
                     <Setter Property="Background" Value="{DynamicResource HeaderBackgroundBrush}" />
@@ -117,10 +121,6 @@
                                     <DropShadowEffect BlurRadius="18" ShadowDepth="2" Opacity="0.45" Color="#000000" />
                                 </Setter.Value>
                             </Setter>
-                        </DataTrigger>
-                        <!-- 全屏时鼠标闲置自动缩回去 -->
-                        <DataTrigger Binding="{Binding IsToolbarVisible}" Value="False">
-                            <Setter Property="Visibility" Value="Collapsed" />
                         </DataTrigger>
                     </Style.Triggers>
                 </Style>

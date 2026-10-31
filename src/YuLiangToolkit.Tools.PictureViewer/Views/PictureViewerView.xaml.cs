@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using YuLiangToolkit.Core.Tools;
@@ -140,6 +141,7 @@ public partial class PictureViewerView : UserControl
         PreviewMouseMove += OnPreviewMouseMove;
         LostMouseCapture += OnLostMouseCapture;
         ViewportGrid.SizeChanged += OnViewportSizeChanged;
+        ToolbarBorder.SizeChanged += OnToolbarSizeChanged;
     }
 
     private PictureViewerViewModel? Vm => DataContext as PictureViewerViewModel;
@@ -1025,7 +1027,7 @@ public partial class PictureViewerView : UserControl
 
     private void OnPreviewMouseMove(object sender, MouseEventArgs e)
     {
-        WakeControls();   // 全屏时鼠标一动先把工具条亮出来（窗口模式里是空转）
+        HandleFullscreenPointer(e);   // 全屏时只有靠近顶部才滑出工具条（窗口模式里是空转）
         if (!_dragging) return;
 
         var position = e.GetPosition(this);
@@ -1284,6 +1286,26 @@ public partial class PictureViewerView : UserControl
         ArrowRight.Visibility = horizontal ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    // ---------------------------------------------------------------- 全屏（沉浸阅读）
+
+    /// <summary>全屏时鼠标进入距窗口顶部多少像素，工具条才从上边滑出来（在阅读区中间晃鼠标不会触发）。</summary>
+    private const double ToolbarRevealZonePixels = 84;
+
+    /// <summary>鼠标离开工具条底部多少像素后才开始滑回去（留一点缓冲，手抖不会立刻收）。</summary>
+    private const double ToolbarLeaveGracePixels = 24;
+
+    /// <summary>全屏工具条现在是不是停在屏幕内（视觉状态；和 VM 的 ControlsVisible 分开，方便做滑动动画）。</summary>
+    private bool _toolbarShown;
+
+    /// <summary>鼠标离开顶部 / 工具条后延时收起工具条。</summary>
+    private DispatcherTimer? _toolbarAutoHideTimer;
+
+    /// <summary>最近一次鼠标位置（判断是不是还停在顶部热区）。</summary>
+    private Point _lastFullscreenPointer;
+
+    /// <summary>是否已经处理过「进入全屏」：视图 Loaded 可能触发多次，重复同步时不能把已滑出的工具条又藏回去。</summary>
+    private bool _fullscreenApplied;
+
     /// <summary>全屏状态变了 → 让外壳去藏 / 恢复标题栏、侧边栏、状态栏并把窗口铺满屏幕。</summary>
     private void OnFullscreenChanged(object? sender, bool on)
     {
@@ -1291,18 +1313,206 @@ public partial class PictureViewerView : UserControl
 
         if (!on)
         {
+            _fullscreenApplied = false;
             _idleTimer?.Stop();
+            _toolbarAutoHideTimer?.Stop();
+            _toolbarShown = false;
+            ResetToolbarToWindowed();
             Cursor = null;    // 退出全屏把鼠标指针还回来（不然会一直是“隐藏”状态）
             HideFullscreenHint();
             return;
         }
 
-        // 刚进全屏先把工具条亮一下，2.5 秒后自动缩；视图重建时若已藏着就只补倒计时
-        if (Vm?.ControlsVisible == true) WakeControls();
-        else StartIdleTimer();
+        if (_fullscreenApplied)
+        {
+            // 视图重建 / 重复同步：保持当前显隐状态，别把已经滑出来的工具条又藏回去
+            if (_toolbarShown) ShowToolbarAnimated();
+            else ApplyToolbarHiddenPosition();
+            return;
+        }
 
+        _fullscreenApplied = true;
+
+        // 进全屏先藏着（鼠标移到顶部才滑出来）；布局后按真实高度重算隐藏位置
+        _toolbarShown = false;
+        ToolbarBorder.Visibility = Visibility.Visible;
+        ToolbarBorder.IsHitTestVisible = false;
+        ApplyToolbarHiddenPosition();
+        Vm?.HideControls();
+        Cursor = null;
+        StartIdleTimer();
         ShowFullscreenHint();
+
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        {
+            if (Vm?.IsFullscreen == true && !_toolbarShown) ApplyToolbarHiddenPosition();
+        }));
     }
+
+    /// <summary>工具条藏起来时整块平移到窗口上方（保留 Visibility，滑动动画才有得动）。</summary>
+    private double ToolbarHiddenOffset => Math.Max(ToolbarBorder.ActualHeight, 48) + 24;
+
+    private void ApplyToolbarHiddenPosition()
+    {
+        ToolbarSlideTransform.BeginAnimation(TranslateTransform.YProperty, null);
+        ToolbarSlideTransform.Y = -ToolbarHiddenOffset;
+        ToolbarBorder.IsHitTestVisible = false;
+    }
+
+    private void ResetToolbarToWindowed()
+    {
+        ToolbarSlideTransform.BeginAnimation(TranslateTransform.YProperty, null);
+        ToolbarSlideTransform.Y = 0;
+        ToolbarBorder.Visibility = Visibility.Visible;
+        ToolbarBorder.IsHitTestVisible = true;
+    }
+
+    private void OnToolbarSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (Vm?.IsFullscreen == true && !_toolbarShown) ApplyToolbarHiddenPosition();
+    }
+
+    /// <summary>鼠标移到顶部热区：工具条从上边滑下来（约 180ms）。</summary>
+    private void ShowToolbarAnimated()
+    {
+        if (Vm is not { } vm || !vm.IsFullscreen) return;
+
+        _toolbarAutoHideTimer?.Stop();
+        _toolbarShown = true;
+        vm.ShowControls();
+
+        ToolbarBorder.Visibility = Visibility.Visible;
+        ToolbarBorder.IsHitTestVisible = true;
+
+        ToolbarSlideTransform.BeginAnimation(TranslateTransform.YProperty, null);
+        var from = ToolbarSlideTransform.Y;
+        if (double.IsNaN(from) || from > 0) from = -ToolbarHiddenOffset;
+
+        var animation = new DoubleAnimation(from, 0, TimeSpan.FromMilliseconds(180))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+        };
+        ToolbarSlideTransform.BeginAnimation(TranslateTransform.YProperty, animation);
+
+        Cursor = null;
+        StartIdleTimer();
+    }
+
+    /// <summary>鼠标离开顶部 / 闲置：工具条向上滑回去（约 160ms）。</summary>
+    private void HideToolbarAnimated(bool animate = true)
+    {
+        if (Vm is not { } vm || !vm.IsFullscreen) return;
+
+        if (_forceShowControlsForScreenshot) return;   // 截图钉住时不收
+
+        _toolbarShown = false;
+        vm.HideControls();
+        ToolbarBorder.IsHitTestVisible = false;
+
+        ToolbarSlideTransform.BeginAnimation(TranslateTransform.YProperty, null);
+        var target = -ToolbarHiddenOffset;
+        if (!animate)
+        {
+            ToolbarSlideTransform.Y = target;
+            return;
+        }
+
+        var animation = new DoubleAnimation(ToolbarSlideTransform.Y, target, TimeSpan.FromMilliseconds(160))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn },
+        };
+        ToolbarSlideTransform.BeginAnimation(TranslateTransform.YProperty, animation);
+    }
+
+    /// <summary>
+    /// 全屏时鼠标移动：只有靠近顶部才滑出工具条；在阅读区中间晃鼠标只让指针显示，不弹工具条。
+    /// 工具条已经出来时，离开顶部 / 工具条 650ms 后自动滑回去。
+    /// </summary>
+    private void HandleFullscreenPointer(MouseEventArgs e)
+        => HandleFullscreenPointerAt(e.GetPosition(this));
+
+    /// <summary>按给定窗口内坐标处理「全屏鼠标位置」（抽出来给调试钩子模拟靠近顶部用）。</summary>
+    private void HandleFullscreenPointerAt(Point position)
+    {
+        if (_forceHideControlsForScreenshot || _forceShowControlsForScreenshot) return;
+        if (Vm is not { } vm || !vm.IsFullscreen) return;
+
+        Cursor = null;   // 全屏里一动鼠标先把指针亮出来
+        _lastFullscreenPointer = position;
+
+        var panelsOpen = vm.IsSettingsVisible;
+        var inTopZone = position.Y <= ToolbarRevealZonePixels;
+        var inToolbar = ToolbarBorder.IsMouseOver
+                        || (_toolbarShown && position.Y <= ToolbarBorder.ActualHeight + ToolbarLeaveGracePixels);
+
+        if (inTopZone)
+        {
+            _toolbarAutoHideTimer?.Stop();
+            if (!_toolbarShown) ShowToolbarAnimated();
+            else StartIdleTimer();
+            return;
+        }
+
+        if (!_toolbarShown)
+        {
+            StartIdleTimer();   // 中间晃鼠标：不弹工具条，只让指针显示 / 保持
+            return;
+        }
+
+        if (inToolbar || panelsOpen)
+        {
+            _toolbarAutoHideTimer?.Stop();
+            StartIdleTimer();
+            return;
+        }
+
+        StartToolbarAutoHideTimer();
+    }
+
+    private void StartToolbarAutoHideTimer()
+    {
+        _toolbarAutoHideTimer ??= new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(650),
+        };
+        if (_toolbarAutoHideTimer.Tag is null)
+        {
+            _toolbarAutoHideTimer.Tick += OnToolbarAutoHideTick;
+            _toolbarAutoHideTimer.Tag = true;
+        }
+
+        _toolbarAutoHideTimer.Stop();
+        _toolbarAutoHideTimer.Start();
+    }
+
+    private void OnToolbarAutoHideTick(object? sender, EventArgs e)
+    {
+        _toolbarAutoHideTimer?.Stop();
+        if (Vm is not { } vm || !vm.IsFullscreen || !_toolbarShown) return;
+
+        if (ToolbarBorder.IsMouseOver || ToolbarBorder.IsKeyboardFocusWithin
+            || vm.IsSettingsVisible
+            || _lastFullscreenPointer.Y <= ToolbarRevealZonePixels)
+        {
+            StartIdleTimer();
+            return;
+        }
+
+        HideToolbarAnimated();
+    }
+
+    /// <summary>鼠标一动：把工具条滑出来（只在全屏里生效；截图强制收起时是空转）。</summary>
+    private void WakeControls()
+    {
+        if (_forceHideControlsForScreenshot) return;
+        if (Vm is not { } vm || !vm.IsFullscreen) return;
+
+        if (!_toolbarShown) ShowToolbarAnimated();
+        else StartIdleTimer();
+    }
+
+    /// <summary>截图模式：强制收起工具条后忽略鼠标活动（拍“沉浸”那一帧时鼠标可能正好在窗口里）。</summary>
+    private bool _forceHideControlsForScreenshot;
 
     /// <summary>进入全屏时在右下角提示 4 秒「F11 / Esc 退出 · 鼠标移到顶部显示工具条」。</summary>
     private void ShowFullscreenHint()
@@ -1331,20 +1541,6 @@ public partial class PictureViewerView : UserControl
         if (FullscreenHintPanel is not null) FullscreenHintPanel.Visibility = Visibility.Collapsed;
     }
 
-    /// <summary>鼠标一动：亮出工具条、恢复鼠标指针，并重新计时（不在全屏时什么都不做）。</summary>
-    private void WakeControls()
-    {
-        if (_forceHideControlsForScreenshot) return;
-        if (Vm is not { } vm || !vm.IsFullscreen) return;
-
-        vm.ShowControls();
-        Cursor = null;
-        StartIdleTimer();
-    }
-
-    /// <summary>截图模式：强制收起工具条后忽略鼠标活动（拍“沉浸”那一帧时鼠标可能正好在窗口里）。</summary>
-    private bool _forceHideControlsForScreenshot;
-
     /// <summary>开始 / 重新开始“鼠标闲置”倒计时（只挂一次 Tick）。</summary>
     private void StartIdleTimer()
     {
@@ -1365,18 +1561,31 @@ public partial class PictureViewerView : UserControl
 
         if (Vm is not { } vm || !vm.IsFullscreen) return;
 
-        // 鼠标停在工具条上 / 正在工具条里输入（缩放框）/ 设置面板开着 → 别缩，重新计时
-        if (ToolbarBorder.IsMouseOver || ToolbarBorder.IsKeyboardFocusWithin || vm.IsSettingsVisible)
+        if (_forceShowControlsForScreenshot)
+        {
+            Cursor = null;
+            StartIdleTimer();
+            return;
+        }
+
+        // 工具条还露着：鼠标停在上面 / 正在输入 / 面板开着 / 还贴着顶部 → 别收，重新计时
+        if (_toolbarShown
+            && (ToolbarBorder.IsMouseOver || ToolbarBorder.IsKeyboardFocusWithin
+                || vm.IsSettingsVisible
+                || _lastFullscreenPointer.Y <= ToolbarRevealZonePixels))
         {
             StartIdleTimer();
             return;
         }
 
-        vm.HideControls();
-        if (!vm.ControlsVisible) Cursor = Cursors.None;   // 指针也一起藏起来（沉浸式）
+        if (_toolbarShown) HideToolbarAnimated();
+        Cursor = Cursors.None;   // 指针也一起藏起来（沉浸式）
     }
 
-    /// <summary>截图 / 调试：全屏启动后按 <c>YLT_PICTURE_CONTROLS=0</c> 直接把工具条收起来（拍“沉浸”那一帧）。</summary>
+    /// <summary>截图 / 调试：全屏启动后按 <c>YLT_PICTURE_CONTROLS</c> 决定工具条露不露（1 = 滑出来，0 = 收起拍“沉浸”帧）。</summary>
+    /// <summary>截图模式：强制让工具条保持滑出（拍“工具条”那一帧，不受鼠标位置影响）。</summary>
+    private bool _forceShowControlsForScreenshot;
+
     private void ApplyFullscreenDebugHooks()
     {
         if (Vm is not { } vm || !vm.IsFullscreen) return;
@@ -1385,13 +1594,34 @@ public partial class PictureViewerView : UserControl
         if (text is "0" or "off" or "false" or "no")
         {
             _forceHideControlsForScreenshot = true;
-            vm.HideControls();
+            HideToolbarAnimated(animate: false);
             Cursor = Cursors.None;
             HideFullscreenHint();   // 拍“沉浸”帧时连提示也别露
         }
+        else if (text is "1" or "on" or "true")
+        {
+            _forceShowControlsForScreenshot = true;
+            ShowToolbarAnimated();
+        }
         else
         {
-            WakeControls();
+            ApplyToolbarHiddenPosition();   // 默认进全屏是藏着的：等鼠标移到顶部
+        }
+
+        // 调试 / 截图：模拟鼠标在顶部热区 / 阅读区中间，验证「靠近顶部才滑出」
+        if (PictureViewerViewModel.IsEnvironmentOn("YLT_PICTURE_HOVER_TOP")
+            || PictureViewerViewModel.IsEnvironmentOn("YLT_PICTURE_HOVER_MIDDLE"))
+        {
+            var top = PictureViewerViewModel.IsEnvironmentOn("YLT_PICTURE_HOVER_TOP");
+            var timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(300) };
+            timer.Tick += (_, _) =>
+            {
+                timer.Stop();
+                HandleFullscreenPointerAt(top
+                    ? new Point(ActualWidth / 2, 4)
+                    : new Point(ActualWidth / 2, Math.Max(200, ActualHeight / 2)));
+            };
+            timer.Start();
         }
     }
 
