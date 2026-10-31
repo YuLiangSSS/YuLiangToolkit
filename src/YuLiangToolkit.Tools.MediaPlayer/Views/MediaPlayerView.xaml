@@ -159,6 +159,11 @@
         <!-- ==================== 左：播放区（设置面板会盖住整列） ==================== -->
         <Grid x:Name="PlayerColumn" Grid.Column="0" Style="{StaticResource PlayerSurfaceStyle}">
 
+            <!-- 为什么播放区 / 控制条之间不做上下分隔条（v0.42.0 复查结论）：
+                 控制条是一排播放按钮 + 状态字，内部全是 Auto 行、总高固定；做成可拖固定行拉高只会多出空白、
+                 拉矮会裁掉按钮（拖它没意义）。更关键的是全屏时 ControlBarStyle 把它挪到 Grid.Row 0 浮在画面底部、
+                 VideoSurface 全屏 RowSpan=2 盖住它 —— 行结构一改这套浮层就会错位，所以保持
+                 「播放区 * + 控制条 Auto」，只让播放区 / 播放列表左右可拖。 -->
             <Grid x:Name="PlayerInnerGrid">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*" />

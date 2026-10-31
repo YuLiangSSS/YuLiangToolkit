@@ -334,6 +334,37 @@ public class MainViewModel : ObservableObject
         }
     }
 
+    // ---------- 工具页分隔条提示线（v0.42.0：平时可调成看不见 / 淡淡一条 / 实心蓝线） ----------
+
+    /// <summary>
+    /// 「分隔条提示线」透明度（0~100，主页设置 → 界面布局里的滑块）。读写
+    /// <see cref="ShellConfig.PaneSplitterHintOpacity"/>；0 = 鼠标不在上面时完全看不见，
+    /// 100 = 一直显示一条实心蓝线。改一下立刻推给所有工具页（<see cref="PaneSplitterSettings"/>）。
+    /// </summary>
+    public double SplitterHintOpacity
+    {
+        get => Math.Clamp(_shell.PaneSplitterHintOpacity * 100, 0, 100);
+        set
+        {
+            var normalized = Math.Round(Math.Clamp(value, 0, 100)) / 100;
+            if (Math.Abs(_shell.PaneSplitterHintOpacity - normalized) < 0.0005) return;
+            _shell.PaneSplitterHintOpacity = normalized;
+            PaneSplitterSettings.SetRestOpacity(normalized);
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(SplitterHintOpacityText));
+        }
+    }
+
+    /// <summary>滑块右边的百分比文案（例如「18%」）。</summary>
+    public string SplitterHintOpacityText => $"{Math.Round(SplitterHintOpacity)}%";
+
+    /// <summary>
+    /// 把配置里的「提示线透明度」推给所有工具页的分隔条。
+    /// 启动时调一次；「重建配置（主页 / 外壳设置）」把配置原地改回默认后也要调一次。
+    /// </summary>
+    public void ApplyPaneSplitterHintOpacity()
+        => PaneSplitterSettings.SetRestOpacity(_shell.PaneSplitterHintOpacity);
+
     private bool _isTagBarExpanded;
 
     /// <summary>
@@ -759,6 +790,7 @@ public class MainViewModel : ObservableObject
         _shellStore = ToolConfigStore.For(ShellToolId);
         _shell = _shellStore.Load<ShellConfig>();
         InitializeEffects();
+        ApplyPaneSplitterHintOpacity();   // 工具页分隔条的「提示线」全局透明度（主页设置里可调）
 
         // 开发 / 截图：YLT_THEME=liquid-glass 临时切到第二套 UI（不写配置；见 ShellConfig.UiTheme）
         _themeOverride = ThemeManager.ParseThemeName(Environment.GetEnvironmentVariable("YLT_THEME"));
@@ -1318,6 +1350,7 @@ public class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(AutoEffectOptions));
         OnPropertyChanged(nameof(ClickEffectOptions));
         NotifyTuningChanged();
+        ApplyPaneSplitterHintOpacity();   // 分隔条提示线也回默认（0.18）
 
         foreach (var card in _allCards) card.LastUsed = null;   // LastUsed 字典已被重置为空
 

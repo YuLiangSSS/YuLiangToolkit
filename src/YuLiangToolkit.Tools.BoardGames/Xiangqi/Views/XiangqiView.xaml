@@ -8,10 +8,13 @@
 
     <!-- 「联机中国象棋」界面。整体一页（外层 ScrollViewer），布局：
          标题行 → 左棋盘卡 + 右侧栏（摆棋与让子 → 房间 → 成员/席位 → 对局 → 设置 + 房间聊天）→ 下方跨列棋谱。
-         布局（v0.41.0 起可拖拽）：主区域「棋盘 | 侧栏」之间是竖分隔条（左右拖），
-         侧栏内部「信息区 | 聊天」之间是横分隔条（上下拖）—— 拖动即调大小（蓝线 + ↔ / ↕ 光标），
-         松手自动记住（Config\layout.json），双击分隔条恢复这一处；全部恢复默认：
-         主页设置 →「界面布局 → 恢复默认布局」。约定见 docs/dev/layout.md。
+         布局（可拖拽；v0.41.0 起 / v0.42.0 补齐所有区块缝隙，每两块各有一条缝、不共用）：
+           ① 主体内部「棋盘 | 侧栏」是竖分隔条（左右拖）；
+           ② 侧栏内部「信息区 | 聊天」是横分隔条（上下拖）；
+           ③ 页面级「主体（棋盘 + 侧栏）| 棋谱」是横分隔条（上下拖）。
+         拖动即调大小（悬停亮蓝线 + ↔ / ↕ 光标），松手自动记住（Config\layout.json），
+         双击分隔条只恢复这一处；全部恢复默认：主页设置 →「界面布局 → 恢复默认布局」。
+         约定见 docs/dev/layout.md。
          ⚠ 外层是 ScrollViewer：卡片内部不要用 Height="*" 的行；可上下拖的两块用固定像素行
          （拖完页面总高度会变、外层自己出滚动条）；侧栏信息区内部自己滚动；棋盘用 Viewbox 缩放；
          棋盘卡里的按钮不能被折叠线裁掉。 -->
@@ -50,8 +53,18 @@
                            Text="自由摆棋 · 让子 / 让先 · 多人观战 · 房主安排上场 · 中文记谱 · 悔棋 / 认输 / 求和 / 断线自动重连" />
             </StackPanel>
 
-            <!-- ============ 主体：左棋盘 + 右侧栏（左右可拖） ============ -->
+            <!-- ============ 页面级上下两块：主体（上）/ 棋谱（下） ============ -->
             <Grid Margin="0,16,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="908" MinHeight="620" />   <!-- 主体（棋盘 + 侧栏；拖动时与棋谱此消彼长） -->
+                    <RowDefinition Height="12" />                    <!-- 主体 / 棋谱 分隔条独占一行 -->
+                    <RowDefinition Height="260" MinHeight="180" />   <!-- 棋谱（拖动改高矮；列表跟着伸缩） -->
+                </Grid.RowDefinitions>
+
+            <!-- ============ 主体：左棋盘 + 右侧栏（左右可拖） ============
+                 ClipToBounds：把页面级分隔条往上拖、把主体拖得比棋盘卡还矮时，卡片被裁在主体行内，
+                 不会溢到下面的分隔条 / 棋谱上（拖回去就恢复）。 -->
+            <Grid Grid.Row="0" ClipToBounds="True">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" MinWidth="320" />     <!-- 左：棋盘（随窗口缩放、吸收宽度变化） -->
                     <ColumnDefinition Width="12" />                  <!-- 棋盘 / 侧栏 分隔条独占一列 -->
@@ -71,7 +84,7 @@
 
                         <!-- 棋盘固定设计尺寸 500×565，用 Viewbox 按可用空间缩放（大窗口放大、小窗口缩小）：
                              上限 637×720 —— 既让棋盘填满左侧卡（1500 宽时约 637×720，不再两边空一大片），
-                             又让整张棋盘卡和右侧栏（596+12+300）高度接近，两栏不会一边一大片空白。 -->
+                             又让整张棋盘卡和右侧栏（默认信息区 596 + 12 + 聊天 300）高度接近，两栏不会一边一大片空白。 -->
                         <Viewbox Stretch="Uniform" HorizontalAlignment="Center"
                                  MaxWidth="637" MaxHeight="720" Margin="0,8,0,0">
                             <views:XiangqiBoardView x:Name="BoardView" Width="500" Height="565"
@@ -144,16 +157,18 @@
 
                 <!-- ===== 右栏：上部信息区（摆棋 / 房间 / 成员 / 对局 / 设置）+ 下部聊天 =====
                      摆棋卡在未开局时排最上面；信息区与聊天之间是横分隔条：上下拖即可改两块的高矮。
-                     信息区默认高度 596 ≈「摆棋与让子」卡（约 587）刚好整张露完，裁切线落在两张卡之间的
-                     空隙里、不会把下一张「房间」卡的标题切一半；内容更多时信息区自己滚动。 -->
+                     信息区用 * 行、聊天固定 300：页面级分隔条把主体拖高/拖矮时由信息区吸收，
+                     聊天高度保持不变。默认信息区 = 908−12−300 = 596 ≈「摆棋与让子」卡（约 587）
+                     刚好整张露完，裁切线落在两张卡之间的空隙里、不会把下一张「房间」卡切一半；
+                     内容更多时信息区自己滚动。 -->
                 <Grid Grid.Column="2">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="596" MinHeight="280" />   <!-- 信息区（拖动时与聊天此消彼长） -->
+                        <RowDefinition Height="*" MinHeight="280" />     <!-- 信息区（拖动时与聊天此消彼长） -->
                         <RowDefinition Height="12" />                    <!-- 信息区 / 聊天 分隔条独占一行 -->
                         <RowDefinition Height="300" MinHeight="220" />   <!-- 聊天（拖动改高矮） -->
                     </Grid.RowDefinitions>
 
-                    <!-- 信息区：固定像素行里的内容自己滚动，滚到头再交给整页（ScrollChaining） -->
+                    <!-- 信息区（* 行）里的内容自己滚动，滚到头再交给整页（ScrollChaining） -->
                     <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled"
                                   core:ScrollChaining.Enabled="True">
@@ -469,16 +484,25 @@
                 </Grid>
             </Grid>
 
-            <!-- ============ 棋谱（跨两列；内容多时列表自己滚动） ============ -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
-                <StackPanel>
+            <!-- 主体 / 棋谱 分隔条：上下拖动改「棋盘 + 侧栏」与「棋谱」的高度（双击恢复这一处） -->
+            <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="xiangqi.主体与棋谱" />
+
+            <!-- ============ 棋谱（页面级块，跨两列；内容多时列表自己滚动） ============ -->
+            <Border Grid.Row="2" Style="{StaticResource CardStyle}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />              <!-- 标题 + 复制 -->
+                        <RowDefinition Height="*" MinHeight="96" />  <!-- 棋谱列表（伸缩，MinHeight 兜底） -->
+                    </Grid.RowDefinitions>
+
                     <Grid>
                         <TextBlock Text="棋谱（中文记谱）" FontSize="13" FontWeight="SemiBold"
                                    Foreground="{DynamicResource TextPrimaryBrush}" />
                         <Button Content="复制棋谱" Style="{StaticResource SecondaryButtonStyle}" Padding="12,5"
                                 HorizontalAlignment="Right" Command="{Binding CopyNotationCommand}" />
                     </Grid>
-                    <ListBox ItemsSource="{Binding MoveLines}" Height="150" Margin="0,10,0,0"
+                    <ListBox Grid.Row="1" ItemsSource="{Binding MoveLines}" MinHeight="96" Margin="0,10,0,0"
                              Background="Transparent" BorderThickness="0" Focusable="False"
                              core:ScrollChaining.Enabled="True"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -513,8 +537,9 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-                </StackPanel>
+                </Grid>
             </Border>
+            </Grid>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

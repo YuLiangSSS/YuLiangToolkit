@@ -6,11 +6,14 @@
              xmlns:views="clr-namespace:YuLiangToolkit.Tools.BoardGames.Gomoku.Views"
              Background="Transparent">
 
-    <!-- 联机五子棋主界面（WIP 4.6）：一页放完 —— 左棋盘、右侧栏（房间 / 名单 / 对局 / 设置 / 棋谱 + 聊天）。
-         布局（v0.41.0 起可拖拽）：主区域「棋盘 | 侧栏」之间是竖分隔条（左右拖），
-         侧栏内部「信息区 | 聊天」之间是横分隔条（上下拖）—— 拖动即调大小（蓝线 + ↔ / ↕ 光标），
-         松手自动记住（Config\layout.json），双击分隔条恢复这一处；全部恢复默认：
-         主页设置 →「界面布局 → 恢复默认布局」。约定见 docs/dev/layout.md。
+    <!-- 联机五子棋主界面（WIP 4.6）：一页放完 —— 左棋盘、右侧栏（房间 / 名单 / 对局 / 设置 + 聊天）、下方跨列棋谱。
+         布局（可拖拽；v0.41.0 起 / v0.42.0 补齐所有区块缝隙，每两块各有一条缝、不共用）：
+           ① 主体内部「棋盘 | 侧栏」是竖分隔条（左右拖）；
+           ② 侧栏内部「信息区 | 聊天」是横分隔条（上下拖）；
+           ③ 页面级「主体（棋盘 + 侧栏）| 棋谱」是横分隔条（上下拖）。
+         拖动即调大小（悬停亮蓝线 + ↔ / ↕ 光标），松手自动记住（Config\layout.json），
+         双击分隔条只恢复这一处；全部恢复默认：主页设置 →「界面布局 → 恢复默认布局」。
+         约定见 docs/dev/layout.md。
          注意：整页在 ScrollViewer 里，可上下拖的两块用固定像素行（拖完页面总高度会变、外层自己出滚动条），
          侧栏信息区内部自己滚动；棋盘用固定 640×640 的自绘控件套 Viewbox 缩放；内层列表挂滚动链（AGENTS.md）。 -->
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -40,8 +43,18 @@
                 </StackPanel>
             </Grid>
 
-            <!-- ================= 主区域：左棋盘 / 右侧栏（左右可拖） ================= -->
+            <!-- ================= 页面级上下两块：主体（上）/ 棋谱（下） ================= -->
             <Grid Margin="0,16,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="932" MinHeight="620" />   <!-- 主体（棋盘 + 侧栏；拖动时与棋谱此消彼长） -->
+                    <RowDefinition Height="12" />                    <!-- 主体 / 棋谱 分隔条独占一行 -->
+                    <RowDefinition Height="280" MinHeight="200" />   <!-- 棋谱（拖动改高矮；列表跟着伸缩） -->
+                </Grid.RowDefinitions>
+
+            <!-- ================= 主体：左棋盘 / 右侧栏（左右可拖） =================
+                 ClipToBounds：把页面级分隔条往上拖、把主体拖得比棋盘卡还矮时，卡片被裁在主体行内，
+                 不会溢到下面的分隔条 / 棋谱上（拖回去就恢复）。 -->
+            <Grid Grid.Row="0" ClipToBounds="True">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" MinWidth="320" />     <!-- 左：棋盘（随窗口缩放、吸收宽度变化） -->
                     <ColumnDefinition Width="12" />                  <!-- 棋盘 / 侧栏 分隔条独占一列 -->
@@ -75,7 +88,7 @@
 
                         <!-- 棋盘：固定 640×640 自绘，外层 Viewbox 按可用宽度缩放（上限 750，窗口越宽棋盘越大：
                              1500 宽时约 750、1280 宽时约 540，不再在卡片里空一大片；1024 宽时约 290 自动缩小）。
-                             上限同时让整张棋盘卡和右侧栏（620+12+300）高度接近，两栏不会一边一大片空白。 -->
+                             上限同时让整张棋盘卡和右侧栏（默认信息区 620 + 12 + 聊天 300）高度接近，两栏不会一边一大片空白。 -->
                         <Viewbox Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Top"
                                  MaxWidth="750" MaxHeight="750">
                             <views:GomokuBoardView x:Name="Board"
@@ -116,16 +129,18 @@
                 <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
                                    Key="gomoku.棋盘与侧栏" />
 
-                <!-- ================= 右栏：上部信息区（房间 / 名单 / 对局 / 设置 / 棋谱）+ 下部聊天 =================
-                     信息区与聊天之间是横分隔条：上下拖即可改两块的高矮（双击恢复这一处）。 -->
+                <!-- ================= 右栏：上部信息区（房间 / 名单 / 对局 / 设置）+ 下部聊天 =================
+                     信息区与聊天之间是横分隔条：上下拖即可改两块的高矮（双击恢复这一处）。
+                     信息区用 * 行、聊天固定 300：页面级分隔条把主体拖高/拖矮时由信息区吸收，
+                     聊天高度保持不变（默认 932−12−300=620，和原来一样）。 -->
                 <Grid Grid.Column="2">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="620" MinHeight="280" />   <!-- 信息区（内容多时自己滚动） -->
+                        <RowDefinition Height="*" MinHeight="280" />     <!-- 信息区（内容多时自己滚动） -->
                         <RowDefinition Height="12" />                    <!-- 信息区 / 聊天 分隔条独占一行 -->
                         <RowDefinition Height="300" MinHeight="220" />   <!-- 聊天（拖动改高矮） -->
                     </Grid.RowDefinitions>
 
-                    <!-- 信息区：固定像素行里的内容自己滚动，滚到头再交给整页（ScrollChaining） -->
+                    <!-- 信息区（* 行）里的内容自己滚动，滚到头再交给整页（ScrollChaining） -->
                     <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled"
                                   core:ScrollChaining.Enabled="True">
@@ -236,41 +251,6 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- 棋谱（右栏、聊天上方；首屏看不到时就往下滚） -->
-                    <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0"
-                            Visibility="{Binding ShowMoveList, Converter={StaticResource BoolToVis}}">
-                        <StackPanel>
-                            <Grid>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="棋谱" FontSize="13" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}" />
-                                    <TextBlock Text="{Binding MoveCountText}" FontSize="11.5" Margin="10,2,0,0"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" />
-                                </StackPanel>
-                                <Button Content="复制棋谱" Style="{StaticResource SecondaryButtonStyle}"
-                                        HorizontalAlignment="Right" Command="{Binding CopyMovesCommand}"
-                                        ToolTip="把「1. 黑 H8」这样的完整棋谱复制到剪贴板" />
-                            </Grid>
-
-                            <TextBlock Text="还没有落子" FontSize="12" Margin="0,10,0,0"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       Visibility="{Binding HasMoves, Converter={StaticResource InverseBoolToVis}}" />
-
-                            <ListBox ItemsSource="{Binding MoveLines}" MaxHeight="220" Margin="0,10,0,0"
-                                     Style="{StaticResource FileListStyle}"
-                                     core:ScrollChaining.Enabled="True"
-                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                     Visibility="{Binding HasMoves, Converter={StaticResource BoolToVis}}">
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding}" FontSize="12.5" />
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
-                        </StackPanel>
-                    </Border>
-
                     </StackPanel>
                     </ScrollViewer>
 
@@ -281,6 +261,52 @@
                     <!-- 房间聊天（共享面板；固定行里聊天记录放 * 行，拖分隔条时记录区跟着变高矮） -->
                     <shared:ChatPanel Grid.Row="2" />
                 </Grid>
+            </Grid>
+
+            <!-- 主体 / 棋谱 分隔条：上下拖动改「棋盘 + 侧栏」与「棋谱」的高度（双击恢复这一处） -->
+            <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="gomoku.主体与棋谱" />
+
+            <!-- ================= 棋谱（页面级块，跨两列；内容多时列表自己滚动） ================= -->
+            <Border Grid.Row="2" Style="{StaticResource CardStyle}"
+                    Visibility="{Binding ShowMoveList, Converter={StaticResource BoolToVis}}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />              <!-- 标题 + 复制 -->
+                        <RowDefinition Height="Auto" />              <!-- 还没落子提示 -->
+                        <RowDefinition Height="*" MinHeight="96" />  <!-- 棋谱列表（伸缩，MinHeight 兜底） -->
+                    </Grid.RowDefinitions>
+
+                    <Grid>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="棋谱" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="{Binding MoveCountText}" FontSize="11.5" Margin="10,2,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                        <Button Content="复制棋谱" Style="{StaticResource SecondaryButtonStyle}"
+                                HorizontalAlignment="Right" Command="{Binding CopyMovesCommand}"
+                                ToolTip="把「1. 黑 H8」这样的完整棋谱复制到剪贴板" />
+                    </Grid>
+
+                    <TextBlock Grid.Row="1" Text="还没有落子" FontSize="12" Margin="0,10,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Visibility="{Binding HasMoves, Converter={StaticResource InverseBoolToVis}}" />
+
+                    <ListBox Grid.Row="2" ItemsSource="{Binding MoveLines}" MinHeight="96" Margin="0,10,0,0"
+                             Style="{StaticResource FileListStyle}"
+                             core:ScrollChaining.Enabled="True"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             Visibility="{Binding HasMoves, Converter={StaticResource BoolToVis}}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontSize="12.5" />
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
             </Grid>
 
         </StackPanel>

@@ -61,6 +61,9 @@ public class PaneSplitter : Thumb
     private GridLength _defaultPrev;
     private GridLength _defaultNext;
 
+    /// <summary>模板里的「提示线」（平时按 <see cref="PaneSplitterSettings.RestOpacity"/> 显示；悬停时上面再亮一条）。</summary>
+    private Border? _restLine;
+
     public PaneSplitter()
     {
         Loaded += OnLoaded;
@@ -68,6 +71,14 @@ public class PaneSplitter : Thumb
         DragDelta += OnDragDelta;
         DragCompleted += OnDragCompleted;
         MouseDoubleClick += OnMouseDoubleClick;
+    }
+
+    /// <summary>模板套上时接住「提示线」，把当前设置的透明度套上去。</summary>
+    public override void OnApplyTemplate()
+    {
+        base.OnApplyTemplate();
+        _restLine = GetTemplateChild("RestLine") as Border;
+        ApplyRestLineOpacity();
     }
 
     /// <summary>布局键，见 <see cref="KeyProperty"/>。</summary>
@@ -95,14 +106,28 @@ public class PaneSplitter : Thumb
         // 这里主要是给以后可能常驻的页面兜底）。
         LayoutMemory.ResetCompleted -= OnLayoutReset;
         LayoutMemory.ResetCompleted += OnLayoutReset;
+
+        // 提示线透明度是全局设置（主页设置里可调）：加载时订阅，卸载时退订（避免视图换页后泄漏）。
+        PaneSplitterSettings.RestOpacityChanged -= OnRestOpacityChanged;
+        PaneSplitterSettings.RestOpacityChanged += OnRestOpacityChanged;
+        ApplyRestLineOpacity();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         LayoutMemory.ResetCompleted -= OnLayoutReset;
+        PaneSplitterSettings.RestOpacityChanged -= OnRestOpacityChanged;
     }
 
     private void OnLayoutReset(object? sender, EventArgs e) => ApplyLayout();
+
+    private void OnRestOpacityChanged(object? sender, EventArgs e) => ApplyRestLineOpacity();
+
+    /// <summary>把「鼠标不在上面时的提示线透明度」套到模板里的提示线（0 = 完全看不见）。</summary>
+    private void ApplyRestLineOpacity()
+    {
+        if (_restLine is not null) _restLine.Opacity = PaneSplitterSettings.RestOpacity;
+    }
 
     // ---------------- 拖拽 ----------------
 

@@ -663,6 +663,12 @@
                     <Setter.Value>
                         <ControlTemplate TargetType="{x:Type core:PaneSplitter}">
                             <Grid Background="Transparent">
+                                <!-- 提示线：鼠标不在上面时按「主页设置 → 界面布局 → 分隔条提示线」的透明度显示；
+                                     0 = 完全看不见。它和下面的悬停线是两层，代码只改这一层的 Opacity，
+                                     不跟悬停触发器抢优先级。 -->
+                                <Border x:Name="RestLine" Width="2" CornerRadius="1"
+                                        HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                                        Background="{DynamicResource AccentBrush}" Opacity="0" />
                                 <Border x:Name="SplitterLine" Width="2" CornerRadius="1"
                                         HorizontalAlignment="Center" VerticalAlignment="Stretch"
                                         Background="{DynamicResource AccentBrush}" Opacity="0" />
@@ -695,6 +701,10 @@
                     <Setter.Value>
                         <ControlTemplate TargetType="{x:Type core:PaneSplitter}">
                             <Grid Background="Transparent">
+                                <!-- 同上一套竖线：RestLine = 提示线（透明度可调），SplitterLine = 悬停亮线 -->
+                                <Border x:Name="RestLine" Height="2" CornerRadius="1"
+                                        HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                                        Background="{DynamicResource AccentBrush}" Opacity="0" />
                                 <Border x:Name="SplitterLine" Height="2" CornerRadius="1"
                                         HorizontalAlignment="Stretch" VerticalAlignment="Center"
                                         Background="{DynamicResource AccentBrush}" Opacity="0" />

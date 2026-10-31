@@ -614,6 +614,35 @@ public static class MaintenanceChecks
 
         P("ComputeDrag：总量 <= 1（还没布局）返回 None",
             PaneSplitter.ComputeDrag(0, 1, 50, false, true, 10, 10).Mode == PaneSplitter.PaneDragMode.None);
+
+        // ---- PaneSplitterSettings：分隔条「提示线透明度」（主页设置 → 界面布局 的可调项） ----
+        var opacityEvents = 0;
+        EventHandler onOpacityChanged = (_, _) => opacityEvents++;
+        PaneSplitterSettings.RestOpacityChanged += onOpacityChanged;
+        try
+        {
+            P("PaneSplitterSettings 默认提示线透明度 = 0.18",
+                Math.Abs(PaneSplitterSettings.DefaultRestOpacity - 0.18) < 0.0001);
+
+            PaneSplitterSettings.SetRestOpacity(0.5);
+            C("SetRestOpacity(0.5) 生效并触发一次变化事件",
+                Math.Abs(PaneSplitterSettings.RestOpacity - 0.5) < 0.0001 && opacityEvents == 1,
+                $"opacity={PaneSplitterSettings.RestOpacity}, events={opacityEvents}");
+
+            PaneSplitterSettings.SetRestOpacity(0.5);
+            P("同一个值重复设置不重复触发事件", opacityEvents == 1);
+
+            PaneSplitterSettings.SetRestOpacity(-1);
+            P("SetRestOpacity 下限夹到 0（完全看不见）", PaneSplitterSettings.RestOpacity == 0);
+
+            PaneSplitterSettings.SetRestOpacity(5);
+            P("SetRestOpacity 上限夹到 1（一直显示实心线）", PaneSplitterSettings.RestOpacity == 1);
+        }
+        finally
+        {
+            PaneSplitterSettings.SetRestOpacity(PaneSplitterSettings.DefaultRestOpacity);
+            PaneSplitterSettings.RestOpacityChanged -= onOpacityChanged;
+        }
     }
 
     // ---------- 断言小工具 ----------

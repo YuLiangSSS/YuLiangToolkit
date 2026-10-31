@@ -112,9 +112,9 @@
     </UserControl.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <!-- 布局（v0.41.0 起可拖拽）：整页分「标题 / ① 文件列表 / ② 命名规则 / ③④ 执行+历史」四块，
-             区块之间的横缝都是 core:PaneSplitter，按住拖动即可调上下大小（蓝线 + ↕ 光标），
-             松手自动记住（Config\layout.json），双击这条缝只恢复这一处；
+        <!-- 布局（v0.42.0 起每个区块各自可拖）：整页分「标题 / ① 文件列表 / ② 命名规则 / ③ 执行 / ④ 历史记录」，
+             ① ② ③ ④ 每两块之间的横缝都是 core:PaneSplitter（蓝线 + ↕ 光标），互不共用；
+             拖动即可调上下大小，松手自动记住（Config\layout.json），双击这条缝只恢复这一处；
              全部恢复默认：主页设置 →「界面布局 → 恢复默认布局」。
              约定见 docs/dev/layout.md：可拖的上下两块都要是固定像素行，所以整页仍在 ScrollViewer 里滚动。 -->
         <Grid Margin="28,22,28,26">
@@ -123,8 +123,10 @@
                 <RowDefinition Height="520" MinHeight="320" />  <!-- ① 文件列表（可上下拖） -->
                 <RowDefinition Height="12" />                   <!-- 文件列表 / 命名规则 分隔条 -->
                 <RowDefinition Height="620" MinHeight="400" />  <!-- ② 命名规则（可上下拖） -->
-                <RowDefinition Height="12" />                   <!-- 命名规则 / 执行+历史 分隔条 -->
-                <RowDefinition Height="520" MinHeight="420" />  <!-- ③④ 执行 + 历史（可上下拖） -->
+                <RowDefinition Height="12" />                   <!-- 命名规则 / 执行 分隔条 -->
+                <RowDefinition Height="320" MinHeight="220" />  <!-- ③ 执行（可上下拖） -->
+                <RowDefinition Height="12" />                   <!-- 执行 / 历史记录 分隔条 -->
+                <RowDefinition Height="200" MinHeight="140" />  <!-- ④ 历史记录（可上下拖） -->
             </Grid.RowDefinitions>
 
             <!-- ================= 标题 ================= -->
@@ -685,125 +687,121 @@
                 </Grid>
             </Border>
 
-            <!-- 上下分隔条：拖动改「② 命名规则」与「③④ 执行 + 历史」的高度（双击恢复这一处） -->
+            <!-- 上下分隔条：拖动改「② 命名规则」与「③ 执行」的高度（双击恢复这一处） -->
             <core:PaneSplitter Grid.Row="4" Style="{StaticResource PaneSplitterHorizontalStyle}"
-                               Key="batch-rename.命名规则与执行历史" />
+                               Key="batch-rename.命名规则与执行" />
 
-            <!-- ③④ 合成一块（共用一条分隔条）：内部按 * 均分，拖上面的缝时两块一起变高 / 变矮 -->
-            <Grid Grid.Row="5">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*" MinHeight="240" />
-                    <RowDefinition Height="12" />
-                    <RowDefinition Height="*" MinHeight="160" />
-                </Grid.RowDefinitions>
+            <!-- ================= ③ 执行（独立一块：和 ④ 各有一条分隔条，不再共用） ================= -->
+            <!-- 固定像素行里：标题 / 进度 / 状态 / 日志(*) / 底部按钮，日志吃掉多出来的高度。
+                 日志那一行 MinHeight 只留 40：③ 行本身有 MinHeight 220 兜底，默认 320 时日志约 160 高。 -->
+            <Border Grid.Row="5" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="40" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="③ 执行" FontSize="13" FontWeight="SemiBold" />
 
-                <!-- ================= ③ 执行 ================= -->
-                <!-- 固定像素行里：标题 / 进度 / 状态 / 日志(*) / 底部按钮，日志吃掉多出来的高度 -->
-                <Border Grid.Row="0" Style="{StaticResource CardStyle}" ClipToBounds="True">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" MinHeight="60" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <TextBlock Text="③ 执行" FontSize="13" FontWeight="SemiBold" />
-
-                        <Grid Grid.Row="1" Margin="0,12,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <ProgressBar Minimum="0" Maximum="1" Value="{Binding Progress}"
-                                         Style="{StaticResource ProgressBarStyle}" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Margin="12,0,0,0" MinWidth="70"
-                                       TextAlignment="Right" VerticalAlignment="Center"
-                                       Foreground="{DynamicResource TextSecondaryBrush}" />
-                        </Grid>
-
-                        <TextBlock Grid.Row="2" Text="{Binding StatusText}" Margin="0,9,0,0" TextWrapping="Wrap" FontSize="12" />
-
-                        <TextBox Grid.Row="3" Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True" Style="{StaticResource LogTextBoxStyle}"
-                                 Margin="0,10,0,0" VerticalScrollBarVisibility="Auto" />
-
-                        <Grid Grid.Row="4" Margin="0,12,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Orientation="Horizontal">
-                                <Button Content="打开配置文件夹" Style="{StaticResource SecondaryButtonStyle}"
-                                        Command="{Binding OpenConfigFolderCommand}" />
-                                <Button Content="打开流水账文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
-                                        Command="{Binding OpenHistoryFolderCommand}"
-                                        ToolTip="改名流水账就在这里，撤销靠它" />
-                                <Button Content="清空日志" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
-                                        Command="{Binding ClearLogCommand}" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="2" Orientation="Horizontal">
-                                <Button x:Name="UndoLastButton" Content="撤销上一次改名" Style="{StaticResource SecondaryButtonStyle}"
-                                        Command="{Binding UndoSessionCommand}"
-                                        IsEnabled="{Binding CanUndoLast}"
-                                        ToolTip="把最近一批改名逐个改回原来的名字" />
-                                <Button Content="取消" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
-                                        Command="{Binding CancelCommand}" IsEnabled="{Binding IsBusy}" />
-                                <Button x:Name="ExecuteButton" Content="执行重命名" Style="{StaticResource PrimaryButtonStyle}"
-                                        Margin="8,0,0,0" Command="{Binding ExecuteCommand}"
-                                        ToolTip="只改文件名，不移动文件；改完可以撤销" />
-                            </StackPanel>
-                        </Grid>
+                    <Grid Grid.Row="1" Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ProgressBar Minimum="0" Maximum="1" Value="{Binding Progress}"
+                                     Style="{StaticResource ProgressBarStyle}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Margin="12,0,0,0" MinWidth="70"
+                                   TextAlignment="Right" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                     </Grid>
-                </Border>
 
-                <!-- ================= ④ 历史记录 ================= -->
-                <!-- 固定像素行里：标题 / 历史列表(*) / 底部说明，列表吃掉多出来的高度 -->
-                <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" MinHeight="60" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <Grid Margin="18,14,18,8">
-                            <StackPanel>
-                                <TextBlock Text="④ 历史记录" FontSize="13" FontWeight="SemiBold" />
-                                <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"
-                                           Text="最近 20 批改名；记录写在 Data\batch-rename\rename-history.json，关掉程序再打开照样能撤销" />
-                            </StackPanel>
-                        </Grid>
+                    <TextBlock Grid.Row="2" Text="{Binding StatusText}" Margin="0,9,0,0" TextWrapping="Wrap" FontSize="12" />
 
-                        <ListBox Grid.Row="1" ItemsSource="{Binding History}" Background="Transparent" BorderThickness="0"
-                             ItemContainerStyle="{StaticResource RenameRowStyle}"
-                             core:ScrollChaining.Enabled="True"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="86" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{Binding TimeText}" Foreground="{DynamicResource TextSecondaryBrush}"
-                                               VerticalAlignment="Center" FontSize="12" />
-                                    <TextBlock Grid.Column="1" Text="{Binding Summary}" VerticalAlignment="Center"
-                                               FontSize="12" TextTrimming="CharacterEllipsis" />
-                                    <Button Grid.Column="2" Content="撤销这一批" Style="{StaticResource SecondaryButtonStyle}"
-                                            Command="{Binding DataContext.UndoSessionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                            CommandParameter="{Binding}"
-                                            IsEnabled="{Binding Undone, Converter={StaticResource InverseBoolConverter}}" />
-                                </Grid>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                    <TextBox Grid.Row="3" Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True" Style="{StaticResource LogTextBoxStyle}"
+                             Margin="0,10,0,0" VerticalScrollBarVisibility="Auto" />
 
-                        <TextBlock Grid.Row="2" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="18,8,18,14" TextWrapping="Wrap"
-                                   Text="撤销同样只改文件名；如果某个文件之后被手动动过或删掉了，那一条会被跳过并在日志里说明。" />
+                    <Grid Grid.Row="4" Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="打开配置文件夹" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding OpenConfigFolderCommand}" />
+                            <Button Content="打开流水账文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding OpenHistoryFolderCommand}"
+                                    ToolTip="改名流水账就在这里，撤销靠它" />
+                            <Button Content="清空日志" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding ClearLogCommand}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal">
+                            <Button x:Name="UndoLastButton" Content="撤销上一次改名" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding UndoSessionCommand}"
+                                    IsEnabled="{Binding CanUndoLast}"
+                                    ToolTip="把最近一批改名逐个改回原来的名字" />
+                            <Button Content="取消" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding CancelCommand}" IsEnabled="{Binding IsBusy}" />
+                            <Button x:Name="ExecuteButton" Content="执行重命名" Style="{StaticResource PrimaryButtonStyle}"
+                                    Margin="8,0,0,0" Command="{Binding ExecuteCommand}"
+                                    ToolTip="只改文件名，不移动文件；改完可以撤销" />
+                        </StackPanel>
                     </Grid>
-                </Border>
-            </Grid>
+                </Grid>
+            </Border>
+
+            <!-- 上下分隔条：拖动改「③ 执行」与「④ 历史记录」的高度（双击恢复这一处） -->
+            <core:PaneSplitter Grid.Row="6" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="batch-rename.执行与历史" />
+
+            <!-- ================= ④ 历史记录（独立一块：默认 200、最少 140） ================= -->
+            <!-- 固定像素行里：标题 / 历史列表(*) / 底部说明，列表吃掉多出来的高度 -->
+            <Border Grid.Row="7" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="40" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid Margin="18,14,18,8">
+                        <StackPanel>
+                            <TextBlock Text="④ 历史记录" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0"
+                                       Text="最近 20 批改名；记录写在 Data\batch-rename\rename-history.json，关掉程序再打开照样能撤销" />
+                        </StackPanel>
+                    </Grid>
+
+                    <ListBox Grid.Row="1" ItemsSource="{Binding History}" Background="Transparent" BorderThickness="0"
+                         ItemContainerStyle="{StaticResource RenameRowStyle}"
+                         core:ScrollChaining.Enabled="True"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="86" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding TimeText}" Foreground="{DynamicResource TextSecondaryBrush}"
+                                           VerticalAlignment="Center" FontSize="12" />
+                                <TextBlock Grid.Column="1" Text="{Binding Summary}" VerticalAlignment="Center"
+                                           FontSize="12" TextTrimming="CharacterEllipsis" />
+                                <Button Grid.Column="2" Content="撤销这一批" Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding DataContext.UndoSessionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                        CommandParameter="{Binding}"
+                                        IsEnabled="{Binding Undone, Converter={StaticResource InverseBoolConverter}}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                    <TextBlock Grid.Row="2" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="18,8,18,14" TextWrapping="Wrap"
+                               Text="撤销同样只改文件名；如果某个文件之后被手动动过或删掉了，那一条会被跳过并在日志里说明。" />
+                </Grid>
+            </Border>
         </Grid>
     </ScrollViewer>
 </UserControl>

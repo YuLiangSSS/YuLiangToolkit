@@ -13,8 +13,10 @@
     <!-- 说明：本文件是新功能的界面模板。用到的样式（CardStyle / TextBoxStyle / ComboBoxStyle …）
          全部来自 App.xaml（见 AGENTS.md）。 -->
 
-    <!-- 布局模板（v0.41.0 起）：本页同时是「可拖拽区块布局」的模板写法 —— 区块之间放 core:PaneSplitter（竖缝左右拖 /
-         横缝上下拖，松手自动记住、双击复位），列表 / 日志 / 预览框一律放 * 行、不写死高度；详见 docs/dev/layout.md，新功能照抄。 -->
+    <!-- 布局模板（v0.42.0 起）：本页同时是「可拖拽区块布局」的模板写法 —— **每个相邻的功能区块之间**都放 core:PaneSplitter
+         （竖缝左右拖 / 横缝上下拖；平时只有一条很淡的提示线，可在 主页设置 → 界面布局 → 分隔条提示线 调，0 = 完全看不见；
+         鼠标移到缝隙上才亮起蓝线、光标变 ↔ / ↕；松手自动记住、双击复位），列表 / 日志 / 预览框一律放 * 行、不写死高度。
+         详见 docs/dev/layout.md，新功能照抄。 -->
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <StackPanel Margin="28,22,28,26">
@@ -26,9 +28,10 @@
                            Text="演示两套轮子：① 选项（Checkbox / Textbox / 下拉框 / 滑块）改一下就写进 Config\sample-framework\config.json；② 资源文件放在 Data\sample-framework\ 里用 ToolStorage 读写。写新功能时复制本项目即可。" />
             </StackPanel>
 
-            <!-- ===== 上半部分：左配置控件 / 右 JSON 实时预览（左右可拖） =====
-                 左右分栏的标准写法：主设置区 = *（随窗口缩放）+ 分隔条独占一列（12 宽）+ 预览列 = 固定像素。
-                 拖动中间那条竖缝改预览列宽度，双击恢复这一处（全部恢复：主页设置 → 界面布局）。 -->
+            <!-- ===== 上半部分：左配置控件 / 右 JSON 实时预览（左右可拖；左边这一列里 ①/② 两张卡还能上下拖） =====
+                 左右分栏的标准写法：主设置区 = *（随窗口缩放）+ 分隔条独占一列（12 宽）+ 预览列 = 固定像素；
+                 同一列里上下堆叠的卡片之间也各放一条横缝 —— 相邻两块之间都要能拖，别把两块合成一个可拖块。
+                 拖动缝隙改大小，双击恢复这一处（全部恢复：主页设置 → 界面布局）。 -->
             <Grid Margin="0,16,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" MinWidth="320" />
@@ -36,17 +39,22 @@
                     <ColumnDefinition Width="390" MinWidth="280" />
                 </Grid.ColumnDefinitions>
 
-                <!-- 左侧设置列：高内容列套 ScrollViewer + ScrollChaining —— 内容比视口高时这一列自己滚，
-                     滚到头再交给整页（内层 ScrollViewer 会无条件吃掉滚轮，所以必须挂 ScrollChaining）。
-                     本页整页是自然高度（这一列自己决定高度），一般不会出滚动条；新功能把设置区放进固定高度的
-                     区块时，这套写法就直接生效（见 docs/dev/layout.md）。 -->
+                <!-- 左侧设置列：①/② 两张卡上下堆叠 —— 上下可拖，所以两块都得是固定像素行（拖动只改这两块，
+                     这一列的总高不变）；外面仍套 ScrollViewer + ScrollChaining：以后卡片变多、比视口高时这一列
+                     自己滚，滚到头再交给整页（内层 ScrollViewer 会无条件吃掉滚轮，所以必须挂 ScrollChaining）。
+                     MinHeight 是「还能用」的下限（拖小了内容按 ClipToBounds 裁掉、不会溢到隔壁 / 下一块）。 -->
                 <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled"
                               core:ScrollChaining.Enabled="True">
-                    <StackPanel>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="305" MinHeight="240" />
+                            <RowDefinition Height="12" />
+                            <RowDefinition Height="155" MinHeight="110" />
+                        </Grid.RowDefinitions>
 
                         <!-- ① 强类型配置 -->
-                        <Border Style="{StaticResource CardStyle}">
+                        <Border Grid.Row="0" Style="{StaticResource CardStyle}" ClipToBounds="True">
                             <StackPanel>
                                 <TextBlock Text="① 强类型配置（改一下 → 自动存 config.json）" FontSize="13" FontWeight="SemiBold" />
                                 <TextBlock Text="Config\sample-framework\config.json"
@@ -103,8 +111,12 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- 上下分隔条：拖动改「① 强类型配置」与「② 动态配置」的高度（双击恢复这一处） -->
+                        <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                                           Key="sample-framework.强类型与动态配置" />
+
                         <!-- ② 动态配置 -->
-                        <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+                        <Border Grid.Row="2" Style="{StaticResource CardStyle}" ClipToBounds="True">
                             <StackPanel>
                                 <TextBlock Text="② 动态配置（不建类也能存 → options.json）" FontSize="13" FontWeight="SemiBold" />
                                 <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,12"
@@ -119,7 +131,7 @@
                                          ToolTip="随便输点什么，观察右边 options.json 的变化" />
                             </StackPanel>
                         </Border>
-                    </StackPanel>
+                    </Grid>
                 </ScrollViewer>
 
                 <!-- 左右分隔条：拖动改「主设置区」与「配置文件预览」的宽度（双击恢复这一处） -->
@@ -153,7 +165,7 @@
                  卡片内部只让「列表 / 日志」这类内容吃掉多出来的高度（* 行），别在控件上写死 Height。 -->
             <Grid Margin="0,12,0,0">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="360" MinHeight="240" />
+                    <RowDefinition Height="300" MinHeight="240" />
                     <RowDefinition Height="12" />
                     <RowDefinition Height="280" MinHeight="250" />
                 </Grid.RowDefinitions>

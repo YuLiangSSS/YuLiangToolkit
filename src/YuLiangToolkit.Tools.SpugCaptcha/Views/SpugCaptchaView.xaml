@@ -6,18 +6,20 @@
     <!-- 布局模板照 VideoToAudioView / SampleView：外层 ScrollViewer + 卡片（CardStyle）。
          样式全部来自 App.xaml（CardStyle / TextBoxStyle / LogTextBoxStyle / PrimaryButtonStyle /
          SecondaryButtonStyle），颜色一律 DynamicResource，换主题时自动跟随。 -->
-    <!-- 布局（v0.41.0 起可拖拽）：整页是「标题 / 主区域（短信 | 邮箱 + 验证码验证） / 日志」几块，
-         短信与邮箱两栏可左右拖、主区域与日志可上下拖 —— 分隔条是 core:PaneSplitter，拖动即可调大小
-         （蓝线 + ↔ / ↕ 光标），松手自动记住（Config\layout.json），双击缝隙恢复这一处；
+    <!-- 布局（v0.41.0 起可拖拽，v0.42.0 补齐所有缝隙）：整页是「标题 / ①② 短信·邮箱两栏 / ③ 验证码验证 / ④ 日志」几块，
+         ①②两栏之间可左右拖，两栏 / ③验证 / ④日志之间各有一条上下 core:PaneSplitter，拖动即可调大小
+         （悬停蓝线 + ↔ / ↕ 光标），松手自动记住（Config\layout.json），双击缝隙恢复这一处；
          全部恢复默认：主页设置 →「界面布局 → 恢复默认布局」。约定见 docs/dev/layout.md。
-         ⚠ 可拖的上下两块（主区域 / 日志）是固定像素行，所以整页仍在 ScrollViewer 里滚动。 -->
+         ⚠ 可拖的上下两块都是固定像素行，所以整页仍在 ScrollViewer 里滚动。 -->
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <Grid Margin="28,22,28,26">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />                <!-- 标题 -->
-                <RowDefinition Height="580" MinHeight="470" /> <!-- 主区域：短信 | 邮箱 + 验证码验证（两栏可左右拖） -->
-                <RowDefinition Height="12" />                  <!-- 主区域 / 日志 分隔条（上下可拖） -->
-                <RowDefinition Height="260" MinHeight="160" /> <!-- 发送 / 验证信息（日志） -->
+                <RowDefinition Height="370" MinHeight="300" /><!-- ①② 短信 / 邮箱两栏（行高、列宽都可拖） -->
+                <RowDefinition Height="12" />                  <!-- 两栏 / 验证码验证 分隔条 -->
+                <RowDefinition Height="175" MinHeight="160" /><!-- ③ 验证码验证（可上下拖；内容约 157） -->
+                <RowDefinition Height="12" />                  <!-- 验证 / 日志 分隔条 -->
+                <RowDefinition Height="260" MinHeight="210" /><!-- ④ 发送 / 验证信息（日志，可上下拖） -->
             </Grid.RowDefinitions>
 
             <!-- 标题 -->
@@ -27,20 +29,13 @@
                            Text="联调 Spug 推送助手（push.spug.cc）的短信 / 邮箱验证码模板：粘贴控制台复制的模板 URL、填收件人、点「发送验证码」，收到后把验证码填到底部「验证」。Spug 没有校验接口，验证由本工具在本地比对。" />
             </StackPanel>
 
-            <!-- ===== 主区域：短信 / 邮箱两栏 + 验证码验证 ===== -->
+            <!-- ===== ①② 短信 / 邮箱两栏（行高可上下拖、两栏可左右拖） ===== -->
             <Grid Grid.Row="1" Margin="0,16,0,0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="*" MinHeight="240" />   <!-- 短信 / 邮箱两栏（随主区域伸缩） -->
-                    <RowDefinition Height="Auto" />                <!-- 验证码验证 -->
-                </Grid.RowDefinitions>
-
-                <!-- ===== 左右两栏：短信 / 邮箱（可左右拖） ===== -->
-                <Grid Grid.Row="0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" MinWidth="260" />       <!-- 左：短信，随窗口缩放 -->
-                        <ColumnDefinition Width="12" />                     <!-- 左右分隔条 -->
-                        <ColumnDefinition Width="440" MinWidth="320" />     <!-- 右：邮箱（可拖宽） -->
-                    </Grid.ColumnDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="260" />       <!-- 左：短信，随窗口缩放 -->
+                    <ColumnDefinition Width="12" />                     <!-- 左右分隔条 -->
+                    <ColumnDefinition Width="440" MinWidth="320" />     <!-- 右：邮箱（可拖宽） -->
+                </Grid.ColumnDefinitions>
 
                     <!-- 左栏：短信（内容比栏高时内部滚动，滚到头再交给整页） -->
                     <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
@@ -209,10 +204,17 @@
                     </StackPanel>
                     </Border>
                     </ScrollViewer>
-                </Grid>
+            </Grid>
 
-                <!-- ===== 验证码验证（本地比对） ===== -->
-                <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,12,0,0" ClipToBounds="True">
+            <!-- 上下分隔条：拖动改「①② 短信 / 邮箱两栏」与「③ 验证码验证」的高度（双击恢复这一处） -->
+            <core:PaneSplitter Grid.Row="2" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="spug-captcha.两栏与验证" />
+
+                <!-- ===== ③ 验证码验证（本地比对） ===== -->
+                <!-- 固定像素行 + MinHeight：内容比行高时卡片自己内部滚动（滚到头再交给整页），行被拖小也不会裁字。 -->
+                <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              core:ScrollChaining.Enabled="True">
+                <Border Style="{StaticResource CardStyle}" Margin="0" ClipToBounds="True">
                     <StackPanel>
                     <TextBlock Text="🔐 验证码验证" FontSize="14" FontWeight="SemiBold" />
                     <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
@@ -259,15 +261,15 @@
                     </TextBlock>
                 </StackPanel>
             </Border>
-            </Grid>
+            </ScrollViewer>
 
-            <!-- 上下分隔条：拖动改「主区域（短信 / 邮箱 + 验证）」与「日志」的高度（双击恢复这一处） -->
-            <core:PaneSplitter Grid.Row="2" Style="{StaticResource PaneSplitterHorizontalStyle}"
-                               Key="spug-captcha.主区域与日志" />
+            <!-- 上下分隔条：拖动改「③ 验证码验证」与「④ 日志」的高度（双击恢复这一处） -->
+            <core:PaneSplitter Grid.Row="4" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="spug-captcha.验证与日志" />
 
-            <!-- ===== 发送 / 验证信息（日志） ===== -->
+            <!-- ===== ④ 发送 / 验证信息（日志） ===== -->
             <!-- 日志框放 * 行、删掉写死的 Height=170（区域拖高 / 拖矮时只有日志跟着伸缩）。 -->
-            <Border Grid.Row="3" Style="{StaticResource CardStyle}" Margin="0" ClipToBounds="True">
+            <Border Grid.Row="5" Style="{StaticResource CardStyle}" Margin="0" ClipToBounds="True">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />                <!-- 标题 -->

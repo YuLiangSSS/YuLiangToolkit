@@ -8,16 +8,17 @@
     </UserControl.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <!-- 布局（v0.41.0 起可拖拽）：「源文件与输出 | 转换设置」左右可拖，
-             「文件列表 / 进度与日志」上下可拖；拖动调大小（蓝线 + ↔ / ↕ 光标），
+        <!-- 布局（v0.42.0 起每个区块各自可拖）：「源文件与输出 | 转换设置」左右可拖，
+             「设置行 / 文件列表 / 进度与日志」三块上下各自可拖；拖动调大小（蓝线 + ↔ / ↕ 光标），
              松手自动记住（Config\layout.json），双击这条缝只恢复这一处；
              全部恢复默认：主页设置 →「界面布局 → 恢复默认布局」。约定见 docs/dev/layout.md。
-             可拖的上下两块是固定像素行，所以整页仍在 ScrollViewer 里滚动。 -->
+             可拖的上下三块都是固定像素行，所以整页仍在 ScrollViewer 里滚动。 -->
         <Grid Margin="28,22,28,26">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />                <!-- 标题 -->
-                <RowDefinition Height="Auto" />                <!-- FFmpeg 状态 -->
-                <RowDefinition Height="Auto" />                <!-- 源文件与输出 / 转换设置（内部左右可拖） -->
+                <RowDefinition Height="Auto" />                <!-- FFmpeg 状态（纯信息条，不参与拖拽） -->
+                <RowDefinition Height="300" MinHeight="280" /> <!-- 源文件与输出 / 转换设置（内部左右可拖） -->
+                <RowDefinition Height="12" />                  <!-- 设置 / 文件列表 分隔条 -->
                 <RowDefinition Height="360" MinHeight="220" /> <!-- 文件列表（可上下拖） -->
                 <RowDefinition Height="12" />                  <!-- 文件列表 / 进度日志 分隔条 -->
                 <RowDefinition Height="260" MinHeight="180" /> <!-- 进度与日志（可上下拖） -->
@@ -162,8 +163,12 @@
                 </Border>
             </Grid>
 
+            <!-- 上下分隔条：拖动改「设置行（源文件与输出 / 转换设置）」与「文件列表」的高度（双击恢复这一处） -->
+            <core:PaneSplitter Grid.Row="3" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="video-to-audio.设置与文件列表" />
+
             <!-- 文件列表（可上下拖）：表头 / 列表(*)，列表吃掉区块多出来的高度 -->
-            <Border Grid.Row="3" Style="{StaticResource CardStyle}" Margin="0,12,0,0" Padding="0" ClipToBounds="True">
+            <Border Grid.Row="4" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -223,11 +228,11 @@
             </Border>
 
             <!-- 上下分隔条：拖动改「文件列表」与「进度与日志」的高度（双击恢复这一处） -->
-            <core:PaneSplitter Grid.Row="4" Style="{StaticResource PaneSplitterHorizontalStyle}"
+            <core:PaneSplitter Grid.Row="5" Style="{StaticResource PaneSplitterHorizontalStyle}"
                                Key="video-to-audio.文件列表与日志" />
 
             <!-- 进度与日志（可上下拖）：进度 / 状态 / 日志(*)，日志吃掉多出来的高度 -->
-            <Border Grid.Row="5" Style="{StaticResource CardStyle}" ClipToBounds="True">
+            <Border Grid.Row="6" Style="{StaticResource CardStyle}" ClipToBounds="True">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -251,7 +256,7 @@
             </Border>
 
             <!-- 操作按钮 -->
-            <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
                 <Button Content="打开输出目录" Style="{StaticResource SecondaryButtonStyle}"
                         Command="{Binding OpenOutputFolderCommand}" />
                 <Button Content="扫描文件" Style="{StaticResource SecondaryButtonStyle}"

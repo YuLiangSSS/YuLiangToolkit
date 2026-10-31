@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Threading;
 using YuLiangToolkit.App.Themes;
 using YuLiangToolkit.App.ViewModels;
 using YuLiangToolkit.App.Views;
@@ -172,6 +173,7 @@ public partial class App : Application
 
         if (!string.IsNullOrWhiteSpace(shotPath))
         {
+            ScheduleDebugPageScroll(window, vm, shotPath);
             window.CaptureTo(shotPath);
         }
         else
@@ -179,6 +181,50 @@ public partial class App : Application
             // 正常启动：开管道服务端，之后每次双击图片 / 再启动一次都交给这个窗口处理
             _singleInstance?.StartServer(args => HandleSecondInstance(args, window, vm, tools));
         }
+    }
+
+    /// <summary>
+    /// 截图 / 调试：<c>YLT_PAGE_SCROLL=bottom</c>（或像素值）—— 打开页面后把**整页的 ScrollViewer**
+    /// 滚到指定位置再截图，用来核对长页面（主区域 + 日志之类的固定行）底部的版式。
+    /// 只认「工具页 / 设置页的根内容就是 ScrollViewer」这种页面；不是长页面的页忽略。
+    /// 只在截图模式（<c>YLT_SHOT</c>）下挂，不影响正常使用、不写配置。
+    /// </summary>
+    private static void ScheduleDebugPageScroll(MainWindow window, MainViewModel viewModel, string shotPath)
+    {
+        var wanted = Environment.GetEnvironmentVariable("YLT_PAGE_SCROLL");
+        if (string.IsNullOrWhiteSpace(wanted)) return;
+
+        // 用 ApplicationIdle 而不是 Loaded：个别页面（聊天室）在 Loaded 里会自己把外页滚回顶部
+        // （「没有会话 → 回到顶部」），必须等它们跑完再滚，截图才滚得动。CaptureTo 也是
+        // ApplicationIdle，但它进回调后会先 Task.Delay(1200)，我们的回调会在这段时间里执行。
+        window.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
+        {
+            // 工具页 / 设置页的根内容就是页面自己的 ScrollViewer（工具页外面还有外壳的 ContentControl）
+            var scroller = FindPageScrollViewer(viewModel.CurrentView as DependencyObject);
+            if (scroller is null) return;
+            scroller.UpdateLayout();
+
+            if (wanted.Trim().Equals("bottom", StringComparison.OrdinalIgnoreCase))
+            {
+                scroller.ScrollToEnd();
+            }
+            else if (double.TryParse(wanted, System.Globalization.NumberStyles.Float,
+                         System.Globalization.CultureInfo.InvariantCulture, out var offset))
+            {
+                scroller.ScrollToVerticalOffset(Math.Max(0, offset));
+            }
+        }));
+    }
+
+    /// <summary>找「页面自己的 ScrollViewer」：工具页 / 设置页的 UserControl 根内容就是它。</summary>
+    private static System.Windows.Controls.ScrollViewer? FindPageScrollViewer(DependencyObject? view)
+    {
+        return view switch
+        {
+            System.Windows.Controls.ScrollViewer self => self,
+            System.Windows.Controls.UserControl { Content: System.Windows.Controls.ScrollViewer inner } => inner,
+            _ => null,
+        };
     }
 
     /// <summary>

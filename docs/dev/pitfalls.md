@@ -171,7 +171,9 @@
 - `Dyn[键]` 键不存在返回 null：绑 `IsChecked` 得 null、点一下变 false；用 `LoadDynamicConfigWithDefaults` 预置或 `TargetNullValue=False`。
 
 ### WPF 与界面
-- 工具页有多个区块时**别把区块大小写死**：用 `core:PaneSplitter` + `App.xaml` 的 `PaneSplitterVerticalStyle` / `PaneSplitterHorizontalStyle`（蓝线 / ↔ ↕ 光标 / 自动记忆 / 双击复位），约定见 [layout.md](layout.md)。分隔条必须独占一行 / 一列，相邻两块要给 `MinWidth` / `MinHeight`，否则窗口小时会被拖没；写死像素的上下两块才适合放进 `ScrollViewer` 里上下拖，`*` 行在里面会塌成内容高度。
+- 工具页有多个区块时**别把区块大小写死**：用 `core:PaneSplitter` + `App.xaml` 的 `PaneSplitterVerticalStyle` / `PaneSplitterHorizontalStyle`（悬停蓝线 / ↔ ↕ 光标 / 自动记忆 / 双击复位），约定见 [layout.md](layout.md)。分隔条必须独占一行 / 一列，相邻两块要给 `MinWidth` / `MinHeight`，否则窗口小时会被拖没；写死像素的上下两块才适合放进 `ScrollViewer` 里上下拖，`*` 行在里面会塌成内容高度。
+- 分隔条模板里有**两层线**：`RestLine` = 提示线（透明度由 `PaneSplitterSettings` 控制，主页设置滑块调）、`SplitterLine` = 悬停亮线（模板触发器改它）。⚠ 别把悬停触发器改到 `RestLine` 上，也别在代码里改 `SplitterLine.Opacity`（局部值会盖过触发器），否则悬停就不亮了。
+- **每个页面级区块的相邻边界都要有分隔条**（v0.42.0 硬性要求）：别把两块塞进一个可拖块里再用 `*` 均分，用户要的是「每一块都能单独拖」；标题 / 状态条这类纯信息条不算。
 - ComboBox 绑 `OptionItem<T>` 必须 `DisplayMemberPath="Label"`，否则显示类型名。
 - 索引器绑定 `{Binding Dyn[键]}` 依赖 `OnPropertyChanged("Item[]")`；占位提示压内容用 `EmptyToVis`。
 - 标题栏 `CaptionHeight` 必须 0，否则按钮被命中成拖拽（HTCAPTION）；无边框最大化靠 `WM_GETMINMAXINFO` 钳制任务栏。
@@ -199,6 +201,8 @@
 
 ### 截图与脚本
 - `YLT_SHOT` 出的 PNG 顶部有重复标题残影：`RenderTargetBitmap` 时机老毛病，不是界面 bug。
+- 长页面（固定像素行 + 整页滚动）一屏截不全：`YLT_PAGE_SCROLL=bottom`（或像素值）会在打开工具页 / 设置页后把页面根 ScrollViewer 滚到指定位置再截图（只认「页面根内容就是 ScrollViewer」的页面）。
+  ⚠ 聊天室页面自己的 `Loaded` 会把外层页面滚回顶部（初次聚焦输入框的老问题），通用开关对它无效 → 用该页自己的 `YLT_CHAT_SCROLL=<像素>`（跟 `YLT_CHAT_SIZE` 配合看底部三栏）。
 - 截图放 `shots/`（png / txt 不入库）；开窗口的调试脚本放 `scripts/`。
 - 含中文 `.ps1` 必须 UTF-8 with BOM，否则 5.1 按 ANSI 解析报语法错误。
 

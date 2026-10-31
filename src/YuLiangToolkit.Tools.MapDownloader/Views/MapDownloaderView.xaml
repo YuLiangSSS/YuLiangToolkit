@@ -10,20 +10,22 @@
     </UserControl.Resources>
 
     <!-- 样式全部来自 App.xaml（CardStyle / TextBoxStyle / ComboBoxStyle / PrimaryButtonStyle …） -->
-    <!-- 布局（v0.41.0 起可拖拽）：整页是「标题 / ① 凭据 / ② 搜索条件 / ③ 结果 / ④ 进度与日志 / 提示」几块，
-         结果与日志之间是 core:PaneSplitter，拖动即可调大小（蓝线 + ↕ 光标），
+    <!-- 布局（v0.41.0 起可拖拽，v0.42.0 补齐所有缝隙）：整页是「标题 / ① 凭据 / ② 搜索条件 / ③ 结果 / ④ 进度与日志 / 提示」几块，
+         ①②③④ 四个页面级区块之间各有一条上下 core:PaneSplitter，拖动即可调大小（悬停蓝线 + ↕ 光标），
          松手自动记住（Config\layout.json），双击缝隙恢复这一处；
          全部恢复默认：主页设置 →「界面布局 → 恢复默认布局」。约定见 docs/dev/layout.md。
-         ⚠ 可拖的上下两块（结果 / 日志）是固定像素行，所以整页仍在 ScrollViewer 里滚动。 -->
+         ⚠ 可拖的竖排区块都是固定像素行；①② 表单卡内容比行高还高时自己内部滚动，整页仍在 ScrollViewer 里滚动。 -->
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <Grid Margin="28,22,28,26">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />                                <!-- 标题 -->
-                <RowDefinition Height="Auto" />                                <!-- ① API 凭据 -->
-                <RowDefinition Height="Auto" />                                <!-- ② 搜索条件 -->
-                <RowDefinition Height="540" MinHeight="320" />                 <!-- ③ 搜索结果（上下可拖） -->
-                <RowDefinition Height="12" />                                  <!-- 结果 / 日志 分隔条 -->
-                <RowDefinition Height="260" MinHeight="160" />                 <!-- ④ 进度与日志（上下可拖） -->
+                <RowDefinition Height="180" MinHeight="150" />                 <!-- ① API 凭据（可上下拖；内容约 155 + 16 上边距） -->
+                <RowDefinition Height="12" />                                  <!-- ① / ② 分隔条 -->
+                <RowDefinition Height="196" MinHeight="170" />                 <!-- ② 搜索条件（可上下拖；内容约 185） -->
+                <RowDefinition Height="12" />                                  <!-- ② / ③ 分隔条 -->
+                <RowDefinition Height="540" MinHeight="320" />                 <!-- ③ 搜索结果（可上下拖） -->
+                <RowDefinition Height="12" />                                  <!-- ③ / ④ 分隔条 -->
+                <RowDefinition Height="260" MinHeight="230" />                 <!-- ④ 进度与日志（可上下拖） -->
                 <RowDefinition Height="Auto" />                                <!-- 底部提示 -->
             </Grid.RowDefinitions>
 
@@ -44,7 +46,10 @@
             </Grid>
 
             <!-- ===== ① API 凭据 ===== -->
-            <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,16,0,0">
+            <!-- 固定像素行 + MinHeight：内容比行高时卡片自己内部滚动（滚到头再交给整页），行被拖小也不会裁字。 -->
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          core:ScrollChaining.Enabled="True">
+            <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0">
                 <StackPanel>
                     <TextBlock Text="① API 凭据（存 Config\map-downloader\config.json，本机自用）" FontSize="13" FontWeight="SemiBold" />
                     <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,12"
@@ -75,9 +80,16 @@
                     </StackPanel>
                 </StackPanel>
             </Border>
+            </ScrollViewer>
+
+            <!-- 上下分隔条：拖动改「① API 凭据」与「② 搜索条件」的高度（双击恢复这一处） -->
+            <core:PaneSplitter Grid.Row="2" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="map-downloader.凭据与搜索" />
 
             <!-- ===== ② 搜索条件 ===== -->
-            <Border Grid.Row="2" Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+            <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          core:ScrollChaining.Enabled="True">
+            <Border Style="{StaticResource CardStyle}" Margin="0">
                 <StackPanel>
                     <TextBlock Text="② 搜索条件" FontSize="13" FontWeight="SemiBold" />
 
@@ -153,11 +165,16 @@
                     </StackPanel>
                 </StackPanel>
             </Border>
+            </ScrollViewer>
+
+            <!-- 上下分隔条：拖动改「② 搜索条件」与「③ 搜索结果」的高度（双击恢复这一处） -->
+            <core:PaneSplitter Grid.Row="4" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="map-downloader.搜索与结果" />
 
             <!-- ===== ③ 结果 ===== -->
             <!-- 结果表放 * 行、删掉写死的 Height=330：区域被拖高 / 拖矮时只有表格跟着伸缩；
                  卡片被拖矮时裁掉溢出内容。 -->
-            <Border Grid.Row="3" Style="{StaticResource CardStyle}" Margin="0,12,0,0" ClipToBounds="True">
+            <Border Grid.Row="5" Style="{StaticResource CardStyle}" Margin="0" ClipToBounds="True">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />                <!-- 标题 + 已选统计 -->
@@ -318,12 +335,12 @@
             </Border>
 
             <!-- 上下分隔条：拖动改「搜索结果」与「进度与日志」的高度（双击恢复这一处） -->
-            <core:PaneSplitter Grid.Row="4" Style="{StaticResource PaneSplitterHorizontalStyle}"
+            <core:PaneSplitter Grid.Row="6" Style="{StaticResource PaneSplitterHorizontalStyle}"
                                Key="map-downloader.结果与日志" />
 
             <!-- ===== ④ 进度与日志 ===== -->
             <!-- 日志框放 * 行、删掉写死的 Height=120（区域拖高 / 拖矮时只有日志跟着伸缩）。 -->
-            <Border Grid.Row="5" Style="{StaticResource CardStyle}" Margin="0" ClipToBounds="True">
+            <Border Grid.Row="7" Style="{StaticResource CardStyle}" Margin="0" ClipToBounds="True">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />                <!-- 标题 -->
@@ -363,7 +380,7 @@
                 </Grid>
             </Border>
 
-            <Border Grid.Row="6" Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0">
+            <Border Grid.Row="8" Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="14,12" Margin="0,12,0,0">
                 <TextBlock FontSize="11.5" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"
                            Text="提示：搜索走 osu! 官方 API（只读公开数据，需要自己注册的 Client ID / Secret）；.osz 文件走第三方镜像下载，勾选多行时最多同时下 5 个（可在 config.json 里改 parallelDownloads）。日期与 Key 数是拉回来之后在本地筛的。" />
             </Border>

@@ -287,80 +287,33 @@
                 </StackPanel>
             </Border>
 
-            <!-- 最近浏览（工具条 🕘 最近 打开；点一条重新打开那个文件夹） -->
-            <Border x:Name="RecentPanel" Width="380" HorizontalAlignment="Right" VerticalAlignment="Top"
-                    Margin="0,12,12,0" Padding="14,12" MaxHeight="{Binding ActualHeight, ElementName=ViewportGrid}"
-                    Style="{StaticResource CardStyle}" Panel.ZIndex="90"
-                    Visibility="{Binding IsRecentVisible, Converter={StaticResource BoolToVis}}">
-                <DockPanel>
-                    <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
-                        <TextBlock Text="🕘 最近浏览" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button Content="清空" Style="{StaticResource SecondaryButtonStyle}" Height="24"
-                                    Padding="8,0" FontSize="10.5" Command="{Binding ClearRecentCommand}"
-                                    ToolTip="清空最近浏览记录（不会删本地文件夹）" />
-                            <Button Content="✕" Style="{StaticResource SecondaryButtonStyle}" Width="24" Height="24"
-                                    Padding="0" FontSize="10" Margin="6,0,0,0"
-                                    Command="{Binding ToggleRecentCommand}" ToolTip="关闭最近浏览（Esc）" />
-                        </StackPanel>
-                    </Grid>
-
-                    <TextBlock DockPanel.Dock="Bottom" FontSize="10.5" TextWrapping="Wrap" Margin="0,8,0,0"
-                               Foreground="{DynamicResource TextSecondaryBrush}"
-                               Text="最多记多少条在 ⚙ 设置 → 最近浏览（0 ~ 100，0 = 不记录）。" />
-
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                        <StackPanel>
-                            <TextBlock Text="{Binding RecentEmptyText}" FontSize="11.5" TextWrapping="Wrap"
-                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="2,6,2,6"
-                                       Visibility="{Binding HasRecentItems, Converter={StaticResource InverseBoolToVis}}" />
-                            <ItemsControl ItemsSource="{Binding RecentItems}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Button Style="{StaticResource SecondaryButtonStyle}"
-                                                HorizontalContentAlignment="Left" Padding="10,7" Margin="0,0,0,4"
-                                                Command="{Binding DataContext.OpenRecentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                CommandParameter="{Binding Path}" ToolTip="{Binding Path}">
-                                            <StackPanel>
-                                                <TextBlock Text="{Binding Name}" FontSize="12"
-                                                           TextTrimming="CharacterEllipsis" MaxWidth="320" />
-                                                <TextBlock Text="{Binding Detail}" FontSize="10.5"
-                                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                                           TextTrimming="CharacterEllipsis" MaxWidth="320" Margin="0,2,0,0" />
-                                            </StackPanel>
-                                        </Button>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
-                    </ScrollViewer>
-                </DockPanel>
-            </Border>
-
-            <!-- 设置面板（浮在右上角；改一下自动存）。阅读方式越来越多，切换统一放这里。
-                 布局（v0.41.0 起可拖拽）：外层是一整块透明浮层（名字仍叫 SettingsPanel，
-                 代码后置靠它判断「点在设置面板里」而不抢走拖拽），里面分「空白 | 分隔条 | 卡片」三列 ——
-                 拖这条缝就改设置面板宽度（蓝线 + ↔），松手自动记住（Config\layout.json），双击恢复这一处；
-                 全部恢复默认：主页设置 →「界面布局 → 恢复默认布局」。卡片仍然浮在阅读区上方（不挤压画面），
-                 全屏 / Esc 关闭等行为都不变。约定见 docs/dev/layout.md。 -->
-            <Border x:Name="SettingsPanel"
-                    Visibility="{Binding IsSettingsVisible, Converter={StaticResource BoolToVis}}">
+            <!-- 右侧浮层容器：透明、铺满阅读区、不挡图片鼠标；名字仍叫 SettingsPanel ——
+                 代码后置的 IsInsideSettings 靠它判断「点在浮层里」，否则拖浮层上的分隔条会被画面拖拽抢走。
+                 里面是两条互斥的浮层通道，各有自己独立的分隔条列（Key 不共用，宽度各存各的）：
+                   ① 设置面板（SettingsCard）   ② 最近浏览（RecentPanel）
+                 两条通道的卡片默认都是 380 宽（392 列 = 380 卡片 + 右侧 12 边距）；卡片浮在阅读区上方、
+                 不挤压画面；打开某个通道时才出现它那条缝，关着时整条通道 Collapsed（见 docs/dev/layout.md）。
+                 拖各自的缝改宽度（蓝线 + ↔），松手自动记住（Config\layout.json），双击恢复这一处；
+                 全部恢复默认：主页设置 →「界面布局 → 恢复默认布局」。全屏 / Esc 关闭等行为不变。 -->
+            <Border x:Name="SettingsPanel">
                 <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" MinWidth="40" />       <!-- 左侧空白：卡片浮在图片上方，透明不挡鼠标 -->
-                        <ColumnDefinition Width="12" />                   <!-- 分隔条独占一列 -->
-                        <ColumnDefinition Width="392" MinWidth="252" />    <!-- 设置卡片：392 = 卡片 380 + 右侧 12 边距 -->
-                    </Grid.ColumnDefinitions>
+                    <!-- ① 设置面板通道（浮在右上角；改一下自动存）。阅读方式越来越多，切换统一放这里。 -->
+                    <Grid Visibility="{Binding IsSettingsVisible, Converter={StaticResource BoolToVis}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" MinWidth="40" />       <!-- 左侧空白：卡片浮在图片上方，透明不挡鼠标 -->
+                            <ColumnDefinition Width="12" />                   <!-- 分隔条独占一列 -->
+                            <ColumnDefinition Width="392" MinWidth="252" />    <!-- 设置卡片：392 = 卡片 380 + 右侧 12 边距 -->
+                        </Grid.ColumnDefinitions>
 
-                    <!-- 左右分隔条：拖它改设置面板宽度。高度跟卡片走，不在图片上留一条看不见的死拖拽区。
-                         它在 SettingsPanel 里面，所以代码后置的「点设置面板不拖画面」判断能认出它（见 IsInsideSettings）。 -->
-                    <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
-                                       Key="picture-viewer.设置面板宽度"
-                                       VerticalAlignment="Top" Margin="0,12,0,0"
-                                       Height="{Binding ActualHeight, ElementName=SettingsCard}" />
+                        <!-- 左右分隔条：拖它改设置面板宽度。高度跟卡片走，不在图片上留一条看不见的死拖拽区。
+                             它在 SettingsPanel 里面，所以代码后置的「点设置面板不拖画面」判断能认出它（见 IsInsideSettings）。 -->
+                        <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                           Key="picture-viewer.设置面板宽度"
+                                           VerticalAlignment="Top" Margin="0,12,0,0"
+                                           Height="{Binding ActualHeight, ElementName=SettingsCard}" />
 
-                    <Border x:Name="SettingsCard" Grid.Column="2" VerticalAlignment="Top"
-                            Margin="0,12,12,0" Padding="16,14" Style="{StaticResource CardStyle}">
+                        <Border x:Name="SettingsCard" Grid.Column="2" VerticalAlignment="Top"
+                                Margin="0,12,12,0" Padding="16,14" Style="{StaticResource CardStyle}">
                 <ScrollViewer MaxHeight="{Binding ActualHeight, ElementName=ViewportGrid}"
                               VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                               core:ScrollChaining.Enabled="True">
@@ -612,7 +565,72 @@
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
-                    </Border>
+                        </Border>
+                    </Grid>
+
+                    <!-- ② 最近浏览通道（工具条 🕘 最近 打开；点一条重新打开那个文件夹）。
+                         和设置面板互斥（打开一个会收起另一个），但宽度各自独立记：两条通道各拖各的缝。
+                         卡片还是浮在右上角，打开时才出现，关闭时整条通道连同分隔条一起 Collapsed。 -->
+                    <Grid Visibility="{Binding IsRecentVisible, Converter={StaticResource BoolToVis}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" MinWidth="40" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="392" MinWidth="252" />    <!-- 最近浏览卡片：392 = 卡片 380 + 右侧 12 边距 -->
+                        </Grid.ColumnDefinitions>
+
+                        <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                           Key="picture-viewer.最近浏览宽度"
+                                           VerticalAlignment="Top" Margin="0,12,0,0"
+                                           Height="{Binding ActualHeight, ElementName=RecentPanel}" />
+
+                        <Border x:Name="RecentPanel" Grid.Column="2" VerticalAlignment="Top"
+                                Margin="0,12,12,0" Padding="14,12" MaxHeight="{Binding ActualHeight, ElementName=ViewportGrid}"
+                                Style="{StaticResource CardStyle}" Panel.ZIndex="90">
+                            <DockPanel>
+                                <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+                                    <TextBlock Text="🕘 最近浏览" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Content="清空" Style="{StaticResource SecondaryButtonStyle}" Height="24"
+                                                Padding="8,0" FontSize="10.5" Command="{Binding ClearRecentCommand}"
+                                                ToolTip="清空最近浏览记录（不会删本地文件夹）" />
+                                        <Button Content="✕" Style="{StaticResource SecondaryButtonStyle}" Width="24" Height="24"
+                                                Padding="0" FontSize="10" Margin="6,0,0,0"
+                                                Command="{Binding ToggleRecentCommand}" ToolTip="关闭最近浏览（Esc）" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <TextBlock DockPanel.Dock="Bottom" FontSize="10.5" TextWrapping="Wrap" Margin="0,8,0,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Text="最多记多少条在 ⚙ 设置 → 最近浏览（0 ~ 100，0 = 不记录）。" />
+
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding RecentEmptyText}" FontSize="11.5" TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="2,6,2,6"
+                                                   Visibility="{Binding HasRecentItems, Converter={StaticResource InverseBoolToVis}}" />
+                                        <ItemsControl ItemsSource="{Binding RecentItems}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Button Style="{StaticResource SecondaryButtonStyle}"
+                                                            HorizontalContentAlignment="Left" Padding="10,7" Margin="0,0,0,4"
+                                                            Command="{Binding DataContext.OpenRecentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding Path}" ToolTip="{Binding Path}">
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Name}" FontSize="12"
+                                                                       TextTrimming="CharacterEllipsis" MaxWidth="320" />
+                                                            <TextBlock Text="{Binding Detail}" FontSize="10.5"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                       TextTrimming="CharacterEllipsis" MaxWidth="320" Margin="0,2,0,0" />
+                                                        </StackPanel>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </DockPanel>
+                        </Border>
+                    </Grid>
                 </Grid>
             </Border>
         </Grid>

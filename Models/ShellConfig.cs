@@ -1,6 +1,7 @@
 using YuLiangToolkit.App.Themes;
 using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Effects;
+using YuLiangToolkit.Core.Mvvm;
 
 namespace YuLiangToolkit.App.Models;
 
@@ -143,6 +144,14 @@ public sealed class ShellConfig : ToolConfig
     /// 选 <see cref="ShellCloseAction.MinimizeToTray"/> 后 × 只把窗口藏到托盘，应用继续在后台运行。
     /// </summary>
     public ShellCloseAction CloseAction { get; set; } = ShellCloseAction.Exit;
+
+    /// <summary>
+    /// 工具页可拖拽分隔条「鼠标不在上面时」的提示线透明度（0~1，默认 0.18）。
+    /// 0 = 平时完全看不见（只能靠光标变成 ↔ / ↕ 发现缝隙）；1 = 一直显示一条实心蓝线。
+    /// 主页设置 → 界面布局里的滑块调整，改一下所有工具页立即生效（外壳写
+    /// <see cref="YuLiangToolkit.Core.Mvvm.PaneSplitterSettings"/>，工具页的分隔条监听它）。
+    /// </summary>
+    public double PaneSplitterHintOpacity { get; set; } = PaneSplitterSettings.DefaultRestOpacity;
 
     /// <summary>取某个功能上次使用时间（没有记录返回 null）。</summary>
     public DateTime? GetLastUsed(string toolId)
