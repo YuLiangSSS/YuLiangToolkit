@@ -54,7 +54,11 @@
                 <RowDefinition Height="600" MinHeight="430" />                   <!-- 主区域：预览 | 信息/参数/部件 -->
                 <RowDefinition Height="12" />                                    <!-- 主区域 / 下排分隔条 -->
                 <RowDefinition Height="330" MinHeight="220" />                   <!-- 下排：动作 / 表情 / 物理 / 桌宠 -->
-                <RowDefinition Height="12" />                                    <!-- 下排 / 日志分隔条 -->
+                <RowDefinition Height="12" />                                    <!-- 下排 / 动捕分隔条 -->
+                <RowDefinition Height="380" MinHeight="260" />                   <!-- 摄像头动捕卡 -->
+                <RowDefinition Height="12" />                                    <!-- 动捕 / 身体晃动分隔条 -->
+                <RowDefinition Height="360" MinHeight="250" />                   <!-- 身体晃动测试卡 -->
+                <RowDefinition Height="12" />                                    <!-- 身体晃动 / 日志分隔条 -->
                 <RowDefinition Height="200" MinHeight="130" />                   <!-- 日志 -->
             </Grid.RowDefinitions>
 
@@ -813,12 +817,342 @@
                 </Border>
             </Grid>
 
-            <!-- 上下分隔条：下排 / 日志 -->
+            <!-- 上下分隔条：下排 / 摄像头动捕 -->
             <core:PaneSplitter Grid.Row="4" Style="{StaticResource PaneSplitterHorizontalStyle}"
-                               Key="live2d.下排与日志" />
+                               Key="live2d.下排与动捕" />
+
+            <!-- ==================================================== 摄像头面部动捕 ==================================================== -->
+            <Border Grid.Row="5" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="180" />
+                    </Grid.RowDefinitions>
+
+                    <!-- 标题 + 总开关 + 刷新设备 -->
+                    <Grid Grid.Row="0" Margin="18,14,18,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="📷 摄像头面部动捕" Style="{StaticResource CardHeaderStyle}" />
+                                <TextBlock Text="{Binding MocapToggleText}" FontSize="10.5" Margin="10,0,0,0"
+                                           VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,4,0,0"
+                                       Text="用系统自带摄像头 + Windows FaceAnalysis 驱动头部 / 眨眼 / 张嘴。只有打开开关才会请求摄像头权限；预览只在窗口里显示，不保存任何画面。" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                            <CheckBox Content="启用摄像头动捕" Style="{StaticResource CheckBoxStyle}"
+                                      IsChecked="{Binding MocapEnabled, Mode=TwoWay}" Margin="0,0,12,0" />
+                            <Button Content="刷新设备" Style="{StaticResource CompactButtonStyle}"
+                                    Command="{Binding RefreshCamerasCommand}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- 主体：左设置 / 右预览 + 状态（高度不够时内部滚动，不裁内容） -->
+                    <ScrollViewer Grid.Row="1" Style="{StaticResource CardScrollerStyle}" Margin="0,10,0,0">
+                        <Grid Margin="18,0,18,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" MinWidth="360" />
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="300" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- 左：设备与参数 -->
+                            <StackPanel Grid.Column="0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="摄像头" Style="{StaticResource SettingLabelStyle}" Margin="0,0,8,0" />
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding MocapCameraOptions}" DisplayMemberPath="Label"
+                                              SelectedItem="{Binding SelectedMocapCamera, Mode=TwoWay}"
+                                              Style="{StaticResource ComboBoxStyle}" Height="28"
+                                              ToolTip="设备名就是系统里看到的名字；优先内置摄像头，手机 / 虚拟摄像头需手动选" />
+                                </Grid>
+                                <TextBlock Text="{Binding CameraListSummary}" Style="{StaticResource CardSubTextStyle}"
+                                           Margin="0,4,0,0" TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding CameraListSummary}" />
+
+                                <WrapPanel Margin="0,8,0,0">
+                                    <CheckBox Content="镜像画面" Style="{StaticResource CheckBoxStyle}" Margin="0,0,18,6"
+                                              IsChecked="{Binding MocapMirror, Mode=TwoWay}"
+                                              ToolTip="前置摄像头镜像（像照镜子）；想「自己的右手 = 模型右手」就保持开" />
+                                    <CheckBox Content="显示摄像头预览" Style="{StaticResource CheckBoxStyle}" Margin="0,0,18,6"
+                                              IsChecked="{Binding MocapShowPreview, Mode=TwoWay}" />
+                                    <TextBlock Text="帧率" Style="{StaticResource SettingLabelStyle}" Margin="0,0,6,6" />
+                                    <ComboBox ItemsSource="{Binding MocapFpsOptions}" DisplayMemberPath="Label"
+                                              SelectedValuePath="Value" SelectedValue="{Binding MocapFps, Mode=TwoWay}"
+                                              Style="{StaticResource ComboBoxStyle}" Width="140" Height="28" Margin="0,0,0,6" />
+                                </WrapPanel>
+
+                                <Grid Margin="0,2,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="40" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="平滑" Style="{StaticResource SettingLabelStyle}" />
+                                    <Slider Grid.Column="1" Minimum="0" Maximum="0.9" SmallChange="0.01"
+                                            Value="{Binding MocapSmoothing, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                            VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{Binding MocapSmoothing, StringFormat={}{0:0.00}}"
+                                               Style="{StaticResource SettingValueStyle}" />
+                                </Grid>
+
+                                <Separator Margin="0,8,0,8" Background="{DynamicResource BorderBrush}" />
+                                <WrapPanel>
+                                    <CheckBox Content="驱动头部" Style="{StaticResource CheckBoxStyle}" Margin="0,0,18,6"
+                                              IsChecked="{Binding MocapHeadEnabled, Mode=TwoWay}" />
+                                    <CheckBox Content="驱动眨眼" Style="{StaticResource CheckBoxStyle}" Margin="0,0,18,6"
+                                              IsChecked="{Binding MocapBlinkEnabled, Mode=TwoWay}" />
+                                    <CheckBox Content="驱动张嘴" Style="{StaticResource CheckBoxStyle}" Margin="0,0,18,6"
+                                              IsChecked="{Binding MocapMouthEnabled, Mode=TwoWay}" />
+                                </WrapPanel>
+                                <Grid Margin="0,2,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="40" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="头部强度" Style="{StaticResource SettingLabelStyle}" />
+                                    <Slider Grid.Column="1" Minimum="0" Maximum="1.5" SmallChange="0.05"
+                                            Value="{Binding MocapHeadStrength, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                            VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{Binding MocapHeadStrength, StringFormat={}{0:0.00}}"
+                                               Style="{StaticResource SettingValueStyle}" />
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="40" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="眼球强度" Style="{StaticResource SettingLabelStyle}" />
+                                    <Slider Grid.Column="1" Minimum="0" Maximum="1.5" SmallChange="0.05"
+                                            Value="{Binding MocapEyeStrength, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                            VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{Binding MocapEyeStrength, StringFormat={}{0:0.00}}"
+                                               Style="{StaticResource SettingValueStyle}" />
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="40" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="张嘴幅度" Style="{StaticResource SettingLabelStyle}" />
+                                    <Slider Grid.Column="1" Minimum="0" Maximum="1.5" SmallChange="0.05"
+                                            Value="{Binding MocapMouthStrength, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                            VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{Binding MocapMouthStrength, StringFormat={}{0:0.00}}"
+                                               Style="{StaticResource SettingValueStyle}" />
+                                </Grid>
+
+                                <WrapPanel Margin="0,10,0,0">
+                                    <Button Content="重新校准表情" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
+                                            Command="{Binding ResetMocapCalibrationCommand}"
+                                            ToolTip="眨眼 / 张嘴的自动基准清零（换环境 / 光线后点一下）" />
+                                    <Button Content="校准中性位" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
+                                            Command="{Binding CalibrateMocapNeutralCommand}"
+                                            ToolTip="把当前「有脸」的位置当成正前方（换座位 / 换摄像头后眼角不正时用）" />
+                                </WrapPanel>
+                            </StackPanel>
+
+                            <!-- 右：摄像头预览小窗（只显示不存盘）+ 状态行 -->
+                            <StackPanel Grid.Column="2">
+                                <Border Width="288" Height="162" CornerRadius="8" ClipToBounds="True"
+                                        Background="{DynamicResource InputBackgroundBrush}"
+                                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                                    <Grid x:Name="MocapPreviewHost">
+                                        <Image x:Name="MocapPreviewImage" Stretch="Uniform" IsHitTestVisible="False" />
+                                        <Canvas x:Name="MocapFaceOverlay" IsHitTestVisible="False"
+                                                Width="{Binding ActualWidth, ElementName=MocapPreviewHost}"
+                                                Height="{Binding ActualHeight, ElementName=MocapPreviewHost}">
+                                            <Rectangle x:Name="MocapFaceRect" Stroke="{DynamicResource AccentBrush}"
+                                                       StrokeThickness="2" Visibility="Collapsed" />
+                                        </Canvas>
+                                        <TextBlock x:Name="MocapPreviewPlaceholder" Text="等待摄像头画面…"
+                                                   FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   TextAlignment="Center" TextWrapping="Wrap" Margin="16" />
+                                    </Grid>
+                                </Border>
+                                <TextBlock Text="{Binding MocapStatusText}" FontSize="11.5" TextWrapping="Wrap"
+                                           Margin="0,8,0,0" />
+                                <TextBlock Text="{Binding MocapErrorText}" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                                           Foreground="{DynamicResource DangerBrush}"
+                                           Visibility="{Binding HasMocapError, Converter={StaticResource BoolToVis}}" />
+                                <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,8,0,0"
+                                           Text="预览框 = 摄像头画面（镜像已按设置处理），上面跟踪人脸框；只有启用动捕 + 显示预览时才会有画面。" />
+                            </StackPanel>
+                        </Grid>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- 上下分隔条：摄像头动捕 / 身体晃动 -->
+            <core:PaneSplitter Grid.Row="6" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="live2d.动捕与身体晃动" />
+
+            <!-- ==================================================== 身体晃动测试 ==================================================== -->
+            <Border Grid.Row="7" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="180" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="18,14,18,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="🌊 身体晃动测试" Style="{StaticResource CardHeaderStyle}" />
+                            <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,4,0,0"
+                                       Text="用一组身体 / 腰部 / 物理输入参数做正弦晃动，右侧实时显示参数与 5 秒折线图：能直观看到「身体晃 → AngleX → 物理带动 FrontHairX1（头发）」的链条。注意：和摄像头动捕同时开启时，头部优先跟脸（晃动不做头部补偿），腰身 / 物理仍由晃动驱动。" />
+                        </StackPanel>
+                        <CheckBox Grid.Column="1" Content="开启身体晃动" Style="{StaticResource CheckBoxStyle}"
+                                  IsChecked="{Binding BodySwayEnabled, Mode=TwoWay}" VerticalAlignment="Top" />
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1" Style="{StaticResource CardScrollerStyle}" Margin="0,10,0,0">
+                        <Grid Margin="18,0,18,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="400" MinWidth="320" />
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="*" MinWidth="360" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- 左：晃动参数 -->
+                            <StackPanel Grid.Column="0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="晃动模式" Style="{StaticResource SettingLabelStyle}" Margin="0,0,8,0" />
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding SwayModeOptions}" DisplayMemberPath="Label"
+                                              SelectedItem="{Binding SelectedSwayMode, Mode=TwoWay}"
+                                              Style="{StaticResource ComboBoxStyle}" Height="28" />
+                                </Grid>
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="40" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="幅度（°）" Style="{StaticResource SettingLabelStyle}" />
+                                    <Slider Grid.Column="1" Minimum="0" Maximum="30" SmallChange="0.5"
+                                            Value="{Binding BodySwayAmplitude, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                            VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{Binding BodySwayAmplitude, StringFormat={}{0:0.0}}"
+                                               Style="{StaticResource SettingValueStyle}" />
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="40" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="速度（Hz）" Style="{StaticResource SettingLabelStyle}" />
+                                    <Slider Grid.Column="1" Minimum="0.1" Maximum="2" SmallChange="0.05"
+                                            Value="{Binding BodySwaySpeed, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                            VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{Binding BodySwaySpeed, StringFormat={}{0:0.00}}"
+                                               Style="{StaticResource SettingValueStyle}" />
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="40" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="头部补偿" Style="{StaticResource SettingLabelStyle}" />
+                                    <Slider Grid.Column="1" Minimum="0" Maximum="1" SmallChange="0.05"
+                                            Value="{Binding BodySwayHeadFollow, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                            VerticalAlignment="Center"
+                                            ToolTip="0 = 头部完全跟着身体晃；1 = 头尽量保持朝前（反向补偿）" />
+                                    <TextBlock Grid.Column="2" Text="{Binding BodySwayHeadFollow, StringFormat={}{0:0.00}}"
+                                               Style="{StaticResource SettingValueStyle}" />
+                                </Grid>
+                                <CheckBox Content="连腰部 / 腿部一起晃" Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0"
+                                          IsChecked="{Binding BodySwayIncludeHips, Mode=TwoWay}" />
+                                <WrapPanel Margin="0,10,0,0">
+                                    <Button Content="摇一摇（3 秒）" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,8"
+                                            Command="{Binding ShakeSwayCommand}" ToolTip="临时演示：按当前模式 / 幅度 / 速度晃 3 秒" />
+                                    <Button Content="停" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
+                                            Command="{Binding StopSwayCommand}" ToolTip="停止演示并关闭身体晃动" />
+                                </WrapPanel>
+                                <TextBlock Text="{Binding SwayDemoRemainingText}" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </StackPanel>
+
+                            <!-- 右：5 秒滚动折线图 + 参数实时值 -->
+                            <Grid Grid.Column="2">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8"
+                                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="10,8">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="120" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Grid.Row="0" Text="最近 5 秒参数曲线（每条按自身幅度缩放，同一时间轴）" FontSize="10.5"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <Grid Grid.Row="1" Margin="0,6,0,0" ClipToBounds="True">
+                                            <Rectangle Height="1" Fill="{DynamicResource SeparatorBrush}"
+                                                       VerticalAlignment="Center" IsHitTestVisible="False" />
+                                            <Canvas x:Name="SwayChart" ClipToBounds="True" SizeChanged="OnSwayChartSizeChanged">
+                                                <Polyline x:Name="SwayLineBodyX" Stroke="{DynamicResource AccentBrush}"
+                                                          StrokeThickness="1.6" StrokeLineJoin="Round" />
+                                                <Polyline x:Name="SwayLineAngleX" Stroke="{DynamicResource SuccessBrush}"
+                                                          StrokeThickness="1.6" StrokeLineJoin="Round" />
+                                                <Polyline x:Name="SwayLineHeadX" Stroke="{DynamicResource DangerBrush}"
+                                                          StrokeThickness="1.6" StrokeLineJoin="Round" />
+                                                <Polyline x:Name="SwayLineFrontHair" Stroke="{DynamicResource FaintTextBrush}"
+                                                          StrokeThickness="1.6" StrokeLineJoin="Round" />
+                                            </Canvas>
+                                        </Grid>
+                                        <WrapPanel Grid.Row="2" Margin="0,6,0,0">
+                                            <Rectangle Width="10" Height="3" Fill="{DynamicResource AccentBrush}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                            <TextBlock Text="ParamBodyAngleX" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,12,0" />
+                                            <Rectangle Width="10" Height="3" Fill="{DynamicResource SuccessBrush}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                            <TextBlock Text="AngleX" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,12,0" />
+                                            <Rectangle Width="10" Height="3" Fill="{DynamicResource DangerBrush}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                            <TextBlock Text="ParamAngleX" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,12,0" />
+                                            <Rectangle Width="10" Height="3" Fill="{DynamicResource FaintTextBrush}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                            <TextBlock Text="FrontHairX1（物理输出）" FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        </WrapPanel>
+                                    </Grid>
+                                </Border>
+                                <TextBlock Grid.Row="1" Text="{Binding SwayValuesText}" FontSize="11" Margin="0,10,0,0"
+                                           FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                <TextBlock Grid.Row="2" Style="{StaticResource CardSubTextStyle}" Margin="0,6,0,0"
+                                           Text="参数值每 100ms 刷新一次；头发参数（FrontHairX1 等）数值本身只有零点几度，曲线里按自身幅度放大了。它们的摆动由物理计算、会比身体慢半拍 —— 这正是「身体晃 → 角度 → 物理带动头发」的证据。" />
+                            </Grid>
+                        </Grid>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- 上下分隔条：身体晃动 / 日志 -->
+            <core:PaneSplitter Grid.Row="8" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="live2d.身体晃动与日志" />
 
             <!-- ==================================================== 日志 ==================================================== -->
-            <Border Grid.Row="5" Style="{StaticResource CardStyle}">
+            <Border Grid.Row="9" Style="{StaticResource CardStyle}">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />

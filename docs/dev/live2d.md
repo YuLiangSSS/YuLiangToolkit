@@ -10,7 +10,9 @@
 
 - 在工具集里内置「Live2D 桌宠」：**模型测试台**（参数 / 部件 / 动作 / 表情 / 物理 / 眼睛跟随逐项调）
   + **桌面宠物**（透明置顶、拖动、滚轮缩放、右键菜单、点击穿透、眼睛跟随鼠标、待机动画）；
-- **不新增任何 NuGet 包**（仓库硬性规则）：模型加载靠官方 Cubism Core 原生 DLL，渲染靠自己写的软件光栅器；
+- **不新增任何 NuGet 包**（仓库硬性规则）：模型加载靠官方 Cubism Core 原生 DLL，渲染靠自己写的软件光栅器，
+  摄像头动捕靠 Windows 自带 MediaCapture / FaceAnalysis（OS 组件，零第三方库）；
+- 可选**摄像头面部动捕**（转头 / 眨眼 / 张嘴，默认关）与**身体晃动测试**（看物理链）；
 - 不联网、不带音频 / 口型同步、不做 VTube Studio 之类的协议联动；
 - 只支持 Cubism 3+ 的 `.moc3` 模型（不支持 Cubism 2 的 `model.json`）。
 
@@ -25,12 +27,19 @@ YuLiangTookit（主程序）
           └─ Views/PetWindow.xaml ──── 透明置顶桌宠窗口（拖动 / 滚轮 / 右键 / 点击穿透 / 眼睛跟随）
                 │
                 ▼
-  Model/ModelRuntime ───────────────── 运行时：加载资源 / Tick（动作·表情·物理·眼睛跟随）/ RenderFrame
+  Model/ModelRuntime ───────────────── 运行时：加载资源 / Tick（动捕·待机·晃动·动作·表情·物理）/ RenderFrame
       ├─ Live2DModelAsset ──────────── 模型资源发现（model3.json → moc / 纹理 / 物理 / cdi3 / 动作 / 表情）
       ├─ Motion3 / MotionPlayer ──────── motion3.json 解析、播放与混合（含 fade / loop）
       ├─ Expression3 ────────────────── exp3.json 解析 + 表情管理器（每表情独立权重施加）
       ├─ Physics3 / CubismPhysicsEvaluator ── physics3.json 解析 + 钟摆物理求值
       ├─ IdleBehavior（待机 / 眨眼）/ EyeTrackingController（眼头身跟随）
+      ├─ BodySwayController ────────── 身体晃动测试（正弦 / 多频叠加写身体 + 物理输入参数）
+      │
+      ├─ Mocap/ ────────────────────── 摄像头面部动捕（见 §10）
+      │   ├─ MocapCameraSource ─────── MediaCapture + MediaFrameReader 采集 + FaceDetector 检测（WinRT）
+      │   ├─ FaceExpressionAnalyzer ── 人脸框内像素启发式（眨眼 / 张嘴）+ 滚动分位数自动校准
+      │   ├─ MocapMath ─────────────── 脸位置 → 头部角度 / 眼球方向（纯数学，自检可测）
+      │   └─ MocapContracts ────────── IMocapProvider / MocapTrackingResult / MocapPreviewFrame / MocapSettings
       │
       ├─ Rendering/CubismRenderer ──── 手写软件光栅器（三角形光栅化 / 蒙版 / 三种混合 / 调试叠加）
       │   └─ Rendering/TextureAtlas ── 纹理 PNG 加载 → BGRA 像素（可选降到 2048）
@@ -44,6 +53,12 @@ YuLiangTookit（主程序）
 **线程模型**：Cubism Core 的模型对象**不是线程安全的**。加载（解码 moc / 纹理 / 解析 json）可以在后台线程做，
 但 `csmUpdateModel` / 渲染 / 参数写入都只在 **UI 线程**（`DispatcherTimer` 里 Tick + Render）；
 工具页与桌宠共用同一个 `ModelRuntime`，不要各建一个（Core 模型会重复吃内存）。
+
+**动捕线程模型**（细节见 §10）：摄像头采集回调在 WinRT 线程池 → 把帧丢进 `Channel`（最多缓存 2 帧、
+满了丢旧帧）→ 单独的后台 task 串行做「降采样 + FaceDetector 检测 + 眨眼 / 张嘴像素分析 + 平滑」→
+发布**不可变快照**（`MocapTrackingResult` / `MocapPreviewFrame`，整体引用替换）→ UI 线程 Tick 里只读
+`IMocapProvider.Latest`。摄像头生命周期归 `Live2DSession` 管（页面或桌宠可见且开关打开才启动，
+关掉立即释放设备，隐私 + 省 CPU）。
 
 **为什么不引 WebView2 / SkiaSharp / 官方 C# SDK**：
 
@@ -197,22 +212,26 @@ x64 only（官方 Core 只提供 x86_64；主程序 / 自检都编译成 x64 语
 Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实测大尺寸预览 25~30 ms 尚未达到
 16 ms 目标，属于后续优化空间（桌宠 / 测试台默认尺寸已够用）。
 
-## 6. 动作 / 表情 / 物理 / 眼睛跟随的求值顺序
+## 6. 动作 / 表情 / 物理 / 眼睛跟随 / 动捕 / 晃动的求值顺序
 
 每帧 `Tick(delta)` 的顺序（`Model/ModelRuntime.cs`，和官方 Cubism 更新管线一致）：
 
-1. **只把「受管参数」恢复默认**：受管参数 = 动作曲线 / 表情 / 物理输出 / 待机 / 眼睛跟随会写到的参数
-   （加载时收集成下标表）。其余参数（模型里大部分纯调试参数）**不会**被每帧重置，所以工具页手动拖滑块
-   在它们上面是有效的；
-2. 待机行为：呼吸（`ParamBreath`）/ 自动眨眼（`ParamEyeLOpen/ParamEyeROpen`）/ 待机摇摆写参数；
-3. 眼睛跟随：目标 → 以画布原点为中心归一化 → 指数平滑（`retention^ (delta*60)`，帧率无关）→
-   写 `ParamAngleX/Y/Z` + `AngleX/Y/Z`（两套：`Angle*` 经物理变成 `ParamAngle*`，物理关掉时直接写也生效）、
-   `ParamEyeBallX/Y`、`ParamBodyAngleX/Y` + `PositionX/Y`；
-4. 待机动作：待机动画开着且当前没有动作在播时，循环播 `IdleMotion`；
-5. 动作：当前动作按时间求值 + 淡入淡出权重混合，写参数；
-6. 表情：按权重施加当前表情（UI 单选；管理器本身是叠加超集，见 §3.3）；
-7. 物理：读输入参数（动作 / 表情 / 眼睛跟随已经写好的值）→ 钟摆求值 → 写输出参数；
-8. `model.Update()`（Core 求值 + 变形）→ 触发 `FrameUpdated` → UI 渲染。
+1. **只把「受管参数」恢复默认**：受管参数 = 动作曲线 / 表情 / 物理输出 / 待机 / 眼睛跟随 / 动捕 / 晃动
+   会写到的参数（加载时收集成下标表）。其余参数（模型里大部分纯调试参数）**不会**被每帧重置，所以工具页
+   手动拖滑块在它们上面是有效的；
+2. **动捕状态**：读 `IMocapProvider.Latest`（启用 + 有脸 + 时间戳距今 ≤ 600ms 才算有效），刷新
+   `MocapHasFace / MocapLastFaceAgeMs / MocapStatusText`；
+3. 待机行为：呼吸（`ParamBreath`）/ 自动眨眼（`ParamEyeLOpen/ParamEyeROpen`）/ 待机摇摆写参数；
+   **动捕接管眨眼时不自动眨眼**（避免抢同一批参数）；
+4. 有脸 → **动捕写参数**（`ParamAngle*` + `Angle*`、`ParamBodyAngleX`/`PositionX` 温和跟随、`ParamEyeBall*`、
+   `EyeLOpen/ROpen`、`ParamMouthOpenY`）；没脸 → 鼠标眼控 + 待机摇摆（两套互斥，见 §10 优先级）；
+5. **身体晃动测试**（`SwayEnabled` 或「摇一摇」倒计时 > 0 时）：`BodySwayController.Apply` 写身体主轴 /
+   物理输入 / 头部补偿 / 腰腿参数（见 §11）；
+6. 待机动作：待机动画开着且当前没有动作在播时，循环播 `IdleMotion`；
+7. 动作：当前动作按时间求值 + 淡入淡出权重混合，写参数；
+8. 表情：按权重施加当前表情（UI 单选；管理器本身是叠加超集，见 §3.3）；
+9. 物理：读输入参数（前面写好的值）→ 钟摆求值 → 写输出参数；
+10. `model.Update()`（Core 求值 + 变形）→ 触发 `FrameUpdated` → UI 渲染。
 
 **眼睛跟随数学**（自检会验）：目标在画布中心 → 角度 ≈ 0；目标在右侧 → `ParamAngleX` / `ParamEyeBallX` 为正
 （`AngleX = 归一化 x × 30 × 头转幅度`，眼球同理 ×1）；平滑是「每帧向目标插值」的指数平滑，
@@ -230,6 +249,10 @@ Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实
   按「最长边 ≤ maxSize」降采样：2048 档合计约 50~60 MB，4096 档约 200 MB（原尺寸约 500 MB）——默认 2048；
 - **解码耗时**：首次加载 5 张 PNG 约 1~3 秒（先按 2 倍目标尺寸让 WIC 解码，再箱式滤波降采样；加载时给进度）；
 - 参数滑杆 / 表情 / 动作拖动时只改值，**不要每改一次就 `Update + Render`**（让 DispatcherTimer 统一帧驱动）；
+- **摄像头动捕**：只在启用时耗 CPU。内置摄像头实测「降采样 + FaceDetector + 眨眼/张嘴分析 + 预览」
+  一帧约 **8~10ms**（15fps 时约占单核 13%，24fps 更高）；分析帧固定 320 宽、优先 640 宽采集格式，
+  不要喂 720p/1080p 给 FaceDetector（慢 3~4 倍）；关掉「显示摄像头预览」省掉每帧 ~230KB 的 BGRA 拷贝；
+- **身体晃动**：每帧只写 17 个参数、0 堆分配，实测 **< 0.1ms**（可忽略）；
 - 调试视图（包围盒 / 蒙版缓冲）只在开启时画，别常开。
 
 ## 8. 构建 / 发布：模型与原生 DLL 怎么跟着 exe 走
@@ -241,6 +264,9 @@ Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实
 2. **内置模型**：`DeepSeek\**\*` 作为 `Content` 拷到 `Live2D\Models\DeepSeek\**`（`Link` 里带
    `$(Live2DModelOutputDir)`），排除 `psd\**`、`*.vbridger`、`*.vtube.json`、`items_pinned_to_model.json`。
 
+- **TFM 是 `net9.0-windows10.0.19041.0`**（不是 `net9.0-windows`）：摄像头动捕用 WinRT
+  MediaCapture / FaceAnalysis，需要 Windows SDK 投影；升 TFM 不加 NuGet（SDK 自动带投影包），
+  主程序 / 自检工程本来就是 19041 TFM；
 - 自检工程通过 `ProjectReference` 引用本工程，MSBuild 会把上面这些 `CopyToOutputDirectory` 的项**传递**到
   自检输出目录（所以 `<selfcheck exe 旁边>\Live2D\Models\DeepSeek\` 也有一份，自检断言就查那里）；
 - `publish.ps1` 打包后同样在发布目录里；**发布目录里的 `Live2D\` 和 `Live2DCubismCore.dll` 不能少**，
@@ -259,10 +285,142 @@ Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实
   - 升级 Core 版本时同步改 NOTICE 与第三方位说明；
 - 动作 / 表情 / 物理 / 渲染的**语义**参考了官方 Cubism SDK（Native / Web Framework）与其示例，
   但代码是**自行编写**的，没有复制官方源码；不要把官方源码粘进本项目（官方示例的许可与本项目 Unlicense 不同）；
+- **摄像头动捕**用 Windows 自带的 `Windows.Media.Capture` / `Windows.Media.FaceAnalysis`（操作系统 API，
+  不是第三方库、不需要额外许可文件）；仓库里没有引入 OpenCV / MediaPipe / ONNX 等任何视觉库；
 - 内置模型 `大肥鱼` 版权归模型作者（用户自有），仓库内仅本工具使用；
 - 本项目其余部分 Unlicense，不因上述第三方许可而改变。
 
-## 10. 坑（踩过的都记在这里）
+## 10. 摄像头面部动捕（Mocap/）
+
+> 目标：**不引任何第三方包**（OpenCV / MediaPipe / ONNX 都不行），用 **Windows 自带**的
+> `MediaCapture`（采集）+ `MediaFrameReader`（取帧）+ `FaceAnalysis.FaceDetector`（人脸框），
+> 配合自写的像素启发式做「转头 / 眨眼 / 张嘴」。摄像头只在用户打开开关时启动（**默认关**）。
+
+### 10.1 数据流
+
+```
+MediaCapture（优先 640 左右宽的格式）
+  → MediaFrameReader（CPU 内存 BGRA8，15/24fps）
+  → 降采样到 320 宽分析帧
+  → FaceDetector.DetectFacesAsync（只给人脸框）
+  → 框位置：MocapMath.MapHead/MapPupil → Yaw/Pitch/Pupil
+  → 框内像素：FaceExpressionAnalyzer.Analyze → 眨眼/张嘴开合度（滚动分位数自动校准）
+  → MocapMath.Smooth 指数平滑 → MocapTrackingResult（不可变快照）
+  → ModelRuntime.Tick 读 IMocapProvider.Latest → 写模型参数
+```
+
+### 10.2 类职责
+
+| 文件 | 职责 |
+| --- | --- |
+| `MocapContracts.cs` | `IMocapProvider`（Latest / LatestPreview / IsRunning / LastError / MeasuredFps / FrameSize / StateChanged）、`MocapTrackingResult`、`MocapPreviewFrame`、`MocapCameraInfo`、`MocapSettings.FromConfig`（帧率 clamp 10~24、平滑 clamp 0~0.95） |
+| `MocapMath.cs` | 纯数学（自检可测）：`MapHead`（左右 0.20 窗口→±30°、上下 0.16→±22°）、`MapPupil`（×0.9 / ×0.6）、`Smooth`（指数平滑） |
+| `FaceExpressionAnalyzer.cs` | 框内像素启发式：眼睛横带**灰度标准差**（睁眼有亮眼白+暗瞳孔→方差大，闭眼→小）、嘴部横带**暗像素比例+对比度**；滚动 180 帧取 10%/90% 分位数自动校准；样本不足 24 帧给安全值（眼 1 / 嘴 0）；`ResetCalibration` 清零；框 <24px 直接安全值 |
+| `MocapCameraSource.cs` | `MediaCapture` 采集 + `FaceDetector` 检测 + 平滑快照 + 预览帧；`EnumerateCamerasAsync`（**只枚举设备**）、`StartAsync` / `StopAsync` / `Dispose`；处理耗时统计 |
+| `Live2DSession.cs` | **摄像头生命周期归会话**：页面或桌宠可见且 `MocapEnabled` 才启动；隐藏 / 关开关 / 程序退出立即 Stop 释放；失败记 `MocapStartError`（中文），提供「重新校准 / 校准中性位」入口 |
+| `Live2DViewModel` / `Live2DView` | 动捕卡：设备下拉（优先内置摄像头）+ 刷新、镜像 / 预览 / 帧率 / 平滑、三个驱动开关、三个强度、两个校准按钮、288×162 预览小窗 + 人脸框 overlay、状态 / 错误文本 |
+| `ModelRuntime` | 每帧读 `Latest`（600ms 过期保护）；有脸 → `ApplyMocapFace` 写参数；没脸 → 鼠标眼控 + 自动眨眼 |
+
+### 10.3 关键常量与行为（改之前先看）
+
+- **采集格式**：优先 `VideoFormat.Width ∈ [320, 960]` 里最接近 640 的格式（默认可能是 720p，检测太慢）；
+  分析帧固定降采样到 **320 宽**（640×360 → 320×180，FaceDetector 快 3~4 倍，框坐标正好是分析帧坐标）；
+- **镜像**：人脸中心的 x 先做 `1 - x`（`Mirror=true` 时），预览帧也按镜像处理；
+  `Pitch` 正 = 抬头（画面 y 向下，公式是 `(neutralY - faceY) / PitchWindow`）；
+- **平滑**：`Smooth(current, target, smoothing)`，`alpha = 1 - smoothing`；第一帧 / 脸重新出现时**直接 snap**
+  （不从小角度慢慢爬）；眼睛 / 嘴的平滑用 `smoothing × 0.5 / 0.7`（比头部更跟手）；
+- **没脸防抖**：连续 `NoFaceFramesBeforeLost = 4` 帧（≈0.25 秒 @15fps）才发布 `NoFace`，
+  避免检测抖动让角色闪；`ModelRuntime` 只接受时间戳距今 ≤ **600ms** 的结果（相机卡住时角度不会僵住）；
+- **预览帧**：只在 `MocapShowPreview` 打开时每帧新建 BGRA 数组（320×180×4 ≈ 230KB、15fps），UI 按需取最新；
+- **设备枚举**：`DeviceInformation.FindAllAsync(DeviceClass.VideoCapture)`，**不打开摄像头**；
+  「刷新设备」只重新枚举；`PickPreferredCamera` 优先内置摄像头（名字含 HD User Facing / Integrated / 品牌内置），
+  尽量避开 DroidCam / OBS 等虚拟摄像头；
+- **中性位**：「校准中性位」把当前有脸位置写 `MocapNeutralFaceX/Y`（clamp 0.05~0.95），改配置会**重建数据源**
+  （已在跑就重启一次摄像头）。
+
+### 10.4 与鼠标眼控 / 自动眨眼的关系（优先级）
+
+- 有脸（且未过期）→ **动捕接管**：写 `ParamAngleX/Y/Z` + `AngleX/Y/Z`、`ParamEyeBallX/Y`、
+  `ParamEyeLOpen/ROpen`、`ParamMouthOpenY`，并写 `ParamBodyAngleX` + `PositionX`（Yaw×0.35，身体温和跟随）；
+  **鼠标眼控整段跳过**，自动眨眼在动捕接管眨眼时关闭（避免两边抢同一批参数）；
+- 没脸 / 帧过期 → 回落到原来的**鼠标眼控 + 自动眨眼**（角度平滑回正）。
+
+### 10.5 隐私 / 权限（硬性）
+
+- `MocapEnabled` 默认 **false**；**没有打开开关就永远不会请求摄像头**；
+- `MocapCameraSource` 构造函数不碰摄像头；只有 `StartAsync` 才 `MediaCapture.InitializeAsync`；
+- 画面只在内存里处理，**不录像、不存图、不上传**；预览只在测试页窗口显示（桌宠开动捕时不显示预览）；
+- 页面切走 / 桌宠隐藏 / 关开关 / 程序退出 → 会话 Stop 并释放设备；
+- 权限被拒 / 设备被占用时 `StartAsync` 返回 false，`LastError` 是中文原因（显示在卡片上，不静默）；
+- **自检绝不启动摄像头**：只测 `MocapMath` / `FaceExpressionAnalyzer`（合成 BGRA 图）/ `MocapSettings` /
+  `EnumerateCamerasAsync`（仅枚举）/ 假 `IMocapProvider` 驱动的 ModelRuntime 集成。
+
+### 10.6 TFM / 发布注意
+
+工具工程 TFM 从 `net9.0-windows` 升到 **`net9.0-windows10.0.19041.0`**（WinRT / MediaCapture / FaceAnalysis
+需要 Windows SDK 投影；.NET 9 的 `net9.0-windows10.x` 会自动引 WindowsSDK 包，**不需要额外 NuGet**）。
+主程序与自检工程本来就是 19041 TFM，引用没问题；发布产物里 `Microsoft.Windows.SDK.NET.dll` 会跟着出现（正常）。
+
+## 11. 身体晃动测试（BodySwayController）
+
+> 这是「看物理链」的测试功能：按正弦规律写身体主轴 / 物理输入 / 头部补偿 / 腰腿参数，让 physics3 的钟摆物理
+> 把头发 / 裙子 / 尾巴带着甩。**不是动作捕捉**，也不改 moc / 物理配置。
+
+### 11.1 参数分工（本模型实测，换模型要重新核对）
+
+| 参数 | 作用 |
+| --- | --- |
+| `ParamBodyAngleX/Y/Z` | 身体主轴角度，直接驱动身体变形；同时是物理输入 |
+| `PositionX/Y/Z` | 物理输入（Setting 4 / 14 / 9 等 → `ParamBodyAngle*`），带动下游肩 / 胸 / 胯 / 手臂 / 袖 / 飘带 / 裙 / 尾巴等 |
+| `AngleX/Y/Z` | 头部角度控制器（Setting 1~3 → `ParamAngle*`） |
+| `ParamAngleX/Y/Z` | 头部最终角度（直接驱动头部变形） |
+| `HipAngleX/Y/Z`、`ParamHipAngleZ`、`LEGAngleZ2` | 腰 / 腿（勾「连腰部 / 腿部一起晃」才写） |
+
+内置模型里 **28 组物理设置**的输入含 `ParamBodyAngleX/Z`，输出有 `ShoulderZ`、`HipAngle*` / `HipZ*`、
+`ChestX*`、`SkirtX*`、`LArm/RArm`、`LSleeve*/RSleeve*`、`LRibbon*/RRibbon*`、`Lace*`、
+`Param_Angle_Rotation84~89`（尾巴的 [0]~[5] 段）等；`ParamAngleX` 还会经 Setting 50 / 54 / 59 带动
+`FrontHairX1~4` / `SideHairX1~4` / `LateHairX1~5`（头发）。这就是「身体一晃、头发和裙子慢半拍地甩」的来源。
+
+### 11.2 模式公式（A = 幅度度、angle = 2π·time·SpeedHz）
+
+| 模式 | 公式 | 备注 |
+| --- | --- | --- |
+| 左右摇 `ModeLeftRight` | X = A·sin(angle)；Z = A·0.15·sin(angle+90°) | 附带少量侧倾，最常用；默认模式 |
+| 前后摇 `ModeForwardBack` | Y = A·sin(angle) | |
+| 扭腰 `ModeTwist` | Z = A·sin(angle)；X = A·0.12·sin(angle+90°) | 扭腰 + 少量左右 |
+| 椭圆 `ModeEllipse` | X = A·sin(angle)；Z = A·0.6·cos(angle) | **X/Z 相位差 90°**（自检验这个） |
+| 自然晃 `ModeNatural` | X = A·0.65·sin(angle) + A·0.25·sin(0.37·angle+0.7)；Y = A·0.18·sin(0.23·angle+1.3)；Z = A·0.14·sin(0.61·angle+2.1) | 多频叠加，最像真人 |
+
+- **头部反向补偿**：`headX/Y/Z = -bodyX/Y/Z × HeadFollow × 0.9`（`HeadCounterWeight`），
+  `|补偿| < 0.05°` 时不写（`HeadCounterDeadZone`，避免把鼠标 / 动捕的头部跟随压成 0）；
+- **腰腿**：`HipX/Y = bodyX/Y × 0.55`、`HipZ = -bodyZ × 0.55`、`LEGAngleZ2 = HipZ × 0.6`；
+- `Phase = frac(time × SpeedHz)`（UI 曲线 / 进度用）；`LastApplied` 记录本帧实际写了哪些参数
+  （UI 显示 + 自检断言，0 分配复用列表）；`ManagedParameterIds` 是 17 个可能写到的参数 Id。
+
+### 11.3 ModelRuntime 集成
+
+- 属性：`SwayEnabled / SwayMode / SwayAmplitudeDegrees / SwaySpeedHz / SwayHeadFollow / SwayIncludeHips`；
+  `BodySway`（别名 `Sway`）暴露控制器；`StartSwayDemo(seconds)` / `StopSwayDemo()` /
+  `SwayDemoRemainingSeconds` 是「摇一摇」限时演示（不影响 `SwayEnabled`，到点自动停）；
+- Tick 里在**动捕之后、待机动作 / 动作之前**执行：`SwayEnabled || demoRemaining > 0` 才 `Apply`，
+  否则 `BodySway.ClearApplied()`（UI 显示「没有在晃」）；运行时属性每帧同步给控制器；
+- **和动捕同时开启的优先级**：`UpdateBodySway(deltaSeconds, mocapActive)` 在动捕有脸时把
+  `sway.HeadFollow` 临时置 0 —— 晃动仍写 `ParamBodyAngle*` / `Position*` / 腰部 / 物理输入，
+  但**不写** `ParamAngle*` / `Angle*`（头部反向补偿），头部保持动捕驱动；没脸时按配置正常做头部补偿。
+  改这个优先级要同步改 UI 文案和自检；
+- 受管参数：`BodySwayController.ManagedParameterIds` 在加载时并入受管参数表，所以关闭晃动后这些参数会被
+  恢复默认、不残留（注意别在其他地方绕过受管参数表写这些参数）；
+- `ResetParameters()` 会 Reset 控制器并清掉「摇一摇」倒计时。
+
+### 11.4 UI / 曲线 / 调试钩子
+
+- 晃动卡：模式下拉 / 幅度 0~30° / 速度 0.1~2Hz / 头部补偿 0~1 / 连腰腿 checkbox /
+  「摇一摇（3 秒）」/「停」/ 倒计时文本；
+- 右侧 Canvas 画最近 5 秒四条线（同一 ±30° 尺度）：`ParamBodyAngleX`（蓝）、`AngleX`（绿）、
+  `ParamAngleX`（红，反向补偿后）、`FrontHairX1`（灰，物理输出，能看出慢半拍）；参数值每 100ms 刷新；
+- `YLT_LIVE2D_SWAY_DEMO=1`：打开页面自动设「左右摇 15° / 0.5Hz」并演示 10 秒（截图验收中间帧用）。
+
+## 12. 坑（踩过的都记在这里）
 
 1. **moc 缓冲区必须 64 字节对齐且终身不动**：`csmReviveMocInPlace` 之后 Core 内部一直引用它；
    用 `File.ReadAllBytes` 后直接 `GCHandle` 钉住是错的（可能被 GC 移动 + 对齐不保证）。
@@ -307,8 +465,29 @@ Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实
     用「差值超过阈值才赋值」的写法会永远不赋值 → Image 被布局撑满、位图被 `Stretch=Fill` 拉宽
     （表现为模型「又胖又糊」，1600 窗口下比例 1.49 而正确是 0.487）。写这类判重逻辑要显式
     `double.IsNaN(old)`；`Stretch` 用 `Uniform` 兜底。
+22. **动捕不引第三方包 → FaceDetector 只给「人脸框」**：眨眼 / 张嘴只能靠框内像素启发式
+    （眼带灰度标准差、嘴部暗像素比例），换肤色 / 口红 / 胡子 / 光线都要靠自动校准 + 强度滑杆兜；
+    别把它当通用人脸关键点方案。
+23. **摄像头默认关 + 自检绝不 `StartAsync`**：启动摄像头会弹系统权限、占用用户设备；
+    自检只允许 `EnumerateCamerasAsync`（只枚举）、合成图喂 `FaceExpressionAnalyzer`、假 `IMocapProvider`。
+    新增断言别为了「测全」去真开相机。
+24. **WinRT 需要 TFM `net9.0-windows10.0.19041.0`**：工具工程原来 `net9.0-windows` 编译不了
+    MediaCapture / FaceAnalysis；升 TFM 会自动带 WindowsSDK 投影（不是 NuGet 第三方包），
+    发布产物里会多 `Microsoft.Windows.SDK.NET.dll`，属正常。
+25. **MediaCapture 初始化失败很常见**：被微信 / QQ / 钉钉 / 直播 / 浏览器视频会议占用，或 Windows 隐私设置
+    拒绝桌面应用访问摄像头 → `StartAsync` 返回 false。UI 必须把 `LastError` 展示出来（不要静默），
+    并提示「关掉占用程序 / 检查隐私设置」；DroidCam / OBS 虚拟摄像头要引导用户手选内置设备。
+26. **动捕和鼠标眼控别同时写同批参数**：有脸时只用动捕、并把鼠标眼控整段跳过；没脸 / 600ms 过期才回落。
+    两边都写会互相覆盖、角度抖动。
+27. **自动校准依赖用户动作**：眨眼 / 张嘴要用户正常动几次（滚动 180 帧、<24 帧给安全默认），
+    `ResetCalibration` 后短暂回中性值；UI 要提示「重新校准后请正常眨眼 / 张嘴」。
+28. **BodySway 头部补偿有死区**：`|补偿| < 0.05°` 时不写头，避免把鼠标 / 动捕 / 待机的头部跟随压成 0；
+    改 `HeadCounterWeight` / 死区时要同时跑自检的「HeadFollow=0 不写头」断言。
+29. **`YLT_LIVE2D_SWAY_DEMO` / `YLT_LIVE2D_MOCAP_SELFTEST` 是开发验收钩子**：前者自动晃动 10 秒用于截图
+    中间帧；后者会**真开摄像头**跑 6 秒并写 `Data\live2d\mocap-selftest.log`（只有数字和设备名，无画面），
+    日常自检 / 发布验证都不许用它替代人工授权。
 
-## 11. 调试钩子（环境变量，开发 / 截图验收用）
+## 13. 调试钩子（环境变量，开发 / 截图验收用）
 
 | 变量 | 作用 |
 | --- | --- |
@@ -318,4 +497,6 @@ Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实
 | `YLT_LIVE2D_SHOT_PET=<png>` | 桌宠截图：显示桌宠窗口、渲染出画面后存 PNG 并退出（透明底会垫深色便于看轮廓） |
 | `YLT_LIVE2D_PET_SELFTEST=1`（+ `_EXIT=1`） | 桌宠交互自测：拖动写回配置 / 点击穿透样式位 / 全局眼控参数变化写 `Data\live2d\pet-selftest.log` |
 | `YLT_LIVE2D_PREVIEW_DEBUG=1` | 预览布局排查：前 5 帧的 host / image / bitmap 尺寸写 `%TEMP%\live2d-preview-debug.log`（查拉伸 / 模糊） |
+| `YLT_LIVE2D_SWAY_DEMO=1` | 身体晃动演示：打开页面自动设「左右摇 15° / 0.5Hz」并演示 10 秒（截图抓中间帧用，不写入配置给用户） |
+| `YLT_LIVE2D_MOCAP_SELFTEST=1`（+ `_EXIT=1`） | 动捕链路自测（**会真开摄像头** 6 秒）：枚举 / 启动 / FPS / 帧尺寸 / 处理耗时 / 有脸次数写 `Data\live2d\mocap-selftest.log`（只有数字与设备名，无画面）；加 `_EXIT=1` 写完退出，给自动验收用 |
 | `YLT_SELFCHECK_TRACE=1` | 自检排错：打印「进入 / 完成哪个分组」（查「全 PASS 但进程不退出」卡在哪一步） |

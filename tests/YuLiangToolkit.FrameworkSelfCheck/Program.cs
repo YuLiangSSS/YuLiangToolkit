@@ -992,7 +992,7 @@ Console.WriteLine($"{summary} · 数据根：{AppPaths.Root}");
 // 收尾：直接 TerminateProcess 带退出码终止进程。
 // 原因：自检有多个分组会在各自的 STA 线程上创建 WPF 位图 / 视觉对象（图片、PDF、主题、Live2D 渲染…），
 // 全量跑时 WPF 的合成线程会在进程收尾阶段一直空转，`return 退出码` 和 `Environment.Exit` 都会卡在
-// CLR/WPF 的退出清理里 → 表现为「3033 项全部 PASS 但进程十来分钟不退出」，check.ps1 因此永远等不到
+// CLR/WPF 的退出清理里 → 表现为「自检全部 PASS 但进程十来分钟不退出」，check.ps1 因此永远等不到
 // 退出码（历史坑）。这里是测试程序，输出已经 Flush、各检查要写的文件也已落盘，直接带码终止最稳。
 Console.Out.Flush();
 if (!OperatingSystem.IsWindows()) Environment.Exit(failed == 0 ? 0 : 1);

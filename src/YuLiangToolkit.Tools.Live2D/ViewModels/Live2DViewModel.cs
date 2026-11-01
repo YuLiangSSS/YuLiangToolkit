@@ -2,9 +2,11 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using Microsoft.Win32;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Tools.Live2D.Interop;
+using YuLiangToolkit.Tools.Live2D.Mocap;
 using YuLiangToolkit.Tools.Live2D.Model;
 using YuLiangToolkit.Tools.Live2D.Rendering;
 
@@ -46,10 +48,27 @@ public sealed class Live2DViewModel : ToolViewModelBase
     private string _eyeTargetText = "眼控：—";
     private OptionItem<string>? _selectedIdleMotion;
 
+    // ===== 摄像头面部动捕 =====
+    private OptionItem<string>? _selectedMocapCamera;
+    private bool _isCameraEnumerating;
+    private string _cameraListSummary = "还没枚举摄像头（打开页面后自动枚举）";
+    private string _mocapStatusText = "动捕未启用（打开开关后才会激活摄像头）";
+    private string _mocapErrorText = "";
+    private bool _isMocapRunning;
+    private DispatcherTimer? _mocapApplyTimer;
+
+    // ===== 身体晃动测试 =====
+    private OptionItem<string>? _selectedSwayMode;
+    private string _swayValuesText = "（模型加载后这里显示参数实时值）";
+    private string _swayDemoRemainingText = "没在演示（点「摇一摇」演示 3 秒）";
+
     public Live2DViewModel() : base(Live2DTool.ToolId)
     {
         Cfg = LoadConfig<Live2DConfig>();
         Cfg.PropertyChanged += OnConfigChanged;
+        _selectedSwayMode = SwayModeOptions.FirstOrDefault(option =>
+                                string.Equals(option.Value, Cfg.BodySwayMode, StringComparison.Ordinal))
+                            ?? SwayModeOptions[0];
 
         ReloadModelCommand = new RelayCommand(_ => Session.ReloadModel());
         ChooseModelFolderCommand = new RelayCommand(_ => ChooseModelFolder());
@@ -68,9 +87,15 @@ public sealed class Live2DViewModel : ToolViewModelBase
         OpenScreenshotFolderCommand = new RelayCommand(_ => OpenScreenshotFolder());
         ClearLogCommand = new RelayCommand(_ => ClearLog());
         ClearSelectedDrawableCommand = new RelayCommand(_ => SetPickedDrawable(-1, "", ""));
+        RefreshCamerasCommand = new AsyncRelayCommand(_ => EnsureCamerasLoadedAsync(force: true));
+        ResetMocapCalibrationCommand = new RelayCommand(_ => Session.ResetMocapCalibration());
+        CalibrateMocapNeutralCommand = new RelayCommand(_ => Session.CalibrateMocapNeutralPosition());
+        ShakeSwayCommand = new RelayCommand(_ => ShakeSway());
+        StopSwayCommand = new RelayCommand(_ => StopSway());
 
         Session.PetVisibilityChanged += OnPetVisibilityChanged;
         Session.StateChanged += OnSessionStateChanged;
+        Session.MocapStateChanged += OnMocapStateChanged;
     }
 
     // ===================== 基础设施 =====================
@@ -631,6 +656,505 @@ public sealed class Live2DViewModel : ToolViewModelBase
         }
     }
 
+    // ===================== 摄像头面部动捕 =====================
+
+    /// <summary>摄像头设备选项（值是设备 Id，标签是设备名）。</summary>
+    public ObservableCollection<OptionItem<string>> MocapCameraOptions { get; } = new();
+
+    /// <summary>当前选中的摄像头。</summary>
+    public OptionItem<string>? SelectedMocapCamera
+    {
+        get => _selectedMocapCamera;
+        set
+        {
+            if (!Set(ref _selectedMocapCamera, value) || value is null) return;
+            Cfg.MocapCameraId = value.Value;
+            Cfg.MocapCameraName = value.Label;
+            OnPropertyChanged();
+            Log("动捕摄像头：" + value.Label);
+            Session.ApplyMocapSettings();
+        }
+    }
+
+    /// <summary>动捕帧率选项。</summary>
+    public IReadOnlyList<OptionItem<int>> MocapFpsOptions { get; } = OptionItem.From(
+        (10, "10 fps（省 CPU）"),
+        (15, "15 fps（推荐）"),
+        (24, "24 fps（更顺）"));
+
+    /// <summary>是否正在枚举摄像头。</summary>
+    public bool IsCameraEnumerating
+    {
+        get => _isCameraEnumerating;
+        private set => Set(ref _isCameraEnumerating, value);
+    }
+
+    /// <summary>摄像头列表摘要（枚举结果 / 失败原因）。</summary>
+    public string CameraListSummary
+    {
+        get => _cameraListSummary;
+        private set => Set(ref _cameraListSummary, value);
+    }
+
+    /// <summary>动捕状态行（实测 FPS / 有脸 / 运行时状态都会拼进来）。</summary>
+    public string MocapStatusText
+    {
+        get => _mocapStatusText;
+        private set => Set(ref _mocapStatusText, value);
+    }
+
+    /// <summary>动捕错误文本（空 = 没错误）。</summary>
+    public string MocapErrorText
+    {
+        get => _mocapErrorText;
+        private set
+        {
+            if (!Set(ref _mocapErrorText, value)) return;
+            OnPropertyChanged(nameof(HasMocapError));
+        }
+    }
+
+    /// <summary>是否有动捕错误（控制错误提示行显隐）。</summary>
+    public bool HasMocapError => !string.IsNullOrWhiteSpace(MocapErrorText);
+
+    /// <summary>摄像头是否正在采集。</summary>
+    public bool IsMocapRunning
+    {
+        get => _isMocapRunning;
+        private set
+        {
+            if (Set(ref _isMocapRunning, value)) OnPropertyChanged(nameof(MocapToggleText));
+        }
+    }
+
+    /// <summary>动捕开关旁边的一行小状态。</summary>
+    public string MocapToggleText => Cfg.MocapEnabled
+        ? (IsMocapRunning ? "动捕运行中" : "动捕已开启（等待摄像头启动）")
+        : "动捕未启用";
+
+    /// <summary>启用摄像头动捕（打开后才请求摄像头权限）。</summary>
+    public bool MocapEnabled
+    {
+        get => Cfg.MocapEnabled;
+        set
+        {
+            if (Cfg.MocapEnabled == value) return;
+            Cfg.MocapEnabled = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(MocapToggleText));
+            Session.ApplyRuntimeSettings();
+            Session.ApplyMocapSettings();
+            StatusText = value ? "正在启动摄像头动捕…" : "已关闭摄像头动捕";
+            Log(value ? "动捕：已开启（会请求摄像头权限）" : "动捕：已关闭（摄像头已释放）");
+        }
+    }
+
+    /// <summary>动捕画面是否镜像（前置摄像头默认开）。</summary>
+    public bool MocapMirror
+    {
+        get => Cfg.MocapMirror;
+        set
+        {
+            if (Cfg.MocapMirror == value) return;
+            Cfg.MocapMirror = value;
+            OnPropertyChanged();
+            Session.ApplyMocapSettings();   // 镜像属于采集参数 → 数据源重建
+        }
+    }
+
+    /// <summary>动捕是否驱动头部转动。</summary>
+    public bool MocapHeadEnabled
+    {
+        get => Cfg.MocapHeadEnabled;
+        set
+        {
+            if (Cfg.MocapHeadEnabled == value) return;
+            Cfg.MocapHeadEnabled = value;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>动捕是否驱动眨眼。</summary>
+    public bool MocapBlinkEnabled
+    {
+        get => Cfg.MocapBlinkEnabled;
+        set
+        {
+            if (Cfg.MocapBlinkEnabled == value) return;
+            Cfg.MocapBlinkEnabled = value;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>动捕是否驱动张嘴。</summary>
+    public bool MocapMouthEnabled
+    {
+        get => Cfg.MocapMouthEnabled;
+        set
+        {
+            if (Cfg.MocapMouthEnabled == value) return;
+            Cfg.MocapMouthEnabled = value;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>头部转动幅度倍率。</summary>
+    public double MocapHeadStrength
+    {
+        get => Math.Clamp(Cfg.MocapHeadStrength, 0, 1.5);
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 1.5);
+            if (Math.Abs(Cfg.MocapHeadStrength - clamped) < 0.001) return;
+            Cfg.MocapHeadStrength = clamped;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>眼球跟随幅度倍率。</summary>
+    public double MocapEyeStrength
+    {
+        get => Math.Clamp(Cfg.MocapEyeStrength, 0, 1.5);
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 1.5);
+            if (Math.Abs(Cfg.MocapEyeStrength - clamped) < 0.001) return;
+            Cfg.MocapEyeStrength = clamped;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>张嘴开合幅度倍率。</summary>
+    public double MocapMouthStrength
+    {
+        get => Math.Clamp(Cfg.MocapMouthStrength, 0, 1.5);
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 1.5);
+            if (Math.Abs(Cfg.MocapMouthStrength - clamped) < 0.001) return;
+            Cfg.MocapMouthStrength = clamped;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>跟随平滑（0 ~ 0.9；拖动时防抖 0.5 秒再重建数据源）。</summary>
+    public double MocapSmoothing
+    {
+        get => Math.Clamp(Cfg.MocapSmoothing, 0, 0.9);
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 0.9);
+            if (Math.Abs(Cfg.MocapSmoothing - clamped) < 0.001) return;
+            Cfg.MocapSmoothing = clamped;
+            OnPropertyChanged();
+            ScheduleMocapApply();
+        }
+    }
+
+    /// <summary>动捕目标帧率（10 / 15 / 24）。</summary>
+    public int MocapFps
+    {
+        get => Math.Clamp(Cfg.MocapFps, 10, 24);
+        set
+        {
+            var clamped = Math.Clamp(value, 10, 24);
+            if (Cfg.MocapFps == clamped) return;
+            Cfg.MocapFps = clamped;
+            OnPropertyChanged();
+            Session.ApplyMocapSettings();
+        }
+    }
+
+    /// <summary>是否生成摄像头预览帧（测试页小窗；关掉更省 CPU）。</summary>
+    public bool MocapShowPreview
+    {
+        get => Cfg.MocapShowPreview;
+        set
+        {
+            if (Cfg.MocapShowPreview == value) return;
+            Cfg.MocapShowPreview = value;
+            OnPropertyChanged();
+            Log(value ? "动捕：已开启摄像头预览" : "动捕：已关闭摄像头预览（省 CPU）");
+            Session.ApplyMocapSettings();
+        }
+    }
+
+    /// <summary>页面 100ms 定时器调用：刷新动捕状态行 / 错误提示（不碰摄像头本身）。</summary>
+    public void UpdateMocapStatus(double fps, bool running, bool hasFace, string? error)
+    {
+        IsMocapRunning = running;
+        var errorText = error ?? "";
+        if (!string.Equals(MocapErrorText, errorText, StringComparison.Ordinal)) MocapErrorText = errorText;
+
+        if (!Cfg.MocapEnabled)
+        {
+            MocapStatusText = "动捕未启用（打开上面的开关后才会请求摄像头权限）";
+        }
+        else if (!running)
+        {
+            MocapStatusText = HasMocapError
+                ? "摄像头未运行：" + MocapErrorText
+                : "正在启动摄像头…（首次使用 Windows 会弹权限提示）";
+        }
+        else
+        {
+            var runtimeStatus = "";
+            try { runtimeStatus = Runtime?.MocapStatusText ?? ""; } catch { /* 运行时没准备好 */ }
+            var fpsText = fps > 0 ? $"{fps:0.0} fps" : "等待首帧";
+            var faceText = hasFace ? "检测到人脸" : "未检测到人脸";
+            MocapStatusText = $"运行中 · {fpsText} · {faceText}" +
+                              (runtimeStatus.Length > 0 ? " · " + runtimeStatus : "");
+        }
+
+        OnPropertyChanged(nameof(MocapToggleText));
+    }
+
+    /// <summary>枚举摄像头（页面打开 / 点「刷新设备」时调用；只枚举、不打开摄像头）。</summary>
+    public async Task EnsureCamerasLoadedAsync(bool force = false)
+    {
+        if (IsCameraEnumerating) return;
+        if (!force && MocapCameraOptions.Count > 0) return;
+
+        IsCameraEnumerating = true;
+        try
+        {
+            var cameras = await MocapCameraSource.EnumerateCamerasAsync();
+            MocapCameraOptions.Clear();
+            foreach (var camera in cameras)
+            {
+                MocapCameraOptions.Add(new OptionItem<string>(camera.Id, camera.Name));
+            }
+
+            var preferred = cameras.FirstOrDefault(camera =>
+                                string.Equals(camera.Id, Cfg.MocapCameraId, StringComparison.Ordinal))
+                            ?? cameras.FirstOrDefault(camera =>
+                                string.Equals(camera.Name, Cfg.MocapCameraName, StringComparison.OrdinalIgnoreCase))
+                            ?? PickPreferredCamera(cameras);
+            _selectedMocapCamera = preferred is null
+                ? null
+                : MocapCameraOptions.FirstOrDefault(option => option.Value == preferred.Id);
+            OnPropertyChanged(nameof(SelectedMocapCamera));
+
+            CameraListSummary = cameras.Count == 0
+                ? "没有找到摄像头：检查设备管理器 / Windows「隐私和安全性 → 摄像头」是否允许桌面应用访问"
+                : $"找到 {cameras.Count} 个摄像头：{string.Join("、", cameras.Select(camera => camera.Name))}";
+            Log(CameraListSummary);
+        }
+        catch (Exception ex)
+        {
+            CameraListSummary = "枚举摄像头失败：" + ex.Message;
+            Log(CameraListSummary);
+        }
+        finally
+        {
+            IsCameraEnumerating = false;
+        }
+    }
+
+    /// <summary>
+    /// 挑默认摄像头：优先内置摄像头（名字里带 "HD User Facing" 这类），
+    /// 尽量避开 DroidCam / OBS / ManyCam 这些手机或虚拟摄像头（通常不是用户想要的）。
+    /// </summary>
+    public static MocapCameraInfo? PickPreferredCamera(IReadOnlyList<MocapCameraInfo> cameras)
+    {
+        if (cameras.Count == 0) return null;
+
+        var preferred = cameras.FirstOrDefault(camera =>
+            camera.Name.Contains("HD User Facing", StringComparison.OrdinalIgnoreCase));
+        preferred ??= cameras.FirstOrDefault(camera =>
+            camera.Name.Contains("Integrated", StringComparison.OrdinalIgnoreCase)
+            || camera.Name.Contains("内置", StringComparison.Ordinal)
+            || camera.Name.Contains("Face", StringComparison.OrdinalIgnoreCase));
+        preferred ??= cameras.FirstOrDefault(camera => !IsVirtualCameraName(camera.Name));
+        return preferred ?? cameras[0];
+    }
+
+    private static bool IsVirtualCameraName(string name)
+        => name.Contains("DroidCam", StringComparison.OrdinalIgnoreCase)
+           || name.Contains("Virtual", StringComparison.OrdinalIgnoreCase)
+           || name.Contains("OBS", StringComparison.OrdinalIgnoreCase)
+           || name.Contains("ManyCam", StringComparison.OrdinalIgnoreCase)
+           || name.Contains("Iriun", StringComparison.OrdinalIgnoreCase)
+           || name.Contains("Phone", StringComparison.OrdinalIgnoreCase)
+           || name.Contains("手机", StringComparison.Ordinal);
+
+    /// <summary>平滑滑杆拖动时防抖（0.5 秒）再让会话重建数据源，避免每动一下就重启摄像头。</summary>
+    private void ScheduleMocapApply()
+    {
+        if (_mocapApplyTimer is null)
+        {
+            _mocapApplyTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(500),
+            };
+            _mocapApplyTimer.Tick += OnMocapApplyTimerTick;
+        }
+
+        _mocapApplyTimer.Stop();
+        _mocapApplyTimer.Start();
+    }
+
+    private void OnMocapApplyTimerTick(object? sender, EventArgs e)
+    {
+        _mocapApplyTimer?.Stop();
+        Session.ApplyMocapSettings();
+    }
+
+    private void OnMocapStateChanged(object? sender, EventArgs e) => Ui(() =>
+    {
+        OnPropertyChanged(nameof(IsMocapRunning));
+        OnPropertyChanged(nameof(MocapToggleText));
+    });
+
+    // ===================== 身体晃动测试 =====================
+
+    /// <summary>晃动模式选项（配置里存中文名字符串，运行时按它选正弦组合）。</summary>
+    public IReadOnlyList<OptionItem<string>> SwayModeOptions { get; } = OptionItem.From(
+        ("左右摇", "左右摇（侧面看最明显）"),
+        ("前后摇", "前后摇（前后点头感）"),
+        ("扭腰", "扭腰（腰胯一起扭）"),
+        ("椭圆", "椭圆（X/Z 相位差 90°）"),
+        ("自然晃", "自然晃（多频叠加）"));
+
+    /// <summary>当前晃动模式。</summary>
+    public OptionItem<string>? SelectedSwayMode
+    {
+        get => _selectedSwayMode;
+        set
+        {
+            if (!Set(ref _selectedSwayMode, value) || value is null) return;
+            Cfg.BodySwayMode = value.Value;
+            Session.ApplyRuntimeSettings();
+            Log("身体晃动模式：" + value.Label);
+        }
+    }
+
+    /// <summary>是否开启身体晃动测试（关掉后模型回静止）。</summary>
+    public bool BodySwayEnabled
+    {
+        get => Cfg.BodySwayEnabled;
+        set
+        {
+            if (Cfg.BodySwayEnabled == value) return;
+            Cfg.BodySwayEnabled = value;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+            StatusText = value ? "身体晃动已开启：模型会持续按设定模式摆动" : "身体晃动已关闭";
+        }
+    }
+
+    /// <summary>晃动幅度（度）。</summary>
+    public double BodySwayAmplitude
+    {
+        get => Math.Clamp(Cfg.BodySwayAmplitude, 0, 30);
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 30);
+            if (Math.Abs(Cfg.BodySwayAmplitude - clamped) < 0.001) return;
+            Cfg.BodySwayAmplitude = clamped;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>晃动速度（Hz）。</summary>
+    public double BodySwaySpeed
+    {
+        get => Math.Clamp(Cfg.BodySwaySpeed, 0.1, 2);
+        set
+        {
+            var clamped = Math.Clamp(value, 0.1, 2);
+            if (Math.Abs(Cfg.BodySwaySpeed - clamped) < 0.001) return;
+            Cfg.BodySwaySpeed = clamped;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>头部补偿（0 = 完全跟着晃，1 = 尽量保持朝前）。</summary>
+    public double BodySwayHeadFollow
+    {
+        get => Math.Clamp(Cfg.BodySwayHeadFollow, 0, 1);
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 1);
+            if (Math.Abs(Cfg.BodySwayHeadFollow - clamped) < 0.001) return;
+            Cfg.BodySwayHeadFollow = clamped;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>是否连腰部 / 腿部参数一起晃。</summary>
+    public bool BodySwayIncludeHips
+    {
+        get => Cfg.BodySwayIncludeHips;
+        set
+        {
+            if (Cfg.BodySwayIncludeHips == value) return;
+            Cfg.BodySwayIncludeHips = value;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>关键参数实时值文本（100ms 刷新；看「身体晃 → AngleX → FrontHairX1」链条）。</summary>
+    public string SwayValuesText
+    {
+        get => _swayValuesText;
+        private set => Set(ref _swayValuesText, value);
+    }
+
+    /// <summary>「摇一摇」剩余时间文本。</summary>
+    public string SwayDemoRemainingText
+    {
+        get => _swayDemoRemainingText;
+        private set => Set(ref _swayDemoRemainingText, value);
+    }
+
+    /// <summary>页面 100ms 定时器调用：刷新晃动的实时值文本与「摇一摇」剩余时间。</summary>
+    public void UpdateSwayDisplay(string valuesText, double demoRemainingSeconds)
+    {
+        if (!string.Equals(SwayValuesText, valuesText, StringComparison.Ordinal)) SwayValuesText = valuesText;
+        SwayDemoRemainingText = demoRemainingSeconds > 0.05
+            ? $"摇一摇演示中… 剩余 {demoRemainingSeconds:0.0} 秒"
+            : "没在演示（点「摇一摇」演示 3 秒）";
+    }
+
+    /// <summary>摇一摇：打开晃动并让运行时演示 3 秒（不改幅度 / 速度，方便反复试）。</summary>
+    public void ShakeSway()
+    {
+        if (!Cfg.BodySwayEnabled)
+        {
+            Cfg.BodySwayEnabled = true;
+            OnPropertyChanged(nameof(BodySwayEnabled));
+            Session.ApplyRuntimeSettings();
+        }
+
+        Session.StartSwayDemo(3.0);
+        StatusText = "摇一摇：3 秒演示中";
+    }
+
+    /// <summary>停：停掉演示并关闭身体晃动。</summary>
+    public void StopSway()
+    {
+        Session.StopSwayDemo();
+        if (!Cfg.BodySwayEnabled) return;
+        Cfg.BodySwayEnabled = false;
+        OnPropertyChanged(nameof(BodySwayEnabled));
+        Session.ApplyRuntimeSettings();
+        StatusText = "已停止身体晃动";
+    }
+
+    /// <summary>外部直接改 Cfg（截图演示钩子 / 校准写入）后把界面全部重绑一遍。</summary>
+    public void RefreshAllBindings() => OnPropertyChanged(string.Empty);
+
     // ===================== 截图 / 日志 =====================
 
     /// <summary>最近一次截图结果文本。</summary>
@@ -659,6 +1183,11 @@ public sealed class Live2DViewModel : ToolViewModelBase
     public RelayCommand OpenScreenshotFolderCommand { get; }
     public RelayCommand ClearLogCommand { get; }
     public RelayCommand ClearSelectedDrawableCommand { get; }
+    public AsyncRelayCommand RefreshCamerasCommand { get; }
+    public RelayCommand ResetMocapCalibrationCommand { get; }
+    public RelayCommand CalibrateMocapNeutralCommand { get; }
+    public RelayCommand ShakeSwayCommand { get; }
+    public RelayCommand StopSwayCommand { get; }
 
     // ===================== 加载状态回调（由 Live2DSession 调用） =====================
 
@@ -1206,7 +1735,11 @@ public sealed class Live2DViewModel : ToolViewModelBase
     {
         // 配置文件被「重建配置」原地改回默认值时会发一次空属性名：把界面和运行时设置都重新套一遍
         if (!string.IsNullOrEmpty(e.PropertyName)) return;
+        _selectedSwayMode = SwayModeOptions.FirstOrDefault(option =>
+                                string.Equals(option.Value, Cfg.BodySwayMode, StringComparison.Ordinal))
+                            ?? _selectedSwayMode;
         Session.ApplyRuntimeSettings();
+        Session.ApplyMocapSettings();
         OnPropertyChanged(string.Empty);
     }
 

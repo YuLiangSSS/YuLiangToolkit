@@ -1,20 +1,22 @@
 using System.Diagnostics;
 using YuLiangToolkit.Tools.Live2D.Interop;
+using YuLiangToolkit.Tools.Live2D.Mocap;
 using YuLiangToolkit.Tools.Live2D.Rendering;
 
 namespace YuLiangToolkit.Tools.Live2D.Model;
 
 /// <summary>
-/// 模型运行时（工具页与桌宠共用）：加载资源 → 每帧 <see cref="Tick"/>（动作 / 表情 / 眼睛跟随 / 物理）
+/// 模型运行时（工具页与桌宠共用）：加载资源 → 每帧 <see cref="Tick"/>（动捕 / 身体晃动 / 动作 / 表情 / 眼睛跟随 / 物理）
 /// → <see cref="RenderFrame"/> 出图。
 ///
 /// <para><b>加载顺序</b>（耗时大头是 5 张纹理）：moc3 → 模型 → cdi3 → 动作 / 表情解析 → 物理 → 纹理 → 渲染器。
 /// 可以在后台线程调用 <see cref="Load"/>，加载完后再在 UI 线程 <see cref="Tick"/> / <see cref="RenderFrame"/>。</para>
 ///
 /// <para><b>每帧顺序</b>（和官方 Cubism 更新管线一致）：
-/// 受管参数恢复默认 → 待机行为（眨眼 / 呼吸）+ 眼睛跟随 → 动作混合 → 表情叠加 → 物理 → Core <c>Update()</c> → 触发 <see cref="FrameUpdated"/>。
-/// 「受管参数」= 会被动作 / 表情 / 物理 / 待机 / 眼睛跟随写到的参数；其余参数（大部分纯调试参数）不会被每帧重置，
-/// 所以工具页手动拖滑块在那些参数上是有效的。</para>
+/// 受管参数恢复默认 → 待机行为（眨眼 / 呼吸）→ 摄像头动捕（有脸时）→ 眼睛跟随鼠标（动捕有脸时跳过）
+/// → 身体晃动测试（<see cref="BodySway"/>）→ 动作混合 → 表情叠加 → 物理 → Core <c>Update()</c> → 触发 <see cref="FrameUpdated"/>。
+/// 「受管参数」= 会被动作 / 表情 / 物理 / 待机 / 眼睛跟随 / 动捕 / 身体晃动写到的参数；
+/// 其余参数（大部分纯调试参数）不会被每帧重置，所以工具页手动拖滑块在那些参数上是有效的。</para>
 ///
 /// <para>加载完成前 <see cref="Model"/> / <see cref="Renderer"/> 会抛 <see cref="InvalidOperationException"/>；先判 <see cref="IsLoaded"/>。</para>
 /// </summary>
@@ -30,6 +32,28 @@ public sealed class ModelRuntime : IDisposable
         "PositionX", "PositionY", "PositionZ",
     };
 
+    /// <summary>摄像头动捕会写的参数（受管参数用；眨眼 / 眼珠另行叠加）。</summary>
+    private static readonly string[] MocapParameterIds =
+    {
+        "ParamAngleX", "ParamAngleY", "ParamAngleZ",
+        "AngleX", "AngleY", "AngleZ",
+        "ParamEyeBallX", "ParamEyeBallY",
+        "ParamEyeLOpen", "ParamEyeROpen",
+        "ParamMouthOpenY",
+        "ParamBodyAngleX", "PositionX",
+    };
+
+    /// <summary>动捕有脸的有效期（毫秒）：超过这个时间没新结果就当没脸，恢复鼠标 / 待机。</summary>
+    private const double MocapFaceTimeoutMs = 600.0;
+
+    /// <summary>动捕时身体跟随头部的温和比例（Yaw × 该比例 → 身体左右）。</summary>
+    private const float MocapBodyFollowRatio = 0.35f;
+
+    /// <summary>动捕状态文案（不变时复用同一个字符串，避免每帧分配）。</summary>
+    private const string MocapStatusNoData = "无数据";
+    private const string MocapStatusTracking = "正在跟踪";
+    private const string MocapStatusNoFace = "未检测到人脸";
+
     private readonly MotionPlayer _motionPlayer = new();
     private readonly ExpressionManager _expressionManager = new();
     private readonly Dictionary<string, Motion3Data> _motionDataByPath = new(StringComparer.OrdinalIgnoreCase);
@@ -43,6 +67,8 @@ public sealed class ModelRuntime : IDisposable
     private CubismPhysicsEvaluator? _physics;
     private IdleBehavior? _idle;
     private EyeTrackingController? _eye;
+    private BodySwayController? _bodySway;
+    private IMocapProvider? _mocap;
     private Live2DModelAsset? _asset;
     private DisplayInfo? _display;
     private MotionEntry[] _motions = Array.Empty<MotionEntry>();
@@ -53,6 +79,29 @@ public sealed class ModelRuntime : IDisposable
     private string[] _lipSyncParameterIds = Array.Empty<string>();
     private int[] _managedParameterIndices = Array.Empty<int>();
     private bool _disposed;
+
+    // 动捕缓存的参数（构造后每帧直接写，不查字典）
+    private CubismParameter? _mocapParamAngleX;
+    private CubismParameter? _mocapParamAngleY;
+    private CubismParameter? _mocapParamAngleZ;
+    private CubismParameter? _mocapAngleX;
+    private CubismParameter? _mocapAngleY;
+    private CubismParameter? _mocapAngleZ;
+    private CubismParameter? _mocapEyeBallX;
+    private CubismParameter? _mocapEyeBallY;
+    private CubismParameter? _mocapEyeLOpen;
+    private CubismParameter? _mocapEyeROpen;
+    private CubismParameter? _mocapMouthOpenY;
+    private CubismParameter? _mocapBodyAngleX;
+    private CubismParameter? _mocapPositionX;
+
+    // 动捕状态（给 UI 显示；状态文案只在变化时换引用，保持 0 分配）
+    private bool _mocapHasFace;
+    private double _mocapLastFaceAgeMs = -1;
+    private int _mocapStatusKind = -1;
+    private string _mocapStatusText = MocapStatusNoData;
+
+    private double _swayDemoRemaining;
 
     private double _time;
     private double _lastTickMilliseconds;
@@ -127,6 +176,91 @@ public sealed class ModelRuntime : IDisposable
 
     /// <summary>默认待机动作（IdleEnabled 时循环播放；null = 不播）。</summary>
     public MotionEntry? IdleMotion { get; set; }
+
+    // ---------- 摄像头面部动捕 ----------
+
+    /// <summary>
+    /// 动捕数据源（摄像头 <see cref="MocapCameraSource"/> 或自检 / 演示用的假数据源）。
+    /// 运行时每帧读一次 <see cref="IMocapProvider.Latest"/>；为 null 时按「无数据」处理。
+    /// </summary>
+    public IMocapProvider? Mocap
+    {
+        get => _mocap;
+        set
+        {
+            _mocap = value;
+            _mocapStatusKind = -1; // 换数据源后强制刷新一次状态文案
+        }
+    }
+
+    /// <summary>是否启用动捕（关掉立即恢复鼠标眼控 / 自动眨眼）。</summary>
+    public bool MocapEnabled { get; set; }
+
+    /// <summary>动捕是否驱动头部转动。</summary>
+    public bool MocapHeadEnabled { get; set; } = true;
+
+    /// <summary>动捕是否驱动眨眼。</summary>
+    public bool MocapBlinkEnabled { get; set; } = true;
+
+    /// <summary>动捕是否驱动张嘴。</summary>
+    public bool MocapMouthEnabled { get; set; } = true;
+
+    /// <summary>头部转动幅度倍率（0 ~ 1.5）。</summary>
+    public double MocapHeadStrength { get; set; } = 1.0;
+
+    /// <summary>眼球跟随幅度倍率（0 ~ 1.5）。</summary>
+    public double MocapEyeStrength { get; set; } = 1.0;
+
+    /// <summary>张嘴开合幅度倍率（0 ~ 1.5）。</summary>
+    public double MocapMouthStrength { get; set; } = 1.0;
+
+    /// <summary>上一帧动捕有没有检测到有效人脸（给 UI 显示）。</summary>
+    public bool MocapHasFace => _mocapHasFace;
+
+    /// <summary>最近一帧动捕结果距今多少毫秒（没有数据为 -1；给 UI 显示延迟）。</summary>
+    public double MocapLastFaceAgeMs => _mocapLastFaceAgeMs;
+
+    /// <summary>动捕状态文案："无数据" / "正在跟踪" / "未检测到人脸"。</summary>
+    public string MocapStatusText => _mocapStatusText;
+
+    // ---------- 身体晃动测试 ----------
+
+    /// <summary>身体晃动控制器（UI 可以读 <see cref="BodySwayController.LastApplied"/> / <see cref="BodySwayController.Phase"/>）。</summary>
+    public BodySwayController? BodySway => _bodySway;
+
+    /// <summary><see cref="BodySway"/> 的别名（UI 代码两种写法都支持）。</summary>
+    public BodySwayController? Sway => _bodySway;
+
+    /// <summary>是否开启身体晃动测试。</summary>
+    public bool SwayEnabled { get; set; }
+
+    /// <summary>晃动模式（<see cref="BodySwayController.Modes"/> 之一）。</summary>
+    public string SwayMode { get; set; } = BodySwayController.ModeLeftRight;
+
+    /// <summary>晃动幅度（度，0 ~ 30）。</summary>
+    public double SwayAmplitudeDegrees { get; set; } = 12.0;
+
+    /// <summary>晃动速度（Hz，0.05 ~ 2）。</summary>
+    public double SwaySpeedHz { get; set; } = 0.5;
+
+    /// <summary>头部反向补偿比例（0 = 头完全不动，1 = 完全反向抵消身体倾斜）。</summary>
+    public double SwayHeadFollow { get; set; } = 0.35;
+
+    /// <summary>是否连腰部 / 腿部一起晃。</summary>
+    public bool SwayIncludeHips { get; set; } = true;
+
+    /// <summary>「开始身体晃动测试」的剩余秒数（&gt;0 时即使 <see cref="SwayEnabled"/> 关着也会晃，到点自动停）。</summary>
+    public double SwayDemoRemainingSeconds => _swayDemoRemaining;
+
+    /// <summary>开始一段限时晃动测试（<paramref name="seconds"/> 秒后自动停；不影响 <see cref="SwayEnabled"/>）。</summary>
+    public void StartSwayDemo(double seconds)
+    {
+        _swayDemoRemaining = Math.Clamp(seconds, 0.1, 3600.0);
+        _bodySway?.Reset();
+    }
+
+    /// <summary>立即停止限时晃动测试。</summary>
+    public void StopSwayDemo() => _swayDemoRemaining = 0;
 
     // ---------- 生命周期 ----------
 
@@ -221,11 +355,13 @@ public sealed class ModelRuntime : IDisposable
         cancellationToken.ThrowIfCancellationRequested();
         _renderer = new CubismRenderer(_textures);
 
-        // 7) 待机 / 眼睛跟随控制器 + 受管参数表
+        // 7) 待机 / 眼睛跟随 / 身体晃动控制器 + 动捕参数表 + 受管参数表
         _eyeBlinkParameterIds = ResolveEyeBlinkIds(asset);
         _lipSyncParameterIds = asset.LipSyncParameterIds.ToArray();
         _idle = new IdleBehavior(_model, _eyeBlinkParameterIds);
         _eye = new EyeTrackingController(_model);
+        _bodySway = new BodySwayController(_model);
+        ResolveMocapParameters(_model);
         _managedParameterIndices = BuildManagedParameterIndices();
 
         // 8) 默认待机动作
@@ -352,10 +488,139 @@ public sealed class ModelRuntime : IDisposable
         if (model.FindParameter("ParamBreath") is not null) Add("ParamBreath");
         foreach (var id in _eyeBlinkParameterIds) Add(id);
 
+        // 摄像头动捕
+        foreach (var id in MocapParameterIds) Add(id);
+
+        // 身体晃动测试
+        foreach (var id in BodySwayController.ManagedParameterIds) Add(id);
+
         var indices = new int[managed.Count];
         managed.CopyTo(indices);
         Array.Sort(indices);
         return indices;
+    }
+
+    /// <summary>解析动捕要写的参数（有就缓存引用，没有就跳过；本模型全都有）。</summary>
+    private void ResolveMocapParameters(CubismModel model)
+    {
+        _mocapParamAngleX = model.FindParameter("ParamAngleX");
+        _mocapParamAngleY = model.FindParameter("ParamAngleY");
+        _mocapParamAngleZ = model.FindParameter("ParamAngleZ");
+        _mocapAngleX = model.FindParameter("AngleX");
+        _mocapAngleY = model.FindParameter("AngleY");
+        _mocapAngleZ = model.FindParameter("AngleZ");
+        _mocapEyeBallX = model.FindParameter("ParamEyeBallX");
+        _mocapEyeBallY = model.FindParameter("ParamEyeBallY");
+        _mocapEyeLOpen = model.FindParameter("ParamEyeLOpen");
+        _mocapEyeROpen = model.FindParameter("ParamEyeROpen");
+        _mocapMouthOpenY = model.FindParameter("ParamMouthOpenY");
+        _mocapBodyAngleX = model.FindParameter("ParamBodyAngleX");
+        _mocapPositionX = model.FindParameter("PositionX");
+    }
+
+    /// <summary>
+    /// 读一帧动捕结果并刷新状态（给 UI 的 HasFace / Age / StatusText）。
+    /// 返回 true 表示这一帧应该用动捕驱动模型（启用 + 有脸 + 结果未过期）。
+    /// </summary>
+    private bool UpdateMocapState(out MocapTrackingResult? result)
+    {
+        result = null;
+        var provider = _mocap;
+        if (!MocapEnabled || provider is null)
+        {
+            _mocapHasFace = false;
+            _mocapLastFaceAgeMs = -1;
+            SetMocapStatus(0);
+            return false;
+        }
+
+        var latest = provider.Latest;
+        if (latest is null)
+        {
+            _mocapHasFace = false;
+            _mocapLastFaceAgeMs = -1;
+            SetMocapStatus(0);
+            return false;
+        }
+
+        var age = Environment.TickCount64 - latest.TimestampMs;
+        _mocapLastFaceAgeMs = age;
+        if (latest.HasFace && age <= MocapFaceTimeoutMs)
+        {
+            _mocapHasFace = true;
+            SetMocapStatus(1);
+            result = latest;
+            return true;
+        }
+
+        _mocapHasFace = false;
+        SetMocapStatus(2);
+        return false;
+    }
+
+    /// <summary>刷新状态文案（只在状态变化时换字符串引用，避免每帧分配）。</summary>
+    private void SetMocapStatus(int kind)
+    {
+        if (_mocapStatusKind == kind) return;
+        _mocapStatusKind = kind;
+        _mocapStatusText = kind switch
+        {
+            1 => MocapStatusTracking,
+            2 => MocapStatusNoFace,
+            _ => MocapStatusNoData,
+        };
+    }
+
+    /// <summary>
+    /// 把一帧动捕结果写进参数。
+    /// <para>本模型实测：<c>Angle*</c> 是物理输入（Setting 1~3 变成 <c>ParamAngle*</c>），
+    /// <c>ParamAngle*</c> 直接驱动头部变形，所以两套都写；身体用 <c>ParamBodyAngleX</c> + <c>PositionX</c> 温和跟随。</para>
+    /// </summary>
+    private void ApplyMocapFace(MocapTrackingResult result)
+    {
+        var headStrength = (float)Math.Clamp(MocapHeadStrength, 0.0, 1.5);
+        var eyeStrength = (float)Math.Clamp(MocapEyeStrength, 0.0, 1.5);
+        var mouthStrength = (float)Math.Clamp(MocapMouthStrength, 0.0, 1.5);
+
+        if (MocapHeadEnabled)
+        {
+            var yaw = (float)result.Yaw * headStrength;
+            var pitch = (float)result.Pitch * headStrength;
+            var roll = (float)result.Roll * headStrength;
+
+            SetParameter(_mocapParamAngleX, yaw);
+            SetParameter(_mocapParamAngleY, pitch);
+            SetParameter(_mocapParamAngleZ, roll);
+            SetParameter(_mocapAngleX, yaw);
+            SetParameter(_mocapAngleY, pitch);
+            SetParameter(_mocapAngleZ, roll);
+
+            // 身体温和跟随头部（Yaw × 比例），物理 Setting 4 会把它变成 ParamBodyAngleX
+            var bodyX = yaw * MocapBodyFollowRatio;
+            SetParameter(_mocapBodyAngleX, bodyX);
+            SetParameter(_mocapPositionX, bodyX);
+        }
+
+        // 眼珠：由转头 / 点头方向近似，强度由 MocapEyeStrength 控制
+        SetParameter(_mocapEyeBallX, Math.Clamp((float)result.PupilX * eyeStrength, -1.0f, 1.0f));
+        SetParameter(_mocapEyeBallY, Math.Clamp((float)result.PupilY * eyeStrength, -1.0f, 1.0f));
+
+        if (MocapBlinkEnabled)
+        {
+            // 参数范围 0~1.5、默认 1；FaceExpressionAnalyzer 给的开合度就是 0~1，直接写
+            SetParameter(_mocapEyeLOpen, (float)result.EyeOpenLeft);
+            SetParameter(_mocapEyeROpen, (float)result.EyeOpenRight);
+        }
+
+        if (MocapMouthEnabled)
+        {
+            SetParameter(_mocapMouthOpenY, (float)result.MouthOpen * mouthStrength);
+        }
+    }
+
+    private static void SetParameter(CubismParameter? parameter, float value)
+    {
+        if (parameter is not null) parameter.Value = value; // 写入时已自动 clamp 到 min~max
     }
 
     /// <summary>推进一帧（在 UI 线程的 DispatcherTimer 里调）。</summary>
@@ -376,30 +641,45 @@ public sealed class ModelRuntime : IDisposable
             parameter.Value = parameter.DefaultValue;
         }
 
-        // 待机行为（眨眼 / 呼吸）与眼睛跟随：摇摆量在这里合并，避免两处抢写同一个参数
-        var idleEnabled = IdleEnabled;
-        var eye = _eye;
-        if (eye is not null)
-        {
-            eye.Smoothing = EyeTrackingSmoothing;
-            eye.HeadStrength = EyeTrackingHeadStrength;
-            eye.EyeStrength = EyeTrackingEyeStrength;
-            eye.BodyStrength = EyeTrackingBodyStrength;
-        }
+        // 1) 摄像头动捕状态（决定这一帧是否用动捕驱动）
+        var mocapFace = UpdateMocapState(out var mocapResult);
 
+        // 2) 待机行为（眨眼 / 呼吸 / 轻摇）：动捕接管眨眼时不让自动眨眼再写
+        var idleEnabled = IdleEnabled;
         if (_idle is not null)
         {
-            _idle.Update(_time, deltaSeconds, AutoBlink, idleEnabled, idleEnabled);
+            var autoBlink = AutoBlink && !(mocapFace && MocapBlinkEnabled);
+            _idle.Update(_time, deltaSeconds, autoBlink, idleEnabled, idleEnabled);
         }
 
-        if (eye is not null && (idleEnabled || EyeTrackingEnabled))
+        // 3) 动捕有脸 → 写动捕参数（此时跳过鼠标眼控，避免两边抢同一批参数）；没脸 → 鼠标眼控 / 待机摇摆
+        if (mocapFace && mocapResult is not null)
         {
-            eye.Update(deltaSeconds, EyeTrackingEnabled,
-                idleEnabled ? _idle?.SwayAngleZ ?? 0f : 0f,
-                idleEnabled ? _idle?.SwayBodyAngleZ ?? 0f : 0f);
+            ApplyMocapFace(mocapResult);
+        }
+        else
+        {
+            var eye = _eye;
+            if (eye is not null)
+            {
+                eye.Smoothing = EyeTrackingSmoothing;
+                eye.HeadStrength = EyeTrackingHeadStrength;
+                eye.EyeStrength = EyeTrackingEyeStrength;
+                eye.BodyStrength = EyeTrackingBodyStrength;
+
+                if (idleEnabled || EyeTrackingEnabled)
+                {
+                    eye.Update(deltaSeconds, EyeTrackingEnabled,
+                        idleEnabled ? _idle?.SwayAngleZ ?? 0f : 0f,
+                        idleEnabled ? _idle?.SwayBodyAngleZ ?? 0f : 0f);
+                }
+            }
         }
 
-        // 待机动作（IdleEnabled 且当前没有动作在播时循环播放）
+        // 4) 身体晃动测试（在动捕之后、动作之前）；动捕有脸时晃动不做头部补偿，让头跟脸
+        UpdateBodySway(deltaSeconds, mocapFace);
+
+        // 5) 待机动作（IdleEnabled 且当前没有动作在播时循环播放）
         if (idleEnabled && IdleMotion is { } idleMotion && !_motionPlayer.HasActive &&
             _motionDataByPath.TryGetValue(idleMotion.FilePath, out var idleData))
         {
@@ -418,6 +698,34 @@ public sealed class ModelRuntime : IDisposable
         model.Update();
         _lastTickMilliseconds = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
         FrameUpdated?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>身体晃动测试：限时演示倒计时 + 把运行时属性同步给控制器并执行。</summary>
+    /// <param name="mocapActive">动捕这一帧是否在驱动头部；是的话晃动不做头部补偿（头优先跟脸）。</param>
+    private void UpdateBodySway(double deltaSeconds, bool mocapActive)
+    {
+        if (_swayDemoRemaining > 0)
+        {
+            _swayDemoRemaining -= deltaSeconds;
+            if (_swayDemoRemaining < 0) _swayDemoRemaining = 0;
+        }
+
+        var sway = _bodySway;
+        if (sway is null) return;
+
+        if (!SwayEnabled && _swayDemoRemaining <= 0)
+        {
+            sway.ClearApplied();
+            return;
+        }
+
+        sway.Mode = SwayMode;
+        sway.AmplitudeDegrees = SwayAmplitudeDegrees;
+        sway.SpeedHz = SwaySpeedHz;
+        // 动捕有脸时头部由动捕驱动：晃动不做头部反向补偿（否则会覆盖动捕写的 ParamAngle*/Angle*）
+        sway.HeadFollow = mocapActive ? 0.0 : SwayHeadFollow;
+        sway.IncludeHips = SwayIncludeHips;
+        sway.Apply(_model!, deltaSeconds);
     }
 
     /// <summary>把当前帧画到渲染器的位图上（在 UI 线程调）。</summary>
@@ -480,7 +788,7 @@ public sealed class ModelRuntime : IDisposable
     /// <summary>某个表情当前是否生效（UI 勾选状态用）。</summary>
     public bool IsExpressionActive(ExpressionEntry expression) => _expressionManager.IsActive(expression);
 
-    /// <summary>把所有参数 / 部件恢复默认（表情 / 动作也停掉）。</summary>
+    /// <summary>把所有参数 / 部件恢复默认（表情 / 动作 / 晃动测试也停掉）。</summary>
     public void ResetParameters()
     {
         var model = _model;
@@ -493,6 +801,8 @@ public sealed class ModelRuntime : IDisposable
         _physics?.Reset();
         _idle?.Reset(_time);
         _eye?.ClearTarget();
+        _bodySway?.Reset();
+        _swayDemoRemaining = 0;
         model.Update();
     }
 
@@ -526,6 +836,26 @@ public sealed class ModelRuntime : IDisposable
         _physics = null;
         _idle = null;
         _eye = null;
+        _bodySway = null;
+        _mocap = null;
+        _mocapParamAngleX = null;
+        _mocapParamAngleY = null;
+        _mocapParamAngleZ = null;
+        _mocapAngleX = null;
+        _mocapAngleY = null;
+        _mocapAngleZ = null;
+        _mocapEyeBallX = null;
+        _mocapEyeBallY = null;
+        _mocapEyeLOpen = null;
+        _mocapEyeROpen = null;
+        _mocapMouthOpenY = null;
+        _mocapBodyAngleX = null;
+        _mocapPositionX = null;
+        _swayDemoRemaining = 0;
+        _mocapHasFace = false;
+        _mocapLastFaceAgeMs = -1;
+        _mocapStatusKind = -1;
+        _mocapStatusText = MocapStatusNoData;
         _motionDataByPath.Clear();
         _expressionDataByPath.Clear();
         _motionPlayer.Clear();

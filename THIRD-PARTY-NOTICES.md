@@ -53,6 +53,17 @@
   请勿把模型单独抽出再分发或另作他用。模型文件夹里的 PSD 源文件（131 MB）**不入库**
   （见 `.gitignore`，运行时也用不到）。
 
+## Windows 系统组件（摄像头面部动捕，非第三方库）
+
+- 位置：`src/YuLiangToolkit.Tools.Live2D/Mocap/`（调用处）
+- 用途：「Live2D 桌宠」的**摄像头面部动捕**（转头 / 眨眼 / 张嘴）使用 **Windows 自带**的
+  `Windows.Media.Capture`（MediaCapture / MediaFrameReader 采集）与
+  `Windows.Media.FaceAnalysis`（FaceDetector 人脸检测）——属于**操作系统组件**，随 Windows 提供，
+  **不是第三方库**，本仓库没有引入 OpenCV / MediaPipe / ONNX 等任何视觉库；
+- 说明：摄像头默认关闭，只有用户显式打开动捕开关才会请求系统摄像头权限；画面只在内存中做检测，
+  **不录像、不存图、不上传**；动捕的眨眼 / 张嘴像素启发式与数学映射为本项目自行编写（见
+  [docs/dev/live2d.md](docs/dev/live2d.md#10-摄像头面部动捕mocap)）。
+
 ## MIT License 全文
 
 ```

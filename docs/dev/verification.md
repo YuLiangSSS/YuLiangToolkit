@@ -78,7 +78,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 
 - **自检程序末尾是 `TerminateProcess` 强制带退出码终止，不是 `return`**：全量跑时多个分组会在各自的
   STA 线程上创建 WPF 位图 / 视觉对象，进程收尾阶段 WPF 合成线程会空转，`return` / `Environment.Exit`
-  都会卡在 CLR/WPF 清理里 →「3033 项全 PASS 但进程十几分钟不退出」，`check.ps1` 永远等不到退出码。
+  都会卡在 CLR/WPF 清理里 →「自检全 PASS 但进程十几分钟不退出」，`check.ps1` 永远等不到退出码。
   这是刻意写的（见 `Program.cs` 末尾注释），别改回 `return`；排错时设 `YLT_SELFCHECK_TRACE=1` 看卡在哪个分组。
 
 - **`--all` ≠ 全覆盖**：见「总则」三类；全绿只说明现有断言都过了；

@@ -40,6 +40,18 @@
             <MenuItem Header="缩放重置（420 像素宽）" Foreground="{DynamicResource TextPrimaryBrush}"
                       Click="OnMenuResetSizeClick" />
             <MenuItem Header="居中" Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuCenterClick" />
+            <Separator />
+            <!-- 动捕 / 身体晃动：勾选状态跟配置，改完立即写回并让会话应用（关掉时摄像头立刻释放） -->
+            <MenuItem x:Name="MenuItemMocap" Header="摄像头动捕：开 / 关" IsCheckable="True"
+                      Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuMocapClick"
+                      ToolTip="打开后桌宠会跟随摄像头里的头部转动 / 眨眼 / 张嘴（会请求摄像头权限）" />
+            <MenuItem Header="重新校准表情" Foreground="{DynamicResource TextPrimaryBrush}"
+                      Click="OnMenuResetMocapCalibrationClick"
+                      ToolTip="眨眼 / 张嘴的自动基准清零（换环境 / 光线后点一下）" />
+            <MenuItem x:Name="MenuItemSway" Header="身体晃动：开 / 关" IsCheckable="True"
+                      Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuSwayClick"
+                      ToolTip="用一组身体 / 物理参数让模型持续摆动（画面里能直接看到头发跟着甩）" />
+            <Separator />
             <MenuItem Header="打开测试工具页" Foreground="{DynamicResource TextPrimaryBrush}"
                       Click="OnMenuOpenToolPageClick"
                       ToolTip="把主窗口切到「桌面 → Live2D 桌宠」测试台" />

@@ -122,4 +122,71 @@ public sealed class Live2DConfig : ToolConfig
 
     /// <summary>身体 / 腰部跟随幅度倍率（0 ~ 1.5）。</summary>
     public double EyeTrackingBodyStrength { get; set; } = 0.5;
+
+    // ---------- 摄像头面部动捕 ----------
+
+    /// <summary>是否启用摄像头面部动捕（默认关：涉及隐私，需要用户自己打开）。</summary>
+    public bool MocapEnabled { get; set; }
+
+    /// <summary>使用的摄像头设备 Id（空 = 自动选第一个；设备 Id 在不同机器上会变，所以同时存名字）。</summary>
+    public string MocapCameraId { get; set; } = "";
+
+    /// <summary>摄像头显示名（只用于界面上认设备 / 设备 Id 失效时按名字再找一次）。</summary>
+    public string MocapCameraName { get; set; } = "";
+
+    /// <summary>前置摄像头镜像（画面左右翻转；想「自己的右手 = 模型右手」就保持开）。</summary>
+    public bool MocapMirror { get; set; } = true;
+
+    /// <summary>动捕是否驱动头部转动。</summary>
+    public bool MocapHeadEnabled { get; set; } = true;
+
+    /// <summary>动捕是否驱动眨眼。</summary>
+    public bool MocapBlinkEnabled { get; set; } = true;
+
+    /// <summary>动捕是否驱动张嘴。</summary>
+    public bool MocapMouthEnabled { get; set; } = true;
+
+    /// <summary>头部转动幅度倍率（0 ~ 1.5）。</summary>
+    public double MocapHeadStrength { get; set; } = 1.0;
+
+    /// <summary>眼球跟随幅度倍率（0 ~ 1.5）。</summary>
+    public double MocapEyeStrength { get; set; } = 1.0;
+
+    /// <summary>张嘴开合幅度倍率（0 ~ 1.5）。</summary>
+    public double MocapMouthStrength { get; set; } = 1.0;
+
+    /// <summary>跟随平滑（0 ~ 0.9，越大越稳、延迟越高）。</summary>
+    public double MocapSmoothing { get; set; } = 0.45;
+
+    /// <summary>动捕帧率：10 / 15 / 24（越高越顺，CPU 越高）。</summary>
+    public int MocapFps { get; set; } = 15;
+
+    /// <summary>测试页动捕卡片是否显示摄像头预览小窗（关掉更省 CPU）。</summary>
+    public bool MocapShowPreview { get; set; } = true;
+
+    /// <summary>校准：中性表情时脸中心在画面里的横向位置（0~1，默认画面正中）。</summary>
+    public double MocapNeutralFaceX { get; set; } = 0.5;
+
+    /// <summary>校准：中性表情时脸中心在画面里的纵向位置（0~1，默认画面正中）。</summary>
+    public double MocapNeutralFaceY { get; set; } = 0.5;
+
+    // ---------- 身体晃动测试 ----------
+
+    /// <summary>是否开启身体晃动测试（用一组身体 / 腰部 / 物理输入参数做正弦晃动）。</summary>
+    public bool BodySwayEnabled { get; set; }
+
+    /// <summary>晃动模式：左右摇 / 前后摇 / 扭腰 / 椭圆 / 自然晃（多频叠加）。</summary>
+    public string BodySwayMode { get; set; } = "左右摇";
+
+    /// <summary>晃动幅度（0 ~ 30 度）。</summary>
+    public double BodySwayAmplitude { get; set; } = 12;
+
+    /// <summary>晃动速度（0.1 ~ 2 Hz）。</summary>
+    public double BodySwaySpeed { get; set; } = 0.5;
+
+    /// <summary>头部是否反向补偿 / 跟随（0 = 完全跟着身体晃，1 = 头尽量保持朝前）。</summary>
+    public double BodySwayHeadFollow { get; set; } = 0.35;
+
+    /// <summary>是否连腰部 / 腿部参数一起晃（关掉只看身体主轴 + 物理输入）。</summary>
+    public bool BodySwayIncludeHips { get; set; } = true;
 }

@@ -5,7 +5,9 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using YuLiangToolkit.Tools.Live2D.Interop;
+using YuLiangToolkit.Tools.Live2D.Mocap;
 using YuLiangToolkit.Tools.Live2D.Model;
 using YuLiangToolkit.Tools.Live2D.Rendering;
 using YuLiangToolkit.Tools.Live2D.ViewModels;
@@ -54,6 +56,17 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
     private double _fps;
     private WriteableBitmap? _lastBitmap;
 
+    // ===== 100ms 辅助刷新：动捕预览小窗 / 动捕状态行 / 身体晃动实时值与折线图 =====
+    private const int SwaySampleCount = 50;      // 5 秒 @ 10Hz（100ms 采样一次）
+    private readonly List<double>[] _swaySeries =
+    {
+        new(), new(), new(), new(),
+    };
+
+    private DispatcherTimer? _auxTimer;
+    private WriteableBitmap? _mocapBitmap;
+    private long _lastMocapPreviewTimestamp = -1;
+
     public Live2DView()
     {
         InitializeComponent();
@@ -75,6 +88,20 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
         if (_window is not null) _window.StateChanged -= OnWindowStateChanged;
         _window = Window.GetWindow(this);
         if (_window is not null) _window.StateChanged += OnWindowStateChanged;
+
+        // 100ms 辅助刷新（动捕预览 / 状态行 / 身体晃动实时值与折线图）
+        if (_auxTimer is null)
+        {
+            _auxTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(100),
+            };
+            _auxTimer.Tick += OnAuxTimerTick;
+        }
+        _auxTimer.Start();
+
+        // 枚举摄像头（只枚举设备列表、不会打开摄像头）
+        _ = viewModel.EnsureCamerasLoadedAsync();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -85,6 +112,8 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
             _window = null;
         }
 
+        try { _auxTimer?.Stop(); } catch { /* 忽略 */ }
+
         if (_viewModel is not null)
         {
             _viewModel.Session.DetachPageTarget(this);
@@ -93,9 +122,227 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
         _viewModel = null;
         _lastBitmap = null;
         PreviewImage.Source = null;
+
+        // 动捕预览也清掉（隐私：页面关掉后不留摄像头画面）
+        MocapPreviewImage.Source = null;
+        MocapPreviewPlaceholder.Visibility = Visibility.Visible;
+        MocapFaceRect.Visibility = Visibility.Collapsed;
+        _mocapBitmap = null;
+        _lastMocapPreviewTimestamp = -1;
     }
 
     private void OnWindowStateChanged(object? sender, EventArgs e) => _viewModel?.Session.RefreshFrameLoop();
+
+    // ===================== 辅助刷新：动捕预览 / 状态行 / 身体晃动 =====================
+
+    private void OnAuxTimerTick(object? sender, EventArgs e)
+    {
+        if (_viewModel is null) return;
+        UpdateMocapPreview();
+        UpdateMocapStatusLine();
+        UpdateSwayDisplay();
+    }
+
+    /// <summary>把 <see cref="MocapCameraSource.LatestPreview"/> 每 100ms 写进小窗位图，并叠加人脸框。</summary>
+    private void UpdateMocapPreview()
+    {
+        var viewModel = _viewModel;
+        if (viewModel is null) return;
+
+        // 预览开关关掉 / 动捕关掉：清空画面（隐私：不留旧摄像头帧）
+        if (!viewModel.MocapShowPreview)
+        {
+            MocapPreviewImage.Source = null;
+            _mocapBitmap = null;
+            _lastMocapPreviewTimestamp = -1;
+            MocapFaceRect.Visibility = Visibility.Collapsed;
+            MocapPreviewPlaceholder.Visibility = Visibility.Visible;
+            MocapPreviewPlaceholder.Text = "预览已关闭（左侧「显示摄像头预览」可重新打开）";
+            return;
+        }
+
+        var session = viewModel.Session;
+        var source = session.MocapSource;
+        var frame = source?.LatestPreview;
+        if (frame is null)
+        {
+            MocapPreviewImage.Source = null;
+            _mocapBitmap = null;
+            _lastMocapPreviewTimestamp = -1;
+            MocapFaceRect.Visibility = Visibility.Collapsed;
+            MocapPreviewPlaceholder.Visibility = Visibility.Visible;
+            MocapPreviewPlaceholder.Text = viewModel.MocapEnabled
+                ? "等待摄像头画面…（首次打开会在系统弹窗里请求摄像头权限）"
+                : "动捕未启用\n打开上面的「启用摄像头动捕」后这里会显示预览";
+            return;
+        }
+
+        if (frame.TimestampMs == _lastMocapPreviewTimestamp)
+        {
+            // 同一帧：画面不用重写，只更新状态行（人脸框已在上次画好）
+            return;
+        }
+        _lastMocapPreviewTimestamp = frame.TimestampMs;
+
+        if (_mocapBitmap is null
+            || _mocapBitmap.PixelWidth != frame.Width
+            || _mocapBitmap.PixelHeight != frame.Height)
+        {
+            _mocapBitmap = new WriteableBitmap(frame.Width, frame.Height, 96, 96, PixelFormats.Bgra32, null);
+            MocapPreviewImage.Source = _mocapBitmap;
+        }
+        _mocapBitmap.WritePixels(
+            new Int32Rect(0, 0, frame.Width, frame.Height), frame.Bgra, frame.Width * 4, 0);
+        MocapPreviewPlaceholder.Visibility = Visibility.Collapsed;
+
+        // 人脸框：预览图按 Uniform 缩放到小窗里，框也跟着缩放 / 居中
+        if (!frame.HasFace)
+        {
+            MocapFaceRect.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var hostWidth = Math.Max(1.0, MocapPreviewHost.ActualWidth);
+        var hostHeight = Math.Max(1.0, MocapPreviewHost.ActualHeight);
+        var scale = Math.Min(hostWidth / frame.Width, hostHeight / frame.Height);
+        if (scale <= 0.0001)
+        {
+            MocapFaceRect.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var offsetX = (hostWidth - frame.Width * scale) / 2;
+        var offsetY = (hostHeight - frame.Height * scale) / 2;
+
+        MocapFaceRect.Width = Math.Max(2, frame.FaceWidth * frame.Width * scale);
+        MocapFaceRect.Height = Math.Max(2, frame.FaceHeight * frame.Height * scale);
+        Canvas.SetLeft(MocapFaceRect, offsetX + frame.FaceX * frame.Width * scale);
+        Canvas.SetTop(MocapFaceRect, offsetY + frame.FaceY * frame.Height * scale);
+        MocapFaceRect.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>刷新动捕状态行（实测 FPS / 有脸 / 错误；不碰摄像头本身）。</summary>
+    private void UpdateMocapStatusLine()
+    {
+        var viewModel = _viewModel;
+        if (viewModel is null) return;
+
+        var source = viewModel.Session.MocapSource;
+        var frame = source?.LatestPreview;
+        var error = source?.LastError;
+        if (string.IsNullOrEmpty(error)) error = viewModel.Session.MocapStartError;
+        viewModel.UpdateMocapStatus(
+            source?.MeasuredFps ?? 0,
+            source?.IsRunning == true,
+            frame?.HasFace == true,
+            string.IsNullOrEmpty(error) ? null : error);
+    }
+
+    /// <summary>采样晃动关键参数（100ms 一次）：更新参数实时值文本 + 5 秒滚动折线图。</summary>
+    private void UpdateSwayDisplay()
+    {
+        var viewModel = _viewModel;
+        if (viewModel is null) return;
+
+        var runtime = viewModel.Runtime;
+        if (runtime?.IsLoaded != true)
+        {
+            viewModel.UpdateSwayDisplay("（模型加载后这里显示参数实时值）", 0);
+            return;
+        }
+
+        try
+        {
+            var model = runtime.Model;
+            double Value(string id) => model.FindParameter(id)?.Value ?? 0;
+
+            var bodyX = Value("ParamBodyAngleX");
+            var angleX = Value("AngleX");
+            var headX = Value("ParamAngleX");
+            var hairX = Value("FrontHairX1");
+
+            AddSwaySample(0, bodyX);
+            AddSwaySample(1, angleX);
+            AddSwaySample(2, headX);
+            AddSwaySample(3, hairX);
+            RedrawSwayChart();
+
+            var text =
+                $"ParamBodyAngleX {bodyX,7:0.00}   AngleX {angleX,7:0.00}   ParamAngleX {headX,7:0.00}   FrontHairX1 {hairX,8:0.000}" +
+                Environment.NewLine +
+                $"FrontHairZ {Value("FrontHairZ"),8:0.000}   SideHairX1 {Value("SideHairX1"),8:0.000}   " +
+                $"ShockR {Value("ShockR"),7:0.00}   ParamBreath {Value("ParamBreath"),7:0.00}";
+
+            // 晃动控制器本帧实际写入了哪些参数（用它说明「谁在动」，比只看结果参数更直观）
+            try
+            {
+                var applied = runtime.BodySway?.LastApplied;
+                if (applied is { Count: > 0 })
+                {
+                    var summary = string.Join("  ", applied.Take(6).Select(item => $"{item.Id}={item.Value:0.00}"));
+                    if (applied.Count > 6) summary += $"  …（共 {applied.Count} 个）";
+                    text += Environment.NewLine + "本帧晃动写入：" + summary;
+                }
+            }
+            catch
+            {
+                // 运行时没准备好就忽略这一行
+            }
+            viewModel.UpdateSwayDisplay(text, viewModel.Session.SwayDemoRemainingSeconds);
+        }
+        catch
+        {
+            // 模型正在切换 / 参数表还没就绪：忽略这一拍
+        }
+    }
+
+    private void AddSwaySample(int index, double value)
+    {
+        var series = _swaySeries[index];
+        series.Add(double.IsFinite(value) ? value : 0);
+        while (series.Count > SwaySampleCount) series.RemoveAt(0);
+    }
+
+    /// <summary>
+    /// 把 4 条参数曲线画到 <see cref="SwayChart"/> 里（右边 = 最新）。
+    /// <para>身体角度是几十度、物理输出（头发）往往只有零点几度：如果统一按 ±30° 画，
+    /// 头发线会贴在 0 上看不出来。所以<b>每条曲线按自身幅度自动缩放</b>（下限 1°），
+    /// 这样能清楚看到「身体晃 → 中间角度 → 头发物理输出」的相位 / 联动关系。</para>
+    /// </summary>
+    private void RedrawSwayChart()
+    {
+        var width = SwayChart.ActualWidth;
+        var height = SwayChart.ActualHeight;
+        if (width < 4 || height < 4) return;
+
+        var middle = height / 2.0;
+        var amplitude = height * 0.44;
+        var lines = new[] { SwayLineBodyX, SwayLineAngleX, SwayLineHeadX, SwayLineFrontHair };
+        var step = width / (SwaySampleCount - 1);
+
+        for (var lineIndex = 0; lineIndex < lines.Length; lineIndex++)
+        {
+            var series = _swaySeries[lineIndex];
+            var points = new PointCollection(series.Count);
+            var startX = Math.Max(0.0, width - (series.Count - 1) * step);
+
+            // 每条曲线自己的显示范围（至少 1°，避免数值很小的物理输出被压成一条直线）
+            var range = 1.0;
+            foreach (var value in series)
+            {
+                range = Math.Max(range, Math.Abs(value));
+            }
+            range *= 1.15;
+
+            for (var i = 0; i < series.Count; i++)
+            {
+                var normalized = Math.Clamp(series[i] / range, -1, 1);
+                points.Add(new Point(startX + i * step, middle - normalized * amplitude));
+            }
+            lines[lineIndex].Points = points;
+        }
+    }
+
+    private void OnSwayChartSizeChanged(object sender, SizeChangedEventArgs e) => RedrawSwayChart();
 
     // ===================== ILive2DFrameTarget =====================
 

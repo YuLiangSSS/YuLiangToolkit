@@ -575,6 +575,41 @@ public partial class PetWindow : Window
         if (cfg is null) return;
         MenuItemTopMost.IsChecked = cfg.PetTopMost;
         MenuItemClickThrough.IsChecked = cfg.PetClickThrough;
+        MenuItemMocap.IsChecked = cfg.MocapEnabled;
+        MenuItemSway.IsChecked = cfg.BodySwayEnabled;
+    }
+
+    /// <summary>右键菜单：开 / 关摄像头动捕（会请求摄像头权限；关掉立刻释放摄像头）。</summary>
+    private void OnMenuMocapClick(object sender, RoutedEventArgs e)
+    {
+        var cfg = Config;
+        if (cfg is null) return;
+
+        cfg.MocapEnabled = !cfg.MocapEnabled;
+        _session.ApplyRuntimeSettings();
+        _session.ApplyMocapSettings();
+        _session.SaveConfigNow();
+        _session.ViewModel?.RefreshAllBindings();
+        _session.Log(cfg.MocapEnabled
+            ? "桌宠菜单：已开启摄像头动捕（会请求摄像头权限）"
+            : "桌宠菜单：已关闭摄像头动捕（摄像头已释放）");
+    }
+
+    /// <summary>右键菜单：重新校准动捕表情（眨眼 / 张嘴的自动基准清零）。</summary>
+    private void OnMenuResetMocapCalibrationClick(object sender, RoutedEventArgs e)
+        => _session.ResetMocapCalibration();
+
+    /// <summary>右键菜单：开 / 关身体晃动。</summary>
+    private void OnMenuSwayClick(object sender, RoutedEventArgs e)
+    {
+        var cfg = Config;
+        if (cfg is null) return;
+
+        cfg.BodySwayEnabled = !cfg.BodySwayEnabled;
+        _session.ApplyRuntimeSettings();
+        _session.SaveConfigNow();
+        _session.ViewModel?.RefreshAllBindings();
+        _session.Log(cfg.BodySwayEnabled ? "桌宠菜单：已开启身体晃动" : "桌宠菜单：已关闭身体晃动");
     }
 
     private void OnMenuTopMostClick(object sender, RoutedEventArgs e)

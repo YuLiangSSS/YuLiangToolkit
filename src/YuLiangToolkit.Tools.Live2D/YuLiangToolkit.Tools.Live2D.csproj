@@ -3,9 +3,11 @@
   <!-- 「Live2D 桌宠」工具工程：内置一套 Live2D Cubism 模型（DeepSeek 文件夹整体搬进来），
        用官方 Cubism Core 原生库加载 moc3，自写 C# 软件渲染器（不引入任何 NuGet 包）。
        模型运行时资源由本工程拷贝到输出目录的 Live2D\Models\DeepSeek\ 下；
-       DeepSeek 里的 PSD 源文件 / 平台配置文件（vtube.json / vbridger / items_pinned）只在仓库里留档，不进输出。 -->
+       DeepSeek 里的 PSD 源文件 / 平台配置文件（vtube.json / vbridger / items_pinned）只在仓库里留档，不进输出。
+       TFM 带 win10.0.19041：摄像头动捕要用系统自带的 Windows.Media.Capture / FaceAnalysis（WinRT 投影，
+       不用第三方包）。宿主主程序与自检工程本来就是 19041，兼容。 -->
   <PropertyGroup>
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <RootNamespace>YuLiangToolkit.Tools.Live2D</RootNamespace>
     <AssemblyName>YuLiangToolkit.Tools.Live2D</AssemblyName>

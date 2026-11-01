@@ -3,6 +3,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using YuLiangToolkit.Tools.Live2D.Interop;
+using YuLiangToolkit.Tools.Live2D.Mocap;
 using YuLiangToolkit.Tools.Live2D.Model;
 using YuLiangToolkit.Tools.Live2D.Rendering;
 using YuLiangToolkit.Tools.Live2D.ViewModels;
@@ -83,6 +84,18 @@ public sealed class Live2DSession
     private double _lastPetRenderMs;
     private bool _dualSlowLogged;
 
+    // ===== 摄像头面部动捕（数据源生命周期归会话管：页面 / 桌宠可见才开，隐私 + 省 CPU） =====
+    private readonly SemaphoreSlim _mocapGate = new(1, 1);
+    private MocapCameraSource? _mocap;
+    private MocapSettings? _mocapAppliedSettings;
+    private string? _mocapStartError;
+    private string? _lastLoggedMocapError;
+    private int _mocapRevision;
+    private bool _mocapSelfTestStarted;
+
+    // ===== 身体晃动演示钩子（YLT_LIVE2D_SWAY_DEMO） =====
+    private bool _swayDemoApplied;
+
     private Live2DSession()
     {
     }
@@ -155,6 +168,32 @@ public sealed class Live2DSession
     /// <summary>桌宠显示 / 隐藏时触发（在 UI 线程）。</summary>
     public event EventHandler? PetVisibilityChanged;
 
+    // ===================== 动捕 / 身体晃动 对外状态 =====================
+
+    /// <summary>当前动捕数据源（没创建为 null；UI 读 <c>Latest</c> / <c>LatestPreview</c> / <c>MeasuredFps</c>）。</summary>
+    public MocapCameraSource? MocapSource => _mocap;
+
+    /// <summary>动捕最近一次启动错误（空 = 没错误）。</summary>
+    public string MocapStartError => _mocapStartError ?? "";
+
+    /// <summary>动捕数据源是否正在采集。</summary>
+    public bool IsMocapRunning => _mocap?.IsRunning == true;
+
+    /// <summary>动捕数据源状态变化时触发（启动 / 停止 / 出错；可能在后台线程）。</summary>
+    public event EventHandler? MocapStateChanged;
+
+    /// <summary>身体晃动演示（「摇一摇」）还剩多少秒（0 = 没在演示）。</summary>
+    public double SwayDemoRemainingSeconds
+    {
+        get
+        {
+            try { return _runtime?.SwayDemoRemainingSeconds ?? 0; } catch { return 0; }
+        }
+    }
+
+    /// <summary>页面或桌宠现在是否有人看着（决定要不要开摄像头）。</summary>
+    private bool IsPageOrPetVisible => _pageTarget is { IsTargetVisible: true } || _pet?.IsVisible == true;
+
     // ===================== 页面生命周期 =====================
 
     /// <summary>取（或创建）工具页 ViewModel（整个进程只建一次，页面重开复用）。</summary>
@@ -184,6 +223,9 @@ public sealed class Live2DSession
         EnsureModelLoaded();
         ApplyRuntimeSettings();
         UpdateFrameLoop();
+        ApplyMocapSettings();
+        TryBeginSwayDemo();
+        TryBeginMocapSelfTest();
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -194,6 +236,7 @@ public sealed class Live2DSession
         _pageActive = false;
         _pageTarget = null;
         UpdateFrameLoop();
+        ApplyMocapSettings();   // 页面关掉且桌宠也没开 → 关摄像头
 
         // 页面关了、桌宠也没开：别让模型一直盯着一个不存在的鼠标
         if (_pet is null)
@@ -221,6 +264,7 @@ public sealed class Live2DSession
         _idleUnloadTimer = null;
 
         ClosePetInternal(raiseEvent: false);
+        DisposeMocapBlocking();
         DisposeRuntime();
 
         try { _viewModel?.ConfigStore.SaveNow(); } catch { /* 退出流程忽略 */ }
@@ -394,6 +438,10 @@ public sealed class Live2DSession
 
         vm.AttachRuntime(runtime, loadMilliseconds);
         ApplyRuntimeSettings();
+        AssignMocapToRuntime();
+        ApplyMocapSettings();
+        TryBeginSwayDemo();
+        TryBeginMocapSelfTest();
         vm.Log($"模型加载完成：{runtime.ModelName}，用时 {loadMilliseconds:0} ms" +
                $"（动作 {runtime.Motions.Count} 个，表情 {runtime.Expressions.Count} 个）");
         vm.SetStatus("模型已就绪");
@@ -475,6 +523,23 @@ public sealed class Live2DSession
             runtime.EyeTrackingEyeStrength = Math.Clamp(cfg.EyeTrackingEyeStrength, 0.2, 1.5);
             runtime.EyeTrackingBodyStrength = Math.Clamp(cfg.EyeTrackingBodyStrength, 0, 1.5);
             runtime.IdleMotion = FindIdleMotion(runtime, cfg.IdleMotion);
+
+            // 摄像头面部动捕：驱动开关与强度（数据源本身由 ApplyMocapSettings 启停 / 重建）
+            runtime.MocapEnabled = cfg.MocapEnabled;
+            runtime.MocapHeadEnabled = cfg.MocapHeadEnabled;
+            runtime.MocapBlinkEnabled = cfg.MocapBlinkEnabled;
+            runtime.MocapMouthEnabled = cfg.MocapMouthEnabled;
+            runtime.MocapHeadStrength = Math.Clamp(cfg.MocapHeadStrength, 0, 1.5);
+            runtime.MocapEyeStrength = Math.Clamp(cfg.MocapEyeStrength, 0, 1.5);
+            runtime.MocapMouthStrength = Math.Clamp(cfg.MocapMouthStrength, 0, 1.5);
+
+            // 身体晃动测试（参数由运行时 BodySwayController 每帧写；「摇一摇」是临时演示）
+            runtime.SwayEnabled = cfg.BodySwayEnabled;
+            runtime.SwayMode = cfg.BodySwayMode;
+            runtime.SwayAmplitudeDegrees = Math.Clamp(cfg.BodySwayAmplitude, 0, 30);
+            runtime.SwaySpeedHz = Math.Clamp(cfg.BodySwaySpeed, 0.1, 2);
+            runtime.SwayHeadFollow = Math.Clamp(cfg.BodySwayHeadFollow, 0, 1);
+            runtime.SwayIncludeHips = cfg.BodySwayIncludeHips;
         }
         catch (Exception ex)
         {
@@ -507,7 +572,11 @@ public sealed class Live2DSession
     // ===================== 帧循环 =====================
 
     /// <summary>页面 / 桌宠可见性或加载状态变化后调它：决定帧循环开还是关。</summary>
-    public void RefreshFrameLoop() => UpdateFrameLoop();
+    public void RefreshFrameLoop()
+    {
+        UpdateFrameLoop();
+        ApplyMocapSettings();   // 窗口最小化 / 还原会影响「页面可见」→ 摄像头跟着开 / 关
+    }
 
     /// <summary>页面目标挂上来（工具页 Loaded）。</summary>
     public void AttachPageTarget(ILive2DFrameTarget target)
@@ -517,6 +586,8 @@ public sealed class Live2DSession
         HookWindowClose();
         _pageTarget = target;
         UpdateFrameLoop();
+        ApplyMocapSettings();
+        TryBeginMocapSelfTest();
         if (IsLoaded)
         {
             try { _runtime!.Tick(TimeSpan.FromMilliseconds(16)); } catch { /* 忽略 */ }
@@ -529,6 +600,7 @@ public sealed class Live2DSession
     {
         if (ReferenceEquals(_pageTarget, target)) _pageTarget = null;
         UpdateFrameLoop();
+        ApplyMocapSettings();
     }
 
     private void UpdateFrameLoop()
@@ -791,6 +863,425 @@ public sealed class Live2DSession
         try { _runtime?.ClearEyeTrackingTarget(); } catch { /* 忽略 */ }
     }
 
+    // ===================== 摄像头面部动捕 =====================
+
+    /// <summary>
+    /// 按配置让动捕数据源对齐目标状态：该开就开、该关就关、设置变了就整源重建。
+    /// <para>可快速连续调用：内部按 revision + 信号量串行，只有最后一次请求真正落地（避免连点开关时
+    /// 反复开关摄像头）。启动 / 停止 / 重建都在 UI 线程上下文继续执行，失败只记 <see cref="MocapStartError"/>
+    /// 和日志，不会让程序崩。</para>
+    /// </summary>
+    public void ApplyMocapSettings()
+    {
+        if (_shutdown) return;
+        _ = ReconcileMocapAsync();
+    }
+
+    private async Task ReconcileMocapAsync()
+    {
+        var revision = Interlocked.Increment(ref _mocapRevision);
+        try { await _mocapGate.WaitAsync(); }
+        catch (ObjectDisposedException) { return; }
+
+        try
+        {
+            if (_shutdown || revision != Volatile.Read(ref _mocapRevision)) return;
+
+            var cfg = _viewModel?.Cfg;
+            if (cfg is null)
+            {
+                await StopMocapAsync();
+                AssignMocapToRuntime();
+                RaiseMocapStateChanged();
+                return;
+            }
+
+            // 截图 / 桌宠截图模式绝不开摄像头（隐私：截图流程里不弹摄像头权限、不采集画面）
+            var wantRunning = cfg.MocapEnabled && IsPageOrPetVisible && !IsDebugShotMode;
+            var settings = MocapSettings.FromConfig(cfg);
+
+            // 设置变了（摄像头 / 镜像 / 帧率 / 平滑 / 预览 / 中性位校准）：旧源释放，按新设置重建
+            if (_mocap is not null && !MocapSettingsEqual(_mocapAppliedSettings, settings))
+            {
+                await DisposeMocapAsync();
+            }
+
+            if (!wantRunning)
+            {
+                await StopMocapAsync();
+                RaiseMocapStateChanged();
+                return;
+            }
+
+            if (_mocap is null)
+            {
+                _mocap = new MocapCameraSource(settings);
+                _mocapAppliedSettings = settings;
+                _mocap.StateChanged += OnMocapStateChanged;
+                _mocapStartError = null;
+                _lastLoggedMocapError = null;
+                AssignMocapToRuntime();
+                _viewModel?.Log($"动捕：准备打开摄像头（{DescribeMocapCamera(settings)}）");
+            }
+
+            if (revision != Volatile.Read(ref _mocapRevision))
+            {
+                RaiseMocapStateChanged();
+                return;   // 排队期间配置又变了：交给最后一次
+            }
+
+            if (!_mocap.IsRunning)
+            {
+                var watch = Stopwatch.StartNew();
+                var started = await _mocap.StartAsync();
+                watch.Stop();
+                if (revision != Volatile.Read(ref _mocapRevision))
+                {
+                    RaiseMocapStateChanged();
+                    return;
+                }
+
+                if (started)
+                {
+                    _mocapStartError = null;
+                    var frame = _mocap.FrameSize;
+                    _viewModel?.Log($"动捕已启动：{DescribeMocapCamera(settings)}（{settings.Fps} fps 上限，" +
+                                    $"预览{(settings.EnablePreview ? "开" : "关")}，画面 {frame.Width}×{frame.Height}，" +
+                                    $"启动耗时 {watch.ElapsedMilliseconds} ms）");
+                }
+                else
+                {
+                    _mocapStartError = _mocap.LastError ?? "启动失败（没有可用摄像头 / 权限被拒 / 被其它程序占用）";
+                    _viewModel?.Log("动捕启动失败：" + _mocapStartError);
+                }
+            }
+
+            AssignMocapToRuntime();
+            RaiseMocapStateChanged();
+        }
+        catch (Exception ex)
+        {
+            _mocapStartError = ex.Message;
+            _viewModel?.Log("动捕异常：" + ex.Message);
+            RaiseMocapStateChanged();
+        }
+        finally
+        {
+            try { _mocapGate.Release(); } catch { /* 已释放 */ }
+        }
+    }
+
+    /// <summary>把数据源交给模型运行时（运行时只依赖 IMocapProvider 接口读结果）。</summary>
+    private void AssignMocapToRuntime()
+    {
+        var runtime = _runtime;
+        if (runtime is null) return;
+        try { runtime.Mocap = _mocap; } catch { /* 模型还没加载完 */ }
+    }
+
+    /// <summary>停止采集（窗口关掉 / 动捕关掉时；数据源保留，下次可快速重启）。</summary>
+    private async Task StopMocapAsync()
+    {
+        var source = _mocap;
+        if (source is null) return;
+        if (!source.IsRunning) { AssignMocapToRuntime(); return; }
+
+        try { await source.StopAsync(); }
+        catch (Exception ex) { _viewModel?.Log("动捕停止失败：" + ex.Message); }
+        AssignMocapToRuntime();
+    }
+
+    /// <summary>释放当前数据源（换摄像头 / 换设置时；之后按需重建）。</summary>
+    private async Task DisposeMocapAsync()
+    {
+        var source = _mocap;
+        _mocap = null;
+        _mocapAppliedSettings = null;
+        if (source is null) return;
+
+        try { source.StateChanged -= OnMocapStateChanged; } catch { /* 忽略 */ }
+        try { await source.StopAsync(); } catch { /* 忽略 */ }
+        try { source.Dispose(); } catch { /* 忽略 */ }
+        AssignMocapToRuntime();
+    }
+
+    /// <summary>程序退出 / 主窗口关闭时的同步释放（不能再 await）。</summary>
+    private void DisposeMocapBlocking()
+    {
+        var source = _mocap;
+        _mocap = null;
+        _mocapAppliedSettings = null;
+        if (source is null) return;
+
+        try { source.StateChanged -= OnMocapStateChanged; } catch { /* 忽略 */ }
+        try { source.Dispose(); } catch { /* 忽略 */ }   // Dispose 内部会同步 Stop
+        AssignMocapToRuntime();
+    }
+
+    private void OnMocapStateChanged(object? sender, EventArgs e)
+    {
+        var error = _mocap?.LastError;
+        if (!string.IsNullOrEmpty(error) && !string.Equals(error, _lastLoggedMocapError, StringComparison.Ordinal))
+        {
+            _lastLoggedMocapError = error;
+            _viewModel?.Log("动捕状态：" + error);
+        }
+        _viewModel?.Ui(RaiseMocapStateChanged);
+    }
+
+    private void RaiseMocapStateChanged()
+    {
+        try { MocapStateChanged?.Invoke(this, EventArgs.Empty); } catch { /* 订阅方异常不影响采集 */ }
+    }
+
+    private static bool MocapSettingsEqual(MocapSettings? left, MocapSettings? right)
+    {
+        if (left is null || right is null) return ReferenceEquals(left, right);
+        return string.Equals(left.CameraId, right.CameraId, StringComparison.Ordinal)
+               && string.Equals(left.CameraName, right.CameraName, StringComparison.Ordinal)
+               && left.Mirror == right.Mirror
+               && left.Fps == right.Fps
+               && left.EnablePreview == right.EnablePreview
+               && Math.Abs(left.Smoothing - right.Smoothing) < 0.0001
+               && Math.Abs(left.NeutralFaceX - right.NeutralFaceX) < 0.0001
+               && Math.Abs(left.NeutralFaceY - right.NeutralFaceY) < 0.0001;
+    }
+
+    private static string DescribeMocapCamera(MocapSettings settings)
+        => string.IsNullOrWhiteSpace(settings.CameraName)
+            ? (string.IsNullOrWhiteSpace(settings.CameraId) ? "自动选择（第一个摄像头）" : settings.CameraId)
+            : settings.CameraName;
+
+    /// <summary>重新校准表情（眨眼 / 张嘴的自动基准清零；换环境 / 光线后调）。</summary>
+    public void ResetMocapCalibration()
+    {
+        try
+        {
+            _mocap?.ResetCalibration();
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("重新校准表情失败：" + ex.Message);
+            return;
+        }
+
+        _viewModel?.Log("动捕：已重新校准表情（眨眼 / 张嘴的自动基准清零）");
+        _viewModel?.SetStatus("动捕：表情基准已重新校准");
+    }
+
+    /// <summary>
+    /// 校准中性位：把当前「有脸」时的脸中心位置写成新的 0 度参考
+    /// （换座位 / 换摄像头后「正前方」不对时用）。
+    /// </summary>
+    public void CalibrateMocapNeutralPosition()
+    {
+        var cfg = _viewModel?.Cfg;
+        if (cfg is null) return;
+
+        var latest = _mocap?.Latest;
+        if (latest is not { HasFace: true })
+        {
+            _viewModel?.Log("校准中性位失败：动捕还没检测到人脸（先把脸放到画面中央、保持正面朝前）");
+            _viewModel?.SetStatus("校准中性位：还没检测到人脸");
+            return;
+        }
+
+        cfg.MocapNeutralFaceX = Math.Clamp(latest.FaceX, 0.05, 0.95);
+        cfg.MocapNeutralFaceY = Math.Clamp(latest.FaceY, 0.05, 0.95);
+        _viewModel?.Log($"动捕：中性位已校准到画面 ({cfg.MocapNeutralFaceX:0.000}, {cfg.MocapNeutralFaceY:0.000})" +
+                        "，数据源会按新基准重建");
+        _viewModel?.SetStatus("动捕：中性位已校准");
+        ApplyMocapSettings();   // 中性位变了 → 重建数据源
+    }
+
+    // ===================== 身体晃动测试 =====================
+
+    /// <summary>「摇一摇」：让运行时按当前模式 / 幅度 / 速度临时晃 N 秒（默认 3 秒）。</summary>
+    public void StartSwayDemo(double seconds = 3.0)
+    {
+        var runtime = _runtime;
+        if (runtime is null || !runtime.IsLoaded) return;
+
+        try
+        {
+            runtime.StartSwayDemo(Math.Clamp(seconds, 0.5, 60));
+            _viewModel?.Log($"身体晃动：摇一摇 {seconds:0.0} 秒（{_viewModel?.Cfg.BodySwayMode ?? "左右摇"}）");
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("摇一摇失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>停止「摇一摇」演示（不动「开启身体晃动」配置）。</summary>
+    public void StopSwayDemo()
+    {
+        try { _runtime?.StopSwayDemo(); } catch { /* 忽略 */ }
+    }
+
+    /// <summary>开发调试（<c>YLT_LIVE2D_SWAY_DEMO=1</c>）：打开页面自动左右摇 15° / 0.5Hz 并演示 10 秒。</summary>
+    private void TryBeginSwayDemo()
+    {
+        if (_swayDemoApplied) return;
+        if (Environment.GetEnvironmentVariable("YLT_LIVE2D_SWAY_DEMO") is not ("1" or "on" or "true")) return;
+        if (_viewModel is null || _runtime?.IsLoaded != true) return;
+
+        _swayDemoApplied = true;
+        var cfg = _viewModel.Cfg;
+        cfg.BodySwayEnabled = true;
+        cfg.BodySwayMode = "左右摇";
+        cfg.BodySwayAmplitude = 15;
+        cfg.BodySwaySpeed = 0.5;
+        cfg.BodySwayHeadFollow = 0.35;
+        ApplyRuntimeSettings();
+        try { _runtime.StartSwayDemo(10); } catch { /* 忽略 */ }
+        _viewModel.RefreshAllBindings();
+        _viewModel.SetStatus("截图模式：身体晃动演示 10 秒（左右摇 15° / 0.5Hz）");
+        _viewModel.Log("截图模式（YLT_LIVE2D_SWAY_DEMO）：已启用身体晃动演示 10 秒（左右摇 15° / 0.5Hz）");
+    }
+
+    // ===================== 开发调试：动捕链路自测 =====================
+
+    /// <summary>
+    /// 开发调试（<c>YLT_LIVE2D_MOCAP_SELFTEST=1</c>）：页面打开后自动挑内置摄像头开动捕、跑 6 秒，
+    /// 把「枚举 / 启动 / FPS / 帧尺寸 / 处理耗时 / 有脸次数 / 预览次数 / 停止」逐项写成
+    /// <c>Data\live2d\mocap-selftest.log</c>（只写数字和设备名，<b>不写摄像头画面</b>）。
+    /// 加 <c>YLT_LIVE2D_MOCAP_SELFTEST_EXIT=1</c> 时写完后退出程序（自动验收用）。
+    /// </summary>
+    private void TryBeginMocapSelfTest()
+    {
+        if (_mocapSelfTestStarted) return;
+        if (Environment.GetEnvironmentVariable("YLT_LIVE2D_MOCAP_SELFTEST") is not ("1" or "on" or "true")) return;
+        if (_viewModel is null || !IsPageOrPetVisible) return;
+        _mocapSelfTestStarted = true;
+        _ = RunMocapSelfTestAsync();
+    }
+
+    private async Task RunMocapSelfTestAsync()
+    {
+        var viewModel = _viewModel;
+        if (viewModel is null) return;
+
+        var lines = new List<string>();
+        void Line(string text)
+        {
+            lines.Add(text);
+            viewModel.Log("[动捕自测] " + text);
+        }
+
+        var exitAfter = Environment.GetEnvironmentVariable("YLT_LIVE2D_MOCAP_SELFTEST_EXIT") is "1" or "on" or "true";
+        var cfg = viewModel.Cfg;
+        var originalEnabled = cfg.MocapEnabled;
+
+        try
+        {
+            // ① 枚举摄像头
+            var cameras = await MocapCameraSource.EnumerateCamerasAsync();
+            Line(cameras.Count > 0
+                ? $"OK 枚举摄像头：{cameras.Count} 个（{string.Join("、", cameras.Select(camera => camera.Name))}）"
+                : "FAIL 枚举摄像头：0 个（检查设备管理器 / Windows 隐私设置是否允许桌面应用访问摄像头）");
+            if (cameras.Count == 0) return;
+
+            // ② 挑摄像头：优先内置 "HD User Facing"，尽量避开 DroidCam / 虚拟摄像头
+            var chosen = Live2DViewModel.PickPreferredCamera(cameras) ?? cameras[0];
+            cfg.MocapCameraId = chosen.Id;
+            cfg.MocapCameraName = chosen.Name;
+            cfg.MocapEnabled = true;
+            cfg.MocapShowPreview = true;
+            viewModel.RefreshAllBindings();
+            _ = viewModel.EnsureCamerasLoadedAsync(force: true);
+            ApplyRuntimeSettings();
+            ApplyMocapSettings();
+
+            // ③ 等启动（最多 12 秒；失败时 MocapStartError 有原因）
+            var wait = Stopwatch.StartNew();
+            while (wait.ElapsedMilliseconds < 12_000 && !IsMocapRunning && string.IsNullOrEmpty(MocapStartError))
+            {
+                await Task.Delay(100);
+            }
+
+            var source = _mocap;
+            if (source is null || !source.IsRunning)
+            {
+                Line($"FAIL StartAsync：未运行（{MocapStartError}{(string.IsNullOrEmpty(MocapStartError) ? "超时" : "")}）");
+                return;
+            }
+
+            Line($"OK StartAsync：{chosen.Name}；LastError={(source.LastError ?? "无")}");
+
+            // ④ 采样 6 秒（只统计数字，不保存画面）。
+            // 放在后台线程上用 Thread.Sleep 计时（不用 Task.Delay：UI/线程池忙时定时器续体会被拖延，
+            // 之前实测 6 秒只跑出 7 次采样；独占线程的 Sleep 不受影响，能稳定 200ms 一次）。
+            var sample = await Task.Run(() =>
+            {
+                var total = 0;
+                var latestCount = 0;
+                var faceCount = 0;
+                var previewCount = 0;
+                double maxFpsLocal = 0, maxProcessLocal = 0, maxDetectLocal = 0;
+                var frameSizeLocal = (0, 0);
+                var sampled = Stopwatch.StartNew();
+                while (sampled.ElapsedMilliseconds < 6_000)
+                {
+                    Thread.Sleep(200);
+                    total++;
+
+                    var latest = source.Latest;
+                    if (latest is not null) latestCount++;
+                    if (latest?.HasFace == true) faceCount++;
+                    if (source.LatestPreview is not null) previewCount++;
+
+                    maxFpsLocal = Math.Max(maxFpsLocal, source.MeasuredFps);
+                    var size = source.FrameSize;
+                    if (size.Item1 > 0) frameSizeLocal = size;
+                    maxProcessLocal = Math.Max(maxProcessLocal, source.LastProcessMilliseconds);
+                    maxDetectLocal = Math.Max(maxDetectLocal, source.LastDetectMilliseconds);
+                }
+
+                return (total, latestCount, faceCount, previewCount,
+                    maxFpsLocal, maxProcessLocal, maxDetectLocal, frameSizeLocal);
+            });
+
+            var (total, latestCount, faceCount, previewCount, maxFps, maxProcessMs, maxDetectMs, frameSize) = sample;
+
+            Line($"OK 6 秒采样 {total} 次：MeasuredFps 最大 {maxFps:0.0}；FrameSize {frameSize.Item1}×{frameSize.Item2}；" +
+                 $"单帧处理耗时最大 {maxProcessMs:0.0} ms（其中人脸检测 {maxDetectMs:0.0} ms）");
+            Line((latestCount > 0 ? "OK" : "FAIL") + $" Latest 非 null：{latestCount}/{total} 次");
+            Line($"OK 人脸采样：{faceCount}/{total} 次（房间没人时 0 也正常，这条只验证检测管线在跑）");
+            Line((previewCount > 0 ? "OK" : "FAIL") +
+                 $" LatestPreview 非 null：{previewCount}/{total} 次（已启用预览，应该有）");
+
+            // ⑤ 停止
+            var stopWatch = Stopwatch.StartNew();
+            await source.StopAsync();
+            stopWatch.Stop();
+            Line((!source.IsRunning ? "OK" : "FAIL") +
+                 $" StopAsync：耗时 {stopWatch.ElapsedMilliseconds} ms，IsRunning={source.IsRunning}");
+        }
+        catch (Exception ex)
+        {
+            Line("EXCEPTION " + ex.GetType().Name + "：" + ex.Message);
+        }
+        finally
+        {
+            // 恢复用户原来的配置（隐私：自测完不留下开着的摄像头）
+            cfg.MocapEnabled = originalEnabled;
+            ApplyRuntimeSettings();
+            ApplyMocapSettings();
+            viewModel.RefreshAllBindings();
+
+            var report = string.Join(Environment.NewLine, lines) + Environment.NewLine;
+            try { viewModel.Storage.WriteText("mocap-selftest.log", report); }
+            catch (Exception ex) { viewModel.Log("动捕自测日志写入失败：" + ex.Message); }
+
+            if (exitAfter)
+            {
+                await Task.Delay(400);
+                Application.Current?.Shutdown();
+            }
+        }
+    }
+
     // ===================== 桌宠窗口 =====================
 
     /// <summary>显示桌宠（模型没加载就开始加载；加载完成前窗口是透明的）。</summary>
@@ -818,6 +1309,7 @@ public sealed class Live2DSession
             _pet = pet;
             pet.Show();
             UpdateFrameLoop();
+            ApplyMocapSettings();   // 桌宠也算「有人看着」→ 动捕可以开始采集
             StateChanged?.Invoke(this, EventArgs.Empty);
             PetVisibilityChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -828,12 +1320,13 @@ public sealed class Live2DSession
         }
     }
 
-    /// <summary>隐藏桌宠（页面也关着时帧循环随之停下）。</summary>
+    /// <summary>隐藏桌宠（页面也关着时帧循环随之停下，摄像头也随之关闭）。</summary>
     public void HidePet()
     {
         if (_viewModel is not null) _viewModel.Cfg.PetEnabled = false;
         ClosePetInternal(raiseEvent: true);
         UpdateFrameLoop();
+        ApplyMocapSettings();
     }
 
     /// <summary>显示 / 隐藏桌宠。</summary>
@@ -886,6 +1379,7 @@ public sealed class Live2DSession
         try { pet.CloseForShutdown(); } catch { /* 忽略 */ }
         try { pet.Close(); } catch { /* 忽略 */ }
         UpdateFrameLoop();
+        ApplyMocapSettings();
         if (!raiseEvent) return;
         StateChanged?.Invoke(this, EventArgs.Empty);
         PetVisibilityChanged?.Invoke(this, EventArgs.Empty);
@@ -898,6 +1392,7 @@ public sealed class Live2DSession
         if (_viewModel is not null) _viewModel.Cfg.PetEnabled = false;
         SaveConfigNow();
         UpdateFrameLoop();
+        ApplyMocapSettings();   // 桌宠关了、页面也没开 → 关闭摄像头
 
         // 桌宠关了、页面也没开：眼神回正
         if (!_pageActive)

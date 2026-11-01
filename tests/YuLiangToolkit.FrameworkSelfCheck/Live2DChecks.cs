@@ -6,11 +6,13 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Media.Imaging;
 using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Tools.Live2D;
 using YuLiangToolkit.Tools.Live2D.Interop;
+using YuLiangToolkit.Tools.Live2D.Mocap;
 using YuLiangToolkit.Tools.Live2D.Model;
 using YuLiangToolkit.Tools.Live2D.Rendering;
 
@@ -436,6 +438,19 @@ internal static class Live2DChecks
                 && Near(defaults.EyeTrackingHeadStrength, 1.0, 1e-9)
                 && Near(defaults.EyeTrackingEyeStrength, 1.0, 1e-9)
                 && Near(defaults.EyeTrackingBodyStrength, 0.5, 1e-9));
+            C("配置默认值：摄像头动捕默认关闭（隐私默认关）/ 镜像开 / 15fps / 平滑 0.45 / 中性位正中",
+                !defaults.MocapEnabled && defaults.MocapMirror && defaults.MocapFps == 15
+                && defaults.MocapHeadEnabled && defaults.MocapBlinkEnabled && defaults.MocapMouthEnabled
+                && Near(defaults.MocapHeadStrength, 1.0, 1e-9)
+                && Near(defaults.MocapEyeStrength, 1.0, 1e-9)
+                && Near(defaults.MocapMouthStrength, 1.0, 1e-9)
+                && Near(defaults.MocapSmoothing, 0.45, 1e-9) && defaults.MocapShowPreview
+                && Near(defaults.MocapNeutralFaceX, 0.5, 1e-9) && Near(defaults.MocapNeutralFaceY, 0.5, 1e-9)
+                && defaults.MocapCameraId.Length == 0 && defaults.MocapCameraName.Length == 0);
+            C("配置默认值：身体晃动默认关闭 / 模式「左右摇」/ 幅度 12° / 速度 0.5Hz / 头部跟随 0.35 / 含腰腿",
+                !defaults.BodySwayEnabled && defaults.BodySwayMode == "左右摇"
+                && Near(defaults.BodySwayAmplitude, 12, 1e-9) && Near(defaults.BodySwaySpeed, 0.5, 1e-9)
+                && Near(defaults.BodySwayHeadFollow, 0.35, 1e-9) && defaults.BodySwayIncludeHips);
 
             var store = ToolConfigStore.For(Live2DTool.ToolId);
             var cfg = store.Load<Live2DConfig>();
@@ -450,22 +465,36 @@ internal static class Live2DChecks
             cfg.PetWidth = 520;
             cfg.EyeTracking = false;
             cfg.PhysicsStrength = 1.5;
+            cfg.MocapEnabled = true;
+            cfg.MocapCameraId = "cam-自检";
+            cfg.MocapCameraName = "自检摄像头";
+            cfg.MocapFps = 24;
+            cfg.BodySwayEnabled = true;
+            cfg.BodySwayMode = "椭圆";
+            cfg.BodySwayAmplitude = 20;
             ToolConfigStore.FlushAll();
             var reloaded = JsonFileStore.Read<Live2DConfig>(cfg.FilePath);
             var configDirectory = Path.GetDirectoryName(cfg.FilePath);
             var badBackups = configDirectory is not null && Directory.Exists(configDirectory)
                 ? Directory.GetFiles(configDirectory, "config.bad-*.json").Length
                 : 0;
-            C("配置改动自动落盘并读回（帧率 60 / 纹理 4096 / 桌宠宽 520 / 关眼睛跟随 / 物理 1.5）",
-                reloaded is { FpsLimit: 60, TextureMaxSize: 4096, PetWidth: 520, EyeTracking: false }
+            C("配置改动自动落盘并读回（帧率 / 纹理 / 桌宠宽 / 眼睛跟随 / 物理 / 动捕 / 身体晃动）",
+                reloaded is
+                {
+                    FpsLimit: 60, TextureMaxSize: 4096, PetWidth: 520, EyeTracking: false,
+                    MocapEnabled: true, MocapCameraId: "cam-自检", MocapCameraName: "自检摄像头", MocapFps: 24,
+                    BodySwayEnabled: true, BodySwayMode: "椭圆", BodySwayAmplitude: 20,
+                }
                 && Near(reloaded.PhysicsStrength, 1.5, 1e-9),
                 reloaded is null
                     ? $"读回失败：config 存在={File.Exists(cfg.FilePath)}，被备份的坏文件={badBackups} 个，LastError={store.LastError ?? "(无)"}"
                     : JsonFileStore.Serialize(reloaded).Replace(Environment.NewLine, " "));
-            C("配置按 camelCase 落盘（手改配置时键名好认：fpsLimit / textureMaxSize / petWidth）",
+            C("配置按 camelCase 落盘（手改配置时键名好认：fpsLimit / mocapEnabled / bodySwayEnabled）",
                 File.ReadAllText(cfg.FilePath).Contains("\"fpsLimit\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"textureMaxSize\"")
-                && File.ReadAllText(cfg.FilePath).Contains("\"petWidth\""),
+                && File.ReadAllText(cfg.FilePath).Contains("\"petWidth\"")
+                && File.ReadAllText(cfg.FilePath).Contains("\"mocapEnabled\"")
+                && File.ReadAllText(cfg.FilePath).Contains("\"bodySwayEnabled\""),
                 File.ReadAllText(cfg.FilePath).Replace(Environment.NewLine, " "));
         }
         catch (Exception ex)
@@ -526,7 +555,195 @@ internal static class Live2DChecks
         }
 
         // ================================================================
-        // 十、模型运行时 + 软件渲染器（要 WPF 位图 → 单独 STA 线程）
+        // 十、摄像头面部动捕（纯逻辑断言；自检绝不打开摄像头、不弹隐私授权）
+        // ================================================================
+        try
+        {
+            // ---------- MocapMath：脸在画面里的位置 → 头部角度 / 眼球方向 ----------
+            C("动捕数学常量：左右窗口 0.20 / 上下窗口 0.16 / 最大角度 30° / 22°",
+                Near(MocapMath.YawWindow, 0.20, 1e-12) && Near(MocapMath.PitchWindow, 0.16, 1e-12)
+                && Near(MocapMath.MaxYawDegrees, 30, 1e-12) && Near(MocapMath.MaxPitchDegrees, 22, 1e-12));
+
+            var (centerYaw, centerPitch) = MocapMath.MapHead(0.5, 0.5, 0.5, 0.5);
+            C("动捕数学：脸在画面正中 = 中性位置 → Yaw / Pitch ≈ 0",
+                Near(centerYaw, 0, 1e-9) && Near(centerPitch, 0, 1e-9),
+                $"yaw={centerYaw:0.###} pitch={centerPitch:0.###}");
+
+            var (rightYaw, rightPitch) = MocapMath.MapHead(0.6, 0.5, 0.5, 0.5);
+            var (leftYaw, _) = MocapMath.MapHead(0.4, 0.5, 0.5, 0.5);
+            C("动捕数学：脸偏右 → Yaw 为正（0.10 窗口 = 15°），脸偏左对称取负",
+                Near(rightYaw, 15, 1e-6) && Near(rightPitch, 0, 1e-9) && Near(leftYaw, -15, 1e-6),
+                $"右={rightYaw:0.###} 左={leftYaw:0.###}");
+
+            var (downYaw, downPitch) = MocapMath.MapHead(0.5, 0.58, 0.5, 0.5);
+            var (upYaw, upPitch) = MocapMath.MapHead(0.5, 0.42, 0.5, 0.5);
+            C("动捕数学：脸偏下 → Pitch 为负（低头 ≈ -11°），脸偏上 → 为正（抬头）",
+                Near(downYaw, 0, 1e-9) && downPitch < -10 && upPitch > 10 && Near(upYaw, 0, 1e-9),
+                $"下={downPitch:0.###} 上={upPitch:0.###}");
+
+            var (clampRightYaw, clampDownPitch) = MocapMath.MapHead(0.95, 0.95, 0.5, 0.5);
+            var (clampLeftYaw, clampUpPitch) = MocapMath.MapHead(0.05, 0.05, 0.5, 0.5);
+            C("动捕数学：偏移超出窗口 → 角度夹在 ±30° / ±22°（不会转过头）",
+                Near(clampRightYaw, 30, 1e-9) && Near(clampLeftYaw, -30, 1e-9)
+                && Near(clampDownPitch, -22, 1e-9) && Near(clampUpPitch, 22, 1e-9),
+                $"({clampRightYaw:0.#},{clampDownPitch:0.#}) / ({clampLeftYaw:0.#},{clampUpPitch:0.#})");
+
+            var (calibratedYaw, calibratedPitch) = MocapMath.MapHead(0.42, 0.63, 0.42, 0.63);
+            C("动捕数学：中性位可以校准（脸在中性位时角度 = 0，不要求画面正中心）",
+                Near(calibratedYaw, 0, 1e-9) && Near(calibratedPitch, 0, 1e-9));
+
+            var (pupilX, pupilY) = MocapMath.MapPupil(30, 22);
+            var (pupilLeft, pupilDown) = MocapMath.MapPupil(-30, -22);
+            var (pupilClampX, pupilClampY) = MocapMath.MapPupil(90, -90);
+            C("动捕数学：头部角度 → 眼球方向（满角 → 0.9 / 0.6，反向对称，超界夹到 ±1）",
+                Near(pupilX, 0.9, 1e-9) && Near(pupilY, 0.6, 1e-9)
+                && Near(pupilLeft, -0.9, 1e-9) && Near(pupilDown, -0.6, 1e-9)
+                && Near(pupilClampX, 1, 1e-9) && Near(pupilClampY, -1, 1e-9),
+                $"({pupilX:0.##},{pupilY:0.##}) / ({pupilClampX:0.##},{pupilClampY:0.##})");
+
+            var smoothDirect = MocapMath.Smooth(0, 10, 0);
+            var smoothHalf = MocapMath.Smooth(0, 10, 0.5);
+            var smoothTenPercent = MocapMath.Smooth(10, 0, 0.9);
+            var smoothClamped = MocapMath.Smooth(0, 10, 1.5);
+            C("动捕平滑：smoothing=0 等同直接赋值、0.5 = 走一半、0.9 = 走 10%，越界系数被夹",
+                Near(smoothDirect, 10, 1e-9) && Near(smoothHalf, 5, 1e-9)
+                && Near(smoothTenPercent, 9, 1e-9) && Near(smoothClamped, 0.5, 1e-9),
+                $"{smoothDirect} / {smoothHalf} / {smoothTenPercent} / {smoothClamped}");
+            var smoothCurrent = 0.0;
+            for (var i = 0; i < 60; i++) smoothCurrent = MocapMath.Smooth(smoothCurrent, 20, 0.5);
+            C("动捕平滑：连续迭代会收敛到目标（60 帧内到目标的 99% 以上）",
+                Math.Abs(smoothCurrent - 20) < 0.2, smoothCurrent.ToString("0.###", CultureInfo.InvariantCulture));
+
+            // ---------- FaceExpressionAnalyzer：用合成 BGRA 图直接测启发式（不碰摄像头） ----------
+            var faceBox = new FaceExpressionAnalyzer.FaceBox(80, 60, 160, 160);
+            var frameEyesOpen = MakeSyntheticFaceFrame(320, 240, faceBox, leftEyeOpen: true, rightEyeOpen: true, mouthOpen: false);
+            var frameEyesClosed = MakeSyntheticFaceFrame(320, 240, faceBox, leftEyeOpen: false, rightEyeOpen: false, mouthOpen: false);
+            var frameMouthOpen = MakeSyntheticFaceFrame(320, 240, faceBox, leftEyeOpen: false, rightEyeOpen: false, mouthOpen: true);
+
+            var eyeAnalyzer = new FaceExpressionAnalyzer();
+            for (var i = 0; i < 40; i++)
+                eyeAnalyzer.Analyze(i % 2 == 0 ? frameEyesOpen : frameEyesClosed, 320, 240, in faceBox);
+            var openEyeMetrics = eyeAnalyzer.Analyze(frameEyesOpen, 320, 240, in faceBox);
+            var closedEyeMetrics = eyeAnalyzer.Analyze(frameEyesClosed, 320, 240, in faceBox);
+            C("动捕表情分析：睁眼眼开度 > 闭眼（合成图 + 滚动分位数自动校准）",
+                openEyeMetrics.EyeOpenLeft > 0.7 && openEyeMetrics.EyeOpenRight > 0.7
+                && closedEyeMetrics.EyeOpenLeft < 0.3 && closedEyeMetrics.EyeOpenRight < 0.3,
+                $"睁={openEyeMetrics.EyeOpenLeft:0.###} 闭={closedEyeMetrics.EyeOpenLeft:0.###}");
+
+            var frameLeftClosed = MakeSyntheticFaceFrame(320, 240, faceBox, leftEyeOpen: false, rightEyeOpen: true, mouthOpen: false);
+            var asymmetricMetrics = eyeAnalyzer.Analyze(frameLeftClosed, 320, 240, in faceBox);
+            C("动捕表情分析：单眼闭时左右眼分开输出（左闭右睁，互不串味）",
+                asymmetricMetrics.EyeOpenLeft < asymmetricMetrics.EyeOpenRight - 0.3,
+                $"左={asymmetricMetrics.EyeOpenLeft:0.###} 右={asymmetricMetrics.EyeOpenRight:0.###}");
+
+            var mouthAnalyzer = new FaceExpressionAnalyzer();
+            for (var i = 0; i < 40; i++)
+                mouthAnalyzer.Analyze(i % 2 == 0 ? frameMouthOpen : frameEyesClosed, 320, 240, in faceBox);
+            var mouthOpenMetrics = mouthAnalyzer.Analyze(frameMouthOpen, 320, 240, in faceBox);
+            var mouthClosedMetrics = mouthAnalyzer.Analyze(frameEyesClosed, 320, 240, in faceBox);
+            C("动捕表情分析：张嘴张嘴度 > 闭嘴（嘴部暗块比例 + 对比度启发式）",
+                mouthOpenMetrics.MouthOpen > 0.7 && mouthClosedMetrics.MouthOpen < 0.3,
+                $"张={mouthOpenMetrics.MouthOpen:0.###} 闭={mouthClosedMetrics.MouthOpen:0.###}");
+
+            var resetAnalyzer = new FaceExpressionAnalyzer();
+            for (var i = 0; i < 40; i++)
+                resetAnalyzer.Analyze(i % 2 == 0 ? frameEyesOpen : frameEyesClosed, 320, 240, in faceBox);
+            resetAnalyzer.ResetCalibration();
+            var afterResetMetrics = resetAnalyzer.Analyze(frameEyesOpen, 320, 240, in faceBox);
+            C("动捕表情分析：ResetCalibration 后回到安全默认（眼=1 / 嘴=0，不会拿旧基准乱跳）",
+                Near(afterResetMetrics.EyeOpenLeft, 1, 1e-9) && Near(afterResetMetrics.EyeOpenRight, 1, 1e-9)
+                && Near(afterResetMetrics.MouthOpen, 0, 1e-9));
+
+            var tinyBox = new FaceExpressionAnalyzer.FaceBox(80, 60, 12, 12);
+            var tinyMetrics = resetAnalyzer.Analyze(frameEyesOpen, 320, 240, in tinyBox);
+            C("动捕表情分析：脸框太小 → 安全值（眼=1 / 嘴=0），不按噪声乱算",
+                Near(tinyMetrics.EyeOpenLeft, 1, 1e-9) && Near(tinyMetrics.EyeOpenRight, 1, 1e-9)
+                && Near(tinyMetrics.MouthOpen, 0, 1e-9));
+
+            // ---------- MocapSettings.FromConfig：配置 → 运行参数（含 clamp） ----------
+            var mocapCfg = new Live2DConfig
+            {
+                MocapCameraId = "cam-1",
+                MocapCameraName = "测试摄像头",
+                MocapMirror = false,
+                MocapFps = 99,
+                MocapSmoothing = 3,
+                MocapShowPreview = false,
+                MocapNeutralFaceX = 0.42,
+                MocapNeutralFaceY = 0.6,
+            };
+            var mocapSettings = MocapSettings.FromConfig(mocapCfg);
+            C("动捕设置映射：摄像头 Id / 名字 / 镜像 / 预览 / 中性位原样带过去",
+                mocapSettings.CameraId == "cam-1" && mocapSettings.CameraName == "测试摄像头"
+                && !mocapSettings.Mirror && !mocapSettings.EnablePreview
+                && Near(mocapSettings.NeutralFaceX, 0.42, 1e-9) && Near(mocapSettings.NeutralFaceY, 0.6, 1e-9));
+            C("动捕设置 clamp 上界：帧率夹到 24、平滑夹到 0.95",
+                mocapSettings.Fps == 24 && Near(mocapSettings.Smoothing, 0.95, 1e-9),
+                $"fps={mocapSettings.Fps} smoothing={mocapSettings.Smoothing}");
+            var mocapLow = MocapSettings.FromConfig(new Live2DConfig { MocapFps = 1, MocapSmoothing = -5 });
+            C("动捕设置 clamp 下界：帧率夹到 10、平滑夹到 0",
+                mocapLow.Fps == 10 && Near(mocapLow.Smoothing, 0, 1e-9));
+            var mocapDefaults = MocapSettings.FromConfig(new Live2DConfig());
+            C("动捕设置默认值：自动选摄像头 / 镜像开 / 15fps / 平滑 0.45 / 预览开 / 中性位正中",
+                mocapDefaults.CameraId.Length == 0 && mocapDefaults.CameraName.Length == 0
+                && mocapDefaults.Mirror && mocapDefaults.Fps == 15 && mocapDefaults.EnablePreview
+                && Near(mocapDefaults.Smoothing, 0.45, 1e-9)
+                && Near(mocapDefaults.NeutralFaceX, 0.5, 1e-9) && Near(mocapDefaults.NeutralFaceY, 0.5, 1e-9));
+
+            // ---------- 动捕数据契约 ----------
+            var noFaceResult = MocapTrackingResult.NoFace(123456);
+            C("动捕数据契约：NoFace() = HasFace=false 的空结果，时间戳保留",
+                !noFaceResult.HasFace && noFaceResult.TimestampMs == 123456
+                && noFaceResult.EyeOpenLeft == 0 && noFaceResult.MouthOpen == 0);
+
+            // ---------- 摄像头枚举（只枚举设备，不启动采集、不弹隐私授权） ----------
+            try
+            {
+                var enumerateTask = Task.Run(async () => await MocapCameraSource.EnumerateCamerasAsync());
+                if (enumerateTask.Wait(TimeSpan.FromSeconds(20)))
+                {
+                    var cameras = enumerateTask.Result;
+                    C("动捕：摄像头枚举不抛异常、返回列表（0 个也算 PASS；自检不打开摄像头）",
+                        cameras is not null, $"枚举到 {cameras?.Count ?? 0} 个摄像头（未启动采集）");
+                    C("动捕：枚举到的摄像头条目 Id / Name 都非空（0 个时直接 PASS）",
+                        cameras is null || cameras.Count == 0
+                        || cameras.All(c => !string.IsNullOrWhiteSpace(c.Id) && !string.IsNullOrWhiteSpace(c.Name)),
+                        cameras is null || cameras.Count == 0
+                            ? "(本机枚举到 0 个摄像头)"
+                            : string.Join(" / ", cameras.Select(c => c.Name)));
+                }
+                else
+                {
+                    C("动捕：摄像头枚举在 20 秒内没有返回（不启动摄像头也可能因系统服务忙超时）", false, "EnumerateCamerasAsync 超时");
+                }
+            }
+            catch (Exception ex)
+            {
+                C("动捕：摄像头枚举抛出了异常（应内部吞掉并返回空列表）", false, $"{ex.GetType().Name}: {ex.Message}");
+            }
+
+            // 构造数据源不应该碰摄像头（隐私：只有显式 StartAsync 才初始化摄像头）
+            try
+            {
+                using var cameraSource = new MocapCameraSource(MocapSettings.FromConfig(new Live2DConfig()));
+                C("动捕：构造 MocapCameraSource 不会启动采集（IsRunning=false、Latest=null，隐私默认关）",
+                    !cameraSource.IsRunning && cameraSource.Latest is null && cameraSource.LatestPreview is null);
+                C("动捕：未启动时状态字段是安全默认（无错误 / 帧率 0 / 画面 0×0）",
+                    cameraSource.LastError is null && cameraSource.MeasuredFps == 0
+                    && cameraSource.FrameSize == (0, 0));
+            }
+            catch (Exception ex)
+            {
+                C("动捕：构造 MocapCameraSource 运行期间抛出异常", false, $"{ex.GetType().Name}: {ex.Message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            C("动捕纯逻辑断言运行期间抛出异常", false, $"{ex.GetType().Name}: {ex.Message}");
+        }
+
+        // ================================================================
+        // 十一、模型运行时 + 软件渲染器（要 WPF 位图 → 单独 STA 线程）
         // ================================================================
         if (!Directory.Exists(modelDir))
         {
@@ -592,6 +809,9 @@ internal static class Live2DChecks
 
         try
         {
+            // 编译器对 local function / 内插字符串里的可空流分析会丢状态：这里显式拿一个非空局部引用。
+            var rt = runtime;
+
             // 让模型回到安静状态：关掉会自己写参数的系统，后面逐项打开
             void Quiet()
             {
@@ -610,9 +830,9 @@ internal static class Live2DChecks
                 for (var i = 0; i < frames; i++) runtime.Tick(TimeSpan.FromSeconds(secondsPerFrame));
             }
 
-            float Param(string id) => runtime.Model.FindParameter(id)?.Value ?? float.NaN;
+            float Param(string id) => rt.Model.FindParameter(id)?.Value ?? float.NaN;
             bool AllParamsFinite()
-                => runtime.Model.Parameters.All(p => float.IsFinite(p.Value));
+                => rt.Model.Parameters.All(p => float.IsFinite(p.Value));
 
             // ---------------- A. 运行时数据 / 绑定 ----------------
             C("运行时模型对象与渲染器可用（Model / Renderer 非空），物理配置已加载",
@@ -660,7 +880,7 @@ internal static class Live2DChecks
             TickFrames(1);
             C("Tick 一帧不抛异常，参数保持有限（509 个参数全 finite）",
                 AllParamsFinite(),
-                $"tickMs={runtime.LastTickMilliseconds:0.###} updateMs={runtime.Model.LastUpdateMilliseconds:0.###}");
+                $"tickMs={runtime.LastTickMilliseconds:0.###} updateMs={rt.Model.LastUpdateMilliseconds:0.###}");
 
             Quiet();
             var shortMotion = runtime.Motions.FirstOrDefault(m => m.Name == "默认手切举手");
@@ -858,7 +1078,7 @@ internal static class Live2DChecks
                 TransparentBackground = true,
             };
             runtime.RenderFrame(renderOptions);
-            var bitmap = runtime.Renderer.Bitmap;
+            var bitmap = rt.Renderer.Bitmap;
             C("渲染器：输出位图尺寸跟随 RenderOptions（320×640）",
                 bitmap is not null && bitmap.PixelWidth == 320 && bitmap.PixelHeight == 640,
                 bitmap is null ? "(Bitmap 为 null)" : $"{bitmap.PixelWidth}×{bitmap.PixelHeight}");
@@ -944,6 +1164,196 @@ internal static class Live2DChecks
             C("渲染器：320×640 一帧渲染耗时 < 200ms（宽松性能哨兵，只防渲染退化到不可用）",
                 best < 200,
                 $"{best:0.###}ms / 帧（Core update 另算）");
+
+            // ---------------- G. 摄像头动捕集成（自写假数据源，绝不打开摄像头） ----------------
+            Quiet();
+            runtime.PhysicsEnabled = false;   // 只看动捕写了什么，不让物理再改同一批参数
+            var fakeMocap = new FakeMocapProvider();
+            runtime.Mocap = fakeMocap;
+            runtime.MocapEnabled = true;
+            runtime.MocapHeadEnabled = true;
+            runtime.MocapBlinkEnabled = true;
+            runtime.MocapMouthEnabled = true;
+            runtime.EyeTrackingEnabled = false;
+            fakeMocap.Latest = MakeFakeTracking(yaw: 15, pitch: -10, eyeOpen: 0.2, mouth: 0.8);
+            TickFrames(1);
+            C("动捕集成：假数据（Yaw=15 / Pitch=-10 / 眼睛 0.2 / 嘴 0.8）→ 模型参数被驱动",
+                Math.Abs(Param("ParamAngleX") - 15f) < 1e-3f
+                && Math.Abs(Param("ParamAngleY") + 10f) < 1e-3f
+                && Math.Abs(Param("ParamEyeLOpen") - 0.2f) < 1e-3f
+                && Math.Abs(Param("ParamMouthOpenY") - 0.8f) < 1e-3f,
+                $"AngleX={Param("ParamAngleX"):0.###} AngleY={Param("ParamAngleY"):0.###} EyeL={Param("ParamEyeLOpen"):0.###} Mouth={Param("ParamMouthOpenY"):0.###}");
+            C("动捕集成：头部动捕时身体温和跟随（ParamBodyAngleX = Yaw × 0.35）",
+                Math.Abs(Param("ParamBodyAngleX") - 15f * 0.35f) < 1e-3f
+                && Math.Abs(Param("PositionX") - 15f * 0.35f) < 1e-3f,
+                $"bodyX={Param("ParamBodyAngleX"):0.###}");
+            C("动捕集成：HasFace=true → MocapHasFace=true、状态文案「正在跟踪」",
+                runtime.MocapHasFace && runtime.MocapStatusText == "正在跟踪", runtime.MocapStatusText);
+
+            // 有脸时鼠标眼控让位（不会两边抢同一批参数）
+            runtime.EyeTrackingEnabled = true;
+            runtime.SetEyeTrackingTarget(runtime.Model.CanvasWidthPixels * 0.85f, runtime.Model.CanvasOriginY);
+            TickFrames(3);
+            C("动捕优先级：有脸时动捕接管头部（鼠标眼控不会覆盖动捕角度）",
+                Math.Abs(Param("ParamAngleX") - 15f) < 0.5f, $"AngleX={Param("ParamAngleX"):0.###}");
+
+            // 没脸 → 回落到鼠标眼控 / 自动眨眼，不崩
+            fakeMocap.Latest = MocapTrackingResult.NoFace(Environment.TickCount64);
+            TickFrames(5);
+            C("动捕集成：没脸 → MocapHasFace=false、状态「未检测到人脸」、参数有限（回落到鼠标眼控）",
+                !runtime.MocapHasFace && runtime.MocapStatusText == "未检测到人脸" && AllParamsFinite(),
+                runtime.MocapStatusText);
+
+            // 过期帧（>600ms）不再驱动（相机卡住时角度不会僵住）
+            fakeMocap.Latest = new MocapTrackingResult
+            {
+                HasFace = true, Yaw = 25, Pitch = 0,
+                EyeOpenLeft = 0, EyeOpenRight = 0, MouthOpen = 1,
+                TimestampMs = Environment.TickCount64 - 2000,
+            };
+            TickFrames(1);
+            C("动捕集成：过期帧（>600ms）不再驱动模型（相机卡住时不会僵在旧角度）",
+                !runtime.MocapHasFace && runtime.MocapStatusText == "未检测到人脸",
+                runtime.MocapStatusText);
+
+            // MocapEnabled=false → 完全不写参数（隐私默认关）
+            runtime.MocapEnabled = false;
+            Quiet();
+            runtime.PhysicsEnabled = false;
+            fakeMocap.Latest = MakeFakeTracking(yaw: 15, pitch: -10, eyeOpen: 0.2, mouth: 0.8);
+            TickFrames(3);
+            C("动捕集成：MocapEnabled=false 时动捕完全不写参数（默认隐私关闭）",
+                !runtime.MocapHasFace && runtime.MocapStatusText == "无数据"
+                && Math.Abs(Param("ParamAngleX")) < 1e-3f && Math.Abs(Param("ParamMouthOpenY")) < 1e-3f,
+                $"status={runtime.MocapStatusText} AngleX={Param("ParamAngleX"):0.###}");
+
+            // 单项开关：关头部后只保留眨眼 / 张嘴
+            runtime.MocapEnabled = true;
+            runtime.MocapHeadEnabled = false;
+            fakeMocap.Latest = MakeFakeTracking(yaw: 15, pitch: -10, eyeOpen: 0.2, mouth: 0.8);
+            TickFrames(2);
+            C("动捕集成：关掉「头部转动」后只驱动眨眼 / 张嘴（头部角度回默认）",
+                Math.Abs(Param("ParamAngleX")) < 1e-3f
+                && Math.Abs(Param("ParamEyeLOpen") - 0.2f) < 1e-3f
+                && Math.Abs(Param("ParamMouthOpenY") - 0.8f) < 1e-3f,
+                $"AngleX={Param("ParamAngleX"):0.###} EyeL={Param("ParamEyeLOpen"):0.###}");
+            runtime.MocapHeadEnabled = true;
+            runtime.MocapEnabled = false;
+            runtime.Mocap = null;
+
+            // ---------------- H. 身体晃动测试集成 ----------------
+            Quiet();
+            runtime.PhysicsEnabled = false;
+            runtime.SwayEnabled = true;
+            runtime.SwayMode = BodySwayController.ModeLeftRight;
+            runtime.SwayAmplitudeDegrees = 10;
+            runtime.SwaySpeedHz = 0.5;
+            runtime.SwayHeadFollow = 0.35;
+            runtime.SwayIncludeHips = true;
+            runtime.Sway?.Reset();
+            var bodySamples = new List<float>();
+            var bodyTriples = new List<(float BodyX, float PositionX, float HeadX)>();
+            for (var i = 0; i < 8; i++)
+            {
+                runtime.Tick(TimeSpan.FromSeconds(0.125)); // 8 帧 = 1 秒 = 半个周期（0.5Hz）
+                bodySamples.Add(Param("ParamBodyAngleX"));
+                bodyTriples.Add((Param("ParamBodyAngleX"), Param("PositionX"), Param("ParamAngleX")));
+            }
+            C("身体晃动（左右摇）：ParamBodyAngleX 随时间变化且在 ±幅度内",
+                bodySamples.Any(v => Math.Abs(v) > 1f) && bodySamples.All(v => Math.Abs(v) <= 10.01f)
+                && bodySamples.Distinct().Count() >= 3,
+                string.Join(",", bodySamples.Select(v => v.ToString("0.##", CultureInfo.InvariantCulture))));
+            var midSway = bodyTriples.OrderByDescending(sample => Math.Abs(sample.BodyX)).First();
+            C("身体晃动：物理输入 PositionX 与身体主轴同向、头部 ParamAngleX 反向补偿（HeadFollow×0.9）",
+                Math.Abs(midSway.BodyX) > 2f
+                && Math.Abs(midSway.PositionX - midSway.BodyX) < 1e-3f
+                && Math.Abs(midSway.HeadX + midSway.BodyX * 0.35f * 0.9f) < 0.5f,
+                $"bodyX={midSway.BodyX:0.##} positionX={midSway.PositionX:0.##} paramAngleX={midSway.HeadX:0.##}");
+            C("身体晃动：执行过的参数都有限（无 NaN / Infinity），且包含腰腿参数",
+                runtime.Sway is not null && runtime.Sway.LastApplied.Count > 0
+                && runtime.Sway.LastApplied.All(a => float.IsFinite(a.Value))
+                && runtime.Sway.LastApplied.Any(a => a.Id == "HipAngleX" || a.Id == "ParamHipAngleZ"),
+                $"写入 {runtime.Sway?.LastApplied.Count ?? 0} 个参数");
+
+            // HeadFollow=0 → 不写头部参数（不干扰鼠标 / 动捕眼控）
+            runtime.SwayHeadFollow = 0;
+            runtime.Sway?.Reset();
+            TickFrames(3);
+            C("身体晃动：头部跟随=0 时不写头部参数（ParamAngleX 保持默认，不干扰鼠标 / 动捕）",
+                Math.Abs(Param("ParamAngleX")) < 1e-3f
+                && runtime.Sway is not null && runtime.Sway.LastApplied.All(a => a.Id != "ParamAngleX"),
+                $"AngleX={Param("ParamAngleX"):0.###}");
+
+            // 5 种模式都不抛异常、值有限
+            var modeIssues = new List<string>();
+            foreach (var mode in BodySwayController.Modes)
+            {
+                try
+                {
+                    runtime.SwayMode = mode;
+                    runtime.ResetParameters();
+                    TickFrames(4);
+                    var applied = runtime.Sway?.LastApplied;
+                    if (applied is null || applied.Count == 0 || applied.Any(a => !float.IsFinite(a.Value)))
+                        modeIssues.Add(mode + "(无写入或非有限)");
+                }
+                catch (Exception ex)
+                {
+                    modeIssues.Add($"{mode}:{ex.GetType().Name}");
+                }
+            }
+
+            C("身体晃动：5 种模式（左右摇 / 前后摇 / 扭腰 / 椭圆 / 自然晃）都不抛异常且写入有限值",
+                modeIssues.Count == 0, string.Join("；", modeIssues));
+            C("身体晃动：模式名列表 5 种、默认「左右摇」在列表里（UI 下拉口径一致）",
+                BodySwayController.Modes.Count == 5 && BodySwayController.Modes.Contains("左右摇")
+                && BodySwayController.Modes.Contains("自然晃"));
+
+            // 椭圆模式 X / Z 相位差 ≈ 90°（直接用控制器按精确步长推进）
+            Quiet();
+            runtime.PhysicsEnabled = false;
+            var swayDirect = runtime.Sway!;
+            swayDirect.Mode = BodySwayController.ModeEllipse;
+            swayDirect.AmplitudeDegrees = 10;
+            swayDirect.SpeedHz = 0.5;
+            swayDirect.HeadFollow = 0;
+            swayDirect.IncludeHips = false;
+            swayDirect.Reset();
+            swayDirect.Apply(runtime.Model, 0.5);  // progress = 0.25 周期 → X 最大、Z ≈ 0
+            var ellipseX1 = Param("ParamBodyAngleX");
+            var ellipseZ1 = Param("ParamBodyAngleZ");
+            swayDirect.Apply(runtime.Model, 0.5);  // progress = 0.5 周期 → X ≈ 0、Z 反向最大
+            var ellipseX2 = Param("ParamBodyAngleX");
+            var ellipseZ2 = Param("ParamBodyAngleZ");
+            C("身体晃动（椭圆）：X / Z 相位差约 90°（X 最大时 Z≈0，半周期后 X≈0、Z 反向最大）",
+                Math.Abs(ellipseX1 - 10f) < 0.2f && Math.Abs(ellipseZ1) < 0.2f
+                && Math.Abs(ellipseX2) < 0.2f && Math.Abs(ellipseZ2 + 6f) < 0.2f,
+                $"X1={ellipseX1:0.##} Z1={ellipseZ1:0.##} X2={ellipseX2:0.##} Z2={ellipseZ2:0.##}");
+
+            // 「摇一摇」限时演示：倒计时结束自动停
+            Quiet();
+            runtime.PhysicsEnabled = false;
+            runtime.SwayEnabled = false;
+            runtime.StartSwayDemo(0.4);
+            TickFrames(20, 0.05); // 1 秒 > 0.4s
+            C("身体晃动：「摇一摇」限时演示倒计时能结束（SwayDemoRemainingSeconds 归 0）",
+                runtime.SwayDemoRemainingSeconds == 0,
+                $"{runtime.SwayDemoRemainingSeconds:0.###}s");
+
+            // 关闭晃动 → 不再写参数（前后值不变）
+            Quiet();
+            runtime.PhysicsEnabled = false;
+            runtime.SwayEnabled = false;
+            runtime.StopSwayDemo();
+            runtime.Sway?.Reset();
+            runtime.ResetParameters();
+            var bodyDefaults = new[] { "ParamBodyAngleX", "ParamBodyAngleZ", "ParamAngleX" }.Select(Param).ToArray();
+            TickFrames(3);
+            C("身体晃动：关闭后不再写参数（身体 / 头部保持默认值，Sway.LastApplied 清空）",
+                runtime.Sway is not null && runtime.Sway.LastApplied.Count == 0
+                && new[] { "ParamBodyAngleX", "ParamBodyAngleZ", "ParamAngleX" }.Select(Param)
+                    .Select((value, index) => Math.Abs(value - bodyDefaults[index]) < 1e-6f)
+                    .All(ok => ok));
         }
         catch (Exception ex)
         {
@@ -1378,6 +1788,135 @@ internal static class Live2DChecks
         data.HasPartGroups = root.TryGetProperty("PartGroups", out var partGroups)
                              && partGroups.ValueKind == JsonValueKind.Array && partGroups.GetArrayLength() > 0;
         return data;
+    }
+
+    // ====================================================================
+    // 动捕自检用的合成人脸图（BGRA32；不依赖摄像头 / 不读磁盘图片）
+    // ====================================================================
+
+    /// <summary>
+    /// 造一张「人脸」合成图：肤色背景 + 脸框（稍亮肤色）；
+    /// 睁眼时在眼睛横带里画亮眼白 + 暗瞳孔（灰度标准差大），闭眼保持肤色；
+    /// 张嘴时在嘴部横带里画暗色口腔（暗像素比例上升）。
+    /// <para>区域比例严格按 <see cref="FaceExpressionAnalyzer"/> 取的横带（眼 30%~56%、
+    /// 嘴 60%~88%、脸颊 55%~80%）来画，保证启发式拿到的就是测试想给它的信号。</para>
+    /// </summary>
+    private static byte[] MakeSyntheticFaceFrame(int width, int height,
+        FaceExpressionAnalyzer.FaceBox box, bool leftEyeOpen, bool rightEyeOpen, bool mouthOpen)
+    {
+        var bgra = new byte[width * height * 4];
+        FillSyntheticRect(bgra, width, height, 0, 0, width, height, 165);                  // 背景
+        FillSyntheticRect(bgra, width, height, box.X, box.Y, box.Width, box.Height, 185);  // 脸
+
+        var eyeTop = box.Y + (int)(box.Height * 0.30);
+        var eyeBottom = box.Y + (int)(box.Height * 0.56);
+        var leftEyeLeft = box.X + (int)(box.Width * 0.10);
+        var leftEyeRight = box.X + (int)(box.Width * 0.44);
+        var rightEyeLeft = box.X + (int)(box.Width * 0.56);
+        var rightEyeRight = box.X + (int)(box.Width * 0.90);
+        if (leftEyeOpen) DrawSyntheticOpenEye(bgra, width, height, leftEyeLeft, eyeTop, leftEyeRight, eyeBottom);
+        if (rightEyeOpen) DrawSyntheticOpenEye(bgra, width, height, rightEyeLeft, eyeTop, rightEyeRight, eyeBottom);
+
+        if (mouthOpen)
+        {
+            var mouthLeft = box.X + (int)(box.Width * 0.30);
+            var mouthTop = box.Y + (int)(box.Height * 0.60);
+            var mouthWidth = (int)(box.Width * 0.40);
+            var mouthHeight = (int)(box.Height * 0.28);
+            FillSyntheticRect(bgra, width, height,
+                mouthLeft + (int)(mouthWidth * 0.10), mouthTop + (int)(mouthHeight * 0.15),
+                (int)(mouthWidth * 0.80), (int)(mouthHeight * 0.70), 25);                  // 暗口腔
+        }
+
+        return bgra;
+    }
+
+    /// <summary>画一只睁开的眼睛：亮眼白 + 居中暗瞳孔（制造明显灰度方差）。</summary>
+    private static void DrawSyntheticOpenEye(byte[] bgra, int width, int height, int x0, int y0, int x1, int y1)
+    {
+        var eyeWidth = x1 - x0;
+        var eyeHeight = y1 - y0;
+        if (eyeWidth <= 0 || eyeHeight <= 0) return;
+
+        FillSyntheticRect(bgra, width, height, x0, y0, eyeWidth, eyeHeight, 235); // 眼白
+        var pupilWidth = Math.Max(2, eyeWidth / 3);
+        var pupilHeight = Math.Max(2, eyeHeight / 2);
+        FillSyntheticRect(bgra, width, height,
+            x0 + (eyeWidth - pupilWidth) / 2, y0 + (eyeHeight - pupilHeight) / 2,
+            pupilWidth, pupilHeight, 20);                                        // 瞳孔
+    }
+
+    /// <summary>在 BGRA32 缓冲里填一个矩形（灰度值；自动裁到图像范围内）。</summary>
+    private static void FillSyntheticRect(byte[] bgra, int width, int height,
+        int x, int y, int w, int h, byte gray)
+    {
+        var x0 = Math.Clamp(x, 0, Math.Max(0, width - 1));
+        var y0 = Math.Clamp(y, 0, Math.Max(0, height - 1));
+        var x1 = Math.Clamp(x + w, 0, width);
+        var y1 = Math.Clamp(y + h, 0, height);
+        if (x1 <= x0 || y1 <= y0) return;
+
+        for (var py = y0; py < y1; py++)
+        {
+            var row = py * width;
+            for (var px = x0; px < x1; px++)
+            {
+                var index = (row + px) * 4;
+                bgra[index] = gray;       // B
+                bgra[index + 1] = gray;   // G
+                bgra[index + 2] = gray;   // R
+                bgra[index + 3] = 255;    // A
+            }
+        }
+    }
+
+    // ====================================================================
+    // 动捕运行时集成自检用的假数据源（绝不打开摄像头）
+    // ====================================================================
+
+    /// <summary>造一帧「有脸」的动捕结果（时间戳取当前，避免被 600ms 过期检查挡掉）。</summary>
+    private static MocapTrackingResult MakeFakeTracking(double yaw, double pitch, double eyeOpen, double mouth)
+    {
+        var (pupilX, pupilY) = MocapMath.MapPupil(yaw, pitch);
+        return new MocapTrackingResult
+        {
+            HasFace = true,
+            FaceX = 0.5,
+            FaceY = 0.5,
+            FaceScale = 0.3,
+            Yaw = yaw,
+            Pitch = pitch,
+            Roll = 0,
+            EyeOpenLeft = eyeOpen,
+            EyeOpenRight = eyeOpen,
+            MouthOpen = mouth,
+            PupilX = pupilX,
+            PupilY = pupilY,
+            TimestampMs = Environment.TickCount64,
+        };
+    }
+
+    /// <summary>自检用假动捕数据源：只提供内存里的固定结果，不碰任何摄像头 / WinRT API。</summary>
+    private sealed class FakeMocapProvider : IMocapProvider
+    {
+        public MocapTrackingResult? Latest { get; set; }
+
+        public MocapPreviewFrame? LatestPreview => null;
+
+        public bool IsRunning { get; set; } = true;
+
+        public string? LastError => null;
+
+        public double MeasuredFps => 15;
+
+        public (int Width, int Height) FrameSize => (640, 360);
+
+        /// <summary>自检从不订阅状态变化；用空访问器实现接口（避免「事件未使用」的编译警告）。</summary>
+        public event EventHandler? StateChanged
+        {
+            add { }
+            remove { }
+        }
     }
 
     // ====================================================================
