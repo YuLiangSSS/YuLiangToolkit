@@ -28,6 +28,31 @@
 - 许可：MIT License
 - 版权：Copyright (c) ppy Pty Ltd <contact@ppy.sh>
 
+## Live2D Cubism Core（Proprietary Software License，随程序分发）
+
+- 位置：`src/YuLiangToolkit.Tools.Live2D/ThirdParty/Live2DCubismCore/`
+  （`Live2DCubismCore.dll` / `Live2DCubismCore.h` / `NOTICE.txt`，运行时拷到 exe 旁边）
+- 用途：「Live2D 桌宠」工具加载 `.moc3` 模型、参数求值与网格变形的运行时（P/Invoke）
+- 来源：Live2D Inc. 官方发布物 **Live2D Cubism SDK for Native 5-r.1**（Core 版本 5.0.0，
+  `csmGetVersion()` = `0x05000000`，支持 moc3 文件格式 v5）
+  - 官方下载页：<https://www.live2d.com/download/cubism-sdk/download-native/>
+  - 本工程取自公开发布镜像：<https://github.com/andforce/CubismSdkForNative-5-r.1>
+- 许可：**Live2D Proprietary Software License Agreement**（专有软件许可，不是 MIT / Unlicense）
+  - EULA：<https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html>
+  - 版权：Copyright(c) Live2D Inc. All rights reserved.
+- 说明：本项目**不修改**该库、只把它作为运行时**原样随程序分发**；不得反编译、不得把该库单独抽取
+  再分发或售卖，重新分发本项目时同样受 Live2D 官方条款约束。详见
+  [docs/dev/live2d.md](docs/dev/live2d.md#9-许可注意事项)。
+
+## 内置 Live2D 模型「大肥鱼」（用户自有模型）
+
+- 位置：`src/YuLiangToolkit.Tools.Live2D/DeepSeek/`
+  （`大肥鱼.model3.json` / `大肥鱼.moc3` / `大肥鱼.physics3.json` / `大肥鱼.cdi3.json` / 纹理 / `Animation/` / `Exp3/`）
+- 版权：**模型作者（本项目用户）自有**，不是第三方开源素材
+- 说明：该模型随本工具作为**内置演示 / 测试模型**一起分发，仓库内仅本工具使用；
+  请勿把模型单独抽出再分发或另作他用。模型文件夹里的 PSD 源文件（131 MB）**不入库**
+  （见 `.gitignore`，运行时也用不到）。
+
 ## MIT License 全文
 
 ```

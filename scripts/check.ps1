@@ -128,6 +128,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/KpsChecks.cs'             @('kps') 'L3' 'kps assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/KpsInputChecks.cs'        @('kps') 'L3' 'kps assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/SpugChecks.cs'            @('spug') 'L3' 'spug assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/Live2DChecks.cs'         @('live2d') 'L3' 'live2d assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/MaintenanceChecks.cs'     @('maintenance') 'L3' 'maintenance assertions')
 
     # ---------- tests: anything else in the self-check project is unknown wiring ----------
@@ -154,6 +155,7 @@ $mapping = @(
     (New-Rule 'src/YuLiangToolkit.Tools.PdfReader/*'       @('pdf-reader') 'L2' 'pdf-reader')
     (New-Rule 'src/YuLiangToolkit.Tools.Kps/*'             @('kps') 'L2' 'kps')
     (New-Rule 'src/YuLiangToolkit.Tools.SpugCaptcha/*'     @('spug') 'L2' 'spug')
+    (New-Rule 'src/YuLiangToolkit.Tools.Live2D/*'          @('live2d') 'L2' 'live2d')
     (New-Rule 'src/YuLiangToolkit.Tools.VideoToAudio/*'    @() 'L1' 'no dedicated group: build + manual smoke (e2e-convert.ps1)')
     (New-Rule 'src/YuLiangToolkit.Tools.Sample/*'          @() 'L1' 'framework template, no dedicated group: build + manual smoke')
     (New-Rule 'src/*'                                      @('ALL') 'L4' 'unmapped src project' -Fallback)

@@ -1,0 +1,862 @@
+<UserControl x:Class="YuLiangToolkit.Tools.Live2D.Views.Live2DView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             Background="Transparent"
+             Focusable="False">
+
+    <!-- 说明：Live2D 桌宠测试台。整页 = 标题 / 主区域（预览 + 右侧信息参数部件） / 下排（动作 / 表情 / 物理 / 桌宠） / 日志。
+         布局硬性要求（docs/dev/layout.md）：每个相邻区块之间都放 core:PaneSplitter，别写死大小；
+         列表 / 日志这类内容放 * 行，拖小/拖大都能自己伸缩；卡片被拖得比内容矮时靠内部滚动 + ClipToBounds 兜住。
+         颜色一律走主题 token（{DynamicResource}），不写死浅色/深色。 -->
+
+    <UserControl.Resources>
+        <!-- 卡片内小标题 / 说明 / 设置项标签：统一字号与颜色，避免每处重复写 -->
+        <Style x:Key="CardHeaderStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="CardSubTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="SettingLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="SettingValueStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="TextAlignment" Value="Right" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <!-- 卡片内的滚动宿主：滚到头交给整页（ScrollChaining） -->
+        <Style x:Key="CardScrollerStyle" TargetType="ScrollViewer">
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+            <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+            <Setter Property="core:ScrollChaining.Enabled" Value="True" />
+        </Style>
+        <!-- 下排窄卡片里的小按钮（列表行 / 工具按钮）：比 SecondaryButtonStyle 更紧凑，不把行撑高 -->
+        <Style x:Key="CompactButtonStyle" TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Padding" Value="7,3" />
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Grid Margin="28,20,28,24">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />                                  <!-- 标题 -->
+                <RowDefinition Height="600" MinHeight="430" />                   <!-- 主区域：预览 | 信息/参数/部件 -->
+                <RowDefinition Height="12" />                                    <!-- 主区域 / 下排分隔条 -->
+                <RowDefinition Height="330" MinHeight="220" />                   <!-- 下排：动作 / 表情 / 物理 / 桌宠 -->
+                <RowDefinition Height="12" />                                    <!-- 下排 / 日志分隔条 -->
+                <RowDefinition Height="200" MinHeight="130" />                   <!-- 日志 -->
+            </Grid.RowDefinitions>
+
+            <!-- ==================================================== 标题 ==================================================== -->
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="🐟 Live2D 桌宠 · 模型测试台" FontSize="21" FontWeight="SemiBold" />
+                    <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                               Text="内置 DeepSeek「大肥鱼」Live2D 模型：逐项调试参数 / 部件 / 动作 / 表情 / 物理 / 眼睛跟随，随时放出透明置顶的桌面宠物。所有改动自动保存，没有「保存」按钮。" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" Margin="12,0,0,0">
+                    <Button Content="{Binding PetButtonText}" Style="{StaticResource PrimaryButtonStyle}"
+                            Command="{Binding TogglePetCommand}" MinWidth="98" />
+                    <Button Content="重新加载模型" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                            Command="{Binding ReloadModelCommand}" />
+                </StackPanel>
+            </Grid>
+
+            <!-- ==================================================== 主区域 ==================================================== -->
+            <Grid Grid.Row="1" Margin="0,14,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="300" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="398" MinWidth="320" />
+                </Grid.ColumnDefinitions>
+
+                <!-- ===== 左：预览卡 ===== -->
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />                          <!-- 工具条 -->
+                            <RowDefinition Height="*" MinHeight="120" />             <!-- 预览画布 -->
+                            <RowDefinition Height="Auto" />                          <!-- 命中提示 / 状态 -->
+                        </Grid.RowDefinitions>
+
+                        <!-- 预览工具条：适应窗口 / 棋盘格 / 统计 / 帧率 / 渲染倍率（WrapPanel：预览被拖窄时自动折行） -->
+                        <WrapPanel Grid.Row="0" Margin="14,12,14,8">
+                            <Button Content="适应窗口" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,6"
+                                    Click="OnResetViewClick" ToolTip="恢复默认缩放 / 位置（滚轮缩放、拖动平移）" />
+                            <CheckBox Content="棋盘格" Style="{StaticResource CheckBoxStyle}" Margin="0,0,12,6"
+                                      IsChecked="{Binding PreviewCheckerboard}" ToolTip="透明区域显示棋盘格" />
+                            <CheckBox Content="统计" Style="{StaticResource CheckBoxStyle}" Margin="0,0,12,6"
+                                      IsChecked="{Binding ShowPreviewStats}" ToolTip="左下角显示 FPS / 网格 / 三角形 / 耗时" />
+                            <TextBlock Text="帧率" Style="{StaticResource SettingLabelStyle}" Margin="0,0,6,6" />
+                            <ComboBox ItemsSource="{Binding FpsOptions}" DisplayMemberPath="Label"
+                                      SelectedValuePath="Value" SelectedValue="{Binding FpsLimit, Mode=TwoWay}"
+                                      Style="{StaticResource ComboBoxStyle}" Width="124" Height="28" Margin="0,0,12,6" />
+                            <TextBlock Text="倍率" Style="{StaticResource SettingLabelStyle}" Margin="0,0,6,6" />
+                            <ComboBox ItemsSource="{Binding RenderScaleOptions}" DisplayMemberPath="Label"
+                                      SelectedValuePath="Value" SelectedValue="{Binding RenderScale, Mode=TwoWay}"
+                                      Style="{StaticResource ComboBoxStyle}" Width="112" Height="28" Margin="0,0,0,6"
+                                      ToolTip="预览渲染分辨率倍率：越低越省 CPU / GPU" />
+                        </WrapPanel>
+
+                        <!-- 预览画布：背景（棋盘格 / 纯色）→ 模型位图 → 统计 / 加载 / 错误层。
+                             鼠标：滚轮缩放、左键拖动平移、移动 = 眼睛跟随、单击 = 命中的网格信息。 -->
+                        <Border x:Name="PreviewHost" Grid.Row="1" Margin="14,0,14,0" CornerRadius="8"
+                                ClipToBounds="True" Background="{DynamicResource InputBackgroundBrush}"
+                                MouseWheel="OnPreviewMouseWheel"
+                                MouseMove="OnPreviewMouseMove"
+                                MouseLeftButtonDown="OnPreviewMouseLeftButtonDown"
+                                MouseLeftButtonUp="OnPreviewMouseLeftButtonUp"
+                                MouseLeave="OnPreviewMouseLeave"
+                                SizeChanged="OnPreviewSizeChanged">
+                            <Grid>
+                                <!-- 纯色底 -->
+                                <Rectangle Fill="{DynamicResource InputBackgroundBrush}" IsHitTestVisible="False" />
+                                <!-- 棋盘格（半透明白格叠加，跟主题色混出来，四套主题都协调） -->
+                                <Rectangle x:Name="CheckerOverlay" Opacity="0.055" IsHitTestVisible="False"
+                                           Visibility="{Binding PreviewCheckerboard, Converter={StaticResource BoolToVis}}">
+                                    <Rectangle.Fill>
+                                        <DrawingBrush TileMode="Tile" Viewport="0,0,26,26" ViewportUnits="Absolute">
+                                            <DrawingBrush.Drawing>
+                                                <DrawingGroup>
+                                                    <GeometryDrawing Brush="Transparent">
+                                                        <GeometryDrawing.Geometry>
+                                                            <RectangleGeometry Rect="0,0,26,26" />
+                                                        </GeometryDrawing.Geometry>
+                                                    </GeometryDrawing>
+                                                    <GeometryDrawing Brush="White">
+                                                        <GeometryDrawing.Geometry>
+                                                            <GeometryGroup>
+                                                                <RectangleGeometry Rect="0,0,13,13" />
+                                                                <RectangleGeometry Rect="13,13,13,13" />
+                                                            </GeometryGroup>
+                                                        </GeometryDrawing.Geometry>
+                                                    </GeometryDrawing>
+                                                </DrawingGroup>
+                                            </DrawingBrush.Drawing>
+                                        </DrawingBrush>
+                                    </Rectangle.Fill>
+                                </Rectangle>
+
+                                <!-- 模型画面（代码后置每帧更新 Source；适应窗口时只渲染模型占的那块再等比放大显示） -->
+                                <Image x:Name="PreviewImage" Stretch="Uniform" IsHitTestVisible="False"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       RenderOptions.BitmapScalingMode="HighQuality"
+                                       RenderOptions.EdgeMode="Aliased" />
+
+                                <!-- 模型名 / 状态角标 -->
+                                <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10"
+                                        Background="{DynamicResource CardBackgroundBrush}" Opacity="0.88"
+                                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                        CornerRadius="6" Padding="8,4" IsHitTestVisible="False">
+                                    <TextBlock Text="{Binding ModelStatusText}" FontSize="10.5"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                </Border>
+
+                                <!-- 左下角统计 -->
+                                <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10"
+                                        Background="{DynamicResource CardBackgroundBrush}" Opacity="0.88"
+                                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                        CornerRadius="6" Padding="8,4" IsHitTestVisible="False"
+                                        Visibility="{Binding ShowPreviewStats, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding PreviewStatsText}" FontSize="10.5"
+                                                   FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <TextBlock Text="{Binding EyeTargetText}" FontSize="10.5" Margin="0,2,0,0"
+                                                   FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI"
+                                                   Foreground="{DynamicResource FaintTextBrush}" />
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- 加载中：铺一层卡片色 + 进度条（不写死黑色蒙层，四套主题都合适） -->
+                                <Border Background="{DynamicResource CardBackgroundBrush}" Opacity="0.94"
+                                        Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Width="260">
+                                        <TextBlock Text="正在加载 Live2D 模型…" FontSize="13" HorizontalAlignment="Center" />
+                                        <TextBlock Text="{Binding LoadProgressText}" FontSize="11.5" Margin="0,5,0,10"
+                                                   HorizontalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <ProgressBar Minimum="0" Maximum="1" Value="{Binding LoadProgress, Mode=OneWay}"
+                                                     Style="{StaticResource ProgressBarStyle}" />
+                                        <TextBlock Margin="0,10,0,0" FontSize="10.5" TextWrapping="Wrap" TextAlignment="Center"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Text="第一次加载要解码 5 张纹理，需要 1~3 秒" />
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- 加载失败：错误信息 + 重试 / 换模型 -->
+                                <Border Background="{DynamicResource CardBackgroundBrush}" Opacity="0.94"
+                                        Visibility="{Binding HasLoadError, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="20" MaxWidth="380">
+                                        <TextBlock Text="模型加载失败" FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource DangerBrush}" HorizontalAlignment="Center" />
+                                        <TextBlock Text="{Binding LoadErrorText}" FontSize="11.5" Margin="0,6,0,0" TextWrapping="Wrap"
+                                                   TextAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <WrapPanel HorizontalAlignment="Center" Margin="0,12,0,0">
+                                            <Button Content="重试" Style="{StaticResource PrimaryButtonStyle}"
+                                                    Command="{Binding ReloadModelCommand}" Margin="0,0,8,8" />
+                                            <Button Content="选择模型文件夹…" Style="{StaticResource SecondaryButtonStyle}"
+                                                    Command="{Binding ChooseModelFolderCommand}" Margin="0,0,8,8" />
+                                        </WrapPanel>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <!-- 命中提示 + 缩放手势提示 -->
+                        <Grid Grid.Row="2" Margin="14,8,14,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding SelectedDrawableText}" FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"
+                                       VerticalAlignment="Center" ToolTip="{Binding SelectedDrawableText}" />
+                            <Button Grid.Column="1" Content="清除高亮" Style="{StaticResource SecondaryButtonStyle}"
+                                    Padding="10,4" Command="{Binding ClearSelectedDrawableCommand}"
+                                    Visibility="{Binding HasSelectedDrawable, Converter={StaticResource BoolToVis}}" />
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <!-- 左右分隔条：拖动改「预览」与右侧信息区的宽度（双击恢复这一处） -->
+                <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                   Key="live2d.预览与右侧" />
+
+                <!-- ===== 右：模型信息 / 参数 / 部件（三张卡都能和相邻的上下拖） ===== -->
+                <ScrollViewer Grid.Column="2" Style="{StaticResource CardScrollerStyle}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="272" MinHeight="180" />
+                            <RowDefinition Height="12" />
+                            <RowDefinition Height="322" MinHeight="210" />
+                            <RowDefinition Height="12" />
+                            <RowDefinition Height="300" MinHeight="190" />
+                        </Grid.RowDefinitions>
+
+                        <!-- ① 模型信息卡 -->
+                        <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" MinHeight="60" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <StackPanel Grid.Row="0" Margin="16,12,16,4">
+                                    <Grid>
+                                        <TextBlock Text="模型信息" Style="{StaticResource CardHeaderStyle}" />
+                                        <TextBlock HorizontalAlignment="Right" FontSize="10.5" MaxWidth="210"
+                                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                                   Text="{Binding ModelStatusText}"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    </Grid>
+                                    <TextBlock Text="{Binding CurrentModelSourceText}" Style="{StaticResource CardSubTextStyle}"
+                                               Margin="0,4,0,0" TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding CurrentModelSourceText}" />
+                                    <TextBlock Text="{Binding LoadErrorText}" FontSize="10.5" Margin="0,4,0,0" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource DangerBrush}"
+                                               Visibility="{Binding HasLoadError, Converter={StaticResource BoolToVis}}" />
+                                </StackPanel>
+
+                                <ScrollViewer Grid.Row="1" Style="{StaticResource CardScrollerStyle}" Margin="16,2,8,0">
+                                    <ItemsControl ItemsSource="{Binding InfoRows}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,1.5">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="92" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Name}" FontSize="10.5"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding Value}" FontSize="10.5"
+                                                               TextWrapping="Wrap" ToolTip="{Binding Value}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+
+                                <StackPanel Grid.Row="2" Margin="16,6,16,10">
+                                    <TextBlock FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}"
+                                               TextTrimming="CharacterEllipsis" ToolTip="{Binding BuiltInModelPathText}">
+                                        <Run Text="内置模型：" /><Run Text="{Binding BuiltInModelPathText, Mode=OneWay}" />
+                                    </TextBlock>
+                                    <WrapPanel Margin="0,5,0,0">
+                                        <Button Content="重新加载" Style="{StaticResource SecondaryButtonStyle}"
+                                                FontSize="11" Padding="8,4" Margin="0,0,6,6"
+                                                Command="{Binding ReloadModelCommand}" />
+                                        <Button Content="选择文件夹…" Style="{StaticResource SecondaryButtonStyle}"
+                                                FontSize="11" Padding="8,4" Margin="0,0,6,6"
+                                                Command="{Binding ChooseModelFolderCommand}" />
+                                        <Button Content="用内置模型" Style="{StaticResource SecondaryButtonStyle}"
+                                                FontSize="11" Padding="8,4" Margin="0,0,6,6"
+                                                Command="{Binding UseBuiltInModelCommand}" />
+                                        <Button Content="打开模型目录" Style="{StaticResource SecondaryButtonStyle}"
+                                                FontSize="11" Padding="8,4" Margin="0,0,0,6"
+                                                Command="{Binding OpenModelFolderCommand}" />
+                                    </WrapPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="纹理上限" Style="{StaticResource SettingLabelStyle}" Margin="0,0,6,0" />
+                                        <ComboBox ItemsSource="{Binding TextureSizeOptions}" DisplayMemberPath="Label"
+                                                  SelectedValuePath="Value" SelectedValue="{Binding TextureMaxSize, Mode=TwoWay}"
+                                                  Style="{StaticResource ComboBoxStyle}" Width="150" Height="26" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- 上下分隔条：模型信息 / 参数 -->
+                        <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                                           Key="live2d.模型信息与参数" />
+
+                        <!-- ② 参数卡：搜索 + cdi3 分组折叠滑块（展开才生成行，509 个也流畅） -->
+                        <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" MinHeight="80" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <Grid Grid.Row="0" Margin="16,12,16,6">
+                                    <TextBlock Text="参数" Style="{StaticResource CardHeaderStyle}" />
+                                    <TextBlock Text="{Binding ParameterTotalText}" HorizontalAlignment="Right" FontSize="10.5"
+                                               VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                </Grid>
+
+                                <Grid Grid.Row="1" Margin="16,0,16,6">
+                                    <TextBox Style="{StaticResource TextBoxStyle}" Height="30"
+                                             Text="{Binding ParameterSearchText, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="按参数 Id / 中文名搜索（命中分组自动展开）" />
+                                    <TextBlock Text="搜索参数（Id / 中文名）…" Margin="11,0,0,0" IsHitTestVisible="False"
+                                               VerticalAlignment="Center" FontSize="12"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Visibility="{Binding ParameterSearchText, Converter={StaticResource EmptyToVis}}" />
+                                </Grid>
+
+                                <!-- 列表：只有这一行可伸缩（*），滚到底也不会钻到下面按钮底下；底部留 8px 呼吸空间 -->
+                                <ScrollViewer Grid.Row="2" Style="{StaticResource CardScrollerStyle}" Margin="16,0,6,8"
+                                              VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl ItemsSource="{Binding ParameterGroups}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="0,0,0,2">
+                                                    <CheckBox Content="{Binding HeaderText}" IsChecked="{Binding IsExpanded, Mode=TwoWay}"
+                                                              Style="{StaticResource CheckBoxStyle}" FontSize="11.5" Margin="0,3,0,2"
+                                                              ToolTip="勾选展开 / 取消折叠这一组参数" />
+                                                    <ItemsControl ItemsSource="{Binding Rows}"
+                                                                  Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}"
+                                                                  Margin="0,2,0,4">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Grid Margin="0,1" MinHeight="24">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="108" />
+                                                                        <ColumnDefinition Width="*" />
+                                                                        <ColumnDefinition Width="42" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBlock Text="{Binding DisplayName}" FontSize="11"
+                                                                               TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                                                               VerticalAlignment="Center" ToolTip="{Binding Id}" />
+                                                                    <Slider Grid.Column="1" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"
+                                                                            Value="{Binding Value, Mode=TwoWay}"
+                                                                            Style="{StaticResource SliderStyle}" VerticalAlignment="Center" />
+                                                                    <TextBlock Grid.Column="2" Text="{Binding Value, StringFormat={}{0:0.00}}"
+                                                                               Style="{StaticResource SettingValueStyle}" />
+                                                                </Grid>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+
+                                <!-- 底部按钮固定 Auto 行（不浮动、不覆盖列表） -->
+                                <Border Grid.Row="3" BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,1,0,0"
+                                        Margin="16,0,16,0" Padding="0,6,0,8">
+                                    <Button Content="一键全部重置" Style="{StaticResource SecondaryButtonStyle}"
+                                            HorizontalAlignment="Right"
+                                            Command="{Binding ResetParametersCommand}"
+                                            ToolTip="所有参数回默认值，动作 / 表情也停掉" />
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <!-- 上下分隔条：参数 / 部件 -->
+                        <core:PaneSplitter Grid.Row="3" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                                           Key="live2d.参数与部件" />
+
+                        <!-- ③ 部件卡：147 个部件的不透明度滑块（分组折叠）+ 全部显示 -->
+                        <Border Grid.Row="4" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" MinHeight="70" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <Grid Grid.Row="0" Margin="16,12,16,6">
+                                    <TextBlock Text="部件" Style="{StaticResource CardHeaderStyle}" />
+                                    <TextBlock Text="{Binding PartTotalText}" HorizontalAlignment="Right" FontSize="10.5"
+                                               VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                </Grid>
+
+                                <ScrollViewer Grid.Row="1" Style="{StaticResource CardScrollerStyle}" Margin="16,0,6,8"
+                                              VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl ItemsSource="{Binding PartGroups}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="0,0,0,2">
+                                                    <CheckBox Content="{Binding HeaderText}" IsChecked="{Binding IsExpanded, Mode=TwoWay}"
+                                                              Style="{StaticResource CheckBoxStyle}" FontSize="11.5" Margin="0,3,0,2"
+                                                              ToolTip="勾选展开 / 取消折叠这一组部件" />
+                                                    <ItemsControl ItemsSource="{Binding Rows}"
+                                                                  Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}"
+                                                                  Margin="0,2,0,4">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Grid Margin="0,1" MinHeight="24">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="108" />
+                                                                        <ColumnDefinition Width="*" />
+                                                                        <ColumnDefinition Width="42" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBlock Text="{Binding DisplayName}" FontSize="11"
+                                                                               TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                                                               VerticalAlignment="Center" ToolTip="{Binding Id}" />
+                                                                    <Slider Grid.Column="1" Minimum="0" Maximum="1"
+                                                                            Value="{Binding Opacity, Mode=TwoWay}"
+                                                                            Style="{StaticResource SliderStyle}" VerticalAlignment="Center" />
+                                                                    <TextBlock Grid.Column="2" Text="{Binding Opacity, StringFormat={}{0:0.00}}"
+                                                                               Style="{StaticResource SettingValueStyle}" />
+                                                                </Grid>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+
+                                <!-- 底部按钮固定 Auto 行（不浮动、不覆盖列表） -->
+                                <Border Grid.Row="2" BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,1,0,0"
+                                        Margin="16,0,16,0" Padding="0,6,0,8">
+                                    <Button Content="全部显示" Style="{StaticResource SecondaryButtonStyle}"
+                                            HorizontalAlignment="Right"
+                                            Command="{Binding ResetPartsCommand}" ToolTip="所有部件不透明度恢复 1" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </ScrollViewer>
+            </Grid>
+
+            <!-- 上下分隔条：主区域 / 下排 -->
+            <core:PaneSplitter Grid.Row="2" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="live2d.主区域与下排" />
+
+            <!-- ==================================================== 下排四张卡 ==================================================== -->
+            <Grid Grid.Row="3" Margin="0,0,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="160" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="*" MinWidth="160" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="*" MinWidth="160" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="*" MinWidth="160" />
+                </Grid.ColumnDefinitions>
+
+                <!-- ① 动作卡 -->
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" MinHeight="56" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" Margin="14,12,14,4">
+                            <TextBlock Text="动作" Style="{StaticResource CardHeaderStyle}" />
+                            <TextBlock Text="{Binding MotionSummaryText}" HorizontalAlignment="Right" FontSize="10.5"
+                                       VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </Grid>
+
+                        <StackPanel Grid.Row="1" Margin="14,0,14,4">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding CurrentMotionName}" FontSize="11" TextTrimming="CharacterEllipsis"
+                                           VerticalAlignment="Center" ToolTip="{Binding CurrentMotionName}" />
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <TextBlock Text="{Binding MotionTimeText}" Style="{StaticResource SettingValueStyle}" Margin="0,0,8,0" />
+                                    <Button Content="停止" Style="{StaticResource SecondaryButtonStyle}" Padding="10,3"
+                                            Command="{Binding StopMotionCommand}" />
+                                </StackPanel>
+                            </Grid>
+                            <ProgressBar Minimum="0" Maximum="1" Value="{Binding MotionProgress, Mode=OneWay}"
+                                         Style="{StaticResource ProgressBarStyle}" Margin="0,6,0,0" />
+                        </StackPanel>
+
+                        <!-- 动作列表：行内播放键 + 名字 + 时长 + 循环勾选（紧凑行，窄卡片也放得下） -->
+                        <ScrollViewer Grid.Row="2" Style="{StaticResource CardScrollerStyle}" Margin="10,0,4,0">
+                            <ItemsControl ItemsSource="{Binding Motions}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,1">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Button Content="▶" Width="24" Height="21" Padding="0" FontSize="9"
+                                                    Style="{StaticResource CompactButtonStyle}"
+                                                    ToolTip="播放这个动作"
+                                                    Command="{Binding DataContext.PlayMotionCommand, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
+                                                    CommandParameter="{Binding}" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="11" Margin="5,0,3,0"
+                                                       VerticalAlignment="Center" TextWrapping="NoWrap"
+                                                       TextTrimming="CharacterEllipsis" MinWidth="0"
+                                                       ToolTip="{Binding Name}" />
+                                            <TextBlock Grid.Column="2" Text="{Binding DurationText}" FontSize="10"
+                                                       VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <CheckBox Grid.Column="3" Style="{StaticResource CheckBoxStyle}" Margin="5,0,0,0"
+                                                      IsChecked="{Binding Loop, Mode=TwoWay}" ToolTip="循环播放这个动作" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+
+                        <StackPanel Grid.Row="3" Margin="12,4,12,10">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="待机动作" Style="{StaticResource SettingLabelStyle}" Margin="0,0,6,0" />
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding IdleMotionOptions}" DisplayMemberPath="Label"
+                                          SelectedItem="{Binding SelectedIdleMotion, Mode=TwoWay}"
+                                          Style="{StaticResource ComboBoxStyle}" Height="26" />
+                            </Grid>
+                            <Grid Margin="0,5,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="38" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="淡入淡出" Style="{StaticResource SettingLabelStyle}" Margin="0,0,6,0" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="2" SmallChange="0.05"
+                                        Value="{Binding MotionFadeSeconds, Mode=TwoWay}"
+                                        Style="{StaticResource SliderStyle}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="{Binding MotionFadeSeconds, StringFormat={}{0:0.00}s}"
+                                           Style="{StaticResource SettingValueStyle}" />
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- 左右分隔条：动作 / 表情 -->
+                <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                   Key="live2d.动作与表情" />
+
+                <!-- ② 表情卡：单选切换（官方语义：同一时间只有一个表情）+ 淡入淡出时长 + 全部清除 -->
+                <Border Grid.Column="2" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" MinHeight="56" />
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" Margin="14,12,14,4">
+                            <TextBlock Text="表情" Style="{StaticResource CardHeaderStyle}" />
+                            <TextBlock Text="{Binding ExpressionSummaryText}" HorizontalAlignment="Right" FontSize="10.5"
+                                       VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </Grid>
+
+                        <StackPanel Grid.Row="1" Margin="14,0,14,4">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="42" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="淡入淡出" Style="{StaticResource SettingLabelStyle}" Margin="0,0,6,0" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="2" SmallChange="0.05"
+                                        Value="{Binding ExpressionFadeSeconds, Mode=TwoWay}"
+                                        Style="{StaticResource SliderStyle}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="{Binding ExpressionFadeSeconds, StringFormat={}{0:0.00}s}"
+                                           Style="{StaticResource SettingValueStyle}" />
+                            </Grid>
+                            <Button Content="全部清除" Style="{StaticResource SecondaryButtonStyle}" Padding="10,4"
+                                    HorizontalAlignment="Left" Margin="0,4,0,0" Command="{Binding ClearExpressionsCommand}" />
+                        </StackPanel>
+
+                        <!-- 表情列表：单选切换（点新的 = 切换，点当前 = 取消），按钮直接铺满行宽 -->
+                        <ScrollViewer Grid.Row="2" Style="{StaticResource CardScrollerStyle}" Margin="10,0,4,6">
+                            <ItemsControl ItemsSource="{Binding Expressions}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource CompactButtonStyle}" Margin="0,1" MinHeight="24"
+                                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                                Command="{Binding DataContext.ToggleExpressionCommand, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="点一下激活（同一时间只有一个表情），再点当前激活的取消回默认">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Name}" FontSize="11" TextWrapping="NoWrap"
+                                                           TextTrimming="CharacterEllipsis" MinWidth="0" />
+                                                <TextBlock Grid.Column="1" Text="✓ 当前" FontSize="10" Margin="6,0,0,0"
+                                                           Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center"
+                                                           Visibility="{Binding IsApplied, Converter={StaticResource BoolToVis}}" />
+                                            </Grid>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+
+                <!-- 左右分隔条：表情 / 物理 -->
+                <core:PaneSplitter Grid.Column="3" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                   Key="live2d.表情与物理" />
+
+                <!-- ③ 物理与跟随卡（内容较高，内部滚动） -->
+                <Border Grid.Column="4" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                    <ScrollViewer Style="{StaticResource CardScrollerStyle}">
+                        <StackPanel Margin="14,12,14,12">
+                            <TextBlock Text="物理与眼睛跟随" Style="{StaticResource CardHeaderStyle}" />
+
+                            <CheckBox Content="物理演算（头发 / 尾巴摆动）" Style="{StaticResource CheckBoxStyle}" Margin="0,10,0,0"
+                                      IsChecked="{Binding PhysicsEnabled}" />
+                            <Grid Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="66" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="36" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="物理强度" Style="{StaticResource SettingLabelStyle}" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="1" SmallChange="0.05"
+                                        Value="{Binding PhysicsStrength, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                        VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="{Binding PhysicsStrength, StringFormat={}{0:0.00}}"
+                                           Style="{StaticResource SettingValueStyle}" />
+                            </Grid>
+
+                            <CheckBox Content="待机动画" Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0"
+                                      IsChecked="{Binding IdleEnabled}" />
+                            <CheckBox Content="自动眨眼" Style="{StaticResource CheckBoxStyle}" Margin="0,6,0,0"
+                                      IsChecked="{Binding AutoBlink}" />
+                            <CheckBox Content="眼睛跟随鼠标" Style="{StaticResource CheckBoxStyle}" Margin="0,6,0,0"
+                                      IsChecked="{Binding EyeTracking}" />
+
+                            <Grid Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="66" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="36" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="平滑度" Style="{StaticResource SettingLabelStyle}" />
+                                <Slider Grid.Column="1" Minimum="0.05" Maximum="1" SmallChange="0.01"
+                                        Value="{Binding EyeTrackingSmoothing, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                        VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="{Binding EyeTrackingSmoothing, StringFormat={}{0:0.00}}"
+                                           Style="{StaticResource SettingValueStyle}" />
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="66" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="36" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="头转幅度" Style="{StaticResource SettingLabelStyle}" />
+                                <Slider Grid.Column="1" Minimum="0.2" Maximum="1.5" SmallChange="0.05"
+                                        Value="{Binding EyeTrackingHeadStrength, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                        VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="{Binding EyeTrackingHeadStrength, StringFormat={}{0:0.00}}"
+                                           Style="{StaticResource SettingValueStyle}" />
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="66" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="36" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="眼球幅度" Style="{StaticResource SettingLabelStyle}" />
+                                <Slider Grid.Column="1" Minimum="0.2" Maximum="1.5" SmallChange="0.05"
+                                        Value="{Binding EyeTrackingEyeStrength, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                        VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="{Binding EyeTrackingEyeStrength, StringFormat={}{0:0.00}}"
+                                           Style="{StaticResource SettingValueStyle}" />
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="66" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="36" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="身体幅度" Style="{StaticResource SettingLabelStyle}" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="1.5" SmallChange="0.05"
+                                        Value="{Binding EyeTrackingBodyStrength, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                        VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="{Binding EyeTrackingBodyStrength, StringFormat={}{0:0.00}}"
+                                           Style="{StaticResource SettingValueStyle}" />
+                            </Grid>
+
+                            <Separator Margin="0,10,0,8" Background="{DynamicResource BorderBrush}" />
+                            <TextBlock Text="调试视图（只影响测试台预览）" FontSize="11.5" FontWeight="SemiBold" />
+                            <CheckBox Content="网格包围盒" Style="{StaticResource CheckBoxStyle}" Margin="0,6,0,0"
+                                      IsChecked="{Binding ShowDrawableBounds}" />
+                            <CheckBox Content="蒙版范围（染红）" Style="{StaticResource CheckBoxStyle}" Margin="0,4,0,0"
+                                      IsChecked="{Binding ShowMaskRanges}" />
+                            <CheckBox Content="高亮点击命中的网格" Style="{StaticResource CheckBoxStyle}" Margin="0,4,0,0"
+                                      IsChecked="{Binding HighlightPickedDrawable}" />
+                            <CheckBox Content="蒙版缓冲可视化（需先点中网格）" Style="{StaticResource CheckBoxStyle}" Margin="0,4,0,0"
+                                      IsChecked="{Binding ShowMaskBuffer}" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+
+                <!-- 左右分隔条：物理 / 桌宠 -->
+                <core:PaneSplitter Grid.Column="5" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                   Key="live2d.物理与桌宠" />
+
+                <!-- ④ 桌宠卡 -->
+                <Border Grid.Column="6" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                    <ScrollViewer Style="{StaticResource CardScrollerStyle}">
+                        <StackPanel Margin="14,12,14,12">
+                            <Grid>
+                                <TextBlock Text="桌面宠物" Style="{StaticResource CardHeaderStyle}" />
+                                <TextBlock HorizontalAlignment="Right" FontSize="10.5" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Text="{Binding PetStateText}" />
+                            </Grid>
+                            <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,4,0,0"
+                                       Text="透明置顶的小窗：拖动移动、滚轮缩放、右键菜单、透明区域点击穿透、眼睛跟随全局鼠标。" />
+
+                            <WrapPanel Margin="0,10,0,0">
+                                <Button Content="{Binding PetButtonText}" Style="{StaticResource PrimaryButtonStyle}"
+                                        Command="{Binding TogglePetCommand}" Margin="0,0,8,8" />
+                                <Button Content="居中" Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding CenterPetCommand}" Margin="0,0,8,8" />
+                                <Button Content="重置位置" Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding ResetPetPositionCommand}" Margin="0,0,8,8" />
+                            </WrapPanel>
+
+                            <Grid Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="60" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="42" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="宽度" Style="{StaticResource SettingLabelStyle}" />
+                                <Slider Grid.Column="1" Minimum="160" Maximum="1000" SmallChange="10"
+                                        Value="{Binding PetWidth, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                        VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="{Binding PetWidth, StringFormat={}{0:0}}"
+                                           Style="{StaticResource SettingValueStyle}" />
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="60" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="42" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="不透明度" Style="{StaticResource SettingLabelStyle}" />
+                                <Slider Grid.Column="1" Minimum="0.2" Maximum="1" SmallChange="0.05"
+                                        Value="{Binding PetOpacity, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                        VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="{Binding PetOpacity, StringFormat={}{0:0.00}}"
+                                           Style="{StaticResource SettingValueStyle}" />
+                            </Grid>
+
+                            <CheckBox Content="置顶显示" Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0"
+                                      IsChecked="{Binding Cfg.PetTopMost, Mode=TwoWay}" />
+                            <CheckBox Content="透明区域点击穿透" Style="{StaticResource CheckBoxStyle}" Margin="0,4,0,0"
+                                      IsChecked="{Binding Cfg.PetClickThrough, Mode=TwoWay}"
+                                      ToolTip="鼠标在模型透明区域时直接穿透到下面的窗口" />
+                            <CheckBox Content="启动程序时自动放出桌宠" Style="{StaticResource CheckBoxStyle}" Margin="0,4,0,0"
+                                      IsChecked="{Binding Cfg.AutoStartPet, Mode=TwoWay}" />
+
+                            <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,8,0,0"
+                                       Text="提示：右键桌宠窗口有「居中 / 置顶 / 点击穿透 / 关闭」等菜单；要回到这个测试页，从主窗口侧边栏「桌面 → Live2D 桌宠」进来。" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+
+            <!-- 上下分隔条：下排 / 日志 -->
+            <core:PaneSplitter Grid.Row="4" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="live2d.下排与日志" />
+
+            <!-- ==================================================== 日志 ==================================================== -->
+            <Border Grid.Row="5" Style="{StaticResource CardStyle}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="50" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <TextBlock Text="日志" Style="{StaticResource CardHeaderStyle}" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="清空日志" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding ClearLogCommand}" />
+                            <Button Content="截图" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding TakeScreenshotCommand}"
+                                    ToolTip="把当前画面存成 PNG（Data\live2d\screenshots）" />
+                            <Button Content="打开截图文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding OpenScreenshotFolderCommand}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBox Grid.Row="1" Style="{StaticResource LogTextBoxStyle}" Margin="0,10,0,0"
+                             core:ScrollChaining.Enabled="True"
+                             Text="{Binding LogText, Mode=OneWay}" />
+
+                    <Grid Grid.Row="2" Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding StatusText}" FontSize="11.5" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Grid.Column="1" Text="{Binding LastScreenshotText}" FontSize="10.5" Margin="12,0,0,0"
+                                   MaxWidth="360" TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center" Foreground="{DynamicResource FaintTextBrush}"
+                                   ToolTip="{Binding LastScreenshotText}" />
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

@@ -10,8 +10,8 @@
 | 技术栈 | Windows 10 2004+ + .NET 9（主程序 / 自检 `net9.0-windows10.0.19041.0`，工具库 `net9.0-windows`）+ WPF + 手写 MVVM；唯一第三方包 `OsuParsers`（MIT）；PDF 渲染用系统 `Windows.Data.Pdf`，文字搜索 / 书签目录是手写 PDF 解析器 |
 | 主程序 | 根目录 `YuLiangTookit.csproj`（少一个 `l` 是历史拼写）：标题栏 / 主页 / 类别页 / 面包屑、四套主题 + 背景图、粒子 |
 | 核心库 | `src/YuLiangToolkit.Core/`：工具契约 / MVVM / 存储 / 配置 / 维护（缓存清理·配置重建）/ FFmpeg / 粒子 / TCP 房间 |
-| 功能 | 16 个（13 个 `Tools.*`）：视频转音频 / 播放器 / 图片阅读器 / PDF 阅读器 / 重命名 / Flash / 聊天室 / osu! 下图器 / osu!mania 三件套 / 棋牌 / KPS 按键统计 / Spug 验证码测试 / 示例模板 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`：2917 项，退出码 0 = 通过（按分组跑） |
+| 功能 | 17 个（14 个 `Tools.*`）：视频转音频 / 播放器 / 图片阅读器 / PDF 阅读器 / 重命名 / Flash / 聊天室 / osu! 下图器 / osu!mania 三件套 / 棋牌 / KPS 按键统计 / Spug 验证码测试 / Live2D 桌宠 / 示例模板 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`：3033 项，退出码 0 = 通过（按分组跑） |
 | 数据 | **在 exe 旁边**（`bin\Debug\net9.0-windows10.0.19041.0\Data`、`Config`、`Cache`）；仓库根同名目录只有说明 |
 
 ## 开工 / 收尾（硬性）
@@ -53,5 +53,6 @@ git add -A; git commit -m "<中文提交信息>"   # ③ 提交：每轮改动�
 | 轮子（工具契约 / MVVM / 存储 / 配置 / 粒子 / TCP 房间）、目录与新功能 | `src/YuLiangToolkit.Core/` 源码注释；新功能复制 `src/YuLiangToolkit.Tools.Sample/` 模板 |
 | 工具页区块可拖拽 / 布局记忆 / 恢复默认 | [`docs/dev/layout.md`](docs/dev/layout.md) |
 | 某个功能的实现细节 / 踩过的坑 | 对应源码 + [`docs/dev/pitfalls.md`](docs/dev/pitfalls.md) |
+| Live2D 桌宠（Cubism Core / 自写软件渲染器 / 桌宠窗口 / 模型格式） | [`docs/dev/live2d.md`](docs/dev/live2d.md) |
 | 面向用户的文档 | [`docs/tools/`](docs/tools/)（索引 [`docs/README.md`](docs/README.md)） |
 | 版本改动 | `git log`（旧版手册在 git 历史里） |

@@ -1,0 +1,26 @@
+Live2D Cubism Core (Native) — 随「Live2D 桌宠」工具内置分发
+===============================================================
+
+文件：
+  Live2DCubismCore.dll   Windows / x86_64 动态链接库（P/Invoke 用，必须放在 exe 旁边）
+  Live2DCubismCore.h     官方头文件原件，仅作 API 对照留档（不参与编译）
+
+版本：
+  Live2D Cubism SDK for Native 5-r.1（csmGetVersion() = 0x05000000，支持 moc3 文件格式 v5）
+
+来源：
+  Live2D Inc. 官方发布物（Cubism Core for Native）
+  官方下载页： https://www.live2d.com/download/cubism-sdk/download-native/
+  本工程取自公开发布镜像（文件与官方 ZIP 内 Core/ 目录一致）：
+  https://github.com/andforce/CubismSdkForNative-5-r.1
+
+许可：
+  Live2D Proprietary Software License Agreement
+  https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html
+  版权： Copyright(c) Live2D Inc. All rights reserved.
+
+说明：
+  - 本项目不修改该库，只把它作为内置模型加载 / 网格变形求值的运行时随程序分发；
+  - 模型（DeepSeek 文件夹）是用户自有的 Live2D 模型，未经授权请勿再分发；
+  - 模型动作 / 物理 / 表情 / 渲染的语义参考官方 Cubism SDK 文档与示例实现，
+    本项目中的 C# 实现为自行编写（见 THIRD-PARTY-NOTICES.md 与 docs/dev/live2d.md）。

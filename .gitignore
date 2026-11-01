@@ -63,3 +63,9 @@ PictureView/
 *.log
 Thumbs.db
 desktop.ini
+
+# ================= 内置 Live2D 模型 =================
+# 「Live2D 桌宠」内置模型的 PSD 源文件（131 MB，单文件就超过 GitHub 100 MB 限制）：
+# 运行时用不到（工具只读 moc3 / 纹理 / 动作 / 物理），所以只在本地模型文件夹里留档、不入库。
+# 想连 PSD 一起提交：删掉这条（或 git add -f），但注意别往 GitHub 推超大文件。
+src/YuLiangToolkit.Tools.Live2D/DeepSeek/psd/

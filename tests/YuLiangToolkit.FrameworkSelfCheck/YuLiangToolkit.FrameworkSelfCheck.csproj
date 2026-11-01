@@ -51,6 +51,9 @@
     <!-- 「Spug 验证码测试」：URL / 参数校验、短信 GET 拼接、邮箱 POST JSON、响应解析、本地验证、打码、配置；
          假 HttpMessageHandler 真跑请求层，不碰外网。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.SpugCaptcha\YuLiangToolkit.Tools.SpugCaptcha.csproj" />
+    <!-- 「Live2D 桌宠」：内置模型加载（真 moc3 + 真 Cubism Core）/ 参数与部件模型 / 动作表情解析 /
+         物理求值 / 眼睛跟随数学 / 软件渲染器纯逻辑；不弹窗、不碰真 Data。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Live2D\YuLiangToolkit.Tools.Live2D.csproj" />
   </ItemGroup>
 
 </Project>

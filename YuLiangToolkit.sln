@@ -1,4 +1,4 @@
-
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -38,6 +38,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.Kps", "src\YuLiangToolkit.Tools.Kps\YuLiangToolkit.Tools.Kps.csproj", "{CDCBED1E-09DC-4BFD-B3CB-10F3632B2686}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.SpugCaptcha", "src\YuLiangToolkit.Tools.SpugCaptcha\YuLiangToolkit.Tools.SpugCaptcha.csproj", "{78ECB500-BBE4-470B-AE34-DF5C56A47AC9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.Live2D", "src\YuLiangToolkit.Tools.Live2D\YuLiangToolkit.Tools.Live2D.csproj", "{46A5438F-940F-41DA-BC5A-27F586BE0D39}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -241,6 +243,18 @@ Global
 		{78ECB500-BBE4-470B-AE34-DF5C56A47AC9}.Release|x64.Build.0 = Release|Any CPU
 		{78ECB500-BBE4-470B-AE34-DF5C56A47AC9}.Release|x86.ActiveCfg = Release|Any CPU
 		{78ECB500-BBE4-470B-AE34-DF5C56A47AC9}.Release|x86.Build.0 = Release|Any CPU
+		{46A5438F-940F-41DA-BC5A-27F586BE0D39}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{46A5438F-940F-41DA-BC5A-27F586BE0D39}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{46A5438F-940F-41DA-BC5A-27F586BE0D39}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{46A5438F-940F-41DA-BC5A-27F586BE0D39}.Debug|x64.Build.0 = Debug|Any CPU
+		{46A5438F-940F-41DA-BC5A-27F586BE0D39}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{46A5438F-940F-41DA-BC5A-27F586BE0D39}.Debug|x86.Build.0 = Debug|Any CPU
+		{46A5438F-940F-41DA-BC5A-27F586BE0D39}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{46A5438F-940F-41DA-BC5A-27F586BE0D39}.Release|Any CPU.Build.0 = Release|Any CPU
+		{46A5438F-940F-41DA-BC5A-27F586BE0D39}.Release|x64.ActiveCfg = Release|Any CPU
+		{46A5438F-940F-41DA-BC5A-27F586BE0D39}.Release|x64.Build.0 = Release|Any CPU
+		{46A5438F-940F-41DA-BC5A-27F586BE0D39}.Release|x86.ActiveCfg = Release|Any CPU
+		{46A5438F-940F-41DA-BC5A-27F586BE0D39}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -261,5 +275,6 @@ Global
 		{A7F3D2C1-5B8E-4C6A-9D1F-3E2B4C5A6D7E} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{CDCBED1E-09DC-4BFD-B3CB-10F3632B2686} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{78ECB500-BBE4-470B-AE34-DF5C56A47AC9} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{46A5438F-940F-41DA-BC5A-27F586BE0D39} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

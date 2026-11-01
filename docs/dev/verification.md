@@ -44,7 +44,7 @@
 ```powershell
 .\scripts\check.ps1              # 日常唯一需要的命令：自动选组 + build + 定向自检
 .\scripts\check.ps1 -DryRun      # 只看这次会跑什么，不动手（改前规划 / 解释给用户）
-.\scripts\check.ps1 -List        # 看 17 个组 + 完整「路径 → 组」映射表
+.\scripts\check.ps1 -List        # 看 18 个组 + 完整「路径 → 组」映射表
 .\scripts\check.ps1 -SelfTest    # 单独校验映射/接线/工程/文档是否漂移（退出码 2 = 漂移）
 .\scripts\check.ps1 -Files a.cs,b.md   # 假装这些文件改了（提交后复查 / 指定影响面）
 .\scripts\check.ps1 -Groups theme      # 强制指定组（少数场景；优先让脚本自动选）
@@ -75,6 +75,11 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 对应 `gomoku`/`xiangqi`、`spug` 对应工具 `spug-captcha`。
 
 ## 自检的已知盲区（重要）
+
+- **自检程序末尾是 `TerminateProcess` 强制带退出码终止，不是 `return`**：全量跑时多个分组会在各自的
+  STA 线程上创建 WPF 位图 / 视觉对象，进程收尾阶段 WPF 合成线程会空转，`return` / `Environment.Exit`
+  都会卡在 CLR/WPF 清理里 →「3033 项全 PASS 但进程十几分钟不退出」，`check.ps1` 永远等不到退出码。
+  这是刻意写的（见 `Program.cs` 末尾注释），别改回 `return`；排错时设 `YLT_SELFCHECK_TRACE=1` 看卡在哪个分组。
 
 - **`--all` ≠ 全覆盖**：见「总则」三类；全绿只说明现有断言都过了；
 - **fail-open**：网络/端口类断言在环境不满足时会「跳过并记 PASS」，日志里写「跳过」。
@@ -111,8 +116,10 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `src/YuLiangToolkit.Tools.PdfReader/**` | `pdf-reader` | L2 |
 | `src/YuLiangToolkit.Tools.Kps/**` | `kps` | L2 |
 | `src/YuLiangToolkit.Tools.SpugCaptcha/**` | `spug` | L2 |
+| `src/YuLiangToolkit.Tools.Live2D/**` | `live2d` | L2 |
 | `src/YuLiangToolkit.Tools.VideoToAudio/**`、`src/YuLiangToolkit.Tools.Sample/**` | **无专属组** → build + 人工冒烟 | L1 |
 | `tests/.../XxxChecks.cs` | 该模块对应的组（`ScrollChainingChecks.cs` → `core`；`PdfTextChecks.cs` → `pdf-reader`…） | L3 |
+| `tests/.../Live2DChecks.cs` | `live2d` | L3 |
 | `tests/.../MaintenanceChecks.cs` | `maintenance`（缓存清理 / 重建配置） | L3 |
 | `tests/.../Program.cs`、`SelfCheckScratch.cs`、自检 csproj | **ALL**（接线/公共脚手架） | L4 |
 | `YuLiangTookit.csproj`（⚠ 少一个 `l`） | **ALL** + 人工清单（引用数 / `DefaultItemExcludes` / 无 `CopyToOutputDirectory` / 启动截图） | L4 |
@@ -156,7 +163,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 - 跨组共享文件映射是否符合期望（`MiniPlayerPanel`→`shell`+`media-player`、`ShellConfig`→`shell`+`theme`、
   `ShellCategories`→`shell`+`board-games`、`App.xaml`→`theme`+`shell` 等）；
 - 每个 `Tools.*` 工程是否同时被主 csproj、`YuLiangToolkit.sln`、自检 csproj（VideoToAudio/Sample 白名单）引用；
-- 无组项目是否仍显式标为 build-only；`docs/dev/verification.md` 是否提到全部 17 个组 id。
+- 无组项目是否仍显式标为 build-only；`docs/dev/verification.md` 是否提到全部 18 个组 id。
 
 新增功能 / 组的步骤：
 

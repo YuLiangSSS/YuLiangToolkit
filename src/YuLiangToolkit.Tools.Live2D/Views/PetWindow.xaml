@@ -1,0 +1,56 @@
+<Window x:Class="YuLiangToolkit.Tools.Live2D.Views.PetWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Live2D 桌宠"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        ResizeMode="NoResize"
+        Topmost="True"
+        WindowStartupLocation="Manual"
+        Focusable="False"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        MouseLeftButtonDown="OnPetMouseLeftButtonDown"
+        MouseLeftButtonUp="OnPetMouseLeftButtonUp"
+        MouseMove="OnPetMouseMove"
+        MouseWheel="OnPetMouseWheel"
+        MouseDoubleClick="OnPetMouseDoubleClick">
+
+    <!-- 说明：独立透明窗口，背景全透明、无边框、不进任务栏。
+         画面 = Image 绑定桌宠专用渲染器的 WriteableBitmap（每帧由会话帧循环更新 Source）。
+         透明区域的鼠标穿透靠 WS_EX_TRANSPARENT（见代码后置），不靠窗口自身。 -->
+
+    <Window.ContextMenu>
+        <!-- 右键菜单：显隐 / 置顶 / 点击穿透 / 缩放重置 / 居中 / 打开测试页 / 隐藏。
+             独立窗口不套 App.xaml 里的样式，这里显式用主题 token（DynamicResource）保持四套主题协调。 -->
+        <ContextMenu x:Name="PetMenu"
+                     Background="{DynamicResource CardBackgroundBrush}"
+                     Foreground="{DynamicResource TextPrimaryBrush}"
+                     BorderBrush="{DynamicResource BorderBrush}"
+                     Opened="OnPetMenuOpened">
+            <MenuItem x:Name="MenuItemTopMost" Header="置顶显示" IsCheckable="True"
+                      Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuTopMostClick" />
+            <MenuItem x:Name="MenuItemClickThrough" Header="透明区域点击穿透" IsCheckable="True"
+                      Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuClickThroughClick"
+                      ToolTip="鼠标在模型透明区域时直接穿透到下面的窗口" />
+            <Separator />
+            <MenuItem Header="缩放重置（420 像素宽）" Foreground="{DynamicResource TextPrimaryBrush}"
+                      Click="OnMenuResetSizeClick" />
+            <MenuItem Header="居中" Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuCenterClick" />
+            <MenuItem Header="打开测试工具页" Foreground="{DynamicResource TextPrimaryBrush}"
+                      Click="OnMenuOpenToolPageClick"
+                      ToolTip="把主窗口切到「桌面 → Live2D 桌宠」测试台" />
+            <Separator />
+            <MenuItem Header="隐藏桌宠（可在测试页重新打开）" Foreground="{DynamicResource TextPrimaryBrush}"
+                      Click="OnMenuHideClick" />
+        </ContextMenu>
+    </Window.ContextMenu>
+
+    <Grid x:Name="Root" Background="Transparent">
+        <Image x:Name="PetImage" Stretch="Fill" IsHitTestVisible="False"
+               RenderOptions.BitmapScalingMode="HighQuality" />
+    </Grid>
+</Window>

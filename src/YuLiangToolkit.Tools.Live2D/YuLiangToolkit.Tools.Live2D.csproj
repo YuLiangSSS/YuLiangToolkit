@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「Live2D 桌宠」工具工程：内置一套 Live2D Cubism 模型（DeepSeek 文件夹整体搬进来），
+       用官方 Cubism Core 原生库加载 moc3，自写 C# 软件渲染器（不引入任何 NuGet 包）。
+       模型运行时资源由本工程拷贝到输出目录的 Live2D\Models\DeepSeek\ 下；
+       DeepSeek 里的 PSD 源文件 / 平台配置文件（vtube.json / vbridger / items_pinned）只在仓库里留档，不进输出。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.Live2D</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.Live2D</AssemblyName>
+    <!-- 自写软件光栅化 / Cubism Core P/Invoke 需要 unsafe -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- 内置模型的输出目录：exe 旁边 Live2D\Models\<模型名>\... -->
+    <Live2DModelOutputDir>Live2D\Models</Live2DModelOutputDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 官方 Cubism Core 原生 DLL（Live2D Proprietary Software License；来源与许可见 ThirdParty\Live2DCubismCore\NOTICE.txt）。
+         必须落在 exe 旁边：P/Invoke 用裸文件名加载。 -->
+    <None Update="ThirdParty\Live2DCubismCore\Live2DCubismCore.dll"
+          Link="Live2DCubismCore.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 内置模型的运行时文件（源文件仍在工程目录里；只有这些需要跟着 exe 走） -->
+    <None Remove="DeepSeek\**\*" />
+    <Content Include="DeepSeek\**\*"
+             Exclude="DeepSeek\psd\**;DeepSeek\*.vbridger;DeepSeek\*.vtube.json;DeepSeek\items_pinned_to_model.json"
+             Link="$(Live2DModelOutputDir)\DeepSeek\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

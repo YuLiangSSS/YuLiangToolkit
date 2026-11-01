@@ -39,6 +39,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("theme", "第二套 UI：液态玻璃主题"),
     ("kps", "KPS 按键统计：统计引擎 / 预设 / 热键 / 全局输入"),
     ("spug", "Spug 验证码测试：URL 校验 / 请求构造 / 响应解析 / 本地验证"),
+    ("live2d", "Live2D 桌宠：内置 moc3 加载 / 参数部件 / 动作表情 / 物理 / 眼睛跟随 / 软件渲染"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -93,11 +94,22 @@ var results = new List<string>();
 var skippedGroups = new List<string>();
 var runCurrentGroup = true;
 
+// 排错用：YLT_SELFCHECK_TRACE=1 时打印「进入 / 完成哪个分组」，便于定位「自检全部通过但进程不退出」
+// 这类问题卡在哪一步（正常跑不输出，不影响输出量）。
+var traceGroups = Environment.GetEnvironmentVariable("YLT_SELFCHECK_TRACE") == "1";
+void TraceMark(string message)
+{
+    if (!traceGroups) return;
+    Console.WriteLine($"[trace] {DateTime.Now:HH:mm:ss.fff} {message}");
+    Console.Out.Flush();
+}
+
 void EnterGroup(string id)
 {
     var run = runAllGroups || requestedGroups.Contains(id);
     if (!run && !skippedGroups.Contains(id)) skippedGroups.Add(id);
     runCurrentGroup = run;
+    if (run) TraceMark("group-begin " + id);
 }
 
 bool RunGroup(string id)
@@ -128,6 +140,10 @@ void RunGroupModule(string groupId, string errorLabel,
     {
         Check($"[{errorLabel}] 运行过程中抛出异常（{ex.GetType().Name}）", false,
             $"{ex.Message} @ {ex.StackTrace?.Split('\n').FirstOrDefault()?.Trim()}");
+    }
+    finally
+    {
+        TraceMark("group-done " + groupId);
     }
 }
 
@@ -932,6 +948,10 @@ RunGroupModule("kps", "KPS输入", KpsInputChecks.Run);
 // 发送器用假 HttpMessageHandler 真跑请求层，**不碰外网**（真联网留给人工用工具验收）。
 RunGroupModule("spug", "Spug验证码", SpugChecks.Run);
 
+// 「Live2D 桌宠」：内置 moc3 真加载（Cubism Core）/ 参数部件 / 动作表情解析 / 物理求值
+// / 眼睛跟随数学 / 软件渲染器纯逻辑；无头跑，不弹窗、不碰真 Data。
+RunGroupModule("live2d", "Live2D桌宠", Live2DChecks.Run, "[Live2D] ");
+
 EnterGroup("shell");
 
 // ---------- 完整性自检（全屏藏任务栏的前置条件） ----------
@@ -968,7 +988,26 @@ var summary = runAllGroups
         ? $"本次分组通过（{results.Count} 项）· 分组：{string.Join(" / ", requestedGroups)}（未运行 {skippedGroups.Count} 组，--all 可全跑）"
         : $"失败 {failed} / {results.Count} 项 · 分组：{string.Join(" / ", requestedGroups)}");
 Console.WriteLine($"{summary} · 数据根：{AppPaths.Root}");
-return failed == 0 ? 0 : 1;
+
+// 收尾：直接 TerminateProcess 带退出码终止进程。
+// 原因：自检有多个分组会在各自的 STA 线程上创建 WPF 位图 / 视觉对象（图片、PDF、主题、Live2D 渲染…），
+// 全量跑时 WPF 的合成线程会在进程收尾阶段一直空转，`return 退出码` 和 `Environment.Exit` 都会卡在
+// CLR/WPF 的退出清理里 → 表现为「3033 项全部 PASS 但进程十来分钟不退出」，check.ps1 因此永远等不到
+// 退出码（历史坑）。这里是测试程序，输出已经 Flush、各检查要写的文件也已落盘，直接带码终止最稳。
+Console.Out.Flush();
+if (!OperatingSystem.IsWindows()) Environment.Exit(failed == 0 ? 0 : 1);
+NativeExit.TerminateProcess(NativeExit.GetCurrentProcess(), (uint)(failed == 0 ? 0 : 1));
+return 0;   // 不可达：只为满足「有的分支 return 退出码」的编译要求
+
+/// <summary>自检退出用的 Win32 调用（见文件末尾收尾处注释）。</summary>
+internal static class NativeExit
+{
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    internal static extern IntPtr GetCurrentProcess();
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    internal static extern bool TerminateProcess(IntPtr hProcess, uint exitCode);
+}
 
 /// <summary>自检用的假工具：只填展示字段，用来验证搜索/排序逻辑。</summary>
 internal sealed class FakeTool : ITool

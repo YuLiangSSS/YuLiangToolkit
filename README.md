@@ -31,6 +31,7 @@
 | [**🍜 osu! LN 转换器**](docs/tools/osu-ln-transformer.md) | 按 14 档强度把普通键改成 LN（长条），可选保留原 LN / 修尾巴误差 |
 | [**⭐ osu! 等级计算器**](docs/tools/osu-level-calculator.md) | 拖入 mania 谱面算星数与等级，批量表格；**等级按 8K 谱面拟合（只对 8K 有参考意义）**，SR（xxy rating）通用 |
 | [**🎹 KPS 按键统计**](docs/tools/kps.md) | 实时 KPS / 峰值 / 平均 + 每键计数器 + 键位可视化 + **透明置顶 Overlay**（可锁定点击穿透 / 拖动 / 滚轮缩放）；4K~8K 预设、改键、单键图片、音符效果、键音、全局热键（功能灵感来源 DmNote，独立重写） |
+| [**🐟 Live2D 桌宠**](docs/tools/live2d.md) | 内置 Live2D 模型测试台 + 桌面宠物：**参数 / 部件 / 动作 / 表情 / 物理 / 眼睛跟随**逐项调试，透明置顶、可拖动、滚轮缩放、右键菜单、点击穿透、待机眨眼 / 呼吸；**全本地、不联网、不需要显卡**（官方 Cubism Core + 自写软件渲染器），也能换成自己的 `.moc3` 模型 |
 | [**⚫ 联机五子棋**](docs/tools/gomoku.md) | 开 TCP 房间联机下五子棋：**最多 16 人多人观战 + 房主安排上场 / 自动轮换**、可选禁手（三三 / 四四 / 长连）、悔棋、聊天、同机双人 |
 | [**🀄 联机象棋**](docs/tools/xiangqi.md) | 开 TCP 房间联机下中国象棋：**多人观战 + 房主安排上场 / 自动轮换**、自由摆棋 + 一键默认开局、让子 / 让先、中文记谱 |
 | [**📨 Spug 验证码测试**](docs/tools/spug-captcha.md) | 联调 Spug 推送助手（push.spug.cc）的短信 / 邮箱验证码模板：发验证码 + 本地比对验证 + 接口日志；推送 URL 是调用凭证，别外传 |
@@ -41,6 +42,9 @@
 >
 > 🎲 **棋牌**也是主页上的一个分类：联机五子棋与联机象棋都收在里面。一个房间最多 16 人，
 > 两人上场、其余观战；房主安排谁上场，也可以开自动轮换（输的下场 / 双方都下场）。
+>
+> 🐟 **Live2D 桌宠**收在主页「**桌面**」分类里：点「桌面」类别卡片进类别页，再点工具卡片打开
+> （它是这个分类目前唯一的工具）。
 
 > 全部文档的索引（含通用说明）在 [docs/](docs/README.md)。
 
@@ -67,13 +71,14 @@ dotnet run --project YuLiangTookit.csproj
 只有「视频转音频」依赖 FFmpeg（应用会自动检测 `PATH` 里的 `ffmpeg.exe`，也可以在工具里手动指定）——
 见 [视频转音频](docs/tools/video-to-audio.md)。osu! 三个转换 / 计算工具用 `OsuParsers`（MIT）解析 `.osu`：
 从源码构建时**首次需要联网还原一次** NuGet 包，之后走本机缓存（`build.ps1` 离线也能命中）。
+「Live2D 桌宠」不需要额外装任何东西（模型和官方 Cubism Core 原生库都随程序发布，仅限 Windows x64）。
 
 ## 文档
 
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；
   踩坑细节按需查 **[docs/dev/pitfalls.md](docs/dev/pitfalls.md)**（只在排错 / 改危险代码时读）；
-- ✅ **自检**：2917 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
+- ✅ **自检**：3033 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -102,7 +107,7 @@ AGENTS.md                               # 精简开发入口地图（流程 / �
 SingleInstance.cs                       # 单实例唤醒（Mutex + 命名管道：再启动一次只唤醒已开窗口）
 README.md                               # 本文件：工具一览 + 快速开始
 LICENSE                                 # Unlicense（随便用，不用署名）
-THIRD-PARTY-NOTICES.md                  # 第三方组件的 MIT 许可（OsuParsers / ppy 数学工具）
+THIRD-PARTY-NOTICES.md                  # 第三方组件许可（OsuParsers / ppy 数学工具 / Live2D Cubism Core / 内置模型）
 docs/                                   # 每个工具一页的详细说明（见 docs/README.md）
 docs/dev/pitfalls.md                    # 踩坑清单（按需读）
 docs/dev/verification.md                # 验证纪律：自检分级 / 路径→组映射 / 全量例外
@@ -120,9 +125,10 @@ src/
 ├── YuLiangToolkit.Tools.OsuMania/       # 功能：音游工具（osu! Key 转换器 / LN 转换器 / 等级计算器）
 ├── YuLiangToolkit.Tools.BoardGames/     # 功能：棋牌（联机五子棋 / 联机象棋 + 房间联机底座）
 ├── YuLiangToolkit.Tools.Kps/            # 功能：KPS 按键统计（Raw Input 全局输入 + KPS 统计 + 置顶透明 Overlay + 全局热键）
+├── YuLiangToolkit.Tools.Live2D/         # 功能：Live2D 桌宠（内置模型测试台 + 透明置顶桌宠 + 眼睛跟随；官方 Cubism Core + 自写软件渲染器）
 ├── YuLiangToolkit.Tools.SpugCaptcha/    # 功能：Spug 验证码测试（短信 / 邮箱验证码模板联调 + 本地比对验证）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（2917 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3033 项行为逐条验证）
 ```
 
 ## 如何添加一个新工具
@@ -142,6 +148,7 @@ Data / Config 的路径与持久化全由框架接管。也可以把编译好的
 > **随便用、随便改、随便 fork、商用、二次发布、打包分发都可以，不需要署名，也不用保留版权声明。**
 > 唯一请求：别把作者标成别人。
 
-仓库里有少量第三方内容仍遵循它们自己的许可（`OsuParsers` 与 ppy osu!lazer 的数学工具，均为 MIT），
-详见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+仓库里有少量第三方内容仍遵循它们自己的许可：`OsuParsers` 与 ppy osu!lazer 的数学工具（均为 MIT），
+以及「Live2D 桌宠」用到的 **Live2D Cubism Core 原生库**（Live2D Inc. 的 Proprietary Software License）
+与内置模型（作者自有，非开源素材）。详见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
 

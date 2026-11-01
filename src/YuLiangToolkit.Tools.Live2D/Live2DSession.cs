@@ -1,0 +1,954 @@
+using System.Diagnostics;
+using System.IO;
+using System.Windows;
+using System.Windows.Threading;
+using YuLiangToolkit.Tools.Live2D.Interop;
+using YuLiangToolkit.Tools.Live2D.Model;
+using YuLiangToolkit.Tools.Live2D.Rendering;
+using YuLiangToolkit.Tools.Live2D.ViewModels;
+using YuLiangToolkit.Tools.Live2D.Views;
+
+namespace YuLiangToolkit.Tools.Live2D;
+
+/// <summary>
+/// 页面 / 桌宠共用的一帧渲染目标：会话每帧先 <see cref="ModelRuntime.Tick"/> 一次，再依次叫它们各自出图。
+///
+/// <para>为什么要有这个接口：工具页和桌宠**同时可见**时都要拿到自己尺寸的画面。
+/// 如果两边都往同一个 <c>renderer.Bitmap</c> 画，位图尺寸会被对方改来改去（还互相覆盖内容）。
+/// 所以会话只 Tick 一次（动作速度才不会翻倍），两个目标各自用自己的 <see cref="CubismRenderer"/>
+/// （共享同一份只读纹理）分别渲染。</para>
+/// </summary>
+public interface ILive2DFrameTarget
+{
+    /// <summary>这个目标现在值不值得渲染（页面切走 / 窗口最小化时返回 false，省 CPU）。</summary>
+    bool IsTargetVisible { get; }
+
+    /// <summary>用运行时当前这一帧画自己的位图（在 UI 线程、<see cref="ModelRuntime.Tick"/> 之后调用）。</summary>
+    void RenderFrame(ModelRuntime runtime);
+}
+
+/// <summary>
+/// 「Live2D 桌宠」的后台会话（整个进程一个）：管理模型运行时、唯一的帧循环、工具页与桌宠窗口的存活。
+///
+/// <para>与 KPS 的 Overlay 同一套思路：模型加载慢（5 张 4096 纹理）、桌宠窗口要在切到别的工具页之后
+/// 继续显示，所以它们放在会话里；工具页只是「控制面板」，页面关掉时若桌宠还开着，会话继续跑。</para>
+///
+/// <para><b>帧循环</b>：会话持有一个 <see cref="DispatcherTimer"/>：每帧 = Tick 一次 → 页面目标渲染 → 桌宠目标渲染。
+/// 页面和桌宠同时可见时桌宠降到约 15fps（页面仍按 <see cref="Live2DConfig.FpsLimit"/>），避免两张大图
+/// 一起抢 UI 线程。页面切走 / 窗口最小化且桌宠也没开时定时器停下；两边都关掉后再过一会儿释放模型内存。</para>
+///
+/// <para><b>线程</b>：公开方法都应在 UI 线程调用；模型加载在后台线程（<see cref="Task.Run(Action)"/>），
+/// 加载完成 / 失败都切回 UI 线程再改界面状态。开发调试截图模式（环境变量 <c>YLT_SHOT</c> /
+/// <c>YLT_LIVE2D_SHOT_PET</c>）下改成 UI 线程同步加载，保证外壳 1200ms 后截图时画面已经出来。</para>
+/// </summary>
+public sealed class Live2DSession
+{
+    /// <summary>全局唯一会话。</summary>
+    public static Live2DSession Current { get; } = new();
+
+    /// <summary>两边都没人看着时，模型保留多久再释放内存（毫秒）。</summary>
+    private const int IdleUnloadDelayMs = 45_000;
+
+    private readonly Stopwatch _clock = Stopwatch.StartNew();
+
+    private Live2DViewModel? _viewModel;
+    private ModelRuntime? _runtime;
+    private CubismRenderer? _petRenderer;
+    private PetWindow? _pet;
+    private ILive2DFrameTarget? _pageTarget;
+
+    private DispatcherTimer? _frameTimer;
+    private DispatcherTimer? _idleUnloadTimer;
+    private TimeSpan _lastFrameTime;
+    private long _frameIndex;
+
+    private Task? _loadTask;
+    private CancellationTokenSource? _loadCts;
+    private double _lastReportedProgress = -1;
+    private bool _loading;
+    private double _loadProgress;
+    private string? _loadError;
+    private double _lastLoadMilliseconds;
+
+    private bool _pageActive;
+    private bool _initialized;
+    private bool _shutdown;
+    private bool _windowCloseHooked;
+    private bool _frameErrorLogged;
+
+    private DateTime _lastPageEyeTime = DateTime.MinValue;
+
+    // 帧耗时测量：页面 / 桌宠各自上一帧的渲染毫秒数（页面与桌宠同开太吃力时给桌宠降频）
+    private double _lastPageRenderMs;
+    private double _lastPetRenderMs;
+    private bool _dualSlowLogged;
+
+    private Live2DSession()
+    {
+    }
+
+    // ===================== 对外状态 =====================
+
+    /// <summary>工具页 ViewModel（没创建过为 null）。</summary>
+    public Live2DViewModel? ViewModel => _viewModel;
+
+    /// <summary>当前模型运行时（没加载 / 已释放为 null）。</summary>
+    public ModelRuntime? Runtime => _runtime;
+
+    /// <summary>桌宠专用的渲染器（与页面渲染器共享纹理；没加载 / 创建失败为 null）。</summary>
+    public CubismRenderer? PetRenderer => _petRenderer;
+
+    /// <summary>模型是否加载完成且可用。</summary>
+    public bool IsLoaded => _runtime?.IsLoaded == true;
+
+    /// <summary>是否正在加载模型。</summary>
+    public bool IsLoading => _loading;
+
+    /// <summary>加载进度 0~1。</summary>
+    public double LoadProgress => _loadProgress;
+
+    /// <summary>加载失败原因（成功为 null）。</summary>
+    public string? LoadError => _loadError;
+
+    /// <summary>最近一次加载耗时（毫秒，给界面的信息卡显示）。</summary>
+    public double LastLoadMilliseconds => _lastLoadMilliseconds;
+
+    /// <summary>工具页当前是否在前台（页面打开着）。</summary>
+    public bool IsPageActive => _pageActive;
+
+    /// <summary>桌宠窗口当前是否显示着。</summary>
+    public bool IsPetVisible => _pet is not null;
+
+    /// <summary>
+    /// 是不是「开发调试截图模式」（设置了 <c>YLT_SHOT</c> 或 <c>YLT_LIVE2D_SHOT_PET</c>）：
+    /// 这种模式下模型在 UI 线程同步加载、纹理固定 2048，保证外壳 1200ms 后截图时画面已经出来。
+    /// </summary>
+    public bool IsDebugShotMode =>
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("YLT_SHOT"))
+        || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("YLT_LIVE2D_SHOT_PET"));
+
+    /// <summary>桌宠截图钩子路径（环境变量 <c>YLT_LIVE2D_SHOT_PET</c>；没设置为空串）。</summary>
+    public string PetDebugShotPath =>
+        Environment.GetEnvironmentVariable("YLT_LIVE2D_SHOT_PET")?.Trim() ?? "";
+
+    /// <summary>
+    /// 画布宽高比（宽 / 高）。模型没加载时用内置模型的 3749 / 7697，保证桌宠窗口先有个合理的长宽比。
+    /// </summary>
+    public double CanvasAspect
+    {
+        get
+        {
+            var model = _runtime?.Model;
+            try
+            {
+                if (model is not null && model.CanvasWidthPixels > 0 && model.CanvasHeightPixels > 0)
+                    return model.CanvasWidthPixels / model.CanvasHeightPixels;
+            }
+            catch { /* 运行时没准备好时用默认比例 */ }
+            return 3749.0 / 7697.0;
+        }
+    }
+
+    /// <summary>加载状态 / 模型 / 桌宠显隐变化时触发（在 UI 线程）。</summary>
+    public event EventHandler? StateChanged;
+
+    /// <summary>桌宠显示 / 隐藏时触发（在 UI 线程）。</summary>
+    public event EventHandler? PetVisibilityChanged;
+
+    // ===================== 页面生命周期 =====================
+
+    /// <summary>取（或创建）工具页 ViewModel（整个进程只建一次，页面重开复用）。</summary>
+    public Live2DViewModel EnsureViewModel()
+    {
+        EnsureInitialized();
+        if (_viewModel is null)
+        {
+            _viewModel = new Live2DViewModel();
+            _viewModel.Session = this;
+        }
+        return _viewModel;
+    }
+
+    /// <summary>工具页面打开：恢复配置保存、按需加载模型 / 显示桌宠。</summary>
+    public void Activate(Live2DViewModel viewModel)
+    {
+        if (_shutdown) return;
+        EnsureInitialized();
+        HookWindowClose();
+
+        _viewModel = viewModel;
+        viewModel.Session = this;
+        _pageActive = true;
+        try { viewModel.NotifyOpened(); } catch { /* 恢复自动保存失败不影响使用 */ }
+
+        EnsureModelLoaded();
+        ApplyRuntimeSettings();
+        UpdateFrameLoop();
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>工具页面关闭（切走 / 回主页）；桌宠还开着就继续跑。</summary>
+    public void Deactivate(Live2DViewModel? viewModel = null)
+    {
+        if (viewModel is not null && !ReferenceEquals(viewModel, _viewModel)) return;
+        _pageActive = false;
+        _pageTarget = null;
+        UpdateFrameLoop();
+
+        // 页面关了、桌宠也没开：别让模型一直盯着一个不存在的鼠标
+        if (_pet is null)
+        {
+            try { _runtime?.ClearEyeTrackingTarget(); } catch { /* 忽略 */ }
+        }
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>程序退出：关桌宠、停帧循环、释放模型、把配置落盘。</summary>
+    public void Shutdown()
+    {
+        if (_shutdown) return;
+        _shutdown = true;
+
+        UnhookWindowClose();
+        try { _loadCts?.Cancel(); } catch { /* 忽略 */ }
+        _loadCts = null;
+        _loadTask = null;
+        _loading = false;
+
+        try { _frameTimer?.Stop(); } catch { /* 忽略 */ }
+        try { _idleUnloadTimer?.Stop(); } catch { /* 忽略 */ }
+        _frameTimer = null;
+        _idleUnloadTimer = null;
+
+        ClosePetInternal(raiseEvent: false);
+        DisposeRuntime();
+
+        try { _viewModel?.ConfigStore.SaveNow(); } catch { /* 退出流程忽略 */ }
+        try { _viewModel?.NotifyClosed(); } catch { /* 忽略 */ }
+    }
+
+    /// <summary>立刻保存配置（桌宠拖动 / 缩放 / 切换设置后调用，防抖窗口内的改动也不会丢）。</summary>
+    public void SaveConfigNow()
+    {
+        try { _viewModel?.ConfigStore.SaveNow(); } catch { /* 忽略 */ }
+    }
+
+    // ===================== 模型加载 =====================
+
+    /// <summary>
+    /// 按需加载模型（已加载 / 正在加载时什么都不做）。
+    /// <para>普通启动走后台线程（不卡界面）；开发调试截图模式（<see cref="IsDebugShotMode"/>）下
+    /// 在 UI 线程同步加载，保证外壳截图时画面已经出来。</para>
+    /// </summary>
+    public void EnsureModelLoaded()
+    {
+        if (_shutdown) return;
+        EnsureInitialized();
+        HookWindowClose();
+        if (_runtime is not null || _loadTask is not null || _loading) return;
+
+        var vm = EnsureViewModel();
+        _loading = true;
+        _loadProgress = 0;
+        _lastReportedProgress = -1;
+        _loadError = null;
+        _frameErrorLogged = false;
+        vm.SetLoadStarted();
+        StateChanged?.Invoke(this, EventArgs.Empty);
+
+        if (IsDebugShotMode)
+        {
+            // 截图模式：同步加载（UI 线程阻塞 1~3 秒，换来 1200ms 后截图里有最终画面）
+            vm.Log("截图模式：同步加载模型…");
+            DoLoad(vm, CancellationToken.None);
+            return;
+        }
+
+        _loadCts = new CancellationTokenSource();
+        var token = _loadCts.Token;
+        vm.Log("开始异步加载模型…");
+        _loadTask = Task.Run(() => DoLoad(vm, token), token);
+    }
+
+    /// <summary>重新加载模型（换模型文件夹 / 改纹理尺寸后调用）。</summary>
+    public void ReloadModel()
+    {
+        if (_shutdown) return;
+        try { _loadCts?.Cancel(); } catch { /* 忽略 */ }
+        _loadCts = null;
+        _loadTask = null;
+        _loading = false;
+        _loadError = null;
+
+        DisposeRuntime();
+        _viewModel?.AttachRuntime(null, 0);
+        _viewModel?.SetLoadStarted();
+        _viewModel?.Log("重新加载模型…");
+        EnsureModelLoaded();
+    }
+
+    /// <summary>真正做加载（后台线程 / 截图模式的 UI 线程都会走到这里）。</summary>
+    private void DoLoad(Live2DViewModel vm, CancellationToken cancellationToken)
+    {
+        var watch = Stopwatch.StartNew();
+        try
+        {
+            if (_shutdown) return;
+            var cfg = vm.Cfg;
+            var folder = string.IsNullOrWhiteSpace(cfg.ModelFolder)
+                ? Live2DModelAsset.BuiltInModelDirectory
+                : cfg.ModelFolder.Trim();
+            var asset = Live2DModelAsset.Discover(folder);
+            vm.Log($"模型资源：{asset.Name}（{asset.Directory}）");
+
+            var textureSize = IsDebugShotMode ? 2048 : ClampTextureSize(cfg.TextureMaxSize);
+            var options = new RuntimeLoadOptions
+            {
+                TextureMaxSize = textureSize,
+                IdleMotionName = string.IsNullOrWhiteSpace(cfg.IdleMotion) ? null : cfg.IdleMotion.Trim(),
+                Progress = progress => ReportLoadProgress(vm, progress),
+                Log = message => vm.Log(message),
+                CancellationToken = cancellationToken,
+            };
+
+            // Core 自己的日志也转进界面日志（加载失败时能看出 moc / 纹理哪一步出的问题）
+            try { CubismCore.SetLogHandler(message => vm.Log("[Core] " + message)); } catch { /* 忽略 */ }
+            ModelRuntime runtime;
+            try
+            {
+                runtime = ModelRuntime.Load(asset, options);
+            }
+            finally
+            {
+                try { CubismCore.SetLogHandler(null); } catch { /* 忽略 */ }
+            }
+
+            watch.Stop();
+            if (_shutdown || cancellationToken.IsCancellationRequested)
+            {
+                try { runtime.Dispose(); } catch { /* 忽略 */ }
+                return;
+            }
+
+            vm.Ui(() => FinishLoad(vm, runtime, watch.Elapsed.TotalMilliseconds));
+        }
+        catch (OperationCanceledException)
+        {
+            // 页面 / 程序关闭时取消：什么都不用做
+        }
+        catch (Exception ex)
+        {
+            watch.Stop();
+            vm.Ui(() => FailLoad(vm, ex));
+        }
+    }
+
+    /// <summary>加载进度回调（可能来自后台线程；节流后切 UI 线程更新进度条）。</summary>
+    private void ReportLoadProgress(Live2DViewModel vm, double progress)
+    {
+        if (!double.IsFinite(progress)) return;
+        progress = Math.Clamp(progress, 0, 1);
+        if (progress < 1 && progress - _lastReportedProgress < 0.01) return;
+        _lastReportedProgress = progress;
+        vm.Ui(() =>
+        {
+            _loadProgress = progress;
+            vm.SetLoadProgress(progress);
+        });
+    }
+
+    private static int ClampTextureSize(int value) => value switch
+    {
+        <= 1024 => 1024,
+        <= 2048 => 2048,
+        _ => 4096,
+    };
+
+    /// <summary>加载成功（UI 线程）：接上运行时、建桌宠渲染器、开始帧循环、渲染第一帧。</summary>
+    private void FinishLoad(Live2DViewModel vm, ModelRuntime runtime, double loadMilliseconds)
+    {
+        if (_shutdown)
+        {
+            try { runtime.Dispose(); } catch { /* 忽略 */ }
+            return;
+        }
+
+        _runtime = runtime;
+        _lastLoadMilliseconds = loadMilliseconds;
+        _loading = false;
+        _loadProgress = 1;
+        _loadError = null;
+        _loadTask = null;
+        _loadCts = null;
+
+        // 桌宠用独立的渲染器（只共享只读纹理）：页面和桌宠同时显示时各画各的位图，互不覆盖
+        _petRenderer = null;
+        try
+        {
+            _petRenderer = new CubismRenderer(runtime.Renderer.Textures);
+        }
+        catch (Exception ex)
+        {
+            vm.Log("桌宠独立渲染器创建失败（桌宠将复用页面渲染器）：" + ex.Message);
+        }
+
+        vm.AttachRuntime(runtime, loadMilliseconds);
+        ApplyRuntimeSettings();
+        vm.Log($"模型加载完成：{runtime.ModelName}，用时 {loadMilliseconds:0} ms" +
+               $"（动作 {runtime.Motions.Count} 个，表情 {runtime.Expressions.Count} 个）");
+        vm.SetStatus("模型已就绪");
+
+        UpdateFrameLoop();
+        RenderFirstFrame();
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>加载失败（UI 线程）：界面显示错误 + 日志，桌宠窗口保持透明（不会崩）。</summary>
+    private void FailLoad(Live2DViewModel vm, Exception exception)
+    {
+        _loading = false;
+        _loadProgress = 0;
+        _loadTask = null;
+        _loadCts = null;
+        _loadError = exception.Message;
+        DisposeRuntime();
+
+        var message = "模型加载失败：" + exception.Message;
+        vm.Log(message);
+        try { vm.Log(exception.ToString()); } catch { /* 忽略 */ }
+        vm.SetLoadFailed(exception.Message);
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>释放当前模型（页面 / 桌宠都不用了、重新加载前、程序退出时）。</summary>
+    private void DisposeRuntime()
+    {
+        var runtime = _runtime;
+        _runtime = null;
+        var petRenderer = _petRenderer;
+        _petRenderer = null;
+
+        try { petRenderer?.Dispose(); } catch { /* 忽略 */ }
+        try { runtime?.Dispose(); } catch { /* 忽略 */ }
+
+        _frameIndex = 0;
+    }
+
+    /// <summary>加载完成后立刻出一帧（截图模式要保证 Bitmap 已生成，不能等定时器）。</summary>
+    private void RenderFirstFrame()
+    {
+        var runtime = _runtime;
+        if (runtime is null || !runtime.IsLoaded) return;
+
+        try { runtime.Tick(TimeSpan.FromMilliseconds(16)); } catch { /* 一帧失败不影响后面 */ }
+
+        var page = _pageTarget;
+        if (page is { IsTargetVisible: true })
+        {
+            try { page.RenderFrame(runtime); } catch { /* 渲染异常由帧循环统一处理 */ }
+        }
+        if (_pet is { IsVisible: true } pet)
+        {
+            try { pet.RenderFrame(runtime); } catch { /* 同上 */ }
+        }
+        try { _viewModel?.RefreshFrameState(runtime); } catch { /* 忽略 */ }
+    }
+
+    // ===================== 设置 / 帧率 =====================
+
+    /// <summary>把配置里的运行时开关（物理 / 待机 / 眨眼 / 眼控强度 / 待机动作）推给模型运行时。</summary>
+    public void ApplyRuntimeSettings()
+    {
+        var runtime = _runtime;
+        var cfg = _viewModel?.Cfg;
+        if (runtime is null || cfg is null) return;
+
+        try
+        {
+            runtime.PhysicsEnabled = cfg.PhysicsEnabled;
+            runtime.PhysicsStrength = Math.Clamp(cfg.PhysicsStrength, 0, 1);
+            runtime.IdleEnabled = cfg.IdleEnabled;
+            runtime.AutoBlink = cfg.AutoBlink;
+            runtime.EyeTrackingEnabled = cfg.EyeTracking;
+            runtime.EyeTrackingSmoothing = Math.Clamp(cfg.EyeTrackingSmoothing, 0.05, 1);
+            runtime.EyeTrackingHeadStrength = Math.Clamp(cfg.EyeTrackingHeadStrength, 0.2, 1.5);
+            runtime.EyeTrackingEyeStrength = Math.Clamp(cfg.EyeTrackingEyeStrength, 0.2, 1.5);
+            runtime.EyeTrackingBodyStrength = Math.Clamp(cfg.EyeTrackingBodyStrength, 0, 1.5);
+            runtime.IdleMotion = FindIdleMotion(runtime, cfg.IdleMotion);
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("应用运行时设置失败：" + ex.Message);
+        }
+
+        ApplyFrameRate();
+    }
+
+    /// <summary>按配置里的待机动作名找 MotionEntry（空 / 找不到返回 null = 让运行时自己挑）。</summary>
+    private static MotionEntry? FindIdleMotion(ModelRuntime runtime, string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        foreach (var motion in runtime.Motions)
+        {
+            if (string.Equals(motion.Name, name.Trim(), StringComparison.OrdinalIgnoreCase)) return motion;
+        }
+        return null;
+    }
+
+    /// <summary>帧率上限改了之后重设定时器间隔。</summary>
+    public void ApplyFrameRate()
+    {
+        if (_frameTimer is null) return;
+        var fps = Math.Clamp(_viewModel?.Cfg.FpsLimit ?? 30, 15, 60);
+        var interval = TimeSpan.FromSeconds(1.0 / fps);
+        if (Math.Abs((_frameTimer.Interval - interval).TotalMilliseconds) > 0.5) _frameTimer.Interval = interval;
+    }
+
+    // ===================== 帧循环 =====================
+
+    /// <summary>页面 / 桌宠可见性或加载状态变化后调它：决定帧循环开还是关。</summary>
+    public void RefreshFrameLoop() => UpdateFrameLoop();
+
+    /// <summary>页面目标挂上来（工具页 Loaded）。</summary>
+    public void AttachPageTarget(ILive2DFrameTarget target)
+    {
+        if (_shutdown) return;
+        EnsureInitialized();
+        HookWindowClose();
+        _pageTarget = target;
+        UpdateFrameLoop();
+        if (IsLoaded)
+        {
+            try { _runtime!.Tick(TimeSpan.FromMilliseconds(16)); } catch { /* 忽略 */ }
+            try { target.RenderFrame(_runtime!); } catch { /* 忽略 */ }
+        }
+    }
+
+    /// <summary>页面目标摘下来（工具页 Unloaded）。</summary>
+    public void DetachPageTarget(ILive2DFrameTarget target)
+    {
+        if (ReferenceEquals(_pageTarget, target)) _pageTarget = null;
+        UpdateFrameLoop();
+    }
+
+    private void UpdateFrameLoop()
+    {
+        if (_shutdown) return;
+
+        var pageVisible = _pageTarget is { IsTargetVisible: true };
+        var petVisible = _pet?.IsVisible == true;
+        var need = _runtime?.IsLoaded == true && (pageVisible || petVisible);
+
+        if (need)
+        {
+            if (_frameTimer is null)
+            {
+                _frameTimer = new DispatcherTimer(DispatcherPriority.Render)
+                {
+                    Interval = TimeSpan.FromSeconds(1.0 / Math.Clamp(_viewModel?.Cfg.FpsLimit ?? 30, 15, 60)),
+                };
+                _frameTimer.Tick += OnFrameTick;
+            }
+            if (!_frameTimer.IsEnabled)
+            {
+                _lastFrameTime = _clock.Elapsed;
+                _frameTimer.Start();
+            }
+        }
+        else
+        {
+            _frameTimer?.Stop();
+        }
+
+        ScheduleIdleUnload(pageTargetAttached: _pageTarget is not null, petVisible: _pet is not null);
+    }
+
+    /// <summary>页面 / 桌宠都没了：过一会儿释放模型内存（避免在别的工具页呆着白占 ~100MB）。</summary>
+    private void ScheduleIdleUnload(bool pageTargetAttached, bool petVisible)
+    {
+        if (_runtime is null)
+        {
+            _idleUnloadTimer?.Stop();
+            return;
+        }
+
+        if (pageTargetAttached || petVisible)
+        {
+            _idleUnloadTimer?.Stop();
+            return;
+        }
+
+        if (_idleUnloadTimer is null)
+        {
+            _idleUnloadTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(IdleUnloadDelayMs) };
+            _idleUnloadTimer.Tick += OnIdleUnloadTick;
+        }
+        _idleUnloadTimer.Stop();
+        _idleUnloadTimer.Start();
+    }
+
+    private void OnIdleUnloadTick(object? sender, EventArgs e)
+    {
+        _idleUnloadTimer?.Stop();
+        if (_pageTarget is not null || _pet is not null) return;
+        _viewModel?.Log("页面与桌宠都已关闭，释放模型内存（再次打开会重新加载）");
+        _viewModel?.SetStatus("模型未加载：点「重新加载模型」或重新打开桌宠");
+        DisposeRuntime();
+        _viewModel?.AttachRuntime(null, 0);
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>每帧：Tick 一次 → 页面渲染 → 桌宠渲染（两边都可见时桌宠降到约 15fps）。</summary>
+    private void OnFrameTick(object? sender, EventArgs e)
+    {
+        var runtime = _runtime;
+        if (runtime is null || !runtime.IsLoaded)
+        {
+            _frameTimer?.Stop();
+            return;
+        }
+
+        var now = _clock.Elapsed;
+        var delta = now - _lastFrameTime;
+        _lastFrameTime = now;
+        if (delta <= TimeSpan.Zero) return;
+        // 卡顿 / 系统休眠后别把动作一次快进太多
+        if (delta > TimeSpan.FromMilliseconds(200)) delta = TimeSpan.FromMilliseconds(100);
+
+        try
+        {
+            runtime.Tick(delta);
+        }
+        catch (Exception ex)
+        {
+            HandleFrameException(ex);
+            return;
+        }
+
+        _frameIndex++;
+
+        var page = _pageTarget;
+        var pageVisible = page is { IsTargetVisible: true };
+        if (pageVisible)
+        {
+            var pageWatch = Stopwatch.StartNew();
+            try { page!.RenderFrame(runtime); }
+            catch (Exception ex) { HandleFrameException(ex); return; }
+            _lastPageRenderMs = pageWatch.Elapsed.TotalMilliseconds;
+        }
+
+        if (_pet is { IsVisible: true } pet)
+        {
+            var fpsLimit = Math.Clamp(_viewModel?.Cfg.FpsLimit ?? 30, 15, 60);
+            int petSkip;
+            if (!pageVisible)
+            {
+                petSkip = 1;   // 只有桌宠：每帧都画（窗口小）
+            }
+            else
+            {
+                // 页面 + 桌宠同时可见：两张大图各渲染一次。实测明显吃力时把桌宠降到约 10fps（页面不受影响），
+                // 并在日志 / 状态栏说明一次，免得用户以为掉帧是 bug。
+                var heavy = _lastPageRenderMs + _lastPetRenderMs > 25;
+                if (heavy && !_dualSlowLogged)
+                {
+                    _dualSlowLogged = true;
+                    var message = $"页面与桌宠同时显示，每帧渲染约 {_lastPageRenderMs + _lastPetRenderMs:0} ms，" +
+                                  "桌宠画面自动降到约 10fps（测试页仍按设定帧率）";
+                    _viewModel?.Log(message);
+                    _viewModel?.SetStatus(message);
+                }
+                petSkip = heavy
+                    ? Math.Max(3, (int)Math.Round(fpsLimit / 10.0))
+                    : Math.Max(2, (int)Math.Round(fpsLimit / 15.0));
+            }
+
+            if (_frameIndex % petSkip == 0)
+            {
+                var petWatch = Stopwatch.StartNew();
+                try { pet.RenderFrame(runtime); }
+                catch (Exception ex) { HandleFrameException(ex); return; }
+                _lastPetRenderMs = petWatch.Elapsed.TotalMilliseconds;
+            }
+        }
+        else
+        {
+            _lastPetRenderMs = 0;
+        }
+
+        // 界面上的动作进度 / 参数状态不用每帧刷，每 6 帧刷一次就够（避免无谓的绑定开销）
+        if (_frameIndex % 6 == 0)
+        {
+            try { _viewModel?.RefreshFrameState(runtime); } catch { /* 忽略 */ }
+        }
+    }
+
+    /// <summary>帧循环里出错：只记一次并停下，避免每帧刷日志把程序拖死。</summary>
+    private void HandleFrameException(Exception exception)
+    {
+        if (_frameErrorLogged) return;
+        _frameErrorLogged = true;
+        try { _frameTimer?.Stop(); } catch { /* 忽略 */ }
+        _viewModel?.Log("渲染帧出错，已暂停渲染：" + exception.Message);
+        _viewModel?.SetStatus("渲染出错：" + exception.Message);
+    }
+
+    // ===================== 动作 / 表情 / 参数控制 =====================
+
+    /// <summary>播放动作（loop = null 时用动作自带的循环建议；fadeSeconds = null 时用配置里的淡入淡出时长）。</summary>
+    public void PlayMotion(MotionEntry motion, bool? loop = null, double? fadeSeconds = null)
+    {
+        var runtime = _runtime;
+        if (runtime is null || !runtime.IsLoaded) return;
+        var fade = Math.Clamp(fadeSeconds ?? _viewModel?.Cfg.MotionFadeSeconds ?? 0.3, 0, 2);
+        try
+        {
+            runtime.PlayMotion(motion, loop, fade);
+            _viewModel?.Log($"播放动作：{motion.Name}（{motion.Duration:0.0}s，{(loop ?? motion.Loop ? "循环" : "单次")}，淡入 {fade:0.00}s）");
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("播放动作失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>停止当前动作。</summary>
+    public void StopMotion()
+    {
+        try
+        {
+            _runtime?.StopMotion();
+            _viewModel?.Log("已停止动作");
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("停止动作失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>施加表情（多个表情可叠加；淡入时长取配置）。</summary>
+    public void ApplyExpression(ExpressionEntry expression, double fadeSeconds)
+    {
+        try { _runtime?.ApplyExpression(expression, Math.Max(0, fadeSeconds)); }
+        catch (Exception ex) { _viewModel?.Log("施加表情失败：" + ex.Message); }
+    }
+
+    /// <summary>清除全部表情（淡出时长取配置）。</summary>
+    public void ClearExpressions(double fadeSeconds)
+    {
+        try { _runtime?.ClearExpressions(Math.Max(0, fadeSeconds)); }
+        catch (Exception ex) { _viewModel?.Log("清除表情失败：" + ex.Message); }
+    }
+
+    /// <summary>把所有参数 / 部件恢复默认（同时停掉动作与表情）。</summary>
+    public void ResetAll()
+    {
+        try
+        {
+            _runtime?.ResetParameters();
+            _viewModel?.Log("已重置全部参数与部件");
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("重置失败：" + ex.Message);
+        }
+    }
+
+    // ===================== 眼睛跟随 =====================
+
+    /// <summary>页面预览里的鼠标位置（画布像素坐标）：页面活着时由页面优先控制眼神。</summary>
+    public void SetPageEyeTarget(float canvasX, float canvasY)
+    {
+        var runtime = _runtime;
+        if (runtime is null || !runtime.IsLoaded) return;
+        _lastPageEyeTime = DateTime.UtcNow;
+        try { runtime.SetEyeTrackingTarget(canvasX, canvasY); } catch { /* 忽略 */ }
+    }
+
+    /// <summary>鼠标离开预览区：交回给桌宠（桌宠没开就是回正）。</summary>
+    public void ClearPageEyeTarget()
+    {
+        _lastPageEyeTime = DateTime.MinValue;
+        try { _runtime?.ClearEyeTrackingTarget(); } catch { /* 忽略 */ }
+    }
+
+    /// <summary>页面最近是否还在控制眼神（桌宠据此决定要不要抢）。</summary>
+    public bool PageOwnsEyeTracking => (DateTime.UtcNow - _lastPageEyeTime).TotalMilliseconds < 400;
+
+    /// <summary>桌宠用全局鼠标位置控制眼神（画布像素坐标）。</summary>
+    public void SetPetEyeTarget(float canvasX, float canvasY)
+    {
+        if (PageOwnsEyeTracking) return;
+        var runtime = _runtime;
+        if (runtime is null || !runtime.IsLoaded) return;
+        try { runtime.SetEyeTrackingTarget(canvasX, canvasY); } catch { /* 忽略 */ }
+    }
+
+    /// <summary>桌宠不再控制眼神（眼控关掉 / 鼠标取不到 / 桌宠关闭）：回正，别留旧目标。</summary>
+    public void ClearPetEyeTarget()
+    {
+        if (PageOwnsEyeTracking) return;   // 页面正在控制时别抢
+        try { _runtime?.ClearEyeTrackingTarget(); } catch { /* 忽略 */ }
+    }
+
+    // ===================== 桌宠窗口 =====================
+
+    /// <summary>显示桌宠（模型没加载就开始加载；加载完成前窗口是透明的）。</summary>
+    public void ShowPet()
+    {
+        if (_shutdown) return;
+        EnsureInitialized();
+        HookWindowClose();
+
+        var vm = EnsureViewModel();
+        vm.Cfg.PetEnabled = true;
+        EnsureModelLoaded();
+
+        if (_pet is not null)
+        {
+            try { _pet.RefreshFromConfig(); } catch { /* 忽略 */ }
+            UpdateFrameLoop();
+            return;
+        }
+
+        try
+        {
+            var pet = new PetWindow(this);
+            pet.Closed += OnPetClosed;
+            _pet = pet;
+            pet.Show();
+            UpdateFrameLoop();
+            StateChanged?.Invoke(this, EventArgs.Empty);
+            PetVisibilityChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            _pet = null;
+            vm.Log("桌宠窗口打开失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>隐藏桌宠（页面也关着时帧循环随之停下）。</summary>
+    public void HidePet()
+    {
+        if (_viewModel is not null) _viewModel.Cfg.PetEnabled = false;
+        ClosePetInternal(raiseEvent: true);
+        UpdateFrameLoop();
+    }
+
+    /// <summary>显示 / 隐藏桌宠。</summary>
+    public void TogglePet()
+    {
+        if (_pet is not null) HidePet();
+        else ShowPet();
+    }
+
+    /// <summary>桌宠居中到主屏工作区。</summary>
+    public void CenterPet()
+    {
+        try
+        {
+            _pet?.CenterOnScreen();
+            _viewModel?.SetStatus("桌宠已居中");
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("桌宠居中失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>桌宠回到默认位置（主屏右下角）并恢复默认大小。</summary>
+    public void ResetPetPosition()
+    {
+        try
+        {
+            _pet?.ResetPositionToDefault();
+            _viewModel?.SetStatus("桌宠位置已重置");
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("重置桌宠位置失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>配置变化后让桌宠窗口重新套用外观（宽高 / 不透明度 / 置顶 / 点击穿透）。</summary>
+    public void ApplyPetConfig()
+    {
+        try { _pet?.RefreshFromConfig(); } catch { /* 忽略 */ }
+    }
+
+    private void ClosePetInternal(bool raiseEvent)
+    {
+        var pet = _pet;
+        if (pet is null) return;
+        _pet = null;
+        try { pet.Closed -= OnPetClosed; } catch { /* 忽略 */ }
+        try { pet.CloseForShutdown(); } catch { /* 忽略 */ }
+        try { pet.Close(); } catch { /* 忽略 */ }
+        UpdateFrameLoop();
+        if (!raiseEvent) return;
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        PetVisibilityChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnPetClosed(object? sender, EventArgs e)
+    {
+        if (sender is not PetWindow pet || !ReferenceEquals(pet, _pet)) return;
+        _pet = null;
+        if (_viewModel is not null) _viewModel.Cfg.PetEnabled = false;
+        SaveConfigNow();
+        UpdateFrameLoop();
+
+        // 桌宠关了、页面也没开：眼神回正
+        if (!_pageActive)
+        {
+            try { _runtime?.ClearEyeTrackingTarget(); } catch { /* 忽略 */ }
+        }
+
+        StateChanged?.Invoke(this, EventArgs.Empty);
+        PetVisibilityChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // ===================== 生命周期 / 退出 =====================
+
+    private void EnsureInitialized()
+    {
+        if (_initialized) return;
+        _initialized = true;
+        try
+        {
+            if (Application.Current is { } app) app.Exit += OnApplicationExit;
+        }
+        catch { /* 无 Application（理论上不会发生）忽略 */ }
+        HookWindowClose();
+    }
+
+    /// <summary>挂主窗口关闭事件：主窗口一关就释放桌宠，否则最后一个窗口永远不关、进程退不掉。</summary>
+    private void HookWindowClose()
+    {
+        if (_windowCloseHooked) return;
+        if (Application.Current?.MainWindow is not { } window) return;
+        _windowCloseHooked = true;
+        try { window.Closed += OnMainWindowClosed; } catch { /* 忽略 */ }
+    }
+
+    private void UnhookWindowClose()
+    {
+        if (!_windowCloseHooked) return;
+        _windowCloseHooked = false;
+        try
+        {
+            if (Application.Current?.MainWindow is { } window) window.Closed -= OnMainWindowClosed;
+        }
+        catch { /* 忽略 */ }
+    }
+
+    private void OnApplicationExit(object? sender, ExitEventArgs e) => Shutdown();
+
+    private void OnMainWindowClosed(object? sender, EventArgs e) => Shutdown();
+
+    // ===================== 日志快捷方式 =====================
+
+    /// <summary>往工具页日志里追加一行（可能在后台线程调用）。</summary>
+    public void Log(string message) => _viewModel?.Log(message);
+}
