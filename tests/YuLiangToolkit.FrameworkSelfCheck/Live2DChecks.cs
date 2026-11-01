@@ -1856,10 +1856,10 @@ internal static class Live2DChecks
             fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.VocalSong, mouthOpen: 0.8, mouthForm: 0.5,
                 beatPhase: 0.25, beatStrength: 1.0, bpm: 120);
             TickFrames(1);
-            C("音乐集成：MusicEnabled=false 时即使有带歌词数据也不写嘴 / 身体（默认关）",
-                Near(Param("ParamMouthOpenY"), 0, 1e-3) && Near(Param("ParamBodyAngleX"), 0, 1e-3)
+            C("音乐集成：MusicEnabled=false 时即使有带歌词数据也不写嘴（默认关），整身轻倾保持常态",
+                Near(Param("ParamMouthOpenY"), 0, 1e-3) && Math.Abs(runtime.BodyLeanDegrees) <= 0.7f
                 && runtime.MusicKind == MusicContentKind.Silent && runtime.MusicStatusText == "静音",
-                $"嘴={Param("ParamMouthOpenY"):0.###} 身体={Param("ParamBodyAngleX"):0.###} 状态={runtime.MusicStatusText}");
+                $"嘴={Param("ParamMouthOpenY"):0.###} 倾斜={runtime.BodyLeanDegrees:0.###}° 状态={runtime.MusicStatusText}");
 
             runtime.MusicEnabled = true;
             fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.VocalSong, mouthOpen: 0.8, mouthForm: 0.5,
@@ -1873,34 +1873,34 @@ internal static class Live2DChecks
                 runtime.MusicStatusText == "带歌词" && runtime.MusicKind == MusicContentKind.VocalSong,
                 $"{runtime.MusicStatusText}/{runtime.MusicKind}");
 
-            // 纯音乐 → 不跟唱、身体跟着节拍晃
+            // 纯音乐 → 不跟唱（身体律动改由整身轻倾表现，见 K 段）
             fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.Instrumental, mouthOpen: 0.8, mouthForm: 0.5,
                 beatPhase: 0.25, beatStrength: 1.0, bpm: 120);
             runtime.ResetParameters();
             TickFrames(2);
-            C("音乐集成：纯音乐 → 嘴保持 0（不跟唱），身体 ParamBodyAngleX 跟着节拍晃",
-                Near(Param("ParamMouthOpenY"), 0, 1e-3)
-                && Near(Param("ParamBodyAngleX"), 6.0, 0.05) && Near(Param("ParamBodyAngleZ"), 1.83, 0.1),
-                $"嘴={Param("ParamMouthOpenY"):0.###} 身体X={Param("ParamBodyAngleX"):0.###} 身体Z={Param("ParamBodyAngleZ"):0.###}");
+            C("音乐集成：纯音乐 → 嘴保持 0（不跟唱）",
+                Near(Param("ParamMouthOpenY"), 0, 1e-3),
+                $"嘴={Param("ParamMouthOpenY"):0.###}");
             C("音乐集成：纯音乐 → 状态「纯音乐」、MusicKind=Instrumental",
                 runtime.MusicStatusText == "纯音乐" && runtime.MusicKind == MusicContentKind.Instrumental,
                 $"{runtime.MusicStatusText}/{runtime.MusicKind}");
 
-            // 节拍相位推进 → 身体左右换向
-            fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.Instrumental, mouthOpen: 0, mouthForm: 0,
-                beatPhase: 0.75, beatStrength: 1.0, bpm: 120);
-            TickFrames(1);
-            var bodyAtPhase075 = Param("ParamBodyAngleX");
-            C("音乐集成：节拍相位 0.25 → 0.75 时身体反向（+6° → -6°）",
-                Near(bodyAtPhase075, -6.0, 0.05), $"身体X={bodyAtPhase075:0.###}");
+            // 旧「音乐写 ParamBodyAngle* 扭身体」逻辑已删除：确认音乐播放时这些参数保持默认（=不写，不扭身体）
+            var musicBodyParamsUntouched = new[] { "ParamBodyAngleX", "ParamBodyAngleZ", "PositionX", "HipAngleX" }
+                .All(id => Near(Param(id), rt.Model.FindParameter(id)?.DefaultValue ?? 0, 1e-3));
+            C("音乐集成：音乐不再写 ParamBodyAngleX/Z / PositionX / HipAngleX（删掉扭身体逻辑，改整身轻倾）",
+                musicBodyParamsUntouched,
+                string.Join(", ", new[] { "ParamBodyAngleX", "ParamBodyAngleZ", "PositionX", "HipAngleX" }
+                    .Select(id => $"{id}={Param(id):0.###}")));
 
-            // 关闭身体晃动 / 点头的单项开关
+            // 关闭「摇晃」开关：只影响整身轻倾加快，嘴型照常
             runtime.MusicSwayEnabled = false;
-            runtime.ResetParameters();
+            fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.VocalSong, mouthOpen: 0.8, mouthForm: 0.5,
+                beatPhase: 0.25, beatStrength: 1.0, bpm: 120);
             TickFrames(2);
-            C("音乐集成：MusicSwayEnabled=false → 不写身体参数（只剩嘴型）",
-                Near(Param("ParamBodyAngleX"), 0, 1e-3),
-                $"身体X={Param("ParamBodyAngleX"):0.###}");
+            C("音乐集成：MusicSwayEnabled=false 时嘴型照常（该开关只控制整身轻倾加快）",
+                Near(Param("ParamMouthOpenY"), 0.8, 1e-2),
+                $"嘴={Param("ParamMouthOpenY"):0.###}");
             runtime.MusicSwayEnabled = true;
 
             // 点头：眼睛跟随开启时不抢头部；关闭眼控后按节拍点头
@@ -1951,9 +1951,9 @@ internal static class Live2DChecks
             fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.VocalSong, mouthOpen: 0.9, mouthForm: 0.5,
                 beatPhase: 0.25, beatStrength: 1.0, bpm: 120);
             TickFrames(2);
-            C("音乐集成：强制纯音乐 → 带歌词数据下嘴不动、但身体仍跟节拍晃",
-                Near(Param("ParamMouthOpenY"), 0, 1e-3) && Math.Abs(Param("ParamBodyAngleX")) > 3,
-                $"嘴={Param("ParamMouthOpenY"):0.###} 身体X={Param("ParamBodyAngleX"):0.###}");
+            C("音乐集成：强制纯音乐 → 带歌词数据下嘴不动（整身轻倾仍按音乐加快，见 K 段）",
+                Near(Param("ParamMouthOpenY"), 0, 1e-3),
+                $"嘴={Param("ParamMouthOpenY"):0.###}");
             runtime.MusicMode = MusicVocalMode.Auto;
 
             // 强度倍率
@@ -1966,17 +1966,29 @@ internal static class Live2DChecks
                 $"嘴={Param("ParamMouthOpenY"):0.###}");
             runtime.MusicLipSyncStrength = 1.0;
 
-            // 数据过期 → 按静音处理
+            // 数据过期 → 按静音处理（嘴 / 状态立即恢复；整身轻倾幅度有 0.35s 平滑，给 1 秒回常态）
             var stale = MakeMusicSnapshot(MusicContentKind.VocalSong, mouthOpen: 0.8, mouthForm: 0.5,
                 beatPhase: 0.25, beatStrength: 1.0, bpm: 120);
             stale = MusicSnapshotWithTimestamp(stale, Environment.TickCount64 - 5000);
             fakeMusic.Latest = stale;
             runtime.ResetParameters();
             TickFrames(2);
-            C("音乐集成：数据超过 800ms 过期 → 按静音处理（不写嘴 / 身体、状态「静音」）",
-                Near(Param("ParamMouthOpenY"), 0, 1e-3) && Near(Param("ParamBodyAngleX"), 0, 1e-3)
-                && runtime.MusicStatusText == "静音",
+            C("音乐集成：数据超过 800ms 过期 → 嘴 / 状态立即按静音处理",
+                Near(Param("ParamMouthOpenY"), 0, 1e-3) && runtime.MusicStatusText == "静音",
                 $"嘴={Param("ParamMouthOpenY"):0.###} 状态={runtime.MusicStatusText}");
+            TickFrames(60); // 1 秒：整身轻倾幅度从 1.0° 平滑回常态 0.6°（τ≈0.35s）
+            var staleLeanMaxDelta = 0.0;
+            var staleLeanPrevious = runtime.BodyLeanDegrees;
+            for (var i = 0; i < 60; i++)
+            {
+                TickFrames(1);
+                var currentLean = runtime.BodyLeanDegrees;
+                staleLeanMaxDelta = Math.Max(staleLeanMaxDelta, Math.Abs(currentLean - staleLeanPrevious));
+                staleLeanPrevious = currentLean;
+            }
+            C("音乐集成：数据过期后整身轻倾 1 秒内回常态幅度（|角度| ≤ 0.7°，相邻帧不跳变）",
+                Math.Abs(runtime.BodyLeanDegrees) <= 0.7f && staleLeanMaxDelta < 0.2,
+                $"倾斜={runtime.BodyLeanDegrees:0.###}° 最大帧间变化={staleLeanMaxDelta:0.####}°");
 
             // 关闭音乐后手动值保留
             fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.VocalSong, mouthOpen: 0.8, mouthForm: 0.5,
@@ -2016,6 +2028,138 @@ internal static class Live2DChecks
             C("音乐集成：音乐响应每帧开销可忽略（开启时平均 Tick ≤ 关闭时 + 3ms，Debug 放宽）",
                 musicOnAverage <= musicOffAverage + 3.0,
                 $"开启={musicOnAverage:0.###}ms 关闭={musicOffAverage:0.###}ms");
+
+            // ---------------- K. 整身轻倾 BodyLean（渲染层旋转角度：常态 4s/±0.6°，音乐 2.6s/1.0°×幅度） ----------------
+            runtime.Music = fakeMusic;
+            runtime.MusicEnabled = false;
+            runtime.MusicSwayEnabled = true;
+            runtime.MusicSwayStrength = 1.0;
+            runtime.BodyLeanEnabled = true;
+            fakeMusic.Latest = null;
+            var leanFrame = 0;
+            for (var i = 0; i < 300; i++) // 5 秒，等幅度 / 周期一阶平滑到常态
+            {
+                TickFrames(1);
+                leanFrame++;
+            }
+
+            List<(double T, float Deg)> SampleLean(int frames, Action? beforeTick = null)
+            {
+                var samples = new List<(double, float)>(frames);
+                for (var i = 0; i < frames; i++)
+                {
+                    beforeTick?.Invoke();
+                    TickFrames(1);
+                    leanFrame++;
+                    samples.Add((leanFrame / 60.0, runtime.BodyLeanDegrees));
+                }
+                return samples;
+            }
+
+            void SettleLean(int frames, Action? beforeTick = null)
+            {
+                for (var i = 0; i < frames; i++)
+                {
+                    beforeTick?.Invoke();
+                    TickFrames(1);
+                    leanFrame++;
+                }
+            }
+
+            double EstimateLeanPeriod(IReadOnlyList<(double T, float Deg)> samples)
+            {
+                var upCrossings = new List<double>();
+                for (var i = 1; i < samples.Count; i++)
+                {
+                    if (samples[i - 1].Deg < 0 && samples[i].Deg >= 0)
+                    {
+                        var delta = samples[i].Deg - samples[i - 1].Deg;
+                        var ratio = Math.Abs(delta) < 1e-9 ? 0 : -samples[i - 1].Deg / delta;
+                        upCrossings.Add(samples[i - 1].T + (ratio * (samples[i].T - samples[i - 1].T)));
+                    }
+                }
+                if (upCrossings.Count < 2) return double.NaN;
+                var intervals = upCrossings.Skip(1).Select((t, i) => t - upCrossings[i]).ToList();
+                return intervals.Average();
+            }
+
+            double MaxAdjacentLeanDelta(IReadOnlyList<(double T, float Deg)> samples)
+            {
+                var max = 0.0;
+                for (var i = 1; i < samples.Count; i++)
+                    max = Math.Max(max, Math.Abs(samples[i].Deg - samples[i - 1].Deg));
+                return max;
+            }
+
+            var idleLean = SampleLean(600); // 10 秒
+            var idleLeanPeriod = EstimateLeanPeriod(idleLean);
+            var idleLeanAmplitude = idleLean.Max(s => Math.Abs(s.Deg));
+            C("整身轻倾：常态周期 ≈4 秒、幅度 ≈±0.6°（固定 dt 采样过零点 / 峰值，±15% 容差）",
+                idleLeanPeriod is >= 3.4 and <= 4.6 && idleLeanAmplitude is >= 0.51f and <= 0.69f,
+                $"周期={idleLeanPeriod:0.###}s 幅度={idleLeanAmplitude:0.###}°");
+            C("整身轻倾：常态相邻帧角度连续（60fps 下每帧变化 < 0.1°，不跳变）",
+                MaxAdjacentLeanDelta(idleLean) < 0.1, $"最大帧间变化={MaxAdjacentLeanDelta(idleLean):0.####}°");
+
+            // 音乐播放（纯音乐）→ 周期 ~2.6s、幅度 1.0°；嘴仍不跟唱
+            runtime.MusicEnabled = true;
+            Action refreshInstrumental = () => fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.Instrumental,
+                mouthOpen: 0.8, mouthForm: 0.4, beatPhase: 0.25, beatStrength: 1.0, bpm: 120);
+            SettleLean(180, refreshInstrumental); // 3 秒
+            var musicInstrumentalLean = SampleLean(360, refreshInstrumental); // 6 秒
+            var instrumentalLeanPeriod = EstimateLeanPeriod(musicInstrumentalLean);
+            var instrumentalLeanAmplitude = musicInstrumentalLean.Max(s => Math.Abs(s.Deg));
+            C("整身轻倾：音乐播放（纯音乐）→ 周期加快到 ≈2.6 秒、幅度 ≈1.0°，嘴保持 0",
+                instrumentalLeanPeriod is >= 2.2 and <= 3.0
+                && instrumentalLeanAmplitude is >= 0.85f and <= 1.15f
+                && Near(Param("ParamMouthOpenY"), 0, 1e-3),
+                $"周期={instrumentalLeanPeriod:0.###}s 幅度={instrumentalLeanAmplitude:0.###}° 嘴={Param("ParamMouthOpenY"):0.###}");
+
+            // 音乐播放（带歌词）→ 嘴动 + lean 同样加快
+            Action refreshVocal = () => fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.VocalSong,
+                mouthOpen: 0.8, mouthForm: 0.5, beatPhase: 0.25, beatStrength: 1.0, bpm: 120);
+            SettleLean(120, refreshVocal);
+            var vocalLean = SampleLean(480, refreshVocal);
+            var vocalLeanPeriod = EstimateLeanPeriod(vocalLean);
+            C("整身轻倾：音乐播放（带歌词）→ 嘴动（0.8）+ 周期同样加快（≈2.6 秒）",
+                Near(Param("ParamMouthOpenY"), 0.8, 1e-2) && vocalLeanPeriod is >= 2.2 and <= 3.0,
+                $"嘴={Param("ParamMouthOpenY"):0.###} 周期={vocalLeanPeriod:0.###}s");
+
+            // MusicSwayEnabled=false：lean 保持常态（4s/±0.6°）
+            runtime.MusicSwayEnabled = false;
+            SettleLean(180, refreshVocal);
+            var swayOffLean = SampleLean(600, refreshVocal);
+            var swayOffPeriod = EstimateLeanPeriod(swayOffLean);
+            var swayOffAmplitude = swayOffLean.Max(s => Math.Abs(s.Deg));
+            C("整身轻倾：MusicSwayEnabled=false 时保持常态（≈4 秒 / ±0.6°，不跟音乐加快）",
+                swayOffPeriod is >= 3.4 and <= 4.6 && swayOffAmplitude is >= 0.51f and <= 0.69f,
+                $"周期={swayOffPeriod:0.###}s 幅度={swayOffAmplitude:0.###}°");
+            runtime.MusicSwayEnabled = true;
+
+            // BodyLeanEnabled=false：平滑归零（相邻帧小变化，不跳变）
+            runtime.BodyLeanEnabled = false;
+            var leanDisabling = SampleLean(120); // 2 秒
+            var leanDisableMaxDelta = MaxAdjacentLeanDelta(leanDisabling);
+            C("整身轻倾：BodyLeanEnabled=false → 平滑归零（2 秒后 |角度| < 0.05°，相邻帧变化 < 0.2° 不跳变）",
+                Math.Abs(leanDisabling[^1].Deg) < 0.05 && leanDisableMaxDelta < 0.2,
+                $"末帧={leanDisabling[^1].Deg:0.####}° 最大帧间变化={leanDisableMaxDelta:0.####}°");
+
+            // 重新打开：从 0 平滑恢复（不是瞬间跳到 ±0.6°）
+            runtime.BodyLeanEnabled = true;
+            SettleLean(240); // 4 秒
+            var leanReenabled = SampleLean(300);
+            C("整身轻倾：重新打开后从 0 平滑恢复常态幅度（> 0.3°，不瞬间跳满）",
+                leanReenabled.Max(s => Math.Abs(s.Deg)) > 0.3,
+                $"恢复后幅度={leanReenabled.Max(s => Math.Abs(s.Deg)):0.###}°");
+
+            // 关闭音乐 → 回到常态周期 / 幅度
+            runtime.MusicEnabled = false;
+            SettleLean(180);
+            var musicOffLean = SampleLean(600);
+            var musicOffLeanPeriod = EstimateLeanPeriod(musicOffLean);
+            var musicOffLeanAmplitude = musicOffLean.Max(s => Math.Abs(s.Deg));
+            C("整身轻倾：关闭音乐后回到常态周期 / 幅度（≈4 秒 / ±0.6°）",
+                musicOffLeanPeriod is >= 3.4 and <= 4.6 && musicOffLeanAmplitude is >= 0.51f and <= 0.69f,
+                $"周期={musicOffLeanPeriod:0.###}s 幅度={musicOffLeanAmplitude:0.###}°");
 
             runtime.Music = null;
             runtime.MusicEnabled = false;
@@ -2331,28 +2475,28 @@ internal static class Live2DChecks
                 kick = 0.65 * decay * Math.Sin(2 * Math.PI * 90 * phaseInBeat);
             }
 
-            // 镲片：每半拍一个，左右各自独立的宽频噪声 —— 把频谱拉平，压掉「像人声」的谐波 / 共振峰
-            var halfBeatIndex = (long)(t / (period * 0.5));
-            var phaseInHalfBeat = t - (halfBeatIndex * period * 0.5);
+            // 镲片：每拍一个（2Hz，刻意避开 3~7Hz 音节调制频段），左右各自独立的宽频噪声 —— 把频谱拉平
             var hatLeft = 0.0;
             var hatRight = 0.0;
-            if (phaseInHalfBeat < 0.05)
+            if (phaseInBeat < 0.05)
             {
-                var decay = Math.Exp(-phaseInHalfBeat / 0.006);
+                var decay = Math.Exp(-phaseInBeat / 0.006);
                 stateLeft = (stateLeft * 1664525u) + 1013904223u;
                 stateRight = (stateRight * 1664525u) + 1013904223u;
-                hatLeft = 0.50 * decay * (((stateLeft >> 8) & 0xFFFF) / 32768.0 - 1.0);
-                hatRight = 0.50 * decay * (((stateRight >> 8) & 0xFFFF) / 32768.0 - 1.0);
+                hatLeft = 0.55 * decay * (((stateLeft >> 8) & 0xFFFF) / 32768.0 - 1.0);
+                hatRight = 0.55 * decay * (((stateRight >> 8) & 0xFFFF) / 32768.0 - 1.0);
             }
 
             // 连续底噪（左右独立）：保证分析器始终活跃、谱更平坦
             stateLeft = (stateLeft * 1664525u) + 1013904223u;
             stateRight = (stateRight * 1664525u) + 1013904223u;
-            var noiseLeft = 0.040 * (((stateLeft >> 8) & 0xFFFF) / 32768.0 - 1.0);
-            var noiseRight = 0.040 * (((stateRight >> 8) & 0xFFFF) / 32768.0 - 1.0);
+            var noiseLeft = 0.050 * (((stateLeft >> 8) & 0xFFFF) / 32768.0 - 1.0);
+            var noiseRight = 0.050 * (((stateRight >> 8) & 0xFFFF) / 32768.0 - 1.0);
 
-            var left = (chordLeft * 0.02) + kick + hatLeft + noiseLeft;
-            var right = (chordRight * 0.02) + (kick * 0.9) + hatRight + noiseRight;
+            // 和弦非常轻（只留一点乐器感）：新的人声判定看「mid 周期显著度 / 谐波梳」，
+            // 稳定和弦太响会被判成人声，所以这里压到几乎听不见。
+            var left = (chordLeft * 0.006) + kick + hatLeft + noiseLeft;
+            var right = (chordRight * 0.006) + (kick * 0.9) + hatRight + noiseRight;
             data[i * 2] = (float)Math.Clamp(left, -1.0, 1.0);
             data[i * 2 + 1] = (float)Math.Clamp(right, -1.0, 1.0);
         }

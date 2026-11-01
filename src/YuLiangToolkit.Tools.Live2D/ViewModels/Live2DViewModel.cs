@@ -71,6 +71,8 @@ public sealed class Live2DViewModel : ToolViewModelBase
     private string _musicErrorText = "";
     private string _musicPitchText = "音高 —";
     private string _musicBpmText = "BPM —";
+    private string _musicBodyLeanText = "身体倾斜 +0.00°";
+    private double? _leanOverrideDegrees;
     private double _musicRms;
     private double _musicVocalScore;
     private double _musicConfidence;
@@ -643,6 +645,20 @@ public sealed class Live2DViewModel : ToolViewModelBase
             Cfg.EyeTrackingVerticalOffset = clamped;
             OnPropertyChanged();
             Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>全身轻晃（以脚为支点，渲染层整身左右轻倾；不是扭腰）。</summary>
+    public bool BodyLeanEnabled
+    {
+        get => Cfg.BodyLeanEnabled;
+        set
+        {
+            if (Cfg.BodyLeanEnabled == value) return;
+            Cfg.BodyLeanEnabled = value;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+            StatusText = value ? "全身轻晃已开启（以脚为轴整身轻倾）" : "全身轻晃已关闭（角度会平滑归零）";
         }
     }
 
@@ -1601,6 +1617,29 @@ public sealed class Live2DViewModel : ToolViewModelBase
         private set => Set(ref _musicBpmText, value);
     }
 
+    /// <summary>实时「身体倾斜 +0.62°」文本（以脚为支点的整身轻倾，100ms 刷新）。</summary>
+    public string MusicBodyLeanText
+    {
+        get => _musicBodyLeanText;
+        private set => Set(ref _musicBodyLeanText, value);
+    }
+
+    /// <summary>
+    /// 截图 / 验收用：把预览与桌宠的倾斜角临时钉住（只影响 UI 渲染层，不改运行时数值、不写配置）。
+    /// null = 跟随 <c>runtime.BodyLeanDegrees</c>。
+    /// </summary>
+    public double? LeanOverrideDegrees
+    {
+        get => _leanOverrideDegrees;
+        set
+        {
+            if (!Set(ref _leanOverrideDegrees, value)) return;
+            Log(value is { } degrees
+                ? $"截图模式：预览/桌宠倾斜角临时固定为 {degrees:+0.00;-0.00;0.00}°（仅 UI 演示）"
+                : "预览/桌宠倾斜角恢复跟随运行时 BodyLeanDegrees");
+        }
+    }
+
     /// <summary>实时 RMS（0~1，进度条用）。</summary>
     public double MusicRms
     {
@@ -1661,12 +1700,16 @@ public sealed class Live2DViewModel : ToolViewModelBase
         double syllabicModulation,
         bool pitchValid,
         double pitchHz,
-        double bpm)
+        double bpm,
+        double bodyLeanDegrees)
     {
         if (!string.Equals(MusicMediaText, mediaText, StringComparison.Ordinal)) MusicMediaText = mediaText;
 
         var errorText = error ?? "";
         if (!string.Equals(MusicErrorText, errorText, StringComparison.Ordinal)) MusicErrorText = errorText;
+
+        var leanText = $"身体倾斜 {bodyLeanDegrees:+0.00;-0.00;0.00}°";
+        if (!string.Equals(MusicBodyLeanText, leanText, StringComparison.Ordinal)) MusicBodyLeanText = leanText;
 
         // 实时数值（进度条 0~1，文本两位小数）
         MusicRms = Math.Clamp(rms, 0, 1);

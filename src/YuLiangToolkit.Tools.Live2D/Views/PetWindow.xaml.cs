@@ -181,6 +181,18 @@ public partial class PetWindow : Window
             _lastBitmap = bitmap;
             PetImage.Source = bitmap;
         }
+
+        // 全身轻晃：以脚为支点旋转模型位图（仅 RenderTransform；窗口尺寸 / 透明区域 / 点击穿透 / 拖动都不受影响）
+        double leanDegrees = 0;
+        if (_session.ViewModel?.LeanOverrideDegrees is { } fixedLean)
+        {
+            leanDegrees = fixedLean;
+        }
+        else
+        {
+            try { leanDegrees = runtime.BodyLeanDegrees; } catch { leanDegrees = 0; }
+        }
+        PetLeanTransform.Angle = Math.Clamp(leanDegrees, -30, 30);
         _renderedFrames++;
     }
 

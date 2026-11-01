@@ -65,7 +65,14 @@
     </Window.ContextMenu>
 
     <Grid x:Name="Root" Background="Transparent">
+        <!-- 只旋转模型位图（RenderTransform）：支点在底部中央，像不倒翁一样整身轻倾。
+             窗口大小 / 透明区域 / 点击穿透 / 拖动逻辑都不受影响。 -->
         <Image x:Name="PetImage" Stretch="Fill" IsHitTestVisible="False"
-               RenderOptions.BitmapScalingMode="HighQuality" />
+               RenderTransformOrigin="0.5,1"
+               RenderOptions.BitmapScalingMode="HighQuality">
+            <Image.RenderTransform>
+                <RotateTransform x:Name="PetLeanTransform" Angle="0" />
+            </Image.RenderTransform>
+        </Image>
     </Grid>
 </Window>

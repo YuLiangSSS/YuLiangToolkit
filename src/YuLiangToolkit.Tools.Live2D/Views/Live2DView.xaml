@@ -177,11 +177,17 @@
                                     </Rectangle.Fill>
                                 </Rectangle>
 
-                                <!-- 模型画面（代码后置每帧更新 Source；适应窗口时只渲染模型占的那块再等比放大显示） -->
+                                <!-- 模型画面（代码后置每帧更新 Source；适应窗口时只渲染模型占的那块再等比放大显示）。
+                                     RenderTransformOrigin="0.5,1" + RotateTransform = 以脚为支点的整身轻倾（只转位图，不转背景 / 文字）。 -->
                                 <Image x:Name="PreviewImage" Stretch="Uniform" IsHitTestVisible="False"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       RenderTransformOrigin="0.5,1"
                                        RenderOptions.BitmapScalingMode="HighQuality"
-                                       RenderOptions.EdgeMode="Aliased" />
+                                       RenderOptions.EdgeMode="Aliased">
+                                    <Image.RenderTransform>
+                                        <RotateTransform x:Name="PreviewLeanTransform" Angle="0" />
+                                    </Image.RenderTransform>
+                                </Image>
 
                                 <!-- 模型名 / 状态角标 -->
                                 <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="10"
@@ -697,7 +703,10 @@
                                            Style="{StaticResource SettingValueStyle}" />
                             </Grid>
 
-                            <CheckBox Content="待机动画" Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0"
+                            <CheckBox Content="全身轻晃（以脚为轴）" Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0"
+                                      IsChecked="{Binding BodyLeanEnabled}"
+                                      ToolTip="整个人以脚为支点左右轻倾（不倒翁式，不是扭腰）；关掉后角度平滑归零" />
+                            <CheckBox Content="待机动画" Style="{StaticResource CheckBoxStyle}" Margin="0,6,0,0"
                                       IsChecked="{Binding IdleEnabled}" />
                             <CheckBox Content="自动眨眼" Style="{StaticResource CheckBoxStyle}" Margin="0,6,0,0"
                                       IsChecked="{Binding AutoBlink}" />
@@ -1331,7 +1340,7 @@
                                            TextTrimming="CharacterEllipsis" MaxWidth="520" />
                             </StackPanel>
                             <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,4,0,0"
-                                       Text="用 Windows 回环采集系统正在播放的声音来驱动嘴型 / 摇晃：不申请麦克风、不录音、不保存。识别不完美时可用「强制」模式；纯音乐不跟唱、只轻微摇晃；采集失败会显示原因（如没有播放设备 / 被独占）。" />
+                                       Text="用 Windows 回环采集系统正在播放的声音来驱动嘴型 / 轻倾：不申请麦克风、不录音、不保存。识别不完美时可用「强制」模式；纯音乐不跟唱、只整身轻倾（以脚为轴）；采集失败会显示原因（如没有播放设备 / 被独占）。" />
                         </StackPanel>
                         <CheckBox Grid.Column="1" Content="启用音乐跟唱 / 律动" Style="{StaticResource CheckBoxStyle}"
                                   IsChecked="{Binding MusicReactiveEnabled, Mode=TwoWay}" VerticalAlignment="Top"
@@ -1399,13 +1408,14 @@
                                                Style="{StaticResource SettingValueStyle}" />
                                 </Grid>
                                 <WrapPanel Margin="0,8,0,0">
-                                    <CheckBox Content="身体摇晃（跟节拍）" Style="{StaticResource CheckBoxStyle}" Margin="0,0,18,6"
-                                              IsChecked="{Binding MusicSwayEnabled, Mode=TwoWay}" />
+                                    <CheckBox Content="全身轻倾（跟节拍）" Style="{StaticResource CheckBoxStyle}" Margin="0,0,18,6"
+                                              IsChecked="{Binding MusicSwayEnabled, Mode=TwoWay}"
+                                              ToolTip="有歌时整身左右轻倾（以脚为轴，比日常轻晃更快），不是扭腰" />
                                     <CheckBox Content="轻微点头" Style="{StaticResource CheckBoxStyle}" Margin="0,0,18,6"
                                               IsChecked="{Binding MusicHeadBobEnabled, Mode=TwoWay}" />
                                 </WrapPanel>
                                 <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,6,0,0"
-                                           Text="识别依据：YIN 基频 + 共振峰 + 立体声中心声道占比 + 音节调制 + 时序滞后（不是音量阈值）。本功能只读取系统正在播放的声音，不会打开麦克风。" />
+                                           Text="识别依据：YIN 基频 + 共振峰 + 立体声中心声道占比 + 音节调制 + 时序滞后（不是音量阈值）。「全身轻倾」= 有歌时整身左右轻倾（以脚为轴，比日常轻晃更快），不是扭腰；本功能只读取系统正在播放的声音，不会打开麦克风。" />
                             </StackPanel>
 
                             <!-- 右：状态 + 实时数据 -->
@@ -1414,6 +1424,7 @@
                                         BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="12,8">
                                     <Grid>
                                         <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
@@ -1429,10 +1440,14 @@
                                         <TextBlock Grid.Row="1" Text="{Binding MusicMediaText}" FontSize="11" Margin="0,4,0,0"
                                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                                    TextTrimming="CharacterEllipsis" ToolTip="{Binding MusicMediaText}" />
-                                        <TextBlock Grid.Row="2" Text="{Binding MusicErrorText}" FontSize="11" Margin="0,4,0,0"
+                                        <TextBlock Grid.Row="2" Text="{Binding MusicBodyLeanText}" FontSize="11" Margin="0,4,0,0"
+                                                   FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI"
+                                                   Foreground="{DynamicResource AccentBrush}"
+                                                   ToolTip="以脚为支点的整身左右轻倾（渲染层旋转）；有歌时比日常轻晃更快、幅度略大" />
+                                        <TextBlock Grid.Row="3" Text="{Binding MusicErrorText}" FontSize="11" Margin="0,4,0,0"
                                                    TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}"
                                                    Visibility="{Binding HasMusicError, Converter={StaticResource BoolToVis}}" />
-                                        <TextBlock Grid.Row="3" FontSize="10.5" Margin="0,4,0,0"
+                                        <TextBlock Grid.Row="4" FontSize="10.5" Margin="0,4,0,0"
                                                    Foreground="{DynamicResource FaintTextBrush}" TextWrapping="Wrap"
                                                    Text="实时数据每 100ms 刷新；没在放音乐时显示静音，采集本身仍在正常运行。" />
                                     </Grid>

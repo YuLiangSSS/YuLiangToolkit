@@ -76,6 +76,26 @@ public static class FastFft
         }
     }
 
+    /// <summary>
+    /// 就地复数逆 FFT（<c>x[n] = (1/N)·Σ X[k]·e^(+2πikn/N)</c>，用共轭正变换实现）。
+    /// 用途：把带限功率谱变换回自相关（MusicAnalyzer 的「人声周期显著度」）。
+    /// </summary>
+    public static void InverseTransform(Span<double> real, Span<double> imag)
+    {
+        var n = real.Length;
+        if (imag.Length != n) throw new ArgumentException("real / imag 长度必须一致", nameof(imag));
+        if (n <= 1) return;
+
+        for (var i = 0; i < n; i++) imag[i] = -imag[i];
+        Transform(real, imag);
+        var scale = 1.0 / n;
+        for (var i = 0; i < n; i++)
+        {
+            real[i] *= scale;
+            imag[i] *= -scale;
+        }
+    }
+
     /// <summary>由 FFT 的实部 / 虚部算幅度谱（取前 N/2+1 个频点）。</summary>
     public static void MagnitudeSpectrum(ReadOnlySpan<double> real, ReadOnlySpan<double> imag, Span<double> magnitude)
     {

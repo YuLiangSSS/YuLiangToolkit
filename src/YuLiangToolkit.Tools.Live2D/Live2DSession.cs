@@ -109,6 +109,9 @@ public sealed class Live2DSession
     private int _musicRevision;
     private bool _musicSelfTestStarted;
 
+    // ===== 全身轻晃（以脚为支点渲染层倾斜）演示钩子 =====
+    private bool _bodyLeanDemoApplied;
+
     private Live2DSession()
     {
     }
@@ -257,6 +260,7 @@ public sealed class Live2DSession
         TryBeginEyeDemo();
         TryBeginMocapSelfTest();
         TryBeginMusicSelfTest();
+        TryBeginBodyLeanDemo();
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -484,6 +488,7 @@ public sealed class Live2DSession
         TryBeginEyeDemo();
         TryBeginMocapSelfTest();
         TryBeginMusicSelfTest();
+        TryBeginBodyLeanDemo();
 
         UpdateFrameLoop();
         RenderFirstFrame();
@@ -594,6 +599,9 @@ public sealed class Live2DSession
             runtime.MusicSwayStrength = Math.Clamp(cfg.MusicSwayStrength, 0, 1.5);
             runtime.MusicSwayEnabled = cfg.MusicSwayEnabled;
             runtime.MusicHeadBobEnabled = cfg.MusicHeadBobEnabled;
+
+            // 全身轻晃：以脚为支点的整身轻倾（运行时算角度，UI 渲染层按它旋转；不是扭腰）
+            runtime.BodyLeanEnabled = cfg.BodyLeanEnabled;
         }
         catch (Exception ex)
         {
@@ -645,6 +653,7 @@ public sealed class Live2DSession
         ApplyMusicSettings();
         TryBeginMocapSelfTest();
         TryBeginMusicSelfTest();
+        TryBeginBodyLeanDemo();
         if (IsLoaded)
         {
             try { _runtime!.Tick(TimeSpan.FromMilliseconds(16)); } catch { /* 忽略 */ }
@@ -1504,6 +1513,105 @@ public sealed class Live2DSession
         if (artist.Length > 0) text += " - " + artist;
         if (app.Length > 0) text += " · " + app;
         return text;
+    }
+
+    // ===================== 开发调试：全身轻晃（以脚为支点）演示 =====================
+
+    /// <summary>
+    /// 开发调试（<c>YLT_LIVE2D_LEAN_DEMO</c>）：截图 / 验收用。
+    /// <list type="bullet">
+    /// <item>值是数字（例如 <c>0.6</c> / <c>-0.6</c>）：只把预览 / 桌宠的倾斜角临时钉住
+    /// （<b>仅 UI 渲染层</b>，不改运行时数值、不写配置），方便截 +0.6° / -0.6° 两张相位对比图；</item>
+    /// <item>同时把运行时真实 <c>BodyLeanDegrees</c> 采样 1 秒写 <c>Data\live2d\bodylean-demo.log</c>
+    /// （证明运行时角度确实在变、UI 跟随的是同一条值）；</item>
+    /// <item>带 <c>YLT_LIVE2D_LEAN_DEMO_EXIT=1</c> 时写完日志自动退出（自动验收用）。</item>
+    /// </list>
+    /// </summary>
+    private void TryBeginBodyLeanDemo()
+    {
+        if (_bodyLeanDemoApplied) return;
+        var raw = Environment.GetEnvironmentVariable("YLT_LIVE2D_LEAN_DEMO")?.Trim();
+        if (string.IsNullOrEmpty(raw)) return;
+        if (_viewModel is null || _runtime?.IsLoaded != true) return;
+        _bodyLeanDemoApplied = true;
+
+        double? overrideDegrees = null;
+        // "1"/"on"/"true" = 只记录运行时角度（不覆盖 UI 角度）；其它能解析成数字的才固定 UI 倾斜角
+        var logOnly = raw is "1" or "on" or "true";
+        if (!logOnly && double.TryParse(raw, out var parsed))
+        {
+            overrideDegrees = Math.Clamp(parsed, -30, 30);
+            _viewModel.LeanOverrideDegrees = overrideDegrees;
+            _viewModel.SetStatus($"截图模式：倾斜角固定 {overrideDegrees.Value:+0.00;-0.00;0.00}°（仅 UI 演示）");
+        }
+        else if (!logOnly)
+        {
+            return;
+        }
+
+        _ = ReportBodyLeanAsync(overrideDegrees);
+    }
+
+    /// <summary>
+    /// 采样运行时 BodyLeanDegrees 写日志（UI 线程每 100ms 读一次，共 2.5 秒）。
+    /// 用 UI 线程读是为了和帧循环（Tick）同一个线程、看到的是最新值，不用管跨线程可见性。
+    /// </summary>
+    private async Task ReportBodyLeanAsync(double? overrideDegrees)
+    {
+        var viewModel = _viewModel;
+        var runtime = _runtime;
+        if (viewModel is null || runtime is null) return;
+
+        var exitAfter = Environment.GetEnvironmentVariable("YLT_LIVE2D_LEAN_DEMO_EXIT") is "1" or "on" or "true";
+        try
+        {
+            var lines = new List<string>();
+            double min = double.MaxValue, max = double.MinValue;
+            double lastTickMs = 0;            for (var i = 0; i < 25; i++)
+            {
+                await Task.Delay(100);
+
+                double value;
+                try { value = runtime.BodyLeanDegrees; }
+                catch { continue; }
+                if (!double.IsFinite(value)) continue;
+
+                min = Math.Min(min, value);
+                max = Math.Max(max, value);
+                try { lastTickMs = runtime.LastTickMilliseconds; } catch { /* 忽略 */ }
+                lines.Add($"{i * 100,6} ms    {value:+0.000;-0.000;0.000}°");
+            }
+
+            var builder = new System.Text.StringBuilder();
+            builder.AppendLine("全身轻晃（以脚为支点）演示 / 验收记录");
+            builder.AppendLine($"UI 倾斜角覆盖：{(overrideDegrees is { } degrees ? degrees.ToString("+0.00;-0.00;0.00") + "°（仅渲染层，不改运行时 / 不写配置）" : "无（跟随 runtime.BodyLeanDegrees）")}");
+            builder.AppendLine($"BodyLeanEnabled={viewModel.Cfg.BodyLeanEnabled}（配置；true = 以脚为轴整身轻倾）");
+            builder.AppendLine($"页面在前台={viewModel.Session.IsPageActive}；最近一帧 Tick={lastTickMs:0.000} ms");
+            builder.AppendLine(min <= max
+                ? $"2.5 秒内 BodyLeanDegrees 范围：{min:+0.000;-0.000;0.000}° ~ {max:+0.000;-0.000;0.000}°"
+                : "2.5 秒内没有读到 BodyLeanDegrees");
+            builder.AppendLine();
+            builder.AppendLine("时刻       BodyLeanDegrees");
+            foreach (var line in lines) builder.AppendLine(line);
+
+            try { viewModel.Storage.WriteText("bodylean-demo.log", builder.ToString()); }
+            catch (Exception ex) { viewModel.Log("轻晃验证日志写入失败：" + ex.Message); }
+
+            viewModel.Log("轻晃验证：运行时长倾角已写 Data\\live2d\\bodylean-demo.log" +
+                          (overrideDegrees is { } fixedDegrees
+                              ? $"；UI 倾斜角临时固定 {fixedDegrees:+0.00;-0.00;0.00}°（仅渲染层）"
+                              : ""));
+        }
+        catch (Exception ex)
+        {
+            viewModel.Log("轻晃验证失败：" + ex.Message);
+        }
+
+        if (exitAfter)
+        {
+            await Task.Delay(200);
+            Application.Current?.Shutdown();
+        }
     }
 
     // ===================== 开发调试：音乐链路自测 =====================

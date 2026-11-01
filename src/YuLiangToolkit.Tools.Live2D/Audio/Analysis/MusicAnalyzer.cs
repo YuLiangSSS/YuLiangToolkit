@@ -57,6 +57,22 @@ public sealed class MusicAnalyzer
     private const int OnsetStartBin = 13;   // 203 Hz
     private const int OnsetEndBin = 256;    // 4 kHz
 
+    // ---------- 真实混音人声判定（中心声道带限自相关 / 谐波梳） ----------
+
+    /// <summary>中心声道人声带（带限自相关 / 谐波梳用）：~200~3500Hz。</summary>
+    private const int VocalBandStartBin = 13;   // ~203 Hz
+    private const int VocalBandEndBin = 224;    // 3500 Hz
+
+    /// <summary>人声齿音 / 气声高带：4kHz 起。</summary>
+    private const int HighBandStartBin = 256;   // 4000 Hz
+
+    /// <summary>自相关找基频的 lag 范围（16k 采样下 80~1000Hz）。</summary>
+    private const int PeriodicityMinLag = 16;   // 1000 Hz
+    private const int PeriodicityMaxLag = 200;  // 80 Hz
+
+    /// <summary>周期显著度超过这个值就认为「mid 里有人声」：打开音节/颤音门控（真实混音不依赖 YIN）。</summary>
+    private const double PeriodicityVoicingThreshold = 0.30;
+
     // ---------- YIN ----------
 
     private const int PitchMinLag = 16;     // 1000 Hz
@@ -72,18 +88,20 @@ public sealed class MusicAnalyzer
     private const double WeightSyllable = 0.20;
     private const double WeightVibrato = 0.20;
 
+    // 真实混音版基础权重（ComputeVocalRawScoreEx 内联使用：中心 / 共振峰 / 中心包络动态 / 频带互补）
+
     /// <summary>分类高 / 低阈值（含灵敏度放大后的分数）。</summary>
-    private const double VocalHighThreshold = 0.45;
-    private const double VocalLowThreshold = 0.32;
+    private const double VocalHighThreshold = 0.58;
+    private const double VocalLowThreshold = 0.50;
 
     /// <summary>判为「带歌词」需要持续多久（秒）。</summary>
     private const double VocalHoldSeconds = 1.2;
 
     /// <summary>判为「纯音乐」需要持续多久（秒）。</summary>
-    private const double InstrumentalHoldSeconds = 2.5;
+    private const double InstrumentalHoldSeconds = 2.0;
 
     /// <summary>数据不足（少于这个秒数）时类型为 Unknown。</summary>
-    private const double MinDecisionSeconds = 1.5;
+    private const double MinDecisionSeconds = 1.0;
 
     // ---------- 无节拍回退（钢琴曲 / 纯人声 / 环境音乐也要能轻轻晃） ----------
 
@@ -195,6 +213,26 @@ public sealed class MusicAnalyzer
     /// <summary>处于「播放中」的累计墙钟秒数（稀疏点击时有效分析时间很短，但内容判断仍需要够长时间）。</summary>
     private double _observedPlayingSeconds;
 
+    // ---------- 真实混音人声特征（mid 人声带） ----------
+
+    /// <summary>中心声道人声带的周期显著度（带限自相关峰值相对均值，0~1）。</summary>
+    private double _periodicitySalience;
+
+    /// <summary>中心声道人声带的谐波梳对比度（0~1；人声/单音乐器高，噪声/打击低）。</summary>
+    private double _harmonicSalience;
+
+    /// <summary>人声带能量占 mid 总能量的比例（调试用）。</summary>
+    private double _voiceBandEnergyRatio;
+
+    /// <summary>自相关峰对应的 lag（16k 采样），用于调试 / 自检。</summary>
+    private int _periodicityLag;
+
+    /// <summary>mid 4~8kHz 能量占 mid 200~8000Hz 能量的比例（人声齿音 / 气声会抬高它）。</summary>
+    private double _midHighBandRatio;
+
+    /// <summary>mid 4~8kHz 谱平坦度（人声齿音 / 辅音噪声偏平坦，纯乐器高次谐波偏尖锐）。</summary>
+    private double _midHighBandFlatness;
+
     // ---------- 音节 / 颤音调制 ----------
 
     /// <summary>人声带包络的慢包络（~0.4s），用来去掉整体响度 / 音符衰减，只看快速起伏。</summary>
@@ -286,6 +324,50 @@ public sealed class MusicAnalyzer
 
     /// <summary>最近一次发布的快照（还没有数据时为 null）。</summary>
     public MusicAnalysisSnapshot? Latest => _latest;
+
+    // ---------- 诊断属性（离线调参 / 自检用，不参与契约） ----------
+
+    /// <summary>中心声道人声带的周期显著度（带限自相关峰值相对均值，0~1）。</summary>
+    public double PeriodicitySalience => _periodicitySalience;
+
+    /// <summary>中心声道人声带的谐波梳对比度（0~1）。</summary>
+    public double HarmonicSalience => _harmonicSalience;
+
+    /// <summary>人声带能量占 mid 总能量的比例（0~1）。</summary>
+    public double VoiceBandEnergyRatio => _voiceBandEnergyRatio;
+
+    /// <summary>最近一次人声原始分（未乘 Sensitivity / 自适应）。</summary>
+    public double LastVocalRawScore => _vocalRawScore;
+
+    /// <summary>YIN 清晰度（诊断）。</summary>
+    public double ClarityDiag => _clarity;
+
+    /// <summary>基频轨迹稳定度（诊断）。</summary>
+    public double PitchStabilityDiag => _pitchStability;
+
+    /// <summary>「像人声」门控强度（诊断）。</summary>
+    public double VoicedStrengthDiag => _voicedStrength;
+
+    /// <summary>共振峰打分（诊断）。</summary>
+    public double FormantScoreDiag => _formantScore;
+
+    /// <summary>谱平坦度（诊断）。</summary>
+    public double FlatnessDiag => _flatness;
+
+    /// <summary>谐波比例（诊断）。</summary>
+    public double HarmonicRatioDiag => _harmonicRatio;
+
+    /// <summary>颤音调制深度（诊断）。</summary>
+    public double VibratoDepthDiag => _vibratoDepth;
+
+    /// <summary>mid 4~8kHz 能量占比（诊断）。</summary>
+    public double MidHighBandRatioDiag => _midHighBandRatio;
+
+    /// <summary>mid 4~8kHz 谱平坦度（诊断）。</summary>
+    public double MidHighBandFlatnessDiag => _midHighBandFlatness;
+
+    /// <summary>带限自相关峰对应 lag（诊断）。</summary>
+    public int PeriodicityLagDiag => _periodicityLag;
 
     /// <summary>
     /// 分析一块 48k 立体声 interleaved 音频（<paramref name="interleavedStereo"/> 长度 = frames×2）。
@@ -409,6 +491,12 @@ public sealed class MusicAnalyzer
         _pitchSmoothed = 0;
         _syllabicModulation = 0;
         _vibratoDepth = 0;
+        _periodicitySalience = 0;
+        _harmonicSalience = 0;
+        _voiceBandEnergyRatio = 0;
+        _midHighBandRatio = 0;
+        _midHighBandFlatness = 0;
+        _periodicityLag = 0;
         _voiceSlowEnvelope = 0;
         Array.Clear(_modulationEnvelope);
         Array.Clear(_pitchWindowTemp);
@@ -549,6 +637,8 @@ public sealed class MusicAnalyzer
         _pitchValid = false;
         _syllabicModulation *= 0.9;
         _vibratoDepth *= 0.9;
+        _periodicitySalience *= 0.9;
+        _harmonicSalience *= 0.9;
         PushOnsetSample(0.0);
         _activeAnalyzedSeconds = 0.0;
         _vocalSmoothedScore *= 0.95;
@@ -611,6 +701,9 @@ public sealed class MusicAnalyzer
         // ---- 4) 立体声中心占比（人声频带内 mid / (mid + side)） ----
         var center = voice / (voice + voiceSide + 1e-12);
         _centerVoiceRatio += (center - _centerVoiceRatio) * 0.25;
+
+        // ---- 4.5) 真实混音人声特征：mid 人声带带限自相关 + 谐波梳（不依赖整段 YIN 清晰度） ----
+        UpdateMidVoiceSalience();
 
         // ---- 5) onset（时域 hop 能量差）：比单窗谱通量更抗「瞬态落在 Hann 窗边缘」的衰减，
         //        纯点击 / 鼓点等稀疏打击也能稳定抓到，不依赖音调 ----
@@ -699,18 +792,15 @@ public sealed class MusicAnalyzer
         var formTarget = Math.Clamp((_centroidHz - 1850.0) / 1550.0, -1.0, 1.0);
         _mouthForm += (formTarget - _mouthForm) * 0.15;
 
-        // ---- 11) 人声分数 / 分类 ----
-        var tonalness = Clamp01((1.0 - _flatness - 0.25) / 0.6); // 谱越不平坦越像人声
-        // 清晰度也做「稳定音高」门控：和弦 / 打击偶发出的清晰度不该给满分
-        var clarityScore = _clarity * (0.15 + (0.85 * _voicedStrength));
-        _vocalRawScore = ComputeVocalRawScore(
-            clarityScore,
-            Clamp01(_harmonicRatio),
-            tonalness,
-            _formantScore,
+        // ---- 11) 人声分数 / 分类（真实混音版：中心门控的混音证据 + 噪声门控 + 清晰人声兜底） ----
+        _vocalRawScore = ComputeVocalRawScoreEx(
             _centerVoiceRatio,
-            _syllabicModulation,
-            _vibratoDepth);
+            _formantScore,
+            _mouthOpen,
+            _voiceBandEnergyRatio,
+            _clarity,
+            _pitchStability,
+            _flatness);
 
         PushScoreSample(_vocalRawScore);
         var adaptive = _scoreHighQuantile - _scoreLowQuantile > 0.08
@@ -888,13 +978,16 @@ public sealed class MusicAnalyzer
         }
 
         _pitchStability += (pitchStabilityTarget - _pitchStability) * 0.25;
-        // 「像人声」门控：有清晰且稳定的基频才放开音节 / 颤音 / 谐波特征，
-        // 钢琴和弦的 YIN 结果会来回跳（不稳），这样乐器就不会被误判成「音节调制很强」。
-        var voicingTarget = _pitchValid && _clarity > 0.3 && _pitchStability > 0.5 ? 1.0 : 0.0;
+        // 「像人声」门控：真实混音下 YIN 整段找不到清晰基频，主要看 mid 人声带的周期显著度；
+        // 合成单声道素材（YIN 清晰且稳定）也保留。钢琴和弦 / 打击两者都低，不会误开音节特征。
+        var voicingTarget = _periodicitySalience >= PeriodicityVoicingThreshold
+                            || (_pitchValid && _clarity > 0.3 && _pitchStability > 0.5)
+            ? 1.0
+            : 0.0;
         _voicedStrength += (voicingTarget - _voicedStrength) * 0.25;
         var voicing = 0.1 + (0.9 * _voicedStrength);
 
-        // ---- 音节调制：去掉慢包络后，人声带包络在 2~6Hz 的起伏强度（Goertzel 带能量） ----
+        // ---- 音节调制：去掉慢包络后，人声带包络在 3~7Hz 的起伏强度（Goertzel 带能量） ----
         // 用「归一化包络」而不是原始响度：钢琴 / kick 的音符衰减是慢变化，会被慢包络除掉；
         // 打击类的瞬态是宽带冲击，只在很短时间内有能量，除以 0.5s 窗口后也明显低于人声念字。
         var envelopeCount = Math.Min(_modulationCount, _modulationEnvelope.Length);
@@ -908,7 +1001,7 @@ public sealed class MusicAnalyzer
 
             var envelopeRate = 1.0 / HopSeconds; // 62.5Hz
             var amplitude = 0.0;
-            for (var frequency = 2.0; frequency <= 6.0; frequency += 1.0)
+            for (var frequency = 3.0; frequency <= 7.0; frequency += 1.0)
             {
                 amplitude = Math.Max(amplitude, GoertzelAmplitude(_modulationTemp.AsSpan(0, envelopeCount), envelopeRate, frequency));
             }
@@ -932,6 +1025,146 @@ public sealed class MusicAnalyzer
         _modulationEnvelope[_modulationWrite] = Math.Clamp(normalized, 0.0, 4.0);
         _modulationWrite = (_modulationWrite + 1) % _modulationEnvelope.Length;
         if (_modulationCount < _modulationEnvelope.Length) _modulationCount++;
+    }
+
+    /// <summary>
+    /// 真实混音人声特征 1：中心声道 200~3500Hz 的带限自相关「周期显著度」。
+    /// 做法：mid 功率谱频域带通掩码 → 逆 FFT 得自相关 → 在 80~1000Hz 对应 lag 上取峰值相对均值的显著度。
+    /// 真实多声部混音里 YIN 往往找不到清晰基频，但主唱所在的 mid 声道在带内仍有周期结构。
+    /// </summary>
+    private void UpdateMidVoiceSalience()
+    {
+        Array.Clear(_fftReal);
+        Array.Clear(_fftImag);
+        double bandEnergy = 0.0;
+        double totalEnergy = 0.0;
+        double vocalTotalEnergy = 0.0;
+        double highBandEnergy = 0.0;
+        for (var bin = 1; bin < BinCount; bin++)
+        {
+            var magnitude = _magnitudeMid[bin];
+            var power = magnitude * magnitude;
+            totalEnergy += power;
+            if (bin >= HighBandStartBin) highBandEnergy += power;
+            if (bin < VocalBandStartBin)
+            {
+                continue;
+            }
+
+            vocalTotalEnergy += power;
+            if (bin > VocalBandEndBin) continue;
+            bandEnergy += power;
+            _fftReal[bin] = power;
+            _fftReal[WindowSize - bin] = power;
+        }
+
+        var ratio = totalEnergy > 1e-12 ? bandEnergy / totalEnergy : 0.0;
+        _voiceBandEnergyRatio += (ratio - _voiceBandEnergyRatio) * 0.2;
+
+        // 顶带特征（4~8kHz）：人声齿音 / 辅音气声会让 mid 的这一带更「噪声化」
+        var highRatio = vocalTotalEnergy > 1e-12 ? highBandEnergy / vocalTotalEnergy : 0.0;
+        _midHighBandRatio += (highRatio - _midHighBandRatio) * 0.2;
+        _midHighBandFlatness += (ComputeSpectralFlatness(_magnitudeMid, HighBandStartBin, BinCount - 2) - _midHighBandFlatness) * 0.2;
+
+        FastFft.InverseTransform(_fftReal, _fftImag);
+        var self = _fftReal[0];
+        if (self <= 1e-12)
+        {
+            _periodicitySalience *= 0.9;
+            _harmonicSalience *= 0.9;
+            return;
+        }
+
+        var peak = 0.0;
+        var peakLag = 0;
+        var sum = 0.0;
+        var count = 0;
+        for (var lag = PeriodicityMinLag; lag <= PeriodicityMaxLag; lag++)
+        {
+            var value = _fftReal[lag] / self;
+            sum += value;
+            count++;
+            if (value > peak)
+            {
+                peak = value;
+                peakLag = lag;
+            }
+        }
+
+        var mean = count > 0 ? sum / count : 0.0;
+        var salience = Clamp01((peak - mean) / (1.0 - mean + 1e-9));
+        _periodicityLag = peakLag;
+        _periodicitySalience += (salience - _periodicitySalience) * 0.25;
+        _harmonicSalience += (ComputeHarmonicCombContrast(_magnitudeMid, VocalBandStartBin, VocalBandEndBin) - _harmonicSalience) * 0.2;
+    }
+
+    /// <summary>
+    /// 真实混音人声特征 2：中心声道人声带的谐波梳对比度（0~1）。
+    /// 在 80~500Hz 扫基频候选，比较「整数倍谐波位置」与「半整数倍之间位置」的能量，取最好的候选。
+    /// 人声 / 单音乐器高，宽带噪声 / 打击低。
+    /// </summary>
+    public static double ComputeHarmonicCombContrast(ReadOnlySpan<double> magnitudes, int startBin, int endBin)
+    {
+        if (startBin < 1) startBin = 1;
+        if (endBin >= magnitudes.Length) endBin = magnitudes.Length - 1;
+        var best = 0.0;
+        for (var f0 = 80.0; f0 <= 500.0; f0 += 5.0)
+        {
+            double harmonic = 0.0;
+            double between = 0.0;
+            var count = 0;
+            for (var k = 1; k <= 12; k++)
+            {
+                var frequency = f0 * k;
+                if (frequency >= (endBin - 1) * BinHz) break;
+                var center = (int)Math.Round(frequency / BinHz);
+                if (center <= startBin || center >= endBin) continue;
+                var centerValue = Math.Max(magnitudes[center],
+                    Math.Max(magnitudes[center - 1], magnitudes[center + 1]));
+
+                var left = (int)Math.Round((k - 0.5) * f0 / BinHz);
+                var right = (int)Math.Round((k + 0.5) * f0 / BinHz);
+                var leftValue = left >= startBin && left <= endBin ? magnitudes[left] : 0.0;
+                var rightValue = right >= startBin && right <= endBin ? magnitudes[right] : 0.0;
+                harmonic += centerValue;
+                between += 0.5 * (leftValue + rightValue);
+                count++;
+            }
+
+            if (count < 3) continue;
+            var contrast = (harmonic - between) / (harmonic + between + 1e-9);
+            if (contrast > best) best = contrast;
+        }
+
+        return Clamp01(best);
+    }
+
+    /// <summary>
+    /// 真实混音版 VocalScore（0~1）。
+    /// <para>真实歌曲是多声部混音：YIN 清晰度 / HPS / 周期显著度在钢琴、弦乐等 tonal 乐器上同样很高，
+    /// 单靠它们无法区分「主唱」与「乐器」。这里组合两条互补证据：</para>
+    /// <list type="number">
+    /// <item><b>混音证据</b>：中心占比（主唱居中、伴奏更宽）× 共振峰峰显著度 × 中心人声带包络动态（吐字起伏）
+    /// × 频带互补项；再乘「中心占比门控」把侧声道很宽 / 居中性差的乐器混音压下去；</item>
+    /// <item><b>清晰人声证据</b>：YIN 清晰度 × 基频稳定度（干净的主唱 / 合成人声，多声部混音里通常很低，
+    /// 但能兜住清唱、类人声信号）。</item>
+    /// </list>
+    /// </summary>
+    public static double ComputeVocalRawScoreEx(double centerVoiceRatio, double formantScore, double mouthOpen,
+        double voiceBandEnergyRatio, double clarity, double pitchStability, double flatness)
+    {
+        var center = Clamp01(centerVoiceRatio);
+        var mixScore = (0.30 * center)
+                       + (0.26 * Clamp01(formantScore))
+                       + (0.26 * Clamp01(mouthOpen))
+                       + (0.18 * (1.0 - Clamp01(voiceBandEnergyRatio)));
+        // 中心占比门控：主唱在中间（center 高）才按混音证据算；侧声道很宽（center < 0.55）直接归零
+        var centerGate = Clamp01((center - 0.55) / 0.25);
+        // 噪声门控：谱很平坦（宽带噪声 / 镲片铺满）不可能是主唱；真实歌曲人声带谱不平坦
+        var noiseGate = Clamp01((0.55 - Clamp01(flatness)) / 0.35);
+        // 清晰人声兜底：YIN 清晰且基频稳定（清唱 / 干净主唱 / 类人声合成）额外加分
+        var cleanVocal = 0.25 * Clamp01(clarity) * Clamp01(pitchStability);
+        return Clamp01((mixScore * centerGate * noiseGate) + cleanVocal);
     }
 
     /// <summary>每处理完一个 hop 调一次（有声 / 静音都算）：驱动 BPM 估计，和当前是否有声音无关。</summary>

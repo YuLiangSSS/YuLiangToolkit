@@ -499,6 +499,30 @@ MediaCapture（优先 640 左右宽的格式）
   `ParamAngleX`（红，反向补偿后）、`FrontHairX1`（灰，物理输出，能看出慢半拍）；参数值每 100ms 刷新；
 - `YLT_LIVE2D_SWAY_DEMO=1`：打开页面自动设「左右摇 15° / 0.5Hz」并演示 10 秒（截图验收中间帧用）。
 
+### 11.5 整身轻倾（BodyLean，本轮新增；和上面的「扭身体测试」是两回事）
+
+> 用户要的是「**整身以脚为支点左右轻倾**」，不是让身体网格扭来扭去。产品上拆成两层：
+> **`ModelRuntime` 只算一个角度**（`BodyLeanDegrees`），**UI 在渲染层做整体旋转**（预览 + 桌宠，支点在脚底），
+> 不写任何模型参数。
+
+- `ModelRuntime`：
+  - 只读 `float BodyLeanDegrees`：当前倾斜角（正 = 向右倾，单位度）；
+  - 可写 `bool BodyLeanEnabled`（配置 `BodyLeanEnabled` 默认 true）：整身轻倾总开关；
+  - **常态**：4 秒一个来回、幅度 **±0.6°**（几乎察觉不到的轻晃）；
+  - **音乐在播且 `MusicSwayEnabled`**：周期平滑加快到 **~2.6 秒**、幅度 **1.0° × `MusicSwayStrength`**；
+  - **关闭音乐 / 关 SwayEnabled**：平滑回到常态参数（相位连续，不跳变）；
+  - **`BodyLeanEnabled=false`**：幅度**平滑趋近 0**（不瞬间归零），再打开从 0 平滑恢复；相位始终连续；
+  - 角度 = `sin(2π·phase) × 幅度`；相位推进用「目标周期」的角速度，音乐切换只改角速度（保持相位）→ 不跳变；
+- **UI 渲染层**：`Live2DView` 预览和 `PetWindow` 都把 `BodyLeanDegrees` 应用到整体旋转
+  （WPF `RotateTransform`，`RenderTransformOrigin = (0.5, 1)` = 窗口底边中点 = 脚底支点）；
+  预览/桌宠用同一个角度 → 两边看起来一致；卡片里显示「身体倾斜 +0.62°」实时值；
+- **和旧实现（已删）的区别**：旧版音乐跟唱会写 `ParamBodyAngleX` / `PositionX` / `ParamBodyAngleZ` / `HipAngleX`
+  （=`BodySwayController` 那套扭身体参数），用户反馈「像扭腰、不像整个人在晃」，而且会和物理链打架；
+  现在**音乐响应不再写任何身体参数**（嘴型 / 点头保留），整身倾斜只在渲染层做；
+- 自检断言：常态周期 ≈4s / ±0.6°（固定 dt 采样过零/峰值，±15% 容差）；有音乐周期 ≤3s、幅度 > 常态且随时间变化；
+  `MusicSwayEnabled=false` 保持常态；`BodyLeanEnabled=false` 平滑归零、相邻帧变化小（不跳变）；
+  关音乐回常态；相邻帧相位连续；Tick 预算不超。
+
 ## 12. 面部参数测试卡（直接写 Cubism 参数）
 
 > 「😛 面部测试」卡（`Live2DView.xaml` / `Live2DViewModel`）是**绕过所有运行时系统、直接写 Cubism 参数**的
@@ -556,7 +580,7 @@ UI 上「一键全部重置」会复位全部参数并停掉动作 / 表情 / �
 | `Audio/SmtcWatcher.cs` | `Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager`：后台线程每 2 秒轮询当前会话的歌名 / 歌手 / 应用 / 播放状态；**只是显示**，识别不依赖它 |
 | `Audio/MusicReactiveContracts.cs` | `MusicContentKind`（Unknown/Silent/Instrumental/VocalSong）、`MusicAnalysisSnapshot`（不可变快照）、`IMusicReactiveProvider`（Latest / IsRunning / LastError / MediaTitle / MediaArtist / MediaApp / StateChanged） |
 | `Audio/MusicReactiveSource.cs` | provider 实现：启停采集、把数据同步喂给分析器、发布快照、处理设备切换重启、把 SMTC 事件转 StateChanged |
-| `Audio/Analysis/FastFft.cs` | 纯算法：radix-2 迭代 FFT（位反转 + 蝶形，双精度）、`MagnitudeSpectrum`、`NaiveDft`（自检对拍）、`FillHannWindow` / `ApplyWindow`；不分配内存 |
+| `Audio/Analysis/FastFft.cs` | 纯算法：radix-2 迭代 FFT（位反转 + 蝶形，双精度）、`MagnitudeSpectrum`、`NaiveDft`（自检对拍）、`InverseTransform`（逆变换，调试 / 工具用）、`FillHannWindow` / `ApplyWindow`；不分配内存 |
 | `Audio/Analysis/MusicAnalyzer.cs` | 纯算法：任意采样率→16k 重采样、mid/side、FFT 特征、YIN（含八度防抖）、`GoertzelAmplitude`（单频幅度，自检对拍用）、分类、节拍、唇形；`Analyze(ReadOnlySpan<float>, frameCount, ts)` → 快照 |
 
 `MusicVocalMode`（`Model/MusicVocalMode.cs`）：`Auto / ForceVocal / ForceInstrumental`，配置里存中文
@@ -600,11 +624,12 @@ UI 上「一键全部重置」会复位全部参数并停掉动作 / 表情 / �
   → 线性插值重采样到 16k（全局输入帧坐标 _nextOutputPosition，跨 Analyze 调用连续；step = sampleRate/16000）
   → 16k 环形缓冲（2048）
   → 每 hop 256（16ms，≈62.5 帧/秒）取最近 1024 点做 Hann 窗 FFT（mid / side 各一次）
-  → 特征：RMS / 低频 60~200Hz / 人声带 300~3400Hz / 谱平坦度 / 谱质心 / 共振峰峰数 / YIN 基频 / 谐波比例 /
-          立体声中心声道占比 / 音节调制 / 颤音深度
+  → 特征：RMS / 低频 60~200Hz / 人声带 300~3400Hz / 谱平坦度 / 谱质心 / 共振峰峰数 /
+          **带限自相关周期显著度（mid 200~3500Hz）** / **HPS 谐波显著度** / **3~7Hz 包络调制** /
+          **voice-band mid/side 比** / YIN 基频（只输出 pitch）/ 中心声道占比 / 音节调制 / 颤音深度
   → 节拍：**时域 hop 电平差 onset**（比单窗谱通量更抗「瞬态落在 Hann 窗边缘」，稀疏点击 / 鼓点也稳）
           → 6 秒 onset 自相关估 BPM（60~180）→ 相位 PLL
-  → 分类：7 特征加权 + 30 秒运行分位数自适应 + 灵敏度 + 平滑 + 时序滞后
+  → 分类：人声显著度多特征加权 + 自适应分位 + 灵敏度 + 平滑 + 时序滞后
   → 唇形：人声带包络（attack 15ms / release 90ms、最近 10 秒 p90 归一化）+ 谱质心映射嘴型
   → MusicAnalysisSnapshot（不可变）
 ```
@@ -618,9 +643,9 @@ UI 上「一键全部重置」会复位全部参数并停掉动作 / 表情 / �
 | 静音门限 | 块 RMS < 0.0015（≈-56 dBFS）走快速路径（跳过 FFT / YIN，只推进节拍相位） |
 | 播放挂起 | 500ms（句间空隙不闪「静音」） |
 | 频带 | 低频 bin 4~13（62~203Hz）、人声 bin 19~218（297~3406Hz）、onset bin 13~256 |
-| YIN | lag 16~178（≈90~1000Hz），清晰度阈值 0.30 才算有效；带 ±1 八度防抖 |
-| 分类权重 | 清晰度 .15 / 谐波 .10 / 音调度 .10 / 共振峰 .10 / 中心声道 .15 / 音节调制 .20 / 颤音 .20 |
-| 判定阈值 | 高 **0.45** / 低 **0.32**；数据不足（有效分析 < **1.5s** **且**播放墙钟 < 1.5s）→ Unknown；带歌词持续 **1.2s** / 纯音乐持续 **2.5s** 才切换；每个 hop（含静音 hop）都推进计时 → 稀疏点击也能按墙钟下结论 |
+| YIN | lag 16~178（≈90~1000Hz），带 ±1 八度防抖；**只用于输出 pitch，不再作为人声硬门槛** |
+| 分类特征 | **中心占比门控 × 共振峰 × 中心包络动态 × 频带互补 + 噪声门控**，再加 YIN 清晰度 × 稳定度兜底（`ComputeVocalRawScoreEx`；权重见源码常量） |
+| 判定阈值 | 高 **0.58** / 低 **0.50**（按真实混音校准，以源码常量为准）；数据不足（有效分析 < **1.0s** **且**播放墙钟 < 1.0s）→ Unknown；带歌词持续 **1.2s** / 纯音乐持续 **2.0s** 才切换；每个 hop（含静音 hop）都推进计时 → 稀疏点击也能按墙钟下结论 |
 | 无节拍回退 | 估不出可靠 BPM 时相位按 **0.5Hz** 舒缓摆动、`BeatStrength` 保底 **0.35**（再按响度略放大）；BPM 恢复时相位速率平滑换挡（0.05/hop），避免回退↔真实节拍切换跳变 |
 | 历史窗口 | 分数 30s（1875）、包络 10s（625）、onset 6s（375）、音高 4s（128） |
 
@@ -629,17 +654,29 @@ UI 上「一键全部重置」会复位全部参数并停掉动作 / 表情 / �
 ②低于阈值的点只是「谷的肩部」，要继续走到**局部最小**才是周期，否则 220Hz 会估成 242Hz。
 **八度防抖**：谐波丰富的信号 YIN 会在基频 / 高八度之间跳（110 ↔ 220）；实现里用
 `_pitchSmoothed` 上一帧值把明显 ±1 八度的结果拉回同一八度（比值 1.7~2.3 → ×0.5；0.43~0.59 → ×2），
-再配 0.8/0.2 平滑 + 清晰度阈值。注意：**107Hz 不一定是八度错**——Lead 的 voice-like.wav 频谱主峰本来就是
-110Hz（220/660/1100 也有），YIN 报 107~113 是按内容正确。
+再配 0.8/0.2 平滑。
+**本轮角色变化（按真实歌曲混音重调后）**：真实混音里伴奏低音 / 鼓常盖过主唱基频，单帧 YIN clarity
+很容易「看着低、其实是伴奏」；所以人声判定**不再用 YIN clarity 当硬门槛**，改用更适合混音的多特征
+相对显著度（见下）；YIN 只保留输出 `PitchHz` 给界面显示 / 调试，另以「清晰度 × 稳定度」作为
+**清晰人声的兜底证据**（不是必须条件）。
+注意：**107Hz 不一定是八度错**——离线合成 WAV（voice-like.wav）频谱主峰本来就是 110Hz（220/660/1100 也有），
+YIN 报 107~113 是按内容正确。
 
-**分类**：`_vocalRawScore` = 7 特征加权和；其中清晰度做「稳定音高」门控
-`clarity × (0.15 + 0.85 × voicedStrength)`，避免和弦 / 打击偶发的清晰度给满分；谐波比例也要求
-`voicedStrength > 0.5` 且音高有效才更新。
-`_vocalFinalScore = raw × (0.85 + 0.15 × adaptive) × sensitivity`；`_vocalSmoothedScore` 每帧 0.1 低速平滑；
-`≥0.45` 累计 1.2s → VocalSong，`≤0.32` 累计 2.5s → Instrumental，中间地带保持上一结论（防抖）。
-`Confidence = |smoothed − 0.5| × 2`。
-实测（自检合成信号）：类人声 VocalScore 0.63 / 纯乐器 0.225；Lead 的离线 WAV：voice-like 0.54~0.72、
-instrumental-like 0.25。
+**分类（人声显著度，`ComputeVocalRawScoreEx`）**：`_vocalRawScore` 的核心是**适合真实混音的相对证据**：
+1. **中心占比门控**：voice-band mid/side 比 + 立体声中心声道占比（主唱居中、乐器 / 和声偏两侧）；
+2. **共振峰**：频谱平滑后数宽峰（人声包络，不是单一基频）；
+3. **中心包络动态**：3~7Hz 包络调制（念字咬字，`GoertzelAmplitude` 带能量）+ 颤音深度；
+4. **频带互补**：mid 声道 200~3500Hz 带限自相关周期显著度 + HPS 谐波梳显著度 + 谱平坦度 / 音调度；
+5. **噪声门控**：谱平坦度 / 高频带平坦度等，压掉鼓点 / 噪声被误判；
+6. **YIN 兜底**：清晰度 × 稳定度高时给「清晰人声」加分（不满足也不否决）。
+
+再乘 **自适应分位**（最近 30 秒运行分位数归一化，抵消不同歌曲 / 音量的整体偏移）和 **Sensitivity**；
+`_vocalSmoothedScore` 每帧 0.1 低速平滑；`≥0.58` 累计 1.2s → VocalSong，`≤0.50` 累计 2.0s → Instrumental，
+中间地带保持上一结论（防抖）。`Confidence = |smoothed − 0.5| × 2`。
+实测（自检合成信号）：类人声 VocalScore 0.63 / 纯乐器 0.225；另用真实歌曲混音离线校准（素材属于用户私有媒体，
+**只在本机调参，不随仓库分发**）。**调试诊断**：`MusicAnalyzer` 暴露 `PeriodicitySalience / HarmonicSalience /
+VoiceBandEnergyRatio / ClarityDiag / PitchStabilityDiag / FormantScoreDiag / FlatnessDiag / VibratoDepthDiag /
+MidHighBandRatioDiag / MidHighBandFlatnessDiag / PeriodicityLagDiag` 等只读属性，排错时看这些值比只看 Kind 直观。
 
 **节拍**：`onset = clamp(log(RMS_hop / RMS_prev) × 0.35)`（时域电平差，快起慢落平滑 0.6/0.25）→
 6 秒历史自相关，峰值相关度 ≥ 0.25 才接受 BPM（60~180），`_bpm` 平滑 0.7/0.3；每个 hop（含静音 hop）都推进
@@ -776,6 +813,15 @@ BPM 估计（原来只在有声 hop 估算，稀疏点击永远估不出——�
     新增会写参数的系统时，记得同时给出「什么时候该纳入受管参数」的条件。
 32. **鼠标跟随增益默认必须是 1/1/1/0**：1 = 原来的手感，改动默认值会让所有用户的手感突变；
     增益只乘在归一化目标上，最终角度 / 眼球值仍受参数范围与强度 clamp（0~1.5）约束，不要在别处再重复夹一次。
+33. **`ParamBodyAngle*` / `Position*` / `HipAngle*` 是模型参数（物理输入 / 输出），不是「整身倾斜」**：
+    写它们出来的是**扭身体**（身体网格变形 + 带动物理链），用户这次明确要的是「整身以脚为支点轻倾」；
+    所以音乐 / 常态轻倾只在**渲染层旋转**（`RotateTransform`，支点脚底），**不要**再把倾斜写回这些参数，
+    否则会和物理链打架、看起来像扭腰。旧的音乐写身体参数逻辑已删（见 §11.5）。
+34. **BodyLean 相位要连续**：有音乐时周期 4s→2.6s 只是改**角速度**（保持 phase 不变），不能直接改相位；
+    `BodyLeanEnabled=false` 时幅度要**平滑趋近 0** 再停，重新打开从 0 平滑恢复，否则用户会看到「突然跳正 / 跳歪」；
+    自检用固定 dt 采样过零 / 峰值验证周期与幅度，并断言相邻帧变化足够小。
+35. **真实歌曲素材不进仓库**：人声识别按真实歌曲混音校准，素材属于用户私有媒体，只在本机调参，
+    **不进仓库 / 自检 / 截图 / 文档**；自检只能用合成信号回归（voice-like / instrumental / click / 静音）。
 
 ## 15. 调试钩子（环境变量，开发 / 截图验收用）
 

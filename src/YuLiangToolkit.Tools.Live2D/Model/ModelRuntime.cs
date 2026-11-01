@@ -16,6 +16,7 @@ namespace YuLiangToolkit.Tools.Live2D.Model;
 /// <para><b>每帧顺序</b>（和官方 Cubism 更新管线一致）：
 /// 受管参数恢复默认 → 待机行为（眨眼 / 呼吸）→ 摄像头动捕（有脸时）→ 眼睛跟随鼠标（动捕有脸时跳过）
 /// → 身体晃动测试（<see cref="BodySway"/>）→ 音乐跟唱 / 律动（<see cref="Music"/>，在手动晃动之后）
+/// → 整身轻倾（<see cref="BodyLeanDegrees"/>，以脚为支点，渲染层旋转画布）
 /// → 动作混合 → 表情叠加 → 物理 → Core <c>Update()</c> → 触发 <see cref="FrameUpdated"/>。
 /// 「受管参数」= 会被动作 / 表情 / 物理 / 待机 / 眼睛跟随 / 动捕 / 身体晃动 / 音乐写到的参数；
 /// 其余参数（大部分纯调试参数）不会被每帧重置，所以工具页手动拖滑块在那些参数上是有效的。</para>
@@ -132,10 +133,6 @@ public sealed class ModelRuntime : IDisposable
     private CubismParameter? _musicMouthOpenY;
     private CubismParameter? _musicMouthForm;
     private CubismParameter? _musicJawOpen;
-    private CubismParameter? _musicBodyAngleX;
-    private CubismParameter? _musicPositionX;
-    private CubismParameter? _musicBodyAngleZ;
-    private CubismParameter? _musicHipAngleX;
     private CubismParameter? _musicParamAngleY;
 
     // 本帧音乐写过的参数（下一帧先复位这些；只有真正在写的那一帧才管理这些参数）
@@ -146,6 +143,9 @@ public sealed class ModelRuntime : IDisposable
     private int _musicStatusKind = -1;
     private string _musicStatusText = MusicStatusSilent;
 
+    /// <summary>这一帧音乐是否在播（供整身轻倾加速用）。</summary>
+    private bool _musicPlaying;
+
     /// <summary>音频数据超过这个时间没更新就当「没在播」（采集帧率约 20Hz，留一点余量）。</summary>
     private const double MusicDataTimeoutMs = 800.0;
 
@@ -153,6 +153,18 @@ public sealed class ModelRuntime : IDisposable
     private const string MusicStatusAnalyzing = "识别中";
     private const string MusicStatusInstrumental = "纯音乐";
     private const string MusicStatusVocal = "带歌词";
+
+    // ---------- 整身轻倾（脚为支点） ----------
+
+    private const double BodyLeanIdlePeriodSeconds = 4.0;
+    private const double BodyLeanIdleAmplitudeDegrees = 0.6;
+    private const double BodyLeanMusicPeriodSeconds = 2.6;
+    private const double BodyLeanMusicAmplitudeDegrees = 1.0;
+    private const double BodyLeanSmoothingSeconds = 0.35;
+
+    private double _bodyLeanPhase;
+    private double _bodyLeanPeriod = BodyLeanIdlePeriodSeconds;
+    private double _bodyLeanAmplitude = BodyLeanIdleAmplitudeDegrees;
 
     private double _time;
     private double _lastTickMilliseconds;
@@ -358,6 +370,17 @@ public sealed class ModelRuntime : IDisposable
 
     /// <summary>音乐播放时是否轻微点头（被动捕 / 鼠标眼控占用头部时不写）。</summary>
     public bool MusicHeadBobEnabled { get; set; } = true;
+
+    // ---------- 整身以脚为支点的左右轻倾（渲染层按 pivot=脚底 旋转 canvas） ----------
+
+    /// <summary>是否启用整身轻倾（默认开；关闭时角度平滑回 0）。</summary>
+    public bool BodyLeanEnabled { get; set; } = true;
+
+    /// <summary>
+    /// 当前整身轻倾角度（度，正负表示左右倾）。渲染层按「脚底为支点」旋转画布即可。
+    /// 常态 4 秒周期 ±0.6°；音乐在播时平滑加快到约 2.6 秒、幅度约 1.0°×<see cref="MusicSwayStrength"/>。
+    /// </summary>
+    public float BodyLeanDegrees { get; private set; }
 
     /// <summary>最近一帧音乐内容类型（没在播 / 关闭时为 Silent；数据不足为 Unknown）。</summary>
     public MusicContentKind MusicKind => _musicKind;
@@ -686,16 +709,13 @@ public sealed class ModelRuntime : IDisposable
         _musicMouthOpenY = model.FindParameter("ParamMouthOpenY");
         _musicMouthForm = model.FindParameter("ParamMouthForm");
         _musicJawOpen = model.FindParameter("JawOpen");
-        _musicBodyAngleX = model.FindParameter("ParamBodyAngleX");
-        _musicPositionX = model.FindParameter("PositionX");
-        _musicBodyAngleZ = model.FindParameter("ParamBodyAngleZ");
-        _musicHipAngleX = model.FindParameter("HipAngleX");
         _musicParamAngleY = model.FindParameter("ParamAngleY");
     }
 
     /// <summary>
-    /// 音乐响应：有正在播放的数据且开启时，写跟唱嘴型 + 节拍身体摇晃 + 轻微点头。
-    /// <para>嘴型优先级：动捕有脸 > 音乐（动捕在驱动嘴时音乐不抢）。</para>
+    /// 音乐响应：有正在播放的数据且开启时，写跟唱嘴型 + 可选轻微点头。
+    /// <para>「身体律动」不再写模型参数（不扭身体），而是驱动 <see cref="BodyLeanDegrees"/> 的加速 / 加大幅度，由渲染层整身轻倾。</para>
+    /// <para>嘴型优先级：动捕有脸 &gt; 音乐（动捕在驱动嘴时音乐不抢）。</para>
     /// <para>参数只在「这一帧真的写」的时候才记录到 touched 列表，下一帧开头复位；不写时完全不动，手动值保留。</para>
     /// </summary>
     private void ApplyMusicResponse(bool mocapFace)
@@ -706,6 +726,7 @@ public sealed class ModelRuntime : IDisposable
         var snapshot = provider?.Latest;
         var age = snapshot is null ? double.MaxValue : Environment.TickCount64 - snapshot.TimestampMs;
         var playing = MusicEnabled && snapshot is not null && snapshot.IsPlaying && age <= MusicDataTimeoutMs;
+        _musicPlaying = playing;
 
         if (!playing)
         {
@@ -743,26 +764,41 @@ public sealed class ModelRuntime : IDisposable
 
         var phase = data.BeatPhase;
         if (phase < 0) phase -= Math.Floor(phase);
-        var beatStrength = Math.Clamp(data.BeatStrength, 0.0, 1.0);
         var swayStrength = (float)Math.Clamp(MusicSwayStrength, 0.0, 1.5);
 
-        // ---- 2) 节拍身体摇晃（纯音乐 / 带歌词都晃） ----
-        if (MusicSwayEnabled)
-        {
-            var swing = Math.Sin(2.0 * Math.PI * phase);
-            var bodyX = (float)(swing * 6.0 * swayStrength * (0.4 + (0.6 * beatStrength)));
-            SetMusicParameter(_musicBodyAngleX, bodyX);
-            SetMusicParameter(_musicPositionX, bodyX);
-            SetMusicParameter(_musicBodyAngleZ,
-                (float)(Math.Sin((2.0 * Math.PI * phase * 0.5) + 1.2) * 2.0 * swayStrength));
-            SetMusicParameter(_musicHipAngleX, bodyX * 0.4f);
-        }
-
-        // ---- 3) 轻微点头（动捕 / 鼠标眼控占着头部时不抢） ----
+        // ---- 2) 轻微点头（动捕 / 鼠标眼控占着头部时不抢） ----
+        // 侧向身体律动改由整身轻倾（BodyLeanDegrees）表现，这里不再写 ParamBodyAngleX 等参数。
         if (MusicHeadBobEnabled && !mocapFace && !EyeTrackingEnabled)
         {
             SetMusicParameter(_musicParamAngleY, (float)(-Math.Sin(2.0 * Math.PI * phase) * 2.0 * swayStrength));
         }
+    }
+
+    /// <summary>
+    /// 整身以脚为支点的左右轻倾（渲染层按 pivot=脚底 旋转 canvas，这里只算角度）。
+    /// <para>常态：4 秒周期、±0.6°；音乐在播且 <see cref="MusicSwayEnabled"/> 时：平滑加快到 2.6 秒、幅度 1.0°×<see cref="MusicSwayStrength"/>。</para>
+    /// <para>关闭（<see cref="BodyLeanEnabled"/>=false）时幅度平滑回 0；相位连续推进，周期 / 幅度都用一阶平滑，避免跳变。</para>
+    /// </summary>
+    private void UpdateBodyLean(double deltaSeconds)
+    {
+        var musicActive = MusicEnabled && _musicPlaying && MusicSwayEnabled;
+        var targetPeriod = musicActive ? BodyLeanMusicPeriodSeconds : BodyLeanIdlePeriodSeconds;
+        var targetAmplitude = musicActive
+            ? BodyLeanMusicAmplitudeDegrees * Math.Clamp(MusicSwayStrength, 0.0, 1.5)
+            : BodyLeanIdleAmplitudeDegrees;
+        if (!BodyLeanEnabled) targetAmplitude = 0.0;
+
+        var smoothing = 1.0 - Math.Exp(-deltaSeconds / BodyLeanSmoothingSeconds);
+        _bodyLeanPeriod += (targetPeriod - _bodyLeanPeriod) * smoothing;
+        _bodyLeanAmplitude += (targetAmplitude - _bodyLeanAmplitude) * smoothing;
+        if (_bodyLeanPeriod < 0.5) _bodyLeanPeriod = 0.5;
+
+        // 相位连续推进：周期变化只改变推进速度，相位本身不跳
+        _bodyLeanPhase += deltaSeconds / _bodyLeanPeriod;
+        if (_bodyLeanPhase >= 1.0) _bodyLeanPhase -= Math.Floor(_bodyLeanPhase);
+        if (_bodyLeanPhase < 0) _bodyLeanPhase += 1.0;
+
+        BodyLeanDegrees = (float)(Math.Sin(2.0 * Math.PI * _bodyLeanPhase) * _bodyLeanAmplitude);
     }
 
     /// <summary>写一个音乐响应参数并记录（下一帧开头按记录复位，保证不写时不污染手动值）。</summary>
@@ -998,8 +1034,11 @@ public sealed class ModelRuntime : IDisposable
         // 4) 身体晃动测试（在动捕之后、动作之前）；动捕有脸时晃动不做头部补偿，让头跟脸
         UpdateBodySway(deltaSeconds, mocapFace);
 
-        // 4.5) 音乐跟唱 / 律动（在手动晃动之后，会覆盖它写的身体 / 嘴参数；动捕有脸时嘴让位）
+        // 4.5) 音乐跟唱 / 律动（在手动晃动之后；动捕有脸时嘴让位；侧向律动由整身轻倾表现）
         ApplyMusicResponse(mocapFace);
+
+        // 4.6) 整身以脚为支点的左右轻倾：常态 4s/±0.6°，音乐在播平滑加速到 2.6s/±1.0°×SwayStrength
+        UpdateBodyLean(deltaSeconds);
 
         // 5) 待机动作（IdleEnabled 且当前没有动作在播时循环播放）
         if (idleEnabled && IdleMotion is { } idleMotion && !_motionPlayer.HasActive &&
@@ -1178,10 +1217,6 @@ public sealed class ModelRuntime : IDisposable
         _musicMouthOpenY = null;
         _musicMouthForm = null;
         _musicJawOpen = null;
-        _musicBodyAngleX = null;
-        _musicPositionX = null;
-        _musicBodyAngleZ = null;
-        _musicHipAngleX = null;
         _musicParamAngleY = null;
         _musicTouchedCount = 0;
         _musicKind = MusicContentKind.Silent;

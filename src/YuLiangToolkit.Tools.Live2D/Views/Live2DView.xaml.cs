@@ -177,6 +177,21 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
         }
         if (media.Length == 0) media = "媒体：—";
 
+        // 整身轻倾（以脚为支点）：截图调试钩子可临时钉住角度；否则跟随运行时 BodyLeanDegrees
+        double bodyLean = 0;
+        if (viewModel.LeanOverrideDegrees is { } fixedLean)
+        {
+            bodyLean = fixedLean;
+        }
+        else
+        {
+            var runtime = viewModel.Runtime;
+            if (runtime is not null)
+            {
+                try { bodyLean = runtime.BodyLeanDegrees; } catch { /* 运行时还没实现该属性 */ }
+            }
+        }
+
         viewModel.UpdateMusicPanel(
             viewModel.MusicReactiveEnabled,
             source?.IsRunning == true,
@@ -191,7 +206,8 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
             latest?.SyllabicModulation ?? 0,
             latest?.PitchValid ?? false,
             latest?.PitchHz ?? 0,
-            latest?.Bpm ?? 0);
+            latest?.Bpm ?? 0,
+            bodyLean);
     }
 
     /// <summary>把 <see cref="MocapCameraSource.LatestPreview"/> 每 100ms 写进小窗位图，并叠加人脸框。</summary>
@@ -469,6 +485,19 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
             _lastBitmap = bitmap;
             PreviewImage.Source = bitmap;
         }
+
+        // 全身轻晃：以脚为支点旋转「模型位图」（只转 PreviewImage，棋盘背景 / 文字 / 布局都不动）；
+        // 角度很小（常态 ±0.6°），点击映射仍按未旋转坐标算，体验上没有偏差。
+        double leanDegrees;
+        if (viewModel.LeanOverrideDegrees is { } fixedLean)
+        {
+            leanDegrees = fixedLean;
+        }
+        else
+        {
+            try { leanDegrees = runtime.BodyLeanDegrees; } catch { leanDegrees = 0; }
+        }
+        PreviewLeanTransform.Angle = Math.Clamp(leanDegrees, -30, 30);
 
         // FPS / 耗时统计（每 0.5 秒刷新一次界面文本；FPS 按真实出图频率算）
         _framesSinceFps++;

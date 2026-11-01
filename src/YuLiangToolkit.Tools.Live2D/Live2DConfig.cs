@@ -227,4 +227,12 @@ public sealed class Live2DConfig : ToolConfig
 
     /// <summary>音乐播放时是否轻微点头（跟节拍；被动捕 / 眼睛跟随时不抢头部参数）。</summary>
     public bool MusicHeadBobEnabled { get; set; } = true;
+
+    // ---------- 全身轻晃（以脚为支点整个身体左右轻倾） ----------
+
+    /// <summary>
+    /// 是否开启「全身轻晃」：日常也以脚为支点把整个身体左右轻倾（参考 petbox 的 0.6° / 4 秒），
+    /// 有音乐时自动加快一点。这是渲染层旋转，不写模型参数，所以头 / 腿会一起倾斜。
+    /// </summary>
+    public bool BodyLeanEnabled { get; set; } = true;
 }
