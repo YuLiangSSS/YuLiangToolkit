@@ -77,7 +77,9 @@
                 <RowDefinition Height="360" MinHeight="250" />                   <!-- 身体晃动测试卡 -->
                 <RowDefinition Height="12" />                                    <!-- 身体晃动 / 面部测试分隔条 -->
                 <RowDefinition Height="380" MinHeight="250" />                   <!-- 面部测试卡（眼 / 嘴 / 舌头） -->
-                <RowDefinition Height="12" />                                    <!-- 面部测试 / 日志分隔条 -->
+                <RowDefinition Height="12" />                                    <!-- 面部测试 / 音乐跟唱分隔条 -->
+                <RowDefinition Height="360" MinHeight="240" />                   <!-- 音乐跟唱 · 律动卡 -->
+                <RowDefinition Height="12" />                                    <!-- 音乐跟唱 / 日志分隔条 -->
                 <RowDefinition Height="200" MinHeight="130" />                   <!-- 日志 -->
             </Grid.RowDefinitions>
 
@@ -1304,12 +1306,261 @@
                 </Grid>
             </Border>
 
-            <!-- 上下分隔条：面部测试 / 日志 -->
+            <!-- 上下分隔条：面部测试 / 音乐跟唱 -->
             <core:PaneSplitter Grid.Row="10" Style="{StaticResource PaneSplitterHorizontalStyle}"
-                               Key="live2d.面部与日志" />
+                               Key="live2d.面部与音乐" />
+
+            <!-- ==================================================== 音乐跟唱 · 律动 ==================================================== -->
+            <Border Grid.Row="11" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="180" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="18,14,18,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🎵 音乐跟唱 · 律动" Style="{StaticResource CardHeaderStyle}" />
+                                <TextBlock Text="{Binding MusicStatusText}" FontSize="10.5" Margin="10,0,0,0"
+                                           VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"
+                                           TextTrimming="CharacterEllipsis" MaxWidth="520" />
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,4,0,0"
+                                       Text="用 Windows 回环采集系统正在播放的声音来驱动嘴型 / 摇晃：不申请麦克风、不录音、不保存。识别不完美时可用「强制」模式；纯音乐不跟唱、只轻微摇晃；采集失败会显示原因（如没有播放设备 / 被独占）。" />
+                        </StackPanel>
+                        <CheckBox Grid.Column="1" Content="启用音乐跟唱 / 律动" Style="{StaticResource CheckBoxStyle}"
+                                  IsChecked="{Binding MusicReactiveEnabled, Mode=TwoWay}" VerticalAlignment="Top"
+                                  ToolTip="用 Windows 回环采集系统正在播放的声音（不申请麦克风、不录音、不保存）" />
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1" Style="{StaticResource CardScrollerStyle}" Margin="0,10,0,0">
+                        <Grid Margin="18,0,18,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="420" MinWidth="340" />
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="*" MinWidth="360" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- 左：识别设置 -->
+                            <StackPanel Grid.Column="0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="识别模式" Style="{StaticResource SettingLabelStyle}" Margin="0,0,8,0" />
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding MusicModeOptions}" DisplayMemberPath="Label"
+                                              SelectedItem="{Binding SelectedMusicMode, Mode=TwoWay}"
+                                              Style="{StaticResource ComboBoxStyle}" Height="28"
+                                              ToolTip="自动识别：按多特征判断；强制跟唱 / 强制纯音乐：识别不准时手动指定" />
+                                </Grid>
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="40" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="识别灵敏度" Style="{StaticResource SettingLabelStyle}" />
+                                    <Slider Grid.Column="1" Minimum="0.3" Maximum="3" SmallChange="0.05"
+                                            Value="{Binding MusicReactiveSensitivity, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                            VerticalAlignment="Center" ToolTip="越大越容易判成「带歌词」；识别不出来可以调大" />
+                                    <TextBlock Grid.Column="2" Text="{Binding MusicReactiveSensitivity, StringFormat={}{0:0.00}}"
+                                               Style="{StaticResource SettingValueStyle}" />
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="40" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="嘴型幅度" Style="{StaticResource SettingLabelStyle}" />
+                                    <Slider Grid.Column="1" Minimum="0" Maximum="1.5" SmallChange="0.05"
+                                            Value="{Binding MusicLipSyncStrength, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                            VerticalAlignment="Center" ToolTip="跟唱时嘴张开 / 合拢的幅度倍率" />
+                                    <TextBlock Grid.Column="2" Text="{Binding MusicLipSyncStrength, StringFormat={}{0:0.00}}"
+                                               Style="{StaticResource SettingValueStyle}" />
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="40" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="摇晃幅度" Style="{StaticResource SettingLabelStyle}" />
+                                    <Slider Grid.Column="1" Minimum="0" Maximum="1.5" SmallChange="0.05"
+                                            Value="{Binding MusicSwayStrength, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                            VerticalAlignment="Center" ToolTip="跟随节拍摇晃身体 / 头部摆动的幅度倍率" />
+                                    <TextBlock Grid.Column="2" Text="{Binding MusicSwayStrength, StringFormat={}{0:0.00}}"
+                                               Style="{StaticResource SettingValueStyle}" />
+                                </Grid>
+                                <WrapPanel Margin="0,8,0,0">
+                                    <CheckBox Content="身体摇晃（跟节拍）" Style="{StaticResource CheckBoxStyle}" Margin="0,0,18,6"
+                                              IsChecked="{Binding MusicSwayEnabled, Mode=TwoWay}" />
+                                    <CheckBox Content="轻微点头" Style="{StaticResource CheckBoxStyle}" Margin="0,0,18,6"
+                                              IsChecked="{Binding MusicHeadBobEnabled, Mode=TwoWay}" />
+                                </WrapPanel>
+                                <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,6,0,0"
+                                           Text="识别依据：YIN 基频 + 共振峰 + 立体声中心声道占比 + 音节调制 + 时序滞后（不是音量阈值）。本功能只读取系统正在播放的声音，不会打开麦克风。" />
+                            </StackPanel>
+
+                            <!-- 右：状态 + 实时数据 -->
+                            <StackPanel Grid.Column="2">
+                                <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8"
+                                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="12,8">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Grid>
+                                            <TextBlock Text="{Binding MusicStatusText}" FontSize="12" FontWeight="SemiBold"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding MusicConfidenceText}" FontSize="10.5"
+                                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        </Grid>
+                                        <TextBlock Grid.Row="1" Text="{Binding MusicMediaText}" FontSize="11" Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   TextTrimming="CharacterEllipsis" ToolTip="{Binding MusicMediaText}" />
+                                        <TextBlock Grid.Row="2" Text="{Binding MusicErrorText}" FontSize="11" Margin="0,4,0,0"
+                                                   TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}"
+                                                   Visibility="{Binding HasMusicError, Converter={StaticResource BoolToVis}}" />
+                                        <TextBlock Grid.Row="3" FontSize="10.5" Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource FaintTextBrush}" TextWrapping="Wrap"
+                                                   Text="实时数据每 100ms 刷新；没在放音乐时显示静音，采集本身仍在正常运行。" />
+                                    </Grid>
+                                </Border>
+
+                                <!-- 实时数据：2 列 × 4 行（数值 + 小进度条） -->
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="16" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+
+                                    <Grid Grid.Row="0" Grid.Column="0" Margin="0,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="74" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="44" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="RMS" Style="{StaticResource SettingLabelStyle}" />
+                                        <ProgressBar Grid.Column="1" Minimum="0" Maximum="1" Height="8" VerticalAlignment="Center"
+                                                     Style="{StaticResource ProgressBarStyle}" Value="{Binding MusicRms, Mode=OneWay}" />
+                                        <TextBlock Grid.Column="2" Text="{Binding MusicRms, StringFormat={}{0:0.00}}"
+                                                   Style="{StaticResource SettingValueStyle}" />
+                                    </Grid>
+                                    <Grid Grid.Row="0" Grid.Column="2" Margin="0,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="74" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="44" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="人声分数" Style="{StaticResource SettingLabelStyle}" />
+                                        <ProgressBar Grid.Column="1" Minimum="0" Maximum="1" Height="8" VerticalAlignment="Center"
+                                                     Style="{StaticResource ProgressBarStyle}" Value="{Binding MusicVocalScore, Mode=OneWay}" />
+                                        <TextBlock Grid.Column="2" Text="{Binding MusicVocalScore, StringFormat={}{0:0.00}}"
+                                                   Style="{StaticResource SettingValueStyle}" />
+                                    </Grid>
+
+                                    <Grid Grid.Row="1" Grid.Column="0" Margin="0,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="74" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="44" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="置信度" Style="{StaticResource SettingLabelStyle}" />
+                                        <ProgressBar Grid.Column="1" Minimum="0" Maximum="1" Height="8" VerticalAlignment="Center"
+                                                     Style="{StaticResource ProgressBarStyle}" Value="{Binding MusicConfidence, Mode=OneWay}" />
+                                        <TextBlock Grid.Column="2" Text="{Binding MusicConfidence, StringFormat={}{0:0.00}}"
+                                                   Style="{StaticResource SettingValueStyle}" />
+                                    </Grid>
+                                    <Grid Grid.Row="1" Grid.Column="2" Margin="0,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="74" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="44" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="节拍强度" Style="{StaticResource SettingLabelStyle}" />
+                                        <ProgressBar Grid.Column="1" Minimum="0" Maximum="1" Height="8" VerticalAlignment="Center"
+                                                     Style="{StaticResource ProgressBarStyle}" Value="{Binding MusicBeatStrength, Mode=OneWay}" />
+                                        <TextBlock Grid.Column="2" Text="{Binding MusicBeatStrength, StringFormat={}{0:0.00}}"
+                                                   Style="{StaticResource SettingValueStyle}" />
+                                    </Grid>
+
+                                    <Grid Grid.Row="2" Grid.Column="0" Margin="0,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="74" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="44" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="中心声道" Style="{StaticResource SettingLabelStyle}" />
+                                        <ProgressBar Grid.Column="1" Minimum="0" Maximum="1" Height="8" VerticalAlignment="Center"
+                                                     Style="{StaticResource ProgressBarStyle}" Value="{Binding MusicCenterRatio, Mode=OneWay}" />
+                                        <TextBlock Grid.Column="2" Text="{Binding MusicCenterRatio, StringFormat={}{0:0.00}}"
+                                                   Style="{StaticResource SettingValueStyle}" />
+                                    </Grid>
+                                    <Grid Grid.Row="2" Grid.Column="2" Margin="0,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="74" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="44" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="音节调制" Style="{StaticResource SettingLabelStyle}" />
+                                        <ProgressBar Grid.Column="1" Minimum="0" Maximum="1" Height="8" VerticalAlignment="Center"
+                                                     Style="{StaticResource ProgressBarStyle}" Value="{Binding MusicSyllabic, Mode=OneWay}" />
+                                        <TextBlock Grid.Column="2" Text="{Binding MusicSyllabic, StringFormat={}{0:0.00}}"
+                                                   Style="{StaticResource SettingValueStyle}" />
+                                    </Grid>
+
+                                    <Grid Grid.Row="3" Grid.Column="0" Margin="0,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="74" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="音高（YIN）" Style="{StaticResource SettingLabelStyle}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding MusicPitchText}" Style="{StaticResource SettingValueStyle}"
+                                                   HorizontalAlignment="Left" />
+                                    </Grid>
+                                    <Grid Grid.Row="3" Grid.Column="2" Margin="0,2">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="74" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="BPM" Style="{StaticResource SettingLabelStyle}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding MusicBpmText}" Style="{StaticResource SettingValueStyle}"
+                                                   HorizontalAlignment="Left" />
+                                    </Grid>
+                                </Grid>
+
+                                <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,8,0,0"
+                                           Text="提示：识别不准时切「强制跟唱 / 强制纯音乐」；纯音乐模式不会跟唱。所有数值只用于本地驱动模型，不保存音频、不上传。" />
+                            </StackPanel>
+                        </Grid>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- 上下分隔条：音乐跟唱 / 日志 -->
+            <core:PaneSplitter Grid.Row="12" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="live2d.音乐与日志" />
 
             <!-- ==================================================== 日志 ==================================================== -->
-            <Border Grid.Row="11" Style="{StaticResource CardStyle}">
+            <Border Grid.Row="13" Style="{StaticResource CardStyle}">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />

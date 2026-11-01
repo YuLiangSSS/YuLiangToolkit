@@ -51,6 +51,9 @@
             <MenuItem x:Name="MenuItemSway" Header="身体晃动：开 / 关" IsCheckable="True"
                       Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuSwayClick"
                       ToolTip="用一组身体 / 物理参数让模型持续摆动（画面里能直接看到头发跟着甩）" />
+            <MenuItem x:Name="MenuItemMusic" Header="音乐跟唱：开 / 关" IsCheckable="True"
+                      Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuMusicClick"
+                      ToolTip="用 Windows 回环采集系统正在播放的声音驱动嘴型 / 摇晃（不申请麦克风、不录音、不保存）" />
             <Separator />
             <MenuItem Header="打开测试工具页" Foreground="{DynamicResource TextPrimaryBrush}"
                       Click="OnMenuOpenToolPageClick"

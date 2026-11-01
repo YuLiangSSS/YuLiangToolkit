@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
+using YuLiangToolkit.Tools.Live2D.Audio;
 using YuLiangToolkit.Tools.Live2D.Interop;
 using YuLiangToolkit.Tools.Live2D.Mocap;
 using YuLiangToolkit.Tools.Live2D.Model;
@@ -99,6 +100,14 @@ public sealed class Live2DSession
     // ===== 面部测试 / 鼠标跟随演示钩子（YLT_LIVE2D_FACE_DEMO / YLT_LIVE2D_EYE_DEMO，截图验收用） =====
     private bool _faceDemoApplied;
     private bool _eyeDemoApplied;
+
+    // ===== 音乐跟唱 · 律动（WASAPI 回环采集系统正在播放的声音；不申请麦克风、不录音、不保存） =====
+    private readonly SemaphoreSlim _musicGate = new(1, 1);
+    private MusicReactiveSource? _music;
+    private string? _musicStartError;
+    private string? _lastLoggedMusicError;
+    private int _musicRevision;
+    private bool _musicSelfTestStarted;
 
     private Live2DSession()
     {
@@ -198,6 +207,20 @@ public sealed class Live2DSession
     /// <summary>页面或桌宠现在是否有人看着（决定要不要开摄像头）。</summary>
     private bool IsPageOrPetVisible => _pageTarget is { IsTargetVisible: true } || _pet?.IsVisible == true;
 
+    // ===================== 音乐跟唱 · 律动 对外状态 =====================
+
+    /// <summary>当前音乐回环数据源（没启用为 null；UI 读 <c>Latest</c> / SMTC 媒体信息）。</summary>
+    public MusicReactiveSource? MusicSource => _music;
+
+    /// <summary>音乐采集最近一次启动错误（空 = 没错误）。</summary>
+    public string MusicStartError => _musicStartError ?? "";
+
+    /// <summary>音乐回环采集是否正在运行。</summary>
+    public bool IsMusicRunning => _music?.IsRunning == true;
+
+    /// <summary>音乐采集状态变化时触发（启动 / 停止 / 出错 / 换歌；可能在后台线程）。</summary>
+    public event EventHandler? MusicStateChanged;
+
     // ===================== 页面生命周期 =====================
 
     /// <summary>取（或创建）工具页 ViewModel（整个进程只建一次，页面重开复用）。</summary>
@@ -228,10 +251,12 @@ public sealed class Live2DSession
         ApplyRuntimeSettings();
         UpdateFrameLoop();
         ApplyMocapSettings();
+        ApplyMusicSettings();
         TryBeginSwayDemo();
         TryBeginFaceDemo();
         TryBeginEyeDemo();
         TryBeginMocapSelfTest();
+        TryBeginMusicSelfTest();
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -243,6 +268,7 @@ public sealed class Live2DSession
         _pageTarget = null;
         UpdateFrameLoop();
         ApplyMocapSettings();   // 页面关掉且桌宠也没开 → 关摄像头
+        ApplyMusicSettings();   // 同理：音频回环也释放
 
         // 页面关了、桌宠也没开：别让模型一直盯着一个不存在的鼠标
         if (_pet is null)
@@ -271,6 +297,7 @@ public sealed class Live2DSession
 
         ClosePetInternal(raiseEvent: false);
         DisposeMocapBlocking();
+        DisposeMusicBlocking();
         DisposeRuntime();
 
         try { _viewModel?.ConfigStore.SaveNow(); } catch { /* 退出流程忽略 */ }
@@ -446,6 +473,7 @@ public sealed class Live2DSession
         ApplyRuntimeSettings();
         AssignMocapToRuntime();
         ApplyMocapSettings();
+        ApplyMusicSettings();
         vm.Log($"模型加载完成：{runtime.ModelName}，用时 {loadMilliseconds:0} ms" +
                $"（动作 {runtime.Motions.Count} 个，表情 {runtime.Expressions.Count} 个）");
         vm.SetStatus("模型已就绪");
@@ -455,6 +483,7 @@ public sealed class Live2DSession
         TryBeginFaceDemo();
         TryBeginEyeDemo();
         TryBeginMocapSelfTest();
+        TryBeginMusicSelfTest();
 
         UpdateFrameLoop();
         RenderFirstFrame();
@@ -557,6 +586,14 @@ public sealed class Live2DSession
             runtime.SwaySpeedHz = Math.Clamp(cfg.BodySwaySpeed, 0.1, 2);
             runtime.SwayHeadFollow = Math.Clamp(cfg.BodySwayHeadFollow, 0, 1);
             runtime.SwayIncludeHips = cfg.BodySwayIncludeHips;
+
+            // 音乐跟唱 / 律动（数据源本身由 ApplyMusicSettings 启停；这里只推驱动参数）
+            runtime.MusicEnabled = cfg.MusicReactiveEnabled;
+            runtime.MusicMode = MapMusicMode(cfg.MusicReactiveMode);
+            runtime.MusicLipSyncStrength = Math.Clamp(cfg.MusicLipSyncStrength, 0, 1.5);
+            runtime.MusicSwayStrength = Math.Clamp(cfg.MusicSwayStrength, 0, 1.5);
+            runtime.MusicSwayEnabled = cfg.MusicSwayEnabled;
+            runtime.MusicHeadBobEnabled = cfg.MusicHeadBobEnabled;
         }
         catch (Exception ex)
         {
@@ -593,6 +630,7 @@ public sealed class Live2DSession
     {
         UpdateFrameLoop();
         ApplyMocapSettings();   // 窗口最小化 / 还原会影响「页面可见」→ 摄像头跟着开 / 关
+        ApplyMusicSettings();   // 音乐回环同理
     }
 
     /// <summary>页面目标挂上来（工具页 Loaded）。</summary>
@@ -604,7 +642,9 @@ public sealed class Live2DSession
         _pageTarget = target;
         UpdateFrameLoop();
         ApplyMocapSettings();
+        ApplyMusicSettings();
         TryBeginMocapSelfTest();
+        TryBeginMusicSelfTest();
         if (IsLoaded)
         {
             try { _runtime!.Tick(TimeSpan.FromMilliseconds(16)); } catch { /* 忽略 */ }
@@ -618,6 +658,7 @@ public sealed class Live2DSession
         if (ReferenceEquals(_pageTarget, target)) _pageTarget = null;
         UpdateFrameLoop();
         ApplyMocapSettings();
+        ApplyMusicSettings();
     }
 
     private void UpdateFrameLoop()
@@ -1303,6 +1344,309 @@ public sealed class Live2DSession
         });
     }
 
+    // ===================== 音乐跟唱 · 律动（WASAPI 回环采集） =====================
+
+    /// <summary>
+    /// 按配置让音乐回环数据源对齐目标状态：该开就开、该关就关。
+    /// <para>灵敏度 / 模式 / 强度变更只更新属性，<b>不重启采集</b>；只有开关关闭才 StopAsync + Dispose。</para>
+    /// <para>可快速连续调用（revision + 信号量串行，只让最后一次请求落地）。</para>
+    /// </summary>
+    public void ApplyMusicSettings()
+    {
+        if (_shutdown) return;
+        _ = ReconcileMusicAsync();
+    }
+
+    private async Task ReconcileMusicAsync()
+    {
+        var revision = Interlocked.Increment(ref _musicRevision);
+        try { await _musicGate.WaitAsync(); }
+        catch (ObjectDisposedException) { return; }
+
+        try
+        {
+            if (_shutdown || revision != Volatile.Read(ref _musicRevision)) return;
+
+            var cfg = _viewModel?.Cfg;
+            if (cfg is null)
+            {
+                await DisposeMusicAsync();
+                RaiseMusicStateChanged();
+                return;
+            }
+
+            // 截图 / 桌宠截图模式绝不启动采集（保持截图流程干净；也不会去碰系统声音）
+            var wantRunning = cfg.MusicReactiveEnabled && IsPageOrPetVisible && !IsDebugShotMode;
+
+            if (!wantRunning)
+            {
+                await DisposeMusicAsync();
+                RaiseMusicStateChanged();
+                return;
+            }
+
+            if (_music is null)
+            {
+                _music = new MusicReactiveSource();
+                _music.Sensitivity = Math.Clamp(cfg.MusicReactiveSensitivity, 0.3, 3);
+                _music.StateChanged += OnMusicStateChanged;
+                _musicStartError = null;
+                _lastLoggedMusicError = null;
+
+                var watch = Stopwatch.StartNew();
+                var started = await _music.StartAsync();
+                watch.Stop();
+                if (revision != Volatile.Read(ref _musicRevision)) { RaiseMusicStateChanged(); return; }
+
+                if (started)
+                {
+                    _musicStartError = null;
+                    AssignMusicToRuntime();
+                    var media = DescribeMusicMedia(_music);
+                    _viewModel?.Log($"音乐跟唱：音频回环采集已启动（灵敏度 {_music.Sensitivity:0.00}，" +
+                                    $"启动耗时 {watch.ElapsedMilliseconds} ms，{(media.Length == 0 ? "SMTC 暂无媒体信息" : media)}）");
+                }
+                else
+                {
+                    _musicStartError = _music.LastError ?? "启动失败（没有播放设备 / 被其它程序独占 / 系统不支持回环）";
+                    _viewModel?.Log("音乐跟唱启动失败：" + _musicStartError);
+                    await DisposeMusicAsync();
+                }
+            }
+            else
+            {
+                // 已经在跑：配置变更只更新属性（不重启采集）
+                _music.Sensitivity = Math.Clamp(cfg.MusicReactiveSensitivity, 0.3, 3);
+                AssignMusicToRuntime();
+            }
+
+            RaiseMusicStateChanged();
+        }
+        catch (Exception ex)
+        {
+            _musicStartError = ex.Message;
+            _viewModel?.Log("音乐跟唱异常：" + ex.Message);
+            RaiseMusicStateChanged();
+        }
+        finally
+        {
+            try { _musicGate.Release(); } catch { /* 已释放 */ }
+        }
+    }
+
+    /// <summary>把数据源交给模型运行时（运行时只依赖 IMusicReactiveProvider 读快照）。</summary>
+    private void AssignMusicToRuntime()
+    {
+        var runtime = _runtime;
+        if (runtime is null) return;
+        try { runtime.Music = _music; } catch { /* 模型还没加载完 */ }
+    }
+
+    /// <summary>关闭采集并释放（页面 + 桌宠都不可见 / 开关关掉时）。</summary>
+    private async Task DisposeMusicAsync()
+    {
+        var source = _music;
+        _music = null;
+        if (source is null) { AssignMusicToRuntime(); return; }
+
+        try { source.StateChanged -= OnMusicStateChanged; } catch { /* 忽略 */ }
+        try { await source.StopAsync(); } catch { /* 忽略 */ }
+        try { source.Dispose(); } catch { /* 忽略 */ }
+        AssignMusicToRuntime();
+    }
+
+    /// <summary>程序退出 / 主窗口关闭时的同步释放（不能再 await）。</summary>
+    private void DisposeMusicBlocking()
+    {
+        var source = _music;
+        _music = null;
+        if (source is null) { AssignMusicToRuntime(); return; }
+
+        try { source.StateChanged -= OnMusicStateChanged; } catch { /* 忽略 */ }
+        try { source.Dispose(); } catch { /* 忽略 */ }
+        AssignMusicToRuntime();
+    }
+
+    private void OnMusicStateChanged(object? sender, EventArgs e)
+    {
+        var error = _music?.LastError;
+        if (!string.IsNullOrEmpty(error) && !string.Equals(error, _lastLoggedMusicError, StringComparison.Ordinal))
+        {
+            _lastLoggedMusicError = error;
+            _viewModel?.Log("音乐跟唱状态：" + error);
+        }
+        _viewModel?.Ui(RaiseMusicStateChanged);
+    }
+
+    private void RaiseMusicStateChanged()
+    {
+        try { MusicStateChanged?.Invoke(this, EventArgs.Empty); } catch { /* 订阅方异常不影响采集 */ }
+    }
+
+    /// <summary>配置里的识别模式字符串 → 运行时 enum。</summary>
+    private static MusicVocalMode MapMusicMode(string? mode) => mode switch
+    {
+        "强制跟唱" => MusicVocalMode.ForceVocal,
+        "强制纯音乐" => MusicVocalMode.ForceInstrumental,
+        _ => MusicVocalMode.Auto,
+    };
+
+    /// <summary>媒体信息一句话（歌名 - 歌手 · 播放器应用；都没有返回空串）。</summary>
+    private static string DescribeMusicMedia(MusicReactiveSource? source)
+    {
+        if (source is null) return "";
+        var title = source.MediaTitle?.Trim() ?? "";
+        var artist = source.MediaArtist?.Trim() ?? "";
+        var app = source.MediaApp?.Trim() ?? "";
+        if (title.Length == 0 && artist.Length == 0 && app.Length == 0) return "";
+
+        var text = title.Length > 0 ? title : "（未知歌曲）";
+        if (artist.Length > 0) text += " - " + artist;
+        if (app.Length > 0) text += " · " + app;
+        return text;
+    }
+
+    // ===================== 开发调试：音乐链路自测 =====================
+
+    /// <summary>
+    /// 开发调试（<c>YLT_LIVE2D_MUSIC_SELFTEST=1</c>）：页面打开后自动启用音乐模块并采样 8 秒，
+    /// 把「采集是否启动 / 采样次数 / IsPlaying 占比 / Kind 分布 / 平均 RMS·VocalScore·Confidence·BPM /
+    /// 音高有效率 / SMTC 歌名歌手应用 / LastError」写 <c>Data\live2d\music-selftest.log</c>。
+    /// <para>只写数字和媒体信息，<b>不保存任何音频</b>；<c>YLT_LIVE2D_MUSIC_SELFTEST_EXIT=1</c> 写完后退出。</para>
+    /// </summary>
+    private void TryBeginMusicSelfTest()
+    {
+        if (_musicSelfTestStarted) return;
+        if (Environment.GetEnvironmentVariable("YLT_LIVE2D_MUSIC_SELFTEST") is not ("1" or "on" or "true")) return;
+        if (_viewModel is null || !IsPageOrPetVisible) return;
+        _musicSelfTestStarted = true;
+        _ = RunMusicSelfTestAsync();
+    }
+
+    private async Task RunMusicSelfTestAsync()
+    {
+        var viewModel = _viewModel;
+        if (viewModel is null) return;
+
+        var lines = new List<string>();
+        void Line(string text)
+        {
+            lines.Add(text);
+            viewModel.Log("[音乐自测] " + text);
+        }
+
+        var exitAfter = Environment.GetEnvironmentVariable("YLT_LIVE2D_MUSIC_SELFTEST_EXIT") is "1" or "on" or "true";
+        var cfg = viewModel.Cfg;
+        var originalEnabled = cfg.MusicReactiveEnabled;
+
+        try
+        {
+            cfg.MusicReactiveEnabled = true;
+            viewModel.RefreshAllBindings();
+            ApplyRuntimeSettings();
+            ApplyMusicSettings();
+
+            // 等采集启动（最多 12 秒；没有播放设备 / 被独占时 LastError 会有原因）
+            var wait = Stopwatch.StartNew();
+            while (wait.ElapsedMilliseconds < 12_000 && !IsMusicRunning && string.IsNullOrEmpty(MusicStartError))
+            {
+                await Task.Delay(100);
+            }
+
+            var source = _music;
+            if (source is null || !source.IsRunning)
+            {
+                Line($"FAIL 音频回环采集未启动：{(string.IsNullOrEmpty(MusicStartError) ? "超时（12 秒）" : MusicStartError)}");
+                return;
+            }
+
+            var mediaAtStart = DescribeMusicMedia(source);
+            Line($"OK 音频回环采集已启动：{(mediaAtStart.Length == 0 ? "SMTC 暂无媒体信息" : mediaAtStart)}" +
+                 (string.IsNullOrEmpty(source.LastError) ? "；LastError=无" : "；LastError=" + source.LastError));
+
+            // 采样 8 秒：后台线程 + Thread.Sleep 计时稳定；只读 Latest 快照，不接触任何音频数据
+            var sample = await Task.Run(() =>
+            {
+                var total = 0;
+                var latestCount = 0;
+                var playingCount = 0;
+                var pitchValidCount = 0;
+                var silentKinds = 0;
+                var instrumentalKinds = 0;
+                var vocalKinds = 0;
+                var unknownKinds = 0;
+                double rmsSum = 0, vocalSum = 0, confidenceSum = 0, bpmSum = 0, pitchSum = 0;
+                var bpmCount = 0;
+                var watched = Stopwatch.StartNew();
+                while (watched.ElapsedMilliseconds < 8_000)
+                {
+                    Thread.Sleep(250);
+                    total++;
+
+                    var latest = source.Latest;
+                    if (latest is null) continue;
+                    latestCount++;
+                    if (latest.IsPlaying) playingCount++;
+                    switch (latest.Kind)
+                    {
+                        case MusicContentKind.Silent: silentKinds++; break;
+                        case MusicContentKind.Instrumental: instrumentalKinds++; break;
+                        case MusicContentKind.VocalSong: vocalKinds++; break;
+                        default: unknownKinds++; break;
+                    }
+
+                    rmsSum += latest.Rms;
+                    vocalSum += latest.VocalScore;
+                    confidenceSum += latest.Confidence;
+                    if (latest.Bpm > 0) { bpmSum += latest.Bpm; bpmCount++; }
+                    if (latest.PitchValid) { pitchValidCount++; pitchSum += latest.PitchHz; }
+                }
+
+                return (total, latestCount, playingCount, pitchValidCount, silentKinds, instrumentalKinds,
+                    vocalKinds, unknownKinds, rmsSum, vocalSum, confidenceSum, bpmSum, bpmCount, pitchSum);
+            });
+
+            var totalDenominator = Math.Max(1, sample.total);
+            var latestDenominator = Math.Max(1, sample.latestCount);
+
+            Line($"OK 8 秒采样 {sample.total} 次：Latest 非 null {sample.latestCount}/{sample.total} 次，" +
+                 $"IsPlaying 占比 {sample.playingCount * 100.0 / totalDenominator:0.0}%");
+            Line($"OK 内容类型分布：静音 {sample.silentKinds} / 纯音乐 {sample.instrumentalKinds} / " +
+                 $"带歌词 {sample.vocalKinds} / 未识别 {sample.unknownKinds}（机器没放音乐时全静音属正常）");
+            Line($"OK 平均数值：RMS {sample.rmsSum / latestDenominator:0.000}，" +
+                 $"VocalScore {sample.vocalSum / latestDenominator:0.000}，" +
+                 $"Confidence {sample.confidenceSum / latestDenominator:0.000}，" +
+                 $"BPM {(sample.bpmCount > 0 ? (sample.bpmSum / sample.bpmCount).ToString("0.0") : "—")}");
+            Line($"OK 音高（YIN）：有效 {sample.pitchValidCount}/{sample.latestCount} 次" +
+                 (sample.pitchValidCount > 0 ? $"，平均 {sample.pitchSum / sample.pitchValidCount:0.0} Hz" : "（静音时没有音高属正常）"));
+            var mediaAtEnd = DescribeMusicMedia(source);
+            Line($"OK SMTC 媒体信息：{(mediaAtEnd.Length == 0 ? "（无，播放器未上报）" : mediaAtEnd)}");
+            Line("OK 隐私：仅 Windows 回环采集系统正在播放的声音；未申请麦克风、未录音、本自测未保存任何音频");
+        }
+        catch (Exception ex)
+        {
+            Line("EXCEPTION " + ex.GetType().Name + "：" + ex.Message);
+        }
+        finally
+        {
+            // 恢复用户原配置（不留下自动开启的采集）
+            cfg.MusicReactiveEnabled = originalEnabled;
+            viewModel.RefreshAllBindings();
+            ApplyRuntimeSettings();
+            ApplyMusicSettings();
+
+            var report = string.Join(Environment.NewLine, lines) + Environment.NewLine;
+            try { viewModel.Storage.WriteText("music-selftest.log", report); }
+            catch (Exception ex) { viewModel.Log("音乐自测日志写入失败：" + ex.Message); }
+
+            if (exitAfter)
+            {
+                await Task.Delay(400);
+                Application.Current?.Shutdown();
+            }
+        }
+    }
+
     // ===================== 开发调试：动捕链路自测 =====================
 
     /// <summary>
@@ -1499,6 +1843,7 @@ public sealed class Live2DSession
             pet.Show();
             UpdateFrameLoop();
             ApplyMocapSettings();   // 桌宠也算「有人看着」→ 动捕可以开始采集
+            ApplyMusicSettings();   // 音乐回环同理
             StateChanged?.Invoke(this, EventArgs.Empty);
             PetVisibilityChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -1509,13 +1854,14 @@ public sealed class Live2DSession
         }
     }
 
-    /// <summary>隐藏桌宠（页面也关着时帧循环随之停下，摄像头也随之关闭）。</summary>
+    /// <summary>隐藏桌宠（页面也关着时帧循环随之停下，摄像头 / 音频回环也随之关闭）。</summary>
     public void HidePet()
     {
         if (_viewModel is not null) _viewModel.Cfg.PetEnabled = false;
         ClosePetInternal(raiseEvent: true);
         UpdateFrameLoop();
         ApplyMocapSettings();
+        ApplyMusicSettings();
     }
 
     /// <summary>显示 / 隐藏桌宠。</summary>
@@ -1582,6 +1928,7 @@ public sealed class Live2DSession
         SaveConfigNow();
         UpdateFrameLoop();
         ApplyMocapSettings();   // 桌宠关了、页面也没开 → 关闭摄像头
+        ApplyMusicSettings();   // 音频回环同理
 
         // 桌宠关了、页面也没开：眼神回正
         if (!_pageActive)

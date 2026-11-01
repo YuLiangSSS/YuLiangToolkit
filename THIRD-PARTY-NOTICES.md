@@ -64,6 +64,17 @@
   **不录像、不存图、不上传**；动捕的眨眼 / 张嘴像素启发式与数学映射为本项目自行编写（见
   [docs/dev/live2d.md](docs/dev/live2d.md#10-摄像头面部动捕mocap)）。
 
+## Windows 系统组件（音乐跟唱 / 律动，非第三方库）
+
+- 位置：`src/YuLiangToolkit.Tools.Live2D/Audio/`（调用处）
+- 用途：「Live2D 桌宠」的**音乐跟唱 / 律动**用 **Windows 自带**的
+  **WASAPI 回环采集**（`IMMDeviceEnumerator` / `IAudioClient` / `IAudioCaptureClient`，
+  `AUDCLNT_STREAMFLAGS_LOOPBACK` 抓系统扬声器混音）和 **SMTC**（`Windows.Media.Control`，
+  只用来显示歌名 / 歌手 / 播放状态）——属于**操作系统组件**，随 Windows 提供，**不是第三方库**，
+  本仓库没有引入任何音频 / 音乐识别库；音频分析的 FFT / YIN / 节拍估算是本项目自行编写的纯 C# 实现；
+- 说明：音乐功能默认关闭，只有用户打开开关才会采集**系统正在播放的声音**（不申请麦克风）；
+  只做实时特征提取，**不录音、不写任何音频文件、不上传**。
+
 ## MIT License 全文
 
 ```

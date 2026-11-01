@@ -577,6 +577,23 @@ public partial class PetWindow : Window
         MenuItemClickThrough.IsChecked = cfg.PetClickThrough;
         MenuItemMocap.IsChecked = cfg.MocapEnabled;
         MenuItemSway.IsChecked = cfg.BodySwayEnabled;
+        MenuItemMusic.IsChecked = cfg.MusicReactiveEnabled;
+    }
+
+    /// <summary>右键菜单：开 / 关音乐跟唱（WASAPI 回环采集系统声音；关掉立刻释放采集）。</summary>
+    private void OnMenuMusicClick(object sender, RoutedEventArgs e)
+    {
+        var cfg = Config;
+        if (cfg is null) return;
+
+        cfg.MusicReactiveEnabled = !cfg.MusicReactiveEnabled;
+        _session.ApplyRuntimeSettings();
+        _session.ApplyMusicSettings();
+        _session.SaveConfigNow();
+        _session.ViewModel?.RefreshAllBindings();
+        _session.Log(cfg.MusicReactiveEnabled
+            ? "桌宠菜单：已开启音乐跟唱（WASAPI 回环采集系统正在播放的声音）"
+            : "桌宠菜单：已关闭音乐跟唱（音频采集已释放）");
     }
 
     /// <summary>右键菜单：开 / 关摄像头动捕（会请求摄像头权限；关掉立刻释放摄像头）。</summary>

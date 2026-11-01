@@ -204,4 +204,27 @@ public sealed class Live2DConfig : ToolConfig
 
     /// <summary>是否连腰部 / 腿部参数一起晃（关掉只看身体主轴 + 物理输入）。</summary>
     public bool BodySwayIncludeHips { get; set; } = true;
+
+    // ---------- 音乐跟唱 / 律动（系统音频回环） ----------
+
+    /// <summary>是否开启音乐跟唱 / 律动（默认关；打开后采集系统正在播放的声音，不申请麦克风）。</summary>
+    public bool MusicReactiveEnabled { get; set; }
+
+    /// <summary>识别模式：自动识别 / 强制跟唱 / 强制纯音乐。</summary>
+    public string MusicReactiveMode { get; set; } = "自动识别";
+
+    /// <summary>歌词 / 纯音乐识别灵敏度（0.3 ~ 3.0；越大越容易判成「带歌词」）。</summary>
+    public double MusicReactiveSensitivity { get; set; } = 1.0;
+
+    /// <summary>跟唱嘴型幅度倍率（0 ~ 1.5）。</summary>
+    public double MusicLipSyncStrength { get; set; } = 1.0;
+
+    /// <summary>身体摇晃幅度倍率（0 ~ 1.5）。</summary>
+    public double MusicSwayStrength { get; set; } = 1.0;
+
+    /// <summary>音乐播放时是否轻微摇晃身体（纯音乐也晃；关掉则只做嘴型 / 点头）。</summary>
+    public bool MusicSwayEnabled { get; set; } = true;
+
+    /// <summary>音乐播放时是否轻微点头（跟节拍；被动捕 / 眼睛跟随时不抢头部参数）。</summary>
+    public bool MusicHeadBobEnabled { get; set; } = true;
 }

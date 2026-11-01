@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using YuLiangToolkit.Tools.Live2D.Audio;
 using YuLiangToolkit.Tools.Live2D.Interop;
 using YuLiangToolkit.Tools.Live2D.Mocap;
 using YuLiangToolkit.Tools.Live2D.Rendering;
@@ -14,8 +15,9 @@ namespace YuLiangToolkit.Tools.Live2D.Model;
 ///
 /// <para><b>每帧顺序</b>（和官方 Cubism 更新管线一致）：
 /// 受管参数恢复默认 → 待机行为（眨眼 / 呼吸）→ 摄像头动捕（有脸时）→ 眼睛跟随鼠标（动捕有脸时跳过）
-/// → 身体晃动测试（<see cref="BodySway"/>）→ 动作混合 → 表情叠加 → 物理 → Core <c>Update()</c> → 触发 <see cref="FrameUpdated"/>。
-/// 「受管参数」= 会被动作 / 表情 / 物理 / 待机 / 眼睛跟随 / 动捕 / 身体晃动写到的参数；
+/// → 身体晃动测试（<see cref="BodySway"/>）→ 音乐跟唱 / 律动（<see cref="Music"/>，在手动晃动之后）
+/// → 动作混合 → 表情叠加 → 物理 → Core <c>Update()</c> → 触发 <see cref="FrameUpdated"/>。
+/// 「受管参数」= 会被动作 / 表情 / 物理 / 待机 / 眼睛跟随 / 动捕 / 身体晃动 / 音乐写到的参数；
 /// 其余参数（大部分纯调试参数）不会被每帧重置，所以工具页手动拖滑块在那些参数上是有效的。</para>
 ///
 /// <para>加载完成前 <see cref="Model"/> / <see cref="Renderer"/> 会抛 <see cref="InvalidOperationException"/>；先判 <see cref="IsLoaded"/>。</para>
@@ -123,6 +125,34 @@ public sealed class ModelRuntime : IDisposable
     private string _mocapStatusText = MocapStatusNoData;
 
     private double _swayDemoRemaining;
+
+    // ---------- 音乐跟唱 / 律动 ----------
+
+    private IMusicReactiveProvider? _music;
+    private CubismParameter? _musicMouthOpenY;
+    private CubismParameter? _musicMouthForm;
+    private CubismParameter? _musicJawOpen;
+    private CubismParameter? _musicBodyAngleX;
+    private CubismParameter? _musicPositionX;
+    private CubismParameter? _musicBodyAngleZ;
+    private CubismParameter? _musicHipAngleX;
+    private CubismParameter? _musicParamAngleY;
+
+    // 本帧音乐写过的参数（下一帧先复位这些；只有真正在写的那一帧才管理这些参数）
+    private int[] _musicTouchedIndices = new int[16];
+    private int _musicTouchedCount;
+
+    private MusicContentKind _musicKind = MusicContentKind.Silent;
+    private int _musicStatusKind = -1;
+    private string _musicStatusText = MusicStatusSilent;
+
+    /// <summary>音频数据超过这个时间没更新就当「没在播」（采集帧率约 20Hz，留一点余量）。</summary>
+    private const double MusicDataTimeoutMs = 800.0;
+
+    private const string MusicStatusSilent = "静音";
+    private const string MusicStatusAnalyzing = "识别中";
+    private const string MusicStatusInstrumental = "纯音乐";
+    private const string MusicStatusVocal = "带歌词";
 
     private double _time;
     private double _lastTickMilliseconds;
@@ -295,6 +325,46 @@ public sealed class ModelRuntime : IDisposable
     /// <summary>立即停止限时晃动测试。</summary>
     public void StopSwayDemo() => _swayDemoRemaining = 0;
 
+    // ---------- 音乐跟唱 / 律动 ----------
+
+    /// <summary>
+    /// 音乐数据源（<c>Audio/MusicReactiveSource</c>：WASAPI 回环采集 + <c>MusicAnalyzer</c> 分析）。
+    /// 运行时每帧读 <see cref="IMusicReactiveProvider.Latest"/>；为 null 时按「静音」处理。
+    /// </summary>
+    public IMusicReactiveProvider? Music
+    {
+        get => _music;
+        set
+        {
+            _music = value;
+            _musicStatusKind = -1; // 换数据源后强制刷新一次状态文案
+        }
+    }
+
+    /// <summary>是否启用音乐跟唱 / 律动。</summary>
+    public bool MusicEnabled { get; set; }
+
+    /// <summary>识别模式（自动 / 强制跟唱 / 强制纯音乐）。</summary>
+    public MusicVocalMode MusicMode { get; set; } = MusicVocalMode.Auto;
+
+    /// <summary>跟唱嘴型幅度倍率（0 ~ 1.5）。</summary>
+    public double MusicLipSyncStrength { get; set; } = 1.0;
+
+    /// <summary>身体摇晃幅度倍率（0 ~ 1.5）。</summary>
+    public double MusicSwayStrength { get; set; } = 1.0;
+
+    /// <summary>音乐播放时是否轻微摇晃身体（纯音乐也晃）。</summary>
+    public bool MusicSwayEnabled { get; set; } = true;
+
+    /// <summary>音乐播放时是否轻微点头（被动捕 / 鼠标眼控占用头部时不写）。</summary>
+    public bool MusicHeadBobEnabled { get; set; } = true;
+
+    /// <summary>最近一帧音乐内容类型（没在播 / 关闭时为 Silent；数据不足为 Unknown）。</summary>
+    public MusicContentKind MusicKind => _musicKind;
+
+    /// <summary>音乐状态文案："静音" / "识别中" / "纯音乐" / "带歌词"（不变时复用字符串）。</summary>
+    public string MusicStatusText => _musicStatusText;
+
     // ---------- 生命周期 ----------
 
     /// <summary>加载模型（耗时：解码 5 张纹理 + 解析动作 / 物理；可在后台线程调）。</summary>
@@ -395,6 +465,7 @@ public sealed class ModelRuntime : IDisposable
         _eye = new EyeTrackingController(_model);
         _bodySway = new BodySwayController(_model);
         ResolveMocapParameters(_model);
+        ResolveMusicParameters(_model);
         BuildManagedParameterGroups();
 
         // 8) 默认待机动作
@@ -609,6 +680,130 @@ public sealed class ModelRuntime : IDisposable
         _prevExpressionActive = expressionActive;
     }
 
+    /// <summary>解析音乐响应要写的参数（有就缓存引用，没有就跳过）。</summary>
+    private void ResolveMusicParameters(CubismModel model)
+    {
+        _musicMouthOpenY = model.FindParameter("ParamMouthOpenY");
+        _musicMouthForm = model.FindParameter("ParamMouthForm");
+        _musicJawOpen = model.FindParameter("JawOpen");
+        _musicBodyAngleX = model.FindParameter("ParamBodyAngleX");
+        _musicPositionX = model.FindParameter("PositionX");
+        _musicBodyAngleZ = model.FindParameter("ParamBodyAngleZ");
+        _musicHipAngleX = model.FindParameter("HipAngleX");
+        _musicParamAngleY = model.FindParameter("ParamAngleY");
+    }
+
+    /// <summary>
+    /// 音乐响应：有正在播放的数据且开启时，写跟唱嘴型 + 节拍身体摇晃 + 轻微点头。
+    /// <para>嘴型优先级：动捕有脸 > 音乐（动捕在驱动嘴时音乐不抢）。</para>
+    /// <para>参数只在「这一帧真的写」的时候才记录到 touched 列表，下一帧开头复位；不写时完全不动，手动值保留。</para>
+    /// </summary>
+    private void ApplyMusicResponse(bool mocapFace)
+    {
+        _musicTouchedCount = 0;
+
+        var provider = _music;
+        var snapshot = provider?.Latest;
+        var age = snapshot is null ? double.MaxValue : Environment.TickCount64 - snapshot.TimestampMs;
+        var playing = MusicEnabled && snapshot is not null && snapshot.IsPlaying && age <= MusicDataTimeoutMs;
+
+        if (!playing)
+        {
+            _musicKind = MusicContentKind.Silent;
+            SetMusicStatus(0);
+            return;
+        }
+
+        // 有效类型：强制模式优先，否则用分析器结果
+        var data = snapshot!;
+        var vocal = MusicMode switch
+        {
+            MusicVocalMode.ForceVocal => true,
+            MusicVocalMode.ForceInstrumental => false,
+            _ => data.Kind == MusicContentKind.VocalSong,
+        };
+
+        _musicKind = data.Kind;
+        SetMusicStatus(data.Kind switch
+        {
+            MusicContentKind.VocalSong => 3,
+            MusicContentKind.Instrumental => 2,
+            _ => 1,
+        });
+
+        // ---- 1) 跟唱嘴型（动捕有脸时让位给动捕） ----
+        if (vocal && !mocapFace)
+        {
+            var lipSync = (float)Math.Clamp(MusicLipSyncStrength, 0.0, 1.5);
+            var mouthOpen = Math.Clamp((float)data.MouthOpen, 0.0f, 1.0f) * lipSync;
+            SetMusicParameter(_musicMouthOpenY, mouthOpen);
+            SetMusicParameter(_musicMouthForm, (float)data.MouthForm * 0.6f * lipSync);
+            SetMusicParameter(_musicJawOpen, mouthOpen * 0.5f);
+        }
+
+        var phase = data.BeatPhase;
+        if (phase < 0) phase -= Math.Floor(phase);
+        var beatStrength = Math.Clamp(data.BeatStrength, 0.0, 1.0);
+        var swayStrength = (float)Math.Clamp(MusicSwayStrength, 0.0, 1.5);
+
+        // ---- 2) 节拍身体摇晃（纯音乐 / 带歌词都晃） ----
+        if (MusicSwayEnabled)
+        {
+            var swing = Math.Sin(2.0 * Math.PI * phase);
+            var bodyX = (float)(swing * 6.0 * swayStrength * (0.4 + (0.6 * beatStrength)));
+            SetMusicParameter(_musicBodyAngleX, bodyX);
+            SetMusicParameter(_musicPositionX, bodyX);
+            SetMusicParameter(_musicBodyAngleZ,
+                (float)(Math.Sin((2.0 * Math.PI * phase * 0.5) + 1.2) * 2.0 * swayStrength));
+            SetMusicParameter(_musicHipAngleX, bodyX * 0.4f);
+        }
+
+        // ---- 3) 轻微点头（动捕 / 鼠标眼控占着头部时不抢） ----
+        if (MusicHeadBobEnabled && !mocapFace && !EyeTrackingEnabled)
+        {
+            SetMusicParameter(_musicParamAngleY, (float)(-Math.Sin(2.0 * Math.PI * phase) * 2.0 * swayStrength));
+        }
+    }
+
+    /// <summary>写一个音乐响应参数并记录（下一帧开头按记录复位，保证不写时不污染手动值）。</summary>
+    private void SetMusicParameter(CubismParameter? parameter, float value)
+    {
+        if (parameter is null) return;
+        parameter.Value = value;
+        if (_musicTouchedCount >= _musicTouchedIndices.Length)
+        {
+            Array.Resize(ref _musicTouchedIndices, _musicTouchedIndices.Length * 2);
+        }
+
+        _musicTouchedIndices[_musicTouchedCount++] = parameter.Index;
+    }
+
+    /// <summary>复位上一帧音乐写过的参数。</summary>
+    private void ResetMusicTouchedParameters(CubismParameter[] parameters)
+    {
+        for (var i = 0; i < _musicTouchedCount; i++)
+        {
+            var parameter = parameters[_musicTouchedIndices[i]];
+            parameter.Value = parameter.DefaultValue;
+        }
+
+        _musicTouchedCount = 0;
+    }
+
+    /// <summary>刷新音乐状态文案（不变时复用字符串，避免每帧分配）。</summary>
+    private void SetMusicStatus(int kind)
+    {
+        if (_musicStatusKind == kind) return;
+        _musicStatusKind = kind;
+        _musicStatusText = kind switch
+        {
+            3 => MusicStatusVocal,
+            2 => MusicStatusInstrumental,
+            1 => MusicStatusAnalyzing,
+            _ => MusicStatusSilent,
+        };
+    }
+
     /// <summary>解析动捕要写的参数（有就缓存引用，没有就跳过；本模型全都有）。</summary>
     private void ResolveMocapParameters(CubismModel model)
     {
@@ -747,6 +942,7 @@ public sealed class ModelRuntime : IDisposable
         // 1) 受管参数：动作只复位「上一帧动作实际写过的参数」；表情只在生效时复位；
         //    子系统只在「开启」时复位——关掉后不再复位，用户在参数 / 面部测试里手动拖的值才能保留。
         ResetMotionTouchedParameters(parameters);
+        ResetMusicTouchedParameters(parameters);
         var expressionActive = _expressionManager.HasActive;
         if (expressionActive) ResetParametersToDefault(parameters, _expressionManaged);
         if (PhysicsEnabled) ResetParametersToDefault(parameters, _physicsManaged);
@@ -801,6 +997,9 @@ public sealed class ModelRuntime : IDisposable
 
         // 4) 身体晃动测试（在动捕之后、动作之前）；动捕有脸时晃动不做头部补偿，让头跟脸
         UpdateBodySway(deltaSeconds, mocapFace);
+
+        // 4.5) 音乐跟唱 / 律动（在手动晃动之后，会覆盖它写的身体 / 嘴参数；动捕有脸时嘴让位）
+        ApplyMusicResponse(mocapFace);
 
         // 5) 待机动作（IdleEnabled 且当前没有动作在播时循环播放）
         if (idleEnabled && IdleMotion is { } idleMotion && !_motionPlayer.HasActive &&
@@ -926,6 +1125,7 @@ public sealed class ModelRuntime : IDisposable
         _eye?.ClearTarget();
         _bodySway?.Reset();
         _swayDemoRemaining = 0;
+        _musicTouchedCount = 0;
         model.Update();
     }
 
@@ -974,6 +1174,19 @@ public sealed class ModelRuntime : IDisposable
         _mocapMouthOpenY = null;
         _mocapBodyAngleX = null;
         _mocapPositionX = null;
+        _music = null;
+        _musicMouthOpenY = null;
+        _musicMouthForm = null;
+        _musicJawOpen = null;
+        _musicBodyAngleX = null;
+        _musicPositionX = null;
+        _musicBodyAngleZ = null;
+        _musicHipAngleX = null;
+        _musicParamAngleY = null;
+        _musicTouchedCount = 0;
+        _musicKind = MusicContentKind.Silent;
+        _musicStatusKind = -1;
+        _musicStatusText = MusicStatusSilent;
         _swayDemoRemaining = 0;
         _mocapHasFace = false;
         _mocapLastFaceAgeMs = -1;

@@ -5,6 +5,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using YuLiangToolkit.Core.Mvvm;
+using YuLiangToolkit.Tools.Live2D.Audio;
 using YuLiangToolkit.Tools.Live2D.Interop;
 using YuLiangToolkit.Tools.Live2D.Mocap;
 using YuLiangToolkit.Tools.Live2D.Model;
@@ -62,6 +63,21 @@ public sealed class Live2DViewModel : ToolViewModelBase
     private string _swayValuesText = "（模型加载后这里显示参数实时值）";
     private string _swayDemoRemainingText = "没在演示（点「摇一摇」演示 3 秒）";
 
+    // ===== 音乐跟唱 · 律动 =====
+    private OptionItem<string>? _selectedMusicMode;
+    private string _musicStatusText = "未启用（打开开关后会采集系统正在播放的声音）";
+    private string _musicConfidenceText = "置信度 —";
+    private string _musicMediaText = "媒体：—";
+    private string _musicErrorText = "";
+    private string _musicPitchText = "音高 —";
+    private string _musicBpmText = "BPM —";
+    private double _musicRms;
+    private double _musicVocalScore;
+    private double _musicConfidence;
+    private double _musicBeatStrength;
+    private double _musicCenterRatio;
+    private double _musicSyllabic;
+
     public Live2DViewModel() : base(Live2DTool.ToolId)
     {
         Cfg = LoadConfig<Live2DConfig>();
@@ -69,6 +85,9 @@ public sealed class Live2DViewModel : ToolViewModelBase
         _selectedSwayMode = SwayModeOptions.FirstOrDefault(option =>
                                 string.Equals(option.Value, Cfg.BodySwayMode, StringComparison.Ordinal))
                             ?? SwayModeOptions[0];
+        _selectedMusicMode = MusicModeOptions.FirstOrDefault(option =>
+                                string.Equals(option.Value, Cfg.MusicReactiveMode, StringComparison.Ordinal))
+                            ?? MusicModeOptions[0];
 
         ReloadModelCommand = new RelayCommand(_ => Session.ReloadModel());
         ChooseModelFolderCommand = new RelayCommand(_ => ChooseModelFolder());
@@ -1425,6 +1444,264 @@ public sealed class Live2DViewModel : ToolViewModelBase
         AddGroup("嘴", FaceMouthParameters);
         AddGroup("舌头", FaceTongueParameters);
         return builder.ToString();
+    }
+
+    // ===================== 音乐跟唱 · 律动 =====================
+
+    /// <summary>识别模式选项（配置里存中文名字符串，运行时映射到 MusicVocalMode）。</summary>
+    public IReadOnlyList<OptionItem<string>> MusicModeOptions { get; } = OptionItem.From(
+        ("自动识别", "自动识别（推荐）"),
+        ("强制跟唱", "强制跟唱（跟唱 + 摇晃）"),
+        ("强制纯音乐", "强制纯音乐（只摇晃）"));
+
+    /// <summary>当前识别模式。</summary>
+    public OptionItem<string>? SelectedMusicMode
+    {
+        get => _selectedMusicMode;
+        set
+        {
+            if (!Set(ref _selectedMusicMode, value) || value is null) return;
+            Cfg.MusicReactiveMode = value.Value;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();   // 模式只影响运行时属性，不用重启采集
+            Log("音乐跟唱模式：" + value.Label);
+        }
+    }
+
+    /// <summary>启用音乐跟唱 / 律动（Windows 回环采集系统正在播放的声音，不申请麦克风、不录音、不保存）。</summary>
+    public bool MusicReactiveEnabled
+    {
+        get => Cfg.MusicReactiveEnabled;
+        set
+        {
+            if (Cfg.MusicReactiveEnabled == value) return;
+            Cfg.MusicReactiveEnabled = value;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+            Session.ApplyMusicSettings();   // 开关 → 启停 / 释放音频回环采集
+            StatusText = value ? "正在启动音乐跟唱（采集系统正在播放的声音）…" : "已关闭音乐跟唱";
+            Log(value ? "音乐跟唱：已开启（WASAPI 回环采集系统声音，不使用麦克风）" : "音乐跟唱：已关闭，音频采集已释放");
+        }
+    }
+
+    /// <summary>识别灵敏度（0.3 ~ 3；越大越容易判成「带歌词」）。</summary>
+    public double MusicReactiveSensitivity
+    {
+        get => Math.Clamp(Cfg.MusicReactiveSensitivity, 0.3, 3);
+        set
+        {
+            var clamped = Math.Clamp(value, 0.3, 3);
+            if (Math.Abs(Cfg.MusicReactiveSensitivity - clamped) < 0.001) return;
+            Cfg.MusicReactiveSensitivity = clamped;
+            OnPropertyChanged();
+            Session.ApplyMusicSettings();   // 灵敏度直接转给分析器，不重启采集
+        }
+    }
+
+    /// <summary>跟唱嘴型幅度倍率（0 ~ 1.5）。</summary>
+    public double MusicLipSyncStrength
+    {
+        get => Math.Clamp(Cfg.MusicLipSyncStrength, 0, 1.5);
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 1.5);
+            if (Math.Abs(Cfg.MusicLipSyncStrength - clamped) < 0.001) return;
+            Cfg.MusicLipSyncStrength = clamped;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>身体摇晃幅度倍率（0 ~ 1.5）。</summary>
+    public double MusicSwayStrength
+    {
+        get => Math.Clamp(Cfg.MusicSwayStrength, 0, 1.5);
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 1.5);
+            if (Math.Abs(Cfg.MusicSwayStrength - clamped) < 0.001) return;
+            Cfg.MusicSwayStrength = clamped;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>是否跟随节拍摇晃身体。</summary>
+    public bool MusicSwayEnabled
+    {
+        get => Cfg.MusicSwayEnabled;
+        set
+        {
+            if (Cfg.MusicSwayEnabled == value) return;
+            Cfg.MusicSwayEnabled = value;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>是否轻微点头（跟着节拍轻点）。</summary>
+    public bool MusicHeadBobEnabled
+    {
+        get => Cfg.MusicHeadBobEnabled;
+        set
+        {
+            if (Cfg.MusicHeadBobEnabled == value) return;
+            Cfg.MusicHeadBobEnabled = value;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>音乐卡状态行（未启用 / 启动中 / 静音 / 识别中 / 纯音乐 / 带歌词 + 置信度）。</summary>
+    public string MusicStatusText
+    {
+        get => _musicStatusText;
+        private set => Set(ref _musicStatusText, value);
+    }
+
+    /// <summary>置信度文本。</summary>
+    public string MusicConfidenceText
+    {
+        get => _musicConfidenceText;
+        private set => Set(ref _musicConfidenceText, value);
+    }
+
+    /// <summary>媒体信息行（歌名 - 歌手 · 播放器；拿不到显示 —）。</summary>
+    public string MusicMediaText
+    {
+        get => _musicMediaText;
+        private set => Set(ref _musicMediaText, value);
+    }
+
+    /// <summary>音频采集错误（空 = 没错误）。</summary>
+    public string MusicErrorText
+    {
+        get => _musicErrorText;
+        private set
+        {
+            if (!Set(ref _musicErrorText, value)) return;
+            OnPropertyChanged(nameof(HasMusicError));
+        }
+    }
+
+    /// <summary>是否有音频采集错误。</summary>
+    public bool HasMusicError => !string.IsNullOrWhiteSpace(MusicErrorText);
+
+    /// <summary>实时音高文本（YIN 基频；无效显示 —）。</summary>
+    public string MusicPitchText
+    {
+        get => _musicPitchText;
+        private set => Set(ref _musicPitchText, value);
+    }
+
+    /// <summary>实时 BPM 文本（0 = 还没估出来）。</summary>
+    public string MusicBpmText
+    {
+        get => _musicBpmText;
+        private set => Set(ref _musicBpmText, value);
+    }
+
+    /// <summary>实时 RMS（0~1，进度条用）。</summary>
+    public double MusicRms
+    {
+        get => _musicRms;
+        private set => Set(ref _musicRms, value);
+    }
+
+    /// <summary>实时人声分数（0~1，进度条用）。</summary>
+    public double MusicVocalScore
+    {
+        get => _musicVocalScore;
+        private set => Set(ref _musicVocalScore, value);
+    }
+
+    /// <summary>实时置信度（0~1，进度条用）。</summary>
+    public double MusicConfidence
+    {
+        get => _musicConfidence;
+        private set => Set(ref _musicConfidence, value);
+    }
+
+    /// <summary>实时节拍强度（0~1，进度条用）。</summary>
+    public double MusicBeatStrength
+    {
+        get => _musicBeatStrength;
+        private set => Set(ref _musicBeatStrength, value);
+    }
+
+    /// <summary>实时中心声道占比（0~1，进度条用）。</summary>
+    public double MusicCenterRatio
+    {
+        get => _musicCenterRatio;
+        private set => Set(ref _musicCenterRatio, value);
+    }
+
+    /// <summary>实时音节调制（0~1，进度条用）。</summary>
+    public double MusicSyllabic
+    {
+        get => _musicSyllabic;
+        private set => Set(ref _musicSyllabic, value);
+    }
+
+    /// <summary>
+    /// 页面 100ms 定时器调用：刷新音乐卡的状态 / 媒体信息 / 实时数据。
+    /// 数据来自会话持有的音频回环数据源（<c>MusicReactiveSource.Latest</c>），只读快照。
+    /// </summary>
+    public void UpdateMusicPanel(
+        bool enabled,
+        bool running,
+        string? error,
+        string mediaText,
+        MusicContentKind kind,
+        double confidence,
+        double rms,
+        double vocalScore,
+        double beatStrength,
+        double centerVoiceRatio,
+        double syllabicModulation,
+        bool pitchValid,
+        double pitchHz,
+        double bpm)
+    {
+        if (!string.Equals(MusicMediaText, mediaText, StringComparison.Ordinal)) MusicMediaText = mediaText;
+
+        var errorText = error ?? "";
+        if (!string.Equals(MusicErrorText, errorText, StringComparison.Ordinal)) MusicErrorText = errorText;
+
+        // 实时数值（进度条 0~1，文本两位小数）
+        MusicRms = Math.Clamp(rms, 0, 1);
+        MusicVocalScore = Math.Clamp(vocalScore, 0, 1);
+        MusicConfidence = Math.Clamp(confidence, 0, 1);
+        MusicBeatStrength = Math.Clamp(beatStrength, 0, 1);
+        MusicCenterRatio = Math.Clamp(centerVoiceRatio, 0, 1);
+        MusicSyllabic = Math.Clamp(syllabicModulation, 0, 1);
+        MusicPitchText = pitchValid && pitchHz > 0 ? $"{pitchHz:0.0} Hz" : "—";
+        MusicBpmText = bpm > 0 ? $"{bpm:0.0}" : "—";
+
+        MusicConfidenceText = confidence > 0.001 ? $"置信度 {confidence:0.00}" : "置信度 —";
+
+        if (!enabled)
+        {
+            MusicStatusText = "未启用（打开开关后会采集系统正在播放的声音）";
+            return;
+        }
+
+        if (!running)
+        {
+            MusicStatusText = HasMusicError
+                ? "音频采集未运行：" + MusicErrorText
+                : "正在启动音频回环采集…";
+            return;
+        }
+
+        var kindText = kind switch
+        {
+            MusicContentKind.Silent => "静音 / 没在放声音（采集正常）",
+            MusicContentKind.Instrumental => "纯音乐（只摇晃，不跟唱）",
+            MusicContentKind.VocalSong => "带歌词（跟唱 + 摇晃）",
+            _ => "识别中…",
+        };
+        MusicStatusText = kindText + (confidence > 0.001 ? $"，{MusicConfidenceText}" : "");
     }
 
     /// <summary>外部直接改 Cfg（截图演示钩子 / 校准写入）后把界面全部重绑一遍。</summary>

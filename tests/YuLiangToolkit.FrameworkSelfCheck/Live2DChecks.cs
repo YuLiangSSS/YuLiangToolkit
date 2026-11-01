@@ -11,6 +11,8 @@ using System.Windows.Media.Imaging;
 using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Tools.Live2D;
+using YuLiangToolkit.Tools.Live2D.Audio;
+using YuLiangToolkit.Tools.Live2D.Audio.Analysis;
 using YuLiangToolkit.Tools.Live2D.Interop;
 using YuLiangToolkit.Tools.Live2D.Mocap;
 using YuLiangToolkit.Tools.Live2D.Model;
@@ -457,6 +459,12 @@ internal static class Live2DChecks
                 && Near(defaults.EyeTrackingUpGain, 1.0, 1e-9)
                 && Near(defaults.EyeTrackingDownGain, 1.0, 1e-9)
                 && Near(defaults.EyeTrackingVerticalOffset, 0.0, 1e-9));
+            C("配置默认值：音乐跟唱默认关 / 模式「自动识别」/ 灵敏度 1 / 嘴型与摇晃幅度 1 / 摇晃与点头开",
+                !defaults.MusicReactiveEnabled && defaults.MusicReactiveMode == "自动识别"
+                && Near(defaults.MusicReactiveSensitivity, 1.0, 1e-9)
+                && Near(defaults.MusicLipSyncStrength, 1.0, 1e-9)
+                && Near(defaults.MusicSwayStrength, 1.0, 1e-9)
+                && defaults.MusicSwayEnabled && defaults.MusicHeadBobEnabled);
 
             var store = ToolConfigStore.For(Live2DTool.ToolId);
             var cfg = store.Load<Live2DConfig>();
@@ -482,13 +490,20 @@ internal static class Live2DChecks
             cfg.EyeTrackingUpGain = 0.8;
             cfg.EyeTrackingDownGain = 1.6;
             cfg.EyeTrackingVerticalOffset = 0.12;
+            cfg.MusicReactiveEnabled = true;
+            cfg.MusicReactiveMode = "强制跟唱";
+            cfg.MusicReactiveSensitivity = 2.5;
+            cfg.MusicLipSyncStrength = 1.4;
+            cfg.MusicSwayStrength = 0.6;
+            cfg.MusicSwayEnabled = false;
+            cfg.MusicHeadBobEnabled = false;
             ToolConfigStore.FlushAll();
             var reloaded = JsonFileStore.Read<Live2DConfig>(cfg.FilePath);
             var configDirectory = Path.GetDirectoryName(cfg.FilePath);
             var badBackups = configDirectory is not null && Directory.Exists(configDirectory)
                 ? Directory.GetFiles(configDirectory, "config.bad-*.json").Length
                 : 0;
-            C("配置改动自动落盘并读回（帧率 / 纹理 / 桌宠宽 / 眼睛跟随 / 物理 / 动捕 / 身体晃动 / 跟随增益）",
+            C("配置改动自动落盘并读回（帧率 / 纹理 / 桌宠宽 / 眼睛跟随 / 物理 / 动捕 / 身体晃动 / 跟随增益 / 音乐）",
                 reloaded is
                 {
                     FpsLimit: 60, TextureMaxSize: 4096, PetWidth: 520, EyeTracking: false,
@@ -496,19 +511,25 @@ internal static class Live2DChecks
                     BodySwayEnabled: true, BodySwayMode: "椭圆", BodySwayAmplitude: 20,
                     EyeTrackingHorizontalGain: 2.2, EyeTrackingUpGain: 0.8,
                     EyeTrackingDownGain: 1.6, EyeTrackingVerticalOffset: 0.12,
+                    MusicReactiveEnabled: true, MusicReactiveMode: "强制跟唱", MusicReactiveSensitivity: 2.5,
+                    MusicLipSyncStrength: 1.4, MusicSwayStrength: 0.6,
+                    MusicSwayEnabled: false, MusicHeadBobEnabled: false,
                 }
                 && Near(reloaded.PhysicsStrength, 1.5, 1e-9),
                 reloaded is null
                     ? $"读回失败：config 存在={File.Exists(cfg.FilePath)}，被备份的坏文件={badBackups} 个，LastError={store.LastError ?? "(无)"}"
                     : JsonFileStore.Serialize(reloaded).Replace(Environment.NewLine, " "));
-            C("配置按 camelCase 落盘（手改配置时键名好认：fpsLimit / mocapEnabled / bodySwayEnabled / eyeTrackingHorizontalGain）",
+            C("配置按 camelCase 落盘（手改配置时键名好认：fpsLimit / mocapEnabled / bodySwayEnabled / eyeTrackingHorizontalGain / musicReactiveEnabled）",
                 File.ReadAllText(cfg.FilePath).Contains("\"fpsLimit\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"textureMaxSize\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"petWidth\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"mocapEnabled\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"bodySwayEnabled\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"eyeTrackingHorizontalGain\"")
-                && File.ReadAllText(cfg.FilePath).Contains("\"eyeTrackingVerticalOffset\""),
+                && File.ReadAllText(cfg.FilePath).Contains("\"eyeTrackingVerticalOffset\"")
+                && File.ReadAllText(cfg.FilePath).Contains("\"musicReactiveEnabled\"")
+                && File.ReadAllText(cfg.FilePath).Contains("\"musicReactiveSensitivity\"")
+                && File.ReadAllText(cfg.FilePath).Contains("\"musicLipSyncStrength\""),
                 File.ReadAllText(cfg.FilePath).Replace(Environment.NewLine, " "));
         }
         catch (Exception ex)
@@ -757,7 +778,281 @@ internal static class Live2DChecks
         }
 
         // ================================================================
-        // 十一、模型运行时 + 软件渲染器（要 WPF 位图 → 单独 STA 线程）
+        // 十一、音乐跟唱：音频分析纯逻辑（只测合成信号；自检绝不开 WASAPI 回环 / 麦克风）
+        // ================================================================
+        try
+        {
+            // ---------- 数据契约 ----------
+            var silentSnapshot = MusicAnalysisSnapshot.Silent(123456);
+            C("音乐分析：Silent() 快照 = 未播放 / Kind=Silent / 置信度 0 / 时间戳保留",
+                !silentSnapshot.IsPlaying && silentSnapshot.Kind == MusicContentKind.Silent
+                && Near(silentSnapshot.Confidence, 0, 1e-12) && silentSnapshot.TimestampMs == 123456);
+            C("音乐分析：内容类型枚举顺序固定（Unknown=0 / Silent=1 / Instrumental=2 / VocalSong=3）",
+                (int)MusicContentKind.Unknown == 0 && (int)MusicContentKind.Silent == 1
+                && (int)MusicContentKind.Instrumental == 2 && (int)MusicContentKind.VocalSong == 3);
+
+            // ---------- FastFft：长度校验 ----------
+            C("音乐分析：FFT 长度必须是 2 的幂（1/2/4/1024 是，0/3/6/1000 不是）",
+                FastFft.IsPowerOfTwo(1) && FastFft.IsPowerOfTwo(2) && FastFft.IsPowerOfTwo(4)
+                && FastFft.IsPowerOfTwo(1024) && !FastFft.IsPowerOfTwo(0) && !FastFft.IsPowerOfTwo(3)
+                && !FastFft.IsPowerOfTwo(6) && !FastFft.IsPowerOfTwo(1000));
+
+            // ---------- FastFft vs 朴素 DFT 对拍 ----------
+            const int fftLength = 256;
+            var mixedSignal = new double[fftLength];
+            for (var i = 0; i < fftLength; i++)
+            {
+                mixedSignal[i] = (0.6 * Math.Sin(2 * Math.PI * 13.0 * i / fftLength))
+                                 + (0.3 * Math.Sin((2 * Math.PI * 37.0 * i / fftLength) + 0.7))
+                                 + (0.05 * (((i * 2654435761u) % 1000) / 1000.0 - 0.5));
+            }
+
+            var fftReal = (double[])mixedSignal.Clone();
+            var fftImag = new double[fftLength];
+            FastFft.Transform(fftReal, fftImag);
+
+            var dftReal = new double[fftLength];
+            var dftImag = new double[fftLength];
+            FastFft.NaiveDft(mixedSignal, dftReal, dftImag);
+
+            var maxFftError = 0.0;
+            for (var i = 0; i < fftLength; i++)
+            {
+                maxFftError = Math.Max(maxFftError, Math.Abs(fftReal[i] - dftReal[i]));
+                maxFftError = Math.Max(maxFftError, Math.Abs(fftImag[i] - dftImag[i]));
+            }
+
+            C("音乐分析：FastFft 与朴素 DFT 对拍一致（混合正弦 + 噪声，最大误差 < 1e-6）",
+                maxFftError < 1e-6, $"maxErr={maxFftError:0.###e+0}");
+
+            // ---------- 峰值频点 / 直流 ----------
+            var toneReal = new double[1024];
+            for (var i = 0; i < toneReal.Length; i++)
+                toneReal[i] = 0.8 * Math.Sin(2 * Math.PI * 8.0 * i / toneReal.Length);
+            var toneImag = new double[toneReal.Length];
+            FastFft.Transform(toneReal, toneImag);
+            var toneMagnitude = new double[(toneReal.Length / 2) + 1];
+            FastFft.MagnitudeSpectrum(toneReal, toneImag, toneMagnitude);
+            var peakBin = 0;
+            for (var i = 1; i < toneMagnitude.Length; i++)
+                if (toneMagnitude[i] > toneMagnitude[peakBin]) peakBin = i;
+            C("音乐分析：FFT 峰值频点正确（1024 点、第 8 个 bin 的正弦 → 峰值落在 bin 8）",
+                peakBin == 8, $"peakBin={peakBin}");
+
+            var dcReal = Enumerable.Repeat(1.0, 1024).ToArray();
+            var dcImag = new double[1024];
+            FastFft.Transform(dcReal, dcImag);
+            var dcMagnitude = new double[513];
+            FastFft.MagnitudeSpectrum(dcReal, dcImag, dcMagnitude);
+            var dcLeak = dcMagnitude.Skip(1).Max();
+            C("音乐分析：纯直流信号的幅度谱只在 bin 0 有能量（= N），其它频点 ≈ 0",
+                Near(dcMagnitude[0], 1024, 1e-6) && dcLeak < 1e-6, $"bin0={dcMagnitude[0]:0.###} 最大漏={dcLeak:0.###e+0}");
+
+            // ---------- 边界 / 异常 ----------
+            var emptyReal = Array.Empty<double>();
+            var emptyImag = Array.Empty<double>();
+            FastFft.Transform(emptyReal, emptyImag);
+            var singleReal = new[] { 3.0 };
+            var singleImag = new[] { 0.0 };
+            FastFft.Transform(singleReal, singleImag);
+            C("音乐分析：FFT 空输入 / 单点输入不崩（直接返回，单点值不变）",
+                singleReal[0] == 3.0 && singleImag[0] == 0.0);
+
+            var nonPowerOfTwoThrew = false;
+            try
+            {
+                var badReal = new double[100];
+                var badImag = new double[100];
+                FastFft.Transform(badReal, badImag);
+            }
+            catch (ArgumentException)
+            {
+                nonPowerOfTwoThrew = true;
+            }
+
+            C("音乐分析：FFT 长度不是 2 的幂时抛 ArgumentException（不静默算错）", nonPowerOfTwoThrew);
+
+            // ---------- Hann 窗 / 加窗 ----------
+            var hann = new double[1024];
+            FastFft.FillHannWindow(hann);
+            C("音乐分析：Hann 窗端点 0 / 中心 1 / 左右对称（w[1] == w[N-1]）",
+                Near(hann[0], 0, 1e-12) && Near(hann[512], 1, 1e-12)
+                && Near(hann[1], hann[1023], 1e-12) && hann[1] > 0 && hann[1] < 0.001);
+
+            var rawSamples = new double[64];
+            for (var i = 0; i < rawSamples.Length; i++) rawSamples[i] = i + 1;
+            var windowed = new double[128];
+            FastFft.ApplyWindow(rawSamples, hann, windowed);
+            C("音乐分析：加窗拷贝把样本乘窗、超出样本长度的部分填 0",
+                Near(windowed[0], 0, 1e-12) && Near(windowed[32], 33.0 * hann[32], 1e-12)
+                && windowed.Skip(rawSamples.Length).All(value => value == 0));
+
+            // ---------- YIN 基频（只喂合成信号） ----------
+            const int yinSampleRate = 16000;
+            var sine220 = MakeSine(yinSampleRate, 2.0, 220.0);
+            var yin220 = MusicAnalyzer.EstimatePitchYin(sine220, yinSampleRate, 16, 178, out var clarity220);
+            C("音乐分析：YIN 估 220Hz 正弦 → 基频误差 < 3%、清晰度高",
+                Math.Abs(yin220 - 220.0) / 220.0 < 0.03 && clarity220 > 0.7,
+                $"{yin220:0.##}Hz clarity={clarity220:0.##}");
+
+            var sine440 = MakeSine(yinSampleRate, 2.0, 440.0);
+            var yin440 = MusicAnalyzer.EstimatePitchYin(sine440, yinSampleRate, 16, 178, out var clarity440);
+            C("音乐分析：YIN 估 440Hz 正弦 → 基频误差 < 3%、清晰度高",
+                Math.Abs(yin440 - 440.0) / 440.0 < 0.03 && clarity440 > 0.7,
+                $"{yin440:0.##}Hz clarity={clarity440:0.##}");
+
+            var noise = MakeWhiteNoise(yinSampleRate, 2.0, seed: 20261101);
+            var yinNoise = MusicAnalyzer.EstimatePitchYin(noise, yinSampleRate, 16, 178, out var clarityNoise);
+            C("音乐分析：YIN 对白噪声不会给出可信基频（清晰度低）",
+                yinNoise == 0 || clarityNoise < 0.5, $"{yinNoise:0.##}Hz clarity={clarityNoise:0.##}");
+
+            // ---------- 谱特征 ----------
+            var flatMagnitude = Enumerable.Repeat(0.1, 512).ToArray();
+            var flatness = MusicAnalyzer.ComputeSpectralFlatness(flatMagnitude, 19, 218);
+            var peakMagnitude = new double[512];
+            for (var i = 19; i <= 218; i++) peakMagnitude[i] = 0.01;
+            for (var i = 60; i <= 66; i++) peakMagnitude[i] = 1.0;
+            var peakFlatness = MusicAnalyzer.ComputeSpectralFlatness(peakMagnitude, 19, 218);
+            C("音乐分析：谱平坦度 平坦噪声谱 ≈ 1、有尖峰的音调谱明显更小",
+                flatness > 0.95 && peakFlatness < 0.35,
+                $"flat={flatness:0.###} peak={peakFlatness:0.###}");
+
+            var centroidMagnitude = new double[512];
+            centroidMagnitude[40] = 1.0;
+            var centroidHz = MusicAnalyzer.ComputeSpectralCentroid(centroidMagnitude, 19, 218, 15.625);
+            C("音乐分析：谱质心 单峰在第 40 bin → 约 40×15.625Hz ≈ 625Hz",
+                Math.Abs(centroidHz - 625.0) < 20.0, $"{centroidHz:0.##}Hz");
+
+            var fluxCurrent = new double[512];
+            var fluxPrevious = new double[512];
+            fluxCurrent[50] = 0.4;
+            fluxCurrent[51] = 2.0;
+            fluxPrevious[50] = 0.1;
+            fluxPrevious[51] = 3.0;
+            var flux = MusicAnalyzer.ComputePositiveSpectralFlux(fluxCurrent, fluxPrevious, 13, 256);
+            var fluxSame = MusicAnalyzer.ComputePositiveSpectralFlux(fluxPrevious, fluxPrevious, 13, 256);
+            C("音乐分析：正向谱通量 相同频谱 = 0、变亮频点累计正确",
+                fluxSame == 0 && Math.Abs(flux - 0.3) < 1e-9, $"flux={flux:0.###}");
+
+            var formantMagnitude = new double[512];
+            for (var i = 0; i < formantMagnitude.Length; i++) formantMagnitude[i] = 0.02;
+            for (var i = 45; i <= 55; i++) formantMagnitude[i] = 1.0;
+            for (var i = 92; i <= 102; i++) formantMagnitude[i] = 0.8;
+            for (var i = 165; i <= 175; i++) formantMagnitude[i] = 0.7;
+            var formantSmooth = new double[512];
+            var formantScore = MusicAnalyzer.ComputeFormantScore(formantMagnitude, formantSmooth, 19, 218);
+            var flatFormant = MusicAnalyzer.ComputeFormantScore(flatMagnitude, formantSmooth, 19, 218);
+            C("音乐分析：共振峰打分 多宽峰谱 > 0、平坦谱 = 0（数的是平滑后的峰）",
+                formantScore > 0.2 && flatFormant == 0, $"peaks={formantScore:0.###} flat={flatFormant:0.###}");
+
+            // ---------- 节拍 BPM（onset 包络自相关） ----------
+            const double hopRate = 16000.0 / 256.0; // 62.5 帧/秒
+            var onset120 = MakeClickOnsetEnvelope(6.0, hopRate, bpm: 120.0);
+            var bpm120 = MusicAnalyzer.EstimateBpmFromOnsetEnvelope(onset120, hopRate, out var corr120);
+            C("音乐分析：120BPM 点击的 onset 包络 → BPM 估在 110~130、相关度 > 0.2",
+                bpm120 >= 110 && bpm120 <= 130 && corr120 > 0.2, $"bpm={bpm120:0.##} corr={corr120:0.###}");
+
+            var flatOnset = Enumerable.Repeat(0.05, (int)(6.0 * hopRate)).ToArray();
+            var bpmFlat = MusicAnalyzer.EstimateBpmFromOnsetEnvelope(flatOnset, hopRate, out _);
+            C("音乐分析：平稳 onset 包络（无节拍）→ BPM = 0（不硬猜）", bpmFlat == 0, $"bpm={bpmFlat:0.##}");
+
+            // ---------- 完整 Analyzer：静音 ----------
+            var silentAnalyzer = new MusicAnalyzer(48000);
+            var silentAnalyzerSnapshot = FeedAnalyzer(silentAnalyzer, new float[48000 * 2], 48000, 480);
+            C("音乐分析：喂 0.5 秒静音 → Kind=Silent、IsPlaying=false、MouthOpen=0",
+                silentAnalyzerSnapshot.Kind == MusicContentKind.Silent && !silentAnalyzerSnapshot.IsPlaying
+                && Near(silentAnalyzerSnapshot.MouthOpen, 0, 1e-9) && silentAnalyzerSnapshot.Bpm == 0,
+                $"kind={silentAnalyzerSnapshot.Kind} playing={silentAnalyzerSnapshot.IsPlaying}");
+
+            // ---------- 完整 Analyzer：120BPM 点击（纯音乐） ----------
+            var clickAnalyzer = new MusicAnalyzer(48000);
+            var clickTrack = MakeClickTrackStereo(6.0, 48000, bpm: 120.0);
+            var clickSnapshots = FeedAnalyzerCollect(clickAnalyzer, clickTrack, 48000, 480);
+            var clickLast = clickSnapshots[^1];
+            var bpmOk = clickLast.Bpm >= 110 && clickLast.Bpm <= 130;
+            var phaseValues = clickSnapshots.TakeLast(40).Select(s => s.BeatPhase).Distinct().Count();
+            C("音乐分析：120BPM 点击连喂 6 秒 → IsPlaying=true、BPM 110~130、节拍相位随时间推进",
+                clickLast.IsPlaying && bpmOk && clickLast.BeatPhase >= 0 && clickLast.BeatPhase < 1
+                && phaseValues >= 5,
+                $"playing={clickLast.IsPlaying} bpm={clickLast.Bpm:0.##} phase={clickLast.BeatPhase:0.###} 变化点={phaseValues}");
+            C("音乐分析：点击（无旋律 / 无人声特征）判为纯音乐、MouthOpen / BeatStrength 在 0~1",
+                clickLast.Kind == MusicContentKind.Instrumental
+                && clickLast.MouthOpen >= 0 && clickLast.MouthOpen <= 1
+                && clickLast.BeatStrength >= 0 && clickLast.BeatStrength <= 1,
+                $"kind={clickLast.Kind} mouth={clickLast.MouthOpen:0.##} beat={clickLast.BeatStrength:0.##}");
+
+            // 无节拍回退：稳态长音（没有鼓点 / onset）→ BPM=0，但相位仍缓慢推进、BeatStrength 有保底
+            var steadyAnalyzer = new MusicAnalyzer(48000);
+            var steadyTone = MakeSteadyToneStereo(6.0, 48000, 220.0, 0.2);
+            var steadySnapshots = FeedAnalyzerCollect(steadyAnalyzer, steadyTone, 48000, 480);
+            var steadyLast = steadySnapshots[^1];
+            var steadyPhaseChanges = steadySnapshots.TakeLast(60).Select(s => s.BeatPhase).Distinct().Count();
+            C("音乐分析：无节拍（稳态长音）→ BPM=0 但相位仍缓慢推进、BeatStrength 有保底（纯音乐也会轻晃）",
+                steadyLast.IsPlaying && steadyLast.Bpm == 0 && steadyPhaseChanges >= 3
+                && steadyLast.BeatStrength >= 0.2,
+                $"bpm={steadyLast.Bpm:0.##} phase变化点={steadyPhaseChanges} beat={steadyLast.BeatStrength:0.###}");
+
+            // ---------- 完整 Analyzer：类人声（中心声道 + 颤音 + 4Hz 音节包络 + 共振峰谐波） ----------
+            var vocalAnalyzer = new MusicAnalyzer(48000);
+            var vocalSignal = MakeVocalLikeStereo(8.0, 48000, f0: 220.0);
+            var vocalSnapshots = FeedAnalyzerCollect(vocalAnalyzer, vocalSignal, 48000, 480);
+            var vocalLast = vocalSnapshots[^1];
+            var instrumentalAnalyzer = new MusicAnalyzer(48000);
+            var instrumentalSignal = MakeInstrumentalStereo(8.0, 48000);
+            var instrumentalSnapshots = FeedAnalyzerCollect(instrumentalAnalyzer, instrumentalSignal, 48000, 480);
+            var instrumentalLast = instrumentalSnapshots[^1];
+
+            C("音乐分析：类人声信号喂 8 秒 → Kind=VocalSong、VocalScore 明显高于纯乐器信号",
+                vocalLast.Kind == MusicContentKind.VocalSong && vocalLast.IsPlaying
+                && vocalLast.VocalScore > instrumentalLast.VocalScore + 0.15,
+                $"vocalKind={vocalLast.Kind} score={vocalLast.VocalScore:0.###} 纯乐器score={instrumentalLast.VocalScore:0.###}");
+            C("音乐分析：类人声的基频接近设定 220Hz（±10%）、中心声道占比高、音节调制 > 0",
+                vocalLast.PitchValid && Math.Abs(vocalLast.PitchHz - 220.0) / 220.0 < 0.10
+                && vocalLast.CenterVoiceRatio > 0.6 && vocalLast.SyllabicModulation > 0.05,
+                $"pitch={vocalLast.PitchHz:0.##}Hz center={vocalLast.CenterVoiceRatio:0.###} syllabic={vocalLast.SyllabicModulation:0.###}");
+            C("音乐分析：类人声的 MouthOpen 在 0~1 且随音节包络起伏（最近 2 秒内有明显变化）",
+                vocalSnapshots.TakeLast(125).All(s => s.MouthOpen >= 0 && s.MouthOpen <= 1)
+                && vocalSnapshots.TakeLast(125).Max(s => s.MouthOpen) - vocalSnapshots.TakeLast(125).Min(s => s.MouthOpen) > 0.1,
+                $"范围 {vocalSnapshots.TakeLast(125).Min(s => s.MouthOpen):0.##}~{vocalSnapshots.TakeLast(125).Max(s => s.MouthOpen):0.##}");
+            C("音乐分析：MouthForm / Bpm / CenterVoiceRatio / SyllabicModulation 都在合理范围",
+                vocalLast.MouthForm is >= -1 and <= 1 && vocalLast.Bpm is >= 0 and <= 200
+                && vocalLast.CenterVoiceRatio is >= 0 and <= 1
+                && vocalLast.SyllabicModulation is >= 0 and <= 1,
+                $"form={vocalLast.MouthForm:0.###} bpm={vocalLast.Bpm:0.##}");
+
+            // ---------- 完整 Analyzer：纯乐器 ----------
+            C("音乐分析：纯乐器信号喂 8 秒 → Kind=Instrumental（不跟唱，只摇晃）",
+                instrumentalLast.Kind == MusicContentKind.Instrumental && instrumentalLast.IsPlaying,
+                $"kind={instrumentalLast.Kind} score={instrumentalLast.VocalScore:0.###}");
+
+            // ---------- 灵敏度：高灵敏度更容易判成人声 ----------
+            var sensitiveAnalyzer = new MusicAnalyzer(48000) { Sensitivity = 2.5 };
+            var sensitiveSnapshots = FeedAnalyzerCollect(sensitiveAnalyzer, vocalSignal, 48000, 480);
+            var sensitiveLast = sensitiveSnapshots[^1];
+            var conservativeAnalyzer = new MusicAnalyzer(48000) { Sensitivity = 0.5 };
+            var conservativeSnapshots = FeedAnalyzerCollect(conservativeAnalyzer, vocalSignal, 48000, 480);
+            var conservativeLast = conservativeSnapshots[^1];
+            C("音乐分析：灵敏度 2.5 的 VocalScore 高于灵敏度 0.5（同一段类人声信号）",
+                sensitiveLast.VocalScore > conservativeLast.VocalScore + 0.05,
+                $"2.5={sensitiveLast.VocalScore:0.###} 0.5={conservativeLast.VocalScore:0.###}");
+
+            // ---------- Reset：清空状态后重新开始 ----------
+            var resetAnalyzer = new MusicAnalyzer(48000);
+            FeedAnalyzer(resetAnalyzer, MakeClickTrackStereo(3.0, 48000, 120.0), 48000, 480);
+            resetAnalyzer.Reset();
+            var resetSnapshot = FeedAnalyzer(resetAnalyzer, new float[48000 * 2], 48000, 480);
+            C("音乐分析：Reset 后状态清空（再喂静音 → Silent、时间戳更新、BPM 归零）",
+                resetSnapshot.Kind == MusicContentKind.Silent && !resetSnapshot.IsPlaying
+                && resetSnapshot.Bpm == 0 && resetSnapshot.TimestampMs > 0,
+                $"kind={resetSnapshot.Kind} bpm={resetSnapshot.Bpm:0.##}");
+        }
+        catch (Exception ex)
+        {
+            C("音乐分析纯逻辑断言运行期间抛出异常", false, $"{ex.GetType().Name}: {ex.Message}");
+        }
+
+        // ================================================================
+        // 十二、模型运行时 + 软件渲染器（要 WPF 位图 → 单独 STA 线程）
         // ================================================================
         if (!Directory.Exists(modelDir))
         {
@@ -1538,6 +1833,195 @@ internal static class Live2DChecks
                 Near(Param("ParamEyeBallY"), -0.6, 1e-3),
                 $"眼珠Y={Param("ParamEyeBallY"):0.###}");
 
+            // ---------------- J. 音乐跟唱 / 律动集成（假 IMusicReactiveProvider，绝不打开 WASAPI 回环） ----------------
+            var fakeMusic = new FakeMusicProvider();
+            Quiet();
+            runtime.MocapEnabled = false;
+            runtime.Mocap = null;
+            runtime.EyeTrackingEnabled = false;
+            runtime.SwayEnabled = false;
+            runtime.StopSwayDemo();
+            runtime.Sway?.Reset();
+            runtime.Music = fakeMusic;
+            runtime.MusicEnabled = false;
+            runtime.MusicMode = MusicVocalMode.Auto;
+            runtime.MusicLipSyncStrength = 1.0;
+            runtime.MusicSwayStrength = 1.0;
+            runtime.MusicSwayEnabled = true;
+            runtime.MusicHeadBobEnabled = true;
+            fakeMusic.Latest = null;
+            TickFrames(2);
+
+            // 带歌词 → 嘴动
+            fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.VocalSong, mouthOpen: 0.8, mouthForm: 0.5,
+                beatPhase: 0.25, beatStrength: 1.0, bpm: 120);
+            TickFrames(1);
+            C("音乐集成：MusicEnabled=false 时即使有带歌词数据也不写嘴 / 身体（默认关）",
+                Near(Param("ParamMouthOpenY"), 0, 1e-3) && Near(Param("ParamBodyAngleX"), 0, 1e-3)
+                && runtime.MusicKind == MusicContentKind.Silent && runtime.MusicStatusText == "静音",
+                $"嘴={Param("ParamMouthOpenY"):0.###} 身体={Param("ParamBodyAngleX"):0.###} 状态={runtime.MusicStatusText}");
+
+            runtime.MusicEnabled = true;
+            fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.VocalSong, mouthOpen: 0.8, mouthForm: 0.5,
+                beatPhase: 0.25, beatStrength: 1.0, bpm: 120);
+            TickFrames(1);
+            C("音乐集成：带歌词 → Tick 后嘴张开（ParamMouthOpenY=0.8、嘴形 0.3、JawOpen 0.4）",
+                Near(Param("ParamMouthOpenY"), 0.8, 1e-2) && Near(Param("ParamMouthForm"), 0.3, 1e-2)
+                && Near(Param("JawOpen"), 0.4, 1e-2),
+                $"嘴={Param("ParamMouthOpenY"):0.###} 嘴形={Param("ParamMouthForm"):0.###} 下巴={Param("JawOpen"):0.###}");
+            C("音乐集成：带歌词 → 状态「带歌词」、MusicKind=VocalSong",
+                runtime.MusicStatusText == "带歌词" && runtime.MusicKind == MusicContentKind.VocalSong,
+                $"{runtime.MusicStatusText}/{runtime.MusicKind}");
+
+            // 纯音乐 → 不跟唱、身体跟着节拍晃
+            fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.Instrumental, mouthOpen: 0.8, mouthForm: 0.5,
+                beatPhase: 0.25, beatStrength: 1.0, bpm: 120);
+            runtime.ResetParameters();
+            TickFrames(2);
+            C("音乐集成：纯音乐 → 嘴保持 0（不跟唱），身体 ParamBodyAngleX 跟着节拍晃",
+                Near(Param("ParamMouthOpenY"), 0, 1e-3)
+                && Near(Param("ParamBodyAngleX"), 6.0, 0.05) && Near(Param("ParamBodyAngleZ"), 1.83, 0.1),
+                $"嘴={Param("ParamMouthOpenY"):0.###} 身体X={Param("ParamBodyAngleX"):0.###} 身体Z={Param("ParamBodyAngleZ"):0.###}");
+            C("音乐集成：纯音乐 → 状态「纯音乐」、MusicKind=Instrumental",
+                runtime.MusicStatusText == "纯音乐" && runtime.MusicKind == MusicContentKind.Instrumental,
+                $"{runtime.MusicStatusText}/{runtime.MusicKind}");
+
+            // 节拍相位推进 → 身体左右换向
+            fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.Instrumental, mouthOpen: 0, mouthForm: 0,
+                beatPhase: 0.75, beatStrength: 1.0, bpm: 120);
+            TickFrames(1);
+            var bodyAtPhase075 = Param("ParamBodyAngleX");
+            C("音乐集成：节拍相位 0.25 → 0.75 时身体反向（+6° → -6°）",
+                Near(bodyAtPhase075, -6.0, 0.05), $"身体X={bodyAtPhase075:0.###}");
+
+            // 关闭身体晃动 / 点头的单项开关
+            runtime.MusicSwayEnabled = false;
+            runtime.ResetParameters();
+            TickFrames(2);
+            C("音乐集成：MusicSwayEnabled=false → 不写身体参数（只剩嘴型）",
+                Near(Param("ParamBodyAngleX"), 0, 1e-3),
+                $"身体X={Param("ParamBodyAngleX"):0.###}");
+            runtime.MusicSwayEnabled = true;
+
+            // 点头：眼睛跟随开启时不抢头部；关闭眼控后按节拍点头
+            runtime.MusicHeadBobEnabled = true;
+            runtime.EyeTrackingEnabled = true;
+            runtime.EyeTrackingSmoothing = 0;
+            runtime.SetEyeTrackingTarget(rt.Model.CanvasOriginX, rt.Model.CanvasOriginY);
+            fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.Instrumental, mouthOpen: 0, mouthForm: 0,
+                beatPhase: 0.25, beatStrength: 1.0, bpm: 120);
+            TickFrames(2);
+            var headYWithEyeTracking = Param("ParamAngleY");
+            runtime.EyeTrackingEnabled = false;
+            runtime.ClearEyeTrackingTarget();
+            runtime.ResetParameters();
+            fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.Instrumental, mouthOpen: 0, mouthForm: 0,
+                beatPhase: 0.25, beatStrength: 1.0, bpm: 120);
+            TickFrames(2);
+            var headYWithBob = Param("ParamAngleY");
+            C("音乐集成：点头不抢鼠标眼控的头部（眼控开启时 AngleY≈0；关闭后节拍点头 -2°）",
+                Math.Abs(headYWithEyeTracking) < 0.5 && Near(headYWithBob, -2.0, 0.2),
+                $"眼控开启={headYWithEyeTracking:0.###}° 关闭后点头={headYWithBob:0.###}°");
+
+            // 动捕有脸 → 嘴让位给动捕（音乐不抢）
+            runtime.Mocap = fakeMocap;
+            runtime.MocapEnabled = true;
+            fakeMocap.Latest = MakeFakeTracking(yaw: 0, pitch: 0, eyeOpen: 0.9, mouth: 0.6);
+            fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.VocalSong, mouthOpen: 0.9, mouthForm: 0.5,
+                beatPhase: 0.25, beatStrength: 1.0, bpm: 120);
+            TickFrames(2);
+            C("音乐集成：动捕有脸时音乐嘴型让位（嘴 = 动捕 0.6，不是音乐 0.9）",
+                Near(Param("ParamMouthOpenY"), 0.6, 1e-2),
+                $"嘴={Param("ParamMouthOpenY"):0.###}");
+            runtime.MocapEnabled = false;
+            runtime.Mocap = null;
+
+            // 强制模式
+            runtime.MusicMode = MusicVocalMode.ForceVocal;
+            runtime.ResetParameters();
+            fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.Instrumental, mouthOpen: 0.7, mouthForm: 0.2,
+                beatPhase: 0.25, beatStrength: 1.0, bpm: 120);
+            TickFrames(2);
+            C("音乐集成：强制跟唱 → 纯音乐数据下嘴也动（0.7）",
+                Near(Param("ParamMouthOpenY"), 0.7, 1e-2),
+                $"嘴={Param("ParamMouthOpenY"):0.###}");
+
+            runtime.MusicMode = MusicVocalMode.ForceInstrumental;
+            runtime.ResetParameters();
+            fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.VocalSong, mouthOpen: 0.9, mouthForm: 0.5,
+                beatPhase: 0.25, beatStrength: 1.0, bpm: 120);
+            TickFrames(2);
+            C("音乐集成：强制纯音乐 → 带歌词数据下嘴不动、但身体仍跟节拍晃",
+                Near(Param("ParamMouthOpenY"), 0, 1e-3) && Math.Abs(Param("ParamBodyAngleX")) > 3,
+                $"嘴={Param("ParamMouthOpenY"):0.###} 身体X={Param("ParamBodyAngleX"):0.###}");
+            runtime.MusicMode = MusicVocalMode.Auto;
+
+            // 强度倍率
+            runtime.MusicLipSyncStrength = 0.5;
+            fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.VocalSong, mouthOpen: 0.8, mouthForm: 0.5,
+                beatPhase: 0.25, beatStrength: 1.0, bpm: 120);
+            TickFrames(2);
+            C("音乐集成：跟唱嘴型幅度 0.5 → 嘴张开度减半（0.8 → 0.4）",
+                Near(Param("ParamMouthOpenY"), 0.4, 1e-2),
+                $"嘴={Param("ParamMouthOpenY"):0.###}");
+            runtime.MusicLipSyncStrength = 1.0;
+
+            // 数据过期 → 按静音处理
+            var stale = MakeMusicSnapshot(MusicContentKind.VocalSong, mouthOpen: 0.8, mouthForm: 0.5,
+                beatPhase: 0.25, beatStrength: 1.0, bpm: 120);
+            stale = MusicSnapshotWithTimestamp(stale, Environment.TickCount64 - 5000);
+            fakeMusic.Latest = stale;
+            runtime.ResetParameters();
+            TickFrames(2);
+            C("音乐集成：数据超过 800ms 过期 → 按静音处理（不写嘴 / 身体、状态「静音」）",
+                Near(Param("ParamMouthOpenY"), 0, 1e-3) && Near(Param("ParamBodyAngleX"), 0, 1e-3)
+                && runtime.MusicStatusText == "静音",
+                $"嘴={Param("ParamMouthOpenY"):0.###} 状态={runtime.MusicStatusText}");
+
+            // 关闭音乐后手动值保留
+            fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.VocalSong, mouthOpen: 0.8, mouthForm: 0.5,
+                beatPhase: 0.25, beatStrength: 1.0, bpm: 120);
+            TickFrames(1);
+            runtime.MusicEnabled = false;
+            TickFrames(1); // 复位上一帧音乐写过的参数
+            if (mouthParam is not null) mouthParam.Value = 0.6f;
+            TickFrames(20);
+            C("音乐集成：关闭音乐后手动嘴值保留（0.6 保持 20 帧，不被复位）",
+                Near(Param("ParamMouthOpenY"), 0.6, 1e-3),
+                $"嘴={Param("ParamMouthOpenY"):0.###}");
+
+            // 帧开销（放宽阈值，避免 Debug + 机器繁忙时 flaky）
+            runtime.MusicEnabled = true;
+            fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.VocalSong, mouthOpen: 0.6, mouthForm: 0.3,
+                beatPhase: 0.4, beatStrength: 0.8, bpm: 118);
+            var musicOnTimes = new List<double>();
+            for (var i = 0; i < 15; i++)
+            {
+                fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.VocalSong, mouthOpen: 0.6, mouthForm: 0.3,
+                    beatPhase: 0.4, beatStrength: 0.8, bpm: 118);
+                TickFrames(1);
+                musicOnTimes.Add(runtime.LastTickMilliseconds);
+            }
+
+            runtime.MusicEnabled = false;
+            var musicOffTimes = new List<double>();
+            for (var i = 0; i < 15; i++)
+            {
+                TickFrames(1);
+                musicOffTimes.Add(runtime.LastTickMilliseconds);
+            }
+
+            var musicOnAverage = musicOnTimes.Average();
+            var musicOffAverage = musicOffTimes.Average();
+            C("音乐集成：音乐响应每帧开销可忽略（开启时平均 Tick ≤ 关闭时 + 3ms，Debug 放宽）",
+                musicOnAverage <= musicOffAverage + 3.0,
+                $"开启={musicOnAverage:0.###}ms 关闭={musicOffAverage:0.###}ms");
+
+            runtime.Music = null;
+            runtime.MusicEnabled = false;
+            runtime.ResetParameters();
+            TickFrames(2);
+
             // 收尾：把所有子系统恢复默认状态，避免影响后续（其实后面不再有断言，保持干净）
             runtime.ResetParameters();
             runtime.EyeTrackingSmoothing = 0.35;
@@ -1670,6 +2154,234 @@ internal static class Live2DChecks
         }
 
         model.ResetParametersToDefault();
+    }
+
+    // ====================================================================
+    // 音乐分析用的合成音频工具（自检只测算法：绝不打开 WASAPI 回环 / 麦克风）
+    // ====================================================================
+
+    /// <summary>生成单声道正弦（幅度默认 0.8，时长按秒）。</summary>
+    private static double[] MakeSine(int sampleRate, double seconds, double frequency, double amplitude = 0.8)
+    {
+        var count = Math.Max(1, (int)Math.Round(seconds * sampleRate));
+        var samples = new double[count];
+        for (var i = 0; i < count; i++)
+            samples[i] = amplitude * Math.Sin(2 * Math.PI * frequency * i / sampleRate);
+        return samples;
+    }
+
+    /// <summary>生成确定性白噪声（LCG，同一 seed 每台机器结果一致，便于断言）。</summary>
+    private static double[] MakeWhiteNoise(int sampleRate, double seconds, uint seed)
+    {
+        var count = Math.Max(1, (int)Math.Round(seconds * sampleRate));
+        var samples = new double[count];
+        var state = seed;
+        for (var i = 0; i < count; i++)
+        {
+            state = (state * 1664525u) + 1013904223u;
+            samples[i] = (((state >> 8) & 0xFFFF) / 32768.0) - 1.0;
+        }
+        return samples;
+    }
+
+    /// <summary>合成「稳态长音」立体声 interleaved float（无 onset / 无鼓点，用于验证无节拍回退）。</summary>
+    private static float[] MakeSteadyToneStereo(double seconds, int sampleRate, double frequency, double amplitude)
+    {
+        var frames = Math.Max(1, (int)Math.Round(seconds * sampleRate));
+        var data = new float[frames * 2];
+        for (var i = 0; i < frames; i++)
+        {
+            var sample = (float)(amplitude * Math.Sin(2 * Math.PI * frequency * i / sampleRate));
+            data[i * 2] = sample;
+            data[i * 2 + 1] = sample;
+        }
+        return data;
+    }
+
+    /// <summary>生成「每拍一个脉冲」的 onset 包络（用于 BPM 估计算法的对拍）。</summary>
+    private static double[] MakeClickOnsetEnvelope(double seconds, double hopRate, double bpm)
+    {
+        var count = Math.Max(64, (int)Math.Round(seconds * hopRate));
+        var envelope = new double[count];
+        var period = hopRate * 60.0 / bpm;
+        for (var beat = 0; ; beat++)
+        {
+            var index = (int)Math.Round(beat * period);
+            if (index >= count) break;
+            envelope[index] = 1.0;
+        }
+        return envelope;
+    }
+
+    /// <summary>合成 120BPM 点击（底鼓 + 噪声镲片 + 很轻的底噪，保证分析器始终「有声音」）。</summary>
+    private static float[] MakeClickTrackStereo(double seconds, int sampleRate, double bpm)
+    {
+        var frames = Math.Max(1, (int)Math.Round(seconds * sampleRate));
+        var data = new float[frames * 2];
+        var period = 60.0 / bpm;
+        var stateLeft = 987654321u;
+        var stateRight = 123456789u;
+        for (var i = 0; i < frames; i++)
+        {
+            var t = i / (double)sampleRate;
+            var beatIndex = (long)(t / period);
+            var phaseInBeat = t - (beatIndex * period);
+            var kick = 0.0;
+            var hatLeft = 0.0;
+            var hatRight = 0.0;
+            if (phaseInBeat < 0.06)
+            {
+                var kickDecay = Math.Exp(-phaseInBeat / 0.012);
+                kick = 0.75 * kickDecay * Math.Sin(2 * Math.PI * 100 * phaseInBeat);
+                var hatDecay = Math.Exp(-phaseInBeat / 0.006);
+                stateLeft = (stateLeft * 1664525u) + 1013904223u;
+                stateRight = (stateRight * 1664525u) + 1013904223u;
+                hatLeft = 0.30 * hatDecay * (((stateLeft >> 8) & 0xFFFF) / 32768.0 - 1.0);
+                hatRight = 0.30 * hatDecay * (((stateRight >> 8) & 0xFFFF) / 32768.0 - 1.0);
+            }
+
+            // 左右独立的极轻底噪：让静音段也高于噪声门限，同时压低「中心声道占比」和 YIN 清晰度
+            stateLeft = (stateLeft * 1664525u) + 1013904223u;
+            stateRight = (stateRight * 1664525u) + 1013904223u;
+            var noiseLeft = 0.030 * (((stateLeft >> 8) & 0xFFFF) / 32768.0 - 1.0);
+            var noiseRight = 0.030 * (((stateRight >> 8) & 0xFFFF) / 32768.0 - 1.0);
+
+            data[i * 2] = (float)Math.Clamp(kick + hatLeft + noiseLeft, -1.0, 1.0);
+            data[i * 2 + 1] = (float)Math.Clamp(kick + hatRight + noiseRight, -1.0, 1.0);
+        }
+        return data;
+    }
+
+    /// <summary>
+    /// 合成「类人声」立体声信号：220Hz 基频 + 5Hz 颤音 + 共振峰加权谐波 + 4Hz 音节包络，
+    /// 主唱居中（左右几乎相同）。
+    /// </summary>
+    private static float[] MakeVocalLikeStereo(double seconds, int sampleRate, double f0 = 220.0,
+        double vibratoDepth = 0.02, double syllabicDepth = 0.55)
+    {
+        var frames = Math.Max(1, (int)Math.Round(seconds * sampleRate));
+        var data = new float[frames * 2];
+        var phase = 0.0;
+        var state = 24681357u;
+        for (var i = 0; i < frames; i++)
+        {
+            var t = i / (double)sampleRate;
+            var vibrato = 1.0 + (vibratoDepth * Math.Sin(2 * Math.PI * 5.0 * t));
+            phase += 2 * Math.PI * f0 * vibrato / sampleRate;
+            var syllable = 0.45 + (syllabicDepth * (0.5 + 0.5 * Math.Sin(2 * Math.PI * 4.0 * t)));
+            var sample = 0.0;
+            for (var harmonic = 1; harmonic <= 12; harmonic++)
+            {
+                var frequency = f0 * harmonic;
+                if (frequency > 6000) break;
+                sample += (FormantWeight(frequency) / harmonic) * Math.Sin(phase * harmonic);
+            }
+
+            state = (state * 1664525u) + 1013904223u;
+            var noise = (((state >> 8) & 0xFFFF) / 32768.0) - 1.0;
+            sample = (sample * syllable * 0.20) + (noise * 0.002);
+            data[i * 2] = (float)Math.Clamp(sample, -1.0, 1.0);
+            data[i * 2 + 1] = (float)Math.Clamp(sample, -1.0, 1.0);
+        }
+        return data;
+    }
+
+    /// <summary>共振峰加权：700 / 1220 / 2600Hz 附近放大，模拟人声频谱包络。</summary>
+    private static double FormantWeight(double frequency)
+    {
+        var weight = 1.0;
+        weight += 2.2 * Math.Exp(-Math.Pow((frequency - 700) / 250.0, 2));
+        weight += 2.0 * Math.Exp(-Math.Pow((frequency - 1220) / 350.0, 2));
+        weight += 1.5 * Math.Exp(-Math.Pow((frequency - 2600) / 600.0, 2));
+        return weight;
+    }
+
+    /// <summary>
+    /// 合成「纯乐器」立体声信号：鼓点为主（底鼓 + 左右独立的宽频镲片 / 底噪）+ 很轻的稳定和弦，
+    /// 无人声的颤音 / 音节调制，侧声道能量明显——用来验证「不跟唱、只摇晃」。
+    /// </summary>
+    private static float[] MakeInstrumentalStereo(double seconds, int sampleRate, double bpm = 120.0)
+    {
+        var frames = Math.Max(1, (int)Math.Round(seconds * sampleRate));
+        var data = new float[frames * 2];
+        var chord = new[] { 196.00, 246.94, 293.66 };
+        var period = 60.0 / bpm;
+        var stateLeft = 1357924680u;
+        var stateRight = 2468013579u;
+        for (var i = 0; i < frames; i++)
+        {
+            var t = i / (double)sampleRate;
+            var chordLeft = 0.0;
+            var chordRight = 0.0;
+            foreach (var frequency in chord)
+            {
+                chordLeft += (0.5 * Math.Sin(2 * Math.PI * frequency * t))
+                             + (0.25 * Math.Sin(2 * Math.PI * frequency * 2 * t));
+                // 右声道明显失谐：制造侧声道能量，压低「主唱居中」的中心声道占比
+                chordRight += (0.5 * Math.Sin(2 * Math.PI * frequency * 1.02 * t))
+                              + (0.25 * Math.Sin(2 * Math.PI * frequency * 2 * 1.02 * t));
+            }
+
+            var beatIndex = (long)(t / period);
+            var phaseInBeat = t - (beatIndex * period);
+            var kick = 0.0;
+            if (phaseInBeat < 0.07)
+            {
+                var decay = Math.Exp(-phaseInBeat / 0.012);
+                kick = 0.65 * decay * Math.Sin(2 * Math.PI * 90 * phaseInBeat);
+            }
+
+            // 镲片：每半拍一个，左右各自独立的宽频噪声 —— 把频谱拉平，压掉「像人声」的谐波 / 共振峰
+            var halfBeatIndex = (long)(t / (period * 0.5));
+            var phaseInHalfBeat = t - (halfBeatIndex * period * 0.5);
+            var hatLeft = 0.0;
+            var hatRight = 0.0;
+            if (phaseInHalfBeat < 0.05)
+            {
+                var decay = Math.Exp(-phaseInHalfBeat / 0.006);
+                stateLeft = (stateLeft * 1664525u) + 1013904223u;
+                stateRight = (stateRight * 1664525u) + 1013904223u;
+                hatLeft = 0.50 * decay * (((stateLeft >> 8) & 0xFFFF) / 32768.0 - 1.0);
+                hatRight = 0.50 * decay * (((stateRight >> 8) & 0xFFFF) / 32768.0 - 1.0);
+            }
+
+            // 连续底噪（左右独立）：保证分析器始终活跃、谱更平坦
+            stateLeft = (stateLeft * 1664525u) + 1013904223u;
+            stateRight = (stateRight * 1664525u) + 1013904223u;
+            var noiseLeft = 0.040 * (((stateLeft >> 8) & 0xFFFF) / 32768.0 - 1.0);
+            var noiseRight = 0.040 * (((stateRight >> 8) & 0xFFFF) / 32768.0 - 1.0);
+
+            var left = (chordLeft * 0.02) + kick + hatLeft + noiseLeft;
+            var right = (chordRight * 0.02) + (kick * 0.9) + hatRight + noiseRight;
+            data[i * 2] = (float)Math.Clamp(left, -1.0, 1.0);
+            data[i * 2 + 1] = (float)Math.Clamp(right, -1.0, 1.0);
+        }
+        return data;
+    }
+
+    /// <summary>按 10ms 一块喂给分析器（模拟 WASAPI 采集回调），返回最终快照。</summary>
+    private static MusicAnalysisSnapshot FeedAnalyzer(MusicAnalyzer analyzer, float[] interleavedStereo,
+        int sampleRate, int framesPerChunk)
+    {
+        var snapshots = FeedAnalyzerCollect(analyzer, interleavedStereo, sampleRate, framesPerChunk);
+        return snapshots.Count > 0 ? snapshots[^1] : MusicAnalysisSnapshot.Silent(0);
+    }
+
+    /// <summary>按块喂给分析器并收集每块快照（用于断言唇形 / 节拍随时间变化）。</summary>
+    private static List<MusicAnalysisSnapshot> FeedAnalyzerCollect(MusicAnalyzer analyzer, float[] interleavedStereo,
+        int sampleRate, int framesPerChunk)
+    {
+        var frames = interleavedStereo.Length / 2;
+        var snapshots = new List<MusicAnalysisSnapshot>();
+        var timestamp = 0L;
+        for (var offset = 0; offset < frames; offset += framesPerChunk)
+        {
+            var count = Math.Min(framesPerChunk, frames - offset);
+            var snapshot = analyzer.Analyze(interleavedStereo.AsSpan(offset * 2, count * 2), count, timestamp);
+            snapshots.Add(snapshot);
+            timestamp += (long)Math.Round(count * 1000.0 / sampleRate);
+        }
+        return snapshots;
     }
 
     // ====================================================================
@@ -2180,6 +2892,80 @@ internal static class Live2DChecks
             add { }
             remove { }
         }
+    }
+
+    /// <summary>假的音乐数据源：只放快照，不碰 WASAPI / 麦克风（自检用）。</summary>
+    private sealed class FakeMusicProvider : IMusicReactiveProvider
+    {
+        public MusicAnalysisSnapshot? Latest { get; set; }
+
+        public bool IsRunning { get; set; } = true;
+
+        public string? LastError => null;
+
+        public string MediaTitle => "自检歌曲";
+
+        public string MediaArtist => "自检歌手";
+
+        public string MediaApp => "selfcheck.exe";
+
+        public event EventHandler? StateChanged
+        {
+            add { }
+            remove { }
+        }
+    }
+
+    /// <summary>造一帧音乐分析快照（时间戳默认「现在」，可测数据过期场景）。</summary>
+    private static MusicAnalysisSnapshot MakeMusicSnapshot(MusicContentKind kind, double mouthOpen, double mouthForm,
+        double beatPhase, double beatStrength, double bpm, double pitchHz = 220.0, bool pitchValid = true,
+        double centerVoiceRatio = 0.9, double syllabicModulation = 0.5)
+    {
+        return new MusicAnalysisSnapshot
+        {
+            TimestampMs = Environment.TickCount64,
+            IsPlaying = kind is MusicContentKind.VocalSong or MusicContentKind.Instrumental,
+            Kind = kind,
+            Confidence = 0.8,
+            VocalScore = kind == MusicContentKind.VocalSong ? 0.7 : 0.2,
+            Rms = 0.5,
+            BassEnergy = 0.3,
+            VoiceEnergy = 0.4,
+            MouthOpen = mouthOpen,
+            MouthForm = mouthForm,
+            BeatPhase = beatPhase,
+            Bpm = bpm,
+            BeatStrength = beatStrength,
+            PitchValid = pitchValid,
+            PitchHz = pitchHz,
+            CenterVoiceRatio = centerVoiceRatio,
+            SyllabicModulation = syllabicModulation,
+        };
+    }
+
+    /// <summary>复制快照并替换时间戳（测「数据过期」用）。</summary>
+    private static MusicAnalysisSnapshot MusicSnapshotWithTimestamp(MusicAnalysisSnapshot snapshot, long timestampMs)
+    {
+        return new MusicAnalysisSnapshot
+        {
+            TimestampMs = timestampMs,
+            IsPlaying = snapshot.IsPlaying,
+            Kind = snapshot.Kind,
+            Confidence = snapshot.Confidence,
+            VocalScore = snapshot.VocalScore,
+            Rms = snapshot.Rms,
+            BassEnergy = snapshot.BassEnergy,
+            VoiceEnergy = snapshot.VoiceEnergy,
+            MouthOpen = snapshot.MouthOpen,
+            MouthForm = snapshot.MouthForm,
+            BeatPhase = snapshot.BeatPhase,
+            Bpm = snapshot.Bpm,
+            BeatStrength = snapshot.BeatStrength,
+            PitchValid = snapshot.PitchValid,
+            PitchHz = snapshot.PitchHz,
+            CenterVoiceRatio = snapshot.CenterVoiceRatio,
+            SyllabicModulation = snapshot.SyllabicModulation,
+        };
     }
 
     // ====================================================================

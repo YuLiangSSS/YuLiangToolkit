@@ -41,6 +41,15 @@ YuLiangTookit（主程序）
       │   ├─ MocapMath ─────────────── 脸位置 → 头部角度 / 眼球方向（纯数学，自检可测）
       │   └─ MocapContracts ────────── IMocapProvider / MocapTrackingResult / MocapPreviewFrame / MocapSettings
       │
+      ├─ Audio/ ────────────────────── 音乐跟唱 / 律动（见 §13）
+      │   ├─ WasapiLoopbackCapture ─── WASAPI 回环采集（P/Invoke COM，48k 立体声 float）
+      │   ├─ SmtcWatcher ───────────── SMTC 媒体信息（歌名 / 歌手 / 应用，只显示用）
+      │   ├─ MusicReactiveSource ───── IMusicReactiveProvider：采集 → 分析 → 发布不可变快照
+      │   ├─ MusicReactiveContracts ── MusicContentKind / MusicAnalysisSnapshot / IMusicReactiveProvider
+      │   └─ Analysis/ ─────────────── 纯算法（自检可测）
+      │       ├─ FastFft ───────────── radix-2 FFT + 幅度谱 + 朴素 DFT 对拍 + Hann 窗
+      │       └─ MusicAnalyzer ─────── 48k→16k 重采样 / FFT 特征 / YIN / 分类 / 节拍 / 唇形
+      │
       ├─ Rendering/CubismRenderer ──── 手写软件光栅器（三角形光栅化 / 蒙版 / 三种混合 / 调试叠加）
       │   └─ Rendering/TextureAtlas ── 纹理 PNG 加载 → BGRA 像素（可选降到 2048）
       │
@@ -59,6 +68,13 @@ YuLiangTookit（主程序）
 发布**不可变快照**（`MocapTrackingResult` / `MocapPreviewFrame`，整体引用替换）→ UI 线程 Tick 里只读
 `IMocapProvider.Latest`。摄像头生命周期归 `Live2DSession` 管（页面或桌宠可见且开关打开才启动，
 关掉立即释放设备，隐私 + 省 CPU）。
+
+**音乐线程模型**（细节见 §13）：WASAPI 回环采集在独立后台线程（`AboveNormal`，`Sleep(5)` 轮询
+`GetNextPacketSize`）→ 每包数据**同步**交给 `MusicAnalyzer.Analyze`（纯算法、无锁、0 分配，目标 < 1.5ms）→
+发布**不可变快照** `MusicAnalysisSnapshot`（volatile 引用替换）→ UI 线程 Tick 里只读
+`IMusicReactiveProvider.Latest`（超过 800ms 视为静音）；SMTC 媒体信息由另一个后台线程每 2 秒轮询（失败不影响
+音频分析）。音频采集生命周期归 `Live2DSession` 管：`MusicReactiveEnabled && (页面可见 || 桌宠可见) && 非截图模式`
+才启动；关掉开关 / 切走页面 / 隐藏桌宠立即停止并释放设备。
 
 **为什么不引 WebView2 / SkiaSharp / 官方 C# SDK**：
 
@@ -227,6 +243,10 @@ Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实
    `EyeLOpen/ROpen`、`ParamMouthOpenY`）；没脸 → 鼠标眼控 + 待机摇摆（两套互斥，见 §10 优先级）；
 5. **身体晃动测试**（`SwayEnabled` 或「摇一摇」倒计时 > 0 时）：`BodySwayController.Apply` 写身体主轴 /
    物理输入 / 头部补偿 / 腰腿参数（见 §11）；
+5.5 **音乐跟唱 / 律动**（`MusicEnabled` 且 `Music.Latest` 在 800ms 内）：`ApplyMusicResponse` 写跟唱嘴型
+   （`ParamMouthOpenY/MouthForm/JawOpen`）、节拍身体摇晃（`ParamBodyAngleX/PositionX/ParamBodyAngleZ/HipAngleX`）、
+   轻微点头（`ParamAngleY`）——**在手动晃动之后**（会覆盖手动晃动的身体参数）、**在动捕之后**；
+   优先级：**动捕有脸 > 音乐嘴型**（有脸时不写嘴 / 点头）；`EyeTrackingEnabled` 时点头也不写（见 §13）；
 6. 待机动作：待机动画开着且当前没有动作在播时，循环播 `IdleMotion`；
 7. 动作：当前动作按时间求值 + 淡入淡出权重混合，写参数；
 8. 表情：按权重施加当前表情（UI 单选；管理器本身是叠加超集，见 §3.3）；
@@ -263,28 +283,31 @@ Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实
 
 ### 6.1 受管参数动态化（本轮新增）
 
-原来「受管参数」（每帧开头恢复默认的那批）是**加载时一次性收集**的静态数组，所以动捕 / 晃动 / 眼控 / 物理 /
+原来「受管参数」（每帧开头恢复默认的那批）是**加载时一次性收集的静态数组**，所以动捕 / 晃动 / 眼控 / 物理 /
 待机**关掉以后**，它们写过的参数仍然每帧被复位 → 手动用「面部测试」卡的滑杆调嘴 / 眼 / 舌头会被打回默认。
 
-现在改为**按当前启用的子系统动态计算受管参数**（每帧 / 开关变化时重建索引表）：
+现在改为**按「这一帧真的会写哪些参数」动态复位**（`ModelRuntime.Tick` 开头）：
 
-| 子系统 | 什么时候纳入受管参数 | 关掉后的行为 |
+| 子系统 | 每帧怎么复位 | 关掉后的行为 |
 | --- | --- | --- |
-| 动作 MotionPlayer | 有动作在播时（曲线涉及的参数） | 曲线参数不再复位 → 保留最后值，手动可改 |
-| 表情 ExpressionManager | 有表情生效时（表情参数） | 同上 |
-| 物理 CubismPhysicsEvaluator | `PhysicsEnabled` 且加载了物理 | 物理输出参数不再复位 → 保留最后值 |
-| 待机 IdleBehavior | `IdleEnabled` / `AutoBlink` 打开的对应项（呼吸 / 眨眼） | 呼吸 / 眨眼参数不再复位 |
-| 鼠标眼控 EyeTrackingController | `EyeTrackingEnabled`（以及待机摇摆需要时） | 头部 / 眼球 / 身体参数不再复位 → 手动可改 |
-| 动捕 ApplyMocapFace | `MocapEnabled` **且**当前有脸（未过期） | 没脸 / 关掉 → 参数不再复位（回落到鼠标眼控时由眼控接管） |
-| 身体晃动 BodySwayController | `SwayEnabled` 或「摇一摇」倒计时 > 0 | 身体 / 腰腿参数不再复位 |
+| 动作 MotionPlayer | `ResetMotionTouchedParameters`：只复位**上一帧动作实际写过的**参数（touched 下标表） | 不再写 → 参数保留最后值，手动可改 |
+| 表情 ExpressionManager | 有表情生效时才复位 `_expressionManaged` 组 | 同上 |
+| 物理 CubismPhysicsEvaluator | `PhysicsEnabled` 才复位物理输出组 | 物理输出保留最后值 |
+| 待机 IdleBehavior | `IdleEnabled` 才复位呼吸组；`blinkActive`（自动眨眼且没被动捕接管）才复位眨眼组 | 呼吸 / 眨眼参数不再复位 |
+| 鼠标眼控 EyeTrackingController | `EyeTrackingEnabled` 才复位眼控组 | 头部 / 眼球 / 身体参数不再复位 → 手动可改 |
+| 动捕 ApplyMocapFace | `MocapEnabled` 才复位动捕组 | 没脸 / 关掉 → 参数不再复位（回落到鼠标眼控时由眼控接管） |
+| 身体晃动 BodySwayController | `SwayEnabled` 或「摇一摇」倒计时 > 0 才复位晃动组 | 身体 / 腰腿参数不再复位 |
+| 音乐 Music | `ResetMusicTouchedParameters`：只复位**上一帧音乐实际写过的**参数（touched 下标表） | 不写 → 参数保持 / 手动值保留 |
 
 设计约定：
 
-- **纳入条件必须和「本帧真的会写这些参数」一致**：多算会让手动值被打回，少算会让旧的驱动值残留；
-- 开关切换的那一帧要**先复位一次再交给新状态**（否则关掉动作后参数停在动作末帧、开启眼控时旧值残留）；
-- 动作 / 表情 / 物理 / 待机这些「帧内一定会写」的系统，即使参数被纳入受管表也无妨；重点是**关掉就移除**；
+- **「写」和「复位」必须成对**：写参数时记录下标（touched），下一帧开头只复位自己写过的；这样动捕 / 音乐 / 动作
+  这类「时写时不写」的系统关掉后不会残留在旧姿势；
+- 开关切换的那一帧要**先复位一次再交给新状态**（`HandleManagedGroupTransitions`：物理 / 待机 / 眨眼 / 眼控 /
+  动捕 / 晃动从开→关时复位对应组一次，之后不再碰，让手动值保留）；
+- 动作 / 音乐这类「时写时不写」的用 touched 列表而不是固定组，避免误复位用户手动调的参数；
 - 自检断言：关掉全部驱动后手动设 `ParamMouthOpenY=0.8 / TongueOut=1 / ParamEyeBallY=-1`，Tick 30 帧后仍保持；
-  打开动捕（假 provider 有脸）后 `ParamMouthOpenY` 被每帧驱动覆盖。
+  打开动捕（假 provider 有脸）后 `ParamMouthOpenY` 被每帧驱动覆盖；关掉音乐后手动嘴值 0.6 保留 20 帧。
 
 ## 7. 性能要点
 
@@ -300,6 +323,9 @@ Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实
   一帧约 **8~10ms**（15fps 时约占单核 13%，24fps 更高）；分析帧固定 320 宽、优先 640 宽采集格式，
   不要喂 720p/1080p 给 FaceDetector（慢 3~4 倍）；关掉「显示摄像头预览」省掉每帧 ~230KB 的 BGRA 拷贝；
 - **身体晃动**：每帧只写 17 个参数、0 堆分配，实测 **< 0.1ms**（可忽略）；
+- **音乐跟唱**：只在启用时耗 CPU。WASAPI 采集线程 `Sleep(5)` 轮询（几乎不占 CPU）+ 分析器每包
+  目标 < 1.5ms（62.5 hop/s，实测 0.5~1.2ms；全预分配、0 分配）；静音时走快速路径跳过 FFT / YIN，
+  没人放音乐时基本不耗 CPU；SMTC 每 2 秒一次轻量轮询。关掉开关 / 切走页面 / 隐藏桌宠立即停止采集释放设备。
 - 调试视图（包围盒 / 蒙版缓冲）只在开启时画，别常开。
 
 ## 8. 构建 / 发布：模型与原生 DLL 怎么跟着 exe 走
@@ -516,7 +542,166 @@ UI 上「一键全部重置」会复位全部参数并停掉动作 / 表情 / �
 - 受管参数动态化后：关掉全部驱动 → 手动设 `ParamMouthOpenY=0.8` / `TongueOut=1` / `ParamEyeBallY=-1`，
   Tick 30 帧后仍保持；打开动捕（假 provider 有脸）→ `ParamMouthOpenY` 被驱动覆盖。
 
-## 13. 坑（踩过的都记在这里）
+## 13. 音频回环与音乐分析（Audio/）
+
+> 「🎵 音乐跟唱 · 律动」：用 **Windows 自带 WASAPI 回环**采集系统正在播放的声音（扬声器 / 耳机混音，
+> **不申请麦克风**），纯 C# 做 FFT / YIN / 共振峰 / 中心声道 / 音节调制 / 节拍分析，驱动模型跟唱嘴型 +
+> 跟节拍摇身体。**不录音、不写音频文件、不联网**；SMTC 只用来显示歌名 / 歌手。
+
+### 13.1 分层与文件
+
+| 文件 | 职责 |
+| --- | --- |
+| `Audio/WasapiLoopbackCapture.cs` | P/Invoke COM 包装：`IMMDeviceEnumerator → IMMDevice → IAudioClient → IAudioCaptureClient`；共享模式 + `AUDCLNT_STREAMFLAGS_LOOPBACK` 抓默认播放设备混音；统一输出**立体声 interleaved float**（PCM16/24/32 也转换） |
+| `Audio/SmtcWatcher.cs` | `Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager`：后台线程每 2 秒轮询当前会话的歌名 / 歌手 / 应用 / 播放状态；**只是显示**，识别不依赖它 |
+| `Audio/MusicReactiveContracts.cs` | `MusicContentKind`（Unknown/Silent/Instrumental/VocalSong）、`MusicAnalysisSnapshot`（不可变快照）、`IMusicReactiveProvider`（Latest / IsRunning / LastError / MediaTitle / MediaArtist / MediaApp / StateChanged） |
+| `Audio/MusicReactiveSource.cs` | provider 实现：启停采集、把数据同步喂给分析器、发布快照、处理设备切换重启、把 SMTC 事件转 StateChanged |
+| `Audio/Analysis/FastFft.cs` | 纯算法：radix-2 迭代 FFT（位反转 + 蝶形，双精度）、`MagnitudeSpectrum`、`NaiveDft`（自检对拍）、`FillHannWindow` / `ApplyWindow`；不分配内存 |
+| `Audio/Analysis/MusicAnalyzer.cs` | 纯算法：任意采样率→16k 重采样、mid/side、FFT 特征、YIN（含八度防抖）、`GoertzelAmplitude`（单频幅度，自检对拍用）、分类、节拍、唇形；`Analyze(ReadOnlySpan<float>, frameCount, ts)` → 快照 |
+
+`MusicVocalMode`（`Model/MusicVocalMode.cs`）：`Auto / ForceVocal / ForceInstrumental`，配置里存中文
+（`自动识别` / `强制跟唱` / `强制纯音乐`），由 ViewModel / Session 映射。
+
+### 13.2 WASAPI 回环（`WasapiLoopbackCapture`）
+
+- **必须共享模式**：`IAudioClient.Initialize(AUDCLNT_SHAREMODE_SHARED=0, AUDCLNT_STREAMFLAGS_LOOPBACK=0x20000, ...)`；
+  回环只能共享模式；设备混音格式用 `GetMixFormat()`（一般 48k 立体声 float32，也可能 44.1k / PCM16/24/32）；
+- 缓冲 100ms（`hnsBufferDuration = 1_000_000`，100ns 单位）；后台线程 `AboveNormal` 轮询
+  `GetNextPacketSize` + `GetBuffer`/`ReleaseBuffer`，每 5ms 睡一次（不用事件回调，简单、少 COM 线程问题）；
+- **静音包**：`AUDCLNT_BUFFERFLAGS_SILENT` 时缓冲区内容是未定义，必须填 0 再交给分析器（否则是垃圾）；
+- **格式转换**：`WAVEFORMATEX` / `WAVEFORMATEXTENSIBLE` → `Float32/Pcm16/Pcm24/Pcm32`；
+  多声道取前两声道、单声道复制；统一输出 interleaved float（-1~1）；
+- **默认设备变化**：采集线程每 2 秒比对一次默认设备 id，变了触发 `DeviceChanged` →
+  `MusicReactiveSource` 300ms 后重启采集（分析器重建、重置状态）；
+- `DataAvailable` 给的数组**会复用**，订阅者必须当场消费（`MusicReactiveSource` 同步喂分析器）。
+
+### 13.3 SMTC（`SmtcWatcher`）
+
+- `GlobalSystemMediaTransportControlsSessionManager.RequestAsync()` 在后台线程同步等待（一次）；
+- 每 2 秒：优先取 `GetPlaybackInfo().PlaybackStatus == Playing` 的会话，否则 `GetCurrentSession()`；
+  `TryGetMediaPropertiesAsync()` 拿标题 / 歌手；`SourceAppUserModelId` 拿应用；
+- SMTC 不可用 / 旧系统 / 播放器不支持 → 捕获异常后**静默忽略**，只是界面上没有媒体信息，**不影响**跟唱；
+- 隐私：媒体标题 / 文件名会写进 debug selftest 日志（见 §15），排错用，不要公开贴出。
+
+### 13.4 `MusicReactiveSource`（provider）
+
+- `StartAsync()` 在 `Task.Run` 里：`WasapiLoopbackCapture.Start()` → `new MusicAnalyzer(capture.SampleRate)` →
+  `SmtcWatcher.Start()`；失败返回 false 并给 `LastError` 中文原因（没有播放设备 / 被独占 / 不支持的格式）；
+- 采集线程每包数据**同步**调 `analyzer.Analyze(buffer, frames, Environment.TickCount64)` → `_latest = snapshot`；
+- `Sensitivity` 直接转给分析器（在线改，不重启采集）；
+- 设备切换 / 分析异常 → `_restartRequested` → 重建 capture + analyzer；
+- `StopAsync()` / `Dispose()`：停采集线程、释放 COM 设备、停 SMTC、清快照；用 `SemaphoreSlim` 串行化启停。
+
+### 13.5 处理链（`MusicAnalyzer`，48k → 16k → 特征）
+
+```
+48k 立体声 float（WASAPI）
+  → mid = (L+R)/2、side = (L−R)/2
+  → 线性插值重采样到 16k（全局输入帧坐标 _nextOutputPosition，跨 Analyze 调用连续；step = sampleRate/16000）
+  → 16k 环形缓冲（2048）
+  → 每 hop 256（16ms，≈62.5 帧/秒）取最近 1024 点做 Hann 窗 FFT（mid / side 各一次）
+  → 特征：RMS / 低频 60~200Hz / 人声带 300~3400Hz / 谱平坦度 / 谱质心 / 共振峰峰数 / YIN 基频 / 谐波比例 /
+          立体声中心声道占比 / 音节调制 / 颤音深度
+  → 节拍：**时域 hop 电平差 onset**（比单窗谱通量更抗「瞬态落在 Hann 窗边缘」，稀疏点击 / 鼓点也稳）
+          → 6 秒 onset 自相关估 BPM（60~180）→ 相位 PLL
+  → 分类：7 特征加权 + 30 秒运行分位数自适应 + 灵敏度 + 平滑 + 时序滞后
+  → 唇形：人声带包络（attack 15ms / release 90ms、最近 10 秒 p90 归一化）+ 谱质心映射嘴型
+  → MusicAnalysisSnapshot（不可变）
+```
+
+关键常量（改之前先看源码常量区）：
+
+| 项 | 值 |
+| --- | --- |
+| 分析采样率 / 窗 / hop | 16000 Hz / 1024 点（64ms）/ 256（16ms，62.5 帧/秒） |
+| 频点 Hz | 15.625 Hz/bin |
+| 静音门限 | 块 RMS < 0.0015（≈-56 dBFS）走快速路径（跳过 FFT / YIN，只推进节拍相位） |
+| 播放挂起 | 500ms（句间空隙不闪「静音」） |
+| 频带 | 低频 bin 4~13（62~203Hz）、人声 bin 19~218（297~3406Hz）、onset bin 13~256 |
+| YIN | lag 16~178（≈90~1000Hz），清晰度阈值 0.30 才算有效；带 ±1 八度防抖 |
+| 分类权重 | 清晰度 .15 / 谐波 .10 / 音调度 .10 / 共振峰 .10 / 中心声道 .15 / 音节调制 .20 / 颤音 .20 |
+| 判定阈值 | 高 **0.45** / 低 **0.32**；数据不足（有效分析 < **1.5s** **且**播放墙钟 < 1.5s）→ Unknown；带歌词持续 **1.2s** / 纯音乐持续 **2.5s** 才切换；每个 hop（含静音 hop）都推进计时 → 稀疏点击也能按墙钟下结论 |
+| 无节拍回退 | 估不出可靠 BPM 时相位按 **0.5Hz** 舒缓摆动、`BeatStrength` 保底 **0.35**（再按响度略放大）；BPM 恢复时相位速率平滑换挡（0.05/hop），避免回退↔真实节拍切换跳变 |
+| 历史窗口 | 分数 30s（1875）、包络 10s（625）、onset 6s（375）、音高 4s（128） |
+
+**YIN（`MusicAnalyzer.EstimatePitchYin`）**：标准 CMNDF，但注意两个坑（本轮踩过）：
+①差分函数要覆盖 lag=1..maxLag（`difference[1..minLag-1]` 不能是 0，否则累计均值分母偏小、整条曲线被推高）；
+②低于阈值的点只是「谷的肩部」，要继续走到**局部最小**才是周期，否则 220Hz 会估成 242Hz。
+**八度防抖**：谐波丰富的信号 YIN 会在基频 / 高八度之间跳（110 ↔ 220）；实现里用
+`_pitchSmoothed` 上一帧值把明显 ±1 八度的结果拉回同一八度（比值 1.7~2.3 → ×0.5；0.43~0.59 → ×2），
+再配 0.8/0.2 平滑 + 清晰度阈值。注意：**107Hz 不一定是八度错**——Lead 的 voice-like.wav 频谱主峰本来就是
+110Hz（220/660/1100 也有），YIN 报 107~113 是按内容正确。
+
+**分类**：`_vocalRawScore` = 7 特征加权和；其中清晰度做「稳定音高」门控
+`clarity × (0.15 + 0.85 × voicedStrength)`，避免和弦 / 打击偶发的清晰度给满分；谐波比例也要求
+`voicedStrength > 0.5` 且音高有效才更新。
+`_vocalFinalScore = raw × (0.85 + 0.15 × adaptive) × sensitivity`；`_vocalSmoothedScore` 每帧 0.1 低速平滑；
+`≥0.45` 累计 1.2s → VocalSong，`≤0.32` 累计 2.5s → Instrumental，中间地带保持上一结论（防抖）。
+`Confidence = |smoothed − 0.5| × 2`。
+实测（自检合成信号）：类人声 VocalScore 0.63 / 纯乐器 0.225；Lead 的离线 WAV：voice-like 0.54~0.72、
+instrumental-like 0.25。
+
+**节拍**：`onset = clamp(log(RMS_hop / RMS_prev) × 0.35)`（时域电平差，快起慢落平滑 0.6/0.25）→
+6 秒历史自相关，峰值相关度 ≥ 0.25 才接受 BPM（60~180），`_bpm` 平滑 0.7/0.3；每个 hop（含静音 hop）都推进
+BPM 估计（原来只在有声 hop 估算，稀疏点击永远估不出——已修）；`BeatPhase += beatRate × hop`，强 onset（≥0.35）
+再按 0.25 × 强度 PLL 拉向最近拍。**无节拍回退**：BPM 不可靠（`_beatReliable=false`）时 `beatRate` 回退到
+**0.5Hz** 舒缓摆动、`BeatStrength` 用 0.35 保底 + 响度略放大，保证钢琴曲 / 纯人声 / 环境音乐也能轻轻晃；
+回退↔真实节拍的切换对 `beatRate` 做 0.05/hop 平滑，避免相位跳变。实测：120BPM 纯点击 → 120.5；无节拍静音/稳态
+→ BPM=0 但 Phase 仍缓慢推进（用 Publish 的 BeatStrength 门槛判断是否「在晃」）。
+
+**唇形**：人声带包络按最近 10 秒 p90 归一化 → `MouthOpen`（attack 15ms / release 90ms 快起慢落）；
+`MouthForm = clamp((质心 − 1850) / 1550, −1, 1)`（谱质心越高嘴形越「亮」）。
+
+### 13.6 ModelRuntime 集成
+
+- `ModelRuntime.Music`（`IMusicReactiveProvider`）+ `MusicEnabled / MusicMode / MusicLipSyncStrength /
+  MusicSwayStrength / MusicSwayEnabled / MusicHeadBobEnabled`；`MusicKind / MusicStatusText` 只读给 UI；
+- Tick 里在**身体晃动之后**调 `ApplyMusicResponse(mocapFace)`（§6 第 5.5 步）：
+  - 数据源 `Latest` 为 null / `IsPlaying=false` / 时间戳距今 > **800ms** → 按静音处理（清零 touched）；
+  - 有效类型：`MusicMode` 强制优先，否则分析器 `Kind`；**只有 VocalSong（或 ForceVocal）才写嘴**；
+    纯音乐照常写身体摇晃；
+  - 嘴：`ParamMouthOpenY = MouthOpen × lipSync`、`ParamMouthForm = MouthForm × 0.6 × lipSync`、
+    `JawOpen = mouthOpen × 0.5`；**动捕有脸时整段嘴让位**（优先级：动捕 > 音乐）；
+  - 身体：`ParamBodyAngleX = PositionX = sin(2π·phase) × 6 × swayStrength × (0.4+0.6·beatStrength)`，
+    `ParamBodyAngleZ = sin(π·phase + 1.2) × 2 × swayStrength`，`HipAngleX = bodyX × 0.4`；
+  - 点头：`ParamAngleY = −sin(2π·phase) × 2 × swayStrength`，**动捕有脸 / EyeTrackingEnabled 时不写**；
+  - 所有写入记录到 `_musicTouchedIndices`，**下一帧开头只复位自己写过的参数**（不写时不动 → 手动值保留）；
+- 状态文案：`静音` / `识别中`（Unknown）/ `纯音乐` / `带歌词`（按分析器 Kind，**不随强制模式改变**——
+  强制跟唱时可能显示「纯音乐」但嘴在动，这是有意的：显示的是识别结果，模式是用户覆盖）；
+- 配置 7 项见 `docs/tools/live2d.md` 配置表；截图模式（`YLT_SHOT`）**刻意禁用音乐采集**（截图流程不碰系统声音）。
+
+### 13.7 性能预算
+
+- 采集线程 + 分析器：目标 < 1.5ms / 包（48k、480 帧/10ms 包），62.5 hop/s；FFT 1024×2 + YIN（每 2 hop）
+  + 共振峰平滑 + 分类 ≈ 0.5~1.2ms（8 核机器）；
+- 全部缓冲预分配（ring / FFT / 频谱 / 历史 / 分位数排序缓冲），**每帧 0 分配**；快照整体替换引用；
+- 静音快速路径：跳过 FFT / YIN，只推进节拍相位 + 衰减能量 → 没人放音乐时几乎不耗 CPU；
+- UI 读数 100ms 刷新一次（`DispatcherTimer`），不要把快照属性直接绑到每帧 Hook。
+
+### 13.8 坑（本轮踩过的，改代码前必看）
+
+1. **重采样相位必须跨块连续**：旧实现用「块内坐标 i」比较 `_resamplePhase <= i`，第一块之后相位永远大于 i →
+   0 push → 分析器停摆（但 RMS / IsPlaying 仍在动，界面看起来很正常，极易漏测）。现改为全局输入帧坐标
+   `_nextOutputPosition` + `_inputFrameIndex`；自检要连续喂多块验证 hop 继续推进。
+2. **YIN 两个坑**：diff 从 lag=1 开始算；阈值穿越点要走到局部最小（见 §13.5）。还有八度错误风险。
+3. **分类权重容易被「稳定乐器」骗**：纯乐器有谐波 / 共振峰 / 中心声道也可能高分；需要真实音频校准，
+   别用单一合成信号调参。
+4. **节拍估 BPM 曾被稀疏点击坑过**：旧实现只在「有声 hop」推进 BPM 估计、onset 用单窗谱通量 →
+   纯点击（每 500ms 只响 60ms）永远估不出；现在每个 hop（含静音 hop）都推进 BPM，onset 改成时域 hop 电平差
+   （瞬态落在 Hann 窗边缘也抓得到），实测 120BPM 纯点击 → 120.5。改回旧写法会复现 BPM=0。
+5. **`ADCLNT_STREAMFLAGS_LOOPBACK` 只能共享模式**；独占模式播放器绕过系统混音，回环抓不到。
+6. **静音包必须填 0**（`AUDCLNT_BUFFERFLAGS_SILENT` 时缓冲内容未定义）。
+7. **设备切换**（拔耳机 / 切蓝牙）默认设备 id 会变：轮询检测 + 延迟 300ms 重启采集，否则一直静音。
+8. **SMTC 可能不可用 / 权限受限**：只当显示用，失败不能影响音频分析（否则整个功能卡死）。
+9. **不要每帧分配**：音频线程 62.5 帧/秒，`new` 数组 / LINQ 会造成 GC 抖动；全部复用缓冲。
+10. **隐私**：不录音 / 不存音频；debug selftest 日志含 SMTC 媒体标题（本地文件名），别贴到公开场合。
+11. **无节拍回退的相位换挡要平滑**：真实节拍 ↔ 0.5Hz 回退切换时如果直接改 `beatRate`，身体会「跳一下」；
+    实现里对速率做 0.05/hop 指数平滑，并让 `BeatStrength` 用 0.35 保底（再按响度放大），
+    保证钢琴曲 / 纯人声也轻晃；改这部分注意别破坏「PLL 强拍拉相位」。
+12. **判定时间不能只算「有声音的 hop」**：稀疏点击 / 安静段落里，只按 active 分析时长会永远判 Unknown；
+    现在用「active ≥ 1.5s 或播放墙钟 ≥ 1.5s」双条件（`_observedPlayingSeconds`），每个 hop（含静音 hop）都推进。
+
+## 14. 坑（踩过的都记在这里）
 
 1. **moc 缓冲区必须 64 字节对齐且终身不动**：`csmReviveMocInPlace` 之后 Core 内部一直引用它；
    用 `File.ReadAllBytes` 后直接 `GCHandle` 钉住是错的（可能被 GC 移动 + 对齐不保证）。
@@ -592,7 +777,7 @@ UI 上「一键全部重置」会复位全部参数并停掉动作 / 表情 / �
 32. **鼠标跟随增益默认必须是 1/1/1/0**：1 = 原来的手感，改动默认值会让所有用户的手感突变；
     增益只乘在归一化目标上，最终角度 / 眼球值仍受参数范围与强度 clamp（0~1.5）约束，不要在别处再重复夹一次。
 
-## 14. 调试钩子（环境变量，开发 / 截图验收用）
+## 15. 调试钩子（环境变量，开发 / 截图验收用）
 
 | 变量 | 作用 |
 | --- | --- |
@@ -604,4 +789,5 @@ UI 上「一键全部重置」会复位全部参数并停掉动作 / 表情 / �
 | `YLT_LIVE2D_PREVIEW_DEBUG=1` | 预览布局排查：前 5 帧的 host / image / bitmap 尺寸写 `%TEMP%\live2d-preview-debug.log`（查拉伸 / 模糊） |
 | `YLT_LIVE2D_SWAY_DEMO=1` | 身体晃动演示：打开页面自动设「左右摇 15° / 0.5Hz」并演示 10 秒（截图抓中间帧用，不写入配置给用户） |
 | `YLT_LIVE2D_MOCAP_SELFTEST=1`（+ `_EXIT=1`） | 动捕链路自测（**会真开摄像头** 6 秒）：枚举 / 启动 / FPS / 帧尺寸 / 处理耗时 / 有脸次数写 `Data\live2d\mocap-selftest.log`（只有数字与设备名，无画面）；加 `_EXIT=1` 写完退出，给自动验收用 |
+| `YLT_LIVE2D_MUSIC_SELFTEST=1`（+ `_EXIT=1`） | **音乐跟唱链路自测（会真采集系统声音 8 秒）**：启用回环采集后统计 采样次数 / Latest 非空 / IsPlaying 占比 / Kind 分布 / 平均 RMS·VocalScore·Confidence·BPM / 音高有效率 / SMTC 歌名歌手应用 / LastError，写 `Data\live2d\music-selftest.log`（**只有数字与媒体信息，不保存音频**）；加 `_EXIT=1` 写完退出。**不能和 `YLT_SHOT` 同用**：截图模式会刻意禁用音乐采集（截图流程不碰系统声音） |
 | `YLT_SELFCHECK_TRACE=1` | 自检排错：打印「进入 / 完成哪个分组」（查「全 PASS 但进程不退出」卡在哪一步） |

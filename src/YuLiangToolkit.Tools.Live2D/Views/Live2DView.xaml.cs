@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using YuLiangToolkit.Tools.Live2D.Audio;
 using YuLiangToolkit.Tools.Live2D.Interop;
 using YuLiangToolkit.Tools.Live2D.Mocap;
 using YuLiangToolkit.Tools.Live2D.Model;
@@ -142,6 +143,55 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
         UpdateMocapStatusLine();
         UpdateSwayDisplay();
         _viewModel.RefreshFaceValues();   // 面部测试卡：100ms 刷新滑杆 / 当前值
+        UpdateMusicPanel();               // 音乐跟唱卡：100ms 刷新状态 / 媒体信息 / 实时数据
+    }
+
+    /// <summary>
+    /// 音乐卡 100ms 刷新：状态行 / 媒体信息 / 实时分析数值。
+    /// 数据源是会话持有的 WASAPI 回环采集（只读 Latest 快照），这里不接触任何音频数据。
+    /// </summary>
+    private void UpdateMusicPanel()
+    {
+        var viewModel = _viewModel;
+        if (viewModel is null) return;
+
+        var session = viewModel.Session;
+        var source = session.MusicSource;
+        var latest = source?.Latest;
+
+        var error = source?.LastError;
+        if (string.IsNullOrEmpty(error)) error = session.MusicStartError;
+
+        var media = "";
+        if (source is not null)
+        {
+            var title = source.MediaTitle?.Trim() ?? "";
+            var artist = source.MediaArtist?.Trim() ?? "";
+            var app = source.MediaApp?.Trim() ?? "";
+            if (title.Length > 0 || artist.Length > 0 || app.Length > 0)
+            {
+                media = "媒体：" + (title.Length > 0 ? title : "（未知歌曲）");
+                if (artist.Length > 0) media += " - " + artist;
+                if (app.Length > 0) media += " · " + app;
+            }
+        }
+        if (media.Length == 0) media = "媒体：—";
+
+        viewModel.UpdateMusicPanel(
+            viewModel.MusicReactiveEnabled,
+            source?.IsRunning == true,
+            string.IsNullOrEmpty(error) ? null : error,
+            media,
+            latest?.Kind ?? MusicContentKind.Unknown,
+            latest?.Confidence ?? 0,
+            latest?.Rms ?? 0,
+            latest?.VocalScore ?? 0,
+            latest?.BeatStrength ?? 0,
+            latest?.CenterVoiceRatio ?? 0,
+            latest?.SyllabicModulation ?? 0,
+            latest?.PitchValid ?? false,
+            latest?.PitchHz ?? 0,
+            latest?.Bpm ?? 0);
     }
 
     /// <summary>把 <see cref="MocapCameraSource.LatestPreview"/> 每 100ms 写进小窗位图，并叠加人脸框。</summary>
