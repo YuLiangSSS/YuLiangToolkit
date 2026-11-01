@@ -73,22 +73,34 @@ internal sealed class EyeTrackingController
     /// <summary>平滑系数（0 = 立即到目标；越大越慢，按 60fps 归一化）。</summary>
     public double Smoothing { get; set; } = 0.35;
 
-    /// <summary>头部跟随强度（0~1）。</summary>
+    /// <summary>头部跟随强度（0~1.5；实际角度仍会被 ParamAngle* 的 ±30° 参数范围截断）。</summary>
     public double HeadStrength { get; set; } = 1.0;
 
-    /// <summary>眼珠跟随强度（0~1）。</summary>
+    /// <summary>眼珠跟随强度（0~1.5；ParamEyeBall* 本身是 -1~1）。</summary>
     public double EyeStrength { get; set; } = 1.0;
 
-    /// <summary>身体跟随强度（0~1）。</summary>
+    /// <summary>身体跟随强度（0~1.5）。</summary>
     public double BodyStrength { get; set; } = 0.5;
+
+    /// <summary>横向灵敏度倍率（0.3~3.0）：鼠标离中心越近就能让头 / 眼转到更大角度。</summary>
+    public double HorizontalGain { get; set; } = 1.0;
+
+    /// <summary>抬头（目标在中心上方）方向的灵敏度倍率（0.3~3.0）。</summary>
+    public double UpGain { get; set; } = 1.0;
+
+    /// <summary>低头（目标在中心下方）方向的灵敏度倍率（0.3~3.0）。</summary>
+    public double DownGain { get; set; } = 1.0;
+
+    /// <summary>纵向中性偏移（-0.5~0.5）：先加到纵向归一化目标上，再做正负增益（校正上下不对称）。</summary>
+    public double VerticalOffset { get; set; }
 
     /// <summary>当前是否有跟随目标。</summary>
     public bool HasTarget => _hasTarget;
 
-    /// <summary>平滑后的归一化朝向（-1~1，主要给自检 / 调试用）。</summary>
+    /// <summary>平滑后的归一化横向朝向（-1~1，主要给自检 / 调试用）。</summary>
     public float SmoothedX => _currentX;
 
-    /// <summary>平滑后的归一化朝向（-1~1）。</summary>
+    /// <summary>平滑后的归一化纵向朝向（-1~1；-1 = 抬头方向）。</summary>
     public float SmoothedY => _currentY;
 
     /// <summary>设置跟随目标（画布像素坐标，原点画布左上角）。</summary>
@@ -103,7 +115,9 @@ internal sealed class EyeTrackingController
     public void ClearTarget() => _hasTarget = false;
 
     /// <summary>
-    /// 推进一帧并写参数。<paramref name="trackingEnabled"/> = false 时目标按 0（正前方）处理；
+    /// 推进一帧并写参数。<paramref name="trackingEnabled"/> = false 时：
+    /// 只写待机摇摆用的 Z 轴参数（头 / 身体轻微晃动），<b>不伸手写</b> ParamAngleX/Y、EyeBall、BodyAngleX/Y，
+    /// 这样用户在「面部测试」里手动调的参数不会被鼠标眼控每帧覆盖。
     /// <paramref name="swayAngleZ"/> / <paramref name="swayBodyAngleZ"/> 是待机摇摆量（度）。
     /// </summary>
     public void Update(double deltaSeconds, bool trackingEnabled, float swayAngleZ, float swayBodyAngleZ)
@@ -112,8 +126,18 @@ internal sealed class EyeTrackingController
         var targetY = 0.0f;
         if (trackingEnabled && _hasTarget)
         {
-            targetX = Math.Clamp((_targetCanvasX - _centerX) / _centerX, -1.0f, 1.0f);
-            targetY = Math.Clamp((_targetCanvasY - _centerY) / _centerY, -1.0f, 1.0f);
+            // 横向：归一化后乘灵敏度
+            var rawX = (_targetCanvasX - _centerX) / _centerX;
+            var horizontalGain = (float)Math.Clamp(HorizontalGain, 0.3, 3.0);
+            targetX = Math.Clamp(rawX * horizontalGain, -1.0f, 1.0f);
+
+            // 纵向：先加中性偏移，再按抬头 / 低头分别乘增益（向上跟不到就调大 DownGain 之类）
+            var rawY = ((_targetCanvasY - _centerY) / _centerY) +
+                       (float)Math.Clamp(VerticalOffset, -0.5, 0.5);
+            var verticalGain = rawY < 0
+                ? (float)Math.Clamp(UpGain, 0.3, 3.0)
+                : (float)Math.Clamp(DownGain, 0.3, 3.0);
+            targetY = Math.Clamp(rawY * verticalGain, -1.0f, 1.0f);
         }
 
         // 指数平滑：retention 越大越慢；按 60fps 归一化，帧率变化不影响手感
@@ -123,9 +147,20 @@ internal sealed class EyeTrackingController
         _currentX += (targetX - _currentX) * (float)factor;
         _currentY += (targetY - _currentY) * (float)factor;
 
-        var head = (float)Math.Clamp(HeadStrength, 0.0, 1.0);
-        var eye = (float)Math.Clamp(EyeStrength, 0.0, 1.0);
-        var body = (float)Math.Clamp(BodyStrength, 0.0, 1.0);
+        if (!trackingEnabled)
+        {
+            // 鼠标眼控关掉：只留「轻微摇摆」的 Z 轴，X / Y / 眼珠都不碰（让手动调的值保留）
+            Set(_paramAngleZ, swayAngleZ);
+            Set(_angleZ, swayAngleZ);
+            Set(_paramBodyAngleZ, swayBodyAngleZ);
+            Set(_positionZ, swayBodyAngleZ);
+            return;
+        }
+
+        // 强度允许放大到 1.5（角度仍会被 ParamAngle* 的 ±30° 参数范围截断，这是正常的）
+        var head = (float)Math.Clamp(HeadStrength, 0.0, 1.5);
+        var eye = (float)Math.Clamp(EyeStrength, 0.0, 1.5);
+        var body = (float)Math.Clamp(BodyStrength, 0.0, 1.5);
 
         // 目标在右边（_currentX > 0）→ 头往右转、眼珠往右看；画布 y 向下 → 目标在上（_currentY < 0）→ 抬头
         var angleX = _currentX * MaxHeadAngle * head;

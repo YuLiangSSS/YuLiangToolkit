@@ -131,6 +131,7 @@ internal static class Live2DChecks
             // ---------- 参数读写 / 夹取 / 复位 ----------
             var angleX = model.FindParameter("ParamAngleX");
             CheckParams(C, model, angleX);
+            CheckFaceParameters(C, model);
 
             // ---------- 参数 → 顶点变形 ----------
             var movedDrawables = CountDrawablesWithVertexChanges(model, () =>
@@ -451,6 +452,11 @@ internal static class Live2DChecks
                 !defaults.BodySwayEnabled && defaults.BodySwayMode == "左右摇"
                 && Near(defaults.BodySwayAmplitude, 12, 1e-9) && Near(defaults.BodySwaySpeed, 0.5, 1e-9)
                 && Near(defaults.BodySwayHeadFollow, 0.35, 1e-9) && defaults.BodySwayIncludeHips);
+            C("配置默认值：鼠标跟随增益 1 / 1 / 1、纵向偏移 0（新增手感参数默认 = 原来手感）",
+                Near(defaults.EyeTrackingHorizontalGain, 1.0, 1e-9)
+                && Near(defaults.EyeTrackingUpGain, 1.0, 1e-9)
+                && Near(defaults.EyeTrackingDownGain, 1.0, 1e-9)
+                && Near(defaults.EyeTrackingVerticalOffset, 0.0, 1e-9));
 
             var store = ToolConfigStore.For(Live2DTool.ToolId);
             var cfg = store.Load<Live2DConfig>();
@@ -472,29 +478,37 @@ internal static class Live2DChecks
             cfg.BodySwayEnabled = true;
             cfg.BodySwayMode = "椭圆";
             cfg.BodySwayAmplitude = 20;
+            cfg.EyeTrackingHorizontalGain = 2.2;
+            cfg.EyeTrackingUpGain = 0.8;
+            cfg.EyeTrackingDownGain = 1.6;
+            cfg.EyeTrackingVerticalOffset = 0.12;
             ToolConfigStore.FlushAll();
             var reloaded = JsonFileStore.Read<Live2DConfig>(cfg.FilePath);
             var configDirectory = Path.GetDirectoryName(cfg.FilePath);
             var badBackups = configDirectory is not null && Directory.Exists(configDirectory)
                 ? Directory.GetFiles(configDirectory, "config.bad-*.json").Length
                 : 0;
-            C("配置改动自动落盘并读回（帧率 / 纹理 / 桌宠宽 / 眼睛跟随 / 物理 / 动捕 / 身体晃动）",
+            C("配置改动自动落盘并读回（帧率 / 纹理 / 桌宠宽 / 眼睛跟随 / 物理 / 动捕 / 身体晃动 / 跟随增益）",
                 reloaded is
                 {
                     FpsLimit: 60, TextureMaxSize: 4096, PetWidth: 520, EyeTracking: false,
                     MocapEnabled: true, MocapCameraId: "cam-自检", MocapCameraName: "自检摄像头", MocapFps: 24,
                     BodySwayEnabled: true, BodySwayMode: "椭圆", BodySwayAmplitude: 20,
+                    EyeTrackingHorizontalGain: 2.2, EyeTrackingUpGain: 0.8,
+                    EyeTrackingDownGain: 1.6, EyeTrackingVerticalOffset: 0.12,
                 }
                 && Near(reloaded.PhysicsStrength, 1.5, 1e-9),
                 reloaded is null
                     ? $"读回失败：config 存在={File.Exists(cfg.FilePath)}，被备份的坏文件={badBackups} 个，LastError={store.LastError ?? "(无)"}"
                     : JsonFileStore.Serialize(reloaded).Replace(Environment.NewLine, " "));
-            C("配置按 camelCase 落盘（手改配置时键名好认：fpsLimit / mocapEnabled / bodySwayEnabled）",
+            C("配置按 camelCase 落盘（手改配置时键名好认：fpsLimit / mocapEnabled / bodySwayEnabled / eyeTrackingHorizontalGain）",
                 File.ReadAllText(cfg.FilePath).Contains("\"fpsLimit\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"textureMaxSize\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"petWidth\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"mocapEnabled\"")
-                && File.ReadAllText(cfg.FilePath).Contains("\"bodySwayEnabled\""),
+                && File.ReadAllText(cfg.FilePath).Contains("\"bodySwayEnabled\"")
+                && File.ReadAllText(cfg.FilePath).Contains("\"eyeTrackingHorizontalGain\"")
+                && File.ReadAllText(cfg.FilePath).Contains("\"eyeTrackingVerticalOffset\""),
                 File.ReadAllText(cfg.FilePath).Replace(Environment.NewLine, " "));
         }
         catch (Exception ex)
@@ -995,8 +1009,8 @@ internal static class Live2DChecks
             // ---------------- D. 眼睛跟随 ----------------
             Quiet();
             runtime.EyeTrackingEnabled = true;
-            var canvasCenterX = runtime.Model.CanvasOriginX;
-            var canvasCenterY = runtime.Model.CanvasOriginY;
+            var canvasCenterX = rt.Model.CanvasOriginX;
+            var canvasCenterY = rt.Model.CanvasOriginY;
             runtime.SetEyeTrackingTarget(canvasCenterX, canvasCenterY);
             TickFrames(90); // 1.5s，足够收敛
             C("眼睛跟随：目标在画布中心 → ParamAngleX / ParamEyeBallX ≈ 0",
@@ -1004,7 +1018,7 @@ internal static class Live2DChecks
                 $"AngleX={Param("ParamAngleX"):0.###} EyeBallX={Param("ParamEyeBallX"):0.###}");
 
             runtime.ClearEyeTrackingTarget();
-            runtime.SetEyeTrackingTarget(runtime.Model.CanvasWidthPixels * 0.85f, canvasCenterY);
+            runtime.SetEyeTrackingTarget(rt.Model.CanvasWidthPixels * 0.85f, canvasCenterY);
             TickFrames(1);
             var firstAngle = Param("ParamAngleX");
             TickFrames(9);
@@ -1030,13 +1044,116 @@ internal static class Live2DChecks
                 Math.Abs(Param("ParamAngleX")) < 1f && Math.Abs(Param("ParamEyeBallX")) < 0.05f,
                 $"AngleX={Param("ParamAngleX"):0.###} EyeBallX={Param("ParamEyeBallX"):0.###}");
 
+            // ---------------- D2. 鼠标跟随手感（横向 / 抬头 / 低头增益 + 纵向偏移 + 强度 1.5） ----------------
+            Quiet();
+            runtime.PhysicsEnabled = false;
+            runtime.IdleEnabled = false;
+            runtime.AutoBlink = false;
+            runtime.EyeTrackingEnabled = true;
+            runtime.EyeTrackingSmoothing = 0; // 0 = 立即到位，单帧就能断言映射（避免多帧收敛干扰）
+            runtime.ClearEyeTrackingTarget();
+
+            // 读一帧：把目标摆到指定画布坐标 → Tick 一帧 → 读参数
+            (float AngleX, float AngleY, float EyeX, float EyeY) Aim(float canvasX, float canvasY)
+            {
+                runtime.SetEyeTrackingTarget(canvasX, canvasY);
+                runtime.Tick(TimeSpan.FromSeconds(1.0 / 60.0));
+                return (Param("ParamAngleX"), Param("ParamAngleY"), Param("ParamEyeBallX"), Param("ParamEyeBallY"));
+            }
+
+            void ResetEyeGains()
+            {
+                runtime.EyeTrackingHorizontalGain = 1.0;
+                runtime.EyeTrackingUpGain = 1.0;
+                runtime.EyeTrackingDownGain = 1.0;
+                runtime.EyeTrackingVerticalOffset = 0;
+                runtime.EyeTrackingHeadStrength = 1.0;
+                runtime.EyeTrackingEyeStrength = 1.0;
+                runtime.EyeTrackingBodyStrength = 0.5;
+            }
+
+            ResetEyeGains();
+            C("眼控手感：运行时默认增益 1 / 1 / 1、纵向偏移 0、头部/眼球强度 1",
+                Near(runtime.EyeTrackingHorizontalGain, 1.0, 1e-9)
+                && Near(runtime.EyeTrackingUpGain, 1.0, 1e-9)
+                && Near(runtime.EyeTrackingDownGain, 1.0, 1e-9)
+                && Near(runtime.EyeTrackingVerticalOffset, 0.0, 1e-9)
+                && Near(runtime.EyeTrackingHeadStrength, 1.0, 1e-9)
+                && Near(runtime.EyeTrackingEyeStrength, 1.0, 1e-9));
+
+            // 横向：目标在中心右侧 0.5 个「中心距离」→ 默认 15°，横向灵敏度 2 → 满 30°
+            var horizontalDefault = Aim(canvasCenterX * 1.5f, canvasCenterY);
+            runtime.EyeTrackingHorizontalGain = 2.0;
+            var horizontalGain2 = Aim(canvasCenterX * 1.5f, canvasCenterY);
+            C("眼控手感：横向灵敏度 ×2 → 半程偏移从 15° 变满 30°（眼球同步到 1）",
+                Near(horizontalDefault.AngleX, 15, 0.6) && Near(horizontalGain2.AngleX, 30, 0.6)
+                && Near(horizontalDefault.EyeX, 0.5, 0.01) && Near(horizontalGain2.EyeX, 1, 0.01),
+                $"默认={horizontalDefault.AngleX:0.##}°/{horizontalDefault.EyeX:0.##}，×2={horizontalGain2.AngleX:0.##}°/{horizontalGain2.EyeX:0.##}");
+            C("眼控手感：横向灵敏度夹在 0.3~3（超界被夹：99 → 满 30°，-5 → 0.3 倍只转 4.5°）",
+                Near(AimWithGain(99).AngleX, 30, 0.6) && Near(AimWithGain(-5).AngleX, 4.5, 0.6),
+                $"99→{AimWithGain(99).AngleX:0.##}°  -5→{AimWithGain(-5).AngleX:0.##}°");
+
+            (float AngleX, float AngleY, float EyeX, float EyeY) AimWithGain(double gain)
+            {
+                runtime.EyeTrackingHorizontalGain = gain;
+                return Aim(canvasCenterX * 1.5f, canvasCenterY);
+            }
+
+            // 低头：目标在中心下方 0.25 个「中心距离」→ 默认 -7.5°；低头灵敏度 2 → -15°
+            ResetEyeGains();
+            var downDefault = Aim(canvasCenterX, canvasCenterY * 1.25f);
+            runtime.EyeTrackingDownGain = 2.0;
+            var downGain2 = Aim(canvasCenterX, canvasCenterY * 1.25f);
+            C("眼控手感：低头灵敏度 ×2 → 向下角度约为默认两倍（-7.5° → -15°，眼球 -0.25 → -0.5）",
+                Near(downDefault.AngleY, -7.5, 0.6) && Near(downGain2.AngleY, -15, 0.6)
+                && Near(downDefault.EyeY, -0.25, 0.01) && Near(downGain2.EyeY, -0.5, 0.01),
+                $"默认={downDefault.AngleY:0.##}°  ×2={downGain2.AngleY:0.##}°");
+
+            // 抬头：目标在中心上方 0.25 → 默认 +7.5°；抬头灵敏度 2 → +15°（且不吃低头的增益）
+            ResetEyeGains();
+            var upDefault = Aim(canvasCenterX, canvasCenterY * 0.75f);
+            runtime.EyeTrackingUpGain = 2.0;
+            var upGain2 = Aim(canvasCenterX, canvasCenterY * 0.75f);
+            C("眼控手感：抬头灵敏度只作用于上方（向下时仍走低头增益）",
+                Near(upDefault.AngleY, 7.5, 0.6) && Near(upGain2.AngleY, 15, 0.6)
+                && Near(Aim(canvasCenterX, canvasCenterY * 1.25f).AngleY, -7.5, 0.6),
+                $"抬头默认={upDefault.AngleY:0.##}° ×2={upGain2.AngleY:0.##}°；下方不受 UpGain 影响");
+
+            // 纵向偏移：目标在中心上方 0.2 → 默认 +6°；偏移 +0.2 后正好抵消成 0°；目标正中心 + 偏移 +0.2 → -6°
+            ResetEyeGains();
+            var offsetNone = Aim(canvasCenterX, canvasCenterY * 0.8f);
+            runtime.EyeTrackingVerticalOffset = 0.2;
+            var offsetCancel = Aim(canvasCenterX, canvasCenterY * 0.8f);
+            var offsetCenter = Aim(canvasCenterX, canvasCenterY);
+            C("眼控手感：纵向偏移改变中性点（+0.2 时上方 0.2 恰好抵消→0°，中心目标→向下 6°）",
+                Near(offsetNone.AngleY, 6, 0.6) && Near(offsetCancel.AngleY, 0, 0.6)
+                && Near(offsetCenter.AngleY, -6, 0.6),
+                $"无偏移={offsetNone.AngleY:0.##}° 抵消={offsetCancel.AngleY:0.##}° 中心+偏移={offsetCenter.AngleY:0.##}°");
+
+            // 强度 1.5：半程目标下头部 7.5°→11.25°、眼球 0.25→0.375（先放大后由参数范围兜底）
+            ResetEyeGains();
+            var strength1 = Aim(canvasCenterX * 1.25f, canvasCenterY);
+            runtime.EyeTrackingHeadStrength = 1.5;
+            runtime.EyeTrackingEyeStrength = 1.5;
+            var strength15 = Aim(canvasCenterX * 1.25f, canvasCenterY);
+            C("眼控手感：强度 1.5 > 强度 1 的输出（头 11.25° > 7.5°，眼球 0.375 > 0.25，仍在参数范围内）",
+                Near(strength1.AngleX, 7.5, 0.6) && Near(strength15.AngleX, 11.25, 0.6)
+                && Near(strength1.EyeX, 0.25, 0.01) && Near(strength15.EyeX, 0.375, 0.01)
+                && Math.Abs(strength15.AngleX) <= 30.01f && Math.Abs(strength15.EyeX) <= 1.01f,
+                $"强度1={strength1.AngleX:0.##}°/{strength1.EyeX:0.##} 强度1.5={strength15.AngleX:0.##}°/{strength15.EyeX:0.##}");
+
+            ResetEyeGains();
+            runtime.EyeTrackingSmoothing = 0.35;
+            runtime.ClearEyeTrackingTarget();
+            TickFrames(2);
+
             // ---------------- E. 物理 ----------------
             Quiet();
             runtime.PhysicsEnabled = true;
             runtime.EyeTrackingEnabled = true;
-            runtime.SetEyeTrackingTarget(runtime.Model.CanvasWidthPixels * 0.85f, canvasCenterY);
+            runtime.SetEyeTrackingTarget(rt.Model.CanvasWidthPixels * 0.85f, canvasCenterY);
             var hairIds = new[] { "FrontHairX1", "FrontHairX2", "SideHairX1", "LateHairX1" };
-            var hairDefaults = hairIds.ToDictionary(id => id, id => (double)(runtime.Model.FindParameter(id)?.DefaultValue ?? 0));
+            var hairDefaults = hairIds.ToDictionary(id => id, id => (double)(rt.Model.FindParameter(id)?.DefaultValue ?? 0));
             TickFrames(90); // 1.5s：头转过去后头发物理应该被带动
             var hairChanged = hairIds.Count(id => Math.Abs(Param(id) - hairDefaults[id]) > 1e-3);
             C("物理：头部转动后头发物理输出被驱动（4 个毛发参数至少 1 个偏离默认值）",
@@ -1047,7 +1164,7 @@ internal static class Live2DChecks
             var physicsOffDefault = hairDefaults["FrontHairX1"];
             runtime.PhysicsEnabled = false;
             runtime.ResetParameters();
-            runtime.SetEyeTrackingTarget(runtime.Model.CanvasWidthPixels * 0.85f, canvasCenterY);
+            runtime.SetEyeTrackingTarget(rt.Model.CanvasWidthPixels * 0.85f, canvasCenterY);
             TickFrames(60);
             C("关掉物理后毛发输出不再被驱动（FrontHairX1 回到默认值）",
                 Math.Abs(Param("FrontHairX1") - physicsOffDefault) < 1e-2f,
@@ -1059,7 +1176,7 @@ internal static class Live2DChecks
             runtime.AutoBlink = true;
             runtime.PhysicsEnabled = true;
             runtime.EyeTrackingEnabled = true;
-            runtime.SetEyeTrackingTarget(runtime.Model.CanvasWidthPixels * 0.7f, canvasCenterY);
+            runtime.SetEyeTrackingTarget(rt.Model.CanvasWidthPixels * 0.7f, canvasCenterY);
             TickFrames(120);
             C("多系统同时开启（待机 + 眨眼 + 物理 + 眼睛跟随）连跑 2 秒参数全部有限",
                 AllParamsFinite() && runtime.LastTickMilliseconds >= 0,
@@ -1092,7 +1209,7 @@ internal static class Live2DChecks
                 C("渲染器：透明背景四角 alpha = 0（桌面宠物不会有白底 / 黑底）",
                     alpha.CornerAlphas.All(a => a == 0),
                     string.Join(",", alpha.CornerAlphas));
-                var stats = runtime.Renderer.LastStats;
+                var stats = rt.Renderer.LastStats;
                 C("渲染统计：绘制了网格 / 三角形 / 像素填充，且蒙版 pass > 0",
                     stats.DrawablesDrawn > 300 && stats.TrianglesDrawn > 10000
                     && stats.PixelsFilled > 10000 && stats.MaskPasses > 0,
@@ -1116,7 +1233,7 @@ internal static class Live2DChecks
                     // 放大一倍（640×1280）时角色包围盒也应约放大一倍（等比适配，不是被拉伸）
                     var bigOptions = new RenderOptions { Width = 640, Height = 1280, FitCanvas = true, TransparentBackground = true };
                     runtime.RenderFrame(bigOptions);
-                    var bigBitmap = runtime.Renderer.Bitmap;
+                    var bigBitmap = rt.Renderer.Bitmap;
                     if (bigBitmap is not null)
                     {
                         var bigBounds = OpaqueBounds(ReadPixels(bigBitmap), 640, 1280, alphaThreshold: 8);
@@ -1138,7 +1255,7 @@ internal static class Live2DChecks
                     BackgroundColor = 0xFF1B1E28,
                 };
                 runtime.RenderFrame(solidOptions);
-                var solidBitmap = runtime.Renderer.Bitmap;
+                var solidBitmap = rt.Renderer.Bitmap;
                 if (solidBitmap is not null)
                 {
                     var solidPixels = ReadPixels(solidBitmap);
@@ -1159,7 +1276,7 @@ internal static class Live2DChecks
             for (var i = 0; i < 3; i++)
             {
                 runtime.RenderFrame(warmOptions);
-                best = Math.Min(best, runtime.Renderer.LastStats.RenderMilliseconds);
+                best = Math.Min(best, rt.Renderer.LastStats.RenderMilliseconds);
             }
             C("渲染器：320×640 一帧渲染耗时 < 200ms（宽松性能哨兵，只防渲染退化到不可用）",
                 best < 200,
@@ -1192,7 +1309,7 @@ internal static class Live2DChecks
 
             // 有脸时鼠标眼控让位（不会两边抢同一批参数）
             runtime.EyeTrackingEnabled = true;
-            runtime.SetEyeTrackingTarget(runtime.Model.CanvasWidthPixels * 0.85f, runtime.Model.CanvasOriginY);
+            runtime.SetEyeTrackingTarget(rt.Model.CanvasWidthPixels * 0.85f, rt.Model.CanvasOriginY);
             TickFrames(3);
             C("动捕优先级：有脸时动捕接管头部（鼠标眼控不会覆盖动捕角度）",
                 Math.Abs(Param("ParamAngleX") - 15f) < 0.5f, $"AngleX={Param("ParamAngleX"):0.###}");
@@ -1319,10 +1436,10 @@ internal static class Live2DChecks
             swayDirect.HeadFollow = 0;
             swayDirect.IncludeHips = false;
             swayDirect.Reset();
-            swayDirect.Apply(runtime.Model, 0.5);  // progress = 0.25 周期 → X 最大、Z ≈ 0
+            swayDirect.Apply(rt.Model, 0.5);  // progress = 0.25 周期 → X 最大、Z ≈ 0
             var ellipseX1 = Param("ParamBodyAngleX");
             var ellipseZ1 = Param("ParamBodyAngleZ");
-            swayDirect.Apply(runtime.Model, 0.5);  // progress = 0.5 周期 → X ≈ 0、Z 反向最大
+            swayDirect.Apply(rt.Model, 0.5);  // progress = 0.5 周期 → X ≈ 0、Z 反向最大
             var ellipseX2 = Param("ParamBodyAngleX");
             var ellipseZ2 = Param("ParamBodyAngleZ");
             C("身体晃动（椭圆）：X / Z 相位差约 90°（X 最大时 Z≈0，半周期后 X≈0、Z 反向最大）",
@@ -1354,6 +1471,77 @@ internal static class Live2DChecks
                 && new[] { "ParamBodyAngleX", "ParamBodyAngleZ", "ParamAngleX" }.Select(Param)
                     .Select((value, index) => Math.Abs(value - bodyDefaults[index]) < 1e-6f)
                     .All(ok => ok));
+
+            // ---------------- I. 受管参数动态化（关掉的系统不再每帧复位 → 面部测试手调值能保留） ----------------
+            Quiet();
+            runtime.PhysicsEnabled = false;
+            runtime.IdleEnabled = false;
+            runtime.AutoBlink = false;
+            runtime.EyeTrackingEnabled = false;
+            runtime.MocapEnabled = false;
+            runtime.Mocap = null;
+            runtime.SwayEnabled = false;
+            runtime.StopSwayDemo();
+            runtime.StopMotion();
+            runtime.ClearExpressions(0);
+            TickFrames(2); // 让「开→关」过渡复位走完
+
+            var mouthParam = rt.Model.FindParameter("ParamMouthOpenY");
+            var tongueOutParam = rt.Model.FindParameter("TongueOut");
+            var eyeballYParam = rt.Model.FindParameter("ParamEyeBallY");
+            if (mouthParam is not null) mouthParam.Value = 0.8f;
+            if (tongueOutParam is not null) tongueOutParam.Value = 1f;
+            if (eyeballYParam is not null) eyeballYParam.Value = -1f;
+            TickFrames(30);
+            C("受管参数动态化：动捕/眼控/物理/待机/晃动全关后，手调面部参数 Tick 30 帧仍保留（嘴 0.8 / 舌 1 / 眼珠 -1）",
+                Near(Param("ParamMouthOpenY"), 0.8, 1e-3) && Near(Param("TongueOut"), 1, 1e-3)
+                && Near(Param("ParamEyeBallY"), -1, 1e-3),
+                $"嘴={Param("ParamMouthOpenY"):0.###} 舌={Param("TongueOut"):0.###} 眼珠={Param("ParamEyeBallY"):0.###}");
+
+            // 打开动捕（假 provider 有脸）→ 嘴参数被每帧驱动覆盖
+            runtime.Mocap = fakeMocap;
+            runtime.MocapEnabled = true;
+            fakeMocap.Latest = MakeFakeTracking(yaw: 0, pitch: 0, eyeOpen: 0.9, mouth: 0.25);
+            TickFrames(2);
+            C("受管参数动态化：打开动捕后嘴参数被每帧驱动覆盖（手调 0.8 → 动捕 0.25）",
+                Near(Param("ParamMouthOpenY"), 0.25, 1e-2),
+                $"嘴={Param("ParamMouthOpenY"):0.###}");
+
+            // 关闭动捕 → 过渡帧复位一次（回到默认），之后手动值可保留
+            runtime.MocapEnabled = false;
+            TickFrames(1);
+            C("受管参数动态化：关闭动捕的那一帧把参数组复位一次（嘴回默认 0，不会停在动捕值）",
+                Near(Param("ParamMouthOpenY"), 0, 1e-3),
+                $"嘴={Param("ParamMouthOpenY"):0.###}");
+            if (mouthParam is not null) mouthParam.Value = 0.55f;
+            TickFrames(5);
+            C("受管参数动态化：关掉动捕后手动再调嘴值仍保留（0.55）",
+                Near(Param("ParamMouthOpenY"), 0.55, 1e-3),
+                $"嘴={Param("ParamMouthOpenY"):0.###}");
+
+            // 打开鼠标眼控 → 眼球参数被接管（手调 -1 → 0），关掉后不再复位、手动值保留
+            runtime.Mocap = null;
+            if (eyeballYParam is not null) eyeballYParam.Value = -1f;
+            runtime.EyeTrackingEnabled = true;
+            runtime.EyeTrackingSmoothing = 0;
+            runtime.SetEyeTrackingTarget(canvasCenterX, canvasCenterY);
+            TickFrames(2);
+            C("受管参数动态化：打开鼠标眼控后眼球参数被接管（手调 -1 → 中心目标 0）",
+                Near(Param("ParamEyeBallY"), 0, 1e-3),
+                $"眼珠Y={Param("ParamEyeBallY"):0.###}");
+            runtime.EyeTrackingEnabled = false;
+            runtime.ClearEyeTrackingTarget();
+            TickFrames(1);
+            if (eyeballYParam is not null) eyeballYParam.Value = -0.6f;
+            TickFrames(5);
+            C("受管参数动态化：关掉鼠标眼控后眼球参数不再被复位（手调 -0.6 保留）",
+                Near(Param("ParamEyeBallY"), -0.6, 1e-3),
+                $"眼珠Y={Param("ParamEyeBallY"):0.###}");
+
+            // 收尾：把所有子系统恢复默认状态，避免影响后续（其实后面不再有断言，保持干净）
+            runtime.ResetParameters();
+            runtime.EyeTrackingSmoothing = 0.35;
+            TickFrames(2);
         }
         catch (Exception ex)
         {
@@ -1407,6 +1595,81 @@ internal static class Live2DChecks
         var badDefaults = model.Parameters.Count(p => p.DefaultValue < p.Minimum - 1e-4f || p.DefaultValue > p.Maximum + 1e-4f
                                                        || !float.IsFinite(p.DefaultValue));
         C("全部 509 个参数的 min ≤ default ≤ max 且默认值有限", badDefaults == 0, $"非法 {badDefaults} 个");
+    }
+
+    /// <summary>
+    /// 「😛 面部测试」卡直接写的面部参数（眼睛位置/开闭、嘴、舌头）自检：
+    /// 参数存在性 / 范围 / 默认值可读、写入自动夹取、写读一致。全部走 Interop，不需要 UI、不碰摄像头。
+    /// </summary>
+    private static void CheckFaceParameters(Action<string, bool, string> check, CubismModel model)
+    {
+        void C(string name, bool ok, string detail = "") => check(name, ok, detail);
+
+        var eyeBallX = model.FindParameter("ParamEyeBallX");
+        var eyeBallY = model.FindParameter("ParamEyeBallY");
+        var eyeLOpen = model.FindParameter("ParamEyeLOpen");
+        var eyeROpen = model.FindParameter("ParamEyeROpen");
+        var mouthOpen = model.FindParameter("ParamMouthOpenY");
+        var mouthForm = model.FindParameter("ParamMouthForm");
+        var tongueOut = model.FindParameter("TongueOut");
+        var tongueUp = model.FindParameter("ParamTongueUpDown");
+        var tongueWidth = model.FindParameter("ParamTongueWidth");
+
+        C("面部测试：眼睛位置/开闭 4 个参数都能按 Id 找到（ParamEyeBallX/Y、ParamEyeLOpen/ROpen）",
+            eyeBallX is not null && eyeBallY is not null && eyeLOpen is not null && eyeROpen is not null);
+        C("面部测试：嘴 2 个参数都能按 Id 找到（ParamMouthOpenY / ParamMouthForm）",
+            mouthOpen is not null && mouthForm is not null);
+        C("面部测试：舌头三参数都能按 Id 找到（TongueOut / ParamTongueUpDown / ParamTongueWidth）",
+            tongueOut is not null && tongueUp is not null && tongueWidth is not null,
+            tongueOut is null ? "(TongueOut 不存在)" : $"TongueOut={tongueOut.Minimum}..{tongueOut.Maximum} 默认 {tongueOut.DefaultValue}");
+
+        var faceRangesOk = eyeBallX is not null && eyeBallY is not null && eyeLOpen is not null && eyeROpen is not null
+                           && mouthOpen is not null && mouthForm is not null
+                           && tongueOut is not null && tongueUp is not null && tongueWidth is not null
+                           && eyeBallX.Minimum <= 0 && eyeBallX.Maximum >= 1
+                           && eyeLOpen.Minimum <= 0 && eyeLOpen.Maximum >= 1
+                           && mouthOpen.Minimum <= 0 && mouthOpen.Maximum >= 1
+                           && tongueOut.Minimum <= 0 && tongueOut.Maximum >= 1;
+        C("面部测试：眼睛/嘴/舌头参数范围包含 0~1（TongueOut 与 ParamMouthOpenY 都能从 0 张到 1）",
+            faceRangesOk,
+            $"眼={eyeLOpen?.Minimum}..{eyeLOpen?.Maximum} 嘴={mouthOpen?.Minimum}..{mouthOpen?.Maximum} " +
+            $"舌={tongueOut?.Minimum}..{tongueOut?.Maximum} 舌上下={tongueUp?.Minimum}..{tongueUp?.Maximum} 舌宽={tongueWidth?.Minimum}..{tongueWidth?.Maximum}");
+
+        // 写读一致 + 自动夹取（面部测试卡就是直接写这些参数；slider 拖到端点要能和模型对上）
+        var writeOk = mouthOpen is not null && tongueOut is not null && eyeBallY is not null;
+        if (writeOk)
+        {
+            mouthOpen!.Value = 1f;
+            tongueOut!.Value = 1f;
+            eyeBallY!.Value = -1f;
+            writeOk = Near(mouthOpen.Value, 1, 1e-6) && Near(tongueOut.Value, 1, 1e-6) && Near(eyeBallY.Value, -1, 1e-6);
+        }
+
+        C("面部测试：写端点值（嘴 1 / 舌 1 / 眼球 -1）读回一致（滑块到端点不会漂）", writeOk);
+
+        if (mouthOpen is not null && tongueOut is not null && tongueUp is not null && tongueWidth is not null)
+        {
+            mouthOpen.Value = 100f;
+            tongueOut.Value = 100f;
+            tongueUp.Value = 100f;
+            tongueWidth.Value = 100f;
+            var clamped = Near(mouthOpen.Value, mouthOpen.Maximum, 1e-6)
+                          && Near(tongueOut.Value, tongueOut.Maximum, 1e-6)
+                          && Near(tongueUp.Value, tongueUp.Maximum, 1e-6)
+                          && Near(tongueWidth.Value, tongueWidth.Maximum, 1e-6);
+            mouthOpen.Value = -100f;
+            tongueOut.Value = -100f;
+            tongueUp.Value = -100f;
+            tongueWidth.Value = -100f;
+            clamped = clamped
+                      && Near(mouthOpen.Value, mouthOpen.Minimum, 1e-6)
+                      && Near(tongueOut.Value, tongueOut.Minimum, 1e-6)
+                      && Near(tongueUp.Value, tongueUp.Minimum, 1e-6)
+                      && Near(tongueWidth.Value, tongueWidth.Minimum, 1e-6);
+            C("面部测试：写超范围值被夹到参数 min~max（嘴 / 舌头参数越界不会崩）", clamped);
+        }
+
+        model.ResetParametersToDefault();
     }
 
     // ====================================================================

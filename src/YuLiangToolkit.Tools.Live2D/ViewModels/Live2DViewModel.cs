@@ -92,6 +92,7 @@ public sealed class Live2DViewModel : ToolViewModelBase
         CalibrateMocapNeutralCommand = new RelayCommand(_ => Session.CalibrateMocapNeutralPosition());
         ShakeSwayCommand = new RelayCommand(_ => ShakeSway());
         StopSwayCommand = new RelayCommand(_ => StopSway());
+        ApplyFacePresetCommand = new RelayCommand(parameter => ApplyFacePreset(parameter as string ?? "tongue"));
 
         Session.PetVisibilityChanged += OnPetVisibilityChanged;
         Session.StateChanged += OnSessionStateChanged;
@@ -565,6 +566,62 @@ public sealed class Live2DViewModel : ToolViewModelBase
             var clamped = Math.Clamp(value, 0, 1.5);
             if (Math.Abs(Cfg.EyeTrackingBodyStrength - clamped) < 0.0001) return;
             Cfg.EyeTrackingBodyStrength = clamped;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>鼠标跟随：横向灵敏度（0.3 ~ 3；越大左右看越灵敏）。</summary>
+    public double EyeTrackingHorizontalGain
+    {
+        get => Math.Clamp(Cfg.EyeTrackingHorizontalGain, 0.3, 3);
+        set
+        {
+            var clamped = Math.Clamp(value, 0.3, 3);
+            if (Math.Abs(Cfg.EyeTrackingHorizontalGain - clamped) < 0.0001) return;
+            Cfg.EyeTrackingHorizontalGain = clamped;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>鼠标跟随：抬头灵敏度（0.3 ~ 3；鼠标在画布上方时用）。</summary>
+    public double EyeTrackingUpGain
+    {
+        get => Math.Clamp(Cfg.EyeTrackingUpGain, 0.3, 3);
+        set
+        {
+            var clamped = Math.Clamp(value, 0.3, 3);
+            if (Math.Abs(Cfg.EyeTrackingUpGain - clamped) < 0.0001) return;
+            Cfg.EyeTrackingUpGain = clamped;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>鼠标跟随：低头灵敏度（0.3 ~ 3；鼠标在画布下方时用，向下看跟不到就调大这个）。</summary>
+    public double EyeTrackingDownGain
+    {
+        get => Math.Clamp(Cfg.EyeTrackingDownGain, 0.3, 3);
+        set
+        {
+            var clamped = Math.Clamp(value, 0.3, 3);
+            if (Math.Abs(Cfg.EyeTrackingDownGain - clamped) < 0.0001) return;
+            Cfg.EyeTrackingDownGain = clamped;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>鼠标跟随：纵向偏移（-0.5 ~ 0.5；整体偏上 / 偏下一点点）。</summary>
+    public double EyeTrackingVerticalOffset
+    {
+        get => Math.Clamp(Cfg.EyeTrackingVerticalOffset, -0.5, 0.5);
+        set
+        {
+            var clamped = Math.Clamp(value, -0.5, 0.5);
+            if (Math.Abs(Cfg.EyeTrackingVerticalOffset - clamped) < 0.0001) return;
+            Cfg.EyeTrackingVerticalOffset = clamped;
             OnPropertyChanged();
             Session.ApplyRuntimeSettings();
         }
@@ -1152,6 +1209,224 @@ public sealed class Live2DViewModel : ToolViewModelBase
         StatusText = "已停止身体晃动";
     }
 
+    // ===================== 面部测试（眼睛 / 嘴 / 舌头） =====================
+
+    /// <summary>眼睛组参数 Id（顺序即界面顺序）。</summary>
+    private static readonly string[] FaceEyeIds =
+    {
+        "ParamEyeBallX", "ParamEyeBallY", "ParamEyeLOpen", "ParamEyeROpen", "EyeSmile",
+    };
+
+    /// <summary>嘴组参数 Id。</summary>
+    private static readonly string[] FaceMouthIds =
+    {
+        "ParamMouthOpenY", "ParamMouthForm", "JawOpen", "Mouthpucker", "MouthFunnel",
+        "MouthPuckerWiden", "MouthPressLipOpen", "MouthRollUpper", "MouthRollLower",
+        "MouthSmile_L", "MouthSmile_R", "PoutOffsetXL", "PoutOffsetXR",
+    };
+
+    /// <summary>舌头组参数 Id（重点：吐舌头）。</summary>
+    private static readonly string[] FaceTongueIds =
+    {
+        "TongueOut", "ParamTongueUpDown", "ParamTongueWidth",
+    };
+
+    private readonly List<FaceParameterRowViewModel> _faceRows = new();
+    private string _faceSummaryText = "模型加载后显示可调参数";
+
+    /// <summary>眼睛组参数行。</summary>
+    public ObservableCollection<FaceParameterRowViewModel> FaceEyeParameters { get; } = new();
+
+    /// <summary>嘴组参数行。</summary>
+    public ObservableCollection<FaceParameterRowViewModel> FaceMouthParameters { get; } = new();
+
+    /// <summary>舌头组参数行。</summary>
+    public ObservableCollection<FaceParameterRowViewModel> FaceTongueParameters { get; } = new();
+
+    /// <summary>面部参数统计文本（眼睛 / 嘴 / 舌头各几个）。</summary>
+    public string FaceSummaryText
+    {
+        get => _faceSummaryText;
+        private set => Set(ref _faceSummaryText, value);
+    }
+
+    private void BuildFaceParameters(ModelRuntime runtime)
+    {
+        ClearFaceParameters();
+        try
+        {
+            var model = runtime.Model;
+            var display = runtime.Display;
+
+            void Add(ObservableCollection<FaceParameterRowViewModel> target, string id)
+            {
+                var parameter = model.FindParameter(id);
+                if (parameter is null) return;
+
+                string? name = null;
+                if (display is not null && display.ParameterNames.TryGetValue(id, out var foundName))
+                {
+                    name = foundName;
+                }
+
+                var row = new FaceParameterRowViewModel(parameter, name);
+                target.Add(row);
+                _faceRows.Add(row);
+            }
+
+            foreach (var id in FaceEyeIds) Add(FaceEyeParameters, id);
+            foreach (var id in FaceMouthIds) Add(FaceMouthParameters, id);
+            foreach (var id in FaceTongueIds) Add(FaceTongueParameters, id);
+
+            FaceSummaryText = $"{_faceRows.Count} 个可调参数（眼睛 {FaceEyeParameters.Count} / " +
+                              $"嘴 {FaceMouthParameters.Count} / 舌头 {FaceTongueParameters.Count}）";
+        }
+        catch (Exception ex)
+        {
+            FaceSummaryText = "面部参数读取失败：" + ex.Message;
+        }
+    }
+
+    private void ClearFaceParameters()
+    {
+        FaceEyeParameters.Clear();
+        FaceMouthParameters.Clear();
+        FaceTongueParameters.Clear();
+        _faceRows.Clear();
+        FaceSummaryText = "模型加载后显示可调参数";
+    }
+
+    /// <summary>
+    /// 页面 100ms 定时器调用：把滑杆 / 当前值刷新成模型真实值
+    /// （动捕 / 眼睛跟随 / 表情可能在每帧写这些参数，界面上要能看到实际值）。
+    /// </summary>
+    public void RefreshFaceValues()
+    {
+        foreach (var row in _faceRows) row.RefreshFromModel();
+    }
+
+    /// <summary>应用「面部测试」预设（按钮命令 / 截图调试钩子共用）。</summary>
+    /// <param name="preset">tongue / open / pucker / smile / wink / rolleyes / reset。</param>
+    public void ApplyFacePreset(string preset)
+    {
+        if (Runtime?.IsLoaded != true)
+        {
+            StatusText = "模型还没加载，无法应用面部预设";
+            return;
+        }
+
+        var applied = new List<string>();
+        void Set(string id, double value) => SetFaceValue(id, value, applied);
+
+        switch (preset)
+        {
+            case "open":
+                Set("ParamMouthOpenY", 1);
+                Set("JawOpen", 1);
+                break;
+
+            case "pucker":
+                Set("Mouthpucker", 1);
+                Set("ParamMouthForm", 0.3);
+                break;
+
+            case "smile":
+                Set("MouthSmile_L", 1);
+                Set("MouthSmile_R", 1);
+                Set("EyeSmile", 1);
+                Set("ParamMouthForm", 1);
+                break;
+
+            case "wink":
+                Set("ParamEyeLOpen", 0.05);
+                Set("ParamEyeROpen", 1);
+                break;
+
+            case "rolleyes":
+                Set("ParamEyeBallY", 1);
+                Set("ParamEyeLOpen", 0.5);
+                Set("ParamEyeROpen", 0.5);
+                break;
+
+            case "reset":
+                foreach (var row in _faceRows) row.SetValue((float)row.DefaultValue);
+                break;
+
+            default:   // tongue（默认）
+                preset = "tongue";
+                Set("TongueOut", 1);
+                Set("ParamMouthOpenY", 0.7);
+                Set("JawOpen", 0.4);
+                Set("ParamMouthForm", 0.5);
+                break;
+        }
+
+        RefreshFaceValues();
+        var summary = preset == "reset"
+            ? "面部测试：已恢复全部面部参数默认值"
+            : $"面部测试：预设「{FacePresetDisplayName(preset)}」→ " + string.Join("，", applied);
+        Log(summary);
+        StatusText = summary;
+    }
+
+    private void SetFaceValue(string id, double value, List<string> applied)
+    {
+        try
+        {
+            var row = _faceRows.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.Ordinal));
+            if (row is not null)
+            {
+                row.SetValue((float)Math.Clamp(value, row.Minimum, row.Maximum));
+                applied.Add($"{id}={row.Value:0.00}");
+                return;
+            }
+
+            var parameter = Runtime?.Model.FindParameter(id);
+            if (parameter is null) return;
+            parameter.Value = (float)value;
+            applied.Add($"{id}={parameter.Value:0.00}");
+        }
+        catch
+        {
+            // 单个参数失败不影响其它预设值
+        }
+    }
+
+    /// <summary>预设中文名（日志 / 界面提示用）。</summary>
+    public static string FacePresetDisplayName(string preset) => preset switch
+    {
+        "open" => "😲 张嘴",
+        "pucker" => "😗 撅嘴",
+        "smile" => "😊 微笑",
+        "wink" => "😉 眨眼",
+        "rolleyes" => "🙄 翻白眼",
+        "reset" => "😐 重置面部",
+        _ => "😛 吐舌头",
+    };
+
+    /// <summary>
+    /// 给调试钩子 / 验收用：把面部测试卡里每个参数的实际值拼成多行文本
+    /// （含范围与默认值，方便判断哪些手动值被运行时每帧覆盖了）。
+    /// </summary>
+    public string BuildFaceValuesSnapshot()
+    {
+        var builder = new System.Text.StringBuilder();
+        void AddGroup(string title, ObservableCollection<FaceParameterRowViewModel> rows)
+        {
+            builder.AppendLine("[" + title + "]");
+            foreach (var row in rows)
+            {
+                builder.AppendLine($"  {row.Id} = {row.Value:0.000}（范围 {row.Minimum:0.###}~{row.Maximum:0.###}，" +
+                                   $"默认 {row.DefaultValue:0.###}）");
+            }
+        }
+
+        AddGroup("眼睛", FaceEyeParameters);
+        AddGroup("嘴", FaceMouthParameters);
+        AddGroup("舌头", FaceTongueParameters);
+        return builder.ToString();
+    }
+
     /// <summary>外部直接改 Cfg（截图演示钩子 / 校准写入）后把界面全部重绑一遍。</summary>
     public void RefreshAllBindings() => OnPropertyChanged(string.Empty);
 
@@ -1188,6 +1463,7 @@ public sealed class Live2DViewModel : ToolViewModelBase
     public RelayCommand CalibrateMocapNeutralCommand { get; }
     public RelayCommand ShakeSwayCommand { get; }
     public RelayCommand StopSwayCommand { get; }
+    public RelayCommand ApplyFacePresetCommand { get; }
 
     // ===================== 加载状态回调（由 Live2DSession 调用） =====================
 
@@ -1253,6 +1529,7 @@ public sealed class Live2DViewModel : ToolViewModelBase
             MotionProgress = 0;
             MotionTimeText = "0.0 / 0.0 s";
             PreviewStatsText = "—";
+            ClearFaceParameters();
             RaiseAll();
             return;
         }
@@ -1273,6 +1550,7 @@ public sealed class Live2DViewModel : ToolViewModelBase
         BuildMotionRows(runtime);
         BuildExpressionRows(runtime);
         BuildIdleMotionOptions(runtime);
+        BuildFaceParameters(runtime);
         RefreshFrameState(runtime);
         RaiseAll();
     }

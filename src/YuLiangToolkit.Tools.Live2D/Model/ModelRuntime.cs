@@ -77,7 +77,28 @@ public sealed class ModelRuntime : IDisposable
     private PartBinding[] _partBindings = Array.Empty<PartBinding>();
     private string[] _eyeBlinkParameterIds = Array.Empty<string>();
     private string[] _lipSyncParameterIds = Array.Empty<string>();
-    private int[] _managedParameterIndices = Array.Empty<int>();
+
+    // 受管参数分组（预计算下标，每帧按开关决定哪些组要「恢复默认」；不再每帧重建数组）
+    // 动作曲线不在这里：它只在「上一帧实际被动作写过」的参数上复位（见 ResetMotionTouchedParameters），
+    // 这样待机动作只覆盖它自己那 21 个参数，用户手动调的脸 / 嘴参数不会被动作列表里别的文件拖累。
+    private int[] _expressionManaged = Array.Empty<int>();
+    private int[] _physicsManaged = Array.Empty<int>();
+    private int[] _idleManaged = Array.Empty<int>();
+    private int[] _blinkManaged = Array.Empty<int>();
+    private int[] _eyeManaged = Array.Empty<int>();
+    private int[] _mocapManaged = Array.Empty<int>();
+    private int[] _swayManaged = Array.Empty<int>();
+
+    // 子系统开关的上一帧状态（true → false 的那一帧把该组参数恢复默认，之后不再动它们，让手动值保留）
+    private bool _managedGroupsInitialized;
+    private bool _prevPhysicsEnabled;
+    private bool _prevIdleEnabled;
+    private bool _prevBlinkActive;
+    private bool _prevEyeTrackingEnabled;
+    private bool _prevMocapEnabled;
+    private bool _prevSwayActive;
+    private bool _prevExpressionActive;
+
     private bool _disposed;
 
     // 动捕缓存的参数（构造后每帧直接写，不查字典）
@@ -173,6 +194,18 @@ public sealed class ModelRuntime : IDisposable
     public double EyeTrackingHeadStrength { get; set; } = 1.0;
     public double EyeTrackingEyeStrength { get; set; } = 1.0;
     public double EyeTrackingBodyStrength { get; set; } = 0.5;
+
+    /// <summary>鼠标跟随横向灵敏度倍率（0.3~3.0；1 = 原手感，越大越跟手）。</summary>
+    public double EyeTrackingHorizontalGain { get; set; } = 1.0;
+
+    /// <summary>鼠标跟随「抬头」方向灵敏度倍率（0.3~3.0）。</summary>
+    public double EyeTrackingUpGain { get; set; } = 1.0;
+
+    /// <summary>鼠标跟随「低头」方向灵敏度倍率（0.3~3.0；觉得向下跟不到就调大）。</summary>
+    public double EyeTrackingDownGain { get; set; } = 1.0;
+
+    /// <summary>鼠标跟随的纵向中性偏移（-0.5~0.5；先加偏移，再做抬头 / 低头增益）。</summary>
+    public double EyeTrackingVerticalOffset { get; set; }
 
     /// <summary>默认待机动作（IdleEnabled 时循环播放；null = 不播）。</summary>
     public MotionEntry? IdleMotion { get; set; }
@@ -362,7 +395,7 @@ public sealed class ModelRuntime : IDisposable
         _eye = new EyeTrackingController(_model);
         _bodySway = new BodySwayController(_model);
         ResolveMocapParameters(_model);
-        _managedParameterIndices = BuildManagedParameterIndices();
+        BuildManagedParameterGroups();
 
         // 8) 默认待机动作
         IdleMotion = ResolveIdleMotion(options.IdleMotionName);
@@ -449,55 +482,131 @@ public sealed class ModelRuntime : IDisposable
         return ids.ToArray();
     }
 
-    /// <summary>收集「运行时每帧会改写」的参数下标（每帧只把这些参数恢复默认）。</summary>
-    private int[] BuildManagedParameterIndices()
+    /// <summary>
+    /// 预计算「受管参数」分组（加载时一次）：每个子系统只在它开启时才每帧把这些参数恢复默认，
+    /// 关掉后就不再复位，用户在「参数 / 面部测试」里手动拖的值才能保留。
+    /// </summary>
+    private void BuildManagedParameterGroups()
     {
         var model = _model!;
-        var managed = new HashSet<int>();
 
-        void Add(string id)
+        var expression = new HashSet<int>();
+        var physics = new HashSet<int>();
+        var idle = new HashSet<int>();
+        var blink = new HashSet<int>();
+        var eye = new HashSet<int>();
+        var mocap = new HashSet<int>();
+        var sway = new HashSet<int>();
+
+        void Add(HashSet<int> group, string id)
         {
             var parameter = model.FindParameter(id);
-            if (parameter is not null) managed.Add(parameter.Index);
+            if (parameter is not null) group.Add(parameter.Index);
         }
 
-        // 动作曲线
-        foreach (var data in _motionDataByPath.Values)
-        {
-            foreach (var curve in data.Curves)
-            {
-                if (curve.Target == MotionCurveTarget.Parameter || curve.Target == MotionCurveTarget.PartOpacity)
-                    Add(curve.Id);
-            }
-        }
-
-        // 表情参数
+        // 表情参数：只有表情正在生效时才复位（没有表情时用户手调表情开关参数也能保留）
         foreach (var data in _expressionDataByPath.Values)
         {
-            foreach (var parameter in data.Parameters) Add(parameter.Id);
+            foreach (var parameter in data.Parameters) Add(expression, parameter.Id);
         }
 
-        // 物理输出
+        // 物理输出：只在 PhysicsEnabled 时接管
         if (_physics is not null)
         {
-            foreach (var output in _physics.Outputs) Add(output.DestinationId);
+            foreach (var output in _physics.Outputs) Add(physics, output.DestinationId);
         }
 
-        // 待机 / 眼睛跟随
-        foreach (var id in EyeTrackingParameterIds) Add(id);
-        if (model.FindParameter("ParamBreath") is not null) Add("ParamBreath");
-        foreach (var id in _eyeBlinkParameterIds) Add(id);
+        // 待机：呼吸（IdleEnabled）、眨眼（AutoBlink 且没被动捕接管时）
+        Add(idle, "ParamBreath");
+        foreach (var id in _eyeBlinkParameterIds) Add(blink, id);
 
-        // 摄像头动捕
-        foreach (var id in MocapParameterIds) Add(id);
+        // 鼠标眼控：只在 EyeTrackingEnabled 时接管
+        foreach (var id in EyeTrackingParameterIds) Add(eye, id);
 
-        // 身体晃动测试
-        foreach (var id in BodySwayController.ManagedParameterIds) Add(id);
+        // 摄像头动捕：只在 MocapEnabled 时接管
+        foreach (var id in MocapParameterIds) Add(mocap, id);
 
-        var indices = new int[managed.Count];
-        managed.CopyTo(indices);
+        // 身体晃动：只在 SwayEnabled / 演示计时中接管
+        foreach (var id in BodySwayController.ManagedParameterIds) Add(sway, id);
+
+        _expressionManaged = ToSortedArray(expression);
+        _physicsManaged = ToSortedArray(physics);
+        _idleManaged = ToSortedArray(idle);
+        _blinkManaged = ToSortedArray(blink);
+        _eyeManaged = ToSortedArray(eye);
+        _mocapManaged = ToSortedArray(mocap);
+        _swayManaged = ToSortedArray(sway);
+    }
+
+    /// <summary>HashSet → 排序后的下标数组（只在加载时调用）。</summary>
+    private static int[] ToSortedArray(HashSet<int> set)
+    {
+        var indices = new int[set.Count];
+        set.CopyTo(indices);
         Array.Sort(indices);
         return indices;
+    }
+
+    /// <summary>把一组参数恢复默认（0 分配；顺序按下标，和 Core 里参数数组无关）。</summary>
+    private static void ResetParametersToDefault(CubismParameter[] parameters, int[] indices)
+    {
+        for (var i = 0; i < indices.Length; i++)
+        {
+            var parameter = parameters[indices[i]];
+            parameter.Value = parameter.DefaultValue;
+        }
+    }
+
+    /// <summary>
+    /// 复位「上一帧动作写过的参数」（各个正在播的动作曲线的并集）。
+    /// 这样待机 IDLE 只会复位它自己那 21 个参数，用户手调嘴 / 脸等其它参数不会被动作列表里别的文件拖累。
+    /// </summary>
+    private void ResetMotionTouchedParameters(CubismParameter[] parameters)
+    {
+        var player = _motionPlayer;
+        var count = player.TouchedParameterCount;
+        for (var i = 0; i < count; i++)
+        {
+            var parameter = parameters[player.GetTouchedParameterIndex(i)];
+            parameter.Value = parameter.DefaultValue;
+        }
+    }
+
+    /// <summary>
+    /// 子系统开关从「开 → 关」的那一帧，把对应参数组恢复默认一次，避免模型停在奇怪的姿势里；
+    /// 之后不再复位这些参数，用户手动拖的值就能保留（这是「面部测试」能用的关键）。
+    /// </summary>
+    private void HandleManagedGroupTransitions(bool blinkActive, bool swayActive, bool expressionActive)
+    {
+        var parameters = _model!.Parameters;
+        var physicsEnabled = PhysicsEnabled;
+        var idleEnabled = IdleEnabled;
+        var eyeTrackingEnabled = EyeTrackingEnabled;
+        var mocapEnabled = MocapEnabled;
+
+        if (!_managedGroupsInitialized)
+        {
+            // 第一帧只记录状态，不做任何复位（避免加载完立刻把手动 / 配置状态冲掉）
+            _managedGroupsInitialized = true;
+        }
+        else
+        {
+            if (_prevPhysicsEnabled && !physicsEnabled) ResetParametersToDefault(parameters, _physicsManaged);
+            if (_prevIdleEnabled && !idleEnabled) ResetParametersToDefault(parameters, _idleManaged);
+            if (_prevBlinkActive && !blinkActive) ResetParametersToDefault(parameters, _blinkManaged);
+            if (_prevEyeTrackingEnabled && !eyeTrackingEnabled) ResetParametersToDefault(parameters, _eyeManaged);
+            if (_prevMocapEnabled && !mocapEnabled) ResetParametersToDefault(parameters, _mocapManaged);
+            if (_prevSwayActive && !swayActive) ResetParametersToDefault(parameters, _swayManaged);
+            if (_prevExpressionActive && !expressionActive) ResetParametersToDefault(parameters, _expressionManaged);
+        }
+
+        _prevPhysicsEnabled = physicsEnabled;
+        _prevIdleEnabled = idleEnabled;
+        _prevBlinkActive = blinkActive;
+        _prevEyeTrackingEnabled = eyeTrackingEnabled;
+        _prevMocapEnabled = mocapEnabled;
+        _prevSwayActive = swayActive;
+        _prevExpressionActive = expressionActive;
     }
 
     /// <summary>解析动捕要写的参数（有就缓存引用，没有就跳过；本模型全都有）。</summary>
@@ -634,22 +743,32 @@ public sealed class ModelRuntime : IDisposable
         _time += deltaSeconds;
 
         var parameters = model.Parameters;
-        var managed = _managedParameterIndices;
-        for (var i = 0; i < managed.Length; i++)
-        {
-            var parameter = parameters[managed[i]];
-            parameter.Value = parameter.DefaultValue;
-        }
 
-        // 1) 摄像头动捕状态（决定这一帧是否用动捕驱动）
+        // 1) 受管参数：动作只复位「上一帧动作实际写过的参数」；表情只在生效时复位；
+        //    子系统只在「开启」时复位——关掉后不再复位，用户在参数 / 面部测试里手动拖的值才能保留。
+        ResetMotionTouchedParameters(parameters);
+        var expressionActive = _expressionManager.HasActive;
+        if (expressionActive) ResetParametersToDefault(parameters, _expressionManaged);
+        if (PhysicsEnabled) ResetParametersToDefault(parameters, _physicsManaged);
+        if (IdleEnabled) ResetParametersToDefault(parameters, _idleManaged);
+        if (EyeTrackingEnabled) ResetParametersToDefault(parameters, _eyeManaged);
+        if (MocapEnabled) ResetParametersToDefault(parameters, _mocapManaged);
+        var swayActive = SwayEnabled || _swayDemoRemaining > 0;
+        if (swayActive) ResetParametersToDefault(parameters, _swayManaged);
+
+        // 1.1) 摄像头动捕状态（决定这一帧是否用动捕驱动 / 是否让自动眨眼接管）
         var mocapFace = UpdateMocapState(out var mocapResult);
+        var blinkActive = AutoBlink && !(mocapFace && MocapBlinkEnabled);
+        if (blinkActive) ResetParametersToDefault(parameters, _blinkManaged);
+
+        // 1.2) 子系统从「开」切到「关」的那一帧恢复一次默认（之后不再碰，让手动值保留）
+        HandleManagedGroupTransitions(blinkActive, swayActive, expressionActive);
 
         // 2) 待机行为（眨眼 / 呼吸 / 轻摇）：动捕接管眨眼时不让自动眨眼再写
         var idleEnabled = IdleEnabled;
         if (_idle is not null)
         {
-            var autoBlink = AutoBlink && !(mocapFace && MocapBlinkEnabled);
-            _idle.Update(_time, deltaSeconds, autoBlink, idleEnabled, idleEnabled);
+            _idle.Update(_time, deltaSeconds, blinkActive, idleEnabled, idleEnabled);
         }
 
         // 3) 动捕有脸 → 写动捕参数（此时跳过鼠标眼控，避免两边抢同一批参数）；没脸 → 鼠标眼控 / 待机摇摆
@@ -666,6 +785,10 @@ public sealed class ModelRuntime : IDisposable
                 eye.HeadStrength = EyeTrackingHeadStrength;
                 eye.EyeStrength = EyeTrackingEyeStrength;
                 eye.BodyStrength = EyeTrackingBodyStrength;
+                eye.HorizontalGain = EyeTrackingHorizontalGain;
+                eye.UpGain = EyeTrackingUpGain;
+                eye.DownGain = EyeTrackingDownGain;
+                eye.VerticalOffset = EyeTrackingVerticalOffset;
 
                 if (idleEnabled || EyeTrackingEnabled)
                 {
@@ -866,7 +989,14 @@ public sealed class ModelRuntime : IDisposable
         _partBindings = Array.Empty<PartBinding>();
         _eyeBlinkParameterIds = Array.Empty<string>();
         _lipSyncParameterIds = Array.Empty<string>();
-        _managedParameterIndices = Array.Empty<int>();
+        _expressionManaged = Array.Empty<int>();
+        _physicsManaged = Array.Empty<int>();
+        _idleManaged = Array.Empty<int>();
+        _blinkManaged = Array.Empty<int>();
+        _eyeManaged = Array.Empty<int>();
+        _mocapManaged = Array.Empty<int>();
+        _swayManaged = Array.Empty<int>();
+        _managedGroupsInitialized = false;
     }
 
     private void ReportProgress(double progress) => _options.Progress?.Invoke(Math.Clamp(progress, 0.0, 1.0));

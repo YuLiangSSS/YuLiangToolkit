@@ -141,6 +141,7 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
         UpdateMocapPreview();
         UpdateMocapStatusLine();
         UpdateSwayDisplay();
+        _viewModel.RefreshFaceValues();   // 面部测试卡：100ms 刷新滑杆 / 当前值
     }
 
     /// <summary>把 <see cref="MocapCameraSource.LatestPreview"/> 每 100ms 写进小窗位图，并叠加人脸框。</summary>

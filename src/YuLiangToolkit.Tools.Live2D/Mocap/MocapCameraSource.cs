@@ -189,20 +189,9 @@ public sealed class MocapCameraSource : IMocapProvider, IDisposable
                 return false;
             }
 
-            // 尽量选一个 640 宽左右的格式（默认可能是 1280x720，检测太慢）
-            try
-            {
-                var candidates = source.SupportedFormats
-                    .Where(f => f.VideoFormat is { Width: >= 320 and <= 960 })
-                    .OrderBy(f => Math.Abs(f.VideoFormat.Width - 640))
-                    .ToList();
-                if (candidates.Count > 0) await source.SetFormatAsync(candidates[0]).AsTask().ConfigureAwait(false);
-            }
-            catch
-            {
-                // 设置格式失败就用默认格式，不影响动捕
-            }
-
+            // ⚠ 不要对源调 SetFormatAsync 去选 640 宽：这台机器上它抛 COMException，而且某些摄像头在
+            // 非默认格式下由 MediaCapture 做 YUY2→BGRA 转换会得到「绿油油」的错色画面（用户报过）。
+            // 默认格式（多为 NV12）由系统转换到 BGRA8，颜色正确；分辨率大一点就自己在后面降采样。
             MediaFrameReader reader;
             try
             {
@@ -357,7 +346,11 @@ public sealed class MocapCameraSource : IMocapProvider, IDisposable
 
     private bool _processTaskReady => _queue is not null;
 
-    /// <summary>把 SoftwareBitmap 转成 BGRA32 字节数组（格式不对时先 Convert）。</summary>
+    /// <summary>
+    /// 把 SoftwareBitmap 转成 BGRA32 字节数组（格式不是 Bgra8 时先 Convert）。
+    /// ⚠ 不要按「alpha 模式不是 Premultiplied」去 Convert：摄像头的 Bgra8 帧通常是 Straight alpha，
+    /// 对同格式再做一次 Convert 会得到错色（用户报过「绿油油」）；这里只关心 RGB，alpha 后面统一置 255。
+    /// </summary>
     private static byte[]? ExtractBgraPixels(SoftwareBitmap bitmap, out int width, out int height)
     {
         width = bitmap.PixelWidth;
@@ -366,9 +359,9 @@ public sealed class MocapCameraSource : IMocapProvider, IDisposable
         try
         {
             var source = bitmap;
-            if (bitmap.BitmapPixelFormat != BitmapPixelFormat.Bgra8 || bitmap.BitmapAlphaMode != BitmapAlphaMode.Premultiplied)
+            if (bitmap.BitmapPixelFormat != BitmapPixelFormat.Bgra8)
             {
-                converted = SoftwareBitmap.Convert(bitmap, BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
+                converted = SoftwareBitmap.Convert(bitmap, BitmapPixelFormat.Bgra8, BitmapAlphaMode.Straight);
                 source = converted;
             }
 

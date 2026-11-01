@@ -96,6 +96,10 @@ public sealed class Live2DSession
     // ===== 身体晃动演示钩子（YLT_LIVE2D_SWAY_DEMO） =====
     private bool _swayDemoApplied;
 
+    // ===== 面部测试 / 鼠标跟随演示钩子（YLT_LIVE2D_FACE_DEMO / YLT_LIVE2D_EYE_DEMO，截图验收用） =====
+    private bool _faceDemoApplied;
+    private bool _eyeDemoApplied;
+
     private Live2DSession()
     {
     }
@@ -225,6 +229,8 @@ public sealed class Live2DSession
         UpdateFrameLoop();
         ApplyMocapSettings();
         TryBeginSwayDemo();
+        TryBeginFaceDemo();
+        TryBeginEyeDemo();
         TryBeginMocapSelfTest();
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -440,11 +446,15 @@ public sealed class Live2DSession
         ApplyRuntimeSettings();
         AssignMocapToRuntime();
         ApplyMocapSettings();
-        TryBeginSwayDemo();
-        TryBeginMocapSelfTest();
         vm.Log($"模型加载完成：{runtime.ModelName}，用时 {loadMilliseconds:0} ms" +
                $"（动作 {runtime.Motions.Count} 个，表情 {runtime.Expressions.Count} 个）");
         vm.SetStatus("模型已就绪");
+
+        // 截图 / 验收用的演示钩子放在「模型已就绪」之后：状态栏能显示演示提示
+        TryBeginSwayDemo();
+        TryBeginFaceDemo();
+        TryBeginEyeDemo();
+        TryBeginMocapSelfTest();
 
         UpdateFrameLoop();
         RenderFirstFrame();
@@ -522,6 +532,13 @@ public sealed class Live2DSession
             runtime.EyeTrackingHeadStrength = Math.Clamp(cfg.EyeTrackingHeadStrength, 0.2, 1.5);
             runtime.EyeTrackingEyeStrength = Math.Clamp(cfg.EyeTrackingEyeStrength, 0.2, 1.5);
             runtime.EyeTrackingBodyStrength = Math.Clamp(cfg.EyeTrackingBodyStrength, 0, 1.5);
+
+            // 鼠标跟随灵敏度：横向 / 抬头 / 低头 / 纵向偏移（桌宠全局鼠标也共用这套）
+            runtime.EyeTrackingHorizontalGain = Math.Clamp(cfg.EyeTrackingHorizontalGain, 0.3, 3);
+            runtime.EyeTrackingUpGain = Math.Clamp(cfg.EyeTrackingUpGain, 0.3, 3);
+            runtime.EyeTrackingDownGain = Math.Clamp(cfg.EyeTrackingDownGain, 0.3, 3);
+            runtime.EyeTrackingVerticalOffset = Math.Clamp(cfg.EyeTrackingVerticalOffset, -0.5, 0.5);
+
             runtime.IdleMotion = FindIdleMotion(runtime, cfg.IdleMotion);
 
             // 摄像头面部动捕：驱动开关与强度（数据源本身由 ApplyMocapSettings 启停 / 重建）
@@ -1140,6 +1157,152 @@ public sealed class Live2DSession
         _viewModel.Log("截图模式（YLT_LIVE2D_SWAY_DEMO）：已启用身体晃动演示 10 秒（左右摇 15° / 0.5Hz）");
     }
 
+    // ===================== 开发调试：面部测试 / 鼠标跟随演示 =====================
+
+    /// <summary>
+    /// 开发调试（<c>YLT_LIVE2D_FACE_DEMO</c>）：打开页面自动应用一个「面部测试」预设，
+    /// 方便截图里直接看到吐舌头等效果。值可以是预设名（tongue/open/pucker/smile/wink/rolleyes/reset）
+    /// 或中文（吐舌头/张嘴/撅嘴/微笑/眨眼/翻白眼/重置面部），<c>1</c> = 吐舌头。
+    /// 同时关掉眼睛跟随 / 自动眨眼 / 动捕，避免它们每帧把这些参数覆盖掉。
+    /// </summary>
+    private void TryBeginFaceDemo()
+    {
+        if (_faceDemoApplied) return;
+        var raw = Environment.GetEnvironmentVariable("YLT_LIVE2D_FACE_DEMO")?.Trim();
+        if (string.IsNullOrEmpty(raw)) return;
+        if (_viewModel is null || _runtime?.IsLoaded != true) return;
+
+        _faceDemoApplied = true;
+        var preset = raw.ToLowerInvariant() switch
+        {
+            "1" or "on" or "true" => "tongue",
+            "吐舌头" => "tongue",
+            "张嘴" => "open",
+            "撅嘴" => "pucker",
+            "微笑" => "smile",
+            "眨眼" => "wink",
+            "翻白眼" => "rolleyes",
+            "重置面部" => "reset",
+            _ => raw.ToLowerInvariant(),
+        };
+
+        var cfg = _viewModel.Cfg;
+        cfg.EyeTracking = false;    // 手动面部值不被眼睛跟随每帧覆盖
+        cfg.AutoBlink = false;      // 不被自动眨眼覆盖
+        cfg.MocapEnabled = false;   // 动捕也先关（截图验收不碰摄像头）
+        ApplyRuntimeSettings();
+        ApplyMocapSettings();
+        _viewModel.RefreshAllBindings();
+        _viewModel.ApplyFacePreset(preset);
+        _viewModel.RefreshAllBindings();
+        _viewModel.SetStatus("截图模式：已应用面部预设 " + Live2DViewModel.FacePresetDisplayName(preset));
+        _viewModel.Log("截图模式（YLT_LIVE2D_FACE_DEMO）：已关闭眼控/自动眨眼/动捕，并应用面部预设 " + preset);
+        _ = ReportFaceDemoResultAsync(preset);
+    }
+
+    /// <summary>面部演示：0.8 秒后把「实际参数值」写 Data\live2d\face-demo.log（验收证据，便于判断哪些值被运行时覆盖）。</summary>
+    private async Task ReportFaceDemoResultAsync(string preset)
+    {
+        await Task.Delay(800);
+
+        var viewModel = _viewModel;
+        if (viewModel is null) return;
+        viewModel.Ui(() =>
+        {
+            try
+            {
+                var text =
+                    $"面部预设：{preset}（{Live2DViewModel.FacePresetDisplayName(preset)}）" + Environment.NewLine +
+                    $"关闭的接管：EyeTracking={viewModel.Cfg.EyeTracking}，AutoBlink={viewModel.Cfg.AutoBlink}，" +
+                    $"MocapEnabled={viewModel.Cfg.MocapEnabled}" + Environment.NewLine + Environment.NewLine +
+                    "800ms 后从模型读回的实际参数值：" + Environment.NewLine +
+                    viewModel.BuildFaceValuesSnapshot();
+                viewModel.Storage.WriteText("face-demo.log", text);
+                viewModel.Log("截图模式：面部预设的实际参数值已写入 Data\\live2d\\face-demo.log");
+            }
+            catch (Exception ex)
+            {
+                viewModel.Log("面部演示证据写入失败：" + ex.Message);
+            }
+        });
+    }
+
+    /// <summary>
+    /// 开发调试（<c>YLT_LIVE2D_EYE_DEMO=down|up|left|right</c>）：把眼睛跟随目标设到画布外对应方向，
+    /// 0.8 秒后把 ParamEyeBallX/Y、ParamAngleX/Y 写进日志，用来验证「低头灵敏度」等滑杆链路。
+    /// </summary>
+    private void TryBeginEyeDemo()
+    {
+        if (_eyeDemoApplied) return;
+        var raw = Environment.GetEnvironmentVariable("YLT_LIVE2D_EYE_DEMO")?.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(raw)) return;
+        if (_viewModel is null || _runtime?.IsLoaded != true) return;
+
+        _eyeDemoApplied = true;
+        try
+        {
+            var model = _runtime.Model;
+            var canvasWidth = (float)Math.Max(1.0, model.CanvasWidthPixels);
+            var canvasHeight = (float)Math.Max(1.0, model.CanvasHeightPixels);
+            var (canvasX, canvasY) = raw switch
+            {
+                "up" => (canvasWidth * 0.5f, -canvasHeight * 0.6f),
+                "left" => (-canvasWidth * 0.6f, canvasHeight * 0.5f),
+                "right" => (canvasWidth * 1.6f, canvasHeight * 0.5f),
+                _ => (canvasWidth * 0.5f, canvasHeight * 1.6f),   // down（默认）
+            };
+
+            var cfg = _viewModel.Cfg;
+            cfg.EyeTracking = true;
+            ApplyRuntimeSettings();
+            _viewModel.RefreshAllBindings();
+            _runtime.SetEyeTrackingTarget(canvasX, canvasY);
+            _viewModel.Log($"截图模式（YLT_LIVE2D_EYE_DEMO）：眼睛跟随目标设为画布 ({canvasX:0},{canvasY:0})（{raw}）");
+            _ = ReportEyeDemoResultAsync(raw);
+        }
+        catch (Exception ex)
+        {
+            _viewModel.Log("眼控演示失败：" + ex.Message);
+        }
+    }
+
+    private async Task ReportEyeDemoResultAsync(string direction)
+    {
+        await Task.Delay(800);
+
+        var viewModel = _viewModel;
+        if (viewModel is null) return;
+        viewModel.Ui(() =>
+        {
+            try
+            {
+                var model = _runtime?.Model;
+                if (model is null) return;
+                double Value(string id) => model.FindParameter(id)?.Value ?? 0;
+                var text =
+                    $"眼睛跟随目标方向：{direction}" + Environment.NewLine +
+                    $"ParamEyeBallX={Value("ParamEyeBallX"):0.000}  ParamEyeBallY={Value("ParamEyeBallY"):0.000}" +
+                    Environment.NewLine +
+                    $"ParamAngleX={Value("ParamAngleX"):0.000}  ParamAngleY={Value("ParamAngleY"):0.000}" +
+                    Environment.NewLine +
+                    $"滑杆：横向 {viewModel.EyeTrackingHorizontalGain:0.00} / 抬头 {viewModel.EyeTrackingUpGain:0.00} / " +
+                    $"低头 {viewModel.EyeTrackingDownGain:0.00} / 偏移 {viewModel.EyeTrackingVerticalOffset:0.00}" +
+                    Environment.NewLine + "（目标在画布外对应方向；低头时 ParamEyeBallY 应为负、ParamAngleY 为负附近）";
+                viewModel.Storage.WriteText("eye-demo.log", text);
+                viewModel.Log(
+                    $"眼睛跟随验证（目标：{direction}）→ ParamEyeBallX={Value("ParamEyeBallX"):0.00} " +
+                    $"ParamEyeBallY={Value("ParamEyeBallY"):0.00} ParamAngleX={Value("ParamAngleX"):0.00} " +
+                    $"ParamAngleY={Value("ParamAngleY"):0.00}；滑杆：横向 {viewModel.EyeTrackingHorizontalGain:0.00} / " +
+                    $"抬头 {viewModel.EyeTrackingUpGain:0.00} / 低头 {viewModel.EyeTrackingDownGain:0.00} / " +
+                    $"偏移 {viewModel.EyeTrackingVerticalOffset:0.00}（已写 Data\\live2d\\eye-demo.log）");
+            }
+            catch
+            {
+                // 模型正在切换：忽略
+            }
+        });
+    }
+
     // ===================== 开发调试：动捕链路自测 =====================
 
     /// <summary>
@@ -1218,6 +1381,8 @@ public sealed class Live2DSession
                 var latestCount = 0;
                 var faceCount = 0;
                 var previewCount = 0;
+                long previewB = 0, previewG = 0, previewR = 0;
+                var previewColorSamples = 0;
                 double maxFpsLocal = 0, maxProcessLocal = 0, maxDetectLocal = 0;
                 var frameSizeLocal = (0, 0);
                 var sampled = Stopwatch.StartNew();
@@ -1229,7 +1394,20 @@ public sealed class Live2DSession
                     var latest = source.Latest;
                     if (latest is not null) latestCount++;
                     if (latest?.HasFace == true) faceCount++;
-                    if (source.LatestPreview is not null) previewCount++;
+                    var preview = source.LatestPreview;
+                    if (preview is not null)
+                    {
+                        previewCount++;
+                        // 颜色自检：稀疏采样算 RGB 均值（只算数字，不保存画面）。
+                        // 修复后三通道应接近（灰调画面）；若把 YUV 当 BGRA 读会 G 明显偏高、B/R 偏低（历史「绿油油」bug）。
+                        for (var i = 0; i + 3 < preview.Bgra.Length; i += 4 * 37)
+                        {
+                            previewB += preview.Bgra[i];
+                            previewG += preview.Bgra[i + 1];
+                            previewR += preview.Bgra[i + 2];
+                            previewColorSamples++;
+                        }
+                    }
 
                     maxFpsLocal = Math.Max(maxFpsLocal, source.MeasuredFps);
                     var size = source.FrameSize;
@@ -1239,10 +1417,12 @@ public sealed class Live2DSession
                 }
 
                 return (total, latestCount, faceCount, previewCount,
-                    maxFpsLocal, maxProcessLocal, maxDetectLocal, frameSizeLocal);
+                    maxFpsLocal, maxProcessLocal, maxDetectLocal, frameSizeLocal,
+                    previewB, previewG, previewR, previewColorSamples);
             });
 
-            var (total, latestCount, faceCount, previewCount, maxFps, maxProcessMs, maxDetectMs, frameSize) = sample;
+            var (total, latestCount, faceCount, previewCount, maxFps, maxProcessMs, maxDetectMs, frameSize,
+                previewB, previewG, previewR, previewColorSamples) = sample;
 
             Line($"OK 6 秒采样 {total} 次：MeasuredFps 最大 {maxFps:0.0}；FrameSize {frameSize.Item1}×{frameSize.Item2}；" +
                  $"单帧处理耗时最大 {maxProcessMs:0.0} ms（其中人脸检测 {maxDetectMs:0.0} ms）");
@@ -1250,6 +1430,15 @@ public sealed class Live2DSession
             Line($"OK 人脸采样：{faceCount}/{total} 次（房间没人时 0 也正常，这条只验证检测管线在跑）");
             Line((previewCount > 0 ? "OK" : "FAIL") +
                  $" LatestPreview 非 null：{previewCount}/{total} 次（已启用预览，应该有）");
+            if (previewColorSamples > 0)
+            {
+                var meanB = previewB / (double)previewColorSamples;
+                var meanG = previewG / (double)previewColorSamples;
+                var meanR = previewR / (double)previewColorSamples;
+                // 灰调画面三通道应接近；早先「把 YUV 当 BGRA 读」的 bug 会让 G 远高于 B/R（画面发绿）。
+                var colorBalanced = Math.Abs(meanG - (meanB + meanR) / 2) < 45;
+                Line($"{(colorBalanced ? "OK" : "WARN")} 预览颜色：平均 B={meanB:0.0} G={meanG:0.0} R={meanR:0.0}（三通道接近 = 颜色正常；G 明显偏高 = 发绿错色）");
+            }
 
             // ⑤ 停止
             var stopWatch = Stopwatch.StartNew();

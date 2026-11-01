@@ -233,11 +233,58 @@ Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实
 9. 物理：读输入参数（前面写好的值）→ 钟摆求值 → 写输出参数；
 10. `model.Update()`（Core 求值 + 变形）→ 触发 `FrameUpdated` → UI 渲染。
 
-**眼睛跟随数学**（自检会验）：目标在画布中心 → 角度 ≈ 0；目标在右侧 → `ParamAngleX` / `ParamEyeBallX` 为正
-（`AngleX = 归一化 x × 30 × 头转幅度`，眼球同理 ×1）；平滑是「每帧向目标插值」的指数平滑，
-多次迭代后收敛到目标方向；`EyeTrackingSmoothing` 越大越柔和（retention 大、跟得慢）。
+**眼睛跟随数学**（自检会验）：目标在画布中心 → 角度 ≈ 0；目标在右侧 → `ParamAngleX` / `ParamEyeBallX` 为正。
+本轮新增 4 个手感参数（`EyeTrackingController`）：
+
+```
+归一化目标 nx = clamp((canvasX - centerX) / centerX, -1, 1)
+           ny = clamp((canvasY - centerY) / centerY, -1, 1)
+加增益 / 偏移（按实现顺序）：
+  nx *= clamp(HorizontalGain, 0.3, 3)                         // 横向灵敏度
+  ny  = ny + clamp(VerticalOffset, -0.5, 0.5)                  // 先加纵向中性偏移
+  ny *= ny < 0 ? clamp(UpGain, 0.3, 3)                         // 负 = 目标在上方 = 抬头
+               : clamp(DownGain, 0.3, 3)                       // 正 = 目标在下方 = 低头
+  再分别 clamp 到 -1~1（平滑之前）
+平滑后：
+  angleX   = clamp(curX, -1, 1) * 30 * clamp(HeadStrength, 0, 1.5)
+  angleY   = clamp(-curY, -1, 1) * 30 * clamp(HeadStrength, 0, 1.5)
+  eyeBallX = clamp(curX,  -1, 1) * clamp(EyeStrength, 0, 1.5) → 再夹到参数范围 -1~1
+```
+
+- **顺序坑**：`VerticalOffset` 是在乘上下增益**之前**加到归一化目标上的，所以偏移量本身也会被增益放大；
+  正偏移 = 中性点下移（更容易出现「低头」侧）。
+- 强度 clamp 从 0~1 放宽到 **0~1.5**（和 UI 滑杆一致）；眼球参数本身范围 -1~1，强度 >1 时会先放大再被参数
+  范围夹住（视觉上更快到满，但不会越界）；头部最大 30° 同理；
+- 上下不对称修正就是 Up/DownGain 分开 + VerticalOffset：向下跟不到 → 大 DownGain / 正 VerticalOffset；
+- 平滑是「每帧向目标插值」的指数平滑，多次迭代后收敛到目标方向；`EyeTrackingSmoothing` 越大越柔和；
+- 这些值都来自 `Live2DConfig`，测试页里改（`ModelRuntime.EyeTracking*` 属性）桌宠共用。
 
 **物理强度上限 = 1**（`PhysicsEnabled` 打开时把 `PhysicsStrength` 夹到 0~1 传给评估器），UI 滑杆也是 0~1。
+
+### 6.1 受管参数动态化（本轮新增）
+
+原来「受管参数」（每帧开头恢复默认的那批）是**加载时一次性收集**的静态数组，所以动捕 / 晃动 / 眼控 / 物理 /
+待机**关掉以后**，它们写过的参数仍然每帧被复位 → 手动用「面部测试」卡的滑杆调嘴 / 眼 / 舌头会被打回默认。
+
+现在改为**按当前启用的子系统动态计算受管参数**（每帧 / 开关变化时重建索引表）：
+
+| 子系统 | 什么时候纳入受管参数 | 关掉后的行为 |
+| --- | --- | --- |
+| 动作 MotionPlayer | 有动作在播时（曲线涉及的参数） | 曲线参数不再复位 → 保留最后值，手动可改 |
+| 表情 ExpressionManager | 有表情生效时（表情参数） | 同上 |
+| 物理 CubismPhysicsEvaluator | `PhysicsEnabled` 且加载了物理 | 物理输出参数不再复位 → 保留最后值 |
+| 待机 IdleBehavior | `IdleEnabled` / `AutoBlink` 打开的对应项（呼吸 / 眨眼） | 呼吸 / 眨眼参数不再复位 |
+| 鼠标眼控 EyeTrackingController | `EyeTrackingEnabled`（以及待机摇摆需要时） | 头部 / 眼球 / 身体参数不再复位 → 手动可改 |
+| 动捕 ApplyMocapFace | `MocapEnabled` **且**当前有脸（未过期） | 没脸 / 关掉 → 参数不再复位（回落到鼠标眼控时由眼控接管） |
+| 身体晃动 BodySwayController | `SwayEnabled` 或「摇一摇」倒计时 > 0 | 身体 / 腰腿参数不再复位 |
+
+设计约定：
+
+- **纳入条件必须和「本帧真的会写这些参数」一致**：多算会让手动值被打回，少算会让旧的驱动值残留；
+- 开关切换的那一帧要**先复位一次再交给新状态**（否则关掉动作后参数停在动作末帧、开启眼控时旧值残留）；
+- 动作 / 表情 / 物理 / 待机这些「帧内一定会写」的系统，即使参数被纳入受管表也无妨；重点是**关掉就移除**；
+- 自检断言：关掉全部驱动后手动设 `ParamMouthOpenY=0.8 / TongueOut=1 / ParamEyeBallY=-1`，Tick 30 帧后仍保持；
+  打开动捕（假 provider 有脸）后 `ParamMouthOpenY` 被每帧驱动覆盖。
 
 ## 7. 性能要点
 
@@ -323,8 +370,14 @@ MediaCapture（优先 640 左右宽的格式）
 
 ### 10.3 关键常量与行为（改之前先看）
 
-- **采集格式**：优先 `VideoFormat.Width ∈ [320, 960]` 里最接近 640 的格式（默认可能是 720p，检测太慢）；
-  分析帧固定降采样到 **320 宽**（640×360 → 320×180，FaceDetector 快 3~4 倍，框坐标正好是分析帧坐标）；
+- **采集格式（颜色坑，别改回旧写法）**：**不要**对源调 `SetFormatAsync` 去选 640 宽格式——本机实测它会抛
+  COMException，且某些摄像头在非默认格式下由 MediaCapture 做 YUY2→BGRA 转换会得到「绿油油」的错色画面；
+  现在直接用**默认格式**（多为 NV12，系统转换成 BGRA8 颜色正确），分辨率大就自己在后面降采样。
+  `MediaFrameReader` 优先请求 `Bgra8`，个别摄像头不支持时退回源格式，再在回调里转；
+- **转换坑**：把 `SoftwareBitmap` 转 BGRA 时**只在 `BitmapPixelFormat != Bgra8` 时 Convert**；
+  不要按「alpha 模式不是 Premultiplied」去 Convert —— 摄像头的 Bgra8 帧通常是 Straight alpha，
+  对同格式再做一次 Convert 会二次转换导致错色；我们只关心 RGB，alpha 统一置 255；
+- **分析帧**固定降采样到 **320 宽**（640×360 → 320×180，FaceDetector 快 3~4 倍，框坐标正好是分析帧坐标）；
 - **镜像**：人脸中心的 x 先做 `1 - x`（`Mirror=true` 时），预览帧也按镜像处理；
   `Pitch` 正 = 抬头（画面 y 向下，公式是 `(neutralY - faceY) / PitchWindow`）；
 - **平滑**：`Smooth(current, target, smoothing)`，`alpha = 1 - smoothing`；第一帧 / 脸重新出现时**直接 snap**
@@ -420,7 +473,50 @@ MediaCapture（优先 640 左右宽的格式）
   `ParamAngleX`（红，反向补偿后）、`FrontHairX1`（灰，物理输出，能看出慢半拍）；参数值每 100ms 刷新；
 - `YLT_LIVE2D_SWAY_DEMO=1`：打开页面自动设「左右摇 15° / 0.5Hz」并演示 10 秒（截图验收中间帧用）。
 
-## 12. 坑（踩过的都记在这里）
+## 12. 面部参数测试卡（直接写 Cubism 参数）
+
+> 「😛 面部测试」卡（`Live2DView.xaml` / `Live2DViewModel`）是**绕过所有运行时系统、直接写 Cubism 参数**的
+> 调试面板：眼睛位置 / 开闭、嘴巴、舌头三参数各有滑杆 + 一组预设按钮。它不是新机制，
+> 只是把常用参数挑出来做成 UI（和「参数」列表里的滑杆本质一样）。
+
+### 12.1 涉及参数
+
+| 组 | 参数（Id 列表在 `Live2DViewModel.FaceEyeIds / FaceMouthIds / FaceTongueIds`） | 说明 |
+| --- | --- | --- |
+| 眼睛（5） | `ParamEyeBallX` / `ParamEyeBallY` / `ParamEyeLOpen` / `ParamEyeROpen` / `EyeSmile` | 眼球位置 / 开闭 / 眯眼笑 |
+| 嘴（13） | `ParamMouthOpenY` / `ParamMouthForm` / `JawOpen` / `Mouthpucker` / `MouthFunnel` / `MouthPuckerWiden` / `MouthPressLipOpen` / `MouthRollUpper` / `MouthRollLower` / `MouthSmile_L` / `MouthSmile_R` / `PoutOffsetXL` / `PoutOffsetXR` | 张嘴 / 嘴形 / 撅嘴 / 嘴角等 |
+| 舌头（3） | `TongueOut` / `ParamTongueUpDown` / `ParamTongueWidth` | 伸舌头 / 上下 / 宽窄（重点） |
+
+- 滑杆范围直接取 `CubismParameter.Minimum/Maximum`（不是写死的 0~1）；写值走 `CubismParameter.Value`
+  （自动夹到参数 min~max），UI 每帧 `RefreshFaceValues()` 同步模型当前值；
+- **预设按钮 7 个**（`ApplyFacePreset`，截图调试钩子也复用）：`tongue`（TongueOut=1 + 张嘴 0.7 + JawOpen 0.4 +
+  嘴形 0.5）/ `open` / `pucker` / `smile`（MouthSmile_L/R + EyeSmile + 嘴形 1）/ `wink`（左眼 0.05 + 右眼 1）/
+  `rolleyes`（眼球 Y=1 + 双眼 0.5）/ `reset`（**只把这一卡的面部参数**恢复默认，不等同于「一键全部重置」）；
+- 参数不在模型里时该行自动跳过（自定义模型可能没有舌头参数）——`BuildFaceRows` 按 `FindParameter` 结果建行。
+
+### 12.2 与各系统的冲突（什么时候手动值会被覆盖）
+
+| 系统 | 会覆盖哪些面部参数 |
+| --- | --- |
+| 动捕（有脸时） | 头部 / `ParamEyeBall*` / `ParamEyeLOpen/ROpen` / `ParamMouthOpenY` |
+| 鼠标眼控（开启时） | 头部 / `ParamEyeBall*` / 身体角度 |
+| 自动眨眼 / 待机 | `ParamEyeLOpen/ROpen`（眨眼）、`ParamBreath`（呼吸） |
+| 表情 | 表情文件声明的参数（可能是嘴形 / 眼睛表情开关） |
+| 动作 | 动作曲线涉及的参数（例如手部动作也会带动 `Movement*` 开关参数） |
+
+**受管参数动态化**（§6.1）之后：把这些系统关掉，它们写的参数就不再每帧复位，手动值会保留；
+但如果「面部测试」卡写了某个参数，而另一个仍开着的系统也会写它（例如动捕还开着），那还是会被覆盖。
+UI 上「一键全部重置」会复位全部参数并停掉动作 / 表情 / 晃动演示。
+
+### 12.3 自检覆盖
+
+- 参数存在 / 范围 / 默认值：`TongueOut`、`ParamTongueUpDown`、`ParamTongueWidth` 必须在 moc 里；
+  范围包含 0~1（舌头 / 嘴都能从 0 张到 1）；
+- 写端点 / 超范围值 → 读回一致或被夹取；
+- 受管参数动态化后：关掉全部驱动 → 手动设 `ParamMouthOpenY=0.8` / `TongueOut=1` / `ParamEyeBallY=-1`，
+  Tick 30 帧后仍保持；打开动捕（假 provider 有脸）→ `ParamMouthOpenY` 被驱动覆盖。
+
+## 13. 坑（踩过的都记在这里）
 
 1. **moc 缓冲区必须 64 字节对齐且终身不动**：`csmReviveMocInPlace` 之后 Core 内部一直引用它；
    用 `File.ReadAllBytes` 后直接 `GCHandle` 钉住是错的（可能被 GC 移动 + 对齐不保证）。
@@ -486,8 +582,17 @@ MediaCapture（优先 640 左右宽的格式）
 29. **`YLT_LIVE2D_SWAY_DEMO` / `YLT_LIVE2D_MOCAP_SELFTEST` 是开发验收钩子**：前者自动晃动 10 秒用于截图
     中间帧；后者会**真开摄像头**跑 6 秒并写 `Data\live2d\mocap-selftest.log`（只有数字和设备名，无画面），
     日常自检 / 发布验证都不许用它替代人工授权。
+30. **摄像头预览错色（偏绿）两个根因**：①对源调 `SetFormatAsync` 选非默认格式 → 某些摄像头
+    MediaCapture 的 YUY2→BGRA 转换出绿画面（还会抛 COMException）；②对已经是 `Bgra8` + Straight alpha 的帧
+    按「alpha 不是 Premultiplied」再 Convert 一次 → 二次转换错色。现在用默认格式 + 只在像素格式不是 Bgra8
+    时 Convert；改 `MocapCameraSource` 的取帧 / 转格式逻辑时别把这两个坑改回去。
+31. **受管参数别再写回「加载时一次性收集的静态数组」**：动捕 / 晃动 / 眼控 / 物理 / 待机关闭后必须把对应参数
+    从受管表移除，否则「面部测试」手动调的值会被每帧复位（用户实测反馈）。开关切换那一帧要先复位一次再交接；
+    新增会写参数的系统时，记得同时给出「什么时候该纳入受管参数」的条件。
+32. **鼠标跟随增益默认必须是 1/1/1/0**：1 = 原来的手感，改动默认值会让所有用户的手感突变；
+    增益只乘在归一化目标上，最终角度 / 眼球值仍受参数范围与强度 clamp（0~1.5）约束，不要在别处再重复夹一次。
 
-## 13. 调试钩子（环境变量，开发 / 截图验收用）
+## 14. 调试钩子（环境变量，开发 / 截图验收用）
 
 | 变量 | 作用 |
 | --- | --- |

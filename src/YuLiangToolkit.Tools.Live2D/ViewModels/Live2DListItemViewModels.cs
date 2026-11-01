@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using YuLiangToolkit.Core.Mvvm;
+using YuLiangToolkit.Tools.Live2D.Interop;
 using YuLiangToolkit.Tools.Live2D.Model;
 
 namespace YuLiangToolkit.Tools.Live2D.ViewModels;
@@ -210,5 +211,69 @@ public sealed class ExpressionRowViewModel : ObservableObject
     {
         get => _isApplied;
         set => Set(ref _isApplied, value);
+    }
+}
+
+/// <summary>
+/// 「😛 面部测试」卡里的一行：直接代理一个 <see cref="CubismParameter"/>。
+/// <para>滑杆双向写参数值（CubismParameter 自己会夹到 min/max）；当前值文本也绑同一个
+/// <see cref="Value"/>，所以拖动时两边同步。外部（预设 / 动捕 / 眼控 / 表情）改了参数后，
+/// 页面 100ms 定时器调 <see cref="RefreshFromModel"/> 把显示刷新到真实值。</para>
+/// </summary>
+public sealed class FaceParameterRowViewModel : ObservableObject
+{
+    private readonly CubismParameter _parameter;
+    private double _lastNotifiedValue;
+
+    public FaceParameterRowViewModel(CubismParameter parameter, string? displayName)
+    {
+        _parameter = parameter;
+        DisplayName = string.IsNullOrWhiteSpace(displayName) ? parameter.Id : displayName!;
+        _lastNotifiedValue = parameter.Value;
+    }
+
+    /// <summary>参数 Id（模型里的原始名，例如 <c>TongueOut</c>）。</summary>
+    public string Id => _parameter.Id;
+
+    /// <summary>界面显示名（cdi3 中文名；没有就用 Id）。</summary>
+    public string DisplayName { get; }
+
+    /// <summary>参数最小值（滑杆用）。</summary>
+    public double Minimum => _parameter.Minimum;
+
+    /// <summary>参数最大值（滑杆用）。</summary>
+    public double Maximum => _parameter.Maximum;
+
+    /// <summary>参数默认值（重置面部用）。</summary>
+    public double DefaultValue => _parameter.DefaultValue;
+
+    /// <summary>当前值（双向绑定滑杆；写入即生效，越界由 CubismParameter 夹取）。</summary>
+    public double Value
+    {
+        get => _parameter.Value;
+        set
+        {
+            if (Math.Abs(_parameter.Value - value) < 0.0001) return;
+            _parameter.Value = (float)value;
+            _lastNotifiedValue = _parameter.Value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>外部直接改了参数值后刷新界面（值没明显变化就不发通知，避免 100ms 刷一次绑定）。</summary>
+    public void RefreshFromModel()
+    {
+        var current = _parameter.Value;
+        if (Math.Abs(current - _lastNotifiedValue) < 0.0005) return;
+        _lastNotifiedValue = current;
+        OnPropertyChanged(nameof(Value));
+    }
+
+    /// <summary>直接写参数值（预设按钮用；写后立刻刷新显示）。</summary>
+    public void SetValue(float value)
+    {
+        _parameter.Value = value;
+        _lastNotifiedValue = _parameter.Value;
+        OnPropertyChanged(nameof(Value));
     }
 }

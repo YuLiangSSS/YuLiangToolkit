@@ -123,6 +123,21 @@ public sealed class Live2DConfig : ToolConfig
     /// <summary>身体 / 腰部跟随幅度倍率（0 ~ 1.5）。</summary>
     public double EyeTrackingBodyStrength { get; set; } = 0.5;
 
+    /// <summary>
+    /// 鼠标跟随「灵敏度」横向倍率（0.3 ~ 3.0）：越大表示鼠标离中心更近就能让头 / 眼转到更大角度。
+    /// 1.0 = 原来手感；调大更跟手。
+    /// </summary>
+    public double EyeTrackingHorizontalGain { get; set; } = 1.0;
+
+    /// <summary>鼠标跟随「抬头」方向灵敏度倍率（0.3 ~ 3.0）。</summary>
+    public double EyeTrackingUpGain { get; set; } = 1.0;
+
+    /// <summary>鼠标跟随「低头」方向灵敏度倍率（0.3 ~ 3.0）：觉得向下看跟不到就调大这个。</summary>
+    public double EyeTrackingDownGain { get; set; } = 1.0;
+
+    /// <summary>鼠标跟随的纵向中性偏移（-0.5 ~ 0.5）：向下 / 向上基准整体挪一点，用来校正模型左右不对称。</summary>
+    public double EyeTrackingVerticalOffset { get; set; }
+
     // ---------- 摄像头面部动捕 ----------
 
     /// <summary>是否启用摄像头面部动捕（默认关：涉及隐私，需要用户自己打开）。</summary>

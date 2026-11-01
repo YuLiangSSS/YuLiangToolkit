@@ -45,6 +45,23 @@
             <Setter Property="FontSize" Value="11" />
             <Setter Property="Padding" Value="7,3" />
         </Style>
+        <!-- 面部测试卡里的一行参数：显示名 + 滑杆（Min/Max 用模型参数自带的）+ 当前值 -->
+        <DataTemplate x:Key="FaceParameterRowTemplate">
+            <Grid Margin="0,1" MinHeight="24">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="92" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="42" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding DisplayName}" FontSize="11" TextWrapping="NoWrap"
+                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip="{Binding Id}" />
+                <Slider Grid.Column="1" Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"
+                        Value="{Binding Value, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                        VerticalAlignment="Center" ToolTip="{Binding Id}" />
+                <TextBlock Grid.Column="2" Text="{Binding Value, StringFormat={}{0:0.00}}"
+                           Style="{StaticResource SettingValueStyle}" />
+            </Grid>
+        </DataTemplate>
     </UserControl.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -58,7 +75,9 @@
                 <RowDefinition Height="380" MinHeight="260" />                   <!-- 摄像头动捕卡 -->
                 <RowDefinition Height="12" />                                    <!-- 动捕 / 身体晃动分隔条 -->
                 <RowDefinition Height="360" MinHeight="250" />                   <!-- 身体晃动测试卡 -->
-                <RowDefinition Height="12" />                                    <!-- 身体晃动 / 日志分隔条 -->
+                <RowDefinition Height="12" />                                    <!-- 身体晃动 / 面部测试分隔条 -->
+                <RowDefinition Height="380" MinHeight="250" />                   <!-- 面部测试卡（眼 / 嘴 / 舌头） -->
+                <RowDefinition Height="12" />                                    <!-- 面部测试 / 日志分隔条 -->
                 <RowDefinition Height="200" MinHeight="130" />                   <!-- 日志 -->
             </Grid.RowDefinitions>
 
@@ -683,6 +702,60 @@
                             <CheckBox Content="眼睛跟随鼠标" Style="{StaticResource CheckBoxStyle}" Margin="0,6,0,0"
                                       IsChecked="{Binding EyeTracking}" />
 
+                            <!-- 鼠标跟随灵敏度：横向 / 抬头 / 低头 / 纵向偏移（向下看跟不到 → 调大低头灵敏度） -->
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="76" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="36" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="横向灵敏度" Style="{StaticResource SettingLabelStyle}" />
+                                <Slider Grid.Column="1" Minimum="0.3" Maximum="3" SmallChange="0.05"
+                                        Value="{Binding EyeTrackingHorizontalGain, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                        VerticalAlignment="Center" ToolTip="鼠标左右移动时头 / 眼睛转的幅度：不够跟手就调大" />
+                                <TextBlock Grid.Column="2" Text="{Binding EyeTrackingHorizontalGain, StringFormat={}{0:0.00}}"
+                                           Style="{StaticResource SettingValueStyle}" />
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="76" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="36" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="抬头灵敏度" Style="{StaticResource SettingLabelStyle}" />
+                                <Slider Grid.Column="1" Minimum="0.3" Maximum="3" SmallChange="0.05"
+                                        Value="{Binding EyeTrackingUpGain, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                        VerticalAlignment="Center" ToolTip="鼠标在模型上方时头 / 眼睛抬起的幅度" />
+                                <TextBlock Grid.Column="2" Text="{Binding EyeTrackingUpGain, StringFormat={}{0:0.00}}"
+                                           Style="{StaticResource SettingValueStyle}" />
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="76" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="36" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="低头灵敏度" Style="{StaticResource SettingLabelStyle}" />
+                                <Slider Grid.Column="1" Minimum="0.3" Maximum="3" SmallChange="0.05"
+                                        Value="{Binding EyeTrackingDownGain, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                        VerticalAlignment="Center" ToolTip="鼠标在模型下方时头 / 眼睛低头的幅度：向下看跟不到就调大这个" />
+                                <TextBlock Grid.Column="2" Text="{Binding EyeTrackingDownGain, StringFormat={}{0:0.00}}"
+                                           Style="{StaticResource SettingValueStyle}" />
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="76" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="36" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="纵向偏移" Style="{StaticResource SettingLabelStyle}" />
+                                <Slider Grid.Column="1" Minimum="-0.5" Maximum="0.5" SmallChange="0.01"
+                                        Value="{Binding EyeTrackingVerticalOffset, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                        VerticalAlignment="Center" ToolTip="整体视线偏上 / 偏下一点点（0 = 不偏）" />
+                                <TextBlock Grid.Column="2" Text="{Binding EyeTrackingVerticalOffset, StringFormat={}{0:0.00}}"
+                                           Style="{StaticResource SettingValueStyle}" />
+                            </Grid>
+
                             <Grid Margin="0,4,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="66" />
@@ -1147,12 +1220,96 @@
                 </Grid>
             </Border>
 
-            <!-- 上下分隔条：身体晃动 / 日志 -->
+            <!-- 上下分隔条：身体晃动 / 面部测试 -->
             <core:PaneSplitter Grid.Row="8" Style="{StaticResource PaneSplitterHorizontalStyle}"
-                               Key="live2d.身体晃动与日志" />
+                               Key="live2d.身体晃动与面部" />
+
+            <!-- ==================================================== 面部测试（眼 / 嘴 / 舌头） ==================================================== -->
+            <Border Grid.Row="9" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="140" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="18,14,18,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="😛 面部测试" Style="{StaticResource CardHeaderStyle}" />
+                                <TextBlock Text="{Binding FaceSummaryText}" FontSize="10.5" Margin="10,0,0,0"
+                                           VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,4,0,0"
+                                       Text="直接读写模型参数（滑杆范围 = 参数自身的 Min/Max，改完立刻生效）。注意：动捕 / 眼睛跟随 / 表情正在接管这些参数时会被每帧驱动覆盖 —— 想手动调就先关掉对应功能（或先点下面的预设看效果）。" />
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- 预设按钮：一键摆表情 -->
+                    <WrapPanel Grid.Row="1" Margin="18,8,18,2">
+                        <Button Content="😛 吐舌头" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
+                                Command="{Binding ApplyFacePresetCommand}" CommandParameter="tongue"
+                                ToolTip="TongueOut=1 + 张嘴一点（重点：验证舌头参数）" />
+                        <Button Content="😲 张嘴" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
+                                Command="{Binding ApplyFacePresetCommand}" CommandParameter="open" />
+                        <Button Content="😗 撅嘴" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
+                                Command="{Binding ApplyFacePresetCommand}" CommandParameter="pucker" />
+                        <Button Content="😊 微笑" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
+                                Command="{Binding ApplyFacePresetCommand}" CommandParameter="smile" />
+                        <Button Content="😉 眨眼" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
+                                Command="{Binding ApplyFacePresetCommand}" CommandParameter="wink" />
+                        <Button Content="🙄 翻白眼" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
+                                Command="{Binding ApplyFacePresetCommand}" CommandParameter="rolleyes" />
+                        <Button Content="😐 重置面部" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
+                                Command="{Binding ApplyFacePresetCommand}" CommandParameter="reset"
+                                ToolTip="把这一卡里的面部参数都恢复默认值" />
+                    </WrapPanel>
+
+                    <!-- 三列分组：眼睛 / 嘴 / 舌头（卡内整体滚动，不动整页高度；窄窗口靠列 MinWidth 兜住） -->
+                    <ScrollViewer Grid.Row="2" Style="{StaticResource CardScrollerStyle}" Margin="18,4,18,12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" MinWidth="220" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="*" MinWidth="240" />
+                                <ColumnDefinition Width="16" />
+                                <ColumnDefinition Width="*" MinWidth="180" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="👁 眼睛" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                <ItemsControl ItemsSource="{Binding FaceEyeParameters}"
+                                              ItemTemplate="{StaticResource FaceParameterRowTemplate}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="👄 嘴" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                <ItemsControl ItemsSource="{Binding FaceMouthParameters}"
+                                              ItemTemplate="{StaticResource FaceParameterRowTemplate}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="4">
+                                <TextBlock Text="👅 舌头（重点）" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                <ItemsControl ItemsSource="{Binding FaceTongueParameters}"
+                                              ItemTemplate="{StaticResource FaceParameterRowTemplate}" />
+                                <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,8,0,0"
+                                           Text="「😛 吐舌头」预设 = TongueOut 拉满 + 嘴张开一点；舌头没伸出来时先确认动捕 / 眼控 / 表情没在接管，或直接点预设。" />
+                            </StackPanel>
+                        </Grid>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- 上下分隔条：面部测试 / 日志 -->
+            <core:PaneSplitter Grid.Row="10" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="live2d.面部与日志" />
 
             <!-- ==================================================== 日志 ==================================================== -->
-            <Border Grid.Row="9" Style="{StaticResource CardStyle}">
+            <Border Grid.Row="11" Style="{StaticResource CardStyle}">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
