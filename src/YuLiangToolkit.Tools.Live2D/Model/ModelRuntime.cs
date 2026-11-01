@@ -15,10 +15,12 @@ namespace YuLiangToolkit.Tools.Live2D.Model;
 ///
 /// <para><b>每帧顺序</b>（和官方 Cubism 更新管线一致）：
 /// 受管参数恢复默认 → 待机行为（眨眼 / 呼吸）→ 摄像头动捕（有脸时）→ 眼睛跟随鼠标（动捕有脸时跳过）
-/// → 身体晃动测试（<see cref="BodySway"/>）→ 音乐跟唱 / 律动（<see cref="Music"/>，在手动晃动之后）
+/// → 语音口型（<see cref="SpeechActive"/>，动捕有脸时让位）→ 身体晃动测试（<see cref="BodySway"/>）
+/// → 音乐跟唱 / 律动（<see cref="Music"/>，语音口型优先、音乐嘴型不出）
 /// → 整身轻倾（<see cref="BodyLeanDegrees"/>，以脚为支点，渲染层旋转画布）
-/// → 动作混合 → 表情叠加 → 物理 → Core <c>Update()</c> → 触发 <see cref="FrameUpdated"/>。
-/// 「受管参数」= 会被动作 / 表情 / 物理 / 待机 / 眼睛跟随 / 动捕 / 身体晃动 / 音乐写到的参数；
+/// → 动作混合 → <b>手势 / 表演 / 舞蹈</b>（<see cref="GestureIds"/>，写在动作之后覆盖 IDLE 手臂曲线）
+/// → 表情叠加 → 物理 → Core <c>Update()</c> → 触发 <see cref="FrameUpdated"/>。
+/// 「受管参数」= 会被动作 / 表情 / 物理 / 待机 / 眼睛跟随 / 动捕 / 身体晃动 / 音乐 / 手势表演舞蹈 / 语音写到的参数；
 /// 其余参数（大部分纯调试参数）不会被每帧重置，所以工具页手动拖滑块在那些参数上是有效的。</para>
 ///
 /// <para>加载完成前 <see cref="Model"/> / <see cref="Renderer"/> 会抛 <see cref="InvalidOperationException"/>；先判 <see cref="IsLoaded"/>。</para>
@@ -165,6 +167,34 @@ public sealed class ModelRuntime : IDisposable
     private double _bodyLeanPhase;
     private double _bodyLeanPeriod = BodyLeanIdlePeriodSeconds;
     private double _bodyLeanAmplitude = BodyLeanIdleAmplitudeDegrees;
+
+    // ---------- 动作系统：手势 / 时间线表演 / 舞蹈 / 语音口型 / 待机随机小动作 ----------
+
+    private GesturePlayer? _gesture;
+    private PerformancePlayer? _performance;
+    private DanceController? _dance;
+
+    private CubismParameter? _speechMouthOpenY;
+    private CubismParameter? _speechMouthForm;
+    private CubismParameter? _speechJawOpen;
+    private int[] _speechTouchedIndices = new int[8];
+    private int _speechTouchedCount;
+    private bool _speechActive;
+    private float _speechMouthOpen;
+
+    /// <summary>待机随机小动作的倒计时（秒；到 0 且条件允许时播一个随机手势 / 表演）。</summary>
+    private double _idleRandomGestureTimer;
+
+    /// <summary>固定种子的随机数（自检可重复；只用于挑待机小动作）。</summary>
+    private readonly Random _idleRandomRng = new(20250301);
+
+    private int _idleRandomGestureCount;
+
+    /// <summary>待机随机小动作已触发次数（自检用）。</summary>
+    internal int IdleRandomTriggerCount => _idleRandomGestureCount;
+
+    /// <summary>上一帧是否处于「忙碌」状态（动捕 / 音乐 / 语音 / 演示 / 用户动作）；用于恢复待机后先冷却。</summary>
+    private bool _idleRandomWasBusy;
 
     private double _time;
     private double _lastTickMilliseconds;
@@ -388,6 +418,121 @@ public sealed class ModelRuntime : IDisposable
     /// <summary>音乐状态文案："静音" / "识别中" / "纯音乐" / "带歌词"（不变时复用字符串）。</summary>
     public string MusicStatusText => _musicStatusText;
 
+    // ---------- 动作系统：手势 / 表演 / 舞蹈 / 语音口型 / 待机随机小动作 ----------
+
+    /// <summary>所有手势 id（3 个作者原生手势 + 5 个参数姿势，中文名）。</summary>
+    public IReadOnlyList<string> GestureIds => _gesture?.Ids ?? Array.Empty<string>();
+
+    /// <summary>当前手势 id（没有为 null）。</summary>
+    public string? ActiveGesture => _gesture?.ActiveId;
+
+    /// <summary>播一个手势（未知 id 返回 false；会先停动作 / 表演 / 舞蹈，避免抢手臂）。</summary>
+    public bool PlayGesture(string id)
+    {
+        if (_gesture is null) return false;
+        if (!_gesture.IsKnownId(id)) return false;
+        // 先停其它演示 / 当前动作，再播手势：原生手势的 enter 动作不能被随后的 StopMotion 顶掉
+        _performance?.Stop();
+        _dance?.StopImmediate();
+        StopMotion(0.12);
+        return _gesture.Play(id, stopMotionFirst: false);
+    }
+
+    /// <summary>停止手势（原生手势播作者退出动作；参数姿势平滑淡出）。</summary>
+    public void StopGesture() => _gesture?.Stop();
+
+    /// <summary>所有时间线表演 id（中文名）。</summary>
+    public IReadOnlyList<string> PerformanceIds => _performance?.Ids ?? Array.Empty<string>();
+
+    /// <summary>当前表演 id（没有为 null）。</summary>
+    public string? ActivePerformance => _performance?.ActiveId;
+
+    /// <summary>播一个时间线表演（未知 id 返回 false；会先停手势 / 舞蹈 / 动作）。</summary>
+    public bool PlayPerformance(string id)
+    {
+        if (_performance is null) return false;
+        _gesture?.StopImmediate();
+        _dance?.StopImmediate();
+        StopMotion(0.12);
+        return _performance.Play(id);
+    }
+
+    /// <summary>停止当前表演。</summary>
+    public void StopPerformance() => _performance?.Stop();
+
+    /// <summary>所有舞蹈模式。</summary>
+    public IReadOnlyList<string> DanceModes => DanceController.Modes;
+
+    /// <summary>当前舞蹈模式（淡出中仍返回模式名；完全停下为 null）。</summary>
+    public string? ActiveDance => _dance?.ActiveMode;
+
+    /// <summary>舞蹈速度倍率（0.5~2.0）。</summary>
+    public double DanceSpeed
+    {
+        get => _dance?.Speed ?? 1.0;
+        set
+        {
+            if (_dance is not null) _dance.Speed = value;
+        }
+    }
+
+    /// <summary>开始跳舞（未知模式返回 false；会先停手势 / 表演 / 动作）。</summary>
+    public bool StartDance(string mode, double speed = 1.0)
+    {
+        if (_dance is null) return false;
+        _gesture?.StopImmediate();
+        _performance?.Stop();
+        StopMotion(0.12);
+        return _dance.Start(mode, speed);
+    }
+
+    /// <summary>停止跳舞（0.25 秒权重淡出）。</summary>
+    public void StopDance() => _dance?.Stop();
+
+    /// <summary>停止所有演示动作（手势 / 表演 / 舞蹈 / 当前动作）。</summary>
+    public void StopAllDemos()
+    {
+        _gesture?.StopImmediate();
+        _performance?.Stop();
+        _dance?.StopImmediate();
+        StopMotion(0.2);
+    }
+
+    // ---------- 自检 / 调试用的内部只读观察口 ----------
+
+    internal GesturePlayer? GestureForTest => _gesture;
+    internal PerformancePlayer? PerformanceForTest => _performance;
+    internal DanceController? DanceForTest => _dance;
+
+    /// <summary>当前舞蹈相位（弧度；自检观察速度倍率用）。</summary>
+    internal double ActiveDancePhase => _dance?.Phase ?? 0;
+
+    /// <summary>是否正在语音说话（由会话 / UI 从 TTS 服务推入；优先级：动捕有脸 &gt; 语音 &gt; 音乐）。</summary>
+    public bool SpeechActive
+    {
+        get => _speechActive;
+        set => _speechActive = value;
+    }
+
+    /// <summary>语音口型开合（0~1；<see cref="SpeechActive"/> 为 true 时驱动嘴型）。</summary>
+    public float SpeechMouthOpen
+    {
+        get => _speechMouthOpen;
+        set => _speechMouthOpen = Math.Clamp(value, 0f, 1f);
+    }
+
+    /// <summary>待机随机小动作开关（默认开；播动作 / 音乐 / 说话 / 跳舞 / 表演时不抢）。</summary>
+    public bool IdleRandomGestureEnabled { get; set; } = true;
+
+    /// <summary>待机随机小动作的基础间隔（秒，默认 22；实际每次在 0.55~1.6 倍之间随机）。</summary>
+    public double IdleRandomGestureIntervalSeconds { get; set; } = 22.0;
+
+    /// <summary>强制触发一次待机随机小动作（跳过倒计时；供自检 / 调试；条件不满足时返回 false）。</summary>
+    internal bool TryTriggerIdleRandomGesture() => TryPlayRandomIdleDemo(mocapFace: false);
+
+    /// <summary>把待机随机小动作倒计时清零（自检用，下一次 Tick 立刻进入判定）。</summary>
+    internal void ResetIdleRandomGestureTimer() => _idleRandomGestureTimer = 0;
+
     // ---------- 生命周期 ----------
 
     /// <summary>加载模型（耗时：解码 5 张纹理 + 解析动作 / 物理；可在后台线程调）。</summary>
@@ -489,6 +634,8 @@ public sealed class ModelRuntime : IDisposable
         _bodySway = new BodySwayController(_model);
         ResolveMocapParameters(_model);
         ResolveMusicParameters(_model);
+        ResolveSpeechParameters(_model);
+        CreateActionPlayers(_model);
         BuildManagedParameterGroups();
 
         // 8) 默认待机动作
@@ -752,8 +899,8 @@ public sealed class ModelRuntime : IDisposable
             _ => 1,
         });
 
-        // ---- 1) 跟唱嘴型（动捕有脸时让位给动捕） ----
-        if (vocal && !mocapFace)
+        // ---- 1) 跟唱嘴型（动捕有脸时让位给动捕；语音说话时音乐闭嘴） ----
+        if (vocal && !mocapFace && !_speechActive)
         {
             var lipSync = (float)Math.Clamp(MusicLipSyncStrength, 0.0, 1.5);
             var mouthOpen = Math.Clamp((float)data.MouthOpen, 0.0f, 1.0f) * lipSync;
@@ -782,9 +929,11 @@ public sealed class ModelRuntime : IDisposable
     private void UpdateBodyLean(double deltaSeconds)
     {
         var musicActive = MusicEnabled && _musicPlaying && MusicSwayEnabled;
-        var targetPeriod = musicActive ? BodyLeanMusicPeriodSeconds : BodyLeanIdlePeriodSeconds;
-        var targetAmplitude = musicActive
-            ? BodyLeanMusicAmplitudeDegrees * Math.Clamp(MusicSwayStrength, 0.0, 1.5)
+        var danceActive = _dance?.ActiveMode is not null;
+        var fastActive = musicActive || danceActive;
+        var targetPeriod = fastActive ? BodyLeanMusicPeriodSeconds : BodyLeanIdlePeriodSeconds;
+        var targetAmplitude = fastActive
+            ? BodyLeanMusicAmplitudeDegrees * (musicActive ? Math.Clamp(MusicSwayStrength, 0.0, 1.5) : 1.0)
             : BodyLeanIdleAmplitudeDegrees;
         if (!BodyLeanEnabled) targetAmplitude = 0.0;
 
@@ -799,6 +948,173 @@ public sealed class ModelRuntime : IDisposable
         if (_bodyLeanPhase < 0) _bodyLeanPhase += 1.0;
 
         BodyLeanDegrees = (float)(Math.Sin(2.0 * Math.PI * _bodyLeanPhase) * _bodyLeanAmplitude);
+    }
+
+    // ---------- 动作系统：手势 / 表演 / 舞蹈 / 语音口型 / 待机随机小动作 ----------
+
+    /// <summary>加载时创建三个演示播放器（手势 / 表演 / 舞蹈）；动作数据查找用运行时自己的解析表。</summary>
+    private void CreateActionPlayers(CubismModel model)
+    {
+        _gesture = new GesturePlayer(model, FindMotionEntryByName, FindMotionData, PlayActionMotion, StopActionMotion);
+        _performance = new PerformancePlayer(model, StartGestureForPerformance, StopGestureForPerformance);
+        _dance = new DanceController(model);
+    }
+
+    private MotionEntry? FindMotionEntryByName(string name)
+    {
+        var motions = _motions;
+        for (var i = 0; i < motions.Length; i++)
+        {
+            if (string.Equals(motions[i].Name, name, StringComparison.Ordinal)) return motions[i];
+        }
+
+        return null;
+    }
+
+    private Motion3Data? FindMotionData(MotionEntry entry)
+        => _motionDataByPath.TryGetValue(entry.FilePath, out var data) ? data : null;
+
+    private void PlayActionMotion(MotionEntry entry, Motion3Data data, double fadeSeconds)
+    {
+        var model = _model;
+        if (model is null) return;
+        _motionPlayer.Play(model, entry, data, loop: false, fadeSeconds);
+    }
+
+    private void StopActionMotion(double fadeSeconds) => _motionPlayer.Stop(fadeSeconds);
+
+    /// <summary>表演里触发的 gesture（不打断表演本身）。</summary>
+    private void StartGestureForPerformance(string id) => _gesture?.Play(id, stopMotionFirst: false);
+
+    private void StopGestureForPerformance() => _gesture?.Stop();
+
+    /// <summary>推进手势 / 表演 / 舞蹈（在动作更新之后，覆盖 IDLE 的手臂曲线；物理求值之前）。</summary>
+    private void UpdateActionPlayers(double deltaSeconds, bool mocapFace)
+    {
+        var allowTalk = !mocapFace && !_speechActive;
+        _performance?.Update(deltaSeconds, allowTalk);
+        _gesture?.Update(deltaSeconds);
+        _dance?.Update(deltaSeconds);
+    }
+
+    /// <summary>解析语音口型参数。</summary>
+    private void ResolveSpeechParameters(CubismModel model)
+    {
+        _speechMouthOpenY = model.FindParameter("ParamMouthOpenY");
+        _speechMouthForm = model.FindParameter("ParamMouthForm");
+        _speechJawOpen = model.FindParameter("JawOpen");
+    }
+
+    /// <summary>
+    /// 语音口型：优先级「动捕有脸 &gt; 语音 &gt; 音乐」。语音在说话且没有动捕脸时写嘴，
+    /// 让音乐跟唱在语音时闭嘴（见 <see cref="ApplyMusicResponse"/>）。
+    /// </summary>
+    private void ApplySpeechMouth(bool mocapFace)
+    {
+        _speechTouchedCount = 0;
+        if (!_speechActive || mocapFace) return;
+        var open = Math.Clamp(_speechMouthOpen, 0f, 1f);
+        SetSpeechParameter(_speechMouthOpenY, open);
+        SetSpeechParameter(_speechMouthForm, 0.15f);
+        SetSpeechParameter(_speechJawOpen, open * 0.5f);
+    }
+
+    private void SetSpeechParameter(CubismParameter? parameter, float value)
+    {
+        if (parameter is null) return;
+        parameter.Value = value;
+        if (_speechTouchedCount >= _speechTouchedIndices.Length)
+        {
+            Array.Resize(ref _speechTouchedIndices, _speechTouchedIndices.Length * 2);
+        }
+
+        _speechTouchedIndices[_speechTouchedCount++] = parameter.Index;
+    }
+
+    /// <summary>复位上一帧语音写过的参数。</summary>
+    private void ResetSpeechTouchedParameters(CubismParameter[] parameters)
+    {
+        for (var i = 0; i < _speechTouchedCount; i++)
+        {
+            var parameter = parameters[_speechTouchedIndices[i]];
+            parameter.Value = parameter.DefaultValue;
+        }
+
+        _speechTouchedCount = 0;
+    }
+
+    /// <summary>待机随机小动作：倒计时 + 条件判定（播动作 / 音乐 / 说话 / 跳舞 / 表演时不抢）。</summary>
+    private void UpdateIdleRandomGesture(double deltaSeconds, bool mocapFace)
+    {
+        if (!IdleRandomGestureEnabled)
+        {
+            _idleRandomGestureTimer = 0;
+            _idleRandomWasBusy = false;
+            return;
+        }
+
+        if (IsIdleRandomBusy(mocapFace))
+        {
+            // 忙碌期间不推进触发；恢复后至少冷却 3 秒，避免刚演完 / 刚说完立刻蹦一个小动作
+            _idleRandomWasBusy = true;
+            return;
+        }
+
+        if (_idleRandomWasBusy)
+        {
+            _idleRandomWasBusy = false;
+            if (_idleRandomGestureTimer <= 3.0) _idleRandomGestureTimer = 3.0;
+        }
+
+        if (_idleRandomGestureTimer <= 0) _idleRandomGestureTimer = NextIdleRandomInterval();
+        _idleRandomGestureTimer -= deltaSeconds;
+        if (_idleRandomGestureTimer > 0) return;
+        if (TryPlayRandomIdleDemo(mocapFace)) return;
+        _idleRandomGestureTimer = 3.0; // 条件不满足：3 秒后再试
+    }
+
+    /// <summary>待机小动作的「忙碌」判定：有动捕 / 音乐 / 语音 / 演示 / 用户动作都算忙。</summary>
+    private bool IsIdleRandomBusy(bool mocapFace)
+    {
+        if (mocapFace || _speechActive) return true;
+        if (MusicEnabled && _musicPlaying) return true;
+        if (_gesture?.HasActive == true || _performance?.HasActive == true || _dance?.HasActive == true) return true;
+        if (_motionPlayer.HasActive && CurrentMotion?.IsIdleCandidate != true) return true;
+        return false;
+    }
+
+    private bool CanPlayIdleRandomDemo(bool mocapFace)
+    {
+        if (IsIdleRandomBusy(mocapFace)) return false;
+        return true;
+    }
+
+    private bool TryPlayRandomIdleDemo(bool mocapFace)
+    {
+        if (!CanPlayIdleRandomDemo(mocapFace)) return false;
+        var gestureIds = _gesture?.Ids;
+        var performanceIds = _performance?.Ids;
+        var gestureCount = gestureIds?.Count ?? 0;
+        var performanceCount = performanceIds?.Count ?? 0;
+        var total = gestureCount + performanceCount;
+        if (total == 0) return false;
+
+        var pick = _idleRandomRng.Next(total);
+        var played = pick < gestureCount
+            ? PlayGesture(gestureIds![pick])
+            : PlayPerformance(performanceIds![pick - gestureCount]);
+        if (!played) return false;
+        _idleRandomGestureCount++;
+        _idleRandomGestureTimer = NextIdleRandomInterval();
+        return true;
+    }
+
+    /// <summary>下一次待机小动作的间隔：基础间隔 × 0.55~1.6（默认 22s → 约 12~35s）。</summary>
+    private double NextIdleRandomInterval()
+    {
+        var baseInterval = Math.Clamp(IdleRandomGestureIntervalSeconds, 4.0, 600.0);
+        var factor = 0.55 + (_idleRandomRng.NextDouble() * 1.05);
+        return baseInterval * factor;
     }
 
     /// <summary>写一个音乐响应参数并记录（下一帧开头按记录复位，保证不写时不污染手动值）。</summary>
@@ -979,6 +1295,10 @@ public sealed class ModelRuntime : IDisposable
         //    子系统只在「开启」时复位——关掉后不再复位，用户在参数 / 面部测试里手动拖的值才能保留。
         ResetMotionTouchedParameters(parameters);
         ResetMusicTouchedParameters(parameters);
+        ResetSpeechTouchedParameters(parameters);
+        _gesture?.ResetTouched(parameters);
+        _performance?.ResetTouched(parameters);
+        _dance?.ResetTouched(parameters);
         var expressionActive = _expressionManager.HasActive;
         if (expressionActive) ResetParametersToDefault(parameters, _expressionManaged);
         if (PhysicsEnabled) ResetParametersToDefault(parameters, _physicsManaged);
@@ -1031,6 +1351,9 @@ public sealed class ModelRuntime : IDisposable
             }
         }
 
+        // 3.5) 语音口型（优先级：动捕有脸 > 语音 > 音乐；语音时音乐跟唱闭嘴）
+        ApplySpeechMouth(mocapFace);
+
         // 4) 身体晃动测试（在动捕之后、动作之前）；动捕有脸时晃动不做头部补偿，让头跟脸
         UpdateBodySway(deltaSeconds, mocapFace);
 
@@ -1048,7 +1371,14 @@ public sealed class ModelRuntime : IDisposable
         }
 
         _motionPlayer.Update(model, deltaSeconds, _eyeBlinkParameterIds, _lipSyncParameterIds);
+
+        // 5.5) 手势 / 时间线表演 / 舞蹈：写在动作之后，覆盖 IDLE 的手臂曲线（物理之前）
+        UpdateActionPlayers(deltaSeconds, mocapFace);
+
         _expressionManager.Update(model, deltaSeconds);
+
+        // 5.6) 待机随机小动作：没有动捕 / 音乐 / 语音 / 舞蹈 / 表演 / 用户动作时，按随机间隔播一个
+        UpdateIdleRandomGesture(deltaSeconds, mocapFace);
 
         // 物理：在参数都算完之后、Core 求值之前跑（改的是参数值）
         if (PhysicsEnabled && _physics is not null)
@@ -1165,6 +1495,11 @@ public sealed class ModelRuntime : IDisposable
         _bodySway?.Reset();
         _swayDemoRemaining = 0;
         _musicTouchedCount = 0;
+        _gesture?.StopImmediate();
+        _performance?.Stop();
+        _dance?.StopImmediate();
+        _speechTouchedCount = 0;
+        _idleRandomGestureTimer = 0;
         model.Update();
     }
 
@@ -1231,6 +1566,16 @@ public sealed class ModelRuntime : IDisposable
         _expressionDataByPath.Clear();
         _motionPlayer.Clear();
         _expressionManager.ClearImmediate();
+        _gesture = null;
+        _performance = null;
+        _dance = null;
+        _speechMouthOpenY = null;
+        _speechMouthForm = null;
+        _speechJawOpen = null;
+        _speechTouchedCount = 0;
+        _speechActive = false;
+        _speechMouthOpen = 0;
+        _idleRandomGestureTimer = 0;
         _motions = Array.Empty<MotionEntry>();
         _expressions = Array.Empty<ExpressionEntry>();
         _parameterBindings = Array.Empty<ParameterBinding>();

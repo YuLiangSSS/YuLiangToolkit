@@ -1,0 +1,44 @@
+<Window x:Class="YuLiangToolkit.Tools.Live2D.Views.SpeechBubbleWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="小凉说话"
+        SizeToContent="WidthAndHeight"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        Focusable="False"
+        SnapsToDevicePixels="True"
+        Opacity="0">
+
+    <!-- 聊天气泡：圆角 + 小尾巴；颜色全部走主题 token（DynamicResource）。
+         窗口本身透明、置顶、不抢焦点，并通过 WS_EX_TRANSPARENT 点击穿透（见代码后置）。 -->
+    <Grid x:Name="Root" Margin="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border x:Name="BubbleBorder" MaxWidth="320"
+                Background="{DynamicResource CardBackgroundBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                CornerRadius="12" Padding="14,10">
+            <StackPanel>
+                <TextBlock Text="💬 小凉" FontSize="10.5"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                <TextBlock x:Name="MessageText" FontSize="13" LineHeight="19" MaxWidth="292"
+                           TextWrapping="Wrap" Margin="0,3,0,0"
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
+            </StackPanel>
+        </Border>
+
+        <!-- 小尾巴（朝下）：和气泡同色，描边同色，视觉上连成一体 -->
+        <Path Grid.Row="1" Data="M 1,0 L 17,0 L 9,12 Z"
+              Fill="{DynamicResource CardBackgroundBrush}"
+              Stroke="{DynamicResource BorderBrush}" StrokeThickness="1"
+              HorizontalAlignment="Center" Margin="0,-1,0,0" />
+    </Grid>
+</Window>

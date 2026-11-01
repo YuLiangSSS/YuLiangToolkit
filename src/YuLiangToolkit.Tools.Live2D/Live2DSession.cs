@@ -7,6 +7,7 @@ using YuLiangToolkit.Tools.Live2D.Interop;
 using YuLiangToolkit.Tools.Live2D.Mocap;
 using YuLiangToolkit.Tools.Live2D.Model;
 using YuLiangToolkit.Tools.Live2D.Rendering;
+using YuLiangToolkit.Tools.Live2D.Speech;
 using YuLiangToolkit.Tools.Live2D.ViewModels;
 using YuLiangToolkit.Tools.Live2D.Views;
 
@@ -111,6 +112,17 @@ public sealed class Live2DSession
 
     // ===== 全身轻晃（以脚为支点渲染层倾斜）演示钩子 =====
     private bool _bodyLeanDemoApplied;
+
+    // ===== 动作演示（手势 / 表演 / 舞蹈）与说话 / 聊天气泡（Windows 自带 TTS） =====
+    private TtsService? _tts;
+    private SpeechBubbleWindow? _bubble;
+    private CancellationTokenSource? _bubbleHideCts;
+    private string? _lastLoggedSpeechError;
+    private TimeSpan _idleChatterNextAt = TimeSpan.MinValue;
+    private bool _speechSelfTestStarted;
+    private bool _actionDemoApplied;
+    private bool _bubbleShotApplied;
+    private string? _bubbleShotPath;
 
     private Live2DSession()
     {
@@ -224,6 +236,30 @@ public sealed class Live2DSession
     /// <summary>音乐采集状态变化时触发（启动 / 停止 / 出错 / 换歌；可能在后台线程）。</summary>
     public event EventHandler? MusicStateChanged;
 
+    // ===================== 说话 / 轻对话 对外状态（Windows 自带 TTS） =====================
+
+    /// <summary>现在是否在说话（帧循环会把它同步给 <c>runtime.SpeechActive</c>）。</summary>
+    public bool IsSpeaking => _tts?.IsSpeaking == true;
+
+    /// <summary>说话时的嘴型开合（0~1，随播放进度；帧循环同步给 <c>runtime.SpeechMouthOpen</c>）。</summary>
+    public double SpeechMouthOpen
+    {
+        get
+        {
+            try { return _tts?.MouthOpen ?? 0; }
+            catch { return 0; }
+        }
+    }
+
+    /// <summary>语音最近一次错误（空 = 没错误）。</summary>
+    public string SpeechLastError => _tts?.LastError ?? "";
+
+    /// <summary>最近一次说的话（空 = 还没说过）。</summary>
+    public string LastSpokenText => _tts?.LastSpokenText ?? "";
+
+    /// <summary>语音状态变化（开始 / 结束 / 出错；在 UI 线程触发）。</summary>
+    public event EventHandler? SpeechStateChanged;
+
     // ===================== 页面生命周期 =====================
 
     /// <summary>取（或创建）工具页 ViewModel（整个进程只建一次，页面重开复用）。</summary>
@@ -261,6 +297,13 @@ public sealed class Live2DSession
         TryBeginMocapSelfTest();
         TryBeginMusicSelfTest();
         TryBeginBodyLeanDemo();
+        TryBeginActionDemo();
+        TryBeginSpeechSelfTest();
+        TryBeginBubbleShot();
+        if (_idleChatterNextAt == TimeSpan.MinValue)
+        {
+            _idleChatterNextAt = _clock.Elapsed + TimeSpan.FromSeconds(Random.Shared.Next(60, 120));
+        }
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -302,6 +345,7 @@ public sealed class Live2DSession
         ClosePetInternal(raiseEvent: false);
         DisposeMocapBlocking();
         DisposeMusicBlocking();
+        DisposeSpeechBlocking();
         DisposeRuntime();
 
         try { _viewModel?.ConfigStore.SaveNow(); } catch { /* 退出流程忽略 */ }
@@ -489,6 +533,9 @@ public sealed class Live2DSession
         TryBeginMocapSelfTest();
         TryBeginMusicSelfTest();
         TryBeginBodyLeanDemo();
+        TryBeginActionDemo();
+        TryBeginSpeechSelfTest();
+        TryBeginBubbleShot();
 
         UpdateFrameLoop();
         RenderFirstFrame();
@@ -602,6 +649,10 @@ public sealed class Live2DSession
 
             // 全身轻晃：以脚为支点的整身轻倾（运行时算角度，UI 渲染层按它旋转；不是扭腰）
             runtime.BodyLeanEnabled = cfg.BodyLeanEnabled;
+
+            // 待机灵动：随机小动作（手势 / 表演由运行时自己挑）
+            runtime.IdleRandomGestureEnabled = cfg.IdleRandomGestureEnabled;
+            runtime.IdleRandomGestureIntervalSeconds = Math.Clamp(cfg.IdleRandomGestureIntervalSeconds, 8, 60);
         }
         catch (Exception ex)
         {
@@ -654,6 +705,9 @@ public sealed class Live2DSession
         TryBeginMocapSelfTest();
         TryBeginMusicSelfTest();
         TryBeginBodyLeanDemo();
+        TryBeginActionDemo();
+        TryBeginSpeechSelfTest();
+        TryBeginBubbleShot();
         if (IsLoaded)
         {
             try { _runtime!.Tick(TimeSpan.FromMilliseconds(16)); } catch { /* 忽略 */ }
@@ -763,6 +817,15 @@ public sealed class Live2DSession
             HandleFrameException(ex);
             return;
         }
+
+        // 说话期间每帧同步状态给运行时（嘴型由运行时驱动 ParamMouthOpenY；动捕有脸时嘴型优先动捕）
+        SyncSpeechToRuntime(runtime);
+
+        // 聊天气泡跟随桌宠（拖动 / 缩放 / 多屏时每帧重算位置）
+        UpdateBubblePosition();
+
+        // 空闲自言自语：每约 2 秒检查一次（内部还有 60~120 秒的随机间隔）
+        if (_frameIndex % 60 == 0) TryIdleChatter();
 
         _frameIndex++;
 
@@ -1752,6 +1815,662 @@ public sealed class Live2DSession
                 await Task.Delay(400);
                 Application.Current?.Shutdown();
             }
+        }
+    }
+
+    // ===================== 动作演示（手势 / 表演 / 舞蹈） =====================
+
+    /// <summary>播放一个手势（按钮 / 说话自动小动作 / 桌宠菜单 / 调试钩子共用）。</summary>
+    public void PlayGesture(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return;
+        var runtime = _runtime;
+        if (runtime is null || !runtime.IsLoaded)
+        {
+            _viewModel?.Log("模型还没加载，无法播放手势：" + id);
+            return;
+        }
+
+        try
+        {
+            runtime.PlayGesture(id.Trim());
+            _viewModel?.Log("播放手势：" + id.Trim());
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("播放手势失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>播放一个表演。</summary>
+    public void PlayPerformance(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return;
+        var runtime = _runtime;
+        if (runtime is null || !runtime.IsLoaded)
+        {
+            _viewModel?.Log("模型还没加载，无法播放表演：" + id);
+            return;
+        }
+
+        try
+        {
+            runtime.PlayPerformance(id.Trim());
+            _viewModel?.Log("播放表演：" + id.Trim());
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("播放表演失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>开始跳舞。</summary>
+    public void StartDance(string mode, double speed)
+    {
+        var runtime = _runtime;
+        if (runtime is null || !runtime.IsLoaded) return;
+
+        try
+        {
+            runtime.StartDance(mode, Math.Clamp(speed, 0.5, 2.0));
+            _viewModel?.Log($"开始跳舞：{mode}（速度 {speed:0.00}x）");
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("开始跳舞失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>停止跳舞。</summary>
+    public void StopDance()
+    {
+        try
+        {
+            _runtime?.StopDance();
+            _viewModel?.Log("停止跳舞");
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("停止跳舞失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>停止所有演示（手势 / 表演 / 舞蹈 / 摇晃演示），把参数交还手动控制。</summary>
+    public void StopAllDemos()
+    {
+        try
+        {
+            _runtime?.StopAllDemos();
+            _viewModel?.Log("停止所有演示（手势 / 表演 / 舞蹈 / 摇晃）");
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("停止所有演示失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>随机播一个手势或表演（「🎲 随机动作」/ 桌宠菜单）。</summary>
+    public void RandomAction()
+    {
+        if (Random.Shared.Next(2) == 0) PlayRandomGesture();
+        else PlayRandomPerformance();
+    }
+
+    /// <summary>随机换一个姿势（手势）。</summary>
+    public void PlayRandomGesture()
+    {
+        var gestures = _viewModel?.GestureActions;
+        var id = gestures is { Count: > 0 }
+            ? gestures[Random.Shared.Next(gestures.Count)].Id
+            : "比心";
+        PlayGesture(id);
+        _viewModel?.SetStatus("随机手势：" + id);
+    }
+
+    /// <summary>随机表演。</summary>
+    public void PlayRandomPerformance()
+    {
+        var performances = _viewModel?.Performances;
+        var id = performances is { Count: > 0 }
+            ? performances[Random.Shared.Next(performances.Count)].Id
+            : "俏皮比心";
+        PlayPerformance(id);
+        _viewModel?.SetStatus("随机表演：" + id);
+    }
+
+    /// <summary>随机跳一段（seconds 秒后自动停；桌宠菜单「跳个舞」用 3 秒）。</summary>
+    public void PlayRandomDance(double seconds)
+    {
+        var modes = _viewModel?.DanceModeOptions;
+        var mode = modes is { Count: > 0 }
+            ? modes[Random.Shared.Next(modes.Count)].Value
+            : "轻快摇摆";
+        var speed = Math.Clamp(_viewModel?.DanceSpeed ?? 1.0, 0.5, 2.0);
+        StartDance(mode, speed);
+        _viewModel?.SetStatus($"跳个舞：{mode}（{seconds:0.#} 秒）");
+
+        var duration = TimeSpan.FromSeconds(Math.Clamp(seconds, 1, 10));
+        _ = Task.Delay(duration).ContinueWith(_ =>
+        {
+            try
+            {
+                _viewModel?.Ui(() =>
+                {
+                    try { _runtime?.StopDance(); } catch { /* 忽略 */ }
+                });
+            }
+            catch { /* 忽略 */ }
+        }, TaskScheduler.Default);
+    }
+
+    // ===================== 说话 / 轻对话 / 聊天气泡（Windows 自带 TTS） =====================
+
+    /// <summary>
+    /// 说一句话：先合成，**真正开始播放的那一刻**才显示气泡 + 配小动作，保证声音 / 口型 / 气泡同时出现。
+    /// 说话期间帧循环同步 <c>runtime.SpeechMouthOpen</c>。
+    /// </summary>
+    public void SpeakText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        text = text.Trim();
+        if (text.Length > 120) text = text[..120];
+
+        _viewModel?.Log("说话：" + text);
+        _ = SpeakAsyncCore(text);
+    }
+
+    /// <summary>停止说话（气泡稍后隐藏）。</summary>
+    public void StopSpeaking()
+    {
+        try
+        {
+            _tts?.Stop();
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("停止说话失败：" + ex.Message);
+        }
+
+        _viewModel?.Log("停止说话");
+        HideBubbleSoon();
+        RaiseSpeechStateChanged();
+    }
+
+    /// <summary>随机说一句（桌宠菜单「说句话」/ 空闲自言自语）。</summary>
+    public void SpeakRandomLine()
+    {
+        var line = Live2DViewModel.PickRandomSpeechLine();
+        if (!string.IsNullOrWhiteSpace(line)) SpeakText(line);
+    }
+
+    /// <summary>把语音相关配置推给 <see cref="TtsService"/>（还没创建时只记着，第一次说话时应用）。</summary>
+    public void ApplySpeechSettings()
+    {
+        var cfg = _viewModel?.Cfg;
+        var tts = _tts;
+        if (cfg is null || tts is null) return;
+
+        try
+        {
+            tts.VoiceId = cfg.SpeechVoiceId ?? "";
+            tts.Rate = Math.Clamp(cfg.SpeechRate, 0.6, 1.6);
+            tts.PitchPercent = Math.Clamp(cfg.SpeechPitchPercent, -20, 40);
+            tts.Volume = Math.Clamp(cfg.SpeechVolume, 0, 1);
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("应用语音设置失败：" + ex.Message);
+        }
+    }
+
+    private TtsService? EnsureSpeech()
+    {
+        if (_tts is not null) return _tts;
+
+        try
+        {
+            _tts = new TtsService();
+            _tts.StateChanged += OnTtsStateChanged;
+            ApplySpeechSettings();
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("语音初始化失败：" + ex.Message);
+            _tts = null;
+        }
+
+        return _tts;
+    }
+
+    private async Task SpeakAsyncCore(string text)
+    {
+        var tts = EnsureSpeech();
+        if (tts is null)
+        {
+            RaiseSpeechStateChanged();
+            return;
+        }
+
+        ApplySpeechSettings();
+        try
+        {
+            // 关键：onPlaybackStarted 在「音频真正开始播放」的一瞬间回调，
+            // 气泡与小动作在这里才出现 → 声音 / 口型 / 气泡三者同步。
+            var ok = await tts.SpeakAsync(text, () =>
+            {
+                ShowBubble(text);
+                if (_viewModel?.Cfg.SpeechAutoGesture == true) PlayRandomGesture();
+                RaiseSpeechStateChanged();
+            });
+            if (!ok)
+            {
+                var error = tts.LastError;
+                if (!string.IsNullOrWhiteSpace(error) && !string.Equals(error, _lastLoggedSpeechError, StringComparison.Ordinal))
+                {
+                    _lastLoggedSpeechError = error;
+                    _viewModel?.Log("语音播放失败：" + error);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("语音播放异常：" + ex.Message);
+        }
+        finally
+        {
+            RaiseSpeechStateChanged();
+            HideBubbleSoon();
+        }
+    }
+
+    private void OnTtsStateChanged(object? sender, EventArgs e)
+    {
+        var error = _tts?.LastError;
+        if (!string.IsNullOrWhiteSpace(error) && !string.Equals(error, _lastLoggedSpeechError, StringComparison.Ordinal))
+        {
+            _lastLoggedSpeechError = error;
+            _viewModel?.Log("语音状态：" + error);
+        }
+        try { _viewModel?.Ui(RaiseSpeechStateChanged); } catch { /* 忽略 */ }
+    }
+
+    private void RaiseSpeechStateChanged()
+    {
+        try { SpeechStateChanged?.Invoke(this, EventArgs.Empty); } catch { /* 订阅方异常不影响说话 */ }
+    }
+
+    /// <summary>显示聊天气泡（只有桌宠可见时才显示；位置每帧跟随）。</summary>
+    private void ShowBubble(string text)
+    {
+        var viewModel = _viewModel;
+        if (viewModel?.Cfg.SpeechBubbleEnabled != true) return;
+        if (_pet is not { IsVisible: true }) return;
+
+        try
+        {
+            var bubble = EnsureBubble();
+            if (bubble is null) return;
+            bubble.ShowBubble(text);
+            UpdateBubblePosition();
+        }
+        catch (Exception ex)
+        {
+            viewModel?.Log("聊天气泡显示失败：" + ex.Message);
+        }
+    }
+
+    private SpeechBubbleWindow? EnsureBubble()
+    {
+        if (_bubble is { IsLoaded: true }) return _bubble;
+
+        try
+        {
+            _bubble = new SpeechBubbleWindow();
+            _bubble.Closed += (_, _) => _bubble = null;
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("聊天气泡窗口创建失败：" + ex.Message);
+            _bubble = null;
+        }
+
+        return _bubble;
+    }
+
+    private void HideBubble()
+    {
+        try { _bubble?.HideBubble(); } catch { /* 忽略 */ }
+    }
+
+    /// <summary>说话结束后约 1.5 秒隐藏气泡（中途又开始说就取消隐藏）。</summary>
+    private async void HideBubbleSoon()
+    {
+        try
+        {
+            _bubbleHideCts?.Cancel();
+        }
+        catch { /* 忽略 */ }
+
+        var cts = new CancellationTokenSource();
+        _bubbleHideCts = cts;
+        try
+        {
+            await Task.Delay(1500, cts.Token);
+            if (!IsSpeaking) HideBubble();
+        }
+        catch (TaskCanceledException)
+        {
+            // 又开始说话了：保留气泡
+        }
+        catch (Exception)
+        {
+            // 忽略
+        }
+        finally
+        {
+            if (ReferenceEquals(_bubbleHideCts, cts)) _bubbleHideCts = null;
+            cts.Dispose();
+        }
+    }
+
+    /// <summary>每帧更新气泡位置（跟随桌宠拖动 / 缩放 / 多屏）。</summary>
+    private void UpdateBubblePosition()
+    {
+        var bubble = _bubble;
+        if (bubble is null || !bubble.IsBubbleVisible) return;
+
+        var pet = _pet;
+        if (pet is not { IsVisible: true })
+        {
+            HideBubble();
+            return;
+        }
+
+        try
+        {
+            bubble.PlaceAbove(new Rect(pet.Left, pet.Top, pet.ActualWidth, pet.ActualHeight));
+        }
+        catch
+        {
+            // 窗口正在切换：忽略
+        }
+    }
+
+    /// <summary>把说话状态同步给运行时（嘴型由运行时驱动 ParamMouthOpenY；音频线程只写字段）。</summary>
+    private void SyncSpeechToRuntime(ModelRuntime runtime)
+    {
+        try
+        {
+            runtime.SpeechActive = IsSpeaking;
+            runtime.SpeechMouthOpen = (float)SpeechMouthOpen;
+        }
+        catch
+        {
+            // 运行时还没实现语音字段：忽略
+        }
+    }
+
+    /// <summary>空闲随机自言自语：页面 / 桌宠可见、没在说话、没在放音乐时，约 60~120 秒说一句。</summary>
+    private void TryIdleChatter()
+    {
+        var viewModel = _viewModel;
+        if (viewModel?.Cfg.SpeechIdleChatterEnabled != true) return;
+        if (!IsPageOrPetVisible || IsSpeaking) return;
+        if (_music?.IsRunning == true) return;
+        if (_clock.Elapsed < _idleChatterNextAt) return;
+
+        _idleChatterNextAt = _clock.Elapsed + TimeSpan.FromSeconds(Random.Shared.Next(60, 120));
+        SpeakRandomLine();
+    }
+
+    private void DisposeSpeechBlocking()
+    {
+        try { _bubbleHideCts?.Cancel(); } catch { /* 忽略 */ }
+        _bubbleHideCts = null;
+
+        try
+        {
+            _bubble?.HideBubble();
+            _bubble?.Close();
+        }
+        catch { /* 忽略 */ }
+        _bubble = null;
+
+        try
+        {
+            if (_tts is not null)
+            {
+                _tts.StateChanged -= OnTtsStateChanged;
+                _tts.Dispose();
+            }
+        }
+        catch { /* 退出流程忽略 */ }
+        _tts = null;
+    }
+
+    // ===================== 开发调试：动作 / 语音 / 气泡截图 =====================
+
+    /// <summary>调试钩子：<c>YLT_LIVE2D_GESTURE_DEMO</c> / <c>PERFORMANCE_DEMO</c> / <c>DANCE_DEMO</c> 自动播一个动作（截图验收用）。</summary>
+    private void TryBeginActionDemo()
+    {
+        if (_actionDemoApplied) return;
+        var runtime = _runtime;
+        if (runtime?.IsLoaded != true) return;
+
+        var gesture = Environment.GetEnvironmentVariable("YLT_LIVE2D_GESTURE_DEMO")?.Trim();
+        var performance = Environment.GetEnvironmentVariable("YLT_LIVE2D_PERFORMANCE_DEMO")?.Trim();
+        var dance = Environment.GetEnvironmentVariable("YLT_LIVE2D_DANCE_DEMO")?.Trim();
+        if (string.IsNullOrEmpty(gesture) && string.IsNullOrEmpty(performance) && string.IsNullOrEmpty(dance)) return;
+
+        _actionDemoApplied = true;
+        try
+        {
+            if (!string.IsNullOrEmpty(gesture))
+            {
+                runtime.PlayGesture(gesture);
+                _viewModel?.Log("截图模式：播放手势 " + gesture);
+                _viewModel?.SetStatus("截图模式：手势 " + gesture);
+            }
+            if (!string.IsNullOrEmpty(performance))
+            {
+                runtime.PlayPerformance(performance);
+                _viewModel?.Log("截图模式：播放表演 " + performance);
+                _viewModel?.SetStatus("截图模式：表演 " + performance);
+            }
+            if (!string.IsNullOrEmpty(dance))
+            {
+                runtime.StartDance(dance, Math.Clamp(_viewModel?.DanceSpeed ?? 1.0, 0.5, 2.0));
+                _viewModel?.Log("截图模式：开始跳舞 " + dance);
+                _viewModel?.SetStatus("截图模式：跳舞 " + dance);
+            }
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("截图模式动作演示失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>调试钩子：<c>YLT_LIVE2D_SPEECH_SELFTEST=1</c>（+ <c>_EXIT=1</c>）合成并播放固定台词，
+    /// 采样 IsSpeaking / MouthOpen 写 <c>Data\live2d\speech-selftest.log</c>（只写数字，不保存音频）。</summary>
+    private void TryBeginSpeechSelfTest()
+    {
+        if (_speechSelfTestStarted) return;
+        if (Environment.GetEnvironmentVariable("YLT_LIVE2D_SPEECH_SELFTEST") is not ("1" or "on" or "true")) return;
+        if (_viewModel is null || !IsPageOrPetVisible) return;
+        _speechSelfTestStarted = true;
+        _ = RunSpeechSelfTestAsync();
+    }
+
+    private async Task RunSpeechSelfTestAsync()
+    {
+        var viewModel = _viewModel;
+        if (viewModel is null) return;
+
+        var lines = new List<string>();
+        void Line(string text)
+        {
+            lines.Add(text);
+            viewModel.Log("[语音自测] " + text);
+        }
+
+        var exitAfter = Environment.GetEnvironmentVariable("YLT_LIVE2D_SPEECH_SELFTEST_EXIT") is "1" or "on" or "true";
+        var tts = EnsureSpeech();
+        if (tts is null)
+        {
+            Line("FAIL 语音初始化失败：" + viewModel.SpeechVoiceError);
+        }
+        else
+        {
+            ApplySpeechSettings();
+            var onlineCount = TtsService.GetVoices().Count(v => v.Id.StartsWith("edge:", StringComparison.Ordinal));
+            var localCount = TtsService.GetVoices().Count(v => v.Id.StartsWith("win:", StringComparison.Ordinal));
+            Line($"OK 语音服务已初始化：VoiceId={(string.IsNullOrWhiteSpace(tts.VoiceId) ? "（自动：晓伊 · 少女音）" : tts.VoiceId)}，" +
+                 $"Rate={tts.Rate:0.00} Pitch={tts.PitchPercent:0} Volume={tts.Volume:0.00}；可用语音 在线 {onlineCount} + 本地 {localCount}");
+
+            var callbackAtMs = -1L;
+            var playWatch = Stopwatch.StartNew();
+            var spoken = await tts.SpeakAsync("你好呀，我是小凉，今天也要开心喔。",
+                () => callbackAtMs = playWatch.ElapsedMilliseconds);
+            if (!spoken)
+            {
+                Line("FAIL 说话失败：" + (tts.LastError ?? "未知原因"));
+            }
+            else
+            {
+                Line($"OK 引擎={tts.LastEngine}；播放开始回调={callbackAtMs}ms（生产路径在同一回调里显示气泡 + 开始口型，三者同步）");
+                Line("OK SpeakAsync 返回成功，开始采样 6 秒（只写数字，不保存音频）");
+                var speakingSamples = 0;
+                var total = 0;
+                var maxMouth = 0.0;
+                var sumMouth = 0.0;
+                var mouthSamples = 0;
+                var firstSpeakAt = -1.0;
+                var lastSpeakAt = -1.0;
+                var watch = Stopwatch.StartNew();
+                while (watch.ElapsedMilliseconds < 6000)
+                {
+                    await Task.Delay(100);
+                    total++;
+                    var speaking = IsSpeaking;
+                    var mouth = SpeechMouthOpen;
+                    if (speaking)
+                    {
+                        speakingSamples++;
+                        if (firstSpeakAt < 0) firstSpeakAt = watch.Elapsed.TotalSeconds;
+                        lastSpeakAt = watch.Elapsed.TotalSeconds;
+                    }
+                    if (mouth > 0.0001)
+                    {
+                        mouthSamples++;
+                        sumMouth += mouth;
+                        if (mouth > maxMouth) maxMouth = mouth;
+                    }
+                    if (!speaking && watch.ElapsedMilliseconds > 1200 && firstSpeakAt >= 0) break;
+                }
+
+                Line($"OK 采样 {total} 次：IsSpeaking 占比 {speakingSamples * 100.0 / Math.Max(1, total):0.0}% " +
+                     $"(首次 {firstSpeakAt:0.0}s，最后 {lastSpeakAt:0.0}s)");
+                Line($"OK 嘴型：非零比例 {mouthSamples * 100.0 / Math.Max(1, total):0.0}%，" +
+                     $"平均 {(mouthSamples > 0 ? sumMouth / mouthSamples : 0):0.000}，最大 {maxMouth:0.000}");
+                Line($"OK 说话文本={tts.LastSpokenText}");
+                Line($"OK LastError={(string.IsNullOrWhiteSpace(tts.LastError) ? "无" : tts.LastError)}");
+                Line("OK 隐私：默认微软 Edge 在线神经网络语音（只发送要说的文本，不上传桌面/音频、不录音、不保存音频）；" +
+                     "离线可在语音列表选「本地」语音");
+            }
+        }
+
+        var report = string.Join(Environment.NewLine, lines) + Environment.NewLine;
+        try { viewModel.Storage.WriteText("speech-selftest.log", report); }
+        catch (Exception ex) { viewModel.Log("语音自测日志写入失败：" + ex.Message); }
+        RaiseSpeechStateChanged();
+
+        if (exitAfter)
+        {
+            await Task.Delay(400);
+            Application.Current?.Shutdown();
+        }
+    }
+
+    /// <summary>调试钩子：<c>YLT_LIVE2D_BUBBLE_SHOT=&lt;png&gt;</c> 截「桌宠 + 头顶气泡」合成图
+    /// （离屏合成两张位图，不抓桌面，避免截到用户其它窗口）。</summary>
+    private void TryBeginBubbleShot()
+    {
+        if (_bubbleShotApplied) return;
+        var path = Environment.GetEnvironmentVariable("YLT_LIVE2D_BUBBLE_SHOT")?.Trim();
+        if (string.IsNullOrEmpty(path)) return;
+        if (_viewModel is null || _runtime?.IsLoaded != true) return;
+
+        _bubbleShotApplied = true;
+        _bubbleShotPath = path;
+        _ = RunBubbleShotAsync(path);
+    }
+
+    private async Task RunBubbleShotAsync(string path)
+    {
+        var viewModel = _viewModel;
+        if (viewModel is null) return;
+
+        try
+        {
+            ShowPet();
+            await Task.Delay(500);
+            SpeakText("你好呀～今天也要开心喔！");
+
+            // 在线语音要先合成（约 1~3 秒），等「真正开始播放」后再截，保证气泡已经显示出来
+            var waitSpeech = Stopwatch.StartNew();
+            while (waitSpeech.ElapsedMilliseconds < 12_000 && !IsSpeaking)
+            {
+                await Task.Delay(100);
+            }
+            await Task.Delay(900);
+
+            var pet = _pet;
+            var bubble = _bubble;
+            if (pet is null) { viewModel.Log("气泡截图：桌宠没打开"); return; }
+
+            var petBitmap = pet.RenderWindowBitmap();
+            var bubbleBitmap = bubble?.RenderBubbleBitmap();
+
+            var bubbleWidth = bubbleBitmap?.PixelWidth ?? 0;
+            var bubbleHeight = bubbleBitmap?.PixelHeight ?? 0;
+            var width = Math.Max(petBitmap.PixelWidth, bubbleWidth);
+            var height = petBitmap.PixelHeight + bubbleHeight + 8;
+
+            var visual = new System.Windows.Media.DrawingVisual();
+            using (var dc = visual.RenderOpen())
+            {
+                dc.DrawRectangle(new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x1E, 0x1F, 0x24)),
+                    null, new Rect(0, 0, width, height));
+                if (bubbleBitmap is not null)
+                {
+                    dc.DrawImage(bubbleBitmap,
+                        new Rect((width - bubbleWidth) / 2.0, 0, bubbleWidth, bubbleHeight));
+                }
+                dc.DrawImage(petBitmap,
+                    new Rect((width - petBitmap.PixelWidth) / 2.0, bubbleHeight + 8, petBitmap.PixelWidth, petBitmap.PixelHeight));
+            }
+
+            var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(width, height, 96, 96,
+                System.Windows.Media.PixelFormats.Pbgra32);
+            bitmap.Render(visual);
+
+            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+            await using (var stream = File.Create(path))
+            {
+                encoder.Save(stream);
+            }
+
+            viewModel.Log($"气泡截图已保存：{path}（气泡 {bubbleWidth}×{bubbleHeight}，桌宠 {petBitmap.PixelWidth}×{petBitmap.PixelHeight}）");
+        }
+        catch (Exception ex)
+        {
+            viewModel.Log("气泡截图失败：" + ex.Message);
+        }
+        finally
+        {
+            await Task.Delay(200);
+            Application.Current?.Shutdown();
         }
     }
 

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,6 +18,8 @@ using YuLiangToolkit.Tools.Live2D.Interop;
 using YuLiangToolkit.Tools.Live2D.Mocap;
 using YuLiangToolkit.Tools.Live2D.Model;
 using YuLiangToolkit.Tools.Live2D.Rendering;
+using YuLiangToolkit.Tools.Live2D.Speech;
+using YuLiangToolkit.Tools.Live2D.Views;
 
 namespace YuLiangToolkit.FrameworkSelfCheck;
 
@@ -465,6 +468,16 @@ internal static class Live2DChecks
                 && Near(defaults.MusicLipSyncStrength, 1.0, 1e-9)
                 && Near(defaults.MusicSwayStrength, 1.0, 1e-9)
                 && defaults.MusicSwayEnabled && defaults.MusicHeadBobEnabled);
+            C("配置默认值：语音（语音 id 空=自动在线软妹音 / 语速 0.95 / 音调 0 / 音量 0.9 / 气泡与自动小动作开 / 空闲自言自语关）",
+                defaults.SpeechVoiceId.Length == 0
+                && Near(defaults.SpeechRate, 0.95, 1e-9)
+                && Near(defaults.SpeechPitchPercent, 0.0, 1e-9)
+                && Near(defaults.SpeechVolume, 0.9, 1e-9)
+                && defaults.SpeechBubbleEnabled && defaults.SpeechAutoGesture
+                && !defaults.SpeechIdleChatterEnabled);
+            C("配置默认值：待机随机小动作默认开 / 间隔 22 秒",
+                defaults.IdleRandomGestureEnabled
+                && Near(defaults.IdleRandomGestureIntervalSeconds, 22.0, 1e-9));
 
             var store = ToolConfigStore.For(Live2DTool.ToolId);
             var cfg = store.Load<Live2DConfig>();
@@ -497,13 +510,22 @@ internal static class Live2DChecks
             cfg.MusicSwayStrength = 0.6;
             cfg.MusicSwayEnabled = false;
             cfg.MusicHeadBobEnabled = false;
+            cfg.SpeechVoiceId = "voice-自检";
+            cfg.SpeechRate = 1.3;
+            cfg.SpeechPitchPercent = 20;
+            cfg.SpeechVolume = 0.7;
+            cfg.SpeechBubbleEnabled = false;
+            cfg.SpeechAutoGesture = false;
+            cfg.SpeechIdleChatterEnabled = true;
+            cfg.IdleRandomGestureEnabled = false;
+            cfg.IdleRandomGestureIntervalSeconds = 45;
             ToolConfigStore.FlushAll();
             var reloaded = JsonFileStore.Read<Live2DConfig>(cfg.FilePath);
             var configDirectory = Path.GetDirectoryName(cfg.FilePath);
             var badBackups = configDirectory is not null && Directory.Exists(configDirectory)
                 ? Directory.GetFiles(configDirectory, "config.bad-*.json").Length
                 : 0;
-            C("配置改动自动落盘并读回（帧率 / 纹理 / 桌宠宽 / 眼睛跟随 / 物理 / 动捕 / 身体晃动 / 跟随增益 / 音乐）",
+            C("配置改动自动落盘并读回（帧率 / 纹理 / 桌宠宽 / 眼睛跟随 / 物理 / 动捕 / 身体晃动 / 跟随增益 / 音乐 / 语音 9 项）",
                 reloaded is
                 {
                     FpsLimit: 60, TextureMaxSize: 4096, PetWidth: 520, EyeTracking: false,
@@ -514,12 +536,15 @@ internal static class Live2DChecks
                     MusicReactiveEnabled: true, MusicReactiveMode: "强制跟唱", MusicReactiveSensitivity: 2.5,
                     MusicLipSyncStrength: 1.4, MusicSwayStrength: 0.6,
                     MusicSwayEnabled: false, MusicHeadBobEnabled: false,
+                    SpeechVoiceId: "voice-自检", SpeechRate: 1.3, SpeechPitchPercent: 20, SpeechVolume: 0.7,
+                    SpeechBubbleEnabled: false, SpeechAutoGesture: false, SpeechIdleChatterEnabled: true,
+                    IdleRandomGestureEnabled: false, IdleRandomGestureIntervalSeconds: 45,
                 }
                 && Near(reloaded.PhysicsStrength, 1.5, 1e-9),
                 reloaded is null
                     ? $"读回失败：config 存在={File.Exists(cfg.FilePath)}，被备份的坏文件={badBackups} 个，LastError={store.LastError ?? "(无)"}"
                     : JsonFileStore.Serialize(reloaded).Replace(Environment.NewLine, " "));
-            C("配置按 camelCase 落盘（手改配置时键名好认：fpsLimit / mocapEnabled / bodySwayEnabled / eyeTrackingHorizontalGain / musicReactiveEnabled）",
+            C("配置按 camelCase 落盘（手改配置时键名好认：fpsLimit / musicReactiveEnabled / speechVoiceId / idleRandomGestureIntervalSeconds）",
                 File.ReadAllText(cfg.FilePath).Contains("\"fpsLimit\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"textureMaxSize\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"petWidth\"")
@@ -529,7 +554,10 @@ internal static class Live2DChecks
                 && File.ReadAllText(cfg.FilePath).Contains("\"eyeTrackingVerticalOffset\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"musicReactiveEnabled\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"musicReactiveSensitivity\"")
-                && File.ReadAllText(cfg.FilePath).Contains("\"musicLipSyncStrength\""),
+                && File.ReadAllText(cfg.FilePath).Contains("\"musicLipSyncStrength\"")
+                && File.ReadAllText(cfg.FilePath).Contains("\"speechVoiceId\"")
+                && File.ReadAllText(cfg.FilePath).Contains("\"speechPitchPercent\"")
+                && File.ReadAllText(cfg.FilePath).Contains("\"idleRandomGestureIntervalSeconds\""),
                 File.ReadAllText(cfg.FilePath).Replace(Environment.NewLine, " "));
         }
         catch (Exception ex)
@@ -1052,7 +1080,179 @@ internal static class Live2DChecks
         }
 
         // ================================================================
-        // 十二、模型运行时 + 软件渲染器（要 WPF 位图 → 单独 STA 线程）
+        // 十二、语音：WAV 解析 / 唇形包络 / TTS 契约（全部用合成 WAV 字节；不合成、不播放、不出声）
+        // ================================================================
+        try
+        {
+            // ---------- 数据契约 ----------
+            var femaleVoice = new SpeechVoiceInfo("id-1", "微软慧慧", "zh-CN", "Female");
+            var maleVoice = new SpeechVoiceInfo("id-2", "Kangkang", "zh-CN", "Male");
+            var otherVoice = new SpeechVoiceInfo("id-3", "Voice3", "en-US", "Neutral");
+            var onlineVoice = new SpeechVoiceInfo("edge:xiaoyi", "晓伊 · 少女音", "zh-CN", "Female", "在线 · 软妹音");
+            C("语音契约：SpeechVoiceInfo 显示文本（本地女声 / 男声 / 其他 / 在线带 Detail）",
+                femaleVoice.DisplayText == "微软慧慧（zh-CN，女声）"
+                && maleVoice.DisplayText == "Kangkang（zh-CN，男声）"
+                && otherVoice.DisplayText == "Voice3（en-US，Neutral）"
+                && onlineVoice.DisplayText == "晓伊 · 少女音（在线 · 软妹音）"
+                && femaleVoice.Detail is null && onlineVoice.Detail == "在线 · 软妹音",
+                $"{femaleVoice.DisplayText} / {maleVoice.DisplayText} / {otherVoice.DisplayText} / {onlineVoice.DisplayText}");
+
+            var utterance0 = new SpeechUtterance("自检", Array.Empty<byte>(), 16000, 1, 16, 1.5, Array.Empty<float>());
+            C("语音契约：SpeechUtterance.DurationMs 由时长换算（1.5s → 1500ms）",
+                Near(utterance0.DurationMs, 1500.0, 1e-9), $"{utterance0.DurationMs:0.###}ms");
+
+            // ---------- WAV 头解析（16k 单声道 16bit + fmt 18 字节 + LIST 块在前/在后） ----------
+            var wavData16k = MakeSyntheticPcm16(monoSamples: 8000, sampleRate: 16000); // 0.5 秒
+            var parsed16k = WaveAudio.TryParse(wavData16k, out var info16k, out var error16k);
+            C("语音 WAV：16k 单声道 16bit 解析正确（rate/ch/bits/dataOffset/dataLen/0.5 秒）",
+                parsed16k && error16k is null && info16k.SampleRate == 16000 && info16k.Channels == 1
+                && info16k.BitsPerSample == 16 && info16k.DataOffset == 44 && info16k.DataLength == 16000
+                && info16k.BlockAlign == 2 && info16k.FrameCount == 8000
+                && Near(info16k.DurationSeconds, 0.5, 1e-6),
+                parsed16k
+                    ? $"rate={info16k.SampleRate} ch={info16k.Channels} bits={info16k.BitsPerSample} " +
+                      $"off={info16k.DataOffset} len={info16k.DataLength} dur={info16k.DurationSeconds:0.###}s"
+                    : $"解析失败：{error16k}");
+
+            var wavWithList = MakeSyntheticPcm16(monoSamples: 4410, sampleRate: 16000,
+                includeListBeforeData: true, includeListAfterData: true, fs18: true);
+            var parsedList = WaveAudio.TryParse(wavWithList, out var infoList, out var errorList);
+            C("语音 WAV：LIST 块（fmt 18 字节）在 data 前 / 后都能正确跳过，找到 data 块",
+                parsedList && errorList is null && infoList.SampleRate == 16000 && infoList.DataLength == 8820
+                && Near(infoList.DurationSeconds, 4410.0 / 16000.0, 1e-6),
+                parsedList ? $"off={infoList.DataOffset} len={infoList.DataLength}" : $"解析失败：{errorList}");
+
+            // ---------- 坏数据 ----------
+            var badCases = new (string Name, byte[] Data)[]
+            {
+                ("null", null!),
+                ("太短", new byte[10]),
+                ("不是 RIFF", System.Text.Encoding.ASCII.GetBytes("NOPE1234WAVEfmt ").Concat(new byte[64]).ToArray()),
+                ("没有 data", MakeSyntheticWavBytes(omitDataChunk: true)),
+                ("不支持的编码", MakeSyntheticWavBytes(formatTag: 2)),
+                ("fmt 太小", MakeSyntheticWavBytes(fmtSize: 12)),
+            };
+            var badFailures = new List<string>();
+            foreach (var (name, data) in badCases)
+            {
+                var parsed = WaveAudio.TryParse(data, out _, out var error);
+                if (parsed || string.IsNullOrWhiteSpace(error)) badFailures.Add(name);
+            }
+            C("语音 WAV：坏数据 / 非 RIFF / 缺 data / 编码不支持 → 返回 false 并给出原因",
+                badFailures.Count == 0, badFailures.Count == 0 ? "6 种坏输入都正确拒绝" : "未拒绝：" + string.Join(",", badFailures));
+
+            // ---------- 采样读取 ----------
+            var ramp = MakeSyntheticPcm16(monoSamples: 4, sampleRate: 16000, sampleValue: i => (short)(i * 1000));
+            var rampParsed = WaveAudio.TryParse(ramp, out var rampInfo, out _);
+            var rampSamples = rampParsed ? WaveAudio.ReadMonoSamples(ramp, rampInfo) : Array.Empty<short>();
+            C("语音 WAV：ReadMonoSamples 读第一声道 16bit 样本（长 = FrameCount、值一致）",
+                rampParsed && rampSamples.Length == rampInfo.FrameCount
+                && rampSamples[0] == 0 && rampSamples[1] == 1000 && rampSamples[2] == 2000 && rampSamples[3] == 3000,
+                $"len={rampSamples.Length}");
+
+            // ---------- 唇形包络 ----------
+            var envelopeSamples = MakeEnvelopeSamples(sampleRate: 16000, leadingSilence: 0.2, tone: 0.6, trailingSilence: 0.2);
+            var envelope = WaveAudio.BuildEnvelope(envelopeSamples, 16000);
+            var expectedFrames = (int)Math.Ceiling(envelopeSamples.Length / (16000 * 20 / 1000.0));
+            var silentPrefixMax = envelope.Take(5).Max();
+            var loudMax = envelope.Skip(15).Take(25).Max();
+            var attackMax = 0.0;
+            for (var i = 1; i < envelope.Length; i++) attackMax = Math.Max(attackMax, envelope[i] - envelope[i - 1]);
+            var releaseMax = 0.0;
+            for (var i = 1; i < envelope.Length; i++) releaseMax = Math.Max(releaseMax, envelope[i - 1] - envelope[i]);
+            C("语音包络：长度 ≈ 时长/20ms、静音段 ≈0、有声段 >0 且归一化到 ≈1、快起慢落",
+                Math.Abs(envelope.Length - expectedFrames) <= 1
+                && silentPrefixMax < 0.02 && loudMax > 0.6
+                && attackMax > releaseMax && attackMax > 0.2
+                && envelope.All(v => v >= 0 && v <= 1 && float.IsFinite(v)),
+                $"帧数={envelope.Length}/{expectedFrames} 静音={silentPrefixMax:0.###} 有声={loudMax:0.###} " +
+                $"上升={attackMax:0.###} 下降={releaseMax:0.###}");
+
+            var silentAllZero = WaveAudio.BuildEnvelope(new short[8000], 16000);
+            var emptyEnvelope = WaveAudio.BuildEnvelope(Array.Empty<short>(), 16000);
+            var invalidRateEnvelope = WaveAudio.BuildEnvelope(new short[800], 0);
+            C("语音包络：全静音不除零（全 0）、空样本返回空、非法采样率不崩",
+                silentAllZero.Length > 0 && silentAllZero.All(v => v == 0)
+                && emptyEnvelope.Length == 0 && invalidRateEnvelope.Length == 0,
+                $"全静音帧={silentAllZero.Length}");
+
+            // ---------- TtsService：只读 / 纯属性，不合成不播放不发声 ----------
+            using (var tts = new TtsService())
+            {
+                tts.Rate = 5.0;
+                tts.PitchPercent = 99;
+                tts.Volume = 2.0;
+                var clampedHigh = tts.Rate == 1.6 && tts.PitchPercent == 40 && tts.Volume == 1.0;
+                tts.Rate = 0.1;
+                tts.PitchPercent = -99;
+                tts.Volume = -1.0;
+                var clampedLow = tts.Rate == 0.6 && tts.PitchPercent == -20 && tts.Volume == 0.0;
+                tts.Stop(); // 空闲时调用：不崩、不发声音
+                C("语音 TTS：Rate/Pitch/Volume 按 0.6~1.6 / -20~40 / 0~1 夹取；空闲 Stop 不崩；不合成不发声",
+                    clampedHigh && clampedLow && !tts.IsSpeaking
+                    && Near(tts.MouthOpen, 0, 1e-9) && tts.LastError is null,
+                    $"rate={tts.Rate} pitch={tts.PitchPercent} volume={tts.Volume}");
+            }
+
+            Exception? voicesError = null;
+            IReadOnlyList<SpeechVoiceInfo>? voices = null;
+            try
+            {
+                voices = TtsService.GetVoices();
+                voices = TtsService.GetVoices(); // 第二次走缓存，也不能抛
+            }
+            catch (Exception ex)
+            {
+                voicesError = ex;
+            }
+
+            C("语音 TTS：GetVoices 不抛异常、返回列表（在线 edge: + 本地 win: 结构，不联网合成、不播放）",
+                voicesError is null && voices is not null
+                && voices.All(voice => voice.Id.StartsWith("edge:", StringComparison.Ordinal)
+                                       || voice.Id.StartsWith("win:", StringComparison.Ordinal))
+                && voices.All(voice => !voice.Id.StartsWith("edge:", StringComparison.Ordinal) || voice.Detail is not null),
+                voicesError is null
+                    ? $"系统语音 {voices?.Count ?? 0} 个（在线 {voices?.Count(v => v.Id.StartsWith("edge:")) ?? 0} / 本地 {voices?.Count(v => v.Id.StartsWith("win:")) ?? 0}）"
+                    : $"{voicesError.GetType().Name}: {voicesError.Message}");
+
+            // ---------- 聊天气泡定位（纯静态函数，不创建窗口） ----------
+            var bubbleCenter = SpeechBubblePlacement.Calculate(800, 500, 420, 862, 320, 120, 0, 0, 1920, 1080);
+            C("气泡定位：桌宠在屏幕中间 → 气泡头顶居中（gap 8）",
+                Near(bubbleCenter.Left, 850, 1e-9) && Near(bubbleCenter.Top, 372, 1e-9),
+                $"{bubbleCenter.Left:0.##},{bubbleCenter.Top:0.##}");
+
+            var bubbleLeftEdge = SpeechBubblePlacement.Calculate(-200, 300, 420, 862, 320, 120, 0, 0, 1920, 1080);
+            var bubbleRightEdge = SpeechBubblePlacement.Calculate(1900, 300, 420, 862, 320, 120, 0, 0, 1920, 1080);
+            C("气泡定位：左右夹取到工作区（左边 4px 边距 / 右边 -4px 边距）",
+                Near(bubbleLeftEdge.Left, 4, 1e-9) && Near(bubbleRightEdge.Left, 1596, 1e-9),
+                $"左={bubbleLeftEdge.Left:0.##} 右={bubbleRightEdge.Left:0.##}");
+
+            var bubbleFlip = SpeechBubblePlacement.Calculate(800, 10, 420, 862, 320, 120, 0, 0, 1920, 1080);
+            var bubbleTooLow = SpeechBubblePlacement.Calculate(800, 10, 420, 1080, 320, 120, 0, 0, 1920, 1080);
+            C("气泡定位：上方放不下 → 翻到桌宠脚下；脚下也放不下 → 贴工作区顶部",
+                Near(bubbleFlip.Top, 880, 1e-9) && Near(bubbleTooLow.Top, 4, 1e-9),
+                $"翻转到={bubbleFlip.Top:0.##} 贴顶={bubbleTooLow.Top:0.##}");
+
+            var bubbleNegativeArea = SpeechBubblePlacement.Calculate(-1900, -300, 420, 862, 320, 120, -1920, -400, 1920, 1080);
+            C("气泡定位：负坐标多屏工作区里结果仍夹在工作区内",
+                bubbleNegativeArea.Left >= -1916 && bubbleNegativeArea.Left <= -324
+                && bubbleNegativeArea.Top >= -396 && bubbleNegativeArea.Top <= -4,
+                $"{bubbleNegativeArea.Left:0.##},{bubbleNegativeArea.Top:0.##}");
+
+            var bubbleExtreme = SpeechBubblePlacement.Calculate(5000, -500, 420, 862, 320, 120, 0, 0, 1920, 1080);
+            var bubbleHuge = SpeechBubblePlacement.Calculate(800, 500, 420, 862, 3000, 2000, 0, 0, 1920, 1080);
+            C("气泡定位：极端值不越界（桌宠完全在屏幕外 / 气泡比工作区还大 → 夹到工作区左上）",
+                Near(bubbleExtreme.Left, 1596, 1e-9) && Near(bubbleExtreme.Top, 370, 1e-9)
+                && Near(bubbleHuge.Left, 4, 1e-9) && Near(bubbleHuge.Top, 4, 1e-9),
+                $"极端={bubbleExtreme.Left:0.##},{bubbleExtreme.Top:0.##} 超大={bubbleHuge.Left:0.##},{bubbleHuge.Top:0.##}");
+        }
+        catch (Exception ex)
+        {
+            C("语音断言运行期间抛出异常", false, $"{ex.GetType().Name}: {ex.Message}");
+        }
+
+        // ================================================================
+        // 十三、模型运行时 + 软件渲染器（要 WPF 位图 → 单独 STA 线程）
         // ================================================================
         if (!Directory.Exists(modelDir))
         {
@@ -1836,6 +2036,8 @@ internal static class Live2DChecks
             // ---------------- J. 音乐跟唱 / 律动集成（假 IMusicReactiveProvider，绝不打开 WASAPI 回环） ----------------
             var fakeMusic = new FakeMusicProvider();
             Quiet();
+            // 关闭待机随机小动作：J/K 段会连续 Tick 十几秒，随机演示会插进音乐 / 轻倾断言（L 段会单独测它）
+            runtime.IdleRandomGestureEnabled = false;
             runtime.MocapEnabled = false;
             runtime.Mocap = null;
             runtime.EyeTrackingEnabled = false;
@@ -2161,6 +2363,330 @@ internal static class Live2DChecks
                 musicOffLeanPeriod is >= 3.4 and <= 4.6 && musicOffLeanAmplitude is >= 0.51f and <= 0.69f,
                 $"周期={musicOffLeanPeriod:0.###}s 幅度={musicOffLeanAmplitude:0.###}°");
 
+            // ---------------- L. 动作系统（手势 / 表演 / 舞蹈 / 待机随机）与语音口型优先级 ----------------
+            Quiet();
+            runtime.MocapEnabled = false;
+            runtime.Mocap = null;
+            runtime.Music = null;
+            runtime.MusicEnabled = false;
+            runtime.SwayEnabled = false;
+            runtime.StopAllDemos();
+            runtime.ResetParameters();
+            TickFrames(2);
+
+            var gestureIds = runtime.GestureIds;
+            var performanceIds = runtime.PerformanceIds;
+            var danceModes = runtime.DanceModes;
+            C("动作系统：8 个手势 / 6 个表演 / 4 个舞蹈模式（含抱胸致意、竖起食指、拿起狗尾草、举手打招呼、比心）",
+                gestureIds.Count == 8 && performanceIds.Count == 6 && danceModes.Count == 4
+                && gestureIds.Contains("抱胸致意") && gestureIds.Contains("竖起食指") && gestureIds.Contains("拿起狗尾草")
+                && gestureIds.Contains("举手打招呼") && gestureIds.Contains("比心") && gestureIds.Contains("叉腰")
+                && gestureIds.Contains("抱头") && gestureIds.Contains("放下手")
+                && performanceIds.Contains("开心挥手") && danceModes.Contains("轻快摇摆"),
+                $"手势={gestureIds.Count} 表演={performanceIds.Count} 舞蹈={danceModes.Count}");
+            C("动作系统：未知手势 / 表演 / 舞蹈模式返回 false（不会抛异常）",
+                !runtime.PlayGesture("不存在的手势")
+                && !runtime.PlayPerformance("不存在的表演")
+                && !runtime.StartDance("不存在的舞蹈"));
+
+            var baselineDefaults = rt.Model.Parameters.Select(p => p.DefaultValue).ToArray();
+            bool AllNearDefault(double tolerance)
+                => rt.Model.Parameters.Select((p, i) => Math.Abs(p.Value - baselineDefaults[i])).All(d => d <= tolerance);
+            bool AnyMoved(double tolerance)
+                => rt.Model.Parameters.Select((p, i) => Math.Abs(p.Value - baselineDefaults[i])).Any(d => d > tolerance);
+
+            // 三个作者原生手势：enter 播完后 hold 参数 = enter motion 末值；exit 后回默认
+            var nativeGestures = new (string Gesture, string EnterMotion, string ExitMotion)[]
+            {
+                ("抱胸致意", "默认手切举手", "举手切默认手"),
+                ("竖起食指", "竖手指切出来动画", "竖手指切回默认"),
+                ("拿起狗尾草", "狗尾草切换出来", "狗尾草切回默认手"),
+            };
+            foreach (var (gesture, enterMotionName, exitMotionName) in nativeGestures)
+            {
+                var enterEntry = runtime.Motions.FirstOrDefault(m => m.Name == enterMotionName);
+                var exitEntry = runtime.Motions.FirstOrDefault(m => m.Name == exitMotionName);
+                var enterData = enterEntry is null ? null : TryParseMotion(enterEntry.FilePath);
+                // 与实现一致：同一 Id 多条曲线时「后写覆盖前写」（CollectFinalParameterValues 的字典语义）；
+                // 写参数时 CubismParameter.Value 会夹到 min~max，所以期望值也要夹取后再比。
+                var expectedHoldDict = new Dictionary<string, double>(StringComparer.Ordinal);
+                foreach (var curve in enterData?.Curves ?? new List<MotionCurveData>())
+                {
+                    if (curve.Target != "Parameter") continue;
+                    var endValue = GetCurveEndValue(curve);
+                    if (curve.Id.Length == 0 || !double.IsFinite(endValue)) continue;
+                    var parameter = rt.Model.FindParameter(curve.Id);
+                    expectedHoldDict[curve.Id] = parameter is null
+                        ? endValue
+                        : Math.Clamp(endValue, parameter.Minimum, parameter.Maximum);
+                }
+
+                var expectedHold = expectedHoldDict.Select(pair => (Id: pair.Key, Value: pair.Value)).ToList();
+                if (enterEntry is null || exitEntry is null || enterData is null || expectedHold.Count == 0)
+                {
+                    C($"手势「{gesture}」：作者动作 / 曲线数据可解析（{enterMotionName}）", false,
+                        $"enter={enterEntry is not null} exit={exitEntry is not null} 曲线={expectedHold.Count}");
+                    continue;
+                }
+
+                C($"手势「{gesture}」：作者动作数据可解析（enter {enterMotionName} {enterData.Duration:0.##}s，hold 参数 {expectedHold.Count} 个）",
+                    expectedHold.Count > 0, $"{expectedHold.Count} 个参数");
+
+                runtime.PlayGesture(gesture);
+                TickFrames((int)(enterData.Duration * 60.0) + 24);
+                var worstHold = expectedHold.OrderByDescending(p => Math.Abs(Param(p.Id) - p.Value)).First();
+                var holdError = Math.Abs(Param(worstHold.Id) - worstHold.Value);
+                C($"手势「{gesture}」：enter 播完后 hold 参数 = enter motion 末值（±2e-2）",
+                    holdError <= 0.02,
+                    $"最差 {worstHold.Id}: 实际={Param(worstHold.Id):0.####} 期望={worstHold.Value:0.####}；全部：" +
+                    string.Join("; ", expectedHold.Select(p => $"{p.Id} {Param(p.Id):0.####}/{p.Value:0.####}")));
+
+                TickFrames(60); // 1 秒
+                var worstHoldStay = expectedHold.OrderByDescending(p => Math.Abs(Param(p.Id) - p.Value)).First();
+                var holdStayError = Math.Abs(Param(worstHoldStay.Id) - worstHoldStay.Value);
+                C($"手势「{gesture}」：hold 姿势保持 1 秒不回落（±2e-2）",
+                    holdStayError <= 0.02,
+                    $"最差 {worstHoldStay.Id}: 实际={Param(worstHoldStay.Id):0.####} 期望={worstHoldStay.Value:0.####}");
+
+                var exitData = TryParseMotion(exitEntry.FilePath);
+                var exitSeconds = exitData?.Duration ?? 1.0;
+                runtime.StopGesture();
+                TickFrames((int)(exitSeconds * 60.0) + 30);
+                var defaultError = expectedHold.Max(p =>
+                    Math.Abs(Param(p.Id) - (rt.Model.FindParameter(p.Id)?.DefaultValue ?? 0)));
+                C($"手势「{gesture}」：StopGesture 播 exit 后回到参数默认值（±2e-2）",
+                    defaultError <= 0.02, $"最大误差={defaultError:0.####}");
+            }
+
+            // 参数姿势：举手打招呼 / 比心 / 叉腰 / 抱头（0.35s 淡入后到位并保持；目标值按 l2d-model 调优版）
+            var poseGestures = new (string Gesture, (string Id, float Value)[] Targets)[]
+            {
+                ("举手打招呼", new[]
+                {
+                    ("LArm", 1.00f), ("LForearm", 0.80f), ("LWrist", 0.60f), ("LHand", 0.40f),
+                    ("ShoulderY", 12f), ("ParamAngleZ", 4f), ("ParamEyeBallY", 0.25f), ("EyeSmile", 0.40f),
+                }),
+                ("比心", new[]
+                {
+                    ("LArm", 0.45f), ("LForearm", 1.00f), ("LWrist", -0.80f), ("LHand", 0.50f),
+                    ("RArm", 0.45f), ("RForearm", 1.00f), ("RWrist", 0.80f), ("RHand", 0.50f),
+                    ("ParamAngleZ", -4f), ("EyeSmile", 0.50f),
+                }),
+                ("叉腰", new[]
+                {
+                    ("LArm", 0.55f), ("LForearm", -0.95f), ("LWrist", -0.20f),
+                    ("RArm", 0.55f), ("RForearm", -0.95f), ("RWrist", 0.20f), ("ParamAngleY", -2f),
+                }),
+                ("抱头", new[]
+                {
+                    ("LArm", 1.00f), ("LForearm", -0.60f), ("LWrist", -0.80f), ("LHand", -0.20f),
+                    ("RArm", 1.00f), ("RForearm", -0.60f), ("RWrist", 0.80f), ("RHand", -0.20f),
+                    ("ParamAngleY", 5f), ("BrowInnerUp", 0.30f), ("ParamAngleZ", 2f),
+                }),
+            };
+            foreach (var (gesture, targets) in poseGestures)
+            {
+                runtime.PlayGesture(gesture);
+                TickFrames(42); // 0.7s > 0.35s 淡入
+                var poseError = targets.Max(t =>
+                {
+                    var parameter = rt.Model.FindParameter(t.Id);
+                    var expected = parameter is null ? 0.0 : Math.Clamp(t.Value, parameter.Minimum, parameter.Maximum);
+                    return Math.Abs(Param(t.Id) - expected);
+                });
+                C($"姿势「{gesture}」：0.35 秒淡入后到位（与设定值 ±2e-2，含参数范围夹取）",
+                    poseError <= 0.02, $"最大误差={poseError:0.####}");
+                TickFrames(30);
+                var poseStayError = targets.Max(t =>
+                {
+                    var parameter = rt.Model.FindParameter(t.Id);
+                    var expected = parameter is null ? 0.0 : Math.Clamp(t.Value, parameter.Minimum, parameter.Maximum);
+                    return Math.Abs(Param(t.Id) - expected);
+                });
+                C($"姿势「{gesture}」：保持 0.5 秒不回落（±2e-2）", poseStayError <= 0.02, $"最大误差={poseStayError:0.####}");
+                runtime.StopGesture();
+                TickFrames(30); // 0.25s 淡出
+            }
+
+            // 时间线表演：中段参数变化 → 自然结束回默认；Stop 立即停
+            const string performanceId = "开心挥手";
+            runtime.ResetParameters();
+            TickFrames(2);
+            var performanceStarted = runtime.PlayPerformance(performanceId);
+            TickFrames(120); // 2 秒（时间线中段）
+            var performanceMoved = AnyMoved(0.02);
+            C("表演：PlayPerformance 成功后 2 秒中段有参数变化（时间线在驱动）",
+                performanceStarted && runtime.ActivePerformance == performanceId && performanceMoved && AllParamsFinite(),
+                $"active={runtime.ActivePerformance} moved={performanceMoved}");
+
+            TickFrames(510); // 再 8.5 秒（总 10.5s > 表演时长 9s）
+            C("表演：时间线走完后自动结束、参数回默认值（±2e-2）",
+                runtime.ActivePerformance is null && AllNearDefault(0.02),
+                $"active={runtime.ActivePerformance}");
+
+            var stopPerformanceStarted = runtime.PlayPerformance(performanceId);
+            TickFrames(90); // 1.5 秒
+            runtime.StopPerformance();
+            TickFrames(60); // 1 秒（等被写参数复位）
+            C("表演：StopPerformance 立即停止（参数回默认、ActivePerformance=null）",
+                stopPerformanceStarted && runtime.ActivePerformance is null && AllNearDefault(0.02),
+                $"active={runtime.ActivePerformance}");
+
+            // 舞蹈：4 模式各跳 2 秒参数移动且有限；停止后回默认；速度 2x 相位推进约 2 倍
+            var danceMovedModes = new List<string>();
+            var danceStopFailures = new List<string>();
+            foreach (var mode in danceModes)
+            {
+                runtime.ResetParameters();
+                TickFrames(2);
+                var started = runtime.StartDance(mode, 1.0);
+                TickFrames(120); // 2 秒
+                if (started && runtime.ActiveDance == mode && AnyMoved(0.02) && AllParamsFinite())
+                {
+                    danceMovedModes.Add(mode);
+                }
+
+                runtime.StopDance();
+                TickFrames(45); // 0.75s > 0.25s 淡出
+                if (runtime.ActiveDance is not null || !AllNearDefault(0.02)) danceStopFailures.Add(mode);
+            }
+
+            C("舞蹈：4 种模式 Start 后 2 秒内参数移动且全部有限",
+                danceMovedModes.Count == danceModes.Count,
+                $"成功 {danceMovedModes.Count}/{danceModes.Count}：{string.Join(",", danceMovedModes)}");
+            C("舞蹈：4 种模式 StopDance 后回默认值、ActiveDance 清空",
+                danceStopFailures.Count == 0, danceStopFailures.Count == 0 ? "全部正常" : "异常：" + string.Join(",", danceStopFailures));
+
+            var danceField = typeof(ModelRuntime).GetField("_dance", BindingFlags.NonPublic | BindingFlags.Instance);
+            var danceObject = danceField?.GetValue(runtime);
+            var dancePhaseProperty = danceObject?.GetType().GetProperty("Phase", BindingFlags.Public | BindingFlags.Instance);
+            double ReadDancePhase()
+                => dancePhaseProperty?.GetValue(danceObject) is double phase ? phase : double.NaN;
+
+            runtime.StartDance("轻快摇摆", 1.0);
+            var phaseStart1 = ReadDancePhase();
+            TickFrames(60); // 1 秒
+            var phaseEnd1 = ReadDancePhase();
+            runtime.StopDance();
+            TickFrames(45);
+            runtime.StartDance("轻快摇摆", 2.0);
+            var phaseStart2 = ReadDancePhase();
+            TickFrames(60); // 1 秒（速度 2x）
+            var phaseEnd2 = ReadDancePhase();
+            runtime.StopDance();
+            TickFrames(45);
+            var phase1 = phaseEnd1 - phaseStart1;
+            var phase2 = phaseEnd2 - phaseStart2;
+            var speedRatio = phase1 > 1e-6 ? phase2 / phase1 : double.NaN;
+            C("舞蹈：速度 2x 时 1 秒内相位推进约为 1x 的 2 倍（1.7~2.3）",
+                speedRatio is >= 1.7 and <= 2.3, $"1x={phase1:0.###} 2x={phase2:0.###} 比值={speedRatio:0.###}");
+
+            runtime.DanceSpeed = 99;
+            var clampedDanceHigh = runtime.DanceSpeed;
+            runtime.DanceSpeed = -5;
+            var clampedDanceLow = runtime.DanceSpeed;
+            C("舞蹈：DanceSpeed 夹在 0.5~2.0", Near(clampedDanceHigh, 2.0, 1e-9) && Near(clampedDanceLow, 0.5, 1e-9),
+                $"99→{clampedDanceHigh} -5→{clampedDanceLow}");
+            runtime.DanceSpeed = 1.0;
+
+            // StopAllDemos：手势 / 表演 / 舞蹈 / 动作一起停
+            runtime.PlayPerformance(performanceId);
+            runtime.StartDance("轻快摇摆", 1.0);
+            TickFrames(60);
+            runtime.StopAllDemos();
+            TickFrames(90);
+            C("动作系统：StopAllDemos 停掉手势 / 表演 / 舞蹈 / 当前动作",
+                runtime.ActiveGesture is null && runtime.ActivePerformance is null && runtime.ActiveDance is null
+                && runtime.CurrentMotion is null,
+                $"gesture={runtime.ActiveGesture ?? "null"} performance={runtime.ActivePerformance ?? "null"} dance={runtime.ActiveDance ?? "null"} motion={runtime.CurrentMotion?.Name ?? "null"}");
+
+            // 语音口型优先级：动捕有脸 > 语音 > 音乐
+            runtime.ResetParameters();
+            runtime.SpeechActive = true;
+            runtime.SpeechMouthOpen = 0.8f;
+            TickFrames(2);
+            C("语音口型：SpeechActive + MouthOpen 0.8 → ParamMouthOpenY ≈0.8、JawOpen ≈0.4",
+                Near(Param("ParamMouthOpenY"), 0.8, 1e-2) && Near(Param("JawOpen"), 0.4, 1e-2),
+                $"嘴={Param("ParamMouthOpenY"):0.###} 下巴={Param("JawOpen"):0.###}");
+            runtime.SpeechMouthOpen = 5f;
+            C("语音口型：SpeechMouthOpen 夹取到 0~1", Near(runtime.SpeechMouthOpen, 1f, 1e-9), $"{runtime.SpeechMouthOpen}");
+
+            runtime.Mocap = fakeMocap;
+            runtime.MocapEnabled = true;
+            fakeMocap.Latest = MakeFakeTracking(yaw: 0, pitch: 0, eyeOpen: 0.9, mouth: 0.6);
+            runtime.SpeechMouthOpen = 0.9f;
+            TickFrames(2);
+            C("语音口型：动捕有脸时让位（嘴 = 动捕 0.6，不是语音 0.9）",
+                Near(Param("ParamMouthOpenY"), 0.6, 1e-2), $"嘴={Param("ParamMouthOpenY"):0.###}");
+            runtime.MocapEnabled = false;
+            runtime.Mocap = null;
+
+            runtime.Music = fakeMusic;
+            runtime.MusicEnabled = true;
+            fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.VocalSong, mouthOpen: 0.9, mouthForm: 0.5,
+                beatPhase: 0.25, beatStrength: 1.0, bpm: 120);
+            runtime.SpeechActive = true;
+            runtime.SpeechMouthOpen = 0.5f;
+            TickFrames(2);
+            C("语音口型：音乐在播时语音优先（嘴 = 语音 0.5，不是音乐 0.9）",
+                Near(Param("ParamMouthOpenY"), 0.5, 1e-2), $"嘴={Param("ParamMouthOpenY"):0.###}");
+            runtime.SpeechActive = false;
+            TickFrames(2);
+            C("语音口型：SpeechActive=false 后音乐恢复驱动嘴型（0.9）",
+                Near(Param("ParamMouthOpenY"), 0.9, 1e-2), $"嘴={Param("ParamMouthOpenY"):0.###}");
+            runtime.MusicEnabled = false;
+            runtime.Music = null;
+
+            // 待机随机小动作：关闭不触发；说话 / 音乐 / 跳舞时不抢；条件解除后能触发
+            runtime.SpeechActive = false;
+            runtime.IdleRandomGestureEnabled = false;
+            var idleTriggeredWhenDisabled = false;
+            for (var i = 0; i < 480 && !idleTriggeredWhenDisabled; i++)
+            {
+                TickFrames(1);
+                if (runtime.ActiveGesture is not null || runtime.ActivePerformance is not null) idleTriggeredWhenDisabled = true;
+            }
+            C("待机随机：IdleRandomGestureEnabled=false 时 8 秒内不触发小动作", !idleTriggeredWhenDisabled,
+                idleTriggeredWhenDisabled ? "意外触发" : "未触发");
+
+            runtime.IdleRandomGestureEnabled = true;
+            runtime.IdleRandomGestureIntervalSeconds = 4.0; // 实际 2.2~6.4 秒
+            runtime.SpeechActive = true;
+            runtime.Music = fakeMusic;
+            runtime.MusicEnabled = true;
+            fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.Instrumental, mouthOpen: 0.5, mouthForm: 0.2,
+                beatPhase: 0.1, beatStrength: 0.5, bpm: 120);
+            runtime.StartDance("轻快摇摆", 1.0);
+            var idleTriggeredWhenBusy = false;
+            for (var i = 0; i < 480 && !idleTriggeredWhenBusy; i++)
+            {
+                fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.Instrumental, mouthOpen: 0.5, mouthForm: 0.2,
+                    beatPhase: 0.1, beatStrength: 0.5, bpm: 120);
+                TickFrames(1);
+                if (runtime.ActiveGesture is not null || runtime.ActivePerformance is not null) idleTriggeredWhenBusy = true;
+            }
+            C("待机随机：说话 / 音乐 / 跳舞时不抢小动作（8 秒内不触发）", !idleTriggeredWhenBusy,
+                idleTriggeredWhenBusy ? "意外触发" : "未触发");
+
+            runtime.SpeechActive = false;
+            runtime.MusicEnabled = false;
+            runtime.Music = null;
+            runtime.StopDance();
+            TickFrames(60); // 等舞蹈淡出 + 随机定时器重试
+            var idleTriggeredWhenFree = false;
+            for (var i = 0; i < 600 && !idleTriggeredWhenFree; i++)
+            {
+                TickFrames(1);
+                if (runtime.ActiveGesture is not null || runtime.ActivePerformance is not null) idleTriggeredWhenFree = true;
+            }
+            C("待机随机：条件解除后按随机间隔触发小动作（10 秒内触发一次）", idleTriggeredWhenFree,
+                idleTriggeredWhenFree ? "已触发" : "10 秒内未触发");
+            runtime.StopAllDemos();
+            runtime.IdleRandomGestureEnabled = true;
+            runtime.IdleRandomGestureIntervalSeconds = 22.0;
+            runtime.ResetParameters();
+            TickFrames(2);
+
             runtime.Music = null;
             runtime.MusicEnabled = false;
             runtime.ResetParameters();
@@ -2340,6 +2866,101 @@ internal static class Live2DChecks
             data[i * 2 + 1] = sample;
         }
         return data;
+    }
+
+    // ====================================================================
+    // 语音自检用的合成 WAV / 包络样本工具（绝不真合成语音、不播放、不出声）
+    // ====================================================================
+
+    /// <summary>造一段合成 PCM16 WAV 字节（可加 LIST 块 / fmt 18 字节），用于自检解析与包络。</summary>
+    private static byte[] MakeSyntheticPcm16(int monoSamples, int sampleRate, Func<int, short>? sampleValue = null,
+        bool includeListBeforeData = false, bool includeListAfterData = false, bool fs18 = false)
+    {
+        return MakeSyntheticWavBytes(monoSamples, sampleRate, channels: 1, bitsPerSample: 16, formatTag: 1,
+            fmtSize: fs18 ? 18 : 16, sampleValue: sampleValue,
+            includeListBeforeData: includeListBeforeData, includeListAfterData: includeListAfterData);
+    }
+
+    /// <summary>手写 RIFF/WAVE 字节（可定制 fmt 大小 / 编码 / 缺 data / LIST 位置），全部在内存里。</summary>
+    private static byte[] MakeSyntheticWavBytes(int monoSamples = 8000, int sampleRate = 16000, int channels = 1,
+        int bitsPerSample = 16, int formatTag = 1, int fmtSize = 16, Func<int, short>? sampleValue = null,
+        bool includeListBeforeData = false, bool includeListAfterData = false, bool omitDataChunk = false)
+    {
+        var bytes = new List<byte>();
+        void Ascii(string text) => bytes.AddRange(System.Text.Encoding.ASCII.GetBytes(text));
+        void U16(int value) => bytes.AddRange(BitConverter.GetBytes((ushort)value));
+        void U32(int value) => bytes.AddRange(BitConverter.GetBytes((uint)value));
+        void ListChunk()
+        {
+            Ascii("LIST");
+            U32(16); // INFO(4) + 子块 ISFT 头(8) + 内容(4) = 16
+            Ascii("INFO");
+            Ascii("ISFT");
+            U32(4);
+            Ascii("YLTD");
+        }
+
+        var blockAlign = Math.Max(1, channels * Math.Max(1, bitsPerSample / 8));
+        var dataBytes = monoSamples * blockAlign;
+
+        Ascii("RIFF");
+        U32(0); // 先占位，最后回填
+        Ascii("WAVE");
+        if (includeListBeforeData) ListChunk();
+
+        Ascii("fmt ");
+        U32(fmtSize);
+        U16(formatTag);            // 0~1
+        U16(channels);             // 2~3
+        U32(sampleRate);           // 4~7
+        U32(sampleRate * blockAlign); // 8~11
+        if (fmtSize >= 16)
+        {
+            U16(blockAlign);
+            U16(bitsPerSample);
+        }
+
+        if (fmtSize > 16)
+        {
+            U16(0); // cbSize
+            for (var i = 18; i < fmtSize; i++) bytes.Add(0);
+        }
+
+        if (!omitDataChunk)
+        {
+            Ascii("data");
+            U32(dataBytes);
+            for (var frame = 0; frame < monoSamples; frame++)
+            {
+                var value = sampleValue?.Invoke(frame) ?? 0;
+                for (var c = 0; c < channels; c++) U16(value);
+            }
+
+            if ((dataBytes & 1) == 1) bytes.Add(0); // 块 2 字节对齐
+        }
+
+        if (includeListAfterData) ListChunk();
+
+        var riffSize = BitConverter.GetBytes((uint)(bytes.Count - 8));
+        bytes[4] = riffSize[0];
+        bytes[5] = riffSize[1];
+        bytes[6] = riffSize[2];
+        bytes[7] = riffSize[3];
+        return bytes.ToArray();
+    }
+
+    /// <summary>造包络测试样本：前段静音 → 中间 440Hz 正弦（有能量）→ 后段静音。</summary>
+    private static short[] MakeEnvelopeSamples(int sampleRate, double leadingSilence, double tone, double trailingSilence)
+    {
+        var lead = (int)Math.Round(leadingSilence * sampleRate);
+        var body = (int)Math.Round(tone * sampleRate);
+        var tail = (int)Math.Round(trailingSilence * sampleRate);
+        var samples = new short[lead + body + tail];
+        for (var i = 0; i < body; i++)
+        {
+            samples[lead + i] = (short)(12000 * Math.Sin(2 * Math.PI * 440.0 * i / sampleRate));
+        }
+        return samples;
     }
 
     /// <summary>生成「每拍一个脉冲」的 onset 包络（用于 BPM 估计算法的对拍）。</summary>
@@ -2669,13 +3290,14 @@ internal static class Live2DChecks
         while (index + 2 < s.Length)
         {
             var type = (int)s[index];
-            var endTime = s[index + 1];
-            var endValue = s[index + 2];
-
-            if (type == 1 && index + 6 < s.Length)
+            if (type == 1)
             {
-                var control1Value = s[index + 4];
-                var control2Value = s[index + 6];
+                // 贝塞尔段布局：[type, c1x, c1y, c2x, c2y, endX, endY]
+                if (index + 6 >= s.Length) break;
+                var control1Value = s[index + 2];
+                var control2Value = s[index + 4];
+                var endTime = s[index + 5];
+                var endValue = s[index + 6];
                 if (time <= endTime)
                 {
                     var u = endTime - previousTime > 1e-12 ? Math.Clamp((time - previousTime) / (endTime - previousTime), 0, 1) : 1;
@@ -2688,20 +3310,22 @@ internal static class Live2DChecks
                 continue;
             }
 
-            if (time <= endTime)
+            var segmentEndTime = s[index + 1];
+            var segmentEndValue = s[index + 2];
+            if (time <= segmentEndTime)
             {
                 if (type == 0) // 线性
                 {
-                    var u = endTime - previousTime > 1e-12 ? (time - previousTime) / (endTime - previousTime) : 1;
-                    return previousValue + (endValue - previousValue) * u;
+                    var u = segmentEndTime - previousTime > 1e-12 ? (time - previousTime) / (segmentEndTime - previousTime) : 1;
+                    return previousValue + (segmentEndValue - previousValue) * u;
                 }
 
                 if (type == 2) return previousValue; // 阶跃：保持段起点值
-                return endValue;                     // 反向阶跃：段一开始就跳到终点值
+                return segmentEndValue;              // 反向阶跃：段一开始就跳到终点值
             }
 
-            previousTime = endTime;
-            previousValue = endValue;
+            previousTime = segmentEndTime;
+            previousValue = segmentEndValue;
             index += 3;
         }
 
@@ -2710,17 +3334,24 @@ internal static class Live2DChecks
 
     private static double GetCurveEndValue(MotionCurveData curve)
     {
-        // 最后一段的终点值：从后往前按段类型找（忽略贝塞尔控制点）
+        // 最后一段的终点值：贝塞尔段终点在 [type, c1x, c1y, c2x, c2y, endX, endY] 的最后一位
         var s = curve.Segments;
         var index = 2;
         var lastValue = s.Length >= 2 ? s[1] : 0;
         while (index + 2 < s.Length)
         {
             var type = (int)s[index];
-            var step = type == 1 ? 7 : 3;
-            if (index + step > s.Length) break;
-            lastValue = s[index + 2];
-            index += step;
+            if (type == 1)
+            {
+                if (index + 6 >= s.Length) break;
+                lastValue = s[index + 6];
+                index += 7;
+            }
+            else
+            {
+                lastValue = s[index + 2];
+                index += 3;
+            }
         }
 
         return lastValue;

@@ -34,6 +34,10 @@ YuLiangTookit（主程序）
       ├─ Physics3 / CubismPhysicsEvaluator ── physics3.json 解析 + 钟摆物理求值
       ├─ IdleBehavior（待机 / 眨眼）/ EyeTrackingController（眼头身跟随）
       ├─ BodySwayController ────────── 身体晃动测试（正弦 / 多频叠加写身体 + 物理输入参数）
+      ├─ GesturePlayer / PerformancePlayer / DanceController ── 动作系统（见 §14）
+      │   ├─ GesturePlayer ────────── 8 手势：3 作者 enter/exit 动作 + hold 参数 / 5 参数姿势
+      │   ├─ PerformancePlayer ────── 6 个数据驱动时间线表演（Pose/Look/Nod/Talk/Gesture）
+      │   └─ DanceController ──────── 4 程序化舞蹈模式（相位驱动，0.25s 权重淡入淡出）
       │
       ├─ Mocap/ ────────────────────── 摄像头面部动捕（见 §10）
       │   ├─ MocapCameraSource ─────── MediaCapture + MediaFrameReader 采集 + FaceDetector 检测（WinRT）
@@ -49,6 +53,11 @@ YuLiangTookit（主程序）
       │   └─ Analysis/ ─────────────── 纯算法（自检可测）
       │       ├─ FastFft ───────────── radix-2 FFT + 幅度谱 + 朴素 DFT 对拍 + Hann 窗
       │       └─ MusicAnalyzer ─────── 48k→16k 重采样 / FFT 特征 / YIN / 分类 / 节拍 / 唇形
+      │
+      ├─ Speech/ ───────────────────── 语音说话 / 轻对话 / 气泡（见 §15）
+      │   ├─ SpeechContracts ───────── SpeechVoiceInfo（在线 / 本地，Detail）/ SpeechUtterance
+      │   ├─ WaveAudio ─────────────── WAV RIFF 块解析 + 16bit 样本读取 + 20ms 唇形包络（纯静态，自检可测）
+      │   └─ TtsService ────────────── 在线 Edge 软妹音（失败回退）→ 本地 WinRT TTS → MediaPlayer 播放 + 口型
       │
       ├─ Rendering/CubismRenderer ──── 手写软件光栅器（三角形光栅化 / 蒙版 / 三种混合 / 调试叠加）
       │   └─ Rendering/TextureAtlas ── 纹理 PNG 加载 → BGRA 像素（可选降到 2048）
@@ -75,6 +84,14 @@ YuLiangTookit（主程序）
 `IMusicReactiveProvider.Latest`（超过 800ms 视为静音）；SMTC 媒体信息由另一个后台线程每 2 秒轮询（失败不影响
 音频分析）。音频采集生命周期归 `Live2DSession` 管：`MusicReactiveEnabled && (页面可见 || 桌宠可见) && 非截图模式`
 才启动；关掉开关 / 切走页面 / 隐藏桌宠立即停止并释放设备。
+
+**语音线程模型**（细节见 §15）：`TtsService` 由会话懒创建；合成（在线 Edge WebSocket / 本地 WinRT）用
+`SemaphoreSlim` 串行化、`SynthesizeAsync` 返回内存 WAV + 包络；`SpeakAsync` 把 WAV 写进
+`InMemoryRandomAccessStream` → `MediaPlayer.Play()`，**播放真正开始时**回调 `onPlaybackStarted`
+（会话在这里弹气泡 + 自动小动作）；会话帧循环（~60fps）把 `TtsService.IsSpeaking / MouthOpen` 同步到
+`ModelRuntime.SpeechActive / SpeechMouthOpen`（Tick 里写嘴型，动捕有脸时让位）；播放完成靠按 WAV 时长轮询
+（`MediaEnded` 不可靠）收尾并释放播放器 / 流；App 退出时 Dispose。气泡窗口由会话每帧按桌宠位置重算坐标，
+不抢焦点、点击穿透。
 
 **为什么不引 WebView2 / SkiaSharp / 官方 C# SDK**：
 
@@ -228,7 +245,7 @@ x64 only（官方 Core 只提供 x86_64；主程序 / 自检都编译成 x64 语
 Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实测大尺寸预览 25~30 ms 尚未达到
 16 ms 目标，属于后续优化空间（桌宠 / 测试台默认尺寸已够用）。
 
-## 6. 动作 / 表情 / 物理 / 眼睛跟随 / 动捕 / 晃动的求值顺序
+## 6. 动作 / 表情 / 物理 / 眼睛跟随 / 动捕 / 晃动 / 语音的求值顺序
 
 每帧 `Tick(delta)` 的顺序（`Model/ModelRuntime.cs`，和官方 Cubism 更新管线一致）：
 
@@ -241,17 +258,27 @@ Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实
    **动捕接管眨眼时不自动眨眼**（避免抢同一批参数）；
 4. 有脸 → **动捕写参数**（`ParamAngle*` + `Angle*`、`ParamBodyAngleX`/`PositionX` 温和跟随、`ParamEyeBall*`、
    `EyeLOpen/ROpen`、`ParamMouthOpenY`）；没脸 → 鼠标眼控 + 待机摇摆（两套互斥，见 §10 优先级）；
+3.5 **语音口型**（`SpeechActive`）：`ApplySpeechMouth` 写 `ParamMouthOpenY / MouthForm / JawOpen`；
+   **动捕有脸时让位动捕**；语音期间音乐跟唱闭嘴（优先级：**动捕脸 > 语音 > 音乐**）；
 5. **身体晃动测试**（`SwayEnabled` 或「摇一摇」倒计时 > 0 时）：`BodySwayController.Apply` 写身体主轴 /
    物理输入 / 头部补偿 / 腰腿参数（见 §11）；
 5.5 **音乐跟唱 / 律动**（`MusicEnabled` 且 `Music.Latest` 在 800ms 内）：`ApplyMusicResponse` 写跟唱嘴型
-   （`ParamMouthOpenY/MouthForm/JawOpen`）、节拍身体摇晃（`ParamBodyAngleX/PositionX/ParamBodyAngleZ/HipAngleX`）、
-   轻微点头（`ParamAngleY`）——**在手动晃动之后**（会覆盖手动晃动的身体参数）、**在动捕之后**；
-   优先级：**动捕有脸 > 音乐嘴型**（有脸时不写嘴 / 点头）；`EyeTrackingEnabled` 时点头也不写（见 §13）；
+   （`ParamMouthOpenY/MouthForm/JawOpen`，语音 / 动捕有脸时让位）+ 轻微点头（`ParamAngleY`）；
+   **身体律动改由 4.6 的整身轻倾表现**（不再写 `ParamBodyAngle*` 等扭身体参数）；在手动晃动之后、
+   在动作之前；`EyeTrackingEnabled` 时点头也不写（见 §13）；
+4.6 **整身轻倾**（`BodyLean`）：常态 4s/±0.6°、有音乐平滑加快到 2.6s/±1.0°×MusicSwayStrength；只算
+   `BodyLeanDegrees` 给渲染层旋转（**不写模型参数**，见 §11.5）；
 6. 待机动作：待机动画开着且当前没有动作在播时，循环播 `IdleMotion`；
 7. 动作：当前动作按时间求值 + 淡入淡出权重混合，写参数；
+7.5 **手势 / 表演 / 舞蹈**：`UpdateActionPlayers` 在动作更新之后写（覆盖 IDLE 手臂曲线），在表情 / 物理之前；
 8. 表情：按权重施加当前表情（UI 单选；管理器本身是叠加超集，见 §3.3）；
+8.5 **待机随机小动作**：条件满足时按随机间隔播手势 / 表演（见 §14.5）；
 9. 物理：读输入参数（前面写好的值）→ 钟摆求值 → 写输出参数；
 10. `model.Update()`（Core 求值 + 变形）→ 触发 `FrameUpdated` → UI 渲染。
+
+**参数优先级速查**：动捕有脸 > 语音 > 音乐（嘴型）；动捕有脸 > 鼠标眼控 > 音乐点头（头部）；
+手动晃动测试 > 音乐（身体参数，音乐已改为渲染层倾斜不写参数）；手势 / 表演 / 舞蹈 > 动作 IDLE（手臂）；
+待机随机小动作只在没有动捕脸 / 语音 / 音乐 / 手势 / 表演 / 舞蹈、且当前动作是 IDLE 或没有时触发。
 
 **眼睛跟随数学**（自检会验）：目标在画布中心 → 角度 ≈ 0；目标在右侧 → `ParamAngleX` / `ParamEyeBallX` 为正。
 本轮新增 4 个手感参数（`EyeTrackingController`）：
@@ -326,6 +353,9 @@ Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实
 - **音乐跟唱**：只在启用时耗 CPU。WASAPI 采集线程 `Sleep(5)` 轮询（几乎不占 CPU）+ 分析器每包
   目标 < 1.5ms（62.5 hop/s，实测 0.5~1.2ms；全预分配、0 分配）；静音时走快速路径跳过 FFT / YIN，
   没人放音乐时基本不耗 CPU；SMTC 每 2 秒一次轻量轮询。关掉开关 / 切走页面 / 隐藏桌宠立即停止采集释放设备。
+- **语音说话**：只在用户触发时耗 CPU / 网络。在线合成延迟主要是网络往返（约 0.3~2 秒，逐句串行、不占渲染帧）；
+  本地合成通常 < 0.3 秒；播放期间每帧只按播放进度取包络值（O(1)），气泡窗口透明合成开销很小；
+  不保存音频、播完立即释放流 / 播放器。
 - 调试视图（包围盒 / 蒙版缓冲）只在开启时画，别常开。
 
 ## 8. 构建 / 发布：模型与原生 DLL 怎么跟着 exe 走
@@ -360,6 +390,10 @@ Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实
   但代码是**自行编写**的，没有复制官方源码；不要把官方源码粘进本项目（官方示例的许可与本项目 Unlicense 不同）；
 - **摄像头动捕**用 Windows 自带的 `Windows.Media.Capture` / `Windows.Media.FaceAnalysis`（操作系统 API，
   不是第三方库、不需要额外许可文件）；仓库里没有引入 OpenCV / MediaPipe / ONNX 等任何视觉库；
+- **语音说话**：本地语音用 Windows 自带 TTS（SAPI / OneCore，操作系统组件）；默认的**在线软妹音**调用
+  **微软 Edge 语音合成服务**（非官方公开协议，需要联网，只发送文字）——不是第三方库，但属于第三方在线服务；
+  UI / 文档要明确提示联网与隐私，并保留本地回退；仓库不引入任何第三方语音 / 网络库（WebSocket / HTTP / WAV
+  解析均手写）；
 - 内置模型 `大肥鱼` 版权归模型作者（用户自有），仓库内仅本工具使用；
 - 本项目其余部分 Unlicense，不因上述第三方许可而改变。
 
@@ -605,7 +639,7 @@ UI 上「一键全部重置」会复位全部参数并停掉动作 / 表情 / �
 - 每 2 秒：优先取 `GetPlaybackInfo().PlaybackStatus == Playing` 的会话，否则 `GetCurrentSession()`；
   `TryGetMediaPropertiesAsync()` 拿标题 / 歌手；`SourceAppUserModelId` 拿应用；
 - SMTC 不可用 / 旧系统 / 播放器不支持 → 捕获异常后**静默忽略**，只是界面上没有媒体信息，**不影响**跟唱；
-- 隐私：媒体标题 / 文件名会写进 debug selftest 日志（见 §15），排错用，不要公开贴出。
+- 隐私：媒体标题 / 文件名会写进 debug selftest 日志（见 §17），排错用，不要公开贴出。
 
 ### 13.4 `MusicReactiveSource`（provider）
 
@@ -738,7 +772,189 @@ BPM 估计（原来只在有声 hop 估算，稀疏点击永远估不出——�
 12. **判定时间不能只算「有声音的 hop」**：稀疏点击 / 安静段落里，只按 active 分析时长会永远判 Unknown；
     现在用「active ≥ 1.5s 或播放墙钟 ≥ 1.5s」双条件（`_observedPlayingSeconds`），每个 hop（含静音 hop）都推进。
 
-## 14. 坑（踩过的都记在这里）
+## 14. 动作系统（手势 / 表演 / 舞蹈 / 待机灵动）
+
+> 本轮给「更生动」加的三层动作：**手势**（点一下就摆姿势）、**表演**（多步小剧情）、**舞蹈**（程序化循环），
+> 外加**待机随机小动作**。全部走 `Model/` 下的三个新播放器，由 `ModelRuntime` 统一调度；
+> 写参数沿用「touched 下标表」：每帧只复位自己上一帧写过的参数，停掉后不残留、手动值可保留。
+
+### 14.1 文件与职责
+
+| 文件 | 职责 |
+| --- | --- |
+| `Model/GesturePlayer.cs` | 8 个手势：3 个**作者原生手势**（enter/exit 动作 + hold 参数）+ 5 个**参数姿势**（直接给手臂目标值）；`Ids / ActiveId / HasActive / Play / Stop / StopImmediate / Update / ResetTouched` |
+| `Model/PerformancePlayer.cs` | 6 个**数据驱动时间线表演**（`BuildDefinitions()` 里定义 Id / Duration / Action 列表：Pose / Look / Nod / Talk / Gesture），按时间推进、触发嵌套手势；`Definitions / Ids / ActiveId / ActiveDuration / ElapsedSeconds / Play / Stop / Update / ResetTouched` |
+| `Model/DanceController.cs` | 4 个**程序化舞蹈模式**（`轻快摇摆 / 挥手舞 / 摇摆转圈 / 酷炫抖肩`）：相位驱动写手臂 / 肩 / 头 / 身体参数，权重 0.25s 淡入淡出；`Modes / ActiveMode / HasActive / Speed / Phase / Start / Stop / StopImmediate / Update / ResetTouched` |
+| `Model/ModelRuntime.cs` | 对外 API：`GestureIds / ActiveGesture / PlayGesture(id) / StopGesture()`、`PerformanceIds / ActivePerformance / PlayPerformance / StopPerformance`、`DanceModes / ActiveDance / DanceSpeed(0.5~2) / StartDance(mode, speed) / StopDance`、`StopAllDemos()`、`IdleRandomGestureEnabled / IdleRandomGestureIntervalSeconds`、内部 `TryTriggerIdleRandomGesture()`（自检 / 调试）；`UpdateActionPlayers` / `UpdateIdleRandomGesture` 在 Tick 里调用 |
+
+### 14.2 手势：作者原生动作 + hold 参数
+
+- **原生手势**（抱胸致意 `IdHandOnChest`、竖起食指 `IdPoint`、拿起狗尾草 `IdGrass`）：
+  1. `PlayGesture` 先停其它演示 / 当前动作（避免 `StopMotion` 把 enter 顶掉），
+  2. 播作者 **enter 动作**（`MotionPlayer`，淡入 0.12s），翻到 `GesturePhase.Enter`；
+  3. enter 播完（`_phaseTimer >= data.Duration`）→ `GesturePhase.Hold`：每帧把 `BuildHoldFromMotion` 提取的
+     **enter 曲线末值**直接写参数（`WriteHold`）——这样动作淡出前就「接住」手臂，不会掉回 IDLE；
+  4. `StopGesture`：播作者 **exit 动作**（淡入 0.12s），播完释放（`GesturePhase.None`）。
+- **hold 参数提取语义**（和 `Motion3Data.CollectFinalParameterValues` 一致）：遍历 `Target=Parameter` 的曲线，
+  取**最后一段的终点值**（`EndValue`；没有段取首值），同 Id 多条曲线时**后写覆盖前写**（字典）。
+  注意 motion3 的贝塞尔段布局是 `[1, c1x, c1y, c2x, c2y, endX, endY]`——**末值是第 7 个数**，不是第 3 个；
+  自检里解析曲线末值也要按这个布局（本轮自检就踩了这个坑，导致 hold 断言误报 0.198 / 0.066）。
+- **参数姿势**（举手打招呼 / 比心 / 叉腰 / 抱头 / 放下手）：作者没留对应动作，直接给语义手臂参数目标值
+  （`LArm / LForearm / LWrist / LHand / LHand2`、`RArm / …`、`ShoulderX / Y（含 Yy）`），
+  `WritePose(weight)` 用 `DemoMath.SmoothStep` 0.35s 淡入、`BlendFromDefault` 从默认值混合；停止 0.25s 淡出。
+- `NormalizeId` 同时支持中文名与英文别名（`hand_on_chest / point / grass / wave / heart / akimbo / head_hold / hands_down`）。
+
+### 14.3 表演：数据驱动时间线
+
+- `PerformancePlayer.BuildDefinitions()` 里 6 个定义（Id 即中文名，`Duration` 9~15s）：
+  `好奇→思考→恍然大悟`（15s）/ `俏皮比心`（10s）/ `开心挥手`（9s）/ `骄傲展示`（12s）/ `害羞低头`（10.5s）/
+  `晚安道别`（11s）；
+- 每个定义是 `PerformanceAction[]`：`Pose`（写参数）、`Look`（头 / 眼方向）、`Nod`（点头）、`Talk`（嘴型开合）、
+  `Gesture`（触发嵌套手势，用 `_startGesture/_stopGesture` 回调），带 `At / Duration / Strength / Direction / Count`；
+- 每帧 `Update(delta, allowTalk)`：`_elapsed += delta`，超过 Duration 自动结束（清 touched）；
+  `allowTalk = !mocapFace && !_speechActive`——**动捕 / 语音说话时表演不抢嘴型**；
+- `Stop` 立即结束（不走完时间线），嵌套手势会停下。
+
+### 14.4 舞蹈：程序化相位
+
+- 4 个模式常量：`ModeSway=轻快摇摆 / ModeWave=挥手舞 / ModeSpin=摇摆转圈 / ModeShimmy=酷炫抖肩`；
+- `Start` 只设模式 + 速度；`Update`：`_weight` 按 0.25s 淡入/淡出，`_phase += speed × delta × 2π × BaseFrequency(mode)`，
+  各模式用不同相位的 sin/cos 组合写手臂 / 肩 / `Angle*` / `Position*` / `LeanInput` / `ParamAngle*`；
+- `Speed` 夹在 0.5~2.0；`Phase` 公开（自检直接读；速度 2x 时同时间内相位推进约 2 倍）；
+  `Stop` 淡出、`StopImmediate` 立即清；`ResetTouched` 每帧开头复位上一帧写过的参数。
+
+### 14.5 ModelRuntime 集成与优先级
+
+- Tick 顺序（§6）：**3.5 语音口型 → 4 身体晃动 → 4.5 音乐 → 4.6 整身轻倾 → 5 待机动作 → 动作更新 →
+  5.5 手势 / 表演 / 舞蹈（写在动作之后，覆盖 IDLE 手臂曲线）→ 表情 → 5.6 待机随机小动作 → 物理 → Update**；
+- 互斥规则：
+  - `PlayGesture`：停表演 / 舞蹈 / 当前动作（`StopMotion(0.12)`）；
+  - `PlayPerformance`：停手势（立即）/ 舞蹈（立即）/ 当前动作；
+  - `StartDance`：停手势（立即）/ 表演 / 当前动作；
+  - `StopAllDemos`：全部停（手势立即、表演 stop、舞蹈立即、动作 `StopMotion(0.2)`）；
+- **待机随机小动作**（`UpdateIdleRandomGesture`）：`IdleRandomGestureEnabled` 开时倒计时，
+  间隔 = `clamp(IntervalSeconds, 4, 600) × (0.55 + rand×1.05)`；到点调 `TryPlayRandomIdleDemo`：
+  - 条件 `CanPlayIdleRandomDemo`：没有动捕脸 / 没在语音 / 没在放音乐 / 没有手势 / 表演 / 舞蹈在播 /
+    当前动作要么没有、要么是 IDLE 候选（`IsIdleCandidate`）；条件不满足 → 3 秒后重试；
+  - 满足 → 随机手势或表演（`_idleRandomRng` 固定种子便于复现）；`IdleRandomTriggerCount` 内部计数（自检用）。
+- 配置：`IdleRandomGestureEnabled`（默认 true）/ `IdleRandomGestureIntervalSeconds`（默认 22）。
+- 自检（`Live2DChecks` L 段）：8/6/4 数量与中文名、未知 id 返回 false、3 原生手势 hold 参数 = enter 末值
+  （±2e-2）且保持 1 秒、StopGesture 后回默认、5 参数姿势到位与保持、表演中段变化 + 自然结束回默认 + Stop 立即停、
+  4 舞蹈各 2 秒移动且有限 + Stop 回默认 + 速度 2x 相位约 2 倍、DanceSpeed 夹取、StopAllDemos、待机随机
+  「关闭不触发 / 忙碌不抢 / 空闲触发」。
+
+### 14.6 坑
+
+1. **motion3 贝塞尔段布局**：`[type=1, c1x, c1y, c2x, c2y, endX, endY]`——解析末值 / 采样时别把 c1y 当终点。
+2. **原生手势的 enter 动作不能再被 `StopMotion` 顶掉**：`PlayGesture` 内部先 `_stopMotion(0.12)` 再播 enter；
+   若外部在 enter 期间又 StopMotion，手势会卡在 Enter（定时器继续走但没有动作可看）。
+3. **hold 参数要在动作淡出前接住**：`BuildHoldFromMotion` 在 Play 时就提取好，Hold 阶段每帧直接写；
+   不要改成「等动作播完再读当前参数值」（那时已被淡出改回默认）。
+4. **参数姿势目标值要按参数范围夹取**（`CubismParameter.Value` 自动 clamp）；不同模型手臂参数范围/语义不同，
+   换模型时要核对（本模型 -1~1、默认 0）。
+5. **舞蹈相位不要重置**：`Start` 不重置 `_phase`，所以连续切换模式相位连续；速度变化只改推进速率。
+6. **待机随机不能抢正在播的内容**：条件漏了任意一项（如没判断音乐 / 语音），就会出现「跟唱时突然抱胸」。
+7. **所有演示的写参数都要走 touched 表**：停止后下一帧开头复位，否则会残留姿势；手动值在不再写时保留。
+
+## 15. 语音 TTS 管线（本地 + 在线软妹音 / 聊天气泡）
+
+> 用户要「软软萌萌的软妹音」，Windows 本地「慧慧」太像老式播报；所以默认改为**微软 Edge 在线神经网络语音**，
+> 本地 TTS 仅作**离线回退**。要求**声音 / 口型 / 气泡同一时刻出现**：先合成 → 播放真正开始时才弹气泡 +
+> 开始口型（+ 可选小动作）。
+
+### 15.1 文件与职责
+
+| 文件 | 职责 |
+| --- | --- |
+| `Speech/SpeechContracts.cs` | `SpeechVoiceInfo(Id, DisplayName, Language, Gender, Detail = null)`（Detail 非空时显示 `名字（Detail）`，用于「在线 · 软妹音」；本地显示 `名字（语言，女声）`）；`SpeechUtterance(Text, WaveBytes, SampleRate, Channels, BitsPerSample, DurationSeconds, Envelope)` |
+| `Speech/WaveAudio.cs` | 纯静态：`TryParse` 按 **RIFF 块表遍历**（不假设 44 字节头）找 `fmt ` / `data`；`ReadMonoSamples`（8/16/24/32bit，取第一声道）；`BuildEnvelope`（20ms RMS、p95 归一化、快起慢落 0.55/0.30） |
+| `Speech/EdgeTtsClient.cs` | 在线 Edge 神经网络语音（零第三方包）：内置中文女声清单 `Voices` / `DefaultShortName` / `GetDisplayName`、`GenerateSecMsGec` 时间签名、`SynthesizeMp3Async`（WebSocket 流式合成，15s 超时，返回 MP3）；失败返回 null（原因写 `LastError`） |
+| `Speech/TtsService.cs` | 语音合成 / 播放：`GetVoices`（在线 Edge 女声 `edge:` + 本地系统语音 `win:`）、`SynthesizeAsync`（在线 MP3→WAV 转码 / 本地 WinRT WAV）、`SpeakAsync(text, onPlaybackStarted, ct)`、`IsSpeaking / MouthOpen / PositionSeconds / LastError / LastSpokenText / LastEngine / VoiceId / Rate / PitchPercent / Volume / Stop / Dispose` |
+| `Views/SpeechBubbleWindow.xaml(.cs)` | 聊天气泡窗口：透明置顶、点击穿透、不抢焦点；纯静态定位 `SpeechBubblePlacement.Calculate(...)`；跟随桌宠、说话结束约 1.5s 淡出 |
+| `Views/Live2DView` / `PetWindow` / `Live2DSession` | 说话卡 UI、会话帧循环把 TTS 的 `MouthOpen / IsSpeaking` 同步到 `ModelRuntime.SpeechActive / SpeechMouthOpen`；`SpeakText` 先合成、`onPlaybackStarted` 时才 ShowBubble + 自动小动作 |
+
+### 15.2 语音选择：在线优先、本地回退
+
+- `GetVoices()`：
+  - 在线：内置 Edge 神经网络女声清单（Id 前缀 **`edge:`**，Detail=「在线 · 软妹音」；默认
+    `zh-CN-XiaoyiNeural`「晓伊 · 少女音」；还有 晓晓 / 晓北 / 晓妮 / 晓臻 / 晓雨 / 晓曼 等，见
+    `EdgeTtsClient.Voices`）；
+  - 本地：`Windows.Media.SpeechSynthesis.SpeechSynthesizer.AllVoices`（Id 前缀 **`win:`**，Detail=null）；
+  - 中文女声排前；结果缓存（`_voiceCache`），失败返回空列表（不抛）。
+- `VoiceId`：空 = 自动在线晓伊；`edge:` = 指定在线；`win:` = 指定本地；
+- 在线合成失败（断网 / 服务变更 / 协议失败）→ **自动回退本地**（选第一个可用本地语音），
+  `LastError` 注明原因（如「在线语音失败，已回退本地：…」）；`LastEngine` 记录最近一次实际引擎
+  （「在线晓伊 · 少女音」/「本地慧慧」），卡片状态显示；
+- 本地合成走 WinRT `SpeechSynthesizer.SynthesizeSsmlToStreamAsync`（系统 WAV）；在线走手写
+  `EdgeTtsClient`（WebSocket，零第三方包）：
+  - 连接 `wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1`，
+    带 `Sec-MS-GEC` 时间签名参数（`GenerateSecMsGec`），15 秒连接超时；
+  - 请求格式 `audio-24khz-48kbitrate-mono-mp3`（Edge 返回 MP3）→ `Mp3ToWavAsync` 用系统
+    `Windows.Media.Transcoding` 转成 WAV（实测 48k / 2ch / 16bit）→ 再走 `WaveAudio` 解析 / 包络；
+  - 内置语音清单是写死的 ShortName（不联网列举；服务端可接受），失败一律回退本地。
+- **隐私**：在线只发送**文字**（不发送音频 / 文件 / 其它信息）；合成 WAV 只在内存里播放、播完释放，不写磁盘。
+
+### 15.3 合成 → 解析 → 口型 → 播放（同步链路）
+
+```
+文本 →（在线 EdgeTtsClient / 本地 SpeechSynthesizer）→ WAV 字节（内存）
+  → WaveAudio.TryParse（RIFF 块遍历：fmt / data，支持 fmt 18 / LIST 在前或在后）
+  → ReadMonoSamples → BuildEnvelope（20ms 一帧、0~1）
+  → SpeechUtterance
+  → SpeakAsync：InMemoryRandomAccessStream + MediaPlayer.Play()
+  → onPlaybackStarted 回调（会话在这里 ShowBubble + 随机小动作）
+  → 帧循环：MouthOpen = Envelope[(播放进度 ms)/20] → ModelRuntime.SpeechMouthOpen
+  → 播放完成监测：按 WAV 时长 + 0.35s 轮询收尾（MediaEnded 某些机器不触发）→ 释放流 / 播放器 → 气泡淡出
+```
+
+- `SpeechUtterance` 的 `DurationSeconds` 来自 `WaveAudioInfo.DurationSeconds`（`data` 长度 / BlockAlign / rate）；
+  `MouthOpen` 读取时把索引夹在 `[0, Envelope.Length-1]`，播放结束后 `IsSpeaking=false` → 口型 0；
+- **同步**：`onPlaybackStarted` 是 `MediaPlayer.Play()` 之后触发的，所以气泡 / 小动作 / 口型与声音同一时刻出现；
+- `SpeakAsync` 内部先 `StopCore()` 并递增 generation，避免上一句结束后回调误伤新一句；
+- 会话帧循环（~60fps）把 `tts.IsSpeaking / MouthOpen` 写到 `runtime.SpeechActive / SpeechMouthOpen`，
+  Tick 里 `ApplySpeechMouth` 写 `ParamMouthOpenY / ParamMouthForm / JawOpen`，**动捕有脸时让位动捕**，
+  **语音时音乐跟唱闭嘴**（优先级：动捕脸 > 语音 > 音乐）。
+
+### 15.4 气泡窗口与定位
+
+- `SpeechBubbleWindow`：`ShowActivated=False` + `WS_EX_NOACTIVATE | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW`，
+  透明置顶、点击穿透、不抢焦点 / 不进 Alt+Tab；窗口坐标每帧由会话按桌宠位置重算（`PlaceAbove`）；
+- 纯静态定位 `SpeechBubblePlacement.Calculate(petLeft, petTop, petWidth, petHeight, bubbleW, bubbleH,
+  workX, workY, workW, workH)`（返回 `(Left, Top)`）：
+  1. 默认桌宠**头顶居中**（`petLeft + (petWidth-bubbleW)/2`、`petTop - bubbleH - Gap`，`Gap=8`）；
+  2. 左右夹取到屏幕工作区（各留 **4px** 边距；工作区比气泡还窄时贴左边）；
+  3. 上方放不下 → **翻到桌宠脚下**（`petTop + petHeight + Gap`）；脚下也放不下 → 贴工作区顶部 4px；
+  4. `bubbleW/H <= 1` 用默认 320×90，`workW/H <= 1` 用 1920×1080（防御）。
+- 说话结束约 1.5s 后淡出；桌宠拖动 / 缩放时跟随。
+- **DPI**：`Calculate` 的入参必须同单位（调用方把工作区换算成 DIP）；多屏负坐标也要按**桌宠所在屏**的工作区传。
+
+### 15.5 生命周期 / 线程
+
+- `TtsService` 懒创建（会话持有；App 退出 Dispose）；`SynthesizeAsync` 用 `SemaphoreSlim` 串行化，
+  `SpeakAsync` 可在任意线程调（MediaPlayer 建议 UI 线程创建）；`StateChanged` 可能后台线程触发，UI 订阅要 `Ui(...)`；
+- `Stop()`：递增 generation + 释放 `MediaPlayer` / `IMemoryStream`，停得干净；`Dispose` 停掉所有；
+- 空闲自言自语：会话定时器（60~120s，`SpeechIdleChatterEnabled`），条件与待机随机类似（没在说话 / 没放音乐 / 页面或桌宠可见）；
+- `SpeechAutoGesture`：`onPlaybackStarted` 时随机配一个手势（会先停别的演示）。
+
+### 15.6 坑
+
+1. **WAV 头不能假设 44 字节**：TTS 输出可能带 `LIST` / `fact` 等块、`fmt ` 可能是 18 字节
+   （带 `cbSize`）；必须按 RIFF 块表遍历（`chunkSize` 要校验越界、奇数块有 1 字节 padding）。
+   本轮自检就踩过：合成 WAV 的 LIST 块 chunk size 少写 4，导致解析器找不到 `data`。
+2. **SSML 要转义**：文本里的 `& < > " '` 必须转义，否则合成直接失败；`prosody rate/pitch` 用
+   `rate="0.95"`（倍率）与 `pitch="+0st"`/百分比要按服务支持的写法，乱写会被忽略或报错。
+3. **在线协议是「非官方」的**：微软没承诺 Edge TTS 接口稳定，必须保留**本地回退**并把错误写 `LastError`；
+   断网 / 代理拦截 / 服务改版时功能不能挂。
+4. **MediaPlayer 的 `MediaEnded` 不可靠**：某些机器 / 格式不触发；实现按 WAV 时长轮询收尾。
+   释放顺序：先 `Stop`/`Pause` → `Source=null` → `Dispose`，并把 `InMemoryRandomAccessStream` 保留到播放结束
+   （提前释放会让播放中断）。
+5. **声音 / 口型 / 气泡要同一时刻**：不要在合成完成就弹气泡 / 开始口型（合成可能几百 ms 到几秒）；
+   必须用 `onPlaybackStarted` 回调。
+6. **在线语音需要联网且只发文字**：文档 / UI 要说清楚；用户可在列表选本地语音彻底离线。
+7. **Windows 没装中文语音包时本地列表可能没有中文**：在线仍可用；本地回退时会选任意可用语音（可能英文）并提示。
+8. **气泡定位用错屏工作区**：多屏负坐标 / DPI 缩放要按桌宠所在屏幕的工作区与 DIP 换算，否则会跑到别的屏。
+
+## 16. 坑（踩过的都记在这里）
 
 1. **moc 缓冲区必须 64 字节对齐且终身不动**：`csmReviveMocInPlace` 之后 Core 内部一直引用它；
    用 `File.ReadAllBytes` 后直接 `GCHandle` 钉住是错的（可能被 GC 移动 + 对齐不保证）。
@@ -823,7 +1039,7 @@ BPM 估计（原来只在有声 hop 估算，稀疏点击永远估不出——�
 35. **真实歌曲素材不进仓库**：人声识别按真实歌曲混音校准，素材属于用户私有媒体，只在本机调参，
     **不进仓库 / 自检 / 截图 / 文档**；自检只能用合成信号回归（voice-like / instrumental / click / 静音）。
 
-## 15. 调试钩子（环境变量，开发 / 截图验收用）
+## 17. 调试钩子（环境变量，开发 / 截图验收用）
 
 | 变量 | 作用 |
 | --- | --- |
@@ -836,4 +1052,9 @@ BPM 估计（原来只在有声 hop 估算，稀疏点击永远估不出——�
 | `YLT_LIVE2D_SWAY_DEMO=1` | 身体晃动演示：打开页面自动设「左右摇 15° / 0.5Hz」并演示 10 秒（截图抓中间帧用，不写入配置给用户） |
 | `YLT_LIVE2D_MOCAP_SELFTEST=1`（+ `_EXIT=1`） | 动捕链路自测（**会真开摄像头** 6 秒）：枚举 / 启动 / FPS / 帧尺寸 / 处理耗时 / 有脸次数写 `Data\live2d\mocap-selftest.log`（只有数字与设备名，无画面）；加 `_EXIT=1` 写完退出，给自动验收用 |
 | `YLT_LIVE2D_MUSIC_SELFTEST=1`（+ `_EXIT=1`） | **音乐跟唱链路自测（会真采集系统声音 8 秒）**：启用回环采集后统计 采样次数 / Latest 非空 / IsPlaying 占比 / Kind 分布 / 平均 RMS·VocalScore·Confidence·BPM / 音高有效率 / SMTC 歌名歌手应用 / LastError，写 `Data\live2d\music-selftest.log`（**只有数字与媒体信息，不保存音频**）；加 `_EXIT=1` 写完退出。**不能和 `YLT_SHOT` 同用**：截图模式会刻意禁用音乐采集（截图流程不碰系统声音） |
+| `YLT_LIVE2D_GESTURE_DEMO=<手势 id>` | 打开页面后自动播指定手势（中文名或 hand_on_chest 等别名），截图验收用 |
+| `YLT_LIVE2D_PERFORMANCE_DEMO=<表演 id>` | 自动播指定表演（中文名），截图验收用 |
+| `YLT_LIVE2D_DANCE_DEMO=<模式名>` | 自动开始指定舞蹈模式（轻快摇摆 / 挥手舞 / 摇摆转圈 / 酷炫抖肩），截图验收用 |
+| `YLT_LIVE2D_SPEECH_SELFTEST=1`（+ `_EXIT=1`） | **语音链路自测**：说一句预置台词（会真的合成并播放几秒），统计 采样次数 / IsSpeaking 占比 / 嘴型平均·最大 / LastError，写 `Data\live2d\speech-selftest.log`（**只写数字，不保存音频**）；加 `_EXIT=1` 写完退出 |
+| `YLT_LIVE2D_BUBBLE_SHOT=<png>` | 桌宠 + 聊天气泡**离屏合成**截图（不抓桌面），验收气泡定位 / 透明度用 |
 | `YLT_SELFCHECK_TRACE=1` | 自检排错：打印「进入 / 完成哪个分组」（查「全 PASS 但进程不退出」卡在哪一步） |

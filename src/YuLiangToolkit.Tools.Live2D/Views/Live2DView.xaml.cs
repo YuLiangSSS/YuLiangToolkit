@@ -144,6 +144,15 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
         UpdateSwayDisplay();
         _viewModel.RefreshFaceValues();   // 面部测试卡：100ms 刷新滑杆 / 当前值
         UpdateMusicPanel();               // 音乐跟唱卡：100ms 刷新状态 / 媒体信息 / 实时数据
+        _viewModel.RefreshArmValues();    // 手臂 & 姿势卡：100ms 刷新手臂参数真实值
+        _viewModel.RefreshActionStatus(); // 动作卡：当前手势 / 表演 / 舞蹈
+        _viewModel.RefreshSpeechStatus(); // 说话卡：语音列表 / 说话状态 / 嘴型
+    }
+
+    /// <summary>「重新检测」按钮：重新枚举系统 TTS 语音（刚装了语音包时用）。</summary>
+    private void OnReloadVoicesClick(object sender, RoutedEventArgs e)
+    {
+        _viewModel?.ReloadVoices();
     }
 
     /// <summary>

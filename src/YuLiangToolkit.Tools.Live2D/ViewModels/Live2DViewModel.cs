@@ -6,6 +6,7 @@ using System.Windows.Threading;
 using Microsoft.Win32;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Tools.Live2D.Audio;
+using YuLiangToolkit.Tools.Live2D.Speech;
 using YuLiangToolkit.Tools.Live2D.Interop;
 using YuLiangToolkit.Tools.Live2D.Mocap;
 using YuLiangToolkit.Tools.Live2D.Model;
@@ -80,6 +81,25 @@ public sealed class Live2DViewModel : ToolViewModelBase
     private double _musicCenterRatio;
     private double _musicSyllabic;
 
+    // ===== 手臂 & 姿势 / 动作演示 =====
+    private readonly List<ArmParameterRowViewModel> _armRows = new();
+    private string _actionStatusText = "动作：无（可点手势 / 表演 / 跳舞，或交给待机随机小动作）";
+    private OptionItem<string>? _selectedDanceMode;
+    private double _danceSpeed = 1.0;
+    private bool _isDanceRunning;
+    private string _activeGestureText = "手势：—";
+    private string _activePerformanceText = "表演：—";
+    private string _activeDanceText = "舞蹈：—";
+
+    // ===== 说话 / 轻对话（默认微软 Edge 在线软妹音，断网回退 Windows 本地 TTS） =====
+    private OptionItem<string>? _selectedVoice;
+    private bool _voicesLoaded;
+    private string _speechVoiceError = "";
+    private string _speechInput = "";
+    private string _speechStatusText = "还没说话（默认微软 Edge 在线软妹音；只发送文本、不保存音频）";
+    private bool _isSpeaking;
+    private double _speechMouthOpen;
+
     public Live2DViewModel() : base(Live2DTool.ToolId)
     {
         Cfg = LoadConfig<Live2DConfig>();
@@ -114,6 +134,24 @@ public sealed class Live2DViewModel : ToolViewModelBase
         ShakeSwayCommand = new RelayCommand(_ => ShakeSway());
         StopSwayCommand = new RelayCommand(_ => StopSway());
         ApplyFacePresetCommand = new RelayCommand(parameter => ApplyFacePreset(parameter as string ?? "tongue"));
+
+        // ===== 手臂 & 姿势 / 动作演示 =====
+        PlayGestureCommand = new RelayCommand(parameter => PlayGesture(parameter as string));
+        PlayPerformanceCommand = new RelayCommand(parameter => PlayPerformance(parameter as string));
+        StartDanceCommand = new RelayCommand(_ => StartDance());
+        StopDanceCommand = new RelayCommand(_ => Session.StopDance());
+        StopAllDemosCommand = new RelayCommand(_ => StopAllDemos());
+        RandomActionCommand = new RelayCommand(_ => Session.RandomAction());
+        TryVoiceCommand = new RelayCommand(_ => SpeakText("你好呀，我是小凉～"));
+        SpeakCommand = new RelayCommand(_ => SpeakText(SpeechInput));
+        StopSpeakingCommand = new RelayCommand(_ => Session.StopSpeaking());
+        RandomSayCommand = new RelayCommand(_ => SpeakText(PickRandomSpeechLine()));
+        SpeakPresetCommand = new RelayCommand(parameter => SpeakText(parameter as string));
+        SendChatCommand = new RelayCommand(_ => SendChat());
+        ClearChatCommand = new RelayCommand(_ => ChatMessages.Clear());
+
+        _selectedDanceMode = DanceModeOptions[0];
+        _selectedVoice = null;
 
         Session.PetVisibilityChanged += OnPetVisibilityChanged;
         Session.StateChanged += OnSessionStateChanged;
@@ -1747,6 +1785,690 @@ public sealed class Live2DViewModel : ToolViewModelBase
         MusicStatusText = kindText + (confidence > 0.001 ? $"，{MusicConfidenceText}" : "");
     }
 
+    // ===================== 🖐 手臂 & 姿势（动作演示） =====================
+
+    private static readonly string[] LeftArmIds = { "LArm", "LForearm", "LWrist", "LHand", "Param39" };
+    private static readonly string[] RightArmIds = { "RArm", "RForearm", "RWrist", "RHand", "Param59" };
+    private static readonly string[] ShoulderIds = { "ShoulderX", "ShoulderY", "ShoulderZ" };
+
+    /// <summary>左臂参数行（大臂 / 小臂 / 手腕 / 手 + 大臂透视）。</summary>
+    public ObservableCollection<ArmParameterRowViewModel> LeftArmParameters { get; } = new();
+
+    /// <summary>右臂参数行。</summary>
+    public ObservableCollection<ArmParameterRowViewModel> RightArmParameters { get; } = new();
+
+    /// <summary>肩膀参数行（X / Y / Z）。</summary>
+    public ObservableCollection<ArmParameterRowViewModel> ShoulderParameters { get; } = new();
+
+    /// <summary>手势按钮（运行时 <c>PlayGesture(id)</c>）。</summary>
+    public IReadOnlyList<ActionChipViewModel> GestureActions { get; } = new[]
+    {
+        new ActionChipViewModel("抱胸致意", "抱胸致意"),
+        new ActionChipViewModel("竖起食指", "竖起食指"),
+        new ActionChipViewModel("拿起狗尾草", "拿起狗尾草"),
+        new ActionChipViewModel("举手打招呼", "举手打招呼"),
+        new ActionChipViewModel("比心", "比心"),
+        new ActionChipViewModel("叉腰", "叉腰"),
+        new ActionChipViewModel("抱头", "抱头"),
+        new ActionChipViewModel("放下手", "放下手"),
+    };
+
+    /// <summary>表演按钮（运行时 <c>PlayPerformance(id)</c>）。</summary>
+    public IReadOnlyList<ActionChipViewModel> Performances { get; } = new[]
+    {
+        new ActionChipViewModel("好奇→思考→恍然大悟", "好奇→思考→恍然"),
+        new ActionChipViewModel("俏皮比心", "俏皮比心"),
+        new ActionChipViewModel("开心挥手", "开心挥手"),
+        new ActionChipViewModel("骄傲展示", "骄傲展示"),
+        new ActionChipViewModel("害羞低头", "害羞低头"),
+        new ActionChipViewModel("晚安道别", "晚安道别"),
+    };
+
+    /// <summary>舞蹈模式选项。</summary>
+    public IReadOnlyList<OptionItem<string>> DanceModeOptions { get; } = OptionItem.From(
+        ("轻快摇摆", "轻快摇摆"),
+        ("挥手舞", "挥手舞"),
+        ("摇摆转圈", "摇摆转圈"),
+        ("酷炫抖肩", "酷炫抖肩"));
+
+    /// <summary>当前选中的舞蹈模式。</summary>
+    public OptionItem<string>? SelectedDanceMode
+    {
+        get => _selectedDanceMode;
+        set
+        {
+            if (!Set(ref _selectedDanceMode, value) || value is null) return;
+            Log("舞蹈模式：" + value.Label);
+        }
+    }
+
+    /// <summary>舞蹈速度倍率（0.5 ~ 2.0）。</summary>
+    public double DanceSpeed
+    {
+        get => _danceSpeed;
+        set
+        {
+            var clamped = Math.Clamp(value, 0.5, 2.0);
+            if (Math.Abs(_danceSpeed - clamped) < 0.001) return;
+            _danceSpeed = clamped;
+            OnPropertyChanged();
+            try { if (Runtime is { } runtime) runtime.DanceSpeed = clamped; } catch { /* 忽略 */ }
+        }
+    }
+
+    /// <summary>舞蹈是否在跳（由运行时 ActiveDance 推导）。</summary>
+    public bool IsDanceRunning
+    {
+        get => _isDanceRunning;
+        private set => Set(ref _isDanceRunning, value);
+    }
+
+    /// <summary>当前手势文本。</summary>
+    public string ActiveGestureText
+    {
+        get => _activeGestureText;
+        private set => Set(ref _activeGestureText, value);
+    }
+
+    /// <summary>当前表演文本。</summary>
+    public string ActivePerformanceText
+    {
+        get => _activePerformanceText;
+        private set => Set(ref _activePerformanceText, value);
+    }
+
+    /// <summary>当前舞蹈文本。</summary>
+    public string ActiveDanceText
+    {
+        get => _activeDanceText;
+        private set => Set(ref _activeDanceText, value);
+    }
+
+    /// <summary>动作卡状态行（当前在演什么 / 提示先停止演示再手调参数）。</summary>
+    public string ActionStatusText
+    {
+        get => _actionStatusText;
+        private set => Set(ref _actionStatusText, value);
+    }
+
+    /// <summary>待机随机小动作开关（更生动）。</summary>
+    public bool IdleRandomGestureEnabled
+    {
+        get => Cfg.IdleRandomGestureEnabled;
+        set
+        {
+            if (Cfg.IdleRandomGestureEnabled == value) return;
+            Cfg.IdleRandomGestureEnabled = value;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+            Log(value ? "待机随机小动作：开启" : "待机随机小动作：关闭");
+        }
+    }
+
+    /// <summary>待机随机小动作间隔（秒，8 ~ 60）。</summary>
+    public double IdleRandomGestureIntervalSeconds
+    {
+        get => Math.Clamp(Cfg.IdleRandomGestureIntervalSeconds, 8, 60);
+        set
+        {
+            var clamped = Math.Clamp(value, 8, 60);
+            if (Math.Abs(Cfg.IdleRandomGestureIntervalSeconds - clamped) < 0.001) return;
+            Cfg.IdleRandomGestureIntervalSeconds = clamped;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    private void BuildArmParameters(ModelRuntime runtime)
+    {
+        ClearArmParameters();
+        try
+        {
+            var model = runtime.Model;
+            var display = runtime.Display;
+
+            void Add(ObservableCollection<ArmParameterRowViewModel> target, string id)
+            {
+                var parameter = model.FindParameter(id);
+                if (parameter is null) return;
+
+                string? name = null;
+                if (display is not null && display.ParameterNames.TryGetValue(id, out var foundName))
+                {
+                    name = foundName;
+                }
+
+                var row = new ArmParameterRowViewModel(parameter, name);
+                target.Add(row);
+                _armRows.Add(row);
+            }
+
+            foreach (var id in LeftArmIds) Add(LeftArmParameters, id);
+            foreach (var id in RightArmIds) Add(RightArmParameters, id);
+            foreach (var id in ShoulderIds) Add(ShoulderParameters, id);
+        }
+        catch (Exception ex)
+        {
+            ActionStatusText = "手臂参数读取失败：" + ex.Message;
+        }
+    }
+
+    private void ClearArmParameters()
+    {
+        LeftArmParameters.Clear();
+        RightArmParameters.Clear();
+        ShoulderParameters.Clear();
+        _armRows.Clear();
+    }
+
+    /// <summary>页面 100ms 定时器调用：刷新手臂滑杆到模型真实值（动作播放时会覆盖手动值）。</summary>
+    public void RefreshArmValues()
+    {
+        foreach (var row in _armRows) row.RefreshFromModel();
+    }
+
+    /// <summary>播放手势（按钮 / 调试钩子 / 说话自动小动作共用）。</summary>
+    public void PlayGesture(string? id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return;
+        var runtime = Runtime;
+        if (runtime is null || !runtime.IsLoaded)
+        {
+            ActionStatusText = "模型还没加载，无法播放手势";
+            return;
+        }
+
+        try
+        {
+            runtime.PlayGesture(id.Trim());
+            ActionStatusText = "手势：" + id.Trim();
+            StatusText = "手势：" + id.Trim();
+            Log("播放手势：" + id.Trim());
+        }
+        catch (Exception ex)
+        {
+            ActionStatusText = "手势播放失败：" + ex.Message;
+        }
+    }
+
+    /// <summary>播放表演（多步小表演）。</summary>
+    public void PlayPerformance(string? id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return;
+        var runtime = Runtime;
+        if (runtime is null || !runtime.IsLoaded)
+        {
+            ActionStatusText = "模型还没加载，无法播放表演";
+            return;
+        }
+
+        try
+        {
+            runtime.PlayPerformance(id.Trim());
+            ActionStatusText = "表演：" + id.Trim();
+            StatusText = "表演：" + id.Trim();
+            Log("播放表演：" + id.Trim());
+        }
+        catch (Exception ex)
+        {
+            ActionStatusText = "表演播放失败：" + ex.Message;
+        }
+    }
+
+    /// <summary>开始跳舞（模式 + 速度）。</summary>
+    public void StartDance()
+    {
+        var runtime = Runtime;
+        if (runtime is null || !runtime.IsLoaded)
+        {
+            ActionStatusText = "模型还没加载，无法跳舞";
+            return;
+        }
+
+        var mode = SelectedDanceMode?.Value ?? DanceModeOptions[0].Value;
+        try
+        {
+            runtime.StartDance(mode, DanceSpeed);
+            IsDanceRunning = true;
+            ActionStatusText = "跳舞中：" + mode + $"（速度 {DanceSpeed:0.00}x）";
+            Log($"开始跳舞：{mode}，速度 {DanceSpeed:0.00}x");
+        }
+        catch (Exception ex)
+        {
+            ActionStatusText = "跳舞失败：" + ex.Message;
+        }
+    }
+
+    /// <summary>停止所有演示（手势 / 表演 / 舞蹈 / 摇晃演示），把参数交还手动控制。</summary>
+    public void StopAllDemos()
+    {
+        var runtime = Runtime;
+        if (runtime is null) return;
+        try
+        {
+            runtime.StopAllDemos();
+            IsDanceRunning = false;
+            ActionStatusText = "已停止所有演示：现在可以手动拖手臂参数了";
+            StatusText = "已停止所有演示";
+            Log("停止所有演示（手势 / 表演 / 舞蹈 / 摇晃）");
+        }
+        catch (Exception ex)
+        {
+            ActionStatusText = "停止演示失败：" + ex.Message;
+        }
+    }
+
+    /// <summary>页面 100ms 定时器调用：刷新当前手势 / 表演 / 舞蹈状态。</summary>
+    public void RefreshActionStatus()
+    {
+        var runtime = Runtime;
+        if (runtime is null) return;
+
+        try
+        {
+            var gesture = runtime.ActiveGesture ?? "";
+            var performance = runtime.ActivePerformance ?? "";
+            var dance = runtime.ActiveDance ?? "";
+
+            var gestureText = string.IsNullOrWhiteSpace(gesture) ? "手势：—" : "手势：" + gesture;
+            var performanceText = string.IsNullOrWhiteSpace(performance) ? "表演：—" : "表演：" + performance;
+            var danceText = string.IsNullOrWhiteSpace(dance) ? "舞蹈：—" : "舞蹈：" + dance;
+            var dancing = !string.IsNullOrWhiteSpace(dance);
+
+            if (!string.Equals(ActiveGestureText, gestureText, StringComparison.Ordinal)) ActiveGestureText = gestureText;
+            if (!string.Equals(ActivePerformanceText, performanceText, StringComparison.Ordinal)) ActivePerformanceText = performanceText;
+            if (!string.Equals(ActiveDanceText, danceText, StringComparison.Ordinal)) ActiveDanceText = danceText;
+            if (IsDanceRunning != dancing) IsDanceRunning = dancing;
+
+            var status = dancing
+                ? "正在跳舞：" + dance
+                : !string.IsNullOrWhiteSpace(performance)
+                    ? "正在表演：" + performance
+                    : !string.IsNullOrWhiteSpace(gesture)
+                        ? "正在做手势：" + gesture
+                        : "动作：无（可点手势 / 表演 / 跳舞，或交给待机随机小动作）";
+            if (!string.Equals(ActionStatusText, status, StringComparison.Ordinal)) ActionStatusText = status;
+        }
+        catch
+        {
+            // 动作系统正在热切换：忽略
+        }
+    }
+
+    // ===================== 💬 说话 / 轻对话（Windows 自带 TTS） =====================
+
+    /// <summary>可选语音（启动后从 <c>TtsService.GetVoices()</c> 读，失败显示错误不崩）。</summary>
+    public ObservableCollection<OptionItem<string>> VoiceOptions { get; } = new();
+
+    /// <summary>语音枚举失败信息（空 = 正常）。</summary>
+    public string SpeechVoiceError
+    {
+        get => _speechVoiceError;
+        private set
+        {
+            if (!Set(ref _speechVoiceError, value)) return;
+            OnPropertyChanged(nameof(HasSpeechVoiceError));
+        }
+    }
+
+    /// <summary>语音枚举有没有失败。</summary>
+    public bool HasSpeechVoiceError => !string.IsNullOrWhiteSpace(SpeechVoiceError);
+
+    /// <summary>当前选中语音（空 = 自动中文女声）。</summary>
+    public OptionItem<string>? SelectedVoice
+    {
+        get => _selectedVoice;
+        set
+        {
+            if (!Set(ref _selectedVoice, value)) return;
+            Cfg.SpeechVoiceId = value?.Value ?? "";
+            OnPropertyChanged();
+            Session.ApplySpeechSettings();
+            Log("语音：" + (value?.Label ?? "（自动中文女声）"));
+        }
+    }
+
+    /// <summary>语速倍率（0.6 ~ 1.6）。</summary>
+    public double SpeechRate
+    {
+        get => Math.Clamp(Cfg.SpeechRate, 0.6, 1.6);
+        set
+        {
+            var clamped = Math.Clamp(value, 0.6, 1.6);
+            if (Math.Abs(Cfg.SpeechRate - clamped) < 0.001) return;
+            Cfg.SpeechRate = clamped;
+            OnPropertyChanged();
+            Session.ApplySpeechSettings();
+        }
+    }
+
+    /// <summary>音调（-20 ~ 40，默认 12 = 软妹音）。</summary>
+    public double SpeechPitchPercent
+    {
+        get => Math.Clamp(Cfg.SpeechPitchPercent, -20, 40);
+        set
+        {
+            var clamped = Math.Clamp(value, -20, 40);
+            if (Math.Abs(Cfg.SpeechPitchPercent - clamped) < 0.001) return;
+            Cfg.SpeechPitchPercent = clamped;
+            OnPropertyChanged();
+            Session.ApplySpeechSettings();
+        }
+    }
+
+    /// <summary>音量（0 ~ 1）。</summary>
+    public double SpeechVolume
+    {
+        get => Math.Clamp(Cfg.SpeechVolume, 0, 1);
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 1);
+            if (Math.Abs(Cfg.SpeechVolume - clamped) < 0.001) return;
+            Cfg.SpeechVolume = clamped;
+            OnPropertyChanged();
+            Session.ApplySpeechSettings();
+        }
+    }
+
+    /// <summary>说话时是否显示聊天气泡（桌宠头顶）。</summary>
+    public bool SpeechBubbleEnabled
+    {
+        get => Cfg.SpeechBubbleEnabled;
+        set
+        {
+            if (Cfg.SpeechBubbleEnabled == value) return;
+            Cfg.SpeechBubbleEnabled = value;
+            OnPropertyChanged();
+            Session.ApplySpeechSettings();
+        }
+    }
+
+    /// <summary>说话时自动配一个小手势（更生动）。</summary>
+    public bool SpeechAutoGesture
+    {
+        get => Cfg.SpeechAutoGesture;
+        set
+        {
+            if (Cfg.SpeechAutoGesture == value) return;
+            Cfg.SpeechAutoGesture = value;
+            OnPropertyChanged();
+            Session.ApplySpeechSettings();
+        }
+    }
+
+    /// <summary>空闲随机自言自语（页面 / 桌宠可见且没在说话 / 放音乐时，60~120 秒说一句）。</summary>
+    public bool SpeechIdleChatterEnabled
+    {
+        get => Cfg.SpeechIdleChatterEnabled;
+        set
+        {
+            if (Cfg.SpeechIdleChatterEnabled == value) return;
+            Cfg.SpeechIdleChatterEnabled = value;
+            OnPropertyChanged();
+            Session.ApplySpeechSettings();
+            Log(value ? "空闲自言自语：开启" : "空闲自言自语：关闭");
+        }
+    }
+
+    /// <summary>说话输入框。</summary>
+    public string SpeechInput
+    {
+        get => _speechInput;
+        set => Set(ref _speechInput, value);
+    }
+
+    /// <summary>当前是否在说话。</summary>
+    public bool IsSpeaking
+    {
+        get => _isSpeaking;
+        private set => Set(ref _isSpeaking, value);
+    }
+
+    /// <summary>说话时的嘴型开合（0~1，实时）。</summary>
+    public double SpeechMouthOpen
+    {
+        get => _speechMouthOpen;
+        private set => Set(ref _speechMouthOpen, value);
+    }
+
+    /// <summary>语音状态行。</summary>
+    public string SpeechStatusText
+    {
+        get => _speechStatusText;
+        private set => Set(ref _speechStatusText, value);
+    }
+
+    /// <summary>聊天记录（最近 20 条，最新在最上面）。</summary>
+    public ObservableCollection<ChatMessageViewModel> ChatMessages { get; } = new();
+
+    /// <summary>一句话总开关状态文本（给卡片角标用）。</summary>
+    public string SpeechSummaryText => "微软 Edge 在线软妹音 · 断网自动回退本地";
+
+    /// <summary>离线轻对话：关键词 → 回复（后续接 LLM 时替换 <see cref="PickChatReply"/> 即可）。</summary>
+    private static readonly (string[] Keys, string[] Replies)[] ChatReplyRules =
+    {
+        (new[] { "你好", "嗨", "hi", "hello", "早上好", "晚上好", "在吗", "在不在" },
+            new[] { "在的在的～主人叫我有什么事呀？", "嗨嗨～我一直在这里等你喔。" }),
+        (new[] { "累", "困", "疲惫", "加班", "辛苦" },
+            new[] { "辛苦啦～过来让我给你揉揉肩，先休息一下嘛。", "累了就靠一会儿吧，我安安静静陪着你。" }),
+        (new[] { "开心", "高兴", "好耶", "哈哈", "太好了" },
+            new[] { "嘿嘿，主人开心我就开心～", "好耶！那今天一定是顺利的一天！" }),
+        (new[] { "难过", "伤心", "不开心", "郁闷", "烦" },
+            new[] { "抱抱…不开心的事先放一放，我陪着你。", "别难过嘛，我把我最喜欢的星星分你一颗。" }),
+        (new[] { "晚安", "睡了", "睡觉", "困了" },
+            new[] { "晚安，做个好梦～梦里也要有我喔。", "去睡吧，我会帮你把今天收好尾巴的～" }),
+        (new[] { "喜欢你", "爱你", "喜欢我", "么么", "亲亲" },
+            new[] { "唔…我也最喜欢主人啦！…才没有害羞呢。", "诶嘿嘿，这种话…要小声一点说啦。" }),
+        (new[] { "吃", "饿", "饭" },
+            new[] { "要按时吃饭喔～我去给主人倒杯水！", "饿着肚子可不行，快去吃点东西嘛。" }),
+        (new[] { "唱歌", "音乐", "听歌" },
+            new[] { "要不要我给你哼一段？…先放首歌给我听嘛。", "音乐响起来的时候，我会忍不住轻轻晃～" }),
+        (new[] { "摸头", "摸摸", "头" },
+            new[] { "诶嘿…摸头会让我变笨的啦…再摸一下也不是不行。", "唔…好舒服，再多摸一会儿也可以喔。" }),
+        (new[] { "工作", "上班", "学习", "写代码", "加班" },
+            new[] { "工作再忙也要记得站起来活动一下喔，我在这里陪你。", "主人加油！写完这一段我们就休息一下好不好？" }),
+    };
+
+    /// <summary>未知输入的随机软妹回复。</summary>
+    private static readonly string[] SoftFallbackReplies =
+    {
+        "唔…这样呀，那主人想听听我的想法吗？",
+        "诶嘿嘿，我好像没太听懂，但我会认真听的～",
+        "和主人聊天真开心，再多说一点嘛。",
+        "唔…让我想想…算了，先抱一下再说！",
+        "主人说的我都记在小本本上啦。",
+        "好像很有趣的样子！然后呢然后呢？",
+        "嘿嘿，不管说什么，我都在认真听喔。",
+        "这个嘛…我可能需要一点点提示～",
+        "主人今天话变多了，是不是心情不错呀？",
+        "嗯嗯，我在呢，继续说嘛～",
+        "要不要喝口水休息一下？我陪你慢慢聊。",
+        "虽然不太懂，但是和主人在一起就很开心！",
+    };
+
+    /// <summary>随机说一句用的台词池。</summary>
+    private static readonly string[] RandomSpeechLines =
+    {
+        "你好呀～",
+        "今天也要开心喔！",
+        "主人辛苦啦，休息一下嘛。",
+        "抱抱～",
+        "晚安，做个好梦。",
+        "想我了吗？",
+        "诶嘿，突然想和主人说说话～",
+        "我刚刚在窗边看到一只小鸟飞过去了。",
+        "要不要听我哼首歌呀？",
+        "主人在忙什么呢？",
+    };
+
+    /// <summary>预设台词（界面按钮 + 自检共用）。</summary>
+    public static IReadOnlyList<string> PresetSpeechLines { get; } = new[]
+    {
+        "你好呀",
+        "今天也要开心喔",
+        "主人辛苦啦",
+        "抱抱～",
+        "晚安，做个好梦",
+        "想我了吗？",
+    };
+
+    /// <summary>从池子里随机挑一句台词。</summary>
+    public static string PickRandomSpeechLine()
+    {
+        var pool = new List<string>(PresetSpeechLines);
+        pool.AddRange(SoftFallbackReplies);
+        return pool[Random.Shared.Next(pool.Count)];
+    }
+
+    /// <summary>按关键词挑一句回复（离线，不联网）。</summary>
+    private static string PickChatReply(string userText)
+    {
+        foreach (var rule in ChatReplyRules)
+        {
+            foreach (var key in rule.Keys)
+            {
+                if (userText.Contains(key, StringComparison.OrdinalIgnoreCase))
+                {
+                    return rule.Replies[Random.Shared.Next(rule.Replies.Length)];
+                }
+            }
+        }
+        return SoftFallbackReplies[Random.Shared.Next(SoftFallbackReplies.Length)];
+    }
+
+    /// <summary>重新枚举语音（语音服务重启 / 首次为空的兜底）。</summary>
+    public void ReloadVoices()
+    {
+        _voicesLoaded = false;
+        EnsureVoicesLoaded();
+    }
+
+    private void EnsureVoicesLoaded()
+    {
+        if (_voicesLoaded) return;
+
+        try
+        {
+            var voices = TtsService.GetVoices();
+            VoiceOptions.Clear();
+            foreach (var voice in voices)
+            {
+                var label = voice.DisplayName;
+                if (!string.IsNullOrWhiteSpace(voice.Language) || !string.IsNullOrWhiteSpace(voice.Gender))
+                {
+                    label += "（" + (voice.Language ?? "").Trim();
+                    if (!string.IsNullOrWhiteSpace(voice.Gender)) label += " · " + voice.Gender.Trim();
+                    label += "）";
+                }
+                VoiceOptions.Add(new OptionItem<string>(voice.Id, label));
+            }
+
+            if (VoiceOptions.Count == 0)
+            {
+                SpeechVoiceError = "系统没找到可用语音（Windows 可能没装中文 TTS 语音包）";
+                _voicesLoaded = true;
+                return;
+            }
+
+            SpeechVoiceError = "";
+            _voicesLoaded = true;
+
+            // 默认选中：配置里的语音 → 第一个中文女声 → 第一个
+            var preferred = VoiceOptions.FirstOrDefault(option =>
+                    !string.IsNullOrWhiteSpace(Cfg.SpeechVoiceId) &&
+                    string.Equals(option.Value, Cfg.SpeechVoiceId, StringComparison.Ordinal))
+                ?? VoiceOptions.FirstOrDefault(option =>
+                    option.Label.Contains("中文", StringComparison.OrdinalIgnoreCase) &&
+                    option.Label.Contains("女", StringComparison.OrdinalIgnoreCase))
+                ?? VoiceOptions[0];
+
+            if (!ReferenceEquals(_selectedVoice, preferred))
+            {
+                _selectedVoice = preferred;
+                OnPropertyChanged(nameof(SelectedVoice));
+            }
+        }
+        catch (Exception ex)
+        {
+            SpeechVoiceError = "语音枚举失败：" + ex.Message;
+            _voicesLoaded = true;
+        }
+    }
+
+    /// <summary>页面 100ms 定时器调用：刷新语音列表 / 说话状态 / 嘴型。</summary>
+    public void RefreshSpeechStatus()
+    {
+        EnsureVoicesLoaded();
+
+        var session = Session;
+        IsSpeaking = session.IsSpeaking;
+        SpeechMouthOpen = session.SpeechMouthOpen;
+
+        if (IsSpeaking)
+        {
+            SpeechStatusText = $"正在说话…（嘴型 {SpeechMouthOpen:0.00}）";
+        }
+        else if (!string.IsNullOrWhiteSpace(session.SpeechLastError))
+        {
+            SpeechStatusText = "语音出错：" + session.SpeechLastError;
+        }
+        else if (!string.IsNullOrWhiteSpace(session.LastSpokenText))
+        {
+            SpeechStatusText = "空闲 · 上次说：" + session.LastSpokenText;
+        }
+        else
+        {
+            SpeechStatusText = "还没说话（默认微软 Edge 在线软妹音；只发送文本、不保存音频）";
+        }
+    }
+
+    /// <summary>说一句（按钮 / 预设台词 / 桌宠菜单 / 调试钩子共用）。</summary>
+    public void SpeakText(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        SpeakTextCore(text.Trim());
+    }
+
+    /// <summary>发送轻对话：先显示用户文字，0.3~0.8 秒后软妹回复并说出来。</summary>
+    private void SendChat()
+    {
+        var text = (SpeechInput ?? "").Trim();
+        if (text.Length == 0) return;
+
+        SpeechInput = "";
+        AddChatMessage("我", text);
+        _ = ReplyToChatAsync(text);
+    }
+
+    private async Task ReplyToChatAsync(string userText)
+    {
+        await Task.Delay(Random.Shared.Next(300, 800));
+        var reply = PickChatReply(userText);
+        AddChatMessage("小凉", reply);
+        SpeakTextCore(reply);
+    }
+
+    private void SpeakTextCore(string text)
+    {
+        try
+        {
+            Session.SpeakText(text);
+            SpeechStatusText = "正在说：" + text;
+            StatusText = "说话：" + text;
+            Log("说话：" + text);
+        }
+        catch (Exception ex)
+        {
+            SpeechStatusText = "说话失败：" + ex.Message;
+        }
+    }
+
+    private void AddChatMessage(string role, string text)
+    {
+        ChatMessages.Insert(0, new ChatMessageViewModel(role, text));
+        while (ChatMessages.Count > 20) ChatMessages.RemoveAt(ChatMessages.Count - 1);
+    }
+
     /// <summary>外部直接改 Cfg（截图演示钩子 / 校准写入）后把界面全部重绑一遍。</summary>
     public void RefreshAllBindings() => OnPropertyChanged(string.Empty);
 
@@ -1784,6 +2506,23 @@ public sealed class Live2DViewModel : ToolViewModelBase
     public RelayCommand ShakeSwayCommand { get; }
     public RelayCommand StopSwayCommand { get; }
     public RelayCommand ApplyFacePresetCommand { get; }
+
+    // ===== 手臂 & 姿势 / 动作演示 =====
+    public RelayCommand PlayGestureCommand { get; }
+    public RelayCommand PlayPerformanceCommand { get; }
+    public RelayCommand StartDanceCommand { get; }
+    public RelayCommand StopDanceCommand { get; }
+    public RelayCommand StopAllDemosCommand { get; }
+    public RelayCommand RandomActionCommand { get; }
+
+    // ===== 说话 / 轻对话 =====
+    public RelayCommand TryVoiceCommand { get; }
+    public RelayCommand SpeakCommand { get; }
+    public RelayCommand StopSpeakingCommand { get; }
+    public RelayCommand RandomSayCommand { get; }
+    public RelayCommand SpeakPresetCommand { get; }
+    public RelayCommand SendChatCommand { get; }
+    public RelayCommand ClearChatCommand { get; }
 
     // ===================== 加载状态回调（由 Live2DSession 调用） =====================
 
@@ -1850,6 +2589,7 @@ public sealed class Live2DViewModel : ToolViewModelBase
             MotionTimeText = "0.0 / 0.0 s";
             PreviewStatsText = "—";
             ClearFaceParameters();
+            ClearArmParameters();
             RaiseAll();
             return;
         }
@@ -1871,6 +2611,7 @@ public sealed class Live2DViewModel : ToolViewModelBase
         BuildExpressionRows(runtime);
         BuildIdleMotionOptions(runtime);
         BuildFaceParameters(runtime);
+        BuildArmParameters(runtime);
         RefreshFrameState(runtime);
         RaiseAll();
     }

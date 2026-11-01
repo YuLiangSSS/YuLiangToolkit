@@ -310,6 +310,23 @@ internal sealed class Motion3Data
         return EvaluateSegment(segments[target], time);
     }
 
+    /// <summary>
+    /// 收集所有 Parameter 曲线的末值（原生手势 enter 播完后「保持这个姿势」用；只在手势开始时调一次）。
+    /// 末值取最后一段的终点值；没有段时取首点值。同 id 多条曲线时后写覆盖前写（与动作求值一致）。
+    /// </summary>
+    public void CollectFinalParameterValues(Dictionary<string, float> destination)
+    {
+        destination.Clear();
+        var curves = Curves;
+        for (var i = 0; i < curves.Length; i++)
+        {
+            var curve = curves[i];
+            if (curve.Target != MotionCurveTarget.Parameter) continue;
+            var value = curve.Segments.Length == 0 ? curve.FirstValue : curve.Segments[^1].EndValue;
+            destination[curve.Id] = value;
+        }
+    }
+
     /// <summary>按段类型求值（官方 Linear/Bezier/Stepped/InverseStepped 四个 Evaluate 函数的移植）。</summary>
     private float EvaluateSegment(in MotionSegment segment, float time)
     {

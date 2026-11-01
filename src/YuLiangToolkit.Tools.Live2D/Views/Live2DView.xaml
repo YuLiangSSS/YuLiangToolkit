@@ -79,7 +79,11 @@
                 <RowDefinition Height="380" MinHeight="250" />                   <!-- 面部测试卡（眼 / 嘴 / 舌头） -->
                 <RowDefinition Height="12" />                                    <!-- 面部测试 / 音乐跟唱分隔条 -->
                 <RowDefinition Height="360" MinHeight="240" />                   <!-- 音乐跟唱 · 律动卡 -->
-                <RowDefinition Height="12" />                                    <!-- 音乐跟唱 / 日志分隔条 -->
+                <RowDefinition Height="12" />                                    <!-- 音乐跟唱 / 手臂姿势分隔条 -->
+                <RowDefinition Height="380" MinHeight="260" />                   <!-- 手臂 & 姿势（动作演示）卡 -->
+                <RowDefinition Height="12" />                                    <!-- 手臂姿势 / 说话分隔条 -->
+                <RowDefinition Height="380" MinHeight="260" />                   <!-- 说话 / 轻对话卡 -->
+                <RowDefinition Height="12" />                                    <!-- 说话 / 日志分隔条 -->
                 <RowDefinition Height="200" MinHeight="130" />                   <!-- 日志 -->
             </Grid.RowDefinitions>
 
@@ -1570,12 +1574,364 @@
                 </Grid>
             </Border>
 
-            <!-- 上下分隔条：音乐跟唱 / 日志 -->
+            <!-- 上下分隔条：音乐跟唱 / 手臂 & 姿势 -->
             <core:PaneSplitter Grid.Row="12" Style="{StaticResource PaneSplitterHorizontalStyle}"
-                               Key="live2d.音乐与日志" />
+                               Key="live2d.音乐与手臂" />
+
+            <!-- ==================================================== 手臂 & 姿势（动作演示） ==================================================== -->
+            <Border Grid.Row="13" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="200" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="18,14,18,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🖐 手臂 &amp; 姿势" Style="{StaticResource CardHeaderStyle}" />
+                                <TextBlock Text="{Binding ActionStatusText}" FontSize="10.5" Margin="10,0,0,0"
+                                           VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"
+                                           TextTrimming="CharacterEllipsis" MaxWidth="520" />
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,4,0,0"
+                                       Text="手臂参数可直接拖（范围取参数自身 Min/Max）；动作播放时会覆盖手动值 —— 想手动调先点「⏹ 停止所有演示」。手势 / 表演 / 舞蹈 / 待机随机小动作都走运行时动作系统，和呼吸、眨眼、物理叠加。" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                            <Button Content="🎲 随机动作" Style="{StaticResource CompactButtonStyle}" Margin="0,0,6,0"
+                                    Command="{Binding RandomActionCommand}"
+                                    ToolTip="随机播一个手势或表演" />
+                            <Button Content="⏹ 停止所有演示" Style="{StaticResource CompactButtonStyle}"
+                                    Command="{Binding StopAllDemosCommand}"
+                                    ToolTip="停止手势 / 表演 / 舞蹈 / 摇晃演示，把身体交还手动参数与物理" />
+                        </StackPanel>
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1" Style="{StaticResource CardScrollerStyle}" Margin="0,10,0,0">
+                        <Grid Margin="18,0,18,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="430" MinWidth="360" />
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="*" MinWidth="360" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- 左：手臂 / 肩膀参数 -->
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="左臂" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                <ItemsControl ItemsSource="{Binding LeftArmParameters}"
+                                              ItemTemplate="{StaticResource FaceParameterRowTemplate}" />
+                                <TextBlock Text="右臂" FontSize="11.5" FontWeight="SemiBold" Margin="0,6,0,4" />
+                                <ItemsControl ItemsSource="{Binding RightArmParameters}"
+                                              ItemTemplate="{StaticResource FaceParameterRowTemplate}" />
+                                <TextBlock Text="肩膀" FontSize="11.5" FontWeight="SemiBold" Margin="0,6,0,4" />
+                                <ItemsControl ItemsSource="{Binding ShoulderParameters}"
+                                              ItemTemplate="{StaticResource FaceParameterRowTemplate}" />
+                            </StackPanel>
+
+                            <!-- 右：手势 / 表演 / 舞蹈 / 待机灵动 -->
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="手势（点一下就播）" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,5" />
+                                <ItemsControl ItemsSource="{Binding GestureActions}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Content="{Binding Label}" Style="{StaticResource CompactButtonStyle}"
+                                                    Margin="0,0,6,6"
+                                                    Command="{Binding DataContext.PlayGestureCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding Id}" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Text="表演（多步小剧情）" FontSize="11.5" FontWeight="SemiBold" Margin="0,4,0,5" />
+                                <ItemsControl ItemsSource="{Binding Performances}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Content="{Binding Label}" Style="{StaticResource CompactButtonStyle}"
+                                                    Margin="0,0,6,6"
+                                                    Command="{Binding DataContext.PlayPerformanceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding Id}" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Text="舞蹈" FontSize="11.5" FontWeight="SemiBold" Margin="0,4,0,5" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="模式" Style="{StaticResource SettingLabelStyle}" Margin="0,0,8,0" />
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding DanceModeOptions}" DisplayMemberPath="Label"
+                                              SelectedItem="{Binding SelectedDanceMode, Mode=TwoWay}"
+                                              Style="{StaticResource ComboBoxStyle}" Height="26" />
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                                        <Button Content="跳个舞" Style="{StaticResource CompactButtonStyle}" Margin="0,0,6,0"
+                                                Command="{Binding StartDanceCommand}" />
+                                        <Button Content="停" Style="{StaticResource CompactButtonStyle}"
+                                                Command="{Binding StopDanceCommand}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Grid Margin="0,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="42" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="舞蹈速度" Style="{StaticResource SettingLabelStyle}" />
+                                    <Slider Grid.Column="1" Minimum="0.5" Maximum="2" SmallChange="0.05"
+                                            Value="{Binding DanceSpeed, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                            VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{Binding DanceSpeed, StringFormat={}{0:0.00}}"
+                                               Style="{StaticResource SettingValueStyle}" />
+                                </Grid>
+
+                                <Separator Margin="0,8,0,6" Background="{DynamicResource BorderBrush}" />
+                                <TextBlock Text="待机灵动（比默认待机更生动）" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                <CheckBox Content="待机随机小动作（更生动）" Style="{StaticResource CheckBoxStyle}"
+                                          IsChecked="{Binding IdleRandomGestureEnabled, Mode=TwoWay}" />
+                                <Grid Margin="0,2,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="42" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="间隔（秒）" Style="{StaticResource SettingLabelStyle}" />
+                                    <Slider Grid.Column="1" Minimum="8" Maximum="60" SmallChange="1"
+                                            Value="{Binding IdleRandomGestureIntervalSeconds, Mode=TwoWay}"
+                                            Style="{StaticResource SliderStyle}" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{Binding IdleRandomGestureIntervalSeconds, StringFormat={}{0:0}}"
+                                               Style="{StaticResource SettingValueStyle}" />
+                                </Grid>
+
+                                <WrapPanel Margin="0,6,0,0">
+                                    <TextBlock Text="{Binding ActiveGestureText}" Style="{StaticResource CardSubTextStyle}"
+                                               Margin="0,0,14,0" />
+                                    <TextBlock Text="{Binding ActivePerformanceText}" Style="{StaticResource CardSubTextStyle}"
+                                               Margin="0,0,14,0" />
+                                    <TextBlock Text="{Binding ActiveDanceText}" Style="{StaticResource CardSubTextStyle}" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Grid>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- 上下分隔条：手臂 & 姿势 / 说话 -->
+            <core:PaneSplitter Grid.Row="14" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="live2d.手臂与说话" />
+
+            <!-- ==================================================== 说话 / 轻对话 ==================================================== -->
+            <Border Grid.Row="15" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="200" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="18,14,18,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="💬 说话 / 轻对话" Style="{StaticResource CardHeaderStyle}" />
+                                <TextBlock Text="{Binding SpeechStatusText}" FontSize="10.5" Margin="10,0,0,0"
+                                           VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"
+                                           TextTrimming="CharacterEllipsis" MaxWidth="540" />
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,4,0,0"
+                                       Text="默认用微软 Edge 在线神经网络语音（晓伊 · 少女音，默认软妹；也可换晓晓/晓北等，断网自动回退 Windows 本地语音）。在线只把要说的文本发给微软、不保存音频。说话时桌宠头顶显示气泡、嘴型跟着发音变化，声音 / 口型 / 气泡同时出现；轻对话是离线关键词匹配（未知输入 → 随机软妹回复），以后可以换成 LLM。" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                            <Button Content="🎲 随便说一句" Style="{StaticResource CompactButtonStyle}" Margin="0,0,6,0"
+                                    Command="{Binding RandomSayCommand}" />
+                            <Button Content="⏹ 停止" Style="{StaticResource CompactButtonStyle}"
+                                    Command="{Binding StopSpeakingCommand}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1" Style="{StaticResource CardScrollerStyle}" Margin="0,10,0,0">
+                        <Grid Margin="18,0,18,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="460" MinWidth="380" />
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="*" MinWidth="360" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- 左：语音设置 + 输入 -->
+                            <StackPanel Grid.Column="0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="语音" Style="{StaticResource SettingLabelStyle}" Margin="0,0,8,0" />
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding VoiceOptions}" DisplayMemberPath="Label"
+                                              SelectedItem="{Binding SelectedVoice, Mode=TwoWay}"
+                                              Style="{StaticResource ComboBoxStyle}" Height="26"
+                                              ToolTip="系统里安装的 TTS 语音；空 = 自动中文女声" />
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                                        <Button Content="试听" Style="{StaticResource CompactButtonStyle}" Margin="0,0,6,0"
+                                                Command="{Binding TryVoiceCommand}" />
+                                        <Button Content="重新检测" Style="{StaticResource CompactButtonStyle}"
+                                                Click="OnReloadVoicesClick" ToolTip="重新枚举系统语音（刚装了语音包时用）" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock Text="{Binding SpeechVoiceError}" FontSize="10.5" Margin="0,3,0,0"
+                                           Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap"
+                                           Visibility="{Binding HasSpeechVoiceError, Converter={StaticResource BoolToVis}}" />
+
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="64" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="40" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="语速" Style="{StaticResource SettingLabelStyle}" />
+                                    <Slider Grid.Column="1" Minimum="0.6" Maximum="1.6" SmallChange="0.05"
+                                            Value="{Binding SpeechRate, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                            VerticalAlignment="Center" ToolTip="0.6 ~ 1.6 倍速" />
+                                    <TextBlock Grid.Column="2" Text="{Binding SpeechRate, StringFormat={}{0:0.00}}"
+                                               Style="{StaticResource SettingValueStyle}" />
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="64" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="40" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="音调" Style="{StaticResource SettingLabelStyle}" />
+                                    <Slider Grid.Column="1" Minimum="-20" Maximum="40" SmallChange="1"
+                                            Value="{Binding SpeechPitchPercent, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                            VerticalAlignment="Center" ToolTip="默认 12 = 软妹音；越大越尖" />
+                                    <TextBlock Grid.Column="2" Text="{Binding SpeechPitchPercent, StringFormat={}{0:0}}"
+                                               Style="{StaticResource SettingValueStyle}" />
+                                </Grid>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="64" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="40" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="音量" Style="{StaticResource SettingLabelStyle}" />
+                                    <Slider Grid.Column="1" Minimum="0" Maximum="1" SmallChange="0.05"
+                                            Value="{Binding SpeechVolume, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
+                                            VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{Binding SpeechVolume, StringFormat={}{0:0.00}}"
+                                               Style="{StaticResource SettingValueStyle}" />
+                                </Grid>
+
+                                <WrapPanel Margin="0,6,0,0">
+                                    <CheckBox Content="显示聊天气泡" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6"
+                                              IsChecked="{Binding SpeechBubbleEnabled, Mode=TwoWay}"
+                                              ToolTip="说话时在桌宠头顶显示气泡（透明置顶不抢焦点、点击穿透）" />
+                                    <CheckBox Content="说话自动小动作" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6"
+                                              IsChecked="{Binding SpeechAutoGesture, Mode=TwoWay}"
+                                              ToolTip="每次说话随机配一个小手势，更生动" />
+                                    <CheckBox Content="空闲随机自言自语" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6"
+                                              IsChecked="{Binding SpeechIdleChatterEnabled, Mode=TwoWay}"
+                                              ToolTip="页面 / 桌宠可见且没在说话、没放音乐时，约 60~120 秒说一句" />
+                                </WrapPanel>
+
+                                <TextBox Text="{Binding SpeechInput, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         MinHeight="54" MaxHeight="70" Margin="0,4,0,0" Padding="8,6"
+                                         AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                                         Background="{DynamicResource InputBackgroundBrush}"
+                                         Foreground="{DynamicResource TextPrimaryBrush}"
+                                         BorderBrush="{DynamicResource BorderBrush}"
+                                         ToolTip="输入想听的话；「发送对话」会按关键词回一句（离线，不联网）" />
+                                <WrapPanel Margin="0,6,0,0">
+                                    <Button Content="说出来" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,6"
+                                            Command="{Binding SpeakCommand}" />
+                                    <Button Content="发送对话" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,6"
+                                            Command="{Binding SendChatCommand}"
+                                            ToolTip="先显示你的话，0.3~0.8 秒后小凉按关键词回一句并说出来" />
+                                    <Button Content="⏹ 停止" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,6"
+                                            Command="{Binding StopSpeakingCommand}" />
+                                    <Button Content="清空聊天" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
+                                            Command="{Binding ClearChatCommand}" />
+                                </WrapPanel>
+
+                                <TextBlock Text="预设台词" FontSize="11.5" FontWeight="SemiBold" Margin="0,4,0,4" />
+                                <WrapPanel>
+                                    <Button Content="你好呀" Style="{StaticResource CompactButtonStyle}" Margin="0,0,6,6"
+                                            Command="{Binding SpeakPresetCommand}" CommandParameter="你好呀" />
+                                    <Button Content="今天也要开心喔" Style="{StaticResource CompactButtonStyle}" Margin="0,0,6,6"
+                                            Command="{Binding SpeakPresetCommand}" CommandParameter="今天也要开心喔" />
+                                    <Button Content="主人辛苦啦" Style="{StaticResource CompactButtonStyle}" Margin="0,0,6,6"
+                                            Command="{Binding SpeakPresetCommand}" CommandParameter="主人辛苦啦" />
+                                    <Button Content="抱抱～" Style="{StaticResource CompactButtonStyle}" Margin="0,0,6,6"
+                                            Command="{Binding SpeakPresetCommand}" CommandParameter="抱抱～" />
+                                    <Button Content="晚安，做个好梦" Style="{StaticResource CompactButtonStyle}" Margin="0,0,6,6"
+                                            Command="{Binding SpeakPresetCommand}" CommandParameter="晚安，做个好梦" />
+                                    <Button Content="想我了吗？" Style="{StaticResource CompactButtonStyle}" Margin="0,0,6,6"
+                                            Command="{Binding SpeakPresetCommand}" CommandParameter="想我了吗？" />
+                                </WrapPanel>
+                            </StackPanel>
+
+                            <!-- 右：聊天记录 -->
+                            <StackPanel Grid.Column="2">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="聊天记录" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,8,0" />
+                                    <TextBlock Text="（最近 20 条 · 离线关键词轻对话，不联网）" FontSize="10.5"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8"
+                                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                        Margin="0,5,0,0" Padding="4" MinHeight="150">
+                                    <ListBox ItemsSource="{Binding ChatMessages}" Background="Transparent"
+                                             BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                             ScrollViewer.VerticalScrollBarVisibility="Auto" MaxHeight="176">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,2">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="42" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Role}" FontSize="10.5" Margin="4,1,0,0"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding Text}" FontSize="11.5"
+                                                               TextWrapping="Wrap" Margin="0,0,4,0"
+                                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Border>
+                                <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,6,0,0"
+                                           Text="「发送对话」= 先显示你的文字，然后按关键词回一句并说出来；关键词表在 ViewModel 里（问候 / 累了 / 开心 / 难过 / 晚安 / 喜欢你 / 吃饭 / 音乐 / 摸头 / 工作），未知输入随机软妹回复。以后接 LLM 只需替换 PickChatReply。" />
+                                <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,6,0,0"
+                                           Text="气泡：桌宠头顶居中、跟随拖动 / 缩放 / 多屏边界夹取，说话结束约 1.5 秒自动淡出；透明置顶不抢焦点、点击穿透，不挡操作。" />
+                            </StackPanel>
+                        </Grid>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- 上下分隔条：说话 / 日志 -->
+            <core:PaneSplitter Grid.Row="16" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="live2d.说话与日志" />
 
             <!-- ==================================================== 日志 ==================================================== -->
-            <Border Grid.Row="13" Style="{StaticResource CardStyle}">
+            <Border Grid.Row="17" Style="{StaticResource CardStyle}">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />

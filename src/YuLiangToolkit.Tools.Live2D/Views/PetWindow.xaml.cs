@@ -624,6 +624,30 @@ public partial class PetWindow : Window
             : "桌宠菜单：已关闭摄像头动捕（摄像头已释放）");
     }
 
+    /// <summary>右键菜单：随机说一句话（Windows 自带 TTS 本地合成）。</summary>
+    private void OnMenuSaySomethingClick(object sender, RoutedEventArgs e)
+    {
+        _session.SpeakRandomLine();
+    }
+
+    /// <summary>右键菜单：随机换一个姿势（手势）。</summary>
+    private void OnMenuRandomGestureClick(object sender, RoutedEventArgs e)
+    {
+        _session.PlayRandomGesture();
+    }
+
+    /// <summary>右键菜单：随机跳一段舞（约 3 秒）。</summary>
+    private void OnMenuRandomDanceClick(object sender, RoutedEventArgs e)
+    {
+        _session.PlayRandomDance(3.0);
+    }
+
+    /// <summary>右键菜单：停止所有动作演示。</summary>
+    private void OnMenuStopDemosClick(object sender, RoutedEventArgs e)
+    {
+        _session.StopAllDemos();
+    }
+
     /// <summary>右键菜单：重新校准动捕表情（眨眼 / 张嘴的自动基准清零）。</summary>
     private void OnMenuResetMocapCalibrationClick(object sender, RoutedEventArgs e)
         => _session.ResetMocapCalibration();
@@ -857,6 +881,21 @@ public partial class PetWindow : Window
     /// <summary>把窗口内容渲染成 PNG（透明底垫深色，方便一眼看出模型轮廓）。</summary>
     private void CaptureToPng(string path)
     {
+        var bitmap = RenderWindowBitmap();
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        var directory = Path.GetDirectoryName(Path.GetFullPath(path));
+        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+        using var stream = File.Create(path);
+        encoder.Save(stream);
+    }
+
+    /// <summary>
+    /// 把窗口当前画面渲染成位图（含底部中央支点旋转后的模型；调试截图 / 气泡合成图用）。
+    /// 透明底垫深色，方便一眼看出模型轮廓。
+    /// </summary>
+    public BitmapSource RenderWindowBitmap()
+    {
         var width = Math.Max(1, (int)Math.Ceiling(ActualWidth));
         var height = Math.Max(1, (int)Math.Ceiling(ActualHeight));
         var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
@@ -869,13 +908,8 @@ public partial class PetWindow : Window
         }
         bitmap.Render(background);
         if (Content is Visual content) bitmap.Render(content);
-
-        var encoder = new PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(bitmap));
-        var directory = Path.GetDirectoryName(Path.GetFullPath(path));
-        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-        using var stream = File.Create(path);
-        encoder.Save(stream);
+        bitmap.Freeze();
+        return bitmap;
     }
 
     // ===================== Win32 辅助 =====================

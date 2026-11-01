@@ -55,6 +55,16 @@
                       Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuMusicClick"
                       ToolTip="用 Windows 回环采集系统正在播放的声音驱动嘴型 / 摇晃（不申请麦克风、不录音、不保存）" />
             <Separator />
+            <!-- 动作 / 语音：随机说话、随机姿势、跳一段舞、停止演示 -->
+            <MenuItem Header="说句话" Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuSaySomethingClick"
+                      ToolTip="随机说一句（Windows 自带 TTS 本地合成，不联网）" />
+            <MenuItem Header="换个姿势" Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuRandomGestureClick"
+                      ToolTip="随机播一个手势 / 姿势" />
+            <MenuItem Header="跳个舞" Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuRandomDanceClick"
+                      ToolTip="随机跳一段舞（约 3 秒）" />
+            <MenuItem Header="停止动作" Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuStopDemosClick"
+                      ToolTip="停止手势 / 表演 / 舞蹈，把身体交还手动参数与物理" />
+            <Separator />
             <MenuItem Header="打开测试工具页" Foreground="{DynamicResource TextPrimaryBrush}"
                       Click="OnMenuOpenToolPageClick"
                       ToolTip="把主窗口切到「桌面 → Live2D 桌宠」测试台" />

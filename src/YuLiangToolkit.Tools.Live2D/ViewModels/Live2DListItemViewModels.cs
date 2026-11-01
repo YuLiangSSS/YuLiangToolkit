@@ -277,3 +277,107 @@ public sealed class FaceParameterRowViewModel : ObservableObject
         OnPropertyChanged(nameof(Value));
     }
 }
+
+/// <summary>
+/// 「🖐 手臂 &amp; 姿势」卡里的一行：直接代理一个手臂 / 肩膀参数（读写方式和面部参数一致）。
+/// <para>动作播放时这些参数会被动作覆盖，所以卡顶部提示「先停止演示再手调」。</para>
+/// </summary>
+public sealed class ArmParameterRowViewModel : ObservableObject
+{
+    private readonly CubismParameter _parameter;
+    private double _lastNotifiedValue;
+
+    public ArmParameterRowViewModel(CubismParameter parameter, string? displayName)
+    {
+        _parameter = parameter;
+        DisplayName = string.IsNullOrWhiteSpace(displayName) ? parameter.Id : displayName!;
+        _lastNotifiedValue = parameter.Value;
+    }
+
+    /// <summary>参数 Id（例如 <c>LArm</c> / <c>ShoulderX</c>）。</summary>
+    public string Id => _parameter.Id;
+
+    /// <summary>界面显示名（cdi3 中文名；没有就用 Id）。</summary>
+    public string DisplayName { get; }
+
+    /// <summary>参数最小值（滑杆用）。</summary>
+    public double Minimum => _parameter.Minimum;
+
+    /// <summary>参数最大值（滑杆用）。</summary>
+    public double Maximum => _parameter.Maximum;
+
+    /// <summary>参数默认值。</summary>
+    public double DefaultValue => _parameter.DefaultValue;
+
+    /// <summary>当前值（双向绑定滑杆；写入即生效，越界由 CubismParameter 夹取）。</summary>
+    public double Value
+    {
+        get => _parameter.Value;
+        set
+        {
+            if (Math.Abs(_parameter.Value - value) < 0.0001) return;
+            _parameter.Value = (float)value;
+            _lastNotifiedValue = _parameter.Value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>动作 / 待机改了参数后刷新界面（100ms 调一次，值没明显变化不通知）。</summary>
+    public void RefreshFromModel()
+    {
+        var current = _parameter.Value;
+        if (Math.Abs(current - _lastNotifiedValue) < 0.0005) return;
+        _lastNotifiedValue = current;
+        OnPropertyChanged(nameof(Value));
+    }
+
+    /// <summary>直接写参数值并刷新显示。</summary>
+    public void SetValue(float value)
+    {
+        _parameter.Value = value;
+        _lastNotifiedValue = _parameter.Value;
+        OnPropertyChanged(nameof(Value));
+    }
+}
+
+/// <summary>动作按钮（手势 / 表演）：<see cref="Id"/> 传给运行时，<see cref="Label"/> 显示中文。</summary>
+public sealed class ActionChipViewModel
+{
+    public ActionChipViewModel(string id, string label)
+    {
+        Id = id;
+        Label = label;
+    }
+
+    /// <summary>运行时用的动作 Id / 名称。</summary>
+    public string Id { get; }
+
+    /// <summary>界面中文名。</summary>
+    public string Label { get; }
+}
+
+/// <summary>「💬 说话 / 轻对话」卡里的一条聊天记录（本地离线轻对话用）。</summary>
+public sealed class ChatMessageViewModel
+{
+    public ChatMessageViewModel(string role, string text)
+    {
+        Role = role;
+        Text = text;
+        TimeText = DateTime.Now.ToString("HH:mm");
+    }
+
+    /// <summary>角色（「我」/「小凉」）。</summary>
+    public string Role { get; }
+
+    /// <summary>消息内容。</summary>
+    public string Text { get; }
+
+    /// <summary>时间（时:分）。</summary>
+    public string TimeText { get; }
+
+    /// <summary>是不是用户发的（界面靠右 / 换颜色）。</summary>
+    public bool IsUser => Role == "我";
+
+    /// <summary>一行显示：角色 + 内容。</summary>
+    public string DisplayText => Role + "：" + Text;
+}

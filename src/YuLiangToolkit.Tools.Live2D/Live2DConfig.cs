@@ -235,4 +235,35 @@ public sealed class Live2DConfig : ToolConfig
     /// 有音乐时自动加快一点。这是渲染层旋转，不写模型参数，所以头 / 腿会一起倾斜。
     /// </summary>
     public bool BodyLeanEnabled { get; set; } = true;
+
+    // ---------- 语音说话 / 聊天气泡（Windows 自带 TTS） ----------
+
+    /// <summary>语音 id（空 = 自动选第一个中文女声；可在「说话」卡里换）。</summary>
+    public string SpeechVoiceId { get; set; } = "";
+
+    /// <summary>语速倍率（0.6 ~ 1.6；参考 SSML prosody rate）。</summary>
+    public double SpeechRate { get; set; } = 0.95;
+
+    /// <summary>音调偏移百分比（-20 ~ 40，稍微抬高更像软妹音）。</summary>
+    public double SpeechPitchPercent { get; set; } = 0;
+
+    /// <summary>说话音量（0 ~ 1）。</summary>
+    public double SpeechVolume { get; set; } = 0.9;
+
+    /// <summary>说话时在桌宠头上显示聊天气泡。</summary>
+    public bool SpeechBubbleEnabled { get; set; } = true;
+
+    /// <summary>说话时自动配一个小动作（歪头 / 点头 / 手势，更生动）。</summary>
+    public bool SpeechAutoGesture { get; set; } = true;
+
+    /// <summary>空闲时随机自言自语（默认关；打开后每隔一段时间说一句软妹台词）。</summary>
+    public bool SpeechIdleChatterEnabled { get; set; }
+
+    // ---------- 待机随机小动作（更生动） ----------
+
+    /// <summary>待机时每隔一段时间随机做个小动作（歪头 / 张望 / 小手势 / 表情）。</summary>
+    public bool IdleRandomGestureEnabled { get; set; } = true;
+
+    /// <summary>待机随机小动作间隔（秒，8 ~ 300）。</summary>
+    public double IdleRandomGestureIntervalSeconds { get; set; } = 22;
 }
