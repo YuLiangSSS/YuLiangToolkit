@@ -5,7 +5,10 @@
         <Style x:Key="MiniIconButton" TargetType="Button">
             <Setter Property="Width" Value="30" />
             <Setter Property="Height" Value="30" />
-            <Setter Property="Margin" Value="0,0,4,0" />
+            <!-- 左右边距给「快退 / 播放暂停 / 快进」三个按钮留**对称**的缝：
+                 播放键要正好落在快退、快进的中间（左右各 4px 缝），别一边 6 一边 2 看着歪。
+                 注意播放键比两侧图标宽（36 vs 30），所以只有当两侧缝相等时圆心才等于两边中心的中点。 -->
+            <Setter Property="Margin" Value="0,0,2,0" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
@@ -117,7 +120,7 @@
 
             <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                 <!-- 左键快退、右键上一首（右键在代码后置里接） -->
-                <Button x:Name="MiniBack" Style="{StaticResource MiniIconButton}"
+                <Button x:Name="MiniBack" Style="{StaticResource MiniIconButton}" Margin="0,0,2,0"
                         Command="{Binding SeekBackwardCommand}"
                         ToolTip="左键：快退　右键：上一首">
                     <Path Data="M 6,0 L 0,5.5 L 6,11 Z M 12,0 L 6,5.5 L 12,11 Z"
@@ -135,7 +138,7 @@
                 </Button>
 
                 <!-- 左键快进、右键下一首 -->
-                <Button x:Name="MiniForward" Style="{StaticResource MiniIconButton}"
+                <Button x:Name="MiniForward" Style="{StaticResource MiniIconButton}" Margin="2,0,0,0"
                         Command="{Binding SeekForwardCommand}"
                         ToolTip="左键：快进　右键：下一首">
                     <Path Data="M 0,0 L 6,5.5 L 0,11 Z M 6,0 L 12,5.5 L 6,11 Z"
