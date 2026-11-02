@@ -105,6 +105,10 @@
   用 `IsToolbarTextInputFocused()`（`Keyboard.FocusedElement is TextBox/ComboBox`），收起时对非输入框焦点
   `Keyboard.ClearFocus()`。全屏时设置面板的 `Margin.Top` 要在 `IsFullscreen=True` 时设成 **112**（让出工具条高度），
   否则工具条一滑出就把设置面板顶部的标题 / 第一行挡住。
+- ⚠ 工具条滑动动画**必须同时维护 `TranslateTransform.Y` 的“基准值”**：只 `BeginAnimation` 而基准值不动的话，
+  下一次 `BeginAnimation(null)` 会瞬间把 Y 打回基准值——看起来就是「一收就整个消失、没有滑动」。
+  正确做法：Show 前把基准设成起点、完成后把基准设成 0；Hide 先读当前 Y 作为起点、把基准设成起点再动画，完成后基准设成终点。
+  两个工具都是这套；`YLT_*_HOVER_SEQUENCE_FOCUS=1` 可复现「点过按钮再离开」的自动收起 + 滑动。
   ⚠ 视图 `Loaded` 可能触发多次：用一个 `_fullscreenApplied` 守卫，重复同步时不能把已滑出的工具条又藏回去。
 - 截图：`YLT_*_CONTROLS=1` 会把工具条**钉在滑出状态**（否则真实鼠标在窗口里触发的 move 会按热区规则把它收走），
   `=0` 拍沉浸帧；`YLT_*_HOVER_TOP=1` / `_HOVER_MIDDLE=1` 模拟鼠标在顶部 / 中间，用来验「靠近顶部才滑出」
@@ -155,6 +159,8 @@
   （`Key="pdf-reader.设置面板高度"`，随 `Config\layout.json` 记住；双击复位）。别再写成固定高度 + `MaxHeight` 的 Border，
   那样只有左侧宽度缝能拖、下面拖不动。页码条显隐是 `Cfg.ShowPageIndicator`，设置面板勾选框绑 `ShowPageIndicator`，
   改完要调 `UpdateModeChrome` / `UpdatePageIndicatorVisibility`（不要只改 Visibility 常量）。
+  图片阅读器的设置卡片同理（`picture-viewer.设置面板高度`）；其它工具页在 v0.42 时已全部用 PaneSplitter 接好，
+  以后新增浮动卡片也要同时给宽度 / 高度两条缝。
 - 调试 / 截图：`YLT_PICTURE_FULLSCREEN=1` / `YLT_PDF_FULLSCREEN=1` 全屏启动；`YLT_PICTURE_CONTROLS=1` /
   `YLT_PDF_CONTROLS=1` 钉住滑出的工具条，`=0` 拍“沉浸”帧；`YLT_*_HOVER_TOP=1` / `_HOVER_MIDDLE=1` 验证「靠近顶部才滑出」。
 - 记住上次阅读位置（`config.json` 的 `readingPositions`）：界面每帧都可调 `NoteReadingPosition`，VM 里 1.2s `DispatcherTimer`

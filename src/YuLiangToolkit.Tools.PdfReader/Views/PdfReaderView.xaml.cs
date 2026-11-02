@@ -427,9 +427,17 @@ public partial class PdfReaderView : UserControl
         var from = ToolbarSlideTransform.Y;
         if (double.IsNaN(from) || from > 0) from = -ToolbarHiddenOffset;
 
-        var animation = new DoubleAnimation(from, 0, TimeSpan.FromMilliseconds(180))
+        // 把基准值也放到起点：否则 Show 动画的基准还是 -118，Hide 一清动画就会瞬间掉回去（用户看到“瞬间消失”）
+        ToolbarSlideTransform.Y = from;
+        var animation = new DoubleAnimation(from, 0, TimeSpan.FromMilliseconds(220))
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+        };
+        animation.Completed += (_, _) =>
+        {
+            if (!_toolbarShown) return;
+            ToolbarSlideTransform.BeginAnimation(TranslateTransform.YProperty, null);
+            ToolbarSlideTransform.Y = 0;
         };
         ToolbarSlideTransform.BeginAnimation(TranslateTransform.YProperty, animation);
 
@@ -455,7 +463,11 @@ public partial class PdfReaderView : UserControl
             try { Keyboard.ClearFocus(); } catch { /* 焦点清理失败不影响收起 */ }
         }
 
+        var startY = ToolbarSlideTransform.Y;
+        if (double.IsNaN(startY) || startY > 0) startY = 0;
         ToolbarSlideTransform.BeginAnimation(TranslateTransform.YProperty, null);
+        ToolbarSlideTransform.Y = startY;   // 保住当前视觉位置，下面从当前位置滑上去
+
         var target = -ToolbarHiddenOffset;
         if (!animate)
         {
@@ -463,9 +475,15 @@ public partial class PdfReaderView : UserControl
             return;
         }
 
-        var animation = new DoubleAnimation(ToolbarSlideTransform.Y, target, TimeSpan.FromMilliseconds(160))
+        var animation = new DoubleAnimation(startY, target, TimeSpan.FromMilliseconds(260))
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn },
+        };
+        animation.Completed += (_, _) =>
+        {
+            if (_toolbarShown) return;
+            ToolbarSlideTransform.BeginAnimation(TranslateTransform.YProperty, null);
+            ToolbarSlideTransform.Y = target;
         };
         ToolbarSlideTransform.BeginAnimation(TranslateTransform.YProperty, animation);
     }

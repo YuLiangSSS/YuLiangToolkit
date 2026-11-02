@@ -312,9 +312,9 @@
                                            VerticalAlignment="Top" Margin="0,12,0,0"
                                            Height="{Binding ActualHeight, ElementName=SettingsCard}" />
 
-                        <Border x:Name="SettingsCard" Grid.Column="2" VerticalAlignment="Top" Padding="16,14">
-                            <Border.Style>
-                                <Style TargetType="Border" BasedOn="{StaticResource CardStyle}">
+                        <Grid Grid.Column="2">
+                            <Grid.Style>
+                                <Style TargetType="Grid">
                                     <Setter Property="Margin" Value="0,12,12,0" />
                                     <Style.Triggers>
                                         <!-- 全屏时工具条浮在顶部：设置卡片往下让出工具条高度，别被挡住 -->
@@ -323,9 +323,20 @@
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
+                            </Grid.Style>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="560" MinHeight="220"
+                                               MaxHeight="{Binding ActualHeight, ElementName=ViewportGrid}" />
+                                <RowDefinition Height="12" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                        <Border x:Name="SettingsCard" Grid.Row="0" Padding="16,14" ClipToBounds="True">
+                            <Border.Style>
+                                <Style TargetType="Border" BasedOn="{StaticResource CardStyle}">
+                                </Style>
                             </Border.Style>
-                <ScrollViewer MaxHeight="{Binding ActualHeight, ElementName=ViewportGrid}"
-                              VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                               core:ScrollChaining.Enabled="True">
                     <StackPanel Margin="0,0,6,0">
                         <TextBlock Text="⚙ 阅读设置" FontSize="14" FontWeight="SemiBold" />
@@ -576,6 +587,11 @@
                     </StackPanel>
                 </ScrollViewer>
                         </Border>
+
+                        <!-- 设置卡片底部：上下拖动可调高度（↕ / 蓝线；双击恢复默认；随界面布局记住） -->
+                        <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                                           Key="picture-viewer.设置面板高度" />
+                        </Grid>
                     </Grid>
 
                     <!-- ② 最近浏览通道（工具条 🕘 最近 打开；点一条重新打开那个文件夹）。
