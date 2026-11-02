@@ -745,6 +745,10 @@
                             </Grid>
                             <CheckBox Content="始终置顶" IsChecked="{Binding Cfg.OverlayTopmost}"
                                       Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0" />
+                            <CheckBox Content="强制置顶（游戏加强，每 0.5 秒重新抢置顶）" IsChecked="{Binding Cfg.OverlayForceTopmost}"
+                                      Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0"
+                                      IsEnabled="{Binding Cfg.OverlayTopmost}"
+                                      ToolTip="某些游戏 / 工具会把 Overlay 压到下面：开启后定时用 Win32 SetWindowPos(HWND_TOPMOST) 重新抢回最上层。只对窗口化 / 无边框全屏游戏有效；真正的独占全屏任何普通窗口都盖不上（管理员权限也不行）。" />
                         </StackPanel>
 
                         <StackPanel Grid.Column="2">
@@ -759,7 +763,7 @@
                                 <CheckBox Content="每键计数器" IsChecked="{Binding Cfg.OverlayShowCounters}" Style="{StaticResource CheckBoxStyle}" Margin="0,0,18,8" />
                             </WrapPanel>
                             <TextBlock Margin="0,8,0,0" Style="{StaticResource CaptionText}"
-                                       Text="提示：独占全屏（Exclusive Fullscreen）游戏会盖住一切置顶窗口 —— 请改用无边框窗口 / 窗口化；本工具没有做 OBS 浏览器源（按需求不包含直播插件部分）。" />
+                                       Text="提示：窗口化 / 无边框全屏游戏用「始终置顶 + 强制置顶」通常能盖住；真正的独占全屏（Exclusive Fullscreen）会绕过 DWM，任何普通窗口都盖不上——这不是管理员权限能解决的，请把游戏改成无边框窗口 / 窗口化。本工具没有做 OBS 浏览器源（按需求不包含直播插件部分）。" />
                         </StackPanel>
                     </Grid>
                 </StackPanel>

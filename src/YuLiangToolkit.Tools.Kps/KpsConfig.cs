@@ -378,6 +378,18 @@ public sealed class KpsConfig : ToolConfig
         set => SetAndSave(ref _overlayTopmost, value);
     }
 
+    private bool _overlayForceTopmost = true;
+
+    /// <summary>
+    /// 强制置顶（游戏加强）：每 0.5 秒重新把 Overlay 抢回 topmost 最上层。
+    /// 专治「某些游戏 / 工具把 Overlay 压到下面」；对真正的独占全屏无效（Windows 行为，管理员权限也不能覆盖）。
+    /// </summary>
+    public bool OverlayForceTopmost
+    {
+        get => _overlayForceTopmost;
+        set => SetAndSave(ref _overlayForceTopmost, value);
+    }
+
     private double? _overlayLeft;
 
     /// <summary>Overlay 左边界（DIP；null = 首次显示在工作区右下角）。</summary>

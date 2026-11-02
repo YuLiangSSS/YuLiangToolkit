@@ -1032,7 +1032,8 @@ public sealed class KpsViewModel : ToolViewModelBase
 
     private static readonly HashSet<string> OverlayPropertyNames = new()
     {
-        nameof(KpsConfig.OverlayLocked), nameof(KpsConfig.OverlayTopmost), nameof(KpsConfig.OverlayLeft),
+        nameof(KpsConfig.OverlayLocked), nameof(KpsConfig.OverlayTopmost), nameof(KpsConfig.OverlayForceTopmost),
+        nameof(KpsConfig.OverlayLeft),
         nameof(KpsConfig.OverlayTop), nameof(KpsConfig.OverlayScale), nameof(KpsConfig.OverlayOpacity),
         nameof(KpsConfig.OverlayBackgroundColor), nameof(KpsConfig.OverlayScaleAnchor),
         nameof(KpsConfig.OverlayShowKps), nameof(KpsConfig.OverlayShowKeys), nameof(KpsConfig.OverlayShowTotal),

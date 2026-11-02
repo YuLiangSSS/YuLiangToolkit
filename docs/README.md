@@ -18,7 +18,7 @@
 | 🎹 osu! Key 转换器 | 低键数 mania 谱面「复制列 / 插空白列」加成高键数（2~10 可选） | [tools/osu-key-converter.md](tools/osu-key-converter.md) |
 | 🍜 osu! LN 转换器 | 按 14 档强度把普通键改成 LN（长条），可选保留原 LN / 修尾巴 | [tools/osu-ln-transformer.md](tools/osu-ln-transformer.md) |
 | ⭐ osu! 等级计算器 | 拖入 mania 谱面算星数与等级，批量表格；等级按 8K 谱面拟合（只对 8K 有参考意义），SR 通用 | [tools/osu-level-calculator.md](tools/osu-level-calculator.md) |
-| 🎹 KPS 按键统计 | 实时 KPS / 每键计数器 / 键位可视化 + 透明置顶 Overlay；4K~8K 预设、改键、单键图片、音符效果、键音、全局热键（功能灵感来源 DmNote，独立重写） | [tools/kps.md](tools/kps.md) |
+| 🎹 KPS 按键统计 | 实时 KPS / 每键计数器 / 键位可视化 + 透明置顶 Overlay（支持强制置顶）；4K~8K 预设、改键、单键图片、音符效果、键音、全局热键（功能灵感来源 DmNote，独立重写） | [tools/kps.md](tools/kps.md) |
 | 🐟 Live2D 桌宠 | 内置 Live2D 模型测试台 + 桌面宠物：参数 / 部件 / 动作 / 表情 / 物理逐项调试，透明置顶、可拖动、眼睛跟随鼠标、点击穿透 | [tools/live2d.md](tools/live2d.md) |
 | ⚫ 联机五子棋 | 开 TCP 房间和朋友下五子棋：可选禁手（三三 / 四四 / 长连）、悔棋、聊天 | [tools/gomoku.md](tools/gomoku.md) |
 | 🀄 联机象棋 | 开 TCP 房间下中国象棋：自由摆棋 + 一键默认开局、让子 / 让先、中文记谱 | [tools/xiangqi.md](tools/xiangqi.md) |

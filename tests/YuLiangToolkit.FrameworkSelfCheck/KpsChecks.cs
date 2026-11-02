@@ -424,6 +424,7 @@ public static class KpsChecks
             && defaults.HotkeyResetStats == "Ctrl+Shift+R"
             && defaults.HotkeyToggleListening == "Ctrl+Shift+P"
             && defaults.GraphSeconds == 30
+            && defaults.OverlayTopmost && defaults.OverlayForceTopmost
             && defaults.CustomPresets.Count == 0 && defaults.SavedKeyCounters.Count == 0);
 
         // 正方形按键：默认宽高联动；关掉之后两个滑块才能独立调（KPS 工具「按键外观」里的开关）
@@ -463,6 +464,7 @@ public static class KpsChecks
             GraphSeconds = 45,
             PersistKeyCounters = true,
             HotkeyToggleOverlay = "Alt+Shift+K",
+            OverlayForceTopmost = false,
             KeyRows = KpsPresets.CloneRows((key5 ?? KpsPresets.Default).Rows),
         };
         config.SavedKeyCounters["68"] = 1234;   // "68" = D
@@ -513,6 +515,7 @@ public static class KpsChecks
                 && reloaded.HotkeyToggleLock == "Ctrl+Shift+L"
                 && reloaded.GraphSeconds == 45
                 && reloaded.PersistKeyCounters
+                && !reloaded.OverlayForceTopmost
                 && reloaded.ActivePresetId == "my-preset");
             C("配置计算属性：按 ActivePresetId 解析出自定义预设名", reloaded.ActivePresetName == "我的 5K");
             C("配置序列化：带 setter 的计算属性有 [JsonIgnore]，不写进 JSON",

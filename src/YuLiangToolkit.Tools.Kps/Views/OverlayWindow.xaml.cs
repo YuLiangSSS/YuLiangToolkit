@@ -38,6 +38,13 @@ public partial class OverlayWindow : Window
     private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpFrameChanged = 0x0020;
+    private const uint SwpNoOwnerZOrder = 0x0200;
+
+    /// <summary>Win32 <c>HWND_TOPMOST</c>（-1）：把窗口放到 topmost 带最上层。</summary>
+    private static readonly IntPtr HwndTopmost = new(-1);
+
+    /// <summary>强制置顶的重新抢占间隔（毫秒）：够快能压住爱抢置顶的游戏，又不至于每秒折腾 20 次。</summary>
+    private const int ForceTopmostIntervalMs = 500;
 
     /// <summary>缩放范围 / 步进（与配置说明一致）。</summary>
     private const double MinScale = 0.4;
@@ -62,11 +69,22 @@ public partial class OverlayWindow : Window
     private int _placementAttempts;
     private int _centerAttempts;
 
+    /// <summary>强制置顶看门狗：定时把窗口重新抢回 topmost 最上层（配置关闭 / 窗口关闭时停）。</summary>
+    private readonly DispatcherTimer _topmostWatch;
+    private bool _forceTopmost;
+    private bool _closed;
+
     public OverlayWindow(KpsConfig config)
     {
         _config = config;
         _locked = config.OverlayLocked;
         InitializeComponent();
+
+        _topmostWatch = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(ForceTopmostIntervalMs),
+        };
+        _topmostWatch.Tick += (_, _) => ReassertTopmost();
 
         // 拖出 / 释放鼠标捕获时结束拖动（Alt+Tab 切走等异常情况也能收尾）
         LostMouseCapture += (_, _) => FinishDrag();
@@ -88,6 +106,7 @@ public partial class OverlayWindow : Window
         _locked = config.OverlayLocked;
 
         Topmost = config.OverlayTopmost;
+        _forceTopmost = config.OverlayForceTopmost;
         Opacity = SafeClamp(config.OverlayOpacity, 0.1, 1.0, 1.0);
         Root.CornerRadius = new CornerRadius(SafeClamp(config.KeyCornerRadius, 0, 40, 12));
         Root.Background = KpsColor.ParseBrush(config.OverlayBackgroundColor, Colors.Transparent);
@@ -108,6 +127,10 @@ public partial class OverlayWindow : Window
             Left = savedLeft;
             Top = savedTop;
         }
+
+        // 强制置顶看门狗：开关 / 始终置顶变化后立刻生效（窗口已建出来时顺手抢一次）
+        UpdateTopmostWatch();
+        if (IsLoaded) ReassertTopmost();
     }
 
     /// <summary>锁定（点击穿透）/ 解锁（可拖动、滚轮缩放）。</summary>
@@ -178,6 +201,10 @@ public partial class OverlayWindow : Window
 
         // 首次建 HWND 就应用锁定状态（NoActivate / ToolWindow 从第一帧起就生效，不抢焦点）
         SetLocked(_locked);
+
+        // 强制置顶看门狗：HWND 建好才开始周期抢置顶
+        UpdateTopmostWatch();
+        ReassertTopmost();
 
         // SizeToContent + 键位网格数据绑定要等布局 / 首帧渲染稳定才有真实尺寸，延后到 ApplicationIdle 再定位
         SchedulePlacementInitialization();
@@ -353,6 +380,48 @@ public partial class OverlayWindow : Window
         "center" => (0.5, 0.5),
         _ => (0, 0),
     };
+
+    // ============================== 强制置顶（游戏加强） ==============================
+
+    /// <summary>
+    /// 按配置启停「强制置顶看门狗」：只有「始终置顶 + 强制置顶」同时开着才跑。
+    /// <para>⚠ 这是给窗口化 / 无边框全屏游戏用的：Windows 的独占全屏（Exclusive Fullscreen）会绕过 DWM 直接接管显示，
+    /// 任何普通窗口（包括本 Overlay）都盖不上去 —— 管理员权限也不行，只能把游戏改成无边框 / 窗口化。</para>
+    /// </summary>
+    private void UpdateTopmostWatch()
+    {
+        var needed = _forceTopmost && _config.OverlayTopmost && !_closed;
+        if (needed)
+        {
+            if (!_topmostWatch.IsEnabled) _topmostWatch.Start();
+        }
+        else
+        {
+            _topmostWatch.Stop();
+        }
+    }
+
+    /// <summary>
+    /// 重新把 Overlay 抢回 topmost 带最上层：不移动、不缩放、不激活、不改 owner。
+    /// 用 Win32 <c>SetWindowPos(HWND_TOPMOST)</c> 而不是改 WPF 的 <c>Topmost</c> 属性 —— 后者值没变时不会真的重排 Z 序。
+    /// </summary>
+    private void ReassertTopmost()
+    {
+        if (_closed || !_forceTopmost || !_config.OverlayTopmost) return;
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero) return;
+
+        SetWindowPos(hwnd, HwndTopmost, 0, 0, 0, 0,
+            SwpNoSize | SwpNoMove | SwpNoActivate | SwpNoOwnerZOrder);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _closed = true;
+        try { _topmostWatch.Stop(); } catch { /* 关闭流程忽略 */ }
+        base.OnClosed(e);
+    }
 
     // ============================== Win32 辅助 ==============================
 
