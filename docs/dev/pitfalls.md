@@ -62,6 +62,9 @@
   裁剪容器宽度会变成 0 / 内容宽，滚动窗口算错）。排查用 `YLT_MINI_MEASURE=<文件>`（dump 真实宽度 / 祖先链 /
   layout clip / 裁剪窗口在窗口坐标里的位置）和 `YLT_MINI_SHIFT=<像素>`（把跑马灯固定在某个位移，截图可复现）；
   回归脚本 `scripts/e2e-mini-marquee.ps1`（真截图 + 像素检查“最后一个字是不是真的画出来了”）。
+- 迷你条标题**速度必须统一**（v0.55.3）：`ScrollDuration` 只按 `溢出宽度 ÷ PixelsPerSecond` 算，**别给超长标题
+  封顶加速**（v0.54.0 曾封顶 4 秒，结果一百多字的歌名滚得飞快、短标题反而正常，用户一眼就看出“长标题太快”）。
+  现在统一 26 px/s（约 2 汉字 / 秒）；要调就改 `MiniPlayerPanel.PixelsPerSecond` 一处，自检会按它反算每像素耗时。
 
 ### 外壳：分类 · 粒子 · 主页设置
 - 老工具 `Category` 别自动当分类目录：树只认 `CategoryPath`（默认空）。

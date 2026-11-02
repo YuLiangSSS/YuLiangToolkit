@@ -39,7 +39,8 @@ internal static class MediaPlayerChecks
     // ---------------------------------------------------------------- 迷你条标题（来回滚）
 
     /// <summary>
-    /// 左下角迷你条那个「标题来回滚」的算术：放得下就**不滚**，放不下才滚，且越长的滚越久。
+    /// 左下角迷你条那个「标题来回滚」的算术：放得下就**不滚**，放不下才滚，而且**所有标题统一速度**
+    /// （v0.55.3 起不再给超长标题封顶加速：之前越长的滚得越快，短标题反而按正常速度）。
     /// 动画本身是 WPF 故事板（无头测不了），但“要不要滚 / 一趟多久”是纯函数，这里逐条钉住。
     /// </summary>
     private static void CheckMiniPanelMarquee(CheckFn check)
@@ -53,9 +54,15 @@ internal static class MediaPlayerChecks
         check("迷你条标题：正好塞满 → 也不滚",
             MiniPlayerPanel.ScrollDuration(view, view) is null);
 
+        // v0.55.3：速度调慢且统一（34 → 26 px/s）。改速度就改这个常量 + 这条断言。
+        check("迷你条标题：统一速度是 26 px/s（放慢但跟得上，所有标题共用）",
+            Math.Abs(MiniPlayerPanel.PixelsPerSecond - 26) < 1e-9,
+            $"{MiniPlayerPanel.PixelsPerSecond} px/s");
+
+        // 统一速度：一趟时长 = 溢出宽度 ÷ PixelsPerSecond（不封顶、不按标题长度变速）
         var oneWay = MiniPlayerPanel.ScrollDuration(344, view);   // 溢出 100px
-        check("迷你条标题：长标题 → 要滚，一趟 ≈ 溢出宽度 ÷ 速度",
-            oneWay is { } d && d.TotalSeconds > 2.5 && d.TotalSeconds < 3.3,
+        check("迷你条标题：一趟 = 溢出宽度 ÷ 统一速度（100px → 100 ÷ 26 ≈ 3.85 秒）",
+            oneWay is { } d && Math.Abs(d.TotalSeconds - 100.0 / MiniPlayerPanel.PixelsPerSecond) < 1e-6,
             oneWay?.ToString() ?? "null");
 
         var barely = MiniPlayerPanel.ScrollDuration(view + 6, view);   // 只溢出 6px
@@ -63,16 +70,22 @@ internal static class MediaPlayerChecks
             barely is { } b && Math.Abs(b.TotalSeconds - 1.0) < 0.01,
             barely?.ToString() ?? "null");
 
-        // 真实歌名（G:\Music&Video 里那种一百多字的名字）溢出几百像素：**必须封顶**，
-        // 否则按 34px/s 要滚 10~20 秒，用户看到的就是「标题一直显示不全」。
-        var veryLong = MiniPlayerPanel.ScrollDuration(1200, view);   // 溢出 956px，不封顶要 ~28 秒
-        check("迷你条标题：超长标题一趟也有上限（最多 MaxOneWaySeconds 秒，不会滚十几二十秒）",
-            veryLong is { } v && Math.Abs(v.TotalSeconds - MiniPlayerPanel.MaxOneWaySeconds) < 0.01,
-            veryLong?.ToString() ?? "null");
+        // v0.55.3 的核心：**统一速度**——长标题不再封顶加速，每像素花的时间必须一样。
+        var longDuration = MiniPlayerPanel.ScrollDuration(1200, view);   // 溢出 956px
+        var longSpeed = longDuration is { } ld ? 956.0 / ld.TotalSeconds : double.NaN;
+        check("迷你条标题：超长标题也不加速——速度仍是 PixelsPerSecond（26 px/s）",
+            Math.Abs(longSpeed - MiniPlayerPanel.PixelsPerSecond) < 1e-6,
+            $"速度 {longSpeed:0.###} px/s（期望 {MiniPlayerPanel.PixelsPerSecond}）");
 
-        var absurd = MiniPlayerPanel.ScrollDuration(4000, view);
-        check("迷你条标题：再长也还是这个上限（不会越长的标题等越久）",
-            absurd is { } a && Math.Abs(a.TotalSeconds - MiniPlayerPanel.MaxOneWaySeconds) < 0.01,
+        var perPixelOfShort = oneWay is { } od ? od.TotalSeconds / 100.0 : double.NaN;
+        var perPixelOfLong = longDuration is { } ldd ? ldd.TotalSeconds / 956.0 : double.NaN;
+        check("迷你条标题：不同长度的标题每像素耗时相同（速度统一，只有长的滚得久）",
+            Math.Abs(perPixelOfShort - perPixelOfLong) < 1e-6,
+            $"每像素 {perPixelOfShort * 1000:0.###} / {perPixelOfLong * 1000:0.###} 毫秒");
+
+        var absurd = MiniPlayerPanel.ScrollDuration(4000, view);   // 溢出 3756px
+        check("迷你条标题：再长也还是同一个速度（不会越长的标题滚得越快）",
+            absurd is { } a && Math.Abs(3756.0 / a.TotalSeconds - MiniPlayerPanel.PixelsPerSecond) < 1e-6,
             absurd?.ToString() ?? "null");
 
         check("迷你条标题：回滚比去程快（最多 MaxReturnSeconds 秒，短行程按原时长）",

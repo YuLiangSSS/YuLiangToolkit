@@ -1,4 +1,4 @@
-# e2e-mini-marquee.ps1 -- regression check for the mini player's scrolling title (v0.55.2)
+# e2e-mini-marquee.ps1 -- regression check for the mini player's scrolling title (v0.55.2 / v0.55.3)
 #
 # Why this script exists:
 #   The old title never revealed its tail. The TextBlock was put directly inside a Grid,
@@ -10,7 +10,7 @@
 #
 # What it does (real app, real rendering -- not just reading TextBlock.Text):
 #   1. builds an offline fixture: a playlist with a 40+ char title (0-byte file is enough,
-#      the mini player only renders the playlist entry here) and a short title;
+#      the mini player only renders the playlist entry here), a medium title and a short title;
 #   2. runs the real exe with YLT_MINI_DEMO=1 + YLT_SHOT=... (screenshots go to shots/);
 #   3. asserts the layout facts through YLT_MINI_MEASURE dump:
 #        - long title: text wider than the clip window, TextBlock has NO layout clip,
@@ -18,7 +18,10 @@
 #        - short title: ScrollDuration=null and no movement;
 #   4. freezes the marquee at the far end (YLT_MINI_SHIFT=end position), takes another
 #      real screenshot and verifies by PIXELS that the last characters were painted just
-#      before the right edge of the window.
+#      before the right edge of the window;
+#   5. v0.55.3: measures the REAL animation speed from two shifted samples and asserts it
+#      equals PixelsPerSecond for both a long and a medium title (uniform speed -- long
+#      titles must not scroll faster).
 #
 # Usage:
 #   .\scripts\e2e-mini-marquee.ps1
@@ -56,27 +59,33 @@ New-Item -ItemType Directory -Force -Path $media, $playlistDir, $OutDir | Out-Nu
 
 # 40+ ASCII chars: the fixture is about a long *title* in the playlist, not about audio content.
 $longTitle = "E2E Mini Player Very Long Title With More Than Thirty Five Characters 2026"
+$mediumTitle = "E2E Mini Player Medium Title With Plenty Of Characters 2026"
 $shortTitle = "E2E Short"
 $longPath = Join-Path $media ($longTitle + ".mp3")
+$mediumPath = Join-Path $media ($mediumTitle + ".mp3")
 $shortPath = Join-Path $media ($shortTitle + ".mp3")
 [System.IO.File]::WriteAllBytes($longPath, [byte[]]::new(0))
+[System.IO.File]::WriteAllBytes($mediumPath, [byte[]]::new(0))
 [System.IO.File]::WriteAllBytes($shortPath, [byte[]]::new(0))
 $playlistPath = Join-Path $playlistDir "playlist.json"
 
 function Set-CurrentTrack([string]$path) {
-    $state = @{ paths = @($longPath, $shortPath); currentPath = $path; positionSeconds = 0.0 }
+    $state = @{ paths = @($longPath, $mediumPath, $shortPath); currentPath = $path; positionSeconds = 0.0 }
     [System.IO.File]::WriteAllText($playlistPath, ($state | ConvertTo-Json -Depth 4),
         ([System.Text.UTF8Encoding]::new($false)))
 }
 
 function Clear-YltEnv {
     $names = @("YLT_HOME", "YLT_MINI_DEMO", "YLT_WINDOW_SIZE", "YLT_SHOT", "YLT_SHOT_DELAY_MS",
-               "YLT_MINI_MEASURE", "YLT_MINI_SHIFT")
+               "YLT_MINI_MEASURE", "YLT_MINI_SHIFT", "YLT_MINI_MEASURE_DELAY_MS")
     foreach ($name in $names) { Remove-Item ("Env:" + $name) -ErrorAction SilentlyContinue }
 }
 
 # Run the real app once (it captures one screenshot and exits) and return its measure dump.
-function Invoke-Shot([string]$tag, [int]$delayMs, [string]$shift) {
+#   -measureDelayMs: when > 0, take the geometry snapshot that many ms after load (default 1200
+#                    in the app). The app also appends a second TitleShift sample 1000 ms later,
+#                    so the screenshot delay must be larger than measureDelayMs + 1000.
+function Invoke-Shot([string]$tag, [int]$delayMs, [string]$shift, [int]$measureDelayMs = 0) {
     $measure = Join-Path $work ("measure-" + $tag + ".txt")
     $shot = Join-Path $OutDir ("mini-marquee-" + $tag + ".png")
     Clear-YltEnv
@@ -87,6 +96,7 @@ function Invoke-Shot([string]$tag, [int]$delayMs, [string]$shift) {
     $env:YLT_SHOT = $shot
     $env:YLT_MINI_MEASURE = $measure
     if (-not [string]::IsNullOrWhiteSpace($shift)) { $env:YLT_MINI_SHIFT = $shift }
+    if ($measureDelayMs -gt 0) { $env:YLT_MINI_MEASURE_DELAY_MS = [string]$measureDelayMs }
 
     $proc = Start-Process -FilePath $Exe -WorkingDirectory $root -PassThru
     if (-not $proc.WaitForExit(120000)) {
@@ -97,6 +107,16 @@ function Invoke-Shot([string]$tag, [int]$delayMs, [string]$shift) {
     if (-not (Test-Path $shot)) { throw "no screenshot: $shot" }
     $bytes = [System.IO.File]::ReadAllBytes($measure)
     return [System.Text.Encoding]::UTF8.GetString($bytes)
+}
+
+# Real animation speed (px/s) from the two TitleShift samples written by the app.
+function Measure-Speed([string]$dump) {
+    $match = [regex]::Match($dump, "(?m)^TitleShift\.After=([-0-9.]+) SampleGapMs=([0-9]+)")
+    if (-not $match.Success) { throw "speed sample not found in measure dump" }
+    $after = [double]::Parse($match.Groups[1].Value, $inv)
+    $gapMs = [int]$match.Groups[2].Value
+    $before = Measure-Number $dump "TitleShift.X"
+    return [Math]::Abs($after - $before) / ($gapMs / 1000.0)
 }
 
 function Measure-Number([string]$dump, [string]$key) {
@@ -208,6 +228,29 @@ try {
     Check "short title: ScrollDuration is null" `
         ($shortDurationMatch.Success -and $shortDurationMatch.Groups[1].Value -eq "null")
     Check "short title: screenshot saved" (Test-Path (Join-Path $OutDir "mini-marquee-short.png"))
+
+    # ---------------- 4. v0.55.3: uniform scrolling speed (long must not scroll faster) ----------------
+    # The app writes TitleShift.X at the snapshot and again 1000 ms later; the delta / time is the
+    # real animation speed. Snapshot at 1500 ms (past the 600 ms start pause), screenshot at 3200 ms
+    # so the second sample is written before the app exits.
+    $expectedSpeed = Measure-Number $dump "PixelsPerSecond"
+    Set-CurrentTrack $longPath
+    $longSpeedDump = Invoke-Shot -tag "speed-long" -delayMs 3200 -shift "" -measureDelayMs 1500
+    $longSpeed = Measure-Speed $longSpeedDump
+    Check "speed: long title really scrolls at PixelsPerSecond (measured from the running animation)" `
+        ([Math]::Abs($longSpeed - $expectedSpeed) -le [Math]::Max(2.0, $expectedSpeed * 0.12)) `
+        ("measured=" + [Math]::Round($longSpeed, 1) + " px/s, expected=" + $expectedSpeed)
+
+    Set-CurrentTrack $mediumPath
+    $mediumSpeedDump = Invoke-Shot -tag "speed-medium" -delayMs 3200 -shift "" -measureDelayMs 1500
+    $mediumSpeed = Measure-Speed $mediumSpeedDump
+    Check "speed: medium title scrolls at the same PixelsPerSecond" `
+        ([Math]::Abs($mediumSpeed - $expectedSpeed) -le [Math]::Max(2.0, $expectedSpeed * 0.12)) `
+        ("measured=" + [Math]::Round($mediumSpeed, 1) + " px/s, expected=" + $expectedSpeed)
+
+    Check "speed: different title lengths really share one speed (uniform, no per-title acceleration)" `
+        ([Math]::Abs($longSpeed - $mediumSpeed) -le [Math]::Max(2.5, $expectedSpeed * 0.1)) `
+        ("long=" + [Math]::Round($longSpeed, 1) + " px/s, medium=" + [Math]::Round($mediumSpeed, 1) + " px/s")
 }
 finally {
     Clear-YltEnv

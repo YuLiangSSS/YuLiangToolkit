@@ -21,6 +21,10 @@ namespace YuLiangToolkit.App.Views;
 /// 这样两端都看得清；标题本来就放得下时**根本不滚**。速度与“一趟多久”见
 /// <see cref="ScrollDuration"/>（纯函数，自检直接断言它）。</para>
 ///
+/// <para><b>速度是统一的</b>（v0.55.3 起）：所有长度都用 <see cref="PixelsPerSecond"/>，
+/// **不再给超长标题封顶加速**——之前「一趟最多 4 秒」会把一百多字的歌名滚得飞快、短标题反而慢，
+/// 看着像卡顿/抽帧。现在越长的标题只是滚得越久，速度始终一样；等不及可以悬停看完整提示。</para>
+///
 /// <para>⚠ 它的 <c>DataContext</c> 是**播放器的 ViewModel**（外壳的 <c>MiniPanelSource</c> 给过来的），
 /// 不是 <c>MainViewModel</c>；所以「回到播放器」那条命令在 XAML 里用 Window 的 DataContext 取。</para>
 ///
@@ -33,15 +37,12 @@ namespace YuLiangToolkit.App.Views;
 /// </summary>
 public partial class MiniPlayerPanel : UserControl
 {
-    /// <summary>普通长度标题的滚动速度（像素 / 秒）。太快看不清，太慢像卡住。</summary>
-    public const double PixelsPerSecond = 34;
-
     /// <summary>
-    /// 超长标题（歌名一百多个字那种）一趟**最多**滚这么久。
-    /// 不封顶的话「溢出 700px ÷ 34px/s ≈ 20 秒」才滚到尾，看起来就像一直显示不全；
-    /// 封顶后长标题大约 4 秒就能看到结尾。
+    /// 标题滚动速度（像素 / 秒）——**所有标题统一用这一个速度**（放得下的不滚）。
+    /// <para>v0.55.3 从 34 放慢到 26：12px 字体下大约 2 个汉字 / 秒，眼睛跟得上；
+    /// 不再按标题长度封顶加速（那个封顶会让长标题瞬间变快，短标题反而慢）。</para>
     /// </summary>
-    public const double MaxOneWaySeconds = 4.0;
+    public const double PixelsPerSecond = 26;
 
     /// <summary>回滚（从结尾滚回开头）最多用这么久——去程慢慢看，回程快速复位，别让人干等。</summary>
     public const double MaxReturnSeconds = 0.8;
@@ -55,7 +56,10 @@ public partial class MiniPlayerPanel : UserControl
     /// <summary>滚到一头之后停多久（让人看清第一个字 / 最后一个字）。</summary>
     private static readonly TimeSpan EndPause = TimeSpan.FromSeconds(1.5);
 
-    /// <summary>一趟最少走这么久（只溢出几个像素时不至于“闪一下”）。</summary>
+    /// <summary>
+    /// 一趟最少走这么久：只溢出几个像素时按统一速度算只有零点几秒，会像“闪一下”；
+    /// 这类标题本来就差得很少，最多慢这一秒，肉眼几乎看不出和其他标题的速度差别。
+    /// </summary>
     private static readonly TimeSpan MinMove = TimeSpan.FromSeconds(1.0);
 
     /// <summary>
@@ -195,8 +199,9 @@ public partial class MiniPlayerPanel : UserControl
     /// <summary>
     /// 标题这一趟要滚多久：**放得下就返回 <c>null</c>（压根不滚）**，放不下返回滚完
     /// “溢出部分”（标题宽 − 可视宽）所需的时间。
-    /// <para>普通长度按 <see cref="PixelsPerSecond"/> 匀速；**超长标题最多
-    /// <see cref="MaxOneWaySeconds"/> 秒**（不封顶的话一百多字的歌名要滚 20 秒，看着就像一直显示不全）。</para>
+    /// <para><b>所有标题统一速度</b>（<see cref="PixelsPerSecond"/>）：不管歌名多长，
+    /// 每像素用的时间都一样（长标题只是滚得久，不会变快）。只有溢出不到一个“最短一趟”的
+    /// 情况用 <see cref="MinMove"/> 兜底，避免闪一下。</para>
     /// <para>纯算术，自检直接断言（见 <c>MediaPlayerChecks</c> 的「迷你条标题」那几条）。</para>
     /// </summary>
     public static TimeSpan? ScrollDuration(double textWidth, double viewWidth, double pixelsPerSecond = PixelsPerSecond)
@@ -208,7 +213,7 @@ public partial class MiniPlayerPanel : UserControl
         if (overflow <= 1) return null;                     // 容 1px：四舍五入的误差不算溢出
 
         var speed = pixelsPerSecond > 1 ? pixelsPerSecond : 1;
-        var seconds = Math.Min(overflow / speed, MaxOneWaySeconds);
+        var seconds = overflow / speed;                     // 不封顶：统一速度，长标题不会加速
         return seconds * 1000 < MinMove.TotalMilliseconds ? MinMove : TimeSpan.FromSeconds(seconds);
     }
 
@@ -262,22 +267,56 @@ public partial class MiniPlayerPanel : UserControl
 
     /// <summary>
     /// 把迷你条标题行的真实几何写进文件（<see cref="MeasurePath"/>）：真实宽度 / 裁剪矩形 /
-    /// 祖先的 ClipToBounds / layout clip / 当前滚动位移，以及标题裁剪窗口在**窗口坐标**里的位置
+    /// 祖先的 ClipToBounds / layout clip / 当前滚动位移 / 统一速度，以及标题裁剪窗口在**窗口坐标**里的位置
     /// （给截图脚本按像素核对「最后一个字是不是真的露出来了」用）。
     /// <para>排查「标题被截断」时**光看 TextBlock.Text 没用**——Text 永远是完整的，断的是布局与裁剪
     /// （v0.55.2 那个 bug 就是 WPF 自动加的 layout clip 跟着 RenderTransform 一起走）。</para>
+    /// <para>快照之后再隔 <see cref="MeasureSpeedGapMs"/> 补一个位移样本：两点的位移差 ÷ 时间差
+    /// 就是**真实动画速度**，用来验收「所有标题统一速度」（<c>scripts/e2e-mini-marquee.ps1</c> 会算）。</para>
     /// </summary>
     private void ScheduleMeasure()
     {
         if (MeasurePath is null) return;
         var timer = new DispatcherTimer(DispatcherPriority.Background)
         {
-            Interval = TimeSpan.FromMilliseconds(1200),
+            Interval = ReadMeasureSnapshotDelay(),
         };
         timer.Tick += (_, _) =>
         {
             timer.Stop();
             try { DumpMeasure(); } catch (Exception ex) { TryWrite($"测量失败：{ex}"); }
+            ScheduleSpeedSample();
+        };
+        timer.Start();
+    }
+
+    /// <summary>第一次快照的延时（毫秒）；<c>YLT_MINI_MEASURE_DELAY_MS</c> 可改，默认 1200。</summary>
+    private static TimeSpan ReadMeasureSnapshotDelay()
+        => int.TryParse(Environment.GetEnvironmentVariable("YLT_MINI_MEASURE_DELAY_MS"), out var delay)
+           && delay >= 0 && delay <= 30_000
+            ? TimeSpan.FromMilliseconds(delay)
+            : TimeSpan.FromMilliseconds(1200);
+
+    /// <summary>两个速度样本之间的时间差（毫秒）。</summary>
+    private const int MeasureSpeedGapMs = 1000;
+
+    /// <summary>隔 <see cref="MeasureSpeedGapMs"/> 再记一个位移样本，供 e2e 换算真实滚动速度。</summary>
+    private void ScheduleSpeedSample()
+    {
+        var timer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(MeasureSpeedGapMs),
+        };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            try
+            {
+                File.AppendAllText(MeasurePath!,
+                    $"TitleShift.After={TitleShift.X:0.###} SampleGapMs={MeasureSpeedGapMs}"
+                    + Environment.NewLine);
+            }
+            catch { /* 排错钩子别把界面搞崩 */ }
         };
         timer.Start();
     }
@@ -286,6 +325,7 @@ public partial class MiniPlayerPanel : UserControl
     {
         var sb = new StringBuilder();
         sb.AppendLine($"panel={ActualWidth:0.##}x{ActualHeight:0.##} IsVisible={IsVisible} IsLoaded={IsLoaded}");
+        sb.AppendLine($"PixelsPerSecond={PixelsPerSecond:0.##}");
         sb.AppendLine($"TitleClip.ActualWidth={TitleClip.ActualWidth:0.##} ActualHeight={TitleClip.ActualHeight:0.##}");
         sb.AppendLine($"TitleText.ActualWidth={TitleText.ActualWidth:0.##} ActualHeight={TitleText.ActualHeight:0.##}");
         sb.AppendLine($"TitleShift.X={TitleShift.X:0.##} animated={TitleShift.HasAnimatedProperties}");
