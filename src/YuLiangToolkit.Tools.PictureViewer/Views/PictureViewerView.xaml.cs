@@ -1451,7 +1451,6 @@ public partial class PictureViewerView : UserControl
         Cursor = null;   // 全屏里一动鼠标先把指针亮出来
         _lastFullscreenPointer = position;
 
-        var panelsOpen = vm.IsSettingsVisible;
         var inTopZone = position.Y <= ToolbarRevealZonePixels;
         var inToolbar = ToolbarBorder.IsMouseOver
                         || (_toolbarShown && position.Y <= ToolbarBorder.ActualHeight + ToolbarLeaveGracePixels);
@@ -1470,13 +1469,14 @@ public partial class PictureViewerView : UserControl
             return;
         }
 
-        if (inToolbar || panelsOpen)
+        if (inToolbar)
         {
             _toolbarAutoHideTimer?.Stop();
             StartIdleTimer();
             return;
         }
 
+        // 鼠标已经离开顶部 / 工具条（哪怕设置面板还开着）：1 秒后自动滑回去
         StartToolbarAutoHideTimer();
     }
 
@@ -1484,7 +1484,7 @@ public partial class PictureViewerView : UserControl
     {
         _toolbarAutoHideTimer ??= new DispatcherTimer(DispatcherPriority.Background)
         {
-            Interval = TimeSpan.FromMilliseconds(650),
+            Interval = TimeSpan.FromMilliseconds(1000),
         };
         if (_toolbarAutoHideTimer.Tag is null)
         {
@@ -1502,7 +1502,6 @@ public partial class PictureViewerView : UserControl
         if (Vm is not { } vm || !vm.IsFullscreen || !_toolbarShown) return;
 
         if (ToolbarBorder.IsMouseOver || ToolbarBorder.IsKeyboardFocusWithin
-            || vm.IsSettingsVisible
             || _lastFullscreenPointer.Y <= ToolbarRevealZonePixels)
         {
             StartIdleTimer();
@@ -1579,10 +1578,9 @@ public partial class PictureViewerView : UserControl
             return;
         }
 
-        // 工具条还露着：鼠标停在上面 / 正在输入 / 面板开着 / 还贴着顶部 → 别收，重新计时
+        // 工具条还露着：鼠标停在上面 / 正在输入 / 还贴着顶部 → 别收，重新计时
         if (_toolbarShown
             && (ToolbarBorder.IsMouseOver || ToolbarBorder.IsKeyboardFocusWithin
-                || vm.IsSettingsVisible
                 || _lastFullscreenPointer.Y <= ToolbarRevealZonePixels))
         {
             StartIdleTimer();
@@ -1633,6 +1631,22 @@ public partial class PictureViewerView : UserControl
                     : new Point(ActualWidth / 2, Math.Max(200, ActualHeight / 2)));
             };
             timer.Start();
+        }
+
+        // 调试 / 截图：先模拟靠近顶部滑出，再模拟鼠标移开；验证「离开顶部 1 秒后自动上滑收起」
+        if (PictureViewerViewModel.IsEnvironmentOn("YLT_PICTURE_HOVER_SEQUENCE"))
+        {
+            HandleFullscreenPointerAt(new Point(ActualWidth / 2, 4));
+            var sequenceTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(100),
+            };
+            sequenceTimer.Tick += (_, _) =>
+            {
+                sequenceTimer.Stop();
+                HandleFullscreenPointerAt(new Point(ActualWidth / 2, Math.Max(200, ActualHeight / 2)));
+            };
+            sequenceTimer.Start();
         }
     }
 

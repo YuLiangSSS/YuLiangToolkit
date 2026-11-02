@@ -202,6 +202,27 @@ public partial class App : Application
             vm.OpenSettings();
         }
 
+        // 开发调试：YLT_FULLSCREEN_ROUNDTRIP=1 进全屏 400ms 再退出，截图验收「退出全屏后是正常最大化（带任务栏）」
+        if (Environment.GetEnvironmentVariable("YLT_FULLSCREEN_ROUNDTRIP") is "1" or "on" or "true")
+        {
+            if (Environment.GetEnvironmentVariable("YLT_START_MAXIMIZED") is "1" or "on" or "true")
+            {
+                window.WindowState = WindowState.Maximized;
+            }
+
+            window.SetFullscreen(true);
+            var roundTrip = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(400),
+            };
+            roundTrip.Tick += (_, _) =>
+            {
+                roundTrip.Stop();
+                window.SetFullscreen(false);
+            };
+            roundTrip.Start();
+        }
+
         if (!string.IsNullOrWhiteSpace(shotPath))
         {
             ScheduleDebugPageScroll(window, vm, shotPath);

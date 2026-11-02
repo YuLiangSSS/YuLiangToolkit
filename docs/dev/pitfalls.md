@@ -30,6 +30,9 @@
 - ⚠ `MediaElement` 的 `LoadedBehavior` / `UnloadedBehavior` 都要设 `Manual`，否则自播自闭、跟 VM 命令打架。
 - ⚠ 整窗全屏临时改 `WM_GETMINMAXINFO` 再最大化，并 `SetWindowRgn(hwnd, IntPtr.Zero)` 清工作区 Region，否则底部黑带。
 - 藏任务栏用 `TaskbarHider`：400ms 看门狗、`Hide()` 幂等、不能 `Thread.Sleep`；`YLT_TASKBAR_TRACE` 错误码 5 = 完整性级别低。
+- ⚠ 退出全屏回到「最大化」时**不能直接 `WindowState = Maximized`**：进入全屏前窗口本来就是最大化，
+  赋同一个值 WPF 不会重新走 `WM_GETMINMAXINFO`，窗口会保留整块显示器的尺寸（任务栏还回来了却被窗口盖住，看起来像没退干净）。
+  必须先 `WindowState = Normal` 再 `Maximized`（见 `MainWindow.ExitFullscreen`）；播放器 / 图片 / PDF 三个工具共用这条路径。
 - 切走还要干活：`IBackgroundTool.KeepAliveOnLeave` + 外壳存视图实例；`Unloaded` 时不能 `Close()` 播放器。
 - 工具页状态缓存（v0.46.0）：`MainViewModel.CloseCurrentTool` **不再直接 `NotifyClosed`**，而是把视图 +
   ViewModel 塞进 `_toolViewCache`（最多 12 个，LRU）；切回时原样复用。真的 Dispose 只有三条路径：
@@ -94,12 +97,17 @@
   反过来会留下一个“藏了壳”的窗口（播放器踩过的坑，两个阅读器复制同一套）。
 - 全屏工具条是浮层：行高绑 VM 的 `ToolbarRowHeight`（全屏 = 0），Border 用 DataTrigger 换到 Row1 + `Panel.ZIndex` 置顶；
   **隐藏 / 显示用 `RenderTransform` 上下平移（约 180ms 滑出 / 160ms 滑回），别再拿 `Visibility` 切换**——Collapsed 就做不了动画，
-  也没法做「靠近顶部才滑出」的交互。全屏鼠标只有在**距顶 84px 热区**才滑出；离开顶部 / 工具条约 650ms 自动滑回；
-  阅读区中间晃鼠标只让指针显示，不弹工具条。⚠ 视图 `Loaded` 可能触发多次：用一个 `_fullscreenApplied` 守卫，
-  重复同步时不能把已滑出的工具条又藏回去（踩过：第二次 Loaded 直接藏回，截图里永远看不到工具条）。
+  也没法做「靠近顶部才滑出」的交互。全屏鼠标只有在**距顶 84px 热区**才滑出；离开顶部 / 工具条约 **1 秒**自动滑回；
+  阅读区中间晃鼠标只让指针显示，不弹工具条。⚠ **设置 / 目录面板开着也不能阻止工具条自动收**（踩过：旧逻辑把
+  `IsSettingsVisible` 当保留条件，面板一开工具条就永远挂在上面）；只有鼠标还在顶部热区 / 工具条上、或搜索框聚焦才保留。
+  ⚠ 视图 `Loaded` 可能触发多次：用一个 `_fullscreenApplied` 守卫，重复同步时不能把已滑出的工具条又藏回去。
 - 截图：`YLT_*_CONTROLS=1` 会把工具条**钉在滑出状态**（否则真实鼠标在窗口里触发的 move 会按热区规则把它收走），
   `=0` 拍沉浸帧；`YLT_*_HOVER_TOP=1` / `_HOVER_MIDDLE=1` 模拟鼠标在顶部 / 中间，用来验「靠近顶部才滑出」
   （跑之前先把真实鼠标移开顶部，否则真实 move 事件会覆盖模拟结果）。
+  `YLT_*_HOVER_SEQUENCE=1` 先顶部再中间，用来验「离开顶部 1 秒后自动收起」；`YLT_SHOT_DELAY_MS=2200` 把截图延迟拉长，
+  否则 1.2 秒的截图可能在工具条还没收完时就拍。
+  `YLT_FULLSCREEN_ROUNDTRIP=1`（可再配 `YLT_START_MAXIMIZED=1`）进入全屏 400ms 再退出，
+  截图尺寸应等于**工作区**（如 1920×1032 而不是 1928×1088），用来验「退出全屏是正常最大化」。
 
 ### PDF 阅读器
 - ⚠ PDF 渲染用系统自带的 `Windows.Data.Pdf`（WinRT，不引第三方包）：**主程序 / 自检目标框架因此升到
@@ -138,6 +146,10 @@
 - 全屏沉浸阅读（F11）和图片阅读器同一套：`IFullscreenHost` + 工具条浮层 + **鼠标靠近顶部才上下滑出 / 滑回** + 指针隐藏；
   ⚠ 视图 `Unloaded` 同样是「先 `ExitFullscreen()`（事件还订阅着）→ 再摘事件」。PDF 工具条是两行，全屏时仍浮在顶部；
   全屏时底部操作提示条收起、页码 / 进度条保留。动画 / 热区 / 重复 Loaded 守卫见上面图片阅读器那条（两边同一套代码）。
+- PDF 设置面板：正文放在「行高 560 + 12px 横向 PaneSplitter + *」的 Grid 里，底部缝上下拖动调面板高度
+  （`Key="pdf-reader.设置面板高度"`，随 `Config\layout.json` 记住；双击复位）。别再写成固定高度 + `MaxHeight` 的 Border，
+  那样只有左侧宽度缝能拖、下面拖不动。页码条显隐是 `Cfg.ShowPageIndicator`，设置面板勾选框绑 `ShowPageIndicator`，
+  改完要调 `UpdateModeChrome` / `UpdatePageIndicatorVisibility`（不要只改 Visibility 常量）。
 - 调试 / 截图：`YLT_PICTURE_FULLSCREEN=1` / `YLT_PDF_FULLSCREEN=1` 全屏启动；`YLT_PICTURE_CONTROLS=1` /
   `YLT_PDF_CONTROLS=1` 钉住滑出的工具条，`=0` 拍“沉浸”帧；`YLT_*_HOVER_TOP=1` / `_HOVER_MIDDLE=1` 验证「靠近顶部才滑出」。
 - 记住上次阅读位置（`config.json` 的 `readingPositions`）：界面每帧都可调 `NoteReadingPosition`，VM 里 1.2s `DispatcherTimer`

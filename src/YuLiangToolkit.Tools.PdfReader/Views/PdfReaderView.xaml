@@ -494,13 +494,22 @@
                                Visibility="{Binding IsRecentVisible, Converter={StaticResource BoolToVis}}" />
         </Grid>
 
-        <!-- ================= 设置面板（右侧浮层） ================= -->
-        <Border x:Name="SettingsPanel" Grid.Row="1" Grid.Column="4"
-                VerticalAlignment="Top" Margin="0,12,12,0" Padding="16,14"
-                MaxHeight="{Binding ActualHeight, ElementName=ViewportGrid}"
-                Style="{StaticResource CardStyle}"
-                Visibility="{Binding IsSettingsVisible, Converter={StaticResource BoolToVis}}">
-            <DockPanel>
+        <!-- ================= 设置面板（右侧浮层，高度可拖） =================
+             外层 Grid 的三行：设置面板（默认 560 px，可拖成任意高）→ 12px 横向分隔条 → 剩余空间；
+             分隔条给 core:PaneSplitter 后宽度/高度都会记进 Config\layout.json，双击恢复这一处默认高度。 -->
+        <Grid Grid.Row="1" Grid.Column="4" Margin="0,12,12,0"
+              Visibility="{Binding IsSettingsVisible, Converter={StaticResource BoolToVis}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="560" MinHeight="220"
+                               MaxHeight="{Binding ActualHeight, ElementName=ViewportGrid}" />
+                <RowDefinition Height="12" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Border x:Name="SettingsPanel" Grid.Row="0" Padding="16,14"
+                    ClipToBounds="True"
+                    Style="{StaticResource CardStyle}">
+                <DockPanel>
                 <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
                     <TextBlock Text="⚙ 阅读设置" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
                     <Button HorizontalAlignment="Right" Style="{StaticResource SmallIconButtonStyle}"
@@ -530,6 +539,16 @@
                                        VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="46"
                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                         </Grid>
+
+                        <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,14,0,10" />
+
+                        <TextBlock Text="页数显示" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,2" />
+                        <CheckBox Content="显示底部页码（第 x / n 页）" FontSize="11.5"
+                                  Style="{StaticResource CheckBoxStyle}"
+                                  Foreground="{DynamicResource TextPrimaryBrush}"
+                                  IsChecked="{Binding ShowPageIndicator, Mode=TwoWay}"
+                                  Click="OnShowPageIndicatorClick"
+                                  ToolTip="关掉后底部不再显示「第 x / n 页」（进度条保留）；设置会自动保存" />
 
                         <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,14,0,10" />
 
@@ -583,7 +602,8 @@
                         <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,14,0,10" />
 
                         <Button Content="恢复默认设置" Style="{StaticResource SecondaryButtonStyle}"
-                                Height="30" HorizontalAlignment="Left"
+                                Height="36" Padding="12,0" VerticalContentAlignment="Center"
+                                HorizontalAlignment="Left"
                                 Command="{Binding ResetSettingsCommand}" />
                         <TextBlock FontSize="10.5" TextWrapping="Wrap" Margin="0,6,0,0"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
@@ -591,7 +611,12 @@
                     </StackPanel>
                 </ScrollViewer>
             </DockPanel>
-        </Border>
+            </Border>
+
+            <!-- 设置面板底部：上下拖动可调高度（悬停亮蓝线 / ↕ 光标；双击恢复默认高度；随界面布局一起记住） -->
+            <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="pdf-reader.设置面板高度" />
+        </Grid>
 
         <!-- 设置侧栏的宽度：竖缝只改第 4 列；高度跟着浮层走（同目录）；关着设置时一起收起；双击恢复这一处默认宽度。 -->
         <core:PaneSplitter Grid.Row="1" Grid.Column="3" Style="{StaticResource PaneSplitterVerticalStyle}"

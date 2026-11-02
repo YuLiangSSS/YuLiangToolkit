@@ -62,6 +62,9 @@ public sealed class PdfReaderConfig : ToolConfig
     /// <summary>双页翻页时左右两页之间的间距（像素，0 ~ 64，默认 2 = 贴近）。</summary>
     public int SpreadGapPixels { get; set; } = DefaultSpreadGapPixels;
 
+    /// <summary>底部「第 x / n 页」页码条是否显示（默认显示；有的用户只想沉浸看图时去掉）。</summary>
+    public bool ShowPageIndicator { get; set; } = true;
+
     /// <summary>上次打开 PDF 所在文件夹（只用来当文件对话框的起始目录，不会自动打开）。</summary>
     public string LastFolder { get; set; } = "";
 
@@ -242,6 +245,7 @@ public sealed class PdfReaderConfig : ToolConfig
         WheelStepPixels = DefaultWheelStepPixels;
         ZoomPercent = DefaultZoomPercent;
         SpreadGapPixels = DefaultSpreadGapPixels;
+        ShowPageIndicator = true;
         RecentLimit = DefaultRecentLimit;
         TrimRecentToLimit();   // 只按新上限裁剪，不主动清掉用户的最近浏览记录
     }

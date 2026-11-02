@@ -2718,6 +2718,32 @@ internal static class PdfReaderChecks
         wheelStore.StopWatching();
 
         // ================================================================
+        // 16. 底部页码条显示开关（设置面板勾选框）
+        // ================================================================
+        var pageIndicatorCfg = new PdfReaderConfig();
+        Check("页数显示：默认开启", pageIndicatorCfg.ShowPageIndicator);
+        pageIndicatorCfg.ShowPageIndicator = false;
+        pageIndicatorCfg.ResetToDefaults();
+        Check("页数显示：恢复默认设置后回到开启", pageIndicatorCfg.ShowPageIndicator);
+
+        var pageIndicatorVm = new PdfReaderViewModel();
+        try
+        {
+            pageIndicatorVm.ShowPageIndicator = false;
+            Check("页数显示：VM 开关写入配置并可读回",
+                !pageIndicatorVm.ShowPageIndicator && !pageIndicatorVm.Cfg.ShowPageIndicator);
+
+            pageIndicatorVm.ResetSettingsCommand.Execute(null);
+            Check("页数显示：恢复默认按钮把开关恢复成开启",
+                pageIndicatorVm.ShowPageIndicator && pageIndicatorVm.Cfg.ShowPageIndicator);
+        }
+        finally
+        {
+            pageIndicatorVm.ShowPageIndicator = true;
+            pageIndicatorVm.NotifyClosed();
+        }
+
+        // ================================================================
         // 局部小工具（只在这个文件里用）
         // ================================================================
 

@@ -182,6 +182,18 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
     /// <summary>间距的显示文本（设置面板滑块右侧的「2 px」）。</summary>
     public string SpreadGapText => $"{SpreadGapPixels} px";
 
+    /// <summary>底部「第 x / n 页」页码条是否显示（设置面板勾选框直接绑它，自动保存）。</summary>
+    public bool ShowPageIndicator
+    {
+        get => Cfg.ShowPageIndicator;
+        set
+        {
+            if (Cfg.ShowPageIndicator == value) return;
+            Cfg.ShowPageIndicator = value;
+            OnPropertyChanged();
+        }
+    }
+
     /// <summary>影响排版但不影响缩放的设置变了（目前是双页间距），界面重排当前视图。</summary>
     public event EventHandler? LayoutChanged;
 
@@ -780,6 +792,7 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
         OnPropertyChanged(nameof(ZoomPercentEffective));
         OnPropertyChanged(nameof(SpreadGapPixels));
         OnPropertyChanged(nameof(SpreadGapText));
+        OnPropertyChanged(nameof(ShowPageIndicator));
 
         StatusText = "已恢复默认设置（纵向 上→下 · 缩放 100% · 双页间距 2 px · 惯性开）";
         ModeChanged?.Invoke(this, EventArgs.Empty);

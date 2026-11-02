@@ -479,7 +479,6 @@ public partial class PdfReaderView : UserControl
         Cursor = null;   // 全屏里一动鼠标先把指针亮出来
         _lastFullscreenPointer = position;
 
-        var panelsOpen = vm.IsSettingsVisible || vm.IsOutlineVisible;
         var inTopZone = position.Y <= ToolbarRevealZonePixels;
         var inToolbar = ToolbarBorder.IsMouseOver
                         || (_toolbarShown && position.Y <= ToolbarBorder.ActualHeight + ToolbarLeaveGracePixels);
@@ -498,13 +497,14 @@ public partial class PdfReaderView : UserControl
             return;
         }
 
-        if (inToolbar || panelsOpen)
+        if (inToolbar)
         {
             _toolbarAutoHideTimer?.Stop();
             StartIdleTimer();
             return;
         }
 
+        // 鼠标已经离开顶部 / 工具条（哪怕设置 / 目录面板还开着）：1 秒后自动滑回去
         StartToolbarAutoHideTimer();
     }
 
@@ -512,7 +512,7 @@ public partial class PdfReaderView : UserControl
     {
         _toolbarAutoHideTimer ??= new DispatcherTimer(DispatcherPriority.Background)
         {
-            Interval = TimeSpan.FromMilliseconds(650),
+            Interval = TimeSpan.FromMilliseconds(1000),
         };
         if (_toolbarAutoHideTimer.Tag is null)
         {
@@ -530,7 +530,6 @@ public partial class PdfReaderView : UserControl
         if (Vm is not { } vm || !vm.IsFullscreen || !_toolbarShown) return;
 
         if (ToolbarBorder.IsMouseOver || ToolbarBorder.IsKeyboardFocusWithin
-            || vm.IsSettingsVisible || vm.IsOutlineVisible
             || _lastFullscreenPointer.Y <= ToolbarRevealZonePixels)
         {
             StartIdleTimer();
@@ -607,10 +606,9 @@ public partial class PdfReaderView : UserControl
             return;
         }
 
-        // 工具条还露着：鼠标停在上面 / 正在输入 / 面板开着 / 还贴着顶部 → 别收，重新计时
+        // 工具条还露着：鼠标停在上面 / 正在输入 / 还贴着顶部 → 别收，重新计时
         if (_toolbarShown
             && (ToolbarBorder.IsMouseOver || ToolbarBorder.IsKeyboardFocusWithin
-                || vm.IsSettingsVisible || vm.IsOutlineVisible
                 || _lastFullscreenPointer.Y <= ToolbarRevealZonePixels))
         {
             StartIdleTimer();
@@ -661,6 +659,22 @@ public partial class PdfReaderView : UserControl
                     : new Point(ActualWidth / 2, Math.Max(200, ActualHeight / 2)));
             };
             timer.Start();
+        }
+
+        // 调试 / 截图：先模拟靠近顶部滑出，再模拟鼠标移开；验证「离开顶部 1 秒后自动上滑收起」
+        if (PdfReaderViewModel.IsEnvironmentOn("YLT_PDF_HOVER_SEQUENCE"))
+        {
+            HandleFullscreenPointerAt(new Point(ActualWidth / 2, 4));
+            var sequenceTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(100),
+            };
+            sequenceTimer.Tick += (_, _) =>
+            {
+                sequenceTimer.Stop();
+                HandleFullscreenPointerAt(new Point(ActualWidth / 2, Math.Max(200, ActualHeight / 2)));
+            };
+            sequenceTimer.Start();
         }
     }
 
@@ -2327,7 +2341,7 @@ public partial class PdfReaderView : UserControl
         var vm = Vm;
         var hasDocument = vm?.HasDocument == true;
 
-        PageIndicatorPanel.Visibility = hasDocument ? Visibility.Visible : Visibility.Collapsed;
+        UpdatePageIndicatorVisibility();
         // 全屏沉浸阅读时底部提示条也藏起来（页码保留，底部进度条保留）
         HintPanel.Visibility = hasDocument && vm?.IsFullscreen != true
             ? Visibility.Visible
@@ -2413,6 +2427,17 @@ public partial class PdfReaderView : UserControl
         _errorToastTimer.Start();
     }
 
+    /// <summary>页码条显隐：既有文档、又没在设置里关掉「显示底部页码」才显示。</summary>
+    private void UpdatePageIndicatorVisibility()
+    {
+        var vm = Vm;
+        PageIndicatorPanel.Visibility = vm?.HasDocument == true && vm.ShowPageIndicator
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void OnShowPageIndicatorClick(object sender, RoutedEventArgs e) => UpdateModeChrome();
+
     private void UpdatePageIndicator()
     {
         var vm = Vm;
@@ -2424,7 +2449,7 @@ public partial class PdfReaderView : UserControl
             return;
         }
 
-        PageIndicatorPanel.Visibility = Visibility.Visible;
+        UpdatePageIndicatorVisibility();
 
         if (_spreadActive)
         {

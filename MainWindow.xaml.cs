@@ -510,14 +510,30 @@ public partial class MainWindow : Window, IFullscreenHost
         SidebarColumn.Width = new GridLength(232);
 
         _fullscreen = false;                // 再清：还原窗口时又按工作区算
-        WindowState = _restoreState;
-        if (_restoreState == WindowState.Normal && _restoreBounds.Width > 0 && _restoreBounds.Height > 0)
+        var restoreState = _restoreState;
+        if (restoreState == WindowState.Maximized)
         {
-            Left = _restoreBounds.Left;
-            Top = _restoreBounds.Top;
-            Width = _restoreBounds.Width;
-            Height = _restoreBounds.Height;
+            // ⚠ 不能直接 WindowState = Maximized：进入全屏时窗口本来就是 Maximized，
+            // 直接赋同一个值 WPF 不会重新发 WM_GETMINMAXINFO，窗口会保留“整块显示器”的尺寸
+            // （任务栏虽然还回来了，但被窗口盖住，看起来像全屏没退干净）。
+            // 先回 Normal 再 Maximized，让 WndProc 按工作区重新算一次最大化矩形。
+            WindowState = WindowState.Normal;
+            WindowState = WindowState.Maximized;
         }
+        else
+        {
+            WindowState = restoreState;
+            if (restoreState == WindowState.Normal && _restoreBounds.Width > 0 && _restoreBounds.Height > 0)
+            {
+                Left = _restoreBounds.Left;
+                Top = _restoreBounds.Top;
+                Width = _restoreBounds.Width;
+                Height = _restoreBounds.Height;
+            }
+        }
+
+        // 退出后再兜一次：正常最大化是有任务栏的普通最大化（不是全屏）
+        TaskbarHider.Restore();
     }
 
     /// <summary>开发调试用：将当前界面渲染为 PNG 并退出（由 App 的 YLT_SHOT 环境变量触发）。</summary>
@@ -525,7 +541,14 @@ public partial class MainWindow : Window, IFullscreenHost
     {
         Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, async () =>
         {
-            await Task.Delay(1200);
+            // 调试：YLT_SHOT_DELAY_MS=2000 让截图前多等一会儿（验证全屏工具条 1 秒自动收起等时序用）
+            var captureDelay = 1200;
+            if (int.TryParse(Environment.GetEnvironmentVariable("YLT_SHOT_DELAY_MS"), out var customDelay)
+                && customDelay >= 0)
+            {
+                captureDelay = Math.Min(customDelay, 30_000);
+            }
+            await Task.Delay(captureDelay);
             try
             {
                 var w = (int)Math.Max(1, ActualWidth);
