@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using YuLiangToolkit.Tools.Live2D.Audio;
 using YuLiangToolkit.Tools.Live2D.Interop;
@@ -114,8 +115,7 @@ public sealed class Live2DSession
     private bool _bodyLeanDemoApplied;
 
     // ===== 动作演示（手势 / 表演 / 舞蹈）与说话 / 聊天气泡（Windows 自带 TTS） =====
-    private TtsService? _tts;
-    private SpeechBubbleWindow? _bubble;
+    private TtsService? _tts;    private SpeechBubbleWindow? _bubble;
     private CancellationTokenSource? _bubbleHideCts;
     private string? _lastLoggedSpeechError;
     private TimeSpan _idleChatterNextAt = TimeSpan.MinValue;
@@ -123,6 +123,12 @@ public sealed class Live2DSession
     private bool _actionDemoApplied;
     private bool _bubbleShotApplied;
     private string? _bubbleShotPath;
+
+    // ===== 桌宠鼠标互动（热区事件 → 软妹台词语音，1.5 秒节流） =====
+    private bool _interactionDemoApplied;
+    private TimeSpan _lastInteractionVoiceAt = TimeSpan.MinValue;
+    private string? _lastInteractionVoiceLine;
+    private string? _lastInteractionVoiceEvent;
 
     private Live2DSession()
     {
@@ -300,6 +306,7 @@ public sealed class Live2DSession
         TryBeginActionDemo();
         TryBeginSpeechSelfTest();
         TryBeginBubbleShot();
+        TryBeginInteractionDemo();
         if (_idleChatterNextAt == TimeSpan.MinValue)
         {
             _idleChatterNextAt = _clock.Elapsed + TimeSpan.FromSeconds(Random.Shared.Next(60, 120));
@@ -506,6 +513,9 @@ public sealed class Live2DSession
         _loadTask = null;
         _loadCts = null;
 
+        // 桌宠鼠标互动：热区点击 / 抚摸 / 捏脸 → 运行时抛 voice event → 会话挑台词说话（气泡 + 口型）
+        try { runtime.InteractionHappened += OnInteractionHappened; } catch { /* 运行时还没实现互动事件 */ }
+
         // 桌宠用独立的渲染器（只共享只读纹理）：页面和桌宠同时显示时各画各的位图，互不覆盖
         _petRenderer = null;
         try
@@ -536,6 +546,7 @@ public sealed class Live2DSession
         TryBeginActionDemo();
         TryBeginSpeechSelfTest();
         TryBeginBubbleShot();
+        TryBeginInteractionDemo();
 
         UpdateFrameLoop();
         RenderFirstFrame();
@@ -567,6 +578,7 @@ public sealed class Live2DSession
         var petRenderer = _petRenderer;
         _petRenderer = null;
 
+        try { if (runtime is not null) runtime.InteractionHappened -= OnInteractionHappened; } catch { /* 忽略 */ }
         try { petRenderer?.Dispose(); } catch { /* 忽略 */ }
         try { runtime?.Dispose(); } catch { /* 忽略 */ }
 
@@ -653,6 +665,13 @@ public sealed class Live2DSession
             // 待机灵动：随机小动作（手势 / 表演由运行时自己挑）
             runtime.IdleRandomGestureEnabled = cfg.IdleRandomGestureEnabled;
             runtime.IdleRandomGestureIntervalSeconds = Math.Clamp(cfg.IdleRandomGestureIntervalSeconds, 8, 60);
+
+            // 桌宠鼠标互动玩法 / 待机灵动（热区是运行时模型空间；UI 只负责把开关推下去）
+            runtime.InteractionEnabled = cfg.PetInteractionEnabled;
+            runtime.InteractionVoiceEnabled = cfg.PetInteractionVoiceEnabled;
+            runtime.PetIdleActionIntervalSeconds = Math.Clamp(cfg.PetIdleActionIntervalSeconds, 8, 30);
+            runtime.PetIdleExpressionEnabled = cfg.PetIdleExpressionEnabled;
+            runtime.DragPhysicsEnabled = cfg.PetDragPhysicsEnabled;
         }
         catch (Exception ex)
         {
@@ -708,6 +727,7 @@ public sealed class Live2DSession
         TryBeginActionDemo();
         TryBeginSpeechSelfTest();
         TryBeginBubbleShot();
+        TryBeginInteractionDemo();
         if (IsLoaded)
         {
             try { _runtime!.Tick(TimeSpan.FromMilliseconds(16)); } catch { /* 忽略 */ }
@@ -2246,6 +2266,324 @@ public sealed class Live2DSession
         }
         catch { /* 退出流程忽略 */ }
         _tts = null;
+    }
+
+    // ===================== 桌宠鼠标互动（热区事件 → 软妹台词 + 语音/气泡/口型） =====================
+
+    /// <summary>互动热区 → 台词（参考 fulaska 的 phrases.js 语气：短、轻、偶尔嘴硬；同一句尽量不连发）。</summary>
+    private static readonly Dictionary<string, string[]> InteractionVoiceLines = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["pat_head"] = new[]
+        {
+            "嘿嘿…好舒服呀～", "再摸摸头嘛…", "头发要乱啦～", "摸头会变笨的啦…",
+            "唔…好舒服，再多摸一会儿也可以喔。",
+        },
+        ["face_cycle"] = new[]
+        {
+            "看我～", "这样好看吗？", "换了个表情，怎么样？", "嘿嘿，有没有被我电到？",
+            "这个表情…喜欢吗？",
+        },
+        ["pinch"] = new[]
+        {
+            "呜…别捏啦～", "脸要变形了啦", "轻一点嘛…", "要漏气了要漏气了！",
+            "再捏我就生气了喔…大概。",
+        },
+        ["tickle"] = new[]
+        {
+            "哈哈…痒、别挠了！", "别挠啦～", "好痒呀…", "别、别挠那里！", "嘿嘿…不行不行。",
+        },
+        ["protect"] = new[]
+        {
+            "呀！不、不给看～", "这里不行哦。", "别一直戳这里…", "衣服要皱了啦。",
+            "再碰就咬你了喔！",
+        },
+        ["hand"] = new[]
+        {
+            "看我的手指～", "要牵手吗？", "手在这里哦。", "别捏手指啦。", "嗯？怎么了？",
+        },
+        ["skirt"] = new[] { "裙子！裙子！", "风、风要吹起来了——", "快放下来啦。" },
+        ["legs"] = new[] { "痒…别摸腿。", "腿腿不是玩具哦。", "再摸就踢你了。" },
+        ["feet"] = new[] { "鞋子会掉的！", "脚、脚底不行…", "凉凉的。" },
+        ["waist"] = new[] { "腰很怕痒的。", "别戳腰呀。", "嗯？要量腰围吗？" },
+        ["chest"] = new[] { "衣服要皱了啦。", "别一直戳这里…", "这里不行哦。" },
+        ["tail"] = new[] { "尾巴的开关在这里哦。", "别、别拽尾巴…", "尾巴不是把手哦。" },
+    };
+
+    /// <summary>互动 voice event 的中文名（日志 / 截图验收用）。</summary>
+    private static string DescribeInteractionEvent(string voiceEvent) => voiceEvent switch
+    {
+        "pat_head" => "摸头",
+        "face_cycle" => "点脸换表情",
+        "pinch" => "捏脸",
+        "tickle" => "挠痒",
+        "protect" => "护住",
+        "hand" => "点手",
+        "skirt" => "裙子",
+        "legs" => "腿",
+        "feet" => "脚",
+        "waist" => "腰",
+        "chest" => "胸口",
+        "tail" => "尾巴",
+        _ => voiceEvent,
+    };
+
+    /// <summary>运行时热区互动发生（可能在后台线程）→ 切 UI 线程挑台词说话。</summary>
+    private void OnInteractionHappened(object? sender, string voiceEvent)
+    {
+        try
+        {
+            var viewModel = _viewModel;
+            if (viewModel is null) return;
+            viewModel.Ui(() => HandleInteractionVoice(voiceEvent));
+        }
+        catch
+        {
+            // 互动事件处理失败不影响桌宠
+        }
+    }
+
+    private void HandleInteractionVoice(string? voiceEvent)
+    {
+        var viewModel = _viewModel;
+        if (viewModel is null || string.IsNullOrWhiteSpace(voiceEvent)) return;
+
+        _lastInteractionVoiceEvent = voiceEvent;
+        if (viewModel.Cfg.PetInteractionVoiceEnabled != true) return;
+
+        // 1.5 秒节流：连续点 / 抚摸时别把语音播成复读机
+        var now = _clock.Elapsed;
+        if (_lastInteractionVoiceAt != TimeSpan.MinValue &&
+            now - _lastInteractionVoiceAt < TimeSpan.FromMilliseconds(1500))
+        {
+            return;
+        }
+
+        var line = PickInteractionVoiceLine(voiceEvent!);
+        if (string.IsNullOrEmpty(line)) return;
+
+        _lastInteractionVoiceAt = now;
+        _lastInteractionVoiceLine = line;
+        var name = DescribeInteractionEvent(voiceEvent!);
+        viewModel.Log($"桌宠互动语音（{name}）：{line}");
+        SpeakText(line);   // 语音 + 气泡 + 口型同步都走已有链路
+    }
+
+    private string PickInteractionVoiceLine(string voiceEvent)
+    {
+        if (!InteractionVoiceLines.TryGetValue(voiceEvent, out var lines) || lines.Length == 0)
+        {
+            return "";
+        }
+        if (lines.Length == 1) return lines[0];
+
+        for (var i = 0; i < 6; i++)
+        {
+            var line = lines[Random.Shared.Next(lines.Length)];
+            if (!string.Equals(line, _lastInteractionVoiceLine, StringComparison.Ordinal)) return line;
+        }
+        return lines[0];
+    }
+
+    /// <summary>
+    /// 调试钩子（截图验收）：<c>YLT_LIVE2D_INTERACTION_DEMO=&lt;region 或 voice event&gt;</c>。
+    /// 打开页面 / 桌宠后取区域中心模拟一次「按下 → 抚摸拖动 → 松开」，日志打印区域名 / 画布坐标 /
+    /// 语音事件 / 是否说话；若同时给 <c>YLT_LIVE2D_INTERACTION_SHOT=&lt;png&gt;</c> 则把桌宠窗口离屏
+    /// 渲染成 PNG 后退出（<b>只截桌宠窗口位图，不抓桌面</b>）。
+    /// </summary>
+    private void TryBeginInteractionDemo()
+    {
+        if (_interactionDemoApplied) return;
+        var raw = Environment.GetEnvironmentVariable("YLT_LIVE2D_INTERACTION_DEMO")?.Trim();
+        if (string.IsNullOrEmpty(raw)) return;
+        if (_viewModel is null || _runtime?.IsLoaded != true) return;
+        _interactionDemoApplied = true;
+        _ = RunInteractionDemoAsync(raw);
+    }
+
+    private async Task RunInteractionDemoAsync(string raw)
+    {
+        var viewModel = _viewModel;
+        var runtime = _runtime;
+        if (viewModel is null || runtime is null) return;
+
+        var shotPath = Environment.GetEnvironmentVariable("YLT_LIVE2D_INTERACTION_SHOT")?.Trim() ?? "";
+        var exitAfter = Environment.GetEnvironmentVariable("YLT_LIVE2D_INTERACTION_DEMO_EXIT") is "1" or "on" or "true"
+                        || shotPath.Length > 0;
+
+        // 先把桌宠放出来（截图 / 互动都需要桌宠窗口在渲染）
+        try
+        {
+            if (!IsPetVisible) ShowPet();
+        }
+        catch (Exception ex)
+        {
+            viewModel.Log("互动演示：打开桌宠失败：" + ex.Message);
+        }
+        await Task.Delay(350);
+
+        var region = ResolveInteractionRegion(raw, runtime);
+        var regionName = raw;
+        var canvasX = 0f;
+        var canvasY = 0f;
+        var voiceEvent = "";
+        var pointerDown = false;
+
+        // 额头 / 手 / 胸是「点按」型反应；头 / 脸 / 腰 / 腿 / 脚 / 尾巴是「抚摸 / 捏」型（需要累计移动步长）
+        var tapStyle = region is InteractionRegion.Forehead or InteractionRegion.HandLeft
+            or InteractionRegion.HandRight or InteractionRegion.Chest;
+
+        var canvasWidth = 1000f;
+        try { canvasWidth = Math.Max(100f, runtime.Model.CanvasWidthPixels); } catch { /* 忽略 */ }
+
+        try
+        {
+            regionName = runtime.GetRegionDisplayName(region);
+            if (runtime.GetRegionCenter(region, out var cx, out var cy))
+            {
+                canvasX = cx;
+                canvasY = cy;
+            }
+
+            pointerDown = runtime.InteractionPointerDown(canvasX, canvasY);
+
+            if (tapStyle)
+            {
+                // 点按：按下后快速抬起（运行时判定 tap 需要 <0.42s 且位移很小）
+                await Task.Delay(90);
+            }
+            else
+            {
+                // 抚摸 / 捏脸：分几段拖动累积步长（抚摸每 3% 画布宽算一步；捏脸需要拖到 ~7% 才明显）
+                var step = region is InteractionRegion.FaceLeft or InteractionRegion.FaceRight
+                    ? Math.Max(40f, canvasWidth * 0.045f)
+                    : Math.Max(40f, canvasWidth * 0.035f);
+                for (var i = 0; i < 4; i++)
+                {
+                    await Task.Delay(80);
+                    var dx = step * (i + 1) * 0.7f;   // 往一个方向拉开，捏脸 / 顺毛都更明显
+                    try { runtime.InteractionPointerMove(canvasX + dx, canvasY + 4f); } catch { /* 忽略 */ }
+                }
+                await Task.Delay(200);
+            }
+
+            try { voiceEvent = runtime.LastInteractionVoiceEvent ?? ""; } catch { /* 忽略 */ }
+        }
+        catch (Exception ex)
+        {
+            viewModel.Log("互动演示按下失败：" + ex.Message);
+        }
+
+        if (tapStyle)
+        {
+            // 点按：抬起 → 触发反应（换表情 / 护住 / 竖食指）→ 等表情淡入后再截图
+            await Task.Delay(60);
+            try { runtime.InteractionPointerUp(canvasX, canvasY); } catch { /* 忽略 */ }
+            await Task.Delay(550);
+            try { voiceEvent = runtime.LastInteractionVoiceEvent ?? ""; } catch { /* 忽略 */ }
+            if (shotPath.Length > 0) await CaptureInteractionShotAsync(shotPath, viewModel);
+        }
+        else
+        {
+            // 抚摸 / 捏脸：反应还在按住期间 → 先截图（捏脸变形最明显），再松开
+            try { voiceEvent = runtime.LastInteractionVoiceEvent ?? ""; } catch { /* 忽略 */ }
+            if (shotPath.Length > 0) await CaptureInteractionShotAsync(shotPath, viewModel);
+            await Task.Delay(150);
+            try { runtime.InteractionPointerUp(canvasX, canvasY); } catch { /* 忽略 */ }
+            await Task.Delay(350);
+            if (string.IsNullOrEmpty(voiceEvent))
+            {
+                try { voiceEvent = runtime.LastInteractionVoiceEvent ?? ""; } catch { /* 忽略 */ }
+            }
+        }
+
+        await Task.Delay(150);
+        viewModel.Log($"截图模式（YLT_LIVE2D_INTERACTION_DEMO）：输入={raw}，区域={regionName}，" +
+                      $"画布坐标=({canvasX:0},{canvasY:0})，按下命中={pointerDown}，临时点击型={tapStyle}，" +
+                      $"语音事件={(voiceEvent.Length > 0 ? voiceEvent : "（无）")}，" +
+                      $"是否在说话={IsSpeaking}，语音开关={viewModel.Cfg.PetInteractionVoiceEnabled}");
+
+        try
+        {
+            var interactionName = "";
+            try { interactionName = runtime.LastInteractionName ?? ""; } catch { /* 忽略 */ }
+            var report =
+                "桌宠鼠标互动演示 / 验收记录" + Environment.NewLine +
+                $"输入={raw}；区域={regionName}；画布坐标=({canvasX:0},{canvasY:0})；按下命中={pointerDown}；" +
+                $"路径={(tapStyle ? "点按（tap）" : "抚摸 / 捏（pet）")}" + Environment.NewLine +
+                $"LastInteractionName={(interactionName.Length > 0 ? interactionName : "（空）")}" + Environment.NewLine +
+                $"LastInteractionVoiceEvent={(voiceEvent.Length > 0 ? voiceEvent : "（空）")}" + Environment.NewLine +
+                $"会话挑选的台词={_lastInteractionVoiceLine ?? "（没有说话 / 语音开关关闭）"}" + Environment.NewLine +
+                $"是否在说话={IsSpeaking}；语音开关={viewModel.Cfg.PetInteractionVoiceEnabled}" + Environment.NewLine +
+                "说明：调试钩子模拟「按下 → 抚摸移动 / 点按 → 抬起」，只读取模型状态与媒体信息，不保存任何音频。";
+            viewModel.Storage.WriteText("interaction-demo.log", report);
+        }
+        catch (Exception ex)
+        {
+            viewModel.Log("互动演示日志写入失败：" + ex.Message);
+        }
+
+        if (exitAfter)
+        {
+            await Task.Delay(250);
+            Application.Current?.Shutdown();
+        }
+    }
+
+    /// <summary>互动演示截图：只把桌宠窗口离屏渲染成 PNG（不抓桌面 / 不包含其他窗口）。</summary>
+    private async Task CaptureInteractionShotAsync(string path, Live2DViewModel viewModel)
+    {
+        try
+        {
+            await Task.Delay(120);
+            if (_pet is { IsVisible: true } pet)
+            {
+                var bitmap = pet.RenderWindowBitmap();
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                await using var stream = File.Create(path);
+                encoder.Save(stream);
+                viewModel.Log($"互动演示截图已保存：{path}（{bitmap.PixelWidth}×{bitmap.PixelHeight}，仅桌宠窗口离屏位图）");
+            }
+            else
+            {
+                viewModel.Log("互动演示截图失败：桌宠窗口没打开");
+            }
+        }
+        catch (Exception ex)
+        {
+            viewModel.Log("互动演示截图失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>把调试输入（region 英文 / 中文 / voice event）映射成 <see cref="InteractionRegion"/>。</summary>
+    private static InteractionRegion ResolveInteractionRegion(string raw, ModelRuntime runtime)
+    {
+        try
+        {
+            if (Enum.TryParse<InteractionRegion>(raw, ignoreCase: true, out var parsed) && parsed != InteractionRegion.None)
+            {
+                return parsed;
+            }
+        }
+        catch
+        {
+            // 运行时还没实现枚举：走下面的字符串映射
+        }
+
+        return raw.Trim().ToLowerInvariant() switch
+        {
+            "pat_head" or "摸头" => InteractionRegion.Head,
+            "face_cycle" or "爱心眼" or "换表情" => InteractionRegion.Forehead,
+            "pinch" or "捏脸" => InteractionRegion.FaceLeft,
+            "tickle" or "挠痒" or "摸腰" => InteractionRegion.Waist,
+            "protect" or "护住" or "摸胸" => InteractionRegion.Chest,
+            "hand" or "点手" => InteractionRegion.HandRight,
+            "skirt" or "裙子" => InteractionRegion.Skirt,
+            "legs" or "腿" => InteractionRegion.Legs,
+            "feet" or "脚" => InteractionRegion.Feet,
+            "tail" or "尾巴" => InteractionRegion.Tail,
+            _ => InteractionRegion.Head,
+        };
     }
 
     // ===================== 开发调试：动作 / 语音 / 气泡截图 =====================

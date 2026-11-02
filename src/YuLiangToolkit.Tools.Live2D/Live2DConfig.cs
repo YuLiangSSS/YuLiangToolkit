@@ -266,4 +266,24 @@ public sealed class Live2DConfig : ToolConfig
 
     /// <summary>待机随机小动作间隔（秒，8 ~ 300）。</summary>
     public double IdleRandomGestureIntervalSeconds { get; set; } = 22;
+
+    // ---------- 鼠标互动玩法（参考 FULASKA/-live2d-） ----------
+
+    /// <summary>是否开启桌宠鼠标互动玩法（摸头 / 捏脸 / 挠痒 / 护住 / 手部手势 / 额头表情循环）。</summary>
+    public bool PetInteractionEnabled { get; set; } = true;
+
+    /// <summary>互动时是否说话（软妹语音 + 气泡；台词按互动类型随机）。</summary>
+    public bool PetInteractionVoiceEnabled { get; set; } = true;
+
+    /// <summary>拖动桌宠时是否带「拖拽物理」（头发 / 裙子会甩）。</summary>
+    public bool PetDragPhysicsEnabled { get; set; } = true;
+
+    /// <summary>待机随机小动作（换脚 / 东张西望 / 伸懒腰 / 挥挥手 / 戴铁盆 / 爱心眼等）间隔（秒，8 ~ 30）。</summary>
+    public double PetIdleActionIntervalSeconds { get; set; } = 12;
+
+    /// <summary>待机时是否随机换表情（爱心眼 / 脸红 / 屑屑眼等，轻轻增加生动度）。</summary>
+    public bool PetIdleExpressionEnabled { get; set; } = true;
+
+    /// <summary>是否启用全局快捷键（Ctrl+Alt+L 切换鼠标穿透、Ctrl+Alt+0 退出程序）。</summary>
+    public bool PetHotkeysEnabled { get; set; } = true;
 }

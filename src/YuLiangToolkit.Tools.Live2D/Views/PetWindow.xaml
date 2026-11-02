@@ -71,6 +71,12 @@
             <Separator />
             <MenuItem Header="隐藏桌宠（可在测试页重新打开）" Foreground="{DynamicResource TextPrimaryBrush}"
                       Click="OnMenuHideClick" />
+            <Separator />
+            <MenuItem Header="⚙ 设置（打开工具页）" Foreground="{DynamicResource TextPrimaryBrush}"
+                      Click="OnMenuSettingsClick"
+                      ToolTip="把主窗口叫到前面；侧边栏「桌面 → Live2D 桌宠」就是测试页（互动 / 语音 / 待机设置都在里面）" />
+            <MenuItem Header="❌ 退出程序" Foreground="{DynamicResource TextPrimaryBrush}"
+                      Click="OnMenuExitClick" />
         </ContextMenu>
     </Window.ContextMenu>
 

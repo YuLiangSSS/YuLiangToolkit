@@ -14,6 +14,16 @@
   平均 KPS 只算有按键的采样、计数器持久化等），**没有复制、移植或包含其任何源码**，实现为独立重写；
   因此本项目不继承 GPL-3.0，该工具仍按 Unlicense 发布。详见 [docs/tools/kps.md](docs/tools/kps.md#来源与致谢)。
 
+## FULASKA/-live2d-（仅玩法思路参考，不含源码 / 资产）
+
+- 位置：`src/YuLiangToolkit.Tools.Live2D/Model/InteractionController.cs` 等（鼠标互动玩法）
+- 来源：<https://github.com/FULASKA/-live2d->（参考项目，本地 clone 仅用于理解玩法）
+- 说明：「Live2D 桌宠」的**鼠标互动玩法**（摸头 / 额头三态表情 / 捏脸 / 挠痒 / 护住 / 点击手势 /
+  待机随机小动作等）借鉴了该参考项目的**玩法思路与参数区域划分思路**；本项目**没有复制、移植或包含
+  其任何源码、模型、图片、音频或其它资产**，实现（`Model/InteractionController.cs`、桌宠鼠标事件、
+  本地语音台词）为本项目独立编写；因此不涉及参考项目的许可传染。玩法说明见
+  [docs/tools/live2d.md](docs/tools/live2d.md#-鼠标互动玩法)。
+
 ## OsuParsers 1.7.2（NuGet 依赖）
 
 - 用途：osu!mania 三件套（Key 转换 / LN 转换 / 等级计算）读写 `.osu` 谱面文件

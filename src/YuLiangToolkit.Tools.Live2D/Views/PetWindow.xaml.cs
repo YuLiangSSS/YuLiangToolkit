@@ -71,6 +71,30 @@ public partial class PetWindow : Window
     private double _dragStartTop;
     private Point _dragStartCursor;
 
+    // 互动 vs 拖动：<200ms 且位移 <6px 算点击互动，超过 6px 才开始搬窗口
+    private DateTime _pressStartedAt;
+    private Point _pressStartCursorDip;
+    private double _pressMovedPixels;
+    private bool _windowDragStarted;
+    private bool _interactionPressed;
+    private float _pressCanvasX;
+    private float _pressCanvasY;
+    private InteractionRegion _pressedRegion;
+    private double _lastWindowMoveLeft;
+    private double _lastWindowMoveTop;
+
+    // 全局快捷键（Ctrl+Alt+L 鼠标穿透 / Ctrl+Alt+0 退出）
+    private const int HotkeyToggleClickThrough = 0x4C01;
+    private const int HotkeyExit = 0x4C02;
+    private const uint ModAlt = 0x0001;
+    private const uint ModControl = 0x0002;
+    private const uint VkL = 0x4C;
+    private const uint Vk0 = 0x30;
+    private const int WmHotkey = 0x0312;
+
+    private HwndSource? _hwndSource;
+    private bool _hotkeysRegistered;
+
     // 点击穿透样式状态（避免每 40ms 都调 SetWindowLong）
     private bool _clickThroughApplied;
 
@@ -227,6 +251,20 @@ public partial class PetWindow : Window
     {
         _shutdown = true;
         try { _pollTimer.Stop(); } catch { /* 忽略 */ }
+        try
+        {
+            if (_hwndSource is not null)
+            {
+                _hwndSource.RemoveHook(WndProc);
+                if (_hotkeysRegistered)
+                {
+                    UnregisterHotKey(_hwndSource.Handle, HotkeyToggleClickThrough);
+                    UnregisterHotKey(_hwndSource.Handle, HotkeyExit);
+                    _hotkeysRegistered = false;
+                }
+            }
+        }
+        catch { /* 窗口正在销毁：忽略 */ }
         PetImage.Source = null;
     }
 
@@ -240,6 +278,11 @@ public partial class PetWindow : Window
         var style = GetExtendedStyle(hwnd);
         style |= WsExNoActivate | WsExToolWindow;
         SetExtendedStyle(hwnd, style);
+
+        // 全局快捷键：Ctrl+Alt+L 切鼠标穿透 / Ctrl+Alt+0 退出（配置可关）
+        _hwndSource = HwndSource.FromHwnd(hwnd);
+        _hwndSource?.AddHook(WndProc);
+        RegisterHotkeys(Config?.PetHotkeysEnabled == true);
     }
 
     // ===================== 配置套用 =====================
@@ -256,6 +299,80 @@ public partial class PetWindow : Window
         if (Topmost != cfg.PetTopMost) Topmost = cfg.PetTopMost;
 
         ApplySizeFromConfig();
+
+        // 快捷键开关改了 / 桌宠刚打开：对齐注册状态（配置从工具页改了之后最多 40ms 生效）
+        RegisterHotkeys(cfg.PetHotkeysEnabled);
+    }
+
+    // ===================== 全局快捷键（RegisterHotKey） =====================
+
+    /// <summary>注册 / 注销全局快捷键（Ctrl+Alt+L 鼠标穿透、Ctrl+Alt+0 退出）；重复调用无副作用。</summary>
+    private void RegisterHotkeys(bool enabled)
+    {
+        if (_hwndSource is null) return;
+        if (enabled == _hotkeysRegistered) return;
+
+        var hwnd = _hwndSource.Handle;
+        if (hwnd == IntPtr.Zero) return;
+
+        if (enabled)
+        {
+            var clickThroughOk = RegisterHotKey(hwnd, HotkeyToggleClickThrough, ModControl | ModAlt, VkL);
+            var exitOk = RegisterHotKey(hwnd, HotkeyExit, ModControl | ModAlt, Vk0);
+            _hotkeysRegistered = clickThroughOk || exitOk;
+            if (_hotkeysRegistered)
+            {
+                _session.Log(clickThroughOk && exitOk
+                    ? "桌宠快捷键已注册：Ctrl+Alt+L 切换鼠标穿透 / Ctrl+Alt+0 退出程序"
+                    : $"桌宠快捷键部分注册失败（L={clickThroughOk}, 0={exitOk}；可能被其它程序占用）");
+            }
+        }
+        else
+        {
+            UnregisterHotKey(hwnd, HotkeyToggleClickThrough);
+            UnregisterHotKey(hwnd, HotkeyExit);
+            _hotkeysRegistered = false;
+        }
+    }
+
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == WmHotkey)
+        {
+            var id = wParam.ToInt32();
+            if (id == HotkeyToggleClickThrough)
+            {
+                handled = true;
+                ToggleClickThroughByHotkey();
+            }
+            else if (id == HotkeyExit)
+            {
+                handled = true;
+                ExitApplicationByHotkey();
+            }
+        }
+        return IntPtr.Zero;
+    }
+
+    private void ToggleClickThroughByHotkey()
+    {
+        var cfg = Config;
+        if (cfg is null) return;
+
+        cfg.PetClickThrough = !cfg.PetClickThrough;
+        if (!cfg.PetClickThrough) ApplyClickThrough(false);
+        try { MenuItemClickThrough.IsChecked = cfg.PetClickThrough; } catch { /* 菜单还没建：忽略 */ }
+        _session.SaveConfigNow();
+        _session.Log(cfg.PetClickThrough
+            ? "快捷键 Ctrl+Alt+L：已开启鼠标穿透（再按一次恢复可点击）"
+            : "快捷键 Ctrl+Alt+L：已关闭鼠标穿透（可以点桌宠了）");
+    }
+
+    private void ExitApplicationByHotkey()
+    {
+        _session.Log("快捷键 Ctrl+Alt+0：退出程序");
+        try { _session.SaveConfigNow(); } catch { /* 忽略 */ }
+        try { Application.Current?.Shutdown(); } catch { /* 忽略 */ }
     }
 
     /// <summary>按配置宽度 + 模型画布比例重算窗口高宽（保持窗口中心不动）。</summary>
@@ -288,9 +405,42 @@ public partial class PetWindow : Window
         if (!TryGetCursorDip(out var cursor)) return;
 
         _dragging = true;
+        _windowDragStarted = false;
         _dragStartLeft = Left;
         _dragStartTop = Top;
         _dragStartCursor = cursor;
+        _lastWindowMoveLeft = Left;
+        _lastWindowMoveTop = Top;
+        _pressStartedAt = DateTime.UtcNow;
+        _pressStartCursorDip = cursor;
+        _pressMovedPixels = 0;
+        _pressedRegion = InteractionRegion.None;
+        _interactionPressed = false;
+
+        // 按下 → 命中热区并通知运行时：点一下 = 互动（摸头 / 换表情 / 捏脸…），按住移动 = 抚摸
+        var cfg = Config;
+        var runtime = _session.Runtime;
+        if (cfg?.PetInteractionEnabled == true && runtime?.IsLoaded == true &&
+            ComputeCanvasPoint(cursor.X - Left, cursor.Y - Top, out var canvasX, out var canvasY))
+        {
+            _pressCanvasX = canvasX;
+            _pressCanvasY = canvasY;
+            try
+            {
+                _pressedRegion = runtime.HitTest(canvasX, canvasY);
+                if (_pressedRegion != InteractionRegion.None)
+                {
+                    // 返回 true = 命中热区：走互动（阈值 / 点按 / 抚摸 / 拖动判定都在模型里），否则按普通窗口拖动
+                    _interactionPressed = runtime.InteractionPointerDown(canvasX, canvasY);
+                }
+            }
+            catch
+            {
+                _pressedRegion = InteractionRegion.None;
+                _interactionPressed = false;
+            }
+        }
+
         CaptureMouse();
         e.Handled = true;
     }
@@ -304,15 +454,108 @@ public partial class PetWindow : Window
             return;
         }
 
-        Left = _dragStartLeft + (cursor.X - _dragStartCursor.X);
-        Top = _dragStartTop + (cursor.Y - _dragStartCursor.Y);
+        var dxCursor = cursor.X - _pressStartCursorDip.X;
+        var dyCursor = cursor.Y - _pressStartCursorDip.Y;
+        _pressMovedPixels = Math.Max(_pressMovedPixels, Math.Sqrt(dxCursor * dxCursor + dyCursor * dyCursor));
+
+        var runtime = _session.Runtime;
+
+        // 按住拖动 → 抚摸 / 捏脸跟随：把画布坐标持续喂给运行时状态机
+        if (_interactionPressed && runtime?.IsLoaded == true &&
+            ComputeCanvasPoint(cursor.X - Left, cursor.Y - Top, out var canvasX, out var canvasY))
+        {
+            try { _interactionPressed = runtime.InteractionPointerMove(canvasX, canvasY); } catch { /* 忽略 */ }
+        }
+
+        // 手抖（<6px）不搬窗口；超过阈值才真正开始拖窗口
+        if (!_windowDragStarted && _pressMovedPixels > 6) _windowDragStarted = true;
+        if (!_windowDragStarted)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        var newLeft = _dragStartLeft + dxCursor;
+        var newTop = _dragStartTop + dyCursor;
+        var windowDx = newLeft - _lastWindowMoveLeft;
+        var windowDy = newTop - _lastWindowMoveTop;
+        Left = newLeft;
+        Top = newTop;
+
+        // 拖窗口的同时给头发 / 裙子一个惯性（配置可关）
+        if ((Math.Abs(windowDx) > 0.01 || Math.Abs(windowDy) > 0.01) && Config?.PetDragPhysicsEnabled == true)
+        {
+            try { runtime?.ApplyDragImpulse((float)windowDx, (float)windowDy); } catch { /* 忽略 */ }
+        }
+        _lastWindowMoveLeft = newLeft;
+        _lastWindowMoveTop = newTop;
         e.Handled = true;
     }
 
     private void OnPetMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         if (!_dragging) return;
-        FinishDrag();
+
+        var runtime = _session.Runtime;
+        var elapsed = (DateTime.UtcNow - _pressStartedAt).TotalMilliseconds;
+        var wasClick = !_windowDragStarted &&
+                       _pressMovedPixels <= 6 &&
+                       elapsed <= 200 &&
+                       _pressedRegion != InteractionRegion.None;
+
+        if (_interactionPressed)
+        {
+            // 抬起前记下热区（ActiveInteractionRegion 在抬起后可能已清空，用于日志 / 截图验收）
+            var releasedRegion = _pressedRegion;
+            try
+            {
+                if (runtime is not null && runtime.ActiveInteractionRegion != InteractionRegion.None)
+                {
+                    releasedRegion = runtime.ActiveInteractionRegion;
+                }
+            }
+            catch
+            {
+                // 运行时还没实现 ActiveInteractionRegion：用按下时命中的
+            }
+
+            var canvasX = _pressCanvasX;
+            var canvasY = _pressCanvasY;
+            if (TryGetCursorDip(out var cursor))
+            {
+                ComputeCanvasPoint(cursor.X - Left, cursor.Y - Top, out canvasX, out canvasY);
+            }
+
+            try { runtime?.InteractionPointerUp(canvasX, canvasY); } catch { /* 忽略 */ }
+            _interactionPressed = false;
+
+            if (wasClick)
+            {
+                try
+                {
+                    var name = runtime?.LastInteractionName;
+                    var voice = runtime?.LastInteractionVoiceEvent;
+                    _session.Log($"桌宠互动：{(string.IsNullOrWhiteSpace(name) ? releasedRegion.ToString() : name)}" +
+                                 $"（点击 {elapsed:0}ms，位移 {_pressMovedPixels:0.0}px，" +
+                                 $"语音事件={(string.IsNullOrWhiteSpace(voice) ? "无" : voice)}）");
+                }
+                catch
+                {
+                    // 日志失败不影响互动
+                }
+            }
+        }
+
+        if (_windowDragStarted) FinishDrag();
+        else
+        {
+            _dragging = false;
+            if (IsMouseCaptured) ReleaseMouseCapture();
+            ClampToVisibleArea();
+        }
+
+        _windowDragStarted = false;
+        _pressedRegion = InteractionRegion.None;
         e.Handled = true;
     }
 
@@ -715,6 +958,17 @@ public partial class PetWindow : Window
 
     private void OnMenuHideClick(object sender, RoutedEventArgs e) => _session.HidePet();
 
+    /// <summary>右键菜单：⚙ 设置（把主窗口叫到前面，用户从侧边栏进测试页改设置）。</summary>
+    private void OnMenuSettingsClick(object sender, RoutedEventArgs e) => OnMenuOpenToolPageClick(sender, e);
+
+    /// <summary>右键菜单：❌ 退出程序（保存配置后关掉整个应用）。</summary>
+    private void OnMenuExitClick(object sender, RoutedEventArgs e)
+    {
+        _session.Log("桌宠菜单：退出程序");
+        try { _session.SaveConfigNow(); } catch { /* 忽略 */ }
+        try { Application.Current?.Shutdown(); } catch { /* 忽略 */ }
+    }
+
     // ===================== 开发调试：桌宠交互自测 =====================
 
     /// <summary>
@@ -951,4 +1205,16 @@ public partial class PetWindow : Window
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
+
+    // ===================== 全局快捷键 P/Invoke =====================
+
+    /// <summary>注册系统级热键（Ctrl+Alt+L / Ctrl+Alt+0）。失败（被其它程序占用）返回 false。</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    /// <summary>注销系统级热键。</summary>
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 }

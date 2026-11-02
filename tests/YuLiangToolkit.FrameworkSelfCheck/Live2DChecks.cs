@@ -478,6 +478,11 @@ internal static class Live2DChecks
             C("配置默认值：待机随机小动作默认开 / 间隔 22 秒",
                 defaults.IdleRandomGestureEnabled
                 && Near(defaults.IdleRandomGestureIntervalSeconds, 22.0, 1e-9));
+            C("配置默认值：鼠标互动全开（互动 / 互动语音 / 拖拽物理 / 待机表情 / 快捷键）/ 待机小动作间隔 12 秒",
+                defaults.PetInteractionEnabled && defaults.PetInteractionVoiceEnabled
+                && defaults.PetDragPhysicsEnabled && defaults.PetIdleExpressionEnabled
+                && defaults.PetHotkeysEnabled
+                && Near(defaults.PetIdleActionIntervalSeconds, 12.0, 1e-9));
 
             var store = ToolConfigStore.For(Live2DTool.ToolId);
             var cfg = store.Load<Live2DConfig>();
@@ -519,13 +524,19 @@ internal static class Live2DChecks
             cfg.SpeechIdleChatterEnabled = true;
             cfg.IdleRandomGestureEnabled = false;
             cfg.IdleRandomGestureIntervalSeconds = 45;
+            cfg.PetInteractionEnabled = false;
+            cfg.PetInteractionVoiceEnabled = false;
+            cfg.PetDragPhysicsEnabled = false;
+            cfg.PetIdleActionIntervalSeconds = 20;
+            cfg.PetIdleExpressionEnabled = false;
+            cfg.PetHotkeysEnabled = false;
             ToolConfigStore.FlushAll();
             var reloaded = JsonFileStore.Read<Live2DConfig>(cfg.FilePath);
             var configDirectory = Path.GetDirectoryName(cfg.FilePath);
             var badBackups = configDirectory is not null && Directory.Exists(configDirectory)
                 ? Directory.GetFiles(configDirectory, "config.bad-*.json").Length
                 : 0;
-            C("配置改动自动落盘并读回（帧率 / 纹理 / 桌宠宽 / 眼睛跟随 / 物理 / 动捕 / 身体晃动 / 跟随增益 / 音乐 / 语音 9 项）",
+            C("配置改动自动落盘并读回（帧率 / 纹理 / 桌宠宽 / 眼睛跟随 / 物理 / 动捕 / 身体晃动 / 跟随增益 / 音乐 / 语音 / 鼠标互动 6 项）",
                 reloaded is
                 {
                     FpsLimit: 60, TextureMaxSize: 4096, PetWidth: 520, EyeTracking: false,
@@ -539,12 +550,14 @@ internal static class Live2DChecks
                     SpeechVoiceId: "voice-自检", SpeechRate: 1.3, SpeechPitchPercent: 20, SpeechVolume: 0.7,
                     SpeechBubbleEnabled: false, SpeechAutoGesture: false, SpeechIdleChatterEnabled: true,
                     IdleRandomGestureEnabled: false, IdleRandomGestureIntervalSeconds: 45,
+                    PetInteractionEnabled: false, PetInteractionVoiceEnabled: false, PetDragPhysicsEnabled: false,
+                    PetIdleActionIntervalSeconds: 20, PetIdleExpressionEnabled: false, PetHotkeysEnabled: false,
                 }
                 && Near(reloaded.PhysicsStrength, 1.5, 1e-9),
                 reloaded is null
                     ? $"读回失败：config 存在={File.Exists(cfg.FilePath)}，被备份的坏文件={badBackups} 个，LastError={store.LastError ?? "(无)"}"
                     : JsonFileStore.Serialize(reloaded).Replace(Environment.NewLine, " "));
-            C("配置按 camelCase 落盘（手改配置时键名好认：fpsLimit / musicReactiveEnabled / speechVoiceId / idleRandomGestureIntervalSeconds）",
+            C("配置按 camelCase 落盘（含 petInteractionEnabled / petIdleActionIntervalSeconds / petHotkeysEnabled）",
                 File.ReadAllText(cfg.FilePath).Contains("\"fpsLimit\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"textureMaxSize\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"petWidth\"")
@@ -557,7 +570,10 @@ internal static class Live2DChecks
                 && File.ReadAllText(cfg.FilePath).Contains("\"musicLipSyncStrength\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"speechVoiceId\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"speechPitchPercent\"")
-                && File.ReadAllText(cfg.FilePath).Contains("\"idleRandomGestureIntervalSeconds\""),
+                && File.ReadAllText(cfg.FilePath).Contains("\"idleRandomGestureIntervalSeconds\"")
+                && File.ReadAllText(cfg.FilePath).Contains("\"petInteractionEnabled\"")
+                && File.ReadAllText(cfg.FilePath).Contains("\"petIdleActionIntervalSeconds\"")
+                && File.ReadAllText(cfg.FilePath).Contains("\"petHotkeysEnabled\""),
                 File.ReadAllText(cfg.FilePath).Replace(Environment.NewLine, " "));
         }
         catch (Exception ex)
@@ -2370,7 +2386,7 @@ internal static class Live2DChecks
             runtime.Music = null;
             runtime.MusicEnabled = false;
             runtime.SwayEnabled = false;
-            runtime.StopAllDemos();
+            StopInteractionDemos();
             runtime.ResetParameters();
             TickFrames(2);
 
@@ -2593,7 +2609,7 @@ internal static class Live2DChecks
             runtime.PlayPerformance(performanceId);
             runtime.StartDance("轻快摇摆", 1.0);
             TickFrames(60);
-            runtime.StopAllDemos();
+            StopInteractionDemos();
             TickFrames(90);
             C("动作系统：StopAllDemos 停掉手势 / 表演 / 舞蹈 / 当前动作",
                 runtime.ActiveGesture is null && runtime.ActivePerformance is null && runtime.ActiveDance is null
@@ -2681,7 +2697,7 @@ internal static class Live2DChecks
             }
             C("待机随机：条件解除后按随机间隔触发小动作（10 秒内触发一次）", idleTriggeredWhenFree,
                 idleTriggeredWhenFree ? "已触发" : "10 秒内未触发");
-            runtime.StopAllDemos();
+            StopInteractionDemos();
             runtime.IdleRandomGestureEnabled = true;
             runtime.IdleRandomGestureIntervalSeconds = 22.0;
             runtime.ResetParameters();
@@ -2689,6 +2705,425 @@ internal static class Live2DChecks
 
             runtime.Music = null;
             runtime.MusicEnabled = false;
+            runtime.ResetParameters();
+            TickFrames(2);
+
+            // ---------------- M. 鼠标互动玩法（热区 / 反应 / 拖拽物理 / 待机小动作） ----------------
+            // 互动被「用户动作淡出中」判为 blocked 时会直接取消反应，所以每次重置后要等动作完全淡出（0.2s+）
+            void StopInteractionDemos()
+            {
+                runtime.StopAllDemos();
+                runtime.ResetParameters();
+                TickFrames(40);
+            }
+
+            Quiet();
+            runtime.MocapEnabled = false;
+            runtime.Mocap = null;
+            runtime.Music = null;
+            runtime.MusicEnabled = false;
+            runtime.SwayEnabled = false;
+            StopInteractionDemos();
+            runtime.ResetParameters();
+            runtime.IdleRandomGestureEnabled = false;   // 关掉「动作系统」的待机随机（M 段单独测互动待机）
+            runtime.PetIdleActionsEnabled = false;
+            runtime.InteractionEnabled = true;
+            runtime.InteractionVoiceEnabled = true;
+            runtime.PetDragPhysicsEnabled = true;
+            runtime.PetIdleExpressionEnabled = true;
+            TickFrames(2);
+
+            bool TryRegionCenter(InteractionRegion region, out float x, out float y)
+                => runtime.GetInteractionRegionCenter(region, out x, out y);
+
+            // ---------- 热区枚举 / 中文名 ----------
+            var interactionRegions = runtime.InteractionRegionIds;
+            C("互动热区：12 个区域齐全（None 除外，含 Head/Forehead/FaceLeft/FaceRight/Chest/Waist/Skirt/Legs/Feet/HandLeft/HandRight/Tail）",
+                interactionRegions.Count == 12
+                && interactionRegions.Contains(InteractionRegion.Head) && interactionRegions.Contains(InteractionRegion.Forehead)
+                && interactionRegions.Contains(InteractionRegion.FaceLeft) && interactionRegions.Contains(InteractionRegion.FaceRight)
+                && interactionRegions.Contains(InteractionRegion.Chest) && interactionRegions.Contains(InteractionRegion.Waist)
+                && interactionRegions.Contains(InteractionRegion.Skirt) && interactionRegions.Contains(InteractionRegion.Legs)
+                && interactionRegions.Contains(InteractionRegion.Feet) && interactionRegions.Contains(InteractionRegion.HandLeft)
+                && interactionRegions.Contains(InteractionRegion.HandRight) && interactionRegions.Contains(InteractionRegion.Tail),
+                $"区域 {interactionRegions.Count} 个");
+
+            var expectedRegionNames = new (InteractionRegion Region, string Name)[]
+            {
+                (InteractionRegion.Head, "头"), (InteractionRegion.Forehead, "额头"),
+                (InteractionRegion.FaceLeft, "左脸"), (InteractionRegion.FaceRight, "右脸"),
+                (InteractionRegion.Chest, "胸"), (InteractionRegion.Waist, "腰"), (InteractionRegion.Skirt, "裙摆"),
+                (InteractionRegion.Legs, "腿"), (InteractionRegion.Feet, "脚"),
+                (InteractionRegion.HandLeft, "左手"), (InteractionRegion.HandRight, "右手"), (InteractionRegion.Tail, "尾巴"),
+            };
+            var badRegionNames = expectedRegionNames
+                .Where(pair => runtime.GetRegionDisplayName(pair.Region) != pair.Name)
+                .Select(pair => $"{pair.Region}={runtime.GetRegionDisplayName(pair.Region)}")
+                .ToList();
+            C("互动热区：区域中文名正确（无 / 头 / 额头 / 左脸 / 右脸 / 胸 / 腰 / 裙摆 / 腿 / 脚 / 左手 / 右手 / 尾巴）",
+                badRegionNames.Count == 0 && runtime.GetRegionDisplayName(InteractionRegion.None) == "无",
+                badRegionNames.Count == 0 ? "全部正确" : string.Join(",", badRegionNames));
+
+            // ---------- 代表点命中同一区域 ----------
+            var centerRegions = new[]
+            {
+                InteractionRegion.Head, InteractionRegion.Forehead, InteractionRegion.FaceLeft, InteractionRegion.FaceRight,
+                InteractionRegion.Chest, InteractionRegion.Waist, InteractionRegion.Legs, InteractionRegion.Feet,
+                InteractionRegion.HandLeft, InteractionRegion.HandRight,
+            };
+            var centerFailures = new List<string>();
+            foreach (var region in centerRegions)
+            {
+                if (!TryRegionCenter(region, out var cx, out var cy))
+                {
+                    centerFailures.Add($"{region}(无中心)");
+                    continue;
+                }
+
+                var hit = runtime.HitTestInteraction(cx, cy);
+                if (hit != region) centerFailures.Add($"{region}@({cx:0},{cy:0})→{hit}");
+            }
+
+            C("互动热区：各区域代表点 HitTest 命中同一区域（额头 > 头优先级；左右脸 / 左右手分开）",
+                centerFailures.Count == 0,
+                centerFailures.Count == 0 ? "10 个区域全部命中自身" : "失败：" + string.Join(" ; ", centerFailures));
+
+            if (TryRegionCenter(InteractionRegion.Forehead, out var foreheadX, out var foreheadY)
+                && TryRegionCenter(InteractionRegion.FaceLeft, out var faceLeftX, out var faceLeftY)
+                && TryRegionCenter(InteractionRegion.FaceRight, out var faceRightX, out var faceRightY)
+                && TryRegionCenter(InteractionRegion.HandLeft, out var handLeftX, out var handLeftY)
+                && TryRegionCenter(InteractionRegion.HandRight, out var handRightX, out var handRightY))
+            {
+                C("互动热区：优先级 / 左右判定正确（额头中心不是 Head；左右脸、左右手分别命中）",
+                    runtime.HitTestInteraction(foreheadX, foreheadY) == InteractionRegion.Forehead
+                    && runtime.HitTestInteraction(faceLeftX, faceLeftY) == InteractionRegion.FaceLeft
+                    && runtime.HitTestInteraction(faceRightX, faceRightY) == InteractionRegion.FaceRight
+                    && runtime.HitTestInteraction(handLeftX, handLeftY) == InteractionRegion.HandLeft
+                    && runtime.HitTestInteraction(handRightX, handRightY) == InteractionRegion.HandRight,
+                    $"额头→{runtime.HitTestInteraction(foreheadX, foreheadY)} 左脸→{runtime.HitTestInteraction(faceLeftX, faceLeftY)} " +
+                    $"右脸→{runtime.HitTestInteraction(faceRightX, faceRightY)} 左手→{runtime.HitTestInteraction(handLeftX, handLeftY)} " +
+                    $"右手→{runtime.HitTestInteraction(handRightX, handRightY)}");
+            }
+            else
+            {
+                C("互动热区：优先级 / 左右判定正确（额头中心不是 Head；左右脸、左右手分别命中）", false, "部分区域没有代表点");
+            }
+
+            var canvasW = rt.Model.CanvasWidthPixels;
+            var canvasH = rt.Model.CanvasHeightPixels;
+            var outsidePoints = new[]
+            {
+                (0f, 0f), (canvasW, 0f), (0f, canvasH), (canvasW, canvasH), (-50f, -50f), (canvasW + 50f, canvasH + 50f),
+            };
+            var outsideHits = outsidePoints.Select(p => runtime.HitTestInteraction(p.Item1, p.Item2)).ToList();
+            C("互动热区：画布外坐标返回 None（左上 / 右下 / 负坐标 / 超界）",
+                outsideHits.All(hit => hit == InteractionRegion.None),
+                string.Join(",", outsideHits));
+
+            // ---------- 关闭互动：全部 no-op ----------
+            runtime.InteractionEnabled = false;
+            var headCenterAvailable = TryRegionCenter(InteractionRegion.Head, out var headX, out var headY);
+            var disabledHit = headCenterAvailable ? runtime.HitTestInteraction(headX, headY) : InteractionRegion.Head;
+            runtime.PressInteraction(InteractionRegion.Head, headX, headY);
+            runtime.ReleaseInteraction();
+            TickFrames(2);
+            var disabledChangedParams = Math.Abs(Param("EyeSmile")) > 0.02 || Math.Abs(Param("ParamAngleZ")) > 0.05;
+            C("互动：InteractionEnabled=false 时 HitTest 返回 None、Press no-op（不产生反应 / 参数不变）",
+                !runtime.InteractionActive && disabledHit == InteractionRegion.None && !disabledChangedParams,
+                $"hit={disabledHit} active={runtime.InteractionActive}");
+            runtime.InteractionEnabled = true;
+
+            // ---------- 摸头 ----------
+            StopInteractionDemos();
+            runtime.ResetParameters();
+            TickFrames(2);
+            if (!TryRegionCenter(InteractionRegion.Head, out headX, out headY))
+            {
+                C("互动反应：摸头（Head）", false, "Head 没有代表点");
+            }
+            else
+            {
+                runtime.PressInteraction(InteractionRegion.Head, headX, headY);
+                runtime.ReleaseInteraction();
+                C("互动反应：摸头 → 语音事件 pat_head、名称「摸头」",
+                    runtime.LastInteractionVoiceEvent == "pat_head" && runtime.LastInteractionName == "摸头",
+                    $"{runtime.LastInteractionVoiceEvent}/{runtime.LastInteractionName}");
+                TickFrames(6);
+                var patHeadMoved = Math.Abs(Param("EyeSmile")) > 0.05 || Math.Abs(Param("ParamAngleZ")) > 0.2;
+                C("互动反应：摸头期间参数变化（EyeSmile / ParamAngleZ 偏离默认）", patHeadMoved,
+                    $"EyeSmile={Param("EyeSmile"):0.###} ParamAngleZ={Param("ParamAngleZ"):0.###}");
+                TickFrames(60);
+                C("互动反应：摸头 0.8 秒后结束并复位（InteractionActive=false、EyeSmile 回默认）",
+                    !runtime.InteractionActive && Near(Param("EyeSmile"), 0, 0.02),
+                    $"active={runtime.InteractionActive} EyeSmile={Param("EyeSmile"):0.###}");
+            }
+
+            // ---------- 额头三态表情循环 ----------
+            StopInteractionDemos();
+            runtime.ResetParameters();
+            TickFrames(2);
+            runtime.CycleFaceExpression(); // 烧掉可能残留的步进，保证从「常态」开始
+            if (!TryRegionCenter(InteractionRegion.Forehead, out var fhX, out var fhY))
+            {
+                C("互动反应：额头三态表情循环", false, "Forehead 没有代表点");
+            }
+            else
+            {
+                runtime.PressInteraction(InteractionRegion.Forehead, fhX, fhY);
+                runtime.ReleaseInteraction();
+                C("互动反应：点额头 → 语音事件 face_cycle、名称「额头表情」",
+                    runtime.LastInteractionVoiceEvent == "face_cycle" && runtime.LastInteractionName == "额头表情",
+                    $"{runtime.LastInteractionVoiceEvent}/{runtime.LastInteractionName}");
+                // 先循环回「常态」（点额头那次也会推进一档），再断言完整三态循环：爱心眼 → 单片眼镜 → 常态 → 爱心眼 → 黑框眼镜（眼镜交替）
+                for (var i = 0; i < 4 && runtime.CycleFaceExpression() != "常态"; i++)
+                {
+                }
+
+                var cycle = new List<string>
+                {
+                    runtime.CycleFaceExpression(), // 爱心眼
+                    runtime.CycleFaceExpression(), // 单片眼镜
+                    runtime.CycleFaceExpression(), // 常态
+                    runtime.CycleFaceExpression(), // 爱心眼
+                    runtime.CycleFaceExpression(), // 黑框眼镜（眼镜交替）
+                };
+                C("互动反应：额头三态循环 常态→爱心眼→单片/黑框眼镜→常态（眼镜交替）",
+                    cycle[0] == "爱心眼" && cycle[2] == "常态" && cycle[3] == "爱心眼"
+                    && IsGlasses(cycle[1]) && IsGlasses(cycle[4]) && cycle[1] != cycle[4],
+                    string.Join(" → ", cycle));
+
+                static bool IsGlasses(string name) => name is "单片眼镜" or "黑框眼镜";
+            }
+
+            // ---------- 捏脸（按住左脸拖动） ----------
+            StopInteractionDemos();
+            runtime.ResetParameters();
+            TickFrames(2);
+            if (!TryRegionCenter(InteractionRegion.FaceLeft, out var pinchX, out var pinchY))
+            {
+                C("互动反应：捏脸（左脸拖动）", false, "FaceLeft 没有代表点");
+            }
+            else
+            {
+                runtime.PressInteraction(InteractionRegion.FaceLeft, pinchX, pinchY);
+                TickFrames(1);
+                runtime.DragInteraction(pinchX + 120, pinchY + 10);
+                TickFrames(1);
+                runtime.DragInteraction(pinchX + 240, pinchY + 20);
+                TickFrames(1);
+                runtime.DragInteraction(pinchX + 360, pinchY + 30);
+                TickFrames(8);
+                C("互动反应：捏脸语音事件 pinch / 名称「捏脸」",
+                    runtime.LastInteractionVoiceEvent == "pinch" && runtime.LastInteractionName == "捏脸",
+                    $"{runtime.LastInteractionVoiceEvent}/{runtime.LastInteractionName}");
+                C("互动反应：捏左脸拖动 → CheeckPuff 鼓起（左脸对应 CheeckPuffR）+ 嘴形变化",
+                    Param("CheeckPuff") > 0.2 && Param("CheeckPuffR") > 0.2 && Math.Abs(Param("CheeckPuffL")) < 0.05
+                    && Param("ParamMouthForm") < -0.1 && Param("Mouthpucker") > 0.05,
+                    $"CheeckPuff={Param("CheeckPuff"):0.###} L={Param("CheeckPuffL"):0.###} R={Param("CheeckPuffR"):0.###} " +
+                    $"嘴形={Param("ParamMouthForm"):0.###} 撅嘴={Param("Mouthpucker"):0.###}");
+                runtime.ReleaseInteraction();
+                TickFrames(40);
+                C("互动反应：捏脸松手后 0.3 秒内复位（CheeckPuff / Mouthpucker 回默认）",
+                    Near(Param("CheeckPuff"), 0, 0.05) && Near(Param("Mouthpucker"), 0, 0.02),
+                    $"CheeckPuff={Param("CheeckPuff"):0.###} Mouthpucker={Param("Mouthpucker"):0.###}");
+            }
+
+            // ---------- 挠痒（摸脚） ----------
+            StopInteractionDemos();
+            runtime.ResetParameters();
+            TickFrames(2);
+            if (!TryRegionCenter(InteractionRegion.Feet, out var feetX, out var feetY))
+            {
+                C("互动反应：挠痒（摸脚）", false, "Feet 没有代表点");
+            }
+            else
+            {
+                runtime.PressInteraction(InteractionRegion.Feet, feetX, feetY);
+                runtime.ReleaseInteraction();
+                C("互动反应：摸脚 → 语音事件 tickle、名称「挠痒」",
+                    runtime.LastInteractionVoiceEvent == "tickle" && runtime.LastInteractionName == "挠痒",
+                    $"{runtime.LastInteractionVoiceEvent}/{runtime.LastInteractionName}");
+                var ticklePeak = 0.0;
+                for (var i = 0; i < 60; i++)
+                {
+                    TickFrames(1);
+                    ticklePeak = Math.Max(ticklePeak, Math.Abs(Param("AngleX")));
+                }
+
+                C("互动反应：挠痒 1.2 秒内参数高频摆动（|AngleX| 峰值 > 0.5）", ticklePeak > 0.5,
+                    $"峰值={ticklePeak:0.###}");
+                TickFrames(30);
+                C("互动反应：挠痒 1.2 秒后结束并复位（InteractionActive=false、AngleX 回默认）",
+                    !runtime.InteractionActive && Near(Param("AngleX"), 0, 0.05),
+                    $"active={runtime.InteractionActive} AngleX={Param("AngleX"):0.###}");
+            }
+
+            // ---------- 护住（摸胸） ----------
+            StopInteractionDemos();
+            runtime.ResetParameters();
+            TickFrames(2);
+            if (!TryRegionCenter(InteractionRegion.Chest, out var chestX, out var chestY))
+            {
+                C("互动反应：护住（摸胸）", false, "Chest 没有代表点");
+            }
+            else
+            {
+                runtime.PressInteraction(InteractionRegion.Chest, chestX, chestY);
+                runtime.ReleaseInteraction();
+                C("互动反应：摸胸 → 语音事件 protect、名称「护住」",
+                    runtime.LastInteractionVoiceEvent == "protect" && runtime.LastInteractionName == "护住",
+                    $"{runtime.LastInteractionVoiceEvent}/{runtime.LastInteractionName}");
+                TickFrames(5);
+                C("互动反应：护住期间播「抱胸致意」手势", runtime.ActiveGesture == "抱胸致意",
+                    $"ActiveGesture={runtime.ActiveGesture ?? "null"}");
+                TickFrames(100);
+                C("互动反应：护住约 1.5 秒后结束（手势停止、InteractionActive=false）",
+                    !runtime.InteractionActive && runtime.ActiveGesture is null,
+                    $"active={runtime.InteractionActive} gesture={runtime.ActiveGesture ?? "null"}");
+            }
+
+            // ---------- 点手：竖食指 / 放下手 ----------
+            StopInteractionDemos();
+            runtime.ResetParameters();
+            TickFrames(2);
+            if (!TryRegionCenter(InteractionRegion.HandLeft, out var handX, out var handY))
+            {
+                C("互动反应：点手切换竖食指", false, "HandLeft 没有代表点");
+            }
+            else
+            {
+                runtime.PressInteraction(InteractionRegion.HandLeft, handX, handY);
+                runtime.ReleaseInteraction();
+                TickFrames(3);
+                C("互动反应：点左手 → 语音事件 hand、名称「竖起食指」、手势生效",
+                    runtime.LastInteractionVoiceEvent == "hand" && runtime.LastInteractionName == "竖起食指"
+                    && runtime.ActiveGesture == "竖起食指",
+                    $"{runtime.LastInteractionVoiceEvent}/{runtime.LastInteractionName} gesture={runtime.ActiveGesture ?? "null"}");
+                runtime.PressInteraction(InteractionRegion.HandLeft, handX, handY);
+                runtime.ReleaseInteraction();
+                TickFrames(3);
+                C("互动反应：再点左手 → 名称「放下手」、手势停止",
+                    runtime.LastInteractionVoiceEvent == "hand" && runtime.LastInteractionName == "放下手"
+                    && runtime.ActiveGesture is null,
+                    $"{runtime.LastInteractionName} gesture={runtime.ActiveGesture ?? "null"}");
+            }
+
+            // ---------- 拖拽物理 ----------
+            StopInteractionDemos();
+            runtime.ResetParameters();
+            TickFrames(2);
+            runtime.ApplyDragImpulse(400, 150);
+            TickFrames(4);
+            var impulseMoved = Math.Abs(Param("PositionX")) > 0.2f && Math.Abs(Param("AngleX")) > 0.05f;
+            C("互动：拖拽物理 ApplyDragImpulse 后 PositionX / AngleX 有值", impulseMoved,
+                $"PositionX={Param("PositionX"):0.###} AngleX={Param("AngleX"):0.###}");
+            TickFrames(70);
+            C("互动：拖拽物理约 1 秒内衰减到接近 0（PositionX<0.05、AngleX<0.05）",
+                Math.Abs(Param("PositionX")) < 0.05f && Math.Abs(Param("AngleX")) < 0.05f,
+                $"PositionX={Param("PositionX"):0.###} AngleX={Param("AngleX"):0.###}");
+            runtime.PetDragPhysicsEnabled = false;
+            runtime.ResetParameters();
+            runtime.ApplyDragImpulse(400, 150);
+            TickFrames(4);
+            C("互动：PetDragPhysicsEnabled=false 时拖拽物理不写参数（PositionX≈0）",
+                Math.Abs(Param("PositionX")) < 0.01f, $"PositionX={Param("PositionX"):0.###}");
+            runtime.PetDragPhysicsEnabled = true;
+
+            // ---------- 待机小动作 ----------
+            runtime.PetIdleActionsEnabled = false;
+            runtime.PetIdleActionIntervalSeconds = 12.0;
+            var idleActionNames = runtime.PetIdleActionNames;
+            C("互动待机：默认间隔 12 秒、动作集合 6 个（换脚 / 东张西望 / 伸懒腰 / 挥挥手 / 戴铁盆 / 爱心眼脸红）",
+                Near(runtime.PetIdleActionIntervalSeconds, 12.0, 1e-9)
+                && idleActionNames.Count == 6
+                && new[] { "换脚", "东张西望", "伸懒腰", "挥挥手", "戴铁盆", "爱心眼脸红" }.All(idleActionNames.Contains),
+                $"间隔={runtime.PetIdleActionIntervalSeconds:0.###} 动作={string.Join("/", idleActionNames)}");
+
+            runtime.PetIdleActionIntervalSeconds = 20;
+            var intervalRoundtrip = Near(runtime.PetIdleActionIntervalSeconds, 20.0, 1e-9);
+            runtime.PetIdleActionIntervalSeconds = 12;
+            runtime.PetIdleExpressionEnabled = false;
+            var expressionOff = !runtime.PetIdleExpressionEnabled;
+            runtime.PetIdleExpressionEnabled = true;
+            C("互动待机：间隔设置生效、待机表情开关可读写（默认开）",
+                intervalRoundtrip && expressionOff && runtime.PetIdleExpressionEnabled,
+                $"interval20={intervalRoundtrip} exprOff={expressionOff}");
+
+            StopInteractionDemos();
+            runtime.ResetParameters();
+            TickFrames(2);
+            var idleDisabledTriggered = false;
+            for (var i = 0; i < 1200 && !idleDisabledTriggered; i++) // 20 秒（> 最大间隔 18 秒）
+            {
+                TickFrames(1);
+                if (runtime.ActivePetIdleAction is not null) idleDisabledTriggered = true;
+            }
+            C("互动待机：PetIdleActionsEnabled=false 时 20 秒内不触发待机小动作", !idleDisabledTriggered,
+                idleDisabledTriggered ? $"意外触发：{runtime.ActivePetIdleAction}" : "未触发");
+
+            runtime.PetIdleActionsEnabled = true;
+            StopInteractionDemos();
+            runtime.ResetParameters();
+            TickFrames(2);
+            var idleFirstTriggerFrame = -1;
+            for (var i = 0; i < 1200 && idleFirstTriggerFrame < 0; i++) // 20 秒
+            {
+                TickFrames(1);
+                if (runtime.ActivePetIdleAction is not null) idleFirstTriggerFrame = i + 1;
+            }
+            C("互动待机：开启后按随机间隔触发待机小动作（20 秒内；默认 12s × 0.66~1.5）",
+                idleFirstTriggerFrame > 0, $"第 {idleFirstTriggerFrame} 帧触发：{runtime.ActivePetIdleAction}");
+
+            if (idleFirstTriggerFrame > 0)
+            {
+                // 互动立即打断待机小动作
+                if (!TryRegionCenter(InteractionRegion.Head, out var patX, out var patY)) patX = headX;
+                runtime.PressInteraction(InteractionRegion.Head, patX, patY);
+                runtime.ReleaseInteraction();
+                TickFrames(2);
+                C("互动待机：互动开始立刻打断当前待机小动作",
+                    runtime.ActivePetIdleAction is null && runtime.LastInteractionVoiceEvent == "pat_head",
+                    $"idle={runtime.ActivePetIdleAction ?? "null"} voice={runtime.LastInteractionVoiceEvent}");
+
+                var idleResumedTooEarly = false;
+                for (var i = 0; i < 180 && !idleResumedTooEarly; i++) // 3 秒冷却
+                {
+                    TickFrames(1);
+                    if (runtime.ActivePetIdleAction is not null) idleResumedTooEarly = true;
+                }
+                C("互动待机：互动后 3 秒冷却内不恢复待机小动作", !idleResumedTooEarly,
+                    idleResumedTooEarly ? $"冷却内触发：{runtime.ActivePetIdleAction}" : "未提前恢复");
+
+                var idleResumed = false;
+                for (var i = 0; i < 1200 && !idleResumed; i++) // 20 秒
+                {
+                    TickFrames(1);
+                    if (runtime.ActivePetIdleAction is not null) idleResumed = true;
+                }
+                C("互动待机：冷却结束后恢复待机小动作（20 秒内）", idleResumed,
+                    idleResumed ? $"恢复：{runtime.ActivePetIdleAction}" : "20 秒内未恢复");
+            }
+            else
+            {
+                C("互动待机：互动开始立刻打断当前待机小动作", false, "前置条件失败：没有待机小动作在播");
+                C("互动待机：互动后 3 秒冷却内不恢复待机小动作", false, "前置条件失败");
+                C("互动待机：冷却结束后恢复待机小动作（20 秒内）", false, "前置条件失败");
+            }
+
+            // 说话时待机小动作让位
+            runtime.SpeechActive = true;
+            TickFrames(2);
+            var idleTriggeredWhileSpeaking = false;
+            for (var i = 0; i < 600 && !idleTriggeredWhileSpeaking; i++) // 10 秒
+            {
+                TickFrames(1);
+                if (runtime.ActivePetIdleAction is not null) idleTriggeredWhileSpeaking = true;
+            }
+            C("互动待机：说话时待机小动作让位（10 秒内不触发）", !idleTriggeredWhileSpeaking,
+                idleTriggeredWhileSpeaking ? $"意外触发：{runtime.ActivePetIdleAction}" : "未触发");
+            runtime.SpeechActive = false;
+            runtime.PetIdleActionsEnabled = true;
+            runtime.IdleRandomGestureEnabled = true;
             runtime.ResetParameters();
             TickFrames(2);
 

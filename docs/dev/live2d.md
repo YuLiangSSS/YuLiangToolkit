@@ -37,7 +37,9 @@ YuLiangTookit（主程序）
       ├─ GesturePlayer / PerformancePlayer / DanceController ── 动作系统（见 §14）
       │   ├─ GesturePlayer ────────── 8 手势：3 作者 enter/exit 动作 + hold 参数 / 5 参数姿势
       │   ├─ PerformancePlayer ────── 6 个数据驱动时间线表演（Pose/Look/Nod/Talk/Gesture）
-      │   └─ DanceController ──────── 4 程序化舞蹈模式（相位驱动，0.25s 权重淡入淡出）
+      │   ├─ DanceController ──────── 4 程序化舞蹈模式（相位驱动，0.25s 权重淡入淡出）
+      │   ├─ InteractionController ── 鼠标互动（见 §16）：12 热区 / 摸头 / 三态表情 / 捏脸 / 挠痒 / 护住 / 拖拽物理
+      │   └─ PetIdleActions ───────── 互动待机小动作（6 套程序化动作 + 可选表情 + 间隔/冷却门控）
       │
       ├─ Mocap/ ────────────────────── 摄像头面部动捕（见 §10）
       │   ├─ MocapCameraSource ─────── MediaCapture + MediaFrameReader 采集 + FaceDetector 检测（WinRT）
@@ -639,7 +641,7 @@ UI 上「一键全部重置」会复位全部参数并停掉动作 / 表情 / �
 - 每 2 秒：优先取 `GetPlaybackInfo().PlaybackStatus == Playing` 的会话，否则 `GetCurrentSession()`；
   `TryGetMediaPropertiesAsync()` 拿标题 / 歌手；`SourceAppUserModelId` 拿应用；
 - SMTC 不可用 / 旧系统 / 播放器不支持 → 捕获异常后**静默忽略**，只是界面上没有媒体信息，**不影响**跟唱；
-- 隐私：媒体标题 / 文件名会写进 debug selftest 日志（见 §17），排错用，不要公开贴出。
+- 隐私：媒体标题 / 文件名会写进 debug selftest 日志（见 §18），排错用，不要公开贴出。
 
 ### 13.4 `MusicReactiveSource`（provider）
 
@@ -954,7 +956,137 @@ BPM 估计（原来只在有声 hop 估算，稀疏点击永远估不出——�
 7. **Windows 没装中文语音包时本地列表可能没有中文**：在线仍可用；本地回退时会选任意可用语音（可能英文）并提示。
 8. **气泡定位用错屏工作区**：多屏负坐标 / DPI 缩放要按桌宠所在屏幕的工作区与 DIP 换算，否则会跑到别的屏。
 
-## 16. 坑（踩过的都记在这里）
+## 16. 鼠标互动玩法（InteractionController / PetIdleActions）
+
+> 参考项目 **FULASKA/-live2d-** 的鼠标玩法（摸头 / 额头表情 / 捏脸 / 挠痒 / 护住 / 待机小动作）在本项目
+> **独立重写**（没有复制其源码 / 资产）：`Model/InteractionController.cs`（热区 + 反应 + 拖拽物理）+
+> `Model/PetIdleActions.cs`（待机小动作）+ `ModelRuntime` 集成 + `PetWindow` 的鼠标 / 快捷键。
+> 只在**桌宠窗口**生效（测试页预览不接鼠标互动）。
+
+### 16.1 文件与职责
+
+| 文件 | 职责 |
+| --- | --- |
+| `Model/InteractionController.cs` | 热区几何（部件名 → drawable 缓存、每帧包围盒）、`HitTest` / `GetRegionCenter`、指针状态机（`PointerDown/Move/Up`、`Press`、`TriggerInteraction`）、反应状态机（PatHead / Pinch / Tickle / Protect / Shy / 手势切换）、额头三态表情、拖拽物理、touched 复位；公开 `InteractionRegion`（12 区）/ `InteractionGesture`（Tap/Pet） |
+| `Model/PetIdleActions.cs` | 6 个待机小动作（换脚 / 东张西望 / 伸懒腰 / 挥挥手 / 戴铁盆 / 爱心眼脸红），程序化关键帧 + 表情挂载；间隔随机、互动冷却、被打断即撤；`ActionNames / ActiveName / TriggerCount / TryTrigger / NotifyInteraction` |
+| `ModelRuntime.cs` | 对外属性（`InteractionEnabled / InteractionVoiceEnabled / PetDragPhysicsEnabled / PetIdleActionsEnabled / PetIdleActionIntervalSeconds / PetIdleExpressionEnabled`）、包装方法、`InteractionHappened` 事件、`LastInteractionVoiceEvent / LastInteractionName`；Tick 里更新互动 / 待机并做门控 |
+| `Views/PetWindow.xaml(.cs)` | 桌宠窗口鼠标事件（命中才捕获、否则拖窗口）、`Ctrl+Alt+L` 穿透 / `Ctrl+Alt+0` 退出全局热键、右键菜单（含 ⚙ 设置 / ❌ 退出）；拖窗位移喂 `ApplyDragImpulse` |
+| `Live2DSession` / UI | 订阅 `InteractionHappened` → 台词（1.5s 节流）→ `SpeakText`（语音 + 气泡 + 口型同步）；互动语音开关 / 台词池 |
+
+### 16.2 热区几何
+
+- **部件名 → drawable 索引缓存**（加载时一次）：用 CubismCore `csmGetDrawableParentPartIndices` + cdi3 中文部件名，
+  按关键字归组：`HeadKeywords`（头/脸/五官/脖子/耳朵/发饰/前发/眉毛/眼眶/眼球/嘴/鼻子…）、
+  `ChestKeywords`（胸衣/胸/领子/肩膀花边…）、裙摆（短裙/长裙/…）、尾巴（尾巴/狗尾草）、
+  `PartGroup.Face`（脸/脸底）、`Hand`（手/手指）、`Legs`（腿/左腿/右腿）、腰（腰部衣服）；
+- **每帧几何**：`model.Update()` 后 `InvalidateGeometry()`，下一次 `HitTest` 用当前蒙皮顶点重算各部件包围盒
+  （只遍历缓存的 drawable 索引，实测单次 ~0.0022ms）；
+- **区域构造**：
+  - **额头**：脸包围盒上半段矩形（top 3% ~ 44% 高，左右各留 10%）；
+  - **左 / 右脸**：脸包围盒 46% 以下的椭圆，按中线 x 一分为二（按住哪边捏哪边）；
+  - **头**：头部件包围盒（代表点取顶部 6% 处，避开额头 / 脸）；
+  - **胸 / 腰 / 裙摆 / 腿 / 脚**：按部件包围盒叠成竖直分段（颈线以下 → 胸 → 腰 → 裙 → 腿 → 脚）；
+  - **左 / 右手**：手部件包围盒按中线 x 切成左 / 右，只剩一只手时用中间线兜底；
+  - **尾巴**：尾巴包围盒（代表点取最右缘 2% 处，避免被身体各段抢走）；
+- **优先级**（`PriorityOrder`，z 从高到低）：
+  **额头 9 > 左脸/右脸 8 > 左手/右手 7 > 头 6 > 胸 5 > 腰 4 > 裙摆 3 > 腿 2 > 脚 1 > 尾巴 0**——
+  `HitTest` 按此顺序第一个包含点的区域胜出（所以额头中心不会命中头、脸不会命中胸）；
+- **坐标**：画布像素（y 向下，原点左上）；`RegionIds` / `GetRegionDisplayName` 给 UI / 自检用；
+  `GetRegionCenter` 返回每区代表点（自检「代表点命中同区」就靠它）；
+- **换模型注意**：关键字按内置模型（大肥鱼）的中文部件名调过；自定义模型部件名不同时热区可能退化
+  （某些区域拿不到 bbox → 命不中），这是启发式玩法的固有限制。
+
+### 16.3 指针状态机（点击 / 抚摸 / 拖动 / 捏脸）
+
+- **UI 层判定**（`PetWindow`，屏幕像素）：左键按下后 `<200ms` 且位移 `<6px` = **点击互动**，
+  `>6px` = **搬窗口**（移动窗口 + 按 dx/dy 喂 `ApplyDragImpulse` 甩头发 / 裙子）；右键 = 菜单；
+- **控制器层判定**（画布像素，`InteractionController`）：
+  - `PointerDown(x,y)`：`HitTest` 命中热区才返回 true（UI 此时捕获指针、**不**拖窗口）；
+  - `PointerMove`：累计位移；脸区域 → 更新捏脸 anchor（`PinchMaxPullRatio = 0.07` 画布宽，`pow 1.15` 前段更钝）；
+    头 / 额头 → 抚摸摆头目标；每滑过画布宽 **3%** 记一步，**第一步**触发抚摸反应（`HandlePet`）；
+  - `PointerUp`：若在捏脸 → `ReleasePinch`；否则若「没拖动 + 没抚摸步 + 位移 ≤ 画布宽 2% + 时长 ≤ 420ms」
+    → 判定 **tap**（`HandleTap`）；否则是拖动（拖窗 / 拖拽物理）；
+- **blocked**：用户动作（非 IDLE）/ 表演 / 舞蹈进行中 → 拒绝新互动；互动进行中用户突然播演示 →
+  `StopImmediate` 让位（不卡在半截）；待机随机演示会被互动顶掉；
+- 关闭互动（`InteractionEnabled=false`）：`HitTest` 返回 None、所有 Press/Move 为 no-op。
+
+### 16.4 反应状态机
+
+| 反应 | 触发（tap / pet） | 时长 | 表现 |
+| --- | --- | --- | --- |
+| **摸头 PatHead** | 头 / 脸（tap 或 pet） | **0.8s** | 眯眼笑 / 歪头包络，语音事件 `pat_head` |
+| **额头表情循环** | 额头 tap | 持续 | 常态 → 爱心眼 → 单片眼镜 / 黑框眼镜（交替）→ 常态；事件 `face_cycle` |
+| **捏脸 Pinch** | 左 / 右脸按下并拖动 | 按住期间 | 对应半边鼓起（`CheeckPuff` / `CheeckPuff2` / `CheeckPuffL/R`，左右映射与热区相反：捏左脸鼓画面右半边）+ 撅嘴 / 嘴形 + 头跟随；松手 0.3s 内回落；事件 `pinch` |
+| **挠痒 Tickle** | 腰 / 腿 / 脚（tap 或 pet） | **1.2s** | 身体 / 耳朵快抖（AngleX/Z、LEar/REar 等）+ ＞＜ 表情；事件 `tickle` |
+| **护住 Protect** | 胸 / 裙摆（tap 或 pet） | **1.5s** | 播「抱胸致意」手势 + 黑脸 / 屑屑眼交替 + 前倾；事件 `protect` |
+| **害羞 Shy** | 手（pet）/ 尾巴 | 短 | ＞＜ + 脸红；事件 `hand` / `tickle` |
+| **手部手势切换** | 左手 / 右手 tap | 持续 | 播放「竖起食指」↔ 停止（放下手）；事件 `hand` |
+| **拖拽物理** | 拖窗位移 | 衰减 | `ApplyDragImpulse(dx,dy)` 写 `PositionX/Y`、`AngleX`、`AngleZ`，约 1s 衰减到 0 |
+| **待机小动作** | 空闲自动 | 3.5~8.2s | 见 16.5 |
+
+- 反应写出的参数全部记 touched，`ResetTouched` 在下一帧开头复位 → **松手 / 超时即回常态，不卡住**；
+- 反应结束（非立即取消）进入 **3 秒冷却**（`ReactionCooldownSeconds`），冷却期间待机小动作不恢复。
+
+### 16.5 待机小动作（PetIdleActions）
+
+- 6 个程序化动作（关键帧 + 可选表情）：`换脚`（5.2s）/ `东张西望`（5.6s）/ `伸懒腰`（4.2s）/
+  `挥挥手`（8.2s）/ `戴铁盆`（5.4s，表情「钢盆」）/ `爱心眼脸红`（3.5s，表情「爱心眼」+「脸红」）；
+- 间隔：`NextInterval = clamp(IntervalSeconds, 6, 60) × (0.66 + rand×0.84)` → 默认 12s 时约 **8~18s**
+  （配置 UI 夹取 8~30）；
+- **门控**（`IsPetIdleBlocked`）：动捕有脸 / 语音说话 / 音乐在播 / 手势 / 表演 / 舞蹈 / 用户动作
+  （非 IDLE）/ **互动进行中 / 互动冷却** → 都不抢；被打断时立即 `StopImmediate` 并给 3 秒冷却；
+- **表情**：只有 `PetIdleExpressionEnabled` 且当前没有用户表情（`CanPetIdleUseExpression`：
+  额头三态没开 + 表情管理器没激活）才挂载，避免撤掉用户自己摆的表情；
+- 被 block 时 `_timer = max(_timer, 1.0)`，恢复后至少再等 1 秒，避免刚结束就蹦一个。
+
+### 16.6 语音事件 → 说话 / 气泡链路
+
+```
+InteractionController._raiseInteraction(voiceEvent, displayName)
+  → ModelRuntime.OnInteractionEvent：记录 LastInteractionVoiceEvent / LastInteractionName
+                                     （InteractionVoiceEnabled 时）InteractionHappened?.Invoke(voiceEvent)
+  → Live2DSession 订阅：按事件选台词（pat_head / face_cycle / pinch / tickle / protect / hand，1.5 秒节流）
+  → TtsService.SpeakText → onPlaybackStarted 时弹气泡 + 自动小动作（与声音 / 口型同步）
+```
+
+- 语音事件名：`pat_head` / `face_cycle` / `pinch` / `tickle` / `protect` / `hand`；
+- **`InteractionVoiceEnabled=false` 时 `InteractionHappened` 不触发，但 `LastInteractionVoiceEvent` 仍记录**
+  （自检 / 调试据此看「发生了什么」；只有实际语音由开关决定）；
+- 台词池在会话层（不走参考项目资产），随机且尽量避免连续重复；关掉「互动语音」只保留动作 / 表情。
+- 兼容别名（老代码 / 外部脚本用）：`HitTestInteraction` / `GetInteractionRegionCenter` / `PressInteraction` /
+  `DragInteraction` / `ReleaseInteraction` / `InteractionRegions` / `PetDragPhysicsEnabled` 都等价于新名。
+- 性能（自检实测，Debug）：`HitTest` 平均 **~0.0022ms**、互动控制器 `Update` **~0.0003ms/帧**、
+  捏脸连续 120 帧 **0 字节分配**——热区几何只在 `HitTest` 时按需重算、写参数复用缓冲，不要改成每帧全量遍历。
+
+### 16.7 快捷键（桌宠窗口）
+
+- `Ctrl+Alt+L`：切换鼠标穿透（穿透后点不到桌宠；再按恢复）；`Ctrl+Alt+0`：退出程序；
+- 用 Win32 `RegisterHotKey(windowHandle, id, MOD_CONTROL|MOD_ALT, key)` 注册，`WM_HOTKEY` 在窗口 `WndProc` 处理，
+  窗口关闭 / 桌宠隐藏时 `UnregisterHotKey`（否则热键泄漏、重开注册失败）；
+- 受 `PetHotkeysEnabled` 控制；不用 / 冲突时关掉。
+
+### 16.8 配置（6 项）
+
+`petInteractionEnabled`（true）/ `petInteractionVoiceEnabled`（true）/ `petDragPhysicsEnabled`（true）/
+`petIdleActionIntervalSeconds`（12，UI 夹 8~30）/ `petIdleExpressionEnabled`（true）/ `petHotkeysEnabled`（true）。
+
+### 16.9 坑
+
+1. **drawable → parent part 表只有新版 Core 有**：`csmGetDrawableParentPartIndices` 拿不到时要退化为「无热区」，
+   不能让互动功能把加载搞挂；索引缓存只在加载时扫一次，别每帧遍历全部 715 个 drawable 调部件名查找。
+2. **热区用画布像素、y 向下**：预览 / 桌宠缩放 / 高 DPI 都要先换算成画布坐标再 `HitTest`；
+   直接用屏幕像素会随缩放漂移（UI 的 6px / 200ms 是屏幕像素，控制器的 2% / 420ms 是画布像素）。
+3. **部件名匹配是启发式**：换模型 / 改部件名后热区可能失效（关键词见 `HeadKeywords` 等常量），
+   不要假设「任何模型都能摸」。
+4. **blocked 会取消互动**：动作淡出中（`StopAllDemos` 后 0.2s 内）`IsInteractionBlocked` 仍为 true，
+   此时新互动会被 `Update` 里的 `StopImmediate` 清掉；自检 / UI 都要等动作完全结束再互动。
+5. **捏脸必须在松手 / 窗口失焦 / 关闭互动时复位**（`ReleasePinch` + touched 复位），否则脸会一直鼓着。
+6. **待机小动作被打断要停表情并复位参数**（`StopImmediate` 里撤表情 + touched 复位），否则会残留「钢盆」。
+7. **互动 / 待机 / 用户演示三者互斥**：在 `IsInteractionBlocked` / `IsPetIdleBlocked` 里维护，
+   漏一个就会「摸着摸着突然开始表演」。
+8. **快捷键注册要配对注销**：`RegisterHotKey` 失败（被占用）要静默降级并提示；程序退出 / 桌宠关闭时注销。
+
+## 17. 坑（踩过的都记在这里）
 
 1. **moc 缓冲区必须 64 字节对齐且终身不动**：`csmReviveMocInPlace` 之后 Core 内部一直引用它；
    用 `File.ReadAllBytes` 后直接 `GCHandle` 钉住是错的（可能被 GC 移动 + 对齐不保证）。
@@ -1039,7 +1171,7 @@ BPM 估计（原来只在有声 hop 估算，稀疏点击永远估不出——�
 35. **真实歌曲素材不进仓库**：人声识别按真实歌曲混音校准，素材属于用户私有媒体，只在本机调参，
     **不进仓库 / 自检 / 截图 / 文档**；自检只能用合成信号回归（voice-like / instrumental / click / 静音）。
 
-## 17. 调试钩子（环境变量，开发 / 截图验收用）
+## 18. 调试钩子（环境变量，开发 / 截图验收用）
 
 | 变量 | 作用 |
 | --- | --- |
@@ -1057,4 +1189,7 @@ BPM 估计（原来只在有声 hop 估算，稀疏点击永远估不出——�
 | `YLT_LIVE2D_DANCE_DEMO=<模式名>` | 自动开始指定舞蹈模式（轻快摇摆 / 挥手舞 / 摇摆转圈 / 酷炫抖肩），截图验收用 |
 | `YLT_LIVE2D_SPEECH_SELFTEST=1`（+ `_EXIT=1`） | **语音链路自测**：说一句预置台词（会真的合成并播放几秒），统计 采样次数 / IsSpeaking 占比 / 嘴型平均·最大 / LastError，写 `Data\live2d\speech-selftest.log`（**只写数字，不保存音频**）；加 `_EXIT=1` 写完退出 |
 | `YLT_LIVE2D_BUBBLE_SHOT=<png>` | 桌宠 + 聊天气泡**离屏合成**截图（不抓桌面），验收气泡定位 / 透明度用 |
+| `YLT_LIVE2D_INTERACTION_DEMO=<区域/事件>` | 模拟桌宠互动「按下 → 抚摸移动 / 点按 → 抬起」，写 `Data\live2d\interaction-demo.log`（区域名 / 画布坐标 / 是否命中 / LastInteractionName / VoiceEvent / 会话台词 / 是否在说话），并打印到工具页日志；只写状态文本，不保存音频 |
+| `YLT_LIVE2D_INTERACTION_SHOT=<png>` | 配合上一条：互动后出**桌宠离屏**截图（不抓桌面）再自动退出 |
+| `YLT_LIVE2D_PETCARD_SCROLL=<bottom/数字>` | 打开页面后把「桌面宠物」卡内部滚到指定位置（截图设置项用） |
 | `YLT_SELFCHECK_TRACE=1` | 自检排错：打印「进入 / 完成哪个分组」（查「全 PASS 但进程不退出」卡在哪一步） |

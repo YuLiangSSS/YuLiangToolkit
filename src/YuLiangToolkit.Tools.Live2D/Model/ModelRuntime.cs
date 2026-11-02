@@ -19,9 +19,10 @@ namespace YuLiangToolkit.Tools.Live2D.Model;
 /// → 音乐跟唱 / 律动（<see cref="Music"/>，语音口型优先、音乐嘴型不出）
 /// → 整身轻倾（<see cref="BodyLeanDegrees"/>，以脚为支点，渲染层旋转画布）
 /// → 动作混合 → <b>手势 / 表演 / 舞蹈</b>（<see cref="GestureIds"/>，写在动作之后覆盖 IDLE 手臂曲线）
+/// → <b>鼠标互动反应 / 待机小动作</b>（<see cref="InteractionRegion"/>，物理之前）
 /// → 表情叠加 → 物理 → Core <c>Update()</c> → 触发 <see cref="FrameUpdated"/>。
-/// 「受管参数」= 会被动作 / 表情 / 物理 / 待机 / 眼睛跟随 / 动捕 / 身体晃动 / 音乐 / 手势表演舞蹈 / 语音写到的参数；
-/// 其余参数（大部分纯调试参数）不会被每帧重置，所以工具页手动拖滑块在那些参数上是有效的。</para>
+/// 「受管参数」= 会被动作 / 表情 / 物理 / 待机 / 眼睛跟随 / 动捕 / 身体晃动 / 音乐 / 手势表演舞蹈 / 语音 /
+/// 互动 / 待机小动作写到的参数；其余参数（大部分纯调试参数）不会被每帧重置，所以工具页手动拖滑块在那些参数上是有效的。</para>
 ///
 /// <para>加载完成前 <see cref="Model"/> / <see cref="Renderer"/> 会抛 <see cref="InvalidOperationException"/>；先判 <see cref="IsLoaded"/>。</para>
 /// </summary>
@@ -195,6 +196,22 @@ public sealed class ModelRuntime : IDisposable
 
     /// <summary>上一帧是否处于「忙碌」状态（动捕 / 音乐 / 语音 / 演示 / 用户动作）；用于恢复待机后先冷却。</summary>
     private bool _idleRandomWasBusy;
+
+    // ---------- 桌宠鼠标互动（参考 FULASKA/-live2d-） ----------
+
+    private InteractionController? _interaction;
+    private PetIdleActions? _petIdleActions;
+
+    /// <summary>当前手势 / 表演 / 舞蹈是不是「待机随机」自动挑的（互动来了要让位）。</summary>
+    private bool _idleDemoActive;
+
+    private bool _interactionVoiceEnabled = true;
+    private bool _petIdleActionsEnabled = true;
+    private string? _lastInteractionVoiceEvent;
+    private string? _lastInteractionName;
+
+    /// <summary>互动语音事件（参数 = 语音事件 key：pat_head / face_cycle / pinch / tickle / protect / hand）。</summary>
+    public event EventHandler<string>? InteractionHappened;
 
     private double _time;
     private double _lastTickMilliseconds;
@@ -435,11 +452,17 @@ public sealed class ModelRuntime : IDisposable
         _performance?.Stop();
         _dance?.StopImmediate();
         StopMotion(0.12);
-        return _gesture.Play(id, stopMotionFirst: false);
+        var played = _gesture.Play(id, stopMotionFirst: false);
+        if (played) _idleDemoActive = false;
+        return played;
     }
 
     /// <summary>停止手势（原生手势播作者退出动作；参数姿势平滑淡出）。</summary>
-    public void StopGesture() => _gesture?.Stop();
+    public void StopGesture()
+    {
+        _gesture?.Stop();
+        _idleDemoActive = false;
+    }
 
     /// <summary>所有时间线表演 id（中文名）。</summary>
     public IReadOnlyList<string> PerformanceIds => _performance?.Ids ?? Array.Empty<string>();
@@ -454,11 +477,17 @@ public sealed class ModelRuntime : IDisposable
         _gesture?.StopImmediate();
         _dance?.StopImmediate();
         StopMotion(0.12);
-        return _performance.Play(id);
+        var played = _performance.Play(id);
+        if (played) _idleDemoActive = false;
+        return played;
     }
 
     /// <summary>停止当前表演。</summary>
-    public void StopPerformance() => _performance?.Stop();
+    public void StopPerformance()
+    {
+        _performance?.Stop();
+        _idleDemoActive = false;
+    }
 
     /// <summary>所有舞蹈模式。</summary>
     public IReadOnlyList<string> DanceModes => DanceController.Modes;
@@ -483,11 +512,17 @@ public sealed class ModelRuntime : IDisposable
         _gesture?.StopImmediate();
         _performance?.Stop();
         StopMotion(0.12);
-        return _dance.Start(mode, speed);
+        var started = _dance.Start(mode, speed);
+        if (started) _idleDemoActive = false;
+        return started;
     }
 
     /// <summary>停止跳舞（0.25 秒权重淡出）。</summary>
-    public void StopDance() => _dance?.Stop();
+    public void StopDance()
+    {
+        _dance?.Stop();
+        _idleDemoActive = false;
+    }
 
     /// <summary>停止所有演示动作（手势 / 表演 / 舞蹈 / 当前动作）。</summary>
     public void StopAllDemos()
@@ -496,6 +531,7 @@ public sealed class ModelRuntime : IDisposable
         _performance?.Stop();
         _dance?.StopImmediate();
         StopMotion(0.2);
+        _idleDemoActive = false;
     }
 
     // ---------- 自检 / 调试用的内部只读观察口 ----------
@@ -532,6 +568,164 @@ public sealed class ModelRuntime : IDisposable
 
     /// <summary>把待机随机小动作倒计时清零（自检用，下一次 Tick 立刻进入判定）。</summary>
     internal void ResetIdleRandomGestureTimer() => _idleRandomGestureTimer = 0;
+
+    // ---------- 桌宠鼠标互动（参考 FULASKA/-live2d-） ----------
+
+    /// <summary>是否开启桌宠鼠标互动（配置 PetInteractionEnabled；关闭后 HitTest 返回 None、所有交互 no-op）。</summary>
+    public bool InteractionEnabled
+    {
+        get => _interaction?.Enabled ?? false;
+        set
+        {
+            if (_interaction is not null) _interaction.Enabled = value;
+        }
+    }
+
+    /// <summary>互动时是否触发语音事件（配置 PetInteractionVoiceEnabled；UI 用它决定要不要读台词说话）。</summary>
+    public bool InteractionVoiceEnabled
+    {
+        get => _interactionVoiceEnabled;
+        set => _interactionVoiceEnabled = value;
+    }
+
+    /// <summary>拖动桌宠时是否带拖拽物理（配置 PetDragPhysicsEnabled；关闭时 ApplyDragImpulse no-op）。</summary>
+    public bool DragPhysicsEnabled
+    {
+        get => _interaction?.DragPhysicsEnabled ?? false;
+        set
+        {
+            if (_interaction is not null) _interaction.DragPhysicsEnabled = value;
+        }
+    }
+
+    /// <summary>旧名兼容（= <see cref="DragPhysicsEnabled"/>）。</summary>
+    public bool PetDragPhysicsEnabled
+    {
+        get => DragPhysicsEnabled;
+        set => DragPhysicsEnabled = value;
+    }
+
+    /// <summary>待机小动作总开关（换脚 / 东张西望 / 伸懒腰 / 挥挥手 / 戴铁盆 / 爱心眼脸红）。</summary>
+    public bool PetIdleActionsEnabled
+    {
+        get => _petIdleActionsEnabled;
+        set
+        {
+            _petIdleActionsEnabled = value;
+            if (_petIdleActions is not null) _petIdleActions.Enabled = value;
+        }
+    }
+
+    /// <summary>待机小动作基础间隔（秒，配置 PetIdleActionIntervalSeconds；实际每次在约 8~18s 随机）。</summary>
+    public double PetIdleActionIntervalSeconds
+    {
+        get => _petIdleActions?.IntervalSeconds ?? 12.0;
+        set
+        {
+            if (_petIdleActions is not null) _petIdleActions.IntervalSeconds = value;
+        }
+    }
+
+    /// <summary>待机时是否随机换表情（爱心眼 / 脸红 / 钢盆等；配置 PetIdleExpressionEnabled）。</summary>
+    public bool PetIdleExpressionEnabled
+    {
+        get => _petIdleActions is null || _petIdleActions.ExpressionEnabled;
+        set
+        {
+            if (_petIdleActions is not null) _petIdleActions.ExpressionEnabled = value;
+        }
+    }
+
+    /// <summary>是否启用全局快捷键（配置 PetHotkeysEnabled；只在 UI 层使用，Model 不读）。</summary>
+    public bool PetHotkeysEnabled { get; set; } = true;
+
+    /// <summary>当前待机小动作名（没有为 null）。</summary>
+    public string? ActivePetIdleAction => _petIdleActions?.ActiveName;
+
+    /// <summary>全部待机小动作名。</summary>
+    public IReadOnlyList<string> PetIdleActionNames => _petIdleActions?.ActionNames ?? Array.Empty<string>();
+
+    /// <summary>所有互动热区（不含 None）。</summary>
+    public IReadOnlyList<InteractionRegion> InteractionRegionIds => _interaction?.RegionIds ?? Array.Empty<InteractionRegion>();
+
+    /// <summary>所有互动热区（旧名兼容 = <see cref="InteractionRegionIds"/>）。</summary>
+    public IReadOnlyList<InteractionRegion> InteractionRegions => InteractionRegionIds;
+
+    /// <summary>当前按下的热区（没有按下 / 反应 = None）。</summary>
+    public InteractionRegion ActiveInteractionRegion => _interaction?.ActiveRegion ?? InteractionRegion.None;
+
+    /// <summary>是否有互动正在进行（按下 / 反应中 / 捏脸中）。</summary>
+    public bool InteractionActive => _interaction?.IsInteracting == true;
+
+    /// <summary>区域中文名。</summary>
+    public string GetRegionDisplayName(InteractionRegion region) => InteractionController.GetRegionDisplayName(region);
+
+    /// <summary>画布像素坐标命中哪个互动热区（关闭互动 / 拿不到几何时返回 None）。</summary>
+    public InteractionRegion HitTest(float canvasX, float canvasY) => _interaction?.HitTest(canvasX, canvasY) ?? InteractionRegion.None;
+
+    /// <summary>旧名兼容。</summary>
+    public InteractionRegion HitTestInteraction(float canvasX, float canvasY) => HitTest(canvasX, canvasY);
+
+    /// <summary>某个热区的代表点（画布像素；供调试钩子 / 自检模拟点击）。</summary>
+    public bool GetRegionCenter(InteractionRegion region, out float canvasX, out float canvasY)
+    {
+        if (_interaction is not null) return _interaction.GetRegionCenter(region, out canvasX, out canvasY);
+        canvasX = 0;
+        canvasY = 0;
+        return false;
+    }
+
+    /// <summary>旧名兼容。</summary>
+    public bool GetInteractionRegionCenter(InteractionRegion region, out float canvasX, out float canvasY)
+        => GetRegionCenter(region, out canvasX, out canvasY);
+
+    /// <summary>指针按下（UI 换算成画布像素后转发；返回 true = 命中热区，应捕获指针走互动）。</summary>
+    public bool InteractionPointerDown(float canvasX, float canvasY) => _interaction?.PointerDown(canvasX, canvasY) ?? false;
+
+    /// <summary>指针移动（抚摸 / 捏脸 / 拖动推进；返回是否有互动在进行）。</summary>
+    public bool InteractionPointerMove(float canvasX, float canvasY) => _interaction?.PointerMove(canvasX, canvasY) ?? false;
+
+    /// <summary>指针抬起（内部判定 tap / pet / drag 并触发反应）。</summary>
+    public void InteractionPointerUp() => _interaction?.PointerUp();
+
+    /// <summary>指针抬起（带最后坐标）。</summary>
+    public void InteractionPointerUp(float canvasX, float canvasY) => _interaction?.PointerUp(canvasX, canvasY);
+
+    /// <summary>旧名兼容：显式按指定区域按下（调试 / 自检用）。</summary>
+    public void PressInteraction(InteractionRegion region, float canvasX, float canvasY) => _interaction?.Press(region, canvasX, canvasY);
+
+    /// <summary>旧名兼容：拖动 / 抚摸推进。</summary>
+    public void DragInteraction(float canvasX, float canvasY) => _interaction?.PointerMove(canvasX, canvasY);
+
+    /// <summary>旧名兼容：抬起。</summary>
+    public void ReleaseInteraction() => _interaction?.PointerUp();
+
+    /// <summary>旧名兼容：抬起（带坐标）。</summary>
+    public void ReleaseInteraction(float canvasX, float canvasY) => _interaction?.PointerUp(canvasX, canvasY);
+
+    /// <summary>拖动桌宠时喂位移（像素），驱动头发 / 裙子甩动的物理冲量；约 0.6 秒衰减。</summary>
+    public void ApplyDragImpulse(float dxPixels, float dyPixels) => _interaction?.ApplyDragImpulse(dxPixels, dyPixels);
+
+    /// <summary>显式触发一次语义互动（调试钩子 / 菜单用）。</summary>
+    public bool TriggerInteraction(InteractionRegion region, InteractionGesture gesture)
+        => _interaction?.TriggerInteraction(region, gesture) ?? false;
+
+    /// <summary>额头点击：常态 → 爱心眼 → 单片眼镜 / 黑框眼镜交替 → 常态。返回当前状态中文名。</summary>
+    public string CycleFaceExpression() => _interaction?.CycleFaceExpression() ?? "常态";
+
+    /// <summary>最近一次互动对应的语音事件 key（pat_head / face_cycle / pinch / tickle / protect / hand）。</summary>
+    public string? LastInteractionVoiceEvent => _lastInteractionVoiceEvent;
+
+    /// <summary>最近一次互动的中文名（摸头 / 额头表情 / 捏脸 / 挠痒 / 护住 / 竖食指 / 放下手 …）。</summary>
+    public string? LastInteractionName => _lastInteractionName;
+
+    // ---------- 桌宠互动 / 待机小动作：自检观察口 ----------
+
+    internal InteractionController? InteractionForTest => _interaction;
+    internal PetIdleActions? PetIdleActionsForTest => _petIdleActions;
+
+    /// <summary>自检用：强制触发一个待机小动作。</summary>
+    internal bool TriggerPetIdleActionForTest(string? name = null) => _petIdleActions?.TryTrigger(name) ?? false;
 
     // ---------- 生命周期 ----------
 
@@ -636,6 +830,7 @@ public sealed class ModelRuntime : IDisposable
         ResolveMusicParameters(_model);
         ResolveSpeechParameters(_model);
         CreateActionPlayers(_model);
+        CreateInteractionPlayers(_model);
         BuildManagedParameterGroups();
 
         // 8) 默认待机动作
@@ -960,6 +1155,101 @@ public sealed class ModelRuntime : IDisposable
         _dance = new DanceController(model);
     }
 
+    /// <summary>加载时创建鼠标互动控制器 + 待机小动作调度器。</summary>
+    private void CreateInteractionPlayers(CubismModel model)
+    {
+        _interaction = new InteractionController(
+            model,
+            _partBindings,
+            FindExpressionByName,
+            ApplyExpression,
+            ClearExpressions,
+            PlayInteractionGesture,
+            StopInteractionGesture,
+            GetActiveInteractionGesture,
+            OnInteractionEvent,
+            EnterInteractionMode);
+        _petIdleActions = new PetIdleActions(model, FindExpressionByName, ApplyExpression, ClearExpressions)
+        {
+            Enabled = _petIdleActionsEnabled,
+            CanApplyExpression = CanPetIdleUseExpression,
+        };
+    }
+
+    private ExpressionEntry? FindExpressionByName(string name)
+    {
+        var expressions = _expressions;
+        for (var i = 0; i < expressions.Length; i++)
+        {
+            if (string.Equals(expressions[i].Name, name, StringComparison.Ordinal)) return expressions[i];
+        }
+
+        for (var i = 0; i < expressions.Length; i++)
+        {
+            if (string.Equals(expressions[i].Name, name, StringComparison.OrdinalIgnoreCase)) return expressions[i];
+        }
+
+        return null;
+    }
+
+    /// <summary>互动里播手势（不打断用户当前动作；互动开始已经处理过待机演示让位）。</summary>
+    private bool PlayInteractionGesture(string id) => _gesture?.Play(id, stopMotionFirst: false) ?? false;
+
+    private void StopInteractionGesture() => _gesture?.Stop();
+
+    private string? GetActiveInteractionGesture() => _gesture?.ActiveId;
+
+    /// <summary>互动事件：记录最近一次的语音 key / 中文名，并按配置触发 <see cref="InteractionHappened"/>。</summary>
+    private void OnInteractionEvent(string voiceEvent, string displayName)
+    {
+        _lastInteractionVoiceEvent = voiceEvent;
+        _lastInteractionName = displayName;
+        if (_interactionVoiceEnabled) InteractionHappened?.Invoke(this, voiceEvent);
+    }
+
+    /// <summary>
+    /// 互动开始：如果当前演示 / 待机动作是「待机随机」自动挑的，让位停掉；待机小动作也停掉并进入 3 秒冷却。
+    /// 用户自己播的表演 / 舞蹈在 <see cref="IsInteractionBlocked"/> 里已经拒绝互动，不会走到这里。
+    /// </summary>
+    private void EnterInteractionMode()
+    {
+        if (_idleDemoActive)
+        {
+            _gesture?.StopImmediate();
+            _performance?.Stop();
+            _dance?.StopImmediate();
+            _idleDemoActive = false;
+            StopMotion(0.15);
+        }
+
+        _petIdleActions?.NotifyInteraction();
+        _idleRandomGestureTimer = Math.Max(_idleRandomGestureTimer, 3.0);
+    }
+
+    /// <summary>互动是否要拒绝新交互：用户动作 / 表演 / 舞蹈进行中；互动自己的手势动作 / 待机随机演示不算。</summary>
+    private bool IsInteractionBlocked()
+    {
+        if (_interaction?.IsInteracting == true) return false; // 互动自己的手指 / 护住手势动画不算「用户动作」
+        if (_motionPlayer.HasActive && CurrentMotion?.IsIdleCandidate != true && _gesture?.HasActive != true) return true;
+        if (!_idleDemoActive && (_performance?.HasActive == true || _dance?.HasActive == true)) return true;
+        return false;
+    }
+
+    /// <summary>待机小动作的让位条件：互动 / 说话 / 音乐 / 动捕 / 演示 / 用户动作都不抢。</summary>
+    private bool IsPetIdleBlocked(bool mocapFace)
+    {
+        if (mocapFace || _speechActive) return true;
+        if (MusicEnabled && _musicPlaying) return true;
+        if (_gesture?.HasActive == true || _performance?.HasActive == true || _dance?.HasActive == true) return true;
+        if (_motionPlayer.HasActive && CurrentMotion?.IsIdleCandidate != true) return true;
+        if (_interaction?.IsInteracting == true || (_interaction?.CooldownRemaining ?? 0) > 0.01) return true;
+        return false;
+    }
+
+    /// <summary>待机小动作能不能顺带挂表情：用户已经有表情（含额头三态）时不动它，避免撤掉用户的表情。</summary>
+    private bool CanPetIdleUseExpression()
+        => _interaction?.HasFaceExpression != true && !_expressionManager.HasActive;
+
     private MotionEntry? FindMotionEntryByName(string name)
     {
         var motions = _motions;
@@ -1073,13 +1363,15 @@ public sealed class ModelRuntime : IDisposable
         _idleRandomGestureTimer = 3.0; // 条件不满足：3 秒后再试
     }
 
-    /// <summary>待机小动作的「忙碌」判定：有动捕 / 音乐 / 语音 / 演示 / 用户动作都算忙。</summary>
+    /// <summary>待机小动作的「忙碌」判定：有动捕 / 音乐 / 语音 / 演示 / 用户动作 / 互动都算忙。</summary>
     private bool IsIdleRandomBusy(bool mocapFace)
     {
         if (mocapFace || _speechActive) return true;
         if (MusicEnabled && _musicPlaying) return true;
         if (_gesture?.HasActive == true || _performance?.HasActive == true || _dance?.HasActive == true) return true;
         if (_motionPlayer.HasActive && CurrentMotion?.IsIdleCandidate != true) return true;
+        if (_interaction?.IsInteracting == true || (_interaction?.CooldownRemaining ?? 0) > 0.01) return true;
+        if (_petIdleActions?.HasActive == true) return true;
         return false;
     }
 
@@ -1105,6 +1397,7 @@ public sealed class ModelRuntime : IDisposable
             : PlayPerformance(performanceIds![pick - gestureCount]);
         if (!played) return false;
         _idleRandomGestureCount++;
+        _idleDemoActive = true;
         _idleRandomGestureTimer = NextIdleRandomInterval();
         return true;
     }
@@ -1299,6 +1592,8 @@ public sealed class ModelRuntime : IDisposable
         _gesture?.ResetTouched(parameters);
         _performance?.ResetTouched(parameters);
         _dance?.ResetTouched(parameters);
+        _interaction?.ResetTouched(parameters);
+        _petIdleActions?.ResetTouched(parameters);
         var expressionActive = _expressionManager.HasActive;
         if (expressionActive) ResetParametersToDefault(parameters, _expressionManaged);
         if (PhysicsEnabled) ResetParametersToDefault(parameters, _physicsManaged);
@@ -1375,9 +1670,18 @@ public sealed class ModelRuntime : IDisposable
         // 5.5) 手势 / 时间线表演 / 舞蹈：写在动作之后，覆盖 IDLE 的手臂曲线（物理之前）
         UpdateActionPlayers(deltaSeconds, mocapFace);
 
+        // 5.55) 鼠标互动反应 + 待机小动作（都在动作之后、物理 / 表情之前；互动优先级高于待机随机动作）
+        if (_idleDemoActive && _gesture?.HasActive != true && _performance?.HasActive != true && _dance?.HasActive != true)
+        {
+            _idleDemoActive = false;
+        }
+
+        _interaction?.Update(deltaSeconds, IsInteractionBlocked(), mocapFace, _speechActive);
+        _petIdleActions?.Update(deltaSeconds, IsPetIdleBlocked(mocapFace));
+
         _expressionManager.Update(model, deltaSeconds);
 
-        // 5.6) 待机随机小动作：没有动捕 / 音乐 / 语音 / 舞蹈 / 表演 / 用户动作时，按随机间隔播一个
+        // 5.6) 待机随机小动作：没有动捕 / 音乐 / 语音 / 舞蹈 / 表演 / 互动 / 用户动作时，按随机间隔播一个
         UpdateIdleRandomGesture(deltaSeconds, mocapFace);
 
         // 物理：在参数都算完之后、Core 求值之前跑（改的是参数值）
@@ -1387,6 +1691,8 @@ public sealed class ModelRuntime : IDisposable
         }
 
         model.Update();
+        // 顶点已更新：互动热区几何缓存失效，下一次 HitTest 用本帧蒙皮重新算
+        _interaction?.InvalidateGeometry();
         _lastTickMilliseconds = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
         FrameUpdated?.Invoke(this, EventArgs.Empty);
     }
@@ -1455,6 +1761,7 @@ public sealed class ModelRuntime : IDisposable
         }
 
         _motionPlayer.Play(model, motion, data, loop ?? motion.Loop, fadeSeconds);
+        _idleDemoActive = false;
     }
 
     /// <summary>停止当前动作（按 <paramref name="fadeSeconds"/> 淡出；≤0 = 立即）。</summary>
@@ -1498,6 +1805,9 @@ public sealed class ModelRuntime : IDisposable
         _gesture?.StopImmediate();
         _performance?.Stop();
         _dance?.StopImmediate();
+        _interaction?.StopImmediate();
+        _petIdleActions?.StopImmediate();
+        _idleDemoActive = false;
         _speechTouchedCount = 0;
         _idleRandomGestureTimer = 0;
         model.Update();
@@ -1576,6 +1886,12 @@ public sealed class ModelRuntime : IDisposable
         _speechActive = false;
         _speechMouthOpen = 0;
         _idleRandomGestureTimer = 0;
+        _interaction = null;
+        _petIdleActions = null;
+        _idleDemoActive = false;
+        _lastInteractionVoiceEvent = null;
+        _lastInteractionName = null;
+        InteractionHappened = null;
         _motions = Array.Empty<MotionEntry>();
         _expressions = Array.Empty<ExpressionEntry>();
         _parameterBindings = Array.Empty<ParameterBinding>();

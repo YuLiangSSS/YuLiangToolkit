@@ -147,6 +147,24 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
         _viewModel.RefreshArmValues();    // 手臂 & 姿势卡：100ms 刷新手臂参数真实值
         _viewModel.RefreshActionStatus(); // 动作卡：当前手势 / 表演 / 舞蹈
         _viewModel.RefreshSpeechStatus(); // 说话卡：语音列表 / 说话状态 / 嘴型
+        ScrollPetCardForScreenshot();     // 开发调试：YLT_LIVE2D_PETCARD_SCROLL=bottom 时把桌宠卡滚到新设置区
+    }
+
+    // 开发调试：YLT_LIVE2D_PETCARD_SCROLL=bottom 时让「桌面宠物」卡自己滚到底（截图看新设置项用）
+    private int _petCardScrollAttempts;
+
+    private void ScrollPetCardForScreenshot()
+    {
+        if (_petCardScrollAttempts >= 10) return;
+        var mode = Environment.GetEnvironmentVariable("YLT_LIVE2D_PETCARD_SCROLL");
+        if (string.IsNullOrWhiteSpace(mode)) { _petCardScrollAttempts = 10; return; }
+        _petCardScrollAttempts++;
+        try
+        {
+            if (double.TryParse(mode, out var offset)) PetCardScroller.ScrollToVerticalOffset(offset);
+            else if (mode is "bottom" or "1" or "on") PetCardScroller.ScrollToEnd();
+        }
+        catch { /* 忽略 */ }
     }
 
     /// <summary>「重新检测」按钮：重新枚举系统 TTS 语音（刚装了语音包时用）。</summary>

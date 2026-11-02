@@ -786,6 +786,88 @@ public sealed class Live2DViewModel : ToolViewModelBase
         }
     }
 
+    // ===================== 桌宠鼠标互动玩法 / 待机灵动（设置推给运行时） =====================
+
+    /// <summary>鼠标互动玩法（点击 / 摸头 / 捏脸 / 换表情等热区互动）。</summary>
+    public bool PetInteractionEnabled
+    {
+        get => Cfg.PetInteractionEnabled;
+        set
+        {
+            if (Cfg.PetInteractionEnabled == value) return;
+            Cfg.PetInteractionEnabled = value;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+            Log(value ? "桌宠互动玩法：开启" : "桌宠互动玩法：关闭");
+        }
+    }
+
+    /// <summary>互动时说话（按热区随机软妹台词，语音 + 气泡 + 口型）。</summary>
+    public bool PetInteractionVoiceEnabled
+    {
+        get => Cfg.PetInteractionVoiceEnabled;
+        set
+        {
+            if (Cfg.PetInteractionVoiceEnabled == value) return;
+            Cfg.PetInteractionVoiceEnabled = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>拖拽桌宠时给头发 / 裙子物理一个惯性（甩起来）。</summary>
+    public bool PetDragPhysicsEnabled
+    {
+        get => Cfg.PetDragPhysicsEnabled;
+        set
+        {
+            if (Cfg.PetDragPhysicsEnabled == value) return;
+            Cfg.PetDragPhysicsEnabled = value;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>待机随机表情（比默认待机更活）。</summary>
+    public bool PetIdleExpressionEnabled
+    {
+        get => Cfg.PetIdleExpressionEnabled;
+        set
+        {
+            if (Cfg.PetIdleExpressionEnabled == value) return;
+            Cfg.PetIdleExpressionEnabled = value;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
+    /// <summary>全局快捷键开关（Ctrl+Alt+L 切鼠标穿透 / Ctrl+Alt+0 退出）。</summary>
+    public bool PetHotkeysEnabled
+    {
+        get => Cfg.PetHotkeysEnabled;
+        set
+        {
+            if (Cfg.PetHotkeysEnabled == value) return;
+            Cfg.PetHotkeysEnabled = value;
+            OnPropertyChanged();
+            Session.ApplyPetConfig();
+            Log(value ? "桌宠全局快捷键：开启（Ctrl+Alt+L 穿透 / Ctrl+Alt+0 退出）" : "桌宠全局快捷键：关闭");
+        }
+    }
+
+    /// <summary>待机小动作间隔（8 ~ 30 秒；越小越活泼、越费一点 CPU）。</summary>
+    public double PetIdleActionIntervalSeconds
+    {
+        get => Math.Clamp(Cfg.PetIdleActionIntervalSeconds, 8, 30);
+        set
+        {
+            var clamped = Math.Clamp(value, 8, 30);
+            if (Math.Abs(Cfg.PetIdleActionIntervalSeconds - clamped) < 0.001) return;
+            Cfg.PetIdleActionIntervalSeconds = clamped;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
     // ===================== 摄像头面部动捕 =====================
 
     /// <summary>摄像头设备选项（值是设备 Id，标签是设备名）。</summary>

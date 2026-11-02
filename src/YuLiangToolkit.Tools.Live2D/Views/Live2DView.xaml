@@ -844,7 +844,7 @@
 
                 <!-- ④ 桌宠卡 -->
                 <Border Grid.Column="6" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
-                    <ScrollViewer Style="{StaticResource CardScrollerStyle}">
+                    <ScrollViewer x:Name="PetCardScroller" Style="{StaticResource CardScrollerStyle}">
                         <StackPanel Margin="14,12,14,12">
                             <Grid>
                                 <TextBlock Text="桌面宠物" Style="{StaticResource CardHeaderStyle}" />
@@ -898,8 +898,44 @@
                             <CheckBox Content="启动程序时自动放出桌宠" Style="{StaticResource CheckBoxStyle}" Margin="0,4,0,0"
                                       IsChecked="{Binding Cfg.AutoStartPet, Mode=TwoWay}" />
 
+                            <Separator Margin="0,10,0,8" Background="{DynamicResource BorderBrush}" />
+                            <TextBlock Text="鼠标互动玩法（参考 FULASKA 版）" FontSize="11.5" FontWeight="SemiBold" />
+                            <WrapPanel Margin="0,6,0,0">
+                                <CheckBox Content="鼠标互动玩法" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6"
+                                          IsChecked="{Binding PetInteractionEnabled, Mode=TwoWay}"
+                                          ToolTip="点 / 摸桌宠的身体不同部位会有反应：摸头、点额头换表情、捏脸、摸腰脚会痒、摸胸护住、点手竖食指" />
+                                <CheckBox Content="互动时说话" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6"
+                                          IsChecked="{Binding PetInteractionVoiceEnabled, Mode=TwoWay}"
+                                          ToolTip="按热区随机说一句软妹台词（本地 TTS，同时出气泡 + 口型；1.5 秒内不重复）" />
+                                <CheckBox Content="拖拽物理" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6"
+                                          IsChecked="{Binding PetDragPhysicsEnabled, Mode=TwoWay}"
+                                          ToolTip="拖动桌宠时给头发 / 裙子一个惯性，甩起来更生动" />
+                                <CheckBox Content="待机随机表情" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6"
+                                          IsChecked="{Binding PetIdleExpressionEnabled, Mode=TwoWay}"
+                                          ToolTip="待机时偶尔换个表情 / 做个小动作，不会一直一个表情" />
+                                <CheckBox Content="全局快捷键" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6"
+                                          IsChecked="{Binding PetHotkeysEnabled, Mode=TwoWay}"
+                                          ToolTip="Ctrl+Alt+L 切换鼠标穿透；Ctrl+Alt+0 退出程序（桌宠窗口打开时生效）" />
+                            </WrapPanel>
+                            <Grid Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="76" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="42" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="待机间隔" Style="{StaticResource SettingLabelStyle}" />
+                                <Slider Grid.Column="1" Minimum="8" Maximum="30" SmallChange="1"
+                                        Value="{Binding PetIdleActionIntervalSeconds, Mode=TwoWay}"
+                                        Style="{StaticResource SliderStyle}" VerticalAlignment="Center"
+                                        ToolTip="待机小动作 / 随机表情的平均间隔（8~30 秒，越小越活泼）" />
+                                <TextBlock Grid.Column="2" Text="{Binding PetIdleActionIntervalSeconds, StringFormat='{}{0:0} 秒'}"
+                                           Style="{StaticResource SettingValueStyle}" />
+                            </Grid>
+                            <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,6,0,0"
+                                       Text="玩法：拖住桌宠搬窗口（头发 / 裙子会甩）、点身体互动（摸头 / 点额头换表情 / 捏脸 / 摸腰脚痒痒 / 摸胸护住 / 点手竖食指）、待机随机小动作。快捷键：Ctrl+Alt+L 鼠标穿透、Ctrl+Alt+0 退出。" />
+
                             <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,8,0,0"
-                                       Text="提示：右键桌宠窗口有「居中 / 置顶 / 点击穿透 / 关闭」等菜单；要回到这个测试页，从主窗口侧边栏「桌面 → Live2D 桌宠」进来。" />
+                                       Text="提示：右键桌宠窗口有「居中 / 置顶 / 点击穿透 / 说句话 / 停止动作 / 设置 / 退出程序」等菜单；要回到这个测试页，从主窗口侧边栏「桌面 → Live2D 桌宠」进来。" />
                         </StackPanel>
                     </ScrollViewer>
                 </Border>
@@ -1599,7 +1635,7 @@
                                            TextTrimming="CharacterEllipsis" MaxWidth="520" />
                             </StackPanel>
                             <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,4,0,0"
-                                       Text="手臂参数可直接拖（范围取参数自身 Min/Max）；动作播放时会覆盖手动值 —— 想手动调先点「⏹ 停止所有演示」。手势 / 表演 / 舞蹈 / 待机随机小动作都走运行时动作系统，和呼吸、眨眼、物理叠加。" />
+                                       Text="手臂参数可直接拖（范围取参数自身 Min/Max）；动作播放时会覆盖手动值 —— 想手动调先点「⏹ 停止所有演示」。手势 / 表演 / 舞蹈 / 待机随机小动作都走运行时动作系统，和呼吸、眨眼、物理叠加。桌宠玩法：拖住搬窗口（头发 / 裙子会甩）、摸头、点额头换表情、捏脸、摸腰脚痒痒、摸胸护住、点手竖食指；快捷键 Ctrl+Alt+L 鼠标穿透 / Ctrl+Alt+0 退出（开关在「桌面宠物」卡）。" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
                             <Button Content="🎲 随机动作" Style="{StaticResource CompactButtonStyle}" Margin="0,0,6,0"
