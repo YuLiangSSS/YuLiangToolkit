@@ -42,6 +42,8 @@ public sealed partial class MediaPlayerViewModel
         player.Ended += OnPlayerEnded;
         player.Failed += OnPlayerFailed;
         Log("播放器已就绪");
+
+        TryAutoResumeOnPlayerAttached();   // 设置里开了「恢复后自动播放」→ 接着上次的位置出声
     }
 
     /// <summary>摘掉播放器（切走工具 / 界面卸载时）。</summary>
@@ -74,6 +76,9 @@ public sealed partial class MediaPlayerViewModel
 
         _stopped = false;
 
+        // 换歌/换文件夹之前先把「上一首播到哪儿」记进那个文件夹的内存记录（换完 CurrentItem 就变了）
+        CaptureFolderProgress();
+
         SelectedItem = item;
         CurrentItem = item;
         // 队列里已经是这一首就别再 SetCurrent（随机会被当成「用户跳着点」，这一轮的顺序就作废了）
@@ -84,6 +89,7 @@ public sealed partial class MediaPlayerViewModel
         HasVideo = false;
         UpdatePosition(TimeSpan.Zero, TimeSpan.Zero);
         IsPlaying = true;
+        SaveFolderResumeState();   // 换歌是个明确的落盘点（旧歌进度 + 新歌从 0 开始）
 
         if (_player is null)
         {
@@ -133,6 +139,8 @@ public sealed partial class MediaPlayerViewModel
             _player.Pause();
             IsPlaying = false;
             StatusText = $"已暂停：{CurrentItem.Title}";
+            CaptureFolderProgress();     // 暂停 = 用户可能要走：把进度记进文件夹记忆并落盘
+            SaveFolderResumeState();
         }
         else if (_stopped)
         {
@@ -160,6 +168,7 @@ public sealed partial class MediaPlayerViewModel
         UpdatePosition(TimeSpan.Zero, TimeSpan.Zero);
         MarkPlaying(CurrentItem);
         StatusText = "已停止";
+        SaveFolderResumeState();   // 停止 = 这个文件夹下次从头开始
     }
 
     /// <summary>上一首 / 下一首（右键快退 / 右键快进；键盘也走它）。</summary>
@@ -224,6 +233,8 @@ public sealed partial class MediaPlayerViewModel
         PositionText = MediaTimeDisplay.Format(position, _lastDuration, Cfg.TimeDisplayMode);
         DurationText = _lastDuration > TimeSpan.Zero ? MediaTime.Format(_lastDuration) : "--:--";
         ProgressRatio = MediaTime.Ratio(position, _lastDuration);
+
+        CaptureFolderProgress();   // 内存里跟着更新；落盘由 MaybeSave 节流（见 .Resume.cs）
     }
 
     // ---------------------------------------------------------------- 播放器回调

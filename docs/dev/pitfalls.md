@@ -65,6 +65,15 @@
 - 迷你条标题**速度必须统一**（v0.55.3）：`ScrollDuration` 只按 `溢出宽度 ÷ PixelsPerSecond` 算，**别给超长标题
   封顶加速**（v0.54.0 曾封顶 4 秒，结果一百多字的歌名滚得飞快、短标题反而正常，用户一眼就看出“长标题太快”）。
   现在统一 26 px/s（约 2 汉字 / 秒）；要调就改 `MiniPlayerPanel.PixelsPerSecond` 一处，自检会按它反算每像素耗时。
+- 「每个文件夹记住上次听到哪儿」（v0.56.0，`MediaFolderResumeState` + `.Resume.cs`）：
+  ① 进度每 200ms 变一次，**记录只写内存、落盘节流 10 秒**（暂停 / 停止 / 换歌 / 切走 / 退出时强制落盘）；
+  ② 恢复只在 `ResumeLastPlayed` 打开时做；「打开文件夹」按**这次新加进来的文件**去匹配记录（不是按文件夹名猜），
+     多文件夹取最近更新的一条；「打开文件」不参与；
+  ③ `CurrentItem` 必须在 `CaptureFolderProgress()` **之后**再换，否则换歌前那首的进度就记到新歌头上了；
+  ④ 「恢复后自动播放」不能在构造 VM 里直接 `PlayItem` —— 那时 View 还没 Loaded、播放器是 null；
+     要置 `_autoResumePending`，等 `AttachPlayer` 接上再放（见 `.Resume.cs` 的 `TryAutoResumeOnPlayerAttached`）。
+  截图验收：`YLT_PLAYER_OPEN_FOLDER=<文件夹>`（打开播放器页后自动读一次这个文件夹，配 `YLT_SHOT` 看
+  「恢复选中 + 进度 / 自动播放」的效果；只认第一次 Loaded，正常使用不设）。
 
 ### 外壳：分类 · 粒子 · 主页设置
 - 老工具 `Category` 别自动当分类目录：树只认 `CategoryPath`（默认空）。

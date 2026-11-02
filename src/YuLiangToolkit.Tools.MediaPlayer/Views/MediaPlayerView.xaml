@@ -482,9 +482,17 @@
                         <CheckBox Content="恢复上次的播放列表" Margin="132,0,0,0"
                                   IsChecked="{Binding RestorePlaylist}"
                                   Style="{StaticResource CheckBoxStyle}" />
-                        <CheckBox Content="恢复上次听到的位置（只选中，不自动出声）" Margin="132,12,0,0"
+                        <CheckBox Content="恢复上次听到的位置" Margin="132,12,0,0"
                                   IsChecked="{Binding ResumeLastPlayed}"
-                                  Style="{StaticResource CheckBoxStyle}" />
+                                  Style="{StaticResource CheckBoxStyle}"
+                                  ToolTip="工具启动时恢复整个列表；重新打开某个文件夹时恢复那个文件夹上次听到的那首和进度（每个文件夹分别记）" />
+                        <CheckBox Content="恢复后自动播放（默认关，打开工具不会突然出声）" Margin="132,12,0,0"
+                                  IsChecked="{Binding AutoResumePlayback}"
+                                  Style="{StaticResource CheckBoxStyle}"
+                                  ToolTip="勾上后：工具启动 / 重新打开文件夹时恢复上次的曲目与进度并直接出声；不勾就只定在进度上，等你点播放" />
+                        <TextBlock Text="每个文件夹会各自记住上次听到哪首、听到哪儿；重新打开那个文件夹时自动选中并定在进度上（上面勾了「恢复后自动播放」就直接接着放）。"
+                                   FontSize="10.5" Margin="132,7,0,0" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBlock Text="{Binding LastFolderText}" FontSize="10.5" Margin="132,7,0,0"
                                    TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
 

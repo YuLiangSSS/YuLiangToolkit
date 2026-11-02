@@ -71,8 +71,11 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
         Log($"配置：{ConfigPathText}");
         Log($"数据：{StoragePathText}");
 
+        // 每个文件夹的「上次听到哪首 / 哪儿」先读进内存：下面恢复整个列表时可能要拿它挑更新的进度
+        LoadFolderResumeState();
         if (Cfg.RestorePlaylist) RestorePlaylistState();
         RefreshPlaylistState();
+        ArmAutoResumeIfConfigured();   // 「恢复后自动播放」= 等播放器接上再接着放（见 .Resume.cs）
 
         if (IsFirstRun) Log("首次运行：已生成默认配置（设置页里能改读取方式、播放顺序、快进快退步长…）");
         if (!string.IsNullOrEmpty(Cfg.LastFolder)) Log($"上次打开的文件夹：{Cfg.LastFolder}");
@@ -559,6 +562,18 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
         }
     }
 
+    /// <summary>设置页里的「恢复后自动播放」（默认关；见 <see cref="MediaPlayerConfig.AutoResumePlayback"/>）。</summary>
+    public bool AutoResumePlayback
+    {
+        get => Cfg.AutoResumePlayback;
+        set
+        {
+            if (Cfg.AutoResumePlayback == value) return;
+            Cfg.AutoResumePlayback = value;
+            OnPropertyChanged();
+        }
+    }
+
     // ---------- 设置面板 ----------
 
     /// <summary>设置面板要不要显示（**同页面板**，不弹子窗口；盖住左边的播放区，列表照旧可用）。</summary>
@@ -732,6 +747,7 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
         Cfg.SeekStepSeconds = 5.0;
         Cfg.RestorePlaylist = true;
         Cfg.ResumeLastPlayed = true;
+        Cfg.AutoResumePlayback = false;
         Cfg.BackgroundPlayback = true;
         Cfg.PlaylistSort = PlaylistSortKey.Added;
         Cfg.PlaylistSortDescending = false;
@@ -747,6 +763,7 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
         OnPropertyChanged(nameof(ScanRecursive));
         OnPropertyChanged(nameof(RestorePlaylist));
         OnPropertyChanged(nameof(ResumeLastPlayed));
+        OnPropertyChanged(nameof(AutoResumePlayback));
         OnPropertyChanged(nameof(BackgroundPlayback));
         OnPropertyChanged(nameof(SelectedTimeDisplay));
         OnPropertyChanged(nameof(TimeDisplay));
@@ -840,6 +857,11 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
     protected override void OnClosed()
     {
         SavePlaylistState();
+
+        // 每个文件夹上次听到哪儿也一起落盘（切走工具 / 退出时都会走到这里；
+        // 后台保活时先记一笔内存再写盘，播放器不摘）
+        CaptureFolderProgress();
+        SaveFolderResumeState();
 
         // 全屏状态不能留给下一个页面（外壳会把标题栏 / 侧边栏一直藏着）
         ExitFullscreen();

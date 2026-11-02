@@ -34,6 +34,7 @@ internal static class MediaPlayerChecks
         CheckViewModel(assert);
         CheckFullscreenAndBackground(assert);
         CheckMiniPanelMarquee(assert);
+        CheckFolderResume(assert);
     }
 
     // ---------------------------------------------------------------- 迷你条标题（来回滚）
@@ -97,6 +98,108 @@ internal static class MediaPlayerChecks
             MiniPlayerPanel.ScrollDuration(0, view) is null
             && MiniPlayerPanel.ScrollDuration(double.NaN, view) is null
             && MiniPlayerPanel.ScrollDuration(300, 0) is null);
+    }
+
+    // ---------------------------------------------------------------- 文件夹记忆（v0.56.0）
+
+    /// <summary>
+    /// 「每个文件夹记住上次听到哪首 / 哪儿」：播放时记录 → 重新打开文件夹时恢复选中与进度 →
+    /// 点播放从那个进度继续；两个文件夹互不串；设置里「恢复后自动播放」打开时，播放器接上就接着放。
+    /// </summary>
+    private static void CheckFolderResume(CheckFn check)
+    {
+        check("文件夹记忆：默认关闭「恢复后自动播放」（打开工具不会突然出声）",
+            !new MediaPlayerConfig().AutoResumePlayback);
+
+        var root = SelfCheckScratch.MakeDirectory("ylt-folder-resume");
+        var albumA = Path.Combine(root, "专辑 A");
+        var albumB = Path.Combine(root, "专辑 B");
+        Directory.CreateDirectory(albumA);
+        Directory.CreateDirectory(albumB);
+        WriteFile(albumA, "01 第一首.mp3");
+        WriteFile(albumA, "02 第二首.mp3");
+        WriteFile(albumB, "别的歌.mp3");
+
+        // ---- 1. 播 A 的第二首、听到 0:42、暂停 → 记录落盘 ----
+        var vm = new MediaPlayerViewModel { Confirm = _ => true };
+        vm.ClearPlaylistCommand.Execute(null);
+        var fake = new FakeMediaPlayback();
+        vm.AttachPlayer(fake);
+        vm.AddFoldersAsync(new[] { albumA }).GetAwaiter().GetResult();
+        var songA2 = vm.Items.First(i => i.FileName == "02 第二首.mp3");
+        vm.PlayItem(songA2);
+        fake.RaiseOpened(TimeSpan.FromMinutes(3), hasVideo: false);
+        vm.UpdatePosition(TimeSpan.FromSeconds(42), TimeSpan.FromMinutes(3));
+        vm.TogglePlayPause();   // 暂停 = 明确落盘点
+        var savedJson = File.Exists(vm.FolderResumeStatePath) ? File.ReadAllText(vm.FolderResumeStatePath) : "";
+        check("文件夹记忆：暂停后落盘（folder-resume.json 里记着这首和 42 秒）",
+            savedJson.Contains("02 第二首") && savedJson.Contains("42"),
+            vm.FolderResumeStatePath);
+
+        // ---- 2. 重新打开工具（新 VM）+ 重新打开 A → 恢复那首与进度，不自动出声 ----
+        var reopenedA = new MediaPlayerViewModel { Confirm = _ => true };
+        reopenedA.ClearPlaylistCommand.Execute(null);
+        reopenedA.AddFoldersAsync(new[] { albumA }).GetAwaiter().GetResult();
+        check("文件夹记忆：重新打开这个文件夹 → 选中上次那首、进度恢复到 0:42",
+            reopenedA.CurrentItem?.FileName == "02 第二首.mp3" && reopenedA.PositionText == "0:42",
+            $"{reopenedA.CurrentItem?.FileName ?? "(无)"} @ {reopenedA.PositionText}");
+
+        var fakeA = new FakeMediaPlayback();
+        reopenedA.AttachPlayer(fakeA);
+        check("文件夹记忆：默认只恢复不自动出声（播放器还没被要求装东西）",
+            fakeA.LoadCount == 0 && !fakeA.IsPlaying);
+
+        // ---- 3. 点播放 → 从 0:42 接着放（不是从头） ----
+        reopenedA.PlayPauseCommand.Execute(null);
+        fakeA.RaiseOpened(TimeSpan.FromMinutes(3), hasVideo: false);
+        check("文件夹记忆：点播放 → 从 0:42 接着放",
+            fakeA.IsPlaying && fakeA.Position == TimeSpan.FromSeconds(42),
+            $"{fakeA.Position.TotalSeconds} 秒");
+
+        // ---- 4. B 文件夹各记各的，不串到 A ----
+        reopenedA.AddFoldersAsync(new[] { albumB }).GetAwaiter().GetResult();
+        check("文件夹记忆：打开没听过的文件夹不会乱跳（仍停在 A 那首）",
+            reopenedA.CurrentItem?.FileName == "02 第二首.mp3",
+            reopenedA.CurrentItem?.FileName ?? "(无)");
+
+        var songB = reopenedA.Items.First(i => i.FileName == "别的歌.mp3");
+        reopenedA.PlayItem(songB);
+        fakeA.RaiseOpened(TimeSpan.FromMinutes(2), hasVideo: false);
+        reopenedA.UpdatePosition(TimeSpan.FromSeconds(7), TimeSpan.FromMinutes(2));
+        reopenedA.NotifyClosed();   // 切走工具 = 落盘点
+
+        var reopenedB = new MediaPlayerViewModel { Confirm = _ => true };
+        reopenedB.ClearPlaylistCommand.Execute(null);
+        reopenedB.AddFoldersAsync(new[] { albumB }).GetAwaiter().GetResult();
+        check("文件夹记忆：不同文件夹各记各的（B 恢复到 0:07）",
+            reopenedB.CurrentItem?.FileName == "别的歌.mp3" && reopenedB.PositionText == "0:07",
+            $"{reopenedB.CurrentItem?.FileName ?? "(无)"} @ {reopenedB.PositionText}");
+
+        var reopenedA2 = new MediaPlayerViewModel { Confirm = _ => true };
+        reopenedA2.ClearPlaylistCommand.Execute(null);
+        reopenedA2.AddFoldersAsync(new[] { albumA }).GetAwaiter().GetResult();
+        check("文件夹记忆：再打开 A 仍是 A 的记录（0:42，不会串成 B 的）",
+            reopenedA2.CurrentItem?.FileName == "02 第二首.mp3" && reopenedA2.PositionText == "0:42",
+            $"{reopenedA2.CurrentItem?.FileName ?? "(无)"} @ {reopenedA2.PositionText}");
+
+        // ---- 5. 打开「恢复后自动播放」→ 工具启动恢复后，播放器一接上就接着放 ----
+        // 此时 playlist.json 记的是「A 第二首 @0:42」（上面 AddFoldersAsync 合并时顺手保存的）。
+        reopenedA2.Cfg.AutoResumePlayback = true;
+        reopenedA2.ConfigStore.Flush();   // 别等 400ms 自动保存计时器
+        var autoResume = new MediaPlayerViewModel { Confirm = _ => true };
+        var fakeAuto = new FakeMediaPlayback();
+        autoResume.AttachPlayer(fakeAuto);
+        check("文件夹记忆：开了「恢复后自动播放」→ 播放器接上就装上次那首",
+            fakeAuto.LoadedPath == songA2.FullPath && autoResume.IsPlaying,
+            fakeAuto.LoadedPath ?? "(没装)");
+        fakeAuto.RaiseOpened(TimeSpan.FromMinutes(3), hasVideo: false);
+        check("文件夹记忆：自动播放也是从 0:42 接着放，不是从头",
+            fakeAuto.Position == TimeSpan.FromSeconds(42),
+            $"{fakeAuto.Position.TotalSeconds} 秒");
+
+        // 收尾：把开关改回默认，别影响后面的自检分组
+        autoResume.Cfg.AutoResumePlayback = false;
+        autoResume.ConfigStore.Flush();
     }
 
     // ---------------------------------------------------------------- 扩展名归类
@@ -816,6 +919,9 @@ internal static class MediaPlayerChecks
         // 根目录 3 个 + 子目录 1 个（递归默认是开的）
         vm.ScanRecursive = true;
         vm.SelectedAppendMode = vm.AppendModeOptions.First(o => !o.Value);
+        // 这几条只验「合并 / 覆盖 / 递归」的行为：先关掉「按文件夹恢复进度」（否则会覆盖 StatusText，
+        // 这是 v0.56.0 的正常行为，单独在 CheckFolderResume 里验）
+        vm.Cfg.ResumeLastPlayed = false;
         vm.AddFoldersAsync(new[] { root }).GetAwaiter().GetResult();
         check("VM：覆盖模式打开文件夹 → 列表只剩这个文件夹里的 4 个（含子目录那首）",
             vm.Items.Count == 4 && vm.StatusText.Contains("替换"), $"{vm.Items.Count} 条　{vm.StatusText}");
@@ -836,6 +942,7 @@ internal static class MediaPlayerChecks
         vm.AddFoldersAsync(new[] { root }).GetAwaiter().GetResult();
         check("VM：打开递归 → 子目录那首也进来了（4 条）",
             vm.Items.Count == 4 && vm.Items.Any(i => i.FullPath == s3), $"{vm.Items.Count} 条");
+        vm.Cfg.ResumeLastPlayed = true;   // 恢复默认，后面的分组还要用
 
         vm.SelectedAppendMode = vm.AppendModeOptions.First(o => o.Value);
 

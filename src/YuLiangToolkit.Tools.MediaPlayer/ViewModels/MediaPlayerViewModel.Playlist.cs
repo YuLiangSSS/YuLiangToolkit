@@ -111,6 +111,9 @@ public sealed partial class MediaPlayerViewModel
             };
             AppendItems(items, Cfg.AppendWhenOpeningFolder, source);
 
+            // v0.56.0：每个文件夹各自记住「上次听到哪首 / 哪儿」——重新打开这个文件夹时恢复
+            RestoreFolderResumeState(items);
+
             if (folders.Count > 0)
             {
                 Cfg.LastFolder = folders[0];
@@ -392,6 +395,11 @@ public sealed partial class MediaPlayerViewModel
         CurrentItem = current;
         _queue.SetCurrent(Items.IndexOf(current));
         _pendingResume = TimeSpan.FromSeconds(Math.Max(0, state.PositionSeconds));
+        // 上次异常退出时 playlist.json 可能比「文件夹记忆」（每 10 秒落盘）旧：同一首就用更靠后的进度
+        if (TryGetFolderProgress(current, out var folderPosition) && folderPosition > _pendingResume)
+        {
+            _pendingResume = folderPosition;
+        }
         UpdatePosition(_pendingResume, TimeSpan.Zero);
         StatusText = $"已恢复上次的播放列表（{Items.Count} 个），按播放继续";
     }

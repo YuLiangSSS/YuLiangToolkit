@@ -29,6 +29,7 @@ public partial class MediaPlayerView : UserControl
     private DispatcherTimer? _timer;
     private Window? _hostWindow;
     private bool _seeking;
+    private bool _debugFolderOpened;
 
     public MediaPlayerView()
     {
@@ -146,6 +147,18 @@ public partial class MediaPlayerView : UserControl
         {
             _hostWindow.PreviewKeyDown -= OnWindowPreviewKeyDown;
             _hostWindow.PreviewKeyDown += OnWindowPreviewKeyDown;
+        }
+
+        // 截图 / 调试验收：YLT_PLAYER_OPEN_FOLDER=<文件夹> 时打开页面后自动读一次这个文件夹
+        // （验证「每个文件夹记住上次听到哪首 / 哪儿」：恢复选中 + 进度，开了自动播放就直接接着放）。
+        // 只认第一次 Loaded；正常使用不设这个环境变量。
+        if (!_debugFolderOpened && Environment.GetEnvironmentVariable("YLT_PLAYER_OPEN_FOLDER") is { Length: > 0 } debugFolder
+            && Directory.Exists(debugFolder))
+        {
+            _debugFolderOpened = true;
+            // 等界面挂完再读（AddFoldersAsync 里会 await 后台扫盘，别卡 Loaded）
+            Dispatcher.BeginInvoke(new Action(() => _ = vm.AddFoldersAsync(new[] { debugFolder })),
+                DispatcherPriority.Background);
         }
 
         // 全屏：ViewModel 只切状态，真正的窗口操作交给外壳（MainWindow 实现了 IFullscreenHost）

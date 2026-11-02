@@ -59,6 +59,13 @@ public sealed class MediaPlayerConfig : ToolConfig
     /// <summary>捞回列表时顺便恢复上次听到的那一首（只选中 + 记住位置，**不自动出声**）。</summary>
     public bool ResumeLastPlayed { get; set; } = true;
 
+    /// <summary>
+    /// 恢复上次听到的位置之后**直接开始播放**（默认关：打开工具不会突然出声）。
+    /// <para>两种恢复都管：① 工具启动恢复整个列表；② 重新打开某个文件夹时恢复那个文件夹上次听到的位置
+    /// （每个文件夹分别记，见 <see cref="MediaFolderResumeState"/>）。</para>
+    /// </summary>
+    public bool AutoResumePlayback { get; set; }
+
     // ---------- 后台播放 ----------
 
     /// <summary>
