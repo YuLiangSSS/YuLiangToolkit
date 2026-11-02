@@ -197,6 +197,22 @@ internal static class MediaPlayerChecks
             fakeAuto.Position == TimeSpan.FromSeconds(42),
             $"{fakeAuto.Position.TotalSeconds} 秒");
 
+        // ---- 6. 打开文件夹时「恢复后自动播放」也要生效（播放器已经接上了） ----
+        // 上面测的是「工具启动恢复」，这里测「重新打开文件夹」那条路：恢复完直接装上次那首并从 0:42 继续。
+        autoResume.Cfg.AutoResumePlayback = true;
+        var folderAuto = new MediaPlayerViewModel { Confirm = _ => true };
+        folderAuto.ClearPlaylistCommand.Execute(null);
+        var fakeFolderAuto = new FakeMediaPlayback();
+        folderAuto.AttachPlayer(fakeFolderAuto);
+        folderAuto.AddFoldersAsync(new[] { albumA }).GetAwaiter().GetResult();
+        check("文件夹记忆：打开文件夹 + 自动播放 → 直接装上次那首",
+            fakeFolderAuto.LoadedPath == songA2.FullPath && folderAuto.IsPlaying,
+            fakeFolderAuto.LoadedPath ?? "(没装)");
+        fakeFolderAuto.RaiseOpened(TimeSpan.FromMinutes(3), hasVideo: false);
+        check("文件夹记忆：打开文件夹 + 自动播放 → 从 0:42 继续（不是从头）",
+            fakeFolderAuto.Position == TimeSpan.FromSeconds(42),
+            $"{fakeFolderAuto.Position.TotalSeconds} 秒");
+
         // 收尾：把开关改回默认，别影响后面的自检分组
         autoResume.Cfg.AutoResumePlayback = false;
         autoResume.ConfigStore.Flush();

@@ -30,6 +30,7 @@ public partial class MediaPlayerView : UserControl
     private Window? _hostWindow;
     private bool _seeking;
     private bool _debugFolderOpened;
+    private MediaPlayerViewModel? _vmSubscribed;
 
     public MediaPlayerView()
     {
@@ -119,6 +120,15 @@ public partial class MediaPlayerView : UserControl
         // 播放器只包一次（View 重新 Loaded 时沿用同一个 MediaElement）
         _playback ??= new MediaElementPlayback(Media);
         vm.AttachPlayer(_playback);
+
+        // 选中行变了就滚到它（v0.56.0：恢复文件夹上次听到的那首可能在列表很下面，
+        // 不滚过去用户根本看不到「恢复的是哪首」；用户自己点选时也顺手可见）
+        if (!ReferenceEquals(_vmSubscribed, vm))
+        {
+            if (_vmSubscribed is not null) _vmSubscribed.PropertyChanged -= OnVmPropertyChanged;
+            _vmSubscribed = vm;
+            _vmSubscribed.PropertyChanged += OnVmPropertyChanged;
+        }
 
         // 清空列表这种「不可逆但会心疼」的操作问一句；无头自检里这个钩子是直接返回 true 的
         vm.Confirm = message =>
@@ -231,11 +241,29 @@ public partial class MediaPlayerView : UserControl
         else StartIdleTimer();
     }
 
+    /// <summary>
+    /// ViewModel 里「选中行」变了 → 列表滚到那一行。
+    /// <para>恢复文件夹上次听到的那首可能在列表很下面（G 盘那种上千个文件），不滚过去用户根本看不到
+    /// 恢复的是哪首；自己点选时也顺手保证可见。</para>
+    /// </summary>
+    private void OnVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(MediaPlayerViewModel.SelectedItem)) return;
+        if (Vm?.SelectedItem is not { } item) return;
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() => PlaylistBox.ScrollIntoView(item)));
+    }
+
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         _timer?.Stop();
         _idleTimer?.Stop();
         Cursor = null;
+
+        if (_vmSubscribed is not null)
+        {
+            _vmSubscribed.PropertyChanged -= OnVmPropertyChanged;
+            _vmSubscribed = null;
+        }
 
         if (_hostWindow is not null) _hostWindow.PreviewKeyDown -= OnWindowPreviewKeyDown;
         _hostWindow = null;

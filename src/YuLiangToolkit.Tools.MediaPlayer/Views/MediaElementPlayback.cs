@@ -30,18 +30,27 @@ internal sealed class MediaElementPlayback : IMediaPlayback
         _media.UnloadedBehavior = MediaState.Manual;
         _media.ScrubbingEnabled = true;
 
-        _media.MediaOpened += (_, _) => Opened?.Invoke(this, EventArgs.Empty);
+        _media.MediaOpened += (_, _) =>
+        {
+            TraceSink?.Invoke($"MediaElement.MediaOpened（handler 在，playing={_playing}）");
+            Opened?.Invoke(this, EventArgs.Empty);
+        };
         _media.MediaEnded += (_, _) =>
         {
             _playing = false;
+            TraceSink?.Invoke("MediaElement.MediaEnded");
             Ended?.Invoke(this, EventArgs.Empty);
         };
         _media.MediaFailed += (_, e) =>
         {
             _playing = false;
+            TraceSink?.Invoke($"MediaElement.MediaFailed：{e.ErrorException?.Message}");
             Failed?.Invoke(this, DescribeFailure(e));
         };
     }
+
+    /// <summary>排错钩子：<c>YLT_PLAYER_TRACE</c> 时 ViewModel 会把写日志的方法挂进来（排查「打开成功了吗」用）。</summary>
+    internal static Action<string>? TraceSink;
 
     public string? CurrentPath { get; private set; }
 
@@ -76,6 +85,7 @@ internal sealed class MediaElementPlayback : IMediaPlayback
 
             CurrentPath = path;
             _playing = autoPlay;
+            TraceSink?.Invoke($"MediaElement.Load：{path}（autoPlay={autoPlay}）");
             _media.Source = new Uri(path, UriKind.Absolute);
             if (autoPlay) _media.Play();
         }

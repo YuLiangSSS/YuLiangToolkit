@@ -74,6 +74,8 @@
      要置 `_autoResumePending`，等 `AttachPlayer` 接上再放（见 `.Resume.cs` 的 `TryAutoResumeOnPlayerAttached`）。
   截图验收：`YLT_PLAYER_OPEN_FOLDER=<文件夹>`（打开播放器页后自动读一次这个文件夹，配 `YLT_SHOT` 看
   「恢复选中 + 进度 / 自动播放」的效果；只认第一次 Loaded，正常使用不设）。
+  排错用 `YLT_PLAYER_TRACE=<文件>`：把 MediaElement 的 Load / MediaOpened / MediaFailed、PlayItem 的
+  `pendingSeek`、OnPlayerOpened 拿到的时长与目标位置写进文件（排查「恢复进度后没跳过去」先看它）。
 
 ### 外壳：分类 · 粒子 · 主页设置
 - 老工具 `Category` 别自动当分类目录：树只认 `CategoryPath`（默认空）。

@@ -8,6 +8,19 @@ namespace YuLiangToolkit.Tools.MediaPlayer.ViewModels;
 /// </summary>
 public sealed partial class MediaPlayerViewModel
 {
+    /// <summary>
+    /// 排错用：<c>YLT_PLAYER_TRACE=&lt;文件&gt;</c> 时把「装媒体 / 打开成功 / 跳到哪一秒」写进文件。
+    /// 排查「恢复进度后没跳过去」这类时序问题时看它；不设环境变量时没有任何开销。
+    /// </summary>
+    private static readonly string? PlaybackTracePath = Environment.GetEnvironmentVariable("YLT_PLAYER_TRACE");
+
+    private void PlaybackTrace(string line)
+    {
+        if (PlaybackTracePath is null) return;
+        try { File.AppendAllText(PlaybackTracePath, $"{DateTime.Now:HH:mm:ss.fff} {line}{Environment.NewLine}"); }
+        catch { /* 排错钩子别影响播放 */ }
+    }
+
     private IMediaPlayback? _player;
     private TimeSpan _lastPosition;
     private TimeSpan _lastDuration;
@@ -37,6 +50,7 @@ public sealed partial class MediaPlayerViewModel
 
         DetachPlayer();
         _player = player;
+        Views.MediaElementPlayback.TraceSink = PlaybackTrace;   // 排错钩子（YLT_PLAYER_TRACE；不设就什么都不做）
         player.Volume = VolumeValue / 100.0;
         player.Opened += OnPlayerOpened;
         player.Ended += OnPlayerEnded;
@@ -50,6 +64,7 @@ public sealed partial class MediaPlayerViewModel
     public void DetachPlayer()
     {
         if (_player is null) return;
+        Views.MediaElementPlayback.TraceSink = null;
         _player.Opened -= OnPlayerOpened;
         _player.Ended -= OnPlayerEnded;
         _player.Failed -= OnPlayerFailed;
@@ -87,9 +102,16 @@ public sealed partial class MediaPlayerViewModel
 
         _lastDuration = TimeSpan.Zero;
         HasVideo = false;
+
+        // 先把「这次要跳到哪一秒」定下来（从文件夹记忆 / 上次位置恢复时不是从头开始）。
+        // 下面 UpdatePosition(0) 只是让界面先归零，CaptureFolderProgress 会按 _pendingSeek 记成目标位置——
+        // 否则「恢复进度 → 还没打开完就把文件夹记忆写成 0」，下次再恢复就从头了。
+        _pendingSeek = _pendingResume;
+        _pendingResume = TimeSpan.Zero;
+
         UpdatePosition(TimeSpan.Zero, TimeSpan.Zero);
         IsPlaying = true;
-        SaveFolderResumeState();   // 换歌是个明确的落盘点（旧歌进度 + 新歌从 0 开始）
+        SaveFolderResumeState();   // 换歌是个明确的落盘点（旧歌进度 + 新歌的目标位置）
 
         if (_player is null)
         {
@@ -98,8 +120,7 @@ public sealed partial class MediaPlayerViewModel
             return;
         }
 
-        _pendingSeek = _pendingResume;
-        _pendingResume = TimeSpan.Zero;
+        PlaybackTrace($"PlayItem：{Path.GetFileName(item.FullPath)} pendingSeek={_pendingSeek.TotalSeconds:0.###}s");
         _player.Volume = VolumeValue / 100.0;
         _player.Load(item.FullPath, autoPlay: true);
         ReviveMiniPanel();   // 真的开始出声了：小窗被 × 收起来的状态复位
@@ -243,6 +264,7 @@ public sealed partial class MediaPlayerViewModel
     {
         var duration = _player?.Duration ?? TimeSpan.Zero;
         HasVideo = _player?.HasVideo ?? false;
+        PlaybackTrace($"MediaOpened：duration={duration.TotalSeconds:0.###}s pendingSeek={_pendingSeek.TotalSeconds:0.###}s");
 
         if (_pendingSeek > TimeSpan.Zero)
         {
@@ -284,6 +306,7 @@ public sealed partial class MediaPlayerViewModel
     private void OnPlayerFailed(object? sender, string reason) => Ui(() =>
     {
         IsPlaying = false;
+        _pendingSeek = TimeSpan.Zero;   // 打不开就别再惦记「要跳到哪秒」
         StatusText = $"播放失败：{reason}";
         Log($"[错误] 播放失败（{CurrentItem?.Title}）：{reason}");
     });

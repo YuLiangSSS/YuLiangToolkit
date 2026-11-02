@@ -74,7 +74,10 @@ public sealed partial class MediaPlayerViewModel
 
         entry.Folder = folder;
         entry.CurrentPath = item.FullPath;
-        entry.PositionSeconds = Math.Max(0, _lastPosition.TotalSeconds);
+        // 媒体还没打开完时界面位置是 0，但这次可能要跳到 _pendingSeek：别把恢复进度记成 0（见 PlayItem 注释）
+        var seconds = Math.Max(0, _lastPosition.TotalSeconds);
+        if (_pendingSeek > TimeSpan.Zero) seconds = Math.Max(seconds, _pendingSeek.TotalSeconds);
+        entry.PositionSeconds = seconds;
         entry.UpdatedAtUtc = DateTime.UtcNow;
         MaybeSaveFolderResumeState();
     }
@@ -156,6 +159,7 @@ public sealed partial class MediaPlayerViewModel
         if (Cfg.AutoResumePlayback && _player is not null)
         {
             StatusText = $"继续上次：{item.Title}（{MediaTime.Format(_pendingResume)}）";
+            PlaybackTrace($"文件夹恢复：{item.Title} pendingResume={_pendingResume.TotalSeconds:0.###}s（自动播放）");
             PlayItem(item);   // PlayItem 会把 _pendingResume 带进 _pendingSeek，打开成功后跳过去
             return;
         }
