@@ -27,6 +27,12 @@
 - 日期与 Key 数走本地筛选（API 不支持）；结果表头与数据行列定义必须一字不差。
 
 ### 视频 / 音乐播放器
+- ⚠ 停止后再按播放**必须重新 `Load` 一遍**，不能只在旧 `MediaElement` 上 `Play()`：
+  `Stop()` 之后不会再有 `MediaOpened` 事件，VM 里的 `HasVideo`（画面标记）就恢复不了 ——
+  表现是「声音出来了、视频画面一直停在封面」。暂停则相反：暂停后继续播走 `Play()`，别重新 Load（会跳回 0）。
+- ⚠ 「重新 Load」**必须先 `MediaElement.Close()` 再赋 `Source`**：同一个 `Uri` 再赋一次 `Source`，
+  WPF 认为没变、**不会重新触发 `MediaOpened`** —— 那样 reload 也只是回到「有声音没画面」。
+  `MediaElementPlayback.Load` 里 `Stop()` 之后紧跟 `Close()` 就是这个原因。
 - ⚠ `MediaElement` 的 `LoadedBehavior` / `UnloadedBehavior` 都要设 `Manual`，否则自播自闭、跟 VM 命令打架。
 - ⚠ 整窗全屏临时改 `WM_GETMINMAXINFO` 再最大化，并 `SetWindowRgn(hwnd, IntPtr.Zero)` 清工作区 Region，否则底部黑带。
 - 藏任务栏用 `TaskbarHider`：400ms 看门狗、`Hide()` 幂等、不能 `Thread.Sleep`；`YLT_TASKBAR_TRACE` 错误码 5 = 完整性级别低。

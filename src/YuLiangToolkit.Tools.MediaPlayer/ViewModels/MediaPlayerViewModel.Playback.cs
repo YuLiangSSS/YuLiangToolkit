@@ -18,6 +18,13 @@ public sealed partial class MediaPlayerViewModel
     /// <summary>本次 Load 之前记下的目标位置（打开成功后由 <see cref="OnPlayerOpened"/> 消费）。</summary>
     private TimeSpan _pendingSeek;
 
+    /// <summary>
+    /// 上一次是「停止」（不是暂停）：停止会把画面标记清掉（<see cref="HasVideo"/> = false），
+    /// 再按播放如果只在原来的 MediaElement 上 <c>Play()</c>，**不会重新触发 MediaOpened**，
+    /// 结果就是「声音出来了、画面还停在封面」——所以停止后恢复要走 <see cref="PlayItem"/> 重新 Load 一次。
+    /// </summary>
+    private bool _stopped;
+
     /// <summary>当前挂着的播放器（没接上之前是 null —— 命令照样能点，只是会提示一句）。</summary>
     public IMediaPlayback? Player => _player;
 
@@ -64,6 +71,8 @@ public sealed partial class MediaPlayerViewModel
             Log($"[错误] 文件不在了：{item.FullPath}");
             return;
         }
+
+        _stopped = false;
 
         SelectedItem = item;
         CurrentItem = item;
@@ -125,10 +134,17 @@ public sealed partial class MediaPlayerViewModel
             IsPlaying = false;
             StatusText = $"已暂停：{CurrentItem.Title}";
         }
+        else if (_stopped)
+        {
+            // 停止过：MediaElement 直接 Play() 不会再抛 MediaOpened → 画面标记不会恢复（视频只剩声音）。
+            // 重新装一遍这首歌（也从 0 开始，跟「停止」的语义一致）。
+            PlayItem(CurrentItem);
+        }
         else
         {
             _player.Play();
             IsPlaying = true;
+            HasVideo = _player.HasVideo;   // 保底：万一是从「画面标记被清掉」的状态恢复，也把视频区切回来
             ReviveMiniPanel();   // 真的开始出声了：小窗被 × 收起来的状态复位
             StatusText = $"正在播放：{CurrentItem.Title}";
         }
@@ -138,6 +154,7 @@ public sealed partial class MediaPlayerViewModel
     public void StopPlayback()
     {
         _player?.Stop();
+        _stopped = _player is not null;
         IsPlaying = false;
         HasVideo = false;
         UpdatePosition(TimeSpan.Zero, TimeSpan.Zero);

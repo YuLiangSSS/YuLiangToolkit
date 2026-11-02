@@ -68,6 +68,12 @@ internal sealed class MediaElementPlayback : IMediaPlayback
         try
         {
             _media.Stop();
+
+            // ⚠ 必须先把旧媒体 Close 掉再设 Source：**同一个 Uri 再赋给 MediaElement.Source 不会重新触发
+            // MediaOpened**（WPF 认为没变），于是「停止后再播放」时 HasVideo 永远恢复不了 →
+            // 声音在放、画面一直停在封面（用户报的 bug）。Close 一下再设 Source 才会真正重开。
+            try { _media.Close(); } catch { /* 没打开过时忽略 */ }
+
             CurrentPath = path;
             _playing = autoPlay;
             _media.Source = new Uri(path, UriKind.Absolute);

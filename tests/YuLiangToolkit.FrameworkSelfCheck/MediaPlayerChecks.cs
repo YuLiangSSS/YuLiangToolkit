@@ -730,9 +730,17 @@ internal static class MediaPlayerChecks
         check("VM：停止 → 位置回 0、不在播放、状态说明清楚",
             fake.Position == TimeSpan.Zero && !vm.IsPlaying && vm.PositionText == "0:00" && vm.StatusText == "已停止",
             vm.StatusText);
+        check("VM：停止后画面标记被清掉（音频样式 / 封面）", !vm.HasVideo && vm.CoverVisible);
 
+        // 停止后恢复必须**重新 Load**：MediaElement 直接 Play() 不会重发 MediaOpened，
+        // 画面标记（HasVideo）就恢复不了 → 视频「只有声音、画面停在封面」（用户报的 bug）。
+        var loadsBeforeResumeFromStop = fake.LoadCount;
         vm.PlayPauseCommand.Execute(null);
-        check("VM：停止后按播放 → 重新开这一首（重新 Load）", fake.LoadCount > 0 && fake.IsPlaying && vm.IsPlaying);
+        check("VM：停止后按播放 → 重新 Load 这一首（不会只在旧 MediaElement 上 Play）",
+            fake.LoadCount == loadsBeforeResumeFromStop + 1 && fake.IsPlaying && vm.IsPlaying,
+            $"load {loadsBeforeResumeFromStop} → {fake.LoadCount}");
+        fake.RaiseOpened(TimeSpan.FromSeconds(90), hasVideo: true);   // 重新 Load 后真播放器会再抛 MediaOpened
+        check("VM：停止后按播放 → 视频画面标记也恢复（不再停在封面）", vm.HasVideo && !vm.CoverVisible);
 
         check("VM：播放/暂停按钮的图标跟着状态走（矢量三角形 ↔ 两根竖条）",
             !vm.ShowPlayIcon && vm.ShowPauseIcon);
@@ -742,6 +750,15 @@ internal static class MediaPlayerChecks
             vm.StatusText.Contains("已暂停") && !vm.IsPlaying && fake.PauseCount > 0, vm.StatusText);
 
         check("VM：暂停后按钮又变回三角形", vm.ShowPlayIcon && !vm.ShowPauseIcon);
+
+        var loadsBeforeResumeFromPause = fake.LoadCount;
+        var playsBeforeResumeFromPause = fake.PlayCount;
+        vm.PlayPauseCommand.Execute(null);
+        check("VM：暂停后继续播 → 不重新 Load（只 Play 续播），视频画面标记不回退",
+            fake.LoadCount == loadsBeforeResumeFromPause && fake.PlayCount > playsBeforeResumeFromPause
+            && vm.IsPlaying && vm.HasVideo && !vm.CoverVisible,
+            $"load {loadsBeforeResumeFromPause} / play {playsBeforeResumeFromPause} → {fake.PlayCount}");
+        vm.PlayPauseCommand.Execute(null);   // 收尾：回到暂停，别把「正在播」留给后面的用例
 
         // ---- 音量 / 播放顺序 / 设置面板 ----
         vm.VolumeValue = 55;
