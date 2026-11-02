@@ -497,8 +497,19 @@
         <!-- ================= 设置面板（右侧浮层，高度可拖） =================
              外层 Grid 的三行：设置面板（默认 560 px，可拖成任意高）→ 12px 横向分隔条 → 剩余空间；
              分隔条给 core:PaneSplitter 后宽度/高度都会记进 Config\layout.json，双击恢复这一处默认高度。 -->
-        <Grid Grid.Row="1" Grid.Column="4" Margin="0,12,12,0"
+        <Grid Grid.Row="1" Grid.Column="4"
               Visibility="{Binding IsSettingsVisible, Converter={StaticResource BoolToVis}}">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Margin" Value="0,12,12,0" />
+                    <Style.Triggers>
+                        <!-- 全屏时工具条浮在顶部：设置面板往下让出工具条高度，别被挡住 -->
+                        <DataTrigger Binding="{Binding IsFullscreen}" Value="True">
+                            <Setter Property="Margin" Value="0,112,12,0" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
             <Grid.RowDefinitions>
                 <RowDefinition Height="560" MinHeight="220"
                                MaxHeight="{Binding ActualHeight, ElementName=ViewportGrid}" />

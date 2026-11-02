@@ -312,8 +312,18 @@
                                            VerticalAlignment="Top" Margin="0,12,0,0"
                                            Height="{Binding ActualHeight, ElementName=SettingsCard}" />
 
-                        <Border x:Name="SettingsCard" Grid.Column="2" VerticalAlignment="Top"
-                                Margin="0,12,12,0" Padding="16,14" Style="{StaticResource CardStyle}">
+                        <Border x:Name="SettingsCard" Grid.Column="2" VerticalAlignment="Top" Padding="16,14">
+                            <Border.Style>
+                                <Style TargetType="Border" BasedOn="{StaticResource CardStyle}">
+                                    <Setter Property="Margin" Value="0,12,12,0" />
+                                    <Style.Triggers>
+                                        <!-- 全屏时工具条浮在顶部：设置卡片往下让出工具条高度，别被挡住 -->
+                                        <DataTrigger Binding="{Binding IsFullscreen}" Value="True">
+                                            <Setter Property="Margin" Value="0,112,12,0" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
                 <ScrollViewer MaxHeight="{Binding ActualHeight, ElementName=ViewportGrid}"
                               VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                               core:ScrollChaining.Enabled="True">

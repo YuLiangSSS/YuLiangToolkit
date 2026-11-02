@@ -99,7 +99,12 @@
   **隐藏 / 显示用 `RenderTransform` 上下平移（约 180ms 滑出 / 160ms 滑回），别再拿 `Visibility` 切换**——Collapsed 就做不了动画，
   也没法做「靠近顶部才滑出」的交互。全屏鼠标只有在**距顶 84px 热区**才滑出；离开顶部 / 工具条约 **1 秒**自动滑回；
   阅读区中间晃鼠标只让指针显示，不弹工具条。⚠ **设置 / 目录面板开着也不能阻止工具条自动收**（踩过：旧逻辑把
-  `IsSettingsVisible` 当保留条件，面板一开工具条就永远挂在上面）；只有鼠标还在顶部热区 / 工具条上、或搜索框聚焦才保留。
+  `IsSettingsVisible` 当保留条件，面板一开工具条就永远挂在上面）；只有鼠标还在顶部热区 / 工具条上、或工具条里的
+  **文本输入框**（搜索 / 缩放 / 跳页）聚焦才保留。⚠ **别用 `ToolbarBorder.IsKeyboardFocusWithin` 当保留条件**：
+  点过「设置 / 目录 / 全屏」按钮后键盘焦点会留在那个按钮上，工具条就再也不自动收了（用户实际踩到的就是这个）；
+  用 `IsToolbarTextInputFocused()`（`Keyboard.FocusedElement is TextBox/ComboBox`），收起时对非输入框焦点
+  `Keyboard.ClearFocus()`。全屏时设置面板的 `Margin.Top` 要在 `IsFullscreen=True` 时设成 **112**（让出工具条高度），
+  否则工具条一滑出就把设置面板顶部的标题 / 第一行挡住。
   ⚠ 视图 `Loaded` 可能触发多次：用一个 `_fullscreenApplied` 守卫，重复同步时不能把已滑出的工具条又藏回去。
 - 截图：`YLT_*_CONTROLS=1` 会把工具条**钉在滑出状态**（否则真实鼠标在窗口里触发的 move 会按热区规则把它收走），
   `=0` 拍沉浸帧；`YLT_*_HOVER_TOP=1` / `_HOVER_MIDDLE=1` 模拟鼠标在顶部 / 中间，用来验「靠近顶部才滑出」

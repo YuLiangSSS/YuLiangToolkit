@@ -448,6 +448,13 @@ public partial class PdfReaderView : UserControl
         vm.HideControls();
         ToolbarBorder.IsHitTestVisible = false;
 
+        // 点过工具条按钮后键盘焦点会留在按钮上；工具条一收，把焦点还给阅读区，
+        // 不然下次按空格 / 回车还会去触发那个看不见的按钮。
+        if (ToolbarBorder.IsKeyboardFocusWithin && Keyboard.FocusedElement is not TextBox)
+        {
+            try { Keyboard.ClearFocus(); } catch { /* 焦点清理失败不影响收起 */ }
+        }
+
         ToolbarSlideTransform.BeginAnimation(TranslateTransform.YProperty, null);
         var target = -ToolbarHiddenOffset;
         if (!animate)
@@ -529,7 +536,7 @@ public partial class PdfReaderView : UserControl
         _toolbarAutoHideTimer?.Stop();
         if (Vm is not { } vm || !vm.IsFullscreen || !_toolbarShown) return;
 
-        if (ToolbarBorder.IsMouseOver || ToolbarBorder.IsKeyboardFocusWithin
+        if (ToolbarBorder.IsMouseOver || IsToolbarTextInputFocused()
             || _lastFullscreenPointer.Y <= ToolbarRevealZonePixels)
         {
             StartIdleTimer();
@@ -579,6 +586,11 @@ public partial class PdfReaderView : UserControl
         if (FullscreenHintPanel is not null) FullscreenHintPanel.Visibility = Visibility.Collapsed;
     }
 
+    /// <summary>工具条里的输入框（搜索 / 缩放 / 跳页）正拿着键盘焦点：这时别自动收，免得打字时工具条消失。</summary>
+    private bool IsToolbarTextInputFocused()
+        => ToolbarBorder.IsKeyboardFocusWithin
+           && Keyboard.FocusedElement is TextBox or ComboBox or ComboBoxItem;
+
     /// <summary>开始 / 重新开始“鼠标闲置”倒计时（只挂一次 Tick）。</summary>
     private void StartIdleTimer()
     {
@@ -606,9 +618,9 @@ public partial class PdfReaderView : UserControl
             return;
         }
 
-        // 工具条还露着：鼠标停在上面 / 正在输入 / 还贴着顶部 → 别收，重新计时
+        // 工具条还露着：鼠标停在上面 / 正在工具条输入框里打字 / 还贴着顶部 → 别收，重新计时
         if (_toolbarShown
-            && (ToolbarBorder.IsMouseOver || ToolbarBorder.IsKeyboardFocusWithin
+            && (ToolbarBorder.IsMouseOver || IsToolbarTextInputFocused()
                 || _lastFullscreenPointer.Y <= ToolbarRevealZonePixels))
         {
             StartIdleTimer();
@@ -665,6 +677,11 @@ public partial class PdfReaderView : UserControl
         if (PdfReaderViewModel.IsEnvironmentOn("YLT_PDF_HOVER_SEQUENCE"))
         {
             HandleFullscreenPointerAt(new Point(ActualWidth / 2, 4));
+            if (PdfReaderViewModel.IsEnvironmentOn("YLT_PDF_HOVER_SEQUENCE_FOCUS"))
+            {
+                // 模拟「点过工具条按钮」：键盘焦点留在工具条里，旧逻辑会因此永远不自动收起
+                FullscreenButton.Focus();
+            }
             var sequenceTimer = new DispatcherTimer(DispatcherPriority.Background)
             {
                 Interval = TimeSpan.FromMilliseconds(100),
