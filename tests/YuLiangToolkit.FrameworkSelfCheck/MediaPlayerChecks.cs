@@ -63,10 +63,22 @@ internal static class MediaPlayerChecks
             barely is { } b && Math.Abs(b.TotalSeconds - 1.0) < 0.01,
             barely?.ToString() ?? "null");
 
-        var longer = MiniPlayerPanel.ScrollDuration(800, view);
-        check("迷你条标题：越长滚得越久（速度恒定）",
-            oneWay is { } o && longer is { } l && l > o,
-            $"{oneWay?.TotalSeconds:0.00}s → {longer?.TotalSeconds:0.00}s");
+        // 真实歌名（G:\Music&Video 里那种一百多字的名字）溢出几百像素：**必须封顶**，
+        // 否则按 34px/s 要滚 10~20 秒，用户看到的就是「标题一直显示不全」。
+        var veryLong = MiniPlayerPanel.ScrollDuration(1200, view);   // 溢出 956px，不封顶要 ~28 秒
+        check("迷你条标题：超长标题一趟也有上限（最多 MaxOneWaySeconds 秒，不会滚十几二十秒）",
+            veryLong is { } v && Math.Abs(v.TotalSeconds - MiniPlayerPanel.MaxOneWaySeconds) < 0.01,
+            veryLong?.ToString() ?? "null");
+
+        var absurd = MiniPlayerPanel.ScrollDuration(4000, view);
+        check("迷你条标题：再长也还是这个上限（不会越长的标题等越久）",
+            absurd is { } a && Math.Abs(a.TotalSeconds - MiniPlayerPanel.MaxOneWaySeconds) < 0.01,
+            absurd?.ToString() ?? "null");
+
+        check("迷你条标题：回滚比去程快（最多 MaxReturnSeconds 秒，短行程按原时长）",
+            Math.Abs(MiniPlayerPanel.ReturnDuration(TimeSpan.FromSeconds(3)).TotalSeconds - MiniPlayerPanel.MaxReturnSeconds) < 1e-9
+            && Math.Abs(MiniPlayerPanel.ReturnDuration(TimeSpan.FromSeconds(0.4)).TotalSeconds - 0.4) < 1e-9
+            && MiniPlayerPanel.ReturnDuration(TimeSpan.Zero) == TimeSpan.Zero);
 
         check("迷你条标题：还没量出宽度（0 / NaN）→ 先不动，等 SizeChanged 再来",
             MiniPlayerPanel.ScrollDuration(0, view) is null
@@ -650,6 +662,22 @@ internal static class MediaPlayerChecks
         fake.Position = TimeSpan.FromSeconds(179);
         vm.SeekForwardCommand.Execute(null);
         check("VM：快进到头就停在时长上（不会超过 3:00）", fake.Position == TimeSpan.FromMinutes(3));
+
+        // ---- 迷你条进度条：点 / 拖 → 按比例跳（和播放器页进度条走同一个 SeekToRatio） ----
+        fake.Position = TimeSpan.Zero;
+        vm.SeekToRatio(0.5);
+        check("VM：进度条按比例跳（0.5 → 1:30，进度比例 / 时间文本跟着变）",
+            fake.Position == TimeSpan.FromSeconds(90)
+            && Math.Abs(vm.ProgressRatio - 0.5) < 1e-9
+            && vm.PositionText == "1:30",
+            $"{fake.Position.TotalSeconds}s / {vm.ProgressRatio:0.###} / {vm.PositionText}");
+
+        vm.SeekToRatio(-3);
+        var afterBelow = fake.Position;
+        vm.SeekToRatio(9);
+        check("VM：进度条比例越界会夹在 0 ~ 1（左边缘 0、右边缘总时长）",
+            afterBelow == TimeSpan.Zero && fake.Position == TimeSpan.FromMinutes(3),
+            $"{afterBelow.TotalSeconds}s / {fake.Position.TotalSeconds}s");
 
         // ---- 右键：上一首 / 下一首（界面上就是这两个命令） ----
         vm.PlayItem(vm.Items[0]);

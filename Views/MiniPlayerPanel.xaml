@@ -79,10 +79,43 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- 播放模式按钮：点一下循环切换（列表循环 → 单曲循环 → 随机播放），不再只是只读文字 -->
+        <Style x:Key="MiniModeButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="Margin" Value="4,0,0,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                CornerRadius="6" Padding="{TemplateBinding Padding}"
+                                TextElement.Foreground="{TemplateBinding Foreground}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CardHoverBackgroundBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BorderBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </UserControl.Resources>
 
-    <!-- 迷你播放条：一行「来回滚」的标题 + 快退 / 播放暂停 / 快进，右上角一个 ×。
-         DataContext = 播放器的 ViewModel（外壳的 MiniPanelSource 给过来的）。 -->
+    <!-- 迷你播放条：一行「来回滚」的标题 + 进度条（点 / 拖跳转）+ 快退 / 播放暂停 / 快进 / 可点击的播放模式，右上角一个 ×。
+         DataContext = 播放器的 ViewModel（外壳的 MiniPanelSource 给过来的）。
+         ⚠ 后台时播放器页的 200ms 计时器已经停了（视图被摘下），所以**进度由本控件的计时器推进**
+         （见 MiniPlayerPanel.xaml.cs 的 OnPositionTick），否则进度条会停在被切走那一刻。 -->
     <Border Width="264" Background="{DynamicResource MiniPlayerBackgroundBrush}" CornerRadius="12" Padding="10,8,10,10"
             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
         <StackPanel>
@@ -96,9 +129,9 @@
                 <Button Grid.Column="0" Style="{StaticResource MiniTitleButton}"
                         Command="{Binding DataContext.OpenBackgroundToolCommand,
                                   RelativeSource={RelativeSource AncestorType=Window}}"
-                        ToolTip="回到播放器">
+                        ToolTip="{Binding TitleText, StringFormat={}{0}（点一下回到播放器）}">
                     <Grid x:Name="TitleClip" Height="18" ClipToBounds="True">
-                        <TextBlock x:Name="TitleText" Text="{Binding TitleText}" FontSize="12" FontWeight="SemiBold"
+                        <TextBlock x:Name="TitleText" Text="{Binding TitleText, NotifyOnTargetUpdated=True}" FontSize="12" FontWeight="SemiBold"
                                    HorizontalAlignment="Left" VerticalAlignment="Center"
                                    Foreground="{DynamicResource TextPrimaryBrush}">
                             <TextBlock.RenderTransform>
@@ -118,7 +151,19 @@
                 </Button>
             </Grid>
 
-            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+            <!-- 进度条：点一下 / 按住拖可以跳到任意位置（后台播放时也能调）。悬停提示里的时间由代码后置每 200ms 更新。 -->
+            <Grid x:Name="MiniSeekArea" Height="16" Margin="0,4,0,0" Background="Transparent"
+                  Cursor="Hand" ToolTip="点 / 拖可以跳到任意位置"
+                  MouseLeftButtonDown="OnMiniSeekMouseDown"
+                  MouseMove="OnMiniSeekMouseMove"
+                  MouseLeftButtonUp="OnMiniSeekMouseUp"
+                  MouseLeave="OnMiniSeekMouseLeave">
+                <ProgressBar Minimum="0" Maximum="1" Value="{Binding ProgressRatio, Mode=OneWay}"
+                             Style="{StaticResource ProgressBarStyle}" Height="4"
+                             VerticalAlignment="Center" IsHitTestVisible="False" />
+            </Grid>
+
+            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                 <!-- 左键快退、右键上一首（右键在代码后置里接） -->
                 <Button x:Name="MiniBack" Style="{StaticResource MiniIconButton}" Margin="0,0,2,0"
                         Command="{Binding SeekBackwardCommand}"
@@ -145,8 +190,11 @@
                           Fill="{DynamicResource TextPrimaryBrush}" />
                 </Button>
 
-                <TextBlock Text="{Binding PlayModeText}" FontSize="10.5" VerticalAlignment="Center"
-                           Margin="6,0,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <!-- 播放模式：可点击，点一下循环切换（列表循环 → 单曲循环 → 随机播放） -->
+                <Button x:Name="MiniMode" Style="{StaticResource MiniModeButton}"
+                        Content="{Binding PlayModeText}"
+                        Command="{Binding CyclePlayModeCommand}"
+                        ToolTip="{Binding PlayModeTooltip}" />
             </StackPanel>
         </StackPanel>
     </Border>
