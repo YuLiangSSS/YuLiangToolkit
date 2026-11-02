@@ -275,6 +275,12 @@
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right"
                                 VerticalAlignment="Center" Margin="12,0,0,0">
+                        <!-- 工具条页码：底部页码关掉 / 全屏沉浸时也能随时看到当前页 -->
+                        <TextBlock x:Name="ToolbarPageText" VerticalAlignment="Center" FontSize="11.5"
+                                   FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Margin="0,0,14,0" TextTrimming="CharacterEllipsis"
+                                   ToolTip="当前页码（底部页码关掉后这里仍然显示）" />
+
                         <!-- 跳页：输入页码（1 起）回车 / 点按钮跳到对应页 -->
                         <TextBlock Text="跳页" Foreground="{DynamicResource TextSecondaryBrush}"
                                    FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0" />
@@ -299,7 +305,7 @@
 
                         <TextBlock x:Name="TextLayerHintText" VerticalAlignment="Center" FontSize="10.5"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
-                                   TextTrimming="CharacterEllipsis" MaxWidth="300" Margin="12,0,0,0" />
+                                   TextTrimming="CharacterEllipsis" MaxWidth="220" Margin="12,0,0,0" />
                     </StackPanel>
                 </Grid>
             </StackPanel>
@@ -559,7 +565,7 @@
                                   Foreground="{DynamicResource TextPrimaryBrush}"
                                   IsChecked="{Binding ShowPageIndicator, Mode=TwoWay}"
                                   Click="OnShowPageIndicatorClick"
-                                  ToolTip="关掉后底部不再显示「第 x / n 页」（进度条保留）；设置会自动保存" />
+                                  ToolTip="关掉后底部不再显示「第 x / n 页」（进度条保留）；工具条第二行仍会显示当前页码。设置会自动保存" />
 
                         <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,14,0,10" />
 

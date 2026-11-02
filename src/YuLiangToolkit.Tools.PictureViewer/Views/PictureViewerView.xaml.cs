@@ -252,6 +252,7 @@ public partial class PictureViewerView : UserControl
 
         SetReadingOffset(reading);
         UpdateReadingProgress();
+        UpdateToolbarPageText();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -438,6 +439,7 @@ public partial class PictureViewerView : UserControl
             }
             _builtMode = vm.Cfg.ScrollModeEffective;
             UpdateReadingProgress();
+            UpdateToolbarPageText();
             ProcessVisibleRange();
             ApplyDebugHooks();
 
@@ -725,7 +727,87 @@ public partial class PictureViewerView : UserControl
     private void OnImageScrollViewerScrollChanged(object sender, ScrollChangedEventArgs e)
     {
         UpdateReadingProgress();
+        UpdateToolbarPageText();
         ScheduleVisibleLoad();
+    }
+
+    /// <summary>工具条上的「第 x / y 张」——连续模式按第一张可见图算；翻页 / 双页模式显示当前屏范围。</summary>
+    private void UpdateToolbarPageText()
+    {
+        if (ToolbarImageIndexText is null) return;
+
+        var count = Vm?.Pages.Count ?? 0;
+        if (count == 0)
+        {
+            ToolbarImageIndexText.Text = "";
+            ImageJumpBox.IsEnabled = false;
+            ImageJumpButton.IsEnabled = false;
+            return;
+        }
+
+        ImageJumpBox.IsEnabled = true;
+        ImageJumpButton.IsEnabled = true;
+
+        if (_pagedActive)
+        {
+            ToolbarImageIndexText.Text = PageIndicatorText.Text;   // 已由 UpdatePagedChrome 按单页 / 双页算好
+            return;
+        }
+
+        var index = CurrentContinuousImageIndex(count);
+        ToolbarImageIndexText.Text = $"第 {index + 1} / {count} 张";
+    }
+
+    /// <summary>连续滚动时当前（第一张可见的）图片序号；日式反向模式按阅读方向换算。</summary>
+    private int CurrentContinuousImageIndex(int count)
+    {
+        if (_slots.Count == 0) return 0;
+
+        var total = _slots[^1].Start + _slots[^1].MainLength;
+        var reverse = PictureScrollModes.IsReverse(Mode);
+        var reading = GetReadingOffset();
+
+        for (var i = 0; i < _slots.Count; i++)
+        {
+            var offset = PictureScrollMath.ReadingOffsetForPage(
+                reverse, total, _slots[i].Start, _slots[i].MainLength);
+            if (reading < offset + _slots[i].MainLength)
+                return Math.Min(i, count - 1);
+        }
+
+        return Math.Max(0, count - 1);
+    }
+
+    private void OnImageJumpBoxPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        JumpToImageFromBox();
+        e.Handled = true;
+    }
+
+    private void OnImageJumpClick(object sender, RoutedEventArgs e) => JumpToImageFromBox();
+
+    /// <summary>工具条跳转：页码 1 基，超出范围夹到 1 ~ 总张数。</summary>
+    private void JumpToImageFromBox()
+    {
+        if (Vm is not { } vm || vm.Pages.Count == 0) return;
+
+        if (!int.TryParse(ImageJumpBox.Text?.Trim(), out var page))
+        {
+            ImageJumpBox.SelectAll();
+            return;
+        }
+
+        var index = PicturePaging.NormalizePageIndex(page - 1, vm.Pages.Count);
+        if (_pagedActive)
+        {
+            _ = GoToPageAsync(index);
+        }
+        else
+        {
+            ScrollToPage(index);
+            UpdateToolbarPageText();
+        }
     }
 
     /// <summary>排到 150ms 后补一次可见范围。**已经在计时就不重置** —— 见方法里的说明。</summary>

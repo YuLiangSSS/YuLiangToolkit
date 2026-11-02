@@ -2377,6 +2377,7 @@ public partial class PdfReaderView : UserControl
         var hasDocument = vm?.HasDocument == true;
 
         UpdatePageIndicatorVisibility();
+        if (!hasDocument) ToolbarPageText.Text = "";
         // 全屏沉浸阅读时底部提示条也藏起来（页码保留，底部进度条保留）
         HintPanel.Visibility = hasDocument && vm?.IsFullscreen != true
             ? Visibility.Visible
@@ -2481,6 +2482,7 @@ public partial class PdfReaderView : UserControl
         {
             PageIndicatorPanel.Visibility = Visibility.Collapsed;
             PageIndicatorText.Text = "";
+            ToolbarPageText.Text = "";
             return;
         }
 
@@ -2495,6 +2497,7 @@ public partial class PdfReaderView : UserControl
                 ({ } l, null) => $"第 {l + 1} 页 / 共 {count} 页",
                 _ => $"共 {count} 页",
             };
+            ToolbarPageText.Text = PageIndicatorText.Text;
 
             var currentStart = PdfSpreadLayout.NormalizeStart(_spreadStart, count);
             UpdatePageJumpTooltip(currentStart);
@@ -2505,11 +2508,13 @@ public partial class PdfReaderView : UserControl
         if (_layout is null || _layout.IsEmpty)
         {
             PageIndicatorText.Text = $"共 {count} 页";
+            ToolbarPageText.Text = PageIndicatorText.Text;
             return;
         }
 
         var page = PdfContinuousLayout.PageIndexAtOffset(_layout, _builtMode, GetReadingOffset());
         PageIndicatorText.Text = $"第 {page + 1} / {count} 页";
+        ToolbarPageText.Text = PageIndicatorText.Text;
         UpdatePageJumpTooltip(page);
         Vm?.NoteReadingPosition(page, PdfContinuousLayout.RatioOf(GetReadingOffset(), MaximumOffset));
     }

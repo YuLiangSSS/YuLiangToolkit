@@ -525,6 +525,8 @@ public partial class PictureViewerView
         NextPageButton.IsEnabled = rightIsPrevious ? canPrevious : canNext;
         PrevPageButton.ToolTip = leftIsPrevious ? "上一张" : "下一张";
         NextPageButton.ToolTip = rightIsPrevious ? "上一张" : "下一张";
+
+        UpdateToolbarPageText();
     }
 
     private void UpdatePagedProgress()
