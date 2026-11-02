@@ -52,6 +52,16 @@
   狂切工具页就是「同一首歌两份」，过一会儿被 GC 收掉又突然断音、左下角小窗也跟着消失（v0.44.1 修）。
 - ⚠ 重排列表后必须 `_queue.Reset()` 并把当前曲目重新 `SetCurrent(Items.IndexOf(当前))`，否则列表循环会按旧下标跳到错的歌、随机的一轮顺序作废。
 - `playlist.json` 的路径列表按**添加顺序**保存（别按界面显示顺序），否则「默认顺序」回不到最初的添加顺序。
+- ⚠ 迷你播放条长标题「永远只露前一段、右边固定被切」**不是字体 / 滚动速度问题，是 WPF 自动 layout clip**：
+  `TextBlock` 直接当 `Grid` 子元素且 `HorizontalAlignment="Left"` 时，WPF 会按 `DesiredSize` 把它排得比槽位宽，
+  再给 TextBlock 自己加一个 **layout clip**（裁到槽位宽）。滚动是用 `RenderTransform` 平移文字的，
+  这个裁剪窗口会**跟着文字一起平移** → 右侧的字永远露不出来；改滚动速度 / 时长 / 加 overshoot 都没用
+  （v0.55.2 之前两次“修复”都没找到这一点，越改越像“速度太快没看清”）。
+  正确结构：**宽度固定、位置不动的裁剪容器**（`Grid ClipToBounds`）→ `Canvas`（用无限宽量、按 DesiredSize 排，
+  不会被加 layout clip）→ `TextBlock`；标题按钮模板里的 `ContentPresenter` 必须是 `Stretch`（是 `Left` 的话
+  裁剪容器宽度会变成 0 / 内容宽，滚动窗口算错）。排查用 `YLT_MINI_MEASURE=<文件>`（dump 真实宽度 / 祖先链 /
+  layout clip / 裁剪窗口在窗口坐标里的位置）和 `YLT_MINI_SHIFT=<像素>`（把跑马灯固定在某个位移，截图可复现）；
+  回归脚本 `scripts/e2e-mini-marquee.ps1`（真截图 + 像素检查“最后一个字是不是真的画出来了”）。
 
 ### 外壳：分类 · 粒子 · 主页设置
 - 老工具 `Category` 别自动当分类目录：树只认 `CategoryPath`（默认空）。

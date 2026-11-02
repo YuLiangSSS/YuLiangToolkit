@@ -1,4 +1,8 @@
+using System.IO;
+using System.Text;
+using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -54,6 +58,21 @@ public partial class MiniPlayerPanel : UserControl
     /// <summary>一趟最少走这么久（只溢出几个像素时不至于“闪一下”）。</summary>
     private static readonly TimeSpan MinMove = TimeSpan.FromSeconds(1.0);
 
+    /// <summary>
+    /// 排错 / 截图用：<c>YLT_MINI_MEASURE=文件</c> 时把标题行的**真实几何**（谁多宽、被谁的
+    /// 裁剪框住、当前滚动到哪个像素、裁剪窗口在窗口里的坐标）写进文件。只读，不写配置、不影响界面。
+    /// <para>「标题看着被截断」这类问题不能只看 <c>TextBlock.Text</c>：必须看**布局宽度 / 裁剪矩形 /
+    /// 祖先的 ClipToBounds / layout clip**，所以这里把整条视觉祖先链都打出来。</para>
+    /// </summary>
+    private static readonly string? MeasurePath = Environment.GetEnvironmentVariable("YLT_MINI_MEASURE");
+
+    /// <summary>
+    /// 排错 / 截图用：<c>YLT_MINI_SHIFT=像素</c> 把标题**固定在某个滚动位移**上（不跑动画），
+    /// 这样「滚到一半」的画面每次截图都一模一样，方便前后对比。
+    /// </summary>
+    private static readonly double? ShiftOverride =
+        double.TryParse(Environment.GetEnvironmentVariable("YLT_MINI_SHIFT"), out var shiftOverride) ? shiftOverride : null;
+
     /// <summary>后台推进进度用的计时器（只在可见时跑）。</summary>
     private DispatcherTimer? _positionTimer;
 
@@ -69,6 +88,7 @@ public partial class MiniPlayerPanel : UserControl
         {
             RestartMarquee();
             UpdatePositionTimer();
+            ScheduleMeasure();
         };
         Unloaded += (_, _) =>
         {
@@ -208,6 +228,12 @@ public partial class MiniPlayerPanel : UserControl
     {
         TitleShift.BeginAnimation(TranslateTransform.XProperty, null);   // 先停掉旧动画
 
+        if (ShiftOverride is { } fixedShift)
+        {
+            TitleShift.X = fixedShift;   // 截图钩子：固定在这个位移上，不跑动画
+            return;
+        }
+
         var duration = ScrollDuration(TitleText.ActualWidth, TitleClip.ActualWidth);
         if (duration is not { } move)
         {
@@ -231,4 +257,73 @@ public partial class MiniPlayerPanel : UserControl
 
     private static LinearDoubleKeyFrame Key(double value, TimeSpan time)
         => new(value, KeyTime.FromTimeSpan(time));
+
+    // ---------------------------------------------------------------- 排错（YLT_MINI_MEASURE）
+
+    /// <summary>
+    /// 把迷你条标题行的真实几何写进文件（<see cref="MeasurePath"/>）：真实宽度 / 裁剪矩形 /
+    /// 祖先的 ClipToBounds / layout clip / 当前滚动位移，以及标题裁剪窗口在**窗口坐标**里的位置
+    /// （给截图脚本按像素核对「最后一个字是不是真的露出来了」用）。
+    /// <para>排查「标题被截断」时**光看 TextBlock.Text 没用**——Text 永远是完整的，断的是布局与裁剪
+    /// （v0.55.2 那个 bug 就是 WPF 自动加的 layout clip 跟着 RenderTransform 一起走）。</para>
+    /// </summary>
+    private void ScheduleMeasure()
+    {
+        if (MeasurePath is null) return;
+        var timer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(1200),
+        };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            try { DumpMeasure(); } catch (Exception ex) { TryWrite($"测量失败：{ex}"); }
+        };
+        timer.Start();
+    }
+
+    private void DumpMeasure()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"panel={ActualWidth:0.##}x{ActualHeight:0.##} IsVisible={IsVisible} IsLoaded={IsLoaded}");
+        sb.AppendLine($"TitleClip.ActualWidth={TitleClip.ActualWidth:0.##} ActualHeight={TitleClip.ActualHeight:0.##}");
+        sb.AppendLine($"TitleText.ActualWidth={TitleText.ActualWidth:0.##} ActualHeight={TitleText.ActualHeight:0.##}");
+        sb.AppendLine($"TitleShift.X={TitleShift.X:0.##} animated={TitleShift.HasAnimatedProperties}");
+        sb.AppendLine($"ScrollDuration={ScrollDuration(TitleText.ActualWidth, TitleClip.ActualWidth)?.TotalMilliseconds.ToString("0") ?? "null"}");
+        sb.AppendLine($"TitleText=\"{TitleText.Text}\"");
+        if (Window.GetWindow(this) is { } window)
+        {
+            var clipOrigin = TitleClip.TranslatePoint(new Point(0, 0), window);
+            sb.AppendLine(
+                $"window={window.ActualWidth:0.##}x{window.ActualHeight:0.##} "
+                + $"TitleClipInWindow=({clipOrigin.X:0.##},{clipOrigin.Y:0.##}) "
+                + $"{TitleClip.ActualWidth:0.##}x{TitleClip.ActualHeight:0.##}");
+        }
+        sb.AppendLine("--- 祖先链（TitleText → 本控件；坐标为相对本控件）---");
+        DependencyObject? cur = TitleText;
+        while (cur is not null)
+        {
+            if (cur is FrameworkElement fe)
+            {
+                var origin = fe.TranslatePoint(new Point(0, 0), this);
+                var layoutClip = LayoutInformation.GetLayoutClip(fe);
+                sb.AppendLine(
+                    $"{fe.GetType().Name} \"{fe.Name}\" pos=({origin.X:0.##},{origin.Y:0.##}) "
+                    + $"size={fe.ActualWidth:0.##}x{fe.ActualHeight:0.##} hAlign={fe.HorizontalAlignment} "
+                    + $"margin={fe.Margin} clipToBounds={fe.ClipToBounds} clip={ClipText(fe)} "
+                    + $"layoutClip={(layoutClip is null ? "null" : layoutClip.Bounds.ToString())}");
+            }
+            if (ReferenceEquals(cur, this)) break;
+            cur = VisualTreeHelper.GetParent(cur);
+        }
+        TryWrite(sb.ToString());
+    }
+
+    private static string ClipText(UIElement element)
+        => element.Clip is null ? "null" : element.Clip.Bounds.ToString();
+
+    private static void TryWrite(string text)
+    {
+        try { if (MeasurePath is not null) File.WriteAllText(MeasurePath, text); } catch { /* 排错钩子别把界面搞崩 */ }
+    }
 }

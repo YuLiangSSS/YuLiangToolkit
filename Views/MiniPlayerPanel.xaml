@@ -68,7 +68,10 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6" Padding="2,1">
-                            <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center" />
+                            <!-- ⚠ 这里必须是 Stretch（不能是 Left）：标题的裁剪容器要撑满按钮内容区，
+                                 否则 Width 会变成 0 / 内容宽度，滚动标题的「可视窗口」就跟着算错。
+                                 整条链路见下面 TitleClip 的注释。 -->
+                            <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -130,14 +133,27 @@
                         Command="{Binding DataContext.OpenBackgroundToolCommand,
                                   RelativeSource={RelativeSource AncestorType=Window}}"
                         ToolTip="{Binding TitleText, StringFormat={}{0}（点一下回到播放器）}">
+                    <!-- ⚠⚠ 标题滚动曾经「永远只能看到前一小段、右边被切」的真正原因（v0.55.2 修）：
+                         WPF 会把**子元素按自己的 DesiredSize 排版**（TextBlock 在 Grid/StackPanel 里
+                         HorizontalAlignment=Left 时就会这样），排出来的宽度比父容器给它的槽位大时，
+                         布局系统会给这个 TextBlock 加一个**跟着它自己走的 layout clip**（裁到槽位宽）。
+                         于是 RenderTransform 把文字往左移时，裁剪窗口也一起往左移 —— 右侧的字永远露不出来，
+                         看上去就是「固定位置被截断」，而且怎么调滚动速度 / 时长都没用（前两次修都没修好）。
+                         正确做法：让文字量出来的宽度 = 排给它的宽度（Canvas 用无限宽量、按 DesiredSize 排，
+                         不会再被加 layout clip），**裁剪交给外面宽度固定、位置不动的容器**。
+                         所以这里必须是：固定宽的 Grid（ClipToBounds）→ Canvas（不裁、不定宽）→ TextBlock。
+                         别改回「Grid 直接放 TextBlock」，也别把 Canvas 去掉。 -->
                     <Grid x:Name="TitleClip" Height="18" ClipToBounds="True">
-                        <TextBlock x:Name="TitleText" Text="{Binding TitleText, NotifyOnTargetUpdated=True}" FontSize="12" FontWeight="SemiBold"
-                                   HorizontalAlignment="Left" VerticalAlignment="Center"
-                                   Foreground="{DynamicResource TextPrimaryBrush}">
-                            <TextBlock.RenderTransform>
-                                <TranslateTransform x:Name="TitleShift" />
-                            </TextBlock.RenderTransform>
-                        </TextBlock>
+                        <Canvas>
+                            <TextBlock x:Name="TitleText" Text="{Binding TitleText, NotifyOnTargetUpdated=True}"
+                                       FontSize="12" FontWeight="SemiBold"
+                                       Canvas.Left="0" Canvas.Top="0"
+                                       Foreground="{DynamicResource TextPrimaryBrush}">
+                                <TextBlock.RenderTransform>
+                                    <TranslateTransform x:Name="TitleShift" />
+                                </TextBlock.RenderTransform>
+                            </TextBlock>
+                        </Canvas>
                     </Grid>
                 </Button>
 
