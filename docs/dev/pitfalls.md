@@ -21,6 +21,26 @@
 ### 联机聊天室
 - ⚠ 绑 `::` 必须显式 `DualMode`（`TcpListener` 不会替你开），否则 IPv4 全连不进。
 - 拒收超限文件前必须把对方灌来的字节读干净，否则后面的包全乱。
+- ⚠ **群通话媒体必须单独一条 TCP 连接**：文件传输会长时间占住写锁，混在聊天连接上声音会卡成 PPT；
+  而且必须复用主机**同一个监听端口**（内网穿透通常只映射一个端口，另开端口在穿透环境连不上）。
+- ⚠ 媒体连接用 `callHello`（`isMedia=true` + `welcome` 里的 `callToken`）校验身份，**不要新增协议版本号**：
+  老版本会把未知包跳过、握手超时，于是不会把媒体连接误登记成聊天成员；令牌对不上一律拒连。
+- ⚠ 发送必须走**队列 + 丢旧帧**（`CallSendQueue` 非阻塞入队、满了丢最旧、音频优先保），
+  绝不能阻塞采集 / 转发线程，否则一个人网络慢就拖死所有人。
+- 音频固定 **16 kHz 单声道 μ-law 40 ms 一包（640 B）**，视频 **MJPEG**，全部手写编解码，不引第三方库。
+- **没有回声消除（AEC）**：文档必须提醒戴耳机，否则外放会啸叫 / 回音；界面不要假装能消回音。
+- ⚠ WinRT 摄像头**不要**自己 `SetFormatAsync`（某些设备会出绿屏 / 错色），按源默认格式采集、
+  由引擎自己降到目标尺寸（坑同 Live2D 的面部动捕）。
+- WASAPI 共享模式要按**设备混音格式**处理（float32 / PCM16 / PCM24 / PCM32、可能多通道取前两路），
+  别假设固定是 16 位立体声。
+- ⚠ **收到的媒体包必须接到引擎**：`ICallTransport.PacketReceived += engine.HandlePacket`（在
+  `ChatRoomSession.JoinCallAsync` 里接、`LeaveCallAsync` 里摘）。漏了就是「能发不能收」——
+  两端统计 Received* 恒 0、听不到也看不到别人，自检里踩过。
+- 截图 / 排错：`YLT_CHAT_CALL_DEMO=1` 塞 4 个假磁贴并自动把通话浮层滚进视野
+  （配 `YLT_SHOT` + `YLT_SHOT_TOOL=chat-room`）；正常启动不设这个变量就完全看不到通话浮层。
+- ⚠ **通话中切到别的工具页不会挂断**：外壳把页面塞进缓存，不会调 `OnClosed`，
+  麦克风 / 摄像头会继续工作；只有缓存淘汰（切过很多工具）/ 退出程序才挂断。
+  文档与通话面板提示里都要写清楚，别让用户以为切走就停了采集。
 
 ### osu! 下图器
 - 先下 `.osz.part` 再改名：断线留半个文件会被「已存在」永久跳过。
@@ -299,7 +319,9 @@
 ### 构建与工具链
 - 主项目在仓库根，`DefaultItemExcludes` 排除 `src\`、`Data\`、`Config\`、`tests\` 等；新增顶层目录同步加。
 - 构建 `.\build.ps1`（`DOTNET_CLI_HOME` → `.dotnet-cli-home`）；发布 `.\publish.ps1` → `dist\YuLiangToolkit\`。
-- 目标框架：主程序 / 自检 `net9.0-windows10.0.19041.0`（PDF 阅读器要 Windows.Data.Pdf），工具库 `net9.0-windows`；库项目也要 `UseWPF=true`（Core 用 `Application.Current.Dispatcher`）。
+- 目标框架：主程序 / 自检 `net9.0-windows10.0.19041.0`（PDF 阅读器要 Windows.Data.Pdf），工具库一般是 `net9.0-windows`；
+  ⚠ **例外**：Live2D 桌宠与联机聊天室（摄像头采集要 WinRT `Windows.Media.Capture`）两个工具工程是
+  `net9.0-windows10.0.19041.0`，主程序 / 自检本来也是 19041，引用兼容。库项目也要 `UseWPF=true`（Core 用 `Application.Current.Dispatcher`）。
 - `Directory.Build.targets` 补 `System.IO` / `System.Text` 隐式 using；往数据目录放文件请程序首次运行自己写（`RuntimeReadme`）或发布脚本 `Copy-Item`。
 
 ### 截图与脚本

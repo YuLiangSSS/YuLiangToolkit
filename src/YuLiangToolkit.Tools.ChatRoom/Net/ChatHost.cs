@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using YuLiangToolkit.Tools.ChatRoom.Protocol;
+using YuLiangToolkit.Tools.ChatRoom.Traffic;
 
 namespace YuLiangToolkit.Tools.ChatRoom.Net;
 
@@ -28,10 +29,16 @@ public sealed class ChatHost : IDisposable
     public ChatHost(ChatRoomConnection connection)
     {
         Connection = connection;
+        Relay = new CallRelay();
+        Relay.SetHostMemberId(connection.LocalMemberId);
+        Relay.StateChanged += OnCallStateChanged;
     }
 
     /// <summary>主机端的会话（成员名单、流量计量、落盘都在这里面）。</summary>
     public ChatRoomConnection Connection { get; }
+
+    /// <summary>通话中转（媒体连接登记 / 一进多出转发）。<see cref="ChatRoomSession"/> 用它实现主机自己的入会。</summary>
+    internal CallRelay Relay { get; }
 
     /// <summary>监听中。</summary>
     public bool IsListening { get; private set; }
@@ -51,12 +58,19 @@ public sealed class ChatHost : IDisposable
     /// <summary>客户端加入 / 离开时通知界面（参数是当前成员名单）。</summary>
     public event Action<IReadOnlyList<ChatMember>>? MemberListChanged;
 
+    /// <summary>通话参与者 / 麦克风 / 摄像头状态变了（主机本端界面用；同时已经广播给所有客户端）。</summary>
+    public event Action<CallStateInfo>? CallStateChanged;
+
     /// <summary>状态提示（界面状态栏）。</summary>
     public event Action<ChatNotice>? Noticed;
 
     public sealed class ClientSession
     {
         public required string MemberId { get; init; }
+
+        /// <summary>这个客户端的通话令牌（welcome 时发给它；开媒体连接时校验，防止别人往通话里灌包）。</summary>
+        public required string CallToken { get; init; }
+
         public required ChatLink Link { get; init; }
         public required ChatMember Member { get; init; }
     }
@@ -150,6 +164,10 @@ public sealed class ChatHost : IDisposable
         _clients.Clear();
         Connection.Members.RemoveAll(m => !m.IsHost);
 
+        // 通话媒体连接一并收掉（房间都没了，媒体连接留着只会变幽灵）
+        Relay.ReleaseAll();
+        try { CallStateChanged?.Invoke(Relay.Snapshot()); } catch { }
+
         if (_acceptLoop is not null)
         {
             try { await Task.WhenAny(_acceptLoop, Task.Delay(1500)).ConfigureAwait(false); } catch { }
@@ -189,6 +207,7 @@ public sealed class ChatHost : IDisposable
         var session = new ClientSession
         {
             MemberId = memberId,
+            CallToken = Guid.NewGuid().ToString("N"),
             Link = link,
             Member = new ChatMember
             {
@@ -200,6 +219,11 @@ public sealed class ChatHost : IDisposable
                 JoinedAt = DateTime.Now,
             },
         };
+
+        // 普通聊天握手（hello）与通话媒体握手（callHello）二选一：
+        // 媒体连接只跑音视频包，不加入聊天成员名单，也不建会话文件夹。
+        var callHello = new TaskCompletionSource<HelloInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        link.CallHelloReceived += (l, hello) => callHello.TrySetResult(hello);
 
         var welcomed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         link.HelloReceived += (l, hello) =>
@@ -254,8 +278,15 @@ public sealed class ChatHost : IDisposable
             await link.SendAsync(ChatFrameHeader.New(ChatProtocol.Kinds.Hello, Connection.LocalMemberId, hello), ct)
                 .ConfigureAwait(false);
 
-            // 等客户端的 hello（10 秒不报家门就当不是本程序，踢掉）
-            var completed = await Task.WhenAny(welcomed.Task, Task.Delay(TimeSpan.FromSeconds(10), ct)).ConfigureAwait(false);
+            // 等客户端报家门：普通 hello（聊天）或 callHello（通话媒体连接）—— 10 秒都没有就踢掉
+            var completed = await Task.WhenAny(welcomed.Task, callHello.Task, Task.Delay(TimeSpan.FromSeconds(10), ct))
+                .ConfigureAwait(false);
+            if (completed == callHello.Task)
+            {
+                await HandleMediaClientAsync(link, await callHello.Task.ConfigureAwait(false), ct)
+                    .ConfigureAwait(false);
+                return;
+            }
             if (completed != welcomed.Task)
             {
                 link.Close("握手超时");
@@ -275,6 +306,7 @@ public sealed class ChatHost : IDisposable
                     SessionName = Connection.SessionName,
                     HostName = Connection.LocalName,
                     Members = Connection.Members.Select(m => m.Clone()).ToList(),
+                    CallToken = session.CallToken,
                 };
                 await link.SendAsync(ChatFrameHeader.New(ChatProtocol.Kinds.Welcome, Connection.LocalMemberId, welcome), ct)
                     .ConfigureAwait(false);
@@ -291,6 +323,9 @@ public sealed class ChatHost : IDisposable
                 Member = session.Member.Clone(),
             }, except: link);
             await BroadcastMembersAsync(link).ConfigureAwait(false);
+
+            // 新进来的人立刻知道「现在有没有人在通话」（否则要等下一次状态变化）
+            try { await link.SendCallStateAsync(Relay.Snapshot(), ct).ConfigureAwait(false); } catch { }
         }
         catch (Exception ex)
         {
@@ -299,10 +334,81 @@ public sealed class ChatHost : IDisposable
         }
     }
 
+    /// <summary>
+    /// 处理一条**通话媒体连接**：校验令牌 → 登记进 <see cref="Relay"/> → 回执 welcome。
+    /// 媒体连接不加入聊天成员名单、不建会话文件夹，只跑音频 / 视频包。
+    /// </summary>
+    private async Task HandleMediaClientAsync(ChatLink link, HelloInfo hello, CancellationToken ct)
+    {
+        try
+        {
+            if (!string.Equals(hello.Magic, ChatProtocol.Magic, StringComparison.Ordinal)
+                || hello.ProtocolVersion != ChatProtocol.Version)
+            {
+                await RejectMediaAsync(link, $"协议不匹配（对方 v{hello.ProtocolVersion}）", ct).ConfigureAwait(false);
+                return;
+            }
+
+            // 必须是「已经完成聊天握手的那个成员」+ 正确的令牌（防止房间外的人往通话里灌包）。
+            // ⚠ 查的是 hello.MemberId（聊天连接建的那个成员），不是这条媒体连接自己的临时编号。
+            if (!_clients.TryGetValue(hello.MemberId ?? "", out var chatSession)
+                || !string.Equals(chatSession.CallToken, hello.CallToken, StringComparison.Ordinal))
+            {
+                await RejectMediaAsync(link, "通话身份校验失败（重新连一次房间再试）", ct).ConfigureAwait(false);
+                return;
+            }
+
+            // 通话媒体不计入「单次文件流量上限」：换一块独立计量表
+            link.Meter = new TrafficMeter(0, TrafficQuotaScope.Off);
+
+            if (!Relay.TryRegisterClient(chatSession.Member, link, out var relayError))
+            {
+                await RejectMediaAsync(link, relayError, ct).ConfigureAwait(false);
+                return;
+            }
+
+            var welcome = new WelcomeInfo
+            {
+                MemberId = chatSession.MemberId,
+                HostName = Connection.LocalName,
+                SessionName = Connection.SessionName,
+                MediaAccepted = true,
+                CallToken = chatSession.CallToken,
+            };
+            await link.SendAsync(ChatFrameHeader.New(ChatProtocol.Kinds.Welcome, Connection.LocalMemberId, welcome), ct)
+                .ConfigureAwait(false);
+            Noticed?.Invoke(new ChatNotice(ChatNoticeLevel.Info, $"{chatSession.Member.Name} 加入了通话"));
+        }
+        catch (Exception ex)
+        {
+            Noticed?.Invoke(new ChatNotice(ChatNoticeLevel.Warn, $"通话媒体连接建立失败：{ChatLink.Describe(ex)}"));
+            link.Close(ChatLink.Describe(ex));
+        }
+    }
+
+    /// <summary>拒绝一条通话媒体连接：回一个 MediaAccepted=false 的 welcome（客户端能读到原因），再关。</summary>
+    private async Task RejectMediaAsync(ChatLink link, string reason, CancellationToken ct)
+    {
+        try
+        {
+            await link.SendAsync(ChatFrameHeader.New(ChatProtocol.Kinds.Welcome, Connection.LocalMemberId, new WelcomeInfo
+            {
+                MediaAccepted = false,
+                MediaRejectReason = reason,
+            }), ct).ConfigureAwait(false);
+        }
+        catch { }
+        Noticed?.Invoke(new ChatNotice(ChatNoticeLevel.Warn, $"拒绝了一个通话连接：{reason}"));
+        link.Close(reason);
+    }
+
     private void OnClientClosed(ClientSession session, string? error)
     {
         if (!_clients.TryRemove(session.MemberId, out _)) return;
         Connection.Members.RemoveAll(m => m.MemberId == session.MemberId);
+
+        // 聊天连接断了：这个人的通话媒体连接也要一起收掉（否则通话里留一个不出声的幽灵）
+        Relay.RemoveClient(session.MemberId, error is { Length: > 0 } ? "断开了连接" : "离开了房间");
 
         var leaveText = error is { Length: > 0 }
             ? $"{session.Member.Emoji} {session.Member.Name} 断开了连接（{error}）"
@@ -316,6 +422,21 @@ public sealed class ChatHost : IDisposable
             Member = session.Member.Clone(),
         });
         _ = BroadcastMembersAsync(null);
+    }
+
+    // ---------------------------------------------------------------- 通话状态广播
+
+    private void OnCallStateChanged()
+    {
+        var snapshot = Relay.Snapshot();
+        _ = BroadcastCallStateAsync(snapshot);
+        try { CallStateChanged?.Invoke(snapshot); } catch { }
+    }
+
+    private async Task BroadcastCallStateAsync(CallStateInfo snapshot)
+    {
+        var header = ChatFrameHeader.New(ChatProtocol.Kinds.CallState, Connection.LocalMemberId, snapshot);
+        try { await Broadcast(header, default).ConfigureAwait(false); } catch { }
     }
 
     // ---------------------------------------------------------------- 广播
@@ -416,6 +537,8 @@ public sealed class ChatHost : IDisposable
             try { client.Link.Close("主机退出"); } catch { }
         }
         _clients.Clear();
+        try { Relay.StateChanged -= OnCallStateChanged; } catch { }
+        try { Relay.ReleaseAll(); } catch { }
         _helloGate.Dispose();
     }
 }

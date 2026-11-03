@@ -52,6 +52,16 @@ public sealed class HelloInfo
     public string AppVersion { get; set; } = "";
     /// <summary>主机告诉客户端自己实际监听的端口（端口填 0 自动挑时，客户端要知道真实端口）。</summary>
     public int ListenPort { get; set; }
+
+    /// <summary>
+    /// 这条连接是不是「通话媒体连接」（true = 用 <c>callHello</c> 握手，只跑音频 / 视频包）。
+    /// <para>普通聊天连接为 false；老版本主机把 <c>callHello</c> 当未知包跳过 → 握手超时 →
+    /// 本端提示「对方版本不支持通话」，不会把媒体连接误当成一个聊天成员。</para>
+    /// </summary>
+    public bool IsMedia { get; set; }
+
+    /// <summary>通话媒体连接用的令牌（聊天 welcome 时主机发给本端的，防止别人往通话里灌包）。</summary>
+    public string CallToken { get; set; } = "";
 }
 
 /// <summary>主机回给客户端的 <c>welcome</c> 载荷。</summary>
@@ -63,6 +73,68 @@ public sealed class WelcomeInfo
     public string SessionName { get; set; } = "";
     public string HostName { get; set; } = "";
     public List<ChatMember> Members { get; set; } = new();
+
+    /// <summary>本端开通话媒体连接时要带上的令牌（只在回给这个客户端的 welcome 里有值）。</summary>
+    public string CallToken { get; set; } = "";
+
+    /// <summary>主机接受了这条通话媒体连接（<c>callHello</c> 的回执）。</summary>
+    public bool MediaAccepted { get; set; }
+
+    /// <summary>拒绝通话媒体连接的原因（<see cref="MediaAccepted"/> = false 时有值）。</summary>
+    public string MediaRejectReason { get; set; } = "";
+}
+
+/// <summary>通话里的一个人（<c>callState</c> 里的一项；线上是 camelCase）。</summary>
+public sealed class CallParticipantWire
+{
+    public string MemberId { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Emoji { get; set; } = "🙂";
+    public bool IsHost { get; set; }
+
+    /// <summary>麦克风开着没有（关 = 静音，别人看不到也听不到你的声音）。</summary>
+    public bool MicOn { get; set; } = true;
+
+    /// <summary>摄像头开着没有（关 = 别人看到的是头像）。</summary>
+    public bool CameraOn { get; set; } = true;
+
+    public DateTime JoinedAtUtc { get; set; } = DateTime.UtcNow;
+
+    public CallParticipantWire Clone() => (CallParticipantWire)MemberwiseClone();
+}
+
+/// <summary>
+/// 通话状态（<c>callState</c>，主机唯一权威，广播给所有聊天连接 + 主机本端界面）。
+/// <para>客户端不自己维护参与者名单：收到什么就显示什么，避免两端状态不一致。</para>
+/// </summary>
+public sealed class CallStateInfo
+{
+    /// <summary>现在有没有通话（没人为 false；<see cref="Participants"/> 为空）。</summary>
+    public bool Active { get; set; }
+
+    /// <summary>这轮通话什么时候开始的（UTC；没开始为 null）。</summary>
+    public DateTime? StartedAtUtc { get; set; }
+
+    public List<CallParticipantWire> Participants { get; set; } = new();
+}
+
+/// <summary>
+/// 通话控制（<c>callControl</c>，在媒体连接上，客户端 → 主机）：麦克风 / 摄像头开关。
+/// 主机收到后更新自己的参与者快照，再广播 <c>callState</c> 让所有人看到。
+/// </summary>
+public sealed class CallControlInfo
+{
+    /// <summary>null = 这一项不变。</summary>
+    public bool? MicOn { get; set; }
+
+    public bool? CameraOn { get; set; }
+}
+
+/// <summary>音频 / 视频包的附带信息（<c>callAudio</c> / <c>callVideo</c> 的 extra）。</summary>
+public sealed class CallMediaInfo
+{
+    /// <summary>发送时刻（发送端本机毫秒，统计延迟用；不参与解码）。</summary>
+    public long TimestampMs { get; set; }
 }
 
 /// <summary>成员名单（<c>members</c>）载荷。</summary>

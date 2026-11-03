@@ -170,6 +170,7 @@ public sealed partial class ChatRoomViewModel
 
     private async Task TeardownSessionAsync()
     {
+        OnCallUiHangUp();       // 先挂断通话（实现在 ChatRoomViewModel.Call.cs）
         var session = _session;
         _session = null;
         if (session is not null)
@@ -219,6 +220,9 @@ public sealed partial class ChatRoomViewModel
             IsOnline = false;
             UpdateConnectionSummary();
         });
+
+        // 通话界面接线（实现在 ChatRoomViewModel.Call.cs；没有实现时这个调用会被编译器抹掉）
+        OnCallSessionWired(session);
     }
 
     // ---------------------------------------------------------------- 发东西

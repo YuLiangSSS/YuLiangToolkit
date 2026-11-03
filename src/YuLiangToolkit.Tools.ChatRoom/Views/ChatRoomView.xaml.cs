@@ -42,6 +42,17 @@ public partial class ChatRoomView : UserControl
                 MessageList.UpdateLayout();     // 先把列表自身的布局跑完，否则 ScrollToEnd 时 ExtentHeight 还是 0
                 ScrollMessagesToEnd();
             }), System.Windows.Threading.DispatcherPriority.Loaded);
+
+            // 截图专用的第三件事：有 YLT_CHAT_CALL_DEMO 时把通话浮层滚进视野。
+            // 原因：主机在线时「连接信息」面板很高，默认 1280×820 下聊天区块被顶到窗口外，
+            // 光看截图只能看到浮层顶栏、看不到参与者磁贴。这里排在「滚回顶部」之后执行，
+            // 只在演示模式生效（正常使用 / 普通截图完全不受影响）。
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (Environment.GetEnvironmentVariable("YLT_CHAT_CALL_DEMO") is null) return;
+                if (Environment.GetEnvironmentVariable("YLT_CHAT_SCROLL") is { Length: > 0 }) return;
+                CallPanel.BringIntoView();
+            }), System.Windows.Threading.DispatcherPriority.ApplicationIdle);
         };
 
         // 消息列表：初始滚到底 + 用户自己往上翻时不抢滚动位置
@@ -61,6 +72,10 @@ public partial class ChatRoomView : UserControl
             };
             settle.Start();
         };
+
+        // 截图 / 排错兜底：自动开局是异步的，DataContextChanged 时演示通话可能还没塞进去；
+        // 等界面 Loaded 再补一次（SeedCallDemoIfRequested 是幂等的，塞过就直接返回）。
+        Loaded += (_, _) => (DataContext as ChatRoomViewModel)?.SeedCallDemoIfRequested();
     }
 
     /// <summary>本页最外层的滚动宿主（页面很长，整页滚动）。</summary>
@@ -118,7 +133,13 @@ public partial class ChatRoomView : UserControl
     {
         if (_vm is not null) _vm.MessagesChanged -= OnMessagesChanged;
         _vm = e.NewValue as ChatRoomViewModel;
-        if (_vm is not null) _vm.MessagesChanged += OnMessagesChanged;
+        if (_vm is not null)
+        {
+            _vm.MessagesChanged += OnMessagesChanged;
+            // 截图 / 排错：YLT_CHAT_CALL_DEMO=1 时补一份通话演示数据。
+            // 会话层接线时已经塞过一次；这里兜底「没连上房间（例如关了自动开局）」也要能看到面板。
+            _vm.SeedCallDemoIfRequested();
+        }
     }
 
     /// <summary>新消息来了：如果用户没有往上翻（滚动条在底部附近），就自动滚到底。</summary>

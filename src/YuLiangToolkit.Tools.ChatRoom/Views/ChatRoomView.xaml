@@ -9,6 +9,8 @@
          ① 顶部：标题 + 状态徽标（身份 / 地址 / 延迟）
          ② 连接条：左 = 主机（监听地址 + 端口 + 开房间），右 = 客户端（主机地址 + 端口 + 连接）
          ③ 聊天记录（占满宽度：文字 / 图片 / 音频 / 视频 / 文件，靠左靠右区分谁说的）+ 输入区
+             · 群语音 / 群视频通话是**浮层**（盖在「消息列表」那一行上），不是新的页面级区块：
+              工具条上放「语音通话 / 视频通话 / 挂断 / 麦克风 / 摄像头 / 面板」，浮层里放参与者磁贴与设备设置。
          ④ 底部：流量（上限 + 用量指示）/ 发送选项 / 文件传输 + 房间成员 / 历史记录 + 协议与日志
          样式全部来自 App.xaml（CardStyle / TextBoxStyle / PrimaryButtonStyle …），不自造风格。
 
@@ -319,11 +321,47 @@
                                        Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
-                            <Button Content="清空聊天" Style="{StaticResource SecondaryButtonStyle}"
+                            <!-- 没在通话时：发起群语音 / 群视频（v1 是「谁点谁入会」，不做邀请弹窗） -->
+                            <Button Content="🎙 语音通话" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding JoinVoiceCallCommand}"
+                                    ToolTip="加入房间里的群语音（不开摄像头）"
+                                    Visibility="{Binding IsInCall, Converter={StaticResource InverseBoolToVis}}" />
+                            <Button Content="📹 视频通话" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding JoinVideoCallCommand}"
+                                    ToolTip="加入房间里的群视频（开摄像头，画质按通话设置）"
+                                    Visibility="{Binding IsInCall, Converter={StaticResource InverseBoolToVis}}" />
+
+                            <Button Content="清空聊天" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
                                     Command="{Binding ClearChatCommand}"
                                     ToolTip="只清界面，磁盘上的聊天记录不会被删" />
                             <Button Content="打开记录文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
                                     Command="{Binding OpenSessionFolderCommand}" />
+
+                            <!-- 通话中：状态 + 时长 / 麦克风 / 摄像头 / 挂断 / 面板（收起浮层后这一排还在） -->
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0,0,0"
+                                        Visibility="{Binding HasCallPanel, Converter={StaticResource BoolToVis}}">
+                                <Border Background="{DynamicResource InputBackgroundBrush}"
+                                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                        CornerRadius="{DynamicResource ControlCornerRadius}" Padding="9,5">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="7" Height="7" Fill="{DynamicResource SuccessBrush}"
+                                                 VerticalAlignment="Center" />
+                                        <TextBlock Text="通话中" FontSize="11.5" Margin="6,0,0,0" VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding CallDurationText}" FontSize="11.5" Margin="8,0,0,0"
+                                                   VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    </StackPanel>
+                                </Border>
+                                <Button Content="{Binding MicButtonText}" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="8,0,0,0" Padding="10,7" MinWidth="54"
+                                        Command="{Binding ToggleMicCommand}" ToolTip="{Binding MicToolTip}" />
+                                <Button Content="{Binding CameraButtonText}" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="6,0,0,0" Padding="10,7" MinWidth="54" IsEnabled="{Binding CanToggleCamera}"
+                                        Command="{Binding ToggleCameraCommand}" ToolTip="{Binding CameraToolTip}" />
+                                <Button Content="挂断" Style="{StaticResource SecondaryButtonStyle}" Margin="6,0,0,0"
+                                        Command="{Binding LeaveCallCommand}" ToolTip="离开群通话（别人会看到你退出）" />
+                                <Button Content="面板" Style="{StaticResource SecondaryButtonStyle}" Margin="6,0,0,0"
+                                        Command="{Binding ToggleCallPanelCommand}" ToolTip="收起 / 展开通话浮层" />
+                            </StackPanel>
                         </StackPanel>
                     </Grid>
 
@@ -489,6 +527,166 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+
+                    <!-- ===== 群通话浮层（盖在「消息列表」这一行上） =====
+                         ⚠ 这是浮层，不是新的页面级区块：没有新增 RowDefinition / PaneSplitter，
+                            只在 ② 聊天区块的 Row=1 上盖一层；Visibility 用 Collapsed，
+                            没在通话 / 收起面板时完全不参与布局、也不挡鼠标（Hidden 会挡）。
+                         深色底是固定的中性半透明色（四套主题下都保证白字可读），
+                         设置小浮层用主题的卡片底色，不写死主题色。 -->
+                    <Border x:Name="CallPanel" Grid.Row="1" Panel.ZIndex="10" Margin="8,10,8,0" CornerRadius="8"
+                            Background="#E814161B" BorderBrush="#33FFFFFF" BorderThickness="1" ClipToBounds="True"
+                            Visibility="{Binding IsCallPanelVisible, Converter={StaticResource BoolToVis}}">
+                        <Grid Margin="14,12,14,12">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" MinHeight="120" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <!-- 顶栏：群通话 · N 人 / 时长 / 码率 / 设置 / 收起 -->
+                            <Grid Grid.Row="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Ellipse Width="8" Height="8" Fill="{DynamicResource SuccessBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding CallTitleText}" FontSize="13.5" FontWeight="SemiBold"
+                                               Foreground="#FFF2F4F7" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding CallDurationText}" FontSize="12.5" Margin="12,0,0,0"
+                                               Foreground="#FFB8C0CB" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding CallStatsText}" FontSize="11" Margin="14,0,0,0"
+                                               Foreground="#FFB8C0CB" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <Button Content="⚙ 设置" Padding="10,4" FontSize="11.5"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            Command="{Binding ToggleCallSettingsCommand}"
+                                            ToolTip="摄像头 / 麦克风 / 扬声器 / 画质" />
+                                    <Button Content="收起面板" Padding="10,4" FontSize="11.5" Margin="8,0,0,0"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            Command="{Binding ToggleCallPanelCommand}"
+                                            ToolTip="收起浮层，只留工具条上的通话按钮" />
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- 参与者磁贴：WrapPanel 自动换行（人多时浮层内部滚动） -->
+                            <Grid Grid.Row="1" Margin="0,10,0,0">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                    <ItemsControl ItemsSource="{Binding CallTiles}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Width="{Binding Width}" Height="{Binding Height}"
+                                                        Margin="0,0,10,10" CornerRadius="8" ClipToBounds="True"
+                                                        Background="#FF06080B" BorderBrush="#33FFFFFF" BorderThickness="1"
+                                                        ToolTip="{Binding DisplayName}">
+                                                    <Grid>
+                                                        <!-- 有画面才显示 Image；没画面时中间显示头像 emoji -->
+                                                        <Image Source="{Binding VideoImage}" Stretch="UniformToFill"
+                                                               Visibility="{Binding IsVideoOn, Converter={StaticResource BoolToVis}}" />
+                                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                    Visibility="{Binding IsVideoOn, Converter={StaticResource InverseBoolToVis}}">
+                                                            <TextBlock Text="{Binding Emoji}" FontSize="42" HorizontalAlignment="Center" />
+                                                            <TextBlock Text="{Binding StatusText}" FontSize="10" Margin="0,4,0,0"
+                                                                       HorizontalAlignment="Center" Foreground="#FFB8C0CB" />
+                                                        </StackPanel>
+                                                        <!-- 底部名字条：名字 + 静音标记 -->
+                                                        <Border VerticalAlignment="Bottom" Background="#B3000000" Padding="8,4">
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*" />
+                                                                    <ColumnDefinition Width="Auto" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock Text="{Binding DisplayName}" FontSize="11" Foreground="White"
+                                                                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                                                                            Margin="6,0,0,0">
+                                                                    <TextBlock Text="{Binding MicText}" FontSize="11" />
+                                                                    <TextBlock Text="{Binding MicMark}" FontSize="10" Foreground="#FFFF9AA2"
+                                                                               Margin="4,0,0,0" VerticalAlignment="Center" />
+                                                                </StackPanel>
+                                                            </Grid>
+                                                        </Border>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                                <!-- 空状态：一个人都还没进来时显示「正在启动麦克风 / 摄像头…」 -->
+                                <TextBlock Text="{Binding CallStatusText}"
+                                           Visibility="{Binding CallStatusText, Converter={StaticResource EmptyToVisInverse}}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="12"
+                                           Foreground="#FFB8C0CB" />
+                            </Grid>
+
+                            <!-- 底部说明：通话流量不计入文件流量上限 / 戴耳机（没有回声消除） -->
+                            <TextBlock Grid.Row="2" Text="{Binding CallHintText}" FontSize="10.5" TextWrapping="Wrap"
+                                       Foreground="#FF9AA3AF" Margin="0,2,0,0" />
+
+                            <!-- 设置小浮层：只盖住参与者区右侧，不挡浮层顶栏 / 工具条上的挂断按钮 -->
+                            <Border Grid.Row="1" Panel.ZIndex="20" Width="330" Margin="0,10,0,10"
+                                    HorizontalAlignment="Right" VerticalAlignment="Stretch"
+                                    Background="{DynamicResource CardBackgroundBrush}"
+                                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                    CornerRadius="{DynamicResource CardCornerRadius}" Padding="14,12"
+                                    Visibility="{Binding IsCallSettingsVisible, Converter={StaticResource BoolToVis}}">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="通话设置" FontSize="12.5" FontWeight="SemiBold"
+                                                       VerticalAlignment="Center" />
+                                            <Button Grid.Column="1" Content="✕" Padding="8,2" FontSize="11"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Command="{Binding ToggleCallSettingsCommand}" ToolTip="关闭设置" />
+                                        </Grid>
+
+                                        <TextBlock Text="摄像头" FontSize="11" Margin="0,10,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <ComboBox Height="28" Margin="0,3,0,0" ItemsSource="{Binding CallCameras}"
+                                                  DisplayMemberPath="Name" SelectedItem="{Binding SelectedCallCamera}"
+                                                  Style="{StaticResource ComboBoxStyle}" />
+
+                                        <TextBlock Text="麦克风" FontSize="11" Margin="0,8,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <ComboBox Height="28" Margin="0,3,0,0" ItemsSource="{Binding CallMicrophones}"
+                                                  DisplayMemberPath="Name" SelectedItem="{Binding SelectedCallMicrophone}"
+                                                  Style="{StaticResource ComboBoxStyle}" />
+
+                                        <TextBlock Text="扬声器" FontSize="11" Margin="0,8,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <ComboBox Height="28" Margin="0,3,0,0" ItemsSource="{Binding CallSpeakers}"
+                                                  DisplayMemberPath="Name" SelectedItem="{Binding SelectedCallSpeaker}"
+                                                  Style="{StaticResource ComboBoxStyle}" />
+
+                                        <TextBlock Text="画质（只影响视频）" FontSize="11" Margin="0,8,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <ComboBox Height="28" Margin="0,3,0,0" ItemsSource="{Binding CallQualityOptions}"
+                                                  DisplayMemberPath="Label" SelectedItem="{Binding SelectedCallQuality}"
+                                                  Style="{StaticResource ComboBoxStyle}" />
+
+                                        <Button Content="🔄 重新枚举设备" Margin="0,10,0,0" Padding="10,5" FontSize="11.5"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                Command="{Binding RefreshCallDevicesCommand}"
+                                                ToolTip="插拔摄像头 / 耳机之后点一下" />
+
+                                        <TextBlock Text="{Binding CallHintText}" FontSize="10.5" Margin="0,8,0,0"
+                                                   TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Border>
+                        </Grid>
+                    </Border>
 
                     <!-- 输入区 -->
                     <StackPanel Grid.Row="2" Margin="18,10,18,16">

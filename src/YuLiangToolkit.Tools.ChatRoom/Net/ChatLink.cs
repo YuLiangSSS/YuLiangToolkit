@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using YuLiangToolkit.Tools.ChatRoom.Call;
 using YuLiangToolkit.Tools.ChatRoom.Protocol;
 using YuLiangToolkit.Tools.ChatRoom.Traffic;
 
@@ -47,7 +48,11 @@ public sealed class ChatLink : IAsyncDisposable
     public static ChatLink From(TcpClient client, TrafficMeter meter) => new(client) { Meter = meter };
 
     /// <summary>本端流量计量（发送/接收每写/读一次都会累加，含包头）。</summary>
-    public TrafficMeter Meter { get; private init; } = new(0, TrafficQuotaScope.Off);
+    /// <remarks>
+    /// 通话媒体连接会把它换成「不计限额」的计量（<see cref="ChatProtocol.Kinds.CallHello"/> 握手成功后），
+    /// 所以这里不是 init：换表必须发生在读循环已经开始之后。
+    /// </remarks>
+    public TrafficMeter Meter { get; internal set; } = new(0, TrafficQuotaScope.Off);
 
     /// <summary>对端地址。</summary>
     public EndPoint? Remote { get; private set; }
@@ -95,6 +100,21 @@ public sealed class ChatLink : IAsyncDisposable
 
     /// <summary>心跳回包（界面上的延迟）。</summary>
     public event Action<ChatLink, int>? LatencyUpdated;
+
+    /// <summary>收到通话媒体连接的握手（<c>callHello</c>；主机据此把这条连接登记成某人的媒体通道）。</summary>
+    public event Action<ChatLink, HelloInfo>? CallHelloReceived;
+
+    /// <summary>收到通话状态（<c>callState</c>；客户端据此显示参与者名单与麦克风 / 摄像头状态）。</summary>
+    public event Action<ChatLink, CallStateInfo>? CallStateReceived;
+
+    /// <summary>收到通话控制（<c>callControl</c>；主机据此更新某个人的麦克风 / 摄像头开关）。</summary>
+    public event Action<ChatLink, CallControlInfo>? CallControlReceived;
+
+    /// <summary>
+    /// 收到一个音频 / 视频媒体包：发送方成员 Id、类型、裸载荷、附带时间戳。
+    /// <para>载荷已经读干净，订阅方不用再动流；回调运行在读循环线程上，必须快速返回。</para>
+    /// </summary>
+    public event Action<ChatLink, string, CallMediaKind, byte[], CallMediaInfo>? CallMediaReceived;
 
     /// <summary>连接断开了（<paramref name="error"/> 为空表示正常关闭）。</summary>
     public event Action<ChatLink, string?>? Closed;
@@ -185,6 +205,31 @@ public sealed class ChatLink : IAsyncDisposable
                         // 主机回给客户端的握手回执：由 ChatClient 挂的处理函数接走
                         if (header.ExtraAs<WelcomeInfo>() is { } welcome) WelcomeReceived?.Invoke(this, welcome);
                         break;
+
+                    // ---------------- 群语音 / 群视频通话 ----------------
+                    case ChatProtocol.Kinds.CallHello:
+                        // 通话媒体连接的握手：主机把它登记成某个成员的媒体通道（不加入聊天成员名单）
+                        if (header.ExtraAs<HelloInfo>() is { } mediaHello) CallHelloReceived?.Invoke(this, mediaHello);
+                        break;
+
+                    case ChatProtocol.Kinds.CallState:
+                        if (header.ExtraAs<CallStateInfo>() is { } callState) CallStateReceived?.Invoke(this, callState);
+                        break;
+
+                    case ChatProtocol.Kinds.CallControl:
+                        if (header.ExtraAs<CallControlInfo>() is { } control) CallControlReceived?.Invoke(this, control);
+                        break;
+
+                    case ChatProtocol.Kinds.CallAudio:
+                    case ChatProtocol.Kinds.CallVideo:
+                    {
+                        // 媒体包：载荷必须读干净（否则下一帧会错位），读完再交给订阅方
+                        var mediaInfo = header.ExtraAs<CallMediaInfo>() ?? new CallMediaInfo();
+                        var payload = await ReadPayloadAsync(header, ct).ConfigureAwait(false);
+                        var kind = header.Kind == ChatProtocol.Kinds.CallAudio ? CallMediaKind.Audio : CallMediaKind.Video;
+                        CallMediaReceived?.Invoke(this, header.From ?? "", kind, payload, mediaInfo);
+                        break;
+                    }
 
                     case ChatProtocol.Kinds.Bye:
                         break;
@@ -288,6 +333,33 @@ public sealed class ChatLink : IAsyncDisposable
     /// <summary>发成员名单。</summary>
     public Task SendMembersAsync(MemberListInfo members, CancellationToken ct = default)
         => SendAsync(ChatFrameHeader.New(ChatProtocol.Kinds.Members, PeerId, members), ct);
+
+    // ---------------------------------------------------------------- 通话（媒体连接）
+
+    /// <summary>发通话媒体连接的握手（客户端 → 主机，连的是同一个监听端口）。</summary>
+    public Task SendCallHelloAsync(HelloInfo info, CancellationToken ct = default)
+        => SendAsync(ChatFrameHeader.New(ChatProtocol.Kinds.CallHello, info.MemberId, info), ct);
+
+    /// <summary>发 / 转发通话状态（主机 → 所有聊天连接）。</summary>
+    public Task SendCallStateAsync(CallStateInfo state, CancellationToken ct = default)
+        => SendAsync(ChatFrameHeader.New(ChatProtocol.Kinds.CallState, PeerId, state), ct);
+
+    /// <summary>发通话控制（麦克风 / 摄像头开关，媒体连接上）。</summary>
+    public Task SendCallControlAsync(CallControlInfo control, CancellationToken ct = default)
+        => SendAsync(ChatFrameHeader.New(ChatProtocol.Kinds.CallControl, PeerId, control), ct);
+
+    /// <summary>
+    /// 发一个媒体包（音频 640 字节 / 视频一帧 JPEG）。<paramref name="fromMemberId"/> 是**真正说话的人**：
+    /// 主机转发别人的包时要保留原发送者（客户端靠它把画面 / 声音对到人）。
+    /// </summary>
+    public Task SendCallMediaAsync(CallMediaKind kind, string fromMemberId, ReadOnlyMemory<byte> payload,
+        long timestampMs = 0, CancellationToken ct = default)
+        => SendAsync(
+            ChatFrameHeader.New(
+                kind == CallMediaKind.Audio ? ChatProtocol.Kinds.CallAudio : ChatProtocol.Kinds.CallVideo,
+                fromMemberId,
+                new CallMediaInfo { TimestampMs = timestampMs }),
+            ct, payload);
 
     /// <summary>
     /// 把一个本地文件整条推过去：<c>TransferStart 头</c> → 裸字节 → 等对方的 <c>TransferDone</c>。

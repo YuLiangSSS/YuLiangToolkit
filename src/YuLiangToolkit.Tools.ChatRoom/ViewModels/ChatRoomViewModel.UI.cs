@@ -201,6 +201,7 @@ public sealed partial class ChatRoomViewModel
     protected override void OnClosed()
     {
         try { _statusTimer.Stop(); } catch { }
+        OnCallUiHangUp();       // 挂断通话（实现在 ChatRoomViewModel.Call.cs）
         var session = _session;
         _session = null;
         if (session is not null)

@@ -2,7 +2,7 @@
   "protocol": "YuLiangToolkit.ChatRoom",
   "magic": "YLTCHAT1",
   "version": 1,
-  "transport": "TCP（一条控制连接发消息，每个文件另开一条数据连接；两端都可能是主机或客户端）",
+  "transport": "TCP（一条控制连接发消息，每个文件另开一条数据连接，群通话的媒体再另开一条长连接；两端都可能是主机或客户端）",
   "frame": {
     "note": "每个包 = 4 字节小端长度前缀 + JSON 头 + 裸载荷。长度前缀只数 JSON 头自己的字节数（不含前缀，也不含载荷）。",
     "lengthPrefixBytes": 4,
@@ -29,7 +29,8 @@
     "Welcome": {
       "dir": "主机 → 客户端",
       "payload": "0",
-      "extra": "{ memberId（主机给你定的 Id）, sessionName, hostName, members: [...] }"
+      "extra": "{ memberId（主机给你定的 Id）, sessionName, hostName, members: [...], callToken, mediaAccepted, mediaRejectReason }",
+      "note": "聊天连接的 welcome 带 callToken（本端开媒体连接时要用）；媒体连接的 welcome 用 mediaAccepted=true 表示接受"
     },
     "Ping": { "dir": "双向", "payload": "0", "extra": "{}" },
     "Pong": { "dir": "双向", "payload": "0", "extra": "{ latencyMs }" },
@@ -63,7 +64,37 @@
       "extra": "{ transferId, ok, error, savedAs }"
     },
     "TransferCancel": { "dir": "双向", "payload": "0", "extra": "{ transferId, error }" },
-    "Bye": { "dir": "双向", "payload": "0", "extra": "{ reason }" }
+    "Bye": { "dir": "双向", "payload": "0", "extra": "{ reason }" },
+    "CallHello": {
+      "dir": "客户端 → 主机（只走通话媒体连接）",
+      "payload": "0",
+      "extra": "{ magic, protocolVersion, role: Media, memberId, name, emoji, appVersion, isMedia: true, callToken }",
+      "note": "媒体连接专用握手（不新增协议版本号）。callToken 来自聊天连接 welcome 里发的那个；校验失败主机回 welcome(mediaAccepted=false, mediaRejectReason) 后断开"
+    },
+    "CallState": {
+      "dir": "主机 → 所有人（走聊天连接，可靠、全体可见）",
+      "payload": "0",
+      "extra": "{ active, startedAtUtc, participants: [ { memberId, name, emoji, isHost, micOn, cameraOn, joinedAtUtc } ] }",
+      "note": "通话状态的唯一权威；客户端只跟随显示，不自己维护名单"
+    },
+    "CallControl": {
+      "dir": "客户端 → 主机（走媒体连接）",
+      "payload": "0",
+      "extra": "{ micOn?: bool, cameraOn?: bool }",
+      "note": "null 表示这一项不变；主机更新参与者快照后广播 callState"
+    },
+    "CallAudio": {
+      "dir": "双向（走媒体连接；主机转发给其余媒体连接）",
+      "payload": "μ-law 裸字节（16 kHz 单声道，40 ms 一包 = 640 字节）",
+      "extra": "{ timestampMs }",
+      "note": "G.711 μ-law，1 字节 = 1 个采样；音频不丢帧（拥塞时优先保声音）"
+    },
+    "CallVideo": {
+      "dir": "双向（走媒体连接；主机转发给其余媒体连接）",
+      "payload": "一帧完整 JPEG 的裸字节（MJPEG）",
+      "extra": "{ timestampMs }",
+      "note": "逐帧 JPEG、不做帧间压缩；拥塞时发送队列优先丢最旧的视频帧"
+    }
   },
   "flow": {
     "1": "客户端 connect(主机 IP:端口) → 发 Hello",
@@ -71,11 +102,47 @@
     "3": "之后双方都能发 Text / System / Members / Ping；主机把 Text 转发给其它成员",
     "4": "要发文件时：先在该连接的 TransferStart，再另开一条 TCP 连接，写同一份 TransferStart 头 + 裸字节",
     "5": "接收方落盘到会话文件夹的子目录（images/audio/video/files），回 TransferDone(ok)",
-    "6": "任何一端随时可发 Bye 并关闭；主机收到就把它从名单里去掉并通知其它人"
+    "6": "任何一端随时可发 Bye 并关闭；主机收到就把它从名单里去掉并通知其它人",
+    "7": "要开群通话时：客户端另开一条 TCP 连接（连主机同一个监听端口）→ 发 CallHello（带聊天 welcome 里的 callToken）→ 主机回 Welcome(mediaAccepted=true)",
+    "8": "媒体连接上只跑 CallAudio / CallVideo / CallControl；主机把媒体包转发给其余媒体连接（主机自己也在通话里时同时交给本机引擎）",
+    "9": "谁进 / 出通话、谁开 / 关麦克风摄像头：主机更新权威快照，在聊天连接上广播 CallState"
+  },
+  "media": {
+    "note": "群语音 / 群视频：媒体走与聊天连接分开的第二条 TCP 连接，连主机同一个监听端口（内网穿透只需映射主机一个端口）。这条连接不加入聊天成员名单、不建会话文件夹，只跑 CallAudio / CallVideo / CallControl。",
+    "handshake": {
+      "1": "客户端在聊天连接上完成 Hello / Welcome，拿到 Welcome.callToken",
+      "2": "客户端另 connect(主机同一个 IP:端口) → 发 CallHello（isMedia=true、memberId=自己、callToken）",
+      "3": "主机校验 magic / 协议版本 / 令牌 / 这个 memberId 已完成聊天握手 → 回 Welcome（mediaAccepted=true）",
+      "4": "之后这条连接只传媒体包；断开即视为退出通话（主机广播新的 CallState）",
+      "compat": "不新增协议版本号：老版本把 CallHello 当未知包跳过 → 媒体握手超时 → 本端提示「对方版本不支持通话」，不会把媒体连接误登记成聊天成员"
+    },
+    "audio": {
+      "codec": "G.711 μ-law",
+      "sampleRate": 16000,
+      "channels": 1,
+      "frameMilliseconds": 40,
+      "bytesPerFrame": 640,
+      "packetsPerSecond": 25,
+      "note": "8 位对数量化，比 16 位 PCM 省一半带宽；每包 640 字节裸载荷，附带 timestampMs"
+    },
+    "video": {
+      "codec": "MJPEG（逐帧 JPEG，不做帧间压缩）",
+      "profiles": [
+        { "name": "Saver", "width": 240, "height": 180, "fps": 6, "jpegQuality": 52, "bandwidthHint": "约 0.3~0.6 Mbps/路" },
+        { "name": "Standard", "width": 320, "height": 240, "fps": 10, "jpegQuality": 58, "bandwidthHint": "约 0.6~1.2 Mbps/路" },
+        { "name": "High", "width": 480, "height": 360, "fps": 12, "jpegQuality": 66, "bandwidthHint": "约 1.5~3 Mbps/路" }
+      ],
+      "note": "带宽 ≈ 帧大小 × 帧率；主机是中转，第 N 个人的视频要转发给其余 N-1 个人"
+    },
+    "limits": {
+      "maxParticipants": 8,
+      "traffic": "通话媒体流量不计入单次文件流量上限（媒体连接用单独的 TrafficMeter(0, Off) 计量）",
+      "aec": "v1 没有回声消除（AEC），外放会啸叫 / 回音，界面上提醒戴耳机"
+    }
   },
   "traffic": {
     "note": "单次流量上限：主机与客户端各自统计“本端收发合计”并各自限流，谁到顶谁停止发送（一条 System 提示对方）",
-    "counted": "文件裸字节 + 文本/图片预览载荷 + 包头（包头很小，也计入，免得算不准）",
+    "counted": "文件裸字节 + 文本/图片预览载荷 + 包头（包头很小，也计入，免得算不准）；群通话媒体流量不计入",
     "checkedBefore": "发文件前先用剩余额度预检，超了就根本不开数据连接"
   }
 }

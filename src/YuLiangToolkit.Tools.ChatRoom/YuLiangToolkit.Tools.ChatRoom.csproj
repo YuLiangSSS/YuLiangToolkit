@@ -1,10 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!-- 「联机聊天室」功能：主机开监听、客户端连 IP:端口 的局域网 / 内网穿透聊天，
-       支持文字 / 图片 / 音频 / 视频 / 任意文件，带单次流量上限。
-       分层（纯逻辑 → 网络 → 界面）与“为什么这么做”见 docs/dev/pitfalls.md。 -->
+       支持文字 / 图片 / 音频 / 视频 / 任意文件，带单次流量上限；v0.71.0 起房间内可开群语音 / 群视频通话。
+       分层（纯逻辑 → 网络 → 界面）与“为什么这么做”见 docs/dev/pitfalls.md。
+
+       TFM 带 win10.0.19041：通话的摄像头采集要用系统自带的 Windows.Media.Capture（WinRT 投影，
+       不引第三方包）。宿主主程序与自检工程本来就是 19041，兼容；音频走 WASAPI（纯 P/Invoke，不挑 TFM）。 -->
   <PropertyGroup>
-    <TargetFramework>net9.0-windows</TargetFramework>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <RootNamespace>YuLiangToolkit.Tools.ChatRoom</RootNamespace>
     <AssemblyName>YuLiangToolkit.Tools.ChatRoom</AssemblyName>

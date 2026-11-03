@@ -112,6 +112,16 @@ public static class ChatProtocol
         public const string TransferDone = "transferDone";
         public const string TransferCancel = "transferCancel";
         public const string Bye = "bye";
+
+        // ---- 群语音 / 群视频通话（v0.71.0 起）----
+        // 媒体走**单独一条 TCP 连接**（连主机同一个端口），用 callHello 握手；
+        // callState 走聊天连接（可靠、全体可见）；callControl / callAudio / callVideo 走媒体连接。
+        // 老版本收到不认识的类型会跳过载荷，不会把连接搞乱。
+        public const string CallHello = "callHello";
+        public const string CallState = "callState";
+        public const string CallControl = "callControl";
+        public const string CallAudio = "callAudio";
+        public const string CallVideo = "callVideo";
     }
 
     /// <summary>
@@ -435,6 +445,7 @@ public static class ChatProtocol
            {
                Kinds.Hello, Kinds.Welcome, Kinds.Ping, Kinds.Pong, Kinds.Text, Kinds.System,
                Kinds.Members, Kinds.Kick, Kinds.TransferStart, Kinds.TransferDone, Kinds.TransferCancel, Kinds.Bye,
+               Kinds.CallHello, Kinds.CallState, Kinds.CallControl, Kinds.CallAudio, Kinds.CallVideo,
            })}
            说明文档：Data\chat-room\Protocol\chat-protocol.json（首次运行自动释放）
            """;

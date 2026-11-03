@@ -116,6 +116,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/BoardGamesChecks.cs'      @('board-games','board-net','board-room') 'L3' 'board rules + net + room')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/ScrollChainingChecks.cs'  @('core') 'L3' 'core scroll chain')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/ChatRoomChecks.cs'        @('chat-room') 'L3' 'chat-room assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/CallFakes.cs'             @('chat-room') 'L3' 'chat-room call fakes')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/ContextMenuChecks.cs'     @('context-menu') 'L3' 'context-menu assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/FlashDownloaderChecks.cs' @('flash-downloader') 'L3' 'flash-downloader assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/MapDownloaderChecks.cs'   @('map-downloader') 'L3' 'map-downloader assertions')

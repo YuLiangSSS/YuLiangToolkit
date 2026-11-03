@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Storage;
+using YuLiangToolkit.Tools.ChatRoom.Call;
 using YuLiangToolkit.Tools.ChatRoom.Traffic;
 
 namespace YuLiangToolkit.Tools.ChatRoom;
@@ -105,6 +106,20 @@ public sealed class ChatRoomConfig : ToolConfig
     /// <summary>文件大于这个大小（MB）就先问一句再发。</summary>
     public double ConfirmFileMb { get; set; } = 20;
 
+    // ---------------------------------------------------------------- 群语音 / 群视频通话
+
+    /// <summary>视频画质档位（只影响视频；音频固定 16 kHz μ-law）。</summary>
+    public CallQualityPreset CallQuality { get; set; } = CallQualityPreset.Standard;
+
+    /// <summary>摄像头设备 Id（空 = 系统默认第一个）。</summary>
+    public string CallCameraId { get; set; } = "";
+
+    /// <summary>麦克风设备 Id（空 = 系统默认）。</summary>
+    public string CallMicrophoneId { get; set; } = "";
+
+    /// <summary>扬声器设备 Id（空 = 系统默认）。</summary>
+    public string CallSpeakerId { get; set; } = "";
+
     // ---------------------------------------------------------------- 界面 / 记录
 
     /// <summary>聊天列表最多显示多少条（太多会卡；记录文件本身不受影响）。</summary>
@@ -175,6 +190,14 @@ public sealed class ChatRoomConfig : ToolConfig
         ImageQualityPreset.Tiny => "压到长边 800（最省流量）",
         _ => $"长边超过 {ImageMaxEdge} 像素才缩（推荐）",
     };
+
+    /// <summary>通话画质档位的中文说明。</summary>
+    [JsonIgnore]
+    public string CallQualityText => CallProtocolRules.LabelOf(CallQuality);
+
+    /// <summary>通话画质档位的带宽提示。</summary>
+    [JsonIgnore]
+    public string CallBandwidthHint => CallProtocolRules.BandwidthHint(CallQuality);
 
     /// <summary>按预设算出发图时要用的长边上限（0 = 不处理）。</summary>
     [JsonIgnore]

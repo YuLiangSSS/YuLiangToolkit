@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using YuLiangToolkit.Tools.ChatRoom.Protocol;
+using YuLiangToolkit.Tools.ChatRoom.Traffic;
 
 namespace YuLiangToolkit.Tools.ChatRoom.Net;
 
@@ -15,6 +16,8 @@ public sealed class ChatClient : IAsyncDisposable
 {
     private ChatLink? _link;
     private TaskCompletionSource<WelcomeInfo>? _welcome;
+    private IPEndPoint? _serverEndPoint;
+    private string _callToken = "";
 
     public ChatClient(ChatRoomConnection connection)
     {
@@ -50,6 +53,12 @@ public sealed class ChatClient : IAsyncDisposable
 
     /// <summary>被主机移出房间。</summary>
     public event Action<string>? Kicked;
+
+    /// <summary>收到通话状态（参与者名单 / 麦克风 / 摄像头开关）。</summary>
+    public event Action<CallStateInfo>? CallStateReceived;
+
+    /// <summary>主机发给本端的通话令牌（为空 = 对方版本不支持通话）。</summary>
+    public string CallToken => _callToken;
 
     /// <summary>
     /// 连接主机（握手完成才返回成功）。<paramref name="addressText"/> 可以带端口
@@ -89,6 +98,7 @@ public sealed class ChatClient : IAsyncDisposable
 
         ConnectLatencyMs = (int)(Environment.TickCount64 - started);
         ServerText = display;
+        _serverEndPoint = ipEnd;
 
         var link = ChatLink.From(tcp, Connection.Meter);
         _link = link;
@@ -138,6 +148,7 @@ public sealed class ChatClient : IAsyncDisposable
         };
         link.LatencyUpdated += (_, ms) => LatencyMs = ms;
         link.WelcomeReceived += (_, welcome) => _welcome?.TrySetResult(welcome);
+        link.CallStateReceived += (_, state) => CallStateReceived?.Invoke(state);
         link.Closed += (l, err) =>
         {
             if (!ReferenceEquals(_link, l)) return;    // 旧连接的余波，忽略
@@ -171,6 +182,7 @@ public sealed class ChatClient : IAsyncDisposable
             var welcome = await _welcome.Task.ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(welcome.MemberId)) Connection.AdoptHostMemberId(welcome.MemberId);
             if (!string.IsNullOrWhiteSpace(welcome.HostName)) HostName = welcome.HostName;
+            _callToken = welcome.CallToken ?? "";
 
             Connection.Members.Clear();
             if (welcome.Members.Count > 0) Connection.Members.AddRange(welcome.Members);
@@ -218,6 +230,84 @@ public sealed class ChatClient : IAsyncDisposable
 
     /// <summary>发心跳（界面上的“测延迟”按钮）。</summary>
     public Task PingAsync() => _link?.SendPingAsync(CancellationToken.None) ?? Task.CompletedTask;
+
+    /// <summary>
+    /// 建立**通话媒体连接**：连主机同一个监听端口，用 <c>callHello</c> + 通话令牌握手。
+    /// <para>媒体连接跟聊天连接分开，原因见 <see cref="ChatLink"/> 的说明：文件传输会长时间占住写锁，
+    /// 混在一条连接上会把声音卡成 PPT。</para>
+    /// </summary>
+    /// <returns>(媒体连接, 失败原因)。成功时调用方负责在挂断时关掉这条连接。</returns>
+    public async Task<(ChatLink? Link, string Error)> OpenMediaLinkAsync(CancellationToken ct = default)
+    {
+        if (_link is null || !HandshakeDone) return (null, "还没连上主机");
+        if (_serverEndPoint is null) return (null, "不知道主机地址（断开重连一次再试）");
+        if (_callToken.Length == 0)
+            return (null, "主机没有开启通话支持（对方版本可能太旧）：请两边都用新版本后重连");
+
+        TcpClient tcp;
+        try
+        {
+            tcp = new TcpClient(_serverEndPoint.AddressFamily);
+            var connectTask = tcp.ConnectAsync(_serverEndPoint, ct).AsTask();
+            var completed = await Task.WhenAny(connectTask, Task.Delay(TimeSpan.FromSeconds(10), ct)).ConfigureAwait(false);
+            if (completed != connectTask)
+            {
+                try { tcp.Close(); } catch { }
+                return (null, "建立通话连接超时（10 秒没连上主机）");
+            }
+            await connectTask.ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            return (null, $"建立通话连接失败：{ChatLink.Describe(ex)}");
+        }
+
+        var link = ChatLink.From(tcp, new TrafficMeter(0, TrafficQuotaScope.Off));
+        var accepted = new TaskCompletionSource<WelcomeInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        link.WelcomeReceived += (_, welcome) => accepted.TrySetResult(welcome);
+        link.Closed += (_, err) =>
+        {
+            if (!accepted.Task.IsCompleted)
+                accepted.TrySetException(new IOException(err ?? "通话连接被主机关闭"));
+        };
+
+        try
+        {
+            await link.SendCallHelloAsync(new HelloInfo
+            {
+                Magic = ChatProtocol.Magic,
+                ProtocolVersion = ChatProtocol.Version,
+                Role = "Media",
+                IsMedia = true,
+                MemberId = Connection.LocalMemberId,
+                CallToken = _callToken,
+                Name = Connection.LocalName,
+                Emoji = Connection.LocalEmoji,
+                AppVersion = Connection.Info.AppVersion,
+            }, ct).ConfigureAwait(false);
+
+            var completed = await Task.WhenAny(accepted.Task, Task.Delay(TimeSpan.FromSeconds(10), ct)).ConfigureAwait(false);
+            if (completed != accepted.Task)
+            {
+                link.Close("通话握手超时");
+                return (null, "主机没有回通话握手（对方版本可能太旧 / 拒绝了这个连接）");
+            }
+
+            var welcome = await accepted.Task.ConfigureAwait(false);
+            if (!welcome.MediaAccepted)
+            {
+                link.Close("通话被拒绝");
+                return (null, welcome.MediaRejectReason is { Length: > 0 } reason ? reason : "主机拒绝了这个通话连接");
+            }
+
+            return (link, "");
+        }
+        catch (Exception ex)
+        {
+            link.Close();
+            return (null, $"通话握手失败：{ChatLink.Describe(ex)}");
+        }
+    }
 
     /// <summary>断开（会先礼貌地说一声再见）。<paramref name="error"/> 非空时会触发 <see cref="Disconnected"/>。</summary>
     public async Task CloseAsync(string reason = "本端主动断开", string? error = null)

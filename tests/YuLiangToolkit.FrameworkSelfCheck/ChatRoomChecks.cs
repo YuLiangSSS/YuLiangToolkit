@@ -1,6 +1,11 @@
+using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using YuLiangToolkit.Tools.ChatRoom;
+using YuLiangToolkit.Tools.ChatRoom.Call;
 using YuLiangToolkit.Tools.ChatRoom.Net;
 using YuLiangToolkit.Tools.ChatRoom.Protocol;
 using YuLiangToolkit.Tools.ChatRoom.Sessions;
@@ -43,6 +48,9 @@ public static class ChatRoomChecks
             CheckSimpleMode(check, plain);
             CheckDualStack(check, plain, scratch);
             CheckLoopback(check, plain, scratch);
+            CheckCallCodecs(check, plain);
+            CheckCallProtocol(check, plain);
+            CheckCallLoopback(check, plain);
         }
         finally
         {
@@ -700,6 +708,476 @@ public static class ChatRoomChecks
             await host.DisposeAsync().ConfigureAwait(false);
         }
     }
+
+    // ---------------------------------------------------------------- 群通话：编解码（纯逻辑，无设备 / 无网络）
+
+    /// <summary>
+    /// 群语音 / 群视频通信用到的编解码轮子：μ-law / 重采样 / 混音 / JPEG / 降采样。
+    /// 全部是纯逻辑，不开端口、不碰设备，几十毫秒跑完。
+    /// </summary>
+    private static void CheckCallCodecs(Action<string, bool, string> check, Action<string, bool> plain)
+    {
+        // ---- μ-law：正弦波往返误差（G.711 8 位对数量化的实际误差约 1~2% RMS，5% 是宽松上限） ----
+        const int sampleRate = 16000;
+        var sine = new float[400];
+        for (var i = 0; i < sine.Length; i++)
+            sine[i] = 0.5f * MathF.Sin(2 * MathF.PI * 1000f * i / sampleRate);
+
+        var encoded = new byte[sine.Length];
+        MuLawCodec.Encode(sine, encoded);
+        var decoded = new float[sine.Length];
+        MuLawCodec.Decode(encoded, decoded);
+
+        double signalPower = 0, errorPower = 0;
+        for (var i = 0; i < sine.Length; i++)
+        {
+            signalPower += sine[i] * sine[i];
+            var diff = sine[i] - decoded[i];
+            errorPower += diff * diff;
+        }
+        var rmsPercent = Math.Sqrt(errorPower / Math.Max(1e-12, signalPower)) * 100;
+        check("μ-law 正弦波（16 kHz / 0.5 振幅）Encode→Decode 往返 RMS 误差 < 5%",
+            rmsPercent < 5, $"RMS 误差 {rmsPercent:0.00}%");
+
+        // 边界与批量长度语义：-1 / 0 / 1 不越界；越界输入被夹住；批量接口只写 min(源, 目的) 个
+        var edgeOk = true;
+        foreach (var value in new[] { -1f, 0f, 1f, -8f, 8f })
+        {
+            var back = MuLawCodec.Decode(MuLawCodec.Encode(value));
+            edgeOk &= back is >= -1f and <= 1f;
+        }
+        edgeOk &= Math.Abs(MuLawCodec.Decode(MuLawCodec.Encode(0f))) < 0.05f;
+
+        var bulk = new float[100];
+        for (var i = 0; i < bulk.Length; i++) bulk[i] = MathF.Sin(i * 0.1f) * 0.5f;
+
+        var longDestination = Enumerable.Repeat((byte)0xAB, 150).ToArray();
+        MuLawCodec.Encode(bulk, longDestination);
+        var tailUntouched = longDestination.Skip(bulk.Length).All(b => b == 0xAB);
+
+        var encodedBulk = new byte[bulk.Length];
+        MuLawCodec.Encode(bulk, encodedBulk);
+        var shortDestination = Enumerable.Repeat(float.NaN, 70).ToArray();
+        MuLawCodec.Decode(encodedBulk, shortDestination);
+        var wroteOnlyDestinationLength = shortDestination.All(v => !float.IsNaN(v) && v is >= -1f and <= 1f);
+
+        check("μ-law 边界 -1/0/1 与越界输入都不越界；批量 Encode/Decode 只写 min(源, 目的) 个",
+            edgeOk && tailUntouched && wroteOnlyDestinationLength,
+            $"边界={edgeOk} 尾部未动={tailUntouched} 只写目的长度={wroteOnlyDestinationLength}");
+
+        // ---- PcmResampler：输出数量按比例，并且跨块连续（小数相位不能丢） ----
+        var resampler48k = new PcmResampler(48000, 16000);
+        var input48k = new float[4800];
+        for (var i = 0; i < input48k.Length; i++)
+            input48k[i] = MathF.Sin(2 * MathF.PI * 1000f * i / 48000f);
+        var output48k = new float[4800 / 3 + 8];
+        var written48k = resampler48k.Process(input48k, output48k);
+        check("PcmResampler 48k→16k：4800 个采样输出约 1600 个（±2）",
+            Math.Abs(written48k - 1600) <= 2, $"输出 {written48k} 个");
+
+        var resampler441k = new PcmResampler(44100, 16000);
+        var blockA = new float[4410];
+        var blockB = new float[4409];
+        for (var i = 0; i < blockA.Length; i++)
+            blockA[i] = MathF.Sin(2 * MathF.PI * 300f * i / 44100f);
+        for (var i = 0; i < blockB.Length; i++)
+            blockB[i] = MathF.Sin(2 * MathF.PI * 300f * (blockA.Length + i) / 44100f);
+        var buffer441k = new float[4410 * 16000 / 44100 + 8];
+        var firstCount = resampler441k.Process(blockA, buffer441k);
+        var secondCount = resampler441k.Process(blockB, buffer441k);
+        var totalCount = firstCount + secondCount;
+        var expectedCount = (int)Math.Round((blockA.Length + blockB.Length) * 16000.0 / 44100.0);
+        resampler441k.Reset();
+        var afterResetFirst = resampler441k.Process(blockA, buffer441k);
+        var afterResetSecond = resampler441k.Process(blockB, buffer441k);
+        check("PcmResampler 44.1k→16k：跨块总量符合比例（±2），Reset 后行为可复现",
+            Math.Abs(totalCount - expectedCount) <= 2
+            && afterResetFirst == firstCount && afterResetSecond == secondCount,
+            $"{firstCount}+{secondCount}={totalCount}（期望约 {expectedCount}）；Reset 后 {afterResetFirst}+{afterResetSecond}");
+
+        // ---- AudioMixer：限幅 / 补静音 / RemoveMember / 缓冲上限 ----
+        var mixer = new AudioMixer(48000);
+        var sineA = new float[640];
+        var sineB = new float[640];
+        for (var i = 0; i < sineA.Length; i++)
+        {
+            var value = 0.9f * MathF.Sin(2 * MathF.PI * 440f * i / 16000f);
+            sineA[i] = value;
+            sineB[i] = value;
+        }
+        mixer.AddFrame("甲", sineA, sineA.Length, 16000);
+        mixer.AddFrame("乙", sineB, sineB.Length, 16000);
+        var mixed = new float[480 * 2];
+        var mixedFrames = mixer.Mix(480, mixed);
+        var peak = 0f;
+        var leftEqualsRight = true;
+        for (var i = 0; i < mixedFrames; i++)
+        {
+            peak = Math.Max(peak, Math.Abs(mixed[i * 2]));
+            if (Math.Abs(mixed[i * 2] - mixed[i * 2 + 1]) > 1e-5f) leftEqualsRight = false;
+        }
+
+        var emptyMixer = new AudioMixer(48000);
+        var silence = new float[480 * 2];
+        var silentFrames = emptyMixer.Mix(480, silence);
+        var paddedSilence = silentFrames == 480 && silence.All(v => v == 0f);
+
+        var sparseMixer = new AudioMixer(48000);
+        sparseMixer.AddFrame("只有一个采样的人", new[] { 0.5f }, 1, 16000);
+        var sparse = new float[480 * 2];
+        var sparseFrames = sparseMixer.Mix(480, sparse);
+        var tailIsSilent = sparseFrames == 480 && sparse.Skip(60).All(v => v == 0f);
+
+        check("AudioMixer：两路同相正弦相加限幅在 [-1,1]、左右声道一致；缓冲不足补静音且返回请求帧数",
+            mixedFrames == 480 && peak is > 0.01f and <= 1.0001f && leftEqualsRight && paddedSilence && tailIsSilent,
+            $"峰值 {peak:0.000}，空混音 {silentFrames} 帧，稀疏 {sparseFrames} 帧");
+
+        var removals = new AudioMixer(48000);
+        removals.AddFrame("留下的", sineA, sineA.Length, 16000);
+        removals.AddFrame("要走的", sineB, sineB.Length, 16000);
+        removals.RemoveMember("要走的");
+        var afterRemove = new float[480 * 2];
+        removals.Mix(480, afterRemove);
+
+        // 只加「要走的」再移除：之后混出来必须全是静音，证明它真的不参与混音了
+        var onlyRemoved = new AudioMixer(48000);
+        onlyRemoved.AddFrame("要走的", sineB, sineB.Length, 16000);
+        onlyRemoved.RemoveMember("要走的");
+        var afterRemovedOnly = new float[480 * 2];
+        onlyRemoved.Mix(480, afterRemovedOnly);
+        var removedIsSilent = afterRemovedOnly.All(v => v == 0f);
+
+        check("AudioMixer：MixSampleRate 跟构造参数一致、RemoveMember 后该成员不再参与混音",
+            removals.MixSampleRate == 48000
+            && removals.Members.Contains("留下的") && !removals.Members.Contains("要走的")
+            && removals.BufferedFrames("要走的") == 0 && removedIsSilent
+            && AudioMixer.TargetLatencyMilliseconds > 0
+            && AudioMixer.TargetLatencyMilliseconds <= AudioMixer.MaxLatencyMilliseconds,
+            $"MixSampleRate={removals.MixSampleRate}，成员 {string.Join("/", removals.Members)}，移除后静音={removedIsSilent}");
+
+        var backlog = new AudioMixer(48000);
+        var chunk = new float[640];
+        for (var i = 0; i < chunk.Length; i++)
+            chunk[i] = 0.2f * MathF.Sin(2 * MathF.PI * 200f * i / 16000f);
+        for (var i = 0; i < 125; i++) backlog.AddFrame("话多的人", chunk, chunk.Length, 16000);   // 共 5 秒
+        var buffered = backlog.BufferedFrames("话多的人");
+        var maxLatencyFrames = AudioMixer.MaxLatencyMilliseconds * backlog.MixSampleRate / 1000;
+        check("AudioMixer：连续灌 5 秒数据后缓冲长度受 MaxLatency 约束（不会无限积压）",
+            buffered > 0 && buffered <= maxLatencyFrames + 2400,
+            $"缓冲 {buffered} 帧（上限约 {maxLatencyFrames} 帧 = {AudioMixer.MaxLatencyMilliseconds} ms @ {backlog.MixSampleRate} Hz）");
+
+        // ---- JPEG：BGRA → 编码 → 解码 / 直接转 BitmapSource ----
+        const int jpegWidth = 64;
+        const int jpegHeight = 48;
+        var bgra = FakeFramePainter.GradientBgra(jpegWidth, jpegHeight, 0);
+        var jpeg = JpegFrameCodec.EncodeBgra(bgra, jpegWidth, jpegHeight, 60);
+        var bitmap = JpegFrameCodec.DecodeToBitmap(jpeg);
+        check("JpegFrameCodec：64×48 BGRA → EncodeBgra → DecodeToBitmap 尺寸一致且已冻结",
+            jpeg.Length > 0 && bitmap.PixelWidth == jpegWidth && bitmap.PixelHeight == jpegHeight && bitmap.IsFrozen,
+            $"{bitmap.PixelWidth}×{bitmap.PixelHeight}，{jpeg.Length} 字节，frozen={bitmap.IsFrozen}");
+
+        var fromBgra = JpegFrameCodec.FromBgra(bgra, jpegWidth, jpegHeight);
+        // 统一转成 Bgra32 再比像素，免得依赖实现挑的像素格式
+        var normalized = new FormatConvertedBitmap(fromBgra, PixelFormats.Bgra32, null, 0);
+        normalized.Freeze();
+        var pixels = new byte[jpegWidth * jpegHeight * 4];
+        normalized.CopyPixels(pixels, jpegWidth * 4, 0);
+        var lastPixel = (jpegWidth * jpegHeight - 1) * 4;
+        var cornersMatch = ChannelNear(pixels, 0, bgra, 0) && ChannelNear(pixels, 2, bgra, 2)
+            && ChannelNear(pixels, lastPixel, bgra, lastPixel) && ChannelNear(pixels, lastPixel + 2, bgra, lastPixel + 2);
+        check("JpegFrameCodec：FromBgra 尺寸一致、首尾像素颜色对得上（±20/通道）",
+            fromBgra.PixelWidth == jpegWidth && fromBgra.PixelHeight == jpegHeight && fromBgra.IsFrozen && cornersMatch,
+            $"首像素 BGR=({pixels[0]},{pixels[1]},{pixels[2]}) 源=({bgra[0]},{bgra[1]},{bgra[2]})");
+
+        // ---- BgraDownscaler：等比缩到目标宽；比源宽大时不放大 ----
+        const int sourceWidth = 1280;
+        const int sourceHeight = 720;
+        var bigFrame = FakeFramePainter.GradientBgra(sourceWidth, sourceHeight, 0);
+        var scaled = BgraDownscaler.Downscale(bigFrame, sourceWidth, sourceHeight, 320,
+            out var scaledWidth, out var scaledHeight);
+        var smallFrame = FakeFramePainter.GradientBgra(160, 120, 0);
+        var unchanged = BgraDownscaler.Downscale(smallFrame, 160, 120, 320,
+            out var unchangedWidth, out var unchangedHeight);
+        check("BgraDownscaler：1280×720 → 目标宽 320 得到 320×180 且字节数对；目标比源宽时返回原尺寸（不放大）",
+            scaledWidth == 320 && scaledHeight == 180 && scaled.Length == 320 * 180 * 4
+            && unchangedWidth == 160 && unchangedHeight == 120 && unchanged.Length == 160 * 120 * 4,
+            $"缩到 {scaledWidth}×{scaledHeight}（{scaled.Length} 字节）｜不放大 {unchangedWidth}×{unchangedHeight}");
+
+        // ---- CallProtocolRules：冻结的协议常量与画质档位 ----
+        var saver = CallProtocolRules.VideoProfile(CallQualityPreset.Saver);
+        var standard = CallProtocolRules.VideoProfile(CallQualityPreset.Standard);
+        var high = CallProtocolRules.VideoProfile(CallQualityPreset.High);
+        var profilesMatch = saver.Width == 240 && saver.Height == 180 && saver.Fps == 6
+            && standard.Width == 320 && standard.Height == 240 && standard.Fps == 10
+            && high.Width == 480 && high.Height == 360 && high.Fps == 12;
+        check("CallProtocolRules：音频 640 字节 / 40 ms / 16 kHz、视频三档宽高帧率、最多 8 人、速率文本",
+            CallProtocolRules.AudioBytesPerFrame == 640
+            && CallProtocolRules.AudioSamplesPerFrame == 640
+            && CallProtocolRules.AudioFrameMilliseconds == 40
+            && CallProtocolRules.AudioSampleRate == 16000
+            && CallProtocolRules.MillisecondsOf(640) == 40
+            && profilesMatch
+            && CallProtocolRules.MaxParticipants == 8
+            && CallStats.FormatRate(0) == "0 kbps"
+            && CallStats.FormatRate(500) == "500 kbps"
+            && CallStats.FormatRate(1500) == "1.5 Mbps",
+            $"Saver={saver.Width}×{saver.Height}@{saver.Fps}｜Standard={standard.Width}×{standard.Height}@{standard.Fps}"
+            + $"｜High={high.Width}×{high.Height}@{high.Fps}");
+    }
+
+    /// <summary>两个颜色通道差不超过容差（JPEG 有损，±20/通道 足够宽松）。</summary>
+    private static bool ChannelNear(byte[] a, int indexA, byte[] b, int indexB)
+        => Math.Abs(a[indexA] - b[indexB]) <= 20;
+
+    // ---------------------------------------------------------------- 群通话：协议新类型（纯逻辑）
+
+    /// <summary>
+    /// 通话的协议增量：<c>callHello</c>（媒体连接握手）/ <c>callState</c>（主机权威状态）/
+    /// <c>callControl</c>（麦克风 / 摄像头开关）/ <c>callAudio</c> / <c>callVideo</c>。
+    /// 断言它们都在 <see cref="ChatProtocol.Kinds"/> 里、而且经 <see cref="ChatProtocol.BuildFrame"/>
+    /// 拼帧再解析能原样读回（线上是 camelCase）。
+    /// </summary>
+    private static void CheckCallProtocol(Action<string, bool, string> check, Action<string, bool> plain)
+    {
+        var callKinds = new[]
+        {
+            ChatProtocol.Kinds.CallHello, ChatProtocol.Kinds.CallState, ChatProtocol.Kinds.CallControl,
+            ChatProtocol.Kinds.CallAudio, ChatProtocol.Kinds.CallVideo,
+        };
+        var describe = ChatProtocol.Describe();
+        check("通话新增 5 个包类型且互不相同，协议摘要里能看到 callHello / callState / callAudio / callVideo",
+            callKinds.Distinct().Count() == callKinds.Length
+            && callKinds.All(k => !string.IsNullOrWhiteSpace(k))
+            && describe.Contains("callHello", StringComparison.Ordinal)
+            && describe.Contains("callState", StringComparison.Ordinal)
+            && describe.Contains("callAudio", StringComparison.Ordinal)
+            && describe.Contains("callVideo", StringComparison.Ordinal),
+            string.Join(" / ", callKinds));
+
+        var hello = ParseCallExtra<HelloInfo>(ChatProtocol.BuildFrame(
+            ChatFrameHeader.New(ChatProtocol.Kinds.CallHello, "client-1",
+                new HelloInfo { IsMedia = true, CallToken = "call-token-9" }),
+            ReadOnlySpan<byte>.Empty));
+        var welcome = ParseCallExtra<WelcomeInfo>(ChatProtocol.BuildFrame(
+            ChatFrameHeader.New(ChatProtocol.Kinds.Welcome, "host-1",
+                new WelcomeInfo { MediaAccepted = true, CallToken = "call-token-9" }),
+            ReadOnlySpan<byte>.Empty));
+        check("callHello / welcome 往返：IsMedia / CallToken / MediaAccepted 都能原样读回",
+            hello is { IsMedia: true, CallToken: "call-token-9" }
+            && welcome is { MediaAccepted: true, CallToken: "call-token-9" },
+            $"hello isMedia={hello?.IsMedia} token={hello?.CallToken}｜welcome accepted={welcome?.MediaAccepted}");
+
+        var state = new CallStateInfo
+        {
+            Active = true,
+            StartedAtUtc = new DateTime(2025, 1, 1, 8, 0, 0, DateTimeKind.Utc),
+            Participants =
+            {
+                new CallParticipantWire
+                {
+                    MemberId = "m-host", Name = "主机", Emoji = "🐟", IsHost = true, MicOn = true, CameraOn = false,
+                },
+                new CallParticipantWire
+                {
+                    MemberId = "m-client", Name = "客户端", Emoji = "🐻", MicOn = false, CameraOn = true,
+                },
+            },
+        };
+        var stateBack = ParseCallExtra<CallStateInfo>(ChatProtocol.BuildFrame(
+            ChatFrameHeader.New(ChatProtocol.Kinds.CallState, "host-1", state), ReadOnlySpan<byte>.Empty));
+        var controlBack = ParseCallExtra<CallControlInfo>(ChatProtocol.BuildFrame(
+            ChatFrameHeader.New(ChatProtocol.Kinds.CallControl, "client-1",
+                new CallControlInfo { MicOn = false, CameraOn = true }),
+            ReadOnlySpan<byte>.Empty));
+        check("callState / callControl 往返：参与者名单与麦克风 / 摄像头开关都不丢",
+            stateBack is { Active: true, Participants.Count: 2 }
+            && stateBack.Participants[0] is { MemberId: "m-host", Name: "主机", IsHost: true, CameraOn: false }
+            && stateBack.Participants[1] is { MemberId: "m-client", MicOn: false, CameraOn: true }
+            && controlBack is { MicOn: false, CameraOn: true },
+            $"参与者 {stateBack?.Participants.Count} 人，control mic={controlBack?.MicOn} camera={controlBack?.CameraOn}");
+    }
+
+    /// <summary>把 <see cref="ChatProtocol.BuildFrame"/> 拼出来的帧解析回头，并反序列化它的 Extra。</summary>
+    private static T? ParseCallExtra<T>(byte[] frame) where T : class
+    {
+        var headerLength = BitConverter.ToInt32(frame, 0);
+        var header = JsonSerializer.Deserialize<ChatFrameHeader>(
+            frame.AsSpan(ChatProtocol.LengthPrefixBytes, headerLength), ChatProtocol.JsonOptions);
+        return header?.Extra is { } extra
+            ? JsonSerializer.Deserialize<T>(extra.GetRawText(), ChatProtocol.JsonOptions)
+            : null;
+    }
+
+    // ---------------------------------------------------------------- 群通话：真的开一场（回环 + 假设备）
+
+    /// <summary>
+    /// 在 127.0.0.1 上真开一局聊天室，两端都用 <see cref="FakeCallMediaFactory"/>（假摄像头 / 假麦克风 /
+    /// 假扬声器）加入群通话，验证：加入 → 双向音视频 → 统计 → 麦克风 / 摄像头开关同步 → 挂断。
+    /// <para>⚠ 全程不碰真实设备：自检机器可能没有摄像头，也不该亮摄像头灯 / 录环境声。</para>
+    /// </summary>
+    private static void CheckCallLoopback(Action<string, bool, string> check, Action<string, bool> plain)
+    {
+        Exception? failure = null;
+        var report = new List<string>();
+
+        var worker = Task.Run(async () =>
+        {
+            try { await RunCallLoopbackAsync(check, report).ConfigureAwait(false); }
+            catch (Exception ex) { failure = ex; }
+        });
+
+        if (!worker.Wait(TimeSpan.FromSeconds(120)))
+            failure = new TimeoutException("通话回环自检 120 秒没跑完（多半卡在媒体连接握手或假设备启停上）");
+
+        check("通话回环整体跑完没有抛异常", failure is null,
+            failure is null ? string.Join("；", report) : $"{failure.GetType().Name}: {failure.Message}");
+    }
+
+    private static async Task RunCallLoopbackAsync(Action<string, bool, string> check, List<string> report)
+    {
+        var port = FindFreePort();
+        var store = new ChatSessionStore(ChatRoomConfig.ToolId);
+
+        var host = new ChatRoomSession(ChatRoomConfig.ToolId, "通话主机", "🐟",
+            new TrafficMeter(0, TrafficQuotaScope.Off), store);
+        var client = new ChatRoomSession(ChatRoomConfig.ToolId, "通话客户端", "🐻",
+            new TrafficMeter(0, TrafficQuotaScope.Off), store);
+
+        // 两端各用一份假工厂：引擎拿到的摄像头 / 麦克风 / 扬声器全是假的
+        var hostMedia = new FakeCallMediaFactory();
+        var clientMedia = new FakeCallMediaFactory();
+
+        var clientFramesAtHost = new ConcurrentBag<CallRawFrame>();
+        var hostFramesAtClient = new ConcurrentBag<CallRawFrame>();
+        var hostStats = new CallStats();
+        var clientStats = new CallStats();
+        var clientTexts = new ConcurrentBag<string>();
+
+        host.CallRemoteVideoFrame += frame => clientFramesAtHost.Add(frame);
+        client.CallRemoteVideoFrame += frame => hostFramesAtClient.Add(frame);
+        host.CallStatsChanged += stats => Volatile.Write(ref hostStats, stats);
+        client.CallStatsChanged += stats => Volatile.Write(ref clientStats, stats);
+        client.MessagePosted += message => { if (!message.IsSystem && message.Text.Length > 0) clientTexts.Add(message.Text); };
+
+        try
+        {
+            var startError = await host.StartHostAsync("127.0.0.1", port).ConfigureAwait(false);
+            var connectError = await client.ConnectAsync("127.0.0.1", port).ConfigureAwait(false);
+            if (startError.Length != 0 || connectError.Length != 0)
+            {
+                check("通话回环：主机开房间、客户端连上", false, $"{startError} {connectError}");
+                return;
+            }
+            await WaitAsync(() => host.ClientCount == 1, 8000).ConfigureAwait(false);
+
+            // ① 客户端先发起通话：会另开一条媒体连接连主机同一个端口（callHello + 令牌）
+            var clientJoin = await client.JoinCallAsync(
+                new CallSettings { EnableVideo = true, EnableAudio = true }, clientMedia).ConfigureAwait(false);
+            await WaitAsync(() => client.IsInCall
+                && host.CurrentCallState.Participants.Any(p => p.MemberId == client.LocalMemberId), 8000).ConfigureAwait(false);
+            var hostSawClientJoin = host.CurrentCallState.Participants.Any(p => p.MemberId == client.LocalMemberId);
+            check("客户端发起群通话：媒体连接握手成功，主机在 callState 里看到它",
+                clientJoin.Ok && client.IsInCall && hostSawClientJoin,
+                clientJoin.Ok ? $"主机通话人数 {host.CurrentCallState.Participants.Count}" : clientJoin.Error);
+
+            // ② 主机也加入（主机端同样传假工厂，否则引擎会去开真摄像头）
+            var hostJoin = await host.JoinCallAsync(
+                new CallSettings { EnableVideo = true, EnableAudio = true }, hostMedia).ConfigureAwait(false);
+            await WaitAsync(() => host.IsInCall && host.ActiveCallEngine is not null && client.ActiveCallEngine is not null,
+                8000).ConfigureAwait(false);
+            check("主机也能加入自己房间的通话，两端通话引擎都起来了",
+                hostJoin.Ok && host.IsInCall && host.ActiveCallEngine is not null && client.ActiveCallEngine is not null,
+                hostJoin.Error);
+            report.Add($"双方入会：主机通话 {host.CurrentCallState.Participants.Count} 人");
+
+            // ③ 视频双向：远端帧的 MemberId 是发送方
+            await WaitAsync(() => CountFramesFrom(clientFramesAtHost, client.LocalMemberId) > 0
+                && CountFramesFrom(hostFramesAtClient, host.LocalMemberId) > 0, 12000).ConfigureAwait(false);
+            var hostSawClientVideo = CountFramesFrom(clientFramesAtHost, client.LocalMemberId);
+            var clientSawHostVideo = CountFramesFrom(hostFramesAtClient, host.LocalMemberId);
+            check("视频双向通了：主机收到客户端的 JPEG 帧、客户端收到主机的帧（MemberId 对得上）",
+                hostSawClientVideo > 0 && clientSawHostVideo > 0,
+                $"主机收到客户端 {hostSawClientVideo} 帧｜客户端收到主机 {clientSawHostVideo} 帧");
+
+            // ④ 音频双向 + 假扬声器在拉混音数据（播放链路真的在跑）
+            await WaitAsync(() => Volatile.Read(ref hostStats).ReceivedAudioPackets > 0
+                && Volatile.Read(ref clientStats).ReceivedAudioPackets > 0, 12000).ConfigureAwait(false);
+            await WaitAsync(() => (hostMedia.LastSpeaker?.PulledFrames ?? 0) > 0
+                && (clientMedia.LastSpeaker?.PulledFrames ?? 0) > 0, 8000).ConfigureAwait(false);
+            var hostAudioPackets = Volatile.Read(ref hostStats).ReceivedAudioPackets;
+            var clientAudioPackets = Volatile.Read(ref clientStats).ReceivedAudioPackets;
+            var hostPulledFrames = hostMedia.LastSpeaker?.PulledFrames ?? 0;
+            var clientPulledFrames = clientMedia.LastSpeaker?.PulledFrames ?? 0;
+            check("音频双向通了：两端都收到对方的 μ-law 包，假扬声器在拉混音数据",
+                hostAudioPackets > 0 && clientAudioPackets > 0 && hostPulledFrames > 0 && clientPulledFrames > 0,
+                $"收到音频 主机 {hostAudioPackets} 包 / 客户端 {clientAudioPackets} 包｜"
+                + $"扬声器拉 主机 {hostPulledFrames} 帧 / 客户端 {clientPulledFrames} 帧");
+
+            // ⑤ 统计：两端码率都 > 0；丢帧计数不抛异常即可
+            await Task.Delay(1500).ConfigureAwait(false);
+            var hostSnapshot = Volatile.Read(ref hostStats);
+            var clientSnapshot = Volatile.Read(ref clientStats);
+            check("两端通话统计：发送 / 接收码率都 > 0，丢帧计数可读",
+                hostSnapshot.SendKbps > 0 && hostSnapshot.ReceiveKbps > 0
+                && clientSnapshot.SendKbps > 0 && clientSnapshot.ReceiveKbps > 0
+                && hostSnapshot.DroppedVideoFrames >= 0 && clientSnapshot.DroppedVideoFrames >= 0,
+                $"主机 ↑{hostSnapshot.SendKbps:0} ↓{hostSnapshot.ReceiveKbps:0} kbps｜"
+                + $"客户端 ↑{clientSnapshot.SendKbps:0} ↓{clientSnapshot.ReceiveKbps:0} kbps｜"
+                + $"丢帧 {clientSnapshot.DroppedVideoFrames}");
+
+            // ⑥ 通话媒体不算进「单次文件流量上限」：聊天连接自己的流量计几乎不涨
+            var meterBefore = client.Meter.SentBytes;
+            var mediaBefore = clientSnapshot.SentBytes;
+            await Task.Delay(2000).ConfigureAwait(false);
+            var meterGrowth = client.Meter.SentBytes - meterBefore;
+            var mediaGrowth = Volatile.Read(ref clientStats).SentBytes - mediaBefore;
+            check("通话媒体不计入文件流量上限（聊天连接自己的 Meter 增长远小于媒体发送量）",
+                mediaGrowth > 0 && meterGrowth * 8 < mediaGrowth,
+                $"2 秒内媒体 ↑{mediaGrowth} 字节，聊天连接的 Meter 只涨 {meterGrowth} 字节");
+
+            // ⑦ 麦克风 / 摄像头开关：客户端关掉后，主机的 callState 里对应状态变 false
+            var engine = client.ActiveCallEngine!;
+            try { engine.SetMicOn(false); } catch (Exception ex) { report.Add($"SetMicOn 抛异常：{ex.Message}"); }
+            await WaitAsync(() => host.CurrentCallState.Participants.Any(
+                p => p.MemberId == client.LocalMemberId && !p.MicOn), 8000).ConfigureAwait(false);
+            var micOffSeen = host.CurrentCallState.Participants.Any(
+                p => p.MemberId == client.LocalMemberId && !p.MicOn);
+            try { engine.SetCameraOn(false); } catch (Exception ex) { report.Add($"SetCameraOn 抛异常：{ex.Message}"); }
+            await WaitAsync(() => host.CurrentCallState.Participants.Any(
+                p => p.MemberId == client.LocalMemberId && !p.CameraOn), 8000).ConfigureAwait(false);
+            var cameraOffSeen = host.CurrentCallState.Participants.Any(
+                p => p.MemberId == client.LocalMemberId && !p.CameraOn);
+            check("客户端关麦克风 / 关摄像头后，主机 callState 里该成员的 MicOn / CameraOn 变成 false",
+                micOffSeen && cameraOffSeen, $"MicOn=false 看到={micOffSeen}｜CameraOn=false 看到={cameraOffSeen}");
+
+            // ⑧ 通话期间聊天仍然可用（媒体走的是另一条连接）
+            await host.SendTextAsync("通话中发文字").ConfigureAwait(false);
+            await WaitAsync(() => clientTexts.Contains("通话中发文字"), 8000).ConfigureAwait(false);
+            check("通话期间聊天仍然可用（主机的文字客户端收到了）",
+                clientTexts.Contains("通话中发文字"), string.Join(" | ", clientTexts));
+
+            // ⑨ 挂断：客户端退出通话，主机名单里也随 callState 移除
+            await client.LeaveCallAsync().ConfigureAwait(false);
+            await WaitAsync(() => !client.IsInCall
+                && host.CurrentCallState.Participants.All(p => p.MemberId != client.LocalMemberId), 8000).ConfigureAwait(false);
+            check("客户端挂断后自己不在通话里，主机 callState 的通话名单里也移除了它",
+                !client.IsInCall && host.CurrentCallState.Participants.All(p => p.MemberId != client.LocalMemberId),
+                $"IsInCall={client.IsInCall}｜主机通话人数 {host.CurrentCallState.Participants.Count}");
+        }
+        finally
+        {
+            try { await host.LeaveCallAsync().ConfigureAwait(false); } catch { }
+            // 兜底收掉假设备的后台线程（引擎正常会释放它们；重复释放是幂等的）
+            try { await clientMedia.DisposeCreatedAsync().ConfigureAwait(false); } catch { }
+            try { await hostMedia.DisposeCreatedAsync().ConfigureAwait(false); } catch { }
+            try { await client.DisposeAsync().ConfigureAwait(false); } catch { }
+            try { await host.DisposeAsync().ConfigureAwait(false); } catch { }
+        }
+    }
+
+    /// <summary>某个人的远端视频帧收到多少帧。</summary>
+    private static int CountFramesFrom(ConcurrentBag<CallRawFrame> frames, string memberId)
+        => frames.Count(frame => string.Equals(frame.MemberId, memberId, StringComparison.Ordinal));
 
     // ---------------------------------------------------------------- 小工具
 
