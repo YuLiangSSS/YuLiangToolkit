@@ -259,6 +259,70 @@
             </Style.Triggers>
         </Style>
 
+        <Style x:Key="PanelBookmarksTabStyle" TargetType="Button" BasedOn="{StaticResource PanelTabButtonStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsBookmarksPanel}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource CardHoverBackgroundBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- 书签一行的「打开」按钮：透明铺满左侧，悬停才亮底色 -->
+        <Style x:Key="BookmarkOpenButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Row" Background="Transparent"
+                                CornerRadius="{DynamicResource ControlCornerRadius}"
+                                Padding="2,1">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Row" Property="Background"
+                                        Value="{DynamicResource ListRowHoverBackgroundBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 书签一行：标题 / 地址 + 新标签页打开 + 删除 -->
+        <DataTemplate x:Key="BookmarkItemTemplate">
+            <Grid Margin="2,3">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button Style="{StaticResource BookmarkOpenButtonStyle}"
+                        Command="{Binding DataContext.OpenBookmarkCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                        CommandParameter="{Binding}" ToolTip="{Binding Url}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding DisplayTitle}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="{Binding Url}" FontSize="10.5" TextTrimming="CharacterEllipsis"
+                                   Margin="0,2,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </StackPanel>
+                </Button>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="新标签页" Style="{StaticResource PanelSmallButtonStyle}" Margin="6,0,4,0"
+                            ToolTip="在新标签页打开这个书签"
+                            Command="{Binding DataContext.OpenBookmarkInNewTabCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            CommandParameter="{Binding}" />
+                    <Button Content="&#xE711;" Style="{StaticResource TabMiniButtonStyle}"
+                            ToolTip="删除这个书签"
+                            Command="{Binding DataContext.RemoveBookmarkCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            CommandParameter="{Binding}" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
         <!-- 历史记录一行：标题 / 地址 / 时间 -->
         <DataTemplate x:Key="HistoryItemTemplate">
             <StackPanel Margin="2,3">
@@ -436,6 +500,22 @@
                                  ToolTip="{Binding PageTitle}" />
 
                         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <!-- 收藏当前页：空心星 / 实心星由 IsCurrentPageBookmarked 切换 -->
+                            <Button x:Name="BookmarkButton" Width="30" Margin="0,0,4,0"
+                                    ToolTip="收藏当前页（再点一次取消收藏）"
+                                    Command="{Binding ToggleBookmarkCommand}">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource NavButtonStyle}">
+                                        <Setter Property="Content" Value="&#xE734;" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsCurrentPageBookmarked}" Value="True">
+                                                <Setter Property="Content" Value="&#xE735;" />
+                                                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
                             <Button x:Name="GoButton" Content="前往" Style="{StaticResource SecondaryButtonStyle}"
                                     Padding="14,6" Command="{Binding GoCommand}" />
                             <TextBlock Text="{Binding StatusText}" Margin="10,0,0,0" VerticalAlignment="Center"
@@ -494,7 +574,7 @@
                                        Key="browser.网页与侧栏"
                                        Visibility="{Binding IsSidePanelOpen, Converter={StaticResource BoolToVis}}" />
 
-                    <!-- 右侧面板：历史记录 / 下载 -->
+                    <!-- 右侧面板：历史记录 / 下载 / 书签 -->
                     <Border Grid.Column="2" Background="{DynamicResource SidebarBackgroundBrush}"
                             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1,0,0,0"
                             Visibility="{Binding IsSidePanelOpen, Converter={StaticResource BoolToVis}}">
@@ -514,6 +594,8 @@
                                             Command="{Binding ShowHistoryCommand}" />
                                     <Button Content="下载" Style="{StaticResource PanelDownloadsTabStyle}"
                                             Command="{Binding ShowDownloadsCommand}" />
+                                    <Button Content="书签" Style="{StaticResource PanelBookmarksTabStyle}"
+                                            Command="{Binding ShowBookmarksCommand}" />
                                 </StackPanel>
                                 <Button Grid.Column="1" Content="&#xE711;" ToolTip="关闭面板"
                                         Style="{StaticResource TabMiniButtonStyle}"
@@ -558,6 +640,31 @@
                                                 <Setter Property="Visibility" Value="Collapsed" />
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding Downloads.Count}" Value="0">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+
+                                <!-- 书签 -->
+                                <Grid Visibility="{Binding IsBookmarksPanel, Converter={StaticResource BoolToVis}}">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled"
+                                                  core:ScrollChaining.Enabled="True">
+                                        <ItemsControl ItemsSource="{Binding Bookmarks}"
+                                                      ItemTemplate="{StaticResource BookmarkItemTemplate}" />
+                                    </ScrollViewer>
+                                    <TextBlock Text="还没有收藏&#x0a;（点地址栏右边的 ☆ 收藏当前页）"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               TextAlignment="Center" FontSize="12"
+                                               Foreground="{DynamicResource TextSecondaryBrush}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Bookmarks.Count}" Value="0">
                                                         <Setter Property="Visibility" Value="Visible" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
@@ -623,15 +730,17 @@
                         </Grid>
                     </Border>
 
-                    <!-- 历史记录 / 下载 / 清空 -->
-                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                    <!-- 历史记录 / 下载 / 书签 / 清空 -->
+                    <WrapPanel Margin="0,10,0,0">
                         <Button Content="📜 历史记录" Style="{StaticResource FlyoutActionButtonStyle}"
                                 Click="OnGearHistoryClick" />
                         <Button Content="⬇ 下载" Style="{StaticResource FlyoutActionButtonStyle}"
                                 Click="OnGearDownloadsClick" />
+                        <Button Content="🔖 书签" Style="{StaticResource FlyoutActionButtonStyle}"
+                                Click="OnGearBookmarksClick" />
                         <Button Content="🗑 清空浏览记录" Style="{StaticResource FlyoutActionButtonStyle}"
                                 Command="{Binding ClearHistoryCommand}" />
-                    </StackPanel>
+                    </WrapPanel>
 
                     <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,12" />
 

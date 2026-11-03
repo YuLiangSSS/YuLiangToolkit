@@ -21,8 +21,16 @@ public sealed class BrowserViewModel : ToolViewModelBase
     /// <summary>历史记录落盘防抖（连续跳多个页面只写一次盘）。</summary>
     private static readonly TimeSpan HistorySaveDelay = TimeSpan.FromMilliseconds(1500);
 
+    private enum SidePanelMode
+    {
+        History,
+        Downloads,
+        Bookmarks,
+    }
+
     private readonly BrowserHistoryStore _historyStore;
     private readonly BrowserDownloadStore _downloadStore;
+    private readonly BrowserBookmarkStore _bookmarkStore;
     private readonly DispatcherTimer _historySaveTimer;
     private List<BrowserDownloadRecord> _downloadRecords;
 
@@ -33,7 +41,7 @@ public sealed class BrowserViewModel : ToolViewModelBase
     private int _nextTabId;
     private double _currentZoom = 1.0;
     private bool _isSidePanelOpen;
-    private bool _isHistoryPanel = true;
+    private SidePanelMode _sidePanelMode = SidePanelMode.History;
     private bool _restoringSession;
     private string _homePageDraft = "";
     private string _homePageHint = "";
@@ -47,11 +55,18 @@ public sealed class BrowserViewModel : ToolViewModelBase
 
         _historyStore = new BrowserHistoryStore(Storage);
         _downloadStore = new BrowserDownloadStore(Storage);
+        _bookmarkStore = new BrowserBookmarkStore(Storage);
         _downloadRecords = _downloadStore.Load();
 
         History = new ObservableCollection<BrowserHistoryEntry>(_historyStore.Load());
         Downloads = new ObservableCollection<BrowserDownloadItem>(
             _downloadRecords.Select(record => new BrowserDownloadItem(record)));
+        Bookmarks = new ObservableCollection<BrowserBookmark>(_bookmarkStore.Load());
+        Bookmarks.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(IsCurrentPageBookmarked));
+            RefreshCommandState();
+        };
 
         _historySaveTimer = new DispatcherTimer { Interval = HistorySaveDelay };
         _historySaveTimer.Tick += (_, _) =>
@@ -78,11 +93,18 @@ public sealed class BrowserViewModel : ToolViewModelBase
         ZoomOutCommand = new RelayCommand(_ => ApplyZoom(BrowserZoom.Out(CurrentZoom)), _ => Host is { IsReady: true });
         ZoomResetCommand = new RelayCommand(_ => ApplyZoom(1.0), _ => Host is { IsReady: true });
 
-        // 侧栏：历史记录 / 下载
+        // 侧栏：历史记录 / 下载 / 书签
         ShowHistoryCommand = new RelayCommand(_ => ShowHistoryPanel());
         ShowDownloadsCommand = new RelayCommand(_ => ShowDownloadsPanel());
+        ShowBookmarksCommand = new RelayCommand(_ => ShowBookmarksPanel());
         CloseSidePanelCommand = new RelayCommand(_ => CloseSidePanel());
         ClearHistoryCommand = new RelayCommand(_ => ClearHistory(), _ => History.Count > 0);
+
+        // 书签：工具条星标 + 侧栏列表
+        ToggleBookmarkCommand = new RelayCommand(_ => ToggleBookmark(), _ => ActiveTab is { Url.Length: > 0 });
+        OpenBookmarkCommand = new RelayCommand(p => OpenBookmark(p as BrowserBookmark));
+        OpenBookmarkInNewTabCommand = new RelayCommand(p => OpenBookmarkInNewTab(p as BrowserBookmark));
+        RemoveBookmarkCommand = new RelayCommand(p => RemoveBookmark(p as BrowserBookmark));
 
         // 下载项上的操作（列表按钮用 CommandParameter 把 item 传进来）
         OpenDownloadFileCommand = new RelayCommand(p => OpenDownloadFile(p as BrowserDownloadItem));
@@ -203,32 +225,41 @@ public sealed class BrowserViewModel : ToolViewModelBase
     /// <summary>下载列表（进行中 + 最近完成 / 中断的记录，新的在前；记录落 <c>Data\browser\downloads.json</c>）。</summary>
     public ObservableCollection<BrowserDownloadItem> Downloads { get; }
 
-    // ---------- 侧栏（历史记录 / 下载） ----------
+    // ---------- 书签 ----------
+
+    /// <summary>收藏的网址（新的在前；<c>Data\browser\bookmarks.json</c>）。</summary>
+    public ObservableCollection<BrowserBookmark> Bookmarks { get; }
+
+    /// <summary>当前激活标签的地址是否已经收藏（工具条星标实心 / 空心）。</summary>
+    public bool IsCurrentPageBookmarked
+        => ActiveTab is { } tab && BrowserBookmarks.ContainsUrl(Bookmarks, tab.Url);
+
+    // ---------- 侧栏（历史记录 / 下载 / 书签） ----------
 
     /// <summary>右侧面板是否打开（打开后网页区域收窄，面板宽度可拖拽记忆）。</summary>
     public bool IsSidePanelOpen
     {
         get => _isSidePanelOpen;
-        private set
-        {
-            if (!Set(ref _isSidePanelOpen, value)) return;
-            OnPropertyChanged(nameof(IsDownloadsPanel));
-        }
+        private set => Set(ref _isSidePanelOpen, value);
     }
 
-    /// <summary>侧栏当前显示历史记录（false = 显示下载）。</summary>
-    public bool IsHistoryPanel
-    {
-        get => _isHistoryPanel;
-        private set
-        {
-            if (!Set(ref _isHistoryPanel, value)) return;
-            OnPropertyChanged(nameof(IsDownloadsPanel));
-        }
-    }
+    /// <summary>侧栏当前显示历史记录。</summary>
+    public bool IsHistoryPanel => _sidePanelMode == SidePanelMode.History;
 
     /// <summary>侧栏当前显示下载。</summary>
-    public bool IsDownloadsPanel => IsSidePanelOpen && !IsHistoryPanel;
+    public bool IsDownloadsPanel => _sidePanelMode == SidePanelMode.Downloads;
+
+    /// <summary>侧栏当前显示书签。</summary>
+    public bool IsBookmarksPanel => _sidePanelMode == SidePanelMode.Bookmarks;
+
+    private void SetSidePanelMode(SidePanelMode mode)
+    {
+        if (_sidePanelMode == mode) return;
+        _sidePanelMode = mode;
+        OnPropertyChanged(nameof(IsHistoryPanel));
+        OnPropertyChanged(nameof(IsDownloadsPanel));
+        OnPropertyChanged(nameof(IsBookmarksPanel));
+    }
 
     // ---------- 主页 / 启动设置 ----------
 
@@ -284,8 +315,14 @@ public sealed class BrowserViewModel : ToolViewModelBase
 
     public RelayCommand ShowHistoryCommand { get; }
     public RelayCommand ShowDownloadsCommand { get; }
+    public RelayCommand ShowBookmarksCommand { get; }
     public RelayCommand CloseSidePanelCommand { get; }
     public RelayCommand ClearHistoryCommand { get; }
+
+    public RelayCommand ToggleBookmarkCommand { get; }
+    public RelayCommand OpenBookmarkCommand { get; }
+    public RelayCommand OpenBookmarkInNewTabCommand { get; }
+    public RelayCommand RemoveBookmarkCommand { get; }
 
     public RelayCommand OpenDownloadFileCommand { get; }
     public RelayCommand OpenDownloadFolderCommand { get; }
@@ -349,6 +386,7 @@ public sealed class BrowserViewModel : ToolViewModelBase
         PageTitle = tab?.Header ?? "";
         IsLoading = tab?.IsLoading ?? false;
         CurrentZoom = tab?.ZoomFactor ?? 1.0;
+        OnPropertyChanged(nameof(IsCurrentPageBookmarked));
         StatusText = tab?.LastError ?? (tab is null ? "就绪" : (tab.IsLoading ? "正在加载…" : "就绪"));
         RefreshCommandState();
     }
@@ -423,6 +461,7 @@ public sealed class BrowserViewModel : ToolViewModelBase
     {
         SaveSession();
         SaveHistoryNow();
+        SaveBookmarks();
         Host?.Close();
         Host = null;
     }
@@ -438,22 +477,91 @@ public sealed class BrowserViewModel : ToolViewModelBase
 
     internal void ShowHistoryPanel()
     {
-        IsHistoryPanel = true;
+        SetSidePanelMode(SidePanelMode.History);
         IsSidePanelOpen = true;
         StatusText = History.Count == 0 ? "还没有浏览记录" : $"浏览记录：{History.Count} 条";
     }
 
     internal void ShowDownloadsPanel()
     {
-        IsHistoryPanel = false;
+        SetSidePanelMode(SidePanelMode.Downloads);
         IsSidePanelOpen = true;
         StatusText = Downloads.Count == 0 ? "还没有下载记录" : $"下载：{Downloads.Count} 项";
+    }
+
+    internal void ShowBookmarksPanel()
+    {
+        SetSidePanelMode(SidePanelMode.Bookmarks);
+        IsSidePanelOpen = true;
+        StatusText = Bookmarks.Count == 0 ? "还没有收藏（点地址栏右边的 ☆ 收藏当前页）" : $"书签：{Bookmarks.Count} 个";
     }
 
     internal void CloseSidePanel()
     {
         IsSidePanelOpen = false;
     }
+
+    // ---------- 书签操作 ----------
+
+    /// <summary>收藏 / 取消收藏当前激活标签（工具条星标按钮）。</summary>
+    private void ToggleBookmark()
+    {
+        var tab = ActiveTab;
+        if (tab is null) return;
+
+        var url = BrowserBookmarks.NormalizeUrl(tab.Url);
+        if (url is null)
+        {
+            StatusText = "这个页面不能收藏（空白页 / 临时数据页）";
+            return;
+        }
+
+        if (BrowserBookmarks.RemoveByUrl(Bookmarks, url))
+        {
+            SaveBookmarks();
+            StatusText = $"已取消收藏：{tab.Title}";
+            OnPropertyChanged(nameof(IsCurrentPageBookmarked));
+            return;
+        }
+
+        var bookmark = BrowserBookmarks.Create(url, string.IsNullOrWhiteSpace(tab.Title) ? url : tab.Title, DateTime.Now);
+        if (bookmark is null) return;
+        if (!BrowserBookmarks.Add(Bookmarks, bookmark))
+        {
+            StatusText = "这个页面已经收藏过了";
+            return;
+        }
+
+        SaveBookmarks();
+        StatusText = $"已收藏：{bookmark.DisplayTitle}";
+        OnPropertyChanged(nameof(IsCurrentPageBookmarked));
+    }
+
+    /// <summary>点击书签：在当前标签打开（侧栏保持打开）。</summary>
+    private void OpenBookmark(BrowserBookmark? bookmark)
+    {
+        if (bookmark is null || string.IsNullOrWhiteSpace(bookmark.Url)) return;
+        NavigateTo(bookmark.Url);
+        StatusText = $"打开书签：{bookmark.DisplayTitle}";
+    }
+
+    private void OpenBookmarkInNewTab(BrowserBookmark? bookmark)
+    {
+        if (bookmark is null || string.IsNullOrWhiteSpace(bookmark.Url)) return;
+        OpenTab(bookmark.Url);
+        StatusText = $"在新标签页打开书签：{bookmark.DisplayTitle}";
+    }
+
+    private void RemoveBookmark(BrowserBookmark? bookmark)
+    {
+        if (bookmark is null) return;
+        if (!BrowserBookmarks.RemoveByUrl(Bookmarks, bookmark.Url)) return;
+        SaveBookmarks();
+        OnPropertyChanged(nameof(IsCurrentPageBookmarked));
+        StatusText = $"已删除书签：{bookmark.DisplayTitle}";
+    }
+
+    private void SaveBookmarks() => _bookmarkStore.Save(Bookmarks);
 
     /// <summary>点击历史记录：在当前标签打开（和 Chrome 的侧栏行为一致），侧栏保持打开。</summary>
     internal void OpenHistoryEntry(BrowserHistoryEntry? entry)
@@ -655,6 +763,7 @@ public sealed class BrowserViewModel : ToolViewModelBase
                 case nameof(BrowserTab.Url):
                     if (!AddressBarEditing) AddressText = tab.Url;
                     OnPropertyChanged(nameof(PageTitle)); // Header 可能跟着变（悬停提示用）
+                    OnPropertyChanged(nameof(IsCurrentPageBookmarked));
                     break;
                 case nameof(BrowserTab.Title):
                     PageTitle = tab.Header;

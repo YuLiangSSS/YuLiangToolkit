@@ -23,6 +23,7 @@ internal static class BrowserChecks
         CheckZoom(check);
         CheckHistory(check);
         CheckDownloads(check);
+        CheckBookmarks(check);
         CheckConfig(check);
     }
 
@@ -351,6 +352,81 @@ internal static class BrowserChecks
         check("[浏览器] 下载项：完成后不再是进行中，记录为已完成",
             !item.IsActive && item.IsCompleted && item.Progress == 1 && item.ToRecord().Completed,
             item.StateText);
+    }
+
+    // ---------------------------------------------------------------- 书签
+
+    private static void CheckBookmarks(Action<string, bool, string> check)
+    {
+        var now = new DateTime(2026, 1, 2, 3, 4, 5);
+        var list = new List<BrowserBookmark>();
+
+        var created = BrowserBookmarks.Create("  https://a.com/  ", "  A  ", now);
+        check("[浏览器] 书签：创建时去首尾空白",
+            created is { Url: "https://a.com/", Title: "A", CreatedAt: var t } && t == now,
+            $"{created?.Url} · {created?.Title}");
+
+        check("[浏览器] 书签：添加成功 / 重复地址不重复加",
+            BrowserBookmarks.Add(list, created)
+            && list.Count == 1
+            && !BrowserBookmarks.Add(list, BrowserBookmarks.Create("https://a.com/", "另一个标题", now))
+            && list.Count == 1,
+            $"{list.Count} 个");
+
+        check("[浏览器] 书签：标题为空时显示地址、ContainsUrl 精确匹配",
+            BrowserBookmarks.ContainsUrl(list, " https://a.com/ ")
+            && !BrowserBookmarks.ContainsUrl(list, "https://a.com/other")
+            && BrowserBookmarks.Create("https://b.com/", "", now) is { DisplayTitle: "https://b.com/" },
+            "a.com / other");
+
+        check("[浏览器] 书签：空白页 / data: / javascript: / 空地址不能收藏",
+            BrowserBookmarks.Create("about:blank", "x", now) is null
+            && BrowserBookmarks.Create("data:text/html,x", "x", now) is null
+            && BrowserBookmarks.Create("javascript:alert(1)", "x", now) is null
+            && BrowserBookmarks.Create("   ", "x", now) is null
+            && BrowserBookmarks.Create(null, "x", now) is null,
+            "about / data / javascript / 空 / null");
+
+        BrowserBookmarks.Add(list, BrowserBookmarks.Create("https://b.com/", "B", now));
+        check("[浏览器] 书签：新书签插到最前面 / 按地址删除",
+            list.Count == 2 && list[0].Url == "https://b.com/"
+            && BrowserBookmarks.RemoveByUrl(list, "https://a.com/")
+            && list.Count == 1 && list[0].Url == "https://b.com/"
+            && !BrowserBookmarks.RemoveByUrl(list, "https://a.com/"),
+            string.Join(" | ", list.Select(b => b.Url)));
+
+        var raw = new BrowserBookmark?[]
+        {
+            new() { Url = "  https://x.com/  ", Title = " X " },
+            new() { Url = "", Title = "空" },
+            new() { Url = "about:blank", Title = "空白" },
+            new() { Url = "https://x.com/", Title = "重复地址" },
+            null,
+        };
+        var normalized = BrowserBookmarks.Normalize(raw);
+        check("[浏览器] 书签清洗：去空 / 无意义协议 / null，按地址去重，去首尾空白",
+            normalized.Count == 1 && normalized[0].Url == "https://x.com/" && normalized[0].Title == "X",
+            string.Join(" | ", normalized.Select(b => b.Url)));
+
+        var many = Enumerable.Range(0, BrowserBookmarks.MaxEntries + 5)
+            .Select(i => new BrowserBookmark { Url = $"https://b{i}.com/", Title = $"B{i}" })
+            .ToList();
+        check($"[浏览器] 书签：封顶 {BrowserBookmarks.MaxEntries} 个",
+            BrowserBookmarks.Normalize(many).Count == BrowserBookmarks.MaxEntries,
+            BrowserBookmarks.Normalize(many).Count.ToString());
+
+        // 落盘往返（自检数据根是临时目录，不碰真 Data）
+        var store = new BrowserBookmarkStore(ToolStorage.For(BrowserConfig.ToolId));
+        var saved = store.Save(new[]
+        {
+            new BrowserBookmark { Url = "https://bookmark-a.com/", Title = "A", CreatedAt = now },
+            new BrowserBookmark { Url = "https://bookmark-b.com/", Title = "B", CreatedAt = now },
+        });
+        var loaded = store.Load();
+        check("[浏览器] 书签文件：保存后能读回（新的在前）",
+            saved && loaded.Count == 2
+            && loaded[0].Url == "https://bookmark-a.com/" && loaded[0].Title == "A",
+            $"{loaded.Count} 个");
     }
 
     // ---------------------------------------------------------------- 配置 / 旧配置迁移

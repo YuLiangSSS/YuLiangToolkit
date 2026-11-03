@@ -13,7 +13,7 @@
 | 📄 PDF 阅读器 | 简单 PDF 阅读器：纵向 / 横向连续滚动 + 双页并排一次翻两页，支持缩放、Ctrl+F 文字搜索、书签目录、双页页面间距、拖动惯性 / 滚轮惯性、自动记住每本 PDF 上次阅读位置、页码跳转、🕘 最近浏览（上限可调）、F11 全屏沉浸阅读（工具条自动隐藏）与双击 .pdf 关联；只读不改原文件 | [tools/pdf-reader.md](tools/pdf-reader.md) |
 | ⚡ Flash 下载器 | 4399 / 7k7k / 17yy / ArmorGames / Kongregate 小游戏下载到本地离线玩 | [tools/flash-downloader.md](tools/flash-downloader.md) |
 | 💬 联机聊天室 | 主机开端口、客户端连进来，局域网 / 内网穿透都能用，带流量上限 | [tools/chat-room.md](tools/chat-room.md) |
-| 🌐 网页浏览器 | Chromium 内核（WebView2）多标签：上方 / 左侧标签栏、前进后退刷新、网页右键刷新、会话恢复（懒加载）、历史记录 / 下载侧栏、页面缩放（Ctrl+滚轮）、主页与清空记录 | [tools/browser.md](tools/browser.md) |
+| 🌐 网页浏览器 | Chromium 内核（WebView2）多标签：上方 / 左侧标签栏、前进后退刷新、网页右键刷新、会话恢复（懒加载）、历史记录 / 下载 / 书签侧栏、页面缩放（Ctrl+滚轮）、主页与清空记录 | [tools/browser.md](tools/browser.md) |
 | 🏷️ 批量重命名 | 规则清单 + 预览 + 两阶段改名 + 撤销 | [tools/batch-rename.md](tools/batch-rename.md) |
 | 📝 文本编辑器 | 多标签文本 / 代码编辑（AvalonEdit）：语法高亮、查找替换、编码与换行自动识别、界面缩放 | [tools/text-editor.md](tools/text-editor.md) |
 | 🎧 osu! 下图器 | 搜谱面集、批量下 `.osz` | [tools/map-downloader.md](tools/map-downloader.md) |

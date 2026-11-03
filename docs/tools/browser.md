@@ -8,7 +8,8 @@
 
 在工具集里直接上网：**标签条上点 + 开新标签、× 或中键关标签**，标签栏可以放**上方**也可以放**左侧**；
 地址栏输入**网址**或**搜索词**（默认 Google），前进 / 后退 / 刷新 / 主页按钮，网页里**右键也能刷新**；
-工具条右边的 **⚙ 齿轮**里有历史记录、下载、页面缩放、默认主页和「启动时恢复上次标签页」设置。
+工具条右边的 **⚙ 齿轮**里有历史记录、下载、页面缩放、默认主页和「启动时恢复上次标签页」设置；
+地址栏右边的 **☆ 星标**一键收藏当前页，齿轮 / 侧栏里可以查看和管理**书签**。
 
 ## 怎么用
 
@@ -36,6 +37,8 @@
    这是本工具自己画的菜单（收到 `ContextMenuRequested` 后接管掉 WebView2 默认菜单），
    「另存为」是把默认菜单里的 `saveImageAs` / `saveLinkAs` 命令 Id 报回去执行的，不是自己下文件。
 7. `target=_blank` / `window.open` 的链接**在新标签页里打开**（后台自动激活）。
+8. **书签**：地址栏右边的 **☆ 星标**收藏当前页 / 再点取消收藏（实心 = 已收藏）；齿轮 → **🔖 书签**
+   或侧栏「书签」页签查看收藏。点书签在当前标签打开，行尾「新标签页」在新标签打开，「×」删除。
 
 > 快捷键 Ctrl+T / Ctrl+W / Ctrl+Tab 在焦点位于地址栏 / 标签条时可靠；焦点在网页内部时 WebView2（原生窗口）
 > 可能自己吃掉按键——按钮永远可用。
@@ -49,6 +52,8 @@
 - **⬇ 下载**：打开右侧面板，显示进行中 + 最近完成 / 中断的下载：进度、大小、状态，可以**取消**进行中的下载，
   完成后可以**打开文件 / 打开文件夹**。开始下载时会自动切到这个面板（类似 Chrome 的下载气泡）。
   下载文件默认保存到系统的「下载」文件夹（由 WebView2 的默认下载路径决定）。
+- **🔖 书签**：打开右侧书签面板；点书签在当前标签打开，行尾「新标签页」在新标签打开，「×」删除。
+  地址栏右边的 **☆** 一键收藏 / 取消收藏当前页（星标实心 = 已收藏）。
 - **🗑 清空浏览记录**：二次确认后清空历史列表和 `Data\browser\history.json`；**Cookie / 登录态、下载记录不受影响**
   （要清 Cookie 用「主页设置 → 清理缓存」）。
 - **默认主页**：输入完整网址点「保存」即可（接受 `example.com` 这种裸域名，会自动补 `https://`；
@@ -80,6 +85,7 @@
 - **浏览历史**：`Data\browser\history.json`（最多 2000 条，新的在前；「清空浏览记录」清这里；
   `about:` / `data:` 空白页不记录，连续同一地址只更新标题 / 时间）
 - **下载记录**：`Data\browser\downloads.json`（最多 100 条已结束的下载；进行中的下载只在本次运行里）
+- **书签**：`Data\browser\bookmarks.json`（最多 500 个，按地址去重；不在 `config.json` 里，清缓存不会删）
 - **网页用户数据**：`Cache\browser\WebView2\`（Cookie / 登录态 / 网页缓存 / IndexedDB…，所有标签共享一份）
   - 属于「随时可以删」的缓存：**主页设置 → 清理缓存**会把它一起清掉（登录态也会没）；
   - 内核正在运行时部分文件被占用，清理可能清不干净，切走再清 / 下次清理即可。
@@ -141,6 +147,7 @@
 | 页面缩放规则（夹取 / 加减档 / 百分比） | `src/YuLiangToolkit.Tools.Browser/BrowserZoom.cs` |
 | 历史记录规则 + 文件读写 | `src/YuLiangToolkit.Tools.Browser/BrowserHistory.cs` |
 | 下载项 / 下载记录规则 + 文件读写 | `src/YuLiangToolkit.Tools.Browser/BrowserDownload.cs` |
+| 书签规则 + 文件读写 | `src/YuLiangToolkit.Tools.Browser/BrowserBookmark.cs` |
 | 配置项（含会话快照 `SessionTabs`、旧 Bing 默认迁移） | `src/YuLiangToolkit.Tools.Browser/BrowserConfig.cs` |
 | 单个标签的状态（标题 / 地址 / 加载 / 前进后退 / 缩放） | `src/YuLiangToolkit.Tools.Browser/ViewModels/BrowserTab.cs` |
 | ViewModel（标签 / 历史 / 下载 / 缩放 / 侧栏 / 主页设置 / 会话恢复） | `src/YuLiangToolkit.Tools.Browser/ViewModels/BrowserViewModel.cs` |

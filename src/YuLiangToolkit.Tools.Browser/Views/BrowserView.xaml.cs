@@ -842,6 +842,12 @@ public partial class BrowserView : UserControl, IBrowserHost
         Vm?.ShowDownloadsPanel();
     }
 
+    private void OnGearBookmarksClick(object sender, RoutedEventArgs e)
+    {
+        GearPopup.IsOpen = false;
+        Vm?.ShowBookmarksPanel();
+    }
+
     /// <summary>点历史记录条目：打开 (当前标签)；侧栏保持打开，方便继续翻。</summary>
     private void OnHistoryListSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -897,6 +903,8 @@ public partial class BrowserView : UserControl, IBrowserHost
             {
                 if (panel.Trim().StartsWith("download", StringComparison.OrdinalIgnoreCase))
                     vm.ShowDownloadsPanel();
+                else if (panel.Trim().StartsWith("bookmark", StringComparison.OrdinalIgnoreCase))
+                    vm.ShowBookmarksPanel();
                 else
                     vm.ShowHistoryPanel();
             });
