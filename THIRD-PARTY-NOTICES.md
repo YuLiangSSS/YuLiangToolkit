@@ -107,6 +107,15 @@
 - 说明：语音功能由用户主动触发（点「说出来 / 发送对话 / 试听」或打开空闲自言自语）；合成音频只在内存里播放，
   **不保存任何音频文件**、不申请麦克风；在线合成失败会自动回退本地语音。
 
+## AvalonEdit 6.3.1.120（NuGet 依赖）
+
+- 用途：「文本编辑器」（`src/YuLiangToolkit.Tools.TextEditor/`）的编辑内核：行号列 / 语法高亮 / 大文件虚拟化 / 撤销重做
+- 项目主页：<https://github.com/icsharpcode/AvalonEdit>
+- 许可：MIT License
+- 版权：Copyright (c) 2014-2024 AlphaSierraPapa / ICSharpCode
+- 说明：本项目只引用 NuGet 包（托管程序集与主题资源），**没有修改**其源码；从源码构建时首次需要联网还原一次，
+  之后走本机 NuGet 缓存，运行时不依赖额外的系统组件。
+
 ## MIT License 全文
 
 ```

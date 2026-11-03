@@ -57,6 +57,10 @@
     <!-- 「网页浏览器」：地址栏输入解析（补协议 / localhost / IP / 搜索词）/ 搜索模板 / 配置默认值，
          全是纯逻辑；不启动 WebView2、不联网。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Browser\YuLiangToolkit.Tools.Browser.csproj" />
+    <!-- 「文本编辑器」：文件编码探测（BOM / UTF-8 / GB18030）/ 换行风格与归一 / 读写往返 /
+         最近文件列表 / 查找替换纯逻辑 / 标签规则与脏标记链路 / 高亮暗色调色 / 配置默认值，
+         全部无头跑；不实例化 AvalonEdit 控件。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.TextEditor\YuLiangToolkit.Tools.TextEditor.csproj" />
   </ItemGroup>
 
 </Project>

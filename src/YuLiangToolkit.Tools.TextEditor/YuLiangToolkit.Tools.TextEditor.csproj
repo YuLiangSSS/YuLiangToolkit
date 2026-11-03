@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「文本编辑器」：AvalonEdit（MIT，见 THIRD-PARTY-NOTICES.md）做编辑内核——
+       行号列 / 语法高亮 / 大文件虚拟化 / 撤销重做都由它提供；
+       菜单栏 / 标签条 / 查找替换条 / 设置面板是本项目手写的深色界面。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.TextEditor</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.TextEditor</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AvalonEdit" Version="6.3.1.120" />
+  </ItemGroup>
+
+</Project>

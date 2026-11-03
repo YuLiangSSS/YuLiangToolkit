@@ -303,3 +303,24 @@
 - ArmorGames / Kongregate 的 swf 不能按文件名规律拼：从 `<param name="movie">` / `<embed src>` / `iframeConfig` / `swf_location` 里读；Kongregate 跳三跳、要排掉 API 库 swf（`API_AS3_*.swf`）、`iframeConfig` 不是合法 JSON。
 - 散放 swf 本体就是自己：`GameFullPath` 别拼一层；`GamesLibrary` / `Library` 别写字段初始化器（构造前空字符串 → 游戏目录空、说明文件写到仓库根）。
 - 播放器无稳定发现源：路径随时失效；查找器要覆盖用户自整理目录（`桌面\Flash Games\tool\`），找不到提示指定路径。
+
+### 文本编辑器（AvalonEdit）
+- ⚠ **WPF `Menu` / `MenuItem` 默认模板左侧有一条白底「图标列」**：深色主题下非常突兀，只设 `Background` 盖不住，
+  必须给 `Menu` / `MenuItem` 写页面私有的 `ControlTemplate`（`TextEditorView.xaml` 的 `EditorMenuBarStyle` /
+  `EditorMenuItemStyle`）；**别动 `App.xaml`**（会波及全程序菜单）。浏览器右键菜单踩过同一个坑。
+- ⚠ **标签条 `ListBox` 的默认 `ItemsPanel` 是纵向 `VirtualizingStackPanel`**：不换面板标签会竖着叠、只看得见一个，
+  必须内联 `<ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>`；横向溢出还得套
+  `ScrollViewer` + 在 `PreviewMouseWheel` 里自己把滚轮换成横向滚动，别指望 `ListBox` 原生横滚。
+- ⚠ **宿主窗口快捷键（`Window.PreviewKeyDown`）要成对挂 / 摘，而且每次 `Loaded` 都要重挂**：外壳会缓存工具视图，
+  切走再切回来会再触发 `Loaded`；`_vmWired` 只能守「订阅 ViewModel / 配置」这类只做一次的事，
+  `Host` 赋值、快捷键重挂、标签可见性同步必须每次都做——否则切走再回来菜单里的撤销 / 复制 / 查找全部变灰点不动。
+  VM 与 View 之间用 `IEditorHost` 接口路由（同浏览器 `IBrowserHost`）：View 在 `Loaded` 里 `vm.Host = this`、
+  `Unloaded` 里 `vm.Host = null`，VM 的编辑命令只认 `Host`、不直接摸 AvalonEdit 控件。
+- ⚠ **`ToolViewModelBase.NotifyClosed` 的顺序是「先 `ConfigStore.Flush()`，再 `OnClosed()`」**：在 `OnClosed` 里
+  才写进配置的会话数据不会自动落盘；要么在 `OnClosed` 末尾补 `Cfg.SaveNow()`，要么在标签增删 / 切换时就把会话
+  写进配置（靠后台自动保存）。而且外壳切走工具时只调 `ConfigStore.Flush()`，根本不调 `NotifyClosed`。
+- ⚠ **AvalonEdit 内置语法高亮定义（`HighlightingManager`）是全局缓存**：按颜色名把前景色改成暗色友好色时，
+  覆写必须幂等（记一份已处理的集合），并且单项覆写失败要吞异常——不能因为高亮把编辑器搞挂。
+- ⚠ **编码探测别用默认的 `Encoding.GetEncoding(936)`**：.NET 默认不带 GB18030 代码页，必须先
+  `Encoding.RegisterProvider(CodePagesEncodingProvider.Instance)`（`TextFileCodec` 静态构造里做），
+  否则中文 ANSI 文件直接抛异常。

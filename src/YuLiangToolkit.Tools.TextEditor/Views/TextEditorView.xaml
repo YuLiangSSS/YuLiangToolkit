@@ -1,0 +1,686 @@
+<UserControl x:Class="YuLiangToolkit.Tools.TextEditor.Views.TextEditorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             xmlns:te="clr-namespace:YuLiangToolkit.Tools.TextEditor"
+             xmlns:vm="clr-namespace:YuLiangToolkit.Tools.TextEditor.ViewModels"
+             xmlns:conv="clr-namespace:YuLiangToolkit.Tools.TextEditor.Views"
+             Background="{DynamicResource WindowBackgroundBrush}"
+             AllowDrop="True" Drop="OnDropFile" DragOver="OnDragOverFile"
+             Focusable="False">
+
+    <!-- 文本编辑器（参考 Zed）：顶部菜单栏 + 标签条 + 查找替换条 + 编辑器宿主 + 状态栏，
+         右侧偏好设置浮层（可拖宽，Esc / × 关闭）。
+         ⚠ 每个标签一个 AvalonEdit TextEditor 实例（在 TextEditorView.xaml.cs 里按 ActiveTab 创建），
+         全部叠在 EditorHost 里、只显示激活那个 —— 各标签的撤销栈 / 光标 / 滚动互不影响。
+         ⚠ 菜单栏必须自定义模板：WPF 默认 MenuItem 模板有「图标列」白底竖条（深色主题下突兀），
+           同浏览器右键菜单的教训。
+         ⚠ 设置面板浮层的宽度 = 它所在列的宽度（显隐时 304 px / 0，见 PaneWidthConverter）：
+           收起时列真的归零、编辑区不被挤窄；拖过的宽度由 PaneSplitter 记忆（别再用 code-behind 改列宽）。 -->
+
+    <UserControl.Resources>
+        <conv:HexToBrushConverter x:Key="HexToBrush" />
+
+        <!-- 最近文件菜单项标题：长路径截断（完整路径进 ToolTip），不让「打开最近」把菜单撑到屏幕外 -->
+        <DataTemplate x:Key="RecentFileHeaderTemplate">
+            <TextBlock Text="{Binding}" MaxWidth="480" TextTrimming="CharacterEllipsis" />
+        </DataTemplate>
+
+        <!-- ================= 菜单栏（深色自定义模板） ================= -->
+
+        <!-- Menu 本体：去掉默认 chrome，横向排布顶级菜单 -->
+        <Style x:Key="EditorMenuBarStyle" TargetType="Menu">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Menu">
+                        <StackPanel Orientation="Horizontal" IsItemsHost="True" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 顶级菜单项（文件 / 编辑 / 查看 / 偏好设置）：模板里带 PART_Popup（子菜单从底部弹出） -->
+        <Style x:Key="EditorTopMenuItemStyle" TargetType="MenuItem">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Grid>
+                            <Border x:Name="Row" Background="Transparent"
+                                    CornerRadius="{DynamicResource ControlCornerRadius}"
+                                    Padding="{TemplateBinding Padding}" Margin="1,2"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
+                                                  VerticalAlignment="Center" />
+                            </Border>
+                            <Popup x:Name="PART_Popup"
+                                   Placement="Bottom"
+                                   IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                                   AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                                <Border Margin="0,4,16,16"
+                                        Background="{DynamicResource CardBackgroundBrush}"
+                                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                        CornerRadius="{DynamicResource ControlCornerRadius}" Padding="4"
+                                        SnapsToDevicePixels="True">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.35" />
+                                    </Border.Effect>
+                                    <StackPanel IsItemsHost="True"
+                                                KeyboardNavigation.DirectionalNavigation="Cycle" />
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Row" Property="Background"
+                                        Value="{DynamicResource CardHoverBackgroundBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSubmenuOpen" Value="True">
+                                <Setter TargetName="Row" Property="Background"
+                                        Value="{DynamicResource InputBackgroundBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 子菜单里的父项（打开最近 ▸）：同样带弹层，弹出方向改为右侧 -->
+        <Style x:Key="EditorMenuParentStyle" TargetType="MenuItem"
+               BasedOn="{StaticResource EditorTopMenuItemStyle}">
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="IsEnabled" Value="{Binding HasItems, RelativeSource={RelativeSource Self}}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Grid>
+                            <Border x:Name="Row" Background="Transparent"
+                                    CornerRadius="{DynamicResource ControlCornerRadius}"
+                                    Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
+                                                      VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="›" Margin="24,0,0,0"
+                                               VerticalAlignment="Center" FontSize="14"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                </Grid>
+                            </Border>
+                            <Popup x:Name="PART_Popup"
+                                   Placement="Right"
+                                   IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                                   AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                                <Border Margin="4,0,16,16"
+                                        Background="{DynamicResource CardBackgroundBrush}"
+                                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                        CornerRadius="{DynamicResource ControlCornerRadius}" Padding="4"
+                                        SnapsToDevicePixels="True">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.35" />
+                                    </Border.Effect>
+                                    <StackPanel IsItemsHost="True"
+                                                KeyboardNavigation.DirectionalNavigation="Cycle" />
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Row" Property="Background"
+                                        Value="{DynamicResource CardHoverBackgroundBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSubmenuOpen" Value="True">
+                                <Setter TargetName="Row" Property="Background"
+                                        Value="{DynamicResource InputBackgroundBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.4" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 叶子菜单项：勾选列（可勾选项才出现）+ 标题 + 右侧快捷键文案 -->
+        <Style x:Key="EditorMenuItemStyle" TargetType="MenuItem">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="Row" Background="Transparent"
+                                CornerRadius="{DynamicResource ControlCornerRadius}"
+                                Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="CheckGlyph" Grid.Column="0" Text="✓"
+                                           Margin="0,0,8,0" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource AccentBrush}"
+                                           Visibility="Collapsed" />
+                                <ContentPresenter Grid.Column="1" ContentSource="Header"
+                                                  RecognizesAccessKey="True" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}"
+                                           Margin="28,0,0,0" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Row" Property="Background"
+                                        Value="{DynamicResource CardHoverBackgroundBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="CheckGlyph" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.4" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="EditorMenuSeparatorStyle" TargetType="Separator">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Margin" Value="6,4" />
+            <Setter Property="Background" Value="{DynamicResource BorderBrush}" />
+        </Style>
+
+        <!-- ================= 标签条（照浏览器的多标签样式） ================= -->
+
+        <!-- 标签条上的小按钮（+ 新建、× 关闭） -->
+        <Style x:Key="TabMiniButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" Background="{TemplateBinding Background}"
+                                CornerRadius="{DynamicResource ControlCornerRadius}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource CardHoverBackgroundBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource InputBackgroundBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 标签内容：标题（未保存带 ●） + 关闭按钮；选中 = 卡片底色，悬停 = 行悬停色 -->
+        <DataTemplate x:Key="EditorTabItemTemplate" DataType="{x:Type vm:EditorTab}">
+            <Border x:Name="Root" Margin="2,3" Padding="9,5"
+                    CornerRadius="{DynamicResource ControlCornerRadius}"
+                    Background="Transparent" SnapsToDevicePixels="True">
+                <Grid ToolTip="{Binding FilePathText}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="{Binding Header}" VerticalAlignment="Center"
+                               MaxWidth="168" TextTrimming="CharacterEllipsis" FontSize="12"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <Button x:Name="CloseButton" Grid.Column="1" Content="&#xE711;"
+                            Style="{StaticResource TabMiniButtonStyle}" Margin="5,0,0,0"
+                            ToolTip="关闭标签（Ctrl+W，中键点击也行）"
+                            Click="OnTabCloseClick" />
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True">
+                    <Setter TargetName="Root" Property="Background" Value="{DynamicResource ListRowHoverBackgroundBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                    <Setter TargetName="Root" Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <Style x:Key="EditorTabItemContainerStyle" TargetType="ListBoxItem">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <ContentPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="EditorTabListBoxStyle" TargetType="ListBox">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="ItemTemplate" Value="{StaticResource EditorTabItemTemplate}" />
+            <Setter Property="ItemContainerStyle" Value="{StaticResource EditorTabItemContainerStyle}" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Hidden" />
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Disabled" />
+            <Setter Property="VirtualizingPanel.IsVirtualizing" Value="False" />
+            <Setter Property="SelectedItem" Value="{Binding ActiveTab, Mode=TwoWay}" />
+        </Style>
+
+        <!-- ================= 设置面板小控件 ================= -->
+
+        <!-- 颜色预设小方块 -->
+        <Style x:Key="ColorSwatchStyle" TargetType="Button">
+            <Setter Property="Width" Value="26" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="Margin" Value="0,0,6,6" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" Background="{TemplateBinding Background}"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                CornerRadius="{DynamicResource ControlCornerRadius}" />
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="BorderBrush" Value="{DynamicResource ControlBorderHoverBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SettingLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="Margin" Value="0,10,0,5" />
+        </Style>
+
+        <!-- 查找条上的紧凑按钮 -->
+        <Style x:Key="FindMiniButtonStyle" TargetType="Button" BasedOn="{StaticResource TabMiniButtonStyle}">
+            <Setter Property="Width" Value="28" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ================= 菜单栏 ================= -->
+        <Border Grid.Row="0" Background="{DynamicResource HeaderBackgroundBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
+                Padding="4,0" SnapsToDevicePixels="True">
+            <Menu Style="{StaticResource EditorMenuBarStyle}">
+
+                <!-- ── 文件 ── -->
+                <MenuItem Header="文件" Style="{StaticResource EditorTopMenuItemStyle}">
+                    <MenuItem Header="新建" InputGestureText="Ctrl+N"
+                              Command="{Binding NewFileCommand}" Style="{StaticResource EditorMenuItemStyle}" />
+                    <MenuItem Header="打开…" InputGestureText="Ctrl+O"
+                              Command="{Binding OpenFileCommand}" Style="{StaticResource EditorMenuItemStyle}" />
+                    <MenuItem Header="打开最近" Style="{StaticResource EditorMenuParentStyle}"
+                              ItemsSource="{Binding RecentItems}">
+                        <MenuItem.ItemContainerStyle>
+                            <!-- 点击用 EventSetter 走 code-behind：最近列表在 Popup 里，
+                                 RelativeSource 找不到上面的 Menu，命令绑定会静默失效 -->
+                            <Style TargetType="MenuItem" BasedOn="{StaticResource EditorMenuItemStyle}">
+                                <Setter Property="Header" Value="{Binding}" />
+                                <Setter Property="HeaderTemplate" Value="{StaticResource RecentFileHeaderTemplate}" />
+                                <Setter Property="ToolTip" Value="{Binding}" />
+                                <EventSetter Event="Click" Handler="OnRecentFileClick" />
+                            </Style>
+                        </MenuItem.ItemContainerStyle>
+                    </MenuItem>
+                    <Separator Style="{StaticResource EditorMenuSeparatorStyle}" />
+                    <MenuItem Header="保存" InputGestureText="Ctrl+S"
+                              Command="{Binding SaveCommand}" Style="{StaticResource EditorMenuItemStyle}" />
+                    <MenuItem Header="另存为…" InputGestureText="Ctrl+Shift+S"
+                              Command="{Binding SaveAsCommand}" Style="{StaticResource EditorMenuItemStyle}" />
+                    <MenuItem Header="全部保存" Command="{Binding SaveAllCommand}"
+                              Style="{StaticResource EditorMenuItemStyle}" />
+                    <Separator Style="{StaticResource EditorMenuSeparatorStyle}" />
+                    <MenuItem Header="关闭标签" InputGestureText="Ctrl+W"
+                              Command="{Binding CloseTabCommand}" Style="{StaticResource EditorMenuItemStyle}" />
+                    <MenuItem Header="关闭全部" Command="{Binding CloseAllCommand}"
+                              Style="{StaticResource EditorMenuItemStyle}" />
+                </MenuItem>
+
+                <!-- ── 编辑 ── -->
+                <MenuItem Header="编辑" Style="{StaticResource EditorTopMenuItemStyle}">
+                    <MenuItem Header="撤销" InputGestureText="Ctrl+Z"
+                              Command="{Binding UndoCommand}" Style="{StaticResource EditorMenuItemStyle}" />
+                    <MenuItem Header="重做" InputGestureText="Ctrl+Y"
+                              Command="{Binding RedoCommand}" Style="{StaticResource EditorMenuItemStyle}" />
+                    <Separator Style="{StaticResource EditorMenuSeparatorStyle}" />
+                    <MenuItem Header="剪切" InputGestureText="Ctrl+X"
+                              Command="{Binding CutCommand}" Style="{StaticResource EditorMenuItemStyle}" />
+                    <MenuItem Header="复制" InputGestureText="Ctrl+C"
+                              Command="{Binding CopyCommand}" Style="{StaticResource EditorMenuItemStyle}" />
+                    <MenuItem Header="粘贴" InputGestureText="Ctrl+V"
+                              Command="{Binding PasteCommand}" Style="{StaticResource EditorMenuItemStyle}" />
+                    <MenuItem Header="全选" InputGestureText="Ctrl+A"
+                              Command="{Binding SelectAllCommand}" Style="{StaticResource EditorMenuItemStyle}" />
+                    <Separator Style="{StaticResource EditorMenuSeparatorStyle}" />
+                    <MenuItem Header="查找" InputGestureText="Ctrl+F"
+                              Command="{Binding FindCommand}" Style="{StaticResource EditorMenuItemStyle}" />
+                    <MenuItem Header="替换" InputGestureText="Ctrl+H"
+                              Command="{Binding ReplaceCommand}" Style="{StaticResource EditorMenuItemStyle}" />
+                </MenuItem>
+
+                <!-- ── 查看 ── -->
+                <MenuItem Header="查看" Style="{StaticResource EditorTopMenuItemStyle}">
+                    <MenuItem Header="放大" InputGestureText="Ctrl+="
+                              Command="{Binding ZoomInCommand}" Style="{StaticResource EditorMenuItemStyle}" />
+                    <MenuItem Header="缩小" InputGestureText="Ctrl+-"
+                              Command="{Binding ZoomOutCommand}" Style="{StaticResource EditorMenuItemStyle}" />
+                    <MenuItem Header="重置缩放" InputGestureText="Ctrl+0"
+                              Command="{Binding ResetZoomCommand}" Style="{StaticResource EditorMenuItemStyle}" />
+                    <Separator Style="{StaticResource EditorMenuSeparatorStyle}" />
+                    <MenuItem Header="行号" IsCheckable="True"
+                              IsChecked="{Binding Cfg.ShowLineNumbers, Mode=TwoWay}"
+                              Style="{StaticResource EditorMenuItemStyle}"
+                              ToolTip="在编辑区左侧显示行号（设置里也能调）" />
+                    <MenuItem Header="自动换行" IsCheckable="True"
+                              IsChecked="{Binding Cfg.WordWrap, Mode=TwoWay}"
+                              Style="{StaticResource EditorMenuItemStyle}" />
+                </MenuItem>
+
+                <!-- ── 偏好设置 ── -->
+                <MenuItem Header="偏好设置" Style="{StaticResource EditorTopMenuItemStyle}">
+                    <MenuItem Header="打开偏好设置面板" Command="{Binding ShowSettingsCommand}"
+                              Style="{StaticResource EditorMenuItemStyle}"
+                              ToolTip="字体 / 字号 / 缩放 / 背景颜色 / 行号 / 自动换行 / 缩进" />
+                    <Separator Style="{StaticResource EditorMenuSeparatorStyle}" />
+                    <MenuItem Header="重置缩放为 100%" Command="{Binding ResetZoomCommand}"
+                              Style="{StaticResource EditorMenuItemStyle}" />
+                </MenuItem>
+            </Menu>
+        </Border>
+
+        <!-- ================= 主区域 = 编辑列 + 偏好设置浮层 ================= -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="EditorColumn" Width="*" MinWidth="320" />
+                <!-- 编辑列：随窗口缩放 -->
+                <ColumnDefinition x:Name="SplitterColumn" Width="Auto" />
+                <!-- 分隔条自己的列（样式定宽 12；设置关着时跟着归零） -->
+                <ColumnDefinition x:Name="SettingsColumn" Width="0" MaxWidth="640" />
+                <!-- 设置浮层：显示 = 304 px（拖过由 PaneSplitter 记忆，宽度由 code-behind 按记忆值设），
+                     关着 = 0（真的不占编辑区宽度）。⚠ 别在这里写 Binding：ColumnDefinition 不在逻辑树 /
+                     视觉树里，拿不到 DataContext，绑定会静默失效。 -->
+            </Grid.ColumnDefinitions>
+
+            <!-- ── 编辑列：标签条 / 查找条 / 编辑器宿主 ── -->
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- 标签条 -->
+                <Border Grid.Row="0" Background="{DynamicResource HeaderBackgroundBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
+                        Padding="6,2" SnapsToDevicePixels="True">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Content="&#xE710;" ToolTip="新建标签页（Ctrl+N）"
+                                Style="{StaticResource TabMiniButtonStyle}" Margin="4,0,2,0"
+                                VerticalAlignment="Center" Command="{Binding NewFileCommand}" />
+                        <ListBox x:Name="TabList" Style="{StaticResource EditorTabListBoxStyle}"
+                                 ItemsSource="{Binding Tabs}"
+                                 PreviewMouseDown="OnTabListMouseDown"
+                                 PreviewMouseWheel="OnTabListMouseWheel">
+                            <!-- ⚠ 必须显式横向排布：ListBox 默认 ItemsPanel 是纵向 VirtualizingStackPanel，
+                                 不加这一段标签会竖着叠、只看得见第一个 -->
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                        </ListBox>
+                    </DockPanel>
+                </Border>
+
+                <!-- 查找 / 替换条（Ctrl+F / Ctrl+H 呼出，Esc 关闭） -->
+                <Border x:Name="FindBar" Grid.Row="1" Visibility="Collapsed"
+                        Background="{DynamicResource CardBackgroundBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
+                        Padding="10,6">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBox x:Name="FindBox" Width="230" Height="28"
+                                     Style="{StaticResource TextBoxStyle}"
+                                     VerticalContentAlignment="Center"
+                                     ToolTip="查找内容（回车 = 下一个，Shift+回车 = 上一个）"
+                                     TextChanged="OnFindContextChanged"
+                                     KeyDown="OnFindBoxKeyDown" />
+                            <Button Content="&#x25B2;" Style="{StaticResource FindMiniButtonStyle}"
+                                    Margin="6,0,0,0" ToolTip="上一个（Shift+F3）"
+                                    Click="OnFindPreviousClick" FontFamily="Segoe UI Symbol" />
+                            <Button Content="&#x25BC;" Style="{StaticResource FindMiniButtonStyle}"
+                                    ToolTip="下一个（F3 / 回车）"
+                                    Click="OnFindNextClick" FontFamily="Segoe UI Symbol" />
+                            <TextBlock x:Name="FindCountText" Text="" VerticalAlignment="Center"
+                                       Margin="8,0,0,0" FontSize="11.5" MinWidth="52"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <CheckBox x:Name="FindCaseBox" Content="区分大小写"
+                                      Style="{StaticResource CheckBoxStyle}" Margin="10,0,0,0"
+                                      VerticalAlignment="Center"
+                                      Checked="OnFindContextChanged" Unchecked="OnFindContextChanged" />
+                            <Button x:Name="ReplaceToggle" Content="替换" Padding="10,4"
+                                    Style="{StaticResource SecondaryButtonStyle}" Margin="10,0,0,0"
+                                    VerticalAlignment="Center" ToolTip="展开 / 收起替换行"
+                                    Click="OnReplaceToggleClick" />
+                            <Button Content="&#xE711;" Style="{StaticResource FindMiniButtonStyle}"
+                                    Margin="6,0,0,0" ToolTip="关闭（Esc）"
+                                    Click="OnFindCloseClick" />
+                        </StackPanel>
+                        <StackPanel x:Name="ReplaceRow" Orientation="Horizontal" Margin="0,6,0,0"
+                                    Visibility="Collapsed">
+                            <TextBox x:Name="ReplaceBox" Width="230" Height="28"
+                                     Style="{StaticResource TextBoxStyle}"
+                                     VerticalContentAlignment="Center"
+                                     ToolTip="替换为（回车 = 替换当前并找下一个）"
+                                     KeyDown="OnReplaceBoxKeyDown" />
+                            <Button Content="替换" Padding="12,5" Style="{StaticResource SecondaryButtonStyle}"
+                                    Margin="6,0,0,0" Click="OnReplaceClick" />
+                            <Button Content="全部替换" Padding="12,5" Style="{StaticResource SecondaryButtonStyle}"
+                                    Margin="6,0,0,0" Click="OnReplaceAllClick" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- 编辑器宿主：每个标签一个 TextEditor，只显示激活的（代码后置按需创建） -->
+                <Grid x:Name="EditorHost" Grid.Row="2" Background="{DynamicResource WindowBackgroundBrush}"
+                      PreviewMouseWheel="OnEditorHostPreviewMouseWheel" />
+            </Grid>
+
+            <!-- 偏好设置与编辑区的分隔条（设置面板开着才出现；拖动宽度随界面布局一起记住） -->
+            <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                               Key="text-editor.偏好设置与编辑区"
+                               Visibility="{Binding IsSettingsVisible, Converter={StaticResource BoolToVis}}" />
+
+            <!-- ── 偏好设置浮层（页内面板，Esc / × 关闭；宽度由所在列决定，可拖） ── -->
+            <Border Grid.Column="2"
+                    Margin="0,8,8,8" Padding="16,14"
+                    Style="{StaticResource CardStyle}"
+                    Visibility="{Binding IsSettingsVisible, Converter={StaticResource BoolToVis}}">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="偏好设置" FontSize="13" FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <Button Grid.Column="1" Content="&#xE711;" Style="{StaticResource TabMiniButtonStyle}"
+                                ToolTip="关闭（Esc）" Command="{Binding CloseSettingsCommand}" />
+                    </Grid>
+
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+
+                            <TextBlock Text="字体" Style="{StaticResource SettingLabelStyle}" Margin="0,4,0,5" />
+                            <ComboBox ItemsSource="{x:Static te:TextEditorConfig.FontPresets}"
+                                      SelectedItem="{Binding Cfg.FontName}"
+                                      Style="{StaticResource ComboBoxStyle}"
+                                      ToolTip="等宽字体预设（系统里没装的会自动回退默认字体）" />
+
+                            <TextBlock Text="字号" Style="{StaticResource SettingLabelStyle}" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Slider Minimum="{x:Static te:TextEditorConfig.MinFontSize}"
+                                        Maximum="{x:Static te:TextEditorConfig.MaxFontSize}"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Style="{StaticResource SliderStyle}" VerticalAlignment="Center"
+                                        Value="{Binding Cfg.FontSize}" />
+                                <TextBlock Grid.Column="1" MinWidth="38" TextAlignment="Right"
+                                           VerticalAlignment="Center" FontSize="12"
+                                           Text="{Binding Cfg.FontSize, StringFormat={}{0:0}px}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Grid>
+
+                            <TextBlock Text="界面缩放（编辑区文字）" Style="{StaticResource SettingLabelStyle}" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Slider Minimum="{x:Static te:TextEditorConfig.MinZoomPercent}"
+                                        Maximum="{x:Static te:TextEditorConfig.MaxZoomPercent}"
+                                        Style="{StaticResource SliderStyle}" VerticalAlignment="Center"
+                                        Value="{Binding Cfg.ZoomPercent}" />
+                                <TextBlock Grid.Column="1" MinWidth="42" TextAlignment="Right"
+                                           VerticalAlignment="Center" FontSize="12"
+                                           Text="{Binding Cfg.ZoomPercent, StringFormat={}{0:0.#}%}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Grid>
+
+                            <TextBlock Text="背景颜色（点击色板一起换文字颜色）" Style="{StaticResource SettingLabelStyle}" />
+                            <ItemsControl ItemsSource="{x:Static te:TextEditorConfig.BackgroundPresets}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Width="26" Height="26" Margin="0,0,6,6"
+                                                Style="{StaticResource ColorSwatchStyle}"
+                                                Background="{Binding Background, Converter={StaticResource HexToBrush}}"
+                                                ToolTip="{Binding Name}"
+                                                Click="OnBackgroundPresetClick" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Width="24" Height="24" VerticalAlignment="Center" Margin="0,0,8,0"
+                                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                                        Background="{Binding Cfg.BackgroundHex, Converter={StaticResource HexToBrush}}" />
+                                <TextBox Grid.Column="1" Height="28" VerticalContentAlignment="Center"
+                                         Style="{StaticResource TextBoxStyle}"
+                                         ToolTip="自定义背景色（#RRGGBB 或 #AARRGGBB）"
+                                         Text="{Binding Cfg.BackgroundHex, UpdateSourceTrigger=PropertyChanged}" />
+                            </Grid>
+
+                            <TextBlock Text="文字颜色" Style="{StaticResource SettingLabelStyle}" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Width="24" Height="24" VerticalAlignment="Center" Margin="0,0,8,0"
+                                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                                        Background="{Binding Cfg.ForegroundHex, Converter={StaticResource HexToBrush}}" />
+                                <TextBox Grid.Column="1" Height="28" VerticalContentAlignment="Center"
+                                         Style="{StaticResource TextBoxStyle}"
+                                         ToolTip="自定义文字颜色（#RRGGBB 或 #AARRGGBB）"
+                                         Text="{Binding Cfg.ForegroundHex, UpdateSourceTrigger=PropertyChanged}" />
+                            </Grid>
+
+                            <Separator Margin="0,12" Background="{DynamicResource BorderBrush}" />
+
+                            <CheckBox Content="显示行号" Style="{StaticResource CheckBoxStyle}"
+                                      IsChecked="{Binding Cfg.ShowLineNumbers}"
+                                      ToolTip="在编辑区左侧显示行号列" />
+                            <CheckBox Content="自动换行" Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0"
+                                      IsChecked="{Binding Cfg.WordWrap}" />
+                            <CheckBox Content="Tab 键输入空格" Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0"
+                                      IsChecked="{Binding Cfg.ConvertTabsToSpaces}" />
+
+                            <TextBlock Text="缩进宽度" Style="{StaticResource SettingLabelStyle}" />
+                            <ComboBox ItemsSource="{x:Static te:TextEditorConfig.IndentPresets}"
+                                      SelectedItem="{Binding Cfg.IndentSize}"
+                                      Style="{StaticResource ComboBoxStyle}" MaxWidth="120"
+                                      HorizontalAlignment="Left"
+                                      ToolTip="按 Tab / 自动缩进时用几个空格（关掉「Tab 键输入空格」则是一个制表符的显示宽度）" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+        </Grid>
+
+        <!-- ================= 状态栏（纯信息条） ================= -->
+        <Border Grid.Row="2" Background="{DynamicResource HeaderBackgroundBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0"
+                Padding="10,4" SnapsToDevicePixels="True">
+            <DockPanel LastChildFill="False">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding CaretText}" FontSize="11.5" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="·" Margin="8,0" VerticalAlignment="Center" FontSize="11.5"
+                               Foreground="{DynamicResource FaintTextBrush}" />
+                    <TextBlock Text="{Binding CharCountText}" FontSize="11.5" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="·" Margin="8,0" VerticalAlignment="Center" FontSize="11.5"
+                               Foreground="{DynamicResource FaintTextBrush}" />
+                    <TextBlock Text="{Binding EncodingText}" FontSize="11.5" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               ToolTip="文件编码（打开时自动探测，保存按原编码写回）" />
+                    <TextBlock Text="·" Margin="8,0" VerticalAlignment="Center" FontSize="11.5"
+                               Foreground="{DynamicResource FaintTextBrush}" />
+                    <TextBlock Text="{Binding StatusText}" FontSize="11.5" VerticalAlignment="Center"
+                               MaxWidth="360" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+                <TextBlock DockPanel.Dock="Right" Text="{Binding ActivePathText}" FontSize="11.5"
+                           VerticalAlignment="Center" MaxWidth="420"
+                           TextTrimming="CharacterEllipsis" HorizontalAlignment="Right"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                <TextBlock DockPanel.Dock="Right"
+                           Text="{Binding Cfg.ZoomPercent, StringFormat=缩放 {0:0.#}%}"
+                           FontSize="11.5" VerticalAlignment="Center" Margin="0,0,14,0"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

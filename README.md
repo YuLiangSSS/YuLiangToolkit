@@ -27,6 +27,7 @@
 | [**💬 联机聊天室**](docs/tools/chat-room.md) | 主机开端口、客户端连进来，文字 / 图片 / 文件随便传，带单次流量上限 |
 | [**🌐 网页浏览器**](docs/tools/browser.md) | Chromium 内核（WebView2）**多标签浏览器**：**上方 / 左侧两种标签栏**一键切换（+ 新建 / 中键关标签 / 会话恢复），地址栏输入网址 / 搜索词，**前进 / 后退 / 刷新 / 主页**按钮，**网页里右键也能刷新**；`target=_blank` 在新标签页打开 |
 | [**🏷️ 批量重命名**](docs/tools/batch-rename.md) | 规则清单 + 实时预览 + 两阶段改名 + 可撤销 |
+| [**📝 文本编辑器**](docs/tools/text-editor.md) | 轻量代码 / 文本编辑器（AvalonEdit 内核）：**多标签**打开文件、**行号 + 语法高亮**、**查找 / 替换**（区分大小写 / 全部替换可一步撤销）、**界面缩放 25% ~ 400%**（菜单 / Ctrl+滚轮）、**偏好设置**调字体 / 字号 / 背景颜色 / 自动换行 / 缩进；**自动识别编码（GBK 文件不乱码）**并保持原换行风格，最近文件 + 会话恢复 |
 | [**🎧 osu! 下图器**](docs/tools/map-downloader.md) | 搜谱面集、批量下 `.osz`（含视频 / 无视频） |
 | [**🎹 osu! Key 转换器**](docs/tools/osu-key-converter.md) | 把低键数 mania 谱面「复制列 / 插空白列」加成高键数（2~10 可选），支持批量 |
 | [**🍜 osu! LN 转换器**](docs/tools/osu-ln-transformer.md) | 按 14 档强度把普通键改成 LN（长条），可选保留原 LN / 修尾巴误差 |
@@ -75,6 +76,8 @@ dotnet run --project YuLiangTookit.csproj
 「网页浏览器」用微软官方的 **WebView2**（Chromium 内核，和 Edge 同源）承载网页：需要系统装有
 **Microsoft Edge WebView2 Runtime**（Win10 2004+ 一般随 Edge 自带，缺失时工具会提示去安装；
 浏览器内核不随本项目打包），源码构建时同样**首次需要联网还原一次** `Microsoft.Web.WebView2` 包。
+「文本编辑器」用 **AvalonEdit**（MIT）做编辑内核（行号列 / 语法高亮 / 大文件虚拟化 / 撤销重做都是它提供的），
+源码构建时同样**首次需要联网还原一次** NuGet 包；运行时不依赖任何额外系统组件。
 「Live2D 桌宠」不需要额外装任何东西（模型和官方 Cubism Core 原生库都随程序发布，仅限 Windows x64）；
 它的**摄像头面部动捕**用 Windows 自带摄像头与 FaceAnalysis API（不需要额外软件，默认关闭，
 打开时需在 Windows 隐私设置里允许「桌面应用访问摄像头」，画面不录像、不联网）。
@@ -84,7 +87,7 @@ dotnet run --project YuLiangTookit.csproj
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；
   踩坑细节按需查 **[docs/dev/pitfalls.md](docs/dev/pitfalls.md)**（只在排错 / 改危险代码时读）；
-- ✅ **自检**：3283 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
+- ✅ **自检**：3339 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -128,6 +131,7 @@ src/
 ├── YuLiangToolkit.Tools.FlashDownloader/# 功能：Flash 下载器（五站点解析 + 本地服务器 + 自动补全资源）
 ├── YuLiangToolkit.Tools.ChatRoom/       # 功能：联机聊天室（TCP 直连 / 内网穿透 + 传文件 + 流量上限）
 ├── YuLiangToolkit.Tools.Browser/        # 功能：网页浏览器（WebView2 / Chromium 内核 + 多标签页：上方 / 左侧标签栏 + 地址栏 / 页内右键刷新）
+├── YuLiangToolkit.Tools.TextEditor/     # 功能：文本编辑器（AvalonEdit 内核 + 多标签 + 行号 / 语法高亮 + 查找替换 + 界面缩放 + 编码自动探测）
 ├── YuLiangToolkit.Tools.MapDownloader/  # 功能：osu! 下图器（搜谱面集 + 批量下 .osz）
 ├── YuLiangToolkit.Tools.OsuMania/       # 功能：音游工具（osu! Key 转换器 / LN 转换器 / 等级计算器）
 ├── YuLiangToolkit.Tools.BoardGames/     # 功能：棋牌（联机五子棋 / 联机象棋 + 房间联机底座）
@@ -135,7 +139,7 @@ src/
 ├── YuLiangToolkit.Tools.Live2D/         # 功能：Live2D 桌宠（内置模型测试台 + 透明置顶桌宠 + 眼睛跟随 + 摄像头面部动捕 + 身体晃动测试；官方 Cubism Core + 自写软件渲染器 + Windows 自带人脸检测）
 ├── YuLiangToolkit.Tools.SpugCaptcha/    # 功能：Spug 验证码测试（短信 / 邮箱验证码模板联调 + 本地比对验证）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3283 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3339 项行为逐条验证）
 ```
 
 ## 如何添加一个新工具

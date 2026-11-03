@@ -15,6 +15,7 @@
 | 💬 联机聊天室 | 主机开端口、客户端连进来，局域网 / 内网穿透都能用，带流量上限 | [tools/chat-room.md](tools/chat-room.md) |
 | 🌐 网页浏览器 | Chromium 内核（WebView2）：地址栏输入网址 / 搜索、前进后退刷新、网页里右键也能刷新 | [tools/browser.md](tools/browser.md) |
 | 🏷️ 批量重命名 | 规则清单 + 预览 + 两阶段改名 + 撤销 | [tools/batch-rename.md](tools/batch-rename.md) |
+| 📝 文本编辑器 | 多标签文本 / 代码编辑（AvalonEdit）：语法高亮、查找替换、编码与换行自动识别、界面缩放 | [tools/text-editor.md](tools/text-editor.md) |
 | 🎧 osu! 下图器 | 搜谱面集、批量下 `.osz` | [tools/map-downloader.md](tools/map-downloader.md) |
 | 🎹 osu! Key 转换器 | 低键数 mania 谱面「复制列 / 插空白列」加成高键数（2~10 可选） | [tools/osu-key-converter.md](tools/osu-key-converter.md) |
 | 🍜 osu! LN 转换器 | 按 14 档强度把普通键改成 LN（长条），可选保留原 LN / 修尾巴 | [tools/osu-ln-transformer.md](tools/osu-ln-transformer.md) |
