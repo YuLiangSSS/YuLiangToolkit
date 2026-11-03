@@ -1,0 +1,109 @@
+<?xml version="1.0"?>
+<SyntaxDefinition name="Rust" extensions=".rs" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+  <Color name="Comment" foreground="#57A64A" />
+  <Color name="String" foreground="#D69D85" />
+  <Color name="Char" foreground="#D69D85" />
+  <Color name="NumberLiteral" foreground="#B5CEA8" />
+  <Color name="Keywords" foreground="#569CD6" />
+  <Color name="Type" foreground="#4EC9B0" />
+  <Color name="MethodCall" foreground="#DCDCAA" />
+  <Color name="Property" foreground="#9CDCFE" />
+  <Color name="Attribute" foreground="#9CDCFE" />
+  <Color name="Preprocessor" foreground="#9B9B9B" />
+  <Color name="Punctuation" foreground="#D4D4D4" />
+  <RuleSet>
+    <Span color="Comment" begin="//" />
+    <Span color="Comment" multiline="true" begin="/\*" end="\*/" />
+    <!-- 字符串：普通 / 原始字符串 r"..." / r#"..."# -->
+    <Span color="String" multiline="true" begin='r#+"' end='"#+' />
+    <Span color="String" begin='r"' end='"' />
+    <Span color="String" begin='"' end='"'>
+      <RuleSet>
+        <Span begin="\\" end="." />
+      </RuleSet>
+    </Span>
+    <Rule color="Char">'(?:\\.|[^\\'])'</Rule>
+    <!-- 属性 #[...] / #![...] -->
+    <Span color="Attribute" begin="#!?\[" end="\]" />
+    <Keywords color="Keywords">
+      <Word>as</Word>
+      <Word>async</Word>
+      <Word>await</Word>
+      <Word>break</Word>
+      <Word>const</Word>
+      <Word>continue</Word>
+      <Word>crate</Word>
+      <Word>dyn</Word>
+      <Word>else</Word>
+      <Word>enum</Word>
+      <Word>extern</Word>
+      <Word>false</Word>
+      <Word>fn</Word>
+      <Word>for</Word>
+      <Word>if</Word>
+      <Word>impl</Word>
+      <Word>in</Word>
+      <Word>let</Word>
+      <Word>loop</Word>
+      <Word>match</Word>
+      <Word>mod</Word>
+      <Word>move</Word>
+      <Word>mut</Word>
+      <Word>pub</Word>
+      <Word>ref</Word>
+      <Word>return</Word>
+      <Word>self</Word>
+      <Word>Self</Word>
+      <Word>static</Word>
+      <Word>struct</Word>
+      <Word>super</Word>
+      <Word>trait</Word>
+      <Word>true</Word>
+      <Word>type</Word>
+      <Word>union</Word>
+      <Word>unsafe</Word>
+      <Word>use</Word>
+      <Word>where</Word>
+      <Word>while</Word>
+      <Word>yield</Word>
+    </Keywords>
+    <Keywords color="Type">
+      <Word>bool</Word>
+      <Word>char</Word>
+      <Word>f32</Word>
+      <Word>f64</Word>
+      <Word>i8</Word>
+      <Word>i16</Word>
+      <Word>i32</Word>
+      <Word>i64</Word>
+      <Word>i128</Word>
+      <Word>isize</Word>
+      <Word>str</Word>
+      <Word>u8</Word>
+      <Word>u16</Word>
+      <Word>u32</Word>
+      <Word>u64</Word>
+      <Word>u128</Word>
+      <Word>usize</Word>
+    </Keywords>
+    <Keywords color="MethodCall">
+      <Word>println</Word>
+      <Word>print</Word>
+      <Word>eprintln</Word>
+      <Word>format</Word>
+      <Word>vec</Word>
+      <Word>panic</Word>
+      <Word>assert</Word>
+      <Word>assert_eq</Word>
+      <Word>write</Word>
+      <Word>writeln</Word>
+    </Keywords>
+    <!-- 生命周期 'a（放在字符字面量之后，避免吃掉 'x' 引号） -->
+    <Rule color="Property">'[a-zA-Z_]\w*</Rule>
+    <Rule color="NumberLiteral">\b(0[xX][0-9a-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|\d[\d_]*(\.[\d_]+)?([eE][+-]?[\d_]+)?|\.\d+)\b</Rule>
+    <!-- 宏名 foo! 与普通函数调用同色 -->
+    <Rule color="MethodCall">\b[a-zA-Z_]\w*!(?=\s*[\(\{\[])</Rule>
+    <Rule color="MethodCall">\b[a-zA-Z_]\w*(?=\s*\()</Rule>
+    <Rule color="Punctuation">[{}()\[\],.;:+\-*/%&amp;|&lt;&gt;=!?~^#@$]+</Rule>
+  </RuleSet>
+</SyntaxDefinition>

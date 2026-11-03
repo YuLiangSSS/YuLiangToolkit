@@ -1,0 +1,103 @@
+<?xml version="1.0"?>
+<SyntaxDefinition name="Go" extensions=".go" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+  <Color name="Comment" foreground="#57A64A" />
+  <Color name="String" foreground="#D69D85" />
+  <Color name="Char" foreground="#D69D85" />
+  <Color name="NumberLiteral" foreground="#B5CEA8" />
+  <Color name="Keywords" foreground="#569CD6" />
+  <Color name="Type" foreground="#4EC9B0" />
+  <Color name="MethodCall" foreground="#DCDCAA" />
+  <Color name="Property" foreground="#9CDCFE" />
+  <Color name="Preprocessor" foreground="#9B9B9B" />
+  <Color name="Punctuation" foreground="#D4D4D4" />
+  <RuleSet>
+    <!-- 注释 -->
+    <Span color="Comment" begin="//" />
+    <Span color="Comment" multiline="true" begin="/\*" end="\*/" />
+    <!-- 原始字符串（反引号，可跨行）与解释字符串 -->
+    <Span color="String" begin="`" end="`" />
+    <Span color="String" begin='"' end='"'>
+      <RuleSet>
+        <Span begin="\\" end="." />
+      </RuleSet>
+    </Span>
+    <Rule color="Char">'(?:\\.|[^\\'])'</Rule>
+    <!-- 关键字 -->
+    <Keywords color="Keywords">
+      <Word>break</Word>
+      <Word>case</Word>
+      <Word>chan</Word>
+      <Word>const</Word>
+      <Word>continue</Word>
+      <Word>default</Word>
+      <Word>defer</Word>
+      <Word>else</Word>
+      <Word>fallthrough</Word>
+      <Word>for</Word>
+      <Word>func</Word>
+      <Word>go</Word>
+      <Word>goto</Word>
+      <Word>if</Word>
+      <Word>import</Word>
+      <Word>interface</Word>
+      <Word>map</Word>
+      <Word>package</Word>
+      <Word>range</Word>
+      <Word>return</Word>
+      <Word>select</Word>
+      <Word>struct</Word>
+      <Word>switch</Word>
+      <Word>type</Word>
+      <Word>var</Word>
+    </Keywords>
+    <!-- 内置类型 -->
+    <Keywords color="Type">
+      <Word>any</Word>
+      <Word>bool</Word>
+      <Word>byte</Word>
+      <Word>comparable</Word>
+      <Word>complex64</Word>
+      <Word>complex128</Word>
+      <Word>error</Word>
+      <Word>float32</Word>
+      <Word>float64</Word>
+      <Word>int</Word>
+      <Word>int8</Word>
+      <Word>int16</Word>
+      <Word>int32</Word>
+      <Word>int64</Word>
+      <Word>rune</Word>
+      <Word>string</Word>
+      <Word>uint</Word>
+      <Word>uint8</Word>
+      <Word>uint16</Word>
+      <Word>uint32</Word>
+      <Word>uint64</Word>
+      <Word>uintptr</Word>
+    </Keywords>
+    <!-- 内置函数按方法名上色，和用户函数一致 -->
+    <Keywords color="MethodCall">
+      <Word>append</Word>
+      <Word>cap</Word>
+      <Word>clear</Word>
+      <Word>close</Word>
+      <Word>complex</Word>
+      <Word>copy</Word>
+      <Word>delete</Word>
+      <Word>imag</Word>
+      <Word>len</Word>
+      <Word>make</Word>
+      <Word>max</Word>
+      <Word>min</Word>
+      <Word>new</Word>
+      <Word>panic</Word>
+      <Word>print</Word>
+      <Word>println</Word>
+      <Word>real</Word>
+      <Word>recover</Word>
+    </Keywords>
+    <Rule color="NumberLiteral">\b(0[xX][0-9a-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|\d[\d_]*(\.[\d_]*)?([eE][+-]?[\d_]+)?|\.\d[\d_]*([eE][+-]?[\d_]+)?)\b</Rule>
+    <Rule color="MethodCall">\b[a-zA-Z_]\w*(?=\s*\()</Rule>
+    <Rule color="Punctuation">[{}()\[\],.;:+\-*/%&amp;|&lt;&gt;=!?~^]+</Rule>
+  </RuleSet>
+</SyntaxDefinition>

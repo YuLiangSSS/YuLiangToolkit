@@ -1,0 +1,92 @@
+<?xml version="1.0"?>
+<SyntaxDefinition name="Batch" extensions=".bat;.cmd" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+  <Color name="Comment" foreground="#57A64A" />
+  <Color name="String" foreground="#D69D85" />
+  <Color name="Char" foreground="#D69D85" />
+  <Color name="NumberLiteral" foreground="#B5CEA8" />
+  <Color name="Keywords" foreground="#569CD6" />
+  <Color name="Type" foreground="#4EC9B0" />
+  <Color name="MethodCall" foreground="#DCDCAA" />
+  <Color name="Property" foreground="#9CDCFE" />
+  <Color name="Preprocessor" foreground="#9B9B9B" />
+  <Color name="Punctuation" foreground="#D4D4D4" />
+  <RuleSet ignoreCase="true">
+    <!-- 注释：:: 与 rem -->
+    <Span color="Comment" begin="::" />
+    <Span color="Comment" begin="\brem\b" />
+    <!-- 字符串 -->
+    <Span color="String" begin='"' end='"' />
+    <!-- 变量 %var% / !var! -->
+    <Rule color="Property">%[^%\r\n]+%</Rule>
+    <Rule color="Property">![^!\r\n]+!</Rule>
+    <!-- 标签 :label -->
+    <Rule color="Type">^[ \t]*:[A-Za-z_][\w-]*</Rule>
+    <Keywords color="Keywords">
+      <Word>assoc</Word>
+      <Word>call</Word>
+      <Word>cd</Word>
+      <Word>chdir</Word>
+      <Word>choice</Word>
+      <Word>cls</Word>
+      <Word>color</Word>
+      <Word>copy</Word>
+      <Word>date</Word>
+      <Word>defined</Word>
+      <Word>del</Word>
+      <Word>dir</Word>
+      <Word>do</Word>
+      <Word>echo</Word>
+      <Word>else</Word>
+      <Word>endlocal</Word>
+      <Word>errorlevel</Word>
+      <Word>exist</Word>
+      <Word>exit</Word>
+      <Word>for</Word>
+      <Word>ftype</Word>
+      <Word>goto</Word>
+      <Word>if</Word>
+      <Word>in</Word>
+      <Word>label</Word>
+      <Word>md</Word>
+      <Word>mkdir</Word>
+      <Word>move</Word>
+      <Word>net</Word>
+      <Word>not</Word>
+      <Word>pause</Word>
+      <Word>popd</Word>
+      <Word>prompt</Word>
+      <Word>pushd</Word>
+      <Word>rd</Word>
+      <Word>reg</Word>
+      <Word>ren</Word>
+      <Word>rename</Word>
+      <Word>rmdir</Word>
+      <Word>robocopy</Word>
+      <Word>sc</Word>
+      <Word>set</Word>
+      <Word>setlocal</Word>
+      <Word>setx</Word>
+      <Word>shift</Word>
+      <Word>start</Word>
+      <Word>time</Word>
+      <Word>timeout</Word>
+      <Word>title</Word>
+      <Word>type</Word>
+      <Word>ver</Word>
+      <Word>vol</Word>
+      <Word>xcopy</Word>
+    </Keywords>
+    <!-- 常用命令开关参数 -->
+    <Keywords color="MethodCall">
+      <Word>echo</Word>
+      <Word>on</Word>
+      <Word>off</Word>
+      <Word>enabledelayedexpansion</Word>
+      <Word>disabledelayedexpansion</Word>
+      <Word>enableextensions</Word>
+      <Word>disableextensions</Word>
+    </Keywords>
+    <Rule color="NumberLiteral">\b\d+\b</Rule>
+    <Rule color="Punctuation">[&amp;|&lt;&gt;^%%@()+.,;:=\-/*]+</Rule>
+  </RuleSet>
+</SyntaxDefinition>

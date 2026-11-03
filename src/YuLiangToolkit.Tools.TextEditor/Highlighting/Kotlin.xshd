@@ -1,0 +1,143 @@
+<?xml version="1.0"?>
+<SyntaxDefinition name="Kotlin" extensions=".kt;.kts" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+  <Color name="Comment" foreground="#57A64A" />
+  <Color name="String" foreground="#D69D85" />
+  <Color name="Char" foreground="#D69D85" />
+  <Color name="NumberLiteral" foreground="#B5CEA8" />
+  <Color name="Keywords" foreground="#569CD6" />
+  <Color name="Type" foreground="#4EC9B0" />
+  <Color name="MethodCall" foreground="#DCDCAA" />
+  <Color name="Property" foreground="#9CDCFE" />
+  <Color name="Attribute" foreground="#9CDCFE" />
+  <Color name="Preprocessor" foreground="#9B9B9B" />
+  <Color name="Punctuation" foreground="#D4D4D4" />
+  <RuleSet>
+    <Span color="Comment" begin="//" />
+    <Span color="Comment" multiline="true" begin="/\*" end="\*/" />
+    <!-- 三引号原始字符串 / 普通字符串 -->
+    <Span color="String" multiline="true" begin='"""' end='"""' />
+    <Span color="String" begin='"' end='"'>
+      <RuleSet>
+        <Span begin="\\" end="." />
+      </RuleSet>
+    </Span>
+    <Rule color="Char">'(?:\\.|[^\\'])'</Rule>
+    <!-- 注解 @Xxx -->
+    <Rule color="Attribute">@[A-Za-z_]\w*</Rule>
+    <Keywords color="Keywords">
+      <Word>as</Word>
+      <Word>as?</Word>
+      <Word>break</Word>
+      <Word>by</Word>
+      <Word>catch</Word>
+      <Word>class</Word>
+      <Word>companion</Word>
+      <Word>constructor</Word>
+      <Word>continue</Word>
+      <Word>data</Word>
+      <Word>delegate</Word>
+      <Word>do</Word>
+      <Word>dynamic</Word>
+      <Word>else</Word>
+      <Word>enum</Word>
+      <Word>expect</Word>
+      <Word>external</Word>
+      <Word>false</Word>
+      <Word>field</Word>
+      <Word>file</Word>
+      <Word>finally</Word>
+      <Word>for</Word>
+      <Word>fun</Word>
+      <Word>get</Word>
+      <Word>if</Word>
+      <Word>import</Word>
+      <Word>in</Word>
+      <Word>infix</Word>
+      <Word>init</Word>
+      <Word>inline</Word>
+      <Word>inner</Word>
+      <Word>interface</Word>
+      <Word>internal</Word>
+      <Word>is</Word>
+      <Word>lateinit</Word>
+      <Word>noinline</Word>
+      <Word>object</Word>
+      <Word>open</Word>
+      <Word>operator</Word>
+      <Word>out</Word>
+      <Word>override</Word>
+      <Word>package</Word>
+      <Word>param</Word>
+      <Word>private</Word>
+      <Word>property</Word>
+      <Word>protected</Word>
+      <Word>public</Word>
+      <Word>receiver</Word>
+      <Word>reified</Word>
+      <Word>return</Word>
+      <Word>sealed</Word>
+      <Word>set</Word>
+      <Word>setparam</Word>
+      <Word>super</Word>
+      <Word>suspend</Word>
+      <Word>tailrec</Word>
+      <Word>this</Word>
+      <Word>throw</Word>
+      <Word>true</Word>
+      <Word>try</Word>
+      <Word>typealias</Word>
+      <Word>val</Word>
+      <Word>value</Word>
+      <Word>var</Word>
+      <Word>vararg</Word>
+      <Word>when</Word>
+      <Word>where</Word>
+      <Word>while</Word>
+    </Keywords>
+    <Keywords color="Type">
+      <Word>Any</Word>
+      <Word>Array</Word>
+      <Word>Boolean</Word>
+      <Word>Byte</Word>
+      <Word>Char</Word>
+      <Word>CharSequence</Word>
+      <Word>Comparable</Word>
+      <Word>Double</Word>
+      <Word>Float</Word>
+      <Word>Int</Word>
+      <Word>IntArray</Word>
+      <Word>List</Word>
+      <Word>Long</Word>
+      <Word>Map</Word>
+      <Word>MutableList</Word>
+      <Word>MutableMap</Word>
+      <Word>Nothing</Word>
+      <Word>Number</Word>
+      <Word>Pair</Word>
+      <Word>Sequence</Word>
+      <Word>Set</Word>
+      <Word>Short</Word>
+      <Word>String</Word>
+      <Word>Triple</Word>
+      <Word>Unit</Word>
+    </Keywords>
+    <Keywords color="MethodCall">
+      <Word>println</Word>
+      <Word>print</Word>
+      <Word>listOf</Word>
+      <Word>mapOf</Word>
+      <Word>mutableListOf</Word>
+      <Word>require</Word>
+      <Word>check</Word>
+      <Word>error</Word>
+      <Word>run</Word>
+      <Word>let</Word>
+      <Word>apply</Word>
+      <Word>also</Word>
+      <Word>with</Word>
+    </Keywords>
+    <Rule color="NumberLiteral">\b(0[xX][0-9a-fA-F_]+|0[bB][01_]+|\d[\d_]*(\.[\d_]+)?([eE][+-]?[\d_]+)?([fFdDlL])?)\b</Rule>
+    <Rule color="MethodCall">\b[a-zA-Z_]\w*(?=\s*\()</Rule>
+    <Rule color="Punctuation">[{}()\[\],.;:+\-*/%&amp;|&lt;&gt;=!?~^#@$]+</Rule>
+  </RuleSet>
+</SyntaxDefinition>

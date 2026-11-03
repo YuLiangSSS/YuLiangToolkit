@@ -5,6 +5,7 @@ using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Tools.TextEditor;
 using YuLiangToolkit.Tools.TextEditor.Core;
+using YuLiangToolkit.Tools.TextEditor.Core.Markdown;
 using YuLiangToolkit.Tools.TextEditor.ViewModels;
 
 namespace YuLiangToolkit.FrameworkSelfCheck;
@@ -12,8 +13,8 @@ namespace YuLiangToolkit.FrameworkSelfCheck;
 /// <summary>
 /// 「文本编辑器」自检：工具元数据、文件编解码（编码探测 / 换行风格 / BOM / 真读写往返）、
 /// 最近文件列表、查找替换纯逻辑、标签规则（标题 / 无标题命名 / 关标签补位）、
-/// 高亮暗色调色、配置默认值与落盘、标签文档的脏标记链路。
-/// <b>全程不弹窗、不开界面</b>（AvalonEdit 控件与菜单栏属于人工截图冒烟的部分）。
+/// 高亮暗色调色、多语言高亮定义解析、Markdown 解析、配置默认值与落盘、标签文档的脏标记链路。
+/// <b>全程不弹窗、不开界面</b>（AvalonEdit 控件 / 菜单栏 / 预览渲染属于人工截图冒烟的部分）。
 /// </summary>
 internal static class TextEditorChecks
 {
@@ -27,6 +28,8 @@ internal static class TextEditorChecks
         CheckTabRules(check);
         CheckTabDocument(check);
         CheckHighlighting(check);
+        CheckSyntaxDefinitions(check);
+        CheckMarkdownParser(check);
         CheckConfig(check);
     }
 
@@ -355,6 +358,204 @@ internal static class TextEditorChecks
             docColor?.ToString() ?? "<null>");
     }
 
+    // ---------------------------------------------------------------- 多语言高亮定义
+
+    private static void CheckSyntaxDefinitions(Action<string, bool, string> check)
+    {
+        check("[编辑器] 13 个自定义 xshd 全部加载成功（Go/Rust/Ruby/F#/Kotlin/TS/Vue/Batch/INI/YAML/Dockerfile/Lua/SQL）",
+            EditorSyntaxDefinitions.LoadErrors.Count == 0
+            && EditorSyntaxDefinitions.KnownDefinitionNames.Count >= 13,
+            EditorSyntaxDefinitions.LoadErrors.Count == 0
+                ? string.Join(", ", EditorSyntaxDefinitions.KnownDefinitionNames)
+                : string.Join(" | ", EditorSyntaxDefinitions.LoadErrors));
+
+        var customCases = new (string Path, string Expected)[]
+        {
+            (@"C:\code\main.go", "Go"),
+            (@"C:\code\lib.rs", "Rust"),
+            (@"C:\code\app.rb", "Ruby"),
+            (@"C:\code\App.fs", "F#"),
+            (@"C:\code\Main.kt", "Kotlin"),
+            (@"C:\code\index.ts", "TypeScript"),
+            (@"C:\code\App.vue", "Vue"),
+            (@"C:\code\run.bat", "Batch"),
+            (@"C:\code\run.cmd", "Batch"),
+            (@"C:\code\settings.ini", "INI"),
+            (@"C:\code\config.yml", "YAML"),
+            (@"C:\code\Dockerfile", "Dockerfile"),
+            (@"C:\code\script.lua", "Lua"),
+            (@"C:\code\query.sql", "SQL"),
+            (@"C:\code\index.tsx", "TypeScript"),
+            (@"C:\code\note.markdown", "MarkDown"),
+        };
+
+        var wrongCustom = new List<string>();
+        foreach (var (path, expected) in customCases)
+        {
+            var definition = EditorSyntaxDefinitions.Resolve(path);
+            if (definition?.Name != expected)
+                wrongCustom.Add($"{Path.GetFileName(path)}→{definition?.Name ?? "<null>"}（期望 {expected}）");
+        }
+        check("[编辑器] 新语言 / 按文件名识别 / 补充扩展名都解析到正确定义",
+            wrongCustom.Count == 0,
+            wrongCustom.Count == 0 ? $"{customCases.Length} 种格式" : string.Join("; ", wrongCustom));
+
+        var builtInFiles = new[]
+        {
+            @"C:\code\demo.cs", @"C:\code\demo.c", @"C:\code\demo.cpp", @"C:\code\demo.h",
+            @"C:\code\Demo.java", @"C:\code\demo.py", @"C:\code\demo.php", @"C:\code\demo.json",
+            @"C:\code\README.md", @"C:\code\build.ps1", @"C:\code\data.xml", @"C:\code\page.html",
+            @"C:\code\style.css", @"C:\code\app.js", @"C:\code\app.mjs", @"C:\code\App.xaml",
+        };
+        var missingBuiltIn = builtInFiles
+            .Where(path => EditorSyntaxDefinitions.Resolve(path) is null)
+            .Select(Path.GetFileName)
+            .ToList();
+        check("[编辑器] AvalonEdit 内置语言（C/C++/Java/Python/PHP/JSON/Markdown/PowerShell/XML/HTML/CSS/JS）仍能解析",
+            missingBuiltIn.Count == 0,
+            missingBuiltIn.Count == 0 ? $"{builtInFiles.Length} 种格式" : string.Join(", ", missingBuiltIn));
+
+        check("[编辑器] 未知扩展名 / null / 空路径都返回 null（纯文本，不崩）",
+            EditorSyntaxDefinitions.Resolve(@"C:\code\a.unknown-xyz") is null
+            && EditorSyntaxDefinitions.Resolve(null) is null
+            && EditorSyntaxDefinitions.Resolve("") is null
+            && EditorSyntaxDefinitions.Resolve("  ") is null,
+            "unknown / null / 空");
+
+        check("[编辑器] Markdown 文件判定（.md/.markdown/.mdown/.mkd，不分大小写）",
+            EditorSyntaxDefinitions.IsMarkdownFile(@"C:\a\README.md")
+            && EditorSyntaxDefinitions.IsMarkdownFile(@"C:\a\NOTE.MARKDOWN")
+            && EditorSyntaxDefinitions.IsMarkdownFile(@"C:\a\x.mdown")
+            && !EditorSyntaxDefinitions.IsMarkdownFile(@"C:\a\x.txt")
+            && !EditorSyntaxDefinitions.IsMarkdownFile(null),
+            ".md / .MARKDOWN / .mdown / .txt / null");
+
+        check("[编辑器] 各语言的高亮定义都套上了 VS 深色配色（每个命名颜色都够亮）",
+            AllDefinitionsReadable(),
+            "逐定义逐色算亮度 ≥ 110");
+    }
+
+    /// <summary>把自定义定义里所有命名颜色过一遍，确认 VS 配色覆写后都够亮（深底能看清）。</summary>
+    private static bool AllDefinitionsReadable()
+    {
+        var sampleFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Go"] = "a.go",
+            ["Rust"] = "a.rs",
+            ["Ruby"] = "a.rb",
+            ["F#"] = "a.fs",
+            ["Kotlin"] = "a.kt",
+            ["TypeScript"] = "a.ts",
+            ["Vue"] = "a.vue",
+            ["Batch"] = "a.bat",
+            ["INI"] = "a.ini",
+            ["YAML"] = "a.yml",
+            ["Dockerfile"] = "Dockerfile",
+            ["Lua"] = "a.lua",
+            ["SQL"] = "a.sql",
+        };
+
+        foreach (var (name, file) in sampleFiles)
+        {
+            var definition = EditorSyntaxDefinitions.Resolve(Path.Combine(@"C:\x", file));
+            if (definition is null || !string.Equals(definition.Name, name, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            foreach (var item in definition.NamedHighlightingColors)
+            {
+                if (item.Foreground is not SimpleHighlightingBrush simple) continue;
+                if (simple.GetBrush(null!) is not SolidColorBrush brush) continue;
+                var color = brush.Color;
+                var luminance = 0.299 * color.R + 0.587 * color.G + 0.114 * color.B;
+                if (luminance < 110) return false;
+            }
+        }
+        return true;
+    }
+
+    // ---------------------------------------------------------------- Markdown 解析（预览用）
+
+    private static void CheckMarkdownParser(Action<string, bool, string> check)
+    {
+        var heading = MarkdownParser.Parse("# 一级标题\n\n### 三级标题");
+        check("[编辑器] Markdown 标题：解析出 # / ### 并保留层级与文字",
+            heading.Count == 2
+            && heading[0] is MarkdownHeading { Level: 1 } first
+            && MarkdownParser.PlainText(first.Inlines) == "一级标题"
+            && heading[1] is MarkdownHeading { Level: 3 } third
+            && MarkdownParser.PlainText(third.Inlines) == "三级标题",
+            string.Join(" / ", heading.Select(b => b.GetType().Name)));
+
+        var inlines = MarkdownParser.ParseInlines("普通 **加粗** 与 *斜体* 还有 `code` 和 ~~删除~~");
+        check("[编辑器] Markdown 行内：加粗 / 斜体 / 行内代码 / 删除线",
+            inlines.OfType<MarkdownStrong>().Count() == 1
+            && inlines.OfType<MarkdownEmphasis>().Count() == 1
+            && inlines.OfType<MarkdownInlineCode>().Count() == 1
+            && inlines.OfType<MarkdownStrikethrough>().Count() == 1,
+            string.Join(", ", inlines.Select(i => i.GetType().Name)));
+
+        var links = MarkdownParser.ParseInlines("[点我](https://example.com/a) 和 ![图](img/a.png) 和 <https://auto.link>");
+        check("[编辑器] Markdown 链接 / 图片 / 自动链接",
+            links.OfType<MarkdownLink>().Any(l => l.Url == "https://example.com/a")
+            && links.OfType<MarkdownImage>().Any(i => i.Url == "img/a.png" && i.Alt.Contains("图", StringComparison.Ordinal))
+            && links.OfType<MarkdownLink>().Any(l => l.Url == "https://auto.link"),
+            string.Join(", ", links.Select(i => i.GetType().Name)));
+
+        var blocks = MarkdownParser.Parse("""
+            # 标题
+
+            段落第一行
+            段落第二行
+
+            ```csharp
+            var x = 1;
+            ```
+
+            - 项目一
+            - 项目二
+
+            1. 有序一
+            2. 有序二
+
+            > 引用文字
+
+            | 名称 | 数量 |
+            | :--- | ---: |
+            | 苹果 | 3 |
+
+            ---
+            """);
+        check("[编辑器] Markdown 块：段落 / 围栏代码 / 无序列表 / 有序列表 / 引用 / 表格 / 分割线",
+            blocks.OfType<MarkdownParagraph>().Any()
+            && blocks.OfType<MarkdownCodeBlock>().Any(c => c.Language == "csharp" && c.Text.Contains("var x", StringComparison.Ordinal))
+            && blocks.OfType<MarkdownList>().Any(l => !l.Ordered && l.Items.Count == 2)
+            && blocks.OfType<MarkdownList>().Any(l => l.Ordered && l.Items.Count == 2)
+            && blocks.OfType<MarkdownQuote>().Count() == 1
+            && blocks.OfType<MarkdownTable>().Any(t => t.Columns.Count == 2 && t.Rows.Count == 1)
+            && blocks.OfType<MarkdownThematicBreak>().Count() == 1,
+            string.Join(", ", blocks.Select(b => b.GetType().Name)));
+
+        var table = blocks.OfType<MarkdownTable>().FirstOrDefault();
+        check("[编辑器] Markdown 表格：表头 / 行 / 对齐方式",
+            table is not null
+            && MarkdownParser.PlainText(table.Header[0].Inlines) == "名称"
+            && MarkdownParser.PlainText(table.Rows[0][1].Inlines) == "3"
+            && table.Columns[0].Alignment == MarkdownTableAlignment.Left
+            && table.Columns[1].Alignment == MarkdownTableAlignment.Right,
+            table is null ? "<null>" : $"{table.Columns[0].Alignment}/{table.Columns[1].Alignment}");
+
+        var softBreak = MarkdownParser.ParseInlines("第一行  \n第二行");
+        check("[编辑器] Markdown 硬换行（行尾两个空格）",
+            softBreak.OfType<MarkdownHardBreak>().Count() == 1,
+            string.Join(", ", softBreak.Select(i => i.GetType().Name)));
+
+        check("[编辑器] Markdown 空文本 / 纯文本安全（空块表、无异常）",
+            MarkdownParser.Parse("").Count == 0
+            && MarkdownParser.Parse(null).Count == 0
+            && MarkdownParser.Parse("只有一段普通文字").Count == 1,
+            "空 / null / 纯文本");
+    }
+
     // ---------------------------------------------------------------- 配置默认值与落盘
 
     private static void CheckConfig(Action<string, bool, string> check)
@@ -395,12 +596,13 @@ internal static class TextEditorChecks
         var store = ToolConfigStore.For(TextEditorConfig.ToolId);
         var config = store.Load<TextEditorConfig>();
         check("[编辑器] 首次加载即生成 config.json", File.Exists(config.FilePath), config.FilePath);
-        check("[编辑器] 默认值：Cascadia Mono / 14px / 100% / 深空底色 / 行号开 / 换行关 / 空格缩进 4",
+        check("[编辑器] 默认值：Cascadia Mono / 14px / 100% / 深空底色 / 行号开 / 换行关 / 空格缩进 4 / Markdown 预览开",
             config.FontName == TextEditorConfig.DefaultFontName
             && config.FontSize == 14 && config.ZoomPercent == 100
             && config.BackgroundHex == TextEditorConfig.DefaultBackgroundHex
             && config.ForegroundHex == TextEditorConfig.DefaultForegroundHex
             && config.ShowLineNumbers && !config.WordWrap
+            && config.ShowMarkdownPreview
             && config.ConvertTabsToSpaces && config.IndentSize == 4
             && config.RecentFiles.Count == 0 && config.SessionFiles.Count == 0
             && config.RememberSession,
@@ -421,6 +623,30 @@ internal static class TextEditorChecks
             && reloaded.RecentFiles.Count == 2 && reloaded.RecentFiles[0] == @"C:\a\1.cs",
             $"{reloaded?.FontName} / {reloaded?.ZoomPercent}%");
 
+        // 会话恢复：上次激活的是第 2 个标签 → 重新建 ViewModel 后要恢复那个
+        // （防「恢复完又变回第一个」：OpenPath → RefreshSessionConfig 会把 SessionActiveIndex 覆盖掉）
+        var sessionDir = SelfCheckScratch.MakeDirectory("text-editor-session");
+        var firstFile = Path.Combine(sessionDir, "one.md");
+        var secondFile = Path.Combine(sessionDir, "two.go");
+        File.WriteAllText(firstFile, "# one\r\n", new UTF8Encoding(false));
+        File.WriteAllText(secondFile, "package main\r\n", new UTF8Encoding(false));
+
+        config.RecentFiles = new List<string>();
+        config.SessionFiles = new List<string> { firstFile, secondFile };
+        config.SessionActiveIndex = 1;
+        config.RememberSession = true;
+        config.SaveNow();
+
+        using (var sessionVm = new TextEditorViewModel())
+        {
+            check("[编辑器] 会话恢复：标签顺序 + 上次激活的标签都恢复正确",
+                sessionVm.Tabs.Count == 2
+                && string.Equals(sessionVm.Tabs[0].FilePath, firstFile, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(sessionVm.Tabs[1].FilePath, secondFile, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(sessionVm.ActiveTab?.FilePath, secondFile, StringComparison.OrdinalIgnoreCase),
+                $"{sessionVm.Tabs.Count} 个标签 / 激活 {sessionVm.ActiveTab?.Title}");
+        }
+
         // 还原成默认，避免影响下一轮 / 其它检查
         var fresh = new TextEditorConfig();
         config.FontName = fresh.FontName;
@@ -429,7 +655,11 @@ internal static class TextEditorChecks
         config.BackgroundHex = fresh.BackgroundHex;
         config.ForegroundHex = fresh.ForegroundHex;
         config.ShowLineNumbers = fresh.ShowLineNumbers;
+        config.ShowMarkdownPreview = fresh.ShowMarkdownPreview;
         config.RecentFiles = fresh.RecentFiles;
+        config.SessionFiles = fresh.SessionFiles;
+        config.SessionActiveIndex = fresh.SessionActiveIndex;
+        config.RememberSession = fresh.RememberSession;
         config.SaveNow();
     }
 }

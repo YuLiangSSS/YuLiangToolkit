@@ -1,0 +1,95 @@
+<?xml version="1.0"?>
+<SyntaxDefinition name="Ruby" extensions=".rb;.rake;.gemspec" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+  <Color name="Comment" foreground="#57A64A" />
+  <Color name="String" foreground="#D69D85" />
+  <Color name="Char" foreground="#D69D85" />
+  <Color name="NumberLiteral" foreground="#B5CEA8" />
+  <Color name="Keywords" foreground="#569CD6" />
+  <Color name="Type" foreground="#4EC9B0" />
+  <Color name="MethodCall" foreground="#DCDCAA" />
+  <Color name="Property" foreground="#9CDCFE" />
+  <Color name="Preprocessor" foreground="#9B9B9B" />
+  <Color name="Punctuation" foreground="#D4D4D4" />
+  <RuleSet>
+    <Span color="Comment" begin="#" />
+    <!-- 字符串 -->
+    <Span color="String" begin='"' end='"' multiline="true">
+      <RuleSet>
+        <Span begin="\\" end="." />
+      </RuleSet>
+    </Span>
+    <Span color="String" begin="'" end="'" multiline="true">
+      <RuleSet>
+        <Span begin="\\" end="." />
+      </RuleSet>
+    </Span>
+    <Keywords color="Keywords">
+      <Word>alias</Word>
+      <Word>and</Word>
+      <Word>begin</Word>
+      <Word>break</Word>
+      <Word>case</Word>
+      <Word>class</Word>
+      <Word>def</Word>
+      <Word>defined?</Word>
+      <Word>do</Word>
+      <Word>else</Word>
+      <Word>elsif</Word>
+      <Word>end</Word>
+      <Word>ensure</Word>
+      <Word>false</Word>
+      <Word>for</Word>
+      <Word>if</Word>
+      <Word>in</Word>
+      <Word>module</Word>
+      <Word>next</Word>
+      <Word>nil</Word>
+      <Word>not</Word>
+      <Word>or</Word>
+      <Word>redo</Word>
+      <Word>rescue</Word>
+      <Word>retry</Word>
+      <Word>return</Word>
+      <Word>self</Word>
+      <Word>super</Word>
+      <Word>then</Word>
+      <Word>true</Word>
+      <Word>undef</Word>
+      <Word>unless</Word>
+      <Word>until</Word>
+      <Word>when</Word>
+      <Word>while</Word>
+      <Word>yield</Word>
+    </Keywords>
+    <!-- 常用内建方法按方法名上色 -->
+    <Keywords color="MethodCall">
+      <Word>puts</Word>
+      <Word>print</Word>
+      <Word>p</Word>
+      <Word>require</Word>
+      <Word>require_relative</Word>
+      <Word>attr_accessor</Word>
+      <Word>attr_reader</Word>
+      <Word>attr_writer</Word>
+      <Word>initialize</Word>
+      <Word>each</Word>
+      <Word>map</Word>
+      <Word>select</Word>
+      <Word>reject</Word>
+      <Word>new</Word>
+      <Word>to_s</Word>
+      <Word>to_i</Word>
+      <Word>to_sym</Word>
+    </Keywords>
+    <!-- 符号 :name -->
+    <Rule color="Property">:[a-zA-Z_]\w*[!?=]?</Rule>
+    <!-- 实例变量 / 类变量 / 全局变量 -->
+    <Rule color="Property">@@?[a-zA-Z_]\w*</Rule>
+    <Rule color="Property">\$[a-zA-Z_]\w*</Rule>
+    <!-- 常量 / 模块名（首字母大写） -->
+    <Rule color="Type">\b[A-Z]\w*\b</Rule>
+    <Rule color="NumberLiteral">\b(0[xX][0-9a-fA-F_]+|0[bB][01_]+|\d[\d_]*(\.[\d_]+)?([eE][+-]?[\d_]+)?|\.\d+)\b</Rule>
+    <Rule color="MethodCall">\b[a-z_]\w*[!?]?(?=\s*\()</Rule>
+    <Rule color="Punctuation">[{}()\[\],.;:+\-*/%&amp;|&lt;&gt;=!?~^&amp;]+</Rule>
+  </RuleSet>
+</SyntaxDefinition>

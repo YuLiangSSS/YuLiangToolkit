@@ -402,6 +402,12 @@
                     <MenuItem Header="自动换行" IsCheckable="True"
                               IsChecked="{Binding Cfg.WordWrap, Mode=TwoWay}"
                               Style="{StaticResource EditorMenuItemStyle}" />
+                    <Separator Style="{StaticResource EditorMenuSeparatorStyle}" />
+                    <MenuItem Header="Markdown 预览" IsCheckable="True"
+                              IsChecked="{Binding Cfg.ShowMarkdownPreview, Mode=TwoWay}"
+                              InputGestureText="Ctrl+Shift+M"
+                              Style="{StaticResource EditorMenuItemStyle}"
+                              ToolTip="打开 .md 文件时在编辑区下方显示「实际效果预览」（排版 / 表格 / 代码块都真渲染）" />
                 </MenuItem>
 
                 <!-- ── 偏好设置 ── -->
@@ -429,12 +435,14 @@
                      视觉树里，拿不到 DataContext，绑定会静默失效。 -->
             </Grid.ColumnDefinitions>
 
-            <!-- ── 编辑列：标签条 / 查找条 / 编辑器宿主 ── -->
+            <!-- ── 编辑列：标签条 / 查找条 / 编辑器宿主 / Markdown 预览 ── -->
             <Grid Grid.Column="0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition x:Name="PreviewRow" Height="0" />
                 </Grid.RowDefinitions>
 
                 <!-- 标签条 -->
@@ -512,6 +520,41 @@
                 <!-- 编辑器宿主：每个标签一个 TextEditor，只显示激活的（代码后置按需创建） -->
                 <Grid x:Name="EditorHost" Grid.Row="2" Background="{DynamicResource WindowBackgroundBrush}"
                       PreviewMouseWheel="OnEditorHostPreviewMouseWheel" />
+
+                <!-- Markdown「实际效果预览」：编辑区下方，打开 .md 且设置里没关预览时才出现；
+                     高度可拖（PaneSplitter 记忆），双击缝隙恢复默认高度 -->
+                <core:PaneSplitter x:Name="PreviewSplitter" Grid.Row="3"
+                                   Style="{StaticResource PaneSplitterHorizontalStyle}"
+                                   Key="text-editor.Markdown预览与编辑区"
+                                   Visibility="Collapsed" />
+                <Border x:Name="PreviewPanel" Grid.Row="4" Visibility="Collapsed"
+                        Background="{DynamicResource WindowBackgroundBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0">
+                    <DockPanel>
+                        <Grid DockPanel.Dock="Top" Margin="12,6,10,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Markdown 预览" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Text="实时更新 · 本地图片会显示" FontSize="11" Margin="8,0,0,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="&#xE711;" Style="{StaticResource TabMiniButtonStyle}"
+                                    ToolTip="关闭预览（查看 → Markdown 预览，Ctrl+Shift+M）"
+                                    Click="OnPreviewCloseClick" />
+                        </Grid>
+                        <FlowDocumentScrollViewer x:Name="PreviewViewer"
+                                                  IsToolBarVisible="False" IsSelectionEnabled="True"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled"
+                                                  Background="Transparent" Padding="0" />
+                    </DockPanel>
+                </Border>
             </Grid>
 
             <!-- 偏好设置与编辑区的分隔条（设置面板开着才出现；拖动宽度随界面布局一起记住） -->

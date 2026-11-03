@@ -1,0 +1,161 @@
+<?xml version="1.0"?>
+<SyntaxDefinition name="SQL" extensions=".sql" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+  <Color name="Comment" foreground="#57A64A" />
+  <Color name="String" foreground="#D69D85" />
+  <Color name="Char" foreground="#D69D85" />
+  <Color name="NumberLiteral" foreground="#B5CEA8" />
+  <Color name="Keywords" foreground="#569CD6" />
+  <Color name="Type" foreground="#4EC9B0" />
+  <Color name="MethodCall" foreground="#DCDCAA" />
+  <Color name="Property" foreground="#9CDCFE" />
+  <Color name="Preprocessor" foreground="#9B9B9B" />
+  <Color name="Punctuation" foreground="#D4D4D4" />
+  <RuleSet ignoreCase="true">
+    <Span color="Comment" begin="--" />
+    <Span color="Comment" multiline="true" begin="/\*" end="\*/" />
+    <!-- 字符串 / 引号标识符 -->
+    <Span color="String" begin="'" end="'" />
+    <Span color="Property" begin="&quot;" end="&quot;" />
+    <Span color="Property" begin="`" end="`" />
+    <Keywords color="Keywords">
+      <Word>ADD</Word>
+      <Word>ALL</Word>
+      <Word>ALTER</Word>
+      <Word>AND</Word>
+      <Word>AS</Word>
+      <Word>ASC</Word>
+      <Word>BEGIN</Word>
+      <Word>BETWEEN</Word>
+      <Word>BY</Word>
+      <Word>CASE</Word>
+      <Word>CASCADE</Word>
+      <Word>CHECK</Word>
+      <Word>COLUMN</Word>
+      <Word>COMMIT</Word>
+      <Word>CONSTRAINT</Word>
+      <Word>CREATE</Word>
+      <Word>CROSS</Word>
+      <Word>DATABASE</Word>
+      <Word>DEFAULT</Word>
+      <Word>DELETE</Word>
+      <Word>DESC</Word>
+      <Word>DISTINCT</Word>
+      <Word>DROP</Word>
+      <Word>ELSE</Word>
+      <Word>END</Word>
+      <Word>EXISTS</Word>
+      <Word>EXPLAIN</Word>
+      <Word>FALSE</Word>
+      <Word>FOREIGN</Word>
+      <Word>FROM</Word>
+      <Word>FULL</Word>
+      <Word>GROUP</Word>
+      <Word>HAVING</Word>
+      <Word>IF</Word>
+      <Word>IN</Word>
+      <Word>INDEX</Word>
+      <Word>INNER</Word>
+      <Word>INSERT</Word>
+      <Word>INTERSECT</Word>
+      <Word>INTO</Word>
+      <Word>IS</Word>
+      <Word>JOIN</Word>
+      <Word>KEY</Word>
+      <Word>LEFT</Word>
+      <Word>LIKE</Word>
+      <Word>LIMIT</Word>
+      <Word>NOT</Word>
+      <Word>NULL</Word>
+      <Word>OFFSET</Word>
+      <Word>ON</Word>
+      <Word>OR</Word>
+      <Word>ORDER</Word>
+      <Word>OUTER</Word>
+      <Word>PRIMARY</Word>
+      <Word>PROCEDURE</Word>
+      <Word>REFERENCES</Word>
+      <Word>REPLACE</Word>
+      <Word>RETURNING</Word>
+      <Word>RIGHT</Word>
+      <Word>ROLLBACK</Word>
+      <Word>SELECT</Word>
+      <Word>SET</Word>
+      <Word>TABLE</Word>
+      <Word>THEN</Word>
+      <Word>TOP</Word>
+      <Word>TRANSACTION</Word>
+      <Word>TRUE</Word>
+      <Word>TRUNCATE</Word>
+      <Word>UNION</Word>
+      <Word>UNIQUE</Word>
+      <Word>UPDATE</Word>
+      <Word>USING</Word>
+      <Word>VALUES</Word>
+      <Word>VIEW</Word>
+      <Word>WHEN</Word>
+      <Word>WHERE</Word>
+      <Word>WITH</Word>
+    </Keywords>
+    <!-- 数据类型 -->
+    <Keywords color="Type">
+      <Word>BIGINT</Word>
+      <Word>BINARY</Word>
+      <Word>BIT</Word>
+      <Word>BLOB</Word>
+      <Word>BOOLEAN</Word>
+      <Word>CHAR</Word>
+      <Word>DATE</Word>
+      <Word>DATETIME</Word>
+      <Word>DECIMAL</Word>
+      <Word>DOUBLE</Word>
+      <Word>FLOAT</Word>
+      <Word>INT</Word>
+      <Word>INTEGER</Word>
+      <Word>JSON</Word>
+      <Word>JSONB</Word>
+      <Word>NUMERIC</Word>
+      <Word>REAL</Word>
+      <Word>SMALLINT</Word>
+      <Word>TEXT</Word>
+      <Word>TIMESTAMP</Word>
+      <Word>TINYINT</Word>
+      <Word>UUID</Word>
+      <Word>VARCHAR</Word>
+    </Keywords>
+    <!-- 常用函数 -->
+    <Keywords color="MethodCall">
+      <Word>ABS</Word>
+      <Word>AVG</Word>
+      <Word>CAST</Word>
+      <Word>CEIL</Word>
+      <Word>COALESCE</Word>
+      <Word>CONCAT</Word>
+      <Word>COUNT</Word>
+      <Word>CURRENT_DATE</Word>
+      <Word>CURRENT_TIMESTAMP</Word>
+      <Word>DATEADD</Word>
+      <Word>DATEDIFF</Word>
+      <Word>FLOOR</Word>
+      <Word>FORMAT</Word>
+      <Word>GREATEST</Word>
+      <Word>IFNULL</Word>
+      <Word>LEAST</Word>
+      <Word>LENGTH</Word>
+      <Word>LOWER</Word>
+      <Word>LTRIM</Word>
+      <Word>MAX</Word>
+      <Word>MIN</Word>
+      <Word>NOW</Word>
+      <Word>NULLIF</Word>
+      <Word>ROUND</Word>
+      <Word>ROW_NUMBER</Word>
+      <Word>RTRIM</Word>
+      <Word>SUBSTRING</Word>
+      <Word>SUM</Word>
+      <Word>TRIM</Word>
+      <Word>UPPER</Word>
+    </Keywords>
+    <Rule color="NumberLiteral">\b\d+(\.\d+)?\b</Rule>
+    <Rule color="Punctuation">[=+\-*/%&lt;&gt;!|&amp;^~()\[\]{},.;:]+</Rule>
+  </RuleSet>
+</SyntaxDefinition>

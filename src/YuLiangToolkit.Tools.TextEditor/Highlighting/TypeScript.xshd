@@ -1,0 +1,121 @@
+<?xml version="1.0"?>
+<SyntaxDefinition name="TypeScript" extensions=".ts;.tsx;.mts;.cts" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+  <Color name="Comment" foreground="#57A64A" />
+  <Color name="String" foreground="#D69D85" />
+  <Color name="Char" foreground="#D69D85" />
+  <Color name="NumberLiteral" foreground="#B5CEA8" />
+  <Color name="Keywords" foreground="#569CD6" />
+  <Color name="Type" foreground="#4EC9B0" />
+  <Color name="MethodCall" foreground="#DCDCAA" />
+  <Color name="Property" foreground="#9CDCFE" />
+  <Color name="Attribute" foreground="#9CDCFE" />
+  <Color name="Preprocessor" foreground="#9B9B9B" />
+  <Color name="Punctuation" foreground="#D4D4D4" />
+  <RuleSet>
+    <Span color="Comment" begin="//" />
+    <Span color="Comment" multiline="true" begin="/\*" end="\*/" />
+    <!-- 模板字符串（可跨行） / 普通字符串 -->
+    <Span color="String" multiline="true" begin="`" end="`" />
+    <Span color="String" begin='"' end='"'>
+      <RuleSet>
+        <Span begin="\\" end="." />
+      </RuleSet>
+    </Span>
+    <Span color="String" begin="'" end="'">
+      <RuleSet>
+        <Span begin="\\" end="." />
+      </RuleSet>
+    </Span>
+    <!-- 装饰器 @Name -->
+    <Rule color="Attribute">@[A-Za-z_$][\w$]*</Rule>
+    <Keywords color="Keywords">
+      <Word>abstract</Word>
+      <Word>as</Word>
+      <Word>async</Word>
+      <Word>await</Word>
+      <Word>break</Word>
+      <Word>case</Word>
+      <Word>catch</Word>
+      <Word>class</Word>
+      <Word>const</Word>
+      <Word>constructor</Word>
+      <Word>continue</Word>
+      <Word>declare</Word>
+      <Word>default</Word>
+      <Word>delete</Word>
+      <Word>do</Word>
+      <Word>else</Word>
+      <Word>enum</Word>
+      <Word>export</Word>
+      <Word>extends</Word>
+      <Word>false</Word>
+      <Word>finally</Word>
+      <Word>for</Word>
+      <Word>from</Word>
+      <Word>function</Word>
+      <Word>get</Word>
+      <Word>if</Word>
+      <Word>implements</Word>
+      <Word>import</Word>
+      <Word>in</Word>
+      <Word>infer</Word>
+      <Word>instanceof</Word>
+      <Word>interface</Word>
+      <Word>is</Word>
+      <Word>keyof</Word>
+      <Word>let</Word>
+      <Word>module</Word>
+      <Word>namespace</Word>
+      <Word>new</Word>
+      <Word>null</Word>
+      <Word>of</Word>
+      <Word>override</Word>
+      <Word>private</Word>
+      <Word>protected</Word>
+      <Word>public</Word>
+      <Word>readonly</Word>
+      <Word>return</Word>
+      <Word>set</Word>
+      <Word>static</Word>
+      <Word>super</Word>
+      <Word>switch</Word>
+      <Word>this</Word>
+      <Word>throw</Word>
+      <Word>true</Word>
+      <Word>try</Word>
+      <Word>type</Word>
+      <Word>typeof</Word>
+      <Word>undefined</Word>
+      <Word>unique</Word>
+      <Word>var</Word>
+      <Word>void</Word>
+      <Word>while</Word>
+      <Word>with</Word>
+      <Word>yield</Word>
+    </Keywords>
+    <Keywords color="Type">
+      <Word>any</Word>
+      <Word>bigint</Word>
+      <Word>boolean</Word>
+      <Word>never</Word>
+      <Word>number</Word>
+      <Word>object</Word>
+      <Word>string</Word>
+      <Word>symbol</Word>
+      <Word>unknown</Word>
+    </Keywords>
+    <Keywords color="MethodCall">
+      <Word>console</Word>
+      <Word>log</Word>
+      <Word>warn</Word>
+      <Word>error</Word>
+      <Word>require</Word>
+      <Word>parseInt</Word>
+      <Word>parseFloat</Word>
+      <Word>JSON</Word>
+    </Keywords>
+    <Rule color="NumberLiteral">\b(0[xX][0-9a-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|\d[\d_]*(\.[\d_]*)?([eE][+-]?[\d_]+)?|\.\d+)\b</Rule>
+    <Rule color="MethodCall">\b[a-zA-Z_$][\w$]*(?=\s*\()</Rule>
+    <Rule color="Punctuation">[{}()\[\],.;:+\-*/%&amp;|&lt;&gt;=!?~^`@$]+</Rule>
+  </RuleSet>
+</SyntaxDefinition>

@@ -1,0 +1,128 @@
+<?xml version="1.0"?>
+<SyntaxDefinition name="F#" extensions=".fs;.fsi;.fsx" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+  <Color name="Comment" foreground="#57A64A" />
+  <Color name="String" foreground="#D69D85" />
+  <Color name="Char" foreground="#D69D85" />
+  <Color name="NumberLiteral" foreground="#B5CEA8" />
+  <Color name="Keywords" foreground="#569CD6" />
+  <Color name="Type" foreground="#4EC9B0" />
+  <Color name="MethodCall" foreground="#DCDCAA" />
+  <Color name="Property" foreground="#9CDCFE" />
+  <Color name="Attribute" foreground="#9CDCFE" />
+  <Color name="Preprocessor" foreground="#9B9B9B" />
+  <Color name="Punctuation" foreground="#D4D4D4" />
+  <RuleSet>
+    <Span color="Comment" begin="//" />
+    <Span color="Comment" multiline="true" begin="\(\*" end="\*\)" />
+    <!-- 三引号字符串 / 普通字符串 / 逐字字符串 -->
+    <Span color="String" multiline="true" begin='"""' end='"""' />
+    <Span color="String" multiline="true" begin='@"' end='"' >
+      <RuleSet>
+        <Span begin='""' end="" />
+      </RuleSet>
+    </Span>
+    <Span color="String" begin='"' end='"'>
+      <RuleSet>
+        <Span begin="\\" end="." />
+      </RuleSet>
+    </Span>
+    <Rule color="Char">'(?:\\.|[^\\'])'</Rule>
+    <!-- 特性 [<...>] -->
+    <Span color="Attribute" begin="\[&lt;" end="&gt;\]" />
+    <Keywords color="Keywords">
+      <Word>abstract</Word>
+      <Word>and</Word>
+      <Word>as</Word>
+      <Word>assert</Word>
+      <Word>base</Word>
+      <Word>begin</Word>
+      <Word>class</Word>
+      <Word>default</Word>
+      <Word>delegate</Word>
+      <Word>do</Word>
+      <Word>done</Word>
+      <Word>downcast</Word>
+      <Word>downto</Word>
+      <Word>elif</Word>
+      <Word>else</Word>
+      <Word>end</Word>
+      <Word>exception</Word>
+      <Word>extern</Word>
+      <Word>false</Word>
+      <Word>finally</Word>
+      <Word>fixed</Word>
+      <Word>for</Word>
+      <Word>fun</Word>
+      <Word>function</Word>
+      <Word>global</Word>
+      <Word>if</Word>
+      <Word>in</Word>
+      <Word>inherit</Word>
+      <Word>inline</Word>
+      <Word>interface</Word>
+      <Word>internal</Word>
+      <Word>lazy</Word>
+      <Word>let</Word>
+      <Word>match</Word>
+      <Word>member</Word>
+      <Word>module</Word>
+      <Word>mutable</Word>
+      <Word>namespace</Word>
+      <Word>new</Word>
+      <Word>not</Word>
+      <Word>null</Word>
+      <Word>of</Word>
+      <Word>open</Word>
+      <Word>or</Word>
+      <Word>override</Word>
+      <Word>private</Word>
+      <Word>public</Word>
+      <Word>rec</Word>
+      <Word>return</Word>
+      <Word>select</Word>
+      <Word>static</Word>
+      <Word>struct</Word>
+      <Word>then</Word>
+      <Word>to</Word>
+      <Word>true</Word>
+      <Word>try</Word>
+      <Word>type</Word>
+      <Word>upcast</Word>
+      <Word>use</Word>
+      <Word>val</Word>
+      <Word>void</Word>
+      <Word>when</Word>
+      <Word>while</Word>
+      <Word>with</Word>
+      <Word>yield</Word>
+    </Keywords>
+    <Keywords color="Type">
+      <Word>bool</Word>
+      <Word>byte</Word>
+      <Word>char</Word>
+      <Word>decimal</Word>
+      <Word>double</Word>
+      <Word>float</Word>
+      <Word>int</Word>
+      <Word>int16</Word>
+      <Word>int32</Word>
+      <Word>int64</Word>
+      <Word>list</Word>
+      <Word>obj</Word>
+      <Word>option</Word>
+      <Word>seq</Word>
+      <Word>sbyte</Word>
+      <Word>single</Word>
+      <Word>string</Word>
+      <Word>uint16</Word>
+      <Word>uint32</Word>
+      <Word>uint64</Word>
+      <Word>unit</Word>
+    </Keywords>
+    <!-- 类型名（首字母大写） -->
+    <Rule color="Type">\b[A-Z]\w*\b</Rule>
+    <Rule color="NumberLiteral">\b(0[xX][0-9a-fA-F_]+|0[bB][01_]+|\d[\d_]*(\.[\d_]+)?([eE][+-]?[\d_]+)?|\.\d+)\b</Rule>
+    <Rule color="MethodCall">\b[a-zA-Z_]\w*(?=\s*\()</Rule>
+    <Rule color="Punctuation">[{}()\[\],.;:+\-*/%&amp;|&lt;&gt;=!?~^@$']+</Rule>
+  </RuleSet>
+</SyntaxDefinition>

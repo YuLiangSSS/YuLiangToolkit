@@ -1,0 +1,48 @@
+<?xml version="1.0"?>
+<SyntaxDefinition name="YAML" extensions=".yml;.yaml" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+  <Color name="Comment" foreground="#57A64A" />
+  <Color name="String" foreground="#D69D85" />
+  <Color name="Char" foreground="#D69D85" />
+  <Color name="NumberLiteral" foreground="#B5CEA8" />
+  <Color name="Keywords" foreground="#569CD6" />
+  <Color name="Type" foreground="#4EC9B0" />
+  <Color name="MethodCall" foreground="#DCDCAA" />
+  <Color name="Property" foreground="#9CDCFE" />
+  <Color name="Preprocessor" foreground="#9B9B9B" />
+  <Color name="Tag" foreground="#569CD6" />
+  <Color name="Punctuation" foreground="#D4D4D4" />
+  <RuleSet>
+    <!-- 文档边界 / 指令 -->
+    <Rule color="Preprocessor">^[ \t]*---[ \t]*$</Rule>
+    <Rule color="Preprocessor">^[ \t]*\.\.\.[ \t]*$</Rule>
+    <Rule color="Preprocessor">^[ \t]*%[A-Za-z]+</Rule>
+    <!-- 注释 -->
+    <Span color="Comment" begin="#" />
+    <!-- 引号字符串 -->
+    <Span color="String" begin='"' end='"'>
+      <RuleSet>
+        <Span begin="\\" end="." />
+      </RuleSet>
+    </Span>
+    <Span color="String" begin="'" end="'" />
+    <!-- 键：行首（允许缩进与列表短横）到冒号 -->
+    <Rule color="Property">^[ \t-]*[A-Za-z_][\w.-]*(?=\s*:)</Rule>
+    <!-- 锚点 / 别名 / 标签 -->
+    <Rule color="Tag">[&amp;*][A-Za-z_][\w.-]*</Rule>
+    <Rule color="Tag">![A-Za-z][\w/.:-]*</Rule>
+    <Keywords color="Keywords">
+      <Word>true</Word>
+      <Word>false</Word>
+      <Word>null</Word>
+      <Word>Null</Word>
+      <Word>NULL</Word>
+      <Word>yes</Word>
+      <Word>no</Word>
+      <Word>on</Word>
+      <Word>off</Word>
+    </Keywords>
+    <Rule color="NumberLiteral">-?\b(0[xX][0-9a-fA-F]+|\d+(\.\d+)?([eE][+-]?\d+)?)\b</Rule>
+    <Rule color="Punctuation">^[ \t]*-[ \t]</Rule>
+    <Rule color="Punctuation">[\[\]{},:]</Rule>
+  </RuleSet>
+</SyntaxDefinition>

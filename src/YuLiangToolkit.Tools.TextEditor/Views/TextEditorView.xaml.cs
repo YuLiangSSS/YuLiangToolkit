@@ -1,12 +1,16 @@
 using System.Collections.Specialized;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using ICSharpCode.AvalonEdit;
 using ICSharpCode.AvalonEdit.Indentation;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Tools.TextEditor.Core;
+using YuLiangToolkit.Tools.TextEditor.Core.Markdown;
 using YuLiangToolkit.Tools.TextEditor.ViewModels;
 
 // 本项目根命名空间就叫 YuLiangToolkit.Tools.TextEditor，会遮住 AvalonEdit 的 TextEditor 类型，起别名用
@@ -41,8 +45,22 @@ public partial class TextEditorView : UserControl, IEditorHost
     /// <summary>面板列宽的布局记忆键（PaneSplitter 对「一侧固定像素」的布局用 <c>.px</c> 存那一侧宽度）。</summary>
     private static readonly string SettingsPaneKey = TextEditorConfig.ToolId + ".偏好设置与编辑区";
 
+    /// <summary>Markdown 预览高度的默认 / 最小 / 最大像素（拖过的实际高度由 PaneSplitter 记在 Config\layout.json）。</summary>
+    private const double PreviewDefaultHeight = 360;
+    private const double PreviewMinHeight = 160;
+    private const double PreviewMaxHeight = 900;
+
+    /// <summary>超过这么多字符就暂停实时预览（防止超大文件每次敲键都全量解析）。</summary>
+    private const int PreviewMaxChars = 400_000;
+
+    /// <summary>预览高度 / 分隔条的布局记忆键。</summary>
+    private static readonly string PreviewPaneKey = TextEditorConfig.ToolId + ".Markdown预览与编辑区";
+
     private Window? _hostWindow;
     private bool _vmWired;
+    private DispatcherTimer? _previewTimer;
+    private string? _lastPreviewText;
+    private string? _lastPreviewStyleKey;
 
     public TextEditorView()
     {
@@ -88,6 +106,7 @@ public partial class TextEditorView : UserControl, IEditorHost
         UpdateTabVisibility();
         ApplySettingsToAllEditors();
         ApplySettingsColumnWidth(vm.IsSettingsVisible);
+        UpdatePreviewVisibility();
         ApplyScreenshotHooks();
 
         // 布局完成后把焦点交回编辑器（切到这个工具就能直接打字）
@@ -123,6 +142,7 @@ public partial class TextEditorView : UserControl, IEditorHost
 
         // 门面接口断开：视图被外壳缓存时编辑器命令 / 查找不可用，切回来时 OnLoaded 会重新接上
         if (Vm is { } vm) vm.Host = null;
+        _previewTimer?.Stop();
         // 编辑器实例与 VM 都保留：外壳缓存视图，切回来接着用
     }
 
@@ -151,6 +171,10 @@ public partial class TextEditorView : UserControl, IEditorHost
                     RefreshFindBarCount();
                     // 标签多到横向滚出视野时，把激活标签滚出来
                     if (vm.ActiveTab is not null) TabList.ScrollIntoView(vm.ActiveTab);
+                    UpdatePreviewVisibility();   // 切到 .md 标签自动出预览，切走自动收起
+                    break;
+                case nameof(TextEditorViewModel.IsPreviewVisible):
+                    UpdatePreviewVisibility();
                     break;
                 case nameof(TextEditorViewModel.IsSettingsVisible):
                     // 列宽显隐由 ApplySettingsColumnWidth 管（304 / 0，拖过的宽度由 PaneSplitter 记忆）；
@@ -161,8 +185,16 @@ public partial class TextEditorView : UserControl, IEditorHost
             }
         };
 
-        // 配置任何一项变化（字号 / 缩放 / 颜色 / 行号 / 换行 / 缩进 / 字体）→ 全部编辑器重刷
-        vm.Cfg.PropertyChanged += (_, _) => ApplySettingsToAllEditors();
+        // 配置任何一项变化（字号 / 缩放 / 颜色 / 行号 / 换行 / 缩进 / 字体）→ 全部编辑器重刷；
+        // Markdown 预览的字体 / 颜色 / 缩放也跟着变，重排一次（预览窗开着才做）
+        vm.Cfg.PropertyChanged += (_, e) =>
+        {
+            ApplySettingsToAllEditors();
+            if (e.PropertyName == nameof(TextEditorConfig.ShowMarkdownPreview))
+                UpdatePreviewVisibility();
+            else if (vm.IsPreviewVisible)
+                SchedulePreviewRefresh();
+        };
     }
 
     // ---------- 标签 → 编辑器 ----------
@@ -278,6 +310,7 @@ public partial class TextEditorView : UserControl, IEditorHost
         if (vm is null || sender is not EditorTab tab || !ReferenceEquals(tab, vm.ActiveTab)) return;
         PushCaretInfo();
         RefreshFindBarCount();
+        SchedulePreviewRefresh();
     }
 
     /// <summary>把激活编辑器的光标位置（行 / 列 / 字符数）推进状态栏。</summary>
@@ -512,6 +545,9 @@ public partial class TextEditorView : UserControl, IEditorHost
             case (Key.W, true, _): vm.CloseTabCommand.Execute(null); e.Handled = true; break;
             case (Key.F, true, false): ShowFindBarInternal(false); e.Handled = true; break;
             case (Key.H, true, false): ShowFindBarInternal(true); e.Handled = true; break;
+            case (Key.M, true, true):
+                if (Cfg is { } markdownCfg) markdownCfg.ShowMarkdownPreview = !markdownCfg.ShowMarkdownPreview;
+                e.Handled = true; break;
             // Ctrl+= 在多数键盘布局上要按 Shift 才是「+」，所以 Ctrl+Shift+= 也当放大
             case (Key.OemPlus or Key.Add, true, _):
                 vm.ZoomInCommand.Execute(null); e.Handled = true; break;
@@ -615,6 +651,184 @@ public partial class TextEditorView : UserControl, IEditorHost
                 : System.Windows.LogicalTreeHelper.GetParent(node);
         }
         return (node as ListBoxItem)?.DataContext as EditorTab;
+    }
+
+    // ---------- Markdown「实际效果预览」 ----------
+
+    /// <summary>
+    /// 按当前标签 / 设置决定预览窗显不显示：显示时用记忆高度（默认 360）铺开并立刻渲染，
+    /// 不显示时把行高归零（编辑区拿回全部高度）。
+    /// <para>⚠ 先设行高、再改分隔条可见性：PaneSplitter 在变可见时会捕获当前行高作为「双击复位」默认值，
+    /// 顺序反了就会把 0 记成默认高度。</para>
+    /// </summary>
+    private void UpdatePreviewVisibility()
+    {
+        var vm = Vm;
+        var visible = vm?.IsPreviewVisible == true;
+        if (!visible)
+        {
+            PreviewRow.MinHeight = 0;
+            PreviewRow.MaxHeight = double.PositiveInfinity;
+            PreviewRow.Height = new GridLength(0);
+            PreviewPanel.Visibility = Visibility.Collapsed;
+            PreviewSplitter.Visibility = Visibility.Collapsed;
+            PreviewViewer.Document = null;
+            _lastPreviewText = null;
+            _lastPreviewStyleKey = null;
+            return;
+        }
+
+        PreviewRow.MinHeight = PreviewMinHeight;
+        PreviewRow.MaxHeight = PreviewMaxHeight;
+        PreviewRow.Height = new GridLength(LoadPreviewHeight());
+        PreviewPanel.Visibility = Visibility.Visible;
+        PreviewSplitter.Visibility = Visibility.Visible;
+        RenderPreviewNow();
+    }
+
+    private static double LoadPreviewHeight()
+    {
+        var saved = LayoutMemory.GetPixel(PreviewPaneKey + ".px");
+        return saved is { } pixel
+            ? Math.Clamp(pixel, PreviewMinHeight, PreviewMaxHeight)
+            : PreviewDefaultHeight;
+    }
+
+    /// <summary>输入延迟合并：敲字时每 260ms 最多重新解析一次（预览只是锦上添花，不能拖慢打字）。</summary>
+    private void SchedulePreviewRefresh()
+    {
+        if (Vm?.IsPreviewVisible != true) return;
+
+        if (_previewTimer is null)
+        {
+            _previewTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(260),
+            };
+            _previewTimer.Tick += OnPreviewTimerTick;
+        }
+        _previewTimer.Stop();
+        _previewTimer.Start();
+    }
+
+    private void OnPreviewTimerTick(object? sender, EventArgs e)
+    {
+        _previewTimer?.Stop();
+        RenderPreviewNow();
+    }
+
+    /// <summary>把激活 Markdown 标签的内容渲染到预览窗（编辑 / 切标签 / 改字体颜色 / 开关预览都会走这里）。</summary>
+    private void RenderPreviewNow()
+    {
+        var vm = Vm;
+        var cfg = Cfg;
+        if (vm?.ActiveTab is not { } tab || cfg is null || !vm.IsPreviewVisible) return;
+        if (PreviewPanel.Visibility != Visibility.Visible) return;
+
+        var text = tab.Document.Text;
+        var styleKey = BuildPreviewStyleKey(cfg, tab);
+        if (string.Equals(text, _lastPreviewText, StringComparison.Ordinal) && styleKey == _lastPreviewStyleKey)
+            return;
+
+        _lastPreviewText = text;
+        _lastPreviewStyleKey = styleKey;
+
+        var scrollViewer = FindDescendant<ScrollViewer>(PreviewViewer);
+        var savedOffset = scrollViewer?.VerticalOffset ?? 0;
+
+        try
+        {
+            if (text.Length > PreviewMaxChars)
+            {
+                PreviewViewer.Document = BuildPreviewHintDocument(
+                    $"文档太大（{text.Length:N0} 字符），实时预览已暂停；关掉预览继续编辑不会受影响。");
+                return;
+            }
+
+            var style = BuildPreviewStyle(tab);
+            var blocks = MarkdownParser.Parse(text);
+            PreviewViewer.Document = MarkdownPreviewRenderer.Build(blocks, style, OpenPreviewLink);
+
+            // 换了一份 FlowDocument，等布局完成再把滚动位置放回去
+            if (savedOffset > 0)
+            {
+                Dispatcher.BeginInvoke(() =>
+                {
+                    var viewer = FindDescendant<ScrollViewer>(PreviewViewer);
+                    if (viewer is not null)
+                        viewer.ScrollToVerticalOffset(Math.Min(savedOffset, viewer.ScrollableHeight));
+                }, DispatcherPriority.Background);
+            }
+        }
+        catch (Exception ex)
+        {
+            PreviewViewer.Document = BuildPreviewHintDocument("预览渲染失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>预览用的一套配色（跟编辑器背景 / 文字颜色、字体、字号 × 缩放走）。</summary>
+    private MarkdownPreviewStyle BuildPreviewStyle(EditorTab? tab)
+    {
+        var cfg = Cfg ?? new TextEditorConfig();
+
+        if (!HexToBrushConverter.TryParseHex(cfg.BackgroundHex, out var background))
+            _ = HexToBrushConverter.TryParseHex(TextEditorConfig.DefaultBackgroundHex, out background);
+        if (!HexToBrushConverter.TryParseHex(cfg.ForegroundHex, out var foreground))
+            _ = HexToBrushConverter.TryParseHex(TextEditorConfig.DefaultForegroundHex, out foreground);
+
+        var fontSize = Math.Clamp(cfg.FontSize * cfg.ZoomPercent / 100.0, 6, 64);
+        var baseDirectory = tab?.FilePath is { } path ? Path.GetDirectoryName(path) : null;
+        return MarkdownPreviewStyle.Create(
+            background, foreground, TextEditorConfig.BuildFontFamily(cfg.FontName), fontSize, baseDirectory);
+    }
+
+    private static string BuildPreviewStyleKey(TextEditorConfig cfg, EditorTab tab)
+        => string.Join('|', cfg.FontName, cfg.FontSize, cfg.ZoomPercent, cfg.BackgroundHex, cfg.ForegroundHex,
+            tab.FilePath ?? "");
+
+    private FlowDocument BuildPreviewHintDocument(string message)
+    {
+        var style = BuildPreviewStyle(Vm?.ActiveTab);
+        var document = new FlowDocument
+        {
+            Background = MarkdownPreviewStyle.Frozen(style.Background),
+            Foreground = MarkdownPreviewStyle.Frozen(style.Muted),
+            FontFamily = style.FontFamily,
+            FontSize = style.FontSize,
+            PagePadding = new Thickness(16, 12, 16, 24),
+            ColumnWidth = double.PositiveInfinity,
+        };
+        document.Blocks.Add(new Paragraph(new Run(message)));
+        return document;
+    }
+
+    /// <summary>预览里的链接：http/https/mailto 交给系统默认程序，本地存在的文件用资源管理器打开。</summary>
+    private static void OpenPreviewLink(string url)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(url)) return;
+
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uri)
+                && uri.Scheme is "http" or "https" or "mailto")
+            {
+                Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+                return;
+            }
+
+            if (File.Exists(url))
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+        catch
+        {
+            // 打不开链接不影响编辑
+        }
+    }
+
+    private void OnPreviewCloseClick(object sender, RoutedEventArgs e)
+    {
+        if (Cfg is { } cfg) cfg.ShowMarkdownPreview = false;
+        e.Handled = true;
     }
 
     // ---------- 设置面板 ----------

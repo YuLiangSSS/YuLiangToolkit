@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<SyntaxDefinition name="INI" extensions=".ini;.cfg;.inf" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+  <Color name="Comment" foreground="#57A64A" />
+  <Color name="String" foreground="#D69D85" />
+  <Color name="Char" foreground="#D69D85" />
+  <Color name="NumberLiteral" foreground="#B5CEA8" />
+  <Color name="Keywords" foreground="#569CD6" />
+  <Color name="Type" foreground="#4EC9B0" />
+  <Color name="MethodCall" foreground="#DCDCAA" />
+  <Color name="Property" foreground="#9CDCFE" />
+  <Color name="Preprocessor" foreground="#9B9B9B" />
+  <Color name="Punctuation" foreground="#D4D4D4" />
+  <RuleSet ignoreCase="true">
+    <!-- 注释：行首 ; 或 #（也允许缩进） -->
+    <Span color="Comment" begin="^[ \t]*;" />
+    <Span color="Comment" begin="^[ \t]*#" />
+    <!-- [section] -->
+    <Span color="Type" begin="\[" end="\]" />
+    <!-- key = value 的 key（到 = 之前） -->
+    <Rule color="Property">^[ \t]*[^=;#\[\]\s][^=\r\n]*?(?=\s*=)</Rule>
+    <!-- 值里的字符串 -->
+    <Span color="String" begin='"' end='"' />
+    <Span color="String" begin="'" end="'" />
+    <Keywords color="Keywords">
+      <Word>true</Word>
+      <Word>false</Word>
+      <Word>yes</Word>
+      <Word>no</Word>
+      <Word>on</Word>
+      <Word>off</Word>
+      <Word>none</Word>
+      <Word>auto</Word>
+    </Keywords>
+    <Rule color="NumberLiteral">-?\b\d+(\.\d+)?\b</Rule>
+    <Rule color="Punctuation">[=:;,\[\]{}]+</Rule>
+  </RuleSet>
+</SyntaxDefinition>

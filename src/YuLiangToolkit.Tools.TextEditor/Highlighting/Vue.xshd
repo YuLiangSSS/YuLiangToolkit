@@ -1,0 +1,91 @@
+<?xml version="1.0"?>
+<SyntaxDefinition name="Vue" extensions=".vue" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+  <Color name="Comment" foreground="#57A64A" />
+  <Color name="String" foreground="#D69D85" />
+  <Color name="NumberLiteral" foreground="#B5CEA8" />
+  <Color name="Keywords" foreground="#569CD6" />
+  <Color name="Type" foreground="#4EC9B0" />
+  <Color name="MethodCall" foreground="#DCDCAA" />
+  <Color name="Property" foreground="#9CDCFE" />
+  <Color name="Attribute" foreground="#9CDCFE" />
+  <Color name="Preprocessor" foreground="#9B9B9B" />
+  <Color name="Tag" foreground="#569CD6" />
+  <Color name="Punctuation" foreground="#D4D4D4" />
+  <RuleSet>
+    <!-- HTML 注释 -->
+    <Span color="Comment" multiline="true" begin="&lt;!--" end="--&gt;" />
+    <!-- 模板插值 {{ ... }} -->
+    <Span color="Preprocessor" begin="\{\{" end="\}\}" />
+    <!-- <script> 块：基础 JS 高亮 -->
+    <Span color="Tag" multiline="true" begin="&lt;script\b[^&gt;]*&gt;" end="&lt;/script\s*&gt;">
+      <RuleSet>
+        <Span color="Comment" begin="//" />
+        <Span color="Comment" multiline="true" begin="/\*" end="\*/" />
+        <Span color="String" begin="`" end="`" />
+        <Span color="String" begin="'" end="'" />
+        <Span color="String" begin='"' end='"' />
+        <Keywords color="Keywords">
+          <Word>const</Word>
+          <Word>let</Word>
+          <Word>var</Word>
+          <Word>function</Word>
+          <Word>return</Word>
+          <Word>if</Word>
+          <Word>else</Word>
+          <Word>for</Word>
+          <Word>while</Word>
+          <Word>of</Word>
+          <Word>in</Word>
+          <Word>new</Word>
+          <Word>this</Word>
+          <Word>class</Word>
+          <Word>extends</Word>
+          <Word>import</Word>
+          <Word>from</Word>
+          <Word>export</Word>
+          <Word>default</Word>
+          <Word>async</Word>
+          <Word>await</Word>
+          <Word>try</Word>
+          <Word>catch</Word>
+          <Word>throw</Word>
+          <Word>true</Word>
+          <Word>false</Word>
+          <Word>null</Word>
+          <Word>undefined</Word>
+        </Keywords>
+        <Keywords color="Type">
+          <Word>props</Word>
+          <Word>data</Word>
+          <Word>computed</Word>
+          <Word>methods</Word>
+          <Word>watch</Word>
+          <Word>mounted</Word>
+        </Keywords>
+        <Rule color="NumberLiteral">\b\d+(\.\d+)?\b</Rule>
+        <Rule color="MethodCall">\b[a-zA-Z_$][\w$]*(?=\s*\()</Rule>
+        <Rule color="Punctuation">[{}()\[\],.;:+\-*/%&amp;|&lt;&gt;=!?~^]+</Rule>
+      </RuleSet>
+    </Span>
+    <!-- <style> 块：基础 CSS 高亮 -->
+    <Span color="Tag" multiline="true" begin="&lt;style\b[^&gt;]*&gt;" end="&lt;/style\s*&gt;">
+      <RuleSet>
+        <Span color="Comment" multiline="true" begin="/\*" end="\*/" />
+        <Span color="String" begin='"' end='"' />
+        <Span color="String" begin="'" end="'" />
+        <Rule color="Property">[a-zA-Z-]+(?=\s*:)</Rule>
+        <Rule color="Type">[.#][a-zA-Z_-][\w-]*</Rule>
+        <Rule color="NumberLiteral">-?\b\d+(\.\d+)?(px|em|rem|%|vh|vw|s|ms|deg)?\b</Rule>
+        <Rule color="Punctuation">[{}();:,]</Rule>
+      </RuleSet>
+    </Span>
+    <!-- 普通 HTML 标签：标签名 / 属性名 / 属性值 -->
+    <Span color="Tag" begin="&lt;/?[A-Za-z][\w:.-]*" end="&gt;">
+      <RuleSet>
+        <Span color="String" begin='"' end='"' />
+        <Span color="String" begin="'" end="'" />
+        <Rule color="Property">[A-Za-z_:@][\w:.-]*</Rule>
+      </RuleSet>
+    </Span>
+  </RuleSet>
+</SyntaxDefinition>

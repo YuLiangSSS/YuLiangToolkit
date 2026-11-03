@@ -177,7 +177,8 @@ public static class EditorHighlighting
         if (string.IsNullOrWhiteSpace(path)) return null;
         try
         {
-            var definition = HighlightingManager.Instance.GetDefinitionByExtension(Path.GetExtension(path));
+            // 走项目自己的解析器：内置定义 + 我们自己写的 xshd（Go/Rust/…）+ Dockerfile 这类按文件名识别的
+            var definition = EditorSyntaxDefinitions.Resolve(path);
             ApplyDarkPalette(definition);
             ApplyDocCommentPalette();
             return definition;

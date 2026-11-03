@@ -55,6 +55,13 @@ public sealed class TextEditorViewModel : ToolViewModelBase
         Cfg.ZoomPercent = TextEditorConfig.ClampZoomPercent(Cfg.ZoomPercent);
         Cfg.IndentSize = TextEditorConfig.ClampIndentSize(Cfg.IndentSize);
 
+        // 「Markdown 预览」开关一变，预览窗显隐跟着变（View 订阅 IsPreviewVisible 重排）
+        Cfg.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(TextEditorConfig.ShowMarkdownPreview))
+                OnPropertyChanged(nameof(IsPreviewVisible));
+        };
+
         Tabs = new ObservableCollection<EditorTab>();
 
         NewFileCommand = new RelayCommand(_ => NewTab());
@@ -107,8 +114,16 @@ public sealed class TextEditorViewModel : ToolViewModelBase
             RefreshActiveStats();
             RefreshCommandState();
             RefreshSessionConfig();
+            OnPropertyChanged(nameof(ActiveIsMarkdown));
+            OnPropertyChanged(nameof(IsPreviewVisible));
         }
     }
+
+    /// <summary>当前标签是不是 Markdown（.md / .markdown / .mdown / .mkd）——决定「实际效果预览」显不显示。</summary>
+    public bool ActiveIsMarkdown => EditorSyntaxDefinitions.IsMarkdownFile(ActiveTab?.FilePath);
+
+    /// <summary>Markdown 预览窗当前是否应该显示：激活的是 Markdown 且设置里没关预览。</summary>
+    public bool IsPreviewVisible => Cfg.ShowMarkdownPreview && ActiveIsMarkdown;
 
     /// <summary>是否显示偏好设置面板（页内浮层，Esc 关）。</summary>
     public bool IsSettingsVisible
@@ -388,6 +403,9 @@ public sealed class TextEditorViewModel : ToolViewModelBase
     private void RestoreSession()
     {
         var session = Cfg.RememberSession ? RecentFileList.SanitizeSession(Cfg.SessionFiles) : new List<string>();
+        // ⚠ 先把「上次激活的序号」抢下来：下面 OpenPath → RefreshSessionConfig 会按「当前激活标签」
+        // 覆盖 Cfg.SessionActiveIndex，等恢复完再读就已经变成 0 了（切回来的标签永远变回第一个）。
+        var savedActiveIndex = Cfg.SessionActiveIndex;
 
         foreach (var path in session)
         {
@@ -400,7 +418,7 @@ public sealed class TextEditorViewModel : ToolViewModelBase
             return;
         }
 
-        ActiveTab = Tabs[TextEditorConfig.ClampSessionIndex(Cfg.SessionActiveIndex, Tabs.Count)];
+        ActiveTab = Tabs[TextEditorConfig.ClampSessionIndex(savedActiveIndex, Tabs.Count)];
         StatusText = $"已恢复 {Tabs.Count} 个标签";
     }
 
@@ -455,6 +473,13 @@ public sealed class TextEditorViewModel : ToolViewModelBase
             if (!ReferenceEquals(tab, ActiveTab)) return;
             if (e.PropertyName is nameof(EditorTab.IsDirty) or nameof(EditorTab.Header))
                 RefreshCommandState();
+
+            // 另存为 / 保存会让标题 / 路径变：Markdown 预览要不要显示跟着重算
+            if (e.PropertyName is nameof(EditorTab.Header) or nameof(EditorTab.FilePathText))
+            {
+                OnPropertyChanged(nameof(ActiveIsMarkdown));
+                OnPropertyChanged(nameof(IsPreviewVisible));
+            }
         };
     }
 

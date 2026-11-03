@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<SyntaxDefinition name="Dockerfile" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+  <Color name="Comment" foreground="#57A64A" />
+  <Color name="String" foreground="#D69D85" />
+  <Color name="Char" foreground="#D69D85" />
+  <Color name="NumberLiteral" foreground="#B5CEA8" />
+  <Color name="Keywords" foreground="#569CD6" />
+  <Color name="Type" foreground="#4EC9B0" />
+  <Color name="MethodCall" foreground="#DCDCAA" />
+  <Color name="Property" foreground="#9CDCFE" />
+  <Color name="Preprocessor" foreground="#9B9B9B" />
+  <Color name="Punctuation" foreground="#D4D4D4" />
+  <RuleSet ignoreCase="true">
+    <!-- 注释 -->
+    <Span color="Comment" begin="^[ \t]*#" />
+    <!-- 引号字符串 -->
+    <Span color="String" begin='"' end='"' />
+    <Span color="String" begin="'" end="'" />
+    <!-- 变量 $VAR / ${VAR} -->
+    <Rule color="Property">\$\{[^}\r\n]*\}</Rule>
+    <Rule color="Property">\$[A-Za-z_]\w*</Rule>
+    <!-- 指令 -->
+    <Keywords color="Keywords">
+      <Word>FROM</Word>
+      <Word>RUN</Word>
+      <Word>CMD</Word>
+      <Word>ENTRYPOINT</Word>
+      <Word>COPY</Word>
+      <Word>ADD</Word>
+      <Word>WORKDIR</Word>
+      <Word>ENV</Word>
+      <Word>ARG</Word>
+      <Word>EXPOSE</Word>
+      <Word>VOLUME</Word>
+      <Word>USER</Word>
+      <Word>LABEL</Word>
+      <Word>HEALTHCHECK</Word>
+      <Word>SHELL</Word>
+      <Word>ONBUILD</Word>
+      <Word>STOPSIGNAL</Word>
+      <Word>AS</Word>
+      <Word>MAINTAINER</Word>
+    </Keywords>
+    <Rule color="NumberLiteral">\b\d+\b</Rule>
+    <Rule color="Punctuation">[\\{}()\[\]=&amp;|&lt;&gt;;,]+</Rule>
+  </RuleSet>
+</SyntaxDefinition>

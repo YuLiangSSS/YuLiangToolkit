@@ -1,14 +1,16 @@
 # 📝 文本编辑器（AvalonEdit 内核 · 多标签）
 
 > 主页卡片「📝 文本编辑器」（分类：**文件**）。编辑内核用开源的 **AvalonEdit**（WPF 代码编辑器控件），
-> 多标签 / 顶部菜单 / 查找替换条 / 偏好设置面板这些外壳由本工具自己实现。
+> 多标签 / 顶部菜单 / 查找替换条 / 偏好设置面板这些外壳由本工具自己实现；
+> 打开 Markdown 文件还能在编辑区下方实时看**渲染后的实际效果**。
 
 [← 工具一览](../../README.md) ｜ [文档索引](../README.md)
 
 ## 一句话
 
-在工具集里直接改文本 / 代码文件：**多标签**打开，带行号、语法高亮、查找替换；
-打开时**自动识别编码与换行**、保存按原样写回；字号 / 颜色 / 缩放都能调，改一下自动记住。
+在工具集里直接改文本 / 代码文件：**多标签**打开，带行号、**26 种语言 / 格式的语法高亮**、查找替换；
+打开时**自动识别编码与换行**、保存按原样写回；Markdown 有**实际效果预览**；
+字号 / 颜色 / 缩放都能调，改一下自动记住。
 
 ## 怎么用
 
@@ -21,7 +23,8 @@
    有未保存改动时会问「保存 / 不保存 / 取消」。
 4. **编辑**：菜单「编辑」里有撤销 / 重做 / 剪切 / 复制 / 粘贴 / 全选；`Ctrl+F` 查找、`Ctrl+H` 替换（见下）。
 5. **保存**：`Ctrl+S`（无标题会先让你选位置）、`Ctrl+Shift+S` 另存为、菜单「全部保存」一次保存所有改过的标签。
-6. **查看 / 设置**：`Ctrl+=` / `Ctrl+-` / `Ctrl+0` 缩放，`Ctrl+滚轮` 也行；字体 / 颜色等在「偏好设置」面板里调。
+6. **查看 / 设置**：`Ctrl+=` / `Ctrl+-` / `Ctrl+0` 缩放，`Ctrl+滚轮` 也行；`Ctrl+Shift+M` 开关 Markdown 预览；
+   字体 / 颜色等在「偏好设置」面板里调。
 
 ## 菜单与快捷键
 
@@ -29,7 +32,7 @@
 | --- | --- | --- |
 | 文件 | 新建 `Ctrl+N` / 打开… `Ctrl+O` / 打开最近 / 保存 `Ctrl+S` / 另存为… `Ctrl+Shift+S` / 全部保存 / 关闭标签 `Ctrl+W` / 关闭全部 | 「打开最近」是子菜单（最多 10 条）；「打开…」可多选；「全部保存」只保存有改动的标签 |
 | 编辑 | 撤销 `Ctrl+Z` / 重做 `Ctrl+Y` / 剪切 `Ctrl+X` / 复制 `Ctrl+C` / 粘贴 `Ctrl+V` / 全选 `Ctrl+A` / 查找 `Ctrl+F` / 替换 `Ctrl+H` | 撤销 / 重做是否可用跟着当前标签的撤销栈走；这些命令都只作用于激活标签的编辑器 |
-| 查看 | 放大 `Ctrl+=` / 缩小 `Ctrl+-` / 重置缩放 `Ctrl+0` / 行号 ✓ / 自动换行 ✓ | 缩放只改编辑区文字大小（25%~400%，一步 10%）；「行号 / 自动换行」打勾即生效并写进配置 |
+| 查看 | 放大 `Ctrl+=` / 缩小 `Ctrl+-` / 重置缩放 `Ctrl+0` / 行号 ✓ / 自动换行 ✓ / Markdown 预览 `Ctrl+Shift+M` | 缩放只改编辑区文字大小（25%~400%，一步 10%）；「行号 / 自动换行 / Markdown 预览」打勾即生效并写进配置 |
 | 偏好设置 | 打开偏好设置面板 / 重置缩放为 100% | 字体 / 字号 / 缩放 / 颜色 / 行号 / 换行 / 缩进都在面板里 |
 
 ## 多标签
@@ -80,6 +83,7 @@
 | `ForegroundHex` | `#E8EAF0` | 编辑区文字颜色，格式同上 |
 | `ShowLineNumbers` | `true` | 是否显示行号列 |
 | `WordWrap` | `false` | 自动换行 |
+| `ShowMarkdownPreview` | `true` | 打开 Markdown 文件时自动显示「实际效果预览」窗 |
 | `ConvertTabsToSpaces` | `true` | Tab 键输入空格（关掉 = 输入真正的制表符） |
 | `IndentSize` | `4` | 缩进宽度（预设 2 / 4 / 8） |
 | `RecentFiles` | `[]` | 最近打开的文件（新开的排最前，最多 10 条） |
@@ -99,12 +103,61 @@
 
 ## 语法高亮
 
-- 按扩展名套 AvalonEdit 内置的语法定义（C# / JSON / XML / Markdown 等），配色换成了
-  **Visual Studio 2022 深色主题**的 C# 风格：关键字蓝、**方法名淡黄**、类型青绿、字符串橙、
-  数字浅绿、注释绿、属性 / 字段浅蓝、标点浅灰（内置定义原本是给白底设计的深蓝 / 藏青，深色底上看不清，
-  现在全部按「颜色名」重新配色，没归类的颜色也统一回退成浅灰，不会留下看不清的深色）；
-  另存为换了扩展名会立即换高亮。
-- 认不出的扩展名 = 纯文本，不影响编辑和保存。
+支持 **26 种语言 / 格式**（AvalonEdit 内置定义 + 项目自带的 13 个 `.xshd` 定义），
+按**文件名 / 扩展名**自动识别，认不出的就是纯文本：
+
+| 语言 / 格式 | 扩展名 / 识别方式 |
+| --- | --- |
+| C | `.c` `.h` |
+| C++ | `.cpp` `.cxx` `.cc` `.hpp` `.hxx` `.hh` `.h++` `.inl` |
+| C# | `.cs` |
+| Java | `.java` |
+| Python | `.py` `.pyw` |
+| Go | `.go` |
+| Rust | `.rs` |
+| Ruby | `.rb` `.rake` `.gemspec`，以及 `Gemfile` / `Rakefile` / `Vagrantfile` |
+| F# | `.fs` `.fsi` `.fsx` |
+| Kotlin | `.kt` `.kts` |
+| PHP | `.php` `.php3` `.php4` `.php5` `.phtml` |
+| JSON | `.json` `.jsonc` |
+| HTML / HTML5 | `.html` `.htm` `.xhtml` |
+| JavaScript | `.js` `.mjs` `.cjs` `.jsx` |
+| TypeScript | `.ts` `.tsx` `.mts` `.cts` |
+| CSS | `.css` |
+| Vue 单文件组件 | `.vue` |
+| Batch / CMD | `.bat` `.cmd` |
+| INI | `.ini` `.cfg` `.inf` |
+| YAML | `.yml` `.yaml` |
+| Markdown | `.md` `.markdown` `.mdown` `.mkd` |
+| PowerShell | `.ps1` `.psm1` `.psd1` |
+| Lua | `.lua` |
+| XML | `.xml` `.xaml` `.csproj` `.config` `.svg` 等（AvalonEdit 内置那批） |
+| SQL | `.sql`（项目自带的通用 SQL 定义，MySQL / PostgreSQL 风格关键字） |
+| Dockerfile | 无扩展名，按文件名 `Dockerfile` 识别 |
+
+配色统一套 **Visual Studio 2022 深色主题**的 C# 风格：关键字蓝、**方法名淡黄**、类型青绿、字符串橙、
+数字浅绿、注释绿、属性 / 字段浅蓝、标点浅灰。AvalonEdit 内置定义原本是给白底设计的深蓝 / 藏青，
+深色底上根本看不清，所以按 xshd 的**颜色名**整体重配（自定义的 13 个语言定义沿用同一套颜色名，
+自然套上同一套配色）；没归类的颜色也统一回退成浅灰，不会留下看不清的深色；顺便去掉背景色、
+把字体粗细归到 Normal（VS 的深色配色不加粗）。另存为换了扩展名会立即换高亮。
+
+## Markdown 实际效果预览
+
+- 打开 `.md` / `.markdown` / `.mdown` / `.mkd` 文件时，编辑区**下方**自动出现「实际效果预览」窗
+  （设置里的 `ShowMarkdownPreview` 关掉就不自动出）。
+- 这些语法会**真渲染**：ATX 标题（`#` ~ `######`）、段落与硬换行、**加粗 / 斜体 / 删除线 / 行内代码**、
+  `[链接](url)`、**本地相对路径图片**、有序 / 无序列表（含嵌套）、引用、表格（含 `:---:` 对齐）、
+  围栏代码块（``` / ~~~）、分割线。
+- 图片只认**本地文件**：相对路径按当前 Markdown 文件所在目录解析；`http(s)://` / `data:` 这类
+  **不联网**，显示 `[图片：说明]` 占位文字。链接点一下交给系统（`http/https/mailto` 走默认浏览器 / 邮件，
+  本地文件用资源管理器打开），打不开也不影响编辑。
+- 刷新是**合并延迟**的：敲字后 **260ms** 才重排一次（预览不能拖慢打字），重排后**保持原来的滚动位置**；
+  文档超过 **40 万字符**会暂停实时预览（显示提示，编辑照常）。
+- 预览的**背景色 / 文字色 / 字体 / 字号 × 缩放**都跟着编辑器和偏好设置走，改颜色 / 缩放会立刻重排。
+- 显隐：`Ctrl+Shift+M` 或菜单「查看 → Markdown 预览」开关（写进配置）；预览窗右上角 **×** 也是关掉这个开关
+  （之后 `.md` 不再自动出预览，想再看从菜单打开）。
+- 高度：编辑区和预览窗之间的**分隔条**拖动调整，双击缝隙恢复默认高度（**360 px**）；
+  全部恢复默认在 **主页设置 → 界面布局 → 恢复默认布局**。
 
 ## 状态栏
 
@@ -129,6 +182,10 @@
 
 - **不是 IDE**：没有代码补全、多文件工程、终端、调试、Git 集成。
 - 高亮配色按深色底调；切到浅色背景（纸白 / 护眼米黄）时部分高亮颜色对比度一般。
+- 自定义语言的高亮是**基于正则的近似高亮**（没有语义分析）；Vue 是基础单文件组件高亮
+  （`template` / `script` / `style` 分段），不做模板表达式 / 组件类型检查。
+- Markdown 预览是 **FlowDocument 渲染**：覆盖常用语法，**不是完整 CommonMark**——
+  不支持脚注、内嵌 HTML、远程图片（远程图片显示占位文字）。
 - 会话只恢复有文件路径的标签；无标题草稿关了不保留。
 - 单文件 32MB 上限，超大日志 / 数据文件请用别的方式看。
 - 查找替换是纯文本匹配，不支持正则。
@@ -142,10 +199,14 @@
 | 编码探测 / 换行 / 读写（纯逻辑） | `src/YuLiangToolkit.Tools.TextEditor/Core/TextFileCodec.cs` |
 | 查找 / 替换 / 环绕查找（纯逻辑） | `src/YuLiangToolkit.Tools.TextEditor/Core/TextSearch.cs` |
 | 语法高亮（暗色配色覆写） | `src/YuLiangToolkit.Tools.TextEditor/Core/EditorHighlighting.cs` |
+| 多语言高亮注册（内置 + 自定义 xshd 的注册 / 解析） | `src/YuLiangToolkit.Tools.TextEditor/Core/EditorSyntaxDefinitions.cs` |
+| 13 个新语言定义（Go / Rust / Ruby / F# / Kotlin / TS / Vue / Batch / INI / YAML / Dockerfile / Lua / SQL，嵌入资源） | `src/YuLiangToolkit.Tools.TextEditor/Highlighting/*.xshd` |
+| Markdown 解析（纯逻辑，自检断言） | `src/YuLiangToolkit.Tools.TextEditor/Core/Markdown/MarkdownParser.cs` |
+| Markdown → FlowDocument 渲染 | `src/YuLiangToolkit.Tools.TextEditor/Core/Markdown/MarkdownPreviewRenderer.cs` |
 | 最近文件 / 会话路径清洗 | `src/YuLiangToolkit.Tools.TextEditor/Core/RecentFileList.cs` |
 | 单个标签的状态（路径 / 脏标记 / 编码 / 换行） | `src/YuLiangToolkit.Tools.TextEditor/ViewModels/EditorTab.cs` |
 | ViewModel（标签 / 文件与编辑命令 / 缩放 / 会话恢复） | `src/YuLiangToolkit.Tools.TextEditor/ViewModels/TextEditorViewModel.cs` |
-| 界面（菜单 / 标签条 / 查找条 / 设置面板 / 快捷键） | `src/YuLiangToolkit.Tools.TextEditor/Views/TextEditorView.xaml(.cs)` |
+| 界面（菜单 / 标签条 / 查找条 / 设置面板 / Markdown 预览 / 快捷键） | `src/YuLiangToolkit.Tools.TextEditor/Views/TextEditorView.xaml(.cs)` |
 
-> 菜单模板、标签条横向滚动、宿主快捷键重挂、会话落盘顺序这些坑：
+> 菜单模板、标签条横向滚动、宿主快捷键重挂、会话落盘顺序、高亮注册 / Markdown 预览这些坑：
 > [docs/dev/pitfalls.md](../dev/pitfalls.md) 的「文本编辑器（AvalonEdit）」小节。

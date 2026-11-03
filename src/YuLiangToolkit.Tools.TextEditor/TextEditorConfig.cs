@@ -116,12 +116,23 @@ public sealed class TextEditorConfig : ToolConfig
     private bool _showLineNumbers = true;
     private bool _wordWrap;
     private bool _convertTabsToSpaces = true;
+    private bool _showMarkdownPreview = true;
 
     /// <summary>是否显示行号列（默认开，写代码看行数）。用 Set() 发通知：菜单勾选 / 编辑器同步联动。</summary>
     public bool ShowLineNumbers
     {
         get => _showLineNumbers;
         set => Set(ref _showLineNumbers, value);
+    }
+
+    /// <summary>
+    /// 打开 Markdown 文件时是否自动显示右侧/下方的「实际效果预览」窗（默认开）。
+    /// 用 Set() 发通知：菜单勾选与预览窗显隐联动。
+    /// </summary>
+    public bool ShowMarkdownPreview
+    {
+        get => _showMarkdownPreview;
+        set => Set(ref _showMarkdownPreview, value);
     }
 
     /// <summary>自动换行（同样要通知菜单勾选与编辑器）。</summary>

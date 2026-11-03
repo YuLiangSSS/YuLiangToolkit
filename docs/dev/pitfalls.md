@@ -331,3 +331,19 @@
 - ⚠ **编码探测别用默认的 `Encoding.GetEncoding(936)`**：.NET 默认不带 GB18030 代码页，必须先
   `Encoding.RegisterProvider(CodePagesEncodingProvider.Instance)`（`TextFileCodec` 静态构造里做），
   否则中文 ANSI 文件直接抛异常。
+- ⚠ **别再 `HighlightingManager.RegisterHighlighting` 去抢内置已注册的扩展名**：AvalonEdit 内置定义已经占用了
+  `.md` / `.sql` 这批扩展名，再注册会撞车（同名扩展名互相覆盖，谁生效看加载顺序）。项目改成自己一层解析
+  （`EditorSyntaxDefinitions`）：**文件名 → 扩展名 → 内置注册表兜底**，`Dockerfile` / `Gemfile` / `Rakefile` /
+  `Vagrantfile` 这类没有扩展名的也能认。自检断言 13 个自定义 xshd 全部加载成功、常用路径都解析到正确定义。
+- ⚠ **自定义 xshd（v2）里每个 `color="..."` 必须在同一个文件里 `<Color name="..."/>` 定义过**：漏了会在
+  `HighlightingLoader.Load` 时报「找不到颜色」，整个语言加载失败退回纯文本；跨定义的 `<Import ruleSet>` 也不能用
+  ——Vue 的 `script` / `style` 分段要在 `Span` 里写内联 `RuleSet`，不能 Import 别的定义。
+- ⚠ **XML 注释里不能出现连续 `--`**：给 Lua 写 xshd 时把 `--[[` 直接抄进 `<!-- -->` 注释，XML 解析会直接失败
+  （xshd 整个加载不出来，Lua 变纯文本）。注释里要描述 Lua 长注释就拆开写 / 用文字绕开，别让 `--` 连续出现。
+- ⚠ **会话恢复要先把 `SessionActiveIndex` 取出来再用**：`OpenPath` 里会调 `RefreshSessionConfig()`，按
+  「当前激活标签」把 `SessionActiveIndex` 覆盖掉；等恢复完再读就永远是 0（表现是切回来永远选第一个标签）。
+  `RestoreSession` 开头先 `var savedActiveIndex = Cfg.SessionActiveIndex;`，恢复完再按它夹取。
+- ⚠ **`ColumnDefinition` 不在逻辑 / 视觉树里，拿不到 `DataContext`**：别用 `Binding` 管列宽（绑定静默失效，
+  列宽永远保持 XAML 默认值）。设置面板显隐 / 记忆宽度、Markdown 预览窗的显隐与高度都在 code-behind 里设
+  （`ApplySettingsColumnWidth` / `UpdatePreviewVisibility`），像素由 `PaneSplitter` 记在 `Config\layout.json`，
+  双击复位也交给它。
