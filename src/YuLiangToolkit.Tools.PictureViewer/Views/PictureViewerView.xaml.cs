@@ -54,6 +54,9 @@ public partial class PictureViewerView : UserControl
 
     private readonly List<PageSlot> _slots = new();
 
+    /// <summary>正在用代码同步右侧滚动条时不回灌滚动位置（防止拖拽 / 滚动时抖动）。</summary>
+    private bool _syncingQuickScroll;
+
     // 图片解码：最多 4 张并行；排队等可见范围（条目自带 generation，换过文件夹/方向的旧条目直接丢）
     private readonly SemaphoreSlim _loadSemaphore = new(4, 4);
     private readonly Queue<(PageSlot Slot, int DecodeWidth, int Generation)> _pendingLoads = new();
@@ -707,6 +710,8 @@ public partial class PictureViewerView : UserControl
 
     private void UpdateReadingProgress()
     {
+        UpdateQuickScrollBar();
+
         if (_pagedActive)
         {
             UpdatePagedProgress();
@@ -720,6 +725,45 @@ public partial class PictureViewerView : UserControl
             ? HorizontalAlignment.Right
             : HorizontalAlignment.Left;
         ReadingProgressFill.Width = ratio * Math.Max(0, ViewportGrid.ActualWidth);
+    }
+
+    /// <summary>右侧快速浏览滚动条：值 0 ~ 1000 映射整组图片进度（连续按阅读比例，翻页按张序号）。</summary>
+    private void UpdateQuickScrollBar()
+    {
+        if (QuickScrollBar is null) return;
+
+        var count = Vm?.Pages.Count ?? 0;
+        if (count == 0)
+        {
+            QuickScrollBar.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        QuickScrollBar.Visibility = Visibility.Visible;
+        var ratio = _pagedActive
+            ? count > 1 ? (double)PicturePaging.NormalizePageIndex(_pageIndex, count) / (count - 1) : 0
+            : Math.Clamp(GetReadingRatio(), 0, 1);
+
+        _syncingQuickScroll = true;
+        QuickScrollBar.Value = Math.Clamp(ratio, 0, 1) * 1000;
+        _syncingQuickScroll = false;
+    }
+
+    /// <summary>拖右侧滚动条 / 点轨道：按比例快速跳到对应图片位置。</summary>
+    private void OnQuickScrollBarValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_syncingQuickScroll || Vm is not { } vm || vm.Pages.Count == 0) return;
+
+        var ratio = Math.Clamp(e.NewValue / 1000.0, 0, 1);
+        if (_pagedActive)
+        {
+            var index = (int)Math.Round(ratio * Math.Max(0, vm.Pages.Count - 1));
+            _ = GoToPageAsync(index);
+            return;
+        }
+
+        SetReadingOffset(PictureScrollMath.OffsetForRatio(ratio, GetReadingMaximum()));
+        UpdateReadingProgress();
     }
 
     // ---------------------------------------------------------------- 可见范围：解码 / 释放

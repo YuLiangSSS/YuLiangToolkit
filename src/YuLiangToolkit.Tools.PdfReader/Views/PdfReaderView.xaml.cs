@@ -88,6 +88,9 @@ public partial class PdfReaderView : UserControl
     /// <summary>「阅读偏移」的唯一真值（0 = 第一页开头）。</summary>
     private double _readingOffset;
 
+    /// <summary>正在用代码同步右侧滚动条时不回灌滚动位置（防止拖拽 / 滚动时抖动）。</summary>
+    private bool _syncingQuickScroll;
+
     /// <summary>跨轴偏移（纵向模式的水平偏移 / 横向模式的垂直偏移；缩放后可滚）。</summary>
     private double _crossOffset;
 
@@ -2476,6 +2479,7 @@ public partial class PdfReaderView : UserControl
 
     private void UpdatePageIndicator()
     {
+        UpdateQuickScrollBar();
         var vm = Vm;
         var count = vm?.PageCount ?? 0;
         if (vm?.HasDocument != true || count == 0)
@@ -2587,6 +2591,45 @@ public partial class PdfReaderView : UserControl
 
         ReadingProgressFill.HorizontalAlignment = HorizontalAlignment.Left;
         ReadingProgressFill.Width = Math.Clamp(ratio, 0, 1) * Math.Max(0, ViewportGrid.ActualWidth);
+
+        UpdateQuickScrollBar();
+    }
+
+    /// <summary>右侧快速浏览滚动条：值 0 ~ 1000 映射整篇阅读进度（连续模式按偏移比例，双页按屏序号）。</summary>
+    private void UpdateQuickScrollBar()
+    {
+        if (QuickScrollBar is null) return;
+
+        var vm = Vm;
+        if (vm?.HasDocument != true || vm.PageCount == 0)
+        {
+            QuickScrollBar.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        QuickScrollBar.Visibility = Visibility.Visible;
+        var ratio = _spreadActive
+            ? PdfSpreadLayout.ProgressRatio(_spreadStart, vm.PageCount)
+            : PdfContinuousLayout.RatioOf(GetReadingOffset(), MaximumOffset);
+
+        _syncingQuickScroll = true;
+        QuickScrollBar.Value = Math.Clamp(ratio, 0, 1) * 1000;
+        _syncingQuickScroll = false;
+    }
+
+    /// <summary>拖右侧滚动条 / 点轨道：按比例快速跳到对应阅读位置。</summary>
+    private void OnQuickScrollBarValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_syncingQuickScroll || Vm is not { } vm || !vm.HasDocument || vm.PageCount == 0) return;
+
+        var ratio = Math.Clamp(e.NewValue / 1000.0, 0, 1);
+        if (_spreadActive)
+        {
+            JumpToPage((int)Math.Round(ratio * Math.Max(0, vm.PageCount - 1)));
+            return;
+        }
+
+        SetReadingOffset(PdfContinuousLayout.OffsetForRatio(ratio, MaximumOffset));
     }
 
     // ---------------------------------------------------------------- 通用小工具

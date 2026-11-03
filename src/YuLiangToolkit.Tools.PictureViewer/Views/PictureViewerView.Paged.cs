@@ -527,6 +527,7 @@ public partial class PictureViewerView
         NextPageButton.ToolTip = rightIsPrevious ? "上一张" : "下一张";
 
         UpdateToolbarPageText();
+        UpdateQuickScrollBar();
     }
 
     private void UpdatePagedProgress()
