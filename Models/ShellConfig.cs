@@ -148,6 +148,14 @@ public sealed class ShellConfig : ToolConfig
     /// </summary>
     public bool ShowHomeTags { get; set; } = true;
 
+    /// <summary>
+    /// 是否显示左侧「功能列表」栏（「主页设置 → 界面布局」，默认 <c>true</c> = 和以前一样显示，v0.66.0）。
+    /// <para>关掉后整块侧边栏 + 分隔条一起收起、内容区占满宽度；想再打开在
+    /// 主页设置里重新勾上（隐藏后仍可从面包屑「主页」回主页 → 设置）。
+    /// 旧配置文件没有这个字段时读出来就是默认值 true，升级后界面不变。</para>
+    /// </summary>
+    public bool ShowSidebar { get; set; } = true;
+
     // ---------- 粒子颜色（v0.22.0，主页设置「粒子颜色」卡片） ----------
 
     /// <summary>是否启用自定义粒子颜色（默认关 = 原来的淡紫白，行为完全不变）。</summary>

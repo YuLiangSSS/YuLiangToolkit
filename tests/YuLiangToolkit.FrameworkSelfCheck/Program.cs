@@ -425,6 +425,30 @@ Thread.Sleep(900);
 Check("重新打开标签墙后落盘（showHomeTags = true）",
     JsonFileStore.Read<ShellConfig>(shellStore.FilePath)?.ShowHomeTags == true);
 
+// ---------- 17.2.2 左侧「功能列表」栏显隐（v0.66.0：主页设置 → 界面布局） ----------
+Check("左侧功能列表栏默认显示（旧配置升上来行为不变；配置键 showSidebar）",
+    new ShellConfig().ShowSidebar
+    && JsonFileStore.Serialize(new ShellConfig()).Contains("\"showSidebar\": true"),
+    JsonFileStore.Serialize(new ShellConfig()).Replace(Environment.NewLine, " "));
+
+var legacySidebar = JsonFileStore.Read<ShellConfig>(legacyTagsPath);
+Check("旧配置文件没有 showSidebar 键 → 读回 true（升级后侧边栏照常显示）",
+    legacySidebar is { ShowSidebar: true },
+    JsonFileStore.Serialize(legacySidebar).Replace(Environment.NewLine, " "));
+
+shell.ShowSidebar = false;
+Thread.Sleep(900);
+var savedSidebar = JsonFileStore.Read<ShellConfig>(shellStore.FilePath);
+Check("主页设置里隐藏侧边栏后自动落盘并读回（showSidebar = false）",
+    savedSidebar is { ShowSidebar: false }
+    && File.ReadAllText(shellStore.FilePath).Contains("\"showSidebar\": false"),
+    JsonFileStore.Serialize(savedSidebar).Replace(Environment.NewLine, " "));
+
+shell.ShowSidebar = true;
+Thread.Sleep(900);
+Check("重新显示侧边栏后落盘（showSidebar = true）",
+    JsonFileStore.Read<ShellConfig>(shellStore.FilePath)?.ShowSidebar == true);
+
 // ---------- 17.3 最大化窗口拖标题栏 → 还原位置（纯逻辑，见 AGENTS.md） ----------
 // 场景：1920x1032 的工作区里，1280x820 的窗口最大化后（实际 1920 宽），按住标题栏某个点往外拖。
 var dragArea = new Rect(0, 0, 1920, 1032);

@@ -107,6 +107,22 @@
 7. 新工具页 / 改工具页时：先看 `FlashDownloaderView.xaml`（左右 3 栏 + 上下主区/日志，最全的参考）
    和 `SampleView.xaml`（模板）。
 
+## 外壳侧边栏（v0.66.0：功能列表栏可拖宽 / 可隐藏）
+
+左侧「功能列表」栏也是同一套东西，但它是**外壳**不是工具页，有两个特殊点：
+
+- 分隔条放在 `MainWindow.xaml` 主体 Grid 的**独立一列**里，`Key="shell.sidebar"`
+  （`LayoutMemory.DescribeGroup` 把 `shell` 显示成「主页 / 外壳设置」，所以设置页摘要不会出现英文）；
+  左列固定像素、右列 `*`，PaneSplitter 自动按 `.px` 记宽度，双击恢复 XAML 里的 232。
+- ⚠ 侧边栏既要能被「主页设置 → 显示左侧功能列表栏」隐藏，又要在全屏时收成 0：
+  **`SidebarColumn.MinWidth` 不能写死在 XAML**（`ColumnDefinition.MinWidth` 会盖过 `Width=0`，列收不回去）。
+  现在由 `MainWindow.ApplySidebarVisibility()` 动态设：显示时 `MinWidth=180 / MaxWidth=520`，
+  隐藏 / 全屏时 `MinWidth=0` 再把列宽 + 分隔条列都设 0、分隔条 `Collapsed`
+  （`PaneSplitter` 对不可见状态会跳过「套用记忆尺寸」，不会把刚藏起来的列又撑回来）。
+  退出全屏按设置恢复；隐藏前的宽度记在 `MainWindow._sidebarWidth`，重新显示时先套回去、
+  再由 PaneSplitter 套 `Config\layout.json` 的记忆值。
+- 拖过的宽度、「恢复默认布局」跟工具页共用同一份 `Config\layout.json`，所以恢复默认会一起清掉。
+
 ## 自检与验收
 
 - `PaneSplitter.ComputeDrag(...)` 是纯函数（拖拽换算 + 夹取）：`MaintenanceChecks` 里有断言（`maintenance` 组）。

@@ -334,6 +334,23 @@ public class MainViewModel : ObservableObject
         }
     }
 
+    // ---------- 左侧「功能列表」栏（v0.66.0：可拖宽 + 设置里可隐藏） ----------
+
+    /// <summary>
+    /// 是否显示左侧「功能列表」栏（「主页设置 → 界面布局」里的开关；读写
+    /// <see cref="ShellConfig.ShowSidebar"/>，自动落盘）。主窗口监听这个属性来收起 / 展开侧边栏与分隔条。
+    /// </summary>
+    public bool ShowSidebar
+    {
+        get => _shell.ShowSidebar;
+        set
+        {
+            if (_shell.ShowSidebar == value) return;
+            _shell.ShowSidebar = value;
+            OnPropertyChanged();
+        }
+    }
+
     // ---------- 工具页分隔条提示线（v0.42.0：平时可调成看不见 / 淡淡一条 / 实心蓝线） ----------
 
     /// <summary>

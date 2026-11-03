@@ -97,6 +97,13 @@
 ### 外壳：分类 · 粒子 · 主页设置
 - 老工具 `Category` 别自动当分类目录：树只认 `CategoryPath`（默认空）。
 - 类别页只平铺「直接工具 + 子类别卡片」，别递归平铺；主页搜索对全部工具扁平过滤。
+- ⚠ 左侧「功能列表」栏要能被「主页设置 → 显示左侧功能列表栏」隐藏、全屏时也要收成 0：
+  `ColumnDefinition.MinWidth` 会盖过 `Width=0`，所以 `SidebarColumn.MinWidth` **不能写死在 XAML**，
+  由 `MainWindow.ApplySidebarVisibility()` 动态设（显示 180 / 隐藏·全屏 0），并同时把分隔条那一列设 0、
+  分隔条 `Collapsed`（`PaneSplitter` 对不可见状态会跳过套用记忆，否则刚藏起来又被记忆值撑回来，v0.66.0）。
+  宽度记忆用 `PaneSplitter` + `Key="shell.sidebar"`（`Config\layout.json`，和工具页共用、「恢复默认布局」一起清）。
+  主窗口的 DataContext 是**构造之后**才由 App 赋的：监听 `ShowSidebar` 要挂 `DataContextChanged`，
+  别只在构造函数里拿一次（那时还是 null）。
 - ⚠ `ParticleOverlay` 订阅 `CompositionTarget.Rendering`（静态）+ Window 鼠标事件，必须成对挂摘，否则泄漏 + 关窗后还在跑。
 - 粒子发射点用 `GetCursorPos` + `PointFromScreen`：`DragMove` 期间 `GetPosition` 返回 (0,0)，粒子会从左上角冒。
 - 粒子别每帧 new 控件 / 画刷：`DrawingContext.DrawEllipse` + 冻结画刷，否则 UI 线程卡。

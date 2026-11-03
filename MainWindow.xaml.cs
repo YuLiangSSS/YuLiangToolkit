@@ -84,6 +84,27 @@ public partial class MainWindow : Window, IFullscreenHost
     private WindowState _restoreState;
     private bool _restoreTopmost;
 
+    // ---------- 左侧「功能列表」栏（v0.66.0：右边缘可拖宽 + 主页设置里可隐藏） ----------
+
+    /// <summary>默认宽度（双击分隔条恢复成这个；XAML 里的初始列宽也是它）。</summary>
+    private const double SidebarDefaultWidth = 232;
+
+    /// <summary>拖拽最小值 / 最大值：太小列表标题会挤成一条，太大内容区没地方。</summary>
+    private const double SidebarMinWidth = 180;
+    private const double SidebarMaxWidth = 520;
+
+    /// <summary>分隔条自己占的列宽（隐藏侧边栏 / 全屏时一起收成 0）。</summary>
+    private const double SidebarSplitterWidth = 12;
+
+    /// <summary>
+    /// 当前功能列表栏宽度：隐藏 / 全屏前从 <see cref="ColumnDefinition.ActualWidth"/> 抓一次，
+    /// 恢复显示 / 退出全屏时再套回去（拖过的宽度最终由 PaneSplitter 记在 <c>Config\layout.json</c>）。
+    /// </summary>
+    private double _sidebarWidth = SidebarDefaultWidth;
+
+    /// <summary>主 ViewModel（要监听 <c>ShowSidebar</c> 变化；DataContext 在构造之后才由 App 设置）。</summary>
+    private MainViewModel? _shellVm;
+
     /// <summary>全屏期间“盯着任务栏”的看门狗（见 <see cref="OnTaskbarWatchTick"/>）。</summary>
     private readonly DispatcherTimer _taskbarWatch;
 
@@ -91,6 +112,11 @@ public partial class MainWindow : Window, IFullscreenHost
     {
         InitializeComponent();
         StateChanged += OnWindowStateChanged;
+
+        // 主页设置里的「显示左侧功能列表栏」：App 在 Show 之前设好 DataContext，这里挂监听；
+        // 勾掉 / 勾上时立即收起 / 展开（全屏期间由 EnterFullscreen 自己收，退出时再按设置恢复）。
+        DataContextChanged += OnDataContextChanged;
+        Loaded += (_, _) => ApplySidebarVisibility();
 
         // 开在「工作区」正中间：CenterScreen 会把任务栏那 48px 也算进屏幕高度，窗口看着偏低（v0.9.6）。
         // SystemParameters.WorkArea 已经是扣掉任务栏的 DIP 矩形，窗口 Width/Height 也是 DIP，直接算即可。
@@ -446,6 +472,75 @@ public partial class MainWindow : Window, IFullscreenHost
         SyncTaskbar();   // 全屏时被最小化 / 还原 → 任务栏该还就还
     }
 
+    // ---------- 左侧「功能列表」栏：显隐 / 宽度 ----------
+
+    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (_shellVm is not null) _shellVm.PropertyChanged -= OnShellPropertyChanged;
+        _shellVm = e.NewValue as MainViewModel;
+        if (_shellVm is not null) _shellVm.PropertyChanged += OnShellPropertyChanged;
+        ApplySidebarVisibility();
+    }
+
+    private void OnShellPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // 空属性名 = OnPropertyChanged(string.Empty)（重建外壳配置后所有绑定重读）→ 侧边栏也要重按设置摆一次
+        if (string.IsNullOrEmpty(e.PropertyName) || e.PropertyName == nameof(MainViewModel.ShowSidebar))
+        {
+            ApplySidebarVisibility();
+        }
+    }
+
+    /// <summary>
+    /// 按「是否全屏」+「主页设置里是否显示」把左侧功能列表栏摆好：
+    /// 显示 = 恢复记住的宽度 + 分隔条占 12；隐藏 / 全屏 = 两列都收成 0、分隔条收起。
+    /// <para>⚠ 这里故意用像素列宽而不是绑定：全屏 / 隐藏都需要把列宽真的收成 0，
+    /// 而 <see cref="ColumnDefinition.MinWidth"/> 会把它撑回去，所以显示 / 隐藏时动态改 MinWidth。</para>
+    /// </summary>
+    private void ApplySidebarVisibility()
+    {
+        if (_fullscreen)
+        {
+            HideSidebarChrome();
+            return;
+        }
+
+        var show = _shellVm?.ShowSidebar ?? true;
+        if (!show)
+        {
+            CaptureSidebarWidth();
+            HideSidebarChrome();
+            return;
+        }
+
+        SidebarColumn.MinWidth = SidebarMinWidth;
+        SidebarColumn.MaxWidth = SidebarMaxWidth;
+        SidebarColumn.Width = new GridLength(ClampSidebarWidth(_sidebarWidth));
+        SidebarSplitterColumn.Width = new GridLength(SidebarSplitterWidth);
+        SidebarSplitter.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>把功能列表栏收起来（隐藏侧边栏 / 进入全屏共用）：先解除最小宽度，否则列宽 0 会被撑回去。</summary>
+    private void HideSidebarChrome()
+    {
+        SidebarColumn.MinWidth = 0;
+        SidebarColumn.MaxWidth = double.PositiveInfinity;
+        SidebarColumn.Width = new GridLength(0);
+        SidebarSplitterColumn.Width = new GridLength(0);
+        SidebarSplitter.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>隐藏 / 全屏前把当前实际宽度记下来；还没布局（0）时保持上次的值。</summary>
+    private void CaptureSidebarWidth()
+    {
+        var actual = SidebarColumn.ActualWidth;
+        if (actual >= SidebarMinWidth) _sidebarWidth = actual;
+    }
+
+    private static double ClampSidebarWidth(double width)
+        => Math.Clamp(double.IsFinite(width) && width > 0 ? width : SidebarDefaultWidth,
+            SidebarMinWidth, SidebarMaxWidth);
+
     // ---------- 全屏（IFullscreenHost） ----------
 
     /// <summary>当前是不是全屏状态。</summary>
@@ -480,7 +575,8 @@ public partial class MainWindow : Window, IFullscreenHost
         TitleRow.Height = new GridLength(0);
         ToolbarRow.Height = new GridLength(0);
         StatusRow.Height = new GridLength(0);
-        SidebarColumn.Width = new GridLength(0);
+        CaptureSidebarWidth();     // 先记住用户拖过的宽度，退出全屏时还原（隐藏着就保持隐藏）
+        HideSidebarChrome();
 
         _fullscreen = true;                 // 先置位：下面最大化时 WndProc 才会按整块显示器算
         WindowState = WindowState.Normal;   // 先还原，避免“Normal → Maximized”被当成同尺寸而忽略
@@ -507,9 +603,9 @@ public partial class MainWindow : Window, IFullscreenHost
         TitleRow.Height = new GridLength(40);
         ToolbarRow.Height = GridLength.Auto;
         StatusRow.Height = GridLength.Auto;
-        SidebarColumn.Width = new GridLength(232);
 
         _fullscreen = false;                // 再清：还原窗口时又按工作区算
+        ApplySidebarVisibility();           // 按主页设置恢复侧边栏（隐藏着就保持收起的宽度 / 分隔条）
         var restoreState = _restoreState;
         if (restoreState == WindowState.Maximized)
         {

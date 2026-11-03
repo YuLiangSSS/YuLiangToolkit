@@ -4,6 +4,7 @@
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:views="clr-namespace:YuLiangToolkit.App.Views"
         xmlns:core="clr-namespace:YuLiangToolkit.Core.Controls;assembly=YuLiangToolkit.Core"
+        xmlns:mvvm="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
         Title="YuLiang 工具集"
         Width="1280" Height="820"
         MinWidth="1024" MinHeight="700"
@@ -135,15 +136,20 @@
                 </Grid>
             </Border>
 
-            <!-- 主体：侧边栏 + 内容 -->
+            <!-- 主体：侧边栏 + 分隔条 + 内容 -->
+            <!-- 侧边栏右边缘有一条可拖拽分隔条（↔）：拖动改宽度，松手记住（Config\layout.json，
+                 键 shell.sidebar），双击恢复 232。主页设置「界面布局」里可以关掉整个功能列表栏
+                 （代码把列宽 / 分隔条列都收成 0）；全屏时也走同一套收起逻辑。
+                 ⚠ SidebarColumn 的 MinWidth 由代码动态设（显示时 180，隐藏 / 全屏时 0）——
+                 写成静态 MinWidth 会让「列宽 0」被最小值撑回去，侧边栏藏不掉。 -->
             <Grid Grid.Row="2">
                 <Grid.ColumnDefinitions>
-                    <!-- 全屏时把它改成 0，把侧边栏让出去 -->
                     <ColumnDefinition x:Name="SidebarColumn" Width="232" />
-                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition x:Name="SidebarSplitterColumn" Width="12" />
+                    <ColumnDefinition Width="*" MinWidth="320" />
                 </Grid.ColumnDefinitions>
 
-                <Border Grid.Column="0" Background="{DynamicResource SidebarBackgroundBrush}"
+                <Border x:Name="SidebarPanel" Grid.Column="0" Background="{DynamicResource SidebarBackgroundBrush}"
                         BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,0,1,0">
                     <DockPanel>
                         <TextBlock DockPanel.Dock="Top" Text="功能列表" FontSize="11"
@@ -162,12 +168,17 @@
                     </DockPanel>
                 </Border>
 
-                <ContentControl Grid.Column="1" Content="{Binding CurrentView}" />
+                <!-- 功能列表栏右边缘：按住左右拖 = 改宽度；双击 = 恢复默认宽度（232） -->
+                <mvvm:PaneSplitter x:Name="SidebarSplitter" Grid.Column="1"
+                                   Style="{StaticResource PaneSplitterVerticalStyle}"
+                                   Key="shell.sidebar" />
+
+                <ContentControl Grid.Column="2" Content="{Binding CurrentView}" />
 
                 <!-- 左下角迷你播放条：开着「后台播放」切到别的页面时浮出来。
                      它的 DataContext 是那个后台工具的 ViewModel（不是 MainViewModel），
                      所以“显示与否”要绕回 Window 的 DataContext 取。 -->
-                <views:MiniPlayerPanel Grid.ColumnSpan="2" HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                <views:MiniPlayerPanel Grid.ColumnSpan="3" HorizontalAlignment="Left" VerticalAlignment="Bottom"
                                        Margin="12,0,0,12" Panel.ZIndex="20"
                                        DataContext="{Binding MiniPanelSource}"
                                        Visibility="{Binding DataContext.MiniPanelVisible,
