@@ -26,7 +26,7 @@ public class BrowserTool : ITool
         => "Chromium 内核（WebView2）多标签浏览器：上方 / 左侧两种标签栏一键切换；"
            + "地址栏输入网址或搜索词，前进 / 后退 / 刷新 / 主页按钮，网页里右键也能刷新；"
            + "历史记录与下载侧栏、页面缩放（Ctrl+滚轮）、默认主页与「启动时恢复上次标签页」设置；"
-           + "恢复标签只恢复标签，点开才加载";
+           + "恢复标签只恢复标签，点开才加载；右键图片可另存为 / 复制图片";
 
     public string EmojiIcon => "🌐";
 
@@ -36,7 +36,7 @@ public class BrowserTool : ITool
     public IReadOnlyList<string> Tags => new[]
     {
         "浏览器", "网页", "上网", "标签页", "多标签", "Chromium", "WebView2", "地址栏", "刷新", "右键",
-        "历史记录", "下载", "缩放", "主页",
+        "历史记录", "下载", "缩放", "主页", "另存为", "右键",
     };
 
     /// <summary>越小越靠前（视频转音频 10，播放器 15）。</summary>

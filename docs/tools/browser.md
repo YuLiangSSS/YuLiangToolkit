@@ -29,8 +29,12 @@
    - `file:///C:/temp/a.html`、`about:blank` 这类协议地址原样交给内核；
    - **其它内容当搜索词**（`天气 上海`、`hello world`）→ 用配置里的搜索模板（默认 Google）搜。
 5. 回车或点「前往」导航；**Alt+← / Alt+→** 前进后退，**F5 / Ctrl+R** 刷新（网页内核自带快捷键）。
-6. **网页里右键** → 自定义菜单：**刷新**、后退、前进、复制、全选、开发者工具（F12）。
-   这是本工具自己画的菜单（收到 `ContextMenuRequested` 后接管掉 WebView2 默认菜单），所以第一条就是「刷新」。
+6. **网页里右键** → 自定义菜单（按右键目标自动加项）：
+   - **图片上**：**图片另存为…**（走 Chromium 原生保存对话框，带 Cookie / 登录态）、复制图片、复制图片地址、在新标签页打开图片；
+   - **链接上**：链接另存为…、复制链接地址、在新标签页打开链接；
+   - 通用项：第一行「刷新」、后退、前进、复制、全选、开发者工具（F12）。
+   这是本工具自己画的菜单（收到 `ContextMenuRequested` 后接管掉 WebView2 默认菜单），
+   「另存为」是把默认菜单里的 `saveImageAs` / `saveLinkAs` 命令 Id 报回去执行的，不是自己下文件。
 7. `target=_blank` / `window.open` 的链接**在新标签页里打开**（后台自动激活）。
 
 > 快捷键 Ctrl+T / Ctrl+W / Ctrl+Tab 在焦点位于地址栏 / 标签条时可靠；焦点在网页内部时 WebView2（原生窗口）
@@ -122,6 +126,9 @@
 - `YLT_BROWSER_GEAR_TEST=1`：延迟几秒自动打开齿轮菜单（截图验收用；Popup 要屏幕截图才能抓到）。
 - `YLT_BROWSER_ZOOM_TEST=130`：首屏加载后把页面缩放到 130%（验证缩放状态 / 工具条百分比）。
 - `YLT_BROWSER_MENU_TEST=1`：首屏加载完后自动弹一次右键菜单，用来验证「WPF 菜单能盖在 WebView2 原生窗口上」。
+- `YLT_BROWSER_RIGHTCLICK_TEST=x,y`（或 `=1` 用网页中心）：通过 DevTools 协议在网页里发一次**真实右键**，
+  用来验证图片 / 链接的上下文菜单（系统合成鼠标消息进不了 Chromium）；配合 `YLT_BROWSER_TRACE` 可以看到
+  默认菜单项名称和自定义菜单项列表。
 - 想截「左侧标签栏」：把 `Config\browser\config.json` 的 `TabBarPosition` 改成 `"Left"`（或先在界面里点 ⇄）再截图。
 
 ## 实现位置

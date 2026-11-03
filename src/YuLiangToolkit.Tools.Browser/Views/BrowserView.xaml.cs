@@ -49,6 +49,7 @@ public partial class BrowserView : UserControl, IBrowserHost
     private bool _gearTestDone;
     private bool _panelTestDone;
     private bool _zoomTestDone;
+    private bool _rightClickTestDone;
     private bool _debugUrlConsumed;
     private string? _debugUrlOverride;
 
@@ -81,6 +82,7 @@ public partial class BrowserView : UserControl, IBrowserHost
         _gearTestDone = false;
         _panelTestDone = false;
         _zoomTestDone = false;
+        _rightClickTestDone = false;
         _debugUrlConsumed = false;
         _debugUrlOverride = Environment.GetEnvironmentVariable("YLT_BROWSER_URL"); // 调试 / 截图用
         _initializing = true;
@@ -196,7 +198,11 @@ public partial class BrowserView : UserControl, IBrowserHost
                 pending = _debugUrlOverride.Trim();
                 _debugUrlConsumed = true;
             }
-            if (!string.IsNullOrWhiteSpace(pending)) webView.CoreWebView2.Navigate(pending);
+            if (!string.IsNullOrWhiteSpace(pending))
+            {
+                Trace($"navigate tab#{tab.Id} -> {pending}");
+                webView.CoreWebView2.Navigate(pending);
+            }
 
             UpdateTabVisibility();
             if (ReferenceEquals(vm.ActiveTab, tab)) vm.OnActiveTabReady();
@@ -336,6 +342,7 @@ public partial class BrowserView : UserControl, IBrowserHost
                 TryCaptureForScreenshot();
                 TryOpenMenuForDebug();
                 TryOpenDebugUi();
+                TryRightClickForDebug();
             }
         });
         core.NewWindowRequested += (_, e) => Safe(() =>
@@ -489,9 +496,15 @@ public partial class BrowserView : UserControl, IBrowserHost
         // GetDeferral 是官方示例要求的写法：菜单还开着时让 WebView2 等我们处理完。
         e.Handled = true;
         var deferral = e.GetDeferral();
-        Trace($"context-menu-requested tab#{TabIdOf(core)} location={e.Location.X:0},{e.Location.Y:0}");
+        var target = e.ContextMenuTarget;
+        Trace($"context-menu-requested tab#{TabIdOf(core)} kind={target.Kind} " +
+              $"link={target.HasLinkUri} source={target.HasSourceUri} location={e.Location.X:0},{e.Location.Y:0}");
+        Trace("context-menu-items: " + string.Join(",",
+            e.MenuItems.Select(item => item.Name ?? item.Label)));
 
-        var menu = CreateContextMenu(core);
+        var menu = CreateContextMenu(core, e);
+        Trace("custom-menu-items: " + string.Join(",",
+            menu.Items.OfType<MenuItem>().Select(item => item.Header?.ToString() ?? "")));
         menu.Closed += (_, _) =>
         {
             try { deferral.Complete(); } catch { /* 视图已释放 */ }
@@ -511,10 +524,15 @@ public partial class BrowserView : UserControl, IBrowserHost
     }
 
     /// <summary>
-    /// 组装浏览器右键菜单：<b>第一条「刷新」</b>（用户需求），再是后退 / 前进 / 复制 / 全选 / 开发者工具。
+    /// 组装浏览器右键菜单：<b>图片 / 链接上右键</b>先给上下文动作（图片另存为… / 复制图片 / 打开图片、
+    /// 链接另存为… / 复制链接地址 / 新标签打开链接），然后才是通用的刷新 / 后退 / 前进 / 复制 / 全选 / 开发者工具。
     /// 菜单用 WPF 自己画，放在网页这块原生窗口的上方。
+    ///
+    /// <para>「另存为」不是自己下文件，而是把 WebView2 默认菜单里对应命令的 <c>SelectedCommandId</c>
+    /// 报回去执行 —— 这样登录态 / Cookie / 文件命名规则都走 Chromium 原生逻辑（官方推荐的
+    /// 「自定义菜单里执行默认菜单命令」写法）。</para>
     /// </summary>
-    private ContextMenu CreateContextMenu(CoreWebView2 core)
+    private ContextMenu CreateContextMenu(CoreWebView2 core, CoreWebView2ContextMenuRequestedEventArgs? args)
     {
         var menu = new ContextMenu
         {
@@ -523,7 +541,12 @@ public partial class BrowserView : UserControl, IBrowserHost
             Placement = PlacementMode.MousePoint,
         };
 
-        // 用户要的「右键网页内部也能刷新」放第一条
+        if (args is not null)
+        {
+            AddContextTargetItems(menu, args);
+        }
+
+        // 用户要的「右键网页内部也能刷新」放第一条（纯页面右键时就是第一条）
         menu.Items.Add(CreateMenuItem("刷新", "F5", () => core.Reload()));
         menu.Items.Add(CreateSeparator());
         menu.Items.Add(CreateMenuItem("后退", "Alt+←", () => core.GoBack(), core.CanGoBack));
@@ -534,6 +557,88 @@ public partial class BrowserView : UserControl, IBrowserHost
         menu.Items.Add(CreateSeparator());
         menu.Items.Add(CreateMenuItem("开发者工具", "F12", () => core.OpenDevToolsWindow()));
         return menu;
+    }
+
+    /// <summary>按右键目标（图片 / 链接）加一组上下文动作；没有对应目标就什么都不加。</summary>
+    private void AddContextTargetItems(ContextMenu menu, CoreWebView2ContextMenuRequestedEventArgs args)
+    {
+        var target = args.ContextMenuTarget;
+        var added = false;
+
+        if (target.Kind == CoreWebView2ContextMenuTargetKind.Image)
+        {
+            added |= AddDefaultCommandItem(menu, args, "图片另存为…", "saveImageAs");
+            added |= AddDefaultCommandItem(menu, args, "复制图片", "copyImage");
+
+            // 「复制图片地址」优先用 Chromium 默认命令（不受 HasSourceUri 影响）；
+            // 个别版本没有这个命令时再退回 SourceUri。
+            var copiedAddress = AddDefaultCommandItem(menu, args, "复制图片地址", "copyImageLocation");
+            if (!copiedAddress && target.HasSourceUri)
+            {
+                var sourceUri = target.SourceUri;
+                menu.Items.Add(CreateMenuItem("复制图片地址", "", () => CopyTextToClipboard(sourceUri)));
+            }
+            added = true;
+
+            if (target.HasSourceUri)
+            {
+                var sourceUri = target.SourceUri;
+                menu.Items.Add(CreateMenuItem("在新标签页打开图片", "", () => Vm?.OpenTab(sourceUri)));
+            }
+        }
+
+        if (target.HasLinkUri)
+        {
+            added |= AddDefaultCommandItem(menu, args, "链接另存为…", "saveLinkAs");
+            var linkUri = target.LinkUri;
+
+            if (!AddDefaultCommandItem(menu, args, "复制链接地址", "copyLinkLocation"))
+                menu.Items.Add(CreateMenuItem("复制链接地址", "", () => CopyTextToClipboard(linkUri)));
+
+            menu.Items.Add(CreateMenuItem("在新标签页打开链接", "", () => Vm?.OpenTab(linkUri)));
+            added = true;
+        }
+
+        if (added) menu.Items.Add(CreateSeparator());
+    }
+
+    /// <summary>把 WebView2 默认菜单里的某个命令搬到自定义菜单：点击时回报 <c>SelectedCommandId</c>。</summary>
+    private bool AddDefaultCommandItem(
+        ContextMenu menu, CoreWebView2ContextMenuRequestedEventArgs args, string header, string commandName)
+    {
+        var commandId = FindCommandId(args.MenuItems, commandName);
+        if (commandId is null)
+        {
+            Trace($"context-menu-missing-command: {commandName}");
+            return false;
+        }
+
+        var id = commandId.Value;
+        menu.Items.Add(CreateMenuItem(header, "", () => args.SelectedCommandId = id));
+        return true;
+    }
+
+    /// <summary>在默认菜单项树里按内部 Name（如 saveImageAs / saveLinkAs）找命令 Id。</summary>
+    private static int? FindCommandId(IEnumerable<CoreWebView2ContextMenuItem> items, string commandName)
+    {
+        foreach (var item in items)
+        {
+            if (string.Equals(item.Name, commandName, StringComparison.OrdinalIgnoreCase))
+                return item.CommandId;
+            if (item.Kind == CoreWebView2ContextMenuItemKind.Submenu
+                && FindCommandId(item.Children, commandName) is { } nested)
+            {
+                return nested;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>复制纯文本到 Windows 剪贴板（剪贴板被占用时静默忽略）。</summary>
+    private static void CopyTextToClipboard(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        try { Clipboard.SetText(text); } catch { /* 剪贴板被占用忽略 */ }
     }
 
     private Separator CreateSeparator()
@@ -768,7 +873,7 @@ public partial class BrowserView : UserControl, IBrowserHost
             if (core is null) return;
             Safe(() =>
             {
-                var menu = CreateContextMenu(core);
+                var menu = CreateContextMenu(core, null);
                 menu.IsOpen = true;
                 Trace("context-menu-opened (menu test)");
             });
@@ -797,8 +902,7 @@ public partial class BrowserView : UserControl, IBrowserHost
             });
         }
 
-        var zoomText = Environment.GetEnvironmentVariable("YLT_BROWSER_ZOOM_TEST");
-        if (!_zoomTestDone && double.TryParse(zoomText, System.Globalization.NumberStyles.Float,
+        var zoomText = Environment.GetEnvironmentVariable("YLT_BROWSER_ZOOM_TEST");        if (!_zoomTestDone && double.TryParse(zoomText, System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out var zoomPercent))
         {
             _zoomTestDone = true;
@@ -831,6 +935,63 @@ public partial class BrowserView : UserControl, IBrowserHost
             });
         };
         timer.Start();
+    }
+
+    /// <summary>
+    /// 调试钩子：<c>YLT_BROWSER_RIGHTCLICK_TEST=x,y</c>（或 <c>=1</c> 用网页中心）会通过 DevTools 协议
+    /// 在网页里发一次**真实右键**，用来验证图片 / 链接的上下文菜单（合成系统鼠标消息进不了 Chromium）。
+    /// </summary>
+    private void TryRightClickForDebug()
+    {
+        if (_rightClickTestDone) return;
+        var spec = Environment.GetEnvironmentVariable("YLT_BROWSER_RIGHTCLICK_TEST");
+        if (string.IsNullOrWhiteSpace(spec)) return;
+        var core = ActiveCore;
+        var webView = ActiveWebView;
+        if (core is null || webView is null) return;
+        _rightClickTestDone = true;
+
+        var x = webView.ActualWidth / 2;
+        var y = webView.ActualHeight / 2;
+        var parts = spec.Split(',');
+        if (parts.Length == 2
+            && double.TryParse(parts[0], System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var parsedX)
+            && double.TryParse(parts[1], System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var parsedY))
+        {
+            x = parsedX;
+            y = parsedY;
+        }
+
+        var timer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(4000),
+        };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            _ = DispatchRightClickAsync(core, x, y);
+        };
+        timer.Start();
+    }
+
+    private async Task DispatchRightClickAsync(CoreWebView2 core, double x, double y)
+    {
+        try
+        {
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            var pressed = $"{{\"type\":\"mousePressed\",\"x\":{x.ToString(inv)},\"y\":{y.ToString(inv)},\"button\":\"right\",\"clickCount\":1}}";
+            var released = $"{{\"type\":\"mouseReleased\",\"x\":{x.ToString(inv)},\"y\":{y.ToString(inv)},\"button\":\"right\",\"clickCount\":1}}";
+            await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", pressed);
+            await Task.Delay(60);
+            await core.CallDevToolsProtocolMethodAsync("Input.dispatchMouseEvent", released);
+            Trace($"right-click-dispatched {x:0},{y:0}");
+        }
+        catch (Exception ex)
+        {
+            Trace("right-click-dispatch-failed", ex);
+        }
     }
 
     /// <summary>
