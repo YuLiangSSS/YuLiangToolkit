@@ -27,6 +27,15 @@ public partial class App : Application
     /// <summary>是不是正在真正退出程序。为 true 时「关闭=最小化到托盘」不再拦 Close()。</summary>
     public static bool IsExiting { get; private set; }
 
+    /// <summary>
+    /// 主 ViewModel 的进程内引用（启动时存下）。
+    /// <para>⚠ 程序退出时**不能**再从 <see cref="Application.MainWindow"/> 取 DataContext：主窗口一关，
+    /// WPF 就把 <c>Application.MainWindow</c> 置成 null，<see cref="MainViewModel.ShutdownTools"/> 会被静默跳过，
+    /// 工具（播放器）的 <c>OnClosed</c> / 落盘就全丢了 —— 用户报「关掉应用后播放器没记住上次那首 / 进度」
+    /// 的根因就是这条（v0.65.1 修）。</para>
+    /// </summary>
+    private static MainViewModel? _mainViewModel;
+
     /// <summary>真正退出程序（托盘「退出」/ 截图模式 / 系统关机）。</summary>
     public static void RequestExit()
     {
@@ -72,7 +81,9 @@ public partial class App : Application
         Exit += (_, _) =>
         {
             TaskbarHider.Restore();
-            try { (MainWindow?.DataContext as MainViewModel)?.ShutdownTools(); } catch { /* 退出流程忽略 */ }
+            // ⚠ 不能用 MainWindow.DataContext 拿 ViewModel：窗口一关 WPF 就把 Application.MainWindow 置空，
+            // 退出流程里会静默跳过 ShutdownTools（工具的 OnClosed / 落盘全丢）—— 用启动时存下的引用。
+            try { _mainViewModel?.ShutdownTools(); } catch { /* 退出流程忽略 */ }
             ToolConfigStore.FlushAll();
             Tray?.Dispose();
             Tray = null;
@@ -83,7 +94,7 @@ public partial class App : Application
         {
             IsExiting = true;   // 系统关机 / 注销：别再被「关闭=最小化到托盘」拦住
             TaskbarHider.Restore();
-            try { (MainWindow?.DataContext as MainViewModel)?.ShutdownTools(); } catch { /* 退出流程忽略 */ }
+            try { _mainViewModel?.ShutdownTools(); } catch { /* 退出流程忽略 */ }
             ToolConfigStore.FlushAll();
         };
 
@@ -91,6 +102,7 @@ public partial class App : Application
         var tools = ToolDiscovery.Discover();
 
         var vm = new MainViewModel(tools);
+        _mainViewModel = vm;   // 退出流程用（见 _mainViewModel 注释：不能靠 Application.MainWindow）
 
         // 建主窗口之前先应用主题（默认 / 液态玻璃）：窗口 XAML 一解析就要用主题里的颜色，
         // 反过来的话第一帧会闪一下默认主题（见 Views/Themes/ThemeManager.cs）。

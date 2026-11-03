@@ -33,6 +33,10 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
     {
         Cfg = LoadConfig<MediaPlayerConfig>();
 
+        // 截图演示模式（YLT_PLAYER_DEMO）只往列表里塞假路径：任何「记住上次」的落盘都要跳过，
+        // 否则截图 / 调试会把用户真实的 playlist.json / folder-resume.json 覆盖成一堆不存在的文件
+        _isDemoMode = Environment.GetEnvironmentVariable("YLT_PLAYER_DEMO") is not null;
+
         _seekStep = Cfg.SeekStepEffective;
         _volume = Cfg.VolumeEffective;
         _queue = new PlayQueue { Mode = Cfg.PlayOrder };
@@ -730,7 +734,10 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
     /// </summary>
     public void StopBackgroundPlayback()
     {
-        StopPlayback();
+        // ⚠ 顺序不能反：程序退出 / 换成别的后台视图时外壳走的是这里（**不是** NotifyClosed），
+        // 而 StopPlayback 会把位置归零 —— 必须先按真实进度落盘，再停声。
+        PersistPlaybackState();
+        StopPlayback(persist: false);
         DetachPlayer();
         RaiseBackgroundState();   // 外壳据此收起小窗
     }
@@ -856,12 +863,11 @@ public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroun
 
     protected override void OnClosed()
     {
-        SavePlaylistState();
-
-        // 每个文件夹上次听到哪儿也一起落盘（切走工具 / 退出时都会走到这里；
-        // 后台保活时先记一笔内存再写盘，播放器不摘）
-        CaptureFolderProgress();
-        SaveFolderResumeState();
+        PlaybackTrace("OnClosed：工具被关闭 / 程序退出，落盘");
+        // 列表 / 当前曲目 / 每个文件夹的进度一起落盘（视图缓存淘汰 / 程序退出时走到这里）。
+        // ⚠ 后台保活时外壳**不会**调 NotifyClosed（见 MainViewModel.ShutdownTools），
+        // 那条退出路径由 StopBackgroundPlayback 自己兜底，两处缺一不可。
+        PersistPlaybackState();
 
         // 全屏状态不能留给下一个页面（外壳会把标题栏 / 侧边栏一直藏着）
         ExitFullscreen();

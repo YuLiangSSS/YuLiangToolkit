@@ -274,6 +274,10 @@ public partial class MediaPlayerView : UserControl
             // 再摘事件。反过来的话外壳会一直停在“藏了壳”的全屏状态，切到别的页面就没有标题栏了。
             vm.ExitFullscreen();
             vm.FullscreenChanged -= OnFullscreenChanged;
+
+            // 切走 / 关窗也是明确的落盘点：把当前这首和进度写掉。
+            // （视图被缓存时外壳只 Flush 配置、不调 NotifyClosed；后台保活时这条会多写一次，无害）
+            vm.PersistPlaybackState();
         }
         _fullscreenHost = null;
 

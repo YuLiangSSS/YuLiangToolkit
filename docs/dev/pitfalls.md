@@ -72,6 +72,23 @@
   ③ `CurrentItem` 必须在 `CaptureFolderProgress()` **之后**再换，否则换歌前那首的进度就记到新歌头上了；
   ④ 「恢复后自动播放」不能在构造 VM 里直接 `PlayItem` —— 那时 View 还没 Loaded、播放器是 null；
      要置 `_autoResumePending`，等 `AttachPlayer` 接上再放（见 `.Resume.cs` 的 `TryAutoResumeOnPlayerAttached`）。
+  ⑤ ⚠ **关应用时播放器可能在后台保活**：`MainViewModel.ShutdownTools` 对保活视图走的是
+     `ClearKeptAlive(stopPlayback: true) → StopBackgroundPlayback()`，**不是 `OnClosed`**；
+     而 `StopPlayback()` 会把位置归零，所以必须「先 `PersistPlaybackState()` 落盘、再 `StopPlayback(persist: false)`」——
+     顺序反了就会把「上次听到哪儿」写成 0（v0.65.1 用户报「持久化没生效」的根因之一）。
+     换歌 / 暂停 / 停止 / 视图 `Unloaded` 也都要落盘，不能只靠 `OnClosed`（视图进缓存切走时外壳只 Flush 配置、不调 NotifyClosed）。
+     更根本的一层：`App.Exit` 里原来用 `MainWindow.DataContext as MainViewModel` 拿 ViewModel ——
+     最后一扇窗口一关，WPF 就把 `Application.MainWindow` 置成 null，`ShutdownTools` 直接被跳过
+     （真程序实测：进程 exit=0，但 `OnClosed` / 所有落盘一次都没跑）。启动时把 MainViewModel 存进静态字段、
+     退出流程用它；回归脚本 `scripts/e2e-player-resume.ps1`（真 exe + 临时 YLT_HOME：恢复 0:15 → 放几秒 →
+     关主窗口 → 断言 playlist.json 的进度变成 >15 秒、folder-resume.json 也写了、trace 里有 OnClosed）。
+  ⑥ ⚠ 落盘进度不能直接取 `_lastPosition`：刚恢复还没 Load 时它是 0，得用 `_pendingSeek` / `_pendingResume`
+     兜底（否则「打开工具 → 什么都不点 → 关掉」就把进度清零）；`_pendingResume` 还要记住属于哪首
+     （`_pendingResumePath`），否则恢复 A 之后双击 B 会跳到 A 的进度。
+     恢复时 `playlist.json` 的当前曲目可能是空的（老数据 / 后台退出），要用 `folder-resume.json` 里最近的一条兜底。
+  ⑦ ⚠ `YLT_PLAYER_DEMO` 演示模式塞的是假路径：`SavePlaylistState` / `SaveFolderResumeState` 必须跳过，
+     否则截图 / 调试会把用户真实的 playlist.json / folder-resume.json 覆盖成一堆不存在的文件
+     （v0.65.1 前真的发生过，表现为「下次打开列表空 / 当前那首没了」）。
   截图验收：`YLT_PLAYER_OPEN_FOLDER=<文件夹>`（打开播放器页后自动读一次这个文件夹，配 `YLT_SHOT` 看
   「恢复选中 + 进度 / 自动播放」的效果；只认第一次 Loaded，正常使用不设）。
   排错用 `YLT_PLAYER_TRACE=<文件>`：把 MediaElement 的 Load / MediaOpened / MediaFailed、PlayItem 的

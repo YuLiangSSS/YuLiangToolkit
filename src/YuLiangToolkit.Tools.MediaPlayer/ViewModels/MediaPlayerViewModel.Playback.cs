@@ -28,8 +28,27 @@ public sealed partial class MediaPlayerViewModel
     /// <summary>从 playlist.json 恢复的「上次听到哪儿」：等这首真正打开后跳过去（只消费一次）。</summary>
     private TimeSpan _pendingResume;
 
+    /// <summary><see cref="_pendingResume"/> 是属于哪一首的：恢复 A 之后直接双击 B，B 必须从头开始。</summary>
+    private string? _pendingResumePath;
+
     /// <summary>本次 Load 之前记下的目标位置（打开成功后由 <see cref="OnPlayerOpened"/> 消费）。</summary>
     private TimeSpan _pendingSeek;
+
+    /// <summary>
+    /// 落盘用的播放位置：优先界面里真实的当前位置；还没真正打开（刚恢复 / 正在 Load）时用
+    /// <see cref="_pendingSeek"/> / <see cref="_pendingResume"/> 兜底，别把「要跳到的位置」记成 0
+    /// （否则「打开工具 → 什么都不点 → 关掉」就把上次的进度清零了）。
+    /// </summary>
+    private double CurrentPersistPositionSeconds()
+    {
+        var seconds = Math.Max(0, _lastPosition.TotalSeconds);
+        if (_pendingSeek > TimeSpan.Zero) seconds = Math.Max(seconds, _pendingSeek.TotalSeconds);
+        if (_pendingResume > TimeSpan.Zero && PathEquals(_pendingResumePath, CurrentItem?.FullPath))
+        {
+            seconds = Math.Max(seconds, _pendingResume.TotalSeconds);
+        }
+        return seconds;
+    }
 
     /// <summary>
     /// 上一次是「停止」（不是暂停）：停止会把画面标记清掉（<see cref="HasVideo"/> = false），
@@ -106,11 +125,14 @@ public sealed partial class MediaPlayerViewModel
         // 先把「这次要跳到哪一秒」定下来（从文件夹记忆 / 上次位置恢复时不是从头开始）。
         // 下面 UpdatePosition(0) 只是让界面先归零，CaptureFolderProgress 会按 _pendingSeek 记成目标位置——
         // 否则「恢复进度 → 还没打开完就把文件夹记忆写成 0」，下次再恢复就从头了。
-        _pendingSeek = _pendingResume;
+        // ⚠ 恢复进度只属于恢复出来的那一首：换一首歌必须从头开始（_pendingResumePath 对不上就是 0）。
+        _pendingSeek = PathEquals(_pendingResumePath, item.FullPath) ? _pendingResume : TimeSpan.Zero;
         _pendingResume = TimeSpan.Zero;
+        _pendingResumePath = null;
 
         UpdatePosition(TimeSpan.Zero, TimeSpan.Zero);
         IsPlaying = true;
+        SavePlaylistState();       // 换歌 = 当前曲目变了，立刻落盘（下次打开还要显示这一首）
         SaveFolderResumeState();   // 换歌是个明确的落盘点（旧歌进度 + 新歌的目标位置）
 
         if (_player is null)
@@ -160,8 +182,7 @@ public sealed partial class MediaPlayerViewModel
             _player.Pause();
             IsPlaying = false;
             StatusText = $"已暂停：{CurrentItem.Title}";
-            CaptureFolderProgress();     // 暂停 = 用户可能要走：把进度记进文件夹记忆并落盘
-            SaveFolderResumeState();
+            PersistPlaybackState();   // 暂停 = 用户可能要走：当前曲目 + 进度一起落盘
         }
         else if (_stopped)
         {
@@ -179,8 +200,13 @@ public sealed partial class MediaPlayerViewModel
         }
     }
 
-    /// <summary>停止（位置回到 0，当前曲目还在，按播放可以再来一遍）。</summary>
-    public void StopPlayback()
+    /// <summary>
+    /// 停止（位置回到 0，当前曲目还在，按播放可以再来一遍）。
+    /// <para><paramref name="persist"/> = true：停止本身就是「下次从头开始」的落盘点；
+    /// 程序退出前外壳丢弃后台视图时会**先落一次盘再传 false**——否则停声把位置归零后，
+    /// 写盘就把上次听到哪儿写成 0 了（见 <see cref="StopBackgroundPlayback"/>）。</para>
+    /// </summary>
+    public void StopPlayback(bool persist = true)
     {
         _player?.Stop();
         _stopped = _player is not null;
@@ -189,7 +215,7 @@ public sealed partial class MediaPlayerViewModel
         UpdatePosition(TimeSpan.Zero, TimeSpan.Zero);
         MarkPlaying(CurrentItem);
         StatusText = "已停止";
-        SaveFolderResumeState();   // 停止 = 这个文件夹下次从头开始
+        if (persist) PersistPlaybackState();   // 停止 = 这个文件夹下次从头开始（playlist.json 的进度也归零）
     }
 
     /// <summary>上一首 / 下一首（右键快退 / 右键快进；键盘也走它）。</summary>

@@ -74,10 +74,9 @@ public sealed partial class MediaPlayerViewModel
 
         entry.Folder = folder;
         entry.CurrentPath = item.FullPath;
-        // 媒体还没打开完时界面位置是 0，但这次可能要跳到 _pendingSeek：别把恢复进度记成 0（见 PlayItem 注释）
-        var seconds = Math.Max(0, _lastPosition.TotalSeconds);
-        if (_pendingSeek > TimeSpan.Zero) seconds = Math.Max(seconds, _pendingSeek.TotalSeconds);
-        entry.PositionSeconds = seconds;
+        // 媒体还没打开完时界面位置是 0，但这次可能要跳到 _pendingSeek / 恢复出来的 _pendingResume：
+        // 别把恢复进度记成 0（见 PlayItem 与 CurrentPersistPositionSeconds 的注释）
+        entry.PositionSeconds = CurrentPersistPositionSeconds();
         entry.UpdatedAtUtc = DateTime.UtcNow;
         MaybeSaveFolderResumeState();
     }
@@ -95,6 +94,9 @@ public sealed partial class MediaPlayerViewModel
     /// </summary>
     public void SaveFolderResumeState()
     {
+        // 演示模式（YLT_PLAYER_DEMO）的列表是假路径：别把假数据写进用户的真实进度文件
+        if (_isDemoMode) return;
+
         _folderResumeLastSaveUtc = DateTime.UtcNow;
         PruneFolderResumeState();
 
@@ -112,6 +114,20 @@ public sealed partial class MediaPlayerViewModel
                 .ToList(),
         };
         JsonFileStore.Write(FolderResumeStatePath, state, message => Log($"[错误] {message}"));
+    }
+
+    /// <summary>
+    /// 立刻把「当前这首 + 听到哪儿」同时写进 <c>playlist.json</c> 与 <c>folder-resume.json</c>。
+    /// <para>程序退出 / 外壳丢弃后台视图前调用：后台保活时外壳走的是
+    /// <see cref="StopBackgroundPlayback"/>，**不会**调 <c>NotifyClosed</c>
+    /// （见 <c>MainViewModel.ShutdownTools</c>），这条退出路径必须自己兜底落盘。</para>
+    /// </summary>
+    public void PersistPlaybackState()
+    {
+        CaptureFolderProgress();
+        SavePlaylistState();
+        SaveFolderResumeState();
+        PlaybackTrace($"PersistPlaybackState：{CurrentItem?.Title ?? "(无)"} @ {CurrentPersistPositionSeconds():0.###}s");
     }
 
     private void PruneFolderResumeState()
@@ -150,6 +166,7 @@ public sealed partial class MediaPlayerViewModel
         CurrentItem = item;
         _queue.SetCurrent(Items.IndexOf(item));
         _pendingResume = TimeSpan.FromSeconds(Math.Max(0, best.PositionSeconds));
+        _pendingResumePath = item.FullPath;   // 这个恢复进度只属于这首，之后换歌别套用
         UpdatePosition(_pendingResume, TimeSpan.Zero);
 
         // 恢复出来的这首就是「当前曲目」：顺手写进 playlist.json，下次启动工具也能接着这首/这个进度
@@ -186,6 +203,20 @@ public sealed partial class MediaPlayerViewModel
         _autoResumePending = false;
         if (CurrentItem is null || IsPlaying) return;
         PlayItem(CurrentItem);
+    }
+
+    /// <summary>
+    /// 在「这次能恢复的路径」里挑文件夹记忆里最近更新的那一条（工具启动恢复时兜底用：
+    /// playlist.json 的当前曲目可能是空的 / 那首文件被删了，但 folder-resume.json 仍然记着上次听的那首）。
+    /// </summary>
+    private MediaFolderResumeEntry? FindNewestFolderResumeEntry(IEnumerable<string> paths)
+    {
+        var wanted = new HashSet<string>(paths, StringComparer.OrdinalIgnoreCase);
+        if (wanted.Count == 0) return null;
+        return _folderResume.Values
+            .Where(e => wanted.Contains(e.CurrentPath))
+            .OrderByDescending(e => e.UpdatedAtUtc)
+            .FirstOrDefault();
     }
 
     /// <summary>

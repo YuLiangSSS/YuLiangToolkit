@@ -35,6 +35,7 @@ internal static class MediaPlayerChecks
         CheckFullscreenAndBackground(assert);
         CheckMiniPanelMarquee(assert);
         CheckFolderResume(assert);
+        CheckRestartPersistence(assert);
     }
 
     // ---------------------------------------------------------------- 迷你条标题（来回滚）
@@ -216,6 +217,119 @@ internal static class MediaPlayerChecks
         // 收尾：把开关改回默认，别影响后面的自检分组
         autoResume.Cfg.AutoResumePlayback = false;
         autoResume.ConfigStore.Flush();
+    }
+
+    // ---------------------------------------------------------------- 重启持久化（v0.65.1）
+
+    /// <summary>
+    /// 「关掉程序再打开，还是上次那首、进度也还在」：重点覆盖以前会丢的几条路径 ——
+    /// ① 换歌后当前曲目没立刻写进 playlist.json；
+    /// ② 播放器在后台保活时关应用（外壳走 <c>StopBackgroundPlayback</c>，**不走 OnClosed**），
+    ///    而且停声会把位置归零，落盘顺序反了就把进度写成 0；
+    /// ③ playlist.json 的当前曲目是空的（老数据）时没有从 folder-resume.json 兜底；
+    /// ④ 只打开工具、什么都不点就关掉，把恢复出来的进度清零；
+    /// ⑤ 恢复的进度被套用到之后换的那首歌上；
+    /// ⑥ 截图演示模式（YLT_PLAYER_DEMO）写假路径覆盖用户真实的播放快照。
+    /// </summary>
+    private static void CheckRestartPersistence(CheckFn check)
+    {
+        var root = SelfCheckScratch.MakeDirectory("ylt-player-restart");
+        var song1 = WriteFile(root, "01 开场.mp3");
+        var song2 = WriteFile(root, "02 副歌.mp3");
+        var song3 = WriteFile(root, "03 收尾.mp3");
+
+        // ---- 1. 播放中换歌 → 当前曲目立刻落盘（不用等暂停 / 关窗） ----
+        var vm = new MediaPlayerViewModel { Confirm = _ => true };
+        vm.ClearPlaylistCommand.Execute(null);   // 从空列表开始，别混进前面用例的快照
+        vm.Cfg.ResumeLastPlayed = true;
+        vm.BackgroundPlayback = true;
+        var fake = new FakeMediaPlayback();
+        vm.AttachPlayer(fake);
+        vm.AddFilesAsync(new[] { song1, song2, song3 }).GetAwaiter().GetResult();
+        vm.PlayItem(vm.Items.First(i => i.FullPath == song2));
+        fake.RaiseOpened(TimeSpan.FromMinutes(4), hasVideo: false);
+        vm.UpdatePosition(TimeSpan.FromSeconds(95), TimeSpan.FromMinutes(4));
+
+        var snapshot = JsonFileStore.Read<MediaPlaylistState>(vm.PlaylistStatePath);
+        check("重启持久化：换歌就立刻把「当前曲目」写进 playlist.json",
+            snapshot?.CurrentPath == song2, snapshot?.CurrentPath ?? "(null)");
+
+        // ---- 2. 后台保活时关应用：外壳丢弃后台视图前必须先把真实进度落盘 ----
+        vm.StopBackgroundPlayback();   // MainViewModel.ShutdownTools 在程序退出时走这条
+        var reopened = new MediaPlayerViewModel { Confirm = _ => true };
+        check("重启持久化：后台保活时关应用 → 重新打开还是那首、进度也还在（不是 0:00）",
+            reopened.CurrentItem?.FullPath == song2
+            && reopened.PositionText == "1:35"
+            && !reopened.IsPlaying,
+            $"{reopened.CurrentItem?.FileName ?? "(无)"} @ {reopened.PositionText}");
+        check("重启持久化：列表本身也恢复（3 个文件都在）",
+            reopened.Items.Count == 3, $"{reopened.Items.Count} 条");
+
+        // ---- 3. 恢复的进度只属于那一首：恢复后直接双击别的歌 → 那首从头开始 ----
+        var fakeReopened = new FakeMediaPlayback();
+        reopened.AttachPlayer(fakeReopened);
+        reopened.PlayItem(reopened.Items.First(i => i.FullPath == song3));
+        fakeReopened.RaiseOpened(TimeSpan.FromMinutes(2), hasVideo: false);
+        check("重启持久化：恢复后直接播另一首 → 从 0 开始（不会套用上次那首的 1:35）",
+            fakeReopened.Position == TimeSpan.Zero,
+            $"{fakeReopened.Position.TotalSeconds} 秒");
+
+        // ---- 4. 旧数据兜底：playlist.json 没记当前曲目，但文件夹记忆里有 → 照样恢复 ----
+        var legacy = new MediaPlayerViewModel { Confirm = _ => true };
+        legacy.Cfg.ResumeLastPlayed = true;
+        var legacyFake = new FakeMediaPlayback();
+        legacy.AttachPlayer(legacyFake);
+        legacy.AddFilesAsync(new[] { song1 }).GetAwaiter().GetResult();
+        var legacySong = legacy.Items.First(i => i.FullPath == song1);
+        legacy.PlayItem(legacySong);
+        legacyFake.RaiseOpened(TimeSpan.FromMinutes(3), hasVideo: false);
+        legacy.UpdatePosition(TimeSpan.FromSeconds(12), TimeSpan.FromMinutes(3));
+        legacy.PersistPlaybackState();
+
+        var state = JsonFileStore.Read<MediaPlaylistState>(legacy.PlaylistStatePath);
+        if (state is not null)
+        {
+            state.CurrentPath = "";   // 模拟老版本 / 后台退出时没写当前曲目
+            JsonFileStore.Write(legacy.PlaylistStatePath, state);
+        }
+        var fallback = new MediaPlayerViewModel { Confirm = _ => true };
+        check("重启持久化：playlist.json 没记当前曲目时，从文件夹记忆兜底恢复那首与进度",
+            fallback.CurrentItem?.FullPath == song1 && fallback.PositionText == "0:12",
+            $"{fallback.CurrentItem?.FileName ?? "(无)"} @ {fallback.PositionText}");
+
+        // ---- 5. 只是打开工具再关掉：不能把恢复出来的进度清零 ----
+        var keep = new MediaPlayerViewModel { Confirm = _ => true };
+        var keepFake = new FakeMediaPlayback();
+        keep.AttachPlayer(keepFake);
+        var keepSong = keep.Items.First(i => i.FullPath == song1);
+        keep.PlayItem(keepSong);
+        keepFake.RaiseOpened(TimeSpan.FromMinutes(3), hasVideo: false);
+        keep.UpdatePosition(TimeSpan.FromSeconds(70), TimeSpan.FromMinutes(3));
+        keep.PersistPlaybackState();
+
+        var idle = new MediaPlayerViewModel { Confirm = _ => true };   // 打开工具、什么都不点
+        idle.NotifyClosed();                                           // 直接关掉
+        var afterIdle = new MediaPlayerViewModel { Confirm = _ => true };
+        check("重启持久化：恢复后什么都不点就关掉 → 进度不会被写成 0（仍是 1:10）",
+            afterIdle.CurrentItem?.FullPath == song1 && afterIdle.PositionText == "1:10",
+            $"{afterIdle.CurrentItem?.FileName ?? "(无)"} @ {afterIdle.PositionText}");
+
+        // ---- 6. 截图演示模式不能覆盖用户真实的播放快照 ----
+        var beforeDemo = File.Exists(legacy.PlaylistStatePath) ? File.ReadAllText(legacy.PlaylistStatePath) : "";
+        Environment.SetEnvironmentVariable("YLT_PLAYER_DEMO", "1");
+        try
+        {
+            var demo = new MediaPlayerViewModel { Confirm = _ => true };   // 构造里会塞假路径
+            demo.SavePlaylistState();
+            demo.SaveFolderResumeState();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("YLT_PLAYER_DEMO", null);
+        }
+        var afterDemo = File.Exists(legacy.PlaylistStatePath) ? File.ReadAllText(legacy.PlaylistStatePath) : "";
+        check("重启持久化：截图演示模式（YLT_PLAYER_DEMO）不会覆盖真实播放快照",
+            beforeDemo.Length > 0 && beforeDemo == afterDemo);
     }
 
     // ---------------------------------------------------------------- 扩展名归类

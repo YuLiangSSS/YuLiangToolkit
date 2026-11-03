@@ -26,6 +26,12 @@ public sealed partial class MediaPlayerViewModel
     /// </summary>
     private int _nextAddedIndex;
 
+    /// <summary>
+    /// 截图演示模式（<c>YLT_PLAYER_DEMO</c>）：列表里是假路径，任何「记住上次」的落盘都必须跳过，
+    /// 否则截图 / 调试会把用户真正的 playlist.json / folder-resume.json 覆盖成一堆不存在的文件。
+    /// </summary>
+    private bool _isDemoMode;
+
     // ---------------------------------------------------------------- 打开
 
     /// <summary>「打开文件夹」按钮：可以一次选多个（选中的全部文件夹当作一批读进来）。</summary>
@@ -328,6 +334,9 @@ public sealed partial class MediaPlayerViewModel
     /// </summary>
     public void SavePlaylistState()
     {
+        // 演示模式（YLT_PLAYER_DEMO）的列表是假路径：写进去会覆盖用户真正的播放快照
+        if (_isDemoMode) return;
+
         try
         {
             var state = new MediaPlaylistState
@@ -337,7 +346,9 @@ public sealed partial class MediaPlayerViewModel
                     .Select(i => i.FullPath)
                     .ToList(),
                 CurrentPath = CurrentItem?.FullPath ?? "",
-                PositionSeconds = Math.Max(0, _lastPosition.TotalSeconds),
+                // 刚恢复还没真正打开时 _lastPosition 是 0，这里要把「准备跳到的位置」算进去，
+                // 否则「打开工具 → 什么都不点 → 关掉」会把上次的进度清零（见 CurrentPersistPositionSeconds）
+                PositionSeconds = CurrentPersistPositionSeconds(),
             };
             JsonFileStore.Write(PlaylistStatePath, state);
         }
@@ -386,22 +397,40 @@ public sealed partial class MediaPlayerViewModel
         var suffix = missing > 0 ? $"（{missing} 个已不存在，已跳过）" : "";
         Log($"已恢复上次的播放列表：{items.Count} 个文件{suffix}");
 
-        if (!Cfg.ResumeLastPlayed || string.IsNullOrEmpty(state.CurrentPath)) return;
+        if (!Cfg.ResumeLastPlayed) return;
 
-        var current = Items.FirstOrDefault(i => PathEquals(i.FullPath, state.CurrentPath));
+        // 当前曲目：先认 playlist.json 里记的那首；没有 / 文件不在了就退回「文件夹记忆」里最近更新的那首。
+        // v0.65.1：播放器在后台保活时关应用不会走 OnClosed（外壳走 StopBackgroundPlayback），
+        // 老数据里 playlist.json 的 CurrentPath 可能是空的，只有 folder-resume.json 记得是对的。
+        var current = string.IsNullOrEmpty(state.CurrentPath)
+            ? null
+            : Items.FirstOrDefault(i => PathEquals(i.FullPath, state.CurrentPath));
+
+        if (current is null)
+        {
+            var newest = FindNewestFolderResumeEntry(Items.Select(i => i.FullPath));
+            if (newest is null) return;
+            current = Items.FirstOrDefault(i => PathEquals(i.FullPath, newest.CurrentPath));
+        }
         if (current is null) return;
 
         SelectedItem = current;
         CurrentItem = current;
         _queue.SetCurrent(Items.IndexOf(current));
-        _pendingResume = TimeSpan.FromSeconds(Math.Max(0, state.PositionSeconds));
-        // 上次异常退出时 playlist.json 可能比「文件夹记忆」（每 10 秒落盘）旧：同一首就用更靠后的进度
-        if (TryGetFolderProgress(current, out var folderPosition) && folderPosition > _pendingResume)
+
+        // 进度取「playlist.json 记的」与「文件夹记忆里更靠后的」：异常退出时两边可能一新一旧
+        var position = PathEquals(current.FullPath, state.CurrentPath)
+            ? TimeSpan.FromSeconds(Math.Max(0, state.PositionSeconds))
+            : TimeSpan.Zero;
+        if (TryGetFolderProgress(current, out var folderPosition) && folderPosition > position)
         {
-            _pendingResume = folderPosition;
+            position = folderPosition;
         }
-        UpdatePosition(_pendingResume, TimeSpan.Zero);
+        _pendingResume = position;
+        _pendingResumePath = current.FullPath;   // 这个恢复进度只属于这首，换歌别套用
+        UpdatePosition(position, TimeSpan.Zero);
         StatusText = $"已恢复上次的播放列表（{Items.Count} 个），按播放继续";
+        Log($"已恢复上次的曲目：{current.Title} @ {MediaTime.Format(position)}");
     }
 
     /// <summary>路径比较（Windows 大小写不敏感）。</summary>
