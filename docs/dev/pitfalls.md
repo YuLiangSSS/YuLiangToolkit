@@ -289,6 +289,7 @@
 - WebView2 是**独立原生窗口**（HwndHost）：WPF 的粒子 / 覆盖层 / 圆角裁剪都盖不住网页区域；`YLT_SHOT` 的 `RenderTargetBitmap` 也**抓不到网页内容**（只能截到工具条）。验证网页真的渲染出来要用 `CapturePreviewAsync`（工具里已接好：截图模式会另存 `<截图>.web.png`，`YLT_SHOT_DELAY_MS` 给足时间）。
 - 外壳会缓存工具页（最多 12 个）：网页内核必须在 `Unloaded` 里 `Dispose`、`Loaded` 里重建，否则切走一个工具就多一个隐藏的 Edge 进程；用户数据目录放 `Cache\browser\WebView2`（「清理缓存」能清），内核运行中清不干净属正常，下次再清。
 - **别把 `AreDefaultContextMenusEnabled` 设成 `false`**：微软文档写明那样会让 `ContextMenuRequested` 事件**完全不触发**（右键没有任何反应，v0.58.0 踩过）。正确做法：保持 `true`，在事件里 `Handled = true` + `GetDeferral()`（菜单 `Closed` 时 `Complete`），再弹自己的 WPF 菜单（第一条放「刷新」）。
+- WPF 默认 `ContextMenu` / `MenuItem` 模板会给菜单项左侧留一条**白底「图标列」**（深色主题下非常突兀），只设 `Background` 是盖不掉的，必须换 `ControlTemplate`（见 `BrowserView.xaml` 的 `BrowserMenuItemStyle`）；自建菜单项时别忘了 `InputGestureText` 和 `IsHighlighted` 悬停色。
 - `target=_blank` / `window.open` 走 `NewWindowRequested`：不处理就什么都不发生，本工具暂时在当前页打开（`e.Handled = true` 再 `Navigate`）。
 - 包会带原生 `WebView2Loader.dll`（在 `runtimes\win-x64\native\`），发布后检查 `dist` 里这份文件在；WebView2 **运行时**是系统组件，`WebView2RuntimeNotFoundException` 要提示用户去装，别把 100+MB 内核打进发布目录。
 

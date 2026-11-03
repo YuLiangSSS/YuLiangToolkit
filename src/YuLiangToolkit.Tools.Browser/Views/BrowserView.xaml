@@ -49,19 +49,73 @@
             <Setter Property="FontSize" Value="13" />
         </Style>
 
-        <!-- 网页里右键弹出的菜单（WebView2 的默认菜单已关掉，见 BrowserView.xaml.cs） -->
+        <!-- 网页里右键弹出的菜单（右键事件接管，见 BrowserView.xaml.cs）。
+             ⚠ 这里必须用自定义模板：WPF 默认的 ContextMenu / MenuItem 模板会给每个菜单项留一条
+             「图标列」白底竖条（深色主题下非常突兀），只设 Background 是盖不掉的。 -->
         <Style x:Key="BrowserContextMenuStyle" TargetType="ContextMenu">
             <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="4" />
+            <Setter Property="HasDropShadow" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{DynamicResource ControlCornerRadius}"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="BrowserMenuItemStyle" TargetType="MenuItem">
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
             <Setter Property="FontSize" Value="12.5" />
             <Setter Property="Padding" Value="12,6" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="Row" Background="Transparent"
+                                CornerRadius="{DynamicResource ControlCornerRadius}"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
+                                                  VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{TemplateBinding InputGestureText}"
+                                           Margin="28,0,0,0" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Row" Property="Background"
+                                        Value="{DynamicResource CardHoverBackgroundBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.4" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BrowserMenuSeparatorStyle" TargetType="Separator">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Margin" Value="6,4" />
+            <Setter Property="Background" Value="{DynamicResource BorderBrush}" />
         </Style>
     </UserControl.Resources>
 

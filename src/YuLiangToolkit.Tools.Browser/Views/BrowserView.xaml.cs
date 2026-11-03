@@ -249,16 +249,19 @@ public partial class BrowserView : UserControl, IBrowserHost
 
         // 用户要的「右键网页内部也能刷新」放第一条
         menu.Items.Add(CreateMenuItem("刷新", "F5", () => core.Reload()));
-        menu.Items.Add(new Separator());
+        menu.Items.Add(CreateSeparator());
         menu.Items.Add(CreateMenuItem("后退", "Alt+←", () => core.GoBack(), core.CanGoBack));
         menu.Items.Add(CreateMenuItem("前进", "Alt+→", () => core.GoForward(), core.CanGoForward));
-        menu.Items.Add(new Separator());
+        menu.Items.Add(CreateSeparator());
         menu.Items.Add(CreateMenuItem("复制", "Ctrl+C", () => _ = CopySelectionAsync(core)));
         menu.Items.Add(CreateMenuItem("全选", "Ctrl+A", () => _ = core.ExecuteScriptAsync("document.execCommand('selectAll')")));
-        menu.Items.Add(new Separator());
+        menu.Items.Add(CreateSeparator());
         menu.Items.Add(CreateMenuItem("开发者工具", "F12", () => core.OpenDevToolsWindow()));
         return menu;
     }
+
+    private Separator CreateSeparator()
+        => new() { Style = (Style)Resources["BrowserMenuSeparatorStyle"] };
 
     private MenuItem CreateMenuItem(string header, string gesture, Action action, bool enabled = true)
     {
@@ -360,15 +363,26 @@ public partial class BrowserView : UserControl, IBrowserHost
     {
         if (_menuTestDone) return;
         if (Environment.GetEnvironmentVariable("YLT_BROWSER_MENU_TEST") != "1") return;
-        var core = _webView?.CoreWebView2;
-        if (core is null) return;
         _menuTestDone = true;
-        Dispatcher.BeginInvoke(new Action(() => Safe(() =>
+
+        // 延迟几秒再弹：便于截图脚本先把窗口切到前台（否则菜单会跟着失活被关掉）
+        var timer = new System.Windows.Threading.DispatcherTimer
         {
-            var menu = CreateContextMenu(core);
-            menu.IsOpen = true;
-            Trace("context-menu-opened (menu test)");
-        })));
+            Interval = TimeSpan.FromMilliseconds(6000),
+        };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            var core = _webView?.CoreWebView2;
+            if (core is null) return;
+            Safe(() =>
+            {
+                var menu = CreateContextMenu(core);
+                menu.IsOpen = true;
+                Trace("context-menu-opened (menu test)");
+            });
+        };
+        timer.Start();
     }
 
     /// <summary>
