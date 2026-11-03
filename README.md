@@ -25,6 +25,7 @@
 | [**📄 PDF 阅读器**](docs/tools/pdf-reader.md) | 简单 PDF 阅读器：纵向 / 横向连续滚动、双页并排一次翻两页；支持 **25% ~ 800% 缩放**（Ctrl+滚轮 / 双页放大后拖动平移）、**Ctrl+F 文字搜索**、**📑 书签目录**、**双页页面间距可调**、**拖动惯性 / 滚轮惯性可分别开关**、**双击 .pdf 关联打开**、**自动记住每本 PDF 上次读到哪**、**页码跳转**、**🕘 最近浏览（上限可调）**、**F11 全屏沉浸阅读（工具条自动隐藏）**；只渲染看得见的页省内存，用 Windows 自带的 `Windows.Data.Pdf` 渲染；只读不改原文件 |
 | [**⚡ Flash 下载器**](docs/tools/flash-downloader.md) | 4399 / 7k7k / 17yy / ArmorGames / Kongregate 的小游戏下载到本地离线玩 |
 | [**💬 联机聊天室**](docs/tools/chat-room.md) | 主机开端口、客户端连进来，文字 / 图片 / 文件随便传，带单次流量上限 |
+| [**🌐 网页浏览器**](docs/tools/browser.md) | Chromium 内核（WebView2）：地址栏输入网址 / 搜索词，**前进 / 后退 / 刷新 / 主页**按钮，**网页里右键也能刷新**；记住上次页面；后面可继续加标签页 / 书签 / 下载管理 |
 | [**🏷️ 批量重命名**](docs/tools/batch-rename.md) | 规则清单 + 实时预览 + 两阶段改名 + 可撤销 |
 | [**🎧 osu! 下图器**](docs/tools/map-downloader.md) | 搜谱面集、批量下 `.osz`（含视频 / 无视频） |
 | [**🎹 osu! Key 转换器**](docs/tools/osu-key-converter.md) | 把低键数 mania 谱面「复制列 / 插空白列」加成高键数（2~10 可选），支持批量 |
@@ -71,6 +72,9 @@ dotnet run --project YuLiangTookit.csproj
 只有「视频转音频」依赖 FFmpeg（应用会自动检测 `PATH` 里的 `ffmpeg.exe`，也可以在工具里手动指定）——
 见 [视频转音频](docs/tools/video-to-audio.md)。osu! 三个转换 / 计算工具用 `OsuParsers`（MIT）解析 `.osu`：
 从源码构建时**首次需要联网还原一次** NuGet 包，之后走本机缓存（`build.ps1` 离线也能命中）。
+「网页浏览器」用微软官方的 **WebView2**（Chromium 内核，和 Edge 同源）承载网页：需要系统装有
+**Microsoft Edge WebView2 Runtime**（Win10 2004+ 一般随 Edge 自带，缺失时工具会提示去安装；
+浏览器内核不随本项目打包），源码构建时同样**首次需要联网还原一次** `Microsoft.Web.WebView2` 包。
 「Live2D 桌宠」不需要额外装任何东西（模型和官方 Cubism Core 原生库都随程序发布，仅限 Windows x64）；
 它的**摄像头面部动捕**用 Windows 自带摄像头与 FaceAnalysis API（不需要额外软件，默认关闭，
 打开时需在 Windows 隐私设置里允许「桌面应用访问摄像头」，画面不录像、不联网）。
@@ -80,7 +84,7 @@ dotnet run --project YuLiangTookit.csproj
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；
   踩坑细节按需查 **[docs/dev/pitfalls.md](docs/dev/pitfalls.md)**（只在排错 / 改危险代码时读）；
-- ✅ **自检**：3264 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
+- ✅ **自检**：3283 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -109,7 +113,7 @@ AGENTS.md                               # 精简开发入口地图（流程 / �
 SingleInstance.cs                       # 单实例唤醒（Mutex + 命名管道：再启动一次只唤醒已开窗口）
 README.md                               # 本文件：工具一览 + 快速开始
 LICENSE                                 # Unlicense（随便用，不用署名）
-THIRD-PARTY-NOTICES.md                  # 第三方组件许可（OsuParsers / ppy 数学工具 / Live2D Cubism Core / 内置模型）
+THIRD-PARTY-NOTICES.md                  # 第三方组件许可（OsuParsers / WebView2 / ppy 数学工具 / Live2D Cubism Core / 内置模型）
 docs/                                   # 每个工具一页的详细说明（见 docs/README.md）
 docs/dev/pitfalls.md                    # 踩坑清单（按需读）
 docs/dev/verification.md                # 验证纪律：自检分级 / 路径→组映射 / 全量例外
@@ -123,6 +127,7 @@ src/
 ├── YuLiangToolkit.Tools.BatchRename/    # 功能：批量重命名（规则清单引擎 + 两阶段改名 + 撤销）
 ├── YuLiangToolkit.Tools.FlashDownloader/# 功能：Flash 下载器（五站点解析 + 本地服务器 + 自动补全资源）
 ├── YuLiangToolkit.Tools.ChatRoom/       # 功能：联机聊天室（TCP 直连 / 内网穿透 + 传文件 + 流量上限）
+├── YuLiangToolkit.Tools.Browser/        # 功能：网页浏览器（WebView2 / Chromium 内核 + 地址栏 / 前进后退刷新 / 页内右键刷新）
 ├── YuLiangToolkit.Tools.MapDownloader/  # 功能：osu! 下图器（搜谱面集 + 批量下 .osz）
 ├── YuLiangToolkit.Tools.OsuMania/       # 功能：音游工具（osu! Key 转换器 / LN 转换器 / 等级计算器）
 ├── YuLiangToolkit.Tools.BoardGames/     # 功能：棋牌（联机五子棋 / 联机象棋 + 房间联机底座）
@@ -130,7 +135,7 @@ src/
 ├── YuLiangToolkit.Tools.Live2D/         # 功能：Live2D 桌宠（内置模型测试台 + 透明置顶桌宠 + 眼睛跟随 + 摄像头面部动捕 + 身体晃动测试；官方 Cubism Core + 自写软件渲染器 + Windows 自带人脸检测）
 ├── YuLiangToolkit.Tools.SpugCaptcha/    # 功能：Spug 验证码测试（短信 / 邮箱验证码模板联调 + 本地比对验证）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3264 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3283 项行为逐条验证）
 ```
 
 ## 如何添加一个新工具
@@ -150,7 +155,8 @@ Data / Config 的路径与持久化全由框架接管。也可以把编译好的
 > **随便用、随便改、随便 fork、商用、二次发布、打包分发都可以，不需要署名，也不用保留版权声明。**
 > 唯一请求：别把作者标成别人。
 
-仓库里有少量第三方内容仍遵循它们自己的许可：`OsuParsers` 与 ppy osu!lazer 的数学工具（均为 MIT），
+仓库里有少量第三方内容仍遵循它们自己的许可：`OsuParsers` 与 ppy osu!lazer 的数学工具（均为 MIT）、
+`Microsoft.Web.WebView2`（BSD-3-Clause，Chromium 内核控件；WebView2 运行时是系统组件，不随程序分发），
 以及「Live2D 桌宠」用到的 **Live2D Cubism Core 原生库**（Live2D Inc. 的 Proprietary Software License）
 与内置模型（作者自有，非开源素材）；摄像头动捕用的是 **Windows 自带** MediaCapture / FaceAnalysis
 （操作系统组件，非第三方库）。详见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。

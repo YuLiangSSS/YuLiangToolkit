@@ -31,6 +31,16 @@
 - 许可：MIT License
 - 版权：Copyright (c) 2021 mrflashstudio
 
+## Microsoft.Web.WebView2 1.0.4314.35（NuGet 依赖）
+
+- 用途：「网页浏览器」（`src/YuLiangToolkit.Tools.Browser/`）承载 Chromium 内核（和 Edge 同源）的 WPF 控件
+- 项目主页：<https://aka.ms/webview>
+- 许可：BSD-3-Clause（随包 `LICENSE.txt`，Copyright (C) Microsoft Corporation. All rights reserved.）
+- 说明：本项目只引用微软官方发布的 SDK 包（托管程序集 + `WebView2Loader.dll`），**不修改**它；
+  **WebView2 运行时**（Microsoft Edge WebView2 Runtime，Chromium 引擎本体）是**系统组件**，
+  由用户机器上的 Edge 安装提供，**不随本项目分发**，所以发布目录不会多出 100+MB 浏览器内核。
+  运行「网页浏览器」要求机器已安装该运行时（Win10 2004+ 一般随 Edge 自带，缺失时工具会提示去安装）。
+
 ## ppy osu!lazer 的数学工具（源码片段）
 
 - 位置：`src/YuLiangToolkit.Tools.OsuMania/Core/Difficulty/Utils.cs`

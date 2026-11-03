@@ -7,11 +7,11 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 技术栈 | Windows 10 2004+ + .NET 9（主程序 / 自检 `net9.0-windows10.0.19041.0`，工具库 `net9.0-windows`）+ WPF + 手写 MVVM；唯一第三方包 `OsuParsers`（MIT）；PDF 渲染用系统 `Windows.Data.Pdf`，文字搜索 / 书签目录是手写 PDF 解析器 |
+| 技术栈 | Windows 10 2004+ + .NET 9（主程序 / 自检 `net9.0-windows10.0.19041.0`，工具库 `net9.0-windows`）+ WPF + 手写 MVVM；NuGet 包：`OsuParsers`（MIT）、`Microsoft.Web.WebView2`（浏览器工具用的 Chromium 内核，运行时是系统组件）；PDF 渲染用系统 `Windows.Data.Pdf`，文字搜索 / 书签目录是手写 PDF 解析器 |
 | 主程序 | 根目录 `YuLiangTookit.csproj`（少一个 `l` 是历史拼写）：标题栏 / 主页 / 类别页 / 面包屑、四套主题 + 背景图、粒子 |
 | 核心库 | `src/YuLiangToolkit.Core/`：工具契约 / MVVM / 存储 / 配置 / 维护（缓存清理·配置重建）/ FFmpeg / 粒子 / TCP 房间 |
-| 功能 | 17 个（14 个 `Tools.*`）：视频转音频 / 播放器 / 图片阅读器 / PDF 阅读器 / 重命名 / Flash / 聊天室 / osu! 下图器 / osu!mania 三件套 / 棋牌 / KPS 按键统计 / Spug 验证码测试 / Live2D 桌宠 / 示例模板 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`：3264 项，退出码 0 = 通过（按分组跑） |
+| 功能 | 18 个（15 个 `Tools.*`）：视频转音频 / 播放器 / 图片阅读器 / PDF 阅读器 / 重命名 / Flash / 聊天室 / 网页浏览器 / osu! 下图器 / osu!mania 三件套 / 棋牌 / KPS 按键统计 / Spug 验证码测试 / Live2D 桌宠 / 示例模板 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`：3283 项，退出码 0 = 通过（按分组跑） |
 | 数据 | **在 exe 旁边**（`bin\Debug\net9.0-windows10.0.19041.0\Data`、`Config`、`Cache`）；仓库根同名目录只有说明 |
 
 ## 开工 / 收尾（硬性）
@@ -32,7 +32,7 @@ git add -A; git commit -m "<中文提交信息>"   # ③ 提交：每轮改动�
 ## 硬性规则（违反 = 破坏项目或删用户数据；更多细节见踩坑清单）
 
 1. **运行时数据在 exe 旁边**；仓库根 `Data/`、`Config/`、`Cache/` 只放说明。绝不用 `<None CopyToOutputDirectory>` 拷 Data/Config；`dotnet clean` / 删 `bin`、`dist` = 删用户数据。
-2. **别再引入第三方 NuGet 包**；新轮子优先手写进 `Core/`（唯一例外 `OsuParsers`）。
+2. **可以引 NuGet 包，但要有理由**：优先微软官方 / 维护活跃 / 许可证清晰的包（当前：`OsuParsers`、`Microsoft.Web.WebView2`）；新增包必须登记 `THIRD-PARTY-NOTICES.md` 并在功能文档里说明用途与运行时要求。能手写的小轮子仍优先手写进 `Core/`。
 3. **带 setter 的计算属性必须 `[JsonIgnore]`**；配置自动落盘（无保存按钮）；要「一敲键就刷新」用 `Set(ref 字段, 值)`。
 4. **后台线程改界面走 `Ui(...)` / `UiAsync(...)`**；切走时在 `NotifyClosed()` 里摘缓存对象上的事件；绕过 `ToolConfigStore` 的持久化入口自己接 `FlushAll`。
 5. **数据目录里的相对路径不能带 `..`、不能是绝对路径**（`ToolStorage` 故意抛异常防逃逸）。

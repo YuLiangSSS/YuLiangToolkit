@@ -97,7 +97,7 @@ YuLiangTookit（主程序）
 
 **为什么不引 WebView2 / SkiaSharp / 官方 C# SDK**：
 
-- 仓库规则「唯一第三方 NuGet 是 OsuParsers」，WebView2 / SkiaSharp 都会破例；
+- 引 WebView2 / SkiaSharp 都要多一份分发或兼容成本（「网页浏览器」工具已经用 WebView2 承载网页，但桌宠要求透明叠加 / 点击穿透 / 零额外运行时，继续自写更稳；这不是项目全局禁令，见 AGENTS.md 规则 2）；
 - 官方 Cubism Web SDK 是 JS，得套 WebView2（还要另外分发 WebView2 Runtime），且和 WPF 的透明叠加 / 点击穿透难配合；
 - 官方 Cubism Native SDK 是 C++，跨桥接引入的复杂度比自写一个「只需要画三角形」的光栅器还高；
 - 自写软件光栅器只有几千行，完全可控、零分发依赖，桌宠尺寸下性能足够（见 §7）。

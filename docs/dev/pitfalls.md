@@ -239,7 +239,7 @@
 - 截图 / 界面验证必须 `Start-Process .\bin\Debug\net9.0-windows10.0.19041.0\YuLiangTookit.exe -Wait`（GUI 程序，直接跑不等它结束）。
 - 自检别调 `PlayEntry()`（会真启动 FlashPlayer，无头自检卡死）；只调 `MarkPlayed()`。
 - 别从 URL 反推本地路径（曾把文件写到游戏目录外）。
-- 别引第三方库：新轮子手写进 `Core/`（参考 `ScrollChaining`、`Crc32`、`ParticleEngine`）。
+- 别引第三方库：新轮子手写进 `Core/`（参考 `ScrollChaining`、`Crc32`、`ParticleEngine`）；确有必要引 NuGet 时按 AGENTS.md 规则 2（优先微软官方 / 活跃维护、登记 `THIRD-PARTY-NOTICES.md`）。
 
 ## 跨领域的坑
 
@@ -284,6 +284,13 @@
   ⚠ 聊天室页面自己的 `Loaded` 会把外层页面滚回顶部（初次聚焦输入框的老问题），通用开关对它无效 → 用该页自己的 `YLT_CHAT_SCROLL=<像素>`（跟 `YLT_CHAT_SIZE` 配合看底部三栏）。
 - 截图放 `shots/`（png / txt 不入库）；开窗口的调试脚本放 `scripts/`。
 - 含中文 `.ps1` 必须 UTF-8 with BOM，否则 5.1 按 ANSI 解析报语法错误。
+
+### 网页浏览器（WebView2 / Chromium）
+- WebView2 是**独立原生窗口**（HwndHost）：WPF 的粒子 / 覆盖层 / 圆角裁剪都盖不住网页区域；`YLT_SHOT` 的 `RenderTargetBitmap` 也**抓不到网页内容**（只能截到工具条）。验证网页真的渲染出来要用 `CapturePreviewAsync`（工具里已接好：截图模式会另存 `<截图>.web.png`，`YLT_SHOT_DELAY_MS` 给足时间）。
+- 外壳会缓存工具页（最多 12 个）：网页内核必须在 `Unloaded` 里 `Dispose`、`Loaded` 里重建，否则切走一个工具就多一个隐藏的 Edge 进程；用户数据目录放 `Cache\browser\WebView2`（「清理缓存」能清），内核运行中清不干净属正常，下次再清。
+- 默认右键菜单要关（`AreDefaultContextMenusEnabled = false`），否则拿不到「页内右键刷新」；改用 `ContextMenuRequested` 事件弹自己的 WPF 菜单（第一条放「刷新」）。
+- `target=_blank` / `window.open` 走 `NewWindowRequested`：不处理就什么都不发生，本工具暂时在当前页打开（`e.Handled = true` 再 `Navigate`）。
+- 包会带原生 `WebView2Loader.dll`（在 `runtimes\win-x64\native\`），发布后检查 `dist` 里这份文件在；WebView2 **运行时**是系统组件，`WebView2RuntimeNotFoundException` 要提示用户去装，别把 100+MB 内核打进发布目录。
 
 ### 网络与 Flash 站点解析
 - 判越界别用 `Contains("..")`：先 `Path.GetFullPath` 再比前缀（`SafeCombine`）。

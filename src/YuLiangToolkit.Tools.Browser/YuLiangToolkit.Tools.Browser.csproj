@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「网页浏览器」：用微软官方 WebView2 控件承载 Chromium 内核（与 Edge 同源），
+       地址栏 / 前进后退 / 刷新 / 右键菜单这些浏览器外壳由本项目自己搭。
+       依赖说明（见 THIRD-PARTY-NOTICES.md）：Microsoft.Web.WebView2 是新增的 NuGet 包；
+       WebView2 运行时是系统组件（Evergreen Runtime），不随本项目分发。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.Browser</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.Browser</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+  </ItemGroup>
+
+</Project>
