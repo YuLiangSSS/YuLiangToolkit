@@ -27,6 +27,7 @@ public partial class BrowserView : UserControl, IBrowserHost
     private bool _initializing;
     private bool _detached;
     private bool _screenshotCaptured;
+    private bool _menuTestDone;
 
     public BrowserView()
     {
@@ -48,6 +49,7 @@ public partial class BrowserView : UserControl, IBrowserHost
         _detached = false;
         _screenshotCaptured = false;
         _initializing = true;
+        Trace("loaded: starting chromium");
         vm.Host = this;
         StartupHintPanel.Visibility = Visibility.Visible;
         StartupHintText.Text = "正在启动 Chromium 内核…";
@@ -77,6 +79,7 @@ public partial class BrowserView : UserControl, IBrowserHost
             ConfigureCore(webView.CoreWebView2);
             StartupHintPanel.Visibility = Visibility.Collapsed;
             vm.OnReady();
+            Trace("core-ready: " + webView.CoreWebView2.Source);
 
             var overrideUrl = Environment.GetEnvironmentVariable("YLT_BROWSER_URL"); // 调试 / 截图用
             webView.CoreWebView2.Navigate(string.IsNullOrWhiteSpace(overrideUrl) ? vm.StartPageUrl : overrideUrl.Trim());
@@ -91,6 +94,7 @@ public partial class BrowserView : UserControl, IBrowserHost
         }
         catch (Exception ex)
         {
+            Trace("init-failed", ex);
             if (!_detached) ShowStartupError($"浏览器内核启动失败：{ex.Message}");
         }
         finally
@@ -128,8 +132,10 @@ public partial class BrowserView : UserControl, IBrowserHost
 
     private void ConfigureCore(CoreWebView2 core)
     {
-        // 右键菜单自己画（要带「刷新」），不要 Chromium 自带的
-        core.Settings.AreDefaultContextMenusEnabled = false;
+        // ⚠ 别把 AreDefaultContextMenusEnabled 设成 false：微软文档明确说那样会让
+        // ContextMenuRequested 事件**完全不触发**（右键就没反应了）。正确做法是保持 true，
+        // 在事件里 Handled = true 并自己弹菜单（见 ShowContextMenu）。
+        core.Settings.AreDefaultContextMenusEnabled = true;
         core.Settings.AreDevToolsEnabled = true;
         core.Settings.IsStatusBarEnabled = false;
         core.Settings.IsZoomControlEnabled = true;
@@ -164,8 +170,10 @@ public partial class BrowserView : UserControl, IBrowserHost
         if (vm is null) return;
 
         SyncHistory(_webView?.CoreWebView2);
+        Trace($"navigation-completed success={e.IsSuccess} status={e.WebErrorStatus}");
         vm.OnNavigationCompleted(e.IsSuccess, e.IsSuccess ? null : DescribeError(e.WebErrorStatus));
         TryCaptureForScreenshot();
+        TryOpenMenuForDebug();
     }
 
     /// <summary>target=_blank / window.open：本工具暂时单页，就在当前页打开。</summary>
@@ -201,8 +209,37 @@ public partial class BrowserView : UserControl, IBrowserHost
 
     private void ShowContextMenu(CoreWebView2 core, CoreWebView2ContextMenuRequestedEventArgs e)
     {
+        // 接住事件：默认菜单不弹，改弹我们自己的（不放 Handled 的话 Chromium 会弹出它自己的菜单）。
+        // GetDeferral 是官方示例要求的写法：菜单还开着时让 WebView2 等我们处理完。
         e.Handled = true;
+        var deferral = e.GetDeferral();
+        Trace($"context-menu-requested location={e.Location.X:0},{e.Location.Y:0}");
 
+        var menu = CreateContextMenu(core);
+        menu.Closed += (_, _) =>
+        {
+            try { deferral.Complete(); } catch { /* 视图已释放 */ }
+        };
+
+        try
+        {
+            menu.IsOpen = true;
+            Trace("context-menu-opened");
+        }
+        catch (Exception ex)
+        {
+            Trace("context-menu-failed", ex);
+            try { deferral.Complete(); } catch { /* 同上 */ }
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// 组装浏览器右键菜单：<b>第一条「刷新」</b>（用户需求），再是后退 / 前进 / 复制 / 全选 / 开发者工具。
+    /// 菜单用 WPF 自己画，放在网页这一块原生窗口的上方。
+    /// </summary>
+    private ContextMenu CreateContextMenu(CoreWebView2 core)
+    {
         var menu = new ContextMenu
         {
             Style = (Style)Resources["BrowserContextMenuStyle"],
@@ -220,8 +257,7 @@ public partial class BrowserView : UserControl, IBrowserHost
         menu.Items.Add(CreateMenuItem("全选", "Ctrl+A", () => _ = core.ExecuteScriptAsync("document.execCommand('selectAll')")));
         menu.Items.Add(new Separator());
         menu.Items.Add(CreateMenuItem("开发者工具", "F12", () => core.OpenDevToolsWindow()));
-
-        menu.IsOpen = true;
+        return menu;
     }
 
     private MenuItem CreateMenuItem(string header, string gesture, Action action, bool enabled = true)
@@ -315,6 +351,25 @@ public partial class BrowserView : UserControl, IBrowserHost
         => AddressBox.SelectAll();
 
     // ---------- 调试：截图模式下额外抓一张网页区域 ----------
+    /// <summary>
+    /// 调试：<c>YLT_BROWSER_MENU_TEST=1</c> 时在首屏加载完后自动弹一次右键菜单，
+    /// 用来验证「WPF 菜单能盖在 WebView2 原生窗口上面」（合成的右键消息不一定能进 Chromium，
+    /// 所以留这个直接触发菜单的钩子；正常使用不执行）。
+    /// </summary>
+    private void TryOpenMenuForDebug()
+    {
+        if (_menuTestDone) return;
+        if (Environment.GetEnvironmentVariable("YLT_BROWSER_MENU_TEST") != "1") return;
+        var core = _webView?.CoreWebView2;
+        if (core is null) return;
+        _menuTestDone = true;
+        Dispatcher.BeginInvoke(new Action(() => Safe(() =>
+        {
+            var menu = CreateContextMenu(core);
+            menu.IsOpen = true;
+            Trace("context-menu-opened (menu test)");
+        })));
+    }
 
     /// <summary>
     /// <c>YLT_SHOT</c> 截图走的是 WPF RenderTargetBitmap，抓不到 WebView2（它是独立 HWND），
@@ -344,5 +399,24 @@ public partial class BrowserView : UserControl, IBrowserHost
     private static void Safe(Action action)
     {
         try { action(); } catch { /* 忽略释放竞态 */ }
+    }
+
+    /// <summary>
+    /// 排错开关：设了环境变量 <c>YLT_BROWSER_TRACE=&lt;日志路径&gt;</c> 时把内核启动 / 导航 / 右键菜单
+    /// 这些关键节点追加写进去（正常使用不产生文件），排查「右键没反应」「内核没起来」时用。
+    /// </summary>
+    private static void Trace(string message, Exception? exception = null)
+    {
+        var path = Environment.GetEnvironmentVariable("YLT_BROWSER_TRACE");
+        if (string.IsNullOrWhiteSpace(path)) return;
+        try
+        {
+            var detail = exception is null ? "" : $" :: {exception.GetType().Name}: {exception.Message}";
+            File.AppendAllText(path, $"{DateTime.Now:HH:mm:ss.fff} {message}{detail}{Environment.NewLine}");
+        }
+        catch
+        {
+            // 排错日志写不进去不影响功能
+        }
     }
 }

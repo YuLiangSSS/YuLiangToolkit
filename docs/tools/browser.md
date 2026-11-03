@@ -19,7 +19,7 @@
    - **其它内容当搜索词**（`天气 上海`、`hello world`）→ 用配置里的搜索模板（默认 Bing）搜。
 3. 回车或点「前往」导航；**Alt+← / Alt+→** 前进后退，**F5 / Ctrl+R** 刷新（网页内核自带快捷键）。
 4. **网页里右键** → 自定义菜单：**刷新**、后退、前进、复制、全选、开发者工具（F12）。
-   这是本工具自己画的菜单（WebView2 默认右键菜单已关掉），所以第一条就是你要的「刷新」。
+   这是本工具自己画的菜单（收到 `ContextMenuRequested` 后接管掉 WebView2 默认菜单），所以第一条就是你要的「刷新」。
 5. `target=_blank` / `window.open` 的链接**在当前页打开**（本工具暂时是单页）。
 
 ## 设置（`Config\browser\config.json`）
@@ -68,6 +68,9 @@
 - `YLT_SHOT` 截图模式下除了正常的 `shots/browser.png`（WPF 部分：工具条 / 提示层），还会用 WebView2 的
   `CapturePreviewAsync` 另存一张 **`shots/browser.png.web.png`** —— 这张才是网页区域，用来确认 Chromium
   真的把页面渲染出来了。
+- `YLT_BROWSER_TRACE=<日志路径>`：把内核启动 / 导航完成 / 右键菜单这些关键节点追加写入日志，排查
+  「内核没起来 / 右键没反应」时用（正常使用不产生文件）。
+- `YLT_BROWSER_MENU_TEST=1`：首屏加载完后自动弹一次右键菜单，用来验证「WPF 菜单能盖在 WebView2 原生窗口上」。
 - 工具页切走 / 切回会重建网页内核（为了不留隐藏的 Edge 进程）；Cookie 在 `Cache\browser\WebView2` 里，
   所以登录态还在。
 
