@@ -1,8 +1,10 @@
+using System.Collections.Specialized;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Media;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 using YuLiangToolkit.Core.Storage;
@@ -11,48 +13,72 @@ using YuLiangToolkit.Tools.Browser.ViewModels;
 namespace YuLiangToolkit.Tools.Browser.Views;
 
 /// <summary>
-/// 「网页浏览器」界面：工具条（XAML）+ 动态创建的 <see cref="WebView2"/>（Chromium 内核）。
+/// 「网页浏览器」界面：<b>多标签页</b>——每个标签一个 <see cref="WebView2"/>（Chromium 内核）实例，
+/// 全部叠在 <c>WebHost</c> 里、只把激活标签的设为 Visible（WebView2 是独立 HWND，
+/// <c>Visibility.Collapsed</c> 会真正隐藏原生窗口；没建过内核的标签在激活时才创建）。
 ///
-/// <para><b>生命周期</b>：工具页被切走时外壳会缓存视图但不销毁；WebView2 是独立进程，
-/// 所以离开（<c>Unloaded</c>）时释放内核、回来（<c>Loaded</c>）重新启动 —— 不会留下隐藏的
-/// Edge 进程。用户数据（Cookie / 登录态）放在 <c>Cache\browser\WebView2</c>，
-/// 「主页设置 → 清理缓存」可以清掉。</para>
+/// <para><b>内核环境</b>：所有标签共享一次 <c>CoreWebView2Environment</c>（同一用户数据目录），
+/// 所以 Cookie / 登录态在标签间互通，第二个标签起启动很快。</para>
 ///
-/// <para><b>右键菜单</b>：关掉 WebView2 自带菜单（<c>AreDefaultContextMenusEnabled = false</c>），
-/// 在自己弹的 WPF 菜单里放「刷新 / 后退 / 前进 / 复制 / 全选 / 开发者工具」。</para>
+/// <para><b>生命周期</b>：工具页被切走时外壳会缓存视图但不销毁；离开（<c>Unloaded</c>）时释放
+/// 全部标签的内核、回来（<c>Loaded</c>）先建激活标签、其余标签切到时再建 —— 不会留下隐藏的
+/// Edge 进程。标签列表（地址 / 标题）记在 ViewModel 与 <c>Config\browser\config.json</c>（会话恢复）里，
+/// 切走再回来内容能接上（历史记录则从当前页重新开始）。</para>
+///
+/// <para><b>右键菜单</b>：接管 <c>ContextMenuRequested</c>（保持默认菜单开关为 true，否则事件根本
+/// 不触发，微软文档明确），自己弹 WPF 菜单：刷新 / 后退 / 前进 / 复制 / 全选 / 开发者工具。</para>
 /// </summary>
 public partial class BrowserView : UserControl, IBrowserHost
 {
-    private WebView2? _webView;
+    /// <summary>每个标签的内核窗口（只有激活标签 Visible，其余 Collapsed）。</summary>
+    private readonly Dictionary<BrowserTab, WebView2> _webViews = new();
+
+    /// <summary>正在创建内核的标签（防止连点标签时并发创建同一个）。</summary>
+    private readonly HashSet<BrowserTab> _creatingTabs = new();
+
+    private CoreWebView2Environment? _environment;
     private bool _initializing;
     private bool _detached;
+    private bool _vmWired;
     private bool _screenshotCaptured;
     private bool _menuTestDone;
+    private bool _debugUrlConsumed;
+    private string? _debugUrlOverride;
 
     public BrowserView()
     {
         InitializeComponent();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+        PreviewKeyDown += OnViewPreviewKeyDown;
     }
 
     private BrowserViewModel? Vm => DataContext as BrowserViewModel;
 
-    // ---------- 内核启动 / 释放 ----------
+    /// <summary>激活标签的内核控件（没创建 / 已释放时为 null）。</summary>
+    private WebView2? ActiveWebView
+        => Vm?.ActiveTab is { } tab && _webViews.TryGetValue(tab, out var webView) ? webView : null;
+
+    private CoreWebView2? ActiveCore => ActiveWebView?.CoreWebView2;
+
+    // ---------- 视图加载 / 释放 ----------
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        if (_webView is not null || _initializing) return;
         var vm = Vm;
-        if (vm is null) return;
+        if (vm is null || _environment is not null || _initializing) return;
 
         _detached = false;
         _screenshotCaptured = false;
+        _menuTestDone = false;
+        _debugUrlConsumed = false;
+        _debugUrlOverride = Environment.GetEnvironmentVariable("YLT_BROWSER_URL"); // 调试 / 截图用
         _initializing = true;
-        Trace("loaded: starting chromium");
+        WireViewModel(vm);
         vm.Host = this;
         StartupHintPanel.Visibility = Visibility.Visible;
         StartupHintText.Text = "正在启动 Chromium 内核…";
+        Trace("loaded: starting chromium");
 
         try
         {
@@ -64,25 +90,10 @@ public partial class BrowserView : UserControl, IBrowserHost
 
             var environment = await CoreWebView2Environment.CreateAsync(null, userDataFolder, null);
             if (_detached) return;
+            _environment = environment;
 
-            // 深色底：页面加载出来之前不会闪一大块白
-            var webView = new WebView2
-            {
-                DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 14, 16, 20),
-            };
-            WebHost.Children.Add(webView);
-            _webView = webView;
-
-            await webView.EnsureCoreWebView2Async(environment);
-            if (_detached || webView.CoreWebView2 is null) return;
-
-            ConfigureCore(webView.CoreWebView2);
-            StartupHintPanel.Visibility = Visibility.Collapsed;
-            vm.OnReady();
-            Trace("core-ready: " + webView.CoreWebView2.Source);
-
-            var overrideUrl = Environment.GetEnvironmentVariable("YLT_BROWSER_URL"); // 调试 / 截图用
-            webView.CoreWebView2.Navigate(string.IsNullOrWhiteSpace(overrideUrl) ? vm.StartPageUrl : overrideUrl.Trim());
+            UpdateTabVisibility();
+            await EnsureActiveTabCoreAsync();
         }
         catch (WebView2RuntimeNotFoundException)
         {
@@ -106,19 +117,140 @@ public partial class BrowserView : UserControl, IBrowserHost
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         _detached = true;
-        DisposeWebView();
+        DisposeAllWebViews();
+        _environment = null;
         if (Vm is { } vm) vm.Host = null;
     }
 
-    /// <summary>释放 WebView2（可重复调用）。</summary>
-    private void DisposeWebView()
+    /// <summary>订阅 ViewModel（视图与 VM 同生命周期，只挂一次）：激活标签变化 → 按需建内核；标签移除 → 释放内核。</summary>
+    private void WireViewModel(BrowserViewModel vm)
     {
-        var webView = _webView;
-        _webView = null;
-        if (webView is null) return;
+        if (_vmWired) return;
+        _vmWired = true;
 
-        try { WebHost.Children.Remove(webView); } catch { /* 卸载流程忽略 */ }
-        try { webView.Dispose(); } catch { /* 卸载流程忽略 */ }
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(BrowserViewModel.ActiveTab)) return;
+            Safe(() => _ = EnsureActiveTabCoreAsync());
+        };
+        vm.Tabs.CollectionChanged += (_, e) =>
+        {
+            if (e.Action != NotifyCollectionChangedAction.Remove || e.OldItems is null) return;
+            foreach (var tab in e.OldItems.OfType<BrowserTab>()) DisposeTabWebView(tab);
+        };
+    }
+
+    // ---------- 标签内核的创建 / 显隐 / 释放 ----------
+
+    /// <summary>确保激活标签有内核：有就只调显隐，没有就创建（创建完导航到标签记录的待开地址）。</summary>
+    private async Task EnsureActiveTabCoreAsync()
+    {
+        var vm = Vm;
+        var tab = vm?.ActiveTab;
+        if (vm is null || tab is null || _environment is null) return;
+        if (_webViews.ContainsKey(tab) || _creatingTabs.Contains(tab))
+        {
+            UpdateTabVisibility();
+            return;
+        }
+
+        _creatingTabs.Add(tab);
+        Trace($"create-core tab#{tab.Id} url={tab.Url}");
+        try
+        {
+            // 深色底：页面加载出来之前不会闪一大块白
+            var webView = new WebView2
+            {
+                DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 14, 16, 20),
+            };
+            WebHost.Children.Add(webView);
+            _webViews[tab] = webView;
+
+            await webView.EnsureCoreWebView2Async(_environment);
+            if (_detached) return;
+
+            // 创建期间标签被关掉（CollectionChanged 已释放）：这个实例作废
+            if (!_webViews.TryGetValue(tab, out var registered) || !ReferenceEquals(registered, webView))
+            {
+                try { webView.Dispose(); } catch { /* 已释放忽略 */ }
+                return;
+            }
+
+            ConfigureCore(webView.CoreWebView2, tab);
+
+            // 恢复会话 / 新标签的「待开地址」；首个内核 + 设了 YLT_BROWSER_URL 时优先走调试地址
+            var pending = tab.Url;
+            if (!_debugUrlConsumed && !string.IsNullOrWhiteSpace(_debugUrlOverride))
+            {
+                pending = _debugUrlOverride.Trim();
+                _debugUrlConsumed = true;
+            }
+            if (!string.IsNullOrWhiteSpace(pending)) webView.CoreWebView2.Navigate(pending);
+
+            UpdateTabVisibility();
+            if (ReferenceEquals(vm.ActiveTab, tab)) vm.OnActiveTabReady();
+            Trace($"core-ready tab#{tab.Id}");
+        }
+        catch (WebView2RuntimeNotFoundException)
+        {
+            DropFailedWebView(tab);
+            if (!_detached)
+            {
+                ShowStartupError("没有找到 WebView2 运行时（Chromium 内核）。\n"
+                                 + "请先安装 Microsoft Edge WebView2 Runtime，再切走 / 切回这个工具重试。");
+            }
+        }
+        catch (Exception ex)
+        {
+            DropFailedWebView(tab);
+            Trace("create-core-failed", ex);
+            if (!_detached) ShowStartupError($"浏览器内核启动失败：{ex.Message}");
+        }
+        finally
+        {
+            _creatingTabs.Remove(tab);
+            UpdateTabVisibility();
+        }
+    }
+
+    /// <summary>创建失败的内核从字典 / 视觉树里摘掉，下次激活重试。</summary>
+    private void DropFailedWebView(BrowserTab tab)
+    {
+        if (!_webViews.Remove(tab, out var failed)) return;
+        try { WebHost.Children.Remove(failed); } catch { /* 释放流程忽略 */ }
+        try { failed.Dispose(); } catch { /* 释放流程忽略 */ }
+    }
+
+    /// <summary>只显示激活标签的内核；激活标签还没就绪时亮提示层（就绪后会被原生窗口盖住，也主动收起）。</summary>
+    private void UpdateTabVisibility()
+    {
+        var active = Vm?.ActiveTab;
+        foreach (var (tab, webView) in _webViews)
+            webView.Visibility = ReferenceEquals(tab, active) ? Visibility.Visible : Visibility.Collapsed;
+
+        var activeReady = active is not null
+                          && _webViews.TryGetValue(active, out var activeView)
+                          && activeView.CoreWebView2 is not null;
+        StartupHintPanel.Visibility = activeReady ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void DisposeTabWebView(BrowserTab tab)
+    {
+        if (!_webViews.Remove(tab, out var webView)) return;
+        Trace($"dispose-core tab#{tab.Id}");
+        try { WebHost.Children.Remove(webView); } catch { /* 释放流程忽略 */ }
+        try { webView.Dispose(); } catch { /* 释放流程忽略 */ }
+    }
+
+    /// <summary>释放全部标签的内核（可重复调用）。</summary>
+    private void DisposeAllWebViews()
+    {
+        foreach (var webView in _webViews.Values)
+        {
+            try { WebHost.Children.Remove(webView); } catch { /* 释放流程忽略 */ }
+            try { webView.Dispose(); } catch { /* 释放流程忽略 */ }
+        }
+        _webViews.Clear();
     }
 
     private void ShowStartupError(string message)
@@ -128,9 +260,9 @@ public partial class BrowserView : UserControl, IBrowserHost
         Vm?.OnCoreError(message.Split('\n')[0]);
     }
 
-    // ---------- 内核配置 / 事件 ----------
+    // ---------- 内核配置 / 事件（每个标签各接各的） ----------
 
-    private void ConfigureCore(CoreWebView2 core)
+    private void ConfigureCore(CoreWebView2 core, BrowserTab tab)
     {
         // ⚠ 别把 AreDefaultContextMenusEnabled 设成 false：微软文档明确说那样会让
         // ContextMenuRequested 事件**完全不触发**（右键就没反应了）。正确做法是保持 true，
@@ -142,51 +274,47 @@ public partial class BrowserView : UserControl, IBrowserHost
         core.Settings.IsSwipeNavigationEnabled = false;
         core.Settings.AreBrowserAcceleratorKeysEnabled = true;
 
-        core.NavigationStarting += (_, e) => Safe(() => Vm?.OnNavigationStarting(e.Uri));
+        core.NavigationStarting += (_, e) => Safe(() =>
+        {
+            tab.IsLoading = true;
+            tab.LastError = null;
+            if (!string.IsNullOrWhiteSpace(e.Uri)) tab.Url = e.Uri;
+        });
         core.SourceChanged += (_, _) => Safe(() =>
         {
-            var current = _webView?.CoreWebView2;
-            if (current is null) return;
-            Vm?.OnSourceChanged(current.Source);
-            SyncHistory(current);
+            tab.Url = core.Source;
+            SyncHistory(tab, core);
         });
-        core.HistoryChanged += (_, _) => Safe(() =>
+        core.HistoryChanged += (_, _) => Safe(() => SyncHistory(tab, core));
+        core.DocumentTitleChanged += (_, _) => Safe(() => tab.Title = core.DocumentTitle ?? "");
+        core.NavigationCompleted += (_, e) => Safe(() =>
         {
-            var current = _webView?.CoreWebView2;
-            if (current is not null) SyncHistory(current);
+            SyncHistory(tab, core);
+            Trace($"navigation-completed tab#{tab.Id} success={e.IsSuccess} status={e.WebErrorStatus}");
+            tab.IsLoading = false;
+            tab.LastError = e.IsSuccess ? null : DescribeError(e.WebErrorStatus);
+            if (ReferenceEquals(tab, Vm?.ActiveTab))
+            {
+                Vm?.OnActiveTabNavigationCompleted(e.IsSuccess, tab.LastError);
+                TryCaptureForScreenshot();
+                TryOpenMenuForDebug();
+            }
         });
-        core.DocumentTitleChanged += (_, _) => Safe(() =>
-            Vm?.OnTitleChanged(_webView?.CoreWebView2?.DocumentTitle ?? ""));
-        core.NavigationCompleted += (_, e) => Safe(() => OnNavigationCompleted(e));
-        core.NewWindowRequested += (_, e) => Safe(() => OnNewWindowRequested(e));
+        core.NewWindowRequested += (_, e) => Safe(() =>
+        {
+            // target=_blank / window.open：开进新标签页
+            e.Handled = true;
+            if (!string.IsNullOrWhiteSpace(e.Uri)) Vm?.OpenTab(e.Uri);
+        });
         core.ContextMenuRequested += (_, e) => Safe(() => ShowContextMenu(core, e));
         core.ProcessFailed += (_, e) => Safe(() =>
             Vm?.OnCoreError($"浏览器内核异常（{e.ProcessFailedKind}），切走再切回这个工具可重启内核。"));
     }
 
-    private void OnNavigationCompleted(CoreWebView2NavigationCompletedEventArgs e)
+    private void SyncHistory(BrowserTab tab, CoreWebView2 core)
     {
-        var vm = Vm;
-        if (vm is null) return;
-
-        SyncHistory(_webView?.CoreWebView2);
-        Trace($"navigation-completed success={e.IsSuccess} status={e.WebErrorStatus}");
-        vm.OnNavigationCompleted(e.IsSuccess, e.IsSuccess ? null : DescribeError(e.WebErrorStatus));
-        TryCaptureForScreenshot();
-        TryOpenMenuForDebug();
-    }
-
-    /// <summary>target=_blank / window.open：本工具暂时单页，就在当前页打开。</summary>
-    private void OnNewWindowRequested(CoreWebView2NewWindowRequestedEventArgs e)
-    {
-        e.Handled = true;
-        if (!string.IsNullOrWhiteSpace(e.Uri)) Navigate(e.Uri);
-    }
-
-    private void SyncHistory(CoreWebView2? core)
-    {
-        if (core is null) return;
-        Vm?.OnHistoryChanged(core.CanGoBack, core.CanGoForward);
+        tab.CanGoBack = core.CanGoBack;
+        tab.CanGoForward = core.CanGoForward;
     }
 
     private static string DescribeError(CoreWebView2WebErrorStatus status) => status switch
@@ -213,7 +341,7 @@ public partial class BrowserView : UserControl, IBrowserHost
         // GetDeferral 是官方示例要求的写法：菜单还开着时让 WebView2 等我们处理完。
         e.Handled = true;
         var deferral = e.GetDeferral();
-        Trace($"context-menu-requested location={e.Location.X:0},{e.Location.Y:0}");
+        Trace($"context-menu-requested tab#{TabIdOf(core)} location={e.Location.X:0},{e.Location.Y:0}");
 
         var menu = CreateContextMenu(core);
         menu.Closed += (_, _) =>
@@ -236,14 +364,14 @@ public partial class BrowserView : UserControl, IBrowserHost
 
     /// <summary>
     /// 组装浏览器右键菜单：<b>第一条「刷新」</b>（用户需求），再是后退 / 前进 / 复制 / 全选 / 开发者工具。
-    /// 菜单用 WPF 自己画，放在网页这一块原生窗口的上方。
+    /// 菜单用 WPF 自己画，放在网页这块原生窗口的上方。
     /// </summary>
     private ContextMenu CreateContextMenu(CoreWebView2 core)
     {
         var menu = new ContextMenu
         {
             Style = (Style)Resources["BrowserContextMenuStyle"],
-            PlacementTarget = _webView,
+            PlacementTarget = ActiveWebView,
             Placement = PlacementMode.MousePoint,
         };
 
@@ -276,6 +404,10 @@ public partial class BrowserView : UserControl, IBrowserHost
         return item;
     }
 
+    /// <summary>反查某个 core 属于哪个标签（只是排错日志更好看）。</summary>
+    private int TabIdOf(CoreWebView2 core)
+        => _webViews.FirstOrDefault(kv => ReferenceEquals(kv.Value.CoreWebView2, core)).Key.Id;
+
     /// <summary>
     /// 复制网页里选中的文字：取 <c>window.getSelection()</c> 再塞进 Windows 剪贴板。
     /// 不用 <c>document.execCommand('copy')</c> —— 从 WPF 菜单点过来不算网页自己的用户手势，
@@ -295,50 +427,66 @@ public partial class BrowserView : UserControl, IBrowserHost
         }
     }
 
-    // ---------- IBrowserHost ----------
+    // ---------- 标签条交互（关标签 / 新建标签 / 快捷键） ----------
 
-    public bool CanGoBack => _webView?.CoreWebView2?.CanGoBack ?? false;
+    private void OnTabCloseClick(object sender, RoutedEventArgs e)
+        => Vm?.CloseTab((sender as FrameworkElement)?.DataContext as BrowserTab);
 
-    public bool CanGoForward => _webView?.CoreWebView2?.CanGoForward ?? false;
-
-    public bool IsReady => _webView?.CoreWebView2 is not null;
-
-    public void Navigate(string url)
+    /// <summary>中键点击标签 = 关闭（浏览器惯例）。</summary>
+    private void OnTabListMouseDown(object sender, MouseButtonEventArgs e)
     {
-        var core = _webView?.CoreWebView2;
-        if (core is null || string.IsNullOrWhiteSpace(url)) return;
-        core.Navigate(url);
+        if (e.ChangedButton != MouseButton.Middle) return;
+        var tab = FindTabFromEvent(e.OriginalSource);
+        if (tab is null) return;
+        Vm?.CloseTab(tab);
+        e.Handled = true;
     }
 
-    public void GoBack()
+    /// <summary>双击标签条空白处 = 新建标签（点在标签上则不动）。</summary>
+    private void OnTabListDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        var core = _webView?.CoreWebView2;
-        if (core?.CanGoBack == true) core.GoBack();
+        if (FindTabFromEvent(e.OriginalSource) is not null) return;
+        Vm?.NewTabCommand.Execute(null);
     }
 
-    public void GoForward()
+    private static BrowserTab? FindTabFromEvent(object source)
     {
-        var core = _webView?.CoreWebView2;
-        if (core?.CanGoForward == true) core.GoForward();
+        DependencyObject? current = source as DependencyObject;
+        while (current is not null && current is not ListBoxItem)
+            current = current is Visual ? VisualTreeHelper.GetParent(current) : null;
+        return (current as ListBoxItem)?.DataContext as BrowserTab;
     }
 
-    public void Reload()
+    /// <summary>
+    /// 标签快捷键：Ctrl+T 新建、Ctrl+W 关闭、Ctrl+Tab / Ctrl+Shift+Tab 循环切换。
+    /// ⚠ 焦点在地址栏 / 标签条这些 WPF 控件上时可靠；焦点在网页内部时 WebView2 可能自己吃掉按键，
+    /// 属于 HwndHost 键盘路由的限制，标签条上的按钮永远可用。
+    /// </summary>
+    private void OnViewPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        var core = _webView?.CoreWebView2;
-        if (core is null) return;
-        core.Reload();
-    }
+        var vm = Vm;
+        if (vm is null) return;
+        var modifiers = e.KeyboardDevice.Modifiers;
 
-    public void Stop() => _webView?.CoreWebView2?.Stop();
-
-    public void Close()
-    {
-        if (!Dispatcher.CheckAccess())
+        switch (e.Key)
         {
-            Dispatcher.Invoke(DisposeWebView);
-            return;
+            case Key.T when modifiers == ModifierKeys.Control:
+                vm.NewTabCommand.Execute(null);
+                e.Handled = true;
+                break;
+            case Key.W when modifiers == ModifierKeys.Control:
+                vm.CloseTabCommand.Execute(null);
+                e.Handled = true;
+                break;
+            case Key.Tab when modifiers == ModifierKeys.Control:
+                vm.CycleTab(1);
+                e.Handled = true;
+                break;
+            case Key.Tab when modifiers == (ModifierKeys.Control | ModifierKeys.Shift):
+                vm.CycleTab(-1);
+                e.Handled = true;
+                break;
         }
-        DisposeWebView();
     }
 
     // ---------- 地址栏 ----------
@@ -351,7 +499,61 @@ public partial class BrowserView : UserControl, IBrowserHost
     }
 
     private void OnAddressGotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
-        => AddressBox.SelectAll();
+    {
+        if (Vm is { } vm) vm.AddressBarEditing = true; // 编辑中不覆盖地址栏文本
+        AddressBox.SelectAll();
+    }
+
+    private void OnAddressLostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (Vm is { } vm) vm.AddressBarEditing = false;
+    }
+
+    // ---------- IBrowserHost（全部路由到激活标签） ----------
+
+    public bool CanGoBack => ActiveCore?.CanGoBack ?? false;
+
+    public bool CanGoForward => ActiveCore?.CanGoForward ?? false;
+
+    public bool IsReady => ActiveCore is not null;
+
+    public void Navigate(string url)
+    {
+        var core = ActiveCore;
+        if (core is null || string.IsNullOrWhiteSpace(url)) return;
+        core.Navigate(url);
+    }
+
+    public void GoBack()
+    {
+        var core = ActiveCore;
+        if (core?.CanGoBack == true) core.GoBack();
+    }
+
+    public void GoForward()
+    {
+        var core = ActiveCore;
+        if (core?.CanGoForward == true) core.GoForward();
+    }
+
+    public void Reload()
+    {
+        var core = ActiveCore;
+        if (core is null) return;
+        core.Reload();
+    }
+
+    public void Stop() => ActiveCore?.Stop();
+
+    public void Close()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(DisposeAllWebViews);
+            return;
+        }
+        DisposeAllWebViews();
+    }
 
     // ---------- 调试：截图模式下额外抓一张网页区域 ----------
     /// <summary>
@@ -373,7 +575,7 @@ public partial class BrowserView : UserControl, IBrowserHost
         timer.Tick += (_, _) =>
         {
             timer.Stop();
-            var core = _webView?.CoreWebView2;
+            var core = ActiveCore;
             if (core is null) return;
             Safe(() =>
             {
@@ -393,7 +595,7 @@ public partial class BrowserView : UserControl, IBrowserHost
     private async void TryCaptureForScreenshot()
     {
         var shotPath = Environment.GetEnvironmentVariable("YLT_SHOT");
-        var core = _webView?.CoreWebView2;
+        var core = ActiveCore;
         if (_screenshotCaptured || string.IsNullOrWhiteSpace(shotPath) || core is null) return;
         _screenshotCaptured = true;
 

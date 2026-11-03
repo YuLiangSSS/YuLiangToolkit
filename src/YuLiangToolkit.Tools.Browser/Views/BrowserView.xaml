@@ -1,13 +1,16 @@
 <UserControl x:Class="YuLiangToolkit.Tools.Browser.Views.BrowserView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:YuLiangToolkit.Tools.Browser.ViewModels"
              Background="{DynamicResource WindowBackgroundBrush}"
              Focusable="False">
 
-    <!-- 网页浏览器：上面是浏览器工具条（前进 / 后退 / 刷新 / 主页 / 地址栏），
-         下面整块是网页区域（WebView2 = Chromium 内核，在 BrowserView.xaml.cs 里动态创建）。
-         ⚠ WebView2 是独立的原生窗口（HwndHost）：WPF 的控件盖不住它，
-         所以启动提示 / 错误提示只在「还没创建出内核」时显示；状态文字放工具条右边。 -->
+    <!-- 网页浏览器（多标签页）：标签条（上方 / 左侧两种位置，ViewModel.IsTabBarTop 决定显示哪条）
+         + 浏览器工具条（前进 / 后退 / 刷新 / 主页 / 地址栏 / 切换标签栏位置）+ 网页区域。
+         ⚠ 每个标签页一个 WebView2 实例（在 BrowserView.xaml.cs 里按 ActiveTab 创建），
+         全部叠在 WebHost 里、只显示激活那个 —— WebView2 是独立的原生窗口（HwndHost）：
+         WPF 的控件盖不住它，所以「内核启动中 / 出错」提示只在激活标签还没创建出内核时显示；
+         状态文字放工具条右边。 -->
 
     <UserControl.Resources>
         <!-- 工具条上的小图标按钮（Segoe Fluent Icons / MDL2 字形） -->
@@ -44,9 +47,108 @@
             </Setter>
         </Style>
 
+        <!-- 标签条上的小按钮（+ 新建标签、× 关闭标签）：比工具条按钮更紧凑 -->
+        <Style x:Key="TabMiniButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" Background="{TemplateBinding Background}"
+                                CornerRadius="{DynamicResource ControlCornerRadius}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource CardHoverBackgroundBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="{DynamicResource InputBackgroundBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="AddressTextBoxStyle" TargetType="TextBox" BasedOn="{StaticResource TextBoxStyle}">
             <Setter Property="Height" Value="32" />
             <Setter Property="FontSize" Value="13" />
+        </Style>
+
+        <!-- ================= 标签条（上方横排 / 左侧竖排共用） ================= -->
+
+        <!-- 标签内容：加载点 + 标题 + 关闭按钮；选中 = 卡片底色，悬停 = 行悬停色 -->
+        <DataTemplate x:Key="TabItemTemplate" DataType="{x:Type vm:BrowserTab}">
+            <Border x:Name="Root" Margin="2,3" Padding="9,5"
+                    CornerRadius="{DynamicResource ControlCornerRadius}"
+                    Background="Transparent" SnapsToDevicePixels="True">
+                <Grid ToolTip="{Binding Header}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 加载中 = 主题色小圆点 -->
+                    <Ellipse x:Name="LoadingDot" Grid.Column="0" Width="7" Height="7"
+                             Margin="0,0,7,0" VerticalAlignment="Center"
+                             Fill="{DynamicResource AccentBrush}" Visibility="Collapsed" />
+
+                    <TextBlock Grid.Column="1" Text="{Binding Header}" VerticalAlignment="Center"
+                               MaxWidth="148" TextTrimming="CharacterEllipsis" FontSize="12"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                    <Button x:Name="CloseButton" Grid.Column="2" Content="&#xE711;"
+                            Style="{StaticResource TabMiniButtonStyle}" Margin="5,0,0,0"
+                            ToolTip="关闭标签页（Ctrl+W，中键点击也行）"
+                            Click="OnTabCloseClick" />
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True">
+                    <Setter TargetName="Root" Property="Background" Value="{DynamicResource ListRowHoverBackgroundBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                    <Setter TargetName="Root" Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsLoading}" Value="True">
+                    <Setter TargetName="LoadingDot" Property="Visibility" Value="Visible" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- 标签的容器：去掉 ListBoxItem 默认底色 / 边框，全部交给上面的模板画
+            （IsSelected 由 ListBox 自己维护，模板里用 RelativeSource 读取） -->
+        <Style x:Key="TabItemContainerStyle" TargetType="ListBoxItem">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <ContentPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 标签列表公共外观；排布方向（横 / 竖）由用它的位置自己给 ItemsPanel，
+             事件（中键关标签 / 双击空白新建）挂在实例上 -->
+        <Style x:Key="TabListBoxStyle" TargetType="ListBox">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="ItemTemplate" Value="{StaticResource TabItemTemplate}" />
+            <Setter Property="ItemContainerStyle" Value="{StaticResource TabItemContainerStyle}" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Disabled" />
+            <Setter Property="VirtualizingPanel.IsVirtualizing" Value="False" />
+            <Setter Property="SelectedItem" Value="{Binding ActiveTab, Mode=TwoWay}" />
         </Style>
 
         <!-- 网页里右键弹出的菜单（右键事件接管，见 BrowserView.xaml.cs）。
@@ -125,62 +227,160 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- ================= 浏览器工具条 ================= -->
-        <Border Grid.Row="0" Background="{DynamicResource HeaderBackgroundBrush}"
+        <!-- ================= 上方标签条（IsTabBarTop = false 时整条隐藏） ================= -->
+        <Border x:Name="TopTabStrip" Grid.Row="0"
+                Background="{DynamicResource HeaderBackgroundBrush}"
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
-                Padding="10,7">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="BackButton" Content="&#xE72B;" ToolTip="后退（Alt+←）"
-                            Style="{StaticResource NavButtonStyle}" Command="{Binding BackCommand}" />
-                    <Button x:Name="ForwardButton" Content="&#xE72A;" ToolTip="前进（Alt+→）"
-                            Style="{StaticResource NavButtonStyle}" Command="{Binding ForwardCommand}" />
-                    <Button x:Name="RefreshButton" Content="&#xE72C;" ToolTip="刷新当前页（F5 / Ctrl+R）"
-                            Style="{StaticResource NavButtonStyle}" Command="{Binding RefreshCommand}" />
-                    <Button x:Name="HomeButton" Content="&#xE80F;" ToolTip="回到主页（配置里的 HomePage）"
-                            Style="{StaticResource NavButtonStyle}" Command="{Binding HomeCommand}" />
-                </StackPanel>
-
-                <!-- 地址栏：回车 = 前往；地址栏里输入不是网址的内容会自动用搜索引擎搜 -->
-                <TextBox x:Name="AddressBox" Grid.Column="1" Margin="8,0"
-                         Style="{StaticResource AddressTextBoxStyle}"
-                         Text="{Binding AddressText, UpdateSourceTrigger=PropertyChanged}"
-                         KeyDown="OnAddressKeyDown"
-                         GotKeyboardFocus="OnAddressGotKeyboardFocus"
-                         ToolTip="{Binding PageTitle}" />
-
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="GoButton" Content="前往" Style="{StaticResource SecondaryButtonStyle}"
-                            Padding="14,6" Command="{Binding GoCommand}" />
-                    <TextBlock Text="{Binding StatusText}" Margin="10,0,0,0" VerticalAlignment="Center"
-                               MaxWidth="260" TextTrimming="CharacterEllipsis"
-                               FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" />
-                </StackPanel>
-            </Grid>
+                Padding="6,2" SnapsToDevicePixels="True">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsTabBarTop}" Value="False">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="&#xE710;" ToolTip="新建标签页（Ctrl+T）"
+                        Style="{StaticResource TabMiniButtonStyle}" Margin="4,0,2,0"
+                        VerticalAlignment="Center" Command="{Binding NewTabCommand}" />
+                <ListBox x:Name="TopTabList" Style="{StaticResource TabListBoxStyle}"
+                         ItemsSource="{Binding Tabs}"
+                         PreviewMouseDown="OnTabListMouseDown"
+                         MouseDoubleClick="OnTabListDoubleClick">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                </ListBox>
+            </DockPanel>
         </Border>
 
-        <!-- ================= 网页区域 ================= -->
-        <Grid Grid.Row="1" Background="{DynamicResource WindowBackgroundBrush}" ClipToBounds="True">
-            <!-- WebView2 控件由代码后置在加载时创建（工具页被切走 / 切回来要重启内核） -->
-            <Grid x:Name="WebHost" />
+        <!-- ================= 主区域 = 左侧标签条 + （工具条 + 网页） ================= -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
 
-            <!-- 内核启动中 / 启动失败的提示（创建出 WebView2 之后会被原生窗口盖住） -->
-            <StackPanel x:Name="StartupHintPanel" HorizontalAlignment="Center" VerticalAlignment="Center"
-                        MaxWidth="560" Margin="24">
-                <TextBlock Text="🌐" FontSize="38" HorizontalAlignment="Center" />
-                <TextBlock x:Name="StartupHintText" Text="正在启动 Chromium 内核…" Margin="0,12,0,0"
-                           TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
-                           Foreground="{DynamicResource TextPrimaryBrush}" />
-                <TextBlock Text="网页由 Microsoft Edge WebView2（Chromium）渲染"
-                           Margin="0,8,0,0" TextWrapping="Wrap" TextAlignment="Center" FontSize="11"
-                           Foreground="{DynamicResource TextSecondaryBrush}" />
-            </StackPanel>
+            <!-- 左侧标签条（IsTabBarLeft = false 时整列收起；Auto 列在子元素 Collapsed 后自动为 0 宽） -->
+            <Border x:Name="LeftTabStrip" Grid.Column="0" Width="178"
+                    Background="{DynamicResource SidebarBackgroundBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0"
+                    SnapsToDevicePixels="True">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsTabBarLeft}" Value="False">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="10,9,8,5">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="标签页" FontSize="12" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <Button Grid.Column="1" Content="&#xE710;" ToolTip="新建标签页（Ctrl+T）"
+                                Style="{StaticResource TabMiniButtonStyle}"
+                                Command="{Binding NewTabCommand}" />
+                    </Grid>
+
+                    <ListBox x:Name="LeftTabList" Grid.Row="1" Style="{StaticResource TabListBoxStyle}"
+                             ItemsSource="{Binding Tabs}"
+                             PreviewMouseDown="OnTabListMouseDown"
+                             MouseDoubleClick="OnTabListDoubleClick">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Vertical" />
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                    </ListBox>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- ================= 浏览器工具条 ================= -->
+                <Border Grid.Row="0" Background="{DynamicResource HeaderBackgroundBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
+                        Padding="10,7">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="BackButton" Content="&#xE72B;" ToolTip="后退（Alt+←）"
+                                    Style="{StaticResource NavButtonStyle}" Command="{Binding BackCommand}" />
+                            <Button x:Name="ForwardButton" Content="&#xE72A;" ToolTip="前进（Alt+→）"
+                                    Style="{StaticResource NavButtonStyle}" Command="{Binding ForwardCommand}" />
+                            <Button x:Name="RefreshButton" Content="&#xE72C;" ToolTip="刷新当前页（F5 / Ctrl+R）"
+                                    Style="{StaticResource NavButtonStyle}" Command="{Binding RefreshCommand}" />
+                            <Button x:Name="HomeButton" Content="&#xE80F;" ToolTip="回到主页（配置里的 HomePage）"
+                                    Style="{StaticResource NavButtonStyle}" Command="{Binding HomeCommand}" />
+                        </StackPanel>
+
+                        <!-- 地址栏：回车 = 前往；地址栏里输入不是网址的内容会自动用搜索引擎搜 -->
+                        <TextBox x:Name="AddressBox" Grid.Column="1" Margin="8,0"
+                                 Style="{StaticResource AddressTextBoxStyle}"
+                                 Text="{Binding AddressText, UpdateSourceTrigger=PropertyChanged}"
+                                 KeyDown="OnAddressKeyDown"
+                                 GotKeyboardFocus="OnAddressGotKeyboardFocus"
+                                 LostKeyboardFocus="OnAddressLostKeyboardFocus"
+                                 ToolTip="{Binding PageTitle}" />
+
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button x:Name="GoButton" Content="前往" Style="{StaticResource SecondaryButtonStyle}"
+                                    Padding="14,6" Command="{Binding GoCommand}" />
+                            <TextBlock Text="{Binding StatusText}" Margin="10,0,0,0" VerticalAlignment="Center"
+                                       MaxWidth="260" TextTrimming="CharacterEllipsis"
+                                       FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <!-- 切换标签栏位置：上方 ⇄ 左侧（⇄ 用 Segoe UI Symbol，Fluent Icons 里没有这个字形） -->
+                            <Button x:Name="ToggleTabSideButton" Content="&#x21C4;" Margin="8,0,0,0"
+                                    Style="{StaticResource NavButtonStyle}" Width="30"
+                                    FontFamily="Segoe UI Symbol" FontSize="14"
+                                    ToolTip="切换标签栏位置：上方 / 左侧"
+                                    Command="{Binding ToggleTabBarSideCommand}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- ================= 网页区域 ================= -->
+                <Grid Grid.Row="1" Background="{DynamicResource WindowBackgroundBrush}" ClipToBounds="True">
+                    <!-- 每个标签的 WebView2 由代码后置在激活时创建（共享一个内核环境，Cookie / 登录态互通） -->
+                    <Grid x:Name="WebHost" />
+
+                    <!-- 激活标签的内核还没建好 / 启动失败的提示（创建出 WebView2 之后会被原生窗口盖住） -->
+                    <StackPanel x:Name="StartupHintPanel" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                MaxWidth="560" Margin="24">
+                        <TextBlock Text="🌐" FontSize="38" HorizontalAlignment="Center" />
+                        <TextBlock x:Name="StartupHintText" Text="正在启动 Chromium 内核…" Margin="0,12,0,0"
+                                   TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="网页由 Microsoft Edge WebView2（Chromium）渲染"
+                                   Margin="0,8,0,0" TextWrapping="Wrap" TextAlignment="Center" FontSize="11"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
         </Grid>
     </Grid>
 </UserControl>

@@ -290,7 +290,9 @@
 - 外壳会缓存工具页（最多 12 个）：网页内核必须在 `Unloaded` 里 `Dispose`、`Loaded` 里重建，否则切走一个工具就多一个隐藏的 Edge 进程；用户数据目录放 `Cache\browser\WebView2`（「清理缓存」能清），内核运行中清不干净属正常，下次再清。
 - **别把 `AreDefaultContextMenusEnabled` 设成 `false`**：微软文档写明那样会让 `ContextMenuRequested` 事件**完全不触发**（右键没有任何反应，v0.58.0 踩过）。正确做法：保持 `true`，在事件里 `Handled = true` + `GetDeferral()`（菜单 `Closed` 时 `Complete`），再弹自己的 WPF 菜单（第一条放「刷新」）。
 - WPF 默认 `ContextMenu` / `MenuItem` 模板会给菜单项左侧留一条**白底「图标列」**（深色主题下非常突兀），只设 `Background` 是盖不掉的，必须换 `ControlTemplate`（见 `BrowserView.xaml` 的 `BrowserMenuItemStyle`）；自建菜单项时别忘了 `InputGestureText` 和 `IsHighlighted` 悬停色。
-- `target=_blank` / `window.open` 走 `NewWindowRequested`：不处理就什么都不发生，本工具暂时在当前页打开（`e.Handled = true` 再 `Navigate`）。
+- **多标签页**（v0.59.0 起）：每个标签一个 `WebView2` 实例，**共享一次 `CoreWebView2Environment`**（同一用户数据目录）——这样 Cookie / 登录态互通、第二个标签起启动很快；别每个标签各 `CreateAsync` 一份环境。多个内核全叠在同一个 `Grid` 里，只有激活标签 `Visibility.Visible`：WebView2 的 `Collapsed` 会真正隐藏原生 HWND（直接从 `Children` 摘掉反而会触发重新挂载的坑）。创建是异步的，创建期间标签可能被关掉 → `EnsureCoreWebView2Async` 返回后要核对「字典里还是这个实例」再接线。
+- `target=_blank` / `window.open` 走 `NewWindowRequested`：不处理就什么都不发生，本工具在**新标签页**里打开（`e.Handled = true` 再开标签）。
+- 快捷键（Ctrl+T / Ctrl+W / Ctrl+Tab）挂在 UserControl 的 `PreviewKeyDown`：焦点在网页内部时 WebView2（HwndHost）可能自己吃掉按键，WPF 收不到——这是键盘路由限制，按钮永远可用，文档里如实写。
 - 包会带原生 `WebView2Loader.dll`（在 `runtimes\win-x64\native\`），发布后检查 `dist` 里这份文件在；WebView2 **运行时**是系统组件，`WebView2RuntimeNotFoundException` 要提示用户去装，别把 100+MB 内核打进发布目录。
 
 ### 网络与 Flash 站点解析

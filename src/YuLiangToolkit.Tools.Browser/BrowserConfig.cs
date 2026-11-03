@@ -27,4 +27,17 @@ public sealed class BrowserConfig : ToolConfig
 
     /// <summary>上次访问的页面（<see cref="RememberLastPage"/> 打开时才用；空 = 用主页）。</summary>
     public string LastPage { get; set; } = "";
+
+    /// <summary>标签栏位置（<see cref="BrowserTabBar.TopPosition"/> / <see cref="BrowserTabBar.LeftPosition"/>；
+    /// 读进来会经 <see cref="BrowserTabBar.NormalizePosition"/> 归一化，写坏回退上方）。</summary>
+    public string TabBarPosition { get; set; } = BrowserTabBar.TopPosition;
+
+    /// <summary>
+    /// 关闭时打开着的一组标签页快照（恢复会话用；<see cref="RememberLastPage"/> 关着时不恢复，
+    /// 但仍会随手记录，重新打开开关后能接上）。写入前经 <see cref="BrowserTabBar.SanitizeSession"/> 清洗。
+    /// </summary>
+    public List<BrowserSessionTab> SessionTabs { get; set; } = new();
+
+    /// <summary>恢复会话时激活第几个标签（越界由 <see cref="BrowserTabBar.ClampActiveIndex"/> 夹回）。</summary>
+    public int ActiveTabIndex { get; set; }
 }

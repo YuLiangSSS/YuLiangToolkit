@@ -25,7 +25,7 @@
 | [**📄 PDF 阅读器**](docs/tools/pdf-reader.md) | 简单 PDF 阅读器：纵向 / 横向连续滚动、双页并排一次翻两页；支持 **25% ~ 800% 缩放**（Ctrl+滚轮 / 双页放大后拖动平移）、**Ctrl+F 文字搜索**、**📑 书签目录**、**双页页面间距可调**、**拖动惯性 / 滚轮惯性可分别开关**、**双击 .pdf 关联打开**、**自动记住每本 PDF 上次读到哪**、**页码跳转**、**🕘 最近浏览（上限可调）**、**F11 全屏沉浸阅读（工具条自动隐藏）**；只渲染看得见的页省内存，用 Windows 自带的 `Windows.Data.Pdf` 渲染；只读不改原文件 |
 | [**⚡ Flash 下载器**](docs/tools/flash-downloader.md) | 4399 / 7k7k / 17yy / ArmorGames / Kongregate 的小游戏下载到本地离线玩 |
 | [**💬 联机聊天室**](docs/tools/chat-room.md) | 主机开端口、客户端连进来，文字 / 图片 / 文件随便传，带单次流量上限 |
-| [**🌐 网页浏览器**](docs/tools/browser.md) | Chromium 内核（WebView2）：地址栏输入网址 / 搜索词，**前进 / 后退 / 刷新 / 主页**按钮，**网页里右键也能刷新**；记住上次页面；后面可继续加标签页 / 书签 / 下载管理 |
+| [**🌐 网页浏览器**](docs/tools/browser.md) | Chromium 内核（WebView2）**多标签浏览器**：**上方 / 左侧两种标签栏**一键切换（+ 新建 / 中键关标签 / 会话恢复），地址栏输入网址 / 搜索词，**前进 / 后退 / 刷新 / 主页**按钮，**网页里右键也能刷新**；`target=_blank` 在新标签页打开 |
 | [**🏷️ 批量重命名**](docs/tools/batch-rename.md) | 规则清单 + 实时预览 + 两阶段改名 + 可撤销 |
 | [**🎧 osu! 下图器**](docs/tools/map-downloader.md) | 搜谱面集、批量下 `.osz`（含视频 / 无视频） |
 | [**🎹 osu! Key 转换器**](docs/tools/osu-key-converter.md) | 把低键数 mania 谱面「复制列 / 插空白列」加成高键数（2~10 可选），支持批量 |
@@ -127,7 +127,7 @@ src/
 ├── YuLiangToolkit.Tools.BatchRename/    # 功能：批量重命名（规则清单引擎 + 两阶段改名 + 撤销）
 ├── YuLiangToolkit.Tools.FlashDownloader/# 功能：Flash 下载器（五站点解析 + 本地服务器 + 自动补全资源）
 ├── YuLiangToolkit.Tools.ChatRoom/       # 功能：联机聊天室（TCP 直连 / 内网穿透 + 传文件 + 流量上限）
-├── YuLiangToolkit.Tools.Browser/        # 功能：网页浏览器（WebView2 / Chromium 内核 + 地址栏 / 前进后退刷新 / 页内右键刷新）
+├── YuLiangToolkit.Tools.Browser/        # 功能：网页浏览器（WebView2 / Chromium 内核 + 多标签页：上方 / 左侧标签栏 + 地址栏 / 页内右键刷新）
 ├── YuLiangToolkit.Tools.MapDownloader/  # 功能：osu! 下图器（搜谱面集 + 批量下 .osz）
 ├── YuLiangToolkit.Tools.OsuMania/       # 功能：音游工具（osu! Key 转换器 / LN 转换器 / 等级计算器）
 ├── YuLiangToolkit.Tools.BoardGames/     # 功能：棋牌（联机五子棋 / 联机象棋 + 房间联机底座）

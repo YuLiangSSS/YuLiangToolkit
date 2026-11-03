@@ -40,7 +40,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("kps", "KPS 按键统计：统计引擎 / 预设 / 热键 / 全局输入"),
     ("spug", "Spug 验证码测试：URL 校验 / 请求构造 / 响应解析 / 本地验证"),
     ("live2d", "Live2D 桌宠：内置 moc3 加载 / 参数部件 / 动作表情 / 物理 / 眼睛跟随 / 软件渲染"),
-    ("browser", "网页浏览器：地址栏解析 / 主机识别 / 搜索模板 / 配置默认值"),
+    ("browser", "网页浏览器：地址栏解析 / 主机识别 / 搜索模板 / 标签栏规则与会话恢复 / 配置默认值"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -955,7 +955,7 @@ RunGroupModule("live2d", "Live2D桌宠", Live2DChecks.Run, "[Live2D] ");
 
 // 「网页浏览器」：地址栏输入解析（补协议 / localhost / IP / 搜索词）/ 主机识别 / 搜索模板 / 配置默认值；
 // 全是纯逻辑，**不启动 WebView2、不联网**（网页渲染本身由截图冒烟验收）。
-RunGroupModule("browser", "网页浏览器", BrowserChecks.Run);
+RunGroupModule("browser", "网页浏览器（多标签）", BrowserChecks.Run);
 
 EnterGroup("shell");
 
