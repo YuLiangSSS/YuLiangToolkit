@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「右键菜单管理」：扫描 / 隐藏 / 恢复 Windows 资源管理器的右键菜单项。
+       只写当前用户（HKCU）的覆盖项，不删改原注册表键，因此不需要管理员权限。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.ContextMenu</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.ContextMenu</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

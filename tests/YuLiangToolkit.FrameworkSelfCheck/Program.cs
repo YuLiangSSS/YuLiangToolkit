@@ -48,6 +48,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("audio-tools", "音频工具：视频转音频 / 分段合成（自然排序 / concat 清单 / FFmpeg 参数）"),
     ("word-viewer", "Word 阅读器：docx 解析（段落 / 格式 / 表格 / 图片 / 大纲）/ 查找 / 最近列表"),
     ("excel-viewer", "Excel 阅读器：xlsx 解析（共享字符串 / 样式 / 合并 / 列宽 / 截断）/ 数字格式 / 最近列表"),
+    ("context-menu", "右键菜单管理：注册表枚举 / 隐藏 / 恢复（内存假注册表）"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1170,6 +1171,10 @@ RunGroupModule("word-viewer", "Word 阅读器", WordViewerChecks.Run);
 // 「Excel 阅读器」：手写 xlsx 解析（共享字符串 / 样式 / 合并单元格 / 列宽 / 截断）/
 // 数字格式与日期序列 / 地址换算 / 配置与最近列表；同样无头跑。
 RunGroupModule("excel-viewer", "Excel 阅读器", ExcelViewerChecks.Run);
+
+// 「右键菜单管理」：枚举 / 隐藏 / 恢复 / 恢复全部 / 筛选 / CLSID 规范化。
+// 全部走内存假注册表（FakeContextMenuRegistry），**绝不写用户真实注册表**，无头跑、可在任何机器重复。
+RunGroupModule("context-menu", "右键菜单管理", ContextMenuChecks.Run, "[右键菜单] ");
 
 EnterGroup("shell");
 

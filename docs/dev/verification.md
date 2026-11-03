@@ -44,7 +44,7 @@
 ```powershell
 .\scripts\check.ps1              # 日常唯一需要的命令：自动选组 + build + 定向自检
 .\scripts\check.ps1 -DryRun      # 只看这次会跑什么，不动手（改前规划 / 解释给用户）
-.\scripts\check.ps1 -List        # 看 23 个组 + 完整「路径 → 组」映射表
+.\scripts\check.ps1 -List        # 看 24 个组 + 完整「路径 → 组」映射表
 .\scripts\check.ps1 -SelfTest    # 单独校验映射/接线/工程/文档是否漂移（退出码 2 = 漂移）
 .\scripts\check.ps1 -Files a.cs,b.md   # 假装这些文件改了（提交后复查 / 指定影响面）
 .\scripts\check.ps1 -Groups theme      # 强制指定组（少数场景；优先让脚本自动选）
@@ -122,6 +122,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `src/YuLiangToolkit.Tools.AudioTools/**` | `audio-tools` | L2 |
 | `src/YuLiangToolkit.Tools.WordViewer/**` | `word-viewer` | L2 |
 | `src/YuLiangToolkit.Tools.ExcelViewer/**` | `excel-viewer` | L2 |
+| `src/YuLiangToolkit.Tools.ContextMenu/**` | `context-menu` | L2 |
 | `src/YuLiangToolkit.Tools.Sample/**` | **无专属组** → build + 人工冒烟 | L1 |
 | `tests/.../XxxChecks.cs` | 该模块对应的组（`ScrollChainingChecks.cs` → `core`；`PdfTextChecks.cs` → `pdf-reader`…） | L3 |
 | `tests/.../Live2DChecks.cs` | `live2d` | L3 |
@@ -131,6 +132,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `tests/.../WordViewerChecks.cs` | `word-viewer`（docx 解析纯逻辑） | L3 |
 | `tests/.../ExcelViewerChecks.cs` | `excel-viewer`（xlsx 解析纯逻辑） | L3 |
 | `tests/.../MaintenanceChecks.cs` | `maintenance`（缓存清理 / 重建配置） | L3 |
+| `tests/.../ContextMenuChecks.cs` | `context-menu`（内存假注册表断言） | L3 |
 | `tests/.../Program.cs`、`SelfCheckScratch.cs`、自检 csproj | **ALL**（接线/公共脚手架） | L4 |
 | `YuLiangTookit.csproj`（⚠ 少一个 `l`） | **ALL** + 人工清单（引用数 / `DefaultItemExcludes` / 无 `CopyToOutputDirectory` / 启动截图） | L4 |
 | 其他任何路径（含新工具目录、新顶层目录） | **ALL**（映射不到） | L4 |
@@ -141,7 +143,8 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
    改纯 XAML 会命中 L1 的 `src/**/Views/*.xaml` 规则只 build+截图；改代码则 3 组都跑；
 2. **Sample 没有自检组**——改它只 build + 人工冒烟（示例页截图）；音频工具已有 `audio-tools` 组（分段合成纯逻辑），但真实 FFmpeg 合成仍要人工冒烟，
    不要把「没跑自检」误当成「不用验」；
-3. **组 id ≠ 项目名 ≠ 工具 Id**：`SpugCaptcha` → 组 `spug`；`OsuMania` → 组 `osu-mania`；`BoardGames` → 三个 `board-*` 组。
+3. **组 id ≠ 项目名 ≠ 工具 Id**：`SpugCaptcha` → 组 `spug`；`OsuMania` → 组 `osu-mania`；`BoardGames` → 三个 `board-*` 组；
+   `ContextMenu` → 组 `context-menu`，工具 Id 是 `context-menu-manager`。
 
 ## 验证预算（硬性，防「验证通胀」）
 
@@ -173,7 +176,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 - 跨组共享文件映射是否符合期望（`MiniPlayerPanel`→`shell`+`media-player`、`ShellConfig`→`shell`+`theme`、
   `ShellCategories`→`shell`+`board-games`、`App.xaml`→`theme`+`shell` 等）；
 - 每个 `Tools.*` 工程是否同时被主 csproj、`YuLiangToolkit.sln`、自检 csproj（Sample 白名单）引用；
-- 无组项目是否仍显式标为 build-only；`docs/dev/verification.md` 是否提到全部 23 个组 id。
+- 无组项目是否仍显式标为 build-only；`docs/dev/verification.md` 是否提到全部 24 个组 id。
 
 新增功能 / 组的步骤：
 

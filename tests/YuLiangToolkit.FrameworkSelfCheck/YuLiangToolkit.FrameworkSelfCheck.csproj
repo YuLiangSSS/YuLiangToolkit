@@ -70,6 +70,9 @@
     <!-- 「音频工具」：分段视频合成的纯逻辑（分段识别 / 自然排序 / concat 清单 / FFmpeg 参数 /
          输出文件名 / 进度解析），不启动 FFmpeg、不碰真 Data。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.AudioTools\YuLiangToolkit.Tools.AudioTools.csproj" />
+    <!-- 「右键菜单管理」：枚举 / 隐藏 / 恢复 / 恢复全部 / 筛选纯逻辑断言；
+         引擎的所有注册表读写都注入内存假注册表，**不写真实注册表**。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.ContextMenu\YuLiangToolkit.Tools.ContextMenu.csproj" />
   </ItemGroup>
 
 </Project>

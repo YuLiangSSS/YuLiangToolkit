@@ -41,6 +41,7 @@
 | [**⚫ 联机五子棋**](docs/tools/gomoku.md) | 开 TCP 房间联机下五子棋：**最多 16 人多人观战 + 房主安排上场 / 自动轮换**、可选禁手（三三 / 四四 / 长连）、悔棋、聊天、同机双人 |
 | [**🀄 联机象棋**](docs/tools/xiangqi.md) | 开 TCP 房间联机下中国象棋：**多人观战 + 房主安排上场 / 自动轮换**、自由摆棋 + 一键默认开局、让子 / 让先、中文记谱 |
 | [**📨 Spug 验证码测试**](docs/tools/spug-captcha.md) | 联调 Spug 推送助手（push.spug.cc）的短信 / 邮箱验证码模板：发验证码 + 本地比对验证 + 接口日志；推送 URL 是调用凭证，别外传 |
+| [**🖱️ 右键菜单管理**](docs/tools/context-menu-manager.md) | 把资源管理器右键菜单里的项目（所有文件 / 文件夹 / 文件夹空白处 / 驱动器 / 桌面背景）列成一张表：名称 / 类型 / 位置 / 状态一目了然，**搜索 + 位置 / 类型筛选 + 只看已隐藏**；不想要的（例如「上传到百度网盘」）**一键隐藏、随时恢复**，还能「恢复全部（仅本工具隐藏的）」与重启资源管理器；**只写当前用户（HKCU）的覆盖项，不删原菜单、不改电脑级设置、不需要管理员权限**，系统关键项（新建菜单 / 打开）不可隐藏 |
 | [**🧪 框架示例**](docs/tools/sample-framework.md) | 开发用模板（Data / Config 轮子演示，可整目录删除） |
 
 > 🎵 **音游工具**是主页上的一个分类：点「音游工具」类别卡片进类别页，再点工具卡片打开；
@@ -93,7 +94,7 @@ dotnet run --project YuLiangTookit.csproj
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；
   踩坑细节按需查 **[docs/dev/pitfalls.md](docs/dev/pitfalls.md)**（只在排错 / 改危险代码时读）；
-- ✅ **自检**：3526 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
+- ✅ **自检**：3598 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -146,8 +147,9 @@ src/
 ├── YuLiangToolkit.Tools.Kps/            # 功能：KPS 按键统计（Raw Input 全局输入 + KPS 统计 + 置顶透明 Overlay + 全局热键）
 ├── YuLiangToolkit.Tools.Live2D/         # 功能：Live2D 桌宠（内置模型测试台 + 透明置顶桌宠 + 眼睛跟随 + 摄像头面部动捕 + 身体晃动测试；官方 Cubism Core + 自写软件渲染器 + Windows 自带人脸检测）
 ├── YuLiangToolkit.Tools.SpugCaptcha/    # 功能：Spug 验证码测试（短信 / 邮箱验证码模板联调 + 本地比对验证）
+├── YuLiangToolkit.Tools.ContextMenu/    # 功能：右键菜单管理（枚举 / 隐藏 / 恢复 Windows 资源管理器右键菜单项；只写 HKCU，不删原键）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3526 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3598 项行为逐条验证）
 ```
 
 ## 如何添加一个新工具

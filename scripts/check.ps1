@@ -116,6 +116,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/BoardGamesChecks.cs'      @('board-games','board-net','board-room') 'L3' 'board rules + net + room')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/ScrollChainingChecks.cs'  @('core') 'L3' 'core scroll chain')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/ChatRoomChecks.cs'        @('chat-room') 'L3' 'chat-room assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/ContextMenuChecks.cs'     @('context-menu') 'L3' 'context-menu assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/FlashDownloaderChecks.cs' @('flash-downloader') 'L3' 'flash-downloader assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/MapDownloaderChecks.cs'   @('map-downloader') 'L3' 'map-downloader assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/MediaPlayerChecks.cs'     @('media-player') 'L3' 'media-player assertions')
@@ -150,6 +151,7 @@ $mapping = @(
 
     # ---------- src: one tool -> its group(s) ----------
     (New-Rule 'src/YuLiangToolkit.Tools.BatchRename/*'     @('batch-rename') 'L2' 'batch-rename')
+    (New-Rule 'src/YuLiangToolkit.Tools.ContextMenu/*'    @('context-menu') 'L2' 'context menu manager')
     (New-Rule 'src/YuLiangToolkit.Tools.FlashDownloader/*' @('flash-downloader') 'L2' 'flash-downloader')
     (New-Rule 'src/YuLiangToolkit.Tools.ChatRoom/*'        @('chat-room') 'L2' 'chat-room')
     (New-Rule 'src/YuLiangToolkit.Tools.MapDownloader/*'   @('map-downloader') 'L2' 'map-downloader')
