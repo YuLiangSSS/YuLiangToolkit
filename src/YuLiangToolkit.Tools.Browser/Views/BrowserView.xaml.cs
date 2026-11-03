@@ -36,12 +36,19 @@ public partial class BrowserView : UserControl, IBrowserHost
     /// <summary>正在创建内核的标签（防止连点标签时并发创建同一个）。</summary>
     private readonly HashSet<BrowserTab> _creatingTabs = new();
 
+    /// <summary>进行中的下载（项 → WebView2 下载操作 + 所属标签；结束 / 关标签时从字典摘掉）。</summary>
+    private readonly Dictionary<BrowserDownloadItem, (CoreWebView2DownloadOperation Operation, BrowserTab Tab)>
+        _downloadOps = new();
+
     private CoreWebView2Environment? _environment;
     private bool _initializing;
     private bool _detached;
     private bool _vmWired;
     private bool _screenshotCaptured;
     private bool _menuTestDone;
+    private bool _gearTestDone;
+    private bool _panelTestDone;
+    private bool _zoomTestDone;
     private bool _debugUrlConsumed;
     private string? _debugUrlOverride;
 
@@ -71,6 +78,9 @@ public partial class BrowserView : UserControl, IBrowserHost
         _detached = false;
         _screenshotCaptured = false;
         _menuTestDone = false;
+        _gearTestDone = false;
+        _panelTestDone = false;
+        _zoomTestDone = false;
         _debugUrlConsumed = false;
         _debugUrlOverride = Environment.GetEnvironmentVariable("YLT_BROWSER_URL"); // 调试 / 截图用
         _initializing = true;
@@ -176,7 +186,8 @@ public partial class BrowserView : UserControl, IBrowserHost
                 return;
             }
 
-            ConfigureCore(webView.CoreWebView2, tab);
+            ConfigureCore(webView, tab);
+            tab.ZoomFactor = webView.ZoomFactor;   // 新内核默认 100%（或站点记忆缩放），同步工具条
 
             // 恢复会话 / 新标签的「待开地址」；首个内核 + 设了 YLT_BROWSER_URL 时优先走调试地址
             var pending = tab.Url;
@@ -236,6 +247,7 @@ public partial class BrowserView : UserControl, IBrowserHost
 
     private void DisposeTabWebView(BrowserTab tab)
     {
+        FinishDownloadsOfTab(tab);
         if (!_webViews.Remove(tab, out var webView)) return;
         Trace($"dispose-core tab#{tab.Id}");
         try { WebHost.Children.Remove(webView); } catch { /* 释放流程忽略 */ }
@@ -245,6 +257,19 @@ public partial class BrowserView : UserControl, IBrowserHost
     /// <summary>释放全部标签的内核（可重复调用）。</summary>
     private void DisposeAllWebViews()
     {
+        // 内核一释放，进行中的下载就没了：先把它们标成中断，别让下载面板一直停在「正在下载」
+        var activeItems = _downloadOps.Keys.ToList();
+        _downloadOps.Clear();
+        foreach (var item in activeItems)
+        {
+            Vm?.Ui(() =>
+            {
+                if (!item.IsActive) return;
+                item.MarkInterrupted("浏览器已关闭");
+                Vm?.OnDownloadFinished(item);
+            });
+        }
+
         foreach (var webView in _webViews.Values)
         {
             try { WebHost.Children.Remove(webView); } catch { /* 释放流程忽略 */ }
@@ -262,17 +287,23 @@ public partial class BrowserView : UserControl, IBrowserHost
 
     // ---------- 内核配置 / 事件（每个标签各接各的） ----------
 
-    private void ConfigureCore(CoreWebView2 core, BrowserTab tab)
+    private void ConfigureCore(WebView2 webView, BrowserTab tab)
     {
+        var core = webView.CoreWebView2;
+
         // ⚠ 别把 AreDefaultContextMenusEnabled 设成 false：微软文档明确说那样会让
         // ContextMenuRequested 事件**完全不触发**（右键就没反应了）。正确做法是保持 true，
         // 在事件里 Handled = true 并自己弹菜单（见 ShowContextMenu）。
         core.Settings.AreDefaultContextMenusEnabled = true;
         core.Settings.AreDevToolsEnabled = true;
         core.Settings.IsStatusBarEnabled = false;
-        core.Settings.IsZoomControlEnabled = true;
+        core.Settings.IsZoomControlEnabled = true;   // Ctrl+滚轮 / Ctrl+加减 原生缩放
         core.Settings.IsSwipeNavigationEnabled = false;
         core.Settings.AreBrowserAcceleratorKeysEnabled = true;
+
+        // 用户 Ctrl+滚轮 / Ctrl+加减 缩放时回写标签状态（宿主自己设 ZoomFactor 不会触发这个事件，
+        // 所以 SetZoom 里要主动同步一次，见 IBrowserHost.SetZoom）。
+        webView.ZoomFactorChanged += (_, _) => Safe(() => OnZoomChanged(webView, tab));
 
         core.NavigationStarting += (_, e) => Safe(() =>
         {
@@ -286,18 +317,25 @@ public partial class BrowserView : UserControl, IBrowserHost
             SyncHistory(tab, core);
         });
         core.HistoryChanged += (_, _) => Safe(() => SyncHistory(tab, core));
-        core.DocumentTitleChanged += (_, _) => Safe(() => tab.Title = core.DocumentTitle ?? "");
+        core.DocumentTitleChanged += (_, _) => Safe(() =>
+        {
+            tab.Title = core.DocumentTitle ?? "";
+            // 标题经常比 NavigationCompleted 晚到：同址只更新标题 / 时间，不会重复插记录
+            Vm?.RecordHistory(tab.Url, tab.Title);
+        });
         core.NavigationCompleted += (_, e) => Safe(() =>
         {
             SyncHistory(tab, core);
             Trace($"navigation-completed tab#{tab.Id} success={e.IsSuccess} status={e.WebErrorStatus}");
             tab.IsLoading = false;
             tab.LastError = e.IsSuccess ? null : DescribeError(e.WebErrorStatus);
+            if (e.IsSuccess) Vm?.RecordHistory(tab.Url, tab.Title);
             if (ReferenceEquals(tab, Vm?.ActiveTab))
             {
                 Vm?.OnActiveTabNavigationCompleted(e.IsSuccess, tab.LastError);
                 TryCaptureForScreenshot();
                 TryOpenMenuForDebug();
+                TryOpenDebugUi();
             }
         });
         core.NewWindowRequested += (_, e) => Safe(() =>
@@ -307,9 +345,119 @@ public partial class BrowserView : UserControl, IBrowserHost
             if (!string.IsNullOrWhiteSpace(e.Uri)) Vm?.OpenTab(e.Uri);
         });
         core.ContextMenuRequested += (_, e) => Safe(() => ShowContextMenu(core, e));
+        core.DownloadStarting += (_, e) => Safe(() => BeginDownload(e, tab));
         core.ProcessFailed += (_, e) => Safe(() =>
             Vm?.OnCoreError($"浏览器内核异常（{e.ProcessFailedKind}），切走再切回这个工具可重启内核。"));
     }
+
+    /// <summary>页面缩放变化（Ctrl+滚轮 / Ctrl+加减 / 站点记忆缩放）：回写到标签与工具条。</summary>
+    private void OnZoomChanged(WebView2 webView, BrowserTab tab)
+    {
+        var factor = BrowserZoom.Clamp(webView.ZoomFactor);
+        tab.ZoomFactor = factor;
+        if (ReferenceEquals(tab, Vm?.ActiveTab)) Vm?.OnActiveTabZoomChanged(factor);
+    }
+
+    // ---------- 下载（WebView2 DownloadStarting + DownloadOperation 事件） ----------
+
+    private void BeginDownload(CoreWebView2DownloadStartingEventArgs e, BrowserTab tab)
+    {
+        var operation = e.DownloadOperation;
+        // 关掉 WebView2 自带的下载提示条：下载照常进行，进度统一显示在「下载」侧栏里
+        e.Handled = true;
+
+        var item = new BrowserDownloadItem(operation.Uri, operation.ResultFilePath, DateTime.Now)
+        {
+            CancelAction = () =>
+            {
+                try { operation.Cancel(); } catch { /* 已结束忽略 */ }
+            },
+        };
+        _downloadOps[item] = (operation, tab);
+
+        operation.BytesReceivedChanged += (_, _) => Safe(() => UpdateDownload(item));
+        operation.StateChanged += (_, _) => Safe(() => UpdateDownload(item));
+
+        Vm?.AddDownload(item);
+        Trace($"download-start tab#{tab.Id} {operation.Uri} -> {operation.ResultFilePath}");
+        UpdateDownload(item);
+    }
+
+    /// <summary>把 WebView2 下载操作的最新状态同步到下载项（必须在 UI 线程改绑定属性）。</summary>
+    private void UpdateDownload(BrowserDownloadItem item)
+    {
+        if (!_downloadOps.TryGetValue(item, out var entry)) return;
+        var operation = entry.Operation;
+        var state = operation.State;
+        var received = operation.BytesReceived;
+        var total = operation.TotalBytesToReceive;
+        var resultPath = operation.ResultFilePath;
+
+        Vm?.Ui(() =>
+        {
+            item.UpdateProgress(received, total);
+            switch (state)
+            {
+                case CoreWebView2DownloadState.Completed:
+                    item.MarkCompleted(resultPath);
+                    FinishDownload(item);
+                    break;
+                case CoreWebView2DownloadState.Interrupted:
+                    item.MarkInterrupted(DescribeDownloadInterrupt(operation.InterruptReason));
+                    FinishDownload(item);
+                    break;
+            }
+        });
+    }
+
+    /// <summary>结束一项下载：从进行中字典摘掉并写入下载记录（重复状态事件不会重复记）。</summary>
+    private void FinishDownload(BrowserDownloadItem item)
+    {
+        if (!_downloadOps.Remove(item)) return;
+        Vm?.OnDownloadFinished(item);
+        Trace($"download-finished {item.FileName} state={item.StateText}");
+    }
+
+    /// <summary>标签关闭 / 释放时，属于它的进行中下载标成中断（WebView2 实例没了，不会再有完成事件）。</summary>
+    private void FinishDownloadsOfTab(BrowserTab tab)
+    {
+        var items = _downloadOps
+            .Where(kv => ReferenceEquals(kv.Value.Tab, tab))
+            .Select(kv => kv.Key)
+            .ToList();
+
+        foreach (var item in items)
+        {
+            if (!_downloadOps.Remove(item)) continue;
+            Vm?.Ui(() =>
+            {
+                item.MarkInterrupted("标签页已关闭");
+                Vm?.OnDownloadFinished(item);
+            });
+        }
+    }
+
+    private static string DescribeDownloadInterrupt(CoreWebView2DownloadInterruptReason reason) => reason switch
+    {
+        CoreWebView2DownloadInterruptReason.UserCanceled => "已取消",
+        CoreWebView2DownloadInterruptReason.UserShutdown => "程序已关闭",
+        CoreWebView2DownloadInterruptReason.FileNoSpace => "磁盘空间不足",
+        CoreWebView2DownloadInterruptReason.FileAccessDenied => "没有写入权限",
+        CoreWebView2DownloadInterruptReason.FileNameTooLong => "文件名太长",
+        CoreWebView2DownloadInterruptReason.FileBlockedByPolicy => "被策略阻止",
+        CoreWebView2DownloadInterruptReason.NetworkFailed or CoreWebView2DownloadInterruptReason.NetworkDisconnected
+            => "网络断开",
+        CoreWebView2DownloadInterruptReason.NetworkTimeout => "网络超时",
+        CoreWebView2DownloadInterruptReason.NetworkServerDown => "服务器不可用",
+        CoreWebView2DownloadInterruptReason.ServerFailed or CoreWebView2DownloadInterruptReason.ServerUnexpectedResponse
+            => "服务器返回错误",
+        CoreWebView2DownloadInterruptReason.ServerCertificateProblem => "网站证书有问题",
+        CoreWebView2DownloadInterruptReason.ServerForbidden or CoreWebView2DownloadInterruptReason.ServerUnauthorized
+            => "服务器拒绝访问",
+        CoreWebView2DownloadInterruptReason.DownloadProcessCrashed => "下载进程崩溃",
+        CoreWebView2DownloadInterruptReason.None => "",
+        _ => reason.ToString(),
+    };
 
     private void SyncHistory(BrowserTab tab, CoreWebView2 core)
     {
@@ -545,6 +693,20 @@ public partial class BrowserView : UserControl, IBrowserHost
 
     public void Stop() => ActiveCore?.Stop();
 
+    /// <summary>
+    /// 设置激活标签的缩放。⚠ 官方文档：宿主自己设 <c>ZoomFactor</c> 时**不会**触发
+    /// <c>ZoomFactorChanged</c>，所以这里要主动把标签 / 工具条状态同步一次。
+    /// </summary>
+    public void SetZoom(double factor)
+    {
+        var webView = ActiveWebView;
+        if (webView is null) return;
+        var clamped = BrowserZoom.Clamp(factor);
+        webView.ZoomFactor = clamped;
+        if (Vm?.ActiveTab is { } tab) tab.ZoomFactor = clamped;
+        Vm?.OnActiveTabZoomChanged(clamped);
+    }
+
     public void Close()
     {
         if (!Dispatcher.CheckAccess())
@@ -553,6 +715,33 @@ public partial class BrowserView : UserControl, IBrowserHost
             return;
         }
         DisposeAllWebViews();
+    }
+    // ---------- 齿轮菜单 / 侧栏（历史记录 / 下载） ----------
+
+    private void OnGearClick(object sender, RoutedEventArgs e)
+    {
+        if (!GearPopup.IsOpen) Vm?.OnMenuOpened();
+        GearPopup.IsOpen = !GearPopup.IsOpen;
+    }
+
+    /// <summary>菜单里点「历史记录 / 下载」：先收菜单，再打开右侧面板。</summary>
+    private void OnGearHistoryClick(object sender, RoutedEventArgs e)
+    {
+        GearPopup.IsOpen = false;
+        Vm?.ShowHistoryPanel();
+    }
+
+    private void OnGearDownloadsClick(object sender, RoutedEventArgs e)
+    {
+        GearPopup.IsOpen = false;
+        Vm?.ShowDownloadsPanel();
+    }
+
+    /// <summary>点历史记录条目：打开 (当前标签)；侧栏保持打开，方便继续翻。</summary>
+    private void OnHistoryListSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is ListBox { SelectedItem: BrowserHistoryEntry entry })
+            Vm?.OpenHistoryEntry(entry);
     }
 
     // ---------- 调试：截图模式下额外抓一张网页区域 ----------
@@ -582,6 +771,63 @@ public partial class BrowserView : UserControl, IBrowserHost
                 var menu = CreateContextMenu(core);
                 menu.IsOpen = true;
                 Trace("context-menu-opened (menu test)");
+            });
+        };
+        timer.Start();
+    }
+
+    /// <summary>
+    /// 调试钩子（截图验收用，正常使用不执行）：
+    /// <c>YLT_BROWSER_GEAR_TEST=1</c> 延迟打开齿轮菜单；
+    /// <c>YLT_BROWSER_PANEL_TEST=history|downloads</c> 直接打开右侧面板；
+    /// <c>YLT_BROWSER_ZOOM_TEST=130</c> 把页面缩放到 130%（验证缩放状态 / 工具条指示）。
+    /// </summary>
+    private void TryOpenDebugUi()
+    {
+        var panel = Environment.GetEnvironmentVariable("YLT_BROWSER_PANEL_TEST");
+        if (!_panelTestDone && !string.IsNullOrWhiteSpace(panel) && Vm is { } vm)
+        {
+            _panelTestDone = true;
+            Safe(() =>
+            {
+                if (panel.Trim().StartsWith("download", StringComparison.OrdinalIgnoreCase))
+                    vm.ShowDownloadsPanel();
+                else
+                    vm.ShowHistoryPanel();
+            });
+        }
+
+        var zoomText = Environment.GetEnvironmentVariable("YLT_BROWSER_ZOOM_TEST");
+        if (!_zoomTestDone && double.TryParse(zoomText, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var zoomPercent))
+        {
+            _zoomTestDone = true;
+            var zoomTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(1200),
+            };
+            zoomTimer.Tick += (_, _) =>
+            {
+                zoomTimer.Stop();
+                Safe(() => SetZoom(zoomPercent / 100.0));
+            };
+            zoomTimer.Start();
+        }
+
+        if (_gearTestDone || Environment.GetEnvironmentVariable("YLT_BROWSER_GEAR_TEST") != "1") return;
+        _gearTestDone = true;
+        var timer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(3000),
+        };
+        timer.Tick += (_, _) =>
+        {
+            timer.Stop();
+            Safe(() =>
+            {
+                Vm?.OnMenuOpened();
+                GearPopup.IsOpen = true;
+                Trace("gear-opened (test)");
             });
         };
         timer.Start();

@@ -294,6 +294,11 @@
 - `target=_blank` / `window.open` 走 `NewWindowRequested`：不处理就什么都不发生，本工具在**新标签页**里打开（`e.Handled = true` 再开标签）。
 - 快捷键（Ctrl+T / Ctrl+W / Ctrl+Tab）挂在 UserControl 的 `PreviewKeyDown`：焦点在网页内部时 WebView2（HwndHost）可能自己吃掉按键，WPF 收不到——这是键盘路由限制，按钮永远可用，文档里如实写。
 - 包会带原生 `WebView2Loader.dll`（在 `runtimes\win-x64\native\`），发布后检查 `dist` 里这份文件在；WebView2 **运行时**是系统组件，`WebView2RuntimeNotFoundException` 要提示用户去装，别把 100+MB 内核打进发布目录。
+- **会话恢复时别在 `RestoreSession` 里触发 `SaveSession`**：`AddTab` → `CollectionChanged` → `SaveSession` 会把还没选中的 `ActiveTabIndex` 写回 0，恢复出来的激活标签永远是第一个（v0.63.0 踩过）。用 `_restoringSession` 开关挡住，恢复结束再允许保存。
+- **下载**（v0.63.0）：`DownloadStarting.Handled = true` 只是**关掉默认下载 UI**，下载本身照常进行；进度从 `CoreWebView2DownloadOperation` 的 `BytesReceivedChanged` / `StateChanged` 读（`TotalBytesToReceive` 是 `ulong?`），事件可能重复触发，结束记录要幂等（从进行中字典 `Remove` 成功才落库）。**关标签 / 释放内核时进行中的下载不会再有完成事件**，必须自己标中断并写记录，否则下载面板一直停在「正在下载」。
+- **缩放**：宿主自己设 `WebView2.ZoomFactor` **不会**触发 `ZoomFactorChanged`（官方文档明确），必须手动同步标签 / 工具条百分比；用户 Ctrl+滚轮 / Ctrl+加减 的原生缩放会触发该事件。
+- `ProgressBar.Value` 的绑定默认是 **TwoWay**（`RangeBase` 的特性），绑到只读的 `Progress` 属性会抛 `XamlParseException`，整个工具启动崩溃——一律写 `Mode=OneWay`（v0.63.0 踩过，下载面板）。
+- 齿轮菜单用 `Popup`（独立顶层 HWND）：`YLT_SHOT` 的 `RenderTargetBitmap` 截图**抓不到**，要验证只能用屏幕截图 / `PrintWindow`（调试钩子 `YLT_BROWSER_GEAR_TEST=1`）。
 
 ### 网络与 Flash 站点解析
 - 判越界别用 `Contains("..")`：先 `Path.GetFullPath` 再比前缀（`SafeCombine`）。

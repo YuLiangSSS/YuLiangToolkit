@@ -17,6 +17,7 @@ public sealed class BrowserTab : ObservableObject
     private bool _canGoBack;
     private bool _canGoForward;
     private string? _lastError;
+    private double _zoomFactor = 1.0;
 
     /// <summary>内部序号（View 用它排错日志，界面不显示）。</summary>
     internal int Id { get; }
@@ -68,6 +69,16 @@ public sealed class BrowserTab : ObservableObject
     {
         get => _lastError;
         set => Set(ref _lastError, value);
+    }
+
+    /// <summary>
+    /// 本标签当前页面缩放（1.0 = 100%）。WebView2 的 <c>ZoomFactorChanged</c> 会回写这里
+    /// （Ctrl+滚轮 / Ctrl+加减都算），切标签 / 新建标签时用它的值同步工具条上的缩放显示。
+    /// </summary>
+    public double ZoomFactor
+    {
+        get => _zoomFactor;
+        set => Set(ref _zoomFactor, BrowserZoom.Clamp(value));
     }
 
     /// <summary>标签条上显示的字：优先标题，没标题退回地址，都没有叫「新标签页」。</summary>

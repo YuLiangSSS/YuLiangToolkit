@@ -6,8 +6,8 @@ using YuLiangToolkit.Tools.Browser;
 namespace YuLiangToolkit.FrameworkSelfCheck;
 
 /// <summary>
-/// 「网页浏览器」自检：地址栏解析（补协议 / localhost / IP / 搜索词）、搜索模板、
-/// 标签栏规则（位置归一化 / 会话清洗 / 关标签补位）、工具元数据与配置默认值。
+/// 「网页浏览器」自检：地址栏解析（补协议 / localhost / IP / 搜索词）、主页输入校验、
+/// 搜索模板、标签栏规则、页面缩放、历史记录 / 下载记录规则、工具元数据与配置默认值。
 /// <b>全程不启动 WebView2、不联网</b>（网页内核要真窗口，属于人工截图冒烟的部分）。
 /// </summary>
 internal static class BrowserChecks
@@ -18,7 +18,11 @@ internal static class BrowserChecks
         CheckUrlResolution(check);
         CheckHostDetection(check);
         CheckSearchTemplate(check);
+        CheckHomePageInput(check);
         CheckTabBarRules(check);
+        CheckZoom(check);
+        CheckHistory(check);
+        CheckDownloads(check);
         CheckConfig(check);
     }
 
@@ -31,10 +35,12 @@ internal static class BrowserChecks
             tool.Id == "browser" && tool.Name == "网页浏览器"
             && tool.Category == "网络" && tool.Order == 12,
             $"{tool.Id} / {tool.Name} / {tool.Category} / {tool.Order}");
-        check("[浏览器] 标签里有「浏览器」「WebView2」，描述说明多标签与刷新",
+        check("[浏览器] 标签 / 描述覆盖多标签、WebView2、历史、下载、缩放",
             tool.Tags.Contains("浏览器") && tool.Tags.Contains("WebView2") && tool.Tags.Contains("标签页")
+            && tool.Tags.Contains("历史记录") && tool.Tags.Contains("下载") && tool.Tags.Contains("缩放")
             && tool.Description.Contains("WebView2") && tool.Description.Contains("刷新")
-            && tool.Description.Contains("标签"),
+            && tool.Description.Contains("历史") && tool.Description.Contains("下载")
+            && tool.Description.Contains("缩放"),
             tool.Description);
 
         // 工具 Id 必须等于配置/缓存文件夹名（Data / Config / Cache 都按它建目录）
@@ -52,8 +58,8 @@ internal static class BrowserChecks
 
         check("[浏览器] 裸域名自动补 https://",
             BrowserUrl.Resolve("example.com") == "https://example.com"
-            && BrowserUrl.Resolve("www.bing.com/search?q=1") == "https://www.bing.com/search?q=1",
-            BrowserUrl.Resolve("www.bing.com/search?q=1") ?? "<null>");
+            && BrowserUrl.Resolve("www.google.com/search?q=1") == "https://www.google.com/search?q=1",
+            BrowserUrl.Resolve("www.google.com/search?q=1") ?? "<null>");
 
         check("[浏览器] localhost / IP 自动补 http://（本地服务通常没证书）",
             BrowserUrl.Resolve("localhost:8080") == "http://localhost:8080"
@@ -75,10 +81,10 @@ internal static class BrowserChecks
             && BrowserUrl.Resolve("http://") is null && BrowserUrl.Resolve(null) is null,
             "空 / 空白 / http:// / null");
 
-        check("[浏览器] 非网址内容按搜索词处理（中文 / 带空格 / 单词）",
-            (BrowserUrl.Resolve("天气 上海") ?? "").StartsWith("https://www.bing.com/search?q=", StringComparison.Ordinal)
+        check("[浏览器] 非网址内容按搜索词处理（默认 Google）",
+            (BrowserUrl.Resolve("天气 上海") ?? "").StartsWith("https://www.google.com/search?q=", StringComparison.Ordinal)
             && (BrowserUrl.Resolve("hello world") ?? "").Contains("q=hello%20world", StringComparison.Ordinal)
-            && (BrowserUrl.Resolve("hello") ?? "").StartsWith("https://www.bing.com/search?q=hello", StringComparison.Ordinal),
+            && (BrowserUrl.Resolve("hello") ?? "").StartsWith("https://www.google.com/search?q=hello", StringComparison.Ordinal),
             BrowserUrl.Resolve("天气 上海") ?? "<null>");
     }
 
@@ -110,9 +116,9 @@ internal static class BrowserChecks
 
     private static void CheckSearchTemplate(Action<string, bool, string> check)
     {
-        check("[浏览器] 默认搜索模板是 Bing 且带 {0} 占位符",
+        check("[浏览器] 默认搜索模板是 Google 且带 {0} 占位符",
             BrowserConfig.DefaultSearchUrl.Contains("{0}", StringComparison.Ordinal)
-            && BrowserConfig.DefaultSearchUrl.Contains("bing.com", StringComparison.Ordinal),
+            && BrowserConfig.DefaultSearchUrl.Contains("google.com", StringComparison.Ordinal),
             BrowserConfig.DefaultSearchUrl);
 
         check("[浏览器] 自定义搜索模板：关键词转义后替换进 {0}",
@@ -120,9 +126,32 @@ internal static class BrowserChecks
             BrowserUrl.BuildSearchUrl("a b", "https://s.example/?q={0}"));
 
         check("[浏览器] 模板为空 / 没写 {0} 时回退默认搜索地址（不会拼出坏 URL）",
-            BrowserUrl.BuildSearchUrl("x", null) == "https://www.bing.com/search?q=x"
-            && BrowserUrl.BuildSearchUrl("x", "https://s.example/search") == "https://www.bing.com/search?q=x",
+            BrowserUrl.BuildSearchUrl("x", null) == "https://www.google.com/search?q=x"
+            && BrowserUrl.BuildSearchUrl("x", "https://s.example/search") == "https://www.google.com/search?q=x",
             BrowserUrl.BuildSearchUrl("x", "https://s.example/search"));
+    }
+
+    // ---------------------------------------------------------------- 主页输入校验
+
+    private static void CheckHomePageInput(Action<string, bool, string> check)
+    {
+        check("[浏览器] 主页输入：裸域名 / localhost 能规范化成网址",
+            BrowserUrl.ResolveHomePage("example.com") == "https://example.com"
+            && BrowserUrl.ResolveHomePage("  https://www.google.com/  ") == "https://www.google.com/"
+            && BrowserUrl.ResolveHomePage("localhost:8080") == "http://localhost:8080",
+            BrowserUrl.ResolveHomePage("example.com") ?? "<null>");
+
+        check("[浏览器] 主页输入：搜索词 / 空 / 残缺协议不能当主页",
+            BrowserUrl.ResolveHomePage("hello") is null
+            && BrowserUrl.ResolveHomePage("天气 上海") is null
+            && BrowserUrl.ResolveHomePage("http://") is null
+            && BrowserUrl.ResolveHomePage("") is null
+            && BrowserUrl.ResolveHomePage(null) is null,
+            "hello / 天气 / http:// / null");
+
+        check("[浏览器] 主页输入：javascript: 等危险协议拒绝",
+            BrowserUrl.ResolveHomePage("javascript:alert(1)") is null,
+            BrowserUrl.ResolveHomePage("javascript:alert(1)") ?? "<null>");
     }
 
     // ---------------------------------------------------------------- 标签栏规则
@@ -172,14 +201,14 @@ internal static class BrowserChecks
 
         // 关标签后的补位：关激活标签原地补位（末尾退一格）；关别的标签激活位置不动；关到 0 → -1
         check("[浏览器] 关激活标签：原地补位，末尾退一格",
-            BrowserTabBar.NextActiveAfterRemove(3, 0, 0) == 0    // 关第 0 个（激活）→ 还是 0
-            && BrowserTabBar.NextActiveAfterRemove(3, 2, 2) == 1 // 关最后一个（激活）→ 退到 1
-            && BrowserTabBar.NextActiveAfterRemove(1, 0, 0) == -1, // 只剩一个也关了
+            BrowserTabBar.NextActiveAfterRemove(3, 0, 0) == 0
+            && BrowserTabBar.NextActiveAfterRemove(3, 2, 2) == 1
+            && BrowserTabBar.NextActiveAfterRemove(1, 0, 0) == -1,
             "3/0/0→0 · 3/2/2→1 · 1/0/0→-1");
         check("[浏览器] 关非激活标签：激活位置不动（在前面照旧，在后面退一格）",
-            BrowserTabBar.NextActiveAfterRemove(3, 2, 0) == 0    // 关后面的
-            && BrowserTabBar.NextActiveAfterRemove(3, 0, 2) == 1 // 关前面的
-            && BrowserTabBar.NextActiveAfterRemove(3, 1, 1) == 1, // 关激活的中位 → 原地补位
+            BrowserTabBar.NextActiveAfterRemove(3, 2, 0) == 0
+            && BrowserTabBar.NextActiveAfterRemove(3, 0, 2) == 1
+            && BrowserTabBar.NextActiveAfterRemove(3, 1, 1) == 1,
             "3/2/0→0 · 3/0/2→1 · 3/1/1→1");
         check("[浏览器] 关越界位置 / 参数异常时不崩（夹回合法激活位）",
             BrowserTabBar.NextActiveAfterRemove(3, 9, 1) == 1
@@ -187,16 +216,176 @@ internal static class BrowserChecks
             "3/9/1→1 · 3/1/-5→0");
     }
 
-    // ---------------------------------------------------------------- 配置
+    // ---------------------------------------------------------------- 页面缩放
+
+    private static void CheckZoom(Action<string, bool, string> check)
+    {
+        check("[浏览器] 缩放夹取：25% ~ 500%，非法值回 100%",
+            BrowserZoom.Clamp(0.01) == BrowserZoom.Min
+            && BrowserZoom.Clamp(9.0) == BrowserZoom.Max
+            && BrowserZoom.Clamp(double.NaN) == 1.0
+            && BrowserZoom.Clamp(double.PositiveInfinity) == 1.0
+            && BrowserZoom.Clamp(1.234) == 1.23,
+            $"0.01→{BrowserZoom.Clamp(0.01)} · 9→{BrowserZoom.Clamp(9)} · NaN→{BrowserZoom.Clamp(double.NaN)}");
+
+        check("[浏览器] 缩放加减：每次 10%，到边界不再越界",
+            BrowserZoom.In(1.0) == 1.1 && BrowserZoom.In(4.95) == BrowserZoom.Max
+            && BrowserZoom.Out(1.0) == 0.9 && BrowserZoom.Out(0.25) == BrowserZoom.Min,
+            $"1→{BrowserZoom.In(1.0)} · 4.95→{BrowserZoom.In(4.95)} · 0.25→{BrowserZoom.Out(0.25)}");
+
+        check("[浏览器] 缩放百分比文本",
+            BrowserZoom.Format(1.0) == "100%" && BrowserZoom.Format(1.25) == "125%"
+            && BrowserZoom.Format(0.9) == "90%",
+            $"{BrowserZoom.Format(1.0)} / {BrowserZoom.Format(1.25)} / {BrowserZoom.Format(0.9)}");
+    }
+
+    // ---------------------------------------------------------------- 历史记录
+
+    private static void CheckHistory(Action<string, bool, string> check)
+    {
+        var entries = new List<BrowserHistoryEntry>();
+
+        check("[浏览器] 历史：新页面插到最前面",
+            BrowserHistory.Append(entries, "https://a.com/", "A", DateTime.Now)
+            && BrowserHistory.Append(entries, "https://b.com/", "B", DateTime.Now)
+            && entries.Count == 2
+            && entries[0].Url == "https://b.com/" && entries[0].Title == "B",
+            string.Join(" | ", entries.Select(e => e.Url)));
+
+        var sameTime = new DateTime(2026, 1, 2, 3, 4, 5);
+        var changed = BrowserHistory.Append(entries, "https://b.com/", "B 新标题", sameTime);
+        check("[浏览器] 历史：连续同址不重复插，只更新标题 / 时间",
+            !changed && entries.Count == 2 && entries[0].Title == "B 新标题" && entries[0].VisitedAt == sameTime,
+            $"{entries.Count} 条 · {entries[0].Title}");
+
+        check("[浏览器] 历史：空白页 / data URL / 空地址不记录",
+            !BrowserHistory.Append(entries, "about:blank", "", DateTime.Now)
+            && !BrowserHistory.Append(entries, "data:text/html,hello", "", DateTime.Now)
+            && !BrowserHistory.Append(entries, "", "", DateTime.Now)
+            && !BrowserHistory.Append(entries, null, "", DateTime.Now)
+            && entries.Count == 2,
+            "about / data / 空 / null");
+
+        var capped = new List<BrowserHistoryEntry>();
+        for (var i = 0; i < BrowserHistory.MaxEntries + 5; i++)
+            BrowserHistory.Append(capped, $"https://x{i}.com/", "", DateTime.Now);
+        check($"[浏览器] 历史：封顶 {BrowserHistory.MaxEntries} 条",
+            capped.Count == BrowserHistory.MaxEntries
+            && capped[0].Url == $"https://x{BrowserHistory.MaxEntries + 4}.com/",
+            capped.Count.ToString());
+
+        var normalized = BrowserHistory.Normalize(new[]
+        {
+            new BrowserHistoryEntry { Url = "  https://a.com/  ", Title = " A ", VisitedAt = sameTime },
+            new BrowserHistoryEntry { Url = "", Title = "空" },
+            new BrowserHistoryEntry { Url = "about:blank", Title = "空白页" },
+            null,
+        });
+        check("[浏览器] 历史清洗：去空地址 / 空白页 / null，去首尾空白",
+            normalized.Count == 1 && normalized[0].Url == "https://a.com/" && normalized[0].Title == "A",
+            string.Join(" | ", normalized.Select(e => e.Url)));
+
+        // 落盘往返 + 清空（自检数据根是临时目录，不碰真 Data）
+        var store = new BrowserHistoryStore(ToolStorage.For(BrowserConfig.ToolId));
+        var saved = store.Save(new[]
+        {
+            new BrowserHistoryEntry { Url = "https://history-a.com/", Title = "A", VisitedAt = sameTime },
+            new BrowserHistoryEntry { Url = "https://history-b.com/", Title = "B", VisitedAt = sameTime },
+        });
+        var loaded = store.Load();
+        check("[浏览器] 历史文件：保存后能读回（新的在前）",
+            saved && loaded.Count == 2
+            && loaded[0].Url == "https://history-a.com/" && loaded[0].Title == "A",
+            $"{loaded.Count} 条");
+
+        var cleared = store.Clear() && store.Load().Count == 0;
+        check("[浏览器] 历史文件：清空后读回为空", cleared, cleared ? "已清空" : "清空失败");
+    }
+
+    // ---------------------------------------------------------------- 下载记录
+
+    private static void CheckDownloads(Action<string, bool, string> check)
+    {
+        check("[浏览器] 下载进度文本：总量未知 / 已知 / 空",
+            BrowserDownloads.FormatProgress(0, null) == "等待数据…"
+            && BrowserDownloads.FormatProgress(100, null) == "已下载 100 B"
+            && BrowserDownloads.FormatProgress(1536, 4096) == "1.5 KB / 4.0 KB",
+            $"{BrowserDownloads.FormatProgress(0, null)} · {BrowserDownloads.FormatProgress(100, null)} · {BrowserDownloads.FormatProgress(1536, 4096)}");
+
+        var records = new List<BrowserDownloadRecord>();
+        BrowserDownloads.AddRecord(records, new BrowserDownloadRecord { FilePath = @"C:\a.bin", FileName = "a.bin" });
+        BrowserDownloads.AddRecord(records, new BrowserDownloadRecord { FilePath = @"C:\b.bin", FileName = "b.bin" });
+        check("[浏览器] 下载记录：新记录插到最前面",
+            records.Count == 2 && records[0].FileName == "b.bin",
+            string.Join(" | ", records.Select(r => r.FileName)));
+
+        BrowserDownloads.AddRecord(records, new BrowserDownloadRecord { FilePath = @"C:\a.bin", FileName = "a-new.bin" });
+        check("[浏览器] 下载记录：同一路径只留最新一条",
+            records.Count == 2 && records[0].FileName == "a-new.bin",
+            string.Join(" | ", records.Select(r => r.FileName)));
+
+        var cappedRecords = new List<BrowserDownloadRecord>();
+        for (var i = 0; i < BrowserDownloads.MaxRecords + 5; i++)
+            BrowserDownloads.AddRecord(cappedRecords, new BrowserDownloadRecord { FilePath = $@"C:\x{i}.bin", FileName = $"x{i}.bin" });
+        check($"[浏览器] 下载记录：封顶 {BrowserDownloads.MaxRecords} 条",
+            cappedRecords.Count == BrowserDownloads.MaxRecords,
+            cappedRecords.Count.ToString());
+
+        var normalized = BrowserDownloads.Normalize(new[]
+        {
+            new BrowserDownloadRecord { FilePath = @"C:\a.bin", FileName = "" },
+            new BrowserDownloadRecord { FilePath = "", FileName = "无路径要被丢弃" },
+            null,
+        });
+        check("[浏览器] 下载记录清洗：丢掉无路径，文件名缺省时从路径补",
+            normalized.Count == 1 && normalized[0].FileName == "a.bin",
+            string.Join(" | ", normalized.Select(r => r.FileName)));
+
+        var item = new BrowserDownloadItem("https://x/file.bin", @"C:\file.bin", DateTime.Now);
+        item.UpdateProgress(512, 1024);
+        check("[浏览器] 下载项：进度 / 百分比 / 状态文本正确",
+            Math.Abs(item.Progress - 0.5) < 0.0001 && item.ProgressText == "512 B / 1.0 KB" && item.IsActive,
+            $"{item.Progress:0.00} · {item.ProgressText}");
+
+        item.MarkCompleted(@"C:\file.bin");
+        check("[浏览器] 下载项：完成后不再是进行中，记录为已完成",
+            !item.IsActive && item.IsCompleted && item.Progress == 1 && item.ToRecord().Completed,
+            item.StateText);
+    }
+
+    // ---------------------------------------------------------------- 配置 / 旧配置迁移
 
     private static void CheckConfig(Action<string, bool, string> check)
     {
+        // 旧默认（Bing）→ 新默认（Google）：只改「恰好还是旧默认」的值
+        var legacy = new BrowserConfig
+        {
+            HomePage = BrowserConfig.LegacyBingHomePage,
+            SearchUrl = BrowserConfig.LegacyBingSearchUrl,
+        };
+        var migrated = BrowserConfig.MigrateLegacyDefaults(legacy);
+        check("[浏览器] 旧配置迁移：默认 Bing 主页 / 搜索自动改成 Google",
+            migrated && legacy.HomePage == BrowserConfig.DefaultHomePage
+            && legacy.SearchUrl == BrowserConfig.DefaultSearchUrl,
+            $"{legacy.HomePage} · {legacy.SearchUrl}");
+
+        var custom = new BrowserConfig
+        {
+            HomePage = "https://my-home.example/",
+            SearchUrl = "https://my-search.example/?q={0}",
+        };
+        var customMigrated = BrowserConfig.MigrateLegacyDefaults(custom);
+        check("[浏览器] 旧配置迁移：用户自己设的主页 / 搜索一个字都不动",
+            !customMigrated && custom.HomePage == "https://my-home.example/"
+            && custom.SearchUrl == "https://my-search.example/?q={0}",
+            $"{custom.HomePage} · {custom.SearchUrl}");
+
         var store = ToolConfigStore.For(BrowserConfig.ToolId);
         var config = store.Load<BrowserConfig>();
 
         check("[浏览器] 首次加载即生成 config.json", File.Exists(config.FilePath), config.FilePath);
-        check("[浏览器] 默认主页 / 搜索模板 / 记住上次页面 / 标签栏在上方 / 空会话",
-            config.HomePage == BrowserConfig.DefaultHomePage
+        check("[浏览器] 默认主页是 Google / 搜索模板是 Google / 记住会话 / 标签栏在上方 / 空会话",
+            config.HomePage == "https://www.google.com/"
             && config.SearchUrl == BrowserConfig.DefaultSearchUrl
             && config.RememberLastPage && config.LastPage.Length == 0
             && config.TabBarPosition == BrowserTabBar.TopPosition

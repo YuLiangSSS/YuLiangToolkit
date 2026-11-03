@@ -52,6 +52,28 @@ public static class BrowserUrl
         return BuildSearchUrl(text, searchUrl);
     }
 
+    /// <summary>
+    /// 把「主页设置」里输入的文本解析成主页地址：<b>只接受网址</b>
+    /// （带协议 / 像域名 / localhost），搜索词之类返回 <c>null</c>（不能把「天气」设成主页）。
+    /// 返回的地址已经过 <see cref="Resolve"/> 规范化（裸域名补 https、localhost 补 http）。
+    /// </summary>
+    public static string? ResolveHomePage(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return null;
+        var text = input.Trim();
+
+        var hasKnownScheme = KnownSchemes.Any(s => text.StartsWith(s, StringComparison.OrdinalIgnoreCase));
+        var looksLikeUrl = hasKnownScheme
+                           || text.StartsWith("//", StringComparison.Ordinal)
+                           || LooksLikeHost(text);
+        if (!looksLikeUrl) return null;
+
+        var resolved = Resolve(text);
+        if (resolved is null) return null;
+        if (!Uri.TryCreate(resolved, UriKind.Absolute, out var uri)) return null;
+        return uri.Scheme is "http" or "https" or "file" or "about" ? resolved : null;
+    }
+
     /// <summary>按搜索模板拼搜索地址（模板写坏 / 没有 <c>{0}</c> 时回退到默认搜索地址）。</summary>
     public static string BuildSearchUrl(string query, string? searchUrl)
     {

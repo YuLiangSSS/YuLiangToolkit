@@ -30,6 +30,12 @@ public interface IBrowserHost
     /// <summary>停止加载。</summary>
     void Stop();
 
+    /// <summary>
+    /// 设置<b>激活标签</b>的页面缩放（会夹回 <see cref="BrowserZoom.Min"/> ~ <see cref="BrowserZoom.Max"/>）。
+    /// WebView2 的 Ctrl + 鼠标滚轮原生缩放也走同一套显示 / 同步逻辑（由 View 回写状态）。
+    /// </summary>
+    void SetZoom(double factor);
+
     /// <summary>释放内核（工具被切换走 / 关闭时调用；可重复调用）。</summary>
     void Close();
 }

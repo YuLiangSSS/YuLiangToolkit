@@ -2,6 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:YuLiangToolkit.Tools.Browser.ViewModels"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
              Background="{DynamicResource WindowBackgroundBrush}"
              Focusable="False">
 
@@ -219,6 +220,93 @@
             <Setter Property="Margin" Value="6,4" />
             <Setter Property="Background" Value="{DynamicResource BorderBrush}" />
         </Style>
+
+        <!-- ================= 齿轮菜单（历史 / 下载 / 缩放 / 设置） ================= -->
+        <Style x:Key="FlyoutActionButtonStyle" TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+        </Style>
+
+        <Style x:Key="PanelSmallButtonStyle" TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+            <Setter Property="Padding" Value="9,3" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+        </Style>
+
+        <Style x:Key="PanelTabButtonStyle" TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+            <Setter Property="Padding" Value="11,4" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+        </Style>
+
+        <!-- 侧栏顶部两个标签页签：当前那个用强调色 -->
+        <Style x:Key="PanelHistoryTabStyle" TargetType="Button" BasedOn="{StaticResource PanelTabButtonStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsHistoryPanel}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource CardHoverBackgroundBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="PanelDownloadsTabStyle" TargetType="Button" BasedOn="{StaticResource PanelTabButtonStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsDownloadsPanel}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource CardHoverBackgroundBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- 历史记录一行：标题 / 地址 / 时间 -->
+        <DataTemplate x:Key="HistoryItemTemplate">
+            <StackPanel Margin="2,3">
+                <TextBlock Text="{Binding DisplayTitle}" FontSize="12" TextTrimming="CharacterEllipsis"
+                           Foreground="{DynamicResource TextPrimaryBrush}" ToolTip="{Binding Url}" />
+                <TextBlock Text="{Binding Url}" FontSize="10.5" TextTrimming="CharacterEllipsis"
+                           Margin="0,2,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <TextBlock Text="{Binding VisitedText}" FontSize="10" Margin="0,2,0,0"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- 下载一行：文件名 / 状态 / 进度 / 操作按钮 -->
+        <DataTemplate x:Key="DownloadItemTemplate">
+            <StackPanel Margin="2,4">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding FileName}" FontSize="12" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource TextPrimaryBrush}" ToolTip="{Binding FilePath}" />
+                    <TextBlock Grid.Column="1" Text="{Binding StateText}" FontSize="10.5"
+                               Margin="8,0,0,0" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                </Grid>
+                <ProgressBar Height="6" Margin="0,5,0,0" Maximum="1"
+                             Value="{Binding Progress, Mode=OneWay}"
+                             IsIndeterminate="{Binding IsIndeterminate}"
+                             Style="{StaticResource ProgressBarStyle}"
+                             Visibility="{Binding ShowProgress, Converter={StaticResource BoolToVis}}" />
+                <TextBlock Text="{Binding ProgressText}" FontSize="10.5" Margin="0,3,0,0"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                    <Button Content="打开文件" Style="{StaticResource PanelSmallButtonStyle}"
+                            Visibility="{Binding IsActive, Converter={StaticResource InverseBoolToVis}}"
+                            Command="{Binding DataContext.OpenDownloadFileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            CommandParameter="{Binding}" />
+                    <Button Content="打开文件夹" Style="{StaticResource PanelSmallButtonStyle}"
+                            Command="{Binding DataContext.OpenDownloadFolderCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            CommandParameter="{Binding}" />
+                    <Button Content="取消下载" Style="{StaticResource PanelSmallButtonStyle}"
+                            Visibility="{Binding IsActive, Converter={StaticResource BoolToVis}}"
+                            Command="{Binding DataContext.CancelDownloadCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            CommandParameter="{Binding}" />
+                </StackPanel>
+            </StackPanel>
+        </DataTemplate>
     </UserControl.Resources>
 
     <Grid>
@@ -353,34 +441,238 @@
                             <TextBlock Text="{Binding StatusText}" Margin="10,0,0,0" VerticalAlignment="Center"
                                        MaxWidth="260" TextTrimming="CharacterEllipsis"
                                        FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <!-- 缩放不是 100% 时才显示（Ctrl + 滚轮 / 齿轮菜单里调） -->
+                            <TextBlock Text="{Binding ZoomText}" Margin="8,0,0,0" VerticalAlignment="Center"
+                                       FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource AccentBrush}"
+                                       Visibility="{Binding IsZoomed, Converter={StaticResource BoolToVis}}"
+                                       ToolTip="页面缩放（Ctrl + 鼠标滚轮调整）" />
                             <!-- 切换标签栏位置：上方 ⇄ 左侧（⇄ 用 Segoe UI Symbol，Fluent Icons 里没有这个字形） -->
                             <Button x:Name="ToggleTabSideButton" Content="&#x21C4;" Margin="8,0,0,0"
                                     Style="{StaticResource NavButtonStyle}" Width="30"
                                     FontFamily="Segoe UI Symbol" FontSize="14"
                                     ToolTip="切换标签栏位置：上方 / 左侧"
                                     Command="{Binding ToggleTabBarSideCommand}" />
+                            <!-- 齿轮：浏览器设置 / 历史记录 / 下载 / 缩放（就在切换标签栏按钮右边） -->
+                            <Button x:Name="GearButton" Content="&#xE713;" Margin="2,0,0,0"
+                                    Style="{StaticResource NavButtonStyle}" Width="30"
+                                    ToolTip="浏览器设置：历史记录 / 下载 / 页面缩放 / 主页 / 启动恢复"
+                                    Click="OnGearClick" />
                         </StackPanel>
                     </Grid>
                 </Border>
 
-                <!-- ================= 网页区域 ================= -->
+                <!-- ================= 网页区域 + 右侧面板（历史记录 / 下载） ================= -->
                 <Grid Grid.Row="1" Background="{DynamicResource WindowBackgroundBrush}" ClipToBounds="True">
-                    <!-- 每个标签的 WebView2 由代码后置在激活时创建（共享一个内核环境，Cookie / 登录态互通） -->
-                    <Grid x:Name="WebHost" />
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MinWidth="320" />
+                        <!-- 面板关着时列宽 0 且分隔条收起；打开时按 LayoutMemory 记忆的宽度恢复 -->
+                        <ColumnDefinition Width="{Binding IsSidePanelOpen, Converter={StaticResource BoolToPaneLength}, ConverterParameter=12}" />
+                        <ColumnDefinition Width="{Binding IsSidePanelOpen, Converter={StaticResource BoolToPaneLength}, ConverterParameter=340}"
+                                          MinWidth="{Binding IsSidePanelOpen, Converter={StaticResource BoolToPaneLength}, ConverterParameter=240}" />
+                    </Grid.ColumnDefinitions>
 
-                    <!-- 激活标签的内核还没建好 / 启动失败的提示（创建出 WebView2 之后会被原生窗口盖住） -->
-                    <StackPanel x:Name="StartupHintPanel" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                MaxWidth="560" Margin="24">
-                        <TextBlock Text="🌐" FontSize="38" HorizontalAlignment="Center" />
-                        <TextBlock x:Name="StartupHintText" Text="正在启动 Chromium 内核…" Margin="0,12,0,0"
-                                   TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
-                                   Foreground="{DynamicResource TextPrimaryBrush}" />
-                        <TextBlock Text="网页由 Microsoft Edge WebView2（Chromium）渲染"
-                                   Margin="0,8,0,0" TextWrapping="Wrap" TextAlignment="Center" FontSize="11"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                    </StackPanel>
+                    <!-- 网页区域：每个标签的 WebView2 由代码后置在激活时创建（共享内核环境，Cookie 互通） -->
+                    <Grid Grid.Column="0">
+                        <Grid x:Name="WebHost" />
+
+                        <!-- 激活标签的内核还没建好 / 启动失败的提示（创建出 WebView2 之后会被原生窗口盖住） -->
+                        <StackPanel x:Name="StartupHintPanel" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    MaxWidth="560" Margin="24">
+                            <TextBlock Text="🌐" FontSize="38" HorizontalAlignment="Center" />
+                            <TextBlock x:Name="StartupHintText" Text="正在启动 Chromium 内核…" Margin="0,12,0,0"
+                                       TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="网页由 Microsoft Edge WebView2（Chromium）渲染"
+                                       Margin="0,8,0,0" TextWrapping="Wrap" TextAlignment="Center" FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- 网页区 / 右侧面板 分隔条（页面级区块边界，可拖、双击复位、自动记忆） -->
+                    <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                       Key="browser.网页与侧栏"
+                                       Visibility="{Binding IsSidePanelOpen, Converter={StaticResource BoolToVis}}" />
+
+                    <!-- 右侧面板：历史记录 / 下载 -->
+                    <Border Grid.Column="2" Background="{DynamicResource SidebarBackgroundBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1,0,0,0"
+                            Visibility="{Binding IsSidePanelOpen, Converter={StaticResource BoolToVis}}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0" Margin="10,8,8,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="历史记录" Style="{StaticResource PanelHistoryTabStyle}"
+                                            Command="{Binding ShowHistoryCommand}" />
+                                    <Button Content="下载" Style="{StaticResource PanelDownloadsTabStyle}"
+                                            Command="{Binding ShowDownloadsCommand}" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="&#xE711;" ToolTip="关闭面板"
+                                        Style="{StaticResource TabMiniButtonStyle}"
+                                        Command="{Binding CloseSidePanelCommand}" />
+                            </Grid>
+
+                            <Grid Grid.Row="1" Margin="6,0,6,8">
+                                <!-- 历史记录 -->
+                                <Grid Visibility="{Binding IsHistoryPanel, Converter={StaticResource BoolToVis}}">
+                                    <ListBox x:Name="HistoryList" ItemsSource="{Binding History}"
+                                             Style="{StaticResource FileListStyle}"
+                                             ItemTemplate="{StaticResource HistoryItemTemplate}"
+                                             SelectionChanged="OnHistoryListSelectionChanged"
+                                             core:ScrollChaining.Enabled="True" />
+                                    <TextBlock Text="还没有浏览记录" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding History.Count}" Value="0">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+
+                                <!-- 下载 -->
+                                <Grid Visibility="{Binding IsDownloadsPanel, Converter={StaticResource BoolToVis}}">
+                                    <ListBox ItemsSource="{Binding Downloads}"
+                                             Style="{StaticResource FileListStyle}"
+                                             ItemTemplate="{StaticResource DownloadItemTemplate}"
+                                             core:ScrollChaining.Enabled="True" />
+                                    <TextBlock Text="还没有下载记录&#x0a;（网页里点下载后会出现在这里）"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               TextAlignment="Center" FontSize="12"
+                                               Foreground="{DynamicResource TextSecondaryBrush}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Downloads.Count}" Value="0">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
+                            </Grid>
+                        </Grid>
+                    </Border>
                 </Grid>
             </Grid>
         </Grid>
+
+        <!-- ================= 齿轮菜单（Popup：独立顶层窗口，能盖在 WebView2 原生窗口上面） ================= -->
+        <Popup x:Name="GearPopup" StaysOpen="False" AllowsTransparency="True" PopupAnimation="Fade"
+               PlacementTarget="{Binding ElementName=GearButton}" Placement="Bottom"
+               HorizontalOffset="-336" VerticalOffset="6">
+            <Border Width="374" Background="{DynamicResource CardBackgroundBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                    CornerRadius="{DynamicResource CardCornerRadius}" Padding="14"
+                    SnapsToDevicePixels="True">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="18" ShadowDepth="4" Opacity="0.45" Color="Black" />
+                </Border.Effect>
+                <StackPanel>
+                    <Grid Margin="0,0,0,10">
+                        <TextBlock Text="🌐 浏览器设置" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="Ctrl + 滚轮缩放页面" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                   FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </Grid>
+
+                    <!-- 页面缩放 -->
+                    <Border Background="{DynamicResource InputBackgroundBrush}"
+                            CornerRadius="{DynamicResource ControlCornerRadius}" Padding="10,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="页面缩放" FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Text="也支持 Ctrl + 鼠标滚轮 / Ctrl+加号减号" FontSize="10"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="−" Width="28" ToolTip="缩小 10%"
+                                    Style="{StaticResource PanelSmallButtonStyle}"
+                                    Command="{Binding ZoomOutCommand}" />
+                            <TextBlock Grid.Column="2" Text="{Binding ZoomText}" Width="56"
+                                       TextAlignment="Center" VerticalAlignment="Center"
+                                       FontSize="12.5" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <Button Grid.Column="3" Content="+" Width="28" ToolTip="放大 10%"
+                                    Style="{StaticResource PanelSmallButtonStyle}"
+                                    Command="{Binding ZoomInCommand}" />
+                            <Button Grid.Column="4" Content="重置" ToolTip="恢复 100%"
+                                    Style="{StaticResource PanelSmallButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding ZoomResetCommand}" />
+                        </Grid>
+                    </Border>
+
+                    <!-- 历史记录 / 下载 / 清空 -->
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Content="📜 历史记录" Style="{StaticResource FlyoutActionButtonStyle}"
+                                Click="OnGearHistoryClick" />
+                        <Button Content="⬇ 下载" Style="{StaticResource FlyoutActionButtonStyle}"
+                                Click="OnGearDownloadsClick" />
+                        <Button Content="🗑 清空浏览记录" Style="{StaticResource FlyoutActionButtonStyle}"
+                                Command="{Binding ClearHistoryCommand}" />
+                    </StackPanel>
+
+                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,12" />
+
+                    <!-- 启动恢复 -->
+                    <TextBlock Text="启动时" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <CheckBox Content="恢复上次打开的标签页" IsChecked="{Binding RestoreLastSession, Mode=TwoWay}"
+                              Style="{StaticResource CheckBoxStyle}" />
+                    <TextBlock Text="只恢复标签（标题 / 网址），点哪个标签才加载哪个页面；关掉后每次打开只进主页。"
+                               FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,5,0,0" />
+
+                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,12" />
+
+                    <!-- 默认主页 -->
+                    <TextBlock Text="默认主页" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                               Margin="0,0,0,4" />
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Text="{Binding HomePageDraft, UpdateSourceTrigger=PropertyChanged}"
+                                 Style="{StaticResource TextBoxStyle}" Height="32"
+                                 ToolTip="输入完整网址，例如 https://www.google.com/" />
+                        <Button Grid.Column="1" Content="保存" Style="{StaticResource SecondaryButtonStyle}"
+                                Padding="14,6" Margin="8,0,0,0"
+                                Command="{Binding SaveHomePageCommand}" />
+                    </Grid>
+                    <TextBlock Text="{Binding HomePageHint}" FontSize="10.5" Margin="0,5,0,0"
+                               TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <Button Content="恢复默认主页（Google）" Style="{StaticResource FlyoutActionButtonStyle}"
+                            HorizontalAlignment="Left" Margin="0,8,0,0"
+                            Command="{Binding ResetHomePageCommand}" />
+
+                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,12" />
+                    <TextBlock FontSize="10.5" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Text="说明：扩展、代理、PDF 阅读器这类 Chromium 设置由 WebView2 决定，本项目加不了；这里提供的是 WebView2 开放的能力。" />
+                </StackPanel>
+            </Border>
+        </Popup>
     </Grid>
 </UserControl>
