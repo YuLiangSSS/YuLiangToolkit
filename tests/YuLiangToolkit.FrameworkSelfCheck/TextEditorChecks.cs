@@ -1,4 +1,6 @@
 using System.Text;
+using System.Windows.Media;
+using ICSharpCode.AvalonEdit.Highlighting;
 using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Tools.TextEditor;
@@ -285,7 +287,7 @@ internal static class TextEditorChecks
             untitled.Header);
     }
 
-    // ---------------------------------------------------------------- 高亮暗色调色
+    // ---------------------------------------------------------------- 高亮配色（Visual Studio 深色主题）
 
     private static void CheckHighlighting(Action<string, bool, string> check)
     {
@@ -296,26 +298,61 @@ internal static class TextEditorChecks
             EditorHighlighting.ForFile("data.unknown-ext") is null && EditorHighlighting.ForFile(null) is null,
             "unknown / null");
 
-        var comment = cs is null ? null : cs.NamedHighlightingColors.FirstOrDefault(c =>
-            string.Equals(c.Name, "Comment", StringComparison.OrdinalIgnoreCase));
-        var color = comment is null ? null : EditorHighlighting.MapColor(comment.Name);
-        check("[编辑器] 暗色调色：注释被覆写成暗底可读的绿色系",
-            color is { } c && c.G > c.R && c.G > 100,
-            color?.ToString() ?? "<null>");
+        // 用户点名的：方法名内置是 MidnightBlue 粗体（深色底上几乎看不清），要 VS 那样的淡黄色
+        check("[编辑器] 方法名用 VS 的淡黄色（不再是深蓝粗体）",
+            EditorHighlighting.MapColor("MethodCall") is { } method
+            && method.R > 180 && method.G > 180 && method.B > 120 && method.B < method.R,
+            EditorHighlighting.MapColor("MethodCall")?.ToString() ?? "<null>");
 
-        check("[编辑器] 调色映射：关键字蓝 / 字符串橙 / 未知名字保持默认",
-            EditorHighlighting.MapColor("Keywords") is { } k && k.B > k.R
-            && EditorHighlighting.MapColor("String") is { } s && s.R > s.B
-            && EditorHighlighting.MapColor("完全陌生的名字") is null,
-            "Keywords / String / 未知");
+        check("[编辑器] VS 深色配色：关键字蓝 / 字符串橙 / 类型青绿 / 数字浅绿 / 注释绿",
+            EditorHighlighting.MapColor("Keywords") is { } kw && kw.B > kw.R
+            && EditorHighlighting.MapColor("String") is { } str && str.R > str.B
+            && EditorHighlighting.MapColor("ReferenceTypes") is { } type && type.G > type.R && type.G > 150
+            && EditorHighlighting.MapColor("NumberLiteral") is { } num && num.G > num.R && num.G > 150
+            && EditorHighlighting.MapColor("Comment") is { } cmt && cmt.G > cmt.R && cmt.G > 100,
+            "关键字 / 字符串 / 类型 / 数字 / 注释");
 
-        // 幂等：同一份定义调两次不抛异常、结果一致
+        check("[编辑器] 调色映射：未知名字返回 null（覆写时统一回退浅灰）",
+            EditorHighlighting.MapColor("完全陌生的名字") is null
+            && EditorHighlighting.MapColor(null) is null
+            && EditorHighlighting.MapColor("  ") is null,
+            "未知 / null / 空白");
+
+        // 幂等：同一份定义调两次不抛异常
         if (cs is not null)
         {
             EditorHighlighting.ApplyDarkPalette(cs);
             EditorHighlighting.ApplyDarkPalette(cs);
-            check("[编辑器] 暗色调色幂等（重复调用不抛异常）", true, cs.Name);
+            check("[编辑器] 配色覆写幂等（重复调用不抛异常）", true, cs.Name);
+
+            // 真把定义里每个命名颜色过一遍：深色底上不允许留下「暗到看不清」的颜色
+            // （这条就是防「方法名深蓝看不清」这类回归的）
+            var tooDark = new List<string>();
+            foreach (var item in cs.NamedHighlightingColors)
+            {
+                if (item.Foreground is not SimpleHighlightingBrush simple) continue;
+                if (simple.GetBrush(null!) is not SolidColorBrush brush) continue;
+
+                var itemColor = brush.Color;
+                var luminance = 0.299 * itemColor.R + 0.587 * itemColor.G + 0.114 * itemColor.B;
+                if (luminance < 110) tooDark.Add($"{item.Name}={itemColor}");
+            }
+            check("[编辑器] C# 高亮定义里每个命名颜色覆写后都够亮（深色底能看清）",
+                tooDark.Count == 0,
+                tooDark.Count == 0 ? "全部亮度 ≥ 110" : string.Join(", ", tooDark));
         }
+
+        // C# 的 /// 文档注释颜色在单独注册的 XmlDoc 定义里（被 C# 定义 Import），也要一起换
+        var docDefinition = HighlightingManager.Instance.GetDefinition("XmlDoc");
+        var docItem = docDefinition?.NamedHighlightingColors.FirstOrDefault(c =>
+            string.Equals(c.Name, "DocComment", StringComparison.OrdinalIgnoreCase));
+        var docColor = docItem?.Foreground is SimpleHighlightingBrush docBrush
+                       && docBrush.GetBrush(null!) is SolidColorBrush docSolid
+            ? docSolid.Color
+            : (Color?)null;
+        check("[编辑器] /// 文档注释的 XmlDoc 配色也换成 VS 深色（不再灰暗）",
+            docColor is { } dc && dc.G > dc.R && dc.G > 100,
+            docColor?.ToString() ?? "<null>");
     }
 
     // ---------------------------------------------------------------- 配置默认值与落盘

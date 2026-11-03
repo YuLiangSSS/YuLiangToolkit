@@ -319,8 +319,15 @@
 - ⚠ **`ToolViewModelBase.NotifyClosed` 的顺序是「先 `ConfigStore.Flush()`，再 `OnClosed()`」**：在 `OnClosed` 里
   才写进配置的会话数据不会自动落盘；要么在 `OnClosed` 末尾补 `Cfg.SaveNow()`，要么在标签增删 / 切换时就把会话
   写进配置（靠后台自动保存）。而且外壳切走工具时只调 `ConfigStore.Flush()`，根本不调 `NotifyClosed`。
-- ⚠ **AvalonEdit 内置语法高亮定义（`HighlightingManager`）是全局缓存**：按颜色名把前景色改成暗色友好色时，
-  覆写必须幂等（记一份已处理的集合），并且单项覆写失败要吞异常——不能因为高亮把编辑器搞挂。
+- ⚠ **AvalonEdit 内置语法高亮定义（`HighlightingManager`）是全局缓存**：覆写颜色必须幂等（记一份已处理的集合），
+  并且单项覆写失败要吞异常——不能因为高亮把编辑器搞挂。
+- ⚠ **内置配色是给白底设计的，深色主题下会「深蓝看不清」**：C# 定义里方法名 `MethodCall` 是 `MidnightBlue` 粗体、
+  数字 `NumberLiteral` 是 `DarkBlue`、字符串 `String` 是 `Blue`、不少关键字是 `Navy` / `Maroon` / `Brown`。
+  只改编辑器背景色不改这些，就会得到「方法名深蓝糊在黑底上」。正确做法是按 xshd 的**颜色名**整体重配
+  （`EditorHighlighting.MapColor`：方法淡黄 / 关键字蓝 / 类型青绿 / 字符串橙 / 数字浅绿 / 注释绿），
+  并且**没归类的颜色要回退浅灰**（否则又会留下深色）；顺便清 `Background`、把 `FontWeight` 归到 Normal（VS 不加粗）。
+  C# 的 `///` 注释颜色在单独注册的 `XmlDoc` 定义里（被 C# `Import`），只调 C# 定义调不到，得单独补一次。
+  自检 `[编辑器] C# 高亮定义里每个命名颜色覆写后都够亮` 会逐色算亮度防回归。
 - ⚠ **编码探测别用默认的 `Encoding.GetEncoding(936)`**：.NET 默认不带 GB18030 代码页，必须先
   `Encoding.RegisterProvider(CodePagesEncodingProvider.Instance)`（`TextFileCodec` 静态构造里做），
   否则中文 ANSI 文件直接抛异常。
