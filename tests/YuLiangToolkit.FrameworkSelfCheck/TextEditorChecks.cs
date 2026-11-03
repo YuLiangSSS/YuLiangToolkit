@@ -575,6 +575,14 @@ internal static class TextEditorChecks
             && TextEditorConfig.ClampZoomPercent(133.3) == 133.5,
             "NaN→100 · 5→25 · 999→400 · 133.3→133.5");
 
+        check("[编辑器] 行距夹取：非法回默认 1.2，越界夹回 1.0~2.0，按 5% 取整",
+            TextEditorConfig.ClampLineSpacing(double.NaN) == 1.2
+            && TextEditorConfig.ClampLineSpacing(0.5) == 1.0
+            && TextEditorConfig.ClampLineSpacing(3) == 2.0
+            && TextEditorConfig.ClampLineSpacing(1.23) == 1.25
+            && TextEditorConfig.ClampLineSpacing(1.2) == 1.2,
+            "NaN→1.2 · 0.5→1.0 · 3→2.0 · 1.23→1.25");
+
         check("[编辑器] 步进缩放：放大 / 缩小各 10%，到顶不再变",
             TextEditorConfig.StepZoomPercent(100, 1) == 110
             && TextEditorConfig.StepZoomPercent(100, -1) == 90
@@ -596,9 +604,10 @@ internal static class TextEditorChecks
         var store = ToolConfigStore.For(TextEditorConfig.ToolId);
         var config = store.Load<TextEditorConfig>();
         check("[编辑器] 首次加载即生成 config.json", File.Exists(config.FilePath), config.FilePath);
-        check("[编辑器] 默认值：Cascadia Mono / 14px / 100% / 深空底色 / 行号开 / 换行关 / 空格缩进 4 / Markdown 预览开",
+        check("[编辑器] 默认值：Cascadia Mono / 14px / 行距 1.2 / 100% / 深空底色 / 行号开 / 换行关 / 空格缩进 4 / Markdown 预览开",
             config.FontName == TextEditorConfig.DefaultFontName
             && config.FontSize == 14 && config.ZoomPercent == 100
+            && config.LineSpacing == TextEditorConfig.DefaultLineSpacing
             && config.BackgroundHex == TextEditorConfig.DefaultBackgroundHex
             && config.ForegroundHex == TextEditorConfig.DefaultForegroundHex
             && config.ShowLineNumbers && !config.WordWrap
@@ -651,6 +660,7 @@ internal static class TextEditorChecks
         var fresh = new TextEditorConfig();
         config.FontName = fresh.FontName;
         config.FontSize = fresh.FontSize;
+        config.LineSpacing = fresh.LineSpacing;
         config.ZoomPercent = fresh.ZoomPercent;
         config.BackgroundHex = fresh.BackgroundHex;
         config.ForegroundHex = fresh.ForegroundHex;

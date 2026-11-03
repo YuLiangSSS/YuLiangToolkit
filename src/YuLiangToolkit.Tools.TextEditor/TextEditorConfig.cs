@@ -37,6 +37,18 @@ public sealed class TextEditorConfig : ToolConfig
     public const double MaxFontSize = 36;
     public const int MaxRecentFiles = 10;
 
+    /// <summary>默认行距系数（1.0 = 编辑器默认紧凑行高；1.2 = 稍微松一点，看着不挤）。</summary>
+    public const double DefaultLineSpacing = 1.2;
+
+    /// <summary>行距下限（再小就回到 AvalonEdit 默认行高）。</summary>
+    public const double MinLineSpacing = 1.0;
+
+    /// <summary>行距上限（行高最多翻倍）。</summary>
+    public const double MaxLineSpacing = 2.0;
+
+    /// <summary>行距滑块步进（5%）。</summary>
+    public const double LineSpacingStep = 0.05;
+
     /// <summary>会话恢复最多记的标签数（超出丢弃最前面的）。</summary>
     public const int MaxSessionFiles = 20;
 
@@ -73,6 +85,7 @@ public sealed class TextEditorConfig : ToolConfig
 
     private string _fontName = DefaultFontName;
     private double _fontSize = DefaultFontSize;
+    private double _lineSpacing = DefaultLineSpacing;
     private double _zoomPercent = DefaultZoomPercent;
     private string _backgroundHex = DefaultBackgroundHex;
     private string _foregroundHex = DefaultForegroundHex;
@@ -90,6 +103,13 @@ public sealed class TextEditorConfig : ToolConfig
     {
         get => _fontSize;
         set => Set(ref _fontSize, ClampFontSize(value));
+    }
+
+    /// <summary>行距系数（1.0 ~ 2.0；1.0 = 默认紧凑行高，1.2 = 稍微松一点）。用 Set() 发通知，拖滑块即时生效。</summary>
+    public double LineSpacing
+    {
+        get => _lineSpacing;
+        set => Set(ref _lineSpacing, ClampLineSpacing(value));
     }
 
     /// <summary>界面缩放百分比（25 ~ 400，Zed 风格：只缩编辑区文字，菜单栏不变）。</summary>
@@ -173,6 +193,17 @@ public sealed class TextEditorConfig : ToolConfig
     /// <summary>字号夹取：非法值 / 越界都回到合法范围（8 ~ 36）。</summary>
     public static double ClampFontSize(double value)
         => !double.IsFinite(value) ? DefaultFontSize : Math.Clamp(value, MinFontSize, MaxFontSize);
+
+    /// <summary>行距夹取：非法值回默认 1.2，越界夹回 1.0 ~ 2.0，按 5% 取整。</summary>
+    public static double ClampLineSpacing(double value)
+    {
+        if (!double.IsFinite(value)) return DefaultLineSpacing;
+
+        // 用「20 步 = 1.0」做整数取整，避免 0.05 是无限二进制小数导致 1.2 → 1.2000000000000002
+        const double stepsPerUnit = 20;   // 1 / LineSpacingStep
+        var steps = Math.Round(value * stepsPerUnit, MidpointRounding.AwayFromZero);
+        return Math.Clamp(steps / stepsPerUnit, MinLineSpacing, MaxLineSpacing);
+    }
 
     /// <summary>缩放夹取：非法值回 100%，越界夹回 25 ~ 400，四舍五入到 0.5%。</summary>
     public static double ClampZoomPercent(double value)

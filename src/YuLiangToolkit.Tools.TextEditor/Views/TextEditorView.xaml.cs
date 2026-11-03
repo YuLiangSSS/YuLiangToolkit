@@ -11,6 +11,7 @@ using ICSharpCode.AvalonEdit.Indentation;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Tools.TextEditor.Core;
 using YuLiangToolkit.Tools.TextEditor.Core.Markdown;
+using YuLiangToolkit.Tools.TextEditor.Rendering;
 using YuLiangToolkit.Tools.TextEditor.ViewModels;
 
 // 本项目根命名空间就叫 YuLiangToolkit.Tools.TextEditor，会遮住 AvalonEdit 的 TextEditor 类型，起别名用
@@ -236,6 +237,11 @@ public partial class TextEditorView : UserControl, IEditorHost
         };
         // 回车自动沿用上一行的缩进（写代码的默认手感；AvalonEdit 不自带这个策略就会顶格）
         editor.TextArea.IndentationStrategy = new DefaultIndentationStrategy();
+        // 行距：AvalonEdit 没有公开的 LineHeight，靠行尾元素生成器把行撑高（详见该类的注释）
+        editor.TextArea.TextView.ElementGenerators.Add(new LineSpacingElementGenerator(tab.Document)
+        {
+            SpacingFactor = cfg.LineSpacing,
+        });
         editor.SyntaxHighlighting = EditorHighlighting.ForFile(tab.FilePath);
         ApplyColors(editor, cfg);
         editor.FontSize = EffectiveFontSize(cfg);
@@ -288,8 +294,30 @@ public partial class TextEditorView : UserControl, IEditorHost
             editor.ShowLineNumbers = cfg.ShowLineNumbers;
             editor.Options.ConvertTabsToSpaces = cfg.ConvertTabsToSpaces;
             editor.Options.IndentationSize = cfg.IndentSize;
+            ApplyLineSpacing(editor, cfg.LineSpacing);
             ApplyColors(editor, cfg);
         }
+    }
+
+    /// <summary>
+    /// 把「行距」套到一个编辑器上：找它的 <see cref="LineSpacingElementGenerator"/>（没有就补一个），
+    /// 系数变了才 <see cref="ICSharpCode.AvalonEdit.Rendering.TextView.Redraw()"/>（清 visual line 重新生成）。
+    /// </summary>
+    private static void ApplyLineSpacing(AvalonEditor editor, double lineSpacing)
+    {
+        var view = editor.TextArea.TextView;
+        var generator = view.ElementGenerators.OfType<LineSpacingElementGenerator>().FirstOrDefault();
+        if (generator is null)
+        {
+            generator = new LineSpacingElementGenerator(editor.Document);
+            view.ElementGenerators.Add(generator);
+        }
+
+        var clamped = TextEditorConfig.ClampLineSpacing(lineSpacing);
+        if (Math.Abs(generator.SpacingFactor - clamped) < 0.0005) return;
+
+        generator.SpacingFactor = clamped;
+        view.Redraw();
     }
 
     // ---------- 光标 / 字数 / 查找计数联动 ----------

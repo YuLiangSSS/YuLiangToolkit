@@ -414,7 +414,7 @@
                 <MenuItem Header="偏好设置" Style="{StaticResource EditorTopMenuItemStyle}">
                     <MenuItem Header="打开偏好设置面板" Command="{Binding ShowSettingsCommand}"
                               Style="{StaticResource EditorMenuItemStyle}"
-                              ToolTip="字体 / 字号 / 缩放 / 背景颜色 / 行号 / 自动换行 / 缩进" />
+                              ToolTip="字体 / 字号 / 行距 / 缩放 / 背景颜色 / 行号 / 自动换行 / 缩进" />
                     <Separator Style="{StaticResource EditorMenuSeparatorStyle}" />
                     <MenuItem Header="重置缩放为 100%" Command="{Binding ResetZoomCommand}"
                               Style="{StaticResource EditorMenuItemStyle}" />
@@ -603,6 +603,25 @@
                                 <TextBlock Grid.Column="1" MinWidth="38" TextAlignment="Right"
                                            VerticalAlignment="Center" FontSize="12"
                                            Text="{Binding Cfg.FontSize, StringFormat={}{0:0}px}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Grid>
+
+                            <TextBlock Text="行距" Style="{StaticResource SettingLabelStyle}"
+                                       ToolTip="行与行之间的间距（1.0 = 默认紧凑行高，1.2 = 稍松一点）" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Slider Minimum="{x:Static te:TextEditorConfig.MinLineSpacing}"
+                                        Maximum="{x:Static te:TextEditorConfig.MaxLineSpacing}"
+                                        TickFrequency="{x:Static te:TextEditorConfig.LineSpacingStep}"
+                                        IsSnapToTickEnabled="True"
+                                        Style="{StaticResource SliderStyle}" VerticalAlignment="Center"
+                                        Value="{Binding Cfg.LineSpacing}" />
+                                <TextBlock Grid.Column="1" MinWidth="42" TextAlignment="Right"
+                                           VerticalAlignment="Center" FontSize="12"
+                                           Text="{Binding Cfg.LineSpacing, StringFormat={}{0:0.00}×}"
                                            Foreground="{DynamicResource TextSecondaryBrush}" />
                             </Grid>
 

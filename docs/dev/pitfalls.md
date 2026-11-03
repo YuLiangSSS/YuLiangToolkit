@@ -347,3 +347,9 @@
   列宽永远保持 XAML 默认值）。设置面板显隐 / 记忆宽度、Markdown 预览窗的显隐与高度都在 code-behind 里设
   （`ApplySettingsColumnWidth` / `UpdatePreviewVisibility`），像素由 `PaneSplitter` 记在 `Config\layout.json`，
   双击复位也交给它。
+- ⚠ **AvalonEdit 没有公开的行高设置**（`TextView.DefaultLineHeight` 只读、由字体度量算出来）：想做「行距」
+  只能用 `VisualLineElementGenerator` 在**每个文档行行尾**插一个 `DocumentLength=0` / `VisualLength=1` 的元素，
+  它的 TextRun 用放大的 `FontRenderingEmSize` + 零宽空格（U+200B）把 WPF `TextLine.Height` 撑起来
+  （`Rendering/LineSpacingElementGenerator.cs`；改了系数要 `TextView.Redraw()`）。
+  已知边界：一个文档行被自动换行折成多条文本行时，撑高只作用在最后一段 → 行距看起来不完全均匀；
+  另外 `HeightTree` 的滚动估算仍按默认行高，跳很远滚动时属于近似值（滚动过的地方会按实测行高修正）。
