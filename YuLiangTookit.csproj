@@ -31,7 +31,7 @@
 
   <ItemGroup>
     <ProjectReference Include="src\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
-    <ProjectReference Include="src\YuLiangToolkit.Tools.VideoToAudio\YuLiangToolkit.Tools.VideoToAudio.csproj" />
+    <ProjectReference Include="src\YuLiangToolkit.Tools.AudioTools\YuLiangToolkit.Tools.AudioTools.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.MediaPlayer\YuLiangToolkit.Tools.MediaPlayer.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.PictureViewer\YuLiangToolkit.Tools.PictureViewer.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.PdfReader\YuLiangToolkit.Tools.PdfReader.csproj" />

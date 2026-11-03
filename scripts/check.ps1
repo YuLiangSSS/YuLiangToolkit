@@ -131,6 +131,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/Live2DChecks.cs'         @('live2d') 'L3' 'live2d assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/BrowserChecks.cs'       @('browser') 'L3' 'browser assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/TextEditorChecks.cs'    @('text-editor') 'L3' 'text-editor assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/AudioToolsChecks.cs'    @('audio-tools') 'L3' 'audio-tools assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/MaintenanceChecks.cs'     @('maintenance') 'L3' 'maintenance assertions')
 
     # ---------- tests: anything else in the self-check project is unknown wiring ----------
@@ -160,7 +161,7 @@ $mapping = @(
     (New-Rule 'src/YuLiangToolkit.Tools.Live2D/*'          @('live2d') 'L2' 'live2d')
     (New-Rule 'src/YuLiangToolkit.Tools.Browser/*'         @('browser') 'L2' 'browser')
     (New-Rule 'src/YuLiangToolkit.Tools.TextEditor/*'      @('text-editor') 'L2' 'text-editor')
-    (New-Rule 'src/YuLiangToolkit.Tools.VideoToAudio/*'    @() 'L1' 'no dedicated group: build + manual smoke (e2e-convert.ps1)')
+    (New-Rule 'src/YuLiangToolkit.Tools.AudioTools/*'       @('audio-tools') 'L2' 'audio tools')
     (New-Rule 'src/YuLiangToolkit.Tools.Sample/*'          @() 'L1' 'framework template, no dedicated group: build + manual smoke')
     (New-Rule 'src/*'                                      @('ALL') 'L4' 'unmapped src project' -Fallback)
 
@@ -389,7 +390,7 @@ function Get-SelfTestErrors {
         @{ Path = 'Converters/ColorToBrushConverter.cs'; Groups = @() }
         @{ Path = 'YuLiangTookit.csproj';               Groups = @('ALL') }
         @{ Path = 'tests/YuLiangToolkit.FrameworkSelfCheck/BoardGamesChecks.cs'; Groups = @('board-games','board-net','board-room') }
-        @{ Path = 'src/YuLiangToolkit.Tools.VideoToAudio/Views/VideoToAudioView.xaml'; Groups = @() }
+        @{ Path = 'src/YuLiangToolkit.Tools.AudioTools/Views/VideoToAudioView.xaml'; Groups = @() }
         @{ Path = 'src/YuLiangToolkit.Tools.BoardGames/Shared/BoardProtocol.cs'; Groups = @('board-games','board-net','board-room') }
     )
     foreach ($exp in $expectations) {
@@ -424,7 +425,7 @@ function Get-SelfTestErrors {
     $mainText = Get-Content -LiteralPath $mainProject -Raw -Encoding UTF8
     $slnText = Get-Content -LiteralPath $solutionFile -Raw -Encoding UTF8
     $checkText = Get-Content -LiteralPath $checkProject -Raw -Encoding UTF8
-    $noSelfCheckTools = @('VideoToAudio', 'Sample')
+    $noSelfCheckTools = @('Sample')
     foreach ($dir in (Get-ChildItem -LiteralPath $srcDir -Directory -ErrorAction SilentlyContinue)) {
         if ($dir.Name -notlike 'YuLiangToolkit.Tools.*') { continue }
         $toolCount++

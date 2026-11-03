@@ -61,6 +61,9 @@
          最近文件列表 / 查找替换纯逻辑 / 标签规则与脏标记链路 / 高亮暗色调色 / 配置默认值，
          全部无头跑；不实例化 AvalonEdit 控件。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.TextEditor\YuLiangToolkit.Tools.TextEditor.csproj" />
+    <!-- 「音频工具」：分段视频合成的纯逻辑（分段识别 / 自然排序 / concat 清单 / FFmpeg 参数 /
+         输出文件名 / 进度解析），不启动 FFmpeg、不碰真 Data。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.AudioTools\YuLiangToolkit.Tools.AudioTools.csproj" />
   </ItemGroup>
 
 </Project>

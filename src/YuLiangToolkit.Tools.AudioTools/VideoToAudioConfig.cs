@@ -3,7 +3,7 @@ using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Services;
 using YuLiangToolkit.Core.Storage;
 
-namespace YuLiangToolkit.Tools.VideoToAudio;
+namespace YuLiangToolkit.Tools.AudioTools;
 
 /// <summary>转换模式。</summary>
 public enum ConvertMode
@@ -24,6 +24,9 @@ public enum ConvertMode
 /// </summary>
 public sealed class VideoToAudioConfig : ToolConfig
 {
+    /// <summary>功能 Id：沿用老工具的 <c>video-to-audio</c>，老用户配置 / Data 直接复用。</summary>
+    public const string ToolId = "video-to-audio";
+
     /// <summary>源文件夹。</summary>
     public string InputFolder { get; set; } = "";
 

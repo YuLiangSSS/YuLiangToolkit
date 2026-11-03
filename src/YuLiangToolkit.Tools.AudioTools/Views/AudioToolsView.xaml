@@ -1,0 +1,62 @@
+<UserControl x:Class="YuLiangToolkit.Tools.AudioTools.Views.AudioToolsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:YuLiangToolkit.Tools.AudioTools.ViewModels"
+             xmlns:views="clr-namespace:YuLiangToolkit.Tools.AudioTools.Views"
+             Background="{DynamicResource WindowBackgroundBrush}">
+
+    <UserControl.Resources>
+        <!-- 顶部页签：当前那个用强调色 -->
+        <Style x:Key="VideoTabStyle" TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+            <Setter Property="Padding" Value="16,6" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsVideoTab}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource CardHoverBackgroundBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="MergeTabStyle" TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+            <Setter Property="Padding" Value="16,6" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsMergeTab}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource CardHoverBackgroundBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- 顶部页签（纯工具条，不算可拖区块） -->
+        <Border Grid.Row="0" Background="{DynamicResource HeaderBackgroundBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
+                Padding="14,8">
+            <StackPanel Orientation="Horizontal">
+                <Button Content="🎵 视频转音频" Style="{StaticResource VideoTabStyle}"
+                        Command="{Binding ShowVideoTabCommand}" />
+                <Button Content="🎬 分段视频合成" Style="{StaticResource MergeTabStyle}"
+                        Command="{Binding ShowMergeTabCommand}" />
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <!-- Visibility 绑父级 ViewModel；子 View 的 DataContext 单独指向各自的子 VM -->
+            <Grid Visibility="{Binding IsVideoTab, Converter={StaticResource BoolToVis}}">
+                <views:VideoToAudioView DataContext="{Binding VideoToAudio}" />
+            </Grid>
+            <Grid Visibility="{Binding IsMergeTab, Converter={StaticResource BoolToVis}}">
+                <views:SegmentMergeView DataContext="{Binding SegmentMerge}" />
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

@@ -8,7 +8,7 @@ using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Core.Services;
 using YuLiangToolkit.Core.Storage;
 
-namespace YuLiangToolkit.Tools.VideoToAudio.ViewModels;
+namespace YuLiangToolkit.Tools.AudioTools.ViewModels;
 
 /// <summary>文件列表中的单个媒体项。</summary>
 public class MediaFileItem : ObservableObject
@@ -44,7 +44,7 @@ public class VideoToAudioViewModel : ToolViewModelBase
     private CancellationTokenSource? _cts;
     private string? _ffmpegPath;
 
-    public VideoToAudioViewModel() : base("video-to-audio")
+    public VideoToAudioViewModel() : base(VideoToAudioConfig.ToolId)
     {
         // 首次运行时从老配置（%AppData% 的 settings.json）迁移过来；之后一律以本文件为准
         Cfg = LoadConfig(VideoToAudioConfig.FromLegacySettings);

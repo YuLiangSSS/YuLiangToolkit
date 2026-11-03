@@ -385,3 +385,12 @@
   （`Rendering/LineSpacingElementGenerator.cs`；改了系数要 `TextView.Redraw()`）。
   已知边界：一个文档行被自动换行折成多条文本行时，撑高只作用在最后一段 → 行距看起来不完全均匀；
   另外 `HeightTree` 的滚动估算仍按默认行高，跳很远滚动时属于近似值（滚动过的地方会按实测行高修正）。
+
+### FFmpeg（音频工具：视频转音频 / 分段合成）
+- ⚠ **本地 m3u8 直接 `-i playlist.m3u8` 会报 “Unsafe script / extension not allowed”**：HLS demuxer 默认只放行白名单扩展名，必须加
+  `-allowed_extensions ALL`；网络 / AES key 还要加 `-protocol_whitelist file,http,https,tcp,tls,crypto,data`（见 `SegmentMerger.BuildArguments`）。
+- ⚠ **分段文件夹别自己拼输出，用 concat demuxer**：清单格式是每行 `file '路径'`，路径里的 `'` 要转义成 `'\''`；清单用 **UTF-8 无 BOM** 写（带 BOM 第一行会解析失败），`-safe 0` 才允许绝对路径。清单放 `Cache\video-merge`，合成结束删除。
+- ⚠ **进度要自己解析**：FFmpeg 的 `-progress pipe:1` 输出 `out_time_us=` / `out_time_ms=`（不是 stderr 的 `time=`），配合 `-nostats -loglevel error`；先 `ffprobe -show_entries format=duration` 拿总时长才能算百分比，分段文件夹 / 直播拿不到时长就用 indeterminate，别把进度条写死。
+- ⚠ **HLS 直播 m3u8（没有 `#EXT-X-ENDLIST`）会一直等新分段**，FFmpeg 不退出；界面的取消必须 `Kill(entireProcessTree: true)`，否则 ffmpeg 子进程残留。
+- ⚠ **`.m4s` 分片可能依赖独立 `init.mp4`**，concat 拼出来可能不能播；优先让配套 m3u8/mpd 交给 FFmpeg 解析。DRM（Widevine/PlayReady）无法用 FFmpeg 解密。
+

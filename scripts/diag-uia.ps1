@@ -5,7 +5,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 Remove-Item Env:YLT_SHOT -ErrorAction SilentlyContinue
-$env:YLT_NAV_TOOL = "video-to-audio"
+$env:YLT_NAV_TOOL = "audio-tools"
 
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes

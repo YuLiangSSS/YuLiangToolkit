@@ -1,7 +1,7 @@
-<UserControl x:Class="YuLiangToolkit.Tools.VideoToAudio.Views.VideoToAudioView"
+<UserControl x:Class="YuLiangToolkit.Tools.AudioTools.Views.VideoToAudioView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:vm="clr-namespace:YuLiangToolkit.Tools.VideoToAudio.ViewModels"
+             xmlns:vm="clr-namespace:YuLiangToolkit.Tools.AudioTools.ViewModels"
              xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core">
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />

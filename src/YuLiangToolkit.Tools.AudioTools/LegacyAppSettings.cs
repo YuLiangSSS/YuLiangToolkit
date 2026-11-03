@@ -1,4 +1,4 @@
-namespace YuLiangToolkit.Tools.VideoToAudio;
+namespace YuLiangToolkit.Tools.AudioTools;
 
 /// <summary>
 /// 老版本（选项还塞在 <c>%AppData%\YuLiangToolkit\settings.json</c> 里时）的字段快照，

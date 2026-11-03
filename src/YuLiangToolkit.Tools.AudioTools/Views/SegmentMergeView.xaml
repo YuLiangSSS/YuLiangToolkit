@@ -1,0 +1,176 @@
+<UserControl x:Class="YuLiangToolkit.Tools.AudioTools.Views.SegmentMergeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             Background="{DynamicResource WindowBackgroundBrush}">
+    <Grid Margin="28,22,28,26">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />   <!-- 标题 -->
+            <RowDefinition Height="Auto" />   <!-- FFmpeg 状态（纯信息条） -->
+            <RowDefinition Height="*" />      <!-- 设置 / 日志（上下可拖） -->
+        </Grid.RowDefinitions>
+
+        <!-- 标题 -->
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="🎬 分段视频合成" FontSize="21" FontWeight="SemiBold" />
+            <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                       Text="把 m3u8 播放列表（本地文件 / http(s) 链接）或一文件夹的 .ts / .m4s 分段，用 FFmpeg 合成一个整段 mp4 / mkv。默认直接复制流（快、无损）；兼容性差时可以重新编码。" />
+        </StackPanel>
+
+        <!-- FFmpeg 状态 -->
+        <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,16,0,0" Padding="16,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding FFmpegStatusText}" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" FontSize="12" />
+                <Button Grid.Column="1" Content="选择 FFmpeg…" Style="{StaticResource SecondaryButtonStyle}"
+                        Command="{Binding BrowseFFmpegCommand}" Margin="10,0,0,0" />
+                <Button Grid.Column="2" Content="下载 FFmpeg" Style="{StaticResource SecondaryButtonStyle}"
+                        Command="{Binding OpenFfmpegDownloadCommand}" Margin="8,0,0,0" />
+            </Grid>
+        </Border>
+
+        <!-- 设置 / 日志：上下可拖，两个页面级区块 -->
+        <Grid Grid.Row="2" Margin="0,12,0,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" MinHeight="300" />
+                <RowDefinition Height="12" />
+                <RowDefinition Height="190" MinHeight="120" />
+            </Grid.RowDefinitions>
+
+            <!-- 设置卡片（内容多，内部滚动） -->
+            <Border Grid.Row="0" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              core:ScrollChaining.Enabled="True">
+                    <StackPanel>
+                        <!-- ===== 输入 ===== -->
+                        <TextBlock Text="输入" FontSize="13" FontWeight="SemiBold" />
+                        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <RadioButton Content="m3u8 播放列表 / 链接" GroupName="merge-source"
+                                         Style="{StaticResource RadioButtonStyle}"
+                                         IsChecked="{Binding Cfg.IsPlaylistMode}" />
+                            <RadioButton Content="分段文件夹（.ts / .m4s）" GroupName="merge-source"
+                                         Style="{StaticResource RadioButtonStyle}" Margin="20,0,0,0"
+                                         IsChecked="{Binding Cfg.IsFolderMode}" />
+                        </StackPanel>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Text="{Binding Cfg.SourcePath, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource TextBoxStyle}"
+                                     ToolTip="m3u8 本地文件 / http(s) 链接，或分段文件夹路径" />
+                            <Button Grid.Column="1" Content="选择 m3u8…" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding BrowsePlaylistCommand}" Margin="8,0,0,0" />
+                            <Button Grid.Column="2" Content="选择文件夹…" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding BrowseFolderCommand}" Margin="8,0,0,0" />
+                        </Grid>
+                        <TextBlock Text="{Binding SourceHintText}" FontSize="11" Margin="0,6,0,0"
+                                   TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Text="{Binding SegmentSummary}" FontSize="11" Margin="0,4,0,0"
+                                   TextWrapping="Wrap" Foreground="{DynamicResource AccentBrush}" />
+
+                        <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,14" />
+
+                        <!-- ===== 输出 ===== -->
+                        <TextBlock Text="输出" FontSize="13" FontWeight="SemiBold" />
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="输出文件夹" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Grid.Column="1" Text="{Binding Cfg.OutputFolder, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource TextBoxStyle}" />
+                            <Button Grid.Column="2" Content="浏览…" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding BrowseOutputCommand}" Margin="8,0,0,0" />
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="86" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="文件名" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Grid.Column="1" Text="{Binding Cfg.OutputName, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource TextBoxStyle}" />
+                            <TextBlock Grid.Column="2" Text="同名文件会覆盖" VerticalAlignment="Center"
+                                       FontSize="10.5" Margin="10,0,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <RadioButton Content="MP4（最通用）" GroupName="merge-format"
+                                         Style="{StaticResource RadioButtonStyle}"
+                                         IsChecked="{Binding Cfg.IsMp4Output}" />
+                            <RadioButton Content="MKV（对编码更宽容）" GroupName="merge-format"
+                                         Style="{StaticResource RadioButtonStyle}" Margin="20,0,0,0"
+                                         IsChecked="{Binding Cfg.IsMkvOutput}" />
+                        </StackPanel>
+
+                        <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,14" />
+
+                        <!-- ===== 合成方式 ===== -->
+                        <TextBlock Text="合成方式" FontSize="13" FontWeight="SemiBold" />
+                        <StackPanel Margin="0,10,0,0">
+                            <RadioButton Content="直接复制流（-c copy，快且无损；要求分段编码一致，TS → MP4 一般可用）"
+                                         GroupName="merge-codec" Style="{StaticResource RadioButtonStyle}"
+                                         IsChecked="{Binding Cfg.IsCopyMode}" />
+                            <RadioButton Content="重新编码（H.264 + AAC，慢一些；复制流失败或播放器不兼容时用）"
+                                         GroupName="merge-codec" Style="{StaticResource RadioButtonStyle}"
+                                         Margin="0,10,0,0"
+                                         IsChecked="{Binding Cfg.IsReencodeMode}" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
+                            <Button Content="开始合成" Style="{StaticResource PrimaryButtonStyle}"
+                                    Command="{Binding MergeCommand}" Padding="20,7" />
+                            <Button Content="取消" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding CancelCommand}" Margin="10,0,0,0" Padding="16,7" />
+                            <Button Content="打开输出文件夹" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding OpenOutputFolderCommand}" Margin="10,0,0,0" Padding="16,7" />
+                        </StackPanel>
+
+                        <ProgressBar Style="{StaticResource ProgressBarStyle}" Margin="0,14,0,0"
+                                     Maximum="1" Value="{Binding Progress, Mode=OneWay}"
+                                     IsIndeterminate="{Binding IsProgressIndeterminate}" />
+                        <Grid Margin="0,6,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding StatusText}" FontSize="11.5" TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBlock Grid.Column="1" Text="{Binding ProgressText}" FontSize="11.5"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="video-merge.设置与日志" />
+
+            <!-- 日志卡片 -->
+            <Border Grid.Row="2" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="80" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="运行日志" FontSize="13" FontWeight="SemiBold" />
+                    <TextBox Grid.Row="1" Text="{Binding LogText, Mode=OneWay}"
+                             Style="{StaticResource LogTextBoxStyle}" Margin="0,8,0,0" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

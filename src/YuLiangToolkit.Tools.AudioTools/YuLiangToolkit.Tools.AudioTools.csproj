@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「音频工具」：一个工具页里放两块 FFmpeg 能力 ——
+       ① 视频转音频（原来的独立工具，配置仍写 Config\video-to-audio，老用户设置不丢）；
+       ② 分段视频合成（m3u8 / ts 等分段 → 整段 mp4/mkv，配置写 Config\video-merge）。
+       两个子功能的 ViewModel 仍是各自的 ToolViewModelBase；本工程只是把界面/入口收进一个工具卡片。
+       唯一的第三方依赖仍是系统里的 FFmpeg（不随程序打包，由用户指定 / PATH 查找）。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.AudioTools</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.AudioTools</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

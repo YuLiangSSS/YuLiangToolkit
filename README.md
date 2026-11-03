@@ -21,7 +21,7 @@
 
 | 工具 | 能干什么 |
 | --- | --- |
-| [**🎥 视频转音频**](docs/tools/video-to-audio.md) | 抽视频里的音轨：有损 MP3 / 无损 FLAC / 原样提取，批量 + 进度 + 取消 |
+| [**🎵 音频工具**](docs/tools/audio-tools.md) | 视频转音频（MP3 / FLAC / 原样提取）+ 分段视频合成（m3u8 / ts → mp4/mkv），批量 + 进度 + 取消 |
 | [**🎬 视频 / 音乐播放器**](docs/tools/media-player.md) | 本地播放器：播放列表、单曲 / 随机、**沉浸式全屏（鼠标一动浮出控制条）**、**后台播放（切页不断，左下角迷你条：标题来回滚 + 进度条可拖 + 播放模式可点，右上角 × 关小窗并停播）**、**每个文件夹记住上次听到哪首 / 哪儿（可选恢复后自动接着放）**、**关应用 / 后台播放时也记住当前那首与进度**、**列表排序（名称 / 日期 / 大小，正反序）**、可调步长的快进快退 |
 | [**🖼️ 图片连续阅读器**](docs/tools/picture-viewer.md) | 把一个文件夹的图片首尾相接拼成一条长带（无缝、无间距），滚轮连续看条漫 / 长图 / 漫画，可切纵向 / 横向 / 日式从右到左，也可切**双页翻页 / 单页浏览**；支持 **25% ~ 800% 缩放**、放大后**自由拖拽**、可开关的**拖动惯性（连续甩会越滑越快）**与**滚轮惯性（滚一下能滚很远）**、**F11 全屏沉浸阅读（工具条自动隐藏）**；可**关联图片后缀，双击图片直接打开并定位到那张**（默认**复用同一个窗口**，也能在设置里切成**多开**）；**🕘 最近浏览可快速重开看过的文件夹（上限可调）**；**点工具条上的文件夹路径可在资源管理器打开所在目录**；还能调**三层图片边框（RGBA 颜色 + 调色板）**并**一键恢复默认** |
 | [**📄 PDF 阅读器**](docs/tools/pdf-reader.md) | 简单 PDF 阅读器：纵向 / 横向连续滚动、双页并排一次翻两页；支持 **25% ~ 800% 缩放**（Ctrl+滚轮 / 双页放大后拖动平移）、**Ctrl+F 文字搜索**、**📑 书签目录**、**双页页面间距可调**、**拖动惯性 / 滚轮惯性可分别开关**、**双击 .pdf 关联打开**、**自动记住每本 PDF 上次读到哪**、**页码跳转**、**🕘 最近浏览（上限可调）**、**F11 全屏沉浸阅读（工具条自动隐藏）**；只渲染看得见的页省内存，用 Windows 自带的 `Windows.Data.Pdf` 渲染；只读不改原文件 |
@@ -72,8 +72,8 @@ dotnet run --project YuLiangTookit.csproj
 ```
 
 要求：.NET 9 SDK（`global.json` 已锁定 9.0.317）；系统需 **Windows 10 2004（build 19041）及以上**（PDF 阅读器用系统自带的 `Windows.Data.Pdf`）。
-只有「视频转音频」依赖 FFmpeg（应用会自动检测 `PATH` 里的 `ffmpeg.exe`，也可以在工具里手动指定）——
-见 [视频转音频](docs/tools/video-to-audio.md)。osu! 三个转换 / 计算工具用 `OsuParsers`（MIT）解析 `.osu`：
+只有「音频工具」（视频转音频 + 分段视频合成）依赖 FFmpeg（应用会自动检测 `PATH` 里的 `ffmpeg.exe`，也可以在工具里手动指定）——
+见 [音频工具](docs/tools/audio-tools.md)。osu! 三个转换 / 计算工具用 `OsuParsers`（MIT）解析 `.osu`：
 从源码构建时**首次需要联网还原一次** NuGet 包，之后走本机缓存（`build.ps1` 离线也能命中）。
 「网页浏览器」用微软官方的 **WebView2**（Chromium 内核，和 Edge 同源）承载网页：需要系统装有
 **Microsoft Edge WebView2 Runtime**（Win10 2004+ 一般随 Edge 自带，缺失时工具会提示去安装；
@@ -89,7 +89,7 @@ dotnet run --project YuLiangTookit.csproj
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；
   踩坑细节按需查 **[docs/dev/pitfalls.md](docs/dev/pitfalls.md)**（只在排错 / 改危险代码时读）；
-- ✅ **自检**：3407 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
+- ✅ **自检**：3427 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -125,7 +125,7 @@ docs/dev/verification.md                # 验证纪律：自检分级 / 路径�
 Data/  Config/  Cache/                   # 只有说明文件【运行时目录在 exe 旁边】
 src/
 ├── YuLiangToolkit.Core/                 # 核心库：工具契约 / 多级分类目录树 / MVVM 基类 / 存储 / 配置 / FFmpeg 封装 / 粒子与光标特效 / 通用 TCP 房间
-├── YuLiangToolkit.Tools.VideoToAudio/   # 功能：视频转音频
+├── YuLiangToolkit.Tools.AudioTools/     # 功能：音频工具（视频转音频 + 分段视频合成）
 ├── YuLiangToolkit.Tools.MediaPlayer/    # 功能：视频 / 音乐播放器
 ├── YuLiangToolkit.Tools.PictureViewer/  # 功能：图片连续阅读器（连续长带 / 双页翻页 / 单页 + 缩放 / 惯性 / 双击打开 / 图片边框）
 ├── YuLiangToolkit.Tools.PdfReader/      # 功能：PDF 阅读器（上下 / 左右连续滚动 + 双页翻页 + 拖动惯性）
@@ -141,7 +141,7 @@ src/
 ├── YuLiangToolkit.Tools.Live2D/         # 功能：Live2D 桌宠（内置模型测试台 + 透明置顶桌宠 + 眼睛跟随 + 摄像头面部动捕 + 身体晃动测试；官方 Cubism Core + 自写软件渲染器 + Windows 自带人脸检测）
 ├── YuLiangToolkit.Tools.SpugCaptcha/    # 功能：Spug 验证码测试（短信 / 邮箱验证码模板联调 + 本地比对验证）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3407 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3427 项行为逐条验证）
 ```
 
 ## 如何添加一个新工具

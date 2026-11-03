@@ -42,6 +42,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("live2d", "Live2D 桌宠：内置 moc3 加载 / 参数部件 / 动作表情 / 物理 / 眼睛跟随 / 软件渲染"),
     ("browser", "网页浏览器：地址栏解析 / 主机识别 / 搜索模板 / 标签栏规则与会话恢复 / 配置默认值"),
     ("text-editor", "文本编辑器：编码探测 / 换行风格 / 查找替换 / 标签规则 / 高亮调色 / 配置默认值"),
+    ("audio-tools", "音频工具：视频转音频 / 分段合成（自然排序 / concat 清单 / FFmpeg 参数）"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -985,6 +986,10 @@ RunGroupModule("browser", "网页浏览器（多标签）", BrowserChecks.Run);
 // 「文本编辑器」：编码探测 / 换行 / 查找替换 / 标签规则 / 脏标记链路 / 高亮调色 / 配置默认值；
 // 全是纯逻辑，**不实例化 AvalonEdit 控件、不弹窗**（界面本身由截图冒烟验收）。
 RunGroupModule("text-editor", "文本编辑器", TextEditorChecks.Run);
+
+// 「音频工具」：分段视频合成的纯逻辑（分段识别 / 自然排序 / concat 清单 / FFmpeg 参数 / 输出命名 /
+// 进度解析 / 配置包装）；**不启动 FFmpeg、不联网**（真合成由人工用本地 m3u8 / 分段文件夹验收）。
+RunGroupModule("audio-tools", "音频工具", AudioToolsChecks.Run);
 
 EnterGroup("shell");
 
