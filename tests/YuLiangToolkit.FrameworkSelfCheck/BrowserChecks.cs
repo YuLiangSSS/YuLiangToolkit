@@ -373,10 +373,14 @@ internal static class BrowserChecks
         {
             HomePage = "https://my-home.example/",
             SearchUrl = "https://my-search.example/?q={0}",
+            LastPage = "data:text/html,test",
         };
         var customMigrated = BrowserConfig.MigrateLegacyDefaults(custom);
-        check("[浏览器] 旧配置迁移：用户自己设的主页 / 搜索一个字都不动",
-            !customMigrated && custom.HomePage == "https://my-home.example/"
+        check("[浏览器] 旧配置迁移：测试页 LastPage（data:/about:）会被清掉",
+            customMigrated && custom.LastPage.Length == 0,
+            $"migrated={customMigrated} · LastPage='{custom.LastPage}'");
+        check("[浏览器] 旧配置迁移：自定义主页 / 搜索不被改动",
+            custom.HomePage == "https://my-home.example/"
             && custom.SearchUrl == "https://my-search.example/?q={0}",
             $"{custom.HomePage} · {custom.SearchUrl}");
 

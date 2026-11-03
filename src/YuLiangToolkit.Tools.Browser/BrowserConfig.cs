@@ -74,6 +74,19 @@ public sealed class BrowserConfig : ToolConfig
             changed = true;
         }
 
+        // 旧版本调试 / 测试留下的 data: / about: 页面不当作「上次页面」恢复（否则一打开就进测试页）
+        if (!string.IsNullOrWhiteSpace(config.LastPage))
+        {
+            var last = config.LastPage.Trim();
+            if (last.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
+                || last.StartsWith("about:", StringComparison.OrdinalIgnoreCase)
+                || last.StartsWith("javascript:", StringComparison.OrdinalIgnoreCase))
+            {
+                config.LastPage = "";
+                changed = true;
+            }
+        }
+
         return changed;
     }
 }
