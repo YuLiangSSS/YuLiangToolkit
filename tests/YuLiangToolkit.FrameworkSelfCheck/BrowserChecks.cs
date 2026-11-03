@@ -24,6 +24,7 @@ internal static class BrowserChecks
         CheckHistory(check);
         CheckDownloads(check);
         CheckBookmarks(check);
+        CheckResources(check);
         CheckConfig(check);
     }
 
@@ -427,6 +428,84 @@ internal static class BrowserChecks
             saved && loaded.Count == 2
             && loaded[0].Url == "https://bookmark-a.com/" && loaded[0].Title == "A",
             $"{loaded.Count} 个");
+    }
+
+    // ---------------------------------------------------------------- 资源嗅探
+
+    private static void CheckResources(Action<string, bool, string> check)
+    {
+        check("[浏览器] 资源嗅探：MIME 优先判断图片 / 音频 / 视频",
+            BrowserResources.DetectKind("image/png", "https://x/a") == BrowserResourceKind.Image
+            && BrowserResources.DetectKind("audio/mpeg", "https://x/a") == BrowserResourceKind.Audio
+            && BrowserResources.DetectKind("video/mp4", "https://x/a") == BrowserResourceKind.Video,
+            "image/png · audio/mpeg · video/mp4");
+
+        check("[浏览器] 资源嗅探：mime 缺失时按扩展名判断（忽略 query / fragment）",
+            BrowserResources.DetectKind(null, "https://x/a.JPG?w=1") == BrowserResourceKind.Image
+            && BrowserResources.DetectKind("", "https://x/a.mp3#t=1") == BrowserResourceKind.Audio
+            && BrowserResources.DetectKind(null, "https://x/a.webm") == BrowserResourceKind.Video
+            && BrowserResources.DetectKind(null, "https://x/a.m3u8?token=1") == BrowserResourceKind.Video,
+            "JPG / mp3 / webm / m3u8");
+
+        check("[浏览器] 资源嗅探：HLS / DASH 清单按视频处理；普通网页 / 脚本不算媒体",
+            BrowserResources.DetectKind("application/vnd.apple.mpegurl", "https://x/live") == BrowserResourceKind.Video
+            && BrowserResources.DetectKind("application/dash+xml", "https://x/live") == BrowserResourceKind.Video
+            && BrowserResources.DetectKind("text/html", "https://x/page") is null
+            && BrowserResources.DetectKind("application/javascript", "https://x/a.js") is null,
+            "hls / dash / html / js");
+
+        check("[浏览器] 资源嗅探：只收 http / https / file，data: / blob: / about: 跳过",
+            BrowserResources.IsSupportedUrl("https://x/a.png")
+            && BrowserResources.IsSupportedUrl("file:///C:/a.png")
+            && !BrowserResources.IsSupportedUrl("data:image/png;base64,AAAA")
+            && !BrowserResources.IsSupportedUrl("blob:https://x/123")
+            && !BrowserResources.IsSupportedUrl("about:blank")
+            && !BrowserResources.IsSupportedUrl(""),
+            "http / file / data / blob / about / 空");
+
+        check("[浏览器] 资源嗅探：显示名优先 URL 文件名（URL 解码），没有文件名用主机",
+            BrowserResources.GetDisplayName("https://cdn.x.com/a/b/foo%20bar.png?q=1") == "foo bar.png"
+            && BrowserResources.GetDisplayName("https://x.com/live") == "live"
+            && BrowserResources.GetDisplayName("https://x.com/") == "x.com",
+            BrowserResources.GetDisplayName("https://cdn.x.com/a/b/foo%20bar.png?q=1"));
+
+        var list = new List<BrowserResource>();
+        var first = new BrowserResource { Url = "https://x.com/a.png", Kind = BrowserResourceKind.Image };
+        check("[浏览器] 资源嗅探：新条目插到最前面、同址不重复插",
+            BrowserResources.Merge(list, first)
+            && BrowserResources.Merge(list, new BrowserResource { Url = "https://x.com/b.mp3" })
+            && list.Count == 2 && list[0].Url == "https://x.com/b.mp3"
+            && !BrowserResources.Merge(list, new BrowserResource { Url = "https://x.com/a.png" })
+            && !BrowserResources.Merge(list, new BrowserResource { Url = "https://x.com/favicon.ico" })
+            && list.Count == 2,
+            string.Join(" | ", list.Select(r => r.Url)));
+
+        var merged = new BrowserResource
+        {
+            Url = "https://x.com/a.png",
+            MimeType = "image/png",
+            SizeBytes = 1234,
+            Width = 800,
+            Height = 600,
+            RequestId = "42",
+            Title = "A",
+            Source = "network",
+        };
+        BrowserResources.Merge(list, merged);
+        var existing = list.First(r => r.Url == "https://x.com/a.png");
+        check("[浏览器] 资源嗅探：同址用新信息补全 mime / 大小 / 尺寸 / requestId",
+            existing.MimeType == "image/png" && existing.SizeBytes == 1234
+            && existing.Width == 800 && existing.Height == 600 && existing.RequestId == "42"
+            && existing.DisplayName == "a.png" && existing.KindText == "图片",
+            $"{existing.MimeType} · {existing.SizeText} · {existing.DimensionText}");
+
+        var many = new List<BrowserResource>();
+        for (var i = 0; i < BrowserResources.MaxEntries + 5; i++)
+            BrowserResources.Merge(many, new BrowserResource { Url = $"https://x.com/{i}.png" });
+        check($"[浏览器] 资源嗅探：每个标签最多保留 {BrowserResources.MaxEntries} 条",
+            many.Count == BrowserResources.MaxEntries
+            && many[0].Url == $"https://x.com/{BrowserResources.MaxEntries + 4}.png",
+            many.Count.ToString());
     }
 
     // ---------------------------------------------------------------- 配置 / 旧配置迁移

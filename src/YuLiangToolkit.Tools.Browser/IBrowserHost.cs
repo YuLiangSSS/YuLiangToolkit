@@ -36,6 +36,18 @@ public interface IBrowserHost
     /// </summary>
     void SetZoom(double factor);
 
+    /// <summary>
+    /// 在当前页跑一次网页内爬虫（DOM 图片 / 视频 / 音频 + CSS 背景 + performance 资源），
+    /// 把结果合并进激活标签的资源列表并同步给 ViewModel。
+    /// </summary>
+    Task SniffCurrentPageAsync();
+
+    /// <summary>
+    /// 读取某个嗅探资源的字节（保存用）：优先用 CDP 的 <c>Network.getResponseBody</c> 取原始响应体
+    /// （带登录态 / 不受 CORS 限制），拿不到再退回带 Cookie 的 HttpClient。失败返回 null。
+    /// </summary>
+    Task<byte[]?> ReadResourceBytesAsync(BrowserResource resource);
+
     /// <summary>释放内核（工具被切换走 / 关闭时调用；可重复调用）。</summary>
     void Close();
 }

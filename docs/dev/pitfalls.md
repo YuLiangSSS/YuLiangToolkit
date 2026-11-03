@@ -325,6 +325,7 @@
 - 齿轮菜单用 `Popup`（独立顶层 HWND）：`YLT_SHOT` 的 `RenderTargetBitmap` 截图**抓不到**，要验证只能用屏幕截图 / `PrintWindow`（调试钩子 `YLT_BROWSER_GEAR_TEST=1`）。
 - **自定义右键菜单里执行 Chromium 默认命令**：从 `ContextMenuRequested` 的 `MenuItems` 里按内部 `Name`（`saveImageAs` / `copyImageLocation` / `saveLinkAs` …）找到 `CommandId`，菜单项点击时设 `args.SelectedCommandId`，等菜单 `Closed` 后 `Complete` deferral，原生保存对话框才会起来（v0.64.0 实测「图片另存为」能弹系统对话框；**别在没弹菜单时直接设 SelectedCommandId**，实测不会执行）。
 - **浏览数据放 `Data\browser\`，别放 `Cache`**：历史 `history.json`、下载记录 `downloads.json`、书签 `bookmarks.json` 都是用户数据，放 Cache 会被「清理缓存」清掉；只有 WebView2 的 Cookie / 网页缓存才放 `Cache\browser\WebView2`（v0.65.0 起书签也是 Data）。
+- **资源嗅探用 CDP 而不是 WebResourceRequested**（v0.67.0）：每个标签的 core 都要 `GetDevToolsProtocolEventReceiver("Network.responseReceived")` + `CallDevToolsProtocolMethodAsync("Network.enable", "{}")`；`WebResourceRequested` 只有请求头没有 mime / 大小，分辨不出图片音频视频。响应用 `Network.loadingFinished.encodedDataLength` 补 chunked 响应缺失的大小；保存原始字节用 `Network.getResponseBody`（带登录态 / 不受 CORS 限制），body 被淘汰时再退回带 Cookie / UA / Referer 的 `HttpClient`。`data:` / `blob:` 内联图标和 `favicon.ico` 必须过滤，否则一个带播放器的页面能刷出几百条 base64 假资源。
 
 ### 网络与 Flash 站点解析
 - 判越界别用 `Contains("..")`：先 `Path.GetFullPath` 再比前缀（`SafeCombine`）。

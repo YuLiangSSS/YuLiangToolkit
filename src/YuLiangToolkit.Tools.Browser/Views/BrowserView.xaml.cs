@@ -1,5 +1,8 @@
 using System.Collections.Specialized;
 using System.IO;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -39,6 +42,9 @@ public partial class BrowserView : UserControl, IBrowserHost
     /// <summary>进行中的下载（项 → WebView2 下载操作 + 所属标签；结束 / 关标签时从字典摘掉）。</summary>
     private readonly Dictionary<BrowserDownloadItem, (CoreWebView2DownloadOperation Operation, BrowserTab Tab)>
         _downloadOps = new();
+
+    /// <summary>每个标签嗅探到的资源（网络 + 爬虫；只保留内存，换页 / 重开浏览器重新嗅）。</summary>
+    private readonly Dictionary<BrowserTab, List<BrowserResource>> _resources = new();
 
     private CoreWebView2Environment? _environment;
     private bool _initializing;
@@ -143,7 +149,11 @@ public partial class BrowserView : UserControl, IBrowserHost
         vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName != nameof(BrowserViewModel.ActiveTab)) return;
-            Safe(() => _ = EnsureActiveTabCoreAsync());
+            Safe(() =>
+            {
+                SyncResourcesToVm();
+                _ = EnsureActiveTabCoreAsync();
+            });
         };
         vm.Tabs.CollectionChanged += (_, e) =>
         {
@@ -254,6 +264,7 @@ public partial class BrowserView : UserControl, IBrowserHost
     private void DisposeTabWebView(BrowserTab tab)
     {
         FinishDownloadsOfTab(tab);
+        _resources.Remove(tab);
         if (!_webViews.Remove(tab, out var webView)) return;
         Trace($"dispose-core tab#{tab.Id}");
         try { WebHost.Children.Remove(webView); } catch { /* 释放流程忽略 */ }
@@ -282,6 +293,7 @@ public partial class BrowserView : UserControl, IBrowserHost
             try { webView.Dispose(); } catch { /* 释放流程忽略 */ }
         }
         _webViews.Clear();
+        _resources.Clear();
     }
 
     private void ShowStartupError(string message)
@@ -355,6 +367,227 @@ public partial class BrowserView : UserControl, IBrowserHost
         core.DownloadStarting += (_, e) => Safe(() => BeginDownload(e, tab));
         core.ProcessFailed += (_, e) => Safe(() =>
             Vm?.OnCoreError($"浏览器内核异常（{e.ProcessFailedKind}），切走再切回这个工具可重启内核。"));
+
+        ConfigureSniffer(core, tab);
+    }
+
+    // ---------- 资源嗅探（CDP Network + 网页内爬虫） ----------
+
+    /// <summary>
+    /// 用 CDP 的 <c>Network.responseReceived</c> 抓当前标签所有响应（图片 / 音频 / 视频的准确 mime、大小、
+    /// requestId）；<c>Network.getResponseBody</c> 之后可以取原始字节保存，带 Cookie / 不受 CORS 限制。
+    /// </summary>
+    private void ConfigureSniffer(CoreWebView2 core, BrowserTab tab)
+    {
+        try
+        {
+            var receiver = core.GetDevToolsProtocolEventReceiver("Network.responseReceived");
+            receiver.DevToolsProtocolEventReceived += (_, e) =>
+                Safe(() => OnNetworkResponse(tab, e.ParameterObjectAsJson));
+
+            var finishedReceiver = core.GetDevToolsProtocolEventReceiver("Network.loadingFinished");
+            finishedReceiver.DevToolsProtocolEventReceived += (_, e) =>
+                Safe(() => OnNetworkLoadingFinished(tab, e.ParameterObjectAsJson));
+
+            _ = core.CallDevToolsProtocolMethodAsync("Network.enable", "{}");
+            Trace($"sniffer-enabled tab#{tab.Id}");
+        }
+        catch (Exception ex)
+        {
+            Trace("sniffer-enable-failed", ex);
+        }
+    }
+
+    /// <summary>CDP <c>Network.responseReceived</c>：只留图片 / 音频 / 视频，合并进该标签的资源列表。</summary>
+    private void OnNetworkResponse(BrowserTab tab, string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        if (!root.TryGetProperty("response", out var response)) return;
+
+        var url = response.TryGetProperty("url", out var urlEl) ? urlEl.GetString() : null;
+        if (string.IsNullOrWhiteSpace(url)) return;
+        // data:/blob: 内联图标不算资源；favicon 是浏览器自己的请求，也过滤掉
+        if (!BrowserResources.IsSupportedUrl(url)) return;
+        if (url.Contains("favicon.ico", StringComparison.OrdinalIgnoreCase)) return;
+        var mime = response.TryGetProperty("mimeType", out var mimeEl) ? mimeEl.GetString() ?? "" : "";
+        var kind = BrowserResources.DetectKind(mime, url);
+        if (kind is null) return;
+
+        var status = response.TryGetProperty("status", out var statusEl) && statusEl.TryGetDouble(out var code)
+            ? (int)code
+            : 200;
+        if (status is < 200 or >= 400) return;
+
+        var requestId = root.TryGetProperty("requestId", out var requestEl) ? requestEl.GetString() ?? "" : "";
+        var size = response.TryGetProperty("contentLength", out var lengthEl)
+                   && lengthEl.TryGetDouble(out var length) ? (long)length : 0;
+
+        var resource = new BrowserResource
+        {
+            Url = url,
+            Kind = kind.Value,
+            MimeType = mime,
+            SizeBytes = size,
+            Source = "network",
+            RequestId = requestId,
+            FoundAt = DateTime.Now,
+        };
+        var list = GetResources(tab);
+        if (BrowserResources.Merge(list, resource))
+        {
+            Trace($"sniff-network {resource.KindText} {url} ({resource.SizeText})");
+            if (ReferenceEquals(tab, Vm?.ActiveTab)) Vm?.AddResource(resource);
+        }
+    }
+
+    /// <summary>CDP <c>Network.loadingFinished</c>：补上 chunked 响应拿不到的大小（按 requestId 对上资源）。</summary>
+    private void OnNetworkLoadingFinished(BrowserTab tab, string json)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        var requestId = root.TryGetProperty("requestId", out var idEl) ? idEl.GetString() : null;
+        if (string.IsNullOrWhiteSpace(requestId)) return;
+        if (!root.TryGetProperty("encodedDataLength", out var lengthEl) || !lengthEl.TryGetDouble(out var length))
+            return;
+        if (length <= 0) return;
+
+        var list = GetResources(tab);
+        foreach (var resource in list)
+        {
+            if (!string.Equals(resource.RequestId, requestId, StringComparison.Ordinal)) continue;
+            resource.SizeBytes = (long)length;
+            return;
+        }
+    }
+
+    /// <summary>当前页跑一次网页内爬虫，把 DOM / CSS 背景 / performance 里的媒体资源补进列表。</summary>
+    public async Task SniffCurrentPageAsync()
+    {
+        var vm = Vm;
+        var core = ActiveCore;
+        var tab = vm?.ActiveTab;
+        if (vm is null || core is null || tab is null) return;
+
+        try
+        {
+            var json = await core.ExecuteScriptAsync(BrowserResources.CrawlScript);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return;
+
+            var list = GetResources(tab);
+            foreach (var item in doc.RootElement.EnumerateArray())
+            {
+                var url = item.TryGetProperty("url", out var urlEl) ? urlEl.GetString() : null;
+                if (string.IsNullOrWhiteSpace(url)) continue;
+
+                var kindText = item.TryGetProperty("kind", out var kindEl) ? kindEl.GetString() : null;
+                var kind = kindText switch
+                {
+                    "image" => BrowserResourceKind.Image,
+                    "audio" => BrowserResourceKind.Audio,
+                    "video" => BrowserResourceKind.Video,
+                    _ => BrowserResources.DetectKind(null, url),
+                };
+                if (kind is null) continue;
+
+                var width = item.TryGetProperty("width", out var widthEl) && widthEl.TryGetInt32(out var w) ? w : 0;
+                var height = item.TryGetProperty("height", out var heightEl) && heightEl.TryGetInt32(out var h) ? h : 0;
+                var title = item.TryGetProperty("title", out var titleEl) ? titleEl.GetString() ?? "" : "";
+
+                BrowserResources.Merge(list, new BrowserResource
+                {
+                    Url = url,
+                    Kind = kind.Value,
+                    Width = width,
+                    Height = height,
+                    Title = title,
+                    Source = "page",
+                    FoundAt = DateTime.Now,
+                });
+            }
+
+            Trace($"sniff-page tab#{tab.Id} total={list.Count}");
+            SyncResourcesToVm(tab);
+            vm.StatusText = list.Count == 0
+                ? "没有嗅探到图片 / 音频 / 视频（页面可能是 canvas / blob 流）"
+                : $"资源嗅探：{list.Count} 项";
+        }
+        catch (Exception ex)
+        {
+            Trace("sniff-page-failed", ex);
+        }
+    }
+
+    /// <summary>
+    /// 读取嗅探资源的原始字节：优先 CDP 的 <c>Network.getResponseBody</c>（带登录态、不受 CORS 限制），
+    /// 拿不到再退回带 Cookie / User-Agent / Referer 的 HttpClient。
+    /// </summary>
+    public async Task<byte[]?> ReadResourceBytesAsync(BrowserResource resource)
+    {
+        var core = ActiveCore;
+        if (core is null || resource is null || string.IsNullOrWhiteSpace(resource.Url)) return null;
+
+        if (!string.IsNullOrWhiteSpace(resource.RequestId))
+        {
+            try
+            {
+                var args = JsonSerializer.Serialize(new { requestId = resource.RequestId });
+                var bodyJson = await core.CallDevToolsProtocolMethodAsync("Network.getResponseBody", args);
+                using var doc = JsonDocument.Parse(bodyJson);
+                if (doc.RootElement.TryGetProperty("body", out var bodyEl))
+                {
+                    var body = bodyEl.GetString();
+                    var isBase64 = doc.RootElement.TryGetProperty("base64Encoded", out var base64El)
+                                   && base64El.ValueKind == JsonValueKind.True;
+                    if (body is not null)
+                    {
+                        return isBase64 ? Convert.FromBase64String(body) : Encoding.UTF8.GetBytes(body);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Trace("resource-body-cdp-failed", ex);
+            }
+        }
+
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            var cookies = await core.CookieManager.GetCookiesAsync(resource.Url);
+            var cookieHeader = string.Join("; ", cookies.Select(cookie => $"{cookie.Name}={cookie.Value}"));
+            if (cookieHeader.Length > 0)
+                http.DefaultRequestHeaders.TryAddWithoutValidation("Cookie", cookieHeader);
+            if (!string.IsNullOrWhiteSpace(core.Settings.UserAgent))
+                http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", core.Settings.UserAgent);
+            if (Uri.TryCreate(Vm?.ActiveTab?.Url, UriKind.Absolute, out var referer))
+                http.DefaultRequestHeaders.Referrer = referer;
+
+            var bytes = await http.GetByteArrayAsync(resource.Url);
+            Trace($"resource-body-http {resource.Url} {bytes.Length} bytes");
+            return bytes;
+        }
+        catch (Exception ex)
+        {
+            Trace("resource-body-http-failed", ex);
+            return null;
+        }
+    }
+
+    private List<BrowserResource> GetResources(BrowserTab tab)
+    {
+        if (_resources.TryGetValue(tab, out var list)) return list;
+        list = new List<BrowserResource>();
+        _resources[tab] = list;
+        return list;
+    }
+
+    private void SyncResourcesToVm(BrowserTab? tab = null)
+    {
+        tab ??= Vm?.ActiveTab;
+        if (tab is null) return;
+        Vm?.SetResources(GetResources(tab));
     }
 
     /// <summary>页面缩放变化（Ctrl+滚轮 / Ctrl+加减 / 站点记忆缩放）：回写到标签与工具条。</summary>
@@ -848,6 +1081,12 @@ public partial class BrowserView : UserControl, IBrowserHost
         Vm?.ShowBookmarksPanel();
     }
 
+    private void OnGearResourcesClick(object sender, RoutedEventArgs e)
+    {
+        GearPopup.IsOpen = false;
+        Vm?.ShowResourcesPanel();
+    }
+
     /// <summary>点历史记录条目：打开 (当前标签)；侧栏保持打开，方便继续翻。</summary>
     private void OnHistoryListSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
@@ -905,6 +1144,8 @@ public partial class BrowserView : UserControl, IBrowserHost
                     vm.ShowDownloadsPanel();
                 else if (panel.Trim().StartsWith("bookmark", StringComparison.OrdinalIgnoreCase))
                     vm.ShowBookmarksPanel();
+                else if (panel.Trim().StartsWith("resource", StringComparison.OrdinalIgnoreCase))
+                    vm.ShowResourcesPanel();
                 else
                     vm.ShowHistoryPanel();
             });

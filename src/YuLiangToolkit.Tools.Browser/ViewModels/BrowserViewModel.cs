@@ -5,6 +5,7 @@ using System.IO;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
+using Microsoft.Win32;
 using YuLiangToolkit.Core.Mvvm;
 
 namespace YuLiangToolkit.Tools.Browser.ViewModels;
@@ -26,6 +27,7 @@ public sealed class BrowserViewModel : ToolViewModelBase
         History,
         Downloads,
         Bookmarks,
+        Resources,
     }
 
     private readonly BrowserHistoryStore _historyStore;
@@ -97,6 +99,7 @@ public sealed class BrowserViewModel : ToolViewModelBase
         ShowHistoryCommand = new RelayCommand(_ => ShowHistoryPanel());
         ShowDownloadsCommand = new RelayCommand(_ => ShowDownloadsPanel());
         ShowBookmarksCommand = new RelayCommand(_ => ShowBookmarksPanel());
+        ShowResourcesCommand = new RelayCommand(_ => ShowResourcesPanel());
         CloseSidePanelCommand = new RelayCommand(_ => CloseSidePanel());
         ClearHistoryCommand = new RelayCommand(_ => ClearHistory(), _ => History.Count > 0);
 
@@ -105,6 +108,12 @@ public sealed class BrowserViewModel : ToolViewModelBase
         OpenBookmarkCommand = new RelayCommand(p => OpenBookmark(p as BrowserBookmark));
         OpenBookmarkInNewTabCommand = new RelayCommand(p => OpenBookmarkInNewTab(p as BrowserBookmark));
         RemoveBookmarkCommand = new RelayCommand(p => RemoveBookmark(p as BrowserBookmark));
+
+        // 资源嗅探：网络嗅探由 View 自动做，这里负责面板 / 重新爬 / 打开 / 保存
+        RefreshResourcesCommand = new AsyncRelayCommand(_ => RefreshResourcesAsync());
+        OpenResourceCommand = new RelayCommand(p => OpenResource(p as BrowserResource));
+        CopyResourceUrlCommand = new RelayCommand(p => CopyResourceUrl(p as BrowserResource));
+        DownloadResourceCommand = new AsyncRelayCommand(p => DownloadResourceAsync(p as BrowserResource));
 
         // 下载项上的操作（列表按钮用 CommandParameter 把 item 传进来）
         OpenDownloadFileCommand = new RelayCommand(p => OpenDownloadFile(p as BrowserDownloadItem));
@@ -234,7 +243,10 @@ public sealed class BrowserViewModel : ToolViewModelBase
     public bool IsCurrentPageBookmarked
         => ActiveTab is { } tab && BrowserBookmarks.ContainsUrl(Bookmarks, tab.Url);
 
-    // ---------- 侧栏（历史记录 / 下载 / 书签） ----------
+    /// <summary>当前激活标签嗅探到的图片 / 音频 / 视频（每次浏览临时结果，不落盘）。</summary>
+    public ObservableCollection<BrowserResource> Resources { get; } = new();
+
+    // ---------- 侧栏（历史记录 / 下载 / 书签 / 资源嗅探） ----------
 
     /// <summary>右侧面板是否打开（打开后网页区域收窄，面板宽度可拖拽记忆）。</summary>
     public bool IsSidePanelOpen
@@ -252,6 +264,9 @@ public sealed class BrowserViewModel : ToolViewModelBase
     /// <summary>侧栏当前显示书签。</summary>
     public bool IsBookmarksPanel => _sidePanelMode == SidePanelMode.Bookmarks;
 
+    /// <summary>侧栏当前显示资源嗅探结果。</summary>
+    public bool IsResourcesPanel => _sidePanelMode == SidePanelMode.Resources;
+
     private void SetSidePanelMode(SidePanelMode mode)
     {
         if (_sidePanelMode == mode) return;
@@ -259,6 +274,7 @@ public sealed class BrowserViewModel : ToolViewModelBase
         OnPropertyChanged(nameof(IsHistoryPanel));
         OnPropertyChanged(nameof(IsDownloadsPanel));
         OnPropertyChanged(nameof(IsBookmarksPanel));
+        OnPropertyChanged(nameof(IsResourcesPanel));
     }
 
     // ---------- 主页 / 启动设置 ----------
@@ -316,6 +332,7 @@ public sealed class BrowserViewModel : ToolViewModelBase
     public RelayCommand ShowHistoryCommand { get; }
     public RelayCommand ShowDownloadsCommand { get; }
     public RelayCommand ShowBookmarksCommand { get; }
+    public RelayCommand ShowResourcesCommand { get; }
     public RelayCommand CloseSidePanelCommand { get; }
     public RelayCommand ClearHistoryCommand { get; }
 
@@ -323,6 +340,11 @@ public sealed class BrowserViewModel : ToolViewModelBase
     public RelayCommand OpenBookmarkCommand { get; }
     public RelayCommand OpenBookmarkInNewTabCommand { get; }
     public RelayCommand RemoveBookmarkCommand { get; }
+
+    public AsyncRelayCommand RefreshResourcesCommand { get; }
+    public RelayCommand OpenResourceCommand { get; }
+    public RelayCommand CopyResourceUrlCommand { get; }
+    public AsyncRelayCommand DownloadResourceCommand { get; }
 
     public RelayCommand OpenDownloadFileCommand { get; }
     public RelayCommand OpenDownloadFolderCommand { get; }
@@ -496,6 +518,13 @@ public sealed class BrowserViewModel : ToolViewModelBase
         StatusText = Bookmarks.Count == 0 ? "还没有收藏（点地址栏右边的 ☆ 收藏当前页）" : $"书签：{Bookmarks.Count} 个";
     }
 
+    internal void ShowResourcesPanel()
+    {
+        SetSidePanelMode(SidePanelMode.Resources);
+        IsSidePanelOpen = true;
+        _ = RefreshResourcesAsync();
+    }
+
     internal void CloseSidePanel()
     {
         IsSidePanelOpen = false;
@@ -562,6 +591,94 @@ public sealed class BrowserViewModel : ToolViewModelBase
     }
 
     private void SaveBookmarks() => _bookmarkStore.Save(Bookmarks);
+
+    // ---------- 资源嗅探 ----------
+
+    /// <summary>View 切标签时把该标签的资源列表同步过来。</summary>
+    internal void SetResources(IEnumerable<BrowserResource>? resources)
+    {
+        Resources.Clear();
+        if (resources is null) return;
+        foreach (var resource in resources) Resources.Add(resource);
+    }
+
+    /// <summary>网络嗅探实时新增一条（同址去重 / 补全由 <see cref="BrowserResources.Merge"/> 处理）。</summary>
+    internal void AddResource(BrowserResource? resource)
+    {
+        if (resource is null) return;
+        BrowserResources.Merge(Resources, resource);
+    }
+
+    /// <summary>重新在当前页跑爬虫（DOM / CSS 背景 / performance 资源），把结果合并进侧栏。</summary>
+    private async Task RefreshResourcesAsync()
+    {
+        if (Host is null)
+        {
+            StatusText = "浏览器内核还在启动…";
+            return;
+        }
+        StatusText = "正在嗅探当前页…";
+        await Host.SniffCurrentPageAsync();
+        StatusText = Resources.Count == 0
+            ? "没有嗅探到图片 / 音频 / 视频（页面可能是 canvas / blob 流）"
+            : $"资源嗅探：{Resources.Count} 项";
+    }
+
+    private void OpenResource(BrowserResource? resource)
+    {
+        if (resource is null || string.IsNullOrWhiteSpace(resource.Url)) return;
+        OpenTab(resource.Url);
+        StatusText = $"在新标签页打开资源：{resource.DisplayName}";
+    }
+
+    private void CopyResourceUrl(BrowserResource? resource)
+    {
+        if (resource is null || string.IsNullOrWhiteSpace(resource.Url)) return;
+        CopyTextToClipboard(resource.Url);
+        StatusText = "资源地址已复制";
+    }
+
+    /// <summary>保存嗅探资源：先让 View 取原始字节（CDP 响应体优先），再弹系统另存为。</summary>
+    private async Task DownloadResourceAsync(BrowserResource? resource)
+    {
+        if (resource is null || Host is null) return;
+        StatusText = $"正在读取资源：{resource.DisplayName}";
+        var bytes = await Host.ReadResourceBytesAsync(resource);
+        if (bytes is null || bytes.Length == 0)
+        {
+            StatusText = "读取资源失败（可能已过期 / 需要登录 / 不允许下载）";
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "保存嗅探到的资源",
+            FileName = resource.DisplayName,
+            Filter = "所有文件|*.*",
+            AddExtension = false,
+        };
+        if (dialog.ShowDialog() != true)
+        {
+            StatusText = "已取消保存";
+            return;
+        }
+
+        try
+        {
+            await File.WriteAllBytesAsync(dialog.FileName, bytes);
+            StatusText = $"已保存：{dialog.FileName}";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"保存失败：{ex.Message}";
+        }
+    }
+
+    private static void CopyTextToClipboard(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        try { Clipboard.SetText(text); } catch { /* 剪贴板被占用忽略 */ }
+    }
 
     /// <summary>点击历史记录：在当前标签打开（和 Chrome 的侧栏行为一致），侧栏保持打开。</summary>
     internal void OpenHistoryEntry(BrowserHistoryEntry? entry)

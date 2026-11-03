@@ -268,6 +268,15 @@
             </Style.Triggers>
         </Style>
 
+        <Style x:Key="PanelResourcesTabStyle" TargetType="Button" BasedOn="{StaticResource PanelTabButtonStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsResourcesPanel}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource CardHoverBackgroundBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
         <!-- 书签一行的「打开」按钮：透明铺满左侧，悬停才亮底色 -->
         <Style x:Key="BookmarkOpenButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent" />
@@ -318,6 +327,46 @@
                     <Button Content="&#xE711;" Style="{StaticResource TabMiniButtonStyle}"
                             ToolTip="删除这个书签"
                             Command="{Binding DataContext.RemoveBookmarkCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            CommandParameter="{Binding}" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
+        <!-- 嗅探资源一行：文件名 / 类型 / 大小 / 尺寸 / 地址 + 打开 / 下载 / 复制 -->
+        <DataTemplate x:Key="ResourceItemTemplate">
+            <Grid Margin="2,4">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="{Binding DisplayName}" FontSize="12" TextTrimming="CharacterEllipsis"
+                           Foreground="{DynamicResource TextPrimaryBrush}" ToolTip="{Binding Url}" />
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,2,0,0">
+                    <TextBlock Text="{Binding KindGlyph}" FontSize="11" />
+                    <TextBlock Text="{Binding KindText}" FontSize="10.5" Margin="4,0,0,0"
+                               Foreground="{DynamicResource AccentBrush}" />
+                    <TextBlock Text="{Binding SizeText}" FontSize="10.5" Margin="8,0,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Text="{Binding DimensionText}" FontSize="10.5" Margin="8,0,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+                <TextBlock Grid.Row="2" Text="{Binding Url}" FontSize="10" Margin="0,2,0,0"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{DynamicResource TextSecondaryBrush}" ToolTip="{Binding Url}" />
+                <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,4,0,0">
+                    <Button Content="打开" Style="{StaticResource PanelSmallButtonStyle}" Width="54"
+                            ToolTip="在新标签页打开"
+                            Command="{Binding DataContext.OpenResourceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            CommandParameter="{Binding}" />
+                    <Button Content="下载" Style="{StaticResource PanelSmallButtonStyle}" Width="54"
+                            ToolTip="读取原始字节并另存为"
+                            Command="{Binding DataContext.DownloadResourceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            CommandParameter="{Binding}" />
+                    <Button Content="复制" Style="{StaticResource PanelSmallButtonStyle}" Width="54"
+                            ToolTip="复制资源地址"
+                            Command="{Binding DataContext.CopyResourceUrlCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                             CommandParameter="{Binding}" />
                 </StackPanel>
             </Grid>
@@ -574,7 +623,7 @@
                                        Key="browser.网页与侧栏"
                                        Visibility="{Binding IsSidePanelOpen, Converter={StaticResource BoolToVis}}" />
 
-                    <!-- 右侧面板：历史记录 / 下载 / 书签 -->
+                    <!-- 右侧面板：历史记录 / 下载 / 书签 / 资源嗅探 -->
                     <Border Grid.Column="2" Background="{DynamicResource SidebarBackgroundBrush}"
                             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1,0,0,0"
                             Visibility="{Binding IsSidePanelOpen, Converter={StaticResource BoolToVis}}">
@@ -596,6 +645,8 @@
                                             Command="{Binding ShowDownloadsCommand}" />
                                     <Button Content="书签" Style="{StaticResource PanelBookmarksTabStyle}"
                                             Command="{Binding ShowBookmarksCommand}" />
+                                    <Button Content="资源" Style="{StaticResource PanelResourcesTabStyle}"
+                                            Command="{Binding ShowResourcesCommand}" />
                                 </StackPanel>
                                 <Button Grid.Column="1" Content="&#xE711;" ToolTip="关闭面板"
                                         Style="{StaticResource TabMiniButtonStyle}"
@@ -672,6 +723,40 @@
                                         </TextBlock.Style>
                                     </TextBlock>
                                 </Grid>
+
+                                <!-- 资源嗅探（图片 / 音频 / 视频） -->
+                                <Grid Visibility="{Binding IsResourcesPanel, Converter={StaticResource BoolToVis}}">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+                                    <Button Grid.Row="0" Content="🔍 重新嗅探当前页"
+                                            Style="{StaticResource PanelSmallButtonStyle}"
+                                            HorizontalAlignment="Left" Margin="0,0,0,6"
+                                            ToolTip="先跑网页内爬虫（DOM / 背景图 / performance），网络请求由内核自动抓"
+                                            Command="{Binding RefreshResourcesCommand}" />
+                                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled"
+                                                  core:ScrollChaining.Enabled="True">
+                                        <ItemsControl ItemsSource="{Binding Resources}"
+                                                      ItemTemplate="{StaticResource ResourceItemTemplate}" />
+                                    </ScrollViewer>
+                                    <TextBlock Grid.Row="1" Text="还没有嗅探到资源&#x0a;（图片 / 音频 / 视频；点上面重新嗅探）"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               TextAlignment="Center" FontSize="12"
+                                               Foreground="{DynamicResource TextSecondaryBrush}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Resources.Count}" Value="0">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
                             </Grid>
                         </Grid>
                     </Border>
@@ -738,6 +823,8 @@
                                 Click="OnGearDownloadsClick" />
                         <Button Content="🔖 书签" Style="{StaticResource FlyoutActionButtonStyle}"
                                 Click="OnGearBookmarksClick" />
+                        <Button Content="🧲 资源嗅探" Style="{StaticResource FlyoutActionButtonStyle}"
+                                Click="OnGearResourcesClick" />
                         <Button Content="🗑 清空浏览记录" Style="{StaticResource FlyoutActionButtonStyle}"
                                 Command="{Binding ClearHistoryCommand}" />
                     </WrapPanel>
