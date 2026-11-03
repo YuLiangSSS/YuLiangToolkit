@@ -5,11 +5,14 @@
 //   不带参数 / --all = 跑全部分组；加 -- --list 列出所有分组。
 // （默认在临时目录里造数据根，不碰仓库的 Data/Config；退出码 0 = 本次跑的分组全部通过）
 using System.IO;
+using System.IO.Compression;
+using System.Text;
 using System.Windows;
 using System.Windows.Media;
 using YuLiangToolkit.App.Models;
 using YuLiangToolkit.App.ViewModels;
 using YuLiangToolkit.Core.Configuration;
+using YuLiangToolkit.Core.Documents;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Core.Services;
 using YuLiangToolkit.Core.Storage;
@@ -43,6 +46,8 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("browser", "网页浏览器：地址栏解析 / 主机识别 / 搜索模板 / 标签栏规则与会话恢复 / 配置默认值"),
     ("text-editor", "文本编辑器：编码探测 / 换行风格 / 查找替换 / 标签规则 / 高亮调色 / 配置默认值"),
     ("audio-tools", "音频工具：视频转音频 / 分段合成（自然排序 / concat 清单 / FFmpeg 参数）"),
+    ("word-viewer", "Word 阅读器：docx 解析（段落 / 格式 / 表格 / 图片 / 大纲）/ 查找 / 最近列表"),
+    ("excel-viewer", "Excel 阅读器：xlsx 解析（共享字符串 / 样式 / 合并 / 列宽 / 截断）/ 数字格式 / 最近列表"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -279,6 +284,173 @@ Check("LoadWithDefaults 补齐缺失键并落盘",
     seeded.Contains("flag") && seeded.Contains("text") && seededOnDisk?.Count == 2
     && seeded.GetBool("flag") == false,
     seeded.ToJson().Replace(Environment.NewLine, " "));
+
+// ---------- 13.5 OOXML 包轮子（Word / Excel 阅读器共用，见 Core/Documents） ----------
+// 真造一个最小 OOXML 包：正常部件 + 关系（内部图片 / 外部超链接 / 绝对路径）+ 坏 XML + DTD 实体，
+// 断言读取、关系解析、安全解析、单位换算与最近文件列表规则。
+var ooxmlPath = SelfCheckScratch.MakeFile("ooxml-probe.docx");
+try
+{
+    static void AddTextEntry(ZipArchive archive, string name, string text)
+    {
+        var entry = archive.CreateEntry(name);
+        using var stream = entry.Open();
+        using var writer = new StreamWriter(stream, new UTF8Encoding(false));
+        writer.Write(text);
+    }
+
+    using (var archive = ZipFile.Open(ooxmlPath, ZipArchiveMode.Create))
+    {
+        AddTextEntry(archive, "[Content_Types].xml",
+            """<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/></Types>""");
+        AddTextEntry(archive, "word/document.xml",
+            """<?xml version="1.0" encoding="UTF-8"?><document xmlns="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><body><p><r><t>你好 OOXML</t></r></p></body></document>""");
+        AddTextEntry(archive, "word/_rels/document.xml.rels",
+            """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+              <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image1.png" />
+              <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com/a?b=1" TargetMode="External" />
+              <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="/xl/worksheets/sheet1.xml" />
+            </Relationships>
+            """);
+        AddTextEntry(archive, "word/broken.xml", "<foo><bar></foo>");
+        AddTextEntry(archive, "word/dtd.xml",
+            """<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///c:/windows/win.ini">]><foo>&xxe;</foo>""");
+        using (var image = archive.CreateEntry("word/media/image1.png").Open())
+            image.Write(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
+
+        // 用户机器上这个文件可能已经存在（同名探针），这里只写测试内容。
+    }
+
+    // 单位换算：写错会「图片变巨大 / 表格错位」，是最值得钉死的几行。
+    Check("[文档] EMU / twip / 磅 → DIP 换算正确",
+        OoxmlPackage.EmuToDip(914400) == 96
+        && OoxmlPackage.TwipToDip(15) == 1
+        && OoxmlPackage.PointToDip(72) == 96
+        && OoxmlPackage.DipToEmu(96) == 914400
+        && Math.Abs(OoxmlPackage.DipToPoint(96) - 72) < 1e-9,
+        $"{OoxmlPackage.EmuToDip(914400)} / {OoxmlPackage.TwipToDip(15)} / {OoxmlPackage.PointToDip(72)}");
+
+    Check("[文档] 部件名规范化：反斜杠 / 开头斜杠 / 空白",
+        OoxmlPackage.NormalizePartName(@"\word\document.xml") == "word/document.xml"
+        && OoxmlPackage.NormalizePartName("  /word/document.xml  ") == "word/document.xml"
+        && OoxmlPackage.NormalizePartName("") == "",
+        OoxmlPackage.NormalizePartName(@"\word\document.xml"));
+
+    Check("[文档] 关系文件部件名与相对路径解析",
+        OoxmlPackage.GetRelationshipPartName("word/document.xml") == "word/_rels/document.xml.rels"
+        && OoxmlPackage.GetRelationshipPartName("_rels/.rels") == "_rels/_rels/.rels.rels"
+        && OoxmlPackage.ResolvePartPath("word/document.xml", "media/image1.png") == "word/media/image1.png"
+        && OoxmlPackage.ResolvePartPath("word/document.xml", "../media/a.png") == "media/a.png"
+        && OoxmlPackage.ResolvePartPath("word/document.xml", "/word/x.xml") == "word/x.xml"
+        && OoxmlPackage.ResolvePartPath("word/document.xml", "https://x/y") == "https://x/y",
+        "word/document.xml → word/_rels/document.xml.rels");
+
+    using (var package = OoxmlPackage.Open(ooxmlPath))
+    {
+        Check("[文档] 打开 OOXML 包：部件清单 / 存在判断 / 读 XML / 读图片字节",
+            package.PartNames.Contains("word/document.xml")
+            && package.Contains(@"word\document.xml")     // 反斜杠也认
+            && package.ReadXml("word/document.xml").Root?.Name.LocalName == "document"
+            && package.ReadBytes("word/media/image1.png").Length == 8,
+            string.Join(",", package.PartNames));
+
+        var relationships = package.ReadRelationships("word/document.xml");
+        Check("[文档] 关系解析：内部图片 / 外部超链接 / 绝对路径",
+            relationships.Count == 3
+            && relationships.Single(r => r.Id == "rId1") is { IsExternal: false, Target: "word/media/image1.png" }
+            && relationships.Single(r => r.Id == "rId2") is { IsExternal: true, Target: "https://example.com/a?b=1" }
+            && relationships.Single(r => r.Id == "rId3") is { IsExternal: false, Target: "xl/worksheets/sheet1.xml" },
+            string.Join(" | ", relationships.Select(r => $"{r.Id}:{r.Target}")));
+
+        var missingThrew = false;
+        try { package.ReadXml("word/不存在.xml"); }
+        catch (OoxmlException ex) { missingThrew = ex.Message.Contains("不存在"); }
+        Check("[文档] 缺部件时抛中文 OoxmlException", missingThrew);
+
+        var brokenThrew = false;
+        try { package.ReadXml("word/broken.xml"); }
+        catch (OoxmlException) { brokenThrew = true; }
+        Check("[文档] 坏 XML 抛 OoxmlException（不会带病返回）", brokenThrew);
+
+        var dtdThrew = false;
+        try { package.ReadXml("word/dtd.xml"); }
+        catch (OoxmlException) { dtdThrew = true; }
+        Check("[文档] 禁用 DTD / 外部实体（防 XXE）", dtdThrew);
+
+        Check("[文档] TryReadXml：缺部件 / 坏 XML 返回 null（可选部件容错）",
+            package.TryReadXml("word/不存在.xml") is null && package.TryReadXml("word/broken.xml") is null,
+            "");
+    }
+
+    // 释放后再用必须抛 ObjectDisposedException（解析器里 using 写错会踩到）
+    var disposedPackage = OoxmlPackage.Open(ooxmlPath);
+    disposedPackage.Dispose();
+    var disposedThrew = false;
+    try { disposedPackage.Contains("word/document.xml"); }
+    catch (ObjectDisposedException) { disposedThrew = true; }
+    Check("[文档] 释放后再读抛 ObjectDisposedException", disposedThrew);
+
+    // 不是 ZIP 的文件（用户误选了 .doc / .txt）要给出可读错误
+    var fakeDocx = SelfCheckScratch.MakeFile("ooxml-broken.docx");
+    try
+    {
+        File.WriteAllText(fakeDocx, "这不是 ZIP，只是普通文本");
+        var corruptThrew = false;
+        try { OoxmlPackage.Open(fakeDocx); }
+        catch (OoxmlException ex) { corruptThrew = ex.Message.Contains("不是有效的 Office 文档"); }
+        Check("[文档] 非 ZIP 文件抛可读的 OoxmlException", corruptThrew);
+    }
+    finally
+    {
+        try { File.Delete(fakeDocx); } catch { /* 清理失败忽略 */ }
+    }
+
+    // 最近文件列表（Word / Excel 阅读器共用）：去重 / 置顶 / 上限 / 清空 / 文件存在判断
+    var recentProbe = SelfCheckScratch.MakeFile("recent-probe.docx");
+    try
+    {
+        File.WriteAllText(recentProbe, "x");
+        var recent = new List<RecentFileEntry>();
+        var anotherPath = Path.Combine(SelfCheckScratch.Root, "another.xlsx");
+
+        RecentFiles.Remember(recent, recentProbe, 3, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        RecentFiles.Remember(recent, anotherPath, 3);
+        RecentFiles.Remember(recent, recentProbe.ToUpperInvariant(), 3);   // 同一路径换大小写 = 去重
+        Check("[文档] 最近文件：同一路径去重并置顶，最多按上限保留",
+            recent.Count == 2
+            && string.Equals(recent[0].Path, recentProbe, StringComparison.OrdinalIgnoreCase)
+            && recent[0].LastOpenedUtc.Kind == DateTimeKind.Utc,
+            string.Join(",", recent.Select(r => r.Path)));
+
+        Check("[文档] 最近文件：文件是否存在 / 上限夹取",
+            RecentFiles.IsAvailable(recent[0])
+            && !RecentFiles.IsAvailable(new RecentFileEntry { Path = Path.Combine(SelfCheckScratch.Root, "no-such.docx") })
+            && RecentFiles.ClampLimit(-8) == 0 && RecentFiles.ClampLimit(9999) == RecentFiles.MaxLimit,
+            $"{RecentFiles.IsAvailable(recent[0])} / {RecentFiles.ClampLimit(-8)} / {RecentFiles.ClampLimit(9999)}");
+
+        RecentFiles.Trim(recent, 1);
+        Check("[文档] 最近文件：裁剪按上限保留最新的", recent.Count == 1, recent.Count.ToString());
+
+        RecentFiles.Remove(recent, recentProbe);
+        RecentFiles.Remember(recent, anotherPath, 1);
+        Check("[文档] 最近文件：删除指定项后其它记录还在",
+            recent.Count == 1 && string.Equals(recent[0].Path, anotherPath, StringComparison.OrdinalIgnoreCase),
+            string.Join(",", recent.Select(r => r.Path)));
+
+        RecentFiles.Remember(recent, recentProbe, 0);
+        Check("[文档] 最近文件：上限 0 = 不记录并清空已有列表", recent.Count == 0, recent.Count.ToString());
+    }
+    finally
+    {
+        try { File.Delete(recentProbe); } catch { /* 清理失败忽略 */ }
+    }
+}
+finally
+{
+    try { File.Delete(ooxmlPath); } catch { /* 清理失败忽略 */ }
+}
 
 EnterGroup("shell");
 
@@ -990,6 +1162,14 @@ RunGroupModule("text-editor", "文本编辑器", TextEditorChecks.Run);
 // 「音频工具」：分段视频合成的纯逻辑（分段识别 / 自然排序 / concat 清单 / FFmpeg 参数 / 输出命名 /
 // 进度解析 / 配置包装）；**不启动 FFmpeg、不联网**（真合成由人工用本地 m3u8 / 分段文件夹验收）。
 RunGroupModule("audio-tools", "音频工具", AudioToolsChecks.Run);
+
+// 「Word 阅读器」：手写 docx 解析（段落 / 字符格式 / 表格 / 图片 / 大纲）/ 纯逻辑查找 /
+// 配置与最近列表；**无头跑，不弹窗、不碰真 Data**（界面渲染由截图冒烟验收）。
+RunGroupModule("word-viewer", "Word 阅读器", WordViewerChecks.Run);
+
+// 「Excel 阅读器」：手写 xlsx 解析（共享字符串 / 样式 / 合并单元格 / 列宽 / 截断）/
+// 数字格式与日期序列 / 地址换算 / 配置与最近列表；同样无头跑。
+RunGroupModule("excel-viewer", "Excel 阅读器", ExcelViewerChecks.Run);
 
 EnterGroup("shell");
 

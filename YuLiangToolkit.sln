@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -44,6 +44,10 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.TextEditor", "src\YuLiangToolkit.Tools.TextEditor\YuLiangToolkit.Tools.TextEditor.csproj", "{D04725C2-5D38-4B03-9519-0C16D318E680}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.AudioTools", "src\YuLiangToolkit.Tools.AudioTools\YuLiangToolkit.Tools.AudioTools.csproj", "{7A0CDE6C-3980-45D3-9DA4-DE19FC925114}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.WordViewer", "src\YuLiangToolkit.Tools.WordViewer\YuLiangToolkit.Tools.WordViewer.csproj", "{E0B7D492-47FB-4683-9D54-9BFD42139C1B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.ExcelViewer", "src\YuLiangToolkit.Tools.ExcelViewer\YuLiangToolkit.Tools.ExcelViewer.csproj", "{064D9984-AB3F-435A-8C65-A5C97C6E5146}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -283,6 +287,30 @@ Global
 		{7A0CDE6C-3980-45D3-9DA4-DE19FC925114}.Release|x64.Build.0 = Release|Any CPU
 		{7A0CDE6C-3980-45D3-9DA4-DE19FC925114}.Release|x86.ActiveCfg = Release|Any CPU
 		{7A0CDE6C-3980-45D3-9DA4-DE19FC925114}.Release|x86.Build.0 = Release|Any CPU
+		{E0B7D492-47FB-4683-9D54-9BFD42139C1B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E0B7D492-47FB-4683-9D54-9BFD42139C1B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E0B7D492-47FB-4683-9D54-9BFD42139C1B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E0B7D492-47FB-4683-9D54-9BFD42139C1B}.Debug|x64.Build.0 = Debug|Any CPU
+		{E0B7D492-47FB-4683-9D54-9BFD42139C1B}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E0B7D492-47FB-4683-9D54-9BFD42139C1B}.Debug|x86.Build.0 = Debug|Any CPU
+		{E0B7D492-47FB-4683-9D54-9BFD42139C1B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E0B7D492-47FB-4683-9D54-9BFD42139C1B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E0B7D492-47FB-4683-9D54-9BFD42139C1B}.Release|x64.ActiveCfg = Release|Any CPU
+		{E0B7D492-47FB-4683-9D54-9BFD42139C1B}.Release|x64.Build.0 = Release|Any CPU
+		{E0B7D492-47FB-4683-9D54-9BFD42139C1B}.Release|x86.ActiveCfg = Release|Any CPU
+		{E0B7D492-47FB-4683-9D54-9BFD42139C1B}.Release|x86.Build.0 = Release|Any CPU
+		{064D9984-AB3F-435A-8C65-A5C97C6E5146}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{064D9984-AB3F-435A-8C65-A5C97C6E5146}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{064D9984-AB3F-435A-8C65-A5C97C6E5146}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{064D9984-AB3F-435A-8C65-A5C97C6E5146}.Debug|x64.Build.0 = Debug|Any CPU
+		{064D9984-AB3F-435A-8C65-A5C97C6E5146}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{064D9984-AB3F-435A-8C65-A5C97C6E5146}.Debug|x86.Build.0 = Debug|Any CPU
+		{064D9984-AB3F-435A-8C65-A5C97C6E5146}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{064D9984-AB3F-435A-8C65-A5C97C6E5146}.Release|Any CPU.Build.0 = Release|Any CPU
+		{064D9984-AB3F-435A-8C65-A5C97C6E5146}.Release|x64.ActiveCfg = Release|Any CPU
+		{064D9984-AB3F-435A-8C65-A5C97C6E5146}.Release|x64.Build.0 = Release|Any CPU
+		{064D9984-AB3F-435A-8C65-A5C97C6E5146}.Release|x86.ActiveCfg = Release|Any CPU
+		{064D9984-AB3F-435A-8C65-A5C97C6E5146}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -306,5 +334,7 @@ Global
 		{0F05C2BE-5FB2-4749-86CA-9FBB5BC0A882} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{D04725C2-5D38-4B03-9519-0C16D318E680} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{7A0CDE6C-3980-45D3-9DA4-DE19FC925114} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{E0B7D492-47FB-4683-9D54-9BFD42139C1B} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{064D9984-AB3F-435A-8C65-A5C97C6E5146} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

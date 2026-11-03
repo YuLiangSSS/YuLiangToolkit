@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「Excel 阅读器」：只读浏览 .xlsx / .xlsm。
+       xlsx 解析全部手写（System.IO.Compression + System.Xml.Linq + Core 的 OoxmlPackage），
+       不引任何第三方 Excel 库，所以这里只有 Core 一个 ProjectReference。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.ExcelViewer</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.ExcelViewer</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

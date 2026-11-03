@@ -25,6 +25,8 @@
 | [**🎬 视频 / 音乐播放器**](docs/tools/media-player.md) | 本地播放器：播放列表、单曲 / 随机、**沉浸式全屏（鼠标一动浮出控制条）**、**后台播放（切页不断，左下角迷你条：标题来回滚 + 进度条可拖 + 播放模式可点，右上角 × 关小窗并停播）**、**每个文件夹记住上次听到哪首 / 哪儿（可选恢复后自动接着放）**、**关应用 / 后台播放时也记住当前那首与进度**、**列表排序（名称 / 日期 / 大小，正反序）**、可调步长的快进快退 |
 | [**🖼️ 图片连续阅读器**](docs/tools/picture-viewer.md) | 把一个文件夹的图片首尾相接拼成一条长带（无缝、无间距），滚轮连续看条漫 / 长图 / 漫画，可切纵向 / 横向 / 日式从右到左，也可切**双页翻页 / 单页浏览**；支持 **25% ~ 800% 缩放**、放大后**自由拖拽**、可开关的**拖动惯性（连续甩会越滑越快）**与**滚轮惯性（滚一下能滚很远）**、**F11 全屏沉浸阅读（工具条自动隐藏）**；可**关联图片后缀，双击图片直接打开并定位到那张**（默认**复用同一个窗口**，也能在设置里切成**多开**）；**🕘 最近浏览可快速重开看过的文件夹（上限可调）**；**点工具条上的文件夹路径可在资源管理器打开所在目录**；还能调**三层图片边框（RGBA 颜色 + 调色板）**并**一键恢复默认** |
 | [**📄 PDF 阅读器**](docs/tools/pdf-reader.md) | 简单 PDF 阅读器：纵向 / 横向连续滚动、双页并排一次翻两页；支持 **25% ~ 800% 缩放**（Ctrl+滚轮 / 双页放大后拖动平移）、**Ctrl+F 文字搜索**、**📑 书签目录**、**双页页面间距可调**、**拖动惯性 / 滚轮惯性可分别开关**、**双击 .pdf 关联打开**、**自动记住每本 PDF 上次读到哪**、**页码跳转**、**🕘 最近浏览（上限可调）**、**F11 全屏沉浸阅读（工具条自动隐藏）**；只渲染看得见的页省内存，用 Windows 自带的 `Windows.Data.Pdf` 渲染；只读不改原文件 |
+| [**📘 Word 阅读器**](docs/tools/word-viewer.md) | 只读浏览 `.docx`：标题大纲、加粗 / 斜体 / 下划线 / 颜色 / 字号、列表、表格、图片、超链接；支持 **50% ~ 300% 缩放**、**Ctrl+F 按段落查找**、**🕘 最近打开**、拖入即开；手写 OOXML 解析（不依赖 Word、不引第三方库），**不改原文件** |
+| [**📗 Excel 阅读器**](docs/tools/excel-viewer.md) | 只读浏览 `.xlsx`：工作表页签、Excel 列宽 / 行号 / 列标题、数字 / 日期 / 百分比等格式、合并单元格、单元格字体与填充色；状态栏显示选中单元格的地址 / 值 / 公式；**🕘 最近打开**、拖入即开；手写 OOXML 解析，**公式只显示缓存值（不计算）、不改原文件** |
 | [**⚡ Flash 下载器**](docs/tools/flash-downloader.md) | 4399 / 7k7k / 17yy / ArmorGames / Kongregate 的小游戏下载到本地离线玩 |
 | [**💬 联机聊天室**](docs/tools/chat-room.md) | 主机开端口、客户端连进来，文字 / 图片 / 文件随便传，带单次流量上限 |
 | [**🌐 网页浏览器**](docs/tools/browser.md) | Chromium 内核（WebView2）**多标签浏览器**：**上方 / 左侧两种标签栏**一键切换（+ 新建 / 中键关标签 / **会话恢复（只恢复标签、点开才加载）**），地址栏输入网址 / 搜索词（默认 Google），**前进 / 后退 / 刷新 / 主页**按钮，**网页里右键也能刷新**；工具条 **⚙ 齿轮**里还有**历史记录 / 下载侧栏、页面缩放（Ctrl+滚轮）、默认主页设置、清空浏览记录**；**右键图片可「图片另存为…」/ 复制图片**；**☆ 收藏 / 书签侧栏**；**🧲 资源嗅探（图片 / 音频 / 视频）**；`target=_blank` 在新标签页打开 |
@@ -80,6 +82,8 @@ dotnet run --project YuLiangTookit.csproj
 浏览器内核不随本项目打包），源码构建时同样**首次需要联网还原一次** `Microsoft.Web.WebView2` 包。
 「文本编辑器」用 **AvalonEdit**（MIT）做编辑内核（行号列 / 语法高亮 / 大文件虚拟化 / 撤销重做都是它提供的），
 源码构建时同样**首次需要联网还原一次** NuGet 包；运行时不依赖任何额外系统组件。
+「Word 阅读器 / Excel 阅读器」**不需要安装 Office / WPS**：`.docx` / `.xlsx` 本质是 ZIP + XML，
+解析由 `Core/Documents/OoxmlPackage` + 各自手写的解析器完成，**没有新增任何 NuGet 包**（只读、不修改原文件）。
 「Live2D 桌宠」不需要额外装任何东西（模型和官方 Cubism Core 原生库都随程序发布，仅限 Windows x64）；
 它的**摄像头面部动捕**用 Windows 自带摄像头与 FaceAnalysis API（不需要额外软件，默认关闭，
 打开时需在 Windows 隐私设置里允许「桌面应用访问摄像头」，画面不录像、不联网）。
@@ -89,7 +93,7 @@ dotnet run --project YuLiangTookit.csproj
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；
   踩坑细节按需查 **[docs/dev/pitfalls.md](docs/dev/pitfalls.md)**（只在排错 / 改危险代码时读）；
-- ✅ **自检**：3427 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
+- ✅ **自检**：3526 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -129,6 +133,8 @@ src/
 ├── YuLiangToolkit.Tools.MediaPlayer/    # 功能：视频 / 音乐播放器
 ├── YuLiangToolkit.Tools.PictureViewer/  # 功能：图片连续阅读器（连续长带 / 双页翻页 / 单页 + 缩放 / 惯性 / 双击打开 / 图片边框）
 ├── YuLiangToolkit.Tools.PdfReader/      # 功能：PDF 阅读器（上下 / 左右连续滚动 + 双页翻页 + 拖动惯性）
+├── YuLiangToolkit.Tools.WordViewer/     # 功能：Word 阅读器（docx 只读：大纲 / 缩放 / 查找 / 表格 / 图片；手写 OOXML 解析）
+├── YuLiangToolkit.Tools.ExcelViewer/    # 功能：Excel 阅读器（xlsx 只读：工作表页签 / 数字格式 / 合并单元格 / 公式缓存值）
 ├── YuLiangToolkit.Tools.BatchRename/    # 功能：批量重命名（规则清单引擎 + 两阶段改名 + 撤销）
 ├── YuLiangToolkit.Tools.FlashDownloader/# 功能：Flash 下载器（五站点解析 + 本地服务器 + 自动补全资源）
 ├── YuLiangToolkit.Tools.ChatRoom/       # 功能：联机聊天室（TCP 直连 / 内网穿透 + 传文件 + 流量上限）
@@ -141,7 +147,7 @@ src/
 ├── YuLiangToolkit.Tools.Live2D/         # 功能：Live2D 桌宠（内置模型测试台 + 透明置顶桌宠 + 眼睛跟随 + 摄像头面部动捕 + 身体晃动测试；官方 Cubism Core + 自写软件渲染器 + Windows 自带人脸检测）
 ├── YuLiangToolkit.Tools.SpugCaptcha/    # 功能：Spug 验证码测试（短信 / 邮箱验证码模板联调 + 本地比对验证）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3427 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3526 项行为逐条验证）
 ```
 
 ## 如何添加一个新工具

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「Word 阅读器」工具库：只读浏览 .docx / .docm。
+       解析用 System.IO.Compression + System.Xml.Linq + Core 的 OoxmlPackage（不引第三方库），
+       渲染用 WPF 自带的 FlowDocument。复制自 Tools.Sample 模板。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.WordViewer</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.WordViewer</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

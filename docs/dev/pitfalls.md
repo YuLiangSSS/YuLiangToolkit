@@ -394,3 +394,32 @@
 - ⚠ **HLS 直播 m3u8（没有 `#EXT-X-ENDLIST`）会一直等新分段**，FFmpeg 不退出；界面的取消必须 `Kill(entireProcessTree: true)`，否则 ffmpeg 子进程残留。
 - ⚠ **`.m4s` 分片可能依赖独立 `init.mp4`**，concat 拼出来可能不能播；优先让配套 m3u8/mpd 交给 FFmpeg 解析。DRM（Widevine/PlayReady）无法用 FFmpeg 解密。
 
+### Word / Excel 阅读器（手写 OOXML：docx / xlsx）
+- docx / xlsx / pptx 都是 **ZIP + XML 部件 + `_rels/*.rels` 关系**：图片、超链接、工作表位置都要按关系文件里的 `r:id` / `r:embed` 去查；
+  相对 `Target` 是相对**源部件所在目录**（`word/document.xml` + `media/a.png` → `word/media/a.png`），`../` 与开头 `/` 都要归一。
+  Core 的 `OoxmlPackage` 已经把部件名规范化 / 关系解析 / 安全 XML / 体积上限 / 单位换算做好，别在工具里再写一份。
+- ⚠ **XML 必须禁 DTD 与外部实体**（`XmlReaderSettings.DtdProcessing = Prohibit` + `XmlResolver = null`）：OOXML 不受信，
+  否则一个恶意 docx 就能读本机文件；坏 XML / 缺部件统一抛中文 `OoxmlException`，界面显示在错误区（别弹 MessageBox）。
+- ⚠ **解析完别把 `XDocument` / ZIP 流长期挂在内存**：工具页会被外壳缓存最近 12 个视图，解析器要在一个 `using` 里
+  把文本 / 图片字节拷成纯模型再释放包；`OnClosed` 只释放大对象（FlowDocument / 解析结果），别依赖 `Unloaded`。
+- ⚠ **单位换算写错会「图片变巨大 / 表格错位」**：EMU ÷ 9525 = DIP；twip ÷ 15 = DIP；磅 × 96/72 = DIP。
+  docx 的列宽 / 缩进用 twip，图片 `wp:extent` 用 EMU，字号 `sz` 是**半点**（÷2 才是磅）。
+- ⚠ **Excel 日期序列号不是 Unix 时间**：1900 系统有「假闰日」，serial 60 = 不存在的 1900-02-29，`>= 61` 要减 1 天；
+  工作簿 `date1904` 时基准又是 1904-01-01，必须按 `workbookPr/@date1904` 分支。公式只显示文件里缓存的 `<v>`，
+  **不做公式计算**；用 openpyxl 这类库生成的文件常常没有缓存值 → 单元格显示空是数据问题，不是解析器 bug。
+- ⚠ **共享字符串 `sharedStrings.xml` 的 rich text 是多个 `<r><t>`**：要把所有 `<t>` 拼起来才能得到完整文字，
+  并且要跳过日文注音 `rPh`（否则会出现重复的假名）。
+- ⚠ **隐藏行 / 隐藏列**：隐藏列不要建 DataGrid 列（否则列标题 A/B/C 与数据错位，必须按 `ExcelColumn.ColumnIndex` 反查
+  行里的 `Cells[列号-1]`）；隐藏行直接跳过会让行号**跳号**，所以行头必须绑 Excel 原始行号（`DataGridRow.Header`），
+  不能拿 Items 下标当行号。
+- ⚠ **DataGrid 的每格样式不能用 `Setter.Value` 绑 `Binding`**（WPF 会抛「Binding 不能设置在 Setter 上」）：
+  用 `DataGridTemplateColumn` + 每列绑定 `Cells[列号-1]`，模板里 `Border`（填充色）+ `TextBlock`（前景 / 字体 / 对齐）；
+  列定义可以在代码后置用 `FrameworkElementFactory` 生成（每列一份，不是每格），行 / 列虚拟化必须开
+  （`EnableRowVirtualization` / `EnableColumnVirtualization` + `Recycling`），否则 5000 行 × 200 列会把界面卡死。
+- ⚠ **Word 的「白纸」是文档内容，不是主题色**：FlowDocument 纸面固定白底 + 近黑字（PDF 阅读器同样处理），
+  工具条 / 大纲栏 / 状态栏才用 `DynamicResource`；`FlowDocumentScrollViewer.Zoom` 绑 ViewModel 的缩放值，
+  Ctrl+滚轮要自己在 `PreviewMouseWheel` 里接（它只处理普通滚动）。大纲 / 查找跳转靠渲染器返回的
+  「块下标 → `Paragraph`」映射，表格 / 图片块没有段落要判空。
+- ⚠ **Excel 列宽单位是「字符数」**：近似 `width × 7 + 5` 像素并夹在 24 ~ 600；`width=0` / `hidden="1"` 的列别显示。
+  行高同理（`ht` 单位是磅），两个阅读器都不还原真合并（DataGrid 逐格显示，合并区只在锚点格有值 + 状态栏说明）。
+

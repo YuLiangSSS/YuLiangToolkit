@@ -35,6 +35,8 @@
     <ProjectReference Include="src\YuLiangToolkit.Tools.MediaPlayer\YuLiangToolkit.Tools.MediaPlayer.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.PictureViewer\YuLiangToolkit.Tools.PictureViewer.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.PdfReader\YuLiangToolkit.Tools.PdfReader.csproj" />
+    <ProjectReference Include="src\YuLiangToolkit.Tools.WordViewer\YuLiangToolkit.Tools.WordViewer.csproj" />
+    <ProjectReference Include="src\YuLiangToolkit.Tools.ExcelViewer\YuLiangToolkit.Tools.ExcelViewer.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.BatchRename\YuLiangToolkit.Tools.BatchRename.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.TextEditor\YuLiangToolkit.Tools.TextEditor.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.FlashDownloader\YuLiangToolkit.Tools.FlashDownloader.csproj" />

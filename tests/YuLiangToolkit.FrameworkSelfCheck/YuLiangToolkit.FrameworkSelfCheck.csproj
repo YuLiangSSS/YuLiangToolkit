@@ -40,6 +40,12 @@
     <!-- 「PDF 阅读器」：滚动排版 / 双页配对 / 惯性纯逻辑 + 生成一份最小 PDF 真走一遍
          Windows.Data.Pdf 渲染链路（无头，不弹窗）。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.PdfReader\YuLiangToolkit.Tools.PdfReader.csproj" />
+    <!-- 「Word 阅读器」：手写 docx 解析（段落 / 字符格式 / 表格 / 图片 / 大纲）/ 纯逻辑查找 /
+         配置与最近列表；临时目录里造最小 docx，无头跑。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.WordViewer\YuLiangToolkit.Tools.WordViewer.csproj" />
+    <!-- 「Excel 阅读器」：手写 xlsx 解析（共享字符串 / 样式 / 合并 / 列宽 / 截断）/
+         数字格式与日期序列 / 地址换算；临时目录里造最小 xlsx，无头跑。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.ExcelViewer\YuLiangToolkit.Tools.ExcelViewer.csproj" />
     <!-- 「osu!mania 转谱」：OsuParsers 解析桥往返 / 星数 / 等级公式 / 转 K / 转 LN，
          全部是纯逻辑（合成谱面文本在临时目录里造，不碰仓库 Data/Config）。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.OsuMania\YuLiangToolkit.Tools.OsuMania.csproj" />
