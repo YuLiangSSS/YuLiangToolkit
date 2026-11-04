@@ -1,0 +1,520 @@
+<UserControl x:Class="YuLiangToolkit.Tools.Archive.Views.ArchiveView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             Background="Transparent"
+             AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop">
+
+    <!-- =====================================================================================
+         「压缩包工具」界面：解压卡（左） + 压缩卡（右） + 底部进度 / 日志卡。
+         · 支持解压 ZIP / RAR / 7Z / TAR / TAR.GZ / TAR.BZ2 / TAR.XZ / TAR.ZST / GZ / BZ2 / XZ / ZST 等；
+           支持创建 ZIP / 7Z（RAR 因版权原因只能解、不能压）。
+         · 拖放分流：压缩包 → 左边解压列表；普通文件 / 文件夹 → 右边压缩列表（见 ArchiveView.xaml.cs）。
+         · 布局（docs/dev/layout.md）：上半「解压 | 压缩」之间是竖分隔条 archive.解压与压缩，
+           上半与日志之间是横分隔条 archive.上半与日志；两块都不写死尺寸，列表 / 日志放 * 行。
+         · 样式全部来自 App.xaml（CardStyle / SecondaryButtonStyle / TextBoxStyle / ComboBoxStyle …），
+           只有 PasswordBox 因为 App.xaml 里没有现成样式，在本文件的 Resources 里补一个局部的。
+         ===================================================================================== -->
+
+    <UserControl.Resources>
+        <!-- 列表表头 / 单元格统一字号与颜色（列表内容可换主题，全部用 DynamicResource 主题画刷） -->
+        <Style x:Key="ArchiveHeaderTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        </Style>
+
+        <Style x:Key="ArchiveCellTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        </Style>
+
+        <!-- 状态列：正常灰字，失败红字（探测失败只在列表里标红，不弹窗） -->
+        <Style x:Key="ArchiveStatusTextStyle" TargetType="TextBlock" BasedOn="{StaticResource ArchiveCellTextStyle}">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding HasError}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- PasswordBox 在 App.xaml 里没有样式（全仓库也没人用过），这里给一个跟 TextBoxStyle 一致的局部样式：
+             用主题画刷（InputBackgroundBrush / BorderBrush / AccentBrush），四套主题下都不会是白底黑字。 -->
+        <Style x:Key="ArchivePasswordBoxStyle" TargetType="PasswordBox">
+            <Setter Property="Background" Value="{DynamicResource InputBackgroundBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="PasswordBox">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{DynamicResource ControlCornerRadius}"
+                                Padding="{TemplateBinding Padding}">
+                            <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
+                                          Background="Transparent"
+                                          HorizontalScrollBarVisibility="Hidden"
+                                          VerticalScrollBarVisibility="Hidden" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ControlBorderHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <!-- 整页滚动：上半两块是固定像素行（这样上下拖分隔条才有意义），内容比窗口高时由这里滚 -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Grid Margin="28,20,28,24">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />                              <!-- 标题 + 说明 -->
+                <RowDefinition Height="560" MinHeight="500" />               <!-- 上半：解压 / 压缩（可上下拖） -->
+                <RowDefinition Height="12" />                                <!-- 上半 / 日志 分隔条 -->
+                <RowDefinition Height="240" MinHeight="195" />               <!-- 进度 / 日志（可上下拖） -->
+            </Grid.RowDefinitions>
+
+            <!-- ===== 标题 ===== -->
+            <StackPanel Grid.Row="0">
+                <TextBlock Text="📦 压缩包工具" FontSize="21" FontWeight="SemiBold" />
+                <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                           Text="把压缩包拖进来解压（RAR / ZIP / 7Z / TAR / TAR.GZ / TAR.BZ2 / TAR.XZ / TAR.ZST / GZ / BZ2 / XZ / ZST 等，支持密码与旧版 GBK 文件名）；把文件 / 文件夹拖进来压成 ZIP 或 7Z。RAR 因版权原因只能解、不能压。" />
+            </StackPanel>
+
+            <!-- ===== 上半：解压卡（左） | 竖分隔条 | 压缩卡（右） ===== -->
+            <Grid Grid.Row="1" Margin="0,14,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="340" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="*" MinWidth="340" />
+                </Grid.ColumnDefinitions>
+
+                <!-- =====================================================================
+                     左：解压卡
+                     ===================================================================== -->
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="16,14" ClipToBounds="True">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />                       <!-- 标题 / 说明 -->
+                            <RowDefinition Height="Auto" />                       <!-- 列表按钮 -->
+                            <RowDefinition Height="Auto" />                       <!-- 列表表头 -->
+                            <RowDefinition Height="*" MinHeight="90" />           <!-- 压缩包列表（吃掉多余高度） -->
+                            <RowDefinition Height="Auto" />                       <!-- 解压设置 -->
+                            <RowDefinition Height="Auto" />                       <!-- 开始解压 -->
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Row="0">
+                            <TextBlock Text="① 解压压缩包" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Text="把压缩包拖到这里（可以一次拖多个）；添加后会异步读取格式、文件数与是否加密。" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                            <Button Content="添加压缩包…" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding AddArchivesCommand}"
+                                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
+                            <Button Content="移除选中" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding RemoveSelectedArchivesCommand}"
+                                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
+                            <Button Content="清空" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding ClearArchivesCommand}"
+                                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
+                        </StackPanel>
+
+                        <!-- 表头：左边距 41 / 右边距 39 是按 FileRowItemStyle 的行内缩进 + 滚动条宽度量出来的，
+                             和数据行的列宽保持一致（见下方 ItemTemplate，四列一字不差） -->
+                        <Grid Grid.Row="2" Margin="41,10,39,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="84" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="100" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="文件名" Style="{StaticResource ArchiveHeaderTextStyle}" />
+                            <TextBlock Grid.Column="1" Text="格式" Style="{StaticResource ArchiveHeaderTextStyle}" />
+                            <TextBlock Grid.Column="2" Text="内容" Style="{StaticResource ArchiveHeaderTextStyle}" />
+                            <TextBlock Grid.Column="3" Text="状态" Style="{StaticResource ArchiveHeaderTextStyle}" />
+                        </Grid>
+
+                        <Grid Grid.Row="3">
+                            <ListBox x:Name="ArchiveList" ItemsSource="{Binding Archives}"
+                                     Style="{StaticResource FileListStyle}"
+                                     SelectionMode="Extended"
+                                     Margin="8,0"
+                                     SelectionChanged="OnArchiveSelectionChanged"
+                                     core:ScrollChaining.Enabled="True"
+                                     ToolTip="选中后可以「移除选中」；解压列表里所有项（批量）">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="84" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="100" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding FileName}" Style="{StaticResource ArchiveCellTextStyle}"
+                                                       ToolTip="{Binding FullPath}" />
+                                            <TextBlock Grid.Column="1" Text="{Binding FormatText}" Style="{StaticResource ArchiveCellTextStyle}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Grid.Column="2" Text="{Binding ContentText}" Style="{StaticResource ArchiveCellTextStyle}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Grid.Column="3" Text="{Binding StatusText}" Style="{StaticResource ArchiveStatusTextStyle}"
+                                                       ToolTip="{Binding ToolTipText}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <!-- 空列表提示（不挡鼠标：IsHitTestVisible=False） -->
+                            <TextBlock Text="把压缩包拖进来，或点上面的「添加压缩包…」"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                                       IsHitTestVisible="False"
+                                       Visibility="{Binding HasArchives, Converter={StaticResource InverseBoolToVis}}" />
+                        </Grid>
+
+                        <!-- ===== 解压设置 ===== -->
+                        <StackPanel Grid.Row="4" Margin="0,10,0,0">
+                            <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,0,0,12" />
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="86" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="解压到" VerticalAlignment="Center" FontSize="11.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding ExtractTargetOptions}"
+                                          SelectedItem="{Binding SelectedExtractTarget}"
+                                          DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}"
+                                          ToolTip="「压缩包旁边」= 解到压缩包所在目录；「指定目录」= 解到下面填的固定目录" />
+                            </Grid>
+
+                            <Grid Margin="0,8,0,0" Visibility="{Binding IsCustomExtractDirectory, Converter={StaticResource BoolToVis}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Text="{Binding ExtractDirectoryText, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource TextBoxStyle}"
+                                         ToolTip="解压目标目录（不存在会自动创建）" />
+                                <Button Grid.Column="1" Content="浏览…" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="8,0,0,0" Command="{Binding BrowseExtractDirectoryCommand}" />
+                            </Grid>
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="86" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="同名文件" VerticalAlignment="Center" FontSize="11.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding OverwriteOptions}"
+                                          SelectedItem="{Binding SelectedOverwrite}"
+                                          DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}"
+                                          ToolTip="默认「自动改名」，不会覆盖你已有的文件" />
+                            </Grid>
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="86" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="密码" VerticalAlignment="Center" FontSize="11.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <Grid Grid.Column="1">
+                                    <PasswordBox x:Name="PasswordInput" Style="{StaticResource ArchivePasswordBoxStyle}"
+                                                 PasswordChanged="OnPasswordChanged"
+                                                 ToolTip="加密压缩包才需要填；密码只在本次运行内使用，不写进配置"
+                                                 Visibility="{Binding ShowPassword, Converter={StaticResource InverseBoolToVis}}" />
+                                    <TextBox Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}"
+                                             Style="{StaticResource TextBoxStyle}"
+                                             ToolTip="加密压缩包才需要填；密码只在本次运行内使用，不写进配置"
+                                             Visibility="{Binding ShowPassword, Converter={StaticResource BoolToVis}}" />
+                                </Grid>
+                                <CheckBox Grid.Column="2" Content="显示" Style="{StaticResource CheckBoxStyle}"
+                                          IsChecked="{Binding ShowPassword}" VerticalAlignment="Center" Margin="10,0,0,0" />
+                            </Grid>
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="86" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="旧版编码" VerticalAlignment="Center" FontSize="11.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding LegacyEncodingOptions}"
+                                          SelectedItem="{Binding SelectedLegacyEncoding}"
+                                          DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}"
+                                          ToolTip="老压缩包里的中文文件名乱码时，选 GBK 再看列表" />
+                            </Grid>
+
+                            <CheckBox Content="每个包单独建一个子文件夹（推荐）" Style="{StaticResource CheckBoxStyle}"
+                                      IsChecked="{Binding Cfg.SubfolderPerArchive}" Margin="0,10,0,0" />
+                        </StackPanel>
+
+                        <!-- ===== 开始解压 ===== -->
+                        <Grid Grid.Row="5" Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding ArchiveSummary}" FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding ArchiveSummary}" />
+                            <Button Grid.Column="1" Content="开始解压" Style="{StaticResource PrimaryButtonStyle}"
+                                    Command="{Binding StartExtractCommand}"
+                                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}"
+                                    ToolTip="解压列表里所有压缩包；批量时进度按「第几个 / 总数」合并显示" />
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <!-- 左右分隔条：拖动改「解压卡」与「压缩卡」的宽度（双击恢复这一处） -->
+                <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                   Key="archive.解压与压缩" />
+
+                <!-- =====================================================================
+                     右：压缩卡
+                     ===================================================================== -->
+                <Border Grid.Column="2" Style="{StaticResource CardStyle}" Padding="16,14" ClipToBounds="True">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />                       <!-- 标题 / 说明 -->
+                            <RowDefinition Height="Auto" />                       <!-- 列表按钮 -->
+                            <RowDefinition Height="Auto" />                       <!-- 列表表头 -->
+                            <RowDefinition Height="*" MinHeight="90" />           <!-- 源列表（吃掉多余高度） -->
+                            <RowDefinition Height="Auto" />                       <!-- 压缩设置 -->
+                            <RowDefinition Height="Auto" />                       <!-- 开始压缩 -->
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Row="0">
+                            <TextBlock Text="② 压缩成压缩包" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Text="把文件 / 文件夹拖到这里（文件夹会递归打包、保留源文件夹这一层）；目前支持 ZIP、7Z。" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                            <Button Content="添加文件…" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding AddFilesCommand}"
+                                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
+                            <Button Content="添加文件夹…" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding AddFolderCommand}"
+                                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
+                            <Button Content="移除选中" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding RemoveSelectedSourcesCommand}"
+                                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
+                            <Button Content="清空" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding ClearSourcesCommand}"
+                                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
+                        </StackPanel>
+
+                        <!-- 表头：列宽与下方 ItemTemplate 一字不差 -->
+                        <Grid Grid.Row="2" Margin="41,10,39,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="80" />
+                                <ColumnDefinition Width="150" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="名称" Style="{StaticResource ArchiveHeaderTextStyle}" />
+                            <TextBlock Grid.Column="1" Text="大小" Style="{StaticResource ArchiveHeaderTextStyle}" />
+                            <TextBlock Grid.Column="2" Text="备注" Style="{StaticResource ArchiveHeaderTextStyle}" />
+                        </Grid>
+
+                        <Grid Grid.Row="3">
+                            <ListBox x:Name="SourceList" ItemsSource="{Binding Sources}"
+                                     Style="{StaticResource FileListStyle}"
+                                     SelectionMode="Extended"
+                                     Margin="8,0"
+                                     SelectionChanged="OnSourceSelectionChanged"
+                                     core:ScrollChaining.Enabled="True"
+                                     ToolTip="选中后可以「移除选中」；压缩列表里所有项">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="80" />
+                                                <ColumnDefinition Width="150" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Name}" Style="{StaticResource ArchiveCellTextStyle}"
+                                                       ToolTip="{Binding FullPath}" />
+                                            <TextBlock Grid.Column="1" Text="{Binding SizeText}" Style="{StaticResource ArchiveCellTextStyle}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Grid.Column="2" Text="{Binding Note}" Style="{StaticResource ArchiveCellTextStyle}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <TextBlock Text="把文件 / 文件夹拖进来，或点上面的「添加文件… / 添加文件夹…」"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                                       IsHitTestVisible="False"
+                                       Visibility="{Binding HasSources, Converter={StaticResource InverseBoolToVis}}" />
+                        </Grid>
+
+                        <!-- ===== 压缩设置 ===== -->
+                        <StackPanel Grid.Row="4" Margin="0,10,0,0">
+                            <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,0,0,12" />
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="86" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="格式" VerticalAlignment="Center" FontSize="11.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding CreateFormatOptions}"
+                                          SelectedItem="{Binding SelectedCreateFormat}"
+                                          DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}"
+                                          ToolTip="ZIP 最通用；7Z 压缩率更高。RAR 受版权限制不能创建" />
+                            </Grid>
+
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="86" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="压缩级别" VerticalAlignment="Center" FontSize="11.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding CompressionLevelOptions}"
+                                          SelectedItem="{Binding SelectedCompressionLevel}"
+                                          DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}" />
+                            </Grid>
+
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="86" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="输出到" VerticalAlignment="Center" FontSize="11.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding OutputTargetOptions}"
+                                          SelectedItem="{Binding SelectedOutputTarget}"
+                                          DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}"
+                                          ToolTip="「源旁边」= 放在第一个源文件 / 文件夹旁边；「指定目录」= 放到下面填的固定目录" />
+                            </Grid>
+
+                            <Grid Margin="0,8,0,0" Visibility="{Binding IsCustomOutputDirectory, Converter={StaticResource BoolToVis}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Text="{Binding OutputDirectoryText, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource TextBoxStyle}"
+                                         ToolTip="压缩包输出目录（不存在会自动创建）" />
+                                <Button Grid.Column="1" Content="浏览…" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="8,0,0,0" Command="{Binding BrowseOutputDirectoryCommand}" />
+                            </Grid>
+
+                            <!-- 文件名提示：按当前源 / 格式 / 输出目录算出来的目标压缩包路径 -->
+                            <StackPanel Margin="0,10,0,0">
+                                <TextBlock Text="将输出为" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding OutputPathPreview}" FontSize="11.5" Margin="0,4,0,0"
+                                           TextTrimming="CharacterEllipsis" ToolTip="{Binding OutputPathPreview}"
+                                           Foreground="{DynamicResource AccentBrush}" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- ===== 开始压缩 ===== -->
+                        <Grid Grid.Row="5" Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding SourceSummary}" FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding SourceSummary}" />
+                            <Button Grid.Column="1" Content="开始压缩" Style="{StaticResource PrimaryButtonStyle}"
+                                    Command="{Binding StartCompressCommand}"
+                                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}"
+                                    ToolTip="把压缩列表里的所有文件 / 文件夹打成一个压缩包" />
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- 上下分隔条：拖动改「上半（解压 / 压缩）」与「进度 / 日志」的高度（双击恢复这一处） -->
+            <core:PaneSplitter Grid.Row="2" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="archive.上半与日志" />
+
+            <!-- =====================================================================
+                 底部：进度 / 日志卡
+                 ===================================================================== -->
+            <Border Grid.Row="3" Style="{StaticResource CardStyle}" Padding="16,12" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />                        <!-- 标题 + 清空日志 -->
+                        <RowDefinition Height="Auto" />                        <!-- 进度条 + 进度文本 -->
+                        <RowDefinition Height="Auto" />                        <!-- 状态 -->
+                        <RowDefinition Height="*" MinHeight="40" />            <!-- 日志（吃掉多余高度） -->
+                        <RowDefinition Height="Auto" />                        <!-- 取消 / 打开输出位置 -->
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <TextBlock Text="进度与日志" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <Button Content="清空日志" Style="{StaticResource SecondaryButtonStyle}"
+                                HorizontalAlignment="Right" Command="{Binding ClearLogCommand}" />
+                    </Grid>
+
+                    <Grid Grid.Row="1" Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ProgressBar Minimum="0" Maximum="1"
+                                     Value="{Binding Progress, Mode=OneWay}"
+                                     IsIndeterminate="{Binding IsProgressIndeterminate}"
+                                     Style="{StaticResource ProgressBarStyle}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Margin="12,0,0,0" MinWidth="90"
+                                   TextAlignment="Right" VerticalAlignment="Center" FontSize="11.5"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </Grid>
+
+                    <TextBlock Grid.Row="2" Text="{Binding StatusText}" Margin="0,9,0,0" TextWrapping="Wrap" FontSize="11.5"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                    <TextBox Grid.Row="3" Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
+                             Style="{StaticResource LogTextBoxStyle}" Margin="0,10,0,0"
+                             core:ScrollChaining.Enabled="True" />
+
+                    <Grid Grid.Row="4" Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <CheckBox Content="完成后打开输出位置" Style="{StaticResource CheckBoxStyle}"
+                                  IsChecked="{Binding Cfg.OpenFolderAfterDone}" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="取消" Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding CancelCommand}" Margin="0,0,8,0"
+                                ToolTip="取消当前解压 / 压缩任务（已处理的文件保留）" />
+                        <Button Grid.Column="2" Content="打开输出位置" Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding OpenOutputFolderCommand}" />
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

@@ -73,6 +73,9 @@
     <!-- 「右键菜单管理」：枚举 / 隐藏 / 恢复 / 恢复全部 / 筛选纯逻辑断言；
          引擎的所有注册表读写都注入内存假注册表，**不写真实注册表**。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.ContextMenu\YuLiangToolkit.Tools.ContextMenu.csproj" />
+    <!-- 「压缩包工具」：格式识别 / 自造压缩包 Probe+Extract / Create 真创建 ZIP 与 7Z 再解压 /
+         密码 / 覆盖策略 / 路径穿越 / 取消 / 配置；全部在临时目录里造数据，不碰真实 Data/Config。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Archive\YuLiangToolkit.Tools.Archive.csproj" />
   </ItemGroup>
 
 </Project>

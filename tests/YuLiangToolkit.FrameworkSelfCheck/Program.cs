@@ -49,6 +49,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("word-viewer", "Word 阅读器：docx 解析（段落 / 格式 / 表格 / 图片 / 大纲）/ 查找 / 最近列表"),
     ("excel-viewer", "Excel 阅读器：xlsx 解析（共享字符串 / 样式 / 合并 / 列宽 / 截断）/ 数字格式 / 最近列表"),
     ("context-menu", "右键菜单管理：注册表枚举 / 隐藏 / 恢复（内存假注册表）"),
+    ("archive", "压缩包工具：格式识别 / 解压 / 创建 / 密码 / 路径穿越 / 覆盖策略"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1175,6 +1176,11 @@ RunGroupModule("excel-viewer", "Excel 阅读器", ExcelViewerChecks.Run);
 // 「右键菜单管理」：枚举 / 隐藏 / 恢复 / 恢复全部 / 筛选 / CLSID 规范化。
 // 全部走内存假注册表（FakeContextMenuRegistry），**绝不写用户真实注册表**，无头跑、可在任何机器重复。
 RunGroupModule("context-menu", "右键菜单管理", ContextMenuChecks.Run, "[右键菜单] ");
+
+// 「压缩包工具」：格式识别 / 自造包 Probe + Extract / Create 真创建 ZIP 与 7Z 再解压 /
+// testdata 素材真解压（RAR5 / TAR.XZ / TAR.ZST）/ 密码 / 覆盖策略 / 路径穿越 / 取消 / 配置；
+// 全部在临时目录里造数据，**不碰真实 Data/Config、不联网、不启外部 exe**。
+RunGroupModule("archive", "压缩包工具", ArchiveChecks.Run, "[压缩包] ");
 
 EnterGroup("shell");
 

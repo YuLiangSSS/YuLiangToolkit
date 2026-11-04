@@ -31,6 +31,17 @@
 - 许可：MIT License
 - 版权：Copyright (c) 2021 mrflashstudio
 
+## SharpCompress 0.50.4（NuGet 依赖）
+
+- 用途：「压缩包工具」（`src/YuLiangToolkit.Tools.Archive/`）的压缩 / 解压内核：
+  读 RAR（RAR4 / RAR5）、ZIP、7Z、TAR 及 GZ / BZ2 / XZ / ZST 等，写 ZIP / 7Z
+- 项目主页：<https://github.com/adamhathcock/sharpcompress>
+- 许可：MIT License
+- 版权：Copyright (c) 2014 Adam Hathcock（MIT）；包内含有的加密 / 压缩算法代码另附其原始版权声明（如 Bouncy Castle），详见 NuGet 包内 `LICENSE` 与源码注释
+- 说明：本项目只引用 NuGet 包（纯托管程序集），**没有修改**其源码；不依赖、也不调用系统的
+  `rar.exe` / `7z.exe`，用户机器不用预装任何压缩软件。RAR 的**压缩**算法是专有格式，
+  该库只提供读取、没有写入器，因此本工具「RAR 只能解、不能压」。
+
 ## Microsoft.Web.WebView2 1.0.4314.35（NuGet 依赖）
 
 - 用途：「网页浏览器」（`src/YuLiangToolkit.Tools.Browser/`）承载 Chromium 内核（和 Edge 同源）的 WPF 控件

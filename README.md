@@ -42,6 +42,7 @@
 | [**🀄 联机象棋**](docs/tools/xiangqi.md) | 开 TCP 房间联机下中国象棋：**多人观战 + 房主安排上场 / 自动轮换**、自由摆棋 + 一键默认开局、让子 / 让先、中文记谱 |
 | [**📨 Spug 验证码测试**](docs/tools/spug-captcha.md) | 联调 Spug 推送助手（push.spug.cc）的短信 / 邮箱验证码模板：发验证码 + 本地比对验证 + 接口日志；推送 URL 是调用凭证，别外传 |
 | [**🖱️ 右键菜单管理**](docs/tools/context-menu-manager.md) | 把资源管理器右键菜单里的项目（所有文件 / 文件夹 / 文件夹空白处 / 驱动器 / 桌面背景）列成一张表：名称 / 类型 / 位置 / 状态一目了然，**搜索 + 位置 / 类型筛选 + 只看已隐藏**；不想要的（例如「上传到百度网盘」）**一键隐藏、随时恢复**，还能「恢复全部（仅本工具隐藏的）」与重启资源管理器；卸载残留的菜单可以**删除**（删前自动备份成 `.reg` 到 `Data\context-menu-manager\backups\`，删 HKCU 直接删、删 HKLM 弹一次 UAC，系统关键项不可删），缺的可以自己**添加「用 XX 打开」**（指定后缀 / 文件夹 / 文件夹空白处 / 所有文件，只写 HKCU）；**隐藏与添加都只写当前用户（HKCU）的覆盖项、不改电脑级设置、不需要常驻管理员权限**，系统关键项（新建菜单 / 打开）不可隐藏 |
+| [**📦 压缩包工具**](docs/tools/archive.md) | 拖入即用：解压 RAR（RAR4 / RAR5）/ ZIP / 7Z / TAR / TAR.GZ / TAR.BZ2 / TAR.XZ / TAR.ZST / GZ / BZ2 / XZ / ZST，支持**密码**、**旧版 GBK 文件名**、批量、进度、取消、**路径穿越防护**；也能把文件 / 文件夹压成 **ZIP / 7Z**，同名文件默认自动改名不覆盖；**RAR 因版权原因只能解不能压** |
 | [**🧪 框架示例**](docs/tools/sample-framework.md) | 开发用模板（Data / Config 轮子演示，可整目录删除） |
 
 > 🎵 **音游工具**是主页上的一个分类：点「音游工具」类别卡片进类别页，再点工具卡片打开；
@@ -94,7 +95,7 @@ dotnet run --project YuLiangTookit.csproj
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；
   踩坑细节按需查 **[docs/dev/pitfalls.md](docs/dev/pitfalls.md)**（只在排错 / 改危险代码时读）；
-- ✅ **自检**：3683 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
+- ✅ **自检**：3819 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -123,7 +124,7 @@ AGENTS.md                               # 精简开发入口地图（流程 / �
 SingleInstance.cs                       # 单实例唤醒（Mutex + 命名管道：再启动一次只唤醒已开窗口）
 README.md                               # 本文件：工具一览 + 快速开始
 LICENSE                                 # Unlicense（随便用，不用署名）
-THIRD-PARTY-NOTICES.md                  # 第三方组件许可（OsuParsers / WebView2 / ppy 数学工具 / Live2D Cubism Core / 内置模型）
+THIRD-PARTY-NOTICES.md                  # 第三方组件许可（OsuParsers / WebView2 / AvalonEdit / SharpCompress / ppy 数学工具 / Live2D Cubism Core / 内置模型）
 docs/                                   # 每个工具一页的详细说明（见 docs/README.md）
 docs/dev/pitfalls.md                    # 踩坑清单（按需读）
 docs/dev/verification.md                # 验证纪律：自检分级 / 路径→组映射 / 全量例外
@@ -141,6 +142,7 @@ src/
 ├── YuLiangToolkit.Tools.ChatRoom/       # 功能：联机聊天室（TCP 直连 / 内网穿透 + 传文件 + 流量上限）
 ├── YuLiangToolkit.Tools.Browser/        # 功能：网页浏览器（WebView2 / Chromium 内核 + 多标签页 / 历史记录 / 下载 / 缩放 / 主页设置）
 ├── YuLiangToolkit.Tools.TextEditor/     # 功能：文本编辑器（AvalonEdit 内核 + 26 种语言高亮 + 多标签 + Markdown 实际效果预览 + 查找替换 + 界面缩放）
+├── YuLiangToolkit.Tools.Archive/        # 功能：压缩包工具（解压 RAR / ZIP / 7Z / TAR.* / GZ / BZ2 / XZ / ZST + 创建 ZIP / 7Z；RAR 只能解不能压）
 ├── YuLiangToolkit.Tools.MapDownloader/  # 功能：osu! 下图器（搜谱面集 + 批量下 .osz）
 ├── YuLiangToolkit.Tools.OsuMania/       # 功能：音游工具（osu! Key 转换器 / LN 转换器 / 等级计算器）
 ├── YuLiangToolkit.Tools.BoardGames/     # 功能：棋牌（联机五子棋 / 联机象棋 + 房间联机底座）
@@ -149,7 +151,7 @@ src/
 ├── YuLiangToolkit.Tools.SpugCaptcha/    # 功能：Spug 验证码测试（短信 / 邮箱验证码模板联调 + 本地比对验证）
 ├── YuLiangToolkit.Tools.ContextMenu/    # 功能：右键菜单管理（枚举 / 隐藏 / 恢复 / 删除残留 / 添加自定义打开菜单；隐藏写 HKCU、删除前自动备份 .reg、HKLM 项走 UAC 提权）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3683 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3819 项行为逐条验证）
 ```
 
 ## 如何添加一个新工具

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「压缩包工具」：解压 RAR / ZIP / 7Z / TAR / GZ / BZ2 / XZ / ZST 等，创建 ZIP / 7Z。
+       新增 NuGet 依赖说明（见 THIRD-PARTY-NOTICES.md）：
+       SharpCompress（MIT）是纯托管压缩库，读 RAR（RAR4/RAR5）、ZIP、7Z、TAR 及常见单文件压缩，
+       写 ZIP / 7Z；不依赖任何外部 exe，也不引入 RAR 压缩器（创建 RAR 因版权原因不做）。
+       选它而不是调用系统 7z.exe：用户机器不一定装了 7-Zip，工具要开箱即用。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.Archive</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.Archive</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SharpCompress" Version="0.50.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

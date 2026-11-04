@@ -118,6 +118,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/ChatRoomChecks.cs'        @('chat-room') 'L3' 'chat-room assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/CallFakes.cs'             @('chat-room') 'L3' 'chat-room call fakes')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/ContextMenuChecks.cs'     @('context-menu') 'L3' 'context-menu assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/ArchiveChecks.cs'         @('archive') 'L3' 'archive assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/FlashDownloaderChecks.cs' @('flash-downloader') 'L3' 'flash-downloader assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/MapDownloaderChecks.cs'   @('map-downloader') 'L3' 'map-downloader assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/MediaPlayerChecks.cs'     @('media-player') 'L3' 'media-player assertions')
@@ -153,6 +154,7 @@ $mapping = @(
     # ---------- src: one tool -> its group(s) ----------
     (New-Rule 'src/YuLiangToolkit.Tools.BatchRename/*'     @('batch-rename') 'L2' 'batch-rename')
     (New-Rule 'src/YuLiangToolkit.Tools.ContextMenu/*'    @('context-menu') 'L2' 'context menu manager')
+    (New-Rule 'src/YuLiangToolkit.Tools.Archive/*'        @('archive') 'L2' 'archive tool')
     (New-Rule 'src/YuLiangToolkit.Tools.FlashDownloader/*' @('flash-downloader') 'L2' 'flash-downloader')
     (New-Rule 'src/YuLiangToolkit.Tools.ChatRoom/*'        @('chat-room') 'L2' 'chat-room')
     (New-Rule 'src/YuLiangToolkit.Tools.MapDownloader/*'   @('map-downloader') 'L2' 'map-downloader')
