@@ -31,6 +31,7 @@ internal static class TextEditorChecks
         CheckSyntaxDefinitions(check);
         CheckMarkdownParser(check);
         CheckConfig(check);
+        CheckAutoSave(check);
     }
 
     // ---------------------------------------------------------------- 工具元数据
@@ -612,6 +613,7 @@ internal static class TextEditorChecks
             && config.ForegroundHex == TextEditorConfig.DefaultForegroundHex
             && config.ShowLineNumbers && !config.WordWrap
             && config.ShowMarkdownPreview
+            && config.AutoSave
             && config.ConvertTabsToSpaces && config.IndentSize == 4
             && config.RecentFiles.Count == 0 && config.SessionFiles.Count == 0
             && config.RememberSession,
@@ -666,10 +668,93 @@ internal static class TextEditorChecks
         config.ForegroundHex = fresh.ForegroundHex;
         config.ShowLineNumbers = fresh.ShowLineNumbers;
         config.ShowMarkdownPreview = fresh.ShowMarkdownPreview;
+        config.AutoSave = fresh.AutoSave;
         config.RecentFiles = fresh.RecentFiles;
         config.SessionFiles = fresh.SessionFiles;
         config.SessionActiveIndex = fresh.SessionActiveIndex;
         config.RememberSession = fresh.RememberSession;
         config.SaveNow();
+    }
+
+    // ---------------------------------------------------------------- 自动保存
+
+    private static void CheckAutoSave(Action<string, bool, string> check)
+    {
+        check("[编辑器] 自动保存默认开",
+            new TextEditorConfig().AutoSave,
+            "AutoSave = true");
+
+        var store = ToolConfigStore.For(TextEditorConfig.ToolId);
+        var cfg = store.Load<TextEditorConfig>();
+        cfg.AutoSave = true;
+        cfg.RememberSession = false;
+        cfg.SessionFiles = new List<string>();
+        cfg.SessionActiveIndex = 0;
+        cfg.RecentFiles = new List<string>();
+        cfg.SaveNow();
+
+        var dir = SelfCheckScratch.MakeDirectory("text-editor-autosave");
+        var file = Path.Combine(dir, "auto.cs");
+        File.WriteAllText(file, "class A { }\r\n", new UTF8Encoding(false));
+
+        using (var vm = new TextEditorViewModel())
+        {
+            vm.OpenPath(file);
+            // ⚠ 用 ActiveTab：会话恢复被关掉时构造会先建一个无标题标签，Tabs[0] 不一定是刚打开的文件
+            var tab = vm.ActiveTab!;
+
+            tab.Document.Text += "// 改了\r\n";
+            var savedCount = vm.AutoSavePendingTabs();
+            check("[编辑器] 自动保存：改动写回原文件 + 清未保存标记 + 状态栏提示",
+                savedCount == 1 && !tab.IsDirty
+                && File.ReadAllText(file).Contains("// 改了", StringComparison.Ordinal)
+                && vm.StatusText.Contains("已自动保存", StringComparison.Ordinal),
+                $"saved={savedCount} dirty={tab.IsDirty} status={vm.StatusText}");
+
+            cfg.AutoSave = false;
+            tab.Document.Text += "// 关掉后\r\n";
+            var disabledCount = vm.AutoSavePendingTabs();
+            check("[编辑器] 关掉自动保存后改动不写盘（保留未保存标记）",
+                disabledCount == 0 && tab.IsDirty
+                && !File.ReadAllText(file).Contains("// 关掉后", StringComparison.Ordinal),
+                $"saved={disabledCount} dirty={tab.IsDirty}");
+
+            cfg.AutoSave = true;
+            var resumedCount = vm.AutoSavePendingTabs();
+            check("[编辑器] 重新打开自动保存后把当前脏标签补写回文件",
+                resumedCount >= 1 && !tab.IsDirty
+                && File.ReadAllText(file).Contains("// 关掉后", StringComparison.Ordinal),
+                $"saved={resumedCount}");
+
+            // 文件被外部程序改过：自动保存要先停下来，别悄悄覆盖
+            File.AppendAllText(file, "// 外部改的\r\n");
+            File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddMinutes(1));
+            tab.Document.Text += "// 不想覆盖外部\r\n";
+            var blockedCount = vm.AutoSavePendingTabs();
+            var blockedOk = blockedCount == 0 && tab.IsDirty && tab.AutoSaveBlocked
+                && !File.ReadAllText(file).Contains("// 不想覆盖外部", StringComparison.Ordinal);
+            // 用户手动 Ctrl+S：明确要覆盖，应能正常保存并解除暂停
+            var manualSaved = vm.SaveTab(tab);
+            check("[编辑器] 文件被外部改过后自动保存暂停；手动保存可覆盖并解除暂停",
+                blockedOk && manualSaved && !tab.AutoSaveBlocked
+                && File.ReadAllText(file).Contains("// 不想覆盖外部", StringComparison.Ordinal),
+                $"blocked={tab.AutoSaveBlocked} manualSaved={manualSaved}");
+
+            var untitled = vm.NewTab();
+            untitled.Document.Text = "草稿";
+            var untitledCount = vm.AutoSavePendingTabs();
+            check("[编辑器] 无标题标签不会自动保存（提示先 Ctrl+S 选位置）",
+                untitledCount == 0 && untitled.IsDirty
+                && vm.StatusText.Contains("无标题", StringComparison.Ordinal),
+                vm.StatusText);
+        }
+
+        // 还原配置默认值，避免影响别的检查
+        cfg.AutoSave = true;
+        cfg.RememberSession = true;
+        cfg.SessionFiles = new List<string>();
+        cfg.SessionActiveIndex = 0;
+        cfg.RecentFiles = new List<string>();
+        cfg.SaveNow();
     }
 }

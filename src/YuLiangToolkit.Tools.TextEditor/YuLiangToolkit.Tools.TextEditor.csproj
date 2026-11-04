@@ -24,4 +24,9 @@
     <EmbeddedResource Include="Highlighting\*.xshd" />
   </ItemGroup>
 
+  <!-- 自检程序直接调用 ViewModel 的内部文件操作 / 自动保存入口（不为了测试另开 public API）。 -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="YuLiangToolkit.FrameworkSelfCheck" />
+  </ItemGroup>
+
 </Project>

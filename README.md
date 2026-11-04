@@ -31,7 +31,7 @@
 | [**💬 联机聊天室**](docs/tools/chat-room.md) | 主机开端口、客户端连进来，文字 / 图片 / 文件随便传，带单次流量上限；房间内还能开**群语音 / 群视频通话**（最多 8 人，媒体复用同一个端口，不计入文件流量上限），也能**按住说话发语音消息**（自动转 MP3、气泡显示秒数、**可拖进度条反复听**、计入文件流量上限） |
 | [**🌐 网页浏览器**](docs/tools/browser.md) | Chromium 内核（WebView2）**多标签浏览器**：**上方 / 左侧两种标签栏**一键切换（+ 新建 / 中键关标签 / **会话恢复（只恢复标签、点开才加载）**），地址栏输入网址 / 搜索词（默认 Google），**前进 / 后退 / 刷新 / 主页**按钮，**网页里右键也能刷新**；工具条 **⚙ 齿轮**里还有**历史记录 / 下载侧栏、页面缩放（Ctrl+滚轮）、默认主页设置、清空浏览记录**；**右键图片可「图片另存为…」/ 复制图片**；**☆ 收藏 / 书签侧栏**；**🧲 资源嗅探（图片 / 音频 / 视频）**；`target=_blank` 在新标签页打开 |
 | [**🏷️ 批量重命名**](docs/tools/batch-rename.md) | 规则清单 + 实时预览 + 两阶段改名 + 可撤销 |
-| [**📝 文本编辑器**](docs/tools/text-editor.md) | 轻量代码 / 文本编辑器（AvalonEdit 内核）：**26 种语言 / 格式的语法高亮**（C / C++ / C# / Java / Python / Go / Rust / Ruby / F# / Kotlin / PHP / JS / TypeScript / Vue / HTML / CSS / JSON / XML / YAML / INI / Batch / PowerShell / Lua / SQL / Dockerfile / Markdown…）、**多标签**、**Markdown 实际效果预览**（标题 / 表格 / 列表 / 代码块 / 本地图片真渲染）、**行号 + VS 深色配色**、**查找 / 替换**（区分大小写 / 全部替换可一步撤销）、**界面缩放 25% ~ 400%**、**偏好设置**调字体 / 字号 / **行距** / 背景颜色 / 自动换行 / 缩进；**自动识别编码（GBK 文件不乱码）**并保持原换行风格，最近文件 + 会话恢复 |
+| [**📝 文本编辑器**](docs/tools/text-editor.md) | 轻量代码 / 文本编辑器（AvalonEdit 内核）：**26 种语言 / 格式的语法高亮**（C / C++ / C# / Java / Python / Go / Rust / Ruby / F# / Kotlin / PHP / JS / TypeScript / Vue / HTML / CSS / JSON / XML / YAML / INI / Batch / PowerShell / Lua / SQL / Dockerfile / Markdown…）、**多标签**、**Markdown 实际效果预览**（标题 / 表格 / 列表 / 代码块 / 本地图片真渲染）、**行号 + VS 深色配色**、**查找 / 替换**（区分大小写 / 全部替换可一步撤销）、**界面缩放 25% ~ 400%**、**偏好设置**调字体 / 字号 / **行距** / 背景颜色 / 自动换行 / 缩进；**自动识别编码（GBK 文件不乱码）**并保持原换行风格，**自动保存（默认开）** + 最近文件 + 会话恢复 |
 | [**🎧 osu! 下图器**](docs/tools/map-downloader.md) | 搜谱面集、批量下 `.osz`（含视频 / 无视频） |
 | [**🎹 osu! Key 转换器**](docs/tools/osu-key-converter.md) | 把低键数 mania 谱面「复制列 / 插空白列」加成高键数（2~10 可选），支持批量 |
 | [**🍜 osu! LN 转换器**](docs/tools/osu-ln-transformer.md) | 按 14 档强度把普通键改成 LN（长条），可选保留原 LN / 修尾巴误差 |
@@ -94,7 +94,7 @@ dotnet run --project YuLiangTookit.csproj
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；
   踩坑细节按需查 **[docs/dev/pitfalls.md](docs/dev/pitfalls.md)**（只在排错 / 改危险代码时读）；
-- ✅ **自检**：3606 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
+- ✅ **自检**：3612 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -149,7 +149,7 @@ src/
 ├── YuLiangToolkit.Tools.SpugCaptcha/    # 功能：Spug 验证码测试（短信 / 邮箱验证码模板联调 + 本地比对验证）
 ├── YuLiangToolkit.Tools.ContextMenu/    # 功能：右键菜单管理（枚举 / 隐藏 / 恢复 Windows 资源管理器右键菜单项；只写 HKCU，不删原键）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3606 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3612 项行为逐条验证）
 ```
 
 ## 如何添加一个新工具

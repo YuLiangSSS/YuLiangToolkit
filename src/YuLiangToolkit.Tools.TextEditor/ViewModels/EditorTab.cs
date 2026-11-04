@@ -16,6 +16,7 @@ public sealed class EditorTab : ObservableObject
     private TextFileEncodingKind _encoding = TextFileCodec.DefaultEncoding;
     private TextNewlineStyle _newline = TextNewlineStyle.CrLf;
     private bool _suppressDirty;
+    private DateTime? _lastKnownWriteTimeUtc;
 
     public EditorTab(string? filePath, string title)
     {
@@ -34,6 +35,7 @@ public sealed class EditorTab : ObservableObject
             Newline = content.Newline,
         };
         tab.SetTextSilently(content.Text);
+        tab.RememberFileWriteTime();
         return tab;
     }
 
@@ -100,6 +102,41 @@ public sealed class EditorTab : ObservableObject
     /// <summary>文档内容变化（含载入；状态栏字数统计跟着刷）。</summary>
     public event EventHandler? TextChanged;
 
+    /// <summary>
+    /// 最近一次读 / 写文件时记下的文件修改时间（UTC）——自动保存用它判断文件是否被别的程序改过，
+    /// 避免悄悄覆盖外部改动。读文件失败 / 无此文件时为 <c>null</c>（不做外部改动判断）。
+    /// </summary>
+    public DateTime? LastKnownWriteTimeUtc
+    {
+        get => _lastKnownWriteTimeUtc;
+        private set => Set(ref _lastKnownWriteTimeUtc, value);
+    }
+
+    /// <summary>
+    /// 自动保存是否因为这个文件被外部改动而暂停：暂停后自动保存不再写这个标签，
+    /// 用户手动 Ctrl+S 保存（或重新打开文件）会解除。
+    /// </summary>
+    public bool AutoSaveBlocked { get; set; }
+
+    /// <summary>记下文件当前的修改时间（读入 / 保存成功后调用；文件不存在 / 无权限时静默）。</summary>
+    public void RememberFileWriteTime()
+    {
+        if (FilePath is not { } path)
+        {
+            LastKnownWriteTimeUtc = null;
+            return;
+        }
+
+        try
+        {
+            LastKnownWriteTimeUtc = File.Exists(path) ? File.GetLastWriteTimeUtc(path) : null;
+        }
+        catch
+        {
+            LastKnownWriteTimeUtc = null;
+        }
+    }
+
     /// <summary>把内容塞进文档（载入 / 全部替换）而不点亮未保存标记。</summary>
     public void SetTextSilently(string text)
     {
@@ -133,6 +170,8 @@ public sealed class EditorTab : ObservableObject
         IsDirty = false;
         OnPropertyChanged(nameof(Header));
         OnPropertyChanged(nameof(FilePathText));
+        AutoSaveBlocked = false;
+        RememberFileWriteTime();
     }
 
     private void OnDocumentTextChanged(object? sender, EventArgs e)

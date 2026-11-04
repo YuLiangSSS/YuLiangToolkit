@@ -60,6 +60,7 @@ public partial class TextEditorView : UserControl, IEditorHost
     private Window? _hostWindow;
     private bool _vmWired;
     private DispatcherTimer? _previewTimer;
+    private DispatcherTimer? _autoSaveTimer;
     private string? _lastPreviewText;
     private string? _lastPreviewStyleKey;
 
@@ -142,7 +143,12 @@ public partial class TextEditorView : UserControl, IEditorHost
         }
 
         // 门面接口断开：视图被外壳缓存时编辑器命令 / 查找不可用，切回来时 OnLoaded 会重新接上
-        if (Vm is { } vm) vm.Host = null;
+        if (Vm is { } vm)
+        {
+            _autoSaveTimer?.Stop();
+            if (vm.Cfg.AutoSave) vm.AutoSavePendingTabs();   // 切走前把没到防抖时间的改动补写掉
+            vm.Host = null;
+        }
         _previewTimer?.Stop();
         // 编辑器实例与 VM 都保留：外壳缓存视图，切回来接着用
     }
@@ -191,6 +197,15 @@ public partial class TextEditorView : UserControl, IEditorHost
         vm.Cfg.PropertyChanged += (_, e) =>
         {
             ApplySettingsToAllEditors();
+
+            // 自动保存开关：打开时把当前脏标签马上排进保存队列；关掉时停掉计时器
+            if (e.PropertyName == nameof(TextEditorConfig.AutoSave))
+            {
+                if (vm.Cfg.AutoSave) ScheduleAutoSave();
+                else _autoSaveTimer?.Stop();
+                return;
+            }
+
             if (e.PropertyName == nameof(TextEditorConfig.ShowMarkdownPreview))
                 UpdatePreviewVisibility();
             else if (vm.IsPreviewVisible)
@@ -335,7 +350,12 @@ public partial class TextEditorView : UserControl, IEditorHost
     private void OnTabTextChanged(object? sender, EventArgs e)
     {
         var vm = Vm;
-        if (vm is null || sender is not EditorTab tab || !ReferenceEquals(tab, vm.ActiveTab)) return;
+        if (vm is null || sender is not EditorTab tab) return;
+
+        // 自动保存：任何标签的改动都重新计时（VM 内部会过滤开关 / 无路径 / 外部改动等情况）
+        ScheduleAutoSave();
+
+        if (!ReferenceEquals(tab, vm.ActiveTab)) return;
         PushCaretInfo();
         RefreshFindBarCount();
         SchedulePreviewRefresh();
@@ -679,6 +699,33 @@ public partial class TextEditorView : UserControl, IEditorHost
                 : System.Windows.LogicalTreeHelper.GetParent(node);
         }
         return (node as ListBoxItem)?.DataContext as EditorTab;
+    }
+
+    // ---------- 自动保存（防抖：停手约 0.9 秒才写盘，避免每敲一个字都写文件） ----------
+
+    /// <summary>文本一变就重置计时；到点由 ViewModel 把待保存标签统一写回原文件。</summary>
+    private void ScheduleAutoSave()
+    {
+        var vm = Vm;
+        if (vm is null || !vm.Cfg.AutoSave) return;
+
+        if (_autoSaveTimer is null)
+        {
+            _autoSaveTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(900),
+            };
+            _autoSaveTimer.Tick += OnAutoSaveTimerTick;
+        }
+
+        _autoSaveTimer.Stop();
+        _autoSaveTimer.Start();
+    }
+
+    private void OnAutoSaveTimerTick(object? sender, EventArgs e)
+    {
+        _autoSaveTimer?.Stop();
+        Vm?.AutoSavePendingTabs();
     }
 
     // ---------- Markdown「实际效果预览」 ----------

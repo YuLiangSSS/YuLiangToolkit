@@ -137,6 +137,17 @@ public sealed class TextEditorConfig : ToolConfig
     private bool _wordWrap;
     private bool _convertTabsToSpaces = true;
     private bool _showMarkdownPreview = true;
+    private bool _autoSave = true;
+
+    /// <summary>
+    /// 自动保存（默认开）：编辑区一有改动，停手约 0.9 秒就自动写回原文件，不用按 Ctrl+S。
+    /// 无标题标签没有文件路径，仍需先 Ctrl+S 选一次位置；文件被外部程序改过时自动暂停保护。
+    /// </summary>
+    public bool AutoSave
+    {
+        get => _autoSave;
+        set => Set(ref _autoSave, value);
+    }
 
     /// <summary>是否显示行号列（默认开，写代码看行数）。用 Set() 发通知：菜单勾选 / 编辑器同步联动。</summary>
     public bool ShowLineNumbers

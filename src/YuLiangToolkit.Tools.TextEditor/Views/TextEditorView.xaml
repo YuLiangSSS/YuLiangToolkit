@@ -414,7 +414,7 @@
                 <MenuItem Header="偏好设置" Style="{StaticResource EditorTopMenuItemStyle}">
                     <MenuItem Header="打开偏好设置面板" Command="{Binding ShowSettingsCommand}"
                               Style="{StaticResource EditorMenuItemStyle}"
-                              ToolTip="字体 / 字号 / 行距 / 缩放 / 背景颜色 / 行号 / 自动换行 / 缩进" />
+                              ToolTip="字体 / 字号 / 行距 / 缩放 / 背景颜色 / 行号 / 自动换行 / 缩进 / 自动保存" />
                     <Separator Style="{StaticResource EditorMenuSeparatorStyle}" />
                     <MenuItem Header="重置缩放为 100%" Command="{Binding ResetZoomCommand}"
                               Style="{StaticResource EditorMenuItemStyle}" />
@@ -691,7 +691,10 @@
 
                             <Separator Margin="0,12" Background="{DynamicResource BorderBrush}" />
 
-                            <CheckBox Content="显示行号" Style="{StaticResource CheckBoxStyle}"
+                            <CheckBox Content="自动保存（改完自动写回文件）" Style="{StaticResource CheckBoxStyle}"
+                                      IsChecked="{Binding Cfg.AutoSave}"
+                                      ToolTip="编辑区一有改动，停手约 0.9 秒自动写回原文件；无标题标签要先 Ctrl+S 选一次位置" />
+                            <CheckBox Content="显示行号" Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0"
                                       IsChecked="{Binding Cfg.ShowLineNumbers}"
                                       ToolTip="在编辑区左侧显示行号列" />
                             <CheckBox Content="自动换行" Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0"

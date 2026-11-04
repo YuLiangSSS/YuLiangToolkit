@@ -47,6 +47,15 @@ public sealed class TextEditorViewModel : ToolViewModelBase
     private string _caretText = "行 1, 列 1";
     private string _charCountText = "0 字符";
 
+    /// <summary>等着自动保存的标签（View 的防抖计时器到点后统一写盘）。</summary>
+    private readonly HashSet<EditorTab> _pendingAutoSave = new();
+
+    /// <summary>已经提示过「无标题标签要先 Ctrl+S」的标签（同一个只提示一次，不刷屏）。</summary>
+    private readonly HashSet<EditorTab> _autoSaveHintedTabs = new();
+
+    /// <summary>自动保存正在写盘（防止计时器 / 关工具兜底重入）。</summary>
+    private bool _autoSaveBusy;
+
     public TextEditorViewModel() : base(TextEditorConfig.ToolId)
     {
         Cfg = LoadConfig<TextEditorConfig>();
@@ -59,7 +68,23 @@ public sealed class TextEditorViewModel : ToolViewModelBase
         Cfg.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(TextEditorConfig.ShowMarkdownPreview))
+            {
                 OnPropertyChanged(nameof(IsPreviewVisible));
+            }
+            else if (e.PropertyName == nameof(TextEditorConfig.AutoSave))
+            {
+                // 关掉自动保存：清空待写队列（已经改脏的标签保留脏标记，Ctrl+S 手动保存）
+                if (!Cfg.AutoSave)
+                {
+                    _pendingAutoSave.Clear();
+                }
+                else
+                {
+                    // 打开自动保存：把当前已经改脏、有路径的标签补进队列，View 会启动计时器
+                    foreach (var tab in Tabs.Where(t => t.IsDirty && t.FilePath is not null))
+                        _pendingAutoSave.Add(tab);
+                }
+            }
         };
 
         Tabs = new ObservableCollection<EditorTab>();
@@ -258,18 +283,7 @@ public sealed class TextEditorViewModel : ToolViewModelBase
         if (tab is null) return false;
         if (tab.FilePath is null) return SaveTabAs(tab);
 
-        if (!TextFileCodec.TryWrite(tab.FilePath, tab.Document.Text, tab.Encoding, tab.Newline, out var error))
-        {
-            StatusText = error ?? "保存失败";
-            return false;
-        }
-
-        tab.MarkSaved(tab.FilePath, tab.Encoding, tab.Newline);
-        Host?.UpdateTabPath(tab);
-        Cfg.RecentFiles = RecentFileList.Push(Cfg.RecentFiles, tab.FilePath);
-        OnPropertyChanged(nameof(RecentItems));
-        OnPropertyChanged(nameof(EncodingText));
-        RefreshSessionConfig();
+        if (!WriteTab(tab, tab.FilePath, updateRecent: true)) return false;
         StatusText = $"已保存 {Path.GetFileName(tab.FilePath)}";
         return true;
     }
@@ -287,20 +301,128 @@ public sealed class TextEditorViewModel : ToolViewModelBase
         };
         if (dialog.ShowDialog() != true) return false;
 
-        if (!TextFileCodec.TryWrite(dialog.FileName, tab.Document.Text, tab.Encoding, tab.Newline, out var error))
+        if (!WriteTab(tab, dialog.FileName, updateRecent: true)) return false;
+        StatusText = $"已保存 {Path.GetFileName(dialog.FileName)}";
+        return true;
+    }
+
+    /// <summary>
+    /// 把标签内容写到指定路径（成功 = 清脏标记 + 记录新路径 / 编码 / 换行 / 文件修改时间 + 刷新语法高亮 / 会话）。
+    /// <paramref name="updateRecent"/> = false 时不动「最近文件」列表（自动保存不反复把它顶到最前）。
+    /// </summary>
+    private bool WriteTab(EditorTab tab, string path, bool updateRecent)
+    {
+        if (!TextFileCodec.TryWrite(path, tab.Document.Text, tab.Encoding, tab.Newline, out var error))
         {
             StatusText = error ?? "保存失败";
             return false;
         }
 
-        tab.MarkSaved(dialog.FileName, tab.Encoding, tab.Newline);
+        _pendingAutoSave.Remove(tab);
+        tab.MarkSaved(path, tab.Encoding, tab.Newline);
         Host?.UpdateTabPath(tab);
-        Cfg.RecentFiles = RecentFileList.Push(Cfg.RecentFiles, dialog.FileName);
-        OnPropertyChanged(nameof(RecentItems));
+
+        if (updateRecent)
+        {
+            Cfg.RecentFiles = RecentFileList.Push(Cfg.RecentFiles, path);
+            OnPropertyChanged(nameof(RecentItems));
+        }
+
         OnPropertyChanged(nameof(EncodingText));
         RefreshSessionConfig();
-        StatusText = $"已保存 {Path.GetFileName(dialog.FileName)}";
         return true;
+    }
+
+    /// <summary>
+    /// 把排队等自动保存的标签立刻写回原文件（View 的防抖计时器到点 / 关工具前兜底 / 自检调用）。
+    /// 返回真正写成功的标签数。
+    /// <para>只写「有文件路径 + 脏 + 没被外部改过」的标签；无标题标签没路径，等用户 Ctrl+S 选一次位置。</para>
+    /// </summary>
+    internal int AutoSavePendingTabs()
+    {
+        if (_pendingAutoSave.Count == 0 || !Cfg.AutoSave)
+        {
+            _pendingAutoSave.Clear();
+            return 0;
+        }
+        if (_autoSaveBusy) return 0;
+
+        _autoSaveBusy = true;
+        var savedTabs = new List<EditorTab>();
+        var failed = 0;
+        var blocked = false;
+        try
+        {
+            foreach (var tab in _pendingAutoSave.ToList())
+            {
+                _pendingAutoSave.Remove(tab);
+                if (!Tabs.Contains(tab) || !tab.IsDirty || tab.FilePath is null || tab.AutoSaveBlocked) continue;
+
+                if (IsExternallyModified(tab))
+                {
+                    // 文件被别的程序改过：先不覆盖，避免把外部改动冲掉
+                    tab.AutoSaveBlocked = true;
+                    blocked = true;
+                    continue;
+                }
+
+                if (WriteTab(tab, tab.FilePath, updateRecent: false)) savedTabs.Add(tab);
+                else failed++;
+            }
+        }
+        finally
+        {
+            _autoSaveBusy = false;
+        }
+
+        if (savedTabs.Count > 0)
+        {
+            StatusText = savedTabs.Count == 1
+                ? $"已自动保存 {savedTabs[0].Title}"
+                : $"已自动保存 {savedTabs.Count} 个文件";
+        }
+        else if (blocked)
+        {
+            StatusText = "检测到文件已被外部修改，自动保存已暂停（Ctrl+S 手动保存会覆盖）";
+        }
+        else if (failed > 0)
+        {
+            StatusText = "自动保存失败：文件可能被占用或只读（Ctrl+S 可重试）";
+        }
+
+        return savedTabs.Count;
+    }
+
+    /// <summary>文档变了就排进自动保存队列（开关关着 / 不脏 / 无标题标签在这里过滤）。</summary>
+    private void QueueAutoSave(EditorTab tab)
+    {
+        if (!Cfg.AutoSave || !tab.IsDirty) return;
+
+        if (tab.FilePath is null)
+        {
+            if (_autoSaveHintedTabs.Add(tab))
+                StatusText = "无标题标签没有文件路径：Ctrl+S 选一次位置后，改动就会自动保存";
+            return;
+        }
+
+        if (tab.AutoSaveBlocked) return;
+        _pendingAutoSave.Add(tab);
+    }
+
+    /// <summary>文件是否在「我们上次读 / 写之后」被外部程序改过（时间戳比较；算不出来就当没改）。</summary>
+    private static bool IsExternallyModified(EditorTab tab)
+    {
+        if (tab.FilePath is not { } path || tab.LastKnownWriteTimeUtc is not { } known) return false;
+
+        try
+        {
+            if (!File.Exists(path)) return false;
+            return File.GetLastWriteTimeUtc(path) != known;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private void SaveAll()
@@ -338,6 +460,7 @@ public sealed class TextEditorViewModel : ToolViewModelBase
         var activeIndex = ActiveTab is null ? index : Tabs.IndexOf(ActiveTab);
         var nextIndex = EditorTab.NextActiveAfterRemove(Tabs.Count, index, activeIndex < 0 ? index : activeIndex);
         Tabs.RemoveAt(index); // View 的 CollectionChanged 负责摘掉这个标签的编辑器控件
+        ForgetAutoSaveState(tab);
 
         if (nextIndex < 0 || Tabs.Count == 0)
         {
@@ -360,6 +483,7 @@ public sealed class TextEditorViewModel : ToolViewModelBase
                 return;
             }
             Tabs.Remove(tab);
+            ForgetAutoSaveState(tab);
         }
         NewTab();
     }
@@ -447,12 +571,22 @@ public sealed class TextEditorViewModel : ToolViewModelBase
         Cfg.SessionActiveIndex = TextEditorConfig.ClampSessionIndex(activeIndex < 0 ? 0 : activeIndex, sanitized.Count);
     }
 
-    /// <summary>工具被真正关闭（缓存淘汰 / 重建配置 / 退出）：记下会话并立刻落盘，摘掉视图引用。</summary>
+    /// <summary>工具被真正关闭（缓存淘汰 / 重建配置 / 退出）：先把自动保存队列落盘，再记会话并落盘。</summary>
     protected override void OnClosed()
     {
+        // 切走 / 退出前把「还没到防抖时间」的自动保存队列补写掉，避免改动只留在内存里
+        if (Cfg.AutoSave) AutoSavePendingTabs();
+
         SaveSession();
         Cfg.SaveNow();   // OnClosed 在 NotifyClosed 的 Flush 之后才调，必须自己补一次落盘
         Host = null;
+    }
+
+    /// <summary>标签关掉后忘掉它的自动保存排队 / 提示状态（避免集合里留着已关闭标签）。</summary>
+    private void ForgetAutoSaveState(EditorTab tab)
+    {
+        _pendingAutoSave.Remove(tab);
+        _autoSaveHintedTabs.Remove(tab);
     }
 
     // ---------------- 实现 ----------------
@@ -462,6 +596,7 @@ public sealed class TextEditorViewModel : ToolViewModelBase
     {
         tab.TextChanged += (_, _) =>
         {
+            QueueAutoSave(tab);
             if (ReferenceEquals(tab, ActiveTab))
             {
                 CharCountText = $"{tab.Document.TextLength} 字符";

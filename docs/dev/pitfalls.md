@@ -442,6 +442,12 @@
   （`Rendering/LineSpacingElementGenerator.cs`；改了系数要 `TextView.Redraw()`）。
   已知边界：一个文档行被自动换行折成多条文本行时，撑高只作用在最后一段 → 行距看起来不完全均匀；
   另外 `HeightTree` 的滚动估算仍按默认行高，跳很远滚动时属于近似值（滚动过的地方会按实测行高修正）。
+- ⚠ **自动保存要做防抖 + 不覆盖外部改动**：不要每次 `TextChanged` 直接写盘（每敲一个字写一次、大文件会卡 UI），
+  用 `DispatcherTimer` 停手约 0.9 秒再统一写；写之前拿标签记的 `LastKnownWriteTimeUtc` 和
+  `File.GetLastWriteTimeUtc` 比一下，不一致就暂停这个标签并提示，别静默把外部程序的改动冲掉
+  （用户手动 Ctrl+S 才解除暂停）。切走 / 关工具时要把还没到防抖时间的队列 `AutoSavePendingTabs()` 补写掉。
+  自检里构造 `TextEditorViewModel` 时注意：关掉会话恢复后构造会先建一个无标题标签，**拿 `Tabs[0]` 会拿到它**，
+  文件相关断言要用 `ActiveTab`（否则会走 `SaveTabAs` 弹出另存为对话框，自检直接卡死）。
 
 ### FFmpeg（音频工具：视频转音频 / 分段合成）
 - ⚠ **本地 m3u8 直接 `-i playlist.m3u8` 会报 “Unsafe script / extension not allowed”**：HLS demuxer 默认只放行白名单扩展名，必须加
