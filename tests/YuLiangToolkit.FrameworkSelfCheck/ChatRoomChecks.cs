@@ -55,6 +55,7 @@ public static class ChatRoomChecks
             CheckCallProtocol(check, plain);
             CheckVoiceProtocol(check, plain);
             CheckVoiceMessageItem(check, plain, scratch);
+            CheckVoiceProgress(check, plain, scratch);
             CheckVoiceWavAndMp3(check, plain, scratch);
             CheckCallLoopback(check, plain);
             CheckVoiceLoopback(check, plain, scratch);
@@ -1115,6 +1116,57 @@ public static class ChatRoomChecks
         }, "我");
         plain("语音记录缺 durationSeconds 时兜底显示 1″（老记录不崩、不出现 0″）",
             legacyVoice.IsVoiceMessage && legacyVoice.VoiceDurationText == "1″");
+    }
+
+    /// <summary>语音消息的「可拖进度条」状态：位置 / 实际时长 / 文本 / 播放按钮 / 复位（纯逻辑，不碰 MediaElement）。</summary>
+    private static void CheckVoiceProgress(Action<string, bool, string> check, Action<string, bool> plain, string scratch)
+    {
+        Directory.CreateDirectory(scratch);
+        var audioPath = Path.Combine(scratch, "进度-语音.mp3");
+        WritePseudoFile(audioPath, 2000);
+
+        var voice = ChatMessageItem.FromLogEntry(new ChatSessionStore.ChatLogEntry
+        {
+            MessageId = "vp-1", Kind = "voice", Sender = "小张", FileName = "语音消息-进度.mp3",
+            ContentKind = "audio", Direction = "in", DurationSeconds = 7,
+        }, "我");
+        voice.LocalPath = audioPath;
+
+        check("语音进度条：还没打开时总时长用记录秒数、位置 0、进度文本 0:00 / 0:07、可播",
+            voice.IsVoiceMessage && voice.CanPlayVoice
+            && Math.Abs(voice.VoiceTotalSeconds - 7) < 0.001
+            && Math.Abs(voice.VoiceSliderMaximum - 7) < 0.001
+            && voice.VoicePositionSeconds == 0
+            && voice.VoiceProgressText == "0:00 / 0:07",
+            $"total={voice.VoiceTotalSeconds}，max={voice.VoiceSliderMaximum}，文本={voice.VoiceProgressText}，可播={voice.CanPlayVoice}");
+
+        voice.VoicePositionSeconds = 5;
+        check("语音进度条：拖动位置后进度文本跟着变（5 秒 / 7 秒）",
+            voice.VoiceProgressText == "0:05 / 0:07",
+            voice.VoiceProgressText);
+
+        voice.VoiceTotalSeconds = 12.4;   // MediaOpened 后拿到的真实时长（可能不是整秒）
+        check("语音进度条：MediaOpened 的实际时长覆盖记录秒数（12.4s → 0:12），位置保持 5s",
+            Math.Abs(voice.VoiceTotalSeconds - 12.4) < 0.001
+            && Math.Abs(voice.VoiceSliderMaximum - 12.4) < 0.001
+            && voice.VoiceProgressText == "0:05 / 0:12",
+            $"total={voice.VoiceTotalSeconds}，文本={voice.VoiceProgressText}");
+
+        var playText = voice.VoicePlayButtonText;
+        voice.IsVoicePlaying = true;
+        var pauseText = voice.VoicePlayButtonText;
+        voice.ResetVoicePlayback();
+        check("语音进度条：播放 / 暂停按钮文案切换，复位后位置 0、停止",
+            playText.Contains("播放") && pauseText.Contains("暂停")
+            && voice.VoicePositionSeconds == 0 && !voice.IsVoicePlaying
+            && voice.VoiceProgressText.StartsWith("0:00 / 0:12", StringComparison.Ordinal),
+            $"play={playText}，pause={pauseText}，reset={voice.VoiceProgressText}，playing={voice.IsVoicePlaying}");
+
+        plain("语音进度文本是 m:ss 且越界 / NaN 兜底（65→1:05、5.9→0:05、-3/NaN→0:00）",
+            ChatMessageItem.FormatVoiceTime(65) == "1:05"
+            && ChatMessageItem.FormatVoiceTime(5.9) == "0:05"
+            && ChatMessageItem.FormatVoiceTime(-3) == "0:00"
+            && ChatMessageItem.FormatVoiceTime(double.NaN) == "0:00");
     }
 
     /// <summary>读 WAV 头（独立解析一遍，别拿被测代码自己验自己）。</summary>

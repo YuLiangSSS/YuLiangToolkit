@@ -59,6 +59,14 @@
 - 真机自检 / 截图：`YLT_CHAT_VOICE_AUTOTEST=1`（配合自动开局）会在连上房间后自动录 1.5 秒并发一条语音，
   验证「录音 → MP3 → 发送 → 气泡」整条链路，不需要真用鼠标按住按钮；正常启动不设就不跑。
   本次真机实测：录 1.5 秒 → 会话 `audio\语音消息-*.mp3` 8.8 KB、`ffprobe` 显示 mp3 / 16 kHz / 单声道 / 48 kbps。
+- ⚠ **语音进度条（可拖 / 反复听）**：`MediaElement` 是 `LoadedBehavior=Manual`，进度用 200 ms `DispatcherTimer`
+  读 `Position` 刷 `VoicePositionSeconds`；用户点 / 拖 `Slider` 时把 `MediaElement.Position` 设过去。
+  ⚠ Slider 是 `Value` 单向绑定，定时器回写也会触发 `ValueChanged` —— 必须用「位置差 < 180 ms 就跳过」
+  防抖，否则每 200 ms 会把播放位置重新拽一次（听感是卡顿 / 跳回）。`MediaEnded` 要把 `Position` 归零并复位
+  按钮（否则再点播放只响一声就结束）；同一时刻只播一条语音（换条听先 Stop 其它）。
+  ⚠ 视图 `Unloaded` 时要暂停并复位（外壳缓存视图，别留一个看不见还在播、进度却没人更新的孤儿播放器）。
+  真机验证：`device-probe` 传 `seek` 参数会录一段 MP3 用 WPF `MediaPlayer` 打开，拖到 1.0 s / 0.4 s 后
+  读回 Position 分别为 1.01 / 0.42，证明底层可拖（`MediaElement` 内部同一套内核）。
 
 ### osu! 下图器
 - 先下 `.osz.part` 再改名：断线留半个文件会被「已存在」永久跳过。

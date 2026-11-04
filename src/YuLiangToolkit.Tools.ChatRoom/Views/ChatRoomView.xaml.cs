@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using YuLiangToolkit.Tools.ChatRoom.ViewModels;
 
 namespace YuLiangToolkit.Tools.ChatRoom.Views;
@@ -42,10 +43,18 @@ public partial class ChatRoomView : UserControl
     /// </summary>
     private int _voicePressGeneration;
 
+    // ---------------- 语音消息播放进度（QQ 那种可拖进度条）----------------
+    private DispatcherTimer? _voicePlaybackTimer;
+    private MediaElement? _voicePlayingMedia;
+    private ChatMessageItem? _voicePlayingItem;
+
     public ChatRoomView()
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        // 视图被卸载（切走工具页 / 缓存淘汰）时停掉语音播放：MediaElement 是视图里的控件，
+        // 不能留一个「看不见还在播、进度条却没人更新」的孤儿播放器。
+        Unloaded += (_, _) => StopVoicePlayback();
         // 录音中按 Esc = 取消：只挂在本视图的 PreviewKeyDown 上，不动外层窗口。
         // ⚠ 挂在这里而不是 Loaded：外壳会缓存视图、Loaded 可能触发多次，构造函数每个实例只跑一次，天然防重复挂。
         PreviewKeyDown += OnVoicePreviewKeyDown;
@@ -223,6 +232,13 @@ public partial class ChatRoomView : UserControl
         var media = FindSiblingMedia(element);
         if (media is null) return;
 
+        // 语音消息有自己的「播放 / 暂停 + 进度条」逻辑（见 ToggleVoicePlayback）
+        if (element.DataContext is ChatMessageItem { IsVoiceMessage: true } voiceItem)
+        {
+            ToggleVoicePlayback(media, voiceItem);
+            return;
+        }
+
         try
         {
             if (media.CanPause)
@@ -371,6 +387,177 @@ public partial class ChatRoomView : UserControl
         }
         vm.CancelVoiceRecording();
         e.Handled = true;
+    }
+
+    // ---------------------------------------------------------------- 语音消息播放进度（可拖进度条）
+
+    /// <summary>
+    /// 点语音气泡上的「▶ 播放 / ⏸ 暂停」。
+    /// <para>同一时刻只播一条语音：其它语音条会 Stop 并把进度归零（和 QQ 一样，点另一条就换着听）。</para>
+    /// <para>播到结尾 / 拖到结尾后再点播放，从 0 重新开始。</para>
+    /// </summary>
+    private void ToggleVoicePlayback(MediaElement media, ChatMessageItem item)
+    {
+        try
+        {
+            if (!item.CanPlayVoice)
+            {
+                // 演示数据 / 本地文件被删了：没有可播的 MP3，别把按钮切成「暂停」骗人
+                if (DataContext is ChatRoomViewModel vm) vm.NoticeExternal("这条语音没有本地文件（演示数据或文件已被删）");
+                return;
+            }
+
+            if (item.IsVoicePlaying)
+            {
+                media.Pause();
+                item.IsVoicePlaying = false;
+                StopVoiceTimer();
+                return;
+            }
+
+            foreach (var other in FindAll<MediaElement>(MessageList))
+            {
+                if (ReferenceEquals(other, media)) continue;
+                try { other.Stop(); } catch { }
+                if (other.DataContext is ChatMessageItem { IsVoiceMessage: true } otherVoice)
+                    otherVoice.ResetVoicePlayback();
+            }
+
+            // 已经播到结尾（或拖到结尾）再点播放：先回到 0，否则 Play() 可能只响一声就结束
+            if (media.NaturalDuration.HasTimeSpan
+                && media.Position >= media.NaturalDuration.TimeSpan - TimeSpan.FromMilliseconds(80))
+                media.Position = TimeSpan.Zero;
+
+            media.Play();
+            item.IsVoicePlaying = true;
+            if (media.NaturalDuration.HasTimeSpan && media.NaturalDuration.TimeSpan.TotalSeconds > 0)
+                item.VoiceTotalSeconds = media.NaturalDuration.TimeSpan.TotalSeconds;
+            _voicePlayingMedia = media;
+            _voicePlayingItem = item;
+            StartVoiceTimer();
+        }
+        catch (Exception ex)
+        {
+            item.IsVoicePlaying = false;
+            if (DataContext is ChatRoomViewModel vm) vm.NoticeExternal($"播放失败：{ex.Message}");
+        }
+    }
+
+    /// <summary>MediaElement 打开完成：用真实时长更新进度条（比消息里记录的整秒更准）。</summary>
+    private void OnVoiceMediaOpened(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MediaElement media || media.DataContext is not ChatMessageItem item) return;
+        try
+        {
+            if (media.NaturalDuration.HasTimeSpan && media.NaturalDuration.TimeSpan.TotalSeconds > 0)
+                item.VoiceTotalSeconds = media.NaturalDuration.TimeSpan.TotalSeconds;
+            item.VoicePositionSeconds = media.Position.TotalSeconds;
+        }
+        catch { /* 取不到时长就用消息里记录的秒数 */ }
+    }
+
+    /// <summary>播到结尾：进度归零、按钮变回「▶ 播放」，可以再点一次从头听（反复听）。</summary>
+    private void OnVoiceMediaEnded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MediaElement media || media.DataContext is not ChatMessageItem item) return;
+        try { media.Position = TimeSpan.Zero; } catch { }
+        item.ResetVoicePlayback();
+        if (ReferenceEquals(_voicePlayingMedia, media)) StopVoiceTimer();
+    }
+
+    /// <summary>播放失败（文件被删 / 格式不支持）：复位界面并提示一句。</summary>
+    private void OnVoiceMediaFailed(object sender, ExceptionRoutedEventArgs e)
+    {
+        if (sender is not MediaElement media || media.DataContext is not ChatMessageItem item) return;
+        item.ResetVoicePlayback();
+        if (ReferenceEquals(_voicePlayingMedia, media)) StopVoiceTimer();
+        if (DataContext is ChatRoomViewModel vm)
+            vm.NoticeExternal($"语音播放失败：{e.ErrorException?.Message ?? "文件损坏或格式不支持"}");
+    }
+
+    /// <summary>
+    /// 点 / 拖进度条：把 MediaElement 的 Position 设到对应秒数（暂停时也能拖，拖完点播放就从那儿开始）。
+    /// <para>⚠ 播放时定时器会改 <c>VoicePositionSeconds</c>，绑定回写 Slider.Value 也会触发本事件：
+    /// 位置已经差不多就直接返回，否则每 200ms 都会把播放位置重新拽一次（听感上是「卡顿 / 跳回」）。</para>
+    /// </summary>
+    private void OnVoiceSeekChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!IsLoaded) return;
+        if (sender is not Slider slider || slider.DataContext is not ChatMessageItem item) return;
+        var media = FindSiblingMedia(slider);
+        if (media is null) return;
+
+        try
+        {
+            var target = TimeSpan.FromSeconds(Math.Max(0, e.NewValue));
+            if (media.NaturalDuration.HasTimeSpan && target > media.NaturalDuration.TimeSpan)
+                target = media.NaturalDuration.TimeSpan;
+            if ((media.Position - target).Duration() < TimeSpan.FromMilliseconds(180)) return;   // 程序刷新，不是用户拖动
+            media.Position = target;
+            item.VoicePositionSeconds = target.TotalSeconds;
+        }
+        catch { /* 还没打开 / 播放器忙：这次拖动忽略，下一次再试 */ }
+    }
+
+    private void StartVoiceTimer()
+    {
+        _voicePlaybackTimer ??= new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(200),
+        };
+        _voicePlaybackTimer.Tick -= OnVoicePlaybackTimerTick;
+        _voicePlaybackTimer.Tick += OnVoicePlaybackTimerTick;
+        _voicePlaybackTimer.Start();
+    }
+
+    private void StopVoiceTimer()
+    {
+        if (_voicePlaybackTimer is null) return;
+        _voicePlaybackTimer.Tick -= OnVoicePlaybackTimerTick;
+        _voicePlaybackTimer.Stop();
+        _voicePlayingMedia = null;
+        _voicePlayingItem = null;
+    }
+
+    /// <summary>每 200ms 把播放位置刷到进度条（只更新当前那条语音）。</summary>
+    private void OnVoicePlaybackTimerTick(object? sender, EventArgs e)
+    {
+        var media = _voicePlayingMedia;
+        var item = _voicePlayingItem;
+        if (media is null || item is null)
+        {
+            StopVoiceTimer();
+            return;
+        }
+
+        try
+        {
+            var position = media.Position.TotalSeconds;
+            if (Math.Abs(position - item.VoicePositionSeconds) > 0.05)
+                item.VoicePositionSeconds = position;
+            if (item.VoiceTotalSeconds <= 0 && media.NaturalDuration.HasTimeSpan)
+                item.VoiceTotalSeconds = media.NaturalDuration.TimeSpan.TotalSeconds;
+            // 播放器自己停了（被外部 Stop / 文件没了）：按钮状态兜底复位
+            if (!media.CanPause && item.IsVoicePlaying)
+            {
+                item.IsVoicePlaying = false;
+                StopVoiceTimer();
+            }
+        }
+        catch
+        {
+            StopVoiceTimer();
+        }
+    }
+
+    /// <summary>停掉当前语音播放并把界面复位（视图卸载 / 切走工具页时用）。</summary>
+    private void StopVoicePlayback()
+    {
+        var media = _voicePlayingMedia;
+        var item = _voicePlayingItem;
+        try { media?.Pause(); } catch { }
+        item?.ResetVoicePlayback();
+        StopVoiceTimer();
     }
 
     // ---------------------------------------------------------------- 可视树小工具

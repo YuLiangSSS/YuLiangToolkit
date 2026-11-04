@@ -463,7 +463,9 @@
                                             </StackPanel>
                                         </Border>
 
-                                        <!-- 语音消息（「按住说话」录出来的 MP3）：▶ 播 / 暂停 + 秒数 / 大小 + 打开。
+                                        <!-- 语音消息（「按住说话」录出来的 MP3）：▶ 播 / 暂停 + 秒数 + 可拖进度条 + 打开。
+                                             进度条和 QQ 一样：点一下 / 拖到任意位置就从那里听；播放时进度实时走，
+                                             到结尾自动回到 0，可以反复听不同位置。
                                              隐藏的 MediaElement 和普通音频那块一样是 Manual，不靠它自己响，点按钮才 Play()。
                                              ⚠ 语音消息不会同时走上面的普通音频块（那边绑 HasPlainAudio）和下面的「其它文件」块
                                              （那边 HasAudio 仍是 true 会藏起来），所以一条语音只出现这一个气泡。 -->
@@ -472,10 +474,10 @@
                                                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                                                 HorizontalAlignment="Left"
                                                 Visibility="{Binding IsVoiceMessage, Converter={StaticResource BoolToVis}}">
-                                            <StackPanel>
+                                            <StackPanel MinWidth="280">
                                                 <StackPanel Orientation="Horizontal">
-                                                    <Button Content="▶ 播放 / 暂停" Padding="10,3" FontSize="11"
-                                                            Style="{StaticResource SecondaryButtonStyle}"
+                                                    <Button Content="{Binding VoicePlayButtonText}" Padding="10,3" FontSize="11"
+                                                            MinWidth="66" Style="{StaticResource SecondaryButtonStyle}"
                                                             Click="OnToggleMediaClick" />
                                                     <TextBlock Text="{Binding VoiceSummary}" FontSize="11" Margin="10,0,0,0"
                                                                VerticalAlignment="Center" TextWrapping="Wrap"
@@ -486,9 +488,34 @@
                                                             VerticalAlignment="Center"
                                                             Click="OnOpenFileButtonClick" Tag="{Binding LocalPath}" />
                                                 </StackPanel>
-                                                <!-- 与上面普通音频同一套：LoadedBehavior=Manual 不会自己响，靠按钮 Play() / Pause() -->
+
+                                                <!-- 可拖进度条：单向绑进度位置（播放时由视图刷新），拖动时视图写 MediaElement.Position。
+                                                     点击轨道也能直接跳（IsMoveToPointEnabled）。没有本地 MP3（演示数据）时整行不显示。 -->
+                                                <Grid Margin="0,7,0,0"
+                                                      Visibility="{Binding CanPlayVoice, Converter={StaticResource BoolToVis}}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" MinWidth="120" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Slider Style="{StaticResource SliderStyle}" Height="20"
+                                                            Minimum="0" Maximum="{Binding VoiceSliderMaximum}"
+                                                            Value="{Binding VoicePositionSeconds, Mode=OneWay}"
+                                                            IsMoveToPointEnabled="True"
+                                                            IsEnabled="{Binding CanPlayVoice}"
+                                                            ValueChanged="OnVoiceSeekChanged"
+                                                            ToolTip="点一下 / 拖动进度条，从任意位置听" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding VoiceProgressText}" FontSize="10.5"
+                                                               Margin="8,0,0,0" VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                </Grid>
+
+                                                <!-- MediaElement 在 LoadedBehavior=Manual 时不会自己响，靠上面那个按钮 Play() / Pause()；
+                                                     进度 / 结尾 / 失败事件都接到视图里维护进度条（见 ChatRoomView.xaml.cs）。 -->
                                                 <MediaElement Source="{Binding LocalPath}" LoadedBehavior="Manual"
-                                                              UnloadedBehavior="Manual" Volume="0.8" Height="1" Opacity="0" />
+                                                              UnloadedBehavior="Manual" Volume="0.8" Height="1" Opacity="0"
+                                                              MediaOpened="OnVoiceMediaOpened"
+                                                              MediaEnded="OnVoiceMediaEnded"
+                                                              MediaFailed="OnVoiceMediaFailed" />
                                             </StackPanel>
                                         </Border>
 

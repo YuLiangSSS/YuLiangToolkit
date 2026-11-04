@@ -14,7 +14,7 @@
 | 📘 Word 阅读器 | 只读浏览 `.docx`：标题大纲、字符格式、列表、表格、图片、超链接，50% ~ 300% 缩放、Ctrl+F 按段落查找、🕘 最近打开、拖入即开；手写 OOXML 解析，不改原文件 | [tools/word-viewer.md](tools/word-viewer.md) |
 | 📗 Excel 阅读器 | 只读浏览 `.xlsx`：工作表页签、列宽 / 行号 / 列标题、数字 / 日期 / 百分比格式、合并单元格、字体与填充色，状态栏看选中单元格的值 / 公式；手写 OOXML 解析，只显示公式缓存值、不改原文件 | [tools/excel-viewer.md](tools/excel-viewer.md) |
 | ⚡ Flash 下载器 | 4399 / 7k7k / 17yy / ArmorGames / Kongregate 小游戏下载到本地离线玩 | [tools/flash-downloader.md](tools/flash-downloader.md) |
-| 💬 联机聊天室 | 主机开端口、客户端连进来，局域网 / 内网穿透都能用，带流量上限；房间内还能开**群语音 / 群视频通话**（最多 8 人，媒体复用同一个端口），也能**按住说话发语音消息**（自动转 MP3、气泡显示秒数、计入文件流量上限） | [tools/chat-room.md](tools/chat-room.md) |
+| 💬 联机聊天室 | 主机开端口、客户端连进来，局域网 / 内网穿透都能用，带流量上限；房间内还能开**群语音 / 群视频通话**（最多 8 人，媒体复用同一个端口），也能**按住说话发语音消息**（自动转 MP3、气泡显示秒数、**可拖进度条反复听**、计入文件流量上限） | [tools/chat-room.md](tools/chat-room.md) |
 | 🌐 网页浏览器 | Chromium 内核（WebView2）多标签：上方 / 左侧标签栏、前进后退刷新、网页右键刷新、会话恢复（懒加载）、历史记录 / 下载 / 书签 / 资源嗅探侧栏、页面缩放（Ctrl+滚轮）、主页与清空记录 | [tools/browser.md](tools/browser.md) |
 | 🏷️ 批量重命名 | 规则清单 + 预览 + 两阶段改名 + 撤销 | [tools/batch-rename.md](tools/batch-rename.md) |
 | 📝 文本编辑器 | 多标签文本 / 代码编辑（AvalonEdit）：语法高亮、查找替换、编码与换行自动识别、界面缩放 | [tools/text-editor.md](tools/text-editor.md) |

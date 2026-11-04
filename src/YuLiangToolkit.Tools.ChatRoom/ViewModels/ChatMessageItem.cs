@@ -206,6 +206,7 @@ public sealed class ChatMessageItem : ObservableObject
             OnPropertyChanged(nameof(HasAudio));
             OnPropertyChanged(nameof(HasVideo));
             OnPropertyChanged(nameof(HasPlainAudio));
+            OnPropertyChanged(nameof(CanPlayVoice));
         }
     }
 
@@ -250,6 +251,82 @@ public sealed class ChatMessageItem : ObservableObject
 
     /// <summary>语音气泡里的一行摘要（小字提示用）。</summary>
     public string VoiceSummary => IsVoiceMessage ? $"🎙 语音消息 {VoiceDurationText}" : "";
+
+    // ---------------------------------------------------------------- 语音播放进度（QQ 那种可拖进度条）
+
+    private double _voicePositionSeconds;
+    private double _voiceTotalSeconds;
+    private bool _isVoicePlaying;
+
+    /// <summary>
+    /// 当前播放位置（秒）。界面上的进度条单向绑它：播放时由视图的定时器刷新，
+    /// 用户点 / 拖进度条时由视图把 MediaElement 的 Position 设过去。
+    /// </summary>
+    public double VoicePositionSeconds
+    {
+        get => _voicePositionSeconds;
+        set
+        {
+            if (!Set(ref _voicePositionSeconds, Math.Max(0, value))) return;
+            OnPropertyChanged(nameof(VoiceProgressText));
+        }
+    }
+
+    /// <summary>
+    /// 实际总时长（秒）。<see cref="OpenMedia"/> 打开后由 MediaElement.NaturalDuration 更新；
+    /// 还没打开时退回消息里记录的秒数（历史回看 / 刚发出来时进度条也有长度）。
+    /// </summary>
+    public double VoiceTotalSeconds
+    {
+        get => _voiceTotalSeconds > 0 ? _voiceTotalSeconds : Math.Max(1, VoiceDurationSeconds);
+        set
+        {
+            var fixedValue = value > 0 ? value : 0;
+            if (Math.Abs(_voiceTotalSeconds - fixedValue) < 0.001) return;
+            _voiceTotalSeconds = fixedValue;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(VoiceSliderMaximum));
+            OnPropertyChanged(nameof(VoiceProgressText));
+        }
+    }
+
+    /// <summary>进度条最大值（至少 0.1 秒，避免 Slider 的 Maximum=0 边界）。</summary>
+    public double VoiceSliderMaximum => Math.Max(0.1, VoiceTotalSeconds);
+
+    /// <summary>「0:05 / 0:12」这种当前进度 / 总时长文本。</summary>
+    public string VoiceProgressText => $"{FormatVoiceTime(VoicePositionSeconds)} / {FormatVoiceTime(VoiceTotalSeconds)}";
+
+    /// <summary>这条语音现在是不是在播（按钮文案跟着变）。</summary>
+    public bool IsVoicePlaying
+    {
+        get => _isVoicePlaying;
+        set
+        {
+            if (!Set(ref _isVoicePlaying, value)) return;
+            OnPropertyChanged(nameof(VoicePlayButtonText));
+        }
+    }
+
+    /// <summary>播放 / 暂停按钮文案。</summary>
+    public string VoicePlayButtonText => IsVoicePlaying ? "⏸ 暂停" : "▶ 播放";
+
+    /// <summary>有没有可播的本地 MP3（没有就禁用进度条 —— 例如截图演示数据）。</summary>
+    public bool CanPlayVoice => CanOpenFile;
+
+    /// <summary>把播放状态复位（播放到结尾 / 暂停 / 关页面时用）。</summary>
+    public void ResetVoicePlayback()
+    {
+        VoicePositionSeconds = 0;
+        IsVoicePlaying = false;
+    }
+
+    /// <summary>秒数 → <c>m:ss</c>（QQ 那种进度文本；超过 1 分钟也能看）。</summary>
+    public static string FormatVoiceTime(double seconds)
+    {
+        if (double.IsNaN(seconds) || double.IsInfinity(seconds) || seconds < 0) seconds = 0;
+        var total = (int)Math.Floor(seconds + 0.001);
+        return $"{total / 60}:{total % 60:00}";
+    }
 
     /// <summary>
     /// 「普通音频」开关：语音消息也有音频文件，但不能再显示成普通音频卡片（否则界面上会出现两份）。
