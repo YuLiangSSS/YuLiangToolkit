@@ -1,4 +1,3 @@
-using System.IO;
 using System.Windows;
 using System.Windows.Threading;
 using YuLiangToolkit.App.Themes;
@@ -6,10 +5,9 @@ using YuLiangToolkit.App.ViewModels;
 using YuLiangToolkit.App.Views;
 using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Services;
+using YuLiangToolkit.Core.Shell;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Core.Tools;
-using YuLiangToolkit.Tools.PdfReader;
-using YuLiangToolkit.Tools.PictureViewer;
 
 namespace YuLiangToolkit.App;
 
@@ -124,6 +122,9 @@ public partial class App : Application
         // 任务栏右侧的托盘图标：单击 / 双击恢复窗口，右键菜单（显示主窗口 / 主页设置 / 退出）。
         SetupTrayIcon(window, vm);
 
+        // 已登记「打开方式」时顺手刷新入口副本 / 命令（程序更新或换目录后副本可能是旧的；没登记则什么都不做）
+        RefreshOpenWithEntryPoints();
+
         // 开发调试：YLT_WINDOW_SIZE=1024x700 强制窗口尺寸（截图核对最小窗口 / 窄屏版式用）
         var windowSize = Environment.GetEnvironmentVariable("YLT_WINDOW_SIZE");
         if (!string.IsNullOrWhiteSpace(windowSize))
@@ -184,28 +185,9 @@ public partial class App : Application
             }
         }
 
-        // 双击图片文件启动（文件关联 / 命令行参数）：直接进「图片连续阅读器」，
-        // 加载这张图所在文件夹，并定位到它（连续滚动滚过去、翻页模式直接翻到那一页）。
-        var launchImage = e.Args.FirstOrDefault(PictureFileAssociation.IsSupportedImageFile);
-        if (!string.IsNullOrWhiteSpace(launchImage))
-        {
-            try { PictureFilePathLaunch.PendingImagePath = Path.GetFullPath(launchImage.Trim().Trim('"')); }
-            catch { PictureFilePathLaunch.PendingImagePath = launchImage; }
-
-            var pictureTool = tools.FirstOrDefault(t => t.Id == PictureViewerConfig.ToolId);
-            if (pictureTool is not null) vm.OpenToolCommand.Execute(pictureTool);
-        }
-
-        // 双击 PDF 文件启动（文件关联 / 命令行参数）：直接进「PDF 阅读器」并打开这个文件。
-        var launchPdf = e.Args.FirstOrDefault(PdfFileAssociation.IsSupportedPdfFile);
-        if (!string.IsNullOrWhiteSpace(launchPdf) && string.IsNullOrWhiteSpace(launchImage))
-        {
-            try { PdfFilePathLaunch.PendingPdfPath = Path.GetFullPath(launchPdf.Trim().Trim('"')); }
-            catch { PdfFilePathLaunch.PendingPdfPath = launchPdf; }
-
-            var pdfTool = tools.FirstOrDefault(t => t.Id == PdfReaderConfig.ToolId);
-            if (pdfTool is not null) vm.OpenToolCommand.Execute(pdfTool);
-        }
+        // 双击图片 / PDF / 右键「打开方式」等启动（文件关联 / 命令行参数）：统一交给路由，
+        // 按模式（自动 / 文本 / 压缩包）打开对应工具并交出文件。
+        FileLaunchRouter.TryHandle(e.Args, tools, vm);
 
         // 开发调试：YLT_OPEN_SETTINGS=1 进入「主页设置」页面（v0.26.0 起设置是页面而不是独立窗口；
         // 配 YLT_SHOT 时截的就是主窗口这一页，命令见 docs/shell.md）
@@ -292,58 +274,39 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// 第二实例发来的命令行：先把窗口从托盘 / 最小化恢复并置前；如果带了一张受支持的图片 / 一个 PDF，
-    /// 就打开对应工具（图片阅读器 / PDF 阅读器）——新 ViewModel 会取走 Pending 路径打开它。
+    /// 第二实例发来的命令行：先把窗口从托盘 / 最小化恢复并置前；如果带的是「打开方式」请求
+    /// （文件 / 模式），就交给 <see cref="FileLaunchRouter"/> 打开对应工具。
     /// </summary>
     private static void HandleSecondInstance(
         string[] args, MainWindow window, MainViewModel viewModel, IReadOnlyList<ITool> tools)
     {
         SingleInstance.ActivateWindow(window);
-
-        var image = args.FirstOrDefault(PictureFileAssociation.IsSupportedImageFile);
-        if (!string.IsNullOrWhiteSpace(image))
-        {
-            try { PictureFilePathLaunch.PendingImagePath = Path.GetFullPath(image.Trim().Trim('"')); }
-            catch { PictureFilePathLaunch.PendingImagePath = image; }
-
-            var pictureTool = tools.FirstOrDefault(t => t.Id == PictureViewerConfig.ToolId);
-            if (pictureTool is not null) viewModel.OpenToolCommand.Execute(pictureTool);
-            return;
-        }
-
-        var pdf = args.FirstOrDefault(PdfFileAssociation.IsSupportedPdfFile);
-        if (string.IsNullOrWhiteSpace(pdf)) return;
-
-        try { PdfFilePathLaunch.PendingPdfPath = Path.GetFullPath(pdf.Trim().Trim('"')); }
-        catch { PdfFilePathLaunch.PendingPdfPath = pdf; }
-
-        var pdfTool = tools.FirstOrDefault(t => t.Id == PdfReaderConfig.ToolId);
-        if (pdfTool is not null) viewModel.OpenToolCommand.Execute(pdfTool);
+        FileLaunchRouter.TryHandle(args, tools, viewModel);
     }
 
     /// <summary>
-    /// 第二实例发消息前先把「受支持的图片 / PDF 路径」转成绝对路径：两个进程工作目录可能不同，
+    /// 第二实例发消息前先把「文件参数」转成绝对路径：两个进程工作目录可能不同，
     /// 直接发相对路径的话第一个实例会按自己的目录解析错。
     /// </summary>
     private static string[] NormalizeLaunchArguments(string[] args)
+        => OpenWithArguments.NormalizeFileArguments(args);
+
+    /// <summary>
+    /// 已登记「打开方式」时，在启动阶段把入口副本和注册表命令刷成当前 exe 的版本。
+    /// 失败只写调试输出、不影响启动（用户下次在「打开方式」页点「修复 / 刷新」还能再试）。
+    /// </summary>
+    private static void RefreshOpenWithEntryPoints()
     {
-        var result = new string[args.Length];
-        for (var i = 0; i < args.Length; i++)
+        try
         {
-            var arg = args[i];
-            var isLaunchFile = PictureFileAssociation.IsSupportedImageFile(arg)
-                               || PdfFileAssociation.IsSupportedPdfFile(arg);
-            if (!isLaunchFile)
-            {
-                result[i] = arg;
-                continue;
-            }
-
-            try { result[i] = Path.GetFullPath(arg.Trim().Trim('"')); }
-            catch { result[i] = arg; }
+            var canonicalExe = OpenWithRegistration.ResolveCanonicalExecutablePath(Environment.ProcessPath);
+            if (OpenWithRegistration.IsRegistered(canonicalExe))
+                OpenWithRegistration.EnsureUpToDate(canonicalExe);
         }
-
-        return result;
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[OpenWith] 启动刷新入口副本失败：{ex.Message}");
+        }
     }
 
     /// <summary>

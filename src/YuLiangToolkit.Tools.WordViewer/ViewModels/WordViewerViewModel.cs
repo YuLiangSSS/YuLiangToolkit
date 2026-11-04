@@ -5,6 +5,7 @@ using System.Windows.Media;
 using Microsoft.Win32;
 using YuLiangToolkit.Core.Documents;
 using YuLiangToolkit.Core.Mvvm;
+using YuLiangToolkit.Core.Shell;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Tools.WordViewer.Parsing;
 using YuLiangToolkit.Tools.WordViewer.Rendering;
@@ -67,7 +68,7 @@ public sealed class WordRecentItem
 /// <para><b>只读约定</b>：这里只有「打开」没有「保存 / 编辑」，绝不写回被浏览的文件；
 /// 唯一会写入磁盘的是工具自己的 <c>Config\word-viewer\config.json</c>（由配置存储自动落盘）。</para>
 /// </summary>
-public sealed class WordViewerViewModel : ToolViewModelBase
+public sealed class WordViewerViewModel : ToolViewModelBase, IFileLaunchTarget
 {
     /// <summary>开发 / 截图用的环境变量：启动后自动打开这个 docx（只影响显示，不写进配置）。</summary>
     private const string AutoOpenEnvironmentVariable = "YLT_WORD_OPEN";
@@ -420,6 +421,40 @@ public sealed class WordViewerViewModel : ToolViewModelBase
 
     /// <summary>拖入文件 / 最近列表点开时调用。</summary>
     public Task OpenDroppedFileAsync(string path) => OpenPathAsync(path);
+
+    // ---------------------------------------------------------------- 打开方式（文件关联 / 单实例转发）
+
+    /// <summary>
+    /// 主程序通过 Windows「打开方式」交过来一个文件（见 <see cref="IFileLaunchTarget"/>）：
+    /// 规范成绝对路径后复用普通打开流程（<see cref="OpenPathAsync"/>），不阻塞界面。
+    ///
+    /// <para>路径为空 / 非法时只写状态栏与日志；文件不存在 / 格式不支持由 <see cref="OpenPathAsync"/>
+    /// 统一显示到页面的错误区，<b>绝不抛异常给主程序</b>。</para>
+    /// </summary>
+    public void OpenLaunchedFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            StatusText = "打开方式：没有拿到文件路径";
+            Log("[打开方式] 没有拿到文件路径，忽略");
+            return;
+        }
+
+        string fullPath;
+        try
+        {
+            // 主程序一般给绝对路径，但仍容忍带引号 / 相对路径的写法
+            fullPath = Path.GetFullPath(path.Trim().Trim('"'));
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"打开方式：路径不合法（{path}）";
+            Log($"[打开方式] 路径不合法：{path} · {ex.Message}");
+            return;
+        }
+
+        _ = OpenPathAsync(fullPath);
+    }
 
     /// <summary>把解析好的文档接到界面上（必须运行在 UI 线程：要建 FlowDocument）。</summary>
     private void ApplyDocument(WordDocument document, string path, long fileSize, bool remember)

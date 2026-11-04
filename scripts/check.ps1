@@ -119,6 +119,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/CallFakes.cs'             @('chat-room') 'L3' 'chat-room call fakes')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/ContextMenuChecks.cs'     @('context-menu') 'L3' 'context-menu assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/ArchiveChecks.cs'         @('archive') 'L3' 'archive assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/OpenWithChecks.cs'        @('open-with') 'L3' 'open-with assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/FlashDownloaderChecks.cs' @('flash-downloader') 'L3' 'flash-downloader assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/MapDownloaderChecks.cs'   @('map-downloader') 'L3' 'map-downloader assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/MediaPlayerChecks.cs'     @('media-player') 'L3' 'media-player assertions')
@@ -171,6 +172,7 @@ $mapping = @(
     (New-Rule 'src/YuLiangToolkit.Tools.AudioTools/*'       @('audio-tools') 'L2' 'audio tools')
 (New-Rule 'src/YuLiangToolkit.Tools.WordViewer/*'       @('word-viewer') 'L2' 'word viewer')
 (New-Rule 'src/YuLiangToolkit.Tools.ExcelViewer/*'      @('excel-viewer') 'L2' 'excel viewer')
+    (New-Rule 'src/YuLiangToolkit.Tools.OpenWith/*'          @('open-with') 'L2' 'open-with tool')
     (New-Rule 'src/YuLiangToolkit.Tools.Sample/*'          @() 'L1' 'framework template, no dedicated group: build + manual smoke')
     (New-Rule 'src/*'                                      @('ALL') 'L4' 'unmapped src project' -Fallback)
 
@@ -187,6 +189,7 @@ $mapping = @(
     (New-Rule 'Models/*'                  @('shell') 'L2' 'shell models')
     (New-Rule 'Converters/*'              @() 'L1' 'no assertions: build + screenshot smoke')
     (New-Rule 'SingleInstance.cs'         @('shell') 'L2' 'single instance')
+    (New-Rule 'FileLaunchRouter.cs'       @('shell') 'L2' 'open-with launch routing: no direct assertions -> screenshot smoke')
     (New-Rule 'YuLiangTookit.csproj'      @('ALL') 'L4' 'main project wiring: full + manual checklist (refs / DefaultItemExcludes / no CopyToOutputDirectory / screenshot)')
 
     # ---------- unknown impact -> full ----------

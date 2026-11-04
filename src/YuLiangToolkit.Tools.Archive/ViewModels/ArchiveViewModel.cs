@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using YuLiangToolkit.Core.Mvvm;
+using YuLiangToolkit.Core.Shell;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Tools.Archive;
 
@@ -187,7 +188,7 @@ public sealed class ArchiveSourceItem : ObservableObject
 /// <para>线程约定：耗时活（Probe / Extract / Create / MeasureSources）全部 <see cref="Task.Run(Action)"/>
 /// 丢到后台，进度回调与后台结果一律用 <see cref="ToolViewModelBase.Ui"/> 切回 UI 线程再改界面状态。</para>
 /// </summary>
-public sealed class ArchiveViewModel : ToolViewModelBase
+public sealed class ArchiveViewModel : ToolViewModelBase, IFileLaunchTarget
 {
     /// <summary>引擎不可用时（理论上不会）给文件对话框兜底的过滤器。</summary>
     private const string FallbackArchiveFilter =
@@ -646,6 +647,77 @@ public sealed class ArchiveViewModel : ToolViewModelBase
                 if (entry is ArchiveSourceItem item) _selectedSources.Add(item);
         }
         CommandManager.InvalidateRequerySuggested();
+    }
+
+    // =====================================================================
+    //  「打开方式」入口（主程序调用，见 IFileLaunchTarget）
+    // =====================================================================
+
+    /// <summary>
+    /// 「以压缩包方式打开」（Windows「打开方式」/ 主程序 <see cref="IFileLaunchTarget"/> 调用）：
+    /// 把文件当作压缩包加入<b>解压列表</b>（绝不落到「待压缩」源列表），格式 / 加密状态交给后台
+    /// <see cref="ArchiveEngine.Probe"/> 填（流程与拖入压缩包完全一致）。
+    /// <para>容错约定：路径非法 / 文件不存在 / 正在跑任务都只写状态栏与日志，绝不抛给主程序；
+    /// 是不是有效压缩包不在这里预判，交给 Probe 在列表里标「读取失败」。</para>
+    /// </summary>
+    public void OpenLaunchedFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            StatusText = "打开方式：没有收到文件路径";
+            Log("✗ 打开方式：没有收到文件路径");
+            return;
+        }
+
+        string full;
+        try
+        {
+            full = Path.GetFullPath(path.Trim().Trim('"'));
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"打开方式：路径无效（{ex.Message}）";
+            Log($"✗ 打开方式：路径无效（{ex.Message}）");
+            return;
+        }
+
+        if (!File.Exists(full))
+        {
+            StatusText = "打开方式：文件不存在或已被删除";
+            Log($"✗ 打开方式：文件不存在 {full}");
+            return;
+        }
+
+        if (IsBusy)
+        {
+            // 和「正在跑任务时拖入」一样：不排队、不启动第二次探测，只提示等任务结束
+            StatusText = "正在处理任务，等当前任务结束后再用压缩包方式打开";
+            Log($"（忙着，未能以压缩包方式打开：{full}）");
+            return;
+        }
+
+        var alreadyInList = Archives.Any(a => string.Equals(a.FullPath, full, StringComparison.OrdinalIgnoreCase));
+        try
+        {
+            // 只走「解压列表」入口：文件永远不进 Sources（待压缩）
+            AddArchives(new[] { full });
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"以压缩包方式打开失败（{ex.Message}）";
+            Log($"✗ 以压缩包方式打开失败（{ex.Message}）");
+            return;
+        }
+
+        if (alreadyInList)
+        {
+            // AddArchives 对全是重复项的情况只写状态栏，这里补一条日志
+            Log($"以压缩包方式打开：{Path.GetFileName(full)} 已经在解压列表里");
+            return;
+        }
+
+        StatusText = $"以压缩包方式打开 {Path.GetFileName(full)}（已加入解压列表）";
+        Log(StatusText);
     }
 
     // =====================================================================

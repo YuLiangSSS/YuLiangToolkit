@@ -50,6 +50,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("excel-viewer", "Excel 阅读器：xlsx 解析（共享字符串 / 样式 / 合并 / 列宽 / 截断）/ 数字格式 / 最近列表"),
     ("context-menu", "右键菜单管理：注册表枚举 / 隐藏 / 恢复（内存假注册表）"),
     ("archive", "压缩包工具：格式识别 / 解压 / 创建 / 密码 / 路径穿越 / 覆盖策略"),
+    ("open-with", "打开方式：三种模式 / 自动分流 / 注册表命令拼装（只读，不写注册表）"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1181,6 +1182,10 @@ RunGroupModule("context-menu", "右键菜单管理", ContextMenuChecks.Run, "[�
 // testdata 素材真解压（RAR5 / TAR.XZ / TAR.ZST）/ 密码 / 覆盖策略 / 路径穿越 / 取消 / 配置；
 // 全部在临时目录里造数据，**不碰真实 Data/Config、不联网、不启外部 exe**。
 RunGroupModule("archive", "压缩包工具", ArchiveChecks.Run, "[压缩包] ");
+
+// 「打开方式」：三种模式 / 命令行解析 / 扩展名 → 工具分流 / 注册表命令拼装。
+// 只测纯逻辑 + 只读的 IsRegistered / Describe，**绝不调用 Register / Unregister**（会写用户真实注册表）。
+RunGroupModule("open-with", "打开方式", OpenWithChecks.Run);
 
 EnterGroup("shell");
 

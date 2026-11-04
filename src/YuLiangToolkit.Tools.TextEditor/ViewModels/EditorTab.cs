@@ -118,6 +118,15 @@ public sealed class EditorTab : ObservableObject
     /// </summary>
     public bool AutoSaveBlocked { get; set; }
 
+    /// <summary>
+    /// 本标签是否禁止自动保存（生命周期内一直生效；与 <see cref="AutoSaveBlocked"/> 的「外部改动保护」是两件事，
+    /// 互不改写）。用于「用打开方式打开」进来的文件：它可能是 .exe / .zip 这类二进制，
+    /// 绝不能让 0.9 秒防抖的自动保存悄悄写回原文件。手动 Ctrl+S / 保存按钮不受影响。
+    /// <para>保存成功后也不自动解除（否则之后一次普通的编辑又会在后台写回这个陌生文件）；
+    /// 想恢复正常自动保存，关掉标签后从编辑器里重新打开即可。</para>
+    /// </summary>
+    public bool AutoSaveSuppressed { get; set; }
+
     /// <summary>记下文件当前的修改时间（读入 / 保存成功后调用；文件不存在 / 无权限时静默）。</summary>
     public void RememberFileWriteTime()
     {

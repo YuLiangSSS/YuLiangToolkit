@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using YuLiangToolkit.Core.Mvvm;
+using YuLiangToolkit.Core.Shell;
 using YuLiangToolkit.Core.Tools;
 
 namespace YuLiangToolkit.Tools.MediaPlayer.ViewModels;
@@ -20,7 +21,7 @@ namespace YuLiangToolkit.Tools.MediaPlayer.ViewModels;
 /// <para>配置在 <c>Config\media-player\config.json</c>，列表快照在 <c>Data\media-player\playlist.json</c>。
 /// 细节与踩过的坑见 docs/dev/pitfalls.md。</para>
 /// </summary>
-public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroundTool
+public sealed partial class MediaPlayerViewModel : ToolViewModelBase, IBackgroundTool, IFileLaunchTarget
 {
     /// <summary>播放顺序的算术（随机模式注入 <see cref="Random"/>，自检里换成固定种子）。</summary>
     private readonly PlayQueue _queue;

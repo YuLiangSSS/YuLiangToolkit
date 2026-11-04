@@ -76,6 +76,9 @@
     <!-- 「压缩包工具」：格式识别 / 自造压缩包 Probe+Extract / Create 真创建 ZIP 与 7Z 再解压 /
          密码 / 覆盖策略 / 路径穿越 / 取消 / 配置；全部在临时目录里造数据，不碰真实 Data/Config。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Archive\YuLiangToolkit.Tools.Archive.csproj" />
+    <!-- 「打开方式」：模式 / 命令行解析 / 扩展名分流（Core 里的纯逻辑）+ 工具元数据；
+         注册表登记函数绝不调用（只读 IsRegistered / Describe）。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.OpenWith\YuLiangToolkit.Tools.OpenWith.csproj" />
   </ItemGroup>
 
 </Project>

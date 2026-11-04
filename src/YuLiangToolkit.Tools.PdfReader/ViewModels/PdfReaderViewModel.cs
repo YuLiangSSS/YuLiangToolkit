@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Threading;
 using YuLiangToolkit.Core.Mvvm;
+using YuLiangToolkit.Core.Shell;
 using YuLiangToolkit.Tools.PdfReader.Rendering;
 using YuLiangToolkit.Tools.PdfReader.Text;
 
@@ -16,7 +17,7 @@ public sealed record PdfOutlineEntryView(string Title, int PageIndex, int Level,
 /// <para>排版、虚拟化、鼠标拖拽 / 惯性、双页翻页动画这些必须碰 WPF 视觉树的事情全在
 /// <c>Views/PdfReaderView.xaml.cs</c> 里；这里保持无头可测（自检可以直接 new 出来打开 PDF、查文字层）。</para>
 /// </summary>
-public sealed class PdfReaderViewModel : ToolViewModelBase
+public sealed class PdfReaderViewModel : ToolViewModelBase, IFileLaunchTarget
 {
     public PdfReaderViewModel() : base(PdfReaderConfig.ToolId)
     {
@@ -725,6 +726,31 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
         {
             IsBusy = false;
             DocumentChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>
+    /// 「打开方式」把 PDF 交给本工具：容错后用和双击 .pdf 一样的 <see cref="LoadPdfAsync"/> 打开。
+    /// 由主程序在工具页已打开 / 复用后调用（新视图与缓存视图都会走到这里）。
+    /// </summary>
+    public void OpenLaunchedFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+
+        try
+        {
+            var full = Path.GetFullPath(path.Trim().Trim('"'));
+            if (!File.Exists(full))
+            {
+                StatusText = $"文件不存在或已被移走：{full}";
+                return;
+            }
+
+            _ = LoadPdfAsync(full);
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"用 PDF 阅读器打开失败：{ex.Message}";
         }
     }
 

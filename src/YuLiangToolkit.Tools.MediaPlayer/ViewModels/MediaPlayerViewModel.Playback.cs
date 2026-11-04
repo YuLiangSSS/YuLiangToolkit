@@ -76,6 +76,10 @@ public sealed partial class MediaPlayerViewModel
         player.Failed += OnPlayerFailed;
         Log("播放器已就绪");
 
+        // 「打开方式」交过来的文件优先：视图刚创建就收到文件时它排在 _pendingLaunchPath，
+        // 这里先把它排上（别让「恢复后自动播放」抢先播上次那首，否则会先响一下再切歌）。
+        if (TryPlayPendingLaunchOnPlayerAttached()) return;
+
         TryAutoResumeOnPlayerAttached();   // 设置里开了「恢复后自动播放」→ 接着上次的位置出声
     }
 

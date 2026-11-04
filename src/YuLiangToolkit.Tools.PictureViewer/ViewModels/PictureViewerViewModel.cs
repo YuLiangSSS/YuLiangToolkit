@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using YuLiangToolkit.Core.Mvvm;
+using YuLiangToolkit.Core.Shell;
 
 namespace YuLiangToolkit.Tools.PictureViewer.ViewModels;
 
@@ -12,7 +13,7 @@ namespace YuLiangToolkit.Tools.PictureViewer.ViewModels;
 /// <para>图片解码、长带排版、滚轮 / 拖拽 / 中键锚点这些必须碰 WPF 视觉树的事情全在
 /// <c>Views/PictureViewerView.xaml.cs</c> 里；这里保持无头可测（自检直接 new 出来跑扫描流程）。</para>
 /// </summary>
-public sealed class PictureViewerViewModel : ToolViewModelBase
+public sealed class PictureViewerViewModel : ToolViewModelBase, IFileLaunchTarget
 {
     public PictureViewerViewModel() : base(PictureViewerConfig.ToolId)
     {
@@ -549,6 +550,47 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
         // _pendingPageIndex 可能已经被界面在 PagesChanged 里取走（取一次就清空），所以用 _launchTargetFound 判断
         if (!_launchTargetFound)
             StatusText = $"已加载「{Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))}」，但没找到刚才那张图，已停在开头。";
+    }
+
+    /// <summary>
+    /// 「打开方式」把图片交给本工具：打开它所在的文件夹并定位到这一张。
+    /// 容错（文件/目录不存在只改状态文字），不抛给主程序。
+    /// </summary>
+    public void OpenLaunchedFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+
+        string folder;
+        string full;
+        try
+        {
+            full = Path.GetFullPath(path.Trim().Trim('"'));
+            folder = Path.GetDirectoryName(full) ?? "";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"无法识别要打开的图片路径：{ex.Message}";
+            return;
+        }
+
+        if (!File.Exists(full) || string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
+        {
+            StatusText = $"文件不存在或已被移走：{full}";
+            return;
+        }
+
+        // 和双击图片启动同一个入口：加载文件夹后界面会定位到 preferredImagePath
+        _ = LoadLaunchFromPathAsync(folder, full);
+    }
+
+    private async Task LoadLaunchFromPathAsync(string folder, string imagePath)
+    {
+        await LoadFolderAsync(folder, imagePath);
+        if (!_launchTargetFound)
+        {
+            StatusText = $"已加载「{Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))}」，"
+                         + "但没找到刚才那张图，已停在开头。";
+        }
     }
 
     /// <summary>界面取走「加载后要定位到第几张」（取一次就清空，避免每次重建都跳回去）。</summary>

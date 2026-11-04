@@ -331,6 +331,21 @@
 - `LoadConfig<T>()` 同类型只返回一个实例；工具关闭再打开框架自动恢复后台保存。
 - `Dyn[键]` 键不存在返回 null：绑 `IsChecked` 得 null、点一下变 false；用 `LoadDynamicConfigWithDefaults` 预置或 `TargetNullValue=False`。
 
+### Windows 文件关联 / 打开方式（v0.78.0 起）
+- **「打开方式」列表按 exe 路径去重**（本机用 `SHAssocEnumHandlers` 实测）：同一个 exe 即使写 3 条不同参数的命令，
+  对话框里也只会出现 1 条。所以「自动 / 文本 / 压缩包」3 个入口里，后两个各用一个**同目录的入口副本 exe**
+  （`<主程序名>.open-text.exe` / `.open-archive.exe`，依赖仍从主程序目录加载；程序更新后要重建副本），
+  自动模式直接用主程序 exe（和 PDF / 图片关联的历史命令 `"exe" "%1"` 完全兼容）。
+- 只写 **HKCU**（`Software\Classes\Applications\...`）；不要试图改 `Explorer\FileExts\<ext>\UserChoice`（系统保护 + 未公开哈希），
+  想设默认程序让用户去「默认应用」确认。
+- 入口副本启动后 `Environment.ProcessPath` / `Assembly.GetEntryAssembly().Location` 是**副本路径**：单实例 token 必须按
+  **安装目录**算（见 `SingleInstance.BuildAppToken`），否则每选一次「打开方式」就多开一个窗口；登记 / 状态检查也要先用
+  `OpenWithRegistration.ResolveCanonicalExecutablePath` 还原成主 exe。
+- 覆盖率：Applications 条目对所有文件类型都出现（不需要每个后缀写 OpenWithProgids）；登记 / 取消后 `SHChangeNotify(0x08000000)` 刷缓存。
+- 文本编辑器**默认 0.9 秒自动保存**：从「打开方式 → 以文本方式」打开的陌生 / 二进制文件必须给该标签打 `AutoSaveSuppressed`，
+  否则误触键盘就可能把原文件写坏（手动 Ctrl+S 仍然可用）。
+- `--open-as=auto|text|archive` 之外，**不带模式参数但有真实文件参数 = 自动模式**（PDF / 图片双击的历史路径靠它继续工作）。
+
 ### WPF 与界面
 - 工具页有多个区块时**别把区块大小写死**：用 `core:PaneSplitter` + `App.xaml` 的 `PaneSplitterVerticalStyle` / `PaneSplitterHorizontalStyle`（悬停蓝线 / ↔ ↕ 光标 / 自动记忆 / 双击复位），约定见 [layout.md](layout.md)。分隔条必须独占一行 / 一列，相邻两块要给 `MinWidth` / `MinHeight`，否则窗口小时会被拖没；写死像素的上下两块才适合放进 `ScrollViewer` 里上下拖，`*` 行在里面会塌成内容高度。
 - 分隔条模板里有**两层线**：`RestLine` = 提示线（透明度由 `PaneSplitterSettings` 控制，主页设置滑块调）、`SplitterLine` = 悬停亮线（模板触发器改它）。⚠ 别把悬停触发器改到 `RestLine` 上，也别在代码里改 `SplitterLine.Opacity`（局部值会盖过触发器），否则悬停就不亮了。

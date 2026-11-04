@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「打开方式」：把本工具集登记进 Windows 右键 → 打开方式（3 个入口：按文件类型 / 以文本方式 / 以压缩包方式）。
+       只是外壳集成 + 设置页：真正写注册表 / 复制入口副本的逻辑在 Core 的 OpenWithRegistration。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.OpenWith</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.OpenWith</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

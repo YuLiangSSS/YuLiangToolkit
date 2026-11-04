@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Interop;
+using YuLiangToolkit.Core.Shell;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Tools.PictureViewer;
 
@@ -13,14 +14,16 @@ namespace YuLiangToolkit.App;
 
 /// <summary>
 /// 单实例唤醒：**再启动一次时不再开新窗口**，而是把命令行（例如双击图片的路径）交给已经开着的那个窗口，
-/// 由它把窗口叫到前面并打开图片 / 文件夹。文件关联（见 docs/dev/pitfalls.md）靠它才不会每双击一张图就多一个窗口。
+/// 由它把窗口叫到前面并打开对应工具。文件关联 / 「打开方式」（见 docs/tools/open-with.md）靠它才不会
+/// 每双击一个文件就多一个窗口。
 ///
 /// <para><b>做法</b>（不引第三方库）：</para>
 /// <list type="number">
-///   <item>启动时按「exe 所在程序集的路径」派生一个名字，创建 <see cref="Mutex"/>：只有第一个进程 CreateNew 成功；</item>
+///   <item>启动时按「安装目录」派生一个名字（同一个目录里的主程序与「打开方式」入口副本算同一实例），
+///         创建 <see cref="Mutex"/>：只有第一个进程 CreateNew 成功；</item>
 ///   <item>第一个进程在 UI 线程就绪后开一条**命名管道**服务端收消息（JSON 字符串数组 = 第二实例的命令行参数）；</item>
 ///   <item>第二个进程连管道把参数发过去，然后直接退出（不建窗口）；</item>
-///   <item>第一个进程收到消息后在 UI 线程：把窗口从托盘 / 最小化恢复并置前；参数里有受支持的图片就进「图片连续阅读器」并定位到那张。</item>
+///   <item>第一个进程收到消息后在 UI 线程：把窗口从托盘 / 最小化恢复并置前，再交给 <c>FileLaunchRouter</c> 打开文件。</item>
 /// </list>
 ///
 /// <para><b>为什么不用 WM_COPYDATA / FindWindow</b>：窗口标题 / 类名会变，多窗口时找不到“那个”窗口；
@@ -274,7 +277,11 @@ public sealed class SingleInstance : IDisposable
         catch { /* 退出阶段忽略 */ }
     }
 
-    /// <summary>按程序集路径（= 这一次安装 / 发布目录）生成一个稳定短标记，不同目录的程序互不干扰。</summary>
+    /// <summary>
+    /// 按「安装目录」生成一个稳定短标记：同一个目录里的主程序与「打开方式」入口副本
+    /// （<c>*.open-text.exe</c> / <c>*.open-archive.exe</c>）算同一个实例，不会各自开一个窗口；
+    /// 不同目录（Debug / 发布目录 / 移动后的副本）互不干扰。
+    /// </summary>
     private static string BuildAppToken()
     {
         try
@@ -282,7 +289,14 @@ public sealed class SingleInstance : IDisposable
             var location = Assembly.GetEntryAssembly()?.Location ?? typeof(SingleInstance).Assembly.Location;
             if (string.IsNullOrWhiteSpace(location)) return "default";
 
-            var bytes = System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(location).ToLowerInvariant()));
+            // 入口副本的路径还原成主 exe（换目录 / 改 exe 名后仍然按目录归组）
+            var canonical = OpenWithRegistration.ResolveCanonicalExecutablePath(location);
+            var directory = Path.GetDirectoryName(canonical);
+            if (string.IsNullOrWhiteSpace(directory)) directory = Path.GetDirectoryName(Path.GetFullPath(location));
+            if (string.IsNullOrWhiteSpace(directory)) return "default";
+
+            var bytes = System.Security.Cryptography.SHA256.HashData(
+                Encoding.UTF8.GetBytes(Path.GetFullPath(directory).ToLowerInvariant()));
             return Convert.ToHexString(bytes)[..12];
         }
         catch

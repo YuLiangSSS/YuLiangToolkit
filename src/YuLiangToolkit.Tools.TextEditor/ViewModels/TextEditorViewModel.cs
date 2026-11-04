@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
 using YuLiangToolkit.Core.Mvvm;
+using YuLiangToolkit.Core.Shell;
 using YuLiangToolkit.Tools.TextEditor.Core;
 
 namespace YuLiangToolkit.Tools.TextEditor.ViewModels;
@@ -39,7 +40,7 @@ internal interface IEditorHost
 /// 「文本编辑器」的 ViewModel：标签列表 / 激活标签、文件命令（新建 / 打开 / 保存 / 另存为 / 最近）、
 /// 编辑命令（经 <see cref="IEditorHost"/> 路由到激活编辑器）、缩放与偏好设置面板开关、会话恢复。
 /// </summary>
-public sealed class TextEditorViewModel : ToolViewModelBase
+public sealed class TextEditorViewModel : ToolViewModelBase, IFileLaunchTarget
 {
     private EditorTab? _activeTab;
     private bool _isSettingsVisible;
@@ -64,6 +65,9 @@ public sealed class TextEditorViewModel : ToolViewModelBase
         Cfg.ZoomPercent = TextEditorConfig.ClampZoomPercent(Cfg.ZoomPercent);
         Cfg.IndentSize = TextEditorConfig.ClampIndentSize(Cfg.IndentSize);
 
+        // 标签集合先建好：下面给 Cfg 挂的 PropertyChanged 回调里会读 Tabs（关/开自动保存时补队列）
+        Tabs = new ObservableCollection<EditorTab>();
+
         // 「Markdown 预览」开关一变，预览窗显隐跟着变（View 订阅 IsPreviewVisible 重排）
         Cfg.PropertyChanged += (_, e) =>
         {
@@ -81,13 +85,12 @@ public sealed class TextEditorViewModel : ToolViewModelBase
                 else
                 {
                     // 打开自动保存：把当前已经改脏、有路径的标签补进队列，View 会启动计时器
-                    foreach (var tab in Tabs.Where(t => t.IsDirty && t.FilePath is not null))
+                    // （「打开方式」打开的标签带 AutoSaveSuppressed，永远不进自动保存队列）
+                    foreach (var tab in Tabs.Where(t => t.IsDirty && t.FilePath is not null && !t.AutoSaveSuppressed))
                         _pendingAutoSave.Add(tab);
                 }
             }
         };
-
-        Tabs = new ObservableCollection<EditorTab>();
 
         NewFileCommand = new RelayCommand(_ => NewTab());
         OpenFileCommand = new RelayCommand(_ => OpenFilesByDialog());
@@ -277,6 +280,65 @@ public sealed class TextEditorViewModel : ToolViewModelBase
         StatusText = $"已打开 {Path.GetFileName(full)}";
     }
 
+    /// <summary>
+    /// 「用文本方式打开」（Windows「打开方式」/ 主程序 <see cref="IFileLaunchTarget"/> 调用）：
+    /// 复用 <see cref="OpenPath"/> 打开文件，然后给这个标签置 <see cref="EditorTab.AutoSaveSuppressed"/>，
+    /// 让自动保存永远不碰它（文件可能是 .exe / .zip 等二进制，静默写回会把它写坏）。
+    /// <para>容错约定：路径非法 / 文件不存在 / 读取失败都只写状态栏与日志，绝不抛给主程序；
+    /// 同一路径已开过标签时沿用 <see cref="OpenPath"/> 的「激活已有标签」行为。</para>
+    /// </summary>
+    public void OpenLaunchedFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            StatusText = "打开方式：没有收到文件路径";
+            Log("✗ 打开方式：没有收到文件路径");
+            return;
+        }
+
+        string full;
+        try
+        {
+            full = Path.GetFullPath(path.Trim().Trim('"'));
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"打开方式：路径无效（{ex.Message}）";
+            Log($"✗ 打开方式：路径无效（{ex.Message}）");
+            return;
+        }
+
+        if (!File.Exists(full))
+        {
+            StatusText = "打开方式：文件不存在或已被删除";
+            Log($"✗ 打开方式：文件不存在 {full}");
+            return;
+        }
+
+        try
+        {
+            OpenPath(full);
+        }
+        catch (Exception ex)
+        {
+            // 契约要求：读文件失败只提示，绝不把异常抛回主程序（二进制文件解码等意外都在这里兜住）
+            StatusText = $"打开方式：打开失败（{ex.Message}）";
+            Log($"✗ 打开方式：打开失败（{ex.Message}）");
+            return;
+        }
+
+        // OpenPath 读失败时不会建标签（状态栏已给提示），这里只处理成功建 / 复用标签的情况
+        var tab = Tabs.FirstOrDefault(t =>
+            t.FilePath is not null && string.Equals(t.FilePath, full, StringComparison.OrdinalIgnoreCase));
+        if (tab is null) return;
+
+        tab.AutoSaveSuppressed = true;
+        _pendingAutoSave.Remove(tab);   // 万一这个标签之前已排进自动保存队列（比如本来就开着），立刻摘掉
+
+        StatusText = $"以文本方式打开 {tab.Title}：自动保存已暂停（Ctrl+S 仍可手动保存）";
+        Log($"以文本方式打开：{full}（自动保存已暂停，Ctrl+S 仍可手动保存）");
+    }
+
     /// <summary>保存（无路径走另存为）。返回是否真的保存成功（用户取消另存为 = false）。</summary>
     internal bool SaveTab(EditorTab? tab)
     {
@@ -356,7 +418,8 @@ public sealed class TextEditorViewModel : ToolViewModelBase
             foreach (var tab in _pendingAutoSave.ToList())
             {
                 _pendingAutoSave.Remove(tab);
-                if (!Tabs.Contains(tab) || !tab.IsDirty || tab.FilePath is null || tab.AutoSaveBlocked) continue;
+                if (!Tabs.Contains(tab) || !tab.IsDirty || tab.FilePath is null
+                    || tab.AutoSaveBlocked || tab.AutoSaveSuppressed) continue;
 
                 if (IsExternallyModified(tab))
                 {
@@ -397,6 +460,9 @@ public sealed class TextEditorViewModel : ToolViewModelBase
     private void QueueAutoSave(EditorTab tab)
     {
         if (!Cfg.AutoSave || !tab.IsDirty) return;
+
+        // 「打开方式」打开的标签：只允许手动保存，绝不进自动保存队列
+        if (tab.AutoSaveSuppressed) return;
 
         if (tab.FilePath is null)
         {

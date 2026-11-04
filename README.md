@@ -43,6 +43,7 @@
 | [**📨 Spug 验证码测试**](docs/tools/spug-captcha.md) | 联调 Spug 推送助手（push.spug.cc）的短信 / 邮箱验证码模板：发验证码 + 本地比对验证 + 接口日志；推送 URL 是调用凭证，别外传 |
 | [**🖱️ 右键菜单管理**](docs/tools/context-menu-manager.md) | 把资源管理器右键菜单里的项目（所有文件 / 文件夹 / 文件夹空白处 / 驱动器 / 桌面背景）列成一张表：名称 / 类型 / 位置 / 状态一目了然，**搜索 + 位置 / 类型筛选 + 只看已隐藏**；不想要的（例如「上传到百度网盘」）**一键隐藏、随时恢复**，还能「恢复全部（仅本工具隐藏的）」与重启资源管理器；卸载残留的菜单可以**删除**（删前自动备份成 `.reg` 到 `Data\context-menu-manager\backups\`，删 HKCU 直接删、删 HKLM 弹一次 UAC，系统关键项不可删），缺的可以自己**添加「用 XX 打开」**（指定后缀 / 文件夹 / 文件夹空白处 / 所有文件，只写 HKCU）；**隐藏与添加都只写当前用户（HKCU）的覆盖项、不改电脑级设置、不需要常驻管理员权限**，系统关键项（新建菜单 / 打开）不可隐藏 |
 | [**📦 压缩包工具**](docs/tools/archive.md) | 拖入即用：解压 RAR（RAR4 / RAR5）/ ZIP / 7Z / TAR / TAR.GZ / TAR.BZ2 / TAR.XZ / TAR.ZST / GZ / BZ2 / XZ / ZST，支持**密码**、**旧版 GBK 文件名**、批量、进度、取消、**路径穿越防护**；也能把文件 / 文件夹压成 **ZIP / 7Z**，同名文件默认自动改名不覆盖；**RAR 因版权原因只能解不能压** |
+| [**🗂️ 打开方式**](docs/tools/open-with.md) | 把本工具集登记进 Windows 右键 **打开方式**：**3 个入口** —— **按文件类型自动分流**（PDF / 图片 / Word / Excel / 压缩包 / 音视频 / 文本）、**以文本方式打开**、**以压缩包方式打开**；任意文件右键都能选到，只写当前用户注册表（HKCU）、不需要管理员权限，取消勾选即可完全恢复 |
 | [**🧪 框架示例**](docs/tools/sample-framework.md) | 开发用模板（Data / Config 轮子演示，可整目录删除） |
 
 > 🎵 **音游工具**是主页上的一个分类：点「音游工具」类别卡片进类别页，再点工具卡片打开；
@@ -95,7 +96,7 @@ dotnet run --project YuLiangTookit.csproj
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；
   踩坑细节按需查 **[docs/dev/pitfalls.md](docs/dev/pitfalls.md)**（只在排错 / 改危险代码时读）；
-- ✅ **自检**：3819 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
+- ✅ **自检**：3853 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -122,6 +123,7 @@ build.ps1 / publish.ps1                  # 一键构建 / 一键发布（发布�
 scripts/check.ps1                       # 日常自检触发器：按改动自动选组，只跑受影响的组（全量例外见 docs/dev/verification.md）
 AGENTS.md                               # 精简开发入口地图（流程 / 硬性规则 / 找东西；细节按需查 docs/dev/）
 SingleInstance.cs                       # 单实例唤醒（Mutex + 命名管道：再启动一次只唤醒已开窗口）
+FileLaunchRouter.cs                     # 「打开方式」启动路由（命令行 → 工具页 → IFileLaunchTarget 交出文件）
 README.md                               # 本文件：工具一览 + 快速开始
 LICENSE                                 # Unlicense（随便用，不用署名）
 THIRD-PARTY-NOTICES.md                  # 第三方组件许可（OsuParsers / WebView2 / AvalonEdit / SharpCompress / ppy 数学工具 / Live2D Cubism Core / 内置模型）
@@ -150,8 +152,9 @@ src/
 ├── YuLiangToolkit.Tools.Live2D/         # 功能：Live2D 桌宠（内置模型测试台 + 透明置顶桌宠 + 眼睛跟随 + 摄像头面部动捕 + 身体晃动测试；官方 Cubism Core + 自写软件渲染器 + Windows 自带人脸检测）
 ├── YuLiangToolkit.Tools.SpugCaptcha/    # 功能：Spug 验证码测试（短信 / 邮箱验证码模板联调 + 本地比对验证）
 ├── YuLiangToolkit.Tools.ContextMenu/    # 功能：右键菜单管理（枚举 / 隐藏 / 恢复 / 删除残留 / 添加自定义打开菜单；隐藏写 HKCU、删除前自动备份 .reg、HKLM 项走 UAC 提权）
+├── YuLiangToolkit.Tools.OpenWith/       # 功能：打开方式（登记 Windows 右键「打开方式」3 个入口：自动分流 / 文本 / 压缩包；入口副本 + 只写 HKCU）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3819 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3853 项行为逐条验证）
 ```
 
 ## 如何添加一个新工具

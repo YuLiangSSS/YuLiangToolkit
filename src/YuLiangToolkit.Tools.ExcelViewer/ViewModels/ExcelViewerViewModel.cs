@@ -4,6 +4,7 @@ using System.Windows;
 using Microsoft.Win32;
 using YuLiangToolkit.Core.Documents;
 using YuLiangToolkit.Core.Mvvm;
+using YuLiangToolkit.Core.Shell;
 using YuLiangToolkit.Tools.ExcelViewer.Parsing;
 
 namespace YuLiangToolkit.Tools.ExcelViewer.ViewModels;
@@ -17,7 +18,7 @@ namespace YuLiangToolkit.Tools.ExcelViewer.ViewModels;
 /// <para>线程约定：解析在 <see cref="Task.Run(Action)"/> 里做，任何改界面状态（Sheets / SelectedSheet /
 /// StatusText / ErrorText）都走基类的 <see cref="ToolViewModelBase.Ui(Action)"/>（见 AGENTS.md 硬性规则 4）。</para>
 /// </summary>
-public sealed class ExcelViewerViewModel : ToolViewModelBase
+public sealed class ExcelViewerViewModel : ToolViewModelBase, IFileLaunchTarget
 {
     /// <summary>解析结果（后台线程创建，UI 线程只读）。关闭工具时释放引用。</summary>
     private ExcelWorkbook? _workbook;
@@ -427,6 +428,40 @@ public sealed class ExcelViewerViewModel : ToolViewModelBase
                 OnPropertyChanged(nameof(ShowEmptyState));
             });
         }
+    }
+
+    // ---------------------------------------------------------------- 打开方式（文件关联 / 单实例转发）
+
+    /// <summary>
+    /// 主程序通过 Windows「打开方式」交过来一个工作簿（见 <see cref="IFileLaunchTarget"/>）：
+    /// 规范成绝对路径后复用普通打开流程（<see cref="OpenFileAsync"/>），不弹窗、不阻塞界面。
+    ///
+    /// <para>路径为空 / 非法时只写状态栏与日志；文件不存在 / 不是 .xlsx 由 <see cref="OpenFileAsync"/>
+    /// 统一写进错误区，<b>绝不抛异常给主程序</b>。</para>
+    /// </summary>
+    public void OpenLaunchedFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            StatusText = "打开方式：没有拿到文件路径";
+            Log("[打开方式] 没有拿到文件路径，忽略");
+            return;
+        }
+
+        string fullPath;
+        try
+        {
+            // 主程序一般给绝对路径，但仍容忍带引号 / 相对路径的写法
+            fullPath = Path.GetFullPath(path.Trim().Trim('"'));
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"打开方式：路径不合法（{path}）";
+            Log($"[打开方式] 路径不合法：{path} · {ex.Message}");
+            return;
+        }
+
+        _ = OpenFileAsync(fullPath);
     }
 
     /// <summary>把解析结果挂到界面上（必须在 UI 线程调用）。</summary>
