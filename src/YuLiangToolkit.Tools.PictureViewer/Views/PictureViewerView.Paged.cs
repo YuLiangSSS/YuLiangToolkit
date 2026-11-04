@@ -153,7 +153,8 @@ public partial class PictureViewerView
 
         _pageIndex = PicturePaging.NormalizePageIndex(_pageIndex, vm.Pages.Count);
         var layout = PicturePaging.ComputeLayout(
-            Mode, viewportWidth, viewportHeight, vm.Cfg.ZoomScale, vm.Pages.Count, _pageIndex);
+            Mode, viewportWidth, viewportHeight, vm.Cfg.ZoomScale, vm.Pages.Count, _pageIndex,
+            vm.Cfg.PageGapEffective);
 
         _pagedContentWidth = layout.ContentWidth;
         _pagedContentHeight = layout.ContentHeight;

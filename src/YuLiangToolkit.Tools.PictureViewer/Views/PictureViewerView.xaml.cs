@@ -211,6 +211,8 @@ public partial class PictureViewerView : UserControl
         vm.ZoomChanged += OnZoomChanged;
         vm.BorderChanged -= OnBorderChanged;
         vm.BorderChanged += OnBorderChanged;
+        vm.LayoutChanged -= OnLayoutChanged;
+        vm.LayoutChanged += OnLayoutChanged;
 
         // 全屏：ViewModel 只切状态，真正的窗口操作交给外壳（MainWindow 实现了 IFullscreenHost）
         _fullscreenHost = Window.GetWindow(this) as IFullscreenHost;
@@ -305,6 +307,7 @@ public partial class PictureViewerView : UserControl
             vm.ModeChanged -= OnModeChanged;
             vm.ZoomChanged -= OnZoomChanged;
             vm.BorderChanged -= OnBorderChanged;
+            vm.LayoutChanged -= OnLayoutChanged;
             vm.FolderPicker = null;
         }
         _fullscreenHost = null;
@@ -315,6 +318,25 @@ public partial class PictureViewerView : UserControl
     private void OnPagesChanged(object? sender, EventArgs e) => _ = ApplyReadingModeAsync(keepProgress: false);
 
     private void OnModeChanged(object? sender, EventArgs e) => _ = ApplyReadingModeAsync(keepProgress: true);
+
+    /// <summary>页间距变了：连续模式原地重排长带；翻页模式重排当前屏，不重新解码图片。</summary>
+    private void OnLayoutChanged(object? sender, EventArgs e)
+    {
+        if (Vm is not { } vm || vm.Pages.Count == 0) return;
+
+        if (_pagedActive)
+        {
+            _ = LayoutPagedAsync(resetPan: false);
+            return;
+        }
+
+        var ratio = GetReadingRatio();
+        if (!RelayoutItems()) return;
+        SetReadingOffset(PictureScrollMath.OffsetForRatio(ratio, GetReadingMaximum()));
+        UpdateReadingProgress();
+        UpdateToolbarPageText();
+        ProcessVisibleRange();
+    }
 
     /// <summary>边框设置变了：节流 180ms 再重排（拖粗细滑块 / 连打颜色数字时不要每一格都重建整条长带）。</summary>
     private void OnBorderChanged(object? sender, EventArgs e)
@@ -532,9 +554,11 @@ public partial class PictureViewerView : UserControl
 
         // 每张图的「图 + 边框」总尺寸：主轴 / 跨轴都加上边框（每边 extra）
         var extra = Vm?.BorderStyle.TotalExtra ?? 0;
+        var gap = Vm?.Cfg.PageGapEffective ?? 0;
         var start = 0.0;
-        foreach (var slot in _slots)
+        for (var i = 0; i < _slots.Count; i++)
         {
+            var slot = _slots[i];
             var main = PictureScrollMath.MainLengthForAspect(
                 horizontal, slot.Page.PixelWidth, slot.Page.PixelHeight, cross);
             if (main <= 0) main = cross;
@@ -542,6 +566,12 @@ public partial class PictureViewerView : UserControl
             slot.MainLength = main + extra;
             slot.Start = start;
             start += slot.MainLength;
+            if (i < _slots.Count - 1) start += gap;
+
+            // 间距用 Margin 做，StackPanel 会算进内容总长；最后一张不加尾部空白。
+            slot.Container.Margin = i < _slots.Count - 1
+                ? horizontal ? new Thickness(0, 0, gap, 0) : new Thickness(0, 0, 0, gap)
+                : new Thickness(0);
 
             // ⚠ 宽高都要显式给：缩放后**另一个轴**也得能滚。只给一个轴、另一个靠拉伸的话，
             // 内容宽 / 高还是视口那么大，ScrollViewer 会认为“没得滚”，缩放后另一个方向就拖不动了。

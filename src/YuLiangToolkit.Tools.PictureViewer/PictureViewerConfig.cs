@@ -34,6 +34,14 @@ public sealed class PictureViewerConfig : ToolConfig
     /// </summary>
     public int ZoomPercent { get; set; } = PictureScrollMath.DefaultZoomPercent;
 
+    /// <summary>连续滚动 / 双页模式下图片之间的间距（像素，0 ~ 64，默认 0 = 贴在一起）。</summary>
+    public int PageGapPixels { get; set; } = DefaultPageGapPixels;
+
+    /// <summary>默认页间距 / 范围。</summary>
+    public const int DefaultPageGapPixels = 0;
+    public const int MinPageGapPixels = 0;
+    public const int MaxPageGapPixels = 64;
+
     /// <summary>拖动惯性（松手后继续滑一段）。默认开；关掉就是松手即停。</summary>
     public bool InertiaEnabled { get; set; } = true;
 
@@ -187,6 +195,7 @@ public sealed class PictureViewerConfig : ToolConfig
         MiddleHoldMilliseconds = PictureScrollMath.DefaultHoldMilliseconds;
         AutoUnloadOffscreen = true;
         ZoomPercent = PictureScrollMath.DefaultZoomPercent;
+        PageGapPixels = DefaultPageGapPixels;
         InertiaEnabled = true;
         WheelInertiaEnabled = true;
         InertiaAccelerate = true;
@@ -229,6 +238,10 @@ public sealed class PictureViewerConfig : ToolConfig
     /// <summary>缩放系数（100% → 1.0）。</summary>
     [JsonIgnore]
     public double ZoomScale => PictureScrollMath.ZoomScale(ZoomPercentEffective);
+
+    /// <summary>生效的图片页间距（夹到 0 ~ 64）。</summary>
+    [JsonIgnore]
+    public int PageGapEffective => Math.Clamp(PageGapPixels, MinPageGapPixels, MaxPageGapPixels);
 
     /// <summary>生效的翻页模式滚轮动作（手改坏配置时退回翻页）。</summary>
     [JsonIgnore]

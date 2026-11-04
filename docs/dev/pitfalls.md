@@ -239,6 +239,8 @@
 - ⚠ 双页排版不是「左右各半个固定槽位」：两页先按可用高度等比、再整体适配「两页 + 间距」的宽度并居中 ——
   改回固定槽位的话，高度受限时页在槽里居中会留一大片空白（用户报过「两页隔太远」）。间距 0 是合法值，
   别用 `HasUsableLength(0) == false` 把它当「没给」退回默认。
+- 图片连续模式的页间距用 **容器 `Margin`**（主轴方向、最后一张不加）做，并同步进 `slot.Start` 的累加；只改 `slot.Start`
+  不改 Margin 会出现“逻辑位置有缝、画面没缝”。双页模式的间距从 `PicturePaging.ComputeLayout(..., pageGap)` 的可用宽度里扣。
 - ⚠ 双页放大后拖动是**平移**（`_spreadPanX/Y` + `PdfSpreadLayout.ClampPan`），连续模式缩放后多出来的是**跨轴偏移**；
   两套偏移都自己记，惯性用 `PdfInertia` 的双轴接口，别从 ScrollViewer / RenderTransform 反读。
 - ⚠ 拖动惯性按**整次拖动平均速度**算（`ComputeDragVelocity(releaseTime)` = 按住起点到松开前最后的位移/时间），

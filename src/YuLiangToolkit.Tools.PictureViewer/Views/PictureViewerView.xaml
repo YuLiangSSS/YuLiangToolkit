@@ -378,6 +378,24 @@
                         <TextBlock Text="{Binding ModeHint}" FontSize="10.5" TextWrapping="Wrap"
                                    Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0" />
 
+                        <!-- 页面间距：连续滚动 / 双页模式下相邻图片之间的空隙 -->
+                        <TextBlock Text="页面间距" FontSize="11.5" FontWeight="SemiBold" Margin="0,14,0,2" />
+                        <TextBlock Text="连续滚动 / 双页相邻图片之间的空隙：0 = 贴在一起" FontSize="10.5"
+                                   TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Slider Grid.Column="0" Minimum="0" Maximum="64" TickFrequency="1"
+                                    IsSnapToTickEnabled="True" Style="{StaticResource SliderStyle}"
+                                    Value="{Binding PageGapPixels, Mode=TwoWay}"
+                                    ToolTip="0 ~ 64 像素（默认 0）" />
+                            <TextBlock Grid.Column="1" Text="{Binding PageGapText}" FontSize="11"
+                                       VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="46"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </Grid>
+
                         <!-- 最近浏览：上限 0 = 不记录；改小会立刻裁掉多余的老记录 -->
                         <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,12,0,10" />
                         <TextBlock Text="最近浏览" FontSize="11.5" FontWeight="SemiBold" />

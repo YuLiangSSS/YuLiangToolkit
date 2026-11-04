@@ -160,6 +160,24 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
 
     private void StepZoom(int steps) => SetZoomPercent(PictureScrollMath.StepZoomPercent(Cfg.ZoomPercentEffective, steps));
 
+    /// <summary>连续滚动 / 双页模式下相邻图片之间的间距（像素，0 ~ 64，默认 0）。改一下立刻重排并写配置。</summary>
+    public int PageGapPixels
+    {
+        get => Cfg.PageGapEffective;
+        set
+        {
+            var clamped = Math.Clamp(value, PictureViewerConfig.MinPageGapPixels, PictureViewerConfig.MaxPageGapPixels);
+            if (clamped == Cfg.PageGapEffective) return;
+
+            Cfg.PageGapPixels = clamped;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(PageGapText));
+            LayoutChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public string PageGapText => $"{PageGapPixels} px";
+
     // ---------------------------------------------------------------- 页清单
 
     private IReadOnlyList<PicturePage> _pages = Array.Empty<PicturePage>();
@@ -340,6 +358,9 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
 
     /// <summary>滚动方式变了（界面重建长带并尽量停在原来的位置）。</summary>
     public event EventHandler? ModeChanged;
+
+    /// <summary>排版参数（页间距）变了：界面按当前阅读位置重排，不重新加载图片。</summary>
+    public event EventHandler? LayoutChanged;
 
     /// <summary>缩放变了（界面重新排版，并尽量保持画面中心不动）。</summary>
     public event EventHandler? ZoomChanged;
@@ -761,8 +782,11 @@ public sealed class PictureViewerViewModel : ToolViewModelBase
         OnPropertyChanged(nameof(CurrentModeText));
         OnPropertyChanged(nameof(IsPagedMode));
         OnPropertyChanged(nameof(ZoomText));
+        OnPropertyChanged(nameof(PageGapPixels));
+        OnPropertyChanged(nameof(PageGapText));
 
         StatusText = "已恢复默认设置（阅读方式：纵向 上 → 下）";
+        LayoutChanged?.Invoke(this, EventArgs.Empty);
         ModeChanged?.Invoke(this, EventArgs.Empty);
         ZoomChanged?.Invoke(this, EventArgs.Empty);
         BorderChanged?.Invoke(this, EventArgs.Empty);

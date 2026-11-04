@@ -565,6 +565,8 @@ internal static class PictureViewerChecks
             && Math.Abs(cfg.ZoomScale - 1.0) < 1e-9
             && cfg.InertiaEnabled
             && cfg.InertiaAccelerate
+            && cfg.PageGapPixels == 0
+            && cfg.PageGapEffective == 0
             && cfg.PagedWheelEffective == PictureWheelAction.TurnPage
             && cfg.PageTurnAnimation
             && cfg.SingleInstanceEnabled
@@ -761,6 +763,27 @@ internal static class PictureViewerChecks
         vm.ZoomChanged += (_, _) => zoomChanged++;
         vm.ZoomText = "150";
         Check("[图片] 缩放变化会通知界面重新排版", zoomChanged == 1, $"events={zoomChanged}");
+
+        Check("[图片] 页面间距：默认 0 px，范围 0~64，超范围被夹住",
+            vm.PageGapPixels == 0 && vm.PageGapText == "0 px"
+            && PictureViewerConfig.MinPageGapPixels == 0 && PictureViewerConfig.MaxPageGapPixels == 64
+            && new PictureViewerConfig { PageGapPixels = -5 }.PageGapEffective == 0
+            && new PictureViewerConfig { PageGapPixels = 99 }.PageGapEffective == 64);
+        var gapLayoutChanged = 0;
+        vm.LayoutChanged += (_, _) => gapLayoutChanged++;
+        vm.PageGapPixels = 9999;
+        Check("[图片] 页面间距滑块：超上限夹到 64、文本跟着变、通知界面重排",
+            vm.PageGapPixels == 64 && vm.PageGapText == "64 px" && gapLayoutChanged > 0 && vm.Cfg.PageGapPixels == 64,
+            vm.PageGapText);
+        vm.PageGapPixels = -5;
+        Check("[图片] 页面间距滑块：低于 0 夹到 0", vm.PageGapPixels == 0 && vm.PageGapText == "0 px", vm.PageGapText);
+
+        var gapLayout = PicturePaging.ComputeLayout(PictureScrollMode.SpreadLeftToRight, 1000, 800, 1.0, 10, 0, pageGap: 40);
+        Check("[图片] 双页排版支持页间距：内容宽不变、两页各 480、中间空 40",
+            gapLayout.ContentWidth == 1000 && gapLayout.Slots.Count == 2
+            && gapLayout.Slots[0].Width == 480 && gapLayout.Slots[1].X == 520
+            && gapLayout.Slots[1].Width == 480,
+            $"{gapLayout.Slots[0].Width} / {gapLayout.Slots[1].X}");
 
         // 空文件夹：不崩、给出「没有找到图片」
         var emptyFolder = Path.Combine(AppPaths.Root, "picture-viewer-empty");

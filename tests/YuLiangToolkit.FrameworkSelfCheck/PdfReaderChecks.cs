@@ -1226,6 +1226,14 @@ internal static class PdfReaderChecks
             && new PdfReaderConfig { SpreadGapPixels = 99 }.SpreadGapEffective == 64
             && new PdfReaderConfig { SpreadGapPixels = int.MaxValue }.SpreadGapEffective == 64);
 
+        Check("配置：连续滚动页间距默认 16、范围 0~64、生效值夹取",
+            freshConfig.PageGapPixels == 16
+            && freshConfig.PageGapPixels == PdfReaderConfig.DefaultPageGapPixels
+            && freshConfig.PageGapEffective == 16
+            && PdfReaderConfig.MinPageGapPixels == 0 && PdfReaderConfig.MaxPageGapPixels == 64
+            && new PdfReaderConfig { PageGapPixels = -5 }.PageGapEffective == 0
+            && new PdfReaderConfig { PageGapPixels = 99 }.PageGapEffective == 64);
+
         Check("StepZoomPercent：放大 / 缩小一步 10%（100→110、100→90、100→100，两端夹住）",
             PdfReaderConfig.StepZoomPercent(100, 1) == 110
             && PdfReaderConfig.StepZoomPercent(100, -1) == 90
@@ -1805,6 +1813,21 @@ internal static class PdfReaderChecks
             vm.SpreadGapPixels = -5;
             Check("VM 双页间距滑块：低于 0 夹到 0", vm.SpreadGapPixels == 0 && vm.SpreadGapText == "0 px",
                 vm.SpreadGapText);
+
+            Check("VM 连续页间距：默认 16 px（PageGapText = \"16 px\"）",
+                vm.PageGapPixels == 16 && vm.PageGapText == "16 px", vm.PageGapText);
+            var pageGapLayoutChanged = 0;
+            vm.LayoutChanged += (_, _) => pageGapLayoutChanged++;
+            vm.PageGapPixels = 9999;
+            Check("VM 连续页间距滑块：超上限夹到 64、文本跟着变、通知连续视图重排",
+                vm.PageGapPixels == 64 && vm.PageGapText == "64 px" && pageGapLayoutChanged > 0,
+                vm.PageGapText);
+            vm.PageGapPixels = 8;
+            Check("VM 连续页间距滑块：调到 8 写回配置", vm.Cfg.PageGapPixels == 8 && vm.PageGapText == "8 px",
+                vm.PageGapText);
+            vm.PageGapPixels = -5;
+            Check("VM 连续页间距滑块：低于 0 夹到 0", vm.PageGapPixels == 0 && vm.PageGapText == "0 px",
+                vm.PageGapText);
 
             Check("VM 目录：打开文档不会自动弹出目录面板，HasOutline 与条目数一致",
                 !vm.IsOutlineVisible && vm.HasOutline == (vm.OutlineEntries.Count > 0),

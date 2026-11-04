@@ -71,24 +71,28 @@ public static class PicturePaging
         double viewportHeight,
         double zoomScale,
         int pageCount,
-        int pageIndex)
+        int pageIndex,
+        double pageGap = 0)
     {
         var width = viewportWidth > 0 && !double.IsNaN(viewportWidth) ? viewportWidth : 0;
         var height = viewportHeight > 0 && !double.IsNaN(viewportHeight) ? viewportHeight : 0;
         var scale = zoomScale > 0 && !double.IsNaN(zoomScale) ? zoomScale : 1.0;
+        var gap = pageGap >= 0 && !double.IsNaN(pageGap) && !double.IsInfinity(pageGap) ? pageGap : 0;
 
         var (left, right) = VisiblePages(mode, pageIndex, pageCount);
 
         if (PictureScrollModes.IsSpread(PictureScrollModes.Normalize(mode)))
         {
-            var slotWidth = width / 2 * scale;
+            var contentWidth = width * scale;
             var slotHeight = height * scale;
+            // 间距从可用宽度里扣掉，左右两页各占一半；0 时和原来完全一样。
+            var slotWidth = Math.Max(1.0, (contentWidth - gap) / 2);
             var slots = new[]
             {
                 new PicturePagedSlot(left, 0, 0, slotWidth, slotHeight),
-                new PicturePagedSlot(right, slotWidth, 0, slotWidth, slotHeight),
+                new PicturePagedSlot(right, slotWidth + gap, 0, slotWidth, slotHeight),
             };
-            return new PicturePagedLayout(slotWidth * 2, slotHeight, slots, left, right);
+            return new PicturePagedLayout(contentWidth, slotHeight, slots, left, right);
         }
 
         var singleWidth = width * scale;

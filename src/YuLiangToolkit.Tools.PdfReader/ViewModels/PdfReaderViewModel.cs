@@ -182,6 +182,28 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
     /// <summary>间距的显示文本（设置面板滑块右侧的「2 px」）。</summary>
     public string SpreadGapText => $"{SpreadGapPixels} px";
 
+    /// <summary>
+    /// 连续滚动时上下（横向模式为左右）两页之间的间距（像素，0 ~ 64，默认 16）。
+    /// 设置面板的滑块直接绑它；改一下立刻按当前阅读位置重排连续视图并写配置。
+    /// </summary>
+    public int PageGapPixels
+    {
+        get => Cfg.PageGapEffective;
+        set
+        {
+            var clamped = Math.Clamp(value, PdfReaderConfig.MinPageGapPixels, PdfReaderConfig.MaxPageGapPixels);
+            if (clamped == Cfg.PageGapEffective) return;
+
+            Cfg.PageGapPixels = clamped;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(PageGapText));
+            LayoutChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>连续页间距的显示文本（设置面板滑块右侧的「16 px」）。</summary>
+    public string PageGapText => $"{PageGapPixels} px";
+
     /// <summary>底部「第 x / n 页」页码条是否显示（设置面板勾选框直接绑它，自动保存）。</summary>
     public bool ShowPageIndicator
     {
@@ -792,6 +814,8 @@ public sealed class PdfReaderViewModel : ToolViewModelBase
         OnPropertyChanged(nameof(ZoomPercentEffective));
         OnPropertyChanged(nameof(SpreadGapPixels));
         OnPropertyChanged(nameof(SpreadGapText));
+        OnPropertyChanged(nameof(PageGapPixels));
+        OnPropertyChanged(nameof(PageGapText));
         OnPropertyChanged(nameof(ShowPageIndicator));
 
         StatusText = "已恢复默认设置（纵向 上→下 · 缩放 100% · 双页间距 2 px · 惯性开）";

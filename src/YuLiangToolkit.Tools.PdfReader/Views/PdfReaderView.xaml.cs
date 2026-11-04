@@ -906,8 +906,12 @@ public partial class PdfReaderView : UserControl
 
     private void OnLayoutChanged(object? sender, EventArgs e)
     {
-        // 目前只有「双页页面间距」：只影响双页画面，重排时保持平移中心
-        if (Vm?.HasDocument == true && _spreadActive) _ = RebuildSpreadKeepingCenterAsync();
+        // 双页间距 / 连续页间距都会触发：双页只重排双页画面，连续模式按当前页重建长带
+        if (Vm?.HasDocument == true)
+        {
+            if (_spreadActive) _ = RebuildSpreadKeepingCenterAsync();
+            else _ = BuildAsync(keepPage: true);
+        }
     }
 
     private void OnTextLayerChanged(object? sender, EventArgs e)
@@ -1055,7 +1059,7 @@ public partial class PdfReaderView : UserControl
             session.Pages,
             width,
             height,
-            PdfReaderConfig.ContinuousPageGapPixels,
+            vm.Cfg.PageGapEffective,
             PdfReaderConfig.SideMarginPixels,
             vm.Cfg.ZoomScale);
 

@@ -565,6 +565,24 @@
                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                         </Grid>
 
+                        <TextBlock Text="上下页面间距" FontSize="11.5" FontWeight="SemiBold" Margin="0,14,0,2" />
+                        <TextBlock Text="连续滚动（纵向 / 横向）时两页之间的空隙：0 = 贴在一起" FontSize="10.5"
+                                   TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Slider x:Name="PageGapSlider" Grid.Column="0" Minimum="0" Maximum="64"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Style="{StaticResource SliderStyle}"
+                                    Value="{Binding PageGapPixels, Mode=TwoWay}"
+                                    ToolTip="0 ~ 64 像素（默认 16）" />
+                            <TextBlock Grid.Column="1" Text="{Binding PageGapText}" FontSize="11"
+                                       VerticalAlignment="Center" Margin="10,0,0,0" MinWidth="46"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </Grid>
+
                         <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,14,0,10" />
 
                         <TextBlock Text="页数显示" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,2" />

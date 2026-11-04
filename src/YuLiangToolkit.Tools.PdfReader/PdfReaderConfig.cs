@@ -27,8 +27,13 @@ public sealed class PdfReaderConfig : ToolConfig
     public const int MinSpreadGapPixels = 0;
     public const int MaxSpreadGapPixels = 64;
 
-    /// <summary>连续滚动模式页与页之间的间距（像素）：固定 16，跟图片阅读器一致。</summary>
-    public const int ContinuousPageGapPixels = 16;
+    /// <summary>连续滚动模式页与页之间的默认间距（像素）：默认 16，可在设置里调（0 ~ 64）。</summary>
+    public const int DefaultPageGapPixels = 16;
+    public const int MinPageGapPixels = 0;
+    public const int MaxPageGapPixels = 64;
+
+    /// <summary>兼容旧常量名：连续滚动默认间距。</summary>
+    public const int ContinuousPageGapPixels = DefaultPageGapPixels;
 
     /// <summary>长带两端 / 铺满方向上留的边距（像素）：固定 24。</summary>
     public const int SideMarginPixels = 24;
@@ -61,6 +66,9 @@ public sealed class PdfReaderConfig : ToolConfig
 
     /// <summary>双页翻页时左右两页之间的间距（像素，0 ~ 64，默认 2 = 贴近）。</summary>
     public int SpreadGapPixels { get; set; } = DefaultSpreadGapPixels;
+
+    /// <summary>连续滚动时上下（横向模式为左右）两页之间的间距（像素，0 ~ 64，默认 16）。</summary>
+    public int PageGapPixels { get; set; } = DefaultPageGapPixels;
 
     /// <summary>底部「第 x / n 页」页码条是否显示（默认显示；有的用户只想沉浸看图时去掉）。</summary>
     public bool ShowPageIndicator { get; set; } = true;
@@ -233,6 +241,10 @@ public sealed class PdfReaderConfig : ToolConfig
     [JsonIgnore]
     public int SpreadGapEffective => Math.Clamp(SpreadGapPixels, MinSpreadGapPixels, MaxSpreadGapPixels);
 
+    /// <summary>生效的连续滚动页间距（夹到 0 ~ 64）。</summary>
+    [JsonIgnore]
+    public int PageGapEffective => Math.Clamp(PageGapPixels, MinPageGapPixels, MaxPageGapPixels);
+
     /// <summary>
     /// 「恢复默认设置」：阅读方式回纵向、惯性开、滚轮 120、缩放 100%、双页间距 2。
     /// **不动「上次打开的文件夹」**（那不是显示设置，清了反而给用户添麻烦）。
@@ -245,6 +257,7 @@ public sealed class PdfReaderConfig : ToolConfig
         WheelStepPixels = DefaultWheelStepPixels;
         ZoomPercent = DefaultZoomPercent;
         SpreadGapPixels = DefaultSpreadGapPixels;
+        PageGapPixels = DefaultPageGapPixels;
         ShowPageIndicator = true;
         RecentLimit = DefaultRecentLimit;
         TrimRecentToLimit();   // 只按新上限裁剪，不主动清掉用户的最近浏览记录
