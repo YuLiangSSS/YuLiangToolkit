@@ -94,7 +94,7 @@ dotnet run --project YuLiangTookit.csproj
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；
   踩坑细节按需查 **[docs/dev/pitfalls.md](docs/dev/pitfalls.md)**（只在排错 / 改危险代码时读）；
-- ✅ **自检**：3598 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
+- ✅ **自检**：3606 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -149,7 +149,7 @@ src/
 ├── YuLiangToolkit.Tools.SpugCaptcha/    # 功能：Spug 验证码测试（短信 / 邮箱验证码模板联调 + 本地比对验证）
 ├── YuLiangToolkit.Tools.ContextMenu/    # 功能：右键菜单管理（枚举 / 隐藏 / 恢复 Windows 资源管理器右键菜单项；只写 HKCU，不删原键）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3598 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3606 项行为逐条验证）
 ```
 
 ## 如何添加一个新工具

@@ -1029,6 +1029,27 @@ internal static class PdfReaderChecks
         Check("速度取采样窗口里「最早到最新」的平均（100ms 走 50px → 0.5，不是只看最后两点）",
             Math.Abs(windowMain - 0.5) <= 1e-9, windowMain.ToString("F4"));
 
+        Check("松手惯性：鼠标静止判定阈值 90ms", Math.Abs(PdfInertia.ReleaseIdleMilliseconds - 90) <= 1e-9);
+
+        inertia.Reset();
+        inertia.Note(0, 0, 0);
+        inertia.Note(20, 10, 0);
+        inertia.Note(100, 30, 0);   // 最后一段 80ms 走 20px；整段平均是 30/100
+        var (releaseMain, _) = inertia.ComputeVelocity(100);
+        Check("松手速度取「松开瞬间最近两个采样点」的瞬时速度（不是整段距离平均）",
+            Math.Abs(releaseMain - 0.25) <= 1e-9, releaseMain.ToString("F4"));
+
+        inertia.Reset();
+        inertia.Note(0, 0, 0);
+        inertia.Note(50, 50, 0);
+        var (heldMain, _) = inertia.ComputeVelocity(200);   // 松手前已静止 150ms
+        Check("按住不动超过阈值再松手：惯性速度为 0（不会继续滑）",
+            heldMain == 0, heldMain.ToString("F4"));
+
+        var (immediateMain, _) = inertia.ComputeVelocity(60);   // 刚移到就松手
+        Check("移动后立刻松手：仍按最后一段速度继续滑（60ms 时 50/50 → 1.0）",
+            Math.Abs(immediateMain - 1.0) <= 1e-9, immediateMain.ToString("F4"));
+
         inertia.Reset();
         var (afterResetMain, afterResetCross) = inertia.ComputeVelocity();
         Check("Reset 后重新开始（速度回到 0）", afterResetMain == 0 && afterResetCross == 0);

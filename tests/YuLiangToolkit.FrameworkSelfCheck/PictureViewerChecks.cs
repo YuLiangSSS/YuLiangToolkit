@@ -427,6 +427,27 @@ internal static class PictureViewerChecks
         inertia.Reset();
         Check("[图片] 只有一个采样点 / 没采样 → 速度为 0", inertia.ComputeVelocity() == (0.0, 0.0));
 
+        Check("[图片] 松手惯性：鼠标静止判定阈值 90ms", Math.Abs(PictureInertia.ReleaseIdleMilliseconds - 90) <= 1e-9);
+
+        inertia.Reset();
+        inertia.Note(0, 0, 0);
+        inertia.Note(20, 10, 0);
+        inertia.Note(100, 30, 0);   // 最后一段 80ms 走 20px；整段平均是 30/100
+        var (releaseMain, _) = inertia.ComputeVelocity(100);
+        Check("[图片] 松手速度取「松开瞬间最近两个采样点」的瞬时速度（不是整段距离平均）",
+            Math.Abs(releaseMain - 0.25) <= 1e-9, releaseMain.ToString("F4"));
+
+        inertia.Reset();
+        inertia.Note(0, 0, 0);
+        inertia.Note(50, 50, 0);
+        var (heldMain, _) = inertia.ComputeVelocity(200);   // 松手前已静止 150ms
+        Check("[图片] 按住不动超过阈值再松手：惯性速度为 0（不会继续滑）",
+            heldMain == 0, heldMain.ToString("F4"));
+
+        var (immediateMain, _) = inertia.ComputeVelocity(60);   // 刚移到就松手
+        Check("[图片] 移动后立刻松手：仍按最后一段速度继续滑（60ms 时 50/50 → 1.0）",
+            Math.Abs(immediateMain - 1.0) <= 1e-9, immediateMain.ToString("F4"));
+
         var decayed = inertia.Decay(2.0, -1.0, 100);
         Check("[图片] 衰减：方向不变、速度变小、时间越久越小",
             decayed.Main > 0 && decayed.Main < 2.0

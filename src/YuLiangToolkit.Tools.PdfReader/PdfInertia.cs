@@ -22,6 +22,12 @@ public sealed class PdfInertia
     public const double SampleWindowMilliseconds = 120;
 
     /// <summary>
+    /// 松手前鼠标已经静止超过这个时间（毫秒）就不起惯性：按住不动再松开时，
+    /// 不能拿最后一次移动的速度继续滑（用户明确要求按“松开一瞬间的速度”算）。
+    /// </summary>
+    public const double ReleaseIdleMilliseconds = 90;
+
+    /// <summary>
     /// 叠加后的速度上限（像素 / 毫秒）：连续甩动会一直加速，必须封顶，不然一下就滑穿整本 PDF。
     /// 6 px/ms ≈ 360 px/帧（60fps），已经比“正常甩一下”快很多了。
     /// </summary>
@@ -66,6 +72,25 @@ public sealed class PdfInertia
         var remove = 0;
         while (remove < _samples.Count - 1 && _samples[remove].Time < cutoff) remove++;
         if (remove > 0) _samples.RemoveRange(0, remove);
+    }
+
+    /// <summary>
+    /// 松开鼠标瞬间的速度（像素 / 毫秒）：取**最近两个采样点**的速度（Δ偏移 / Δ时间），
+    /// 而不是整段拖动距离的平均；松开前鼠标已停住（距最后一次移动 ≥ <see cref="ReleaseIdleMilliseconds"/>）时返回 (0,0)。
+    /// </summary>
+    public (double Main, double Cross) ComputeVelocity(double releaseTimeMilliseconds)
+    {
+        if (_samples.Count < 2) return (0, 0);
+
+        var last = _samples[^1];
+        var idle = releaseTimeMilliseconds - last.Time;
+        if (double.IsNaN(idle) || idle >= ReleaseIdleMilliseconds) return (0, 0);
+
+        var previous = _samples[^2];
+        var dt = last.Time - previous.Time;
+        if (dt <= 0) return (0, 0);
+
+        return ((last.Main - previous.Main) / dt, (last.Cross - previous.Cross) / dt);
     }
 
     /// <summary>

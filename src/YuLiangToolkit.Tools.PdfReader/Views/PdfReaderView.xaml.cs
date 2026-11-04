@@ -1796,7 +1796,7 @@ public partial class PdfReaderView : UserControl
         if (e.ChangedButton != MouseButton.Left || !_dragging) return;
 
         var moved = _dragMoved;
-        var (mainVelocity, crossVelocity) = moved ? _inertia.ComputeVelocity() : (0.0, 0.0);
+        var (mainVelocity, crossVelocity) = moved ? _inertia.ComputeVelocity(NowMilliseconds()) : (0.0, 0.0);
         EndDrag();
 
         if (moved)

@@ -1148,7 +1148,7 @@ public partial class PictureViewerView : UserControl
         if (e.ChangedButton == MouseButton.Left && _dragging)
         {
             var moved = _dragMoved;
-            var (velocityMain, velocityCross) = moved ? _inertia.ComputeVelocity() : (0.0, 0.0);
+            var (velocityMain, velocityCross) = moved ? _inertia.ComputeVelocity(NowMilliseconds()) : (0.0, 0.0);
             EndDrag();
             if (moved)
             {
