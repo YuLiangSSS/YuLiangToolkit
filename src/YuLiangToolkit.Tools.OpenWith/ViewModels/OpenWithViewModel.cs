@@ -52,6 +52,7 @@ public sealed class OpenWithViewModel : ToolViewModelBase
 
         RefreshCommand = new RelayCommand(_ => RefreshState(announce: true));
         RepairCommand = new RelayCommand(_ => Repair());
+        ClearAssociationCommand = new RelayCommand(_ => ClearAssociation());
         OpenDefaultAppsCommand = new RelayCommand(_ => OpenWithRegistration.OpenDefaultAppsSettings());
         BrowseSimulationFileCommand = new RelayCommand(_ => BrowseSimulationFile());
         SimulateCommand = new RelayCommand(_ => Simulate());
@@ -59,6 +60,7 @@ public sealed class OpenWithViewModel : ToolViewModelBase
 
         RefreshState(announce: false);
         Log($"「打开方式」页面已打开，当前程序：{MainExecutablePath}");
+        if (!IsBuildSupported) Log("[提示] " + OpenWithRegistration.UnsupportedBuildMessage);
     }
 
     /// <summary>强类型配置（<c>Config\open-with\config.json</c>）。</summary>
@@ -70,22 +72,26 @@ public sealed class OpenWithViewModel : ToolViewModelBase
     /// <summary>能不能登记（exe 路径存在）。</summary>
     public bool CanRegister { get; }
 
+    /// <summary>
+    /// 当前构建是否允许登记「打开方式」（只有 Release / 发布版；Debug 构建固定关闭，
+    /// 开关在主页设置里，本页只做状态检查 / 修复 / 清理）。
+    /// </summary>
+    public bool IsBuildSupported => OpenWithRegistration.IsBuildSupported;
+
+    /// <summary>Debug 构建下的不可用说明（Release 下为空）。</summary>
+    public string BuildGateText => OpenWithRegistration.UnsupportedBuildMessage;
+
     /// <summary>三个入口的说明（界面逐条显示）。</summary>
     public IReadOnlyList<OpenWithOpenerRow> OpenerRows { get; }
 
     /// <summary>「按文件类型打开」会分流到哪些工具。</summary>
     public IReadOnlyList<OpenWithTargetRow> TargetRows { get; }
 
-    /// <summary>是否已登记到系统（勾选 / 取消 = 写 / 删当前用户注册表）。</summary>
-    public bool IsRegistered
-    {
-        get => _isRegistered;
-        set
-        {
-            if (_isRegistered == value) return;
-            ApplyRegistration(value);
-        }
-    }
+    /// <summary>
+    /// 当前系统里是否已登记（只读）。真正的开关在 **主页设置 → 打开方式关联**；
+    /// 这一页只显示状态、提供修复 / 清理，避免两个地方各写一份开关状态。
+    /// </summary>
+    public bool IsRegistered => _isRegistered;
 
     /// <summary>注册表 / 副本状态的详细说明。</summary>
     public string StateMessage
@@ -121,6 +127,7 @@ public sealed class OpenWithViewModel : ToolViewModelBase
 
     public RelayCommand RefreshCommand { get; }
     public RelayCommand RepairCommand { get; }
+    public RelayCommand ClearAssociationCommand { get; }
     public RelayCommand OpenDefaultAppsCommand { get; }
     public RelayCommand BrowseSimulationFileCommand { get; }
     public RelayCommand SimulateCommand { get; }
@@ -142,11 +149,13 @@ public sealed class OpenWithViewModel : ToolViewModelBase
             }
 
             StateMessage = state.Message;
-            UpToDateText = !state.Registered
-                ? "还没登记。点下面的勾选框即可启用。"
-                : state.OpenersUpToDate
-                    ? "入口副本：与当前程序版本一致。"
-                    : "入口副本：版本不一致（可能刚更新过程序），点「修复 / 刷新」重建。";
+            UpToDateText = !IsBuildSupported
+                ? "Debug 构建不登记「打开方式」；请用 Release 构建或发布版。"
+                : !state.Registered
+                    ? "未登记。开关在 主页设置 → 打开方式关联。"
+                    : state.OpenersUpToDate
+                        ? "入口副本：与当前程序版本一致。"
+                        : "入口副本：版本不一致（可能刚更新过程序），点「修复 / 刷新」重建。";
 
             if (announce)
             {
@@ -160,24 +169,20 @@ public sealed class OpenWithViewModel : ToolViewModelBase
         }
     }
 
-    private void ApplyRegistration(bool enable)
-    {
-        var result = enable
-            ? OpenWithRegistration.Register(MainExecutablePath)
-            : OpenWithRegistration.Unregister(MainExecutablePath);
-
-        StatusText = result.Message;
-        Log((enable ? "[启用] " : "[取消] ") + result.Message);
-
-        // 不管成功失败都以注册表真实状态为准（失败时勾选框会自动弹回去）
-        RefreshState(announce: false);
-    }
-
     private void Repair()
     {
         var result = OpenWithRegistration.EnsureUpToDate(MainExecutablePath);
         StatusText = result.Message;
         Log("[修复] " + result.Message);
+        RefreshState(announce: false);
+    }
+
+    /// <summary>清理残留（Debug 也能用）：删入口副本 + 注册表条目；不会影响「主页设置」里的开关值。</summary>
+    private void ClearAssociation()
+    {
+        var result = OpenWithRegistration.ClearAll(MainExecutablePath);
+        StatusText = result.Message;
+        Log("[清理] " + result.Message);
         RefreshState(announce: false);
     }
 

@@ -58,7 +58,7 @@
                     </StackPanel>
                     <TextBlock FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0"
                                TextWrapping="Wrap"
-                               Text="外壳自己的设置：界面风格（默认 / 液态玻璃 / 毛玻璃 / 亚克力）与窗口背景图、主页显示、鼠标自动 / 点击特效（含数量 / 范围 / 半径滑块）、粒子颜色、窗口与托盘；最下面是清理缓存与重建配置（恢复默认设置）。改一下立即生效并自动保存。" />
+                               Text="外壳自己的设置：界面风格（默认 / 液态玻璃 / 毛玻璃 / 亚克力）与窗口背景图、主页显示、鼠标自动 / 点击特效（含数量 / 范围 / 半径滑块）、粒子颜色、窗口与托盘、打开方式关联；最下面是清理缓存与重建配置（恢复默认设置）。改一下立即生效并自动保存。" />
                 </StackPanel>
                 <Button Grid.Column="1" Content="返回主页" Style="{StaticResource SecondaryButtonStyle}"
                         VerticalAlignment="Top" Command="{Binding GoHomeCommand}" ToolTip="回到主页（也可以点面包屑的「🏠 主页」或后退按钮）" />
@@ -388,6 +388,33 @@
                     <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                TextWrapping="Wrap" Margin="0,9,0,0"
                                Text="选「最小化到托盘」后，× 只把窗口藏到任务栏右侧的小图标里，应用继续在后台运行：单击 / 双击托盘图标恢复窗口，右键托盘图标可以「显示主窗口 / 主页设置 / 退出」。设置自动保存，重启后保持。" />
+                </StackPanel>
+            </Border>
+
+            <!-- ===== 打开方式关联（v0.79.0） ===== -->
+            <TextBlock Text="打开方式关联" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource AccentBrush}" Margin="0,22,0,0" />
+            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
+                <StackPanel>
+                    <CheckBox Content="在右键「打开方式」里显示凉雨工具集（3 个入口）"
+                              Style="{StaticResource CheckBoxStyle}"
+                              IsChecked="{Binding OpenWithAssociationEnabled}"
+                              IsEnabled="{Binding OpenWithAssociationAvailable}"
+                              ToolTip="打开 / 关闭后立即写当前用户注册表；关闭后每次启动还会自动清理 Windows 记住的旧条目" />
+
+                    <TextBlock Text="{Binding OpenWithAssociationHint}" FontSize="11.5"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,9,0,0" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button Content="清理打开方式关联" Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding ClearOpenWithAssociationCommand}"
+                                ToolTip="立即删掉本工具写进注册表的「打开方式」入口和入口副本 exe，并把上面的开关关掉（Debug 构建也能用）" />
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding OpenWithStatusText}" FontSize="11.5"
+                               Foreground="{DynamicResource SuccessBrush}" TextWrapping="Wrap" Margin="0,9,0,0"
+                               Visibility="{Binding OpenWithStatusText, Converter={StaticResource EmptyToVisInverse}}" />
                 </StackPanel>
             </Border>
 

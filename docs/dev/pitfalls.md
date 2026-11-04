@@ -345,6 +345,17 @@
 - 文本编辑器**默认 0.9 秒自动保存**：从「打开方式 → 以文本方式」打开的陌生 / 二进制文件必须给该标签打 `AutoSaveSuppressed`，
   否则误触键盘就可能把原文件写坏（手动 Ctrl+S 仍然可用）。
 - `--open-as=auto|text|archive` 之外，**不带模式参数但有真实文件参数 = 自动模式**（PDF / 图片双击的历史路径靠它继续工作）。
+- **只有 Release / 发布版允许登记**（v0.79.0）：`OpenWithRegistration.IsBuildSupported` 由 `#if DEBUG` 决定；
+  Debug 版主页设置开关灰掉、启动时还会 `ClearAll`，避免 `bin\Debug` 路径 / 自检反复启动污染真实注册表。
+  ⚠ 用**属性**而不是 `const bool`：const false 会让编译报「不可达代码」警告。
+- **开关状态存在外壳配置** `Config\shell\config.json` 的 `openWithAssociationEnabled`，所以「打开方式」工具页不要再放一个
+  自己的勾选框（两个数据源会打架）：工具页只做状态检查 / 修复 / 清理，开关统一在「主页设置 → 打开方式关联」。
+- **关 = 在打开方式里彻底看不到本软件**：Windows 会记住旧登记，所以关着时每次启动都要 `ClearAll`。
+  清理除了 3 个 Applications 条目 + 2 个入口副本，还要删 PDF / 图片阅读器登记在
+  `OpenWithProgids` 里的 `YuLiangToolkit.PdfReader` / `YuLiangToolkit.PictureViewer` **引用**
+  （只删引用，不删 ProgId / 不改后缀默认程序，双击关联不受影响）；否则列表中还会残留它们的旧路径条目。
+- **入口副本复制的是主 exe、依赖仍在主目录**：不要把它们放进 `Data\open-with\` 子目录（apphost 会找不到同目录依赖）。
+  程序运行时不能覆盖正在运行的那个副本（`EnsureOpenerFile` 会跳过自己）。
 
 ### WPF 与界面
 - 工具页有多个区块时**别把区块大小写死**：用 `core:PaneSplitter` + `App.xaml` 的 `PaneSplitterVerticalStyle` / `PaneSplitterHorizontalStyle`（悬停蓝线 / ↔ ↕ 光标 / 自动记忆 / 双击复位），约定见 [layout.md](layout.md)。分隔条必须独占一行 / 一列，相邻两块要给 `MinWidth` / `MinHeight`，否则窗口小时会被拖没；写死像素的上下两块才适合放进 `ScrollViewer` 里上下拖，`*` 行在里面会塌成内容高度。

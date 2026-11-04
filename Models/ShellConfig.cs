@@ -174,6 +174,15 @@ public sealed class ShellConfig : ToolConfig
     public string ParticleColor2 { get; set; } = "#8FB4FF";
 
     /// <summary>
+    /// 是否把本工具登记进 Windows 右键「打开方式」（主页设置 → 打开方式关联，v0.79.0，默认 <c>false</c>）。
+    /// <para>只有 <b>Release 构建 / publish.ps1 发布版</b>才能打开；Debug 构建固定在关闭状态（界面灰掉），
+    /// 启动时还会自动清理残留，避免把 <c>bin\Debug</c> 路径写进系统注册表。</para>
+    /// <para>关着时每次启动都会自动清掉「打开方式」里本工具的残留（Windows 会记住旧登记）；
+    /// 打开时启动会按当前 exe 路径刷新入口副本。开关状态会随本配置自动落盘。</para>
+    /// </summary>
+    public bool OpenWithAssociationEnabled { get; set; }
+
+    /// <summary>
     /// 点窗口右上角 × 时的行为（主页设置里的选项，默认 <see cref="ShellCloseAction.Exit"/> = 关闭应用）。
     /// 选 <see cref="ShellCloseAction.MinimizeToTray"/> 后 × 只把窗口藏到托盘，应用继续在后台运行。
     /// </summary>

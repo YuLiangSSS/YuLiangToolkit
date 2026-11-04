@@ -18,7 +18,8 @@ public class OpenWithTool : ITool
 
     public string Description =>
         "把本工具集登记进右键「打开方式」：3 个入口（按文件类型自动分流 / 以文本方式 / 以压缩包方式），"
-        + "PDF、图片、Word、Excel、压缩包、音视频、文本都能自动找到对应工具";
+        + "PDF、图片、Word、Excel、压缩包、音视频、文本都能自动找到对应工具；"
+        + "开关在「主页设置 → 打开方式关联」（只有 Release / 发布版可用，Debug 固定关闭）";
 
     public string EmojiIcon => "🗂️";
 

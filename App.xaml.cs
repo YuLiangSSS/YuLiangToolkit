@@ -102,6 +102,10 @@ public partial class App : Application
         var vm = new MainViewModel(tools);
         _mainViewModel = vm;   // 退出流程用（见 _mainViewModel 注释：不能靠 Application.MainWindow）
 
+        // 「打开方式」同步（v0.79.0）：Release 版开关开着就登记 / 刷新入口副本；关着（或 Debug 构建）
+        // 就把 Windows 记住的旧登记清掉。只写 HKCU，失败不影响启动。
+        vm.SyncOpenWithAssociationOnStartup();
+
         // 建主窗口之前先应用主题（默认 / 液态玻璃）：窗口 XAML 一解析就要用主题里的颜色，
         // 反过来的话第一帧会闪一下默认主题（见 Views/Themes/ThemeManager.cs）。
         ThemeManager.Apply(vm.UiTheme);
@@ -121,9 +125,6 @@ public partial class App : Application
 
         // 任务栏右侧的托盘图标：单击 / 双击恢复窗口，右键菜单（显示主窗口 / 主页设置 / 退出）。
         SetupTrayIcon(window, vm);
-
-        // 已登记「打开方式」时顺手刷新入口副本 / 命令（程序更新或换目录后副本可能是旧的；没登记则什么都不做）
-        RefreshOpenWithEntryPoints();
 
         // 开发调试：YLT_WINDOW_SIZE=1024x700 强制窗口尺寸（截图核对最小窗口 / 窄屏版式用）
         var windowSize = Environment.GetEnvironmentVariable("YLT_WINDOW_SIZE");
@@ -290,24 +291,6 @@ public partial class App : Application
     /// </summary>
     private static string[] NormalizeLaunchArguments(string[] args)
         => OpenWithArguments.NormalizeFileArguments(args);
-
-    /// <summary>
-    /// 已登记「打开方式」时，在启动阶段把入口副本和注册表命令刷成当前 exe 的版本。
-    /// 失败只写调试输出、不影响启动（用户下次在「打开方式」页点「修复 / 刷新」还能再试）。
-    /// </summary>
-    private static void RefreshOpenWithEntryPoints()
-    {
-        try
-        {
-            var canonicalExe = OpenWithRegistration.ResolveCanonicalExecutablePath(Environment.ProcessPath);
-            if (OpenWithRegistration.IsRegistered(canonicalExe))
-                OpenWithRegistration.EnsureUpToDate(canonicalExe);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[OpenWith] 启动刷新入口副本失败：{ex.Message}");
-        }
-    }
 
     /// <summary>
     /// 建任务栏托盘图标（不引 WinForms，手写 <see cref="TrayIcon"/>）：

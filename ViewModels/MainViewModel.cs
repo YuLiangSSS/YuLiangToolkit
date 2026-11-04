@@ -9,6 +9,7 @@ using YuLiangToolkit.Core.Effects;
 using YuLiangToolkit.Core.Maintenance;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Core.Services;
+using YuLiangToolkit.Core.Shell;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Core.Tools;
 
@@ -1004,6 +1005,119 @@ public class MainViewModel : ObservableObject
         }
     }
 
+    // ---------- 打开方式关联（v0.79.0，主页设置里的开关 + 清理按钮） ----------
+
+    private string _openWithStatusText = "";
+
+    /// <summary>
+    /// 「打开方式」关联开关在当前构建里是否可用：**只有 Release / publish.ps1 发布版可用**；
+    /// Debug 构建固定关闭（界面灰掉），启动时还会自动清理残留（原因见
+    /// <see cref="OpenWithRegistration.UnsupportedBuildMessage"/>）。
+    /// </summary>
+    public bool OpenWithAssociationAvailable => OpenWithRegistration.IsBuildSupported;
+
+    /// <summary>
+    /// 主页设置 → 打开方式关联：是否把本工具登记进 Windows 右键「打开方式」。
+    /// <para>打开 = 立即登记 3 个入口；关闭 = 立即清理并落盘，之后每次启动都会自动清掉残留。
+    /// Debug 构建下固定为 <c>false</c>（不可操作）。</para>
+    /// </summary>
+    public bool OpenWithAssociationEnabled
+    {
+        get => OpenWithAssociationAvailable && _shell.OpenWithAssociationEnabled;
+        set
+        {
+            if (!OpenWithAssociationAvailable || OpenWithAssociationEnabled == value) return;
+            var mainExe = OpenWithMainExecutablePath();
+
+            if (value)
+            {
+                var result = OpenWithRegistration.Register(mainExe);
+                if (result.Success) _shell.OpenWithAssociationEnabled = true;
+                OpenWithStatusText = result.Message;
+            }
+            else
+            {
+                var result = OpenWithRegistration.ClearAll(mainExe);
+                _shell.OpenWithAssociationEnabled = false;
+                OpenWithStatusText = result.Message;
+            }
+
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>打开方式关联卡片里的说明（Debug 构建用不可用原因）。</summary>
+    public string OpenWithAssociationHint => OpenWithAssociationAvailable
+        ? "打开后：右键任意文件 → 打开方式 里出现 3 个「凉雨工具集」入口（按文件类型 / 以文本方式 / 以压缩包方式），"
+          + "程序更新 / 换目录后启动会自动刷新。关闭后：立即清理登记，而且每次启动都会自动清一次，"
+          + "防止 Windows 记住旧条目。只写当前用户注册表（HKCU），不需要管理员。"
+        : OpenWithRegistration.UnsupportedBuildMessage;
+
+    /// <summary>打开方式开关 / 清理操作的结果说明（设置页里显示，空 = 不显示）。</summary>
+    public string OpenWithStatusText
+    {
+        get => _openWithStatusText;
+        set => Set(ref _openWithStatusText, value);
+    }
+
+    /// <summary>
+    /// 启动时同步「打开方式」：开关开着 → 登记 / 刷新入口副本；关着（或 Debug 构建）→ 有残留就清理。
+    /// <para>由 <c>App.OnStartup</c> 在主窗口显示前调用。失败只写 Debug 输出，不影响启动。</para>
+    /// </summary>
+    public void SyncOpenWithAssociationOnStartup()
+    {
+        try
+        {
+            var mainExe = OpenWithMainExecutablePath();
+
+            if (!OpenWithAssociationAvailable)
+            {
+                // Debug / 自检构建：开关固定关闭，并且把之前版本留下的登记清掉
+                if (_shell.OpenWithAssociationEnabled)
+                {
+                    _shell.OpenWithAssociationEnabled = false;
+                    OnPropertyChanged(nameof(OpenWithAssociationEnabled));
+                }
+
+                if (OpenWithRegistration.HasRegistrationArtifacts(mainExe))
+                    OpenWithRegistration.ClearAll(mainExe);
+                return;
+            }
+
+            if (_shell.OpenWithAssociationEnabled)
+            {
+                var result = OpenWithRegistration.Register(mainExe);
+                OpenWithStatusText = result.Message;
+                if (!result.Success) System.Diagnostics.Debug.WriteLine($"[OpenWith] 启动登记失败：{result.Message}");
+            }
+            else if (OpenWithRegistration.HasRegistrationArtifacts(mainExe))
+            {
+                // 开关关着：Windows 可能还记着上次的登记 → 每次启动自动清一次
+                var result = OpenWithRegistration.ClearAll(mainExe);
+                OpenWithStatusText = result.Message;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[OpenWith] 启动同步失败：{ex.Message}");
+        }
+    }
+
+    private void ClearOpenWithAssociation()
+    {
+        var result = OpenWithRegistration.ClearAll(OpenWithMainExecutablePath());
+        if (_shell.OpenWithAssociationEnabled)
+        {
+            _shell.OpenWithAssociationEnabled = false;
+            OnPropertyChanged(nameof(OpenWithAssociationEnabled));
+        }
+
+        OpenWithStatusText = result.Message;
+    }
+
+    private static string OpenWithMainExecutablePath()
+        => OpenWithRegistration.ResolveCanonicalExecutablePath(Environment.ProcessPath);
+
     // ---------- 命令 ----------
 
     public RelayCommand GoHomeCommand { get; }
@@ -1034,6 +1148,9 @@ public class MainViewModel : ObservableObject
 
     /// <summary>打开「主页设置」窗口（标题区右上角 ⚙ 按钮）。</summary>
     public RelayCommand OpenSettingsCommand { get; }
+
+    /// <summary>主页设置 → 打开方式关联：「清理」按钮（Debug 构建也能用；同时把开关落成关闭）。</summary>
+    public RelayCommand ClearOpenWithAssociationCommand { get; }
 
     /// <summary>点左下角迷你条 → 回到那个正在后台播放的工具。</summary>
     public RelayCommand OpenBackgroundToolCommand { get; }
@@ -1134,6 +1251,7 @@ public class MainViewModel : ObservableObject
             if (p is BreadcrumbItem item) NavigateBreadcrumb(item);
         });
         OpenSettingsCommand = new RelayCommand(_ => OpenSettings());   // 进「主页设置」页面（v0.26.0 起不再是独立窗口）
+        ClearOpenWithAssociationCommand = new RelayCommand(_ => ClearOpenWithAssociation());
         OpenBackgroundToolCommand = new RelayCommand(_ =>
         {
             if (_keptAliveTool is { } tool) OpenTool(tool);

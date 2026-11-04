@@ -46,11 +46,21 @@
                                            TextWrapping="Wrap" Margin="0,4,0,0"
                                            Text="只写当前用户（HKCU）的打开方式列表，不需要管理员权限；不改任何文件的默认程序（默认程序仍由系统「默认应用」决定）。" />
 
-                                <CheckBox Content="在右键「打开方式」里显示凉雨工具集（3 个入口）"
-                                          IsChecked="{Binding IsRegistered, Mode=TwoWay}"
-                                          IsEnabled="{Binding CanRegister}"
-                                          Style="{StaticResource CheckBoxStyle}"
-                                          Margin="0,14,0,0" />
+                                <!-- 开关已经统一放到 主页设置 → 打开方式关联，这里只显示状态 + 修复 / 清理 -->
+                                <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                                    <TextBlock Text="当前状态：" FontSize="12.5" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBlock Text="已登记" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource SuccessBrush}"
+                                               Visibility="{Binding IsRegistered, Converter={StaticResource BoolToVis}}" />
+                                    <TextBlock Text="未登记" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Visibility="{Binding IsRegistered, Converter={StaticResource InverseBoolToVis}}" />
+                                </StackPanel>
+
+                                <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                                           TextWrapping="Wrap" Margin="0,6,0,0"
+                                           Text="开关在 主页设置 → 打开方式关联（只有 Release / 发布版可打开；Debug 构建固定关闭）。本页只做状态检查、修复和清理。" />
 
                                 <!-- 状态说明 -->
                                 <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8"
@@ -67,7 +77,11 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                                     <Button Content="修复 / 刷新" Style="{StaticResource SecondaryButtonStyle}"
                                             Command="{Binding RepairCommand}"
-                                            ToolTip="重建入口副本、把注册表命令刷成当前程序路径（程序更新 / 换目录后点一下）" />
+                                            IsEnabled="{Binding IsBuildSupported}"
+                                            ToolTip="重建入口副本、把注册表命令刷成当前程序路径（程序更新 / 换目录后点一下；Debug 构建不可用）" />
+                                    <Button Content="清理关联" Style="{StaticResource SecondaryButtonStyle}"
+                                            Command="{Binding ClearAssociationCommand}" Margin="8,0,0,0"
+                                            ToolTip="立即删掉注册表里本工具的打开方式入口和入口副本 exe（Debug 构建也能用）" />
                                     <Button Content="打开「默认应用」设置" Style="{StaticResource SecondaryButtonStyle}"
                                             Command="{Binding OpenDefaultAppsCommand}" Margin="8,0,0,0"
                                             ToolTip="想把某个后缀默认交给本工具时，在系统设置里选一次（默认程序由 Windows 保护，本工具不硬抢）" />

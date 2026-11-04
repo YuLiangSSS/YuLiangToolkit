@@ -295,6 +295,42 @@ internal static class OpenWithChecks
         Check("配置：默认模拟路径为空（重建配置后回到出厂状态）",
             config.LastSimulatedPath == "");
 
+        // ================================================================
+        // 7. 主页设置开关 / 构建门禁 / 清理（只读，绝不写注册表）
+        // ================================================================
+        var shellConfig = new YuLiangToolkit.App.Models.ShellConfig();
+        Check("主页设置：打开方式关联默认关闭（ShellConfig 字段默认 false）",
+            !shellConfig.OpenWithAssociationEnabled);
+
+#if DEBUG
+        Check("构建门禁：Debug 构建不允许登记「打开方式」", !OpenWithRegistration.IsBuildSupported);
+
+        // 门禁在碰注册表之前就返回，这条调用不会写任何东西
+        var gateResult = OpenWithRegistration.Register(fakeExe);
+        Check("构建门禁：Debug 下 Register 被拒绝并提示用 Release / 发布版",
+            !gateResult.Success
+            && gateResult.Message.Contains("Debug", StringComparison.Ordinal)
+            && !OpenWithRegistration.IsRegistered(fakeExe));
+
+        Check("清理：空路径 / null 不会误删任何东西（ClearAll 直接返回失败）",
+            !OpenWithRegistration.ClearAll("").Success
+            && !OpenWithRegistration.ClearAll(null!).Success);
+#else
+        Check("构建门禁：Release 构建允许登记「打开方式」", OpenWithRegistration.IsBuildSupported);
+        Check("构建门禁：Release 下不可用文案为空", OpenWithRegistration.UnsupportedBuildMessage == "");
+#endif
+
+        Check("清理：HasRegistrationArtifacts 对空路径 / null 返回 false，不抛异常",
+            !OpenWithRegistration.HasRegistrationArtifacts("")
+            && !OpenWithRegistration.HasRegistrationArtifacts(null));
+
+        Check("清理：已知 ProgId 与 PDF / 图片阅读器一致（只清本软件的打开方式引用，不误删别的程序）",
+            OpenWithRegistration.KnownAssociationProgIds
+                .OrderBy(p => p, StringComparer.Ordinal)
+                .SequenceEqual(new[] { PictureFileAssociation.ProgId, PdfFileAssociation.ProgId }
+                    .OrderBy(p => p, StringComparer.Ordinal)),
+            string.Join(",", OpenWithRegistration.KnownAssociationProgIds));
+
         checkPlain("[打开方式] 只读自检完成（未写注册表 / 未复制入口 exe）", true);
     }
 }
