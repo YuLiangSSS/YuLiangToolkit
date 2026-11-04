@@ -241,11 +241,13 @@
   别用 `HasUsableLength(0) == false` 把它当「没给」退回默认。
 - ⚠ 双页放大后拖动是**平移**（`_spreadPanX/Y` + `PdfSpreadLayout.ClampPan`），连续模式缩放后多出来的是**跨轴偏移**；
   两套偏移都自己记，惯性用 `PdfInertia` 的双轴接口，别从 ScrollViewer / RenderTransform 反读。
-- ⚠ 拖动惯性必须按**松手一瞬间的速度**算：`ComputeVelocity(releaseTime)` 取最近两个采样点，且
-  `releaseTime - 最后采样时间 >= ReleaseIdleMilliseconds(90ms)` 直接返回 0 —— 否则「甩一下 → 按住鼠标不动 → 松手」
-  会拿最后一次移动的速度继续滑（用户报过）。旧的 `ComputeVelocity()`（窗口平均）只给自检用，别在 MouseUp 里拿它算。
+- ⚠ 拖动惯性按**整次拖动平均速度**算（`ComputeDragVelocity(releaseTime)` = 按住起点到松开前最后的位移/时间），
+  且松手前静止 ≥ `ReleaseIdleMilliseconds(500ms)` 时直接返回 0；`StartInertia` 必须**先判断本次速度够不够快**，
+  不够快就 Abort，不能先 Combine 残余速度——否则「原地轻点一下」会继承上一段惯性继续滑（用户报过）。
+  旧的 `ComputeVelocity()`（120ms 窗口平均）只给自检 / 兼容用，别在 MouseUp 里拿它算。
 - 滚轮惯性（`WheelInertiaEnabled`，和拖动惯性 `InertiaEnabled` 独立）：用「实际走过的偏移差」判断方向后调
-  `StartWheelInertia`，复用拖动惯性定时器；连续滚动（含 Shift 横滚、双页放大后 Shift 平移）会滑，双页默认翻页不滑。
+  `StartWheelInertia`，用 `AccumulateWheel` 在当前速度上**累加**每一格（越滚越快、封顶 12px/ms），复用拖动惯性定时器；
+  连续滚动（含 Shift 横滚、双页放大后 Shift 平移）会滑，双页默认翻页不滑。
   调试：`YLT_PDF_WHEEL_SIM=-120` 模拟滚一格；合成 `MouseWheelEventArgs` 的 `OriginalSource` 是 null，
   两个滚轮处理都改成 `(e.OriginalSource ?? e.Source)` 兜底才能走正常链路。
 - ⚠ 阅读区右侧快速滚动条（以及以后放进 `ViewportGrid` 的任何 ScrollBar）：`OnPreviewMouseDown` 的拖拽判断必须把

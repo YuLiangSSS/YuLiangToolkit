@@ -427,26 +427,41 @@ internal static class PictureViewerChecks
         inertia.Reset();
         Check("[图片] 只有一个采样点 / 没采样 → 速度为 0", inertia.ComputeVelocity() == (0.0, 0.0));
 
-        Check("[图片] 松手惯性：鼠标静止判定阈值 90ms", Math.Abs(PictureInertia.ReleaseIdleMilliseconds - 90) <= 1e-9);
+        Check("[图片] 松手惯性：鼠标静止判定阈值 500ms", Math.Abs(PictureInertia.ReleaseIdleMilliseconds - 500) <= 1e-9);
 
         inertia.Reset();
         inertia.Note(0, 0, 0);
         inertia.Note(20, 10, 0);
-        inertia.Note(100, 30, 0);   // 最后一段 80ms 走 20px；整段平均是 30/100
-        var (releaseMain, _) = inertia.ComputeVelocity(100);
-        Check("[图片] 松手速度取「松开瞬间最近两个采样点」的瞬时速度（不是整段距离平均）",
-            Math.Abs(releaseMain - 0.25) <= 1e-9, releaseMain.ToString("F4"));
+        inertia.Note(100, 30, 0);   // 按住到松开整段 100ms 走 30px
+        var (dragMain, _) = inertia.ComputeDragVelocity(100);
+        Check("[图片] 拖动惯性取「按住到松开」整段平均速度（30/100 = 0.3，不是最后两点 0.25）",
+            Math.Abs(dragMain - 0.3) <= 1e-9, dragMain.ToString("F4"));
 
         inertia.Reset();
         inertia.Note(0, 0, 0);
         inertia.Note(50, 50, 0);
-        var (heldMain, _) = inertia.ComputeVelocity(200);   // 松手前已静止 150ms
-        Check("[图片] 按住不动超过阈值再松手：惯性速度为 0（不会继续滑）",
+        var (heldMain, _) = inertia.ComputeDragVelocity(600);   // 松手前已静止 550ms
+        Check("[图片] 按住不动超过 500ms 再松手：惯性速度为 0（不会继续滑）",
             heldMain == 0, heldMain.ToString("F4"));
 
-        var (immediateMain, _) = inertia.ComputeVelocity(60);   // 刚移到就松手
-        Check("[图片] 移动后立刻松手：仍按最后一段速度继续滑（60ms 时 50/50 → 1.0）",
+        var (immediateMain, _) = inertia.ComputeDragVelocity(60);   // 刚移到就松手
+        Check("[图片] 移动后立刻松手：按整段平均速度继续滑（50ms 走 50px → 1.0）",
             Math.Abs(immediateMain - 1.0) <= 1e-9, immediateMain.ToString("F4"));
+
+        var wheel1 = PictureInertia.AccumulateWheel(0, 0, 1, 0, 120);
+        var wheel2 = PictureInertia.AccumulateWheel(wheel1.Main, wheel1.Cross, 1, 0, 120);
+        Check("[图片] 滚轮惯性累加：第一格 1.68、连续第二格 3.36（越滚越快）",
+            Math.Abs(wheel1.Main - 1.68) <= 1e-9 && Math.Abs(wheel2.Main - 3.36) <= 1e-9,
+            $"{wheel1.Main:F2} / {wheel2.Main:F2}");
+
+        var wheelCap = PictureInertia.AccumulateWheel(11.5, 0, 1, 0, 120);
+        Check("[图片] 滚轮惯性累加有总速度上限（12 px/ms，不会失控）",
+            Math.Abs(wheelCap.Main - PictureInertia.DefaultWheelAccumulatedMaxSpeed) <= 1e-9,
+            wheelCap.Main.ToString("F2"));
+
+        var wheelReverse = PictureInertia.AccumulateWheel(2.0, 0, -1, 0, 120);
+        Check("[图片] 滚轮惯性反向滚：先抵消当前速度（2 − 1.68 = 0.32），不会直接反向飞",
+            Math.Abs(wheelReverse.Main - 0.32) <= 1e-9, wheelReverse.Main.ToString("F2"));
 
         var decayed = inertia.Decay(2.0, -1.0, 100);
         Check("[图片] 衰减：方向不变、速度变小、时间越久越小",

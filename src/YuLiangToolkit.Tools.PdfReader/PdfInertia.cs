@@ -22,10 +22,13 @@ public sealed class PdfInertia
     public const double SampleWindowMilliseconds = 120;
 
     /// <summary>
-    /// 松手前鼠标已经静止超过这个时间（毫秒）就不起惯性：按住不动再松开时，
-    /// 不能拿最后一次移动的速度继续滑（用户明确要求按“松开一瞬间的速度”算）。
+    /// 松手前鼠标已经静止超过这个时间（毫秒）就直接取消惯性：按住不动再松开时，
+    /// 不能拿最后一次移动的速度继续滑。500ms ≈ 明确“停住了”的停顿。
     /// </summary>
-    public const double ReleaseIdleMilliseconds = 90;
+    public const double ReleaseIdleMilliseconds = 500;
+
+    /// <summary>滚轮惯性反复滚时累加后的速度上限（像素 / 毫秒）：滚得越多越快，但别失控。</summary>
+    public const double DefaultWheelAccumulatedMaxSpeed = 12.0;
 
     /// <summary>
     /// 叠加后的速度上限（像素 / 毫秒）：连续甩动会一直加速，必须封顶，不然一下就滑穿整本 PDF。
@@ -51,7 +54,34 @@ public sealed class PdfInertia
         return Math.Clamp(velocity, DefaultMinimumSpeed, DefaultWheelMaxVelocity);
     }
 
+    /// <summary>
+    /// 把这一格滚轮的速度**累加**到当前惯性速度上：连续快滚时速度会越滚越快，
+    /// 反向滚会先减速 / 反向；最后按 <paramref name="maxSpeed"/> 封顶。
+    /// </summary>
+    public static (double Main, double Cross) AccumulateWheel(
+        double currentMain,
+        double currentCross,
+        double appliedMain,
+        double appliedCross,
+        double wheelStepPixels,
+        double maxSpeed = DefaultWheelAccumulatedMaxSpeed)
+    {
+        var kick = WheelVelocity(wheelStepPixels);
+
+        var main = currentMain;
+        var cross = currentCross;
+        if (Math.Abs(appliedMain) >= 0.01) main += Math.Sign(appliedMain) * kick;
+        if (Math.Abs(appliedCross) >= 0.01) cross += Math.Sign(appliedCross) * kick;
+
+        return Combine(main, cross, 0, 0, accumulate: false, maxSpeed);
+    }
+
     private readonly List<(double Time, double Main, double Cross)> _samples = new();
+
+    // 本次拖拽的起点（Reset 后第一次 Note 记下）：算「按住到松开」的平均速度用。
+    private double _dragStartTime = double.NaN;
+    private double _dragStartMain;
+    private double _dragStartCross;
 
     /// <summary>摩擦系数（每毫秒）。越大停得越快。</summary>
     public double FrictionPerMillisecond { get; set; } = DefaultFrictionPerMillisecond;
@@ -60,11 +90,22 @@ public sealed class PdfInertia
     public double MinimumSpeed { get; set; } = DefaultMinimumSpeed;
 
     /// <summary>清空采样（开始一次新的拖拽时调用）。</summary>
-    public void Reset() => _samples.Clear();
+    public void Reset()
+    {
+        _samples.Clear();
+        _dragStartTime = double.NaN;
+    }
 
     /// <summary>记录一次拖拽过程中的位置（时间用毫秒，可以是任意单调时钟）。</summary>
     public void Note(double timeMilliseconds, double mainOffset, double crossOffset)
     {
+        if (double.IsNaN(_dragStartTime))
+        {
+            _dragStartTime = timeMilliseconds;
+            _dragStartMain = mainOffset;
+            _dragStartCross = crossOffset;
+        }
+
         _samples.Add((timeMilliseconds, mainOffset, crossOffset));
 
         // 只留最近一小段时间的采样，避免越拖越长
@@ -72,6 +113,25 @@ public sealed class PdfInertia
         var remove = 0;
         while (remove < _samples.Count - 1 && _samples[remove].Time < cutoff) remove++;
         if (remove > 0) _samples.RemoveRange(0, remove);
+    }
+
+    /// <summary>
+    /// 拖动松手速度（像素 / 毫秒）：从**按住起点到松开前最后采样点**的平均速度。
+    /// 比只看最后两点稳（不会因最后一下抖动 / 采样间隔太短而忽大忽小 / 不滑）；
+    /// 松手前鼠标已静止 ≥ <see cref="ReleaseIdleMilliseconds"/> 时返回 (0,0)，直接取消惯性。
+    /// </summary>
+    public (double Main, double Cross) ComputeDragVelocity(double releaseTimeMilliseconds)
+    {
+        if (_samples.Count < 2 || double.IsNaN(_dragStartTime)) return (0, 0);
+
+        var last = _samples[^1];
+        var idle = releaseTimeMilliseconds - last.Time;
+        if (double.IsNaN(idle) || idle >= ReleaseIdleMilliseconds) return (0, 0);
+
+        var dt = last.Time - _dragStartTime;
+        if (dt <= 0) return (0, 0);
+
+        return ((last.Main - _dragStartMain) / dt, (last.Cross - _dragStartCross) / dt);
     }
 
     /// <summary>

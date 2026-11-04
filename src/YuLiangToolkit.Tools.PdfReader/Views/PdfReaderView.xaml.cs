@@ -1701,11 +1701,11 @@ public partial class PdfReaderView : UserControl
         if (!IsFromViewport(source) || IsInsideOverlayPanel(source)) return;
 
         e.Handled = true;
-        AbortInertia();
 
         // Ctrl+滚轮 = 以画面中心缩放（两种模式都生效）
         if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
         {
+            AbortInertia();
             if (e.Delta > 0) vm.ZoomInCommand.Execute(null);
             else if (e.Delta < 0) vm.ZoomOutCommand.Execute(null);
             return;
@@ -1723,9 +1723,9 @@ public partial class PdfReaderView : UserControl
                 return;
             }
 
+            AbortInertia();
             _ = TurnSpreadAsync(forward: e.Delta < 0);
-            return;
-        }
+            return;        }
 
         if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
         {
@@ -1789,7 +1789,15 @@ public partial class PdfReaderView : UserControl
         var dy = position.Y - _dragStart.Y;
         if (!_dragMoved && Math.Abs(dx) + Math.Abs(dy) < DragThresholdPixels) return;
 
-        _dragMoved = true;
+        if (!_dragMoved)
+        {
+            // 第一次真正移动才开始算平均速度：不要把“按下后先停一会儿”的时间算进去
+            _dragMoved = true;
+            _inertia.Reset();
+            var (startMain, startCross) = GetInertiaOffsets();
+            _inertia.Note(NowMilliseconds(), startMain, startCross);
+        }
+
         e.Handled = true;
 
         if (_spreadActive)
@@ -1816,7 +1824,7 @@ public partial class PdfReaderView : UserControl
         if (e.ChangedButton != MouseButton.Left || !_dragging) return;
 
         var moved = _dragMoved;
-        var (mainVelocity, crossVelocity) = moved ? _inertia.ComputeVelocity(NowMilliseconds()) : (0.0, 0.0);
+        var (mainVelocity, crossVelocity) = moved ? _inertia.ComputeDragVelocity(NowMilliseconds()) : (0.0, 0.0);
         EndDrag();
 
         if (moved)
@@ -1887,6 +1895,14 @@ public partial class PdfReaderView : UserControl
             return;
         }
 
+        // ⚠ 先看**本次拖动**算出来的平均速度够不够快；不够快就直接取消（不拿上一段惯性速度兜底），
+        // 这样「原地轻点一下 / 只挪一两像素再松开」不会继承残余速度继续滑。
+        if (!_inertia.IsFastEnough(sampleMainVelocity, sampleCrossVelocity))
+        {
+            AbortInertia();
+            return;
+        }
+
         var (mainVelocity, crossVelocity) = PdfInertia.Combine(
             sampleMainVelocity, sampleCrossVelocity,
             _carriedMainVelocity, _carriedCrossVelocity,
@@ -1912,9 +1928,11 @@ public partial class PdfReaderView : UserControl
         if (Vm is not { } vm || !vm.Cfg.WheelInertiaEnabled) return;
         if (Math.Abs(appliedMain) < 0.01 && Math.Abs(appliedCross) < 0.01) return;   // 已经在头 / 尾了
 
-        var velocity = PdfInertia.WheelVelocity(stepPixels);
-        _inertiaMainVelocity = Math.Abs(appliedMain) >= 0.01 ? Math.Sign(appliedMain) * velocity : 0;
-        _inertiaCrossVelocity = Math.Abs(appliedCross) >= 0.01 ? Math.Sign(appliedCross) * velocity : 0;
+        // 滚轮惯性**累加**：连续快滚时在当前速度上继续加，越滚越快；反向滚会先减速 / 反向。
+        var (mainVelocity, crossVelocity) = PdfInertia.AccumulateWheel(
+            _inertiaMainVelocity, _inertiaCrossVelocity, appliedMain, appliedCross, stepPixels);
+        _inertiaMainVelocity = mainVelocity;
+        _inertiaCrossVelocity = crossVelocity;
 
         if (!_inertia.IsFastEnough(_inertiaMainVelocity, _inertiaCrossVelocity)) return;
 
