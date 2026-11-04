@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using YuLiangToolkit.Core.Mvvm;
@@ -24,7 +25,20 @@ public sealed class WindowOption
     public override string ToString() => Title;
 }
 
-/// <summary>「最近录制」列表里的一项。</summary>
+/// <summary>摄像头下拉框里的一项（包一层是为了 ComboBox 的选中显示永远用友好的设备名）。</summary>
+public sealed class CameraOption
+{
+    /// <summary>底层设备信息。</summary>
+    public required CameraDeviceInfo Device { get; init; }
+
+    /// <summary>显示名。</summary>
+    public string Name => Device.Name;
+
+    /// <summary>没写 DisplayMemberPath 时也能显示设备名。</summary>
+    public override string ToString() => Name;
+}
+
+/// <summary>「最近生成」列表里的一项。</summary>
 public sealed class RecordingItem
 {
     /// <summary>完整路径。</summary>
@@ -33,7 +47,7 @@ public sealed class RecordingItem
     /// <summary>文件名。</summary>
     public required string FileName { get; init; }
 
-    /// <summary>GIF / MP4 / PNG。</summary>
+    /// <summary>GIF / MP4 / MKV / MOV / AVI / WebM / PNG（带编码器说明）。</summary>
     public required string FormatText { get; init; }
 
     /// <summary>文件大小（字节）。</summary>
@@ -48,33 +62,36 @@ public sealed class RecordingItem
     /// <summary>大小文案。</summary>
     public string SizeText => FileSize.Format(SizeBytes);
 
-    /// <summary>列表右侧的摘要：<c>GIF · 1.2 MB · 12:03:45</c>。</summary>
+    /// <summary>列表右侧的摘要：<c>MP4 · 1.2 MB · 12:03:45</c>。</summary>
     public string SummaryText => $"{FormatText} · {SizeText} · {CreatedAt:HH:mm:ss}";
 }
 
 /// <summary>
-/// 「录屏」视图模型：采集（gdigrab）→ 停止 → 生成 GIF / MP4，另外支持 PNG 截图、区域框选、
-/// 窗口选择、倒计时、置顶控制条、F8 全局停止热键、最近录制列表。
+/// 「录屏 / GIF」视图模型：OBS 风格但保持简单的录屏工具。
 ///
-/// <para><b>线程</b>：命令都在 UI 线程执行；FFmpeg 采集 / 导出在后台进程里跑。
-/// 界面状态修改通过基类的 <see cref="ToolViewModelBase.Ui"/> 兜底，导出进度用 <see cref="Progress{T}"/>
-/// 自动回 UI 线程。</para>
+/// <para><b>画面</b>：gdigrab 采集全屏 / 区域 / 窗口；摄像头是可选的「屏幕覆盖」小窗，
+/// 它本身就在屏幕上，所以预览和录制时都会以同样位置出现（gdigrab 会把它录进去）。</para>
 ///
-/// <para><b>退出</b>：<see cref="OnClosed"/> 会先向 FFmpeg 送 q 正常收尾；如果正在录制，
-/// 会在后台线程尽量把文件生成完（最多等 20 秒），失败则把中间素材留在 <c>Cache\screen-recorder\</c>。</para>
+/// <para><b>视频</b>：可选 MP4 / MKV / MOV / AVI / WebM，编码器 / 画质或码率可调；
+/// 录制时先按选定编码器写中间 MKV，停止后只做「封装 + 混音」（视频不二次编码），所以导出很快。</para>
+///
+/// <para><b>声音</b>：麦克风 / 系统扬声器（WASAPI）在录制中分别采集，音量滑块实时生效；
+/// 停止后混进视频（GIF 不含声音）。</para>
+///
+/// <para><b>快捷键</b>：开始/停止、截图两个全局热键可在界面里自己按组合键设置。</para>
 /// </summary>
 public sealed class ScreenRecorderViewModel : ToolViewModelBase
 {
     private const string SourceFullScreen = "fullscreen";
     private const string SourceRegion = "region";
     private const string SourceWindow = "window";
-    private const string FormatGif = "gif";
-    private const string FormatMp4 = "mp4";
-    private const int StopHotkeyId = 0x5C52;
+    private const int StartStopHotkeyId = 0x5C52;
+    private const int ScreenshotHotkeyId = 0x5C53;
     private const int MaxRecentItems = 30;
 
     private readonly ToolCache _cache = ToolCache.For(ScreenRecorderConfig.ToolId);
-    private readonly GlobalHotkey _stopHotkey = new(StopHotkeyId);
+    private readonly GlobalHotkey _hotkeys = new();
+    private readonly CameraPreviewSource _camera = new();
     private readonly DispatcherTimer _elapsedTimer;
 
     private string? _ffmpegPath;
@@ -83,10 +100,17 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
     private CancellationTokenSource? _exportCts;
     private RecordingOverlayWindow? _overlay;
     private CountdownWindow? _countdownWindow;
+    private CameraOverlayWindow? _cameraOverlay;
+
+    private AudioRecorder? _micRecorder;
+    private AudioRecorder? _speakerRecorder;
+    private string? _micTempPath;
+    private string? _speakerTempPath;
+
+    private IReadOnlySet<string>? _availableEncoders;
     private bool _shuttingDown;
     private bool _stopInProgress;
     private bool _cancelRequested;
-    private bool _hotkeyActive;
     private Task? _finalizeTask;
     private DateTime _startedAt;
     private TimeSpan _recordedDuration;
@@ -94,20 +118,32 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
     // 录制开始时把所有选项拍个快照：录制中界面会禁用选项，退出时也还能按快照收尾
     private CapturePlan? _activePlan;
     private GifExportSettings? _activeGif;
-    private Mp4ExportSettings? _activeMp4;
-    private string _activeFormat = FormatGif;
+    private VideoEncoderSettings? _activeVideo;
+    private string _activeFormat = VideoCatalog.GifFormat;
     private string _activeOutputPath = "";
     private string _activeTempPath = "";
+    private IReadOnlyList<string> _activeAudioPaths = Array.Empty<string>();
+    private int _activeAudioBitrate = 192;
+    private int _activeAudioDelayMs;
+    private string _activeVideoCodecName = "";
     private bool _activeOpenFolder;
+    private string _lastAudioError = "";
 
     private bool _isRecording;
     private bool _isFinalizing;
     private string _elapsedText = "00:00";
-    private string _stopHotkeyState = "";
     private string _ffmpegStatusText = "正在检测 FFmpeg…";
+    private string _hotkeyStatusText = "";
     private string _windowCountText = "";
     private string _lastOutputPath = "";
     private RecordingItem? _selectedRecording;
+
+    private bool _isCameraPreviewOn;
+    private bool _isCameraOverlayShown;
+    private bool _isCameraRunning;
+    private bool _cameraFrameLogged;
+    private string _cameraStatusText = "摄像头未启用";
+    private ImageSource? _cameraPreviewImage;
 
     public ScreenRecorderViewModel() : base(ScreenRecorderConfig.ToolId)
     {
@@ -116,12 +152,16 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
 
         SourceOptions = OptionItem.From(
             (SourceFullScreen, "全屏（主显示器）"),
-            (SourceRegion, "区域（拖框选择，推荐 GIF）"),
+            (SourceRegion, "区域（拖框选择）"),
             (SourceWindow, "窗口（录这个窗口的位置）"));
 
-        FormatOptions = OptionItem.From(
-            (FormatGif, "动图 GIF（默认，两遍调色板）"),
-            (FormatMp4, "视频 MP4（H.264，体积更小）"));
+        var formats = new List<OptionItem<string>>
+        {
+            new(VideoCatalog.GifFormat, "动图 GIF（两遍调色板）"),
+        };
+        foreach (var container in VideoCatalog.Containers)
+            formats.Add(new OptionItem<string>(container.Id, container.Label));
+        FormatOptions = formats;
 
         FpsOptions = OptionItem.FromValues(RecorderOptions.FpsChoices, value => value switch
         {
@@ -148,12 +188,12 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
             ("bayer", "有序（像素风 / 文件更小）"),
             ("none", "无（色块明显 / 最小）"));
 
-        QualityOptions = OptionItem.FromValues(RecorderOptions.QualityChoices, value => value switch
-        {
-            18 => "高画质（CRF 18）",
-            23 => "标准（CRF 23）",
-            _ => "小体积（CRF 28）",
-        });
+        RateModeOptions = OptionItem.From(
+            (VideoEncoderSettings.RateQuality, "画质优先（CRF / CQ，推荐）"),
+            (VideoEncoderSettings.RateBitrate, "码率优先（固定 Mbps）"));
+
+        AudioBitrateOptions = OptionItem.FromValues(RecorderOptions.AudioBitrateChoices,
+            value => $"{value} kbps");
 
         CountdownOptions = OptionItem.FromValues(RecorderOptions.CountdownChoices,
             value => value <= 0 ? "不等待，立刻开始" : $"{value} 秒" + (value == 3 ? "（推荐）" : ""));
@@ -173,6 +213,8 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         };
         _elapsedTimer.Tick += (_, _) => UpdateElapsedText();
 
+        _camera.FrameArrived += OnCameraFrameArrived;
+
         ToggleRecordingCommand = new AsyncRelayCommand(_ => ToggleRecordingAsync(), _ => !IsFinalizing);
         SelectRegionCommand = new RelayCommand(_ => SelectRegion(), _ => IsIdle);
         RefreshWindowsCommand = new RelayCommand(_ => RefreshWindows(), _ => IsIdle);
@@ -188,13 +230,24 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         ClearLogCommand = new RelayCommand(_ => ClearLog());
         CopyLastPathCommand = new RelayCommand(_ => CopyLastPath(), _ => _lastOutputPath.Length > 0);
         CancelFinalizeCommand = new RelayCommand(_ => CancelFinalize(), _ => IsFinalizing);
+        ToggleCameraPreviewCommand = new AsyncRelayCommand(_ => ToggleCameraPreviewAsync(), _ => !IsFinalizing);
+        ToggleCameraOverlayCommand = new AsyncRelayCommand(_ => ToggleCameraOverlayAsync(), _ => !IsFinalizing);
+        RefreshCamerasCommand = new AsyncRelayCommand(_ => RefreshCamerasAsync());
+        ResetCameraOverlayCommand = new RelayCommand(_ => ResetCameraOverlayPosition());
+        SetStartStopHotkeyCommand = new RelayCommand(_ => SetHotkey(startStop: true));
+        SetScreenshotHotkeyCommand = new RelayCommand(_ => SetHotkey(startStop: false));
+        ClearScreenshotHotkeyCommand = new RelayCommand(_ => Cfg.ScreenshotHotkey = "");
 
         Cfg.PropertyChanged += OnConfigChanged;
+
+        RebuildCodecOptions();
+        ApplyHotkeys();
 
         Log($"配置文件：{Cfg.FilePath}");
         Log($"录制素材缓存：{_cache.Directory}");
         Log($"输出文件夹：{ResolveOutputFolder()}");
         _ = InitFFmpegAsync();
+        _ = RefreshCamerasAsync();
         if (Cfg.IsWindowSource) RefreshWindows();
     }
 
@@ -209,12 +262,19 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
     public IReadOnlyList<OptionItem<int>> WidthOptions { get; }
     public IReadOnlyList<OptionItem<int>> ColorOptions { get; }
     public IReadOnlyList<OptionItem<string>> DitherOptions { get; }
-    public IReadOnlyList<OptionItem<int>> QualityOptions { get; }
+    public IReadOnlyList<OptionItem<string>> RateModeOptions { get; }
+    public IReadOnlyList<OptionItem<int>> AudioBitrateOptions { get; }
     public IReadOnlyList<OptionItem<int>> CountdownOptions { get; }
     public IReadOnlyList<OptionItem<int>> MaxDurationOptions { get; }
 
+    /// <summary>当前容器下可用的视频编码器（运行时按 ffmpeg -encoders 过滤）。</summary>
+    public ObservableCollection<OptionItem<string>> VideoCodecOptions { get; } = new();
+
     /// <summary>可录制的窗口。</summary>
     public ObservableCollection<WindowOption> Windows { get; } = new();
+
+    /// <summary>摄像头设备列表。</summary>
+    public ObservableCollection<CameraOption> CameraDevices { get; } = new();
 
     /// <summary>最近生成的文件（本次运行内，最多 30 条）。</summary>
     public ObservableCollection<RecordingItem> Recordings { get; } = new();
@@ -238,6 +298,46 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         {
             if (value is null || value.Value == Cfg.Format) return;
             Cfg.Format = value.Value;
+            OnPropertyChanged();
+        }
+    }
+
+    public OptionItem<string> SelectedVideoCodec
+    {
+        get => OptionItem<string>.Find(VideoCodecOptions, Cfg.VideoCodec)
+               ?? VideoCodecOptions.FirstOrDefault()
+               ?? new OptionItem<string>("libx264", "H.264 · libx264");
+        set
+        {
+            if (value is null || value.Value == Cfg.VideoCodec) return;
+            Cfg.VideoCodec = value.Value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// 编码器下拉框用 <see cref="System.Windows.Controls.ComboBox.SelectedIndex"/> 绑定：
+    /// 重建 <see cref="VideoCodecOptions"/>（ObservableCollection）时 WPF 会先把 SelectedItem 清空，
+    /// 用索引绑定 + 重建后重新通知更稳，不会出现“配置对了但下拉框空白”。
+    /// </summary>
+    public int SelectedCodecIndex
+    {
+        get => VideoCodecOptions.IndexOf(SelectedVideoCodec);
+        set
+        {
+            if (value < 0 || value >= VideoCodecOptions.Count) return;
+            Cfg.VideoCodec = VideoCodecOptions[value].Value;
+            OnPropertyChanged();
+        }
+    }
+
+    public OptionItem<string> SelectedRateMode
+    {
+        get => OptionItem<string>.Find(RateModeOptions, Cfg.VideoRateMode) ?? RateModeOptions[0];
+        set
+        {
+            if (value is null || value.Value == Cfg.VideoRateMode) return;
+            Cfg.VideoRateMode = value.Value;
             OnPropertyChanged();
         }
     }
@@ -286,13 +386,14 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         }
     }
 
-    public OptionItem<int> SelectedQuality
+    public OptionItem<int> SelectedAudioBitrate
     {
-        get => OptionItem<int>.Find(QualityOptions, RecorderOptions.NormalizeCrf(Cfg.Mp4Quality)) ?? QualityOptions[1];
+        get => OptionItem<int>.Find(AudioBitrateOptions, RecorderOptions.SnapToNearest(Cfg.AudioBitrateKbps, RecorderOptions.AudioBitrateChoices))
+               ?? AudioBitrateOptions[1];
         set
         {
-            if (value is null || value.Value == Cfg.Mp4Quality) return;
-            Cfg.Mp4Quality = value.Value;
+            if (value is null || value.Value == Cfg.AudioBitrateKbps) return;
+            Cfg.AudioBitrateKbps = value.Value;
             OnPropertyChanged();
         }
     }
@@ -331,6 +432,20 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         }
     }
 
+    public CameraOption? SelectedCamera
+    {
+        get => CameraDevices.FirstOrDefault(c => string.Equals(c.Device.Id, Cfg.CameraDeviceId, StringComparison.Ordinal))
+               ?? CameraDevices.FirstOrDefault();
+        set
+        {
+            if (value is null) return;
+            if (Cfg.CameraDeviceId == value.Device.Id && Cfg.CameraDeviceName == value.Name) return;
+            Cfg.CameraDeviceId = value.Device.Id;
+            Cfg.CameraDeviceName = value.Name;
+            OnPropertyChanged();
+        }
+    }
+
     // ================================================================== 状态
 
     /// <summary>是不是正在录（已经开始采集）。</summary>
@@ -343,11 +458,12 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
             OnPropertyChanged(nameof(IsIdle));
             OnPropertyChanged(nameof(RecordButtonText));
             OnPropertyChanged(nameof(StopHintText));
+            OnPropertyChanged(nameof(IsQualityMode));
             CommandManager.InvalidateRequerySuggested();
         }
     }
 
-    /// <summary>是不是正在把中间素材转成 GIF / MP4。</summary>
+    /// <summary>是不是正在把中间素材转成最终文件 / 混音。</summary>
     public bool IsFinalizing
     {
         get => _isFinalizing;
@@ -373,23 +489,15 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         private set => Set(ref _elapsedText, value);
     }
 
-    /// <summary>停止提示（热键开了没 / 注册成功没）。</summary>
+    /// <summary>停止提示（热键开了没 / 有没有注册成功）。</summary>
     public string StopHintText
     {
         get
         {
-            if (!Cfg.UseStopHotkey) return "点控制条 / 本页按钮停止（F8 热键已关闭）";
-            return IsRecording && !_hotkeyActive
-                ? "F8 未注册成功：请用控制条 / 本页按钮停止"
-                : "F8 停止";
+            if (!Cfg.EnableGlobalHotkeys) return "点控制条 / 本页按钮停止（全局快捷键已关闭）";
+            var spec = ParseHotkey(Cfg.StartStopHotkey);
+            return spec is null ? "停止按钮（快捷键未设置）" : $"{spec.DisplayText} 停止";
         }
-    }
-
-    /// <summary>录制中热键状态（注册失败时告诉用户）。</summary>
-    public string StopHotkeyState
-    {
-        get => _stopHotkeyState;
-        private set => Set(ref _stopHotkeyState, value);
     }
 
     /// <summary>FFmpeg 状态文案。</summary>
@@ -397,6 +505,13 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
     {
         get => _ffmpegStatusText;
         private set => Set(ref _ffmpegStatusText, value);
+    }
+
+    /// <summary>全局快捷键注册状态。</summary>
+    public string HotkeyStatusText
+    {
+        get => _hotkeyStatusText;
+        private set => Set(ref _hotkeyStatusText, value);
     }
 
     /// <summary>窗口列表数量提示。</summary>
@@ -413,12 +528,61 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         private set => Set(ref _lastOutputPath, value);
     }
 
-    /// <summary>最近生成列表里选中的一项（打开 / 定位按钮用）。</summary>
+    /// <summary>最近生成列表里选中的一项。</summary>
     public RecordingItem? SelectedRecording
     {
         get => _selectedRecording;
         set => Set(ref _selectedRecording, value);
     }
+
+    /// <summary>摄像头是否正在采集。</summary>
+    public bool IsCameraRunning
+    {
+        get => _isCameraRunning;
+        private set => Set(ref _isCameraRunning, value);
+    }
+
+    /// <summary>工具页里的摄像头预览是否开着。</summary>
+    public bool IsCameraPreviewOn
+    {
+        get => _isCameraPreviewOn;
+        private set
+        {
+            if (!Set(ref _isCameraPreviewOn, value)) return;
+            OnPropertyChanged(nameof(CameraPreviewButtonText));
+        }
+    }
+
+    /// <summary>摄像头屏幕覆盖是否显示。</summary>
+    public bool IsCameraOverlayShown
+    {
+        get => _isCameraOverlayShown;
+        private set
+        {
+            if (!Set(ref _isCameraOverlayShown, value)) return;
+            OnPropertyChanged(nameof(CameraOverlayButtonText));
+        }
+    }
+
+    /// <summary>摄像头状态文案。</summary>
+    public string CameraStatusText
+    {
+        get => _cameraStatusText;
+        private set => Set(ref _cameraStatusText, value);
+    }
+
+    /// <summary>工具页里的摄像头预览图（BGRA、已冻结）。</summary>
+    public ImageSource? CameraPreviewImage
+    {
+        get => _cameraPreviewImage;
+        private set => Set(ref _cameraPreviewImage, value);
+    }
+
+    /// <summary>摄像头预览按钮文字。</summary>
+    public string CameraPreviewButtonText => IsCameraPreviewOn ? "关闭预览" : "开启预览";
+
+    /// <summary>摄像头屏幕覆盖按钮文字。</summary>
+    public string CameraOverlayButtonText => IsCameraOverlayShown ? "隐藏屏幕覆盖" : "显示屏幕覆盖";
 
     /// <summary>录制来源摘要（全屏 / 区域尺寸 / 窗口标题）。</summary>
     public string SourceSummary
@@ -442,6 +606,43 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         ? $"({Cfg.RegionX}, {Cfg.RegionY}) {Cfg.RegionWidth}×{Cfg.RegionHeight}"
         : "还没有框选区域";
 
+    /// <summary>当前格式是不是 GIF。</summary>
+    public bool IsGif => Cfg.IsGif;
+
+    /// <summary>当前格式是不是视频。</summary>
+    public bool IsVideo => Cfg.IsVideo;
+
+    /// <summary>视频画质优先模式（决定显示画质滑块还是码率滑块）。</summary>
+    public bool IsQualityMode => Cfg.VideoRateMode != VideoEncoderSettings.RateBitrate;
+
+    /// <summary>视频码率优先模式。</summary>
+    public bool IsBitrateMode => !IsQualityMode;
+
+    /// <summary>麦克风有声音时才显示音量说明。</summary>
+    public string AudioSummary
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (Cfg.RecordMicrophone) parts.Add($"麦克风 {Cfg.MicrophoneVolume}%");
+            if (Cfg.RecordSystemAudio) parts.Add($"系统声音 {Cfg.SpeakerVolume}%");
+            if (parts.Count == 0) return "不录声音";
+            return string.Join(" + ", parts) + $" · {VideoCatalog.AudioCodecLabel(Cfg.Format)} {Cfg.AudioBitrateKbps} kbps";
+        }
+    }
+
+    /// <summary>摄像头摘要。</summary>
+    public string CameraSummary
+    {
+        get
+        {
+            if (!Cfg.EnableCamera) return "摄像头未启用";
+            var name = string.IsNullOrWhiteSpace(Cfg.CameraDeviceName) ? "默认摄像头" : Cfg.CameraDeviceName;
+            var overlay = Cfg.CameraOverlayEnabled ? "屏幕覆盖开" : "屏幕覆盖关";
+            return $"{name} · {overlay}" + (Cfg.CameraMirror ? " · 镜像" : "");
+        }
+    }
+
     /// <summary>当前帧率 / 格式 / 宽度的摘要。</summary>
     public string CaptureSummary
     {
@@ -450,9 +651,40 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
             var fps = RecorderOptions.NormalizeFps(Cfg.Fps);
             var width = RecorderOptions.NormalizeScaleWidth(Cfg.ScaleWidth);
             var widthText = width <= 0 ? "原始分辨率" : $"{width} px 宽";
-            return Cfg.IsGif
-                ? $"动图 GIF · {fps} FPS · {widthText} · {RecorderOptions.NormalizeColors(Cfg.GifColors)} 色"
-                : $"视频 MP4 · {fps} FPS · {widthText} · 画质 CRF {RecorderOptions.NormalizeCrf(Cfg.Mp4Quality)}";
+            if (Cfg.IsGif)
+                return $"动图 GIF · {fps} FPS · {widthText} · {RecorderOptions.NormalizeColors(Cfg.GifColors)} 色";
+
+            var container = VideoCatalog.GetContainer(Cfg.Format);
+            var codec = VideoCatalog.GetCodec(Cfg.VideoCodec);
+            var rate = Cfg.VideoRateMode == VideoEncoderSettings.RateBitrate
+                ? $"{Cfg.VideoBitrateMbps} Mbps"
+                : $"CRF {Cfg.VideoQuality}";
+            var audio = Cfg.RecordMicrophone || Cfg.RecordSystemAudio
+                ? $" · {VideoCatalog.AudioCodecLabel(container.Id)} 音频"
+                : "";
+            return $"{container.ShortLabel} · {codec.CodecName} · {fps} FPS · {widthText} · {rate}{audio}";
+        }
+    }
+
+    /// <summary>开始/停止热键显示文本。</summary>
+    public string StartStopHotkeyText
+    {
+        get
+        {
+            if (!Cfg.EnableGlobalHotkeys) return "已关闭";
+            var spec = ParseHotkey(Cfg.StartStopHotkey);
+            return spec?.DisplayText ?? "未设置";
+        }
+    }
+
+    /// <summary>截图热键显示文本。</summary>
+    public string ScreenshotHotkeyText
+    {
+        get
+        {
+            if (!Cfg.EnableGlobalHotkeys) return "已关闭";
+            var spec = ParseHotkey(Cfg.ScreenshotHotkey);
+            return spec?.DisplayText ?? "未设置";
         }
     }
 
@@ -473,6 +705,13 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
     public RelayCommand ClearLogCommand { get; }
     public RelayCommand CopyLastPathCommand { get; }
     public RelayCommand CancelFinalizeCommand { get; }
+    public AsyncRelayCommand ToggleCameraPreviewCommand { get; }
+    public AsyncRelayCommand ToggleCameraOverlayCommand { get; }
+    public AsyncRelayCommand RefreshCamerasCommand { get; }
+    public RelayCommand ResetCameraOverlayCommand { get; }
+    public RelayCommand SetStartStopHotkeyCommand { get; }
+    public RelayCommand SetScreenshotHotkeyCommand { get; }
+    public RelayCommand ClearScreenshotHotkeyCommand { get; }
 
     // ================================================================== 配置联动
 
@@ -482,14 +721,20 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         {
             case nameof(ScreenRecorderConfig.SourceKind):
                 OnPropertyChanged(nameof(SelectedSource));
-                OnPropertyChanged(nameof(IsRegionSource));
-                OnPropertyChanged(nameof(IsWindowSource));
                 if (Cfg.IsWindowSource) RefreshWindows();
                 break;
             case nameof(ScreenRecorderConfig.Format):
+                EnsureCodecCompatible();
+                RebuildCodecOptions();
                 OnPropertyChanged(nameof(SelectedFormat));
-                OnPropertyChanged(nameof(IsGif));
-                OnPropertyChanged(nameof(IsMp4));
+                break;
+            case nameof(ScreenRecorderConfig.VideoCodec):
+                OnPropertyChanged(nameof(SelectedVideoCodec));
+                break;
+            case nameof(ScreenRecorderConfig.VideoRateMode):
+                OnPropertyChanged(nameof(SelectedRateMode));
+                OnPropertyChanged(nameof(IsQualityMode));
+                OnPropertyChanged(nameof(IsBitrateMode));
                 break;
             case nameof(ScreenRecorderConfig.Fps):
                 OnPropertyChanged(nameof(SelectedFps));
@@ -503,8 +748,8 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
             case nameof(ScreenRecorderConfig.GifDither):
                 OnPropertyChanged(nameof(SelectedDither));
                 break;
-            case nameof(ScreenRecorderConfig.Mp4Quality):
-                OnPropertyChanged(nameof(SelectedQuality));
+            case nameof(ScreenRecorderConfig.AudioBitrateKbps):
+                OnPropertyChanged(nameof(SelectedAudioBitrate));
                 break;
             case nameof(ScreenRecorderConfig.CountdownSeconds):
                 OnPropertyChanged(nameof(SelectedCountdown));
@@ -515,33 +760,49 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
             case nameof(ScreenRecorderConfig.WindowTitle):
                 OnPropertyChanged(nameof(SelectedWindow));
                 break;
-            case nameof(ScreenRecorderConfig.UseStopHotkey):
-                OnPropertyChanged(nameof(StopHintText));
+            case nameof(ScreenRecorderConfig.CameraDeviceId):
+                OnPropertyChanged(nameof(SelectedCamera));
+                _ = RestartCameraIfNeededAsync();
+                break;
+            case nameof(ScreenRecorderConfig.EnableCamera):
+                if (!Cfg.EnableCamera)
+                {
+                    _ = StopCameraIfUnusedAsync(force: true);
+                    if (IsCameraOverlayShown) HideCameraOverlay();
+                }
+                break;
+            case nameof(ScreenRecorderConfig.CameraMirror):
+            case nameof(ScreenRecorderConfig.CameraOverlayOpacity):
+            case nameof(ScreenRecorderConfig.CameraOverlayWidth):
+                ApplyCameraOverlayAppearance();
+                break;
+            case nameof(ScreenRecorderConfig.EnableGlobalHotkeys):
+            case nameof(ScreenRecorderConfig.StartStopHotkey):
+            case nameof(ScreenRecorderConfig.ScreenshotHotkey):
+                ApplyHotkeys();
                 break;
         }
 
         OnPropertyChanged(nameof(SourceSummary));
         OnPropertyChanged(nameof(RegionText));
         OnPropertyChanged(nameof(CaptureSummary));
+        OnPropertyChanged(nameof(AudioSummary));
+        OnPropertyChanged(nameof(CameraSummary));
         OnPropertyChanged(nameof(IsGif));
-        OnPropertyChanged(nameof(IsMp4));
-        OnPropertyChanged(nameof(IsRegionSource));
-        OnPropertyChanged(nameof(IsWindowSource));
+        OnPropertyChanged(nameof(IsVideo));
+        OnPropertyChanged(nameof(SelectedCodecIndex));
+        OnPropertyChanged(nameof(StartStopHotkeyText));
+        OnPropertyChanged(nameof(ScreenshotHotkeyText));
+        OnPropertyChanged(nameof(StopHintText));
     }
 
-    /// <summary>格式变了（IsGif 影响两块设置的显示）。</summary>
-    public bool IsGif => Cfg.IsGif;
-
-    /// <summary>当前格式是不是 MP4。</summary>
-    public bool IsMp4 => !Cfg.IsGif;
-
-    /// <summary>来源是不是区域。</summary>
-    public bool IsRegionSource => Cfg.IsRegionSource;
-
-    /// <summary>来源是不是窗口。</summary>
-    public bool IsWindowSource => Cfg.IsWindowSource;
-
-    // ================================================================== 初始化
+    private static string CanonicalSource(string? value)
+        => RecorderOptions.ParseSourceKind(value) switch
+        {
+            CaptureSourceKind.FullScreen => SourceFullScreen,
+            CaptureSourceKind.Window => SourceWindow,
+            _ => SourceRegion,
+        };
 
     private void NormalizeConfigValues()
     {
@@ -555,13 +816,45 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         }
     }
 
-    private static string CanonicalSource(string? value)
-        => RecorderOptions.ParseSourceKind(value) switch
+    private void EnsureCodecCompatible()
+    {
+        if (!VideoCatalog.IsVideoFormat(Cfg.Format)) return;
+        if (VideoCatalog.IsCompatible(Cfg.Format, Cfg.VideoCodec)) return;
+        Cfg.VideoCodec = VideoCatalog.DefaultCodecFor(Cfg.Format, _availableEncoders);
+    }
+
+    private void RebuildCodecOptions()
+    {
+        var compatible = VideoCatalog.CompatibleCodecs(Cfg.Format, _availableEncoders);
+        if (compatible.Count == 0)
         {
-            CaptureSourceKind.FullScreen => SourceFullScreen,
-            CaptureSourceKind.Window => SourceWindow,
-            _ => SourceRegion,
-        };
+            // 编码器检测失败 / 当前容器一个都不支持时，至少把软件 x264 留作兜底
+            compatible = VideoCatalog.CompatibleCodecs(Cfg.Format, null);
+        }
+
+        // 集合没变化就不要 Clear：ComboBox 在 ItemsSource 变动时会丢选中项。
+        var same = compatible.Count == VideoCodecOptions.Count
+                   && compatible.Select(c => c.Id).SequenceEqual(VideoCodecOptions.Select(o => o.Value), StringComparer.OrdinalIgnoreCase);
+        if (!same)
+        {
+            VideoCodecOptions.Clear();
+            foreach (var codec in compatible)
+                VideoCodecOptions.Add(new OptionItem<string>(codec.Id, codec.Label));
+        }
+
+        if (VideoCodecOptions.Count > 0 && !VideoCodecOptions.Any(o => o.Value == Cfg.VideoCodec))
+            Cfg.VideoCodec = VideoCodecOptions[0].Value;
+
+        OnPropertyChanged(nameof(SelectedVideoCodec));
+        OnPropertyChanged(nameof(SelectedCodecIndex));
+        // ItemsSource 重建后的同一帧里 WPF 可能还会再清一次选中项：下一轮 Dispatcher 再通知一遍。
+        Application.Current?.Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            OnPropertyChanged(nameof(SelectedCodecIndex));
+        }));
+    }
+
+    // ================================================================== 初始化
 
     private async Task InitFFmpegAsync()
     {
@@ -577,6 +870,13 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         AppSettings.Settings.FFmpegPath ??= found;
         AppSettings.Save();
         SetFFmpegStatus(found, version);
+
+        var encoders = await FFmpegRunner.RunAsync(found, new[] { "-hide_banner", "-encoders" });
+        _availableEncoders = EncoderCatalog.ParseAvailable(encoders.Output + Environment.NewLine + encoders.Error);
+        if (_availableEncoders.Count == 0) _availableEncoders = null;
+        RebuildCodecOptions();
+        EnsureCodecCompatible();
+        Log($"视频编码器：检测到 {_availableEncoders?.Count ?? 0} 个；当前格式 {Cfg.Format}，编码器 {VideoCatalog.GetCodec(Cfg.VideoCodec).CodecName}");
     }
 
     private void SetFFmpegStatus(string? path, string? version)
@@ -585,7 +885,7 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         {
             _ffmpegPath = path;
             FFmpegStatusText = path is null
-                ? "⚠️ 未检测到 FFmpeg：请「选择 FFmpeg…」指定 ffmpeg.exe，或「下载 FFmpeg」后重试（录屏和 GIF 合成都要用）"
+                ? "⚠️ 未检测到 FFmpeg：请「选择 FFmpeg…」指定 ffmpeg.exe，或「下载 FFmpeg」后重试（录屏、转 GIF、混音都要用）"
                 : $"✅ FFmpeg 已就绪（v{version ?? "?"}）· {path}";
         });
     }
@@ -604,7 +904,7 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
             return true;
         }
 
-        StatusText = "未检测到 FFmpeg：请先指定 ffmpeg.exe（录屏 / 转 GIF 都靠它）";
+        StatusText = "未检测到 FFmpeg：请先指定 ffmpeg.exe（录屏 / 转 GIF / 混音都靠它）";
         BrowseFFmpeg();
         return _ffmpegPath is not null && File.Exists(_ffmpegPath);
     }
@@ -730,7 +1030,6 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
             return windowRect;
         }
 
-        // 区域
         if (!Cfg.HasRegion)
         {
             if (!promptForRegion)
@@ -751,6 +1050,337 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
             return null;
         }
         return region;
+    }
+
+    // ================================================================== 摄像头
+
+    private async Task RefreshCamerasAsync()
+    {
+        var devices = await CameraPreviewSource.EnumerateAsync();
+        CameraDevices.Clear();
+        foreach (var device in devices) CameraDevices.Add(new CameraOption { Device = device });
+        OnPropertyChanged(nameof(SelectedCamera));
+        if (devices.Count == 0)
+            CameraStatusText = "没有找到摄像头（或系统隐私设置不允许桌面应用访问相机）";
+        else if (!Cfg.EnableCamera)
+            CameraStatusText = $"找到 {devices.Count} 个摄像头";
+        else if (!IsCameraRunning)
+            CameraStatusText = $"找到 {devices.Count} 个摄像头，点「开启预览」启动";
+    }
+
+    private async Task<bool> EnsureCameraRunningAsync()
+    {
+        if (!Cfg.EnableCamera)
+        {
+            CameraStatusText = "摄像头未启用（先勾选「启用摄像头」）";
+            return false;
+        }
+
+        if (_camera.IsRunning)
+        {
+            IsCameraRunning = true;
+            return true;
+        }
+
+        if (CameraDevices.Count == 0) await RefreshCamerasAsync();
+        var deviceId = string.IsNullOrWhiteSpace(Cfg.CameraDeviceId) ? null : Cfg.CameraDeviceId;
+        CameraStatusText = "正在打开摄像头…";
+        _cameraFrameLogged = false;
+        var ok = await _camera.StartAsync(deviceId, 640, 15);
+        IsCameraRunning = _camera.IsRunning;
+        CameraStatusText = ok
+            ? $"摄像头运行中{(Cfg.CameraMirror ? " · 镜像" : "")}"
+            : "摄像头打开失败：" + (_camera.LastError ?? "未知原因");
+        if (!ok) Log("✗ " + CameraStatusText);
+        return ok;
+    }
+
+    private async Task ToggleCameraPreviewAsync()
+    {
+        if (IsCameraPreviewOn)
+        {
+            IsCameraPreviewOn = false;
+            await StopCameraIfUnusedAsync();
+            return;
+        }
+
+        if (!await EnsureCameraRunningAsync()) return;
+        IsCameraPreviewOn = true;
+        CameraStatusText = "摄像头预览中";
+    }
+
+    private async Task ToggleCameraOverlayAsync()
+    {
+        if (IsCameraOverlayShown)
+        {
+            HideCameraOverlay();
+            await StopCameraIfUnusedAsync();
+            return;
+        }
+
+        if (!Cfg.EnableCamera) Cfg.EnableCamera = true;
+        if (!await EnsureCameraRunningAsync()) return;
+
+        ShowCameraOverlay();
+        Cfg.CameraOverlayEnabled = true;
+        CameraStatusText = "摄像头屏幕覆盖已显示（录制时会一起录进去）";
+    }
+
+    private void ShowCameraOverlay()
+    {
+        if (_cameraOverlay is null)
+        {
+            _cameraOverlay = new CameraOverlayWindow();
+            _cameraOverlay.PlacementChanged += OnCameraOverlayPlacementChanged;
+            _cameraOverlay.MirrorChanged += OnCameraOverlayMirrorChanged;
+            _cameraOverlay.ResetPositionRequested += (_, _) => ResetCameraOverlayPosition();
+            _cameraOverlay.CloseRequested += (_, _) =>
+            {
+                HideCameraOverlay();
+                Cfg.CameraOverlayEnabled = false;
+                _ = StopCameraIfUnusedAsync();
+            };
+        }
+
+        _cameraOverlay.SetOverlayWidth(Cfg.CameraOverlayWidth);
+        ApplyCameraOverlayAppearance();
+        _cameraOverlay.UpdateFrame(CameraPreviewImage as System.Windows.Media.Imaging.BitmapSource);
+
+        if (Cfg.CameraOverlayX >= 0 && Cfg.CameraOverlayY >= 0)
+        {
+            _cameraOverlay.MoveTo(Cfg.CameraOverlayX, Cfg.CameraOverlayY);
+        }
+        else
+        {
+            PlaceCameraOverlayAuto();
+        }
+
+        _cameraOverlay.ShowOverlay();
+        IsCameraOverlayShown = true;
+    }
+
+    private void HideCameraOverlay()
+    {
+        _cameraOverlay?.HideOverlay();
+        IsCameraOverlayShown = false;
+    }
+
+    private void ApplyCameraOverlayAppearance()
+    {
+        _cameraOverlay?.ApplyAppearance(Cfg.CameraMirror, Cfg.CameraOverlayOpacity / 100.0);
+        _cameraOverlay?.SetOverlayWidth(Cfg.CameraOverlayWidth);
+    }
+
+    private void PlaceCameraOverlayAuto()
+    {
+        if (_cameraOverlay is null) return;
+        var work = SystemParameters.WorkArea;
+        var width = Math.Clamp(Cfg.CameraOverlayWidth, 120, 800);
+        var height = width * 9.0 / 16.0;
+        _cameraOverlay.MoveTo(work.Right - width - 24, work.Bottom - height - 24);
+    }
+
+    private void ResetCameraOverlayPosition()
+    {
+        Cfg.CameraOverlayX = -1;
+        Cfg.CameraOverlayY = -1;
+        PlaceCameraOverlayAuto();
+        StatusText = "摄像头覆盖已重置到屏幕右下角";
+    }
+
+    private void OnCameraOverlayPlacementChanged(object? sender, CameraOverlayPlacement placement)
+    {
+        Cfg.CameraOverlayX = (int)Math.Round(placement.Left);
+        Cfg.CameraOverlayY = (int)Math.Round(placement.Top);
+        Cfg.CameraOverlayWidth = (int)Math.Round(placement.Width);
+    }
+
+    private void OnCameraOverlayMirrorChanged(object? sender, bool mirror) => Cfg.CameraMirror = mirror;
+
+    private void OnCameraFrameArrived(object? sender, CameraFrameEventArgs e)
+    {
+        if (_shuttingDown) return;
+        var image = e.Image;
+        Ui(() =>
+        {
+            if (!_cameraFrameLogged)
+            {
+                _cameraFrameLogged = true;
+                Log($"摄像头已出画面：{image.PixelWidth}×{image.PixelHeight}");
+            }
+            CameraPreviewImage = image;
+            _cameraOverlay?.UpdateFrame(image);
+        });
+    }
+
+    private async Task StopCameraIfUnusedAsync(bool force = false)
+    {
+        if (_camera is null || !_camera.IsRunning) return;
+        if (!force && (IsCameraPreviewOn || IsCameraOverlayShown || IsRecording)) return;
+
+        await _camera.StopAsync();
+        IsCameraRunning = false;
+        CameraPreviewImage = null;
+        CameraStatusText = Cfg.EnableCamera ? "摄像头已暂停" : "摄像头未启用";
+    }
+
+    private async Task RestartCameraIfNeededAsync()
+    {
+        if (!_camera.IsRunning || IsRecording) return;
+        await _camera.StopAsync();
+        IsCameraRunning = false;
+        if (Cfg.EnableCamera) await EnsureCameraRunningAsync();
+    }
+
+    // ================================================================== 录音
+
+    private void StartAudioRecorders(DateTime videoStartedAt)
+    {
+        StopAudioRecorders();
+        _activeAudioDelayMs = 0;
+
+        if (!VideoCatalog.IsVideoFormat(Cfg.Format))
+        {
+            if (Cfg.RecordMicrophone || Cfg.RecordSystemAudio)
+                Log("提示：GIF 不含声音；想录声音请选 MP4 / MKV / MOV / AVI / WebM。");
+            return;
+        }
+
+        _cache.EnsureCreated();
+        var audioStartedAt = DateTime.Now;
+        _activeAudioDelayMs = (int)Math.Clamp((audioStartedAt - videoStartedAt).TotalMilliseconds, 0, 5000);
+
+        if (Cfg.RecordMicrophone)
+        {
+            _micTempPath = _cache.PathOf($"mic-{videoStartedAt:yyyyMMdd-HHmmss}.wav");
+            _micRecorder = new AudioRecorder(AudioCaptureKind.Microphone, _micTempPath)
+            {
+                GainProvider = () => (float)(Cfg.MicrophoneVolume / 100.0),
+            };
+            if (!_micRecorder.Start())
+            {
+                Log("⚠ 麦克风录制启动失败：" + (_micRecorder.LastError ?? "未知原因"));
+                _micRecorder = null;
+            }
+            else Log("🎙 麦克风录制已启动");
+        }
+
+        if (Cfg.RecordSystemAudio)
+        {
+            _speakerTempPath = _cache.PathOf($"speaker-{videoStartedAt:yyyyMMdd-HHmmss}.wav");
+            _speakerRecorder = new AudioRecorder(AudioCaptureKind.SystemLoopback, _speakerTempPath)
+            {
+                GainProvider = () => (float)(Cfg.SpeakerVolume / 100.0),
+            };
+            if (!_speakerRecorder.Start())
+            {
+                Log("⚠ 系统声音录制启动失败：" + (_speakerRecorder.LastError ?? "未知原因"));
+                _speakerRecorder = null;
+            }
+            else Log("🔊 系统声音录制已启动");
+        }
+
+        if (_activeAudioDelayMs > 20)
+            Log($"声音比画面晚启动约 {_activeAudioDelayMs} ms，收尾时会自动补静音对齐。");
+    }
+
+    /// <summary>录制中轮询录音器错误（设备被拔 / 默认设备切换时只记日志，不打断画面）。</summary>
+    private void CheckAudioRecorderErrors()
+    {
+        var error = _micRecorder?.LastError ?? _speakerRecorder?.LastError ?? "";
+        if (error.Length == 0 || error == _lastAudioError) return;
+        _lastAudioError = error;
+        Log("⚠ 录音出错（已停止这一路声音）：" + error);
+    }
+
+    private void StopAudioRecorders()
+    {
+        try { _micRecorder?.Stop(); } catch { /* 忽略 */ }
+        try { _speakerRecorder?.Stop(); } catch { /* 忽略 */ }
+        try { _micRecorder?.Dispose(); } catch { /* 忽略 */ }
+        try { _speakerRecorder?.Dispose(); } catch { /* 忽略 */ }
+        _micRecorder = null;
+        _speakerRecorder = null;
+    }
+
+    private List<string> CollectAudioPaths()
+    {
+        var paths = new List<string>();
+        if (!string.IsNullOrWhiteSpace(_micTempPath) && File.Exists(_micTempPath) && new FileInfo(_micTempPath).Length > 44)
+            paths.Add(_micTempPath);
+        if (!string.IsNullOrWhiteSpace(_speakerTempPath) && File.Exists(_speakerTempPath) && new FileInfo(_speakerTempPath).Length > 44)
+            paths.Add(_speakerTempPath);
+        return paths;
+    }
+
+    private void CleanupAudioTemps()
+    {
+        TryDelete(_micTempPath);
+        TryDelete(_speakerTempPath);
+        _micTempPath = null;
+        _speakerTempPath = null;
+    }
+
+    // ================================================================== 快捷键
+
+    private void ApplyHotkeys()
+    {
+        if (_shuttingDown) return;
+
+        _hotkeys.UnregisterAll();
+        if (!Cfg.EnableGlobalHotkeys)
+        {
+            HotkeyStatusText = "全局快捷键已关闭";
+            OnPropertyChanged(nameof(StartStopHotkeyText));
+            OnPropertyChanged(nameof(ScreenshotHotkeyText));
+            return;
+        }
+
+        var startSpec = ParseHotkey(Cfg.StartStopHotkey);
+        var screenshotSpec = ParseHotkey(Cfg.ScreenshotHotkey);
+        var errors = new List<string>();
+
+        if (startSpec is not null)
+        {
+            if (_hotkeys.Register(StartStopHotkeyId, startSpec, () => _ = ToggleRecordingAsync(), out var startError))
+                HotkeyStatusText = $"{startSpec.DisplayText} = 开始/停止";
+            else
+                errors.Add(startError ?? "开始/停止热键注册失败");
+        }
+
+        if (screenshotSpec is not null && screenshotSpec != startSpec)
+        {
+            if (_hotkeys.Register(ScreenshotHotkeyId, screenshotSpec, () => _ = TakeScreenshotAsync(), out var shotError))
+                HotkeyStatusText += $" · {screenshotSpec.DisplayText} = 截图";
+            else
+                errors.Add(shotError ?? "截图热键注册失败");
+        }
+
+        if (errors.Count > 0)
+        {
+            HotkeyStatusText = string.Join("；", errors);
+            Log("⚠ " + HotkeyStatusText);
+        }
+
+        OnPropertyChanged(nameof(StartStopHotkeyText));
+        OnPropertyChanged(nameof(ScreenshotHotkeyText));
+    }
+
+    private static HotkeySpec? ParseHotkey(string? text)
+        => HotkeySpec.TryParse(text, out var spec) && !spec.IsEmpty ? spec : null;
+
+    private void SetHotkey(bool startStop)
+    {
+        if (IsRecording) return;
+        var dialog = new HotkeyCaptureWindow(startStop ? Cfg.StartStopHotkey : Cfg.ScreenshotHotkey)
+        {
+            Owner = Application.Current?.MainWindow,
+        };
+        if (dialog.ShowDialog() != true || dialog.Result is not { } spec) return;
+
+        if (startStop) Cfg.StartStopHotkey = spec.DisplayText;
+        else Cfg.ScreenshotHotkey = spec.DisplayText;
+        ApplyHotkeys();
     }
 
     // ================================================================== 录制主流程
@@ -792,6 +1422,20 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
             if (!await RunCountdownAsync(Cfg.CountdownSeconds)) return;
 
             var format = RecorderOptions.NormalizeFormat(Cfg.Format);
+            var container = VideoCatalog.GetContainer(format);
+            VideoEncoderSettings? videoSettings = null;
+            if (format != VideoCatalog.GifFormat)
+            {
+                EnsureCodecCompatible();
+                var codec = VideoCatalog.GetCodec(Cfg.VideoCodec);
+                if (_availableEncoders is not null && !_availableEncoders.Contains(codec.Id))
+                {
+                    StatusText = $"当前 FFmpeg 不支持编码器 {codec.Id}，已改用 {VideoCatalog.DefaultCodecFor(format, _availableEncoders)}";
+                    Cfg.VideoCodec = VideoCatalog.DefaultCodecFor(format, _availableEncoders);
+                }
+                videoSettings = VideoEncoderSettings.Normalize(Cfg.VideoCodec, Cfg.VideoRateMode, Cfg.VideoQuality, Cfg.VideoBitrateMbps);
+            }
+
             var outputFolder = ResolveOutputFolder();
             try
             {
@@ -804,49 +1448,87 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
             }
 
             _cache.EnsureCreated();
-            var tempPath = _cache.PathOf($"capture-{DateTime.Now:yyyyMMdd-HHmmss-fff}.mkv");
-            var extension = format == FormatGif ? "gif" : "mp4";
+            var stamp = DateTime.Now;
+            var extension = format == VideoCatalog.GifFormat ? "gif" : container.Extension;
             var outputPath = RecordingNames.BuildOutputPath(
-                outputFolder, RecordingNames.SanitizePrefix(Cfg.FilePrefix), DateTime.Now, extension);
+                outputFolder, RecordingNames.SanitizePrefix(Cfg.FilePrefix), stamp, extension);
+            var tempPath = _cache.PathOf($"capture-{stamp:yyyyMMdd-HHmmss-fff}.mkv");
 
-            // 拍快照：录制中不允许改选项（界面会禁用），收尾 / 退出都用这份
+            // 摄像头屏幕覆盖：录之前确保它开着（它就是屏幕上的窗口，会被一起录到）
+            if (Cfg.EnableCamera && Cfg.CameraOverlayEnabled && !IsCameraOverlayShown)
+            {
+                try
+                {
+                    if (await EnsureCameraRunningAsync()) ShowCameraOverlay();
+                }
+                catch (Exception ex)
+                {
+                    Log("⚠ 摄像头覆盖显示失败（继续录画面）：" + ex.Message);
+                }
+            }
+            else if (Cfg.EnableCamera && !Cfg.CameraOverlayEnabled)
+            {
+                Log("提示：摄像头已启用但「屏幕覆盖」没开，摄像头不会录进画面。");
+            }
+
+            // 拍快照：录制中不允许改格式 / 来源 / 编码器（音量与摄像头位置仍可调）
             _activePlan = plan;
             _activeFormat = format;
             _activeGif = GifExportSettings.Normalize(Cfg.Fps, Cfg.ScaleWidth, Cfg.GifColors, Cfg.GifDither, Cfg.GifLoop);
-            _activeMp4 = Mp4ExportSettings.Normalize(Cfg.ScaleWidth, Cfg.Mp4Quality);
+            _activeVideo = videoSettings;
+            _activeVideoCodecName = videoSettings is null ? "" : VideoCatalog.GetCodec(videoSettings.CodecId).CodecName;
             _activeOutputPath = outputPath;
             _activeTempPath = tempPath;
+            _activeAudioBitrate = Cfg.AudioBitrateKbps;
+            _activeAudioPaths = Array.Empty<string>();
+            _activeAudioDelayMs = 0;
             _activeOpenFolder = Cfg.OpenFolderAfterSave;
             _finalizeTask = null;
             _stopInProgress = false;
             _cancelRequested = false;
+            _lastAudioError = "";
+
+            _startedAt = DateTime.Now;
+            var videoStartedAt = _startedAt;
 
             try
             {
-                _session = ScreenCaptureSession.Start(_ffmpegPath!, plan, tempPath);
+                _session = ScreenCaptureSession.Start(_ffmpegPath!, plan, tempPath, videoSettings, Cfg.ScaleWidth);
             }
             catch (Exception ex)
             {
                 StatusText = "启动录制失败：" + ex.Message;
                 Log("✗ 启动录制失败：" + ex);
                 _session = null;
+                CleanupAudioTemps();
                 return;
             }
 
-            _startedAt = DateTime.Now;
+            // 先起画面再起声音：声音晚启动的毫秒数记下来，收尾时用 adelay 补静音对齐。
+            try
+            {
+                StartAudioRecorders(videoStartedAt);
+            }
+            catch (Exception ex)
+            {
+                Log("⚠ 声音录制启动异常（继续录画面）：" + ex.Message);
+                StopAudioRecorders();
+            }
+
             IsRecording = true;
             ElapsedText = "00:00";
             _elapsedTimer.Start();
-            RegisterStopHotkey();
             ShowOverlay(plan, region.Value);
             UpdateElapsedText();
             StatusText = $"录制中… {SourceSummary}（{StopHintText}）";
 
             Log($"===== 开始录制：{plan.SourceLabel} · {plan.Region} · {plan.Fps} FPS · {format.ToUpperInvariant()} =====");
-            if (!Cfg.ShowControlBar && !Cfg.UseStopHotkey)
-                Log("提示：控制条和 F8 都关掉了，停止时请回到本页点「停止录制」。");
-            if (format == FormatGif)
+            if (videoSettings is not null)
+                Log($"编码：{_activeVideoCodecName} · {(videoSettings.RateMode == VideoEncoderSettings.RateBitrate ? $"{videoSettings.BitrateMbps} Mbps" : $"CRF {videoSettings.Quality}")} · 输出宽度 {Cfg.ScaleWidth} · 容器 {container.ShortLabel}");
+            else
                 Log($"GIF 参数：{_activeGif.MaxColors} 色 · 抖动 {_activeGif.Dither} · 宽度 {_activeGif.ScaleWidth} · {(_activeGif.Loop ? "无限循环" : "只播一次")}");
+            if (Cfg.RecordMicrophone || Cfg.RecordSystemAudio)
+                Log("声音：" + AudioSummary);
 
             _ = WatchCaptureExitAsync(_session);
         }
@@ -857,7 +1539,6 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         }
     }
 
-    /// <summary>倒计时浮窗；用户点浮窗 / Esc 取消时返回 false。</summary>
     private async Task<bool> RunCountdownAsync(int seconds)
     {
         seconds = RecorderOptions.NormalizeCountdown(seconds);
@@ -901,7 +1582,6 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         }
     }
 
-    /// <summary>监视采集进程：达到最长时长 / 采集报错时 FFmpeg 会自己退出，这里负责自动收尾。</summary>
     private async Task WatchCaptureExitAsync(ScreenCaptureSession session)
     {
         try { await session.WaitForExitAsync(); }
@@ -935,13 +1615,8 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         if (_stopInProgress || _shuttingDown) return;
         _stopInProgress = true;
         IsRecording = false;
-
-        // 停止 / 收尾期间也当成“忙碌”：否则 F8 / 控制条停止后，用户手快再点开始，
-        // 会在上一个文件还没生成完时覆盖录制快照（两条收尾流程打架）。
         IsFinalizing = true;
-
         _elapsedTimer.Stop();
-        UnregisterStopHotkey();
         HideOverlay();
 
         var session = _session;
@@ -957,9 +1632,13 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
                 if (!string.IsNullOrWhiteSpace(result.ErrorTail)) Log("[FFmpeg] " + result.ErrorTail);
             }
 
-            // 录制时长要在“停止采集”这一刻记下来；生成 GIF / MP4 的编码时间不能算进录制时长。
             _recordedDuration = DateTime.Now - _startedAt;
             UpdateElapsedText();
+
+            StopAudioRecorders();
+            _activeAudioPaths = CollectAudioPaths();
+            if (_activeAudioPaths.Count > 0)
+                Log($"声音轨道：{_activeAudioPaths.Count} 路");
 
             if (_cancelRequested)
             {
@@ -981,12 +1660,13 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
             _stopInProgress = false;
             IsFinalizing = false;
             UpdateElapsedText();
+            _ = StopCameraIfUnusedAsync();
         }
     }
 
     private Task FinalizeOnceAsync(bool autoStopped) => _finalizeTask ??= FinalizeCoreAsync(autoStopped);
 
-    /// <summary>取消正在进行的 GIF / MP4 生成（FFmpeg 进程会被一起结束，中间素材不删）。</summary>
+    /// <summary>取消正在进行的最终封装 / 混音（中间素材不删）。</summary>
     private void CancelFinalize()
     {
         _cancelRequested = true;
@@ -1004,7 +1684,6 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         catch { /* 已经结束 */ }
     }
 
-    /// <summary>把中间素材转成最终 GIF / MP4（录制结束 / 自动停止都走这里）。</summary>
     private async Task FinalizeCoreAsync(bool autoStopped)
     {
         IsFinalizing = true;
@@ -1016,7 +1695,10 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         var format = _activeFormat;
         var outputPath = _activeOutputPath;
         var tempPath = _activeTempPath;
-        var startedAt = _startedAt;
+        var audioPaths = _activeAudioPaths;
+        var audioBitrate = _activeAudioBitrate;
+        var audioDelay = _activeAudioDelayMs;
+        var videoCodecName = _activeVideoCodecName;
         _exportCts = new CancellationTokenSource();
         var token = _exportCts.Token;
 
@@ -1041,25 +1723,21 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
             });
 
             ExportResult result;
-            if (format == FormatGif && _activeGif is not null)
+            if (format == VideoCatalog.GifFormat && _activeGif is not null)
             {
                 result = await RecordingExporter.ExportGifAsync(
                     _ffmpegPath, plan.Region, _activeGif, tempPath, outputPath, progress, token);
             }
-            else if (_activeMp4 is not null)
-            {
-                result = await RecordingExporter.ExportMp4Async(
-                    _ffmpegPath, plan.Region, _activeMp4, tempPath, outputPath, progress, token);
-            }
             else
             {
-                StatusText = "生成文件失败：缺少导出参数";
-                return;
+                result = await RecordingExporter.ExportVideoAsync(
+                    _ffmpegPath, tempPath, outputPath, format, audioPaths, audioBitrate,
+                    _activeVideo?.CodecId, audioDelay, progress, token);
             }
 
             if (!result.Success)
             {
-                TryDelete(outputPath);   // 失败时不要留下 0 字节 / 截断的半成品
+                TryDelete(outputPath);
                 StatusText = "生成文件失败：" + result.Error;
                 Log("✗ " + result.Error);
                 Log("中间素材保留在：" + tempPath);
@@ -1068,13 +1746,16 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
 
             var info = new FileInfo(outputPath);
             var duration = RecordingTime.FormatDuration(_recordedDuration);
+            var formatText = format == VideoCatalog.GifFormat
+                ? "GIF"
+                : $"{VideoCatalog.GetContainer(format).ShortLabel} · {videoCodecName}";
             var item = new RecordingItem
             {
                 FilePath = outputPath,
                 FileName = Path.GetFileName(outputPath),
-                FormatText = format == FormatGif ? "GIF" : "MP4",
+                FormatText = formatText,
                 SizeBytes = info.Length,
-                CreatedAt = startedAt,
+                CreatedAt = _startedAt,
                 DurationText = duration,
             };
             Recordings.Insert(0, item);
@@ -1082,6 +1763,7 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
 
             LastOutputPath = outputPath;
             TryDelete(tempPath);
+            CleanupAudioTemps();
             StatusText = $"已保存：{item.FileName}（{item.SizeText}，录制 {duration}）";
             Log($"✓ 已保存：{outputPath}（{item.SizeText}）");
 
@@ -1089,7 +1771,7 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         }
         catch (OperationCanceledException)
         {
-            TryDelete(outputPath);   // 取消 / 失败都不留半成品
+            TryDelete(outputPath);
             StatusText = "已取消生成文件";
             Log("已取消生成文件（中间素材保留在缓存里：" + tempPath + "）");
         }
@@ -1133,7 +1815,7 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
             var result = await RecordingExporter.CaptureScreenshotAsync(_ffmpegPath!, plan, outputPath);
             if (!result.Success)
             {
-                TryDelete(outputPath);   // 失败不要留半截 PNG
+                TryDelete(outputPath);
                 StatusText = "截图失败：" + result.Error;
                 Log("✗ 截图失败：" + result.Error);
                 return;
@@ -1163,7 +1845,7 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         }
     }
 
-    // ================================================================== 控制条 / 热键 / 计时
+    // ================================================================== 控制条 / 计时
 
     private void ShowOverlay(CapturePlan plan, CaptureRect region)
     {
@@ -1178,7 +1860,7 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         _overlay.StopRequested += OnOverlayStopRequested;
 
         var isFullScreen = RecorderOptions.ParseSourceKind(Cfg.SourceKind) == CaptureSourceKind.FullScreen;
-        var formatText = _activeFormat == FormatGif ? "GIF" : "MP4";
+        var formatText = _activeFormat == VideoCatalog.GifFormat ? "GIF" : VideoCatalog.GetContainer(_activeFormat).ShortLabel;
         _overlay.ShowFor($"{plan.Region.SizeText} · {plan.Fps} FPS · {formatText}", _startedAt, region, isFullScreen);
     }
 
@@ -1191,44 +1873,11 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
 
     private void OnOverlayStopRequested(object? sender, EventArgs e) => _ = StopFromUiAsync();
 
-    private void RegisterStopHotkey()
-    {
-        UnregisterStopHotkey();
-        if (!Cfg.UseStopHotkey)
-        {
-            _hotkeyActive = false;
-            OnPropertyChanged(nameof(StopHintText));
-            StopHotkeyState = "热键已关闭，请用控制条 / 本页按钮停止";
-            return;
-        }
-
-        if (_stopHotkey.Register(GlobalHotkey.KeyF8, () => _ = StopFromUiAsync()))
-        {
-            _hotkeyActive = true;
-            OnPropertyChanged(nameof(StopHintText));
-            StopHotkeyState = "F8 = 停止录制";
-            return;
-        }
-
-        _hotkeyActive = false;
-        OnPropertyChanged(nameof(StopHintText));
-        StopHotkeyState = (_stopHotkey.LastError ?? "F8 注册失败") + "；请用控制条 / 本页按钮停止";
-        Log("⚠ " + StopHotkeyState);
-    }
-
-    private void UnregisterStopHotkey()
-    {
-        _hotkeyActive = false;
-        try { _stopHotkey.Unregister(); }
-        catch { /* 忽略 */ }
-        OnPropertyChanged(nameof(StopHintText));
-    }
-
     private void UpdateElapsedText()
     {
         if (!IsRecording) return;
         ElapsedText = RecordingTime.FormatDuration(DateTime.Now - _startedAt);
-        // 不再每 200ms 覆盖 StatusText：录制中如果出现“无法打开文件夹”这类提示，要留给用户看。
+        CheckAudioRecorderErrors();
     }
 
     // ================================================================== 输出 / 最近文件
@@ -1243,7 +1892,6 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
             folder = Path.Combine(videos, "YuLiangToolkit 录屏");
         }
 
-        // 手输相对路径时按程序目录解析，避免落到“当前工作目录”这种看不见的地方
         try { return Path.GetFullPath(folder, AppContext.BaseDirectory); }
         catch { return folder; }
     }
@@ -1329,24 +1977,21 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         catch { /* 打不开不影响主流程 */ }
     }
 
-    private static void TryDelete(string path)
+    private static void TryDelete(string? path)
     {
+        if (string.IsNullOrWhiteSpace(path)) return;
         try { if (File.Exists(path)) File.Delete(path); } catch { /* 留给「清理缓存」 */ }
     }
 
     // ================================================================== 生命周期
 
-    /// <summary>
-    /// 工具被真正关闭（切换走的普通缓存不调用这里，缓存被淘汰 / 重建配置 / 程序退出才调用）。
-    /// 正在录制时尽量正常收尾并把文件生成出来；失败就保留中间素材。
-    /// </summary>
     protected override void OnClosed()
     {
         _shuttingDown = true;
 
         try { _elapsedTimer.Stop(); } catch { /* 忽略 */ }
-        try { UnregisterStopHotkey(); } catch { /* 忽略 */ }
-        try { _stopHotkey.Dispose(); } catch { /* 忽略 */ }
+        try { _hotkeys.UnregisterAll(); } catch { /* 忽略 */ }
+        try { _hotkeys.Dispose(); } catch { /* 忽略 */ }
         try { _countdownCts?.Cancel(); } catch { /* 忽略 */ }
         try { _overlay?.StopAndHide(); } catch { /* 忽略 */ }
         try { _overlay?.CloseNow(); } catch { /* 忽略 */ }
@@ -1355,6 +2000,15 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         var countdown = _countdownWindow;
         _countdownWindow = null;
         try { countdown?.CloseNow(); } catch { /* 忽略 */ }
+
+        try { _cameraOverlay?.HideOverlay(); } catch { /* 忽略 */ }
+        try { _cameraOverlay?.CloseNow(); } catch { /* 忽略 */ }
+        _cameraOverlay = null;
+
+        try { Task.Run(() => _camera.StopAsync()).Wait(TimeSpan.FromSeconds(3)); } catch { /* 忽略 */ }
+        try { _camera.Dispose(); } catch { /* 忽略 */ }
+
+        StopAudioRecorders();
 
         var session = _session;
         _session = null;
@@ -1372,9 +2026,8 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
             {
                 try
                 {
-                    // 只有程序真的在退出时才阻塞等文件生成完；缓存淘汰 / 重建配置只是把这个页面丢掉，
-                    // 丢到后台生成即可（不卡 UI，也不丢已经录到的内容）。
                     var appExiting = Application.Current?.MainWindow is not { IsLoaded: true };
+                    _activeAudioPaths = CollectAudioPaths();
                     var task = Task.Run(FinalizeForShutdown);
                     if (appExiting)
                     {
@@ -1395,28 +2048,29 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
             try { session.Dispose(); } catch { /* 忽略 */ }
         }
 
-        // 只有退出流程才取消进行中的导出；缓存淘汰时让后台导出自己跑完。
         if (Application.Current?.MainWindow is not { IsLoaded: true })
         {
             try { _exportCts?.Cancel(); } catch { /* 忽略 */ }
         }
     }
 
-    /// <summary>退出时的收尾导出：后台线程跑，不碰任何界面对象。</summary>
     private void FinalizeForShutdown()
     {
         var temp = _activeTempPath;
         if (string.IsNullOrWhiteSpace(temp) || !File.Exists(temp)) return;
         if (string.IsNullOrWhiteSpace(_ffmpegPath) || _activePlan is null) return;
 
-        var result = _activeFormat == FormatGif && _activeGif is not null
+        var result = _activeFormat == VideoCatalog.GifFormat && _activeGif is not null
             ? RecordingExporter.ExportGifAsync(_ffmpegPath, _activePlan.Region, _activeGif, temp, _activeOutputPath, null, CancellationToken.None)
                 .GetAwaiter().GetResult()
-            : _activeMp4 is not null
-                ? RecordingExporter.ExportMp4Async(_ffmpegPath, _activePlan.Region, _activeMp4, temp, _activeOutputPath, null, CancellationToken.None)
-                    .GetAwaiter().GetResult()
-                : new ExportResult(false, _activeOutputPath, "缺少导出参数");
+            : RecordingExporter.ExportVideoAsync(_ffmpegPath, temp, _activeOutputPath, _activeFormat,
+                    _activeAudioPaths, _activeAudioBitrate, _activeVideo?.CodecId, _activeAudioDelayMs, null, CancellationToken.None)
+                .GetAwaiter().GetResult();
 
-        if (result.Success) TryDelete(temp);
+        if (result.Success)
+        {
+            TryDelete(temp);
+            CleanupAudioTemps();
+        }
     }
 }

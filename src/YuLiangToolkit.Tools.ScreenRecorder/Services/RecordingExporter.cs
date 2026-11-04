@@ -48,22 +48,28 @@ internal static class RecordingExporter
         }
     }
 
-    /// <summary>把中间素材重新编码成 MP4。</summary>
-    public static async Task<ExportResult> ExportMp4Async(
+    /// <summary>
+    /// 停止录制后的最终封装：视频流 <c>-c:v copy</c>（不二次编码），把麦克风 / 系统声音混进来，
+    /// 再按容器选音频编码（AAC / MP3 / Opus）与 faststart。
+    /// </summary>
+    public static async Task<ExportResult> ExportVideoAsync(
         string ffmpegPath,
-        CaptureRect region,
-        Mp4ExportSettings mp4,
-        string intermediatePath,
+        string videoTempPath,
         string outputPath,
+        string containerId,
+        IReadOnlyList<string> audioPaths,
+        int audioBitrateKbps,
+        string? videoCodecId = null,
+        int audioDelayMs = 0,
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        progress?.Report("正在生成 MP4…");
+        progress?.Report(audioPaths.Count == 0 ? "正在封装视频（视频不重编码）…" : "正在封装视频并混入声音…");
         var result = await FFmpegRunner.RunAsync(
             ffmpegPath,
-            FfmpegArguments.BuildMp4(intermediatePath, outputPath, mp4, region),
+            FfmpegArguments.BuildRemux(videoTempPath, outputPath, containerId, audioPaths, audioBitrateKbps, videoCodecId, audioDelayMs),
             cancellationToken).ConfigureAwait(false);
-        return Validate(result, outputPath, "生成 MP4 失败");
+        return Validate(result, outputPath, "封装视频失败");
     }
 
     /// <summary>截一张 PNG（不经过中间素材）。</summary>

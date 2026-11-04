@@ -8,7 +8,7 @@
 | 工具 | 一句话 | 详细说明 |
 | --- | --- | --- |
 | 🎵 音频工具 | 视频转音频（MP3 / FLAC / 原样提取）+ 分段视频合成（m3u8 / ts → mp4/mkv） | [tools/audio-tools.md](tools/audio-tools.md) |
-| 🎥 录屏 / GIF | 用 FFmpeg 的 gdigrab 录屏：全屏 / 框选区域 / 指定窗口 → GIF（两遍调色板）或 MP4，也能截 PNG；倒计时 + 置顶控制条 + F8 停止 + 最长录制 | [tools/screen-recorder.md](tools/screen-recorder.md) |
+| 🎥 录屏 / GIF | 用 FFmpeg 的 gdigrab 录屏：全屏 / 框选区域 / 指定窗口 → GIF 或 MP4 / MKV / MOV / AVI / WebM（H.264 / H.265 / AV1 / VP9 / MPEG-4 / MJPEG 编码器可选，画质或码率可调）；支持麦克风 + 系统声音、摄像头预览与屏幕叠加、可自定义全局快捷键，也能截 PNG | [tools/screen-recorder.md](tools/screen-recorder.md) |
 | 🎬 视频 / 音乐播放器 | 本地播放器：播放列表、循环随机、可调步长的快进快退 | [tools/media-player.md](tools/media-player.md) |
 | 🖼️ 图片连续阅读器 | 把一个文件夹的图片首尾相接成一条长带（无缝、无间距），滚轮连续看条漫 / 长图 / 漫画；六种阅读方式（连续滚动三种方向 / 双页翻页左右 / 单页浏览），支持缩放、自由拖拽、拖动惯性 / 滚轮惯性、F11 全屏沉浸阅读（工具条自动隐藏）、🕘 最近浏览（上限可调）、双击图片打开与三层图片边框 | [tools/picture-viewer.md](tools/picture-viewer.md) |
 | 📄 PDF 阅读器 | 简单 PDF 阅读器：纵向 / 横向连续滚动 + 双页并排一次翻两页，支持缩放、Ctrl+F 文字搜索、书签目录、双页页面间距、拖动惯性 / 滚轮惯性、自动记住每本 PDF 上次阅读位置、页码跳转、🕘 最近浏览（上限可调）、F11 全屏沉浸阅读（工具条自动隐藏）与双击 .pdf 关联；只读不改原文件 | [tools/pdf-reader.md](tools/pdf-reader.md) |

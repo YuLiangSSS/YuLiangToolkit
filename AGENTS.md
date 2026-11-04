@@ -10,8 +10,8 @@
 | 技术栈 | Windows 10 2004+ + .NET 9（主程序 / 自检 `net9.0-windows10.0.19041.0`，工具库 `net9.0-windows`）+ WPF + 手写 MVVM；NuGet 包：`OsuParsers`（MIT）、`Microsoft.Web.WebView2`（浏览器工具用的 Chromium 内核，运行时是系统组件）、`AvalonEdit`（MIT，文本编辑器内核）、`SharpCompress`（MIT，压缩包工具内核：解 RAR / ZIP / 7Z / TAR.*，写 ZIP / 7Z）；PDF 渲染用系统 `Windows.Data.Pdf`，文字搜索 / 书签目录是手写 PDF 解析器 |
 | 主程序 | 根目录 `YuLiangTookit.csproj`（少一个 `l` 是历史拼写）：标题栏 / 主页 / 类别页 / 面包屑、四套主题 + 背景图、粒子 |
 | 核心库 | `src/YuLiangToolkit.Core/`：工具契约 / MVVM / 存储 / 配置 / 维护（缓存清理·配置重建）/ OOXML 包读取（docx·xlsx 共用）/ FFmpeg / 粒子 / TCP 房间 |
-| 功能 | 25 个（22 个 `Tools.*`）：音频工具（视频转音频 / 分段合成） / 录屏 / GIF（全屏 / 区域 / 窗口 → GIF / MP4 / 截图） / 播放器 / 图片阅读器 / PDF 阅读器 / Word 阅读器 / Excel 阅读器 / 重命名 / 文本编辑器 / 压缩包工具 / 打开方式 / Flash / 聊天室 / 网页浏览器 / osu! 下图器 / osu!mania 三件套 / 棋牌 / KPS 按键统计 / Spug 验证码测试 / Live2D 桌宠 / 右键菜单管理 / 示例模板 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`：3905 项，退出码 0 = 通过（按分组跑） |
+| 功能 | 25 个（22 个 `Tools.*`）：音频工具（视频转音频 / 分段合成） / 录屏 / GIF（GIF / MP4·MKV·MOV·AVI·WebM 多编码器 + 声音 / 摄像头 / 自定义快捷键 / 截图） / 播放器 / 图片阅读器 / PDF 阅读器 / Word 阅读器 / Excel 阅读器 / 重命名 / 文本编辑器 / 压缩包工具 / 打开方式 / Flash / 聊天室 / 网页浏览器 / osu! 下图器 / osu!mania 三件套 / 棋牌 / KPS 按键统计 / Spug 验证码测试 / Live2D 桌宠 / 右键菜单管理 / 示例模板 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`：3926 项，退出码 0 = 通过（按分组跑） |
 | 数据 | **在 exe 旁边**（`bin\Debug\net9.0-windows10.0.19041.0\Data`、`Config`、`Cache`）；仓库根同名目录只有说明 |
 
 ## 开工 / 收尾（硬性）

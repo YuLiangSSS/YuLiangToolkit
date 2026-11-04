@@ -22,7 +22,7 @@
 | 工具 | 能干什么 |
 | --- | --- |
 | [**🎵 音频工具**](docs/tools/audio-tools.md) | 视频转音频（MP3 / FLAC / 原样提取）+ 分段视频合成（m3u8 / ts → mp4/mkv），批量 + 进度 + 取消 |
-| [**🎥 录屏 / GIF**](docs/tools/screen-recorder.md) | 用 FFmpeg 的 `gdigrab` 录屏：**全屏 / 框选区域 / 指定窗口** → **GIF（两遍调色板，颜色准、体积可控）/ MP4（H.264）**，也能**一键截 PNG**；带**倒计时 / 置顶控制条 / F8 全局停止热键 / 最长录制时长**，文件名自动带日期时间、重名不覆盖 |
+| [**🎥 录屏 / GIF**](docs/tools/screen-recorder.md) | 用 FFmpeg 的 `gdigrab` 录屏：**全屏 / 框选区域 / 指定窗口** → **GIF** 或 **MP4 / MKV / MOV / AVI / WebM**（H.264 / H.265 / AV1 / VP9 / MPEG-4 / MJPEG **编码器可选**，画质优先 / 码率优先）；支持**麦克风 + 系统声音（音量录制中实时可调）**、**摄像头预览与屏幕叠加**、**可自定义全局快捷键**，也能**一键截 PNG**；文件名自动带日期时间、重名不覆盖 |
 | [**🎬 视频 / 音乐播放器**](docs/tools/media-player.md) | 本地播放器：播放列表、单曲 / 随机、**沉浸式全屏（鼠标一动浮出控制条）**、**后台播放（切页不断，左下角迷你条：标题来回滚 + 进度条可拖 + 播放模式可点，右上角 × 关小窗并停播）**、**每个文件夹记住上次听到哪首 / 哪儿（可选恢复后自动接着放）**、**关应用 / 后台播放时也记住当前那首与进度**、**列表排序（名称 / 日期 / 大小，正反序）**、可调步长的快进快退 |
 | [**🖼️ 图片连续阅读器**](docs/tools/picture-viewer.md) | 把一个文件夹的图片首尾相接拼成一条长带（无缝、无间距），滚轮连续看条漫 / 长图 / 漫画，可切纵向 / 横向 / 日式从右到左，也可切**双页翻页 / 单页浏览**；支持 **25% ~ 800% 缩放**、放大后**自由拖拽**、可开关的**拖动惯性（连续甩会越滑越快）**与**滚轮惯性（滚一下能滚很远）**、**F11 全屏沉浸阅读（工具条自动隐藏）**；可**关联图片后缀，双击图片直接打开并定位到那张**（默认**复用同一个窗口**，也能在设置里切成**多开**）；**🕘 最近浏览可快速重开看过的文件夹（上限可调）**；**点工具条上的文件夹路径可在资源管理器打开所在目录**；还能调**三层图片边框（RGBA 颜色 + 调色板）**并**一键恢复默认** |
 | [**📄 PDF 阅读器**](docs/tools/pdf-reader.md) | 简单 PDF 阅读器：纵向 / 横向连续滚动、双页并排一次翻两页；支持 **25% ~ 800% 缩放**（Ctrl+滚轮 / 双页放大后拖动平移）、**Ctrl+F 文字搜索**、**📑 书签目录**、**双页页面间距可调**、**拖动惯性 / 滚轮惯性可分别开关**、**双击 .pdf 关联打开**、**自动记住每本 PDF 上次读到哪**、**页码跳转**、**🕘 最近浏览（上限可调）**、**F11 全屏沉浸阅读（工具条自动隐藏）**；只渲染看得见的页省内存，用 Windows 自带的 `Windows.Data.Pdf` 渲染；只读不改原文件 |
@@ -97,7 +97,7 @@ dotnet run --project YuLiangTookit.csproj
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；
   踩坑细节按需查 **[docs/dev/pitfalls.md](docs/dev/pitfalls.md)**（只在排错 / 改危险代码时读）；
-- ✅ **自检**：3905 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
+- ✅ **自检**：3926 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -135,7 +135,7 @@ Data/  Config/  Cache/                   # 只有说明文件【运行时目录�
 src/
 ├── YuLiangToolkit.Core/                 # 核心库：工具契约 / 多级分类目录树 / MVVM 基类 / 存储 / 配置 / FFmpeg 封装 / 粒子与光标特效 / 通用 TCP 房间
 ├── YuLiangToolkit.Tools.AudioTools/     # 功能：音频工具（视频转音频 + 分段视频合成）
-├── YuLiangToolkit.Tools.ScreenRecorder/ # 功能：录屏 / GIF（gdigrab 采集屏幕 → GIF 两遍调色板 / MP4 / PNG 截图；区域框选 + 窗口选择 + F8 停止）
+├── YuLiangToolkit.Tools.ScreenRecorder/ # 功能：录屏 / GIF（gdigrab 采集屏幕 → GIF 两遍调色板 / MP4·MKV·MOV·AVI·WebM 多编码器 + 麦克风 / 系统声音 + 摄像头叠加 + 自定义全局快捷键 + PNG 截图）
 ├── YuLiangToolkit.Tools.MediaPlayer/    # 功能：视频 / 音乐播放器
 ├── YuLiangToolkit.Tools.PictureViewer/  # 功能：图片连续阅读器（连续长带 / 双页翻页 / 单页 + 缩放 / 惯性 / 双击打开 / 图片边框）
 ├── YuLiangToolkit.Tools.PdfReader/      # 功能：PDF 阅读器（上下 / 左右连续滚动 + 双页翻页 + 拖动惯性）
@@ -156,7 +156,7 @@ src/
 ├── YuLiangToolkit.Tools.ContextMenu/    # 功能：右键菜单管理（枚举 / 隐藏 / 恢复 / 删除残留 / 添加自定义打开菜单；隐藏写 HKCU、删除前自动备份 .reg、HKLM 项走 UAC 提权）
 ├── YuLiangToolkit.Tools.OpenWith/       # 功能：打开方式（登记 Windows 右键「打开方式」3 个入口：自动分流 / 文本 / 压缩包；入口副本 + 只写 HKCU）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3905 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3926 项行为逐条验证）
 ```
 
 ## 如何添加一个新工具

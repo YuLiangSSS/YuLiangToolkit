@@ -46,6 +46,21 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+
+        <!-- 小节标题 -->
+        <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,18,0,0" />
+        </Style>
+
+        <!-- 小节里的说明字 -->
+        <Style x:Key="HintTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,5,0,0" />
+        </Style>
     </UserControl.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
@@ -56,20 +71,20 @@
             <StackPanel>
                 <TextBlock Text="🎥 录屏 / GIF" FontSize="21" FontWeight="SemiBold" />
                 <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
-                           Text="用系统 FFmpeg 的 gdigrab 采集屏幕：框选区域 / 全屏 / 某个窗口 → 录成 GIF（两遍调色板，颜色准、体积可控）或 MP4；也能一键截 PNG。先选来源和格式，点「开始录制」，倒计时结束后开录，按 F8 或控制条停止就会自动生成文件。" />
+                           Text="OBS 风格的简易录屏：全屏 / 框选区域 / 指定窗口 → GIF 或 MP4 / MKV / MOV / AVI / WebM；可选编码器与画质 / 码率，支持麦克风 + 系统声音（录制中可调音量）、摄像头预览与屏幕叠加、可自定义全局录制快捷键，也能一键截 PNG。" />
             </StackPanel>
 
             <!-- ===== 主区域（设置 | 控制 / 最近生成）与运行日志：上下可拖 ===== -->
             <Grid Margin="0,16,0,0">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="620" MinHeight="500" />
+                    <RowDefinition Height="760" MinHeight="540" />
                     <RowDefinition Height="12" />
                     <RowDefinition Height="210" MinHeight="150" />
                 </Grid.RowDefinitions>
 
                 <Grid Grid.Row="0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" MinWidth="380" />
+                        <ColumnDefinition Width="*" MinWidth="400" />
                         <ColumnDefinition Width="12" />
                         <ColumnDefinition Width="430" MinWidth="330" />
                     </Grid.ColumnDefinitions>
@@ -81,12 +96,11 @@
                             <StackPanel Margin="18,16,18,18">
 
                                 <!-- ① 录制来源 -->
-                                <TextBlock Text="① 录制来源" FontSize="13" FontWeight="SemiBold" />
-                                <ComboBox ItemsSource="{Binding SourceOptions}" DisplayMemberPath="Label"
+                                <TextBlock Text="① 录制来源" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
+                                <ComboBox x:Name="SourceCombo" ItemsSource="{Binding SourceOptions}" DisplayMemberPath="Label"
                                           SelectedItem="{Binding SelectedSource}" Style="{StaticResource ComboBoxStyle}"
-                                          IsEnabled="{Binding IsIdle}" Margin="0,8,0,0" />
+                                          IsEnabled="{Binding IsIdle}" />
 
-                                <!-- 区域来源 -->
                                 <Grid Margin="0,10,0,0" Visibility="{Binding IsRegionSource, Converter={StaticResource BoolToVis}}">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -102,7 +116,6 @@
                                             ToolTip="打开全屏浮窗：拖出要录的矩形，Enter 确认、Esc 取消" />
                                 </Grid>
 
-                                <!-- 窗口来源 -->
                                 <StackPanel Margin="0,10,0,0" Visibility="{Binding IsWindowSource, Converter={StaticResource BoolToVis}}">
                                     <ComboBox ItemsSource="{Binding Windows}" DisplayMemberPath="Title"
                                               SelectedItem="{Binding SelectedWindow}" Style="{StaticResource ComboBoxStyle}"
@@ -121,9 +134,9 @@
                                     </Grid>
                                 </StackPanel>
 
-                                <!-- ② 输出格式与参数 -->
-                                <TextBlock Text="② 输出格式与参数" FontSize="13" FontWeight="SemiBold" Margin="0,18,0,0" />
-                                <ComboBox ItemsSource="{Binding FormatOptions}" DisplayMemberPath="Label"
+                                <!-- ② 输出格式 -->
+                                <TextBlock Text="② 输出格式与画质" Style="{StaticResource SectionTitleStyle}" />
+                                <ComboBox x:Name="FormatCombo" ItemsSource="{Binding FormatOptions}" DisplayMemberPath="Label"
                                           SelectedItem="{Binding SelectedFormat}" Style="{StaticResource ComboBoxStyle}"
                                           IsEnabled="{Binding IsIdle}" Margin="0,8,0,0" />
 
@@ -144,16 +157,16 @@
                                         <ComboBox ItemsSource="{Binding WidthOptions}" DisplayMemberPath="Label"
                                                   SelectedItem="{Binding SelectedWidth}" Style="{StaticResource ComboBoxStyle}"
                                                   IsEnabled="{Binding IsIdle}" Margin="0,5,0,0"
-                                                  ToolTip="只缩小不放大；GIF 建议 960 以内，不然文件会很大" />
+                                                  ToolTip="只缩小不放大；GIF 建议 960 以内，视频建议 1920 / 原始" />
                                     </StackPanel>
                                 </Grid>
 
-                                <!-- GIF 专属选项 -->
+                                <!-- GIF 专属 -->
                                 <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8"
                                         Padding="12,10" Margin="0,12,0,0"
                                         Visibility="{Binding IsGif, Converter={StaticResource BoolToVis}}">
                                     <StackPanel>
-                                        <TextBlock Text="GIF 专属：调色板越小文件越小" FontSize="11.5" FontWeight="SemiBold" />
+                                        <TextBlock Text="GIF 专属：调色板越小文件越小（GIF 不含声音）" FontSize="11.5" FontWeight="SemiBold" />
                                         <Grid Margin="0,8,0,0">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
@@ -178,20 +191,260 @@
                                     </StackPanel>
                                 </Border>
 
-                                <!-- MP4 专属选项 -->
+                                <!-- 视频专属：编码器 / 速率 / 画质码率 -->
                                 <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8"
                                         Padding="12,10" Margin="0,12,0,0"
-                                        Visibility="{Binding IsMp4, Converter={StaticResource BoolToVis}}">
+                                        Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}">
                                     <StackPanel>
-                                        <TextBlock Text="MP4 画质（H.264 CRF，越小越清晰也越大）" FontSize="11.5" FontWeight="SemiBold" />
-                                        <ComboBox ItemsSource="{Binding QualityOptions}" DisplayMemberPath="Label"
-                                                  SelectedItem="{Binding SelectedQuality}" Style="{StaticResource ComboBoxStyle}"
+                                        <TextBlock Text="视频编码" FontSize="11.5" FontWeight="SemiBold" />
+                                        <TextBlock Text="编码器（硬件项需要显卡驱动支持；失败就换回软件 H.264）"
+                                                   Style="{StaticResource HintTextStyle}" Margin="0,4,0,0" />
+                                        <ComboBox x:Name="CodecCombo" ItemsSource="{Binding VideoCodecOptions}" DisplayMemberPath="Label"
+                                                  SelectedIndex="{Binding SelectedCodecIndex, Mode=TwoWay}"
+                                                  Style="{StaticResource ComboBoxStyle}"
                                                   IsEnabled="{Binding IsIdle}" Margin="0,8,0,0" />
+
+                                        <Grid Margin="0,10,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="10" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <TextBlock Text="速率控制" FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <ComboBox ItemsSource="{Binding RateModeOptions}" DisplayMemberPath="Label"
+                                                          SelectedItem="{Binding SelectedRateMode}" Style="{StaticResource ComboBoxStyle}"
+                                                          IsEnabled="{Binding IsIdle}" Margin="0,5,0,0" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2">
+                                                <TextBlock Text="编码速度 / 说明" FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <TextBlock Text="录制用 veryfast / 硬件默认速度，实时采集不卡机" Style="{StaticResource HintTextStyle}"
+                                                           Margin="0,7,0,0" />
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <StackPanel Margin="0,10,0,0" Visibility="{Binding IsQualityMode, Converter={StaticResource BoolToVis}}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="画质（CRF / CQ）" FontSize="10.5" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <Slider Grid.Column="1" Minimum="0" Maximum="51" SmallChange="1" LargeChange="3"
+                                                        Value="{Binding Cfg.VideoQuality}" Style="{StaticResource SliderStyle}"
+                                                        Margin="10,0" IsEnabled="{Binding IsIdle}" />
+                                                <TextBlock Grid.Column="2" Text="{Binding Cfg.VideoQuality, StringFormat={}{0}}" MinWidth="24"
+                                                           TextAlignment="Right" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            </Grid>
+                                            <TextBlock Text="0 = 最清晰 / 文件最大，51 = 最省空间；常用 18~28"
+                                                       Style="{StaticResource HintTextStyle}" />
+                                        </StackPanel>
+
+                                        <StackPanel Margin="0,10,0,0" Visibility="{Binding IsBitrateMode, Converter={StaticResource BoolToVis}}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="目标码率" FontSize="10.5" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <Slider Grid.Column="1" Minimum="1" Maximum="100" SmallChange="1" LargeChange="5"
+                                                        Value="{Binding Cfg.VideoBitrateMbps}" Style="{StaticResource SliderStyle}"
+                                                        Margin="10,0" IsEnabled="{Binding IsIdle}" />
+                                                <TextBlock Grid.Column="2" Text="{Binding Cfg.VideoBitrateMbps, StringFormat={}{0} Mbps}"
+                                                           MinWidth="64" TextAlignment="Right" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            </Grid>
+                                        </StackPanel>
                                     </StackPanel>
                                 </Border>
 
-                                <!-- ③ 录制行为 -->
-                                <TextBlock Text="③ 录制行为" FontSize="13" FontWeight="SemiBold" Margin="0,18,0,0" />
+                                <!-- ③ 声音 -->
+                                <StackPanel Visibility="{Binding IsVideo, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="③ 声音（麦克风 / 系统扬声器）" Style="{StaticResource SectionTitleStyle}" />
+                                    <TextBlock Text="两路都可单独开关；音量滑块在录制中也能实时调（100% = 原始音量）。"
+                                               Style="{StaticResource HintTextStyle}" Margin="0,4,0,0" />
+
+                                    <CheckBox Content="录制麦克风" Style="{StaticResource CheckBoxStyle}"
+                                              IsChecked="{Binding Cfg.RecordMicrophone}" IsEnabled="{Binding IsIdle}" Margin="0,10,0,0" />
+                                    <Grid Margin="0,6,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="麦克风音量" FontSize="10.5" VerticalAlignment="Center" MinWidth="70"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <Slider Grid.Column="1" Minimum="0" Maximum="200" SmallChange="5" LargeChange="20"
+                                                Value="{Binding Cfg.MicrophoneVolume}" Style="{StaticResource SliderStyle}"
+                                                Margin="8,0" />
+                                        <TextBlock Grid.Column="2" Text="{Binding Cfg.MicrophoneVolume, StringFormat={}{0}%}" MinWidth="40"
+                                                   TextAlignment="Right" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    </Grid>
+
+                                    <CheckBox Content="录制系统声音（扬声器回环）" Style="{StaticResource CheckBoxStyle}"
+                                              IsChecked="{Binding Cfg.RecordSystemAudio}" IsEnabled="{Binding IsIdle}" Margin="0,10,0,0" />
+                                    <Grid Margin="0,6,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="系统声音音量" FontSize="10.5" VerticalAlignment="Center" MinWidth="70"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <Slider Grid.Column="1" Minimum="0" Maximum="200" SmallChange="5" LargeChange="20"
+                                                Value="{Binding Cfg.SpeakerVolume}" Style="{StaticResource SliderStyle}"
+                                                Margin="8,0" />
+                                        <TextBlock Grid.Column="2" Text="{Binding Cfg.SpeakerVolume, StringFormat={}{0}%}" MinWidth="40"
+                                                   TextAlignment="Right" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    </Grid>
+
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="音频码率" FontSize="10.5" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <ComboBox Grid.Column="1" ItemsSource="{Binding AudioBitrateOptions}" DisplayMemberPath="Label"
+                                                  SelectedItem="{Binding SelectedAudioBitrate}" Style="{StaticResource ComboBoxStyle}"
+                                                  IsEnabled="{Binding IsIdle}" Margin="10,0,0,0" />
+                                    </Grid>
+                                    <TextBlock Text="{Binding AudioSummary}" Style="{StaticResource HintTextStyle}" Margin="0,7,0,0" />
+                                </StackPanel>
+
+                                <!-- ④ 摄像头 -->
+                                <TextBlock Text="④ 摄像头（预览 / 屏幕覆盖）" Style="{StaticResource SectionTitleStyle}" />
+                                <CheckBox Content="启用摄像头" Style="{StaticResource CheckBoxStyle}"
+                                          IsChecked="{Binding Cfg.EnableCamera}" IsEnabled="{Binding IsIdle}" Margin="0,10,0,0" />
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <ComboBox ItemsSource="{Binding CameraDevices}" DisplayMemberPath="Name"
+                                              SelectedItem="{Binding SelectedCamera}" Style="{StaticResource ComboBoxStyle}"
+                                              IsEnabled="{Binding IsIdle}" />
+                                    <Button Grid.Column="1" Content="刷新" Style="{StaticResource SecondaryButtonStyle}"
+                                            Command="{Binding RefreshCamerasCommand}" IsEnabled="{Binding IsIdle}" Margin="8,0,0,0" />
+                                </Grid>
+                                <CheckBox Content="左右镜像（自拍习惯）" Style="{StaticResource CheckBoxStyle}"
+                                          IsChecked="{Binding Cfg.CameraMirror}" IsEnabled="{Binding IsIdle}" Margin="0,8,0,0" />
+
+                                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                    <Button x:Name="TogglePreviewButton" Content="{Binding CameraPreviewButtonText}"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            Command="{Binding ToggleCameraPreviewCommand}" />
+                                    <Button x:Name="ToggleOverlayButton" Content="{Binding CameraOverlayButtonText}"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            Command="{Binding ToggleCameraOverlayCommand}" Margin="8,0,0,0"
+                                            ToolTip="把摄像头作为置顶小窗叠在屏幕上（录制时会一起录进去）" />
+                                </StackPanel>
+
+                                <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8"
+                                        Height="150" Margin="0,10,0,0" ClipToBounds="True">
+                                    <Grid>
+                                        <Image x:Name="CameraPreviewImage" Source="{Binding CameraPreviewImage}"
+                                               Stretch="Uniform" />
+                                        <TextBlock Text="摄像头预览未开启" FontSize="11.5"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                   Visibility="{Binding IsCameraPreviewOn, Converter={StaticResource InverseBoolToVis}}" />
+                                    </Grid>
+                                </Border>
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="覆盖宽度" FontSize="10.5" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <Slider Grid.Column="1" Minimum="120" Maximum="800" SmallChange="20" LargeChange="80"
+                                            Value="{Binding Cfg.CameraOverlayWidth}" Style="{StaticResource SliderStyle}"
+                                            Margin="8,0" IsEnabled="{Binding IsIdle}" />
+                                    <TextBlock Grid.Column="2" Text="{Binding Cfg.CameraOverlayWidth, StringFormat={}{0} px}" MinWidth="58"
+                                               TextAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                </Grid>
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="覆盖不透明度" FontSize="10.5" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <Slider Grid.Column="1" Minimum="20" Maximum="100" SmallChange="5" LargeChange="20"
+                                            Value="{Binding Cfg.CameraOverlayOpacity}" Style="{StaticResource SliderStyle}"
+                                            Margin="8,0" IsEnabled="{Binding IsIdle}" />
+                                    <TextBlock Grid.Column="2" Text="{Binding Cfg.CameraOverlayOpacity, StringFormat={}{0}%}" MinWidth="40"
+                                               TextAlignment="Right" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                </Grid>
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Content="重置覆盖位置" Style="{StaticResource SecondaryButtonStyle}"
+                                            Command="{Binding ResetCameraOverlayCommand}" IsEnabled="{Binding IsIdle}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding CameraStatusText}" Style="{StaticResource HintTextStyle}"
+                                               Margin="10,0,0,0" VerticalAlignment="Center" />
+                                </Grid>
+                                <TextBlock Text="⚠ 摄像头覆盖是屏幕上的真实窗口，gdigrab 会把它一起录进画面：预览时拖到目标窗口的角落摆好，录制时位置不变。"
+                                           Style="{StaticResource HintTextStyle}" Margin="0,7,0,0" />
+
+                                <!-- ⑤ 快捷键 -->
+                                <TextBlock Text="⑤ 全局快捷键" Style="{StaticResource SectionTitleStyle}" />
+                                <CheckBox Content="启用全局录制快捷键" Style="{StaticResource CheckBoxStyle}"
+                                          IsChecked="{Binding Cfg.EnableGlobalHotkeys}" IsEnabled="{Binding IsIdle}" Margin="0,10,0,0" />
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="开始 / 停止" FontSize="10.5" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <Border Grid.Column="1" Background="{DynamicResource InputBackgroundBrush}" CornerRadius="6"
+                                            Padding="10,5" Margin="10,0">
+                                        <TextBlock Text="{Binding StartStopHotkeyText}" FontSize="12" />
+                                    </Border>
+                                    <Button Grid.Column="2" Content="设置…" Style="{StaticResource SecondaryButtonStyle}"
+                                            Command="{Binding SetStartStopHotkeyCommand}" IsEnabled="{Binding IsIdle}" />
+                                </Grid>
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="截图" FontSize="10.5" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <Border Grid.Column="1" Background="{DynamicResource InputBackgroundBrush}" CornerRadius="6"
+                                            Padding="10,5" Margin="10,0">
+                                        <TextBlock Text="{Binding ScreenshotHotkeyText}" FontSize="12" />
+                                    </Border>
+                                    <Button Grid.Column="2" Content="设置…" Style="{StaticResource SecondaryButtonStyle}"
+                                            Command="{Binding SetScreenshotHotkeyCommand}" IsEnabled="{Binding IsIdle}" />
+                                    <Button Grid.Column="3" Content="清除" Style="{StaticResource SecondaryButtonStyle}"
+                                            Command="{Binding ClearScreenshotHotkeyCommand}" IsEnabled="{Binding IsIdle}" Margin="6,0,0,0" />
+                                </Grid>
+                                <TextBlock Text="{Binding HotkeyStatusText}" Style="{StaticResource HintTextStyle}" Margin="0,7,0,0" />
+                                <TextBlock Text="F1~F24 可以单独用；字母 / 数字需要配合 Ctrl / Alt / Shift / Win。热键冲突时会提示，换一个组合即可。"
+                                           Style="{StaticResource HintTextStyle}" />
+
+                                <!-- ⑥ 录制行为 -->
+                                <TextBlock Text="⑥ 录制行为" Style="{StaticResource SectionTitleStyle}" />
                                 <CheckBox Content="录制鼠标光标" Style="{StaticResource CheckBoxStyle}"
                                           IsChecked="{Binding Cfg.DrawMouse}" IsEnabled="{Binding IsIdle}" Margin="0,10,0,0" />
                                 <Grid Margin="0,10,0,0">
@@ -216,16 +469,14 @@
                                 </Grid>
                                 <CheckBox Content="录制中显示置顶控制条（计时 + 停止按钮，可拖动）" Style="{StaticResource CheckBoxStyle}"
                                           IsChecked="{Binding Cfg.ShowControlBar}" IsEnabled="{Binding IsIdle}" Margin="0,10,0,0" />
-                                <CheckBox Content="允许按 F8 停止录制（全局热键，切到别的窗口也生效）" Style="{StaticResource CheckBoxStyle}"
-                                          IsChecked="{Binding Cfg.UseStopHotkey}" IsEnabled="{Binding IsIdle}" Margin="0,8,0,0" />
                                 <CheckBox Content="生成后自动打开输出文件夹" Style="{StaticResource CheckBoxStyle}"
                                           IsChecked="{Binding Cfg.OpenFolderAfterSave}" IsEnabled="{Binding IsIdle}" Margin="0,8,0,0" />
                                 <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
                                            Margin="0,8,0,0"
-                                           Text="⚠ 全屏录制时控制条可能被一起录进去（gdigrab 是 GDI 截屏）；想要完全干净就取消「显示控制条」，用 F8 停止。" />
+                                           Text="⚠ 全屏录制时控制条可能被一起录进去（gdigrab 是 GDI 截屏）；想要完全干净就取消「显示控制条」，用快捷键停止。" />
 
-                                <!-- ④ 保存位置 -->
-                                <TextBlock Text="④ 保存位置" FontSize="13" FontWeight="SemiBold" Margin="0,18,0,0" />
+                                <!-- ⑦ 保存位置 -->
+                                <TextBlock Text="⑦ 保存位置" Style="{StaticResource SectionTitleStyle}" />
                                 <Grid Margin="0,8,0,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -247,13 +498,13 @@
                                              Style="{StaticResource TextBoxStyle}" IsEnabled="{Binding IsIdle}" />
                                 </Grid>
                                 <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
-                                           Margin="0,6,0,0" Text="文件名格式：前缀-日期-时间.gif / .mp4；重名自动加 (2)、(3)。" />
+                                           Margin="0,6,0,0" Text="文件名格式：前缀-日期-时间.扩展名；重名自动加 (2)、(3)。" />
 
                                 <!-- FFmpeg 状态 -->
                                 <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8"
                                         Padding="12,10" Margin="0,16,0,0">
                                     <StackPanel>
-                                        <TextBlock Text="FFmpeg（录制 / 合成都依赖它）" FontSize="11.5" FontWeight="SemiBold" />
+                                        <TextBlock Text="FFmpeg（录制 / 转 GIF / 混音都依赖它）" FontSize="11.5" FontWeight="SemiBold" />
                                         <TextBlock Text="{Binding FFmpegStatusText}" FontSize="10.5" TextWrapping="Wrap"
                                                    Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,5,0,0" />
                                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
@@ -276,7 +527,7 @@
                     <!-- ===== 右：录制控制 + 最近生成 ===== -->
                     <Grid Grid.Column="2">
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="300" MinHeight="250" />
+                            <RowDefinition Height="340" MinHeight="280" />
                             <RowDefinition Height="12" />
                             <RowDefinition Height="*" MinHeight="150" />
                         </Grid.RowDefinitions>
@@ -289,15 +540,15 @@
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
                                     <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="*" MinHeight="36" />
+                                    <RowDefinition Height="*" MinHeight="38" />
                                     <RowDefinition Height="Auto" />
                                 </Grid.RowDefinitions>
 
                                 <Grid Grid.Row="0">
                                     <TextBlock Text="录制控制" FontSize="13" FontWeight="SemiBold" />
-                                    <TextBlock Text="{Binding StopHotkeyState}" FontSize="10.5" HorizontalAlignment="Right"
+                                    <TextBlock Text="{Binding HotkeyStatusText}" FontSize="10.5" HorizontalAlignment="Right"
                                                VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"
-                                               TextTrimming="CharacterEllipsis" MaxWidth="230" />
+                                               TextTrimming="CharacterEllipsis" MaxWidth="250" />
                                 </Grid>
 
                                 <Grid Grid.Row="1" Margin="0,8,0,0">
@@ -312,7 +563,8 @@
                                                HorizontalAlignment="Right" TextTrimming="CharacterEllipsis" Margin="10,0,0,4" />
                                 </Grid>
 
-                                <Button Grid.Row="2" Content="{Binding RecordButtonText}" Style="{StaticResource RecordButtonStyle}"
+                                <Button x:Name="RecordButton" Grid.Row="2" Content="{Binding RecordButtonText}"
+                                        Style="{StaticResource RecordButtonStyle}"
                                         Command="{Binding ToggleRecordingCommand}" Margin="0,10,0,0" />
 
                                 <Grid Grid.Row="3" Margin="0,10,0,0"
@@ -326,7 +578,7 @@
                                     <Button Grid.Column="1" Content="取消生成" Style="{StaticResource SecondaryButtonStyle}"
                                             FontSize="11" Padding="10,4" Margin="10,0,0,0"
                                             Command="{Binding CancelFinalizeCommand}"
-                                            ToolTip="停止正在进行的 GIF / MP4 生成；中间素材会保留在缓存里" />
+                                            ToolTip="停止正在进行的封装 / 混音；中间素材会保留在缓存里" />
                                 </Grid>
 
                                 <StackPanel Grid.Row="4" Margin="0,10,0,0" VerticalAlignment="Top">
@@ -337,25 +589,31 @@
                                                ToolTip="{Binding LastOutputPath}" />
                                 </StackPanel>
 
-                                <Grid Grid.Row="5" Margin="0,8,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock Text="{Binding CaptureSummary}" FontSize="10.5" TextWrapping="Wrap"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                                        <TextBlock Text="{Binding StopHintText}" FontSize="10.5" Margin="0,4,0,0"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Bottom">
-                                        <Button Content="📷 截图" Style="{StaticResource SecondaryButtonStyle}" FontSize="11.5"
-                                                Command="{Binding ScreenshotCommand}" IsEnabled="{Binding IsIdle}"
-                                                ToolTip="按当前来源截一张 PNG（区域来源会先确认区域）" />
-                                        <Button Content="📂 输出文件夹" Style="{StaticResource SecondaryButtonStyle}" FontSize="11.5"
-                                                Command="{Binding OpenOutputFolderCommand}" Margin="8,0,0,0" />
-                                    </StackPanel>
-                                </Grid>
+                                <StackPanel Grid.Row="5" Margin="0,8,0,0">
+                                    <TextBlock Text="{Binding CaptureSummary}" FontSize="10.5" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <Grid Margin="0,6,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding AudioSummary}" FontSize="10.5" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding CameraSummary}" FontSize="10.5" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0" />
+                                            <TextBlock Text="{Binding StopHintText}" FontSize="10.5" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Bottom">
+                                            <Button Content="📷 截图" Style="{StaticResource SecondaryButtonStyle}" FontSize="11.5"
+                                                    Command="{Binding ScreenshotCommand}" IsEnabled="{Binding IsIdle}"
+                                                    ToolTip="按当前来源截一张 PNG（区域来源会先确认区域）" />
+                                            <Button Content="📂 输出" Style="{StaticResource SecondaryButtonStyle}" FontSize="11.5"
+                                                    Command="{Binding OpenOutputFolderCommand}" Margin="8,0,0,0" />
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
                             </Grid>
                         </Border>
 
@@ -457,7 +715,7 @@
                 <StackPanel>
                     <TextBlock Text="小提示" FontSize="12" FontWeight="SemiBold" />
                     <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
-                               Text="① GIF 用两遍调色板（先统计颜色再合成），比直接录 GIF 颜色准得多；想文件小就降宽度 / 颜色数 / 帧率。② 录制中切到别的窗口也没关系：采集在后台继续，单击托盘图标回来或按 F8 停止。③ 程序退出时如果还在录，会尽量把文件生成完（最多等 20 秒），失败则中间素材留在 Cache\screen-recorder\，可在「主页设置 → 清理缓存」里清掉。" />
+                               Text="① GIF 用两遍调色板，比直接录 GIF 颜色准；视频格式录制时已按选定编码器编码，停止后只做封装 + 混音，很快。② 摄像头屏幕覆盖是屏幕上的真实窗口，预览时摆好位置，录制时会被 gdigrab 一起录进画面；不想要就关掉。③ 声音只有视频格式才有（GIF 无声）；麦克风 / 系统声音默认关，打开后会混进最终视频。④ 录制中切到别的窗口也没关系，快捷键开始 / 停止；程序退出时如果还在录，会尽量把文件生成完（最多等 20 秒），失败则中间素材留在 Cache\screen-recorder\。" />
                 </StackPanel>
             </Border>
 

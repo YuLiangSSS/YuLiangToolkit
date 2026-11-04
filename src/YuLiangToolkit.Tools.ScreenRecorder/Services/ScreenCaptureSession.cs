@@ -53,7 +53,12 @@ internal sealed class ScreenCaptureSession : IDisposable
     }
 
     /// <summary>启动采集；失败时抛出带原因的异常，由 ViewModel 转成状态栏文案。</summary>
-    public static ScreenCaptureSession Start(string ffmpegPath, CapturePlan plan, string intermediatePath)
+    public static ScreenCaptureSession Start(
+        string ffmpegPath,
+        CapturePlan plan,
+        string intermediatePath,
+        VideoEncoderSettings? videoSettings = null,
+        int outputWidth = 0)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ffmpegPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(intermediatePath);
@@ -73,7 +78,7 @@ internal sealed class ScreenCaptureSession : IDisposable
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
         };
-        foreach (var arg in FfmpegArguments.BuildCapture(intermediatePath, plan))
+        foreach (var arg in FfmpegArguments.BuildCapture(intermediatePath, plan, videoSettings, outputWidth))
             psi.ArgumentList.Add(arg);
 
         var process = new Process { StartInfo = psi, EnableRaisingEvents = true };

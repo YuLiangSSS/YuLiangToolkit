@@ -16,8 +16,9 @@ public class ScreenRecorderTool : ITool
     public string Name => "录屏 / GIF";
 
     public string Description
-        => "用 FFmpeg 录屏：框选区域 / 全屏 / 某个窗口 → 录成 GIF（两遍调色板，颜色准）或 MP4；"
-           + "支持倒计时、置顶控制条、F8 停止、最长录制时长，也能一键截 PNG。";
+        => "OBS 风格但保持简单的录屏：全屏 / 框选区域 / 窗口 → GIF 或 MP4 / MKV / MOV / AVI / WebM，"
+           + "编码器 / 画质 / 码率可选；支持麦克风 + 系统声音（录制中可调音量）、摄像头预览与屏幕叠加、"
+           + "可自定义全局录制 / 截图快捷键，也能一键截 PNG。";
 
     public string EmojiIcon => "🎥";
 
@@ -26,7 +27,8 @@ public class ScreenRecorderTool : ITool
     /// <summary>主页标签（卡片上显示成蓝色小字，也能被搜索命中）。</summary>
     public IReadOnlyList<string> Tags => new[]
     {
-        "录屏", "GIF", "动图", "屏幕录制", "区域录制", "窗口录制", "截图", "MP4", "FFmpeg", "媒体",
+        "录屏", "GIF", "动图", "屏幕录制", "区域录制", "窗口录制", "摄像头", "麦克风", "系统声音",
+        "MP4", "AVI", "WebM", "编码器", "快捷键", "截图", "FFmpeg", "媒体",
     };
 
     /// <summary>音频工具是 10，录屏接在它后面。</summary>

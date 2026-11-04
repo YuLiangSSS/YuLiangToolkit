@@ -1,0 +1,48 @@
+<Window x:Class="YuLiangToolkit.Tools.ScreenRecorder.Views.HotkeyCaptureWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="设置快捷键"
+        SizeToContent="WidthAndHeight"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Background="{DynamicResource WindowBackgroundBrush}"
+        Foreground="{DynamicResource TextPrimaryBrush}"
+        FontFamily="Microsoft YaHei UI, Segoe UI"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
+        InputMethod.IsInputMethodEnabled="False"
+        PreviewKeyDown="OnPreviewKeyDown"
+        Loaded="OnLoaded">
+
+    <!-- 「设置快捷键」对话框（不是 UserControl）：
+         用户直接按组合键，PreviewKeyDown 在窗口级捕获，Esc 取消；有效组合按「保存」或 Enter 确认。
+         颜色 / 卡片 / 按钮全部走 App.xaml 的动态资源，四套主题自动跟随。 -->
+    <Border Padding="24,20,24,20">
+        <StackPanel Width="360">
+            <TextBlock Text="按下新的快捷键" FontSize="15" FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextPrimaryBrush}" />
+
+            <!-- 大显示框：实时显示当前按下的组合键（无效组合用红字 + 下方提示说明原因）。
+                 Focusable=True：打开后把键盘焦点放在这里，窗口级 PreviewKeyDown 才能稳定收到按键。 -->
+            <Border x:Name="KeyBox" Style="{StaticResource CardStyle}" Margin="0,12,0,0" Padding="16,22"
+                    Focusable="True">
+                <TextBlock x:Name="KeyText" Text="请按下组合键…" FontSize="26" FontWeight="SemiBold"
+                           HorizontalAlignment="Center" TextAlignment="Center"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+            </Border>
+
+            <TextBlock x:Name="HintText"
+                       Text="F1~F24 可以单独使用；字母/数字需要配合 Ctrl / Alt / Shift / Win；Esc 取消"
+                       TextWrapping="Wrap" FontSize="11.5" Margin="0,10,0,0"
+                       Foreground="{DynamicResource TextSecondaryBrush}" />
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+                <Button x:Name="CancelButton" Content="取消" Style="{StaticResource SecondaryButtonStyle}"
+                        Click="OnCancelClick" />
+                <Button x:Name="SaveButton" Content="保存" Style="{StaticResource PrimaryButtonStyle}"
+                        Margin="8,0,0,0" IsEnabled="False" Click="OnSaveClick" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

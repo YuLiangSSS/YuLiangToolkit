@@ -114,14 +114,6 @@ public sealed record GifExportSettings(int Fps, int ScaleWidth, int MaxColors, s
             loop);
 }
 
-/// <summary>MP4 导出参数（已归一化；帧率由采集时的 <see cref="CapturePlan.Fps"/> 决定）。</summary>
-public sealed record Mp4ExportSettings(int ScaleWidth, int Crf)
-{
-    /// <summary>把配置 / 界面上的原始值归一化成合法参数。</summary>
-    public static Mp4ExportSettings Normalize(int scaleWidth, int crf)
-        => new(RecorderOptions.NormalizeScaleWidth(scaleWidth), RecorderOptions.NormalizeCrf(crf));
-}
-
 /// <summary>
 /// 配置值归一化 / 枚举解析。所有“读配置 → 拼 FFmpeg 参数”的地方都先过这里，
 /// 这样用户手改坏 config.json 也不会让录制炸掉（纯函数，自检直接断言）。
@@ -144,8 +136,8 @@ public static class RecorderOptions
     /// <summary>界面下拉框里的 GIF 颜色数档位。</summary>
     public static readonly int[] GifColorChoices = { 256, 128, 64 };
 
-    /// <summary>界面下拉框里的 MP4 画质档位。</summary>
-    public static readonly int[] QualityChoices = { 18, 23, 28 };
+    /// <summary>音频码率档位（kbps）。</summary>
+    public static readonly int[] AudioBitrateChoices = { 128, 192, 256 };
 
     /// <summary>界面下拉框里的倒计时档位。</summary>
     public static readonly int[] CountdownChoices = { 0, 3, 5, 10 };
@@ -200,11 +192,36 @@ public static class RecorderOptions
         config.ScaleWidth = scaleWidth <= 0 ? 0 : SnapToNearest(scaleWidth, WidthPositiveChoices);
         config.GifColors = SnapToNearest(NormalizeColors(config.GifColors), GifColorChoices);
         config.GifDither = NormalizeDither(config.GifDither);
-        config.Mp4Quality = SnapToNearest(NormalizeCrf(config.Mp4Quality), QualityChoices);
         config.CountdownSeconds = SnapToNearest(NormalizeCountdown(config.CountdownSeconds), CountdownChoices);
         var maxSeconds = NormalizeMaxSeconds(config.MaxSeconds);
         config.MaxSeconds = maxSeconds <= 0 ? 0 : SnapToNearest(maxSeconds, MaxSecondsPositiveChoices);
         config.FilePrefix = RecordingNames.SanitizePrefix(config.FilePrefix);
+
+        // 视频编码参数
+        config.VideoQuality = Math.Clamp(config.VideoQuality, 0, 51);
+        config.VideoRateMode = string.Equals(config.VideoRateMode?.Trim(), VideoEncoderSettings.RateBitrate,
+            StringComparison.OrdinalIgnoreCase)
+            ? VideoEncoderSettings.RateBitrate
+            : VideoEncoderSettings.RateQuality;
+        config.VideoBitrateMbps = Math.Clamp(config.VideoBitrateMbps, 1, 100);
+        if (VideoCatalog.IsVideoFormat(config.Format))
+        {
+            var codec = VideoCatalog.GetCodec(config.VideoCodec);
+            if (!codec.Fits(config.Format))
+                codec = VideoCatalog.GetCodec(VideoCatalog.DefaultCodecFor(config.Format, null));
+            config.VideoCodec = codec.Id;
+        }
+
+        // 声音 / 摄像头 / 快捷键
+        config.AudioBitrateKbps = SnapToNearest(Math.Clamp(config.AudioBitrateKbps, 64, 320), AudioBitrateChoices);
+        config.MicrophoneVolume = NormalizeVolume(config.MicrophoneVolume);
+        config.SpeakerVolume = NormalizeVolume(config.SpeakerVolume);
+        config.CameraOverlayWidth = Math.Clamp(config.CameraOverlayWidth, 120, 800);
+        config.CameraOverlayOpacity = NormalizeCameraOpacity(config.CameraOverlayOpacity);
+        if (config.CameraOverlayX < -1) config.CameraOverlayX = -1;
+        if (config.CameraOverlayY < -1) config.CameraOverlayY = -1;
+        config.StartStopHotkey = config.StartStopHotkey?.Trim() ?? "";
+        config.ScreenshotHotkey = config.ScreenshotHotkey?.Trim() ?? "";
     }
 
     /// <summary>来源解析：认不出的值回退「区域」。</summary>
@@ -215,9 +232,13 @@ public static class RecorderOptions
         _ => CaptureSourceKind.Region,
     };
 
-    /// <summary>格式解析：只有 <c>mp4</c> 算 MP4，其余一律 GIF。</summary>
+    /// <summary>格式解析：<c>gif</c> 或五种视频容器；认不出的值回退 GIF。</summary>
     public static string NormalizeFormat(string? value)
-        => string.Equals(value?.Trim(), "mp4", StringComparison.OrdinalIgnoreCase) ? "mp4" : "gif";
+    {
+        var format = value?.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(format) || format == VideoCatalog.GifFormat) return VideoCatalog.GifFormat;
+        return VideoCatalog.IsVideoFormat(format) ? format : VideoCatalog.GifFormat;
+    }
 
     /// <summary>帧率夹到 1~30。</summary>
     public static int NormalizeFps(int value) => Math.Clamp(value, MinFps, MaxFps);
@@ -242,14 +263,17 @@ public static class RecorderOptions
         _ => "floyd_steinberg",
     };
 
-    /// <summary>MP4 画质（H.264 CRF）：0~51，默认 23。</summary>
-    public static int NormalizeCrf(int value) => value <= 0 ? 23 : Math.Clamp(value, 0, 51);
-
     /// <summary>倒计时秒数：0~10。</summary>
     public static int NormalizeCountdown(int value) => Math.Clamp(value, 0, 10);
 
     /// <summary>最长录制秒数：0 = 不限；其它 1 秒~24 小时。</summary>
     public static int NormalizeMaxSeconds(int value) => value <= 0 ? 0 : Math.Clamp(value, 1, 86400);
+
+    /// <summary>音量百分比：0~200（100 = 原始音量）。</summary>
+    public static int NormalizeVolume(int value) => Math.Clamp(value, 0, 200);
+
+    /// <summary>摄像头屏幕覆盖不透明度：20~100%。</summary>
+    public static int NormalizeCameraOpacity(int value) => Math.Clamp(value, 20, 100);
 
     /// <summary>来源的界面文案。</summary>
     public static string SourceLabel(CaptureSourceKind kind) => kind switch
@@ -272,18 +296,21 @@ public static class RecorderOptions
 /// </summary>
 public static class FfmpegArguments
 {
-    private const string CaptureCodec = "libx264";
-    private const string CapturePreset = "ultrafast";
-    private const string CaptureCrf = "18";
-
     /// <summary>公共前缀：安静 + 覆盖输出。<b>注意不能加 <c>-nostdin</c></b>（停止要靠 stdin 写 q）。</summary>
     private static List<string> Base() => new() { "-hide_banner", "-loglevel", "error", "-y" };
 
     /// <summary>
     /// 拼「开始采集」参数：gdigrab 桌面 → 中间 MKV。
-    /// 停止方式是向进程 stdin 写 <c>q</c>（不是 kill），所以这里不能加 <c>-nostdin</c>。
+    /// <para><paramref name="videoSettings"/> 为空 = GIF 用的快速中间素材（libx264 ultrafast）；
+    /// 不为空 = 按用户选的编码器 / 画质录视频中间素材，停止后只做封装（视频不二次编码）。</para>
+    /// <para><paramref name="outputWidth"/> &gt; 0 时在采集阶段就等比缩小，视频格式也会用上「输出宽度」。</para>
+    /// <para>停止方式是向进程 stdin 写 <c>q</c>（不是 kill），所以这里不能加 <c>-nostdin</c>。</para>
     /// </summary>
-    public static IReadOnlyList<string> BuildCapture(string intermediatePath, CapturePlan plan)
+    public static IReadOnlyList<string> BuildCapture(
+        string intermediatePath,
+        CapturePlan plan,
+        VideoEncoderSettings? videoSettings = null,
+        int outputWidth = 0)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(intermediatePath);
         if (plan.Region.IsEmpty) throw new ArgumentException("采集区域不能为空", nameof(plan));
@@ -307,15 +334,27 @@ public static class FfmpegArguments
             args.Add(plan.MaxSeconds.ToString(CultureInfo.InvariantCulture));
         }
 
-        args.AddRange(new[]
+        var targetWidth = ResolveOutputWidth(outputWidth, region.Width);
+        if (targetWidth < region.Width)
+            args.AddRange(new[] { "-vf", $"scale={targetWidth.ToString(CultureInfo.InvariantCulture)}:-2:flags=lanczos" });
+
+        args.Add("-an");
+        if (videoSettings is null)
         {
-            "-an",
-            "-c:v", CaptureCodec,
-            "-preset", CapturePreset,
-            "-crf", CaptureCrf,
-            "-pix_fmt", "yuv420p",
-            intermediatePath,
-        });
+            args.AddRange(new[]
+            {
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-crf", "18",
+                "-pix_fmt", "yuv420p",
+            });
+        }
+        else
+        {
+            args.AddRange(VideoEncodingArgs.Build(videoSettings));
+        }
+
+        args.Add(intermediatePath);
         return args;
     }
 
@@ -380,29 +419,69 @@ public static class FfmpegArguments
         return args;
     }
 
-    /// <summary>把中间素材重新编码成 MP4（H.264 + faststart，方便网页 / 手机直接播）。</summary>
-    public static IReadOnlyList<string> BuildMp4(string intermediatePath, string outputPath, Mp4ExportSettings mp4, CaptureRect region)
+    /// <summary>
+    /// 停止录制后的最终封装：视频流直接 <c>-c:v copy</c>（不二次编码），音频混进来后按容器选编码。
+    /// <para><paramref name="audioPaths"/> 为空 = 纯视频；1 路 = 麦克风或系统声音；2 路 = 两路混合。</para>
+    /// </summary>
+    public static IReadOnlyList<string> BuildRemux(
+        string videoPath,
+        string outputPath,
+        string containerId,
+        IReadOnlyList<string> audioPaths,
+        int audioBitrateKbps,
+        string? videoCodecId = null,
+        int audioDelayMs = 0)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(intermediatePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(videoPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
+        ArgumentNullException.ThrowIfNull(audioPaths);
 
+        var container = VideoCatalog.GetContainer(containerId);
         var args = Base();
-        args.AddRange(new[] { "-i", intermediatePath });
-
-        var width = ResolveOutputWidth(mp4.ScaleWidth, region.Width);
-        if (width < region.Width)
-            args.AddRange(new[] { "-vf", $"scale={width.ToString(CultureInfo.InvariantCulture)}:-2:flags=lanczos" });
-
-        args.AddRange(new[]
+        args.AddRange(new[] { "-i", videoPath });
+        foreach (var audioPath in audioPaths)
         {
-            "-an",
-            "-c:v", "libx264",
-            "-preset", "medium",
-            "-crf", mp4.Crf.ToString(CultureInfo.InvariantCulture),
-            "-pix_fmt", "yuv420p",
-            "-movflags", "+faststart",
-            outputPath,
-        });
+            ArgumentException.ThrowIfNullOrWhiteSpace(audioPath);
+            args.AddRange(new[] { "-i", audioPath });
+        }
+
+        if (audioPaths.Count == 0)
+        {
+            args.AddRange(new[] { "-map", "0:v", "-c:v", "copy" });
+        }
+        else
+        {
+            var filters = new List<string>();
+            var delay = Math.Clamp(audioDelayMs, 0, 5000);
+            for (var i = 0; i < audioPaths.Count; i++)
+            {
+                // 声音是在画面开始后才启动的：用 adelay 把开头补静音，保证音画对齐。
+                var chain = delay > 0 ? $"adelay={delay}|{delay}," : "";
+                chain += "aresample=48000:async=1:first_pts=0";
+                filters.Add($"[{i + 1}:a]{chain}[a{i + 1}]");
+            }
+
+            if (audioPaths.Count == 1)
+                filters.Add("[a1]alimiter=limit=0.98,apad[a]");
+            else
+                filters.Add($"[a1][a2]amix=inputs=2:duration=longest:normalize=0,alimiter=limit=0.98,apad[a]");
+
+            args.AddRange(new[]
+            {
+                "-filter_complex", string.Join(";", filters),
+                "-map", "0:v",
+                "-map", "[a]",
+                "-c:v", "copy",
+            });
+            args.AddRange(VideoCatalog.BuildAudioEncodeArgs(container.Id, audioBitrateKbps));
+            args.Add("-shortest");
+        }
+
+        if (container.SupportsFastStart) args.AddRange(new[] { "-movflags", "+faststart" });
+        if (container.Id is "mp4" or "mov"
+            && videoCodecId is "libx265" or "hevc_nvenc" or "hevc_amf" or "hevc_qsv")
+            args.AddRange(new[] { "-tag:v", "hvc1" });
+        args.Add(outputPath);
         return args;
     }
 

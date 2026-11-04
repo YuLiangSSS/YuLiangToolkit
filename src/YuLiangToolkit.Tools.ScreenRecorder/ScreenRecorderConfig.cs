@@ -132,13 +132,204 @@ public sealed class ScreenRecorderConfig : ToolConfig
         set => SetAndSave(ref _gifLoop, value);
     }
 
-    private int _mp4Quality = 23;
+    private int _videoQuality = 23;
 
-    /// <summary>MP4 画质（H.264 的 CRF：18 高画质 / 23 标准 / 28 小体积）。</summary>
-    public int Mp4Quality
+    /// <summary>视频画质（质量优先模式下的 CRF / CQ：0~51，越小越清晰也越大）。</summary>
+    public int VideoQuality
     {
-        get => _mp4Quality;
-        set => SetAndSave(ref _mp4Quality, value);
+        get => _videoQuality;
+        set => SetAndSave(ref _videoQuality, value);
+    }
+
+    private string _videoCodec = "libx264";
+
+    /// <summary>视频编码器 Id（见 <see cref="VideoCatalog"/>；硬件编码器需本机 FFmpeg 支持）。</summary>
+    public string VideoCodec
+    {
+        get => _videoCodec;
+        set
+        {
+            // ComboBox 在 ItemsSource 重建的瞬间可能回写 null：不要把已选编码器清掉
+            if (string.IsNullOrWhiteSpace(value) && !string.IsNullOrWhiteSpace(_videoCodec)) return;
+            SetAndSave(ref _videoCodec, value);
+        }
+    }
+
+    private string _videoRateMode = "quality";
+
+    /// <summary>视频速率控制：<c>quality</c>（画质优先 / CRF）或 <c>bitrate</c>（码率优先 / Mbps）。</summary>
+    public string VideoRateMode
+    {
+        get => _videoRateMode;
+        set => SetAndSave(ref _videoRateMode, value);
+    }
+
+    private int _videoBitrateMbps = 8;
+
+    /// <summary>码率优先模式下的目标码率（Mbps，1~100）。</summary>
+    public int VideoBitrateMbps
+    {
+        get => _videoBitrateMbps;
+        set => SetAndSave(ref _videoBitrateMbps, value);
+    }
+
+    // ---------- 声音 ----------
+
+    private bool _recordMicrophone;
+
+    /// <summary>录制麦克风（默认关；开启后停止录制时会把麦克风混进视频）。</summary>
+    public bool RecordMicrophone
+    {
+        get => _recordMicrophone;
+        set => SetAndSave(ref _recordMicrophone, value);
+    }
+
+    private int _microphoneVolume = 100;
+
+    /// <summary>麦克风音量百分比（0~200，录制中拖滑块会实时改增益）。</summary>
+    public int MicrophoneVolume
+    {
+        get => _microphoneVolume;
+        set => SetAndSave(ref _microphoneVolume, value);
+    }
+
+    private bool _recordSystemAudio;
+
+    /// <summary>录制系统扬声器（WASAPI 回环，默认关）。</summary>
+    public bool RecordSystemAudio
+    {
+        get => _recordSystemAudio;
+        set => SetAndSave(ref _recordSystemAudio, value);
+    }
+
+    private int _speakerVolume = 100;
+
+    /// <summary>系统声音音量百分比（0~200，录制中拖滑块会实时改增益）。</summary>
+    public int SpeakerVolume
+    {
+        get => _speakerVolume;
+        set => SetAndSave(ref _speakerVolume, value);
+    }
+
+    private int _audioBitrateKbps = 192;
+
+    /// <summary>最终视频里音频流的码率（kbps，128 / 192 / 256）。</summary>
+    public int AudioBitrateKbps
+    {
+        get => _audioBitrateKbps;
+        set => SetAndSave(ref _audioBitrateKbps, value);
+    }
+
+    // ---------- 摄像头 ----------
+
+    private bool _enableCamera;
+
+    /// <summary>启用摄像头（预览 / 屏幕覆盖 / 录进画面都以此为前提）。</summary>
+    public bool EnableCamera
+    {
+        get => _enableCamera;
+        set => SetAndSave(ref _enableCamera, value);
+    }
+
+    private string _cameraDeviceId = "";
+
+    /// <summary>选中的摄像头设备 Id（空 = 第一个可用摄像头）。</summary>
+    public string CameraDeviceId
+    {
+        get => _cameraDeviceId;
+        set => SetAndSave(ref _cameraDeviceId, value);
+    }
+
+    private string _cameraDeviceName = "";
+
+    /// <summary>选中的摄像头名称（显示用；设备 Id 变了也不影响找设备）。</summary>
+    public string CameraDeviceName
+    {
+        get => _cameraDeviceName;
+        set => SetAndSave(ref _cameraDeviceName, value);
+    }
+
+    private bool _cameraMirror = true;
+
+    /// <summary>摄像头画面左右镜像（自拍习惯；录进画面时也是镜像后的样子）。</summary>
+    public bool CameraMirror
+    {
+        get => _cameraMirror;
+        set => SetAndSave(ref _cameraMirror, value);
+    }
+
+    private bool _cameraOverlayEnabled;
+
+    /// <summary>是否把摄像头画面作为置顶小窗覆盖在屏幕 / 录制区域上（录制时会一起录进去）。</summary>
+    public bool CameraOverlayEnabled
+    {
+        get => _cameraOverlayEnabled;
+        set => SetAndSave(ref _cameraOverlayEnabled, value);
+    }
+
+    private int _cameraOverlayX = -1;
+
+    /// <summary>摄像头屏幕覆盖位置 X（WPF DIP；-1 = 自动放在屏幕右下角）。</summary>
+    public int CameraOverlayX
+    {
+        get => _cameraOverlayX;
+        set => SetAndSave(ref _cameraOverlayX, value);
+    }
+
+    private int _cameraOverlayY = -1;
+
+    /// <summary>摄像头屏幕覆盖位置 Y（WPF DIP；-1 = 自动）。</summary>
+    public int CameraOverlayY
+    {
+        get => _cameraOverlayY;
+        set => SetAndSave(ref _cameraOverlayY, value);
+    }
+
+    private int _cameraOverlayWidth = 320;
+
+    /// <summary>摄像头屏幕覆盖宽度（WPF DIP，120~800；高度按摄像头比例自动算）。</summary>
+    public int CameraOverlayWidth
+    {
+        get => _cameraOverlayWidth;
+        set => SetAndSave(ref _cameraOverlayWidth, value);
+    }
+
+    private int _cameraOverlayOpacity = 100;
+
+    /// <summary>摄像头屏幕覆盖“浓度”百分比（20~100）：按画面和黑底混合实现，不是窗口穿透。</summary>
+    public int CameraOverlayOpacity
+    {
+        get => _cameraOverlayOpacity;
+        set => SetAndSave(ref _cameraOverlayOpacity, value);
+    }
+
+    // ---------- 全局快捷键 ----------
+
+    private bool _enableGlobalHotkeys = true;
+
+    /// <summary>启用全局录制快捷键（开始/停止、截图）。</summary>
+    public bool EnableGlobalHotkeys
+    {
+        get => _enableGlobalHotkeys;
+        set => SetAndSave(ref _enableGlobalHotkeys, value);
+    }
+
+    private string _startStopHotkey = "F8";
+
+    /// <summary>开始 / 停止录制的全局快捷键文本（例如 F8、Ctrl+Shift+F9）。</summary>
+    public string StartStopHotkey
+    {
+        get => _startStopHotkey;
+        set => SetAndSave(ref _startStopHotkey, value);
+    }
+
+    private string _screenshotHotkey = "";
+
+    /// <summary>截图的全局快捷键文本（空 = 不注册）。</summary>
+    public string ScreenshotHotkey
+    {
+        get => _screenshotHotkey;
+        set => SetAndSave(ref _screenshotHotkey, value);
     }
 
     // ---------- 录制行为 ----------
@@ -172,20 +363,11 @@ public sealed class ScreenRecorderConfig : ToolConfig
 
     private bool _showControlBar = true;
 
-    /// <summary>录制时显示置顶控制条（全屏录制时它可能被一起录进去；关掉后用 F8 停止）。</summary>
+    /// <summary>录制时显示置顶控制条（全屏录制时它可能被一起录进去；关掉后用快捷键停止）。</summary>
     public bool ShowControlBar
     {
         get => _showControlBar;
         set => SetAndSave(ref _showControlBar, value);
-    }
-
-    private bool _useStopHotkey = true;
-
-    /// <summary>录制中允许按全局热键 F8 停止（热键和别的软件冲突时关掉它，用界面按钮停止）。</summary>
-    public bool UseStopHotkey
-    {
-        get => _useStopHotkey;
-        set => SetAndSave(ref _useStopHotkey, value);
     }
 
     private bool _openFolderAfterSave = true;
@@ -224,6 +406,10 @@ public sealed class ScreenRecorderConfig : ToolConfig
     /// <summary>当前格式是不是 MP4。</summary>
     [JsonIgnore]
     public bool IsMp4 => !IsGif;
+
+    /// <summary>当前格式是不是视频（MP4 / MKV / MOV / AVI / WebM）。</summary>
+    [JsonIgnore]
+    public bool IsVideo => !IsGif;
 
     /// <summary>有没有框选过区域（宽高都大于 0）。</summary>
     [JsonIgnore]

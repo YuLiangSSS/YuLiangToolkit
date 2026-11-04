@@ -1,0 +1,37 @@
+<Window x:Class="YuLiangToolkit.Tools.ScreenRecorder.Views.CameraOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="摄像头覆盖"
+        WindowStyle="None"
+        Background="#FF101418"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        ResizeMode="NoResize"
+        WindowStartupLocation="Manual"
+        SnapsToDevicePixels="True"
+        UseLayoutRounding="True">
+
+    <!-- 摄像头屏幕覆盖：置顶、无边框小窗。
+         ⚠ 故意**不用** AllowsTransparency / 窗口 Opacity：那样会变成分层（layered）窗口，
+           部分系统上 gdigrab 的 BitBlt 抓不到 / 抓成黑块；这里保持普通不透明窗口，
+           「不透明度」通过 Image 的 Opacity 和黑色底混合实现，保证它能被录进画面。
+         拖动 = 移动，滚轮 = 缩放，右键 = 菜单（镜像 / 重置位置 / 关闭覆盖）。 -->
+    <Border x:Name="Root" Background="#FF101418" BorderBrush="#FF4A515C" BorderThickness="1"
+            ClipToBounds="True" Cursor="SizeAll"
+            MouseLeftButtonDown="OnRootMouseLeftButtonDown"
+            MouseLeftButtonUp="OnRootMouseLeftButtonUp"
+            MouseWheel="OnRootMouseWheel">
+        <Border.ContextMenu>
+            <ContextMenu>
+                <MenuItem x:Name="MirrorMenuItem" Header="左右镜像" IsCheckable="True" Click="OnMirrorMenuClick" />
+                <MenuItem Header="重置到屏幕右下角" Click="OnResetMenuClick" />
+                <Separator />
+                <MenuItem Header="关闭摄像头覆盖" Click="OnCloseMenuClick" />
+            </ContextMenu>
+        </Border.ContextMenu>
+
+        <Image x:Name="PreviewImage" Stretch="UniformToFill"
+               RenderOptions.BitmapScalingMode="HighQuality" IsHitTestVisible="False" />
+    </Border>
+</Window>

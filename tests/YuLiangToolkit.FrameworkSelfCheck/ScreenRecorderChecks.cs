@@ -1,5 +1,6 @@
 using System.IO;
 using YuLiangToolkit.Tools.ScreenRecorder;
+using YuLiangToolkit.Tools.ScreenRecorder.Services;
 
 namespace YuLiangToolkit.FrameworkSelfCheck;
 
@@ -18,9 +19,12 @@ internal static class ScreenRecorderChecks
         CheckRect(check);
         CheckDpiMapping(check);
         CheckOptions(check);
+        CheckVideoEncoding(check);
+        CheckRemux(check);
+        CheckEncoderDetection(check);
+        CheckHotkeys(check);
         CheckCaptureArguments(check);
         CheckGifArguments(check);
-        CheckMp4Arguments(check);
         CheckScreenshotArguments(check);
         CheckNames(check);
         CheckTime(check);
@@ -131,13 +135,16 @@ internal static class ScreenRecorderChecks
             && RecorderOptions.ParseSourceKind(null) == CaptureSourceKind.Region,
             "fullscreen / WINDOW / screen / wat / null");
 
-        check("[录屏] 格式解析：只有 mp4 是视频，其余一律 GIF",
-            RecorderOptions.NormalizeFormat("mp4") == "mp4"
+        check("[录屏] 格式解析：gif / 五种视频容器都认，乱写回退 GIF",
+            RecorderOptions.NormalizeFormat("gif") == "gif"
             && RecorderOptions.NormalizeFormat("MP4") == "mp4"
-            && RecorderOptions.NormalizeFormat("gif") == "gif"
-            && RecorderOptions.NormalizeFormat("webm") == "gif"
+            && RecorderOptions.NormalizeFormat("mkv") == "mkv"
+            && RecorderOptions.NormalizeFormat("mov") == "mov"
+            && RecorderOptions.NormalizeFormat("avi") == "avi"
+            && RecorderOptions.NormalizeFormat("webm") == "webm"
+            && RecorderOptions.NormalizeFormat("乱写") == "gif"
             && RecorderOptions.NormalizeFormat(null) == "gif",
-            "mp4 / MP4 / gif / webm / null");
+            "gif / MP4 / mkv / mov / avi / webm / 乱写 / null");
 
         check("[录屏] 帧率夹到 1~30",
             RecorderOptions.NormalizeFps(0) == 1
@@ -154,29 +161,32 @@ internal static class ScreenRecorderChecks
             && RecorderOptions.NormalizeScaleWidth(9000) == 3840,
             "0 / -1 / 961 / 10 / 9000");
 
-        check("[录屏] GIF 颜色数 2~256、抖动白名单、CRF / 倒计时 / 最长时长夹取",
+        check("[录屏] GIF 颜色数 2~256、抖动白名单、画质 / 倒计时 / 最长时长夹取",
             RecorderOptions.NormalizeColors(0) == 2
             && RecorderOptions.NormalizeColors(999) == 256
             && RecorderOptions.NormalizeColors(128) == 128
             && RecorderOptions.NormalizeDither("BAYER") == "bayer"
             && RecorderOptions.NormalizeDither("none") == "none"
             && RecorderOptions.NormalizeDither("乱写") == "floyd_steinberg"
-            && RecorderOptions.NormalizeCrf(0) == 23
-            && RecorderOptions.NormalizeCrf(60) == 51
+            && VideoEncoderSettings.Normalize("libx264", "quality", -5, 1).Quality == 0
+            && VideoEncoderSettings.Normalize("libx264", "quality", 99, 1).Quality == 51
             && RecorderOptions.NormalizeCountdown(-1) == 0
             && RecorderOptions.NormalizeCountdown(100) == 10
             && RecorderOptions.NormalizeMaxSeconds(-1) == 0
             && RecorderOptions.NormalizeMaxSeconds(999999) == 86400,
-            "colors / dither / crf / countdown / max seconds");
+            "colors / dither / quality / countdown / max seconds");
 
         var gif = GifExportSettings.Normalize(0, 9999, 0, "wat", true);
         check("[录屏] GifExportSettings.Normalize 一次把四个值拉回合法范围",
             gif == new GifExportSettings(1, 3840, 2, "floyd_steinberg", true),
             gif.ToString());
 
-        var mp4 = Mp4ExportSettings.Normalize(-3, 18);
-        check("[录屏] Mp4ExportSettings.Normalize 拉回合法范围",
-            mp4 == new Mp4ExportSettings(0, 18),
+        var mp4 = VideoEncoderSettings.Normalize("libx264", "bitrate", 120, 500);
+        check("[录屏] 编码参数归一化：模式 / 画质 / 码率都在合法范围",
+            mp4.RateMode == VideoEncoderSettings.RateBitrate
+            && mp4.Quality == 51 && mp4.BitrateMbps == 100
+            && VideoEncoderSettings.Normalize("libx264", "乱写", -5, 0).Quality == 0
+            && VideoEncoderSettings.Normalize("libx264", "乱写", -5, 0).RateMode == VideoEncoderSettings.RateQuality,
             mp4.ToString());
 
         check("[录屏] 输出宽度换算：0 / 超过源宽 = 源宽（取偶数），中间值取偶数，不放大",
@@ -234,6 +244,23 @@ internal static class ScreenRecorderChecks
             limitedArgs.Contains("-t") && limitedArgs.Contains("60")
             && desktopIndex >= 0 && durationIndex > desktopIndex,
             string.Join(" ", limitedArgs));
+
+        var videoPlan = new CapturePlan(new CaptureRect(0, 0, 1920, 1080), 15, true, 0, "全屏");
+        var videoArgs = string.Join(" ", FfmpegArguments.BuildCapture(
+            "tmp.mkv", videoPlan, new VideoEncoderSettings("libx264", "quality", 20, 8), 1280));
+        check("[录屏] 视频采集：按选定编码器 / CRF 录中间素材，并在采集阶段等比缩到输出宽度",
+            videoArgs.Contains("-c:v libx264", StringComparison.Ordinal)
+            && videoArgs.Contains("-crf 20", StringComparison.Ordinal)
+            && videoArgs.Contains("-vf scale=1280:-2:flags=lanczos", StringComparison.Ordinal)
+            && videoArgs.Contains("-an", StringComparison.Ordinal)
+            && !videoArgs.Contains("-preset ultrafast", StringComparison.Ordinal),
+            videoArgs);
+
+        var videoOriginal = string.Join(" ", FfmpegArguments.BuildCapture(
+            "tmp.mkv", videoPlan, new VideoEncoderSettings("libx264", "quality", 20, 8), 0));
+        check("[录屏] 视频采集：输出宽度 0（原始）时不加缩放滤镜",
+            !videoOriginal.Contains("-vf ", StringComparison.Ordinal),
+            videoOriginal);
     }
 
     private static void CheckGifArguments(Action<string, bool, string> check)
@@ -275,29 +302,171 @@ internal static class ScreenRecorderChecks
             noUpscale);
     }
 
-    private static void CheckMp4Arguments(Action<string, bool, string> check)
+    // ---------------------------------------------------------------- 视频编码 / 封装
+
+    private static void CheckHotkeys(Action<string, bool, string> check)
     {
-        var args = string.Join(" ", FfmpegArguments.BuildMp4(
-            "tmp.mkv", "out.mp4",
-            new Mp4ExportSettings(1280, 23),
-            new CaptureRect(0, 0, 1920, 1080)));
+        var parsedF8 = HotkeySpec.TryParse("F8", out var f8);
+        var parsedCombo = HotkeySpec.TryParse(" ctrl + shift + f9 ", out var combo);
+        var parsedRoundtrip = HotkeySpec.TryParse(combo.DisplayText, out var roundtrip);
+        check("[录屏] 快捷键解析：F8 / Ctrl+Shift+F9 / 大小写与空格容错",
+            parsedF8 && f8.DisplayText == "F8"
+            && parsedCombo && combo.DisplayText == "Ctrl+Shift+F9"
+            && parsedRoundtrip && roundtrip == combo,
+            f8.DisplayText + " / " + combo.DisplayText);
 
-        check("[录屏] MP4：H.264 + CRF + yuv420p + faststart + 缩放 -2",
-            args.Contains("-c:v libx264", StringComparison.Ordinal)
-            && args.Contains("-crf 23", StringComparison.Ordinal)
-            && args.Contains("-pix_fmt yuv420p", StringComparison.Ordinal)
-            && args.Contains("-movflags +faststart", StringComparison.Ordinal)
-            && args.Contains("-vf scale=1280:-2:flags=lanczos", StringComparison.Ordinal)
-            && args.Contains("-an", StringComparison.Ordinal)
-            && args.EndsWith("out.mp4", StringComparison.Ordinal),
-            args);
+        check("[录屏] 快捷键校验：普通字母必须带修饰键，只有修饰键 / 空值无效",
+            !HotkeySpec.TryParse("A", out _)
+            && !HotkeySpec.TryParse("Ctrl", out _)
+            && !HotkeySpec.TryParse("", out _)
+            && !HotkeySpec.TryParse(null, out _)
+            && HotkeySpec.TryParse("Ctrl+A", out var ctrlA) && ctrlA.DisplayText == "Ctrl+A",
+            "A / Ctrl / empty / null / Ctrl+A");
 
-        var original = string.Join(" ", FfmpegArguments.BuildMp4(
-            "tmp.mkv", "out.mp4", new Mp4ExportSettings(0, 28), new CaptureRect(0, 0, 1920, 1080)));
-        check("[录屏] MP4：原始宽度时不加缩放；CRF 28 原样传给 FFmpeg",
-            !original.Contains("-vf ", StringComparison.Ordinal)
-            && original.Contains("-crf 28", StringComparison.Ordinal),
-            original);
+        check("[录屏] 快捷键解析：多个修饰键按 Win32 位组合",
+            HotkeySpec.TryParse("Ctrl+Alt+Shift+Win+F12", out var all)
+            && all.Modifiers == (HotkeySpec.ModControl | HotkeySpec.ModAlt | HotkeySpec.ModShift | HotkeySpec.ModWin)
+            && all.DisplayText == "Ctrl+Alt+Shift+Win+F12",
+            all.DisplayText);
+
+        var keyF8Ok = HotkeySpec.TryFromKey(System.Windows.Input.Key.F8, System.Windows.Input.ModifierKeys.None, out var keyF8);
+        var keyAOk = HotkeySpec.TryFromKey(System.Windows.Input.Key.A, System.Windows.Input.ModifierKeys.None, out _);
+        var keyCtrlAOk = HotkeySpec.TryFromKey(System.Windows.Input.Key.A, System.Windows.Input.ModifierKeys.Control, out var keyCtrlA);
+        check("[录屏] 快捷键捕获：F8 可单独用；字母无修饰键无效；Ctrl+A 有效",
+            keyF8Ok && keyF8.DisplayText == "F8"
+            && !keyAOk
+            && keyCtrlAOk && keyCtrlA.DisplayText == "Ctrl+A",
+            keyF8.DisplayText + " / " + keyCtrlA.DisplayText);
+    }
+
+    private static void CheckVideoEncoding(Action<string, bool, string> check)
+    {
+        var x264 = string.Join(" ", VideoEncodingArgs.Build(new VideoEncoderSettings("libx264", "quality", 23, 8)));
+        check("[录屏] 视频编码：libx264 画质模式 = veryfast + CRF + yuv420p",
+            x264.Contains("-c:v libx264", StringComparison.Ordinal)
+            && x264.Contains("-preset veryfast", StringComparison.Ordinal)
+            && x264.Contains("-crf 23", StringComparison.Ordinal)
+            && x264.Contains("-pix_fmt yuv420p", StringComparison.Ordinal),
+            x264);
+
+        var nvenc = string.Join(" ", VideoEncodingArgs.Build(new VideoEncoderSettings("h264_nvenc", "quality", 20, 8)));
+        check("[录屏] 视频编码：NVENC 画质模式 = vbr + cq + b:v 0；码率模式 = 目标码率 + maxrate/bufsize",
+            nvenc.Contains("-rc vbr", StringComparison.Ordinal)
+            && nvenc.Contains("-cq 20", StringComparison.Ordinal)
+            && nvenc.Contains("-b:v 0", StringComparison.Ordinal)
+            && string.Join(" ", VideoEncodingArgs.Build(new VideoEncoderSettings("h264_nvenc", "bitrate", 20, 12)))
+                .Contains("-b:v 12000k -maxrate 18000k -bufsize 24000k", StringComparison.Ordinal),
+            nvenc);
+
+        var mpeg4 = string.Join(" ", VideoEncodingArgs.Build(new VideoEncoderSettings("mpeg4", "quality", 23, 8)));
+        check("[录屏] 视频编码：MPEG-4 / MJPEG 把 CRF 映射成 qscale（23 → 15）",
+            mpeg4.Contains("-c:v mpeg4", StringComparison.Ordinal)
+            && mpeg4.Contains("-q:v 15", StringComparison.Ordinal),
+            mpeg4);
+
+        var vp9 = string.Join(" ", VideoEncodingArgs.Build(new VideoEncoderSettings("libvpx-vp9", "quality", 30, 8)));
+        check("[录屏] 视频编码：VP9 画质模式 = crf + b:v 0（WebM 常用）",
+            vp9.Contains("-c:v libvpx-vp9", StringComparison.Ordinal)
+            && vp9.Contains("-crf 30", StringComparison.Ordinal)
+            && vp9.Contains("-b:v 0", StringComparison.Ordinal),
+            vp9);
+
+        var unknown = string.Join(" ", VideoEncodingArgs.Build(new VideoEncoderSettings("不存在的编码器", "quality", 20, 8)));
+        check("[录屏] 视频编码：认不出的编码器安全回退 libx264",
+            unknown.Contains("-c:v libx264", StringComparison.Ordinal)
+            && unknown.Contains("-crf 20", StringComparison.Ordinal),
+            unknown);
+
+        check("[录屏] 编码器目录：容器兼容性（H.264 能进 MP4/AVI 不进 WebM；VP9 能进 WebM）",
+            VideoCatalog.IsCompatible("mp4", "libx264")
+            && VideoCatalog.IsCompatible("avi", "mpeg4")
+            && !VideoCatalog.IsCompatible("avi", "hevc_nvenc")
+            && !VideoCatalog.IsCompatible("webm", "libx264")
+            && VideoCatalog.IsCompatible("webm", "libvpx-vp9"),
+            "mp4/libx264 · avi/mpeg4 · avi/hevc · webm/libx264 · webm/vp9");
+
+        var available = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "libx265", "libvpx-vp9" };
+        var codecs = VideoCatalog.CompatibleCodecs("mp4", available);
+        check("[录屏] 编码器目录：按容器 + 本机 ffmpeg 可用列表过滤",
+            codecs.Count == 1 && codecs[0].Id == "libx265"
+            && VideoCatalog.DefaultCodecFor("mp4", available) == "libx265"
+            && VideoCatalog.CompatibleCodecs("webm", available).Single().Id == "libvpx-vp9",
+            string.Join(",", codecs.Select(c => c.Id)));
+    }
+
+    private static void CheckRemux(Action<string, bool, string> check)
+    {
+        var videoOnly = string.Join(" ", FfmpegArguments.BuildRemux(
+            "tmp.mkv", "out.avi", "avi", Array.Empty<string>(), 192));
+        check("[录屏] 封装：没有音轨 = -c:v copy 直接转容器，不加音频参数",
+            videoOnly.Contains("-i tmp.mkv", StringComparison.Ordinal)
+            && videoOnly.Contains("-map 0:v -c:v copy", StringComparison.Ordinal)
+            && !videoOnly.Contains("-c:a", StringComparison.Ordinal)
+            && !videoOnly.Contains("+faststart", StringComparison.Ordinal)
+            && videoOnly.EndsWith("out.avi", StringComparison.Ordinal),
+            videoOnly);
+
+        var oneAudio = string.Join(" ", FfmpegArguments.BuildRemux(
+            "tmp.mkv", "out.mp4", "mp4", new[] { "mic.wav" }, 192));
+        check("[录屏] 封装：单路音频 = 混音滤镜 + AAC + faststart + -shortest",
+            oneAudio.Contains("-i mic.wav", StringComparison.Ordinal)
+            && oneAudio.Contains("aresample=48000:async=1:first_pts=0", StringComparison.Ordinal)
+            && oneAudio.Contains("alimiter=limit=0.98,apad", StringComparison.Ordinal)
+            && oneAudio.Contains("-map 0:v", StringComparison.Ordinal)
+            && oneAudio.Contains("-map [a]", StringComparison.Ordinal)
+            && oneAudio.Contains("-c:v copy", StringComparison.Ordinal)
+            && oneAudio.Contains("-c:a aac -b:a 192k", StringComparison.Ordinal)
+            && oneAudio.Contains("-movflags +faststart", StringComparison.Ordinal)
+            && oneAudio.Contains("-shortest", StringComparison.Ordinal),
+            oneAudio);
+
+        var delayed = string.Join(" ", FfmpegArguments.BuildRemux(
+            "tmp.mkv", "out.mp4", "mp4", new[] { "mic.wav" }, 192, "libx264", 120));
+        check("[录屏] 封装：音画延迟补偿 = adelay 补静音（声音比画面晚启动 120ms）",
+            delayed.Contains("adelay=120|120,aresample=48000", StringComparison.Ordinal),
+            delayed);
+
+        var twoAudio = string.Join(" ", FfmpegArguments.BuildRemux(
+            "tmp.mkv", "out.webm", "webm", new[] { "mic.wav", "speaker.wav" }, 160));
+        check("[录屏] 封装：双路音频 = amix normalize=0；WebM 用 Opus",
+            twoAudio.Contains("amix=inputs=2:duration=longest:normalize=0", StringComparison.Ordinal)
+            && twoAudio.Contains("-c:a libopus -b:a 160k", StringComparison.Ordinal)
+            && twoAudio.Contains("-i speaker.wav", StringComparison.Ordinal),
+            twoAudio);
+
+        var aviAudio = string.Join(" ", FfmpegArguments.BuildRemux(
+            "tmp.mkv", "out.avi", "avi", new[] { "mic.wav" }, 128));        check("[录屏] 容器音频编码：AVI 用 MP3、WebM 用 Opus、MP4/MKV 用 AAC",
+            aviAudio.Contains("-c:a libmp3lame", StringComparison.Ordinal)
+            && VideoCatalog.AudioCodecLabel("webm") == "Opus"
+            && VideoCatalog.AudioCodecLabel("avi") == "MP3"
+            && VideoCatalog.AudioCodecLabel("mkv") == "AAC",
+            aviAudio);
+
+        var hevc = string.Join(" ", FfmpegArguments.BuildRemux(
+            "tmp.mkv", "out.mp4", "mp4", Array.Empty<string>(), 192, "libx265"));
+        check("[录屏] 封装：H.265 进 MP4/MOV 时加 hvc1 tag（苹果 / 剪辑软件兼容）",
+            hevc.Contains("-tag:v hvc1", StringComparison.Ordinal),
+            hevc);
+    }
+
+    private static void CheckEncoderDetection(Action<string, bool, string> check)
+    {
+        const string fake = """
+             Encoders:
+             V....D libx264              libx264 H.264 / AVC (codec h264)
+             V....D h264_nvenc           NVIDIA NVENC H.264 encoder (codec h264)
+             A....D aac                  AAC (Advanced Audio Coding)
+             ------
+            """;
+        var set = EncoderCatalog.ParseAvailable(fake);
+        check("[录屏] 编码器检测：从 ffmpeg -encoders 输出解析出编码器名",
+            set.Contains("libx264") && set.Contains("h264_nvenc") && set.Contains("aac") && set.Count == 3,
+            string.Join(",", set));
+        check("[录屏] 编码器检测：空 / 乱输入安全返回空集合",
+            EncoderCatalog.ParseAvailable(null).Count == 0
+            && EncoderCatalog.ParseAvailable("").Count == 0
+            && EncoderCatalog.ParseAvailable("Encoders:\n------").Count == 0,
+            "null / empty / no encoders");
     }
 
     private static void CheckScreenshotArguments(Action<string, bool, string> check)
@@ -371,20 +540,32 @@ internal static class ScreenRecorderChecks
             && config.ScaleWidth == 960 && config.GifColors == 256
             && config.GifDither == "floyd_steinberg" && config.GifLoop
             && config.DrawMouse && config.CountdownSeconds == 3
-            && config.MaxSeconds == 0 && config.ShowControlBar && config.UseStopHotkey,
+            && config.MaxSeconds == 0 && config.ShowControlBar,
             $"{config.SourceKind}/{config.Format}/{config.Fps}/{config.ScaleWidth}/{config.CountdownSeconds}");
 
-        check("[录屏] 配置计算属性：IsGif / IsMp4 / HasRegion / 来源判断正确",
-            config.IsGif && !config.IsMp4 && !config.HasRegion
+        check("[录屏] 配置默认值：视频编码器 / 画质 / 声音 / 摄像头 / 快捷键",
+            config.VideoCodec == "libx264" && config.VideoRateMode == "quality"
+            && config.VideoQuality == 23 && config.VideoBitrateMbps == 8
+            && !config.RecordMicrophone && config.MicrophoneVolume == 100
+            && !config.RecordSystemAudio && config.SpeakerVolume == 100
+            && config.AudioBitrateKbps == 192
+            && !config.EnableCamera && config.CameraMirror && !config.CameraOverlayEnabled
+            && config.CameraOverlayWidth == 320 && config.CameraOverlayOpacity == 100
+            && config.EnableGlobalHotkeys && config.StartStopHotkey == "F8"
+            && config.ScreenshotHotkey == "",
+            $"{config.VideoCodec}/{config.VideoQuality}/{config.AudioBitrateKbps}/{config.StartStopHotkey}");
+
+        check("[录屏] 配置计算属性：IsGif / IsMp4 / IsVideo / HasRegion / 来源判断正确",
+            config.IsGif && !config.IsMp4 && !config.IsVideo && !config.HasRegion
             && config.IsRegionSource && !config.IsWindowSource && !config.IsFullScreenSource,
-            $"{config.IsGif}/{config.IsMp4}/{config.HasRegion}");
+            $"{config.IsGif}/{config.IsMp4}/{config.IsVideo}/{config.HasRegion}");
 
         config.Format = "mp4";
         config.SourceKind = "window";
         config.RegionWidth = 800;
         config.RegionHeight = 600;
         check("[录屏] 配置计算属性随字段变化（MP4 / 窗口 / 有区域）",
-            config.IsMp4 && !config.IsGif && config.IsWindowSource
+            config.IsMp4 && !config.IsGif && config.IsVideo && config.IsWindowSource
             && !config.IsRegionSource && config.HasRegion,
             $"{config.IsMp4}/{config.SourceKind}/{config.HasRegion}");
 
@@ -403,7 +584,7 @@ internal static class ScreenRecorderChecks
         watched.ScaleWidth = 1280;
         watched.GifColors = 64;
         watched.MaxSeconds = 60;
-        watched.UseStopHotkey = false;
+        watched.EnableGlobalHotkeys = false;
         watched.OutputFolder = @"C:\录屏";
         check("[录屏] 配置联动属性会发 PropertyChanged（否则 OnConfigChanged 是死代码）",
             changed.Contains(nameof(ScreenRecorderConfig.SourceKind))
@@ -412,7 +593,7 @@ internal static class ScreenRecorderChecks
             && changed.Contains(nameof(ScreenRecorderConfig.ScaleWidth))
             && changed.Contains(nameof(ScreenRecorderConfig.GifColors))
             && changed.Contains(nameof(ScreenRecorderConfig.MaxSeconds))
-            && changed.Contains(nameof(ScreenRecorderConfig.UseStopHotkey))
+            && changed.Contains(nameof(ScreenRecorderConfig.EnableGlobalHotkeys))
             && changed.Contains(nameof(ScreenRecorderConfig.OutputFolder)),
             string.Join(",", changed));
 
@@ -425,19 +606,34 @@ internal static class ScreenRecorderChecks
             ScaleWidth = 1000,
             GifColors = 200,
             GifDither = "乱写",
-            Mp4Quality = 20,
+            VideoQuality = 200,
+            VideoRateMode = "乱写",
+            VideoBitrateMbps = 999,
+            AudioBitrateKbps = 130,
+            MicrophoneVolume = 999,
+            SpeakerVolume = -5,
+            CameraOverlayWidth = 9999,
+            CameraOverlayOpacity = 5,
             CountdownSeconds = 7,
             MaxSeconds = 45,
             FilePrefix = "a:b*c",
         };
         RecorderOptions.NormalizeConfig(broken);
-        check("[录屏] 配置归一化：坏值都会吸附到界面档位（显示与实际不再不一致）",
-            broken.SourceKind == "region" && broken.Format == "gif"
+        check("[录屏] 配置归一化：坏值都会吸附 / 夹取到合法范围",
+            broken.SourceKind == "region" && broken.Format == "webm"
             && broken.Fps == 5 && broken.ScaleWidth == 960 && broken.GifColors == 256
-            && broken.GifDither == "floyd_steinberg" && broken.Mp4Quality == 18
+            && broken.GifDither == "floyd_steinberg"
+            && broken.VideoQuality == 51 && broken.VideoRateMode == VideoEncoderSettings.RateQuality
+            && broken.VideoBitrateMbps == 100 && broken.AudioBitrateKbps == 128
+            && broken.MicrophoneVolume == 200 && broken.SpeakerVolume == 0
+            && broken.CameraOverlayWidth == 800 && broken.CameraOverlayOpacity == 20
             && broken.CountdownSeconds == 5 && broken.MaxSeconds == 30
             && broken.FilePrefix == "a_b_c",
-            $"{broken.SourceKind}/{broken.Format}/{broken.Fps}/{broken.ScaleWidth}/{broken.GifColors}/{broken.MaxSeconds}/{broken.FilePrefix}");
+            $"{broken.SourceKind}/{broken.Format}/{broken.Fps}/{broken.ScaleWidth}/{broken.GifColors}/{broken.VideoQuality}/{broken.AudioBitrateKbps}/{broken.MicrophoneVolume}/{broken.CameraOverlayOpacity}");
+
+        check("[录屏] 配置归一化：WebM 下不兼容的 libx264 自动换成 VP9",
+            broken.Format == "webm" && broken.VideoCodec == "libvpx-vp9",
+            broken.VideoCodec);
 
         // 正数不能吸附成 0（0 的含义是“原始分辨率 / 不限制”，会把 2 秒录制变成无限录制）
         var positive = new ScreenRecorderConfig { ScaleWidth = 320, MaxSeconds = 2 };
