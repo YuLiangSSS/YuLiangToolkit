@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「录屏」：用系统 FFmpeg 的 gdigrab 采集屏幕，录成 GIF（两遍调色板）或 MP4，
+       也可以截一张 PNG。不打包 FFmpeg（和音频工具共用全局 FFmpeg 路径），不引任何 NuGet 包。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.ScreenRecorder</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.ScreenRecorder</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -51,6 +51,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("context-menu", "右键菜单管理：注册表枚举 / 隐藏 / 恢复（内存假注册表）"),
     ("archive", "压缩包工具：格式识别 / 解压 / 创建 / 密码 / 路径穿越 / 覆盖策略"),
     ("open-with", "打开方式：三种模式 / 自动分流 / 注册表命令拼装（只读，不写注册表）"),
+    ("screen-recorder", "录屏 / GIF：区域换算 / FFmpeg 参数 / 文件名 / 配置默认值"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1186,6 +1187,10 @@ RunGroupModule("archive", "压缩包工具", ArchiveChecks.Run, "[压缩包] ");
 // 「打开方式」：三种模式 / 命令行解析 / 扩展名 → 工具分流 / 注册表命令拼装。
 // 只测纯逻辑 + 只读的 IsRegistered / Describe，**绝不调用 Register / Unregister**（会写用户真实注册表）。
 RunGroupModule("open-with", "打开方式", OpenWithChecks.Run);
+
+// 「录屏 / GIF」：区域换算 / 参数归一化 / FFmpeg 采集与 GIF 两遍 / MP4 / 截图参数 / 文件名 / 计时 / 配置。
+// 纯逻辑，**不启动 FFmpeg、不采集屏幕、不弹窗**；真实录制由人工冒烟验收。
+RunGroupModule("screen-recorder", "录屏", ScreenRecorderChecks.Run);
 
 EnterGroup("shell");
 

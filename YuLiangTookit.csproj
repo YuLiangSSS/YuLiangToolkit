@@ -51,6 +51,7 @@
     <ProjectReference Include="src\YuLiangToolkit.Tools.Live2D\YuLiangToolkit.Tools.Live2D.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.ContextMenu\YuLiangToolkit.Tools.ContextMenu.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.OpenWith\YuLiangToolkit.Tools.OpenWith.csproj" />
+    <ProjectReference Include="src\YuLiangToolkit.Tools.ScreenRecorder\YuLiangToolkit.Tools.ScreenRecorder.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.Sample\YuLiangToolkit.Tools.Sample.csproj" />
   </ItemGroup>
 

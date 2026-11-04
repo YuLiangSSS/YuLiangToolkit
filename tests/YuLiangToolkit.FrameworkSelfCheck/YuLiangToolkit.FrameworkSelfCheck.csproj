@@ -79,6 +79,9 @@
     <!-- 「打开方式」：模式 / 命令行解析 / 扩展名分流（Core 里的纯逻辑）+ 工具元数据；
          注册表登记函数绝不调用（只读 IsRegistered / Describe）。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.OpenWith\YuLiangToolkit.Tools.OpenWith.csproj" />
+    <!-- 「录屏 / GIF」：区域换算 / 参数归一化 / FFmpeg 采集与 GIF 两遍 / MP4 / 截图参数 / 文件名 /
+         配置默认值，全部纯逻辑（不启动 FFmpeg、不采集屏幕、不弹窗）。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.ScreenRecorder\YuLiangToolkit.Tools.ScreenRecorder.csproj" />
   </ItemGroup>
 
 </Project>
