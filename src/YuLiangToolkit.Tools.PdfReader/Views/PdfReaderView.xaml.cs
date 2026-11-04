@@ -2722,7 +2722,7 @@ public partial class PdfReaderView : UserControl
     {
         while (source is not null && !ReferenceEquals(source, ViewportGrid))
         {
-            if (source is ButtonBase or TextBoxBase or Slider or ComboBox) return true;
+            if (source is ButtonBase or TextBoxBase or Slider or ComboBox or ScrollBar) return true;
             source = source is Visual visual
                 ? VisualTreeHelper.GetParent(visual)
                 : LogicalTreeHelper.GetParent(source);

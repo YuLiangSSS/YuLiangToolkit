@@ -1936,7 +1936,8 @@ public partial class PictureViewerView : UserControl
     {
         while (source is not null && !ReferenceEquals(source, ViewportGrid))
         {
-            if (source is System.Windows.Controls.Primitives.ButtonBase) return true;
+            if (source is System.Windows.Controls.Primitives.ButtonBase
+                or System.Windows.Controls.Primitives.ScrollBar) return true;
             source = source is Visual || source is System.Windows.Media.Media3D.Visual3D
                 ? VisualTreeHelper.GetParent(source)
                 : LogicalTreeHelper.GetParent(source);

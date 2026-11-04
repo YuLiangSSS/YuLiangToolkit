@@ -245,6 +245,9 @@
   `StartWheelInertia`，复用拖动惯性定时器；连续滚动（含 Shift 横滚、双页放大后 Shift 平移）会滑，双页默认翻页不滑。
   调试：`YLT_PDF_WHEEL_SIM=-120` 模拟滚一格；合成 `MouseWheelEventArgs` 的 `OriginalSource` 是 null，
   两个滚轮处理都改成 `(e.OriginalSource ?? e.Source)` 兜底才能走正常链路。
+- ⚠ 阅读区右侧快速滚动条（以及以后放进 `ViewportGrid` 的任何 ScrollBar）：`OnPreviewMouseDown` 的拖拽判断必须把
+  `ScrollBar` 当成可点击控件（`IsOnClickableControl`），否则 Preview 会先 `e.Handled = true` 并捕获鼠标 ——
+  滚动条永远点不到，一点就变成拖画面（用户报过）。新增可点击控件类型时同步加进这个判断。
 - ⚠ 文字层在后台 `Task.Run` 提取：切 PDF / 关页面要 `Cancel` 旧的 `CancellationTokenSource` 并比对 `_textLayerCts`，
   否则旧文档的结果可能覆盖新文档；完成回 UI 一律走 `Ui(...)`。
 - 文件关联接线：`App.xaml.cs` 启动参数 + 第二实例 `HandleSecondInstance` 两处都要认 `.pdf`，
