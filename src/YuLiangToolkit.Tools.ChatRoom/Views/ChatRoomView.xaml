@@ -439,11 +439,13 @@
                                                    Stretch="Uniform" StretchDirection="DownOnly" />
                                         </Border>
 
-                                        <!-- 音频：点一下播 -->
+                                        <!-- 音频：点一下播。
+                                             ⚠ 这里只认「普通音频」HasPlainAudio：语音消息（按住说话）也走 Audio 类型，
+                                             但它有自己的气泡，不能再被这块当成普通音频卡片重复显示一次。 -->
                                         <Border CornerRadius="6" Margin="0,2,0,2" Padding="8"
                                                 Background="{DynamicResource InputBackgroundBrush}"
                                                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                                                Visibility="{Binding HasAudio, Converter={StaticResource BoolToVis}}">
+                                                Visibility="{Binding HasPlainAudio, Converter={StaticResource BoolToVis}}">
                                             <StackPanel>
                                                 <TextBlock Text="{Binding FileSummary}" FontSize="10.5"
                                                            Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,5" />
@@ -456,6 +458,35 @@
                                                             Click="OnOpenFileButtonClick" Tag="{Binding LocalPath}" />
                                                 </StackPanel>
                                                 <!-- MediaElement 在 LoadedBehavior=Manual 时不会自己响，靠上面那个按钮 Play() -->
+                                                <MediaElement Source="{Binding LocalPath}" LoadedBehavior="Manual"
+                                                              UnloadedBehavior="Manual" Volume="0.8" Height="1" Opacity="0" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- 语音消息（「按住说话」录出来的 MP3）：▶ 播 / 暂停 + 秒数 / 大小 + 打开。
+                                             隐藏的 MediaElement 和普通音频那块一样是 Manual，不靠它自己响，点按钮才 Play()。
+                                             ⚠ 语音消息不会同时走上面的普通音频块（那边绑 HasPlainAudio）和下面的「其它文件」块
+                                             （那边 HasAudio 仍是 true 会藏起来），所以一条语音只出现这一个气泡。 -->
+                                        <Border CornerRadius="6" Margin="0,2,0,2" Padding="8"
+                                                Background="{DynamicResource InputBackgroundBrush}"
+                                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                                HorizontalAlignment="Left"
+                                                Visibility="{Binding IsVoiceMessage, Converter={StaticResource BoolToVis}}">
+                                            <StackPanel>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Button Content="▶ 播放 / 暂停" Padding="10,3" FontSize="11"
+                                                            Style="{StaticResource SecondaryButtonStyle}"
+                                                            Click="OnToggleMediaClick" />
+                                                    <TextBlock Text="{Binding VoiceSummary}" FontSize="11" Margin="10,0,0,0"
+                                                               VerticalAlignment="Center" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                                               ToolTip="{Binding VoiceDurationText}" />
+                                                    <Button Content="打开" Padding="10,3" FontSize="11" Margin="10,0,0,0"
+                                                            Style="{StaticResource SecondaryButtonStyle}"
+                                                            VerticalAlignment="Center"
+                                                            Click="OnOpenFileButtonClick" Tag="{Binding LocalPath}" />
+                                                </StackPanel>
+                                                <!-- 与上面普通音频同一套：LoadedBehavior=Manual 不会自己响，靠按钮 Play() / Pause() -->
                                                 <MediaElement Source="{Binding LocalPath}" LoadedBehavior="Manual"
                                                               UnloadedBehavior="Manual" Volume="0.8" Height="1" Opacity="0" />
                                             </StackPanel>
@@ -713,6 +744,47 @@
                                         Command="{Binding AttachCommand}" ToolTip="图片 / 音频 / 视频 / 压缩包 / 任意文件，可多选" />
                                 <Button Content="发送图片…" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
                                         Command="{Binding SendImageCommand}" ToolTip="{Binding ImageQualityHint}" />
+                                <!-- 语音消息：按住说话 → 松开自动发送 → Esc / 丢鼠标捕获取消。
+                                     文案、可用性、提示全在 ViewModel（VoiceButtonText / CanRecordVoice / VoiceRecordingHint），
+                                     这里只负责鼠标按下 / 松开 / 丢捕获和录音中的红底外观。
+                                     ⚠ 红底为什么不只是「局部 Style 里设 Background」：
+                                     SecondaryButtonStyle 的模板用 IsMouseOver / IsPressed 触发器直接改内层 Bd 的 Background，
+                                     模板触发器的优先级高于 Button.Background —— 按住鼠标（录音全程）时按钮会一直是按下的灰底，
+                                     光设 Background 根本看不到红。所以录音态再换一块红底模板。 -->
+                                <Button x:Name="VoiceRecordButton" Content="{Binding VoiceButtonText}"
+                                        Margin="8,0,0,0"
+                                        IsEnabled="{Binding CanRecordVoice}"
+                                        PreviewMouseLeftButtonDown="OnVoiceRecordDown"
+                                        PreviewMouseLeftButtonUp="OnVoiceRecordUp"
+                                        LostMouseCapture="OnVoiceRecordLostCapture"
+                                        ToolTip="按住说话：松开自动发送；Esc 取消（最长 2 分钟）">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+                                            <Style.Triggers>
+                                                <!-- 录音中：红底白字（局部样式，只影响这个按钮，不动全局主题 token） -->
+                                                <DataTrigger Binding="{Binding IsRecordingVoice}" Value="True">
+                                                    <Setter Property="Background" Value="#FFB3261E" />
+                                                    <Setter Property="Foreground" Value="White" />
+                                                    <Setter Property="BorderBrush" Value="#FFB3261E" />
+                                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border Background="#FFB3261E" BorderBrush="#FFB3261E"
+                                                                        BorderThickness="1"
+                                                                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                                                                        Padding="{TemplateBinding Padding}">
+                                                                    <ContentPresenter HorizontalAlignment="Center"
+                                                                                      VerticalAlignment="Center" />
+                                                                </Border>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
                             </StackPanel>
                             <TextBox Grid.Column="1" Height="32" Margin="12,0,0,0" Style="{StaticResource TextBoxStyle}"
                                      Text="{Binding TransferNote, UpdateSourceTrigger=PropertyChanged}"
@@ -722,8 +794,13 @@
                                        Visibility="{Binding TransferNote, Converter={StaticResource EmptyToVis}}" />
                         </Grid>
 
+                        <!-- 录音提示：只在录音中显示（松开发送 · Esc 取消 · 最长 2 分钟），不录音时整行不占位置 -->
+                        <TextBlock Text="{Binding VoiceRecordingHint}" FontSize="10.5" Margin="0,6,0,0" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource DangerBrush}"
+                                   Visibility="{Binding IsRecordingVoice, Converter={StaticResource BoolToVis}}" />
+
                         <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0" TextWrapping="Wrap"
-                                   Text="收 / 发都在同一个列表里：自己发的靠右（蓝底），对方发的靠左。图片自动压一份预览（不额外占流量），双击预览图打开原图。" />
+                                   Text="收 / 发都在同一个列表里：自己发的靠右（蓝底），对方发的靠左。图片自动压一份预览（不额外占流量），双击预览图打开原图；「🎙 按住说话」按住录音、松开自动发出语音消息。" />
                     </StackPanel>
                 </Grid>
             </Border>

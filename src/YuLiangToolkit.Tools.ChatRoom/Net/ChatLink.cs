@@ -116,6 +116,9 @@ public sealed class ChatLink : IAsyncDisposable
     /// </summary>
     public event Action<ChatLink, string, CallMediaKind, byte[], CallMediaInfo>? CallMediaReceived;
 
+    /// <summary>收到一条语音消息（<c>voice</c>）：元数据 + 整段 MP3 字节。载荷已经读干净。</summary>
+    public event Action<ChatLink, VoiceInfo, byte[]>? VoiceReceived;
+
     /// <summary>连接断开了（<paramref name="error"/> 为空表示正常关闭）。</summary>
     public event Action<ChatLink, string?>? Closed;
 
@@ -231,6 +234,15 @@ public sealed class ChatLink : IAsyncDisposable
                         break;
                     }
 
+                    case ChatProtocol.Kinds.Voice:
+                    {
+                        // 语音消息：整段 MP3 是载荷，元数据（秒数 / 文件名 / 成员）在 extra 里
+                        var voiceInfo = header.ExtraAs<VoiceInfo>();
+                        var mp3 = await ReadPayloadAsync(header, ct).ConfigureAwait(false);
+                        if (voiceInfo is not null) VoiceReceived?.Invoke(this, voiceInfo, mp3);
+                        break;
+                    }
+
                     case ChatProtocol.Kinds.Bye:
                         break;
 
@@ -333,6 +345,10 @@ public sealed class ChatLink : IAsyncDisposable
     /// <summary>发成员名单。</summary>
     public Task SendMembersAsync(MemberListInfo members, CancellationToken ct = default)
         => SendAsync(ChatFrameHeader.New(ChatProtocol.Kinds.Members, PeerId, members), ct);
+
+    /// <summary>发一条语音消息（整段 MP3 在载荷里；帧大小受 <see cref="ChatProtocol.MaxFrameBytes"/> 限制）。</summary>
+    public Task SendVoiceAsync(VoiceInfo info, ReadOnlyMemory<byte> mp3, CancellationToken ct = default)
+        => SendAsync(ChatFrameHeader.New(ChatProtocol.Kinds.Voice, info.Member?.MemberId, info), ct, mp3);
 
     // ---------------------------------------------------------------- 通话（媒体连接）
 

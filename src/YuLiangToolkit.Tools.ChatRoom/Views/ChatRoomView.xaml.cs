@@ -19,10 +19,36 @@ public partial class ChatRoomView : UserControl
     /// <summary>界面刚开始那几帧不认「用户往上翻了」——启动过程本身会发一串 ScrollChanged，</summary>
     private long _autoScrollArmedAt;
 
+    /// <summary>录音时是否真的抓住了鼠标（抓住后指针移出按钮再松开也能收到 MouseUp；没抓住就靠 Esc 兜底）。</summary>
+    private bool _voiceMouseCaptured;
+
+    /// <summary>
+    /// 「正在主动松开鼠标捕获」：松开鼠标本身也会触发 LostMouseCapture，
+    /// 靠这个标志把它和「录音中途被抢走捕获（窗口失焦等）」区分开 ——
+    /// 不然松手会先被 LostMouseCapture 当成取消，Stop 就发不出去了。
+    /// </summary>
+    private bool _voiceReleasing;
+
+    /// <summary>
+    /// 这一次「按住」是否还处于按下状态（按下 → true，松开 / Esc 取消 / 丢捕获后 → false）。
+    /// 用途：Esc 取消后鼠标可能还停在按钮上、松开时仍会来一次 PreviewMouseLeftButtonUp，
+    /// 没这个标志会把已取消的录音再 Stop 一遍。
+    /// </summary>
+    private bool _voicePressed;
+
+    /// <summary>
+    /// 「按住」次数（每次按下 +1）。极快地点一下时 Start 还在开麦克风，要等它真正开始再补一次 Stop；
+    /// 用这个代号保证「等开始再停」的旧任务不会误伤下一次按住。
+    /// </summary>
+    private int _voicePressGeneration;
+
     public ChatRoomView()
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        // 录音中按 Esc = 取消：只挂在本视图的 PreviewKeyDown 上，不动外层窗口。
+        // ⚠ 挂在这里而不是 Loaded：外壳会缓存视图、Loaded 可能触发多次，构造函数每个实例只跑一次，天然防重复挂。
+        PreviewKeyDown += OnVoicePreviewKeyDown;
         Loaded += (_, _) =>
         {
             ApplyWindowSizeOverride();
@@ -234,6 +260,117 @@ public partial class ChatRoomView : UserControl
             Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
         }
         catch { /* 打不开就算了，界面上还有「打开所在文件夹」 */ }
+    }
+
+    // ---------------------------------------------------------------- 语音消息（按住说话）
+
+    /// <summary>
+    /// 按住「🎙 按住说话」：先抓住鼠标（保证指针移出按钮后松开也还能收到 MouseUp），再让 ViewModel 开始录音。
+    /// <para>不 await 录音任务：事件处理器要保持轻，麦克风启动期间界面照常刷新（按钮文案由绑定自己更新）。</para>
+    /// </summary>
+    private void OnVoiceRecordDown(object sender, MouseButtonEventArgs e)
+    {
+        if (DataContext is not ChatRoomViewModel vm) return;
+        if (e.ChangedButton != MouseButton.Left) return;
+
+        _voiceReleasing = false;
+        _voicePressed = true;
+        _voicePressGeneration++;
+        _voiceMouseCaptured = VoiceRecordButton.CaptureMouse();
+        _ = vm.StartVoiceRecordingAsync();
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// 松开「🎙 按住说话」：先松开鼠标捕获（打上「主动松开」标记），再让 ViewModel 停下并自动发送。
+    /// </summary>
+    private void OnVoiceRecordUp(object sender, MouseButtonEventArgs e)
+    {
+        if (DataContext is not ChatRoomViewModel vm) return;
+        if (e.ChangedButton != MouseButton.Left) return;
+        // Esc 取消 / 丢捕获取消之后，鼠标还停在按钮上时松开仍会走到这里 —— 已经取消过了，别再 Stop 一次
+        if (!_voicePressed) return;
+        _voicePressed = false;
+
+        _voiceReleasing = true;
+        try
+        {
+            if (VoiceRecordButton.IsMouseCaptured) VoiceRecordButton.ReleaseMouseCapture();
+            _voiceMouseCaptured = false;
+            if (vm.IsRecordingVoice)
+            {
+                // 正常情况：录音已经起来了，立刻停（Stop 的同步部分就会把 IsRecordingVoice 置 false，不卡界面）
+                _ = vm.StopVoiceRecordingAsync(send: true);
+            }
+            else
+            {
+                // 极快地点一下：StartVoiceRecordingAsync 可能还停在「打开麦克风」那一步，这时 Stop 会因为
+                // IsRecordingVoice 仍是 false 直接落空 —— 等它真正开始再补一次，否则录音会一直开着（见 helper 注释）。
+                _ = StopVoiceWhenStartedAsync(vm, _voicePressGeneration);
+            }
+        }
+        finally
+        {
+            _voiceReleasing = false;
+        }
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// 「按下后很快又松开」的补偿：<see cref="ChatRoomViewModel.StartVoiceRecordingAsync"/> 打开麦克风是异步的，
+    /// 松开时 <see cref="ChatRoomViewModel.IsRecordingVoice"/> 可能还是 false，直接 Stop 会落空、录音随后才真正开始
+    /// 并一直录下去。这里等录音真正开始（最多约 5 秒，正常设备 &lt;1 秒）再停 + 自动发送。
+    /// <para>用 <paramref name="generation"/> 认领这一次按住：等待期间用户又按了一次（代号变了）就作废，别停错录的那条。</para>
+    /// </summary>
+    private async Task StopVoiceWhenStartedAsync(ChatRoomViewModel vm, int generation)
+    {
+        for (var i = 0; i < 100; i++)
+        {
+            await Task.Delay(50);
+            if (generation != _voicePressGeneration) return;
+            if (!vm.IsRecordingVoice) continue;
+            await vm.StopVoiceRecordingAsync(send: true);
+            return;
+        }
+    }
+
+    /// <summary>
+    /// 录音中丢了鼠标捕获（窗口失焦、系统弹窗抢焦点、别的控件抢捕获）→ 取消这条语音，不发半截录音。
+    /// <para>⚠ 松开鼠标本身也会走到这里：<see cref="_voiceReleasing"/> 为 true 时直接返回，
+    /// 否则会「先取消、再 Stop」，刚录好的语音就发不出去了。</para>
+    /// </summary>
+    private void OnVoiceRecordLostCapture(object sender, MouseEventArgs e)
+    {
+        var hadCapture = _voiceMouseCaptured;
+        _voiceMouseCaptured = false;
+        if (!hadCapture || _voiceReleasing) return;
+        if (DataContext is ChatRoomViewModel { IsRecordingVoice: true } vm)
+        {
+            _voicePressed = false;
+            vm.CancelVoiceRecording();
+        }
+    }
+
+    /// <summary>录音中按 Esc = 取消（不发送）。平时不拦 Esc，外层窗口 / 工具该干嘛干嘛。</summary>
+    private void OnVoicePreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape) return;
+        if (DataContext is not ChatRoomViewModel { IsRecordingVoice: true } vm) return;
+
+        // 先摘掉鼠标捕获再取消，免得 LostMouseCapture 又跑一遍取消逻辑
+        _voicePressed = false;
+        _voiceReleasing = true;
+        try
+        {
+            if (VoiceRecordButton.IsMouseCaptured) VoiceRecordButton.ReleaseMouseCapture();
+            _voiceMouseCaptured = false;
+        }
+        finally
+        {
+            _voiceReleasing = false;
+        }
+        vm.CancelVoiceRecording();
+        e.Handled = true;
     }
 
     // ---------------------------------------------------------------- 可视树小工具

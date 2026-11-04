@@ -137,6 +137,24 @@ public sealed class CallMediaInfo
     public long TimestampMs { get; set; }
 }
 
+/// <summary>
+/// 语音消息（<c>voice</c>）的元数据：整段 MP3 放在裸载荷里，这里只放「谁、什么时候、多少秒」。
+/// <para>接收端靠 <see cref="DurationSeconds"/> 在气泡上显示秒数、写进聊天记录，历史回看也用它。</para>
+/// </summary>
+public sealed class VoiceInfo
+{
+    public string MessageId { get; set; } = "";
+    public DateTime SentAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime SentLocal { get; set; } = DateTime.Now;
+    public ChatMember? Member { get; set; }
+
+    /// <summary>录音时长（秒，至少 1；界面上显示成 <c>5″</c>）。</summary>
+    public int DurationSeconds { get; set; }
+
+    /// <summary>建议的文件名（接收端落盘用，重名会自动加序号）。</summary>
+    public string FileName { get; set; } = "";
+}
+
 /// <summary>成员名单（<c>members</c>）载荷。</summary>
 public sealed class MemberListInfo
 {

@@ -411,7 +411,7 @@ public sealed class ChatSessionStore
     {
         public string MessageId { get; set; } = "";
 
-        /// <summary><c>text</c> / <c>system</c> / <c>file</c>。</summary>
+        /// <summary><c>text</c> / <c>system</c> / <c>file</c> / <c>voice</c>（语音消息）。</summary>
         public string Kind { get; set; } = "text";
 
         /// <summary>发送方显示名（本机自己产生的写"本机"）。</summary>
@@ -441,5 +441,8 @@ public sealed class ChatSessionStore
 
         /// <summary>文件的 CRC32（十六进制，对账用）。</summary>
         public string? Crc32 { get; set; }
+
+        /// <summary>语音消息的时长（秒；非语音消息为 0）。回看时气泡上显示「5″」靠它。</summary>
+        public int DurationSeconds { get; set; }
     }
 }

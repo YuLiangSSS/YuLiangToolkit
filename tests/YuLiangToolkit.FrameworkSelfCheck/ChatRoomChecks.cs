@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using YuLiangToolkit.Tools.ChatRoom;
 using YuLiangToolkit.Tools.ChatRoom.Call;
+using YuLiangToolkit.Tools.ChatRoom.Media;
 using YuLiangToolkit.Tools.ChatRoom.Net;
 using YuLiangToolkit.Tools.ChatRoom.Protocol;
 using YuLiangToolkit.Tools.ChatRoom.Sessions;
@@ -16,7 +17,9 @@ namespace YuLiangToolkit.FrameworkSelfCheck;
 
 /// <summary>
 /// 「联机聊天室」自检：协议帧 / CRC / 单次流量上限 / 会话文件夹命名 / 聊天记录 /
-/// <b>真的在 127.0.0.1 上开一局主机 + 客户端聊一轮</b>（双向文字与文件）。
+/// <b>真的在 127.0.0.1 上开一局主机 + 客户端聊一轮</b>（双向文字与文件）/
+/// 群通话的编解码与回环（假设备）/ <b>语音消息</b>（WAV 头、MP3 转码冒烟、协议与气泡模型、
+/// 主机 + 客户端用假 MP3 文件互发并落盘到会话 <c>audio\</c>）。
 ///
 /// <para>网络那一组走回环连接，不碰外网；会话文件夹写到 <c>YLT_CHAT_HOME</c> 指定的临时目录
 /// （<see cref="Run"/> 里自己设，跑完就撤），所以不会污染真实数据。</para>
@@ -50,7 +53,11 @@ public static class ChatRoomChecks
             CheckLoopback(check, plain, scratch);
             CheckCallCodecs(check, plain);
             CheckCallProtocol(check, plain);
+            CheckVoiceProtocol(check, plain);
+            CheckVoiceMessageItem(check, plain, scratch);
+            CheckVoiceWavAndMp3(check, plain, scratch);
             CheckCallLoopback(check, plain);
+            CheckVoiceLoopback(check, plain, scratch);
         }
         finally
         {
@@ -1006,6 +1013,453 @@ public static class ChatRoomChecks
         return header?.Extra is { } extra
             ? JsonSerializer.Deserialize<T>(extra.GetRawText(), ChatProtocol.JsonOptions)
             : null;
+    }
+
+    // ---------------------------------------------------------------- 语音消息：协议 / 消息模型 / WAV / MP3
+
+    /// <summary>
+    /// 语音消息的协议增量：<c>Kinds.Voice == "voice"</c>、协议摘要里能看到它，
+    /// 以及 <see cref="VoiceInfo"/> 经 <see cref="ChatProtocol.BuildFrame"/> 拼帧再解析能原样读回
+    /// （秒数 / 文件名 / 成员 / 整段 MP3 载荷都不丢）。
+    /// </summary>
+    private static void CheckVoiceProtocol(Action<string, bool, string> check, Action<string, bool> plain)
+    {
+        plain("语音消息包类型 Kinds.Voice = \"voice\"，协议摘要里能看到 voice",
+            ChatProtocol.Kinds.Voice == "voice"
+            && ChatProtocol.Describe().Contains("voice", StringComparison.Ordinal));
+
+        var mp3 = Enumerable.Range(0, 2048).Select(i => (byte)(i * 37 % 251)).ToArray();
+        var info = new VoiceInfo
+        {
+            MessageId = "voice-自检-1",
+            SentAtUtc = new DateTime(2025, 1, 3, 6, 5, 9, DateTimeKind.Utc),
+            SentLocal = new DateTime(2025, 1, 3, 14, 5, 9),
+            DurationSeconds = 7,
+            FileName = "语音消息-20250103-140509.mp3",
+            Member = new ChatMember
+            {
+                MemberId = "m-1", Name = "小张", Emoji = "🐟", Role = "Host", Endpoint = "127.0.0.1:5200",
+            },
+        };
+        var frame = ChatProtocol.BuildFrame(ChatFrameHeader.New(ChatProtocol.Kinds.Voice, "m-1", info), mp3);
+        var headerLength = BitConverter.ToInt32(frame, 0);
+        var payload = frame.AsSpan(ChatProtocol.LengthPrefixBytes + headerLength).ToArray();
+        var back = ParseCallExtra<VoiceInfo>(frame);
+        check("voice 包经 BuildFrame → JSON 反序列化往返：秒数 / 文件名 / 成员 / 整段 MP3 载荷都不丢",
+            back is { MessageId: "voice-自检-1", DurationSeconds: 7, FileName: "语音消息-20250103-140509.mp3" }
+            && back.Member is { MemberId: "m-1", Name: "小张", Emoji: "🐟", Role: "Host" }
+            && back.SentAtUtc == info.SentAtUtc && back.SentLocal == info.SentLocal
+            && payload.SequenceEqual(mp3),
+            back is null
+                ? "(解析失败)"
+                : $"秒数 {back.DurationSeconds}，文件名 {back.FileName}，载荷 {payload.Length} 字节");
+    }
+
+    /// <summary>
+    /// 消息模型：聊天记录里的 <c>Kind="voice"</c> 要还原成「语音气泡」（秒数 / <c>7″</c> / 不再走普通音频卡片），
+    /// 普通音频文件记录仍然显示成普通音频。历史回看时完整路径是之后补上的，所以断言前要像 ViewModel 那样补 <see cref="ChatMessageItem.LocalPath"/>。
+    /// </summary>
+    private static void CheckVoiceMessageItem(Action<string, bool, string> check, Action<string, bool> plain, string scratch)
+    {
+        Directory.CreateDirectory(scratch);
+        var audioPath = Path.Combine(scratch, "模型-语音.mp3");
+        WritePseudoFile(audioPath, 3000);
+
+        var voiceEntry = new ChatSessionStore.ChatLogEntry
+        {
+            MessageId = "v-1",
+            Kind = "voice",
+            Sender = "小张",
+            SentLocal = new DateTime(2025, 1, 3, 14, 5, 9),
+            FileName = "语音消息-20250103-140509.mp3",
+            FileSize = 3000,
+            ContentKind = "audio",
+            RelativePath = Path.Combine("audio", "语音消息-20250103-140509.mp3"),
+            Direction = "in",
+            DurationSeconds = 7,
+        };
+        var voice = ChatMessageItem.FromLogEntry(voiceEntry, "我");
+        voice.LocalPath = audioPath;   // 历史回看时由 ViewModel 补上完整路径
+        check("ChatMessageItem：Kind=voice 还原成语音气泡（7 秒 / 7″ / 不再显示普通音频卡片）",
+            voice.IsVoiceMessage && voice.VoiceDurationSeconds == 7 && voice.VoiceDurationText == "7″"
+            && voice.VoiceSummary.Contains("7″") && !voice.HasPlainAudio
+            && !voice.IsFile,   // 语音不生成 FileProgress，避免界面再叠一张普通文件卡片
+            $"时长 {voice.VoiceDurationSeconds}s，文本 {voice.VoiceDurationText}，"
+            + $"普通音频={voice.HasPlainAudio}，普通文件={voice.IsFile}");
+
+        var fileEntry = new ChatSessionStore.ChatLogEntry
+        {
+            MessageId = "f-1",
+            Kind = "file",
+            Sender = "小张",
+            SentLocal = new DateTime(2025, 1, 3, 14, 6, 0),
+            FileName = "录音.mp3",
+            FileSize = 3000,
+            ContentKind = "audio",
+            RelativePath = Path.Combine("audio", "录音.mp3"),
+            Direction = "in",
+        };
+        var plainAudio = ChatMessageItem.FromLogEntry(fileEntry, "我");
+        plainAudio.LocalPath = audioPath;
+        check("ChatMessageItem：普通音频文件仍是普通音频（HasPlainAudio=true、IsVoiceMessage=false）",
+            plainAudio.HasPlainAudio && !plainAudio.IsVoiceMessage && plainAudio.IsFile
+            && plainAudio.VoiceDurationSeconds == 0,
+            $"HasPlainAudio={plainAudio.HasPlainAudio}，IsVoice={plainAudio.IsVoiceMessage}，"
+            + $"VoiceDurationText={plainAudio.VoiceDurationText}，IsFile={plainAudio.IsFile}");
+
+        // 老记录 / 手改记录里可能没有 durationSeconds：不能显示成 0″，按至少 1 秒兜底
+        var legacyVoice = ChatMessageItem.FromLogEntry(new ChatSessionStore.ChatLogEntry
+        {
+            MessageId = "v-0", Kind = "voice", Sender = "小张", FileName = "语音消息-旧格式.mp3",
+            ContentKind = "audio", Direction = "in", DurationSeconds = 0,
+        }, "我");
+        plain("语音记录缺 durationSeconds 时兜底显示 1″（老记录不崩、不出现 0″）",
+            legacyVoice.IsVoiceMessage && legacyVoice.VoiceDurationText == "1″");
+    }
+
+    /// <summary>读 WAV 头（独立解析一遍，别拿被测代码自己验自己）。</summary>
+    private readonly record struct WavHeader(
+        bool Ok, long RiffSize, int AudioFormat, int Channels, int SampleRate, int BitsPerSample,
+        long DataLength, long FileLength);
+
+    private static WavHeader ParseWav(byte[] bytes)
+    {
+        if (bytes.Length < 12
+            || bytes[0] != (byte)'R' || bytes[1] != (byte)'I' || bytes[2] != (byte)'F' || bytes[3] != (byte)'F'
+            || bytes[8] != (byte)'W' || bytes[9] != (byte)'A' || bytes[10] != (byte)'V' || bytes[11] != (byte)'E')
+            return new WavHeader(false, 0, 0, 0, 0, 0, 0, bytes.Length);
+
+        var riffSize = BitConverter.ToUInt32(bytes, 4);
+        var audioFormat = 0;
+        var channels = 0;
+        var sampleRate = 0;
+        var bitsPerSample = 0;
+        var hasFormat = false;
+        var hasData = false;
+        long dataLength = 0;
+
+        var offset = 12;
+        while (offset + 8 <= bytes.Length)
+        {
+            var id = Encoding.ASCII.GetString(bytes, (int)offset, 4);
+            var size = BitConverter.ToInt32(bytes, (int)offset + 4);
+            if (size < 0) break;
+            var start = offset + 8;
+            if (id == "fmt " && size >= 16 && start + 16 <= bytes.Length)
+            {
+                audioFormat = BitConverter.ToUInt16(bytes, (int)start);
+                channels = BitConverter.ToUInt16(bytes, (int)start + 2);
+                sampleRate = BitConverter.ToInt32(bytes, (int)start + 4);
+                bitsPerSample = BitConverter.ToUInt16(bytes, (int)start + 14);
+                hasFormat = true;
+            }
+            else if (id == "data")
+            {
+                dataLength = size;
+                hasData = true;
+            }
+            offset = start + size + (size & 1);
+        }
+
+        return new WavHeader(hasFormat && hasData, riffSize, audioFormat, channels, sampleRate, bitsPerSample,
+            dataLength, bytes.Length);
+    }
+
+    /// <summary>
+    /// 语音消息的落盘轮子：<see cref="WavWriter"/> 写出的 WAV 头是否规范（0 样本也要合法），
+    /// 以及 <see cref="Mp3Encoder"/> 的转码冒烟。
+    ///
+    /// <para>⚠ MP3 转码是 <b>fail-open</b>：Windows N 版没装「媒体功能包」时系统没有 MP3 编码器，
+    /// 这时记 PASS 并在 detail 里写明「跳过」—— 环境缺编码器不是代码 bug，也不能因此让整组变红。</para>
+    /// </summary>
+    private static void CheckVoiceWavAndMp3(Action<string, bool, string> check, Action<string, bool> plain, string scratch)
+    {
+        var dir = Path.Combine(scratch, "voice-check");
+        Directory.CreateDirectory(dir);
+        const int sampleRate = 16000;
+        const int sampleCount = sampleRate / 2;                // 0.5 秒
+
+        var samples = new float[sampleCount];
+        for (var i = 0; i < samples.Length; i++)
+            samples[i] = 0.5f * MathF.Sin(2 * MathF.PI * 440f * i / sampleRate);
+
+        var wavPath = Path.Combine(dir, "自检-语音.wav");
+        long writtenSamples;
+        TimeSpan writtenDuration;
+        using (var writer = new WavWriter(wavPath, sampleRate))
+        {
+            writer.Write(samples);
+            writer.Finish();
+            writtenSamples = writer.SampleCount;
+            writtenDuration = writer.Duration;
+        }
+
+        var wav = ParseWav(File.ReadAllBytes(wavPath));
+        check("WavWriter：0.5 秒 16 kHz 正弦写出的 WAV 是 PCM16 单声道（RIFF / WAVE / fmt / data 都在）",
+            wav.Ok && wav.AudioFormat == 1 && wav.Channels == 1 && wav.SampleRate == 16000 && wav.BitsPerSample == 16,
+            wav.Ok
+                ? $"格式 {wav.AudioFormat} / {wav.Channels} 声道 / {wav.SampleRate} Hz / {wav.BitsPerSample} 位"
+                : "WAV 头解析失败（RIFF / WAVE / fmt / data 不全）");
+
+        check("WavWriter：data 长度 = 样本数 × 2，RIFF 长度 = 文件长度 - 8",
+            wav.Ok && wav.DataLength == writtenSamples * 2 && wav.RiffSize == wav.FileLength - 8,
+            $"data={wav.DataLength}（期望 {writtenSamples * 2}），"
+            + $"RIFF={wav.RiffSize}（期望 {wav.FileLength - 8}，文件 {wav.FileLength} 字节）");
+
+        check("WavWriter：Duration ≈ 0.5 秒、SampleCount = 8000",
+            writtenSamples == sampleCount && Math.Abs(writtenDuration.TotalMilliseconds - 500) < 1,
+            $"{writtenSamples} 个采样，{writtenDuration.TotalMilliseconds:0.###} ms");
+
+        // 空 WAV（0 样本）：44 字节合法头，data 长度 0 —— 录太短被取消时也会走到这条路径
+        var emptyPath = Path.Combine(dir, "自检-空语音.wav");
+        long emptySamples;
+        TimeSpan emptyDuration;
+        using (var writer = new WavWriter(emptyPath, sampleRate))
+        {
+            writer.Finish();
+            emptySamples = writer.SampleCount;
+            emptyDuration = writer.Duration;
+        }
+        var empty = ParseWav(File.ReadAllBytes(emptyPath));
+        check("WavWriter：0 样本的空 WAV 也合法（data 长度 0、时长 0、文件仍是完整头）",
+            emptySamples == 0 && emptyDuration == TimeSpan.Zero && empty.Ok && empty.DataLength == 0
+            && empty.RiffSize == empty.FileLength - 8,
+            $"{empty.FileLength} 字节，data={empty.DataLength}，RIFF={empty.RiffSize}，时长 {emptyDuration.TotalMilliseconds:0.###} ms");
+
+        // ---- MP3 转码冒烟：WinRT MediaTranscoder，无编码器时 fail-open 跳过 ----
+        var mp3Path = Path.Combine(dir, "自检-语音.mp3");
+        (bool Ok, string Error) result;
+        try
+        {
+            var transcode = Task.Run(() => Mp3Encoder.TranscodeWavToMp3Async(wavPath, mp3Path));
+            if (!transcode.Wait(TimeSpan.FromSeconds(90)))
+            {
+                check("MP3 转码冒烟（0.5 秒 WAV → MP3）", false, "90 秒没转完（可能卡在 WinRT 转码器上）");
+                return;
+            }
+            result = transcode.Result;
+        }
+        catch (Exception ex)
+        {
+            check("MP3 转码冒烟（0.5 秒 WAV → MP3）", false, $"{ex.GetType().Name}: {ex.Message}");
+            return;
+        }
+
+        if (!result.Ok)
+        {
+            // fail-open：Windows N 版没装「媒体功能包」= 系统没有 MP3 编码器，这不算代码错
+            check("MP3 转码冒烟（跳过：本机没有 MP3 编码器）", true,
+                $"跳过：本机没有 MP3 编码器（{result.Error}）");
+            return;
+        }
+
+        var mp3Bytes = File.ReadAllBytes(mp3Path);
+        var mp3HeaderOk = mp3Bytes.Length >= 4
+            && (mp3Bytes[0] == (byte)'I' && mp3Bytes[1] == (byte)'D' && mp3Bytes[2] == (byte)'3'
+                || mp3Bytes[0] == 0xFF && (mp3Bytes[1] & 0xE0) == 0xE0);
+        check("MP3 转码冒烟：0.5 秒 WAV → MP3（> 1KB，开头是 ID3 或 MPEG 帧同步）",
+            mp3Bytes.Length > 1024 && mp3HeaderOk,
+            $"{mp3Bytes.Length} 字节，开头 {BitConverter.ToString(mp3Bytes.AsSpan(0, Math.Min(4, mp3Bytes.Length)).ToArray())}");
+    }
+
+    // ---------------------------------------------------------------- 语音消息：回环真发（主机 + 客户端）
+
+    /// <summary>
+    /// 在 127.0.0.1 上真开一局聊天室，两端用**假 MP3 文件**（随机字节）互发语音消息，验证：
+    /// 发送端 / 接收端都显示成语音气泡、会话 <c>audio\</c> 目录各落一份且字节一致、
+    /// 聊天记录带秒数与方向、语音不会再重复成普通音频消息。
+    ///
+    /// <para>⚠ 只用文件路径 + 会话 API，<b>不碰真麦克风</b>：录音那层（<c>VoiceRecorder</c>）需要设备，
+    /// 在这里开麦在无设备机器上会挂；真正的录音留给人工冒烟 / 真机探针。</para>
+    /// </summary>
+    private static void CheckVoiceLoopback(Action<string, bool, string> check, Action<string, bool> plain, string scratch)
+    {
+        Exception? failure = null;
+        var report = new List<string>();
+
+        var worker = Task.Run(async () =>
+        {
+            try { await RunVoiceLoopbackAsync(check, report, scratch).ConfigureAwait(false); }
+            catch (Exception ex) { failure = ex; }
+        });
+
+        if (!worker.Wait(TimeSpan.FromSeconds(120)))
+            failure = new TimeoutException("语音消息回环自检 120 秒没跑完（多半卡在连接或语音发送上）");
+
+        check("语音消息回环整体跑完没有抛异常", failure is null,
+            failure is null ? string.Join("；", report) : $"{failure.GetType().Name}: {failure.Message}");
+    }
+
+    private static async Task RunVoiceLoopbackAsync(Action<string, bool, string> check, List<string> report, string scratch)
+    {
+        var port = FindFreePort();
+        var store = new ChatSessionStore(ChatRoomConfig.ToolId);
+
+        var host = new ChatRoomSession(ChatRoomConfig.ToolId, "语音主机", "🐟",
+            new TrafficMeter(0, TrafficQuotaScope.Off), store);
+        var client = new ChatRoomSession(ChatRoomConfig.ToolId, "语音客户端", "🐻",
+            new TrafficMeter(0, TrafficQuotaScope.Off), store);
+
+        var hostMessages = new ConcurrentBag<ChatRoomConnection.ChatMessageNotification>();
+        var clientMessages = new ConcurrentBag<ChatRoomConnection.ChatMessageNotification>();
+        var clientTexts = new ConcurrentBag<string>();
+        host.MessagePosted += message => hostMessages.Add(message);
+        client.MessagePosted += message =>
+        {
+            clientMessages.Add(message);
+            if (!message.IsSystem && !message.IsVoiceMessage && message.Text.Length > 0) clientTexts.Add(message.Text);
+        };
+
+        // 假 MP3：发送端不校验内容、接收端只落盘，所以随机字节 + .mp3 名字就够（别依赖真的 MP3 编码器）
+        var dir = Path.Combine(scratch, "voice-loopback");
+        Directory.CreateDirectory(dir);
+        var clientMp3 = Path.Combine(dir, "客户端-语音.mp3");
+        var hostMp3 = Path.Combine(dir, "主机-语音.mp3");
+        WritePseudoFile(clientMp3, 3 * 1024);
+        WritePseudoFile(hostMp3, 4 * 1024);
+        var clientBytes = File.ReadAllBytes(clientMp3);
+        var hostBytes = File.ReadAllBytes(hostMp3);
+
+        try
+        {
+            var startError = await host.StartHostAsync("127.0.0.1", port).ConfigureAwait(false);
+            var connectError = await client.ConnectAsync("127.0.0.1", port).ConfigureAwait(false);
+            check("语音消息回环：主机在 127.0.0.1 开房间、客户端连上",
+                startError.Length == 0 && connectError.Length == 0 && host.IsOnline && client.IsOnline,
+                $"{startError} {connectError}".Trim());
+            if (startError.Length != 0 || connectError.Length != 0) return;
+
+            await WaitAsync(() => host.ClientCount == 1, 8000).ConfigureAwait(false);
+            report.Add($"主机监听 {host.ListenText}；客户端会话 {client.SessionName}");
+            var hostAudioDir = Path.Combine(store.SessionDirectory(host.SessionName), "audio");
+
+            // ① 客户端发 3 秒语音：本端立刻显示成一条语音气泡（不是普通音频卡片）
+            await client.SendVoiceMessageAsync(clientMp3, 3).ConfigureAwait(false);
+            await WaitAsync(() => FindMessage(clientMessages,
+                m => m.IsVoiceMessage && m.IsMine && m.DurationSeconds == 3) is not null, 8000).ConfigureAwait(false);
+            var sentOnClient = clientMessages.Where(m => m.IsVoiceMessage && m.IsMine && m.DurationSeconds == 3).ToList();
+            check("客户端发出的语音在本端显示成语音气泡（IsMine / 秒数 3 / 只有一条）",
+                sentOnClient.Count == 1 && sentOnClient[0].MessageId.Length > 0 && sentOnClient[0].File is null,
+                $"本端语音气泡 {sentOnClient.Count} 条");
+
+            // ② 主机收到：MessagePosted 带 IsVoiceMessage / !IsMine / 秒数，且同 MessageId 只出现一次
+            await WaitAsync(() => FindMessage(hostMessages,
+                m => m.IsVoiceMessage && !m.IsMine && m.DurationSeconds == 3) is not null, 15000).ConfigureAwait(false);
+            var receivedAtHost = FindMessage(hostMessages, m => m.IsVoiceMessage && !m.IsMine && m.DurationSeconds == 3);
+            var receivedId = receivedAtHost?.MessageId ?? "";
+            var sameIdAtHost = receivedId.Length > 0
+                ? hostMessages.Where(m => m.MessageId == receivedId).ToList()
+                : new List<ChatRoomConnection.ChatMessageNotification>();
+            check("主机收到语音消息：MessagePosted 带 IsVoiceMessage / !IsMine / 秒数 3，且只出现一次（没有重复成普通音频）",
+                receivedAtHost is { } receivedHost
+                && !receivedHost.IsMine && receivedHost.DurationSeconds == 3 && receivedHost.IsVoiceMessage
+                && sameIdAtHost.Count == 1 && sameIdAtHost.All(m => m.IsVoiceMessage)
+                && !sameIdAtHost.Any(m => !m.IsVoiceMessage && m.ContentKind == ChatContentKind.Audio),
+                receivedAtHost is null
+                    ? "（主机没收到语音消息）"
+                    : $"{receivedId}：同 Id 消息 {sameIdAtHost.Count} 条，语音 {sameIdAtHost.Count(m => m.IsVoiceMessage)} 条");
+
+            // ③ 主机会话 audio\ 里有同名/唯一名的 MP3，字节与源文件完全一致
+            await WaitAsync(() => FindFileWithBytes(hostAudioDir, clientBytes) is not null, 15000).ConfigureAwait(false);
+            var receivedAtHostFile = FindFileWithBytes(hostAudioDir, clientBytes);
+            check("客户端发的语音在主机会话 audio\\ 目录落盘，内容与源文件逐字节一致",
+                receivedAtHostFile is not null,
+                receivedAtHostFile ?? $"（{hostAudioDir} 里没有字节匹配的 .mp3）");
+
+            // ④ 主机的聊天记录：Kind=voice / 秒数 3 / Direction=in / 相对路径在 audio\
+            await WaitAsync(() => store.ReadLog(host.SessionName).Any(
+                e => e.Kind == "voice" && e.Direction == "in" && e.DurationSeconds == 3), 10000).ConfigureAwait(false);
+            var hostVoiceLog = store.ReadLog(host.SessionName).FirstOrDefault(
+                e => e.Kind == "voice" && e.Direction == "in" && e.DurationSeconds == 3);
+            check("主机的聊天记录里语音条目：Kind=voice / 秒数 3 / Direction=in / 路径在 audio\\ / 文件大小对得上",
+                hostVoiceLog is not null && hostVoiceLog.MessageId == receivedId
+                && hostVoiceLog.FileSize == clientBytes.Length
+                && hostVoiceLog.RelativePath is { } hostRelative
+                && hostRelative.Contains("audio", StringComparison.OrdinalIgnoreCase),
+                hostVoiceLog is null
+                    ? "（没有 voice 记录）"
+                    : $"{hostVoiceLog.RelativePath}（{hostVoiceLog.FileSize} 字节）");
+
+            // ⑤ 客户端自己的记录：发出的那条也是 Kind=voice / out / 3 秒
+            await WaitAsync(() => store.ReadLog(client.SessionName).Any(
+                e => e.Kind == "voice" && e.Direction == "out" && e.DurationSeconds == 3), 8000).ConfigureAwait(false);
+            var clientVoiceLog = store.ReadLog(client.SessionName).FirstOrDefault(
+                e => e.Kind == "voice" && e.Direction == "out" && e.DurationSeconds == 3);
+            check("客户端的聊天记录里语音条目：Kind=voice / 秒数 3 / Direction=out",
+                clientVoiceLog is not null && clientVoiceLog.FileName is { Length: > 0 },
+                clientVoiceLog is null ? "（没有 voice 记录）" : $"{clientVoiceLog.FileName}");
+
+            // ⑥ 发送端自己的会话 audio\ 也留了一份（会话文件夹 = 完整账本）
+            var clientAudioDir = Path.Combine(store.SessionDirectory(client.SessionName), "audio");
+            var clientSentCopy = FindFileWithBytes(clientAudioDir, clientBytes);
+            check("发送端的会话 audio\\ 目录也留了一份语音账本（字节一致）",
+                clientSentCopy is not null,
+                clientSentCopy ?? $"（{clientAudioDir} 里没有字节匹配的 .mp3）");
+
+            // ⑦ 语音消息之后聊天仍然可用（语音走聊天连接，但不能把聊天连接占死）
+            await host.SendTextAsync("语音消息之后文字照样能发").ConfigureAwait(false);
+            await WaitAsync(() => clientTexts.Contains("语音消息之后文字照样能发"), 8000).ConfigureAwait(false);
+            check("语音消息之后聊天仍然可用（文字照常送达）",
+                clientTexts.Contains("语音消息之后文字照样能发"), string.Join(" | ", clientTexts));
+
+            // ⑧ 主机回一条 5 秒语音：客户端收到气泡，audio\ 落盘字节一致
+            await host.SendVoiceMessageAsync(hostMp3, 5).ConfigureAwait(false);
+            await WaitAsync(() => FindMessage(clientMessages,
+                m => m.IsVoiceMessage && !m.IsMine && m.DurationSeconds == 5) is not null, 15000).ConfigureAwait(false);
+            var receivedAtClient = FindMessage(clientMessages,
+                m => m.IsVoiceMessage && !m.IsMine && m.DurationSeconds == 5);
+            check("主机发的 5 秒语音客户端收到了（语音气泡 / 秒数 5）",
+                receivedAtClient is { } receivedClient
+                && !receivedClient.IsMine && receivedClient.DurationSeconds == 5 && receivedClient.IsVoiceMessage,
+                receivedAtClient is null ? "（客户端没收到语音消息）" : $"{receivedAtClient.Value.MessageId}（5 秒）");
+
+            await WaitAsync(() => FindFileWithBytes(clientAudioDir, hostBytes) is not null, 15000).ConfigureAwait(false);
+            var clientReceivedFile = FindFileWithBytes(clientAudioDir, hostBytes);
+            check("主机发的语音在客户端会话 audio\\ 目录落盘，内容逐字节一致",
+                clientReceivedFile is not null,
+                clientReceivedFile ?? $"（{clientAudioDir} 里没有字节匹配的 .mp3）");
+
+            // ⑨ 主机自己发的那份在本端也有账本
+            var hostSentCopy = FindFileWithBytes(hostAudioDir, hostBytes);
+            check("主机自己发出的语音在本端会话 audio\\ 目录也留了一份（字节一致）",
+                hostSentCopy is not null,
+                hostSentCopy ?? $"（{hostAudioDir} 里没有字节匹配的 .mp3）");
+        }
+        finally
+        {
+            try { await client.DisposeAsync().ConfigureAwait(false); } catch { }
+            try { await host.DisposeAsync().ConfigureAwait(false); } catch { }
+        }
+    }
+
+    /// <summary>在消息通知里找第一条满足条件的（找不到返回 null；方便断言时安全取字段）。</summary>
+    private static ChatRoomConnection.ChatMessageNotification? FindMessage(
+        IEnumerable<ChatRoomConnection.ChatMessageNotification> messages,
+        Func<ChatRoomConnection.ChatMessageNotification, bool> predicate)
+    {
+        foreach (var message in messages)
+            if (predicate(message)) return message;
+        return null;
+    }
+
+    /// <summary>在某个目录里找字节与源文件完全一致的 <c>*.mp3</c>（文件名会被接收端改，所以按内容找）。</summary>
+    private static string? FindFileWithBytes(string directory, byte[] expected)
+    {
+        try
+        {
+            if (!Directory.Exists(directory)) return null;
+            foreach (var file in Directory.GetFiles(directory, "*.mp3"))
+            {
+                try
+                {
+                    if (File.ReadAllBytes(file).SequenceEqual(expected)) return file;
+                }
+                catch (IOException) { /* 接收端还在写，这一轮先跳过 */ }
+                catch (UnauthorizedAccessException) { /* 同上 */ }
+            }
+        }
+        catch { /* 目录读不了就当没有 */ }
+        return null;
     }
 
     // ---------------------------------------------------------------- 群通话：真的开一场（回环 + 假设备）

@@ -2,7 +2,7 @@
   "protocol": "YuLiangToolkit.ChatRoom",
   "magic": "YLTCHAT1",
   "version": 1,
-  "transport": "TCP（一条控制连接发消息，每个文件另开一条数据连接，群通话的媒体再另开一条长连接；两端都可能是主机或客户端）",
+  "transport": "TCP（一条控制连接发消息，每个文件另开一条数据连接，群通话的媒体再另开一条长连接；语音消息走控制连接，不另开连接；两端都可能是主机或客户端）",
   "frame": {
     "note": "每个包 = 4 字节小端长度前缀 + JSON 头 + 裸载荷。长度前缀只数 JSON 头自己的字节数（不含前缀，也不含载荷）。",
     "lengthPrefixBytes": 4,
@@ -94,6 +94,12 @@
       "payload": "一帧完整 JPEG 的裸字节（MJPEG）",
       "extra": "{ timestampMs }",
       "note": "逐帧 JPEG、不做帧间压缩；拥塞时发送队列优先丢最旧的视频帧"
+    },
+    "Voice": {
+      "dir": "双向（走普通聊天连接；主机收到后原样转发给其余客户端）",
+      "payload": "整段 MP3 的裸字节（不是实时媒体流）",
+      "extra": "{ messageId, sentAtUtc, sentLocal, durationSeconds, fileName, member: {...} }",
+      "note": "语音消息（按住说话）：与 callAudio 完全不同 —— callAudio 是通话媒体连接上 40 ms 一包、16 kHz μ-law 的实时流；Voice 是聊天连接上一个包含整段 MP3 的普通消息，接收端落盘到会话 audio/ 并显示成气泡。载荷受 maxPayloadBytes（4 MB）约束，录音上限 120 秒保证不超。老版本收到不认识的 voice 包会跳过载荷、不会错位。"
     }
   },
   "flow": {
@@ -105,7 +111,8 @@
     "6": "任何一端随时可发 Bye 并关闭；主机收到就把它从名单里去掉并通知其它人",
     "7": "要开群通话时：客户端另开一条 TCP 连接（连主机同一个监听端口）→ 发 CallHello（带聊天 welcome 里的 callToken）→ 主机回 Welcome(mediaAccepted=true)",
     "8": "媒体连接上只跑 CallAudio / CallVideo / CallControl；主机把媒体包转发给其余媒体连接（主机自己也在通话里时同时交给本机引擎）",
-    "9": "谁进 / 出通话、谁开 / 关麦克风摄像头：主机更新权威快照，在聊天连接上广播 CallState"
+    "9": "谁进 / 出通话、谁开 / 关麦克风摄像头：主机更新权威快照，在聊天连接上广播 CallState",
+    "10": "发语音消息时：在聊天连接上发 Voice（extra 带 durationSeconds / fileName / messageId，载荷是整段 MP3）→ 接收端落盘到会话 audio/ 并写 chat-log（kind=voice）→ 主机收到后原样转发给其余客户端"
   },
   "media": {
     "note": "群语音 / 群视频：媒体走与聊天连接分开的第二条 TCP 连接，连主机同一个监听端口（内网穿透只需映射主机一个端口）。这条连接不加入聊天成员名单、不建会话文件夹，只跑 CallAudio / CallVideo / CallControl。",
@@ -142,7 +149,7 @@
   },
   "traffic": {
     "note": "单次流量上限：主机与客户端各自统计“本端收发合计”并各自限流，谁到顶谁停止发送（一条 System 提示对方）",
-    "counted": "文件裸字节 + 文本/图片预览载荷 + 包头（包头很小，也计入，免得算不准）；群通话媒体流量不计入",
-    "checkedBefore": "发文件前先用剩余额度预检，超了就根本不开数据连接"
+    "counted": "文件裸字节 + 文本/图片预览载荷 + 语音消息的整段 MP3 载荷 + 包头（包头很小，也计入，免得算不准）；群通话媒体流量不计入",
+    "checkedBefore": "发文件 / 发语音前先用剩余额度预检，超了就根本不开数据连接 / 不发 Voice 包"
   }
 }

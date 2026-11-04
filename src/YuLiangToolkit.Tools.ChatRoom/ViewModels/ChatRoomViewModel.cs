@@ -153,6 +153,14 @@ public sealed partial class ChatRoomViewModel : ToolViewModelBase
         AppendMessage(ChatMessageItem.Create("demo-7", _session?.LocalMemberId ?? "self", Cfg.EffectiveNickname, Cfg.Emoji, true, true,
             DateTime.Now, "流量上限我设成 100 MB 了，别一口气传完。", ChatContentKind.File, null));
 
+        // 语音消息演示（v0.72.0）：只为了截图看「气泡 + 秒数」样式，没有真实文件（点播放不会响）
+        AppendMessage(ChatMessageItem.Create("demo-8", "c1-abc", "小张", "🐻", false, false,
+            DateTime.Now.AddSeconds(-40), "", ChatContentKind.Audio, null,
+            voiceDurationSeconds: 5, isVoiceMessage: true));
+        AppendMessage(ChatMessageItem.Create("demo-9", _session?.LocalMemberId ?? "self", Cfg.EffectiveNickname, Cfg.Emoji, true, true,
+            DateTime.Now.AddSeconds(-20), "", ChatContentKind.Audio, null,
+            voiceDurationSeconds: 12, isVoiceMessage: true));
+
         Transfers.Insert(0, file);
         Transfers.Insert(0, img);
         Transfers.Insert(0, zip);
@@ -332,6 +340,8 @@ public sealed partial class ChatRoomViewModel : ToolViewModelBase
             OnPropertyChanged(nameof(IsOffline));
             OnPropertyChanged(nameof(StatusBadgeText));
             OnPropertyChanged(nameof(StatusBadgeBrushKey));
+            // 语音消息按钮的可用性跟着「在不在线」变
+            OnPropertyChanged(nameof(CanRecordVoice));
             // 「连接信息」面板只在房间开着时有意义（关掉就收起来，别占地方）
             OnPropertyChanged(nameof(HasShareInfo));
         }

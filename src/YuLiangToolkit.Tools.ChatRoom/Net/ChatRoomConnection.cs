@@ -120,10 +120,13 @@ public abstract class ChatRoomConnection : IAsyncDisposable
     /// <param name="LocalPath">本机完整路径。</param>
     /// <param name="PreviewPath">预览图完整路径。</param>
     /// <param name="IsSystem">是不是系统提示。</param>
+    /// <param name="DurationSeconds">语音消息的秒数（非语音消息为 0）。</param>
+    /// <param name="IsVoiceMessage">是不是一条语音消息（界面显示成气泡 + 秒数）。</param>
     public readonly record struct ChatMessageNotification(
         string MessageId, string SenderName, string SenderEmoji, string SenderId, bool IsHost, bool IsMine,
         DateTime SentLocal, string Text, ChatContentKind ContentKind, FileProgress? File,
-        string RelativePath, string? PreviewRelativePath, string? LocalPath, string? PreviewPath, bool IsSystem);
+        string RelativePath, string? PreviewRelativePath, string? LocalPath, string? PreviewPath, bool IsSystem,
+        int DurationSeconds = 0, bool IsVoiceMessage = false);
 
     /// <summary>文件传输的通知（界面据此更新进度条 / 加一条消息）。</summary>
     public readonly record struct TransferNotification(
@@ -545,9 +548,140 @@ public abstract class ChatRoomConnection : IAsyncDisposable
         CheckTrafficExhausted();
     }
 
-    /// <summary>自己产生一条系统提示（本端界面 + 记录都留痕，不发给对方）。</summary>
-    internal void PostLocalSystem(string text)
+    /// <summary>
+    /// 发一条语音消息（本端录音已经转成 MP3）：先在本端会话文件夹留一份账本，再交给界面显示气泡，
+    /// 最后把「元数据 + 整段 MP3」交给 <paramref name="deliver"/> 真的送出去。
+    /// </summary>
+    /// <param name="mp3Path">本机上的 MP3（录音临时文件；调用方发完负责删）。</param>
+    /// <param name="durationSeconds">录音秒数（至少 1；气泡显示与聊天记录都用它）。</param>
+    internal async Task SendLocalVoiceAsync(string mp3Path, int durationSeconds, Func<VoiceInfo, byte[], Task> deliver)
     {
+        byte[] bytes;
+        try { bytes = await File.ReadAllBytesAsync(mp3Path).ConfigureAwait(false); }
+        catch (Exception ex)
+        {
+            Notice(ChatNoticeLevel.Error, $"读不到录音文件：{ex.Message}");
+            return;
+        }
+
+        if (bytes.Length == 0)
+        {
+            Notice(ChatNoticeLevel.Warn, "这段录音是空的，没有发送");
+            return;
+        }
+        if (bytes.Length > ChatProtocol.MaxFrameBytes)
+        {
+            Notice(ChatNoticeLevel.Warn, "录音太长（超过单条消息上限），没有发送");
+            return;
+        }
+
+        var verdict = Meter.Check(bytes.Length);
+        if (!verdict.Allowed)
+        {
+            Notice(ChatNoticeLevel.Warn, $"语音消息没有发出：{verdict.Reason}");
+            CheckTrafficExhausted();
+            return;
+        }
+
+        var when = DateTime.Now;
+        var messageId = NextMessageId();
+        var fileName = ChatSessionNaming.SafeFileName($"语音消息-{when:yyyyMMdd-HHmmss}.mp3");
+        durationSeconds = Math.Max(1, durationSeconds);
+
+        // 本端会话文件夹也留一份（和文字 / 文件一样，会话文件夹是完整账本）
+        var relative = "";
+        var localFull = mp3Path;
+        try
+        {
+            relative = Store.ImportFile(SessionName, mp3Path, ChatContentKind.Audio, fileName) ?? "";
+            if (relative.Length > 0) localFull = Store.FullPath(SessionName, relative);
+        }
+        catch { /* 落盘失败不影响发送 */ }
+
+        var info = new VoiceInfo
+        {
+            MessageId = messageId,
+            SentAtUtc = DateTime.UtcNow,
+            SentLocal = when,
+            Member = Self.Clone(),
+            DurationSeconds = durationSeconds,
+            FileName = fileName,
+        };
+
+        LogMessage(new ChatLogEntry
+        {
+            MessageId = messageId,
+            Kind = "voice",
+            Sender = LocalName,
+            SentLocal = when,
+            FileName = fileName,
+            FileSize = bytes.Length,
+            ContentKind = "audio",
+            RelativePath = relative.Length > 0 ? relative : null,
+            Direction = "out",
+            DurationSeconds = durationSeconds,
+        });
+        Info.SentFileCount++;
+
+        MessagePosted?.Invoke(new ChatMessageNotification(
+            messageId, LocalName, LocalEmoji, Self.MemberId, Self.IsHost, true,
+            when, "", ChatContentKind.Audio, null, relative, null, localFull, null, false,
+            durationSeconds, true));
+
+        await deliver(info, bytes).ConfigureAwait(false);
+        CheckTrafficExhausted();
+    }
+
+    /// <summary>
+    /// 收到一条语音消息：把 MP3 落进本端会话的 <c>audio\</c> 目录，写聊天记录，再交给界面显示气泡。
+    /// </summary>
+    internal void HandleIncomingVoice(ChatLink link, VoiceInfo info, byte[] bytes)
+    {
+        if (bytes is null || bytes.Length == 0) return;
+
+        var member = info.Member ?? link.Peer;
+        var (name, emoji, id, isHost) = Describe(member, "对方", "👤", link.PeerId, false);
+        var when = info.SentLocal == default ? DateTime.Now : info.SentLocal;
+        var durationSeconds = Math.Max(1, info.DurationSeconds);
+        var safeName = ChatSessionNaming.SafeFileName(
+            string.IsNullOrWhiteSpace(info.FileName) ? $"语音消息-{when:yyyyMMdd-HHmmss}.mp3" : info.FileName);
+
+        var relative = "";
+        var full = "";
+        try
+        {
+            relative = Store.MakeRelativeFilePath(SessionName, ChatContentKind.Audio, safeName);
+            full = Store.FullPath(SessionName, relative);
+            Store.WriteBytes(SessionName, relative, bytes);
+        }
+        catch (Exception ex)
+        {
+            Notice(ChatNoticeLevel.Warn, $"语音消息存盘失败：{ex.Message}");
+        }
+
+        LogMessage(new ChatLogEntry
+        {
+            MessageId = info.MessageId,
+            Kind = "voice",
+            Sender = name,
+            SentLocal = when,
+            FileName = safeName,
+            FileSize = bytes.Length,
+            ContentKind = "audio",
+            RelativePath = relative.Length > 0 ? relative : null,
+            Direction = "in",
+            DurationSeconds = durationSeconds,
+        });
+        Info.ReceivedFileCount++;
+
+        MessagePosted?.Invoke(new ChatMessageNotification(
+            info.MessageId, name, emoji, id, isHost, false,
+            when, "", ChatContentKind.Audio, null, relative, null, full.Length > 0 ? full : null, null, false,
+            durationSeconds, true));
+    }
+
+    /// <summary>自己产生一条系统提示（本端界面 + 记录都留痕，不发给对方）。</summary>
+    internal void PostLocalSystem(string text)    {
         var when = DateTime.Now;
         if (SessionName.Length > 0) Store.AppendSystemLine(SessionName, text);
         MessagePosted?.Invoke(new ChatMessageNotification(

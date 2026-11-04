@@ -128,6 +128,7 @@ public sealed class ChatClient : IAsyncDisposable
             };
         };
         link.TextReceived += (l, info, text) => Connection.HandleIncomingText(l, info, text);
+        link.VoiceReceived += (l, info, bytes) => Connection.HandleIncomingVoice(l, info, bytes);
         link.SystemReceived += (l, info) => Connection.HandleIncomingSystem(l, info);
         link.MembersReceived += (_, list) =>
         {
@@ -214,6 +215,15 @@ public sealed class ChatClient : IAsyncDisposable
         var link = _link;
         if (link is null || !HandshakeDone) return Task.CompletedTask;
         return Connection.SendLocalTextAsync(text, (info, body) => link.SendTextAsync(info, body, CancellationToken.None));
+    }
+
+    /// <summary>发一条语音消息（自己发的那份也会落盘 + 显示气泡）。</summary>
+    public Task SendVoiceAsync(string mp3Path, int durationSeconds)
+    {
+        var link = _link;
+        if (link is null || !HandshakeDone) return Task.CompletedTask;
+        return Connection.SendLocalVoiceAsync(mp3Path, durationSeconds,
+            (info, bytes) => link.SendVoiceAsync(info, bytes, CancellationToken.None));
     }
 
     /// <summary>发一个文件给主机（主机收到后不再转发给别的客户端 —— 见 docs/dev/pitfalls.md 的说明）。</summary>

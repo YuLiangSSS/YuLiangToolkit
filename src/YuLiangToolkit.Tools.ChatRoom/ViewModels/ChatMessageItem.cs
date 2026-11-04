@@ -201,6 +201,11 @@ public sealed class ChatMessageItem : ObservableObject
         {
             if (!Set(ref _localPath, value)) return;
             OnPropertyChanged(nameof(CanOpenFile));
+            // 路径是消息建好之后才补上的（历史回看 / 接收落盘），这几个「按路径显示」的开关要重算
+            OnPropertyChanged(nameof(HasImage));
+            OnPropertyChanged(nameof(HasAudio));
+            OnPropertyChanged(nameof(HasVideo));
+            OnPropertyChanged(nameof(HasPlainAudio));
         }
     }
 
@@ -231,6 +236,25 @@ public sealed class ChatMessageItem : ObservableObject
     public bool HasAudio => ContentKind == ChatContentKind.Audio && CanOpenFile;
 
     public bool HasVideo => ContentKind == ChatContentKind.Video && CanOpenFile;
+
+    /// <summary>
+    /// 一条「语音消息」（按住说话发出来的 MP3）：界面上显示成气泡 + 秒数，而不是普通音频卡片。
+    /// </summary>
+    public bool IsVoiceMessage { get; init; }
+
+    /// <summary>语音消息时长（秒；非语音消息为 0）。</summary>
+    public int VoiceDurationSeconds { get; init; }
+
+    /// <summary>气泡上显示的秒数，例如 <c>5″</c>。历史回看也用这个（从 chat-log 的 durationSeconds 来）。</summary>
+    public string VoiceDurationText => $"{Math.Max(1, VoiceDurationSeconds)}″";
+
+    /// <summary>语音气泡里的一行摘要（小字提示用）。</summary>
+    public string VoiceSummary => IsVoiceMessage ? $"🎙 语音消息 {VoiceDurationText}" : "";
+
+    /// <summary>
+    /// 「普通音频」开关：语音消息也有音频文件，但不能再显示成普通音频卡片（否则界面上会出现两份）。
+    /// </summary>
+    public bool HasPlainAudio => HasAudio && !IsVoiceMessage;
 
     /// <summary>本条消息是不是“图片预览”（true 时界面上不再单列文件行）。</summary>
     public bool IsPreviewFile { get; init; }
@@ -265,10 +289,11 @@ public sealed class ChatMessageItem : ObservableObject
             Text = text,
         };
 
-    /// <summary>构造一条消息（文字 / 文件共用）。</summary>
+    /// <summary>构造一条消息（文字 / 文件 / 语音共用）。</summary>
     public static ChatMessageItem Create(
         string messageId, string senderId, string senderName, string senderEmoji, bool isHost, bool isMine,
-        DateTime sentAt, string text, ChatContentKind kind, FileProgress? file, bool isPreviewFile = false)
+        DateTime sentAt, string text, ChatContentKind kind, FileProgress? file, bool isPreviewFile = false,
+        int voiceDurationSeconds = 0, bool isVoiceMessage = false)
         => new()
         {
             MessageId = messageId,
@@ -282,23 +307,26 @@ public sealed class ChatMessageItem : ObservableObject
             ContentKind = kind,
             File = file,
             IsPreviewFile = isPreviewFile,
+            VoiceDurationSeconds = voiceDurationSeconds,
+            IsVoiceMessage = isVoiceMessage,
         };
 
     /// <summary>把一条消息还原成聊天记录里的一行。</summary>
     public ChatSessionStore.ChatLogEntry ToLogEntry(string? crc32 = null) => new()
     {
         MessageId = MessageId,
-        Kind = IsSystem ? "system" : IsFile ? "file" : "text",
+        Kind = IsSystem ? "system" : IsVoiceMessage ? "voice" : IsFile ? "file" : "text",
         Sender = SenderName,
         SentLocal = SentAt,
         Text = Text.Length > 0 ? Text : null,
-        FileName = File?.FileName,
+        FileName = File?.FileName ?? (LocalPath is { Length: > 0 } path ? Path.GetFileName(path) : null),
         FileSize = File?.TotalBytes ?? 0,
-        ContentKind = IsFile ? ContentKind.ToString().ToLowerInvariant() : null,
+        ContentKind = IsFile || IsVoiceMessage ? ContentKind.ToString().ToLowerInvariant() : null,
         RelativePath = RelativePath.Length > 0 ? RelativePath : null,
         PreviewPath = PreviewRelativePath,
         Direction = IsMine ? "out" : "in",
         Crc32 = crc32,
+        DurationSeconds = IsVoiceMessage ? VoiceDurationSeconds : 0,
     };
 
     /// <summary>把聊天记录里的一行还原成界面消息（历史回看用，进度相关的字段都是已完成状态）。</summary>
@@ -308,6 +336,7 @@ public sealed class ChatMessageItem : ObservableObject
         var kind = Enum.TryParse<ChatContentKind>(entry.ContentKind, ignoreCase: true, out var parsed)
             ? parsed
             : ChatSessionNaming.KindOfFile(entry.FileName);
+        var isVoice = string.Equals(entry.Kind, "voice", StringComparison.OrdinalIgnoreCase);
 
         var item = new ChatMessageItem
         {
@@ -322,7 +351,9 @@ public sealed class ChatMessageItem : ObservableObject
             ContentKind = kind,
             RelativePath = entry.RelativePath ?? "",
             PreviewRelativePath = entry.PreviewPath,
-            File = entry.FileName is { Length: > 0 }
+            IsVoiceMessage = isVoice,
+            VoiceDurationSeconds = isVoice ? Math.Max(0, entry.DurationSeconds) : 0,
+            File = entry.FileName is { Length: > 0 } && !isVoice
                 ? new FileProgress(entry.MessageId, entry.FileName, entry.FileSize, ChatSessionNaming.LabelOf(kind), isMine)
                 { State = TransferState.Done }
                 : null,

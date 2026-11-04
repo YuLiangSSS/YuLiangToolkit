@@ -171,6 +171,7 @@ public sealed partial class ChatRoomViewModel
     private async Task TeardownSessionAsync()
     {
         OnCallUiHangUp();       // 先挂断通话（实现在 ChatRoomViewModel.Call.cs）
+        CancelVoiceRecording(); // 断开房间时正在录的语音没有意义，直接取消
         var session = _session;
         _session = null;
         if (session is not null)
@@ -378,7 +379,8 @@ public sealed partial class ChatRoomViewModel
     {
         var item = ChatMessageItem.Create(
             posted.MessageId, posted.SenderId, posted.SenderName, posted.SenderEmoji, posted.IsHost, posted.IsMine,
-            posted.SentLocal, posted.Text, posted.ContentKind, posted.File, false);
+            posted.SentLocal, posted.Text, posted.ContentKind, posted.File, false,
+            posted.DurationSeconds, posted.IsVoiceMessage);
         item.LocalPath = posted.LocalPath;
         item.PreviewPath = posted.PreviewPath;
         item.IsSystem = posted.IsSystem;
@@ -658,6 +660,9 @@ public sealed partial class ChatRoomViewModel
     {
         var snapshot = _meter?.Snapshot() ?? default;
         Traffic = snapshot;
+
+        // 调试 / 真机自检钩子（实现在 ChatRoomViewModel.Voice.cs，不设环境变量时什么也不做）
+        MaybeRunVoiceAutoTest();
 
         if (IsOnline && _session is not null)
         {

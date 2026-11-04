@@ -41,6 +41,24 @@
 - ⚠ **通话中切到别的工具页不会挂断**：外壳把页面塞进缓存，不会调 `OnClosed`，
   麦克风 / 摄像头会继续工作；只有缓存淘汰（切过很多工具）/ 退出程序才挂断。
   文档与通话面板提示里都要写清楚，别让用户以为切走就停了采集。
+- **语音消息的 MP3 不引第三方**：用 WinRT `MediaTranscoder` + `MediaEncodingProfile.CreateMp3` 转码；
+  零 NuGet、不调 FFmpeg。Windows **N 版**默认没装媒体功能包 → 系统里没有 MP3 编码器，
+  必须返回中文原因并提示安装「媒体功能包」，别静默失败（自检对这条 fail-open 跳过）。
+- **先录 WAV 再转 MP3**：WAV 头在 `WavWriter.Finish()` 里回填 RIFF / data 长度（**0 样本也必须合法**，
+  44 字节头 + data 长 0），没 `Finish` 就 Dispose 也要尽量回填。临时文件放 `%TEMP%\ylt-chat-voice\`，
+  发送完删掉待发 MP3；转码失败 / 取消时 WAV 和 MP3 两边都要清，别在用户临时目录里攒垃圾。
+- **语音消息是普通聊天连接上的 `voice` 包，不是通话媒体连接**：载荷是**整段 MP3**（受 4 MB 单包上限约束；
+  录音上限 120 秒保证不超）。它和 `callAudio`（媒体连接、40 ms 一包、μ-law 实时流）是两套东西，
+  文档里必须写清楚，别让用户以为语音消息走通话带宽。
+- 协议必须带 `durationSeconds`：气泡秒数、`chat-log.jsonl`（`Kind="voice"`）与历史回看还原都靠它；
+  老版本收到不认识的 `voice` 包会跳过载荷、不会错位。
+- ⚠ **按住说话要正确处理鼠标捕获**：`MouseDown` 里 `CaptureMouse()`、松开时 `ReleaseMouseCapture()`；
+  **`LostMouseCapture` 在正常松开时也会触发**，必须用「正在松开」标志防竞态 —— 别让松开先被当成取消，
+  否则表现为「每次松开都取消、一条语音也发不出去」。语音气泡 `HasPlainAudio` 要跟着
+  `IsVoiceMessage` 关掉普通音频卡片，否则界面上同一段语音会显示两份。
+- 真机自检 / 截图：`YLT_CHAT_VOICE_AUTOTEST=1`（配合自动开局）会在连上房间后自动录 1.5 秒并发一条语音，
+  验证「录音 → MP3 → 发送 → 气泡」整条链路，不需要真用鼠标按住按钮；正常启动不设就不跑。
+  本次真机实测：录 1.5 秒 → 会话 `audio\语音消息-*.mp3` 8.8 KB、`ffprobe` 显示 mp3 / 16 kHz / 单声道 / 48 kbps。
 
 ### osu! 下图器
 - 先下 `.osz.part` 再改名：断线留半个文件会被「已存在」永久跳过。

@@ -257,6 +257,17 @@ public sealed class ChatHost : IDisposable
                 Frame = ChatFrameHeader.NewFrameId(),
             }.WithExtra(info), System.Text.Encoding.UTF8.GetBytes(text), except: l);
         };
+        link.VoiceReceived += (l, info, bytes) =>
+        {
+            // 语音消息：主机自己也要落盘 + 显示，再原样转发给其余客户端（与文字同一条转发路径）
+            Connection.HandleIncomingVoice(l, info, bytes);
+            _ = Broadcast(new ChatFrameHeader
+            {
+                Kind = ChatProtocol.Kinds.Voice,
+                From = session.MemberId,
+                Frame = ChatFrameHeader.NewFrameId(),
+            }.WithExtra(info), bytes, except: l);
+        };
         link.SystemReceived += (l, info) =>
         {
             Connection.HandleIncomingSystem(l, info);
@@ -450,6 +461,16 @@ public sealed class ChatHost : IDisposable
                 From = Connection.LocalMemberId,
                 Frame = ChatFrameHeader.NewFrameId(),
             }.WithExtra(info), System.Text.Encoding.UTF8.GetBytes(body)));
+
+    /// <summary>主机自己发一条语音消息：本端落盘 + 显示气泡，再广播给所有客户端。</summary>
+    public Task SendVoiceAsync(string mp3Path, int durationSeconds)
+        => Connection.SendLocalVoiceAsync(mp3Path, durationSeconds, (info, bytes) =>
+            Broadcast(new ChatFrameHeader
+            {
+                Kind = ChatProtocol.Kinds.Voice,
+                From = Connection.LocalMemberId,
+                Frame = ChatFrameHeader.NewFrameId(),
+            }.WithExtra(info), bytes));
 
     /// <summary>主机发一个文件给所有客户端（串行，一个接一个）。</summary>
     public async Task SendFileAsync(string path, string note = "")

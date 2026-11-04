@@ -202,6 +202,7 @@ public sealed partial class ChatRoomViewModel
     {
         try { _statusTimer.Stop(); } catch { }
         OnCallUiHangUp();       // 挂断通话（实现在 ChatRoomViewModel.Call.cs）
+        CancelVoiceRecording(); // 录音中直接关工具：丢掉这段录音（实现在 ChatRoomViewModel.Voice.cs）
         var session = _session;
         _session = null;
         if (session is not null)

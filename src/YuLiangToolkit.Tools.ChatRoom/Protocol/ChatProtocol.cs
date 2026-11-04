@@ -122,6 +122,13 @@ public static class ChatProtocol
         public const string CallControl = "callControl";
         public const string CallAudio = "callAudio";
         public const string CallVideo = "callVideo";
+
+        // ---- 语音消息（v0.72.0 起）----
+        // 走**普通聊天连接**（不是通话媒体连接）：载荷是整段 MP3，头里带秒数等元数据。
+        // 为什么不做成文件传输：语音消息要显示成「气泡 + 秒数」，还要两端各存一份 MP3，
+        // 单独一个包比走文件传输（进度卡片 / 回执 / 重复消息）干净得多；4 MB 帧上限
+        // 也够 120 秒录音（见 Call/Media/VoiceRecorder 的时长上限）。
+        public const string Voice = "voice";
     }
 
     /// <summary>
@@ -446,6 +453,7 @@ public static class ChatProtocol
                Kinds.Hello, Kinds.Welcome, Kinds.Ping, Kinds.Pong, Kinds.Text, Kinds.System,
                Kinds.Members, Kinds.Kick, Kinds.TransferStart, Kinds.TransferDone, Kinds.TransferCancel, Kinds.Bye,
                Kinds.CallHello, Kinds.CallState, Kinds.CallControl, Kinds.CallAudio, Kinds.CallVideo,
+               Kinds.Voice,
            })}
            说明文档：Data\chat-room\Protocol\chat-protocol.json（首次运行自动释放）
            """;

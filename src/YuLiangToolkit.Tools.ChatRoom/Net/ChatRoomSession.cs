@@ -392,6 +392,16 @@ public sealed class ChatRoomSession : ChatRoomConnection, IAsyncDisposable
         else if (_client is not null) await _client.SendFileAsync(path, note).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// 发一条语音消息（整段 MP3 + 秒数；主机 = 广播给所有客户端，客户端 = 发给主机）。
+    /// 本端会话文件夹里会自动留一份 MP3 账本，<paramref name="mp3Path"/> 是录音临时文件，调用方发完负责删。
+    /// </summary>
+    public async Task SendVoiceMessageAsync(string mp3Path, int durationSeconds)
+    {
+        if (_host is not null) await _host.SendVoiceAsync(mp3Path, durationSeconds).ConfigureAwait(false);
+        else if (_client is not null) await _client.SendVoiceAsync(mp3Path, durationSeconds).ConfigureAwait(false);
+    }
+
     /// <summary>把某个客户端移出房间（主机端）。</summary>
     public Task KickAsync(string memberId) => _host?.KickAsync(memberId) ?? Task.CompletedTask;
 
