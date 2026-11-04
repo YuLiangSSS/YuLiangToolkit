@@ -82,6 +82,9 @@
     <!-- 「录屏 / GIF」：区域换算 / 参数归一化 / FFmpeg 采集与 GIF 两遍 / MP4 / 截图参数 / 文件名 /
          配置默认值，全部纯逻辑（不启动 FFmpeg、不采集屏幕、不弹窗）。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.ScreenRecorder\YuLiangToolkit.Tools.ScreenRecorder.csproj" />
+    <!-- 「剪辑工具」：ffprobe JSON 解析 / 时间与片段数学 / 裁剪拼接滤镜 / GIF 调色板参数 / 配置归一化，
+         全部纯逻辑（不启动 FFmpeg、不碰真实文件）。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.MediaEditor\YuLiangToolkit.Tools.MediaEditor.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「剪辑工具」：简易视频 / GIF 剪辑（缩略图时间轴 + 起止裁剪 + 多片段拼接 + 生成预览）。
+       复用「录屏 / GIF」里的容器 / 编码器目录与输出命名（VideoCatalog / VideoEncodingArgs / GifExportSettings），
+       避免两份编码参数各写一套导致漂移；不新增 NuGet 包，FFmpeg 仍用系统里的。
+       TFM 带 win10.0.19041：被引用的录屏工程是这个 TFM。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.MediaEditor</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.MediaEditor</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+    <ProjectReference Include="..\YuLiangToolkit.Tools.ScreenRecorder\YuLiangToolkit.Tools.ScreenRecorder.csproj" />
+  </ItemGroup>
+
+</Project>

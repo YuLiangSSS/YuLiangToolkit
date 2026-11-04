@@ -52,6 +52,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("archive", "压缩包工具：格式识别 / 解压 / 创建 / 密码 / 路径穿越 / 覆盖策略"),
     ("open-with", "打开方式：三种模式 / 自动分流 / 注册表命令拼装（只读，不写注册表）"),
     ("screen-recorder", "录屏 / GIF：区域换算 / FFmpeg 参数 / 文件名 / 配置默认值"),
+    ("media-editor", "剪辑工具：ffprobe 解析 / 片段数学 / 裁剪拼接滤镜 / GIF 参数"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1191,6 +1192,10 @@ RunGroupModule("open-with", "打开方式", OpenWithChecks.Run);
 // 「录屏 / GIF」：区域换算 / 参数归一化 / FFmpeg 采集与 GIF 两遍 / MP4 / 截图参数 / 文件名 / 计时 / 配置。
 // 纯逻辑，**不启动 FFmpeg、不采集屏幕、不弹窗**；真实录制由人工冒烟验收。
 RunGroupModule("screen-recorder", "录屏", ScreenRecorderChecks.Run);
+
+// 「剪辑工具」：ffprobe JSON 解析 / 时间格式 / 片段数学 / 裁剪拼接滤镜 / GIF 参数 / 配置归一化。
+// 纯逻辑，**不启动 FFmpeg、不碰真实文件**；真实剪辑 / 预览由人工冒烟验收。
+RunGroupModule("media-editor", "剪辑", MediaEditorChecks.Run);
 
 EnterGroup("shell");
 
