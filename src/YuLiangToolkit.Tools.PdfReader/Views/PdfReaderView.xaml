@@ -378,11 +378,11 @@
                            Foreground="{DynamicResource TextPrimaryBrush}" Text="第 1 / 1 页" />
             </Border>
             <!-- 快速浏览：右侧竖向滚动条（拖动滑块按整体阅读进度快速跳；连续 / 双页模式通用） -->
-            <ScrollBar x:Name="QuickScrollBar" Orientation="Vertical"
-                       Minimum="0" Maximum="1000" Value="0" ViewportSize="120"
+            <ScrollBar x:Name="QuickScrollBar" Orientation="Vertical" Width="16"
+                       Minimum="0" Maximum="1000" Value="0" ViewportSize="160"
                        SmallChange="10" LargeChange="100"
                        HorizontalAlignment="Right" VerticalAlignment="Stretch"
-                       Margin="0,10,3,10" Visibility="Collapsed"
+                       Margin="0,10,10,10" Visibility="Collapsed"
                        ValueChanged="OnQuickScrollBarValueChanged"
                        ToolTip="拖动快速浏览（按阅读进度定位）" />
         </Grid>

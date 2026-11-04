@@ -1745,6 +1745,16 @@ public partial class PdfReaderView : UserControl
         var vm = Vm;
         if (vm?.HasDocument != true) return;
 
+        // 点 / 拖右侧快速滚动条时绝不接管：滚动条很窄，命中来源可能是它模板里的 Thumb / RepeatButton，
+        // 也可能因为窗口边缘 / 鼠标捕获让 OriginalSource 不是 ScrollBar，所以再按坐标兜一道底。
+        if (IsPointOverQuickScrollBar(e))
+        {
+            // 上一次拖动若还残留鼠标捕获，先还回去，否则 ScrollBar 收不到这次点击 / 拖动
+            if (ReferenceEquals(Mouse.Captured, this)) ReleaseMouseCaptureSafely();
+            AbortInertia();
+            return;
+        }
+
         // 别的控件正握着鼠标（ComboBox 下拉弹层 / 输入框选字）时整个都别碰
         if (Mouse.Captured is not null && !ReferenceEquals(Mouse.Captured, this)) return;
         if (e.ChangedButton != MouseButton.Left) return;
@@ -1756,6 +1766,16 @@ public partial class PdfReaderView : UserControl
 
         e.Handled = true;
         BeginDrag(e);
+    }
+
+    /// <summary>鼠标按下的位置是不是落在右侧快速滚动条上（按坐标兜底，防止命中来源被模板 / 捕获藏住）。</summary>
+    private bool IsPointOverQuickScrollBar(MouseButtonEventArgs e)
+    {
+        if (QuickScrollBar is null || QuickScrollBar.Visibility != Visibility.Visible) return false;
+
+        var point = e.GetPosition(QuickScrollBar);
+        return point.X >= 0 && point.X <= QuickScrollBar.ActualWidth
+            && point.Y >= 0 && point.Y <= QuickScrollBar.ActualHeight;
     }
 
     private void OnPreviewMouseMove(object sender, MouseEventArgs e)

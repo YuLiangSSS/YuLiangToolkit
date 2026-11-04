@@ -1089,6 +1089,16 @@ public partial class PictureViewerView : UserControl
                    $"fromViewport={IsFromViewport(source)} insideSettings={IsInsideSettings(source)} captured={Mouse.Captured?.GetType().Name} " +
                    $"latched={_anchor.IsLatched} dragging={_dragging} handled={e.Handled}");
 
+        // 点 / 拖右侧快速滚动条时绝不接管：滚动条很窄，命中来源可能是它模板里的 Thumb / RepeatButton，
+        // 也可能因为窗口边缘 / 鼠标捕获让 OriginalSource 不是 ScrollBar，所以再按坐标兜一道底。
+        if (IsPointOverQuickScrollBar(e))
+        {
+            // 上一次拖动若还残留鼠标捕获，先还回去，否则 ScrollBar 收不到这次点击 / 拖动
+            if (ReferenceEquals(Mouse.Captured, this)) ReleaseMouseCaptureSafely();
+            AbortInertia();
+            return;
+        }
+
         // ⚠ 别的控件正握着鼠标（例如 ComboBox 的下拉弹层、输入框拖动选择文字）时，整个事件都别碰：
         // WPF 在「某控件捕获鼠标」时会把鼠标事件隧道经过它的所有祖先 —— 我们按位置判断「在视口里」就会
         // 误以为是拖拽，把事件吃掉并抢走捕获，导致下拉项/输入框点不动（用户报的 bug）。
@@ -1160,6 +1170,16 @@ public partial class PictureViewerView : UserControl
                 AbortInertia();   // 只是点了一下（没拖动）：把残余速度扔掉，别继续滑
             }
         }
+    }
+
+    /// <summary>鼠标按下的位置是不是落在右侧快速滚动条上（按坐标兜底，防止命中来源被模板 / 捕获藏住）。</summary>
+    private bool IsPointOverQuickScrollBar(MouseButtonEventArgs e)
+    {
+        if (QuickScrollBar is null || QuickScrollBar.Visibility != Visibility.Visible) return false;
+
+        var point = e.GetPosition(QuickScrollBar);
+        return point.X >= 0 && point.X <= QuickScrollBar.ActualWidth
+            && point.Y >= 0 && point.Y <= QuickScrollBar.ActualHeight;
     }
 
     private void OnPreviewMouseMove(object sender, MouseEventArgs e)
