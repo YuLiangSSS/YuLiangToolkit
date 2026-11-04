@@ -706,6 +706,553 @@ internal static class ContextMenuChecks
         selfRegistry.DeleteKey(new RegistryPath(RegistryRoot.CurrentUser, @"Software\Classes\不存在"));
         Check("假注册表：删除不存在的值 / 键静默忽略（和真实注册表语义一致）",
             !selfRegistry.KeyExists(new RegistryPath(RegistryRoot.CurrentUser, @"Software\Classes\不存在")));
+
+        // ================================================================
+        // 8. 新契约：SourceKeys / CanDelete / DeleteBlockReason / IsCustom / 结果记录
+        // ================================================================
+        var plainDeleteEntry = new ContextMenuEntry("verb:*\\shell\\plain", ContextMenuEntryKind.Verb, "普通项", "所有文件",
+            @"HKCU\Software\Classes\*\shell\plain", null, "", false, ContextMenuHideSource.None, true, "");
+        Check("契约：SourceKeys 默认空、CanDelete 默认 false、DeleteBlockReason 默认空、Verb 不是自定义菜单",
+            plainDeleteEntry.SourceKeys.Count == 0
+            && !plainDeleteEntry.CanDelete
+            && plainDeleteEntry.DeleteBlockReason.Length == 0
+            && !plainDeleteEntry.IsCustom);
+
+        var keyRefCurrentUser = new ContextMenuKeyRef(RegistryRoot.CurrentUser, @"Software\Classes\*\shell\Foo");
+        var keyRefLocalMachine = new ContextMenuKeyRef(RegistryRoot.LocalMachine, @"Software\Classes\*\shell\Foo");
+        Check("ContextMenuKeyRef：ToString 带 HKCU / HKLM 前缀、ToRegistryPath 根与路径一致",
+            keyRefCurrentUser.ToString() == @"HKCU\Software\Classes\*\shell\Foo"
+            && keyRefLocalMachine.ToString() == @"HKLM\Software\Classes\*\shell\Foo"
+            && keyRefCurrentUser.ToRegistryPath() == new RegistryPath(RegistryRoot.CurrentUser, @"Software\Classes\*\shell\Foo")
+            && keyRefLocalMachine.ToRegistryPath() == new RegistryPath(RegistryRoot.LocalMachine, @"Software\Classes\*\shell\Foo"));
+
+        var customKindEntry = plainDeleteEntry with { Kind = ContextMenuEntryKind.Custom };
+        Check("条目展示属性：Kind=Custom 的 KindLabel = 自定义菜单、IsCustom 为真",
+            customKindEntry.KindLabel == "自定义菜单" && customKindEntry.IsCustom);
+
+        var deletedKeyRef = new ContextMenuKeyRef(RegistryRoot.CurrentUser, @"Software\Classes\*\shell\Foo");
+        var deleteResultOk = new ContextMenuDeleteResult(new[] { deletedKeyRef }, Array.Empty<ContextMenuKeyRef>(), Array.Empty<string>());
+        var deleteResultElevated = new ContextMenuDeleteResult(Array.Empty<ContextMenuKeyRef>(), new[] { keyRefLocalMachine }, Array.Empty<string>());
+        var deleteResultFailed = new ContextMenuDeleteResult(new[] { deletedKeyRef }, Array.Empty<ContextMenuKeyRef>(), new[] { "失败" });
+        Check("删除结果：Success / NeedsElevation / DeletedCount 三个计算属性互相自洽",
+            deleteResultOk.Success && deleteResultOk.DeletedCount == 1 && !deleteResultOk.NeedsElevation
+            && !deleteResultElevated.Success && deleteResultElevated.NeedsElevation && deleteResultElevated.DeletedCount == 0
+            && !deleteResultFailed.Success && !deleteResultFailed.NeedsElevation && deleteResultFailed.DeletedCount == 1);
+
+        Check("添加结果：Ok 带创建的键、Fail 的 CreatedKeys 为空且 Success=false",
+            ContextMenuAddResult.Ok("好了", new[] { deletedKeyRef }).Success
+            && ContextMenuAddResult.Ok("好了", new[] { deletedKeyRef }).CreatedKeys.Count == 1
+            && !ContextMenuAddResult.Fail("坏了").Success
+            && ContextMenuAddResult.Fail("坏了").CreatedKeys.Count == 0);
+
+        Check("校验结果：ErrorSummary 用「；」拼接、有任何错误时 IsValid=false",
+            new CustomContextMenuValidation(false, new[] { "错误A", "错误B" }, Array.Empty<string>()).ErrorSummary == "错误A；错误B"
+            && !new CustomContextMenuValidation(false, new[] { "错误A" }, Array.Empty<string>()).IsValid
+            && new CustomContextMenuValidation(false, Array.Empty<string>(), Array.Empty<string>()).ErrorSummary == "");
+
+        // ================================================================
+        // 9. 枚举 SourceKeys / CanDelete：删除和备份按真实存在的键操作
+        // ================================================================
+        var sourceKeyRegistry = new FakeContextMenuRegistry();
+        SeedVerb(sourceKeyRegistry, RegistryRoot.LocalMachine, @"*\shell", "BothRoots", muiVerb: "两个根都有");
+        SeedVerb(sourceKeyRegistry, RegistryRoot.CurrentUser, @"*\shell", "BothRoots", muiVerb: "两个根都有");
+        var bothRootsEntry = new ContextMenuService(sourceKeyRegistry).Enumerate().FirstOrDefault(e => e.Name == "两个根都有");
+        Check("枚举 SourceKeys：HKCU + HKLM 都有同名动词 → 两条键（HKCU 在前、HKLM 在后）",
+            bothRootsEntry is not null && bothRootsEntry.SourceKeys.Count == 2
+            && bothRootsEntry.SourceKeys[0].Root == RegistryRoot.CurrentUser
+            && bothRootsEntry.SourceKeys[1].Root == RegistryRoot.LocalMachine
+            && bothRootsEntry.SourceKeys.All(k => k.RelativePath.EndsWith(@"*\shell\BothRoots", StringComparison.OrdinalIgnoreCase)),
+            $"{bothRootsEntry?.SourceKeys.Count ?? 0} 条");
+
+        var machineOnlyRegistry = new FakeContextMenuRegistry();
+        SeedVerb(machineOnlyRegistry, RegistryRoot.LocalMachine, @"Directory\shell", "MachineOnlyVerb", muiVerb: "只在电脑级");
+        var machineOnlyEntry = new ContextMenuService(machineOnlyRegistry).Enumerate().FirstOrDefault();
+        Check("枚举 SourceKeys：只在 HKLM 的动词 → 一条键、CanDelete=true、无阻止原因",
+            machineOnlyEntry is not null && machineOnlyEntry.SourceKeys.Count == 1
+            && machineOnlyEntry.SourceKeys[0].Root == RegistryRoot.LocalMachine
+            && machineOnlyEntry.CanDelete && machineOnlyEntry.DeleteBlockReason.Length == 0);
+
+        const string multiHandlerClsid = "{44444444-5555-6666-7777-888888888888}";
+        var multiHandlerRegistry = new FakeContextMenuRegistry();
+        SeedHandler(multiHandlerRegistry, RegistryRoot.LocalMachine, @"*\shellex\ContextMenuHandlers", "MultiPos",
+            multiHandlerClsid, displayName: "多位置扩展");
+        SeedHandler(multiHandlerRegistry, RegistryRoot.LocalMachine, @"Directory\shellex\ContextMenuHandlers", "MultiPos",
+            multiHandlerClsid);
+        var multiHandlerEntry = new ContextMenuService(multiHandlerRegistry).Enumerate()
+            .FirstOrDefault(e => e.Kind == ContextMenuEntryKind.ShellExtension);
+        Check("枚举 SourceKeys：外壳扩展在多位置出现 → 每个实际键一条（2 条、都是 HKLM）",
+            multiHandlerEntry is not null && multiHandlerEntry.SourceKeys.Count == 2
+            && multiHandlerEntry.SourceKeys.All(k => k.Root == RegistryRoot.LocalMachine)
+            && multiHandlerEntry.SourceKeys.Any(k => k.RelativePath.EndsWith(
+                @"*\shellex\ContextMenuHandlers\MultiPos", StringComparison.OrdinalIgnoreCase))
+            && multiHandlerEntry.SourceKeys.Any(k => k.RelativePath.EndsWith(
+                @"Directory\shellex\ContextMenuHandlers\MultiPos", StringComparison.OrdinalIgnoreCase)),
+            $"{multiHandlerEntry?.SourceKeys.Count ?? 0} 条");
+
+        var cannotDeleteRegistry = new FakeContextMenuRegistry();
+        SeedVerb(cannotDeleteRegistry, RegistryRoot.LocalMachine, @"*\shell", "open", muiVerb: "打开");
+        SeedHandler(cannotDeleteRegistry, RegistryRoot.LocalMachine, @"*\shellex\ContextMenuHandlers", "New",
+            ContextMenuRegistryLayout.NewMenuClsid);
+        var cannotDeleteEntries = new ContextMenuService(cannotDeleteRegistry).Enumerate();
+        var openEntryForDelete = cannotDeleteEntries.FirstOrDefault(e => e.Kind == ContextMenuEntryKind.Verb);
+        var newMenuEntryForDelete = cannotDeleteEntries.FirstOrDefault(e => e.Kind == ContextMenuEntryKind.ShellExtension);
+        Check("枚举 CanDelete：open 动词不可删、DeleteBlockReason 有中文原因",
+            openEntryForDelete is not null && !openEntryForDelete.CanDelete
+            && openEntryForDelete.DeleteBlockReason.Trim().Length > 0,
+            openEntryForDelete?.DeleteBlockReason ?? "(null)");
+        Check("枚举 CanDelete：新建菜单扩展不可删、DeleteBlockReason 有中文原因",
+            newMenuEntryForDelete is not null && !newMenuEntryForDelete.CanDelete
+            && newMenuEntryForDelete.DeleteBlockReason.Trim().Length > 0,
+            newMenuEntryForDelete?.DeleteBlockReason ?? "(null)");
+
+        // ================================================================
+        // 10. Delete：多键删除 / 拒绝关键项 / 父键清理 / 权限不足 / 异常不崩
+        // ================================================================
+        var deleteBothRegistry = new FakeContextMenuRegistry();
+        SeedVerb(deleteBothRegistry, RegistryRoot.LocalMachine, @"*\shell", "DeadVerb",
+            muiVerb: "卸载残留", command: @"C:\Gone.exe %1");
+        SeedVerb(deleteBothRegistry, RegistryRoot.CurrentUser, @"*\shell", "DeadVerb",
+            muiVerb: "卸载残留", command: @"C:\Gone.exe %1");
+        var deleteBothService = new ContextMenuService(deleteBothRegistry);
+        var deadVerbEntry = deleteBothService.Enumerate().FirstOrDefault(e => e.Name == "卸载残留");
+
+        ContextMenuDeleteResult deleteNullResult;
+        var deleteNullThrew = false;
+        try { deleteNullResult = deleteBothService.Delete(null!); }
+        catch
+        {
+            deleteNullResult = new ContextMenuDeleteResult(Array.Empty<ContextMenuKeyRef>(), Array.Empty<ContextMenuKeyRef>(), new[] { "Delete 抛异常" });
+            deleteNullThrew = true;
+        }
+        Check("Delete(null)：不抛异常、返回失败结果 + 中文说明",
+            !deleteNullThrew && !deleteNullResult.Success && deleteNullResult.FailureMessages.Count > 0,
+            string.Join("；", deleteNullResult.FailureMessages));
+
+        var noKeysEntry = new ContextMenuEntry("verb:*\\shell\\ghost", ContextMenuEntryKind.Verb, "没有源键的项", "所有文件",
+            @"HKCU\ghost", null, "", false, ContextMenuHideSource.None, true, "") { CanDelete = true };
+        var noKeysResult = new ContextMenuService(new FakeContextMenuRegistry()).Delete(noKeysEntry);
+        Check("Delete：SourceKeys 为空 → Success=false、DeletedCount=0、提示找不到注册表键",
+            !noKeysResult.Success && noKeysResult.DeletedCount == 0
+            && noKeysResult.FailureMessages.Count > 0
+            && noKeysResult.FailureMessages.Any(m => m.Contains("注册表键", StringComparison.Ordinal)),
+            string.Join("；", noKeysResult.FailureMessages));
+
+        var protectedDeleteResult = new ContextMenuService(cannotDeleteRegistry).Delete(newMenuEntryForDelete!);
+        Check("Delete：CanDelete=false 拒绝删除、一个键都不删、给出中文原因",
+            !protectedDeleteResult.Success && protectedDeleteResult.DeletedCount == 0
+            && protectedDeleteResult.PermissionDeniedKeys.Count == 0
+            && protectedDeleteResult.FailureMessages.Count > 0
+            && cannotDeleteRegistry.KeyExists(
+                new RegistryPath(RegistryRoot.LocalMachine, @"Software\Classes\*\shellex\ContextMenuHandlers\New")),
+            string.Join("；", protectedDeleteResult.FailureMessages));
+
+        var deleteBothResult = deleteBothService.Delete(deadVerbEntry!);
+        Check("Delete：HKCU + HKLM 同名动词都删掉（DeletedCount=2、Success、无权限问题）",
+            deleteBothResult.Success && deleteBothResult.DeletedCount == 2
+            && deleteBothResult.PermissionDeniedKeys.Count == 0
+            && deleteBothResult.FailureMessages.Count == 0
+            && !deleteBothRegistry.KeyExists(new RegistryPath(RegistryRoot.CurrentUser, @"Software\Classes\*\shell\DeadVerb"))
+            && !deleteBothRegistry.KeyExists(new RegistryPath(RegistryRoot.LocalMachine, @"Software\Classes\*\shell\DeadVerb")),
+            $"{deleteBothResult.DeletedCount} 个 / 权限不足 {deleteBothResult.PermissionDeniedKeys.Count}");
+
+        Check("Delete：删完重新枚举，那个菜单项不再出现（列表同步刷新）",
+            deleteBothService.Enumerate().All(e => e.Name != "卸载残留"));
+
+        var cleanupRegistry = new FakeContextMenuRegistry();
+        var cleanupVerbKey = CustomContextMenuRules.VerbKeyPrefix + "clean001";
+        var cleanupRelative = @"SystemFileAssociations\.test\shell\" + cleanupVerbKey;
+        SeedCustomVerb(cleanupRegistry, cleanupRelative, "用记事本打开");
+        var cleanupService = new ContextMenuService(cleanupRegistry);
+        var cleanupEntry = cleanupService.Enumerate().FirstOrDefault(e => e.IsCustom);
+        var cleanupResult = cleanupEntry is null
+            ? new ContextMenuDeleteResult(Array.Empty<ContextMenuKeyRef>(), Array.Empty<ContextMenuKeyRef>(), new[] { "找不到自定义条目" })
+            : cleanupService.Delete(cleanupEntry);
+        Check("Delete：父键变空时逐层清理（删掉 .test\\shell\\verb 后空 shell 不再存在）",
+            cleanupResult.Success && cleanupResult.DeletedCount == 1
+            && !cleanupRegistry.KeyExists(
+                new RegistryPath(RegistryRoot.CurrentUser, @"Software\Classes\SystemFileAssociations\.test\shell"))
+            && !cleanupRegistry.KeyExists(new RegistryPath(RegistryRoot.CurrentUser, @"Software\Classes\" + cleanupRelative)),
+            $"{cleanupResult.DeletedCount} 个");
+
+        var deniedInner = new FakeContextMenuRegistry();
+        SeedVerb(deniedInner, RegistryRoot.LocalMachine, @"*\shell", "HklmResidue", muiVerb: "电脑级残留");
+        SeedVerb(deniedInner, RegistryRoot.CurrentUser, @"*\shell", "HklmResidue", muiVerb: "电脑级残留");
+        var deniedService = new ContextMenuService(new HklmDeleteDeniedRegistry(deniedInner));
+        var deniedEntry = deniedService.Enumerate().FirstOrDefault(e => e.Name == "电脑级残留");
+        var deniedResult = deniedService.Delete(deniedEntry!);
+        Check("Delete：HKLM 没权限 → PermissionDeniedKeys 含 HKLM 键、Success=false、NeedsElevation=true",
+            deniedEntry is not null && !deniedResult.Success && deniedResult.NeedsElevation
+            && deniedResult.PermissionDeniedKeys.Count == 1
+            && deniedResult.PermissionDeniedKeys[0].Root == RegistryRoot.LocalMachine
+            && deniedResult.DeletedCount == 1,
+            $"{deniedResult.DeletedCount} 删 / {deniedResult.PermissionDeniedKeys.Count} 权限不足");
+        Check("Delete：HKLM 没权限时 HKCU 的键照样删掉、HKLM 原键保留（等提权再删）",
+            !deniedInner.KeyExists(new RegistryPath(RegistryRoot.CurrentUser, @"Software\Classes\*\shell\HklmResidue"))
+            && deniedInner.KeyExists(new RegistryPath(RegistryRoot.LocalMachine, @"Software\Classes\*\shell\HklmResidue")));
+
+        var exceptionInner = new FakeContextMenuRegistry();
+        SeedVerb(exceptionInner, RegistryRoot.CurrentUser, @"*\shell", "BoomVerb", muiVerb: "删就抛异常");
+        var exceptionService = new ContextMenuService(new ThrowingDeleteRegistry(exceptionInner));
+        var exceptionEntry = exceptionService.Enumerate().FirstOrDefault(e => e.Name == "删就抛异常");
+        ContextMenuDeleteResult exceptionResult;
+        var deleteExceptionThrew = false;
+        try { exceptionResult = exceptionService.Delete(exceptionEntry!); }
+        catch
+        {
+            exceptionResult = new ContextMenuDeleteResult(Array.Empty<ContextMenuKeyRef>(), Array.Empty<ContextMenuKeyRef>(), new[] { "Delete 抛异常" });
+            deleteExceptionThrew = true;
+        }
+        Check("Delete：删键抛异常时 HKCU 记失败消息、不崩、原键还在",
+            !deleteExceptionThrew && !exceptionResult.Success
+            && exceptionResult.FailureMessages.Count > 0
+            && exceptionInner.KeyExists(new RegistryPath(RegistryRoot.CurrentUser, @"Software\Classes\*\shell\BoomVerb")),
+            string.Join("；", exceptionResult.FailureMessages));
+
+        // ================================================================
+        // 11. CustomContextMenuRules：后缀规范化 / 校验 / 菜单名与命令拼装（纯函数）
+        // ================================================================
+        Check("自定义菜单常量：动词键前缀 / 菜单名前缀后缀 / SystemFileAssociations 路径写死正确",
+            CustomContextMenuRules.VerbKeyPrefix == "YuLiangToolkit.Open."
+            && CustomContextMenuRules.MenuNamePrefix == "用 "
+            && CustomContextMenuRules.MenuNameSuffix == " 打开"
+            && CustomContextMenuRules.SystemFileAssociationsPath == @"Software\Classes\SystemFileAssociations",
+            CustomContextMenuRules.VerbKeyPrefix);
+
+        var normalizedBasic = CustomContextMenuRules.NormalizeExtensions("psd, .AI; psd");
+        Check("NormalizeExtensions：逗号 / 分号 / 空格分隔、可省略点、统一小写、去重",
+            normalizedBasic.SequenceEqual(new[] { ".psd", ".ai" }),
+            string.Join(",", normalizedBasic));
+
+        Check("NormalizeExtensions：大小写 / 多空白 / Tab / 换行 / 空串 / null 都归一",
+            CustomContextMenuRules.NormalizeExtensions("  PSD  ;  .Ai  ;  psd  ").SequenceEqual(new[] { ".psd", ".ai" })
+            && CustomContextMenuRules.NormalizeExtensions("psd\tai\npsd").SequenceEqual(new[] { ".psd", ".ai" })
+            && CustomContextMenuRules.NormalizeExtensions("").Count == 0
+            && CustomContextMenuRules.NormalizeExtensions("   ").Count == 0
+            && CustomContextMenuRules.NormalizeExtensions(null).Count == 0);
+
+        CustomContextMenuValidation ValidateForm(CustomContextMenuDefinition definition, Func<string, bool>? exeExists = null)
+            => CustomContextMenuRules.Validate(definition, exeExists ?? (_ => true));
+
+        var validDefinition = new CustomContextMenuDefinition("用 Photoshop 打开", @"C:\Apps\Photoshop.exe",
+            new[] { "psd", ".AI" }, true, false, false);
+        Check("Validate：合法表单 → IsValid、无错误、后缀规范化为 [.psd, .ai]",
+            ValidateForm(validDefinition).IsValid
+            && ValidateForm(validDefinition).Errors.Count == 0
+            && ValidateForm(validDefinition).NormalizedExtensions.SequenceEqual(new[] { ".psd", ".ai" }),
+            string.Join("；", ValidateForm(validDefinition).Errors));
+
+        Check("Validate：名称空 / 超 64 字符 / 含控制字符 → 失败，并给中文原因",
+            !ValidateForm(validDefinition with { Name = "" }).IsValid
+            && !ValidateForm(validDefinition with { Name = new string('名', 65) }).IsValid
+            && !ValidateForm(validDefinition with { Name = "用\nXX 打开" }).IsValid
+            && ValidateForm(validDefinition with { Name = "" }).Errors.Any(e => e.Contains("名称", StringComparison.Ordinal)));
+
+        Check("Validate：exe 空 / 非 .exe / 相对路径 / 不存在（exeExists 假函数）→ 失败",
+            !ValidateForm(validDefinition with { ExePath = "" }).IsValid
+            && !ValidateForm(validDefinition with { ExePath = @"C:\Apps\app.txt" }).IsValid
+            && !ValidateForm(validDefinition with { ExePath = "app.exe" }).IsValid
+            && !CustomContextMenuRules.Validate(validDefinition, _ => false).IsValid
+            && CustomContextMenuRules.Validate(validDefinition, _ => false).Errors
+                .Any(e => e.Contains("不存在", StringComparison.Ordinal)));
+
+        Check("Validate：后缀含非法字符 → 失败；一次超过 12 个后缀 → 失败",
+            !ValidateForm(validDefinition with { Extensions = new[] { "bad:evil" } }).IsValid
+            && !ValidateForm(validDefinition with
+            {
+                Extensions = Enumerable.Range(1, 13).Select(index => "ext" + index).ToArray(),
+            }).IsValid);
+
+        Check("Validate：既没后缀也没勾任何作用范围 → 失败",
+            !ValidateForm(validDefinition with
+            {
+                Extensions = Array.Empty<string>(),
+                ApplyToFolders = false,
+                ApplyToFolderBackground = false,
+                ApplyToAllFiles = false,
+            }).IsValid);
+
+        Check("Validate：不填后缀、只勾「文件夹」→ 合法（NormalizedExtensions 为空）",
+            ValidateForm(validDefinition with
+            {
+                Extensions = Array.Empty<string>(),
+                ApplyToFolders = true,
+                ApplyToFolderBackground = false,
+                ApplyToAllFiles = false,
+            }).IsValid);
+
+        Check("BuildMenuName：从 exe 文件名生成「用 XX 打开」；空 / null / 带引号路径都处理",
+            CustomContextMenuRules.BuildMenuName(@"C:\Program Files\Adobe\Photoshop.exe") == "用 Photoshop 打开"
+            && CustomContextMenuRules.BuildMenuName("\"C:\\Apps\\App.exe\"") == "用 App 打开"
+            && CustomContextMenuRules.BuildMenuName("") == ""
+            && CustomContextMenuRules.BuildMenuName(null) == "");
+
+        Check("BuildCommand / BuildIcon：普通目标用 %1、文件夹空白处用 %V，图标取 exe 第 0 个",
+            CustomContextMenuRules.BuildCommand(@"C:\Apps\App.exe", folderBackground: false) == "\"C:\\Apps\\App.exe\" \"%1\""
+            && CustomContextMenuRules.BuildCommand(@"C:\Apps\App.exe", folderBackground: true) == "\"C:\\Apps\\App.exe\" \"%V\""
+            && CustomContextMenuRules.BuildIcon(@"C:\Apps\App.exe") == "\"C:\\Apps\\App.exe\",0");
+
+        var newVerbKeyOne = CustomContextMenuRules.NewVerbKey();
+        var newVerbKeyTwo = CustomContextMenuRules.NewVerbKey();
+        Check("NewVerbKey / IsCustomVerbKey：带前缀、两次不同、能识别自定义动词键",
+            newVerbKeyOne.StartsWith(CustomContextMenuRules.VerbKeyPrefix, StringComparison.Ordinal)
+            && newVerbKeyOne.Length > CustomContextMenuRules.VerbKeyPrefix.Length
+            && newVerbKeyOne != newVerbKeyTwo
+            && CustomContextMenuRules.IsCustomVerbKey(newVerbKeyOne)
+            && CustomContextMenuRules.IsCustomVerbKey("  " + CustomContextMenuRules.VerbKeyPrefix + "abcd  ")
+            && !CustomContextMenuRules.IsCustomVerbKey("BaiduNetdisk")
+            && !CustomContextMenuRules.IsCustomVerbKey("")
+            && !CustomContextMenuRules.IsCustomVerbKey(null));
+
+        var ruleVerbKey = CustomContextMenuRules.VerbKeyPrefix + "abcd1234";
+        var builtSourceKeys = CustomContextMenuRules.BuildSourceKeys(ruleVerbKey, new[] { ".PSD", "ai" }, true, true, true);
+        Check("BuildSourceKeys：后缀 → SystemFileAssociations\\.后缀\\shell\\动词，全部 HKCU",
+            builtSourceKeys.Count == 5
+            && builtSourceKeys.All(key => key.Root == RegistryRoot.CurrentUser)
+            && builtSourceKeys[0].RelativePath
+               == CustomContextMenuRules.SystemFileAssociationsPath + @"\.psd\shell\" + ruleVerbKey
+            && builtSourceKeys[1].RelativePath
+               == CustomContextMenuRules.SystemFileAssociationsPath + @"\.ai\shell\" + ruleVerbKey,
+            $"{builtSourceKeys.Count} 条");
+
+        Check("BuildSourceKeys：文件夹 / 文件夹空白处 / 所有文件按固定顺序追加、路径正确",
+            builtSourceKeys[2].RelativePath == @"Software\Classes\Directory\shell\" + ruleVerbKey
+            && builtSourceKeys[3].RelativePath == @"Software\Classes\Directory\Background\shell\" + ruleVerbKey
+            && builtSourceKeys[4].RelativePath == @"Software\Classes\*\shell\" + ruleVerbKey);
+
+        Check("BuildSourceKeys：非法 / 空动词键 → 空列表；没有后缀只勾作用范围 → 只生成对应键",
+            CustomContextMenuRules.BuildSourceKeys("BaiduNetdisk", new[] { ".psd" }, false, false, false).Count == 0
+            && CustomContextMenuRules.BuildSourceKeys(null, new[] { ".psd" }, false, false, false).Count == 0
+            && CustomContextMenuRules.BuildSourceKeys(ruleVerbKey, null, false, false, true).Count == 1);
+
+        // ================================================================
+        // 12. AddCustomMenu：写键内容 / 文件夹空白处 %V / 校验失败不写 / 写失败回滚
+        // ================================================================
+        var addRegistry = new FakeContextMenuRegistry();
+        var addService = new ContextMenuService(addRegistry);
+        var addDefinition = new CustomContextMenuDefinition("用 Photoshop 打开", @"C:\Apps\Photoshop.exe",
+            new[] { "psd", ".ai" }, true, false, false);
+        var addResult = addService.AddCustomMenu(addDefinition, _ => true);
+        Check("AddCustomMenu：合法表单写 3 个 HKCU 键（2 个后缀 + 文件夹）、Success、CreatedKeys 齐全",
+            addResult.Success && addResult.CreatedKeys.Count == 3
+            && addResult.CreatedKeys.All(key => key.Root == RegistryRoot.CurrentUser),
+            $"{addResult.CreatedKeys.Count} 个键 / {addResult.Message}");
+
+        var psdKeyRef = addResult.CreatedKeys.FirstOrDefault(
+            key => key.RelativePath.Contains(@"SystemFileAssociations\.psd\shell\", StringComparison.OrdinalIgnoreCase));
+        var aiKeyRef = addResult.CreatedKeys.FirstOrDefault(
+            key => key.RelativePath.Contains(@"SystemFileAssociations\.ai\shell\", StringComparison.OrdinalIgnoreCase));
+        var directoryKeyRef = addResult.CreatedKeys.FirstOrDefault(
+            key => key.RelativePath.Contains(@"Directory\shell\", StringComparison.OrdinalIgnoreCase));
+        var createdVerbKey = psdKeyRef?.RelativePath.Split('\\').LastOrDefault() ?? "";
+        Check("AddCustomMenu：默认值=菜单名、Icon=BuildIcon、command 子键=BuildCommand、SystemFileAssociations 路径正确",
+            psdKeyRef is not null && aiKeyRef is not null && directoryKeyRef is not null
+            && psdKeyRef.RelativePath == CustomContextMenuRules.SystemFileAssociationsPath + @"\.psd\shell\" + createdVerbKey
+            && aiKeyRef.RelativePath == CustomContextMenuRules.SystemFileAssociationsPath + @"\.ai\shell\" + createdVerbKey
+            && directoryKeyRef.RelativePath == @"Software\Classes\Directory\shell\" + createdVerbKey
+            && addRegistry.GetValue(psdKeyRef.ToRegistryPath(), "") == "用 Photoshop 打开"
+            && addRegistry.GetValue(psdKeyRef.ToRegistryPath(), "Icon") == CustomContextMenuRules.BuildIcon(@"C:\Apps\Photoshop.exe")
+            && addRegistry.GetValue(new RegistryPath(RegistryRoot.CurrentUser, psdKeyRef.RelativePath + @"\command"), "")
+               == CustomContextMenuRules.BuildCommand(@"C:\Apps\Photoshop.exe", folderBackground: false),
+            psdKeyRef?.RelativePath ?? "(null)");
+
+        var backgroundRegistry = new FakeContextMenuRegistry();
+        var backgroundResult = new ContextMenuService(backgroundRegistry).AddCustomMenu(
+            new CustomContextMenuDefinition("用记事本打开", @"C:\Windows\notepad.exe",
+                Array.Empty<string>(), false, true, false), _ => true);
+        var backgroundKeyRef = backgroundResult.CreatedKeys.FirstOrDefault(
+            key => key.RelativePath.Contains(@"Directory\Background\shell\", StringComparison.OrdinalIgnoreCase));
+        Check("AddCustomMenu：文件夹空白处的命令行用 %V（其它目标用 %1）",
+            backgroundResult.Success && backgroundKeyRef is not null
+            && backgroundRegistry.GetValue(new RegistryPath(RegistryRoot.CurrentUser, backgroundKeyRef.RelativePath + @"\command"), "")
+               == CustomContextMenuRules.BuildCommand(@"C:\Windows\notepad.exe", folderBackground: true),
+            backgroundKeyRef?.RelativePath ?? "(null)");
+
+        var addFailRegistry = new FakeContextMenuRegistry();
+        var addFailResult = new ContextMenuService(addFailRegistry).AddCustomMenu(
+            new CustomContextMenuDefinition("用不存在的程序打开", @"C:\不存在\Nope.exe",
+                new[] { "psd" }, false, false, false), _ => false);
+        Check("AddCustomMenu：程序不存在 → Fail、一个键都不写（校验在写之前）",
+            !addFailResult.Success && addFailResult.CreatedKeys.Count == 0
+            && addFailRegistry.SnapshotKeys().Count == 0,
+            addFailResult.Message);
+
+        var rollbackRegistry = new FakeContextMenuRegistry();
+        var rollbackResult = new ContextMenuService(new FailAfterWritesRegistry(rollbackRegistry, failAfter: 3))
+            .AddCustomMenu(new CustomContextMenuDefinition("用 Photoshop 打开", @"C:\Apps\Photoshop.exe",
+                new[] { "psd", "ai" }, true, false, false), _ => true);
+        var leftoverVerbKeys = rollbackRegistry.SnapshotKeys().Count(
+            key => key.Path.Contains(CustomContextMenuRules.VerbKeyPrefix, StringComparison.OrdinalIgnoreCase));
+        Check("AddCustomMenu：写注册表中途抛异常 → Fail、已写的动词键被尽力回滚（不留半成品）",
+            !rollbackResult.Success && leftoverVerbKeys == 0,
+            $"{rollbackResult.Message} / 残留 {leftoverVerbKeys} 个键");
+
+        // ================================================================
+        // 13. 自定义菜单：枚举合并 / 隐藏 / 恢复 / 删除（SystemFileAssociations + 标准位置）
+        // ================================================================
+        var customRegistry = new FakeContextMenuRegistry();
+        var customVerbKey = CustomContextMenuRules.VerbKeyPrefix + "abcd1234";
+        const string customMenuName = "用 Photoshop 打开";
+        var customRelativePaths = new[]
+        {
+            @"SystemFileAssociations\.psd\shell\" + customVerbKey,
+            @"SystemFileAssociations\.ai\shell\" + customVerbKey,
+            @"Directory\shell\" + customVerbKey,
+        };
+        foreach (var relative in customRelativePaths) SeedCustomVerb(customRegistry, relative, customMenuName);
+        var customService = new ContextMenuService(customRegistry);
+        var customEntriesAll = customService.Enumerate();
+        var customEntry = customEntriesAll.FirstOrDefault(e => e.IsCustom);
+        Check("自定义枚举：3 个位置的同名自定义动词合并成一条 Kind=Custom，普通扫描不再重复出 Verb 行",
+            customEntriesAll.Count == 1 && customEntry is not null
+            && customEntry.Kind == ContextMenuEntryKind.Custom
+            && customEntry.Name == customMenuName
+            && customEntry.ScopeLabel == "自定义菜单"
+            && customEntry.KindLabel == "自定义菜单"
+            && customEntry.CanToggle && customEntry.CanDelete && customEntry.DeleteBlockReason.Length == 0,
+            $"{customEntriesAll.Count} 行 / {customEntry?.Name}");
+
+        Check("自定义枚举：Id = custom: + 小写动词键、SourceKeys = 3 条 HKCU 键、Detail = 第一条 command",
+            customEntry is not null
+            && customEntry.Id == "custom:" + customVerbKey.ToLowerInvariant()
+            && customEntry.SourceKeys.Count == 3
+            && customEntry.SourceKeys.All(key => key.Root == RegistryRoot.CurrentUser)
+            && customEntry.SourceKeys.Select(key => key.RelativePath)
+                .Distinct(StringComparer.OrdinalIgnoreCase).Count() == 3
+            && customEntry.RegistryLocation.Split('；').Length == 3
+            && customEntry.Detail == CustomContextMenuRules.BuildCommand(@"C:\Apps\Photoshop.exe", folderBackground: false),
+            customEntry?.RegistryLocation ?? "(null)");
+
+        var hideCustomResult = customService.SetHidden(customEntry!, hidden: true);
+        var customMarkerOnAllKeys = customRelativePaths.All(relative =>
+            customRegistry.GetValue(
+                new RegistryPath(RegistryRoot.CurrentUser, @"Software\Classes\" + relative),
+                ContextMenuRegistryLayout.ProgrammaticAccessOnly) == ContextMenuRegistryLayout.Marker);
+        Check("自定义 SetHidden：对全部 SourceKeys 的 HKCU 键写 ProgrammaticAccessOnly = Marker",
+            hideCustomResult.Success && customMarkerOnAllKeys,
+            hideCustomResult.Message);
+
+        var hiddenCustomEntry = customService.Enumerate().FirstOrDefault(e => e.IsCustom);
+        Check("自定义枚举：隐藏后重新枚举 = 已隐藏 / 本工具隐藏（IsHiddenByThisTool）",
+            hiddenCustomEntry is { IsHidden: true }
+            && hiddenCustomEntry.HideSource == ContextMenuHideSource.ThisTool
+            && hiddenCustomEntry.IsHiddenByThisTool,
+            hiddenCustomEntry?.SourceLabel ?? "(null)");
+
+        var showCustomResult = customService.SetHidden(hiddenCustomEntry!, hidden: false);
+        var customValuesCleared = customRelativePaths.All(relative =>
+            customRegistry.GetValue(
+                new RegistryPath(RegistryRoot.CurrentUser, @"Software\Classes\" + relative),
+                ContextMenuRegistryLayout.ProgrammaticAccessOnly) is null);
+        Check("自定义 SetHidden：恢复只删 ProgrammaticAccessOnly 值，键与默认值 / 命令都保留",
+            showCustomResult.Success && customValuesCleared
+            && customRelativePaths.All(relative =>
+                customRegistry.KeyExists(new RegistryPath(RegistryRoot.CurrentUser, @"Software\Classes\" + relative))
+                && customRegistry.GetValue(
+                    new RegistryPath(RegistryRoot.CurrentUser, @"Software\Classes\" + relative), "") == customMenuName),
+            showCustomResult.Message);
+
+        var restoredCustomEntry = customService.Enumerate().FirstOrDefault(e => e.IsCustom);
+        Check("自定义枚举：恢复后重新枚举 = 显示中 / 无隐藏来源",
+            restoredCustomEntry is { IsHidden: false }
+            && restoredCustomEntry.HideSource == ContextMenuHideSource.None,
+            restoredCustomEntry?.StatusLabel ?? "(null)");
+
+        var deleteCustomResult = customService.Delete(restoredCustomEntry!);
+        Check("自定义 Delete：3 个键全部删除（DeletedCount=3、Success、无权限问题）",
+            deleteCustomResult.Success && deleteCustomResult.DeletedCount == 3
+            && deleteCustomResult.PermissionDeniedKeys.Count == 0
+            && deleteCustomResult.FailureMessages.Count == 0
+            && customRelativePaths.All(relative =>
+                !customRegistry.KeyExists(new RegistryPath(RegistryRoot.CurrentUser, @"Software\Classes\" + relative))),
+            $"{deleteCustomResult.DeletedCount} 个 / 失败 {deleteCustomResult.FailureMessages.Count}");
+
+        Check("自定义 Delete：空父键被清理（.psd / .ai 下空 shell、Directory\\shell 都不再存在）",
+            !customRegistry.KeyExists(new RegistryPath(RegistryRoot.CurrentUser,
+                @"Software\Classes\SystemFileAssociations\.psd\shell"))
+            && !customRegistry.KeyExists(new RegistryPath(RegistryRoot.CurrentUser,
+                @"Software\Classes\SystemFileAssociations\.ai\shell"))
+            && !customRegistry.KeyExists(new RegistryPath(RegistryRoot.CurrentUser,
+                @"Software\Classes\Directory\shell")),
+            "空父键清理");
+
+        // ================================================================
+        // 14. 删除前备份：BuildBackupFileName（纯函数，不真的导出注册表）
+        // ================================================================
+        var backupMoment = new DateTime(2025, 1, 2, 3, 4, 5);
+        var backupKeyCurrentUser = new ContextMenuKeyRef(RegistryRoot.CurrentUser,
+            @"Software\Classes\*\shell\BaiduNetdisk");
+        var backupKeyLocalMachine = new ContextMenuKeyRef(RegistryRoot.LocalMachine,
+            @"Software\Classes\Directory\shell\WinRAR");
+        var backupNameCurrentUser = ContextMenuBackupService.BuildBackupFileName(backupKeyCurrentUser, backupMoment);
+        var backupNameLocalMachine = ContextMenuBackupService.BuildBackupFileName(backupKeyLocalMachine, backupMoment);
+        var backupNameSameKeyLater = ContextMenuBackupService.BuildBackupFileName(backupKeyCurrentUser, backupMoment.AddSeconds(1));
+        var backupNameOtherKey = ContextMenuBackupService.BuildBackupFileName(
+            new ContextMenuKeyRef(RegistryRoot.CurrentUser, @"Software\Classes\Directory\shell\WinRAR"), backupMoment);
+
+        Check("备份文件名：含时间戳（yyyyMMdd-HHmmss）、带 HKCU / HKLM、以 .reg 结尾",
+            backupNameCurrentUser.Contains("20250102-030405", StringComparison.Ordinal)
+            && backupNameCurrentUser.Contains("HKCU", StringComparison.Ordinal)
+            && backupNameCurrentUser.EndsWith(".reg", StringComparison.OrdinalIgnoreCase)
+            && backupNameLocalMachine.Contains("20250102-030405", StringComparison.Ordinal)
+            && backupNameLocalMachine.Contains("HKLM", StringComparison.Ordinal)
+            && backupNameLocalMachine.EndsWith(".reg", StringComparison.OrdinalIgnoreCase),
+            $"{backupNameCurrentUser} / {backupNameLocalMachine}");
+
+        var illegalFileNameChars = new[] { '\\', '/', ':', '*', '?', '"', '<', '>', '|' };
+        Check("备份文件名：不含 Windows 文件名非法字符与控制字符（路径被清洗成 _）",
+            illegalFileNameChars.All(c => !backupNameCurrentUser.Contains(c) && !backupNameLocalMachine.Contains(c))
+            && backupNameCurrentUser.All(c => !char.IsControl(c))
+            && backupNameLocalMachine.All(c => !char.IsControl(c)));
+
+        Check("备份文件名：不同键不重名、同一键不同时间不同名",
+            backupNameCurrentUser != backupNameLocalMachine
+            && backupNameCurrentUser != backupNameOtherKey
+            && backupNameCurrentUser != backupNameSameKeyLater,
+            $"{backupNameCurrentUser} / {backupNameSameKeyLater}");
+
+        var longBackupName = ContextMenuBackupService.BuildBackupFileName(
+            new ContextMenuKeyRef(RegistryRoot.CurrentUser, @"Software\Classes\" + new string('长', 300)), backupMoment);
+        Check("备份文件名：超长键路径也限长（文件名 ≤ 200 字符，能放进 Windows 路径）",
+            longBackupName.Length <= 200 && longBackupName.EndsWith(".reg", StringComparison.OrdinalIgnoreCase),
+            longBackupName.Length + " 字符");
+
+        // ================================================================
+        // 15. 提权删除脚本：IsSafeKeyPath / BuildScriptLines（纯函数，绝不真的弹 UAC）
+        // ================================================================
+        Check("提权脚本：IsSafeKeyPath 正常键为真；空 / 空白 / 引号 / 回车 / 换行 / null 为假",
+            ElevatedContextMenuDelete.IsSafeKeyPath(@"Software\Classes\*\shell\Foo")
+            && !ElevatedContextMenuDelete.IsSafeKeyPath("")
+            && !ElevatedContextMenuDelete.IsSafeKeyPath("   ")
+            && !ElevatedContextMenuDelete.IsSafeKeyPath("Software\\Classes\\Bad\"Key")
+            && !ElevatedContextMenuDelete.IsSafeKeyPath("Software\\Classes\\Bad\rKey")
+            && !ElevatedContextMenuDelete.IsSafeKeyPath("Software\\Classes\\Bad\nKey")
+            && !ElevatedContextMenuDelete.IsSafeKeyPath(null));
+
+        var scriptLocalMachineKey = new ContextMenuKeyRef(RegistryRoot.LocalMachine,
+            @"Software\Classes\*\shell\MachineVerb");
+        var scriptCurrentUserKey = new ContextMenuKeyRef(RegistryRoot.CurrentUser,
+            @"Software\Classes\*\shell\UserVerb");
+        var scriptLines = ElevatedContextMenuDelete.BuildScriptLines(new[] { scriptLocalMachineKey, scriptCurrentUserKey });
+        Check("提权脚本：首行 @echo off，之后只给 HKLM 键生成 reg.exe delete \"HKLM\\…\" /f（HKCU 忽略）",
+            scriptLines.Count == 2
+            && scriptLines[0] == "@echo off"
+            && scriptLines[1] == @"reg.exe delete ""HKLM\Software\Classes\*\shell\MachineVerb"" /f >nul 2>nul"
+            && !string.Join("\n", scriptLines).Contains("UserVerb", StringComparison.Ordinal),
+            string.Join(" | ", scriptLines));
+
+        var emptyScriptLines = ElevatedContextMenuDelete.BuildScriptLines(Array.Empty<ContextMenuKeyRef>());
+        var currentUserOnlyScriptLines = ElevatedContextMenuDelete.BuildScriptLines(new[] { scriptCurrentUserKey });
+        Check("提权脚本：空集合 / 只有 HKCU 键 → 只返回 @echo off，不生成任何删除行",
+            emptyScriptLines.Count == 1 && emptyScriptLines[0] == "@echo off"
+            && currentUserOnlyScriptLines.Count == 1 && currentUserOnlyScriptLines[0] == "@echo off");
+
+        var unsafeScriptKey = new ContextMenuKeyRef(RegistryRoot.LocalMachine, "Software\\Classes\\Bad\"Key");
+        var unsafeScriptLines = ElevatedContextMenuDelete.BuildScriptLines(new[] { unsafeScriptKey, scriptLocalMachineKey });
+        Check("提权脚本：不安全的键路径（含引号）被跳过、安全的 HKLM 键照常生成",
+            unsafeScriptLines.Count == 2
+            && unsafeScriptLines[1].Contains("MachineVerb", StringComparison.Ordinal)
+            && !string.Join("\n", unsafeScriptLines).Contains("Bad", StringComparison.Ordinal),
+            string.Join(" | ", unsafeScriptLines));
     }
 
     // ================================================================
@@ -750,6 +1297,23 @@ internal static class ContextMenuChecks
         if (displayName is not null) registry.Seed(root, @"Software\Classes\CLSID\" + canonical, "", displayName);
         if (dllPath is not null)
             registry.Seed(root, @"Software\Classes\CLSID\" + canonical + @"\InprocServer32", "", dllPath);
+    }
+
+    /// <summary>
+    /// 往假注册表里种一个「本工具添加的自定义打开菜单」动词键
+    /// （默认值 = 菜单名、Icon、command 子键，和 <c>AddCustomMenu</c> 写出来的形状一致）。
+    /// </summary>
+    private static void SeedCustomVerb(
+        FakeContextMenuRegistry registry,
+        string relativeToClasses,
+        string menuName,
+        string? command = null)
+    {
+        var path = @"Software\Classes\" + relativeToClasses;
+        registry.Seed(RegistryRoot.CurrentUser, path, "", menuName);
+        registry.Seed(RegistryRoot.CurrentUser, path, "Icon", "\"C:\\Apps\\Photoshop.exe\",0");
+        registry.Seed(RegistryRoot.CurrentUser, path + @"\command", "",
+            command ?? "\"C:\\Apps\\Photoshop.exe\" \"%1\"");
     }
 
     // ================================================================
@@ -837,6 +1401,25 @@ internal static class ContextMenuChecks
         /// <summary>直接种一个键（没有值也行）。</summary>
         public void SeedKey(RegistryRoot root, string path) => EnsureKey(new RegistryPath(root, path));
 
+        /// <summary>
+        /// 自检用：把当前所有键拍成「根 + 相对路径」快照。
+        /// 用来断言「AddCustomMenu 写失败回滚后一个动词键都没留下」这种整体状态。
+        /// </summary>
+        public IReadOnlyList<RegistryPath> SnapshotKeys()
+        {
+            var result = new List<RegistryPath>();
+            foreach (var key in _keys.Keys)
+            {
+                var separator = key.IndexOf('|');
+                if (separator <= 0) continue;
+                var root = string.Equals(key[..separator], nameof(RegistryRoot.LocalMachine), StringComparison.Ordinal)
+                    ? RegistryRoot.LocalMachine
+                    : RegistryRoot.CurrentUser;
+                result.Add(new RegistryPath(root, key[(separator + 1)..]));
+            }
+            return result;
+        }
+
         private void EnsureKey(RegistryPath path)
         {
             var normalized = Normalize(path.Path);
@@ -881,6 +1464,101 @@ internal static class ContextMenuChecks
 
         public void DeleteKey(RegistryPath path)
             => throw new IOException("模拟注册表删键被拒绝（自检专用，不碰真实注册表）");
+    }
+
+    /// <summary>
+    /// 读走假实现、模拟「HKLM 没有管理员权限」：<see cref="TryDeleteKey"/> 对 LocalMachine 一律返回 false，
+    /// HKCU 正常删除。用来断言 <c>Delete</c> 把权限不足单独记进 <c>PermissionDeniedKeys</c>（界面据此走 UAC）。
+    /// </summary>
+    private sealed class HklmDeleteDeniedRegistry : IContextMenuRegistry
+    {
+        private readonly IContextMenuRegistry _inner;
+
+        public HklmDeleteDeniedRegistry(IContextMenuRegistry inner) => _inner = inner;
+
+        public bool KeyExists(RegistryPath path) => _inner.KeyExists(path);
+
+        public IReadOnlyList<string> GetSubKeyNames(RegistryPath path) => _inner.GetSubKeyNames(path);
+
+        public string? GetValue(RegistryPath path, string valueName) => _inner.GetValue(path, valueName);
+
+        public IReadOnlyList<RegistryValue> GetValues(RegistryPath path) => _inner.GetValues(path);
+
+        public void SetValue(RegistryPath path, string valueName, string value)
+            => _inner.SetValue(path, valueName, value);
+
+        public void DeleteValue(RegistryPath path, string valueName) => _inner.DeleteValue(path, valueName);
+
+        public void DeleteKey(RegistryPath path) => _inner.DeleteKey(path);
+
+        /// <summary>只有 HKCU 能删；HKLM 假装权限不足（不真的删，也不会抛异常）。</summary>
+        public bool TryDeleteKey(RegistryPath path)
+            => path.Root != RegistryRoot.LocalMachine && _inner.TryDeleteKey(path);
+    }
+
+    /// <summary>删键一律抛异常：验证 <c>Delete</c> 把 HKCU 的异常记成中文失败消息、不把自检炸掉。</summary>
+    private sealed class ThrowingDeleteRegistry : IContextMenuRegistry
+    {
+        private readonly IContextMenuRegistry _inner;
+
+        public ThrowingDeleteRegistry(IContextMenuRegistry inner) => _inner = inner;
+
+        public bool KeyExists(RegistryPath path) => _inner.KeyExists(path);
+
+        public IReadOnlyList<string> GetSubKeyNames(RegistryPath path) => _inner.GetSubKeyNames(path);
+
+        public string? GetValue(RegistryPath path, string valueName) => _inner.GetValue(path, valueName);
+
+        public IReadOnlyList<RegistryValue> GetValues(RegistryPath path) => _inner.GetValues(path);
+
+        public void SetValue(RegistryPath path, string valueName, string value)
+            => _inner.SetValue(path, valueName, value);
+
+        public void DeleteValue(RegistryPath path, string valueName) => _inner.DeleteValue(path, valueName);
+
+        public void DeleteKey(RegistryPath path) => _inner.DeleteKey(path);
+
+        public bool TryDeleteKey(RegistryPath path)
+            => throw new IOException("模拟删键抛异常（自检专用，不碰真实注册表）");
+    }
+
+    /// <summary>
+    /// 前 <c>failAfter</c> 次写值正常，之后开始抛异常：验证 <c>AddCustomMenu</c> 写到一半失败时
+    /// 会回滚已经写下的动词键（假注册表里的键都带自定义前缀，回滚只可能删到本次创建的键）。
+    /// </summary>
+    private sealed class FailAfterWritesRegistry : IContextMenuRegistry
+    {
+        private readonly IContextMenuRegistry _inner;
+        private readonly int _failAfter;
+        private int _writes;
+
+        public FailAfterWritesRegistry(IContextMenuRegistry inner, int failAfter)
+        {
+            _inner = inner;
+            _failAfter = failAfter;
+        }
+
+        public bool KeyExists(RegistryPath path) => _inner.KeyExists(path);
+
+        public IReadOnlyList<string> GetSubKeyNames(RegistryPath path) => _inner.GetSubKeyNames(path);
+
+        public string? GetValue(RegistryPath path, string valueName) => _inner.GetValue(path, valueName);
+
+        public IReadOnlyList<RegistryValue> GetValues(RegistryPath path) => _inner.GetValues(path);
+
+        public void SetValue(RegistryPath path, string valueName, string value)
+        {
+            _writes++;
+            if (_writes > _failAfter)
+                throw new IOException("模拟注册表写入失败（自检专用，不碰真实注册表）");
+            _inner.SetValue(path, valueName, value);
+        }
+
+        public void DeleteValue(RegistryPath path, string valueName) => _inner.DeleteValue(path, valueName);
+
+        public void DeleteKey(RegistryPath path) => _inner.DeleteKey(path);
+
+        public bool TryDeleteKey(RegistryPath path) => _inner.TryDeleteKey(path);
     }
 
     /// <summary>所有读写都抛异常的坏注册表：验证枚举的容错（单个坏位置不拖垮扫描）。</summary>

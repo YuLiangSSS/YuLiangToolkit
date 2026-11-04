@@ -125,6 +125,31 @@ public sealed class RegistryContextMenuStore : IContextMenuRegistry
         }
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// 显式实现（不走接口默认实现）：删除后读回确认，只有确认键已经不在了才返回 true。
+    /// 权限不足 / 键被占用 / 参数异常一律返回 false，<b>不抛异常、也不假装成功</b>，
+    /// 由 <see cref="ContextMenuService.Delete"/> 区分 HKLM（界面再走一次 UAC 提权）与 HKCU（直接报失败）。
+    /// </remarks>
+    public bool TryDeleteKey(RegistryPath path)
+    {
+        var subPath = NormalizePath(path.Path);
+        if (subPath.Length == 0) return false; // 绝不删根键
+
+        try
+        {
+            GetRoot(path.Root).DeleteSubKeyTree(subPath, throwOnMissingSubKey: false);
+        }
+        catch
+        {
+            // 权限不足 / 键被占用：交给调用方按 HKLM 提权或 HKCU 失败处理。
+            return false;
+        }
+
+        // 读回确认：键仍然存在（或读不到）就不能算删掉。
+        return !KeyExists(path);
+    }
+
     /// <summary><see cref="RegistryRoot"/> → 静态根键（不负责释放）。</summary>
     private static RegistryKey GetRoot(RegistryRoot root)
         => root == RegistryRoot.LocalMachine ? Registry.LocalMachine : Registry.CurrentUser;

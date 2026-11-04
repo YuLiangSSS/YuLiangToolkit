@@ -6,8 +6,9 @@
     <!-- 右键菜单管理（context-menu-manager）。
          布局约定见 docs/dev/layout.md：
            · 左右：条目列表（*）｜ core:PaneSplitter（Key=context-menu-manager.列表与详情）｜详情/操作（固定像素）；
-           · 上下：主区域（固定像素行）｜ core:PaneSplitter（Key=context-menu-manager.主区域与日志）｜运行日志；
-           · 整页包在 ScrollViewer 里，内层列表 / 详情 / 日志挂 ScrollChaining（滚到头交给整页）。 -->
+           · 上下三段：主区域（固定像素行）｜ core:PaneSplitter（Key=context-menu-manager.主区域与自定义）｜
+             「添加打开菜单」卡（固定像素行）｜ core:PaneSplitter（Key=context-menu-manager.自定义与日志）｜运行日志（固定像素行）；
+           · 整页包在 ScrollViewer 里，内层列表 / 详情 / 表单 / 日志挂 ScrollChaining（滚到头交给整页），卡片 ClipToBounds 防裁切溢出。 -->
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                   core:ScrollChaining.Enabled="True">
@@ -17,19 +18,22 @@
             <StackPanel>
                 <TextBlock Text="🖱️ 右键菜单管理" FontSize="21" FontWeight="SemiBold" />
                 <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
-                           Text="枚举 Windows 右键菜单里的项目（文件 / 文件夹 / 空白处 / 驱动器 / 桌面背景），把不需要的（例如「上传到百度网盘」）隐藏、随时恢复。只写当前用户（HKCU）的覆盖项，不删原注册表键，不需要管理员权限。" />
+                           Text="枚举 Windows 右键菜单里的项目（文件 / 文件夹 / 空白处 / 驱动器 / 桌面背景）：不需要的可以隐藏、随时恢复；也能删除用不到的菜单项（删除前自动备份 .reg，可双击还原），或添加「用 XX 打开」这类自定义菜单。隐藏只写当前用户（HKCU）的覆盖项、不删原键。" />
                 <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,10,0,0"
                            Text="{Binding StatsText}" />
             </StackPanel>
 
-            <!-- ===== 主区域 + 运行日志：上下可拖（两块都是固定像素行） ===== -->
+            <!-- ===== 主区域 + 添加打开菜单 + 运行日志：三段上下可拖（每块都是固定像素行） ===== -->
             <Grid Margin="0,16,0,0">
                 <Grid.RowDefinitions>
-                    <!-- 主区域：左列表 / 竖分隔条 / 右详情（左右可拖） -->
+                    <!-- ① 主区域：左列表 / 竖分隔条 / 右详情（左右可拖） -->
                     <RowDefinition Height="400" MinHeight="340" />
                     <RowDefinition Height="12" />
-                    <!-- 日志：内部 Auto（标题）+ *（日志框） -->
-                    <RowDefinition Height="160" MinHeight="110" />
+                    <!-- ② 添加打开菜单：内部 Auto（标题）+ *（表单，可滚） -->
+                    <RowDefinition Height="250" MinHeight="220" />
+                    <RowDefinition Height="12" />
+                    <!-- ③ 日志：内部 Auto（标题）+ *（日志框） -->
+                    <RowDefinition Height="150" MinHeight="110" />
                 </Grid.RowDefinitions>
 
                 <Grid Grid.Row="0">
@@ -91,7 +95,7 @@
                                            Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,6,6" />
                                 <ComboBox ItemsSource="{Binding KindOptions}" SelectedItem="{Binding SelectedKind}"
                                           Style="{StaticResource ComboBoxStyle}" MinWidth="104" Margin="0,0,14,6"
-                                          ToolTip="菜单命令 = 注册表 shell 动词；扩展模块 = COM 外壳扩展" />
+                                          ToolTip="菜单命令 = 注册表 shell 动词；扩展模块 = COM 外壳扩展；自定义菜单 = 本工具「添加打开菜单」创建的项" />
                                 <CheckBox Content="只看已隐藏" IsChecked="{Binding ShowOnlyHidden}"
                                           Style="{StaticResource CheckBoxStyle}" Margin="0,0,0,6" VerticalAlignment="Center" />
                             </WrapPanel>
@@ -275,12 +279,30 @@
                                                    TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
                                     </Border>
 
+                                    <!-- 实际存在的注册表键（HKCU / HKLM 都可能）：删除会处理这些键 -->
+                                    <StackPanel Visibility="{Binding SelectedEntry.SourceKeysText, Converter={StaticResource EmptyToVisInverse}}">
+                                        <TextBlock Text="涉及的注册表键（删除会处理这些）" FontSize="11" Margin="0,12,0,5"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <TextBlock Text="{Binding SelectedEntry.SourceKeysText}" FontSize="11"
+                                                   TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    </StackPanel>
+
                                     <!-- 大按钮：隐藏 / 恢复选中项 -->
                                     <Button Content="{Binding SelectedEntry.ToggleActionLabel}"
                                             Command="{Binding ToggleSelectedCommand}"
                                             Style="{StaticResource PrimaryButtonStyle}"
                                             MinHeight="38" Margin="0,16,0,0"
                                             ToolTip="立即写入当前用户注册表；隐藏后可用「恢复显示」还原" />
+
+                                    <!-- 删除这一项：真的删注册表键（先自动备份 .reg → 不可撤回）；不能删时按钮灰掉并说明原因 -->
+                                    <Button Content="删除这一项…"
+                                            Command="{Binding DeleteSelectedCommand}"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            Foreground="{DynamicResource DangerBrush}"
+                                            HorizontalAlignment="Stretch" MinHeight="34" Margin="0,8,0,0"
+                                            IsEnabled="{Binding SelectedEntry.CanDelete}"
+                                            ToolTip="{Binding SelectedEntry.DeleteToolTipText}"
+                                            ToolTipService.ShowOnDisabled="True" />
                                 </StackPanel>
 
                                 <!-- 批量 / 系统操作（不需要选中项） -->
@@ -294,6 +316,10 @@
                                         HorizontalAlignment="Stretch" Margin="0,8,0,0"
                                         Command="{Binding RestartExplorerCommand}"
                                         ToolTip="改完右键菜单后如果没立即生效，用这个重启 explorer.exe（会先弹确认框）" />
+                                <Button Content="打开备份文件夹" Style="{StaticResource SecondaryButtonStyle}"
+                                        HorizontalAlignment="Stretch" Margin="0,8,0,0"
+                                        Command="{Binding OpenBackupFolderCommand}"
+                                        ToolTip="删除前自动备份的 .reg 文件都在这里（双击 .reg 即可还原）" />
 
                                 <!-- 安全说明 -->
                                 <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8"
@@ -302,10 +328,10 @@
                                         <TextBlock Text="安全说明" FontSize="12" FontWeight="SemiBold" />
                                         <TextBlock FontSize="11.5" TextWrapping="Wrap" Margin="0,6,0,0"
                                                    Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   Text="· 只写当前用户（HKCU）的覆盖项，不改 HKLM，不需要管理员权限。" />
+                                                   Text="· 隐藏只写当前用户（HKCU）的覆盖值，不删原注册表键，随时可以恢复。" />
                                         <TextBlock FontSize="11.5" TextWrapping="Wrap" Margin="0,3,0,0"
                                                    Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   Text="· 不删除原注册表键：隐藏只是额外写一个覆盖值，随时可以恢复。" />
+                                                   Text="· 删除会真的删掉注册表键（HKCU；HKLM 键需要时走 UAC 提权）；删除前会自动备份 .reg 到功能数据文件夹的 backups 子目录。" />
                                         <TextBlock FontSize="11.5" TextWrapping="Wrap" Margin="0,3,0,0"
                                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                                    Text="· 个别情况下需要重启资源管理器（explorer.exe）才会生效。" />
@@ -322,12 +348,156 @@
                     </Border>
                 </Grid>
 
-                <!-- 上下分隔条：拖动改「主区域」与「运行日志」的高度（双击恢复这一处） -->
+                <!-- 上下分隔条①：拖动改「主区域」与「添加打开菜单」的高度（双击恢复这一处） -->
                 <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
-                                   Key="context-menu-manager.主区域与日志" />
+                                   Key="context-menu-manager.主区域与自定义" />
+
+                <!-- ===== 添加打开菜单（页面级区块②）：新增「用 XX 打开」这类自定义菜单 ===== -->
+                <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" MinHeight="60" />
+                        </Grid.RowDefinitions>
+
+                        <!-- 卡标题 + 「只写 HKCU」提示 -->
+                        <Grid Grid.Row="0" Margin="18,12,18,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="添加打开菜单" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                                           TextWrapping="Wrap" Margin="0,4,0,0"
+                                           Text="给文件后缀 / 文件夹 / 文件夹空白处加一条自定义右键菜单（例如「用 Photoshop 打开」）" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="只写 HKCU · 不需要管理员权限" FontSize="10.5"
+                                       VerticalAlignment="Center" Foreground="{DynamicResource SuccessBrush}" />
+                        </Grid>
+
+                        <!-- 表单（左，可滚）+ 简短说明（右，可滚）；卡被拖矮时各自滚动，不裁内容 -->
+                        <Grid Grid.Row="1" Margin="18,0,18,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" MinWidth="360" />
+                                <ColumnDefinition Width="26" />
+                                <ColumnDefinition Width="300" MinWidth="220" />
+                            </Grid.ColumnDefinitions>
+
+                            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          core:ScrollChaining.Enabled="True">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="86" />
+                                        <ColumnDefinition Width="*" MinWidth="180" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- ① 菜单名称 -->
+                                    <TextBlock Grid.Row="0" Text="菜单名称" FontSize="12" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBox Grid.Row="0" Grid.Column="1"
+                                             Text="{Binding NewMenuName, UpdateSourceTrigger=PropertyChanged}"
+                                             Style="{StaticResource TextBoxStyle}"
+                                             ToolTip="右键菜单里显示的文字（最多 64 字）；留空时点「浏览…」会按程序名自动生成「用 XX 打开」" />
+
+                                    <!-- ② 程序路径 + 浏览 -->
+                                    <TextBlock Grid.Row="1" Text="程序（exe）" FontSize="12" VerticalAlignment="Center"
+                                               Margin="0,6,0,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <Grid Grid.Row="1" Grid.Column="1" Margin="0,6,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Text="{Binding NewExePath, UpdateSourceTrigger=PropertyChanged}"
+                                                 Style="{StaticResource TextBoxStyle}"
+                                                 ToolTip="要用来打开文件 / 文件夹的程序完整路径（.exe）" />
+                                        <Button Grid.Column="1" Content="浏览…" Margin="8,0,0,0"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                Command="{Binding BrowseExeCommand}"
+                                                ToolTip="选择一个 .exe；名称还空着时会自动填「用 XX 打开」" />
+                                    </Grid>
+
+                                    <!-- ③ 文件后缀（可留空） -->
+                                    <TextBlock Grid.Row="2" Text="文件后缀" FontSize="12" VerticalAlignment="Center"
+                                               Margin="0,6,0,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBox Grid.Row="2" Grid.Column="1" Margin="0,6,0,0"
+                                             Text="{Binding NewExtensions, UpdateSourceTrigger=PropertyChanged}"
+                                             Style="{StaticResource TextBoxStyle}"
+                                             ToolTip="例如 .psd .ai —— 多个用空格 / 逗号分开，可省略点；留空表示只对下面勾选的位置生效" />
+
+                                    <!-- ④ 作用范围 -->
+                                    <TextBlock Grid.Row="3" Text="作用范围" FontSize="12" VerticalAlignment="Center"
+                                               Margin="0,8,0,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <WrapPanel Grid.Row="3" Grid.Column="1" Margin="0,8,0,0">
+                                        <CheckBox Content="文件夹" IsChecked="{Binding NewApplyFolders}"
+                                                  Style="{StaticResource CheckBoxStyle}" Margin="0,0,18,6" />
+                                        <CheckBox Content="文件夹空白处" IsChecked="{Binding NewApplyFolderBackground}"
+                                                  Style="{StaticResource CheckBoxStyle}" Margin="0,0,18,6" />
+                                        <CheckBox Content="所有文件" IsChecked="{Binding NewApplyAllFiles}"
+                                                  Style="{StaticResource CheckBoxStyle}" Margin="0,0,0,6" />
+                                    </WrapPanel>
+
+                                    <!-- ⑤ 添加按钮 -->
+                                    <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" Margin="0,10,0,0">
+                                        <Button Content="添加" Style="{StaticResource PrimaryButtonStyle}"
+                                                Command="{Binding AddCustomMenuCommand}"
+                                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}"
+                                                ToolTip="校验通过后写入当前用户注册表；加完可在上方列表里找到它" />
+                                        <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   VerticalAlignment="Center" Margin="10,0,0,0" TextWrapping="Wrap"
+                                                   MaxWidth="260"
+                                                   Text="至少填一个后缀，或勾选「文件夹 / 文件夹空白处 / 所有文件」中的一项。" />
+                                    </StackPanel>
+                                </Grid>
+                            </ScrollViewer>
+
+                            <!-- 简短说明（拿不准的参数都写在这，别塞进表单） -->
+                            <Border Grid.Column="2" Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8"
+                                    Padding="12,10" ClipToBounds="True">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                              HorizontalScrollBarVisibility="Disabled"
+                                              core:ScrollChaining.Enabled="True">
+                                    <StackPanel>
+                                        <TextBlock Text="说明" FontSize="12" FontWeight="SemiBold" />
+                                        <TextBlock FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Text="· 只写入当前用户（HKCU），不改 HKLM、不需要管理员权限。" />
+                                        <TextBlock FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Text="· 文件后缀走 SystemFileAssociations：只影响填写的后缀，不改文件关联本身。" />
+                                        <TextBlock FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Text="· 文件夹空白处的命令用 %V（当前文件夹路径）；文件夹 / 文件用 %1。" />
+                                        <TextBlock FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Text="· 想改名 / 换程序 = 先删除旧项再添加，本工具不提供原地修改。" />
+                                        <TextBlock FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Text="· 加完没在列表里看到？检查上面的搜索 / 位置 / 类型筛选（类型选「自定义菜单」）。" />
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <!-- 上下分隔条②：拖动改「添加打开菜单」与「运行日志」的高度（双击恢复这一处） -->
+                <core:PaneSplitter Grid.Row="3" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                                   Key="context-menu-manager.自定义与日志" />
 
                 <!-- ===== 运行日志（日志框吃掉多出来的高度） ===== -->
-                <Border Grid.Row="2" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                <Border Grid.Row="4" Style="{StaticResource CardStyle}" ClipToBounds="True">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
