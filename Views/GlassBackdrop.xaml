@@ -229,29 +229,44 @@
             <Grid x:Name="DaySky" Visibility="Collapsed">
                 <Viewbox Stretch="Fill">
                     <Canvas Width="1280" Height="820" IsHitTestVisible="False">
-                        <!-- 太阳：外圈柔光 + 白圆环描边 + 奶金圆盘 + 细金环 + 中心金点（参考图二） -->
-                        <Ellipse Canvas.Left="930" Canvas.Top="70" Width="420" Height="420">
+                        <!-- 太阳：外圈柔光 + 白色填充粗圆环 + 奶金圆盘（左亮右暗的横向渐变）+ 细金环 + 中心金点 -->
+                        <Ellipse Canvas.Left="840" Canvas.Top="-20" Width="360" Height="360">
                             <Ellipse.Fill>
                                 <RadialGradientBrush>
-                                    <GradientStop Color="#66F4E3BC" Offset="0" />
-                                    <GradientStop Color="#22F4E3BC" Offset="0.55" />
-                                    <GradientStop Color="#00F4E3BC" Offset="1" />
+                                    <GradientStop Color="#66FFE8B0" Offset="0" />
+                                    <GradientStop Color="#22FFE8B0" Offset="0.55" />
+                                    <GradientStop Color="#00FFE8B0" Offset="1" />
                                 </RadialGradientBrush>
                             </Ellipse.Fill>
                         </Ellipse>
-                        <Ellipse Canvas.Left="1040" Canvas.Top="180" Width="200" Height="200">
+                        <!-- 白色圆环是实心环带（外圆减内圆），不是描边细线；加一层极浅的蓝灰柔边，避免白底上看不见 -->
+                        <Path Canvas.Left="920" Canvas.Top="50" Fill="#FFFFFFFF">
+                            <Path.Effect>
+                                <DropShadowEffect Color="#8FB3D2" BlurRadius="16" ShadowDepth="0" Opacity="0.32" />
+                            </Path.Effect>
+                            <Path.Data>
+                                <CombinedGeometry GeometryCombineMode="Exclude">
+                                    <CombinedGeometry.Geometry1>
+                                        <EllipseGeometry Center="100,100" RadiusX="100" RadiusY="100" />
+                                    </CombinedGeometry.Geometry1>
+                                    <CombinedGeometry.Geometry2>
+                                        <EllipseGeometry Center="100,100" RadiusX="75" RadiusY="75" />
+                                    </CombinedGeometry.Geometry2>
+                                </CombinedGeometry>
+                            </Path.Data>
+                        </Path>
+                        <Ellipse Canvas.Left="945" Canvas.Top="75" Width="150" Height="150">
                             <Ellipse.Fill>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                    <GradientStop Color="#FFF8EAC8" Offset="0" />
-                                    <GradientStop Color="#FFEAD3A2" Offset="1" />
+                                <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                                    <GradientStop Color="#FFFFFB" Offset="0" />
+                                    <GradientStop Color="#FFF7DF" Offset="0.55" />
+                                    <GradientStop Color="#F4DDA4" Offset="1" />
                                 </LinearGradientBrush>
                             </Ellipse.Fill>
                         </Ellipse>
-                        <Ellipse Canvas.Left="1020" Canvas.Top="160" Width="240" Height="240"
-                                 Stroke="#FFFFFFFF" StrokeThickness="3" Fill="Transparent" Opacity="0.95" />
-                        <Ellipse Canvas.Left="1110" Canvas.Top="250" Width="60" Height="60"
+                        <Ellipse Canvas.Left="998" Canvas.Top="128" Width="44" Height="44"
                                  Stroke="#C9A227" StrokeThickness="1.2" />
-                        <Ellipse Canvas.Left="1132" Canvas.Top="272" Width="16" Height="16" Fill="#C9A227" />
+                        <Ellipse Canvas.Left="1014" Canvas.Top="144" Width="12" Height="12" Fill="#C9A227" />
 
                         <!-- 后层云：低透明度、偏冷白，从右往左慢慢漂 -->
                         <Canvas Canvas.Left="240" Canvas.Top="55">
