@@ -1,0 +1,89 @@
+<Window x:Class="YuLiangToolkit.Tools.ScreenSticker.Views.StickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="屏幕贴纸"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        WindowStartupLocation="Manual"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        MouseLeftButtonDown="OnMouseLeftButtonDown"
+        MouseLeftButtonUp="OnMouseLeftButtonUp"
+        MouseMove="OnMouseMove"
+        MouseWheel="OnMouseWheel"
+        MouseEnter="OnMouseEnter"
+        MouseLeave="OnMouseLeave">
+
+    <!-- 说明：每张贴纸 = 一个独立透明无边框窗口（和 Live2D 桌宠同一个思路，见 PetWindow）。
+         窗口大小 = 图片显示大小（不留边距，所以拖到屏幕边缘不会有一圈透明死区），
+         背景全透明 → PNG 的透明部分也透出桌面；整块矩形都能点（包括图片的透明像素）。
+         图片本身不参与命中测试，鼠标事件统一由 Root 网格处理（拖动 / 滚轮缩放）。 -->
+
+    <Window.ContextMenu>
+        <!-- 右键菜单：层级 / 强制置顶 / 重置大小 / 居中 / 打开所在文件夹 / 关闭这张。
+             独立窗口不套 App.xaml 里的样式，这里显式用主题 token（DynamicResource）保持四套主题协调。 -->
+        <ContextMenu x:Name="StickerMenu"
+                     Background="{DynamicResource CardBackgroundBrush}"
+                     Foreground="{DynamicResource TextPrimaryBrush}"
+                     BorderBrush="{DynamicResource BorderBrush}"
+                     Opened="OnMenuOpened" Closed="OnMenuClosed">
+            <MenuItem x:Name="MenuItemTopmost" Header="强制置顶（覆盖其它窗口）" IsCheckable="True"
+                      Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuTopmostClick"
+                      ToolTip="打开后这张贴纸会一直盖在普通窗口上面；再点一次取消" />
+            <Separator />
+            <MenuItem Header="层级：上移一层" Foreground="{DynamicResource TextPrimaryBrush}"
+                      Click="OnMenuMoveUpClick" />
+            <MenuItem Header="层级：下移一层" Foreground="{DynamicResource TextPrimaryBrush}"
+                      Click="OnMenuMoveDownClick" />
+            <MenuItem Header="层级：置于最上层" Foreground="{DynamicResource TextPrimaryBrush}"
+                      Click="OnMenuMoveToTopClick" />
+            <MenuItem Header="层级：置于最下层" Foreground="{DynamicResource TextPrimaryBrush}"
+                      Click="OnMenuMoveToBottomClick" />
+            <Separator />
+            <MenuItem Header="重置缩放（默认宽度）" Foreground="{DynamicResource TextPrimaryBrush}"
+                      Click="OnMenuResetZoomClick" />
+            <MenuItem Header="居中显示" Foreground="{DynamicResource TextPrimaryBrush}"
+                      Click="OnMenuCenterClick" />
+            <Separator />
+            <MenuItem Header="打开图片所在文件夹" Foreground="{DynamicResource TextPrimaryBrush}"
+                      Click="OnMenuRevealClick" />
+            <MenuItem Header="把主窗口叫到前面（管理贴纸）" Foreground="{DynamicResource TextPrimaryBrush}"
+                      Click="OnMenuOpenToolPageClick"
+                      ToolTip="贴纸管理页在侧边栏「桌面 → 屏幕贴纸」" />
+            <Separator />
+            <MenuItem Header="关闭这张贴纸" Foreground="{DynamicResource TextPrimaryBrush}"
+                      Click="OnMenuCloseClick" />
+        </ContextMenu>
+    </Window.ContextMenu>
+
+    <Grid x:Name="Root" Background="Transparent">
+        <!-- 图片：Stretch=Fill（窗口宽高已经按图片比例算好，Fill 不会变形，还能避免 Uniform 时
+             亚像素取整留下一条透明缝）；高画质缩放保证缩小后不糊。 -->
+        <Image x:Name="Picture" Stretch="Fill" IsHitTestVisible="False"
+               RenderOptions.BitmapScalingMode="HighQuality" />
+
+        <!-- 悬浮提示框：只在鼠标进入时出现，告诉用户「这里可以拖 / 可以滚轮缩放」；
+             不参与命中测试，不影响拖动。 -->
+        <Border x:Name="HoverFrame" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1.5"
+                CornerRadius="3" IsHitTestVisible="False" Visibility="Collapsed" />
+
+        <!-- 右下角缩放手柄：鼠标进入贴纸时出现，按住拖 = 等比缩放（左上角不动）。 -->
+        <Thumb x:Name="ResizeGrip" Width="18" Height="18" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+               Cursor="SizeNWSE" Visibility="Collapsed"
+               DragStarted="OnGripDragStarted" DragDelta="OnGripDragDelta" DragCompleted="OnGripDragCompleted">
+            <Thumb.Template>
+                <ControlTemplate TargetType="Thumb">
+                    <Grid Width="18" Height="18" Background="Transparent">
+                        <Path Data="M 12,18 L 18,12 L 18,18 Z" Fill="{DynamicResource AccentBrush}" Opacity="0.9" />
+                        <Path Data="M 6,18 L 18,6" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.4"
+                              Opacity="0.55" />
+                    </Grid>
+                </ControlTemplate>
+            </Thumb.Template>
+        </Thumb>
+    </Grid>
+</Window>

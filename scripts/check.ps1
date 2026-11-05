@@ -135,6 +135,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/KpsInputChecks.cs'        @('kps') 'L3' 'kps assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/SpugChecks.cs'            @('spug') 'L3' 'spug assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/Live2DChecks.cs'         @('live2d') 'L3' 'live2d assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/ScreenStickerChecks.cs'  @('screen-sticker') 'L3' 'screen-sticker assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/BrowserChecks.cs'       @('browser') 'L3' 'browser assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/TextEditorChecks.cs'    @('text-editor') 'L3' 'text-editor assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/AudioToolsChecks.cs'    @('audio-tools') 'L3' 'audio-tools assertions')
@@ -183,6 +184,7 @@ $mapping = @(
     (New-Rule 'src/YuLiangToolkit.Tools.SoftwareUpdater/*'   @('software-updater') 'L2' 'winget software updater tool')
     (New-Rule 'src/YuLiangToolkit.Tools.Calculator/*'         @('calculator') 'L2' 'calculator tool (expression engine lives in Core)')
     (New-Rule 'src/YuLiangToolkit.Tools.FunctionPlot/*'       @('function-plot') 'L2' 'function plot tool')
+    (New-Rule 'src/YuLiangToolkit.Tools.ScreenSticker/*'       @('screen-sticker') 'L2' 'screen sticker tool')
     (New-Rule 'src/YuLiangToolkit.Tools.Sample/*'          @() 'L1' 'framework template, no dedicated group: build + manual smoke')
     (New-Rule 'src/*'                                      @('ALL') 'L4' 'unmapped src project' -Fallback)
 

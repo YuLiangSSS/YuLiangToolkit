@@ -43,6 +43,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("kps", "KPS 按键统计：统计引擎 / 预设 / 热键 / 全局输入"),
     ("spug", "Spug 验证码测试：URL 校验 / 请求构造 / 响应解析 / 本地验证"),
     ("live2d", "Live2D 桌宠：内置 moc3 加载 / 参数部件 / 动作表情 / 物理 / 眼睛跟随 / 软件渲染"),
+    ("screen-sticker", "屏幕贴纸：几何换算 / 层级顺序 / 最近使用 / 配置默认值（纯逻辑，不建窗口）"),
     ("browser", "网页浏览器：地址栏解析 / 主机识别 / 搜索模板 / 标签栏规则与会话恢复 / 配置默认值"),
     ("text-editor", "文本编辑器：编码探测 / 换行风格 / 查找替换 / 标签规则 / 高亮调色 / 配置默认值"),
     ("audio-tools", "音频工具：视频转音频 / 分段合成（自然排序 / concat 清单 / FFmpeg 参数）"),
@@ -1158,6 +1159,10 @@ RunGroupModule("spug", "Spug验证码", SpugChecks.Run);
 // 「Live2D 桌宠」：内置 moc3 真加载（Cubism Core）/ 参数部件 / 动作表情解析 / 物理求值
 // / 眼睛跟随数学 / 软件渲染器纯逻辑；无头跑，不弹窗、不碰真 Data。
 RunGroupModule("live2d", "Live2D桌宠", Live2DChecks.Run, "[Live2D] ");
+
+// 「屏幕贴纸」：默认大小与图片比例 / 以鼠标为锚点缩放 / 角点缩放 / 夹回屏幕（多显示器非 0 原点）/
+// 层级上移下移 / 最近使用去重与上限 / 配置默认值；全部纯逻辑，不创建窗口、不碰真 Data。
+RunGroupModule("screen-sticker", "屏幕贴纸", ScreenStickerChecks.Run);
 
 // 「网页浏览器」：地址栏输入解析（补协议 / localhost / IP / 搜索词）/ 主机识别 / 搜索模板 / 配置默认值；
 // 全是纯逻辑，**不启动 WebView2、不联网**（网页渲染本身由截图冒烟验收）。
