@@ -30,7 +30,7 @@
 | 📕 PDF 阅读器 | `.pdf` |
 | 🖼️ 图片连续阅读器 | `.jpg` `.jpeg` `.png` `.bmp` `.gif` `.webp` `.tif` `.tiff` |
 | 📘 Word 阅读器 | `.docx` `.docm` |
-| 📗 Excel 阅读器 | `.xlsx` `.xlsm` |
+| 📊 Excel 阅读器 | `.xlsx` `.xlsm` |
 | 📦 压缩包工具 | `.zip` `.zipx` `.7z` `.rar` `.tar` `.tar.gz` / `.tgz` `.tar.bz2` / `.tbz2` / `.tbz` `.tar.xz` / `.txz` `.tar.zst` / `.tzst` `.tar.lz` / `.tlz` `.gz` `.bz2` `.xz` `.zst` `.ace` `.arc` `.arj` `.lzw` |
 | 🎬 视频 / 音乐播放器 | 音频：`.mp3` `.wav` `.flac` `.m4a` `.aac` `.wma` `.ogg` `.opus` `.ape` `.aiff` `.aif`；视频：`.mp4` `.m4v` `.mov` `.wmv` `.avi` `.mkv` `.webm` `.flv` `.mpg` `.mpeg` `.3gp` |
 | 📝 文本编辑器 | 文本 / 代码：`.txt` `.md` `.json` `.xml` `.yaml` `.toml` `.csv` `.ini` `.log` `.bat` `.ps1` `.sh` `.c` `.h` `.cpp` `.cs` `.csproj` `.java` `.kt` `.py` `.js` `.ts` `.tsx` `.html` `.css` `.sql` `.lua` `.osu` ……（完整表在页面右侧，或用「模拟」输入框查） |

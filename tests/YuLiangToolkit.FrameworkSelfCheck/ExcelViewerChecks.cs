@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using YuLiangToolkit.Core.Documents;
 using YuLiangToolkit.Tools.ExcelViewer;
 using YuLiangToolkit.Tools.ExcelViewer.Parsing;
+using YuLiangToolkit.Tools.WordViewer;
 
 namespace YuLiangToolkit.FrameworkSelfCheck;
 
@@ -60,10 +61,11 @@ internal static class ExcelViewerChecks
     private static void CheckMetadata(Action<string, bool, string> check)
     {
         var tool = new ExcelViewerTool();
-        check("[Excel 阅读器] 工具 Id / 名称 / Emoji / 分类 / 排序符合约定",
+        check("[Excel 阅读器] 工具 Id / 名称 / Emoji / 分类 / 排序符合约定（图标与 Word 阅读器不同）",
             tool.Id == "excel-viewer" && tool.Name == "Excel 阅读器"
-            && tool.EmojiIcon == "📗" && tool.Category == "文档" && tool.Order == 19,
-            $"{tool.Id} / {tool.Name} / {tool.EmojiIcon} / {tool.Category} / {tool.Order}");
+            && tool.EmojiIcon == "📊" && tool.Category == "文档" && tool.Order == 19
+            && tool.EmojiIcon != new WordViewerTool().EmojiIcon,
+            $"{tool.Id} / {tool.Name} / {tool.EmojiIcon} / {tool.Category} / {tool.Order} / Word={new WordViewerTool().EmojiIcon}");
 
         check("[Excel 阅读器] 标签与描述覆盖 Excel / xlsx / 表格 / 只读 / 工作表",
             tool.Tags.Contains("Excel") && tool.Tags.Contains("xlsx") && tool.Tags.Contains("表格")

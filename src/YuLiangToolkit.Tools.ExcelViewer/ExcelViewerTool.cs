@@ -22,7 +22,11 @@ public class ExcelViewerTool : ITool, IToolCacheSource
 
     public string Description => "只读浏览 .xlsx / .xlsm 工作簿：多工作表切换、单元格样式与数字格式、合并单元格，选中即看地址 / 值 / 公式";
 
-    public string EmojiIcon => "📗";
+    /// <summary>
+    /// 卡片 / 侧边栏图标。<b>故意和 Word 阅读器的 📘 区分开</b>（两个文档阅读器一眼能分清）：
+    /// 这里用「柱状图」📊 —— 表格数据 / 报表的通用意象，也不是别的工具在用的图标。
+    /// </summary>
+    public string EmojiIcon => "📊";
 
     public string Category => "文档";
 

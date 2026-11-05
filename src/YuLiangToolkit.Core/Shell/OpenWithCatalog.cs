@@ -85,7 +85,7 @@ public static class OpenWithCatalog
             "只读浏览 .docx / .docm（段落、表格、图片、大纲）",
             new[] { ".docx", ".docm" }),
         new OpenWithTarget(
-            "excel-viewer", "Excel 阅读器", "📗",
+            "excel-viewer", "Excel 阅读器", "📊",
             "只读浏览 .xlsx / .xlsm 工作簿（多工作表、单元格样式与公式）",
             new[] { ".xlsx", ".xlsm" }),
         new OpenWithTarget(

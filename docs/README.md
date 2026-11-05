@@ -14,7 +14,7 @@
 | 🖼️ 图片连续阅读器 | 把一个文件夹的图片首尾相接成一条长带（无缝、无间距），滚轮连续看条漫 / 长图 / 漫画；六种阅读方式（连续滚动三种方向 / 双页翻页左右 / 单页浏览），支持缩放、自由拖拽、拖动惯性 / 滚轮惯性、F11 全屏沉浸阅读（工具条自动隐藏）、🕘 最近浏览（上限可调）、双击图片打开与三层图片边框 | [tools/picture-viewer.md](tools/picture-viewer.md) |
 | 📄 PDF 阅读器 | 简单 PDF 阅读器：纵向 / 横向连续滚动 + 双页并排一次翻两页，支持缩放、Ctrl+F 文字搜索、书签目录、双页页面间距、拖动惯性 / 滚轮惯性、自动记住每本 PDF 上次阅读位置、页码跳转、🕘 最近浏览（上限可调）、F11 全屏沉浸阅读（工具条自动隐藏）与双击 .pdf 关联；只读不改原文件 | [tools/pdf-reader.md](tools/pdf-reader.md) |
 | 📘 Word 阅读器 | 只读浏览 `.docx`：标题大纲、字符格式、列表、表格、图片、超链接，50% ~ 300% 缩放、Ctrl+F 按段落查找、🕘 最近打开、拖入即开；手写 OOXML 解析，不改原文件 | [tools/word-viewer.md](tools/word-viewer.md) |
-| 📗 Excel 阅读器 | 只读浏览 `.xlsx`：工作表页签、列宽 / 行号 / 列标题、数字 / 日期 / 百分比格式、合并单元格、字体与填充色，状态栏看选中单元格的值 / 公式；手写 OOXML 解析，只显示公式缓存值、不改原文件 | [tools/excel-viewer.md](tools/excel-viewer.md) |
+| 📊 Excel 阅读器 | 只读浏览 `.xlsx`：工作表页签、列宽 / 行号 / 列标题、数字 / 日期 / 百分比格式、合并单元格、字体与填充色，状态栏看选中单元格的值 / 公式；手写 OOXML 解析，只显示公式缓存值、不改原文件 | [tools/excel-viewer.md](tools/excel-viewer.md) |
 | ⚡ Flash 下载器 | 4399 / 7k7k / 17yy / ArmorGames / Kongregate 小游戏下载到本地离线玩 | [tools/flash-downloader.md](tools/flash-downloader.md) |
 | 💬 联机聊天室 | 主机开端口、客户端连进来，局域网 / 内网穿透都能用，带流量上限；房间内还能开**群语音 / 群视频通话**（最多 8 人，媒体复用同一个端口），也能**按住说话发语音消息**（自动转 MP3、气泡显示秒数、**可拖进度条反复听**、计入文件流量上限） | [tools/chat-room.md](tools/chat-room.md) |
 | 🌐 网页浏览器 | Chromium 内核（WebView2）多标签：上方 / 左侧标签栏、前进后退刷新、网页右键刷新、会话恢复（懒加载）、历史记录 / 下载 / 书签 / 资源嗅探侧栏、页面缩放（Ctrl+滚轮）、主页与清空记录 | [tools/browser.md](tools/browser.md) |

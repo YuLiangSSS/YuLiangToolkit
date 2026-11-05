@@ -277,7 +277,7 @@
                     CornerRadius="{DynamicResource CardCornerRadius}"
                     Visibility="{Binding ShowEmptyState, Converter={StaticResource BoolToVis}}">
                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="460">
-                    <TextBlock Text="📗" FontSize="46" HorizontalAlignment="Center" />
+                    <TextBlock Text="📊" FontSize="46" HorizontalAlignment="Center" />
                     <TextBlock Text="{Binding EmptyStateTitle}" FontSize="16" FontWeight="SemiBold"
                                HorizontalAlignment="Center" Margin="0,14,0,0" />
                     <TextBlock Text="{Binding EmptyStateText}" FontSize="12" TextAlignment="Center"
