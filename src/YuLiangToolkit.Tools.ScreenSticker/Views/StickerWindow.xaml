@@ -34,6 +34,28 @@
             <MenuItem x:Name="MenuItemTopmost" Header="强制置顶（覆盖其它窗口）" IsCheckable="True"
                       Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuTopmostClick"
                       ToolTip="打开后这张贴纸会一直盖在普通窗口上面；再点一次取消" />
+            <MenuItem x:Name="MenuItemGifSpeed" Header="GIF 播放速度" Foreground="{DynamicResource TextPrimaryBrush}"
+                      ToolTip="只对会动的 GIF 有效；静态图这一项是灰的">
+                <MenuItem x:Name="MenuItemGifSpeed025" Header="0.25×" Tag="0.25" IsCheckable="True"
+                          Click="OnMenuGifSpeedClick" ToolTip="四分之一速（很慢）" />
+                <MenuItem x:Name="MenuItemGifSpeed050" Header="0.5×" Tag="0.5" IsCheckable="True"
+                          Click="OnMenuGifSpeedClick" />
+                <MenuItem x:Name="MenuItemGifSpeed075" Header="0.75×" Tag="0.75" IsCheckable="True"
+                          Click="OnMenuGifSpeedClick" />
+                <MenuItem x:Name="MenuItemGifSpeed100" Header="1×（原速）" Tag="1" IsCheckable="True"
+                          Click="OnMenuGifSpeedClick" />
+                <MenuItem x:Name="MenuItemGifSpeed125" Header="1.25×" Tag="1.25" IsCheckable="True"
+                          Click="OnMenuGifSpeedClick" />
+                <MenuItem x:Name="MenuItemGifSpeed150" Header="1.5×" Tag="1.5" IsCheckable="True"
+                          Click="OnMenuGifSpeedClick" />
+                <MenuItem x:Name="MenuItemGifSpeed200" Header="2×" Tag="2" IsCheckable="True"
+                          Click="OnMenuGifSpeedClick" />
+                <MenuItem x:Name="MenuItemGifSpeed300" Header="3×" Tag="3" IsCheckable="True"
+                          Click="OnMenuGifSpeedClick" />
+                <Separator />
+                <MenuItem Header="用设置里的默认速度" Click="OnMenuGifSpeedResetClick"
+                          ToolTip="取「设置 → GIF 默认播放速度」的当前值" />
+            </MenuItem>
             <Separator />
             <MenuItem Header="层级：上移一层" Foreground="{DynamicResource TextPrimaryBrush}"
                       Click="OnMenuMoveUpClick" />

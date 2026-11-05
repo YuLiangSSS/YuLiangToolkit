@@ -273,6 +273,7 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                     <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
 
                                                 <!-- 缩略图（后台解码，显示前先放一个图片占位） -->
@@ -295,12 +296,21 @@
                                                                Foreground="{DynamicResource TextSecondaryBrush}" />
                                                 </StackPanel>
 
-                                                <CheckBox Grid.Column="2" Content="置顶" VerticalAlignment="Center"
+                                                <!-- GIF 倍速按钮：只在动画 GIF 行显示；点一下循环换档（右键菜单可选具体倍速） -->
+                                                <Button Grid.Column="2" Content="{Binding SpeedText}"
+                                                        Width="42" Height="24" Padding="0" FontSize="10.5"
+                                                        Margin="0,0,6,0" VerticalAlignment="Center"
+                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                        Command="{Binding CycleSpeedCommand}"
+                                                        Visibility="{Binding IsAnimated, Converter={StaticResource BoolToVis}}"
+                                                        ToolTip="GIF 播放速度：点一下换一档（0.25× ~ 3×）；也可以右键贴纸选具体倍速" />
+
+                                                <CheckBox Grid.Column="3" Content="置顶" VerticalAlignment="Center"
                                                           Margin="0,0,6,0" Style="{StaticResource CheckBoxStyle}"
                                                           IsChecked="{Binding Topmost, Mode=TwoWay}"
                                                           ToolTip="勾上 = 这张贴纸始终显示在其它窗口上面（会立即生效并保存）" />
 
-                                                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                                                <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
                                                     <Button Content="↑" Width="24" Height="24" Padding="0" FontSize="11"
                                                             Style="{StaticResource SecondaryButtonStyle}"
                                                             Command="{Binding MoveUpCommand}"
@@ -407,6 +417,27 @@
                                     <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                                TextWrapping="Wrap" Margin="0,4,0,0"
                                                Text="范围 48 ~ 2400，默认 320；图片特别高时还会按屏幕高度自动再缩小一次。" />
+
+                                    <TextBlock Text="GIF 默认播放速度（0.25× ~ 3×）" FontSize="11.5" Margin="0,14,0,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <Grid Margin="0,6,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Slider Minimum="0.25" Maximum="3" SmallChange="0.25" LargeChange="0.25"
+                                                TickFrequency="0.25" IsSnapToTickEnabled="True"
+                                                VerticalAlignment="Center" Style="{StaticResource SliderStyle}"
+                                                Value="{Binding DefaultGifSpeed, Mode=TwoWay}"
+                                                ToolTip="1× = GIF 文件自带的播放速度；只影响以后新贴的 GIF" />
+                                        <TextBlock Grid.Column="1" Text="{Binding DefaultGifSpeedText}" FontSize="11"
+                                                   MinWidth="56" TextAlignment="Right" Margin="10,0,0,0"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    </Grid>
+                                    <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                                               TextWrapping="Wrap" Margin="0,4,0,0"
+                                               Text="只影响以后新贴的 GIF；已经贴上的可以在贴纸右键菜单或「桌面上的贴纸」列表里逐张调。" />
 
                                     <TextBlock Text="最近使用上限（0 ~ 100，0 = 不记录）" FontSize="11.5" Margin="0,14,0,0"
                                                Foreground="{DynamicResource TextSecondaryBrush}" />

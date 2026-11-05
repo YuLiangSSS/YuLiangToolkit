@@ -39,6 +39,7 @@ public sealed class StickerListItem : ObservableObject
         MoveUpCommand = new RelayCommand(_ => moveUpRequested(this));
         MoveDownCommand = new RelayCommand(_ => moveDownRequested(this));
         CloseCommand = new RelayCommand(_ => _closeRequested(this));
+        CycleSpeedCommand = new RelayCommand(_ => CycleSpeed(), _ => IsAnimated);
     }
 
     /// <summary>对应的贴纸窗口（会话操作都要传它）。</summary>
@@ -77,6 +78,15 @@ public sealed class StickerListItem : ObservableObject
         }
     }
 
+    /// <summary>是不是会动的 GIF（true 才显示倍速按钮）。</summary>
+    public bool IsAnimated => _window.IsAnimated;
+
+    /// <summary>当前 GIF 播放速度的显示文本（例如 1× / 1.5×）；静态图为空串。</summary>
+    public string SpeedText => IsAnimated ? StickerTiming.FormatSpeed(_window.PlaybackSpeed) : "";
+
+    /// <summary>GIF 帧数（静态图 = 1）。</summary>
+    public int FrameCount => _window.FrameCount;
+
     /// <summary>层级上移一层（更靠前）。</summary>
     public RelayCommand MoveUpCommand { get; }
 
@@ -85,6 +95,16 @@ public sealed class StickerListItem : ObservableObject
 
     /// <summary>关闭这一张贴纸（会同时删掉它的保存记录）。</summary>
     public RelayCommand CloseCommand { get; }
+
+    /// <summary>点一下循环切换 GIF 播放速度（0.25× → 0.5× → … → 3× → 0.25×）；静态图不可用。</summary>
+    public RelayCommand CycleSpeedCommand { get; }
+
+    /// <summary>循环换到下一档播放速度。</summary>
+    private void CycleSpeed()
+    {
+        if (!IsAnimated) return;
+        _session.SetStickerSpeed(_window, StickerTiming.NextSpeed(_window.PlaybackSpeed));
+    }
 
     /// <summary>后台缩略图解码完成后回填。</summary>
     public void SetThumbnail(BitmapSource? thumbnail) => Thumbnail = thumbnail;
@@ -100,6 +120,9 @@ public sealed class StickerListItem : ObservableObject
         {
             OnPropertyChanged(nameof(Topmost));
             OnPropertyChanged(nameof(DetailText));
+            OnPropertyChanged(nameof(IsAnimated));
+            OnPropertyChanged(nameof(SpeedText));
+            OnPropertyChanged(nameof(FrameCount));
         }
         finally
         {

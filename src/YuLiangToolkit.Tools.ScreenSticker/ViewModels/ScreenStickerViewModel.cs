@@ -188,6 +188,23 @@ public sealed class ScreenStickerViewModel : ToolViewModelBase
     /// <summary>默认宽度旁边的数值文本。</summary>
     public string DefaultWidthText => $"{DefaultWidth:0} px";
 
+    /// <summary>新贴纸（GIF）的默认播放速度（0.25× ~ 3×）。</summary>
+    public double DefaultGifSpeed
+    {
+        get => Cfg.DefaultGifSpeedEffective;
+        set
+        {
+            var speed = StickerTiming.ClampSpeed(value);
+            if (Math.Abs(Cfg.DefaultGifSpeed - speed) < 0.001) return;
+            Cfg.DefaultGifSpeed = speed;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(DefaultGifSpeedText));
+        }
+    }
+
+    /// <summary>默认播放速度旁边的文本（例如 1× / 1.5×）。</summary>
+    public string DefaultGifSpeedText => StickerTiming.FormatSpeed(DefaultGifSpeed);
+
     /// <summary>最近使用上限的输入文本（0 ~ 100；文本输入，避免绑 int 时删空报错）。</summary>
     public string RecentLimitText
     {
@@ -277,6 +294,8 @@ public sealed class ScreenStickerViewModel : ToolViewModelBase
         RefreshRecentItems();
         RefreshStickers();
 
+        if (Session.LastNotice is { Length: > 0 } notice) Log("提示：" + notice);
+
         if (added > 0) Log($"已贴 {added} 张图片到桌面");
         foreach (var failure in failures) Log("贴图失败：" + failure);
 
@@ -295,6 +314,8 @@ public sealed class ScreenStickerViewModel : ToolViewModelBase
 
         RefreshRecentItems();
         RefreshStickers();
+
+        if (Session.LastNotice is { Length: > 0 } notice) Log("提示：" + notice);
 
         if (result.Error is not null)
         {
@@ -609,6 +630,8 @@ public sealed class ScreenStickerViewModel : ToolViewModelBase
         OnPropertyChanged(nameof(DefaultTopmost));
         OnPropertyChanged(nameof(DefaultWidth));
         OnPropertyChanged(nameof(DefaultWidthText));
+        OnPropertyChanged(nameof(DefaultGifSpeed));
+        OnPropertyChanged(nameof(DefaultGifSpeedText));
         OnPropertyChanged(nameof(RecentLimitText));
         OnPropertyChanged(nameof(RecentSummaryText));
 

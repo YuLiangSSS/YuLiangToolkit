@@ -34,6 +34,12 @@ public sealed class StickerEntry
     /// <summary>这张贴纸是否「强制置顶」（覆盖其它窗口）。</summary>
     public bool Topmost { get; set; }
 
+    /// <summary>
+    /// 这张贴纸的 GIF 播放速度（0.25× ~ 3×，1× = GIF 自带速度）；静态图忽略。
+    /// 新贴纸取配置里的默认速度，之后每张可以单独调。
+    /// </summary>
+    public double GifSpeed { get; set; } = StickerTiming.DefaultSpeed;
+
     /// <summary>第一次贴到桌面的时间（UTC），只做排序 / 排查用。</summary>
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 }
@@ -81,7 +87,17 @@ public sealed class ScreenStickerConfig : ToolConfig
     /// <summary>新贴纸的默认宽度（DIP，48 ~ 2400）；恢复时按图片比例算高度。</summary>
     public double DefaultWidth { get; set; } = DefaultStickerWidth;
 
+    /// <summary>
+    /// 新贴纸（GIF）的默认播放速度（0.25× ~ 3×，1× = GIF 自带速度）。
+    /// 只影响以后新贴的 GIF；已经贴上的贴纸各自保存自己的速度，可在右键菜单 / 工具页列表里单独调。
+    /// </summary>
+    public double DefaultGifSpeed { get; set; } = StickerTiming.DefaultSpeed;
+
     // ---------- 计算属性（只读 → 不落盘） ----------
+
+    /// <summary>生效的 GIF 默认播放速度（夹到 0.25× ~ 3×）。</summary>
+    [JsonIgnore]
+    public double DefaultGifSpeedEffective => StickerTiming.ClampSpeed(DefaultGifSpeed);
 
     /// <summary>生效的「最近使用」上限（夹到 0 ~ 100，手改坏配置也不会存出离谱的条数）。</summary>
     [JsonIgnore]
@@ -162,6 +178,7 @@ public sealed class ScreenStickerConfig : ToolConfig
         AutoRestoreOnStartup = true;
         DefaultTopmost = false;
         DefaultWidth = DefaultStickerWidth;
+        DefaultGifSpeed = StickerTiming.DefaultSpeed;
         RecentLimit = DefaultRecentLimit;
         TrimRecentToLimit();
     }

@@ -55,6 +55,9 @@ public sealed class StickerSession
     /// <summary>最近一次操作失败的原因（成功时清空）。</summary>
     public string? LastError { get; private set; }
 
+    /// <summary>最近一次操作的非致命提示（例如「GIF 太大已按静态显示」）；正常为 null。</summary>
+    public string? LastNotice { get; private set; }
+
     /// <summary>是否已经进入退出流程。</summary>
     public bool IsShutdown => _shutdown;
 
@@ -154,18 +157,21 @@ public sealed class StickerSession
     public StickerWindow? AddSticker(string? path, bool? topmost = null)
     {
         LastError = null;
+        LastNotice = null;
         if (_shutdown) { LastError = "程序正在退出，贴纸已停止工作"; return null; }
 
         var full = ScreenStickerConfig.NormalizePath(path);
         if (full.Length == 0 || !File.Exists(full)) { LastError = "找不到这张图片（可能已被移动或删除）"; return null; }
         if (!StickerImage.IsSupportedExtension(full)) { LastError = "不支持的图片格式"; return null; }
 
-        var image = StickerImage.Load(full);
-        if (image is null) { LastError = "图片解码失败（文件可能损坏）"; return null; }
+        // StickerMedia：静态图给一张位图，GIF 给多帧 + 帧延时（动画太大时自动退回静态并带提示）
+        var media = StickerMedia.Load(full, out var mediaError);
+        if (media is null) { LastError = mediaError ?? "图片解码失败（文件可能损坏）"; return null; }
+        LastNotice = media.Warning;
 
         var config = EnsureConfig();
         var workArea = WorkArea;
-        var aspect = StickerGeometry.AspectOf(image.PixelWidth, image.PixelHeight);
+        var aspect = media.Aspect;
         var size = StickerGeometry.FitInside(workArea, config.DefaultWidthEffective, aspect);
         var placement = StickerGeometry.PlacementForNew(workArea, size, _windows.Count);
 
@@ -177,11 +183,12 @@ public sealed class StickerSession
             Width = placement.Width,
             Height = placement.Height,
             Topmost = topmost ?? config.DefaultTopmost,
+            GifSpeed = config.DefaultGifSpeedEffective,
             CreatedUtc = DateTime.UtcNow,
         };
         config.Stickers.Add(entry);
 
-        var window = CreateWindow(entry, image);
+        var window = CreateWindow(entry, media);
         window.Show();
         window.BringToFront();
 
@@ -274,7 +281,7 @@ public sealed class StickerSession
                 continue;
             }
 
-            var image = StickerImage.Load(full);
+            var image = StickerMedia.Load(full, out _);
             if (image is null)
             {
                 config.Stickers.Remove(entry);
@@ -282,6 +289,7 @@ public sealed class StickerSession
                 continue;
             }
 
+            if (entry.GifSpeed <= 0) entry.GifSpeed = config.DefaultGifSpeedEffective;
             entry.Path = full;
             var window = CreateWindow(entry, image);
             restored++;
@@ -297,9 +305,9 @@ public sealed class StickerSession
         return restored;
     }
 
-    private StickerWindow CreateWindow(StickerEntry entry, BitmapSource image)
+    private StickerWindow CreateWindow(StickerEntry entry, StickerMedia media)
     {
-        var window = new StickerWindow(this, entry, image);
+        var window = new StickerWindow(this, entry, media);
         _windows.Add(window);
         return window;
     }
@@ -338,6 +346,18 @@ public sealed class StickerSession
 
     /// <summary>切换某张贴纸的强制置顶。</summary>
     public void ToggleTopmost(StickerWindow window) => SetTopmost(window, !window.Entry.Topmost);
+
+    /// <summary>
+    /// 设置某张 GIF 贴纸的播放速度（0.25× ~ 3×）。静态图调用没有副作用，只是把值存着。
+    /// </summary>
+    public void SetStickerSpeed(StickerWindow window, double speed)
+    {
+        var clamped = StickerTiming.ClampSpeed(speed);
+        window.Entry.GifSpeed = clamped;
+        window.ApplyPlaybackSpeed(clamped);
+        SaveSoon();
+        RaiseStickersChanged();
+    }
 
     /// <summary>层级上移一层；已经在最上层返回 false。</summary>
     public bool MoveStickerUp(StickerWindow window) => ApplyLayerChange(StickerLayerOrder.MoveUp(EnsureConfig().Stickers, window.Entry));

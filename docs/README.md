@@ -26,7 +26,7 @@
 | ⭐ osu! 等级计算器 | 拖入 mania 谱面算星数与等级，批量表格；等级按 8K 谱面拟合（只对 8K 有参考意义），SR 通用 | [tools/osu-level-calculator.md](tools/osu-level-calculator.md) |
 | 🎹 KPS 按键统计 | 实时 KPS / 每键计数器 / 键位可视化 + 透明置顶 Overlay（支持强制置顶）；4K~8K 预设、改键、单键图片、音符效果、键音、全局热键（功能灵感来源 DmNote，独立重写） | [tools/kps.md](tools/kps.md) |
 | 🐟 Live2D 桌宠 | 内置 Live2D 模型测试台 + 桌面宠物：参数 / 部件 / 动作 / 表情 / 物理逐项调试，透明置顶、可拖动、眼睛跟随鼠标、点击穿透 | [tools/live2d.md](tools/live2d.md) |
-| 📌 屏幕贴纸 | 把任意图片贴到桌面上：每张一个独立透明窗口，多选打开 / 从剪贴板直接粘贴、自由拖动 / 滚轮缩放 / 调层级 / 单独强制置顶，带最近使用与贴纸管理 | [tools/screen-sticker.md](tools/screen-sticker.md) |
+| 📌 屏幕贴纸 | 把任意图片贴到桌面上：每张一个独立透明窗口，多选打开 / 从剪贴板直接粘贴、GIF 完整动画并可调播放速度；自由拖动 / 滚轮缩放 / 调层级 / 单独强制置顶，带最近使用与贴纸管理 | [tools/screen-sticker.md](tools/screen-sticker.md) |
 | ⚫ 联机五子棋 | 开 TCP 房间和朋友下五子棋：可选禁手（三三 / 四四 / 长连）、悔棋、聊天 | [tools/gomoku.md](tools/gomoku.md) |
 | 🀄 联机象棋 | 开 TCP 房间下中国象棋：自由摆棋 + 一键默认开局、让子 / 让先、中文记谱 | [tools/xiangqi.md](tools/xiangqi.md) |
 | 📨 Spug 验证码测试 | 联调 Spug 推送助手（push.spug.cc）的短信 / 邮箱验证码模板：发验证码、本地比对验证；推送 URL 是调用凭证，别外传 | [tools/spug-captcha.md](tools/spug-captcha.md) |

@@ -326,6 +326,11 @@
   否则后台线程编码会抛「跨线程访问」。自检**不碰系统剪贴板**，只断言文件过滤 / 文件名哈希 / 编码落盘。
 - 调试：`YLT_STICKER_DEMO=<图片>` 启动贴一张（不恢复旧贴纸）、`YLT_STICKER_CLIPBOARD=1` 启动读一次剪贴板贴图、
   `YLT_STICKER_SHOT=<png>` 截第一张窗口后退出；截图见 `shots/sticker-*.png`（不入库）。
+- **GIF 动画**（`StickerMedia` / `StickerTiming`）：WPF 的 `BitmapDecoder` 能拆帧但不会自己播，窗口用
+  `DispatcherTimer` 按「帧延时 ÷ 速度」切 `Image.Source`；帧延时在 GIF 元数据 `/grctlext/Delay`（单位 1/100 秒），
+  0 / 10ms 按浏览器惯例改 100ms。**别把所有帧 OnLoad 后长期持有**：帧数 × 单帧像素 × 4 字节很容易几百 MB，
+  现在有 `StickerTiming.MaxFrameCount` / `MaxAnimatedPixels` 预算 + 单帧 1280 宽上限，超了退静态并在日志提示；
+  帧尺寸不一致的极端优化 GIF 也退静态（WIC 一般给整幅画面，别赌）。播放定时器必须在窗口 `Closed` 停掉并放掉 `Image.Source`。
 
 ### 液态玻璃 / 毛玻璃 / 亚克力主题（半透明界面 + 背景图）
 - ⚠ 改 token 一起改：四套深色字典（`DefaultTheme` / `LiquidGlassTheme` / `FrostedGlassTheme` / `AcrylicTheme`）+ `ThemeManager.RequiredTokenKeys`（几何 key 在 `RequiredRadiusKeys`）；道系 / 浅色 / 配色由 `ThemePaletteBuilder` 生成，新增颜色时它也要覆盖；少一个静默退回控件默认值。

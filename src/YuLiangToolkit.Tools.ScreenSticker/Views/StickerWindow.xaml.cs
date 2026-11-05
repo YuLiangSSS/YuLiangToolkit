@@ -1,6 +1,8 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -32,7 +34,13 @@ public partial class StickerWindow : Window
 
     private readonly StickerSession _session;
     private readonly StickerEntry _entry;
+    private readonly StickerMedia _media;
+    private readonly StickerAnimation? _animation;
     private readonly double _aspect;
+    private readonly DispatcherTimer _frameTimer;
+
+    private int _frameIndex;
+    private double _speed;
 
     private bool _dragging;
     private Point _dragStartCursor;
@@ -47,14 +55,24 @@ public partial class StickerWindow : Window
     private bool _menuOpen;
     private bool _debugCaptureScheduled;
 
-    public StickerWindow(StickerSession session, StickerEntry entry, BitmapSource image)
+    public StickerWindow(StickerSession session, StickerEntry entry, StickerMedia media)
     {
         _session = session;
         _entry = entry;
+        _media = media;
+        _animation = media.Animation;
+        _speed = StickerTiming.ClampSpeed(entry.GifSpeed);
         InitializeComponent();
 
-        _aspect = StickerGeometry.AspectOf(image.PixelWidth, image.PixelHeight);
-        Picture.Source = image;
+        _aspect = media.Aspect;
+        Picture.Source = media.Still;
+
+        // GIF 帧播放器：一个窗口一个定时器，按当前帧的延时 × 播放速度切 Image.Source。
+        _frameTimer = new DispatcherTimer(DispatcherPriority.Render)
+        {
+            Interval = TimeSpan.FromMilliseconds(StickerTiming.DefaultFrameDelayMs),
+        };
+        _frameTimer.Tick += OnAnimationTick;
 
         // 恢复：尺寸合法 + 至少留一角在屏幕里（显示器拔掉 / 分辨率变小也不会「丢」）。
         var bounds = StickerGeometry.NormalizeStored(
@@ -83,6 +101,15 @@ public partial class StickerWindow : Window
     /// <summary>图片「高 / 宽」比例。</summary>
     public double ImageAspect => _aspect;
 
+    /// <summary>是不是会动的 GIF（贴纸列表据此决定要不要显示倍速按钮）。</summary>
+    public bool IsAnimated => _animation is not null;
+
+    /// <summary>当前 GIF 播放速度（1× = GIF 自带速度；静态图也有值但无效果）。</summary>
+    public double PlaybackSpeed => _speed;
+
+    /// <summary>当前 GIF 一共几帧（静态图 = 1）。</summary>
+    public int FrameCount => _animation?.FrameCount ?? 1;
+
     /// <summary>是否已经因为「程序退出 / 关闭全部」而关闭（这种关闭保留配置记录）。</summary>
     public bool IsClosingForShutdown => _closingForShutdown;
 
@@ -90,6 +117,13 @@ public partial class StickerWindow : Window
     public StickerBounds CurrentBounds => new(Left, Top, Width, Height);
 
     // ===================== 对外操作（会话 / 右键菜单共用） =====================
+
+    /// <summary>改 GIF 播放速度（立即按新间隔继续播当前帧，不从头开始）。</summary>
+    public void ApplyPlaybackSpeed(double speed)
+    {
+        _speed = StickerTiming.ClampSpeed(speed);
+        if (IsAnimated) RestartFrameTimer();
+    }
 
     /// <summary>设置是否强制置顶（配置字段由会话写；这里只动窗口）。</summary>
     public void ApplyTopmost(bool topmost)
@@ -156,6 +190,9 @@ public partial class StickerWindow : Window
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // GIF：窗口出来后开始播（静态图这里什么都不做）
+        StartAnimation();
+
         // 调试截图：只对第一张（被 YLT_STICKER_SHOT 指定的）窗口生效，避免多张时抢着退出。
         var shotPath = Environment.GetEnvironmentVariable("YLT_STICKER_SHOT");
         if (!_debugCaptureScheduled && !string.IsNullOrWhiteSpace(shotPath)
@@ -175,8 +212,48 @@ public partial class StickerWindow : Window
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        try { _frameTimer.Stop(); } catch { /* 窗口已关忽略 */ }
+        _frameTimer.Tick -= OnAnimationTick;
+        Picture.Source = null;   // 尽快释放动画帧（GIF 帧可能占不少内存）
+
         if (_closingForShutdown) _session.NotifyWindowClosedKeepEntry(this);
         else _session.NotifyWindowClosedByUser(this);
+    }
+
+    // ===================== GIF 动画 =====================
+
+    /// <summary>开始播 GIF（如果这贴是静态图则什么都不做）。</summary>
+    private void StartAnimation()
+    {
+        if (_animation is null || _animation.FrameCount <= 1) return;
+
+        _frameIndex = 0;
+        Picture.Source = _animation.Frames[0];
+        RestartFrameTimer();
+        _frameTimer.Start();
+    }
+
+    /// <summary>按「当前帧原始延时 ÷ 播放速度」更新定时器间隔（改速度 / 换帧后调用）。</summary>
+    private void RestartFrameTimer()
+    {
+        if (_animation is null || _animation.FrameCount == 0) return;
+
+        var index = Math.Clamp(_frameIndex, 0, _animation.FrameCount - 1);
+        var interval = StickerTiming.EffectiveIntervalMs(_animation.DelaysMs[index], _speed);
+        _frameTimer.Interval = TimeSpan.FromMilliseconds(interval);
+    }
+
+    private void OnAnimationTick(object? sender, EventArgs e)
+    {
+        if (_animation is null || _animation.FrameCount <= 1)
+        {
+            _frameTimer.Stop();
+            return;
+        }
+
+        _frameIndex = (_frameIndex + 1) % _animation.FrameCount;
+        Picture.Source = _animation.Frames[_frameIndex];
+        RestartFrameTimer();
     }
 
     // ===================== 鼠标：拖动 / 滚轮缩放 =====================
@@ -292,7 +369,43 @@ public partial class StickerWindow : Window
     {
         _menuOpen = true;
         MenuItemTopmost.IsChecked = _entry.Topmost;
+        UpdateGifSpeedMenu();
     }
+
+    /// <summary>右键菜单打开时刷新「GIF 播放速度」：静态图整项禁用，动画图显示当前倍速并勾选。</summary>
+    private void UpdateGifSpeedMenu()
+    {
+        MenuItemGifSpeed.IsEnabled = IsAnimated;
+        MenuItemGifSpeed.Header = IsAnimated
+            ? $"GIF 播放速度（当前 {StickerTiming.FormatSpeed(_speed)}）"
+            : "GIF 播放速度（这是静态图）";
+
+        var items = new (MenuItem Item, double Speed)[]
+        {
+            (MenuItemGifSpeed025, 0.25),
+            (MenuItemGifSpeed050, 0.5),
+            (MenuItemGifSpeed075, 0.75),
+            (MenuItemGifSpeed100, 1.0),
+            (MenuItemGifSpeed125, 1.25),
+            (MenuItemGifSpeed150, 1.5),
+            (MenuItemGifSpeed200, 2.0),
+            (MenuItemGifSpeed300, 3.0),
+        };
+        foreach (var (item, speed) in items)
+        {
+            item.IsChecked = Math.Abs(_speed - speed) < 0.001;
+        }
+    }
+
+    private void OnMenuGifSpeedClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { Tag: string tag }) return;
+        if (!double.TryParse(tag, NumberStyles.Float, CultureInfo.InvariantCulture, out var speed)) return;
+        _session.SetStickerSpeed(this, speed);
+    }
+
+    private void OnMenuGifSpeedResetClick(object sender, RoutedEventArgs e)
+        => _session.SetStickerSpeed(this, _session.EnsureConfig().DefaultGifSpeedEffective);
 
     private void OnMenuClosed(object sender, RoutedEventArgs e)
     {

@@ -1,5 +1,7 @@
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using YuLiangToolkit.Core.Maintenance;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Core.Tools;
@@ -12,10 +14,10 @@ namespace YuLiangToolkit.FrameworkSelfCheck;
 /// 贴纸记录与「恢复默认设置」的边界 / 贴纸几何（宽度比例 / 放进工作区 / 层叠落点 / 以鼠标为锚点缩放 /
 /// 滚轮倍率 / 角点缩放 / 重置宽度 / 夹回屏幕）/ 层级顺序 / 图片格式识别与解码 / 配置 JSON 持久化。
 ///
-/// <para><b>本组共 103 条断言</b>（纯逻辑，不创建窗口、不 new 控件、不碰真实 Data/Config、不读写系统剪贴板）：
-/// 需要 WPF 位图解码 / 编码的几条放在单独的 STA 线程里跑（做法同 <c>Live2DChecks</c> / <c>WordViewerChecks</c>），
+/// <para><b>本组共 117 条断言</b>（纯逻辑，不创建窗口、不 new 控件、不碰真实 Data/Config、不读写系统剪贴板）：
+/// 需要 WPF 位图解码 / 编码 / GIF 编码的几条放在单独的 STA 线程里跑（做法同 <c>Live2DChecks</c> / <c>WordViewerChecks</c>），
 /// 其余全部是 <see cref="StickerGeometry"/> / <see cref="StickerLayerOrder"/> / <see cref="StickerClipboard"/> /
-/// 配置对象的直接调用。</para>
+/// <see cref="StickerTiming"/> / <see cref="StickerMedia"/> / 配置对象的直接调用。</para>
 /// </summary>
 internal static class ScreenStickerChecks
 {
@@ -45,6 +47,7 @@ internal static class ScreenStickerChecks
         CheckLayerOrder(fn);
         CheckImageFormats(fn);
         CheckClipboard(fn);
+        CheckGifPlayback(fn);
         CheckSerialization(fn);
     }
 
@@ -905,6 +908,183 @@ internal static class ScreenStickerChecks
         {
             try { File.Delete(savedPath); } catch { /* 临时目录，删不掉也不影响断言 */ }
         }
+    }
+
+    // ---------------------------------------------------------------- GIF 动画 / 播放速度
+
+    private static void CheckGifPlayback(CheckFn check)
+    {
+        // ---- 速度 / 帧延时 / 预算（纯逻辑） ----
+
+        check("[屏幕贴纸] GIF 速度夹取：NaN / 0 / 负数回 1×，过小过大夹到 0.25× ~ 3×",
+            Math.Abs(StickerTiming.ClampSpeed(double.NaN) - 1.0) < 1e-9
+            && Math.Abs(StickerTiming.ClampSpeed(0) - 1.0) < 1e-9
+            && Math.Abs(StickerTiming.ClampSpeed(-2) - 1.0) < 1e-9
+            && Math.Abs(StickerTiming.ClampSpeed(0.1) - StickerTiming.MinSpeed) < 1e-9
+            && Math.Abs(StickerTiming.ClampSpeed(5) - StickerTiming.MaxSpeed) < 1e-9
+            && Math.Abs(StickerTiming.ClampSpeed(1.5) - 1.5) < 1e-9);
+
+        check("[屏幕贴纸] GIF 帧延时归一：0 / 10ms 按 100ms，20ms 保留，超长夹到 10s",
+            StickerTiming.NormalizeDelayMs(0) == StickerTiming.DefaultFrameDelayMs
+            && StickerTiming.NormalizeDelayMs(10) == StickerTiming.DefaultFrameDelayMs
+            && StickerTiming.NormalizeDelayMs(20) == 20
+            && StickerTiming.NormalizeDelayMs(150) == 150
+            && StickerTiming.NormalizeDelayMs(999999) == StickerTiming.MaxFrameDelayMs);
+
+        check("[屏幕贴纸] GIF 实际帧间隔 = 帧延时 ÷ 速度（并夹在 10ms ~ 10s）",
+            Math.Abs(StickerTiming.EffectiveIntervalMs(100, 1.0) - 100) < 1e-9
+            && Math.Abs(StickerTiming.EffectiveIntervalMs(100, 2.0) - 50) < 1e-9
+            && Math.Abs(StickerTiming.EffectiveIntervalMs(100, 0.5) - 200) < 1e-9
+            && Math.Abs(StickerTiming.EffectiveIntervalMs(20, 3.0) - 10) < 1e-9
+            && Math.Abs(StickerTiming.EffectiveIntervalMs(10000, 0.25) - StickerTiming.MaxFrameDelayMs) < 1e-9);
+
+        check("[屏幕贴纸] GIF 倍速按钮循环：0.25 → 0.5 → … → 3 → 0.25，非预设值取下一档",
+            Math.Abs(StickerTiming.NextSpeed(0.25) - 0.5) < 1e-9
+            && Math.Abs(StickerTiming.NextSpeed(1.0) - 1.25) < 1e-9
+            && Math.Abs(StickerTiming.NextSpeed(3.0) - 0.25) < 1e-9
+            && Math.Abs(StickerTiming.NextSpeed(1.4) - 1.5) < 1e-9);
+
+        check("[屏幕贴纸] GIF 速度文本：1 → 1×、1.5 → 1.5×、0.5 → 0.5×",
+            StickerTiming.FormatSpeed(1.0) == "1×"
+            && StickerTiming.FormatSpeed(1.5) == "1.5×"
+            && StickerTiming.FormatSpeed(0.5) == "0.5×");
+
+        check("[屏幕贴纸] GIF 动画守卫：单帧不播、超帧数 / 超像素预算退回静态",
+            !StickerTiming.CanAnimate(1, 100)
+            && StickerTiming.CanAnimate(2, 100)
+            && !StickerTiming.CanAnimate(StickerTiming.MaxFrameCount + 1, 100)
+            && !StickerTiming.CanAnimate(2, StickerTiming.MaxAnimatedPixels + 1));
+
+        check("[屏幕贴纸] GIF 像素预算估算：宽 > 1280 时按缩放后的尺寸算",
+            StickerTiming.EstimateAnimatedPixels(2, 2560, 1440) == 2L * 1280 * 720
+            && StickerTiming.EstimateAnimatedPixels(0, 100, 100) == 0
+            && StickerTiming.EstimateAnimatedPixels(2, 0, 100) == 0);
+
+        var config = new ScreenStickerConfig();
+        var defaultSpeedOk = Math.Abs(config.DefaultGifSpeed - StickerTiming.DefaultSpeed) < 1e-9
+                             && Math.Abs(config.DefaultGifSpeedEffective - 1.0) < 1e-9;
+        config.DefaultGifSpeed = 5;
+        var highClamped = Math.Abs(config.DefaultGifSpeedEffective - StickerTiming.MaxSpeed) < 1e-9;
+        config.DefaultGifSpeed = 0.1;
+        var lowClamped = Math.Abs(config.DefaultGifSpeedEffective - StickerTiming.MinSpeed) < 1e-9;
+        config.DefaultGifSpeed = double.NaN;
+        var nanFallsBack = Math.Abs(config.DefaultGifSpeedEffective - 1.0) < 1e-9;
+        check("[屏幕贴纸] 配置里的 GIF 默认速度：默认 1×、坏值 / 越界按 0.25× ~ 3× 夹取",
+            defaultSpeedOk && highClamped && lowClamped && nanFallsBack,
+            $"默认={defaultSpeedOk} 上限={highClamped} 下限={lowClamped} NaN={nanFallsBack}");
+
+        // ---- StickerMedia：静态 PNG / 动画 GIF / 单帧 GIF / 坏文件（WPF 位图操作走独立 STA） ----
+
+        var directory = SelfCheckScratch.MakeDirectory("screen-sticker-gif");
+        var pngPath = Path.Combine(directory, "still.png");
+        var gifPath = Path.Combine(directory, "anim.gif");
+        var singleGifPath = Path.Combine(directory, "single.gif");
+        var badPath = Path.Combine(directory, "broken.png");
+        var missingGifPath = Path.Combine(directory, "missing.gif");
+
+        var prewritten = true;
+        try
+        {
+            File.WriteAllBytes(pngPath, Convert.FromBase64String(OnePixelPngBase64));
+            File.WriteAllBytes(badPath, new byte[] { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05 });
+        }
+        catch
+        {
+            prewritten = false;
+        }
+        check("[屏幕贴纸] GIF 前置：临时目录里能写出静态 PNG 与坏文件", prewritten, directory);
+
+        var gifWritten = false;
+        StickerMedia? stillMedia = null;
+        StickerMedia? gifMedia = null;
+        StickerMedia? singleMedia = null;
+        StickerMedia? badMedia = null;
+        StickerMedia? missingMedia = null;
+        string? stillError = null;
+        string? gifError = null;
+        string? singleError = null;
+        string? badError = null;
+        string? missingError = null;
+
+        var failure = RunOnSta(() =>
+        {
+            gifWritten = TryWriteAnimatedGif(gifPath, 2) && TryWriteAnimatedGif(singleGifPath, 1);
+
+            stillMedia = StickerMedia.Load(pngPath, out stillError);
+            gifMedia = StickerMedia.Load(gifPath, out gifError);
+            singleMedia = StickerMedia.Load(singleGifPath, out singleError);
+            badMedia = StickerMedia.Load(badPath, out badError);
+            missingMedia = StickerMedia.Load(missingGifPath, out missingError);
+        });
+
+        check("[屏幕贴纸] GIF / 媒体加载在独立 STA 线程里跑完且没有抛异常",
+            failure is null, failure?.Message ?? "ok");
+
+        check("[屏幕贴纸] 静态 PNG：StickerMedia 不当作动画、能拿到静态画面与比例",
+            stillMedia is { IsAnimated: false, Still: not null }
+            && stillError is null
+            && Math.Abs(stillMedia.Aspect - 1.0) < 1e-9,
+            $"error={stillError ?? "null"}");
+
+        check("[屏幕贴纸] 动画 GIF（2 帧）：识别为动画、帧数 / 帧延时 / 比例正确",
+            gifWritten
+            && gifMedia is { IsAnimated: true, Warning: null }
+            && gifMedia.Animation?.FrameCount == 2
+            && gifMedia.Animation.DelaysMs.All(delay => delay == StickerTiming.DefaultFrameDelayMs)
+            && gifError is null
+            && Math.Abs(gifMedia.Aspect - 4.0 / 6.0) < 1e-6,
+            $"written={gifWritten} frames={gifMedia?.Animation?.FrameCount} " +
+            $"delays={(gifMedia?.Animation is { } anim ? string.Join(",", anim.DelaysMs) : "null")} error={gifError ?? "null"}");
+
+        check("[屏幕贴纸] 单帧 GIF：按静态图处理（不播动画）",
+            singleMedia is { IsAnimated: false, Still: not null } && singleError is null,
+            $"error={singleError ?? "null"}");
+
+        check("[屏幕贴纸] 坏 PNG / 不存在的 GIF：StickerMedia 返回 null 且带错误原因（不抛异常）",
+            badMedia is null && !string.IsNullOrWhiteSpace(badError)
+            && missingMedia is null && !string.IsNullOrWhiteSpace(missingError),
+            $"坏文件={badError ?? "null"} 不存在={missingError ?? "null"}");
+    }
+
+    /// <summary>自检用：用 WPF 编码器写一张 N 帧（红 / 蓝交替）的 GIF；失败返回 false。</summary>
+    private static bool TryWriteAnimatedGif(string path, int frameCount)
+    {
+        try
+        {
+            var encoder = new GifBitmapEncoder();
+            for (var i = 0; i < frameCount; i++)
+            {
+                var color = i % 2 == 0 ? Colors.Red : Colors.Blue;
+                encoder.Frames.Add(BitmapFrame.Create(CreateSolidBitmap(color)));
+            }
+            using var stream = File.Create(path);
+            encoder.Save(stream);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>自检用：造一张 6×4 的纯色位图（GIF 编码器要求所有帧同尺寸）。</summary>
+    private static BitmapSource CreateSolidBitmap(Color color)
+    {
+        const int width = 6;
+        const int height = 4;
+        var pixels = new byte[width * height * 4];
+        for (var i = 0; i < pixels.Length; i += 4)
+        {
+            pixels[i] = color.B;
+            pixels[i + 1] = color.G;
+            pixels[i + 2] = color.R;
+            pixels[i + 3] = 255;
+        }
+
+        var bitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgra32, null);
+        bitmap.WritePixels(new Int32Rect(0, 0, width, height), pixels, width * 4, 0);
+        bitmap.Freeze();
+        return bitmap;
     }
 
     // ---------------------------------------------------------------- 配置序列化
