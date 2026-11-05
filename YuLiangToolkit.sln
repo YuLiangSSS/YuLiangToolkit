@@ -59,6 +59,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.Screen
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.MediaEditor", "src\YuLiangToolkit.Tools.MediaEditor\YuLiangToolkit.Tools.MediaEditor.csproj", "{64229E3D-405D-45CE-8787-1913BFA50C49}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.SoftwareUpdater", "src\YuLiangToolkit.Tools.SoftwareUpdater\YuLiangToolkit.Tools.SoftwareUpdater.csproj", "{03458FA3-45A2-4477-B833-42DFB344C2C6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -381,6 +383,18 @@ Global
 		{64229E3D-405D-45CE-8787-1913BFA50C49}.Release|x64.Build.0 = Release|Any CPU
 		{64229E3D-405D-45CE-8787-1913BFA50C49}.Release|x86.ActiveCfg = Release|Any CPU
 		{64229E3D-405D-45CE-8787-1913BFA50C49}.Release|x86.Build.0 = Release|Any CPU
+		{03458FA3-45A2-4477-B833-42DFB344C2C6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{03458FA3-45A2-4477-B833-42DFB344C2C6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{03458FA3-45A2-4477-B833-42DFB344C2C6}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{03458FA3-45A2-4477-B833-42DFB344C2C6}.Debug|x64.Build.0 = Debug|Any CPU
+		{03458FA3-45A2-4477-B833-42DFB344C2C6}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{03458FA3-45A2-4477-B833-42DFB344C2C6}.Debug|x86.Build.0 = Debug|Any CPU
+		{03458FA3-45A2-4477-B833-42DFB344C2C6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{03458FA3-45A2-4477-B833-42DFB344C2C6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{03458FA3-45A2-4477-B833-42DFB344C2C6}.Release|x64.ActiveCfg = Release|Any CPU
+		{03458FA3-45A2-4477-B833-42DFB344C2C6}.Release|x64.Build.0 = Release|Any CPU
+		{03458FA3-45A2-4477-B833-42DFB344C2C6}.Release|x86.ActiveCfg = Release|Any CPU
+		{03458FA3-45A2-4477-B833-42DFB344C2C6}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -411,5 +425,6 @@ Global
 		{F284FDD0-491A-49B7-8CB0-06041CC1FE73} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{04EA8C8C-4993-4F24-920F-A09473CE6847} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{64229E3D-405D-45CE-8787-1913BFA50C49} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{03458FA3-45A2-4477-B833-42DFB344C2C6} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

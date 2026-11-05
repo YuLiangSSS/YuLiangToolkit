@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「软件升级器」：调用系统自带的 winget.exe 读已安装应用 / 可用更新并批量升级。
+       不引任何第三方包（winget 是 Windows 应用安装程序自带组件，见 docs/tools/software-updater.md）。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.SoftwareUpdater</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.SoftwareUpdater</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

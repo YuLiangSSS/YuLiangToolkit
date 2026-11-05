@@ -85,6 +85,10 @@
     <!-- 「剪辑工具」：ffprobe JSON 解析 / 时间与片段数学 / 裁剪拼接滤镜 / GIF 调色板参数 / 配置归一化，
          全部纯逻辑（不启动 FFmpeg、不碰真实文件）。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.MediaEditor\YuLiangToolkit.Tools.MediaEditor.csproj" />
+    <!-- 「软件升级器」：winget 中英文表格解析（CJK 列宽 / ANSI / 统计行）/ 命令与包 Id 白名单 /
+         批量勾选规则（多选·全选·全不选·反选·表头三态）/ 元数据与配置默认值；全部纯逻辑，
+         **绝不启动 winget.exe**，真实扫描与升级留给人工冒烟。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.SoftwareUpdater\YuLiangToolkit.Tools.SoftwareUpdater.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,417 @@
+<UserControl x:Class="YuLiangToolkit.Tools.SoftwareUpdater.Views.SoftwareUpdaterView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core">
+
+    <!-- 软件升级器（software-updater）。
+         布局约定见 docs/dev/layout.md：
+           · 三个页面级区块「主区域 / 升级与进度 / 运行日志」上下堆叠，中间各一条
+             core:PaneSplitter（Key=software-updater.主区域与升级 / software-updater.升级与日志）；
+           · 主区域内部再左右分栏「应用列表（*）｜ 设置（固定像素）」，中间一条竖分隔条
+             （Key=software-updater.列表与设置）；
+           · 列表 / 日志放 * 行、不写死高度；整页 ScrollViewer + 内层 ScrollChaining，
+             卡片 ClipToBounds 防止拖矮后溢出。样式全部来自 App.xaml。 -->
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                  core:ScrollChaining.Enabled="True">
+        <StackPanel Margin="28,22,28,26">
+
+            <!-- ===== 页头 ===== -->
+            <StackPanel>
+                <TextBlock Text="⬆️ 软件升级器" FontSize="21" FontWeight="SemiBold" />
+                <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                           Text="调用系统自带的 winget 读出电脑上装了哪些应用、哪些有新版本；勾好要升级的（可以多行多选，也能全选 / 全不选 / 反选），再一键按顺序批量升级。升级前会先列出清单让你确认。" />
+                <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,10,0,0"
+                           Text="{Binding StatsText}" />
+            </StackPanel>
+
+            <Grid Margin="0,16,0,0">
+                <Grid.RowDefinitions>
+                    <!-- ① 主区域：左列表 / 竖分隔条 / 右设置（左右可拖） -->
+                    <RowDefinition Height="470" MinHeight="340" />
+                    <RowDefinition Height="12" />
+                    <!-- ② 批量升级与进度 -->
+                    <RowDefinition Height="158" MinHeight="128" />
+                    <RowDefinition Height="12" />
+                    <!-- ③ 运行日志 -->
+                    <RowDefinition Height="196" MinHeight="132" />
+                </Grid.RowDefinitions>
+
+                <!-- ===================== ① 主区域 ===================== -->
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MinWidth="440" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="352" MinWidth="286" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- ===== 左：应用列表 ===== -->
+                    <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" MinHeight="120" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <!-- 卡标题 + 扫描按钮 -->
+                            <Grid Grid.Row="0" Margin="18,14,18,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="已安装应用 / 可用更新" FontSize="13" FontWeight="SemiBold" />
+                                    <TextBlock Text="扫描结果来自 winget list / winget upgrade，不自带更新源" FontSize="10.5"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="刷新扫描" Style="{StaticResource SecondaryButtonStyle}"
+                                        VerticalAlignment="Center" Command="{Binding ScanCommand}"
+                                        IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}"
+                                        ToolTip="重新读取本机已安装应用与可用版本（会保留勾选状态吗？不会，列表会重建）" />
+                            </Grid>
+
+                            <!-- 搜索 -->
+                            <Grid Grid.Row="1" Margin="18,0,18,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="搜索" FontSize="12" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBox x:Name="SearchBox" Grid.Column="1" Margin="8,0,0,0"
+                                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource TextBoxStyle}"
+                                         ToolTip="按应用名 / 包 Id / 来源筛选（忽略大小写）" />
+                            </Grid>
+
+                            <!-- 批量勾选：全选 / 全不选 / 反选 / 对多行选中的行勾选 / 取消勾选 -->
+                            <WrapPanel Grid.Row="2" Margin="18,0,18,8">
+                                <Button Content="全选" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,6,6"
+                                        Command="{Binding SelectAllCommand}"
+                                        ToolTip="勾上当前可见且可升级的全部应用" />
+                                <Button Content="全不选" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,6,6"
+                                        Command="{Binding SelectNoneCommand}"
+                                        ToolTip="清空当前可见项的勾选（被筛掉的项保持原样）" />
+                                <Button Content="反选" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,6,6"
+                                        Command="{Binding InvertSelectionCommand}"
+                                        ToolTip="当前可见且可升级的逐项取反" />
+                                <Button Content="勾选选中行" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,6,6"
+                                        Command="{Binding CheckRowsCommand}"
+                                        ToolTip="把列表里用 Ctrl / Shift 多选的行勾上" />
+                                <Button Content="取消勾选选中行" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,6,6"
+                                        Command="{Binding UncheckRowsCommand}"
+                                        ToolTip="把列表里用 Ctrl / Shift 多选的行取消勾选" />
+                                <TextBlock Text="{Binding SelectedRowsText}" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="4,0,0,6" />
+                            </WrapPanel>
+
+                            <!-- 表头：与下面数据行的列定义一字不差；左右边距补平 ListBox 行的缩进 / 滚动条。
+                                 包 Id 不占一列（它太长，会把版本列挤没），放在应用名下面的副标题行里。 -->
+                            <Grid Grid.Row="3" Margin="40,0,30,5">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="34" />
+                                    <ColumnDefinition Width="2*" MinWidth="120" />
+                                    <ColumnDefinition Width="100" />
+                                    <ColumnDefinition Width="100" />
+                                    <ColumnDefinition Width="78" />
+                                </Grid.ColumnDefinitions>
+                                <CheckBox x:Name="HeaderCheckBox" Grid.Column="0" IsThreeState="True"
+                                          IsChecked="{Binding HeaderState, Mode=OneWay}"
+                                          Style="{StaticResource CheckBoxStyle}"
+                                          VerticalAlignment="Center" Click="OnHeaderCheckBoxClicked"
+                                          ToolTip="全选 / 全不选当前可见且可升级的应用（部分勾选时显示为未全选）" />
+                                <TextBlock Grid.Column="1" Text="应用名称" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Grid.Column="2" Text="当前版本" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Grid.Column="3" Text="可用版本" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Grid.Column="4" Text="状态" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Grid>
+
+                            <!-- 列表（* 行）+ 空状态占位 -->
+                            <Grid Grid.Row="4" Margin="8,0,8,0">
+                                <ListBox x:Name="PackageList" ItemsSource="{Binding VisiblePackages}"
+                                         SelectedItem="{Binding SelectedPackage}"
+                                         SelectionMode="Extended"
+                                         Style="{StaticResource FileListStyle}"
+                                         core:ScrollChaining.Enabled="True"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                         SelectionChanged="OnPackageSelectionChanged"
+                                         ToolTip="单击选中；Ctrl / Shift 可多选行，再用上面的按钮批量勾选">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <!-- 每行两小段：上面是「应用名 / 当前版本 / 可用版本 / 状态」，
+                                                 下面是灰色的包 Id（它太长，独占一列会把版本列挤没）。 -->
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="34" />
+                                                    <ColumnDefinition Width="2*" MinWidth="120" />
+                                                    <ColumnDefinition Width="100" />
+                                                    <ColumnDefinition Width="100" />
+                                                    <ColumnDefinition Width="78" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <CheckBox Grid.Row="0" Grid.Column="0" IsChecked="{Binding IsChecked}"
+                                                          IsEnabled="{Binding CanUpgrade}"
+                                                          Style="{StaticResource CheckBoxStyle}" VerticalAlignment="Center"
+                                                          ToolTip="{Binding HintText}" />
+                                                <TextBlock x:Name="NameText" Grid.Row="0" Grid.Column="1" Text="{Binding Name}"
+                                                           FontSize="12.5" TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center" ToolTip="{Binding HintText}" />
+                                                <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding VersionText}" FontSize="11.5"
+                                                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <TextBlock x:Name="AvailableText" Grid.Row="0" Grid.Column="3"
+                                                           Text="{Binding AvailableText}"
+                                                           FontSize="11.5" TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center"
+                                                           ToolTip="{Binding UpdateBadgeText}">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding HasUpdate}" Value="True">
+                                                                    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                                                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                                <TextBlock x:Name="StateText" Grid.Row="0" Grid.Column="4"
+                                                           Text="{Binding StateText}"
+                                                           FontSize="11" TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                                           ToolTip="{Binding ResultText}">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsPendingUpgradable}" Value="True">
+                                                                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding StateKey}" Value="Running">
+                                                                    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding StateKey}" Value="Done">
+                                                                    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding StateKey}" Value="Failed">
+                                                                    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+
+                                                <!-- 包 Id + 来源（副标题行；完整信息在悬停提示里） -->
+                                                <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="4"
+                                                           Text="{Binding Id}" FontSize="10.5"
+                                                           TextTrimming="CharacterEllipsis" Margin="0,2,0,0"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                                           ToolTip="{Binding HintText}" />
+                                            </Grid>
+                                            <DataTemplate.Triggers>
+                                                <DataTrigger Binding="{Binding CanUpgrade}" Value="False">
+                                                    <Setter TargetName="NameText" Property="Opacity" Value="0.62" />
+                                                </DataTrigger>
+                                            </DataTemplate.Triggers>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+
+                                <TextBlock Text="{Binding EmptyHint}"
+                                           Visibility="{Binding HasPackages, Converter={StaticResource InverseBoolToVis}}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           TextAlignment="Center" TextWrapping="Wrap" MaxWidth="360"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" IsHitTestVisible="False" />
+                            </Grid>
+
+                            <!-- 状态栏 -->
+                            <Grid Grid.Row="5" Margin="18,8,18,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding StatusText}" FontSize="11.5" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{Binding StatsText}" FontSize="11" Margin="12,0,0,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"
+                                           MaxWidth="260" VerticalAlignment="Center" ToolTip="{Binding StatsText}" />
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- 左右分隔条：拖「应用列表」与「设置」的宽度（双击恢复这一处） -->
+                    <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                       Key="software-updater.列表与设置" />
+
+                    <!-- ===== 右：扫描 / 升级设置 + 选中项详情 ===== -->
+                    <Border Grid.Column="2" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                      core:ScrollChaining.Enabled="True">
+                            <StackPanel Margin="18,16,18,18">
+                                <TextBlock Text="扫描与升级设置" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Text="改一下就自动存进 config.json" FontSize="10.5" Margin="0,4,0,14"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                                <TextBlock Text="扫描范围" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <ComboBox ItemsSource="{Binding ScanModeOptions}" DisplayMemberPath="Label"
+                                          SelectedItem="{Binding SelectedScanMode}"
+                                          Style="{StaticResource ComboBoxStyle}" Margin="0,5,0,0"
+                                          ToolTip="全部应用 = winget list（能同时看到没有新版本的应用）；仅可更新 = winget upgrade（快一些）" />
+
+                                <TextBlock Text="单个应用升级超时" FontSize="11.5" Margin="0,14,0,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <ComboBox ItemsSource="{Binding TimeoutOptions}" DisplayMemberPath="Label"
+                                          SelectedItem="{Binding SelectedTimeout}"
+                                          Style="{StaticResource ComboBoxStyle}" Margin="0,5,0,0"
+                                          ToolTip="超时会终止这一项并继续下一个，不会卡住整批" />
+
+                                <StackPanel Margin="0,16,0,0">
+                                    <CheckBox Content="只看可更新" IsChecked="{Binding Cfg.OnlyUpgradable}"
+                                              Style="{StaticResource CheckBoxStyle}" Margin="0,0,0,9"
+                                              ToolTip="关掉后能看到扫描到的全部已安装应用" />
+                                    <CheckBox Content="打开页面时自动扫描" IsChecked="{Binding Cfg.AutoScanOnOpen}"
+                                              Style="{StaticResource CheckBoxStyle}" Margin="0,0,0,9" />
+                                    <CheckBox Content="升级前先确认清单" IsChecked="{Binding Cfg.ConfirmBeforeUpgrade}"
+                                              Style="{StaticResource CheckBoxStyle}" Margin="0,0,0,9" />
+                                    <CheckBox Content="静默安装（--silent）" IsChecked="{Binding Cfg.SilentInstall}"
+                                              Style="{StaticResource CheckBoxStyle}" Margin="0,0,0,9"
+                                              ToolTip="不弹安装程序界面；个别安装器不支持静默参数时会自行弹窗" />
+                                    <CheckBox Content="包含版本未知的包" IsChecked="{Binding Cfg.IncludeUnknown}"
+                                              Style="{StaticResource CheckBoxStyle}"
+                                              ToolTip="给 winget 加 --include-unknown（只对 upgrade 子命令生效）" />
+                                </StackPanel>
+
+                                <!-- 选中项详情：表格里放不下的完整信息放这里 -->
+                                <TextBlock Text="选中项" FontSize="12" FontWeight="SemiBold" Margin="0,20,0,6" />
+                                <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="12,10">
+                                    <StackPanel>
+                                        <TextBlock Text="在左侧点一行，这里显示完整 ID / 版本 / 结果"
+                                                   FontSize="11.5" TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Visibility="{Binding HasSelection, Converter={StaticResource InverseBoolToVis}}" />
+                                        <StackPanel Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock Text="{Binding SelectedPackage.Name}" FontSize="13" FontWeight="SemiBold"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding SelectedPackage.Id}" FontSize="11" TextWrapping="Wrap"
+                                                       Margin="0,6,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding SelectedPackage.VersionSummaryText}"
+                                                       FontSize="11.5" TextWrapping="Wrap" Margin="0,6,0,0"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding SelectedPackage.SourceText}" FontSize="11" TextWrapping="Wrap"
+                                                       Margin="0,4,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding SelectedPackage.ResultText}" FontSize="11" TextWrapping="Wrap"
+                                                       Margin="0,6,0,0" Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       Visibility="{Binding SelectedPackage.ResultText, Converter={StaticResource EmptyToVisInverse}}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- 说明 -->
+                                <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8"
+                                        Padding="12,10" Margin="0,16,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="使用说明" FontSize="12" FontWeight="SemiBold" />
+                                        <TextBlock FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Text="· 数据来自 winget：没装「应用安装程序」或源未就绪时只会提示，不会崩。" />
+                                        <TextBlock FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Text="· 灰掉的行没有新版本，或是 ARP / MSIX 来源、ID 被截断，winget 无法按 Id 升级。" />
+                                        <TextBlock FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Text="· 升级逐个执行，单项失败 / 超时不会中断后面的应用；随时可点「取消」。" />
+                                        <TextBlock FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Text="· 个别安装程序会弹 UAC / 自己的界面，需要你手动确认。" />
+                                    </StackPanel>
+                                </Border>
+
+                                <TextBlock Text="{Binding WingetPathText}" FontSize="10" TextWrapping="Wrap" Margin="0,12,0,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           ToolTip="winget 可执行文件路径" />
+                                <Button Content="打开配置文件夹" Style="{StaticResource SecondaryButtonStyle}"
+                                        HorizontalAlignment="Stretch" Margin="0,10,0,0"
+                                        Command="{Binding OpenConfigFolderCommand}" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+
+                <!-- 上下分隔条①：主区域 ↔ 升级与进度 -->
+                <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                                   Key="software-updater.主区域与升级" />
+
+                <!-- ===================== ② 批量升级与进度 ===================== -->
+                <Border Grid.Row="2" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="批量升级" FontSize="13" FontWeight="SemiBold" />
+                        <Grid Grid.Row="1" Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ProgressBar Minimum="0" Maximum="1" Value="{Binding Progress}"
+                                         Style="{StaticResource ProgressBarStyle}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Margin="12,0,0,0" MinWidth="70"
+                                       TextAlignment="Right" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </Grid>
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+                            <Button Style="{StaticResource PrimaryButtonStyle}"
+                                    Command="{Binding UpgradeCheckedCommand}"
+                                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}"
+                                    ToolTip="按列表顺序逐个升级勾选项；升级前可先确认清单">
+                                <TextBlock Text="{Binding UpgradeButtonText}" />
+                            </Button>
+                            <Button Content="取消" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding CancelCommand}"
+                                    ToolTip="结束当前 winget 进程，剩余项标记为已跳过" />
+                            <Button Content="清空日志" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding ClearLogCommand}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- 上下分隔条②：升级与进度 ↔ 运行日志 -->
+                <core:PaneSplitter Grid.Row="3" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                                   Key="software-updater.升级与日志" />
+
+                <!-- ===================== ③ 运行日志 ===================== -->
+                <Border Grid.Row="4" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" MinHeight="70" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="运行日志" FontSize="13" FontWeight="SemiBold" />
+                        <TextBox Grid.Row="1" Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
+                                 Style="{StaticResource LogTextBoxStyle}" Margin="0,10,0,0"
+                                 FontSize="11" VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Auto"
+                                 core:ScrollChaining.Enabled="True" />
+                    </Grid>
+                </Border>
+            </Grid>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

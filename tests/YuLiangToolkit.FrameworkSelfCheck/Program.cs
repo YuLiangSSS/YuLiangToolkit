@@ -53,6 +53,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("open-with", "打开方式：三种模式 / 自动分流 / 注册表命令拼装（只读，不写注册表）"),
     ("screen-recorder", "录屏 / GIF：区域换算 / FFmpeg 参数 / 文件名 / 配置默认值"),
     ("media-editor", "剪辑工具：ffprobe 解析 / 片段数学 / 裁剪拼接滤镜 / GIF 参数"),
+    ("software-updater", "软件升级器：winget 表格解析 / 包 Id 安全 / 命令拼装 / 批量勾选规则（不启动 winget）"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1196,6 +1197,12 @@ RunGroupModule("screen-recorder", "录屏", ScreenRecorderChecks.Run);
 // 「剪辑工具」：ffprobe JSON 解析 / 时间格式 / 片段数学 / 裁剪拼接滤镜 / GIF 参数 / 配置归一化。
 // 纯逻辑，**不启动 FFmpeg、不碰真实文件**；真实剪辑 / 预览由人工冒烟验收。
 RunGroupModule("media-editor", "剪辑", MediaEditorChecks.Run);
+
+// 「软件升级器」：winget 中文 / 英文表格解析（CJK 显示列宽 / ANSI 回车帧 / 分隔线与统计行）、
+// 包 Id 安全白名单、扫描与升级命令拼装、批量勾选规则（多选 / 全选 / 全不选 / 反选 / 表头三态）、
+// 工具元数据与配置默认值。纯逻辑，**不启动 winget.exe、不联网、不碰真实注册表**；
+// 真实扫描 / 升级由界面人工冒烟验收。
+RunGroupModule("software-updater", "软件升级器", SoftwareUpdaterChecks.Run);
 
 EnterGroup("shell");
 

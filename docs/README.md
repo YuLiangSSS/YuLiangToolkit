@@ -32,6 +32,7 @@
 | 🖱️ 右键菜单管理 | 列出资源管理器右键菜单里的项目（所有文件 / 文件夹 / 文件夹空白处 / 驱动器 / 桌面背景），搜索 + 位置 / 类型筛选后一键隐藏、随时恢复；还能**删除残留菜单（删前自动备份 .reg，HKLM 弹 UAC）**与**添加「用 XX 打开」**（指定后缀 / 文件夹 / 所有文件）；隐藏 / 添加只写当前用户注册表（HKCU）、不需要管理员权限，系统关键项不可隐藏 / 删除 | [tools/context-menu-manager.md](tools/context-menu-manager.md) |
 | 📦 压缩包工具 | 拖入即用：解压 RAR（RAR4/RAR5）/ ZIP / 7Z / TAR / TAR.GZ / TAR.BZ2 / TAR.XZ / TAR.ZST / GZ / BZ2 / XZ / ZST（支持密码、旧版 GBK 文件名、批量、进度、取消、路径穿越防护）；压缩成 ZIP / 7Z。**RAR 因版权原因只能解、不能压** | [tools/archive.md](tools/archive.md) |
 | 🗂️ 打开方式 | 把本工具登记进 Windows 右键「打开方式」：**按文件类型自动分流 / 以文本方式 / 以压缩包方式** 3 个入口；PDF / 图片 / Word / Excel / 压缩包 / 音视频 / 文本自动找对应工具；开关在主页设置（只有 Release / 发布版可开），关掉后启动自动清理旧条目；只写 HKCU、不需要管理员 | [tools/open-with.md](tools/open-with.md) |
+| ⬆️ 软件升级器 | 用系统自带的 winget 读出本机已安装应用与可用版本；逐个勾选 / Ctrl·Shift 多选行 / 全选 / 全不选 / 反选后一键批量升级，带搜索过滤、升级前确认、逐个进度与日志、可取消；包 Id 白名单校验、扫描只读、不需要管理员 | [tools/software-updater.md](tools/software-updater.md) |
 | 🧪 框架示例 | 开发用模板（Data/Config 轮子演示，可整目录删除） | [tools/sample-framework.md](tools/sample-framework.md) |
 
 > 🎵 上面四个 osu! 工具和「KPS 按键统计」在主页上收在「**音游工具**」类别里：点类别卡片进类别页，顶部面包屑可点回上一级。
