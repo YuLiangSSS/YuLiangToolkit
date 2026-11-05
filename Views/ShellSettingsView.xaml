@@ -14,6 +14,10 @@
         这里只放一个共用模板；**没勾选对应特效时参数块整个不显示**。
     -->
     <UserControl.Resources>
+        <!-- 云间天上的小云预览（设置页主题卡用） -->
+        <PathGeometry x:Key="CloudPreviewShape"
+                      Figures="M0,8 C0,4 4,1 8,2 C9,-1 14,-2 17,1 C20,-1 24,1 25,4 C28,4 30,6 30,8 Z" />
+
         <!-- 一条特效参数滑块（自动 / 点击两张卡共用）：名称 + 当前值 + 滑块 + 一句说明。
              只会在勾选了所属特效时被渲染出来（外层用 Visibility 控制），所以这里不再做置灰。 -->
         <DataTemplate x:Key="EffectSliderTemplate">
@@ -58,7 +62,7 @@
                     </StackPanel>
                     <TextBlock FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0"
                                TextWrapping="Wrap"
-                               Text="外壳自己的设置：外观模式（深色 / 浅色 / 跟随系统）、界面风格（默认 / 液态玻璃 / 毛玻璃 / 亚克力 / 道系）与配色、窗口背景图、主页显示、鼠标自动 / 点击特效（含数量 / 范围 / 半径滑块）、粒子颜色、窗口与托盘、打开方式关联；最下面是清理缓存与重建配置（恢复默认设置）。改一下立即生效并自动保存。" />
+                               Text="外壳自己的设置：外观模式（深色 / 浅色 / 跟随系统）、界面风格（默认 / 液态玻璃 / 毛玻璃 / 亚克力 / 道系 / 云间天上）与配色、窗口背景图、主页显示、鼠标自动 / 点击特效（含数量 / 范围 / 半径滑块）、粒子颜色、窗口与托盘、打开方式关联；最下面是清理缓存与重建配置（恢复默认设置）。改一下立即生效并自动保存。" />
                 </StackPanel>
                 <Button Grid.Column="1" Content="返回主页" Style="{StaticResource SecondaryButtonStyle}"
                         VerticalAlignment="Top" Command="{Binding GoHomeCommand}" ToolTip="回到主页（也可以点面包屑的「🏠 主页」或后退按钮）" />
@@ -237,9 +241,40 @@
                         </StackPanel>
                     </RadioButton>
 
+                    <!-- 云间天上（v0.90.0）：白天淡蓝天空 + 云朵 + 暖阳；夜晚星空 + 暗云 + 月亮 -->
+                    <RadioButton Style="{StaticResource RadioButtonStyle}" GroupName="UiTheme"
+                                 AutomationProperties.Name="云间天上"
+                                 IsChecked="{Binding CloudSkyThemeSelected}" Margin="0,12,0,0"
+                                 ToolTip="云间天上：浅色 = 白到淡蓝的天空 + 平铺云朵 + 暖阳；深色 = 夜空 + 暗云 + 月亮星星">
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="46" Height="32" CornerRadius="7" BorderThickness="1" Margin="0,0,10,0"
+                                    BorderBrush="#8CD8E9F8">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                        <GradientStop Color="#FFFFFF" Offset="0" />
+                                        <GradientStop Color="#CFE4F7" Offset="1" />
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <Grid>
+                                    <Ellipse Width="12" Height="12" Fill="#F4E3BC" HorizontalAlignment="Right"
+                                             VerticalAlignment="Top" Margin="0,5,7,0" />
+                                    <Ellipse Width="5" Height="5" Stroke="#C9A227" StrokeThickness="0.8"
+                                             HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,8,10,0" />
+                                    <Path Data="{StaticResource CloudPreviewShape}" Fill="#FFFFFF"
+                                          VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="5,0,0,5" />
+                                </Grid>
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="云间天上" FontWeight="SemiBold" />
+                                <TextBlock Text="白天云海 + 暖阳，夜里星空 + 月亮" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </StackPanel>
+                    </RadioButton>
+
                     <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                TextWrapping="Wrap" Margin="0,10,0,0"
-                               Text="换主题立即生效、不用重启；选择会自动存进 Config\shell\config.json 的 uiTheme。液态玻璃 / 毛玻璃 / 亚克力是半透明面板，能透出下面的背景图；道系有远山 + 金色光晕的装饰背景，也可以放背景图（会盖住装饰）；默认是纯色面板。选中半透明风格后，它下面会出现「背景图模糊度」滑块（0 = 清晰，最大 60 px；三套风格各记各的值）。深浅色由上面的「外观模式」统一控制，五套风格都支持。" />
+                               Text="换主题立即生效、不用重启；选择会自动存进 Config\shell\config.json 的 uiTheme。液态玻璃 / 毛玻璃 / 亚克力是半透明面板，能透出下面的背景图；道系有远山 + 金色光晕，云间天上会按深浅画云 / 太阳 / 月亮星空，这两个主题也可以放背景图（会盖住装饰）；默认是纯色面板。选中半透明风格后，它下面会出现「背景图模糊度」滑块（0 = 清晰，最大 60 px；三套风格各记各的值）。深浅色由上面的「外观模式」统一控制，六套风格都支持。" />
                 </StackPanel>
             </Border>
 
@@ -318,7 +353,7 @@
 
                     <TextBlock FontSize="11" Foreground="{DynamicResource FaintTextBrush}" TextWrapping="Wrap"
                                Margin="0,8,0,0"
-                               Text="配色只影响「默认」风格；液态玻璃 / 毛玻璃 / 亚克力 / 道系有各自固定的配色（切换风格时不会丢你的配色，切回默认又生效）。" />
+                               Text="配色只影响「默认」风格；液态玻璃 / 毛玻璃 / 亚克力 / 道系 / 云间天上 有各自固定的配色（切换风格时不会丢你的配色，切回默认又生效）。" />
                 </StackPanel>
             </Border>
 

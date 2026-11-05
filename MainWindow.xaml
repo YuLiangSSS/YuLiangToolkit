@@ -60,6 +60,7 @@
                  标题栏/侧边栏/状态栏在玻璃主题里是半透明画刷，所以背景能从它们后面透出来。 -->
             <views:GlassBackdrop Grid.RowSpan="4" Panel.ZIndex="-100"
                                  Theme="{Binding UiTheme}"
+                                 IsLight="{Binding IsLightMode}"
                                  ImageSource="{Binding BackgroundImageSource}"
                                  ImageStretch="{Binding BackgroundImageStretch}"
                                  ImageBlurRadius="{Binding BackgroundImageBlurRadius}"

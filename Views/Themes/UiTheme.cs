@@ -1,16 +1,16 @@
 namespace YuLiangToolkit.App.Themes;
 
 /// <summary>
-/// 界面主题（「主页设置 → 界面风格」里五选一，存 <c>Config\shell\config.json</c> 的 <c>uiTheme</c>）。
+/// 界面主题（「主页设置 → 界面风格」里六选一，存 <c>Config\shell\config.json</c> 的 <c>uiTheme</c>）。
 ///
 /// <para>枚举**按 C# 原名以字符串存**（<c>"Default"</c> / <c>"LiquidGlass"</c> / <c>"FrostedGlass"</c> /
-/// <c>"Acrylic"</c> / <c>"Daoji"</c>，见 <c>JsonFileStore</c> 的 <c>JsonStringEnumConverter</c>）——
+/// <c>"Acrylic"</c> / <c>"Daoji"</c> / <c>"CloudSky"</c>，见 <c>JsonFileStore</c> 的 <c>JsonStringEnumConverter</c>）——
 /// 改枚举名等于改配置格式，别随便改；旧配置文件没有 <c>uiTheme</c> 字段时读出来就是 <see cref="Default"/>
 /// （第一套 UI，行为不变）。</para>
 ///
 /// <para>液态玻璃 / 毛玻璃 / 亚克力是**半透明界面**（<see cref="ThemeManager.HasTranslucentSurface"/>）；
-/// 道系（墨金）是纯色面板 + 装饰背景层，也会显示背景图 / 远山 / 金色光晕。
-/// 深浅色由「外观模式」（<see cref="ThemeMode"/>）统一控制，五套主题都支持。</para>
+/// 道系（墨金）与云间天上都是纯色面板 + 装饰背景层，也会显示背景图 / 装饰。
+/// 深浅色由「外观模式」（<see cref="ThemeMode"/>）统一控制，六套主题都支持。</para>
 /// </summary>
 public enum UiTheme
 {
@@ -28,4 +28,7 @@ public enum UiTheme
 
     /// <summary>道系（墨金，v0.89.0）：玄墨底 + 香槟金 + 远山剪影 + 金色光晕，参考道阶表。</summary>
     Daoji,
+
+    /// <summary>云间天上（v0.90.0）：浅色 = 白天淡蓝天空 + 云朵 + 暖阳；深色 = 夜空 + 暗云 + 月亮星星。</summary>
+    CloudSky,
 }

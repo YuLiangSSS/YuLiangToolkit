@@ -13,7 +13,7 @@ namespace YuLiangToolkit.App.Views;
 /// <para>放在 Window/Grid 的最底层、铺满整个窗口，<c>IsHitTestVisible="False"</c>（XAML 里已设）；
 /// 主窗口用 <c>Visibility="{Binding ShowBackdrop …}"</c> 控制 —— 默认纯色风格下整层 Collapsed。</para>
 ///
-/// <para><b>五套主题共用一个控件，靠绑定切换</b>：
+/// <para><b>六套主题共用一个控件，靠绑定切换</b>：
 /// <see cref="Theme"/> 决定流动光晕 / 道系装饰要不要跑；<see cref="ImageSource"/> / <see cref="ImageStretch"/> /
 /// <see cref="ImageBlurRadius"/> 来自 <c>MainViewModel</c>（背景图、铺法、按主题的模糊度）。
 /// 背景图是**静态**的：模糊结果用 <see cref="BitmapCache"/> 缓存，窗口不动时不重算。</para>
@@ -42,6 +42,11 @@ public partial class GlassBackdrop : UserControl
     public static readonly DependencyProperty ImageBlurRadiusProperty = DependencyProperty.Register(
         nameof(ImageBlurRadius), typeof(double), typeof(GlassBackdrop),
         new PropertyMetadata(0d, OnVisualStateChanged));
+
+    /// <summary>当前是不是浅色（云间天上用它切白天 / 夜晚装饰；其它主题不关心）。</summary>
+    public static readonly DependencyProperty IsLightProperty = DependencyProperty.Register(
+        nameof(IsLight), typeof(bool), typeof(GlassBackdrop),
+        new PropertyMetadata(false, OnVisualStateChanged));
 
     private Storyboard? _ambient;
     private bool _running;
@@ -87,6 +92,12 @@ public partial class GlassBackdrop : UserControl
         set => SetValue(ImageBlurRadiusProperty, value);
     }
 
+    public bool IsLight
+    {
+        get => (bool)GetValue(IsLightProperty);
+        set => SetValue(IsLightProperty, value);
+    }
+
     private static void OnVisualStateChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         => ((GlassBackdrop)d).RefreshVisualState();
 
@@ -127,6 +138,12 @@ public partial class GlassBackdrop : UserControl
         var liquid = Theme == UiTheme.LiquidGlass;
         AmbientLayer.Visibility = liquid ? Visibility.Visible : Visibility.Collapsed;
         DaoLayer.Visibility = Theme == UiTheme.Daoji ? Visibility.Visible : Visibility.Collapsed;
+
+        // 云间天上：有背景图时让图片当天空，装饰云 / 日月让位；没图时按深浅切白天 / 夜晚
+        var cloudSky = Theme == UiTheme.CloudSky && !hasImage;
+        CloudSkyLayer.Visibility = cloudSky ? Visibility.Visible : Visibility.Collapsed;
+        DaySky.Visibility = cloudSky && IsLight ? Visibility.Visible : Visibility.Collapsed;
+        NightSky.Visibility = cloudSky && !IsLight ? Visibility.Visible : Visibility.Collapsed;
 
         if (liquid && IsVisible) StartAmbientIfNeeded();
         else StopAmbient();

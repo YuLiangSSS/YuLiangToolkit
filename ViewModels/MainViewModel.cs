@@ -782,7 +782,7 @@ public class MainViewModel : ObservableObject
         => options.Any(option => option.IsSelected
                                  && string.Equals(option.Id, id, StringComparison.OrdinalIgnoreCase));
 
-    // ---------- 界面风格 / 外观模式 / 配色（v0.25.0 起；v0.89.0 扩到五套 + 深浅色 + 配色） ----------
+    // ---------- 界面风格 / 外观模式 / 配色（v0.25.0 起；v0.90.0 扩到六套 + 深浅色 + 配色） ----------
 
     /// <summary>开发 / 截图用的临时主题覆盖（<c>YLT_THEME=dao</c>）；只影响本次运行、不写配置。</summary>
     private ThemeMode? _appearanceModeOverride;
@@ -835,6 +835,16 @@ public class MainViewModel : ObservableObject
         get => UiTheme == UiTheme.Daoji;
         set { if (value) SelectUiTheme(UiTheme.Daoji); }
     }
+
+    /// <summary>设置窗口「云间天上」单选按钮（v0.90.0）。</summary>
+    public bool CloudSkyThemeSelected
+    {
+        get => UiTheme == UiTheme.CloudSky;
+        set { if (value) SelectUiTheme(UiTheme.CloudSky); }
+    }
+
+    /// <summary>当前实际是不是浅色（云间天上用它切白天 / 夜晚装饰）。</summary>
+    public bool IsLightMode => ThemeManager.CurrentIsLight;
 
     /// <summary>当前风格是不是半透明玻璃（液态玻璃 / 毛玻璃 / 亚克力）；道系是纯色 + 装饰背景。</summary>
     public bool IsTranslucentTheme => ThemeManager.HasTranslucentSurface(UiTheme);
@@ -1044,6 +1054,7 @@ public class MainViewModel : ObservableObject
     public void ApplyTheme(bool force = true)
     {
         ThemeManager.Apply(UiTheme, CurrentThemeMode, BuildCurrentPalette(), force);
+        OnPropertyChanged(nameof(IsLightMode));
         OnPropertyChanged(nameof(IsTranslucentTheme));
         OnPropertyChanged(nameof(ShowBackdrop));
         OnPropertyChanged(nameof(BackgroundImageBlurRadius));
@@ -1053,7 +1064,7 @@ public class MainViewModel : ObservableObject
 
     /// <summary>
     /// 用户点击「换主题」：清掉调试覆盖 → 写配置（自动落盘）→ 立即切换界面。
-    /// 五套主题都走这一条，单选按钮的 bool 属性只处理 true（WPF 取消选中时会传 false）。
+    /// 六套主题都走这一条，单选按钮的 bool 属性只处理 true（WPF 取消选中时会传 false）。
     /// </summary>
     private void SelectUiTheme(UiTheme theme)
     {
@@ -1073,7 +1084,9 @@ public class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(FrostedGlassThemeSelected));
         OnPropertyChanged(nameof(AcrylicThemeSelected));
         OnPropertyChanged(nameof(DaojiThemeSelected));
+        OnPropertyChanged(nameof(CloudSkyThemeSelected));
         OnPropertyChanged(nameof(IsTranslucentTheme));
+        OnPropertyChanged(nameof(IsLightMode));
         OnPropertyChanged(nameof(ShowBackdrop));
         OnPropertyChanged(nameof(BackgroundImageBlurRadius));
         OnPropertyChanged(nameof(BackgroundImageThemeHint));
@@ -1221,7 +1234,8 @@ public class MainViewModel : ObservableObject
     public string BackgroundImageThemeHint => UiTheme switch
     {
         UiTheme.Daoji => "当前是「道系（墨金）」：有背景图时会显示在远山 / 金色光晕上面（会盖住道系装饰）。",
-        UiTheme.Default => "当前是「默认」纯色风格：不显示背景图；切到液态玻璃 / 毛玻璃 / 亚克力 / 道系就会透出来。",
+        UiTheme.CloudSky => "当前是「云间天上」：有背景图时会显示图片（会盖住云朵 / 太阳 / 月亮星空）。",
+        UiTheme.Default => "当前是「默认」纯色风格：不显示背景图；切到液态玻璃 / 毛玻璃 / 亚克力 / 道系 / 云间天上就会透出来。",
         _ => "当前风格是半透明的：背景图会显示在面板后面（铺满窗口或完整显示，由上面的勾选决定）。",
     };
 

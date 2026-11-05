@@ -12,8 +12,8 @@ using ThemeMode = YuLiangToolkit.App.Themes.ThemeMode;
 namespace YuLiangToolkit.FrameworkSelfCheck;
 
 /// <summary>
-/// 「五套 UI（默认 / 液态玻璃 / 毛玻璃 / 亚克力 / 道系）+ 深浅色 + 配色」的纯逻辑自检
-/// （v0.25.0 起，v0.43.0 扩到四套主题，v0.89.0 加到五套 + 外观模式 + 配色生成器）。
+/// 「六套 UI（默认 / 液态玻璃 / 毛玻璃 / 亚克力 / 道系 / 云间天上）+ 深浅色 + 配色」的纯逻辑自检
+/// （v0.25.0 起，v0.43.0 扩到四套主题，v0.89.0 加到五套 + 外观模式 + 配色生成器，v0.90.0 加云间天上）。
 ///
 /// <para>钉住四类东西（核心断言不需要开窗口；冷启动时会摸一下离屏窗口注册 pack URI，见 WarmUpWpf）：</para>
 /// <list type="bullet">
@@ -53,10 +53,10 @@ internal static class ThemeChecks
     private static void CheckEnumAndNames(CheckFn check)
     {
         check("枚举默认值是默认主题", default(UiTheme) == UiTheme.Default);
-        check("枚举里是五套 UI",
-            Enum.GetValues<UiTheme>().Length == 5
+        check("枚举里是六套 UI",
+            Enum.GetValues<UiTheme>().Length == 6
             && Enum.GetNames<UiTheme>().SequenceEqual(new[]
-                { "Default", "LiquidGlass", "FrostedGlass", "Acrylic", "Daoji" }),
+                { "Default", "LiquidGlass", "FrostedGlass", "Acrylic", "Daoji", "CloudSky" }),
             string.Join(", ", Enum.GetNames<UiTheme>()));
 
         check("默认主题名字", ThemeManager.DisplayName(UiTheme.Default) == "默认");
@@ -64,22 +64,25 @@ internal static class ThemeChecks
         check("毛玻璃名字", ThemeManager.DisplayName(UiTheme.FrostedGlass) == "毛玻璃");
         check("亚克力名字", ThemeManager.DisplayName(UiTheme.Acrylic) == "亚克力");
         check("道系名字", ThemeManager.DisplayName(UiTheme.Daoji) == "道系（墨金）");
-        check("五套主题说明都不为空且各不相同",
+        check("云间天上名字", ThemeManager.DisplayName(UiTheme.CloudSky) == "云间天上");
+        check("六套主题说明都不为空且各不相同",
             Enum.GetValues<UiTheme>().Select(ThemeManager.Describe).All(text => text.Length > 0)
-            && Enum.GetValues<UiTheme>().Select(ThemeManager.Describe).Distinct().Count() == 5);
+            && Enum.GetValues<UiTheme>().Select(ThemeManager.Describe).Distinct().Count() == 6);
 
         check("半透明判定：只有三套玻璃是半透明",
             !ThemeManager.HasTranslucentSurface(UiTheme.Default)
             && ThemeManager.HasTranslucentSurface(UiTheme.LiquidGlass)
             && ThemeManager.HasTranslucentSurface(UiTheme.FrostedGlass)
             && ThemeManager.HasTranslucentSurface(UiTheme.Acrylic)
-            && !ThemeManager.HasTranslucentSurface(UiTheme.Daoji));
-        check("背景层判定：默认不显示，其它四套都显示",
+            && !ThemeManager.HasTranslucentSurface(UiTheme.Daoji)
+            && !ThemeManager.HasTranslucentSurface(UiTheme.CloudSky));
+        check("背景层判定：默认不显示，其它五套都显示",
             !ThemeManager.UsesBackdrop(UiTheme.Default)
             && ThemeManager.UsesBackdrop(UiTheme.LiquidGlass)
             && ThemeManager.UsesBackdrop(UiTheme.FrostedGlass)
             && ThemeManager.UsesBackdrop(UiTheme.Acrylic)
-            && ThemeManager.UsesBackdrop(UiTheme.Daoji));
+            && ThemeManager.UsesBackdrop(UiTheme.Daoji)
+            && ThemeManager.UsesBackdrop(UiTheme.CloudSky));
 
         check("默认主题字典路径指向 DefaultTheme.xaml",
             ThemeManager.SourceFor(UiTheme.Default).OriginalString.EndsWith("Views/Themes/DefaultTheme.xaml"),
@@ -96,6 +99,9 @@ internal static class ThemeChecks
         check("道系没有独立 XAML（默认字典 + 生成的金色 token / 圆角）",
             ThemeManager.SourceFor(UiTheme.Daoji).OriginalString.EndsWith("Views/Themes/DefaultTheme.xaml"),
             ThemeManager.SourceFor(UiTheme.Daoji).OriginalString);
+        check("云间天上没有独立 XAML（默认字典 + 生成的天空 token / 圆角）",
+            ThemeManager.SourceFor(UiTheme.CloudSky).OriginalString.EndsWith("Views/Themes/DefaultTheme.xaml"),
+            ThemeManager.SourceFor(UiTheme.CloudSky).OriginalString);
     }
 
     private static void CheckParsing(CheckFn check)
@@ -119,6 +125,10 @@ internal static class ThemeChecks
             Parsed("dao", UiTheme.Daoji) && Parsed("dao-ji", UiTheme.Daoji)
             && Parsed("Daoji", UiTheme.Daoji) && Parsed("4", UiTheme.Daoji)
             && Parsed("道系", UiTheme.Daoji) && Parsed("墨金", UiTheme.Daoji));
+        check("解析 cloud / cloud-sky / 云间天上 / 天空",
+            Parsed("cloud", UiTheme.CloudSky) && Parsed("cloud-sky", UiTheme.CloudSky)
+            && Parsed("CloudSky", UiTheme.CloudSky) && Parsed("5", UiTheme.CloudSky)
+            && Parsed("云间天上", UiTheme.CloudSky) && Parsed("天空", UiTheme.CloudSky));
         check("解析大小写 / 下划线 / 空格都不敏感",
             Parsed("LIQUID_GLASS", UiTheme.LiquidGlass) && Parsed(" liquid glass ", UiTheme.LiquidGlass)
             && Parsed("FROSTED_GLASS", UiTheme.FrostedGlass) && Parsed("DEFAULT", UiTheme.Default)
@@ -135,7 +145,7 @@ internal static class ThemeChecks
         var all = ThemeManager.RequiredTokenKeys.Concat(ThemeManager.RequiredRadiusKeys).ToList();
         check("必需 token 清单没有重复项", all.Count == all.Distinct(StringComparer.Ordinal).Count(),
             $"共 {all.Count} 个");
-        check("必需 token 清单覆盖五套 UI 的核心项",
+        check("必需 token 清单覆盖六套 UI 的核心项",
             ThemeManager.RequiredTokenKeys.Contains("WindowBackgroundBrush")
             && ThemeManager.RequiredTokenKeys.Contains("CardBackgroundBrush")
             && ThemeManager.RequiredTokenKeys.Contains("BorderBrush")
@@ -278,6 +288,8 @@ internal static class ThemeChecks
             CheckGenerated($"{ThemeManager.DisplayName(theme)}浅色", ThemePaletteBuilder.BuildLightMode(theme));
         CheckGenerated("道系深色", ThemePaletteBuilder.BuildDaoji(light: false));
         CheckGenerated("道系浅色", ThemePaletteBuilder.BuildDaoji(light: true));
+        CheckGenerated("云间天上深色", ThemePaletteBuilder.BuildCloudSky(light: false));
+        CheckGenerated("云间天上浅色", ThemePaletteBuilder.BuildCloudSky(light: true));
 
         var lightDefault = ThemePaletteBuilder.BuildDefaultLight();
         check("默认浅色：浅底 + 深字（对比度够）",
@@ -308,6 +320,26 @@ internal static class ThemeChecks
             && ColorOfAnyBrush(daoDark, "DaoGlowBrush").A > 0
             && ColorOfAnyBrush(daoLight, "DaoSilhouetteBrush").A > 0
             && ColorOfAnyBrush(daoLight, "DaoGlowBrush").A > 0);
+
+        var cloudLight = ThemePaletteBuilder.BuildCloudSky(light: true);
+        var cloudDark = ThemePaletteBuilder.BuildCloudSky(light: false);
+        var skyLight = cloudLight["BackdropBaseBrush"] as LinearGradientBrush;
+        var skyDark = cloudDark["BackdropBaseBrush"] as LinearGradientBrush;
+        check("云间天上浅色：上白下淡蓝的天空渐变 + 深色字",
+            skyLight is { GradientStops.Count: >= 2 }
+            && ThemePaletteBuilder.Luminance(skyLight.GradientStops[0].Color) > 0.9
+            && ThemePaletteBuilder.Luminance(skyLight.GradientStops[^1].Color) < 0.9
+            && ThemePaletteBuilder.Luminance(ColorOf(cloudLight, "TextPrimaryBrush")) < 0.4,
+            skyLight is null ? "(不是渐变)" : skyLight.GradientStops[0].Color.ToString());
+        check("云间天上深色：深夜蓝天空 + 亮色字 / 金色主色",
+            skyDark is not null
+            && ThemePaletteBuilder.Luminance(skyDark.GradientStops[0].Color) < 0.05
+            && ThemePaletteBuilder.Luminance(ColorOf(cloudDark, "TextPrimaryBrush")) > 0.5
+            && ColorOf(cloudDark, "AccentBrush").R > 0xB0,
+            ColorOf(cloudDark, "AccentBrush").ToString());
+        check("云间天上：卡片是纯色（不靠阴影），浅色是白卡 / 深色是深蓝卡",
+            ColorOf(cloudLight, "CardBackgroundBrush") == Colors.White
+            && ThemePaletteBuilder.Luminance(ColorOf(cloudDark, "CardBackgroundBrush")) < 0.15);
 
         // 预设配色：深 / 浅两版都能出完整 token，且主色不丢
         foreach (var palette in ThemePalette.Presets)
@@ -464,6 +496,10 @@ internal static class ThemeChecks
             File.ReadAllText(path).Contains("\"Daoji\""));
         check("uiTheme 读回来是道系",
             JsonFileStore.Read<ShellConfig>(path)?.UiTheme == UiTheme.Daoji);
+        JsonFileStore.Write(path, new ShellConfig { UiTheme = UiTheme.CloudSky });
+        check("uiTheme 按枚举名存成字符串 \"CloudSky\" / 读回来是云间天上",
+            File.ReadAllText(path).Contains("\"CloudSky\"")
+            && JsonFileStore.Read<ShellConfig>(path)?.UiTheme == UiTheme.CloudSky);
 
         var modeDefaults = new ShellConfig();
         check("外观模式默认深色，键名 themeMode",

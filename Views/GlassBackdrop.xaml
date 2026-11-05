@@ -22,6 +22,10 @@
         液态玻璃不模糊），且用 BitmapCache 缓存结果；光晕动画只动 TranslateTransform / Opacity（最便宜）。
     -->
     <UserControl.Resources>
+        <!-- 云间天上：平底云朵轮廓（Viewbox 缩放，纯色填充，靠不同大小 / 明度做层次） -->
+        <PathGeometry x:Key="CloudShape"
+                      Figures="M0,44 C0,26 14,14 32,14 C38,2 54,-4 70,0 C80,-12 104,-12 116,2 C134,-4 152,6 154,24 C170,26 180,36 180,44 Z" />
+
         <Storyboard x:Key="AmbientStoryboard">
             <!-- 蓝色大光斑：缓慢左右上下漂 + 呼吸 -->
             <DoubleAnimation Storyboard.TargetName="BlueMove" Storyboard.TargetProperty="X"
@@ -188,6 +192,171 @@
             <Grid VerticalAlignment="Bottom" Height="220" IsHitTestVisible="False">
                 <Polygon Points="0,220 200,100 430,190 700,30 1030,180 1250,80 1450,220" Stretch="Fill"
                          Fill="{DynamicResource DaoSilhouetteBrush}" Opacity="0.55" />
+            </Grid>
+        </Grid>
+
+        <!-- ⑤·云间天上：白天 = 云朵 + 暖阳；夜晚 = 暗云 + 月亮 + 星星。
+             两层都画在固定 1280×820 的 Canvas 里再用 Viewbox 铺满，窗口比例变化时整体缩放。
+             层次靠「后层低透明度 / 前层实色 + 大小错落」，不加大阴影（和参考图的处理一致）。 -->
+        <Grid x:Name="CloudSkyLayer" Visibility="Collapsed">
+            <!-- ===== 白天 ===== -->
+            <Grid x:Name="DaySky" Visibility="Collapsed">
+                <Viewbox Stretch="Fill">
+                    <Canvas Width="1280" Height="820" IsHitTestVisible="False">
+                        <!-- 太阳：外圈柔光 + 奶金圆盘 + 细金环 + 中心金点（参考图二） -->
+                        <Ellipse Canvas.Left="930" Canvas.Top="70" Width="420" Height="420">
+                            <Ellipse.Fill>
+                                <RadialGradientBrush>
+                                    <GradientStop Color="#66F4E3BC" Offset="0" />
+                                    <GradientStop Color="#22F4E3BC" Offset="0.55" />
+                                    <GradientStop Color="#00F4E3BC" Offset="1" />
+                                </RadialGradientBrush>
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <Ellipse Canvas.Left="1040" Canvas.Top="180" Width="200" Height="200">
+                            <Ellipse.Fill>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#FFF8EAC8" Offset="0" />
+                                    <GradientStop Color="#FFEAD3A2" Offset="1" />
+                                </LinearGradientBrush>
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <Ellipse Canvas.Left="1110" Canvas.Top="250" Width="60" Height="60"
+                                 Stroke="#C9A227" StrokeThickness="1.2" />
+                        <Ellipse Canvas.Left="1132" Canvas.Top="272" Width="16" Height="16" Fill="#C9A227" />
+
+                        <!-- 后层云：低透明度、偏冷白，拉开远近 -->
+                        <Path Data="{StaticResource CloudShape}" Fill="#D7E8F8" Opacity="0.85"
+                              Canvas.Left="240" Canvas.Top="55">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="2.1" ScaleY="2.1" />
+                            </Path.RenderTransform>
+                        </Path>
+                        <Path Data="{StaticResource CloudShape}" Fill="#E2EFFB" Opacity="0.75"
+                              Canvas.Left="720" Canvas.Top="40">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="2.6" ScaleY="2.6" />
+                            </Path.RenderTransform>
+                        </Path>
+                        <Path Data="{StaticResource CloudShape}" Fill="#EDF5FD" Opacity="0.7"
+                              Canvas.Left="390" Canvas.Top="420">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="1.7" ScaleY="1.7" />
+                            </Path.RenderTransform>
+                        </Path>
+
+                        <!-- 前层云：先用浅蓝灰垫一层（平铺的“云底”），再叠实白云，做出没有重阴影的层次 -->
+                        <Path Data="{StaticResource CloudShape}" Fill="#E3EFFA" Canvas.Left="150" Canvas.Top="218">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="1.35" ScaleY="1.35" />
+                            </Path.RenderTransform>
+                        </Path>
+                        <Path Data="{StaticResource CloudShape}" Fill="#FFFFFF" Canvas.Left="150" Canvas.Top="210">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="1.35" ScaleY="1.35" />
+                            </Path.RenderTransform>
+                        </Path>
+                        <Path Data="{StaticResource CloudShape}" Fill="#E8F2FC" Canvas.Left="860" Canvas.Top="308">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="1.7" ScaleY="1.7" />
+                            </Path.RenderTransform>
+                        </Path>
+                        <Path Data="{StaticResource CloudShape}" Fill="#FFFFFF" Canvas.Left="860" Canvas.Top="300">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="1.7" ScaleY="1.7" />
+                            </Path.RenderTransform>
+                        </Path>
+                        <Path Data="{StaticResource CloudShape}" Fill="#ECF4FD" Canvas.Left="520" Canvas.Top="648">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="2.2" ScaleY="2.2" />
+                            </Path.RenderTransform>
+                        </Path>
+                        <Path Data="{StaticResource CloudShape}" Fill="#FFFFFF" Canvas.Left="520" Canvas.Top="640">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="2.2" ScaleY="2.2" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Canvas>
+                </Viewbox>
+            </Grid>
+
+            <!-- ===== 夜晚 ===== -->
+            <Grid x:Name="NightSky" Visibility="Collapsed">
+                <Viewbox Stretch="Fill">
+                    <Canvas Width="1280" Height="820" IsHitTestVisible="False">
+                        <!-- 星星：大小 / 透明度错落，全部是小圆点，和月亮的圆形语言一致 -->
+                        <Ellipse Canvas.Left="120" Canvas.Top="70" Width="2.5" Height="2.5" Fill="#E9F1FF" Opacity="0.9" />
+                        <Ellipse Canvas.Left="210" Canvas.Top="160" Width="1.6" Height="1.6" Fill="#E9F1FF" Opacity="0.6" />
+                        <Ellipse Canvas.Left="300" Canvas.Top="95" Width="3" Height="3" Fill="#FFF4D6" Opacity="0.85" />
+                        <Ellipse Canvas.Left="380" Canvas.Top="220" Width="1.8" Height="1.8" Fill="#E9F1FF" Opacity="0.55" />
+                        <Ellipse Canvas.Left="470" Canvas.Top="60" Width="2.2" Height="2.2" Fill="#E9F1FF" Opacity="0.8" />
+                        <Ellipse Canvas.Left="560" Canvas.Top="180" Width="1.5" Height="1.5" Fill="#E9F1FF" Opacity="0.5" />
+                        <Ellipse Canvas.Left="650" Canvas.Top="90" Width="2.8" Height="2.8" Fill="#FFF4D6" Opacity="0.9" />
+                        <Ellipse Canvas.Left="730" Canvas.Top="250" Width="1.8" Height="1.8" Fill="#E9F1FF" Opacity="0.6" />
+                        <Ellipse Canvas.Left="820" Canvas.Top="50" Width="2" Height="2" Fill="#E9F1FF" Opacity="0.7" />
+                        <Ellipse Canvas.Left="920" Canvas.Top="140" Width="1.5" Height="1.5" Fill="#E9F1FF" Opacity="0.55" />
+                        <Ellipse Canvas.Left="1060" Canvas.Top="60" Width="2.4" Height="2.4" Fill="#FFF4D6" Opacity="0.85" />
+                        <Ellipse Canvas.Left="1180" Canvas.Top="200" Width="1.7" Height="1.7" Fill="#E9F1FF" Opacity="0.6" />
+                        <Ellipse Canvas.Left="90" Canvas.Top="320" Width="1.8" Height="1.8" Fill="#E9F1FF" Opacity="0.55" />
+                        <Ellipse Canvas.Left="260" Canvas.Top="390" Width="2.2" Height="2.2" Fill="#FFF4D6" Opacity="0.8" />
+                        <Ellipse Canvas.Left="450" Canvas.Top="330" Width="1.5" Height="1.5" Fill="#E9F1FF" Opacity="0.5" />
+                        <Ellipse Canvas.Left="700" Canvas.Top="410" Width="2.6" Height="2.6" Fill="#E9F1FF" Opacity="0.8" />
+                        <Ellipse Canvas.Left="960" Canvas.Top="360" Width="1.6" Height="1.6" Fill="#E9F1FF" Opacity="0.55" />
+                        <Ellipse Canvas.Left="1220" Canvas.Top="420" Width="2" Height="2" Fill="#FFF4D6" Opacity="0.7" />
+                        <Ellipse Canvas.Left="120" Canvas.Top="600" Width="2" Height="2" Fill="#E9F1FF" Opacity="0.55" />
+                        <Ellipse Canvas.Left="360" Canvas.Top="700" Width="1.5" Height="1.5" Fill="#E9F1FF" Opacity="0.45" />
+                        <Ellipse Canvas.Left="820" Canvas.Top="680" Width="2.2" Height="2.2" Fill="#E9F1FF" Opacity="0.6" />
+                        <Ellipse Canvas.Left="1100" Canvas.Top="620" Width="1.8" Height="1.8" Fill="#FFF4D6" Opacity="0.7" />
+
+                        <!-- 月亮：和太阳同一套「外圈柔光 + 圆盘 + 细环 + 中心点」，只是换成月白 -->
+                        <Ellipse Canvas.Left="930" Canvas.Top="70" Width="420" Height="420">
+                            <Ellipse.Fill>
+                                <RadialGradientBrush>
+                                    <GradientStop Color="#55E8E0C8" Offset="0" />
+                                    <GradientStop Color="#1FE8E0C8" Offset="0.55" />
+                                    <GradientStop Color="#00E8E0C8" Offset="1" />
+                                </RadialGradientBrush>
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <Ellipse Canvas.Left="1040" Canvas.Top="180" Width="200" Height="200">
+                            <Ellipse.Fill>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#FFF8F0DA" Offset="0" />
+                                    <GradientStop Color="#FFE5D6B4" Offset="1" />
+                                </LinearGradientBrush>
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <Ellipse Canvas.Left="1110" Canvas.Top="250" Width="60" Height="60"
+                                 Stroke="#D9C08A" StrokeThickness="1.2" />
+                        <Ellipse Canvas.Left="1132" Canvas.Top="272" Width="16" Height="16" Fill="#D9C08A" />
+
+                        <!-- 暗云：两层深浅，压住夜空下缘 -->
+                        <Path Data="{StaticResource CloudShape}" Fill="#132C4A" Opacity="0.9"
+                              Canvas.Left="250" Canvas.Top="90">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="2.4" ScaleY="2.4" />
+                            </Path.RenderTransform>
+                        </Path>
+                        <Path Data="{StaticResource CloudShape}" Fill="#112742" Opacity="0.8"
+                              Canvas.Left="660" Canvas.Top="150">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="1.6" ScaleY="1.6" />
+                            </Path.RenderTransform>
+                        </Path>
+                        <Path Data="{StaticResource CloudShape}" Fill="#0E2138"
+                              Canvas.Left="520" Canvas.Top="620">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="2.6" ScaleY="2.6" />
+                            </Path.RenderTransform>
+                        </Path>
+                        <Path Data="{StaticResource CloudShape}" Fill="#0A1A2E"
+                              Canvas.Left="880" Canvas.Top="330">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="1.8" ScaleY="1.8" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Canvas>
+                </Viewbox>
             </Grid>
         </Grid>
 

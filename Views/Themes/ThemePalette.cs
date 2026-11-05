@@ -172,6 +172,67 @@ public static class ThemePaletteBuilder
     /// <summary>道系（墨金）的深 / 浅两套 token。</summary>
     public static Dictionary<string, Brush> BuildDaoji(bool light) => BuildDao(light);
 
+    /// <summary>云间天上的深 / 浅两套 token（白天淡蓝天空 + 暖阳 / 夜空 + 月亮星星）。</summary>
+    public static Dictionary<string, Brush> BuildCloudSky(bool light)
+    {
+        var background = light ? Hex("#F6FAFF") : Hex("#07101F");
+        var card = light ? Hex("#FFFFFF") : Hex("#F212233A");
+        var accent = EnsureContrast(light ? Hex("#A57C45") : Hex("#D9C08A"), background, 3.0);
+        var text = light ? Hex("#1B2A3B") : Hex("#E9F1FF");
+        var tokens = BaseTokens(background, card, accent, text, light, glass: false);
+
+        tokens["HeaderBackgroundBrush"] = Solid(light ? WithAlpha(Colors.White, 0xD9) : WithAlpha(Hex("#0A1526"), 0xD9));
+        tokens["SidebarBackgroundBrush"] = Solid(light ? WithAlpha(Colors.White, 0xE6) : WithAlpha(Hex("#0A1526"), 0xE6));
+        tokens["CardBackgroundBrush"] = Solid(card);
+        tokens["CardHoverBackgroundBrush"] = Solid(light ? Hex("#F7FBFF") : Hex("#1A3150"));
+        tokens["BorderBrush"] = Solid(light ? Hex("#E4EEF9") : Hex("#26415F"));
+        tokens["SeparatorBrush"] = Solid(light ? Hex("#EBF3FB") : Hex("#1B304B"));
+        tokens["TextPrimaryBrush"] = Solid(text);
+        tokens["TextSecondaryBrush"] = Solid(light ? Hex("#5A7188") : Hex("#A9BDD6"));
+        tokens["FaintTextBrush"] = Solid(light ? Hex("#8EA4B8") : Hex("#6E87A5"));
+        tokens["InputBackgroundBrush"] = Solid(light ? Hex("#F8FCFF") : Hex("#0D1A2C"));
+        tokens["WindowButtonHoverBackgroundBrush"] = Solid(light ? Hex("#14000000") : Hex("#1FD9C08A"));
+        tokens["WindowButtonPressedBackgroundBrush"] = Solid(light ? Hex("#22000000") : Hex("#33D9C08A"));
+        tokens["ControlBorderHoverBrush"] = Solid(light ? Hex("#C9A227") : Hex("#6E87A5"));
+        tokens["CheckBoxBorderBrush"] = Solid(light ? Hex("#A9BFD4") : Hex("#4E6A89"));
+        tokens["ScrollBarTrackBrush"] = Solid(light ? Hex("#14000000") : Hex("#14D9C08A"));
+        tokens["ScrollBarThumbBrush"] = Solid(light ? Hex("#33000000") : Hex("#3DD9C08A"));
+        tokens["ScrollBarThumbHoverBrush"] = Solid(light ? Hex("#55000000") : Hex("#59D9C08A"));
+        tokens["SidebarItemHoverBackgroundBrush"] = Solid(light ? Hex("#14A57C45") : Hex("#1FD9C08A"));
+        tokens["SidebarItemSelectedBackgroundBrush"] = Solid(light ? Hex("#24A57C45") : Hex("#33D9C08A"));
+        tokens["ListRowHoverBackgroundBrush"] = Solid(light ? Hex("#0FA57C45") : Hex("#1FD9C08A"));
+        tokens["ListRowSelectedBackgroundBrush"] = Solid(light ? Hex("#1FA57C45") : Hex("#2ED9C08A"));
+        tokens["ListRowSelectedBorderBrush"] = Solid(light ? Hex("#88A57C45") : Hex("#88D9C08A"));
+        tokens["TagChipBackgroundBrush"] = Solid(light ? Hex("#14A57C45") : Hex("#1FD9C08A"));
+        tokens["TagChipBorderBrush"] = Solid(light ? Hex("#66A57C45") : Hex("#66D9C08A"));
+        tokens["TagChipHoverBackgroundBrush"] = Solid(light ? Hex("#22A57C45") : Hex("#33D9C08A"));
+        tokens["EmojiTileBackgroundBrush"] = Solid(light ? Hex("#EEF5FC") : Hex("#132942"));
+        tokens["SliderThumbBackgroundBrush"] = Solid(accent);
+        tokens["SliderThumbBorderBrush"] = Solid(light ? Hex("#FFFFFF") : Hex("#07101F"));
+        tokens["MiniPlayerBackgroundBrush"] = Solid(light ? Hex("#F2F8FF") : Hex("#0E1C2E"));
+        tokens["MiniPlayerHoverBackgroundBrush"] = Solid(light ? Hex("#14000000") : Hex("#22D9C08A"));
+        tokens["SecondaryButtonBackgroundBrush"] = Solid(Colors.Transparent);
+        var primary = EnsureWhiteReadable(accent);
+        tokens["PrimaryButtonBackgroundBrush"] = Solid(primary);
+        tokens["PrimaryButtonHoverBackgroundBrush"] = Solid(Lighten(primary, 0.12));
+        tokens["PrimaryButtonPressedBackgroundBrush"] = Solid(Darken(primary, 0.12));
+        tokens["PrimaryButtonBorderBrush"] = Solid(Colors.Transparent);
+        tokens["GlassHighlightBrush"] = Solid(Colors.Transparent);
+        tokens["WindowEdgeBorderBrush"] = Solid(Colors.Transparent);
+
+        // 背景层：浅色 = 上白下淡蓝的天空；深色 = 深夜蓝。云 / 太阳 / 月亮 / 星星是 GlassBackdrop 里的装饰层。
+        tokens["BackdropBaseBrush"] = Linear(
+            light ? Hex("#F3F9FF") : Hex("#050A18"),
+            light ? Hex("#D3E6F8") : Hex("#0F233B"));
+        tokens["BackdropImageScrimBrush"] = Solid(light ? WithAlpha(Colors.White, 0xA6) : WithAlpha(Colors.Black, 0x66));
+        tokens["BackdropNoiseBrush"] = Solid(Colors.Transparent);
+        tokens["BackdropTopLightBrush"] = Solid(Colors.Transparent);
+        tokens["BackdropVignetteBrush"] = Solid(Colors.Transparent);
+        tokens["DaoSilhouetteBrush"] = Solid(Colors.Transparent);
+        tokens["DaoGlowBrush"] = Solid(Colors.Transparent);
+        return tokens;
+    }
+
     // ================================================================== 色彩工具
 
     /// <summary>解析 <c>#RRGGBB</c> / <c>#AARRGGBB</c>（也接受不带 #、大小写混写）；坏值回退。</summary>

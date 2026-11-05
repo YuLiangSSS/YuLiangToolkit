@@ -250,7 +250,7 @@
                                         BorderBrush="{DynamicResource CheckBoxBorderBrush}"
                                         Background="{DynamicResource InputBackgroundBrush}"
                                         VerticalAlignment="Center">
-                                    <Ellipse x:Name="Dot" Width="7" Height="7" Fill="White" Visibility="Collapsed" />
+                                    <Ellipse x:Name="Dot" Width="7" Height="7" Fill="{DynamicResource AccentBrush}" Visibility="Collapsed" />
                                 </Border>
                                 <ContentPresenter Margin="9,0,0,0" VerticalAlignment="Center" />
                             </StackPanel>
