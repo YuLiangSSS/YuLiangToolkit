@@ -9,6 +9,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using YuLiangToolkit.App.ViewModels;
+using YuLiangToolkit.App.Views;
 using YuLiangToolkit.Core.Services;
 using YuLiangToolkit.Core.Tools;
 
@@ -105,6 +106,23 @@ public partial class MainWindow : Window, IFullscreenHost
     /// <summary>主 ViewModel（要监听 <c>ShowSidebar</c> 变化；DataContext 在构造之后才由 App 设置）。</summary>
     private MainViewModel? _shellVm;
 
+    // ---------- 左侧快捷功能栏：拖入 / 排序 ----------
+
+    /// <summary>按住快捷项右侧 ⋮ 时记录的是哪一项（拖动超过阈值就发起 DoDragDrop）。</summary>
+    private NavItem? _quickDragItem;
+
+    /// <summary>⋮ 按下时的鼠标位置（判断“点击”还是“拖动”）。</summary>
+    private Point _quickDragStart;
+
+    /// <summary>
+    /// 拖出侧栏后延迟收提示：在条目之间移动时 WPF 会频繁 DragLeave / DragOver，
+    /// 立刻隐藏会让蓝色插入线闪个不停（见 <see cref="OnSidebarDragLeaveTimerTick"/>）。
+    /// </summary>
+    private readonly DispatcherTimer _sidebarDragLeaveTimer;
+
+    /// <summary>最近一次 DragOver 的时间戳（毫秒，<see cref="Environment.TickCount"/>）。</summary>
+    private int _lastSidebarDragOverTick;
+
     /// <summary>全屏期间“盯着任务栏”的看门狗（见 <see cref="OnTaskbarWatchTick"/>）。</summary>
     private readonly DispatcherTimer _taskbarWatch;
 
@@ -137,6 +155,14 @@ public partial class MainWindow : Window, IFullscreenHost
             Interval = TimeSpan.FromMilliseconds(400),
         };
         _taskbarWatch.Tick += (_, _) => OnTaskbarWatchTick();
+
+        // 快捷栏拖放的「离开侧栏」延时收尾（见 OnSidebarDragLeaveTimerTick）：
+        // 在条目之间移动时 DragLeave / DragOver 会交替触发，直接用 DragLeave 隐藏会让插入线闪。
+        _sidebarDragLeaveTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(120),
+        };
+        _sidebarDragLeaveTimer.Tick += OnSidebarDragLeaveTimerTick;
     }
 
     /// <summary>
@@ -540,6 +566,176 @@ public partial class MainWindow : Window, IFullscreenHost
     private static double ClampSidebarWidth(double width)
         => Math.Clamp(double.IsFinite(width) && width > 0 ? width : SidebarDefaultWidth,
             SidebarMinWidth, SidebarMaxWidth);
+
+    // ---------- 左侧快捷功能栏：拖入 / 排序 / 移除 ----------
+
+    private void OnSidebarDragEnter(object sender, DragEventArgs e) => UpdateSidebarDragOver(e);
+
+    private void OnSidebarDragOver(object sender, DragEventArgs e) => UpdateSidebarDragOver(e);
+
+    /// <summary>
+    /// 拖动经过侧栏：认「工具 Id」格式且当前是快捷模式时亮起描边 + 蓝线，并实时算落点；
+    /// 其它拖拽（往工具页拖文件之类）一律返回 None，不影响原有行为。
+    /// </summary>
+    private void UpdateSidebarDragOver(DragEventArgs e)
+    {
+        if (_shellVm is not { QuickSidebarEnabled: true, ShowSidebar: true }
+            || ToolDragData.GetToolId(e) is null)
+        {
+            e.Effects = DragDropEffects.None;
+            e.Handled = true;
+            HideQuickDropFeedback();
+            return;
+        }
+
+        _lastSidebarDragOverTick = Environment.TickCount;
+        _sidebarDragLeaveTimer.Stop();
+        SidebarDropHighlight.Visibility = Visibility.Visible;
+        ShowQuickDropIndicator(ComputeQuickInsertIndex(e.GetPosition(NavList).Y));
+        e.Effects = ResolveQuickDropEffect(e);
+        e.Handled = true;
+    }
+
+    /// <summary>拖出侧栏：不立刻收提示（条目之间移动会频繁 DragLeave），交给小延时确认。</summary>
+    private void OnSidebarDragLeave(object sender, DragEventArgs e)
+    {
+        _lastSidebarDragOverTick = Environment.TickCount;
+        _sidebarDragLeaveTimer.Start();
+    }
+
+    private void OnSidebarDragLeaveTimerTick(object? sender, EventArgs e)
+    {
+        _sidebarDragLeaveTimer.Stop();
+        if (Environment.TickCount - _lastSidebarDragOverTick > 80) HideQuickDropFeedback();
+    }
+
+    /// <summary>松手：按蓝线所在位置插入 / 重排；已经在快捷栏里的工具就是移动，不会重复。</summary>
+    private void OnSidebarDrop(object sender, DragEventArgs e)
+    {
+        var toolId = ToolDragData.GetToolId(e);
+        var index = ComputeQuickInsertIndex(e.GetPosition(NavList).Y);
+        var ok = toolId is not null
+                 && _shellVm is { QuickSidebarEnabled: true, ShowSidebar: true }
+                 && _shellVm.InsertOrMoveQuickTool(toolId, index);
+        HideQuickDropFeedback();
+        e.Effects = ok ? ResolveQuickDropEffect(e) : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// 光标用 Move 还是 Copy：主页卡片发起的是 Copy、侧栏 ⋮ 发起的是 Move，
+    /// 必须回一个**源允许的效果**，否则 WPF 会把光标显示成“禁止拖放”（虽然 Drop 仍会到）。
+    /// </summary>
+    private static DragDropEffects ResolveQuickDropEffect(DragEventArgs e)
+        => (e.AllowedEffects & DragDropEffects.Move) != 0 ? DragDropEffects.Move : DragDropEffects.Copy;
+
+    private void HideQuickDropFeedback()
+    {
+        _sidebarDragLeaveTimer.Stop();
+        QuickDropIndicator.Visibility = Visibility.Collapsed;
+        SidebarDropHighlight.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// 鼠标 Y（相对 <see cref="NavList"/>）落在第几个快捷项之前（0 ~ 快捷项数量）。
+    /// 第 0 项固定是「首页」，所以落点要减 1；超过最后一项 = 放到末尾。
+    /// </summary>
+    private int ComputeQuickInsertIndex(double y)
+    {
+        for (var i = 0; i < NavList.Items.Count; i++)
+        {
+            if (NavList.ItemContainerGenerator.ContainerFromIndex(i) is not ListBoxItem container) continue;
+            var top = container.TranslatePoint(new Point(0, 0), NavList).Y;
+            if (y < top + container.ActualHeight / 2) return Math.Max(0, i - 1);
+        }
+        return Math.Max(0, _shellVm?.QuickSidebarCount ?? 0);
+    }
+
+    /// <summary>把蓝色插入线摆到对应快捷项的上边（最后一项之后 = 列表底部）。</summary>
+    private void ShowQuickDropIndicator(int insertIndex)
+    {
+        var items = NavList.Items;
+        var navIndex = insertIndex + 1;   // +1 跳过固定的「首页」
+        double y;
+        if (navIndex < items.Count
+            && NavList.ItemContainerGenerator.ContainerFromIndex(navIndex) is ListBoxItem next)
+        {
+            y = next.TranslatePoint(new Point(0, 0), NavList).Y;
+        }
+        else if (items.Count > 0
+                 && NavList.ItemContainerGenerator.ContainerFromIndex(items.Count - 1) is ListBoxItem last)
+        {
+            y = last.TranslatePoint(new Point(0, 0), NavList).Y + last.ActualHeight;
+        }
+        else
+        {
+            y = NavList.ActualHeight;
+        }
+
+        y = Math.Clamp(y, 0, NavList.ActualHeight);
+        QuickDropIndicator.Margin = new Thickness(10, Math.Max(0, y - 1), 10, 0);
+        QuickDropIndicator.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>按住快捷项右侧的 ⋮：开始一次“侧栏内排序”拖拽（先捕获鼠标，避免顺带选中 / 导航）。</summary>
+    private void OnQuickNavDragHandlePreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement handle) return;
+        if (handle.DataContext is not NavItem item || !item.IsQuickEntry || item.Tool is null) return;
+        if (_shellVm is not { QuickSidebarEnabled: true }) return;
+
+        _quickDragItem = item;
+        _quickDragStart = e.GetPosition(this);
+        handle.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void OnQuickNavDragHandlePreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_quickDragItem is null || e.LeftButton != MouseButtonState.Pressed) return;
+
+        var position = e.GetPosition(this);
+        if (Math.Abs(position.X - _quickDragStart.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(position.Y - _quickDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        var item = _quickDragItem;
+        _quickDragItem = null;
+        if (sender is UIElement handle && handle.IsMouseCaptured) handle.ReleaseMouseCapture();
+        if (item.Tool is not { } tool) return;
+
+        DragDrop.DoDragDrop((DependencyObject)sender, ToolDragData.Create(tool.Id), DragDropEffects.Move);
+        e.Handled = true;
+    }
+
+    private void OnQuickNavDragHandlePreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        _quickDragItem = null;
+        if (sender is UIElement handle && handle.IsMouseCaptured) handle.ReleaseMouseCapture();
+        e.Handled = true;
+    }
+
+    /// <summary>✕ 移除：按下就先吃掉（防止 ListBoxItem 选中 / 导航），鼠标松开后再真正移除。</summary>
+    private void OnQuickNavRemovePreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement target) return;
+        if (target.DataContext is not NavItem { IsQuickEntry: true }) return;
+        target.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void OnQuickNavRemovePreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement target)
+        {
+            if (target.IsMouseCaptured) target.ReleaseMouseCapture();
+            if (target.DataContext is NavItem { IsQuickEntry: true, Tool: { } tool })
+                _shellVm?.RemoveToolFromQuickSidebar(tool.Id);
+        }
+        e.Handled = true;
+    }
 
     // ---------- 全屏（IFullscreenHost） ----------
 

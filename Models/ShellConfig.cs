@@ -156,6 +156,22 @@ public sealed class ShellConfig : ToolConfig
     /// </summary>
     public bool ShowSidebar { get; set; } = true;
 
+    /// <summary>
+    /// 左侧是否启用「快捷功能栏」（「主页设置 → 界面布局」，默认 <c>false</c> = 原来的全功能列表）。
+    /// <para>启用后侧边栏只显示「首页 + 用户自己放进来的工具」，顺序也由用户决定：
+    /// 从主页把功能卡片拖到侧栏即可添加，侧栏条目右侧的 ⋮ 上下拖动调整顺序、✕ 移除。
+    /// 关掉后立刻回到完整的功能列表（快捷栏内容保留，下次再开还是这些）。
+    /// 旧配置文件没有这个字段时读出来就是 <c>false</c>，升级后界面不变。</para>
+    /// </summary>
+    public bool QuickSidebarEnabled { get; set; }
+
+    /// <summary>
+    /// 快捷功能栏里的工具 Id（按**显示顺序**存放；默认空列表）。
+    /// <para>只存 Id 不存工具实例：插件 / 工具被删掉后旧 Id 会被忽略（启动时自动清理）。
+    /// 从主页拖卡片到侧栏、拖动排序、点 ✕ 移除都会改这个列表，后台内容比对会自动落盘。</para>
+    /// </summary>
+    public List<string> QuickSidebarTools { get; set; } = new();
+
     // ---------- 粒子颜色（v0.22.0，主页设置「粒子颜色」卡片） ----------
 
     /// <summary>是否启用自定义粒子颜色（默认关 = 原来的淡紫白，行为完全不变）。</summary>

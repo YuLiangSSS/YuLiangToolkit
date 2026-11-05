@@ -567,6 +567,13 @@
                     <TextBlock FontSize="11" Foreground="{DynamicResource FaintTextBrush}" TextWrapping="Wrap" Margin="0,6,0,0"
                                Text="左侧功能列表栏的右边缘可以按住左右拖动（光标变成 ↔）：松手自动记住（Config\layout.json），双击那条缝恢复默认宽度 232。关掉上面的开关时它和分隔条一起收起；拖过的宽度会保留，重新勾上还是那个宽度。" />
 
+                    <!-- v0.88.0：左侧快捷功能栏（自定义常用功能） -->
+                    <CheckBox Content="启用左侧「快捷功能栏」（自定义常用功能）" Style="{StaticResource CheckBoxStyle}"
+                              IsChecked="{Binding QuickSidebarEnabled}" Margin="0,14,0,0"
+                              ToolTip="启用后左侧只显示「首页 + 你放进去的功能」；从主页拖动功能卡片到左侧即可添加，侧栏条目右侧的 ⋮ 上下拖动排序、✕ 移除。关掉恢复完整功能列表（快捷栏内容会保留）。" />
+                    <TextBlock Text="{Binding QuickSidebarSummary}" FontSize="11"
+                               Foreground="{DynamicResource FaintTextBrush}" TextWrapping="Wrap" Margin="0,6,0,0" />
+
                     <Grid Margin="0,12,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />

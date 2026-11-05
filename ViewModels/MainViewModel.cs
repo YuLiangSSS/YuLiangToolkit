@@ -15,7 +15,7 @@ using YuLiangToolkit.Core.Tools;
 
 namespace YuLiangToolkit.App.ViewModels;
 
-/// <summary>侧边栏导航项：首页 / 根层类别 / 根层工具。</summary>
+/// <summary>侧边栏导航项：首页 / 根层类别 / 根层工具（快捷模式里是首页 + 用户挑的工具）。</summary>
 public class NavItem
 {
     public string Title { get; }
@@ -28,6 +28,12 @@ public class NavItem
     /// <summary>首页项：既不是工具也不是类别。</summary>
     public bool IsHome => Tool is null && Node is null;
 
+    /// <summary>
+    /// 是不是「快捷功能栏」里的用户自定义项（首页固定项为 false）。
+    /// 界面只给这些项显示 ✕ 移除按钮和 ⋮ 拖拽把手；完整功能列表里不显示。
+    /// </summary>
+    public bool IsQuickEntry { get; }
+
     private readonly Action _navigate;
 
     public NavItem(string title, string emoji, ITool? tool, Action navigate)
@@ -35,12 +41,14 @@ public class NavItem
     {
     }
 
-    public NavItem(string title, string emoji, ITool? tool, ToolCatalogNode? node, Action navigate)
+    public NavItem(string title, string emoji, ITool? tool, ToolCatalogNode? node, Action navigate,
+        bool isQuickEntry = false)
     {
         Title = title;
         Emoji = emoji;
         Tool = tool;
         Node = node;
+        IsQuickEntry = isQuickEntry;
         _navigate = navigate;
     }
 
@@ -349,7 +357,169 @@ public class MainViewModel : ObservableObject
             if (_shell.ShowSidebar == value) return;
             _shell.ShowSidebar = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(ShowQuickSidebarDragHint));
         }
+    }
+
+    // ---------- 左侧「快捷功能栏」（v0.88.0：可自定义常用功能 + 拖拽排序） ----------
+
+    /// <summary>
+    /// 是否启用左侧「快捷功能栏」（「主页设置 → 界面布局」里的开关；读写
+    /// <see cref="ShellConfig.QuickSidebarEnabled"/>，自动落盘）。
+    /// <para>启用后侧栏只显示「首页 + 快捷栏里的工具」，关掉立即恢复完整功能列表
+    /// （快捷栏内容仍保留在配置里，下次打开还在）。</para>
+    /// </summary>
+    public bool QuickSidebarEnabled
+    {
+        get => _shell.QuickSidebarEnabled;
+        set
+        {
+            if (_shell.QuickSidebarEnabled == value) return;
+            _shell.QuickSidebarEnabled = value;
+            RebuildNavItems();
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsQuickSidebarMode));
+        }
+    }
+
+    /// <summary>当前是不是快捷功能栏模式（侧栏标题 / 主页拖拽提示等绑定用）。</summary>
+    public bool IsQuickSidebarMode => _shell.QuickSidebarEnabled;
+
+    /// <summary>侧栏标题：完整模式「功能列表」，快捷模式「快捷功能」。</summary>
+    public string SidebarTitle => IsQuickSidebarMode ? "快捷功能" : "功能列表";
+
+    /// <summary>侧栏标题的鼠标提示（说明怎么往快捷栏里放功能）。</summary>
+    public string SidebarHeaderToolTip => IsQuickSidebarMode
+        ? "快捷功能栏：从主页按住功能卡片拖到这里添加；拖动条目右侧的 ⋮ 调整顺序；点 ✕ 移除（主页设置里可关掉）"
+        : "全部功能列表：首页、根层分类与根层工具；可在主页设置 → 界面布局里换成「快捷功能栏」";
+
+    /// <summary>快捷栏里配置了几个功能（只看配置，缺插件的旧 Id 会在启动时被清掉）。</summary>
+    public int QuickSidebarCount => _shell.QuickSidebarTools.Count;
+
+    /// <summary>快捷栏为空的提示（只在快捷模式且一个功能都没放时显示）。</summary>
+    public bool ShowQuickSidebarEmptyHint => IsQuickSidebarMode && QuickSidebarCount == 0;
+
+    /// <summary>主页 / 分类页上那句「可以拖到左侧快捷栏」的提示要不要显示。</summary>
+    public bool ShowQuickSidebarDragHint => IsQuickSidebarMode && ShowSidebar;
+
+    /// <summary>设置页里的快捷栏状态文案（几个功能 / 怎么操作）。</summary>
+    public string QuickSidebarSummary => !IsQuickSidebarMode
+        ? "关掉时显示完整的功能列表；打开后左侧只保留你放进去的常用功能，随时可以关掉恢复。"
+        : QuickSidebarCount == 0
+            ? "快捷栏里还没有功能：回到主页，按住功能卡片拖到左侧即可添加。"
+            : $"快捷栏里已有 {QuickSidebarCount} 个功能：在左侧栏拖动条目右侧的 ⋮ 调整顺序，点 ✕ 移除。";
+
+    /// <summary>
+    /// 把某个工具插入 / 移动到快捷栏的指定位置（下拉点 = 快捷项内部下标，0 ~ 当前数量）。
+    /// <para>返回是否真的改变了顺序。拖拽落点由主窗口按鼠标位置算好后传进来；
+    /// 拖进来的工具已经在快捷栏里时就是重排，不会出现重复项（顺序纯逻辑见 <see cref="QuickSidebarList"/>）。</para>
+    /// </summary>
+    public bool InsertOrMoveQuickTool(string? toolId, int insertIndex)
+    {
+        if (string.IsNullOrWhiteSpace(toolId)) return false;
+
+        var tool = Tools.FirstOrDefault(t =>
+            string.Equals(t.Id, toolId.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (tool is null) return false;
+
+        var current = _shell.QuickSidebarTools;
+        var next = QuickSidebarList.Move(current, tool.Id, insertIndex);
+        if (SameOrder(current, next)) return false;
+
+        _shell.QuickSidebarTools = next;
+        RebuildNavItems();
+        return true;
+    }
+
+    /// <summary>从快捷栏移除一个工具（点条目上的 ✕）；返回是否确实移除了。</summary>
+    public bool RemoveToolFromQuickSidebar(string? toolId)
+    {
+        var current = _shell.QuickSidebarTools;
+        var next = QuickSidebarList.Remove(current, toolId);
+        if (SameOrder(current, next)) return false;
+
+        _shell.QuickSidebarTools = next;
+        RebuildNavItems();
+        return true;
+    }
+
+    /// <summary>按当前模式重建侧栏项（完整列表 / 快捷栏），并恢复「当前页面」对应的选中项。</summary>
+    private void RebuildNavItems()
+    {
+        _syncingNav = true;
+        try
+        {
+            NavItems.Clear();
+            NavItems.Add(new NavItem("首页", "🏠", null, GoHome));
+
+            if (IsQuickSidebarMode)
+            {
+                foreach (var tool in ResolveQuickTools())
+                {
+                    var t = tool;
+                    NavItems.Add(new NavItem(t.Name, t.EmojiIcon, t, null, () => OpenTool(t), isQuickEntry: true));
+                }
+            }
+            else
+            {
+                foreach (var category in _catalogRoot.Children)
+                {
+                    var node = category;
+                    NavItems.Add(new NavItem(category.Name, category.EmojiIcon, null, node,
+                        () => NavigateToNode(node)));
+                }
+                foreach (var tool in _catalogRoot.Tools)
+                {
+                    var t = tool;
+                    NavItems.Add(new NavItem(t.Name, t.EmojiIcon, t, () => OpenTool(t)));
+                }
+            }
+
+            // 重建会清掉旧对象，按当前页面重新选一遍；设置页不选任何项
+            SelectedNavItem = FindSelectedNavForCurrentPage();
+        }
+        finally
+        {
+            _syncingNav = false;
+        }
+
+        OnPropertyChanged(nameof(SidebarTitle));
+        OnPropertyChanged(nameof(SidebarHeaderToolTip));
+        OnPropertyChanged(nameof(QuickSidebarCount));
+        OnPropertyChanged(nameof(ShowQuickSidebarEmptyHint));
+        OnPropertyChanged(nameof(ShowQuickSidebarDragHint));
+        OnPropertyChanged(nameof(QuickSidebarSummary));
+    }
+
+    /// <summary>按配置里的 Id 顺序把快捷栏工具实例找出来（找不到的跳过，例如插件被删了）。</summary>
+    private IEnumerable<ITool> ResolveQuickTools()
+    {
+        foreach (var id in _shell.QuickSidebarTools)
+        {
+            var tool = Tools.FirstOrDefault(t =>
+                string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (tool is not null) yield return tool;
+        }
+    }
+
+    /// <summary>重建侧栏后，当前页面应该选中哪一项。</summary>
+    private NavItem? FindSelectedNavForCurrentPage() => _pageKind switch
+    {
+        ShellPageKind.Home => NavItems.FirstOrDefault(n => n.IsHome),
+        ShellPageKind.Category => FindNavItemForNode(_currentNode),
+        ShellPageKind.Tool when _currentTool is { } tool => FindNavItemForTool(tool),
+        _ => null,
+    };
+
+    private static bool SameOrder(IReadOnlyList<string> a, IReadOnlyList<string> b)
+    {
+        if (ReferenceEquals(a, b)) return true;
+        if (a.Count != b.Count) return false;
+        for (var i = 0; i < a.Count; i++)
+        {
+            if (!string.Equals(a[i], b[i], StringComparison.OrdinalIgnoreCase)) return false;
+        }
+        return true;
     }
 
     // ---------- 工具页分隔条提示线（v0.42.0：平时可调成看不见 / 淡淡一条 / 实心蓝线） ----------
@@ -1303,18 +1473,11 @@ public class MainViewModel : ObservableObject
             _cardById[tool.Id] = card;
         }
 
-        NavItems.Clear();
-        NavItems.Add(new NavItem("首页", "🏠", null, GoHome));
-        foreach (var category in _catalogRoot.Children)
-        {
-            var node = category;
-            NavItems.Add(new NavItem(category.Name, category.EmojiIcon, null, node, () => NavigateToNode(node)));
-        }
-        foreach (var tool in _catalogRoot.Tools)
-        {
-            var t = tool;
-            NavItems.Add(new NavItem(t.Name, t.EmojiIcon, t, () => OpenTool(t)));
-        }
+        // 快捷栏只认当前真实存在的工具 Id：插件被删 / 改名后，旧 Id 清掉（顺序保持不变）
+        _shell.QuickSidebarTools = QuickSidebarList.Normalize(
+            _shell.QuickSidebarTools, toolList.Select(t => t.Id));
+
+        RebuildNavItems();
     }
 
     /// <summary>只给截图/冒烟用：开一下播放器再回主页，制造“正在后台播放”的状态。</summary>
@@ -1502,6 +1665,10 @@ public class MainViewModel : ObservableObject
     private NavItem? FindNavItemForNode(ToolCatalogNode node)
     {
         if (node.IsRoot) return NavItems.FirstOrDefault(n => n.IsHome);
+
+        // 快捷模式只有工具项、没有类别项：类别页就不强行高亮「首页」（免得看起来像还在主页）
+        if (IsQuickSidebarMode) return null;
+
         var rootCategory = node.Breadcrumb.FirstOrDefault(n => !n.IsRoot);
         if (rootCategory is null) return NavItems.FirstOrDefault(n => n.IsHome);
         return NavItems.FirstOrDefault(n => n.Node is not null && ReferenceEquals(n.Node, rootCategory))
@@ -1775,6 +1942,7 @@ public class MainViewModel : ObservableObject
         foreach (var card in _allCards) card.LastUsed = null;   // LastUsed 字典已被重置为空
 
         OnPropertyChanged(string.Empty);    // 其余所有绑定（主题单选、粒子颜色、关闭行为、标签墙…）全部重读
+        RebuildNavItems();                  // 快捷栏开关 / 内容也可能被重置回默认（完整功能列表）
         RefreshToolCards();
         RefreshHeader();
     }

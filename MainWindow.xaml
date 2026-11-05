@@ -24,6 +24,21 @@
                             UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
 
+    <Window.Resources>
+        <!-- 快捷栏条目里的小按钮（✕ 移除 / ⋮ 拖拽把手）：透明底，悬停才亮 -->
+        <Style x:Key="SidebarMiniButtonStyle" TargetType="Border">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="3,1" />
+            <Setter Property="Margin" Value="6,0,0,0" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource ListRowHoverBackgroundBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
     <!-- 最外层容器：只做两件事 ——
          ① 装「窗口内容根节点」RootGrid（标题栏 / 工具条 / 主体 / 状态栏 / 玻璃背景 / 玻璃边）；
          ② 把光标特效覆盖层放在它**外面、和它平级**：反色圆环特效要把 RootGrid 单独取景，
@@ -149,23 +164,86 @@
                     <ColumnDefinition Width="*" MinWidth="320" />
                 </Grid.ColumnDefinitions>
 
+                <!-- 左侧栏：完整模式 = 首页 + 根层分类 + 根层工具；
+                     快捷模式（主页设置 → 界面布局） = 首页 + 用户自己拖进来的常用功能。
+                     快捷模式下：主页卡片可以拖到这块区域添加（落点显示蓝线），
+                     条目右侧的 ⋮ 拖拽把手调整顺序、✕ 移除；开关关掉就恢复完整列表。 -->
                 <Border x:Name="SidebarPanel" Grid.Column="0" Background="{DynamicResource SidebarBackgroundBrush}"
-                        BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,0,1,0">
-                    <DockPanel>
-                        <TextBlock DockPanel.Dock="Top" Text="功能列表" FontSize="11"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="22,16,0,8" />
-                        <ListBox ItemsSource="{Binding NavItems}" SelectedItem="{Binding SelectedNavItem}"
-                                 Style="{StaticResource SidebarListStyle}">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="{Binding Emoji}" FontSize="15" Width="26" />
-                                        <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </DockPanel>
+                        BorderBrush="{DynamicResource SeparatorBrush}" BorderThickness="0,0,1,0"
+                        AllowDrop="True"
+                        DragEnter="OnSidebarDragEnter"
+                        DragOver="OnSidebarDragOver"
+                        DragLeave="OnSidebarDragLeave"
+                        Drop="OnSidebarDrop">
+                    <Grid>
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Text="{Binding SidebarTitle}" FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="22,16,0,8"
+                                       ToolTip="{Binding SidebarHeaderToolTip}" />
+                            <Grid>
+                                <ListBox x:Name="NavList" ItemsSource="{Binding NavItems}"
+                                         SelectedItem="{Binding SelectedNavItem}"
+                                         Style="{StaticResource SidebarListStyle}">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Emoji}" FontSize="15" Width="26" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Title}" VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <!-- 快捷模式才显示：✕ 移除（Preview 事件里吃掉点击，避免顺带选中 / 导航） -->
+                                                <Border Grid.Column="2" VerticalAlignment="Center"
+                                                        Style="{StaticResource SidebarMiniButtonStyle}"
+                                                        Cursor="Hand" ToolTip="从快捷功能栏移除"
+                                                        Visibility="{Binding IsQuickEntry, Converter={StaticResource BoolToVis}}"
+                                                        PreviewMouseLeftButtonDown="OnQuickNavRemovePreviewMouseLeftButtonDown"
+                                                        PreviewMouseLeftButtonUp="OnQuickNavRemovePreviewMouseLeftButtonUp">
+                                                    <TextBlock Text="✕" FontSize="9.5"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                </Border>
+                                                <!-- 快捷模式才显示：⋮ 拖拽排序把手（同样吃掉点击，不触发导航） -->
+                                                <Border Grid.Column="3" VerticalAlignment="Center" Width="16"
+                                                        Background="Transparent" Cursor="SizeNS"
+                                                        ToolTip="按住上下拖动，调整快捷功能栏顺序"
+                                                        Visibility="{Binding IsQuickEntry, Converter={StaticResource BoolToVis}}"
+                                                        PreviewMouseLeftButtonDown="OnQuickNavDragHandlePreviewMouseLeftButtonDown"
+                                                        PreviewMouseMove="OnQuickNavDragHandlePreviewMouseMove"
+                                                        PreviewMouseLeftButtonUp="OnQuickNavDragHandlePreviewMouseLeftButtonUp">
+                                                    <TextBlock Text="⋮" FontSize="14" HorizontalAlignment="Center"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                </Border>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+
+                                <!-- 快捷栏空状态：不挡拖放（IsHitTestVisible=False），提示从哪里添加 -->
+                                <StackPanel Margin="20,56,20,0" VerticalAlignment="Top" IsHitTestVisible="False"
+                                            Visibility="{Binding ShowQuickSidebarEmptyHint, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="快捷功能栏还是空的" FontSize="11.5" FontWeight="SemiBold" />
+                                    <TextBlock Text="在主页按住功能卡片拖到这里，就能把它放进快捷栏。"
+                                               FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                                               TextWrapping="Wrap" Margin="0,5,0,0" />
+                                </StackPanel>
+
+                                <!-- 拖拽插入位置的蓝线：位置由 MainWindow.xaml.cs 按鼠标落点算 -->
+                                <Border x:Name="QuickDropIndicator" Height="2" CornerRadius="1"
+                                        Background="{DynamicResource AccentBrush}" VerticalAlignment="Top"
+                                        HorizontalAlignment="Stretch" Margin="10,0" Visibility="Collapsed"
+                                        IsHitTestVisible="False" Panel.ZIndex="10" />
+                            </Grid>
+                        </DockPanel>
+
+                        <!-- 拖拽经过侧栏时整块亮起描边，提示“可以放这里” -->
+                        <Border x:Name="SidebarDropHighlight" BorderBrush="{DynamicResource AccentBrush}"
+                                BorderThickness="2" CornerRadius="8" Margin="4" Visibility="Collapsed"
+                                IsHitTestVisible="False" Panel.ZIndex="20" />
+                    </Grid>
                 </Border>
 
                 <!-- 功能列表栏右边缘：按住左右拖 = 改宽度；双击 = 恢复默认宽度（232） -->

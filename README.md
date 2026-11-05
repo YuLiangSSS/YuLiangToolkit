@@ -79,6 +79,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 - **鼠标特效**：粒子拖尾 / 鼠标散光 / 粒子爆炸 / 散光扩散 / 光晕闪烁 / 反色圆环；自动效果与点击效果互相独立、可多选，数量 / 范围 / 半径都有滑块，粒子颜色可自定义。
 - **自定义外壳**：自绘标题栏（最大化时按住标题栏往外拖会先还原再跟手）、托盘小图标（× 可设为最小化到托盘）、浏览器式「← 后退 / → 前进」。
 - **可拖拽布局**：工具页区块之间的分隔条可左右 / 上下拖动，松手自动记住、双击恢复这一处；左侧「功能列表」栏也能拖宽 / 收起。
+- **左侧快捷功能栏**：可把左侧栏切成自定义快捷栏——从主页把功能卡片拖到左边加入，⋮ 上下拖动排序，✕ 移除；关掉恢复完整功能列表（主页设置里开关，内容会记住）。
 - **工具页状态保留**：切去别的工具再切回来，打开的文件 / 文件夹、阅读位置、列表、游戏局面都会原样恢复（缓存最近 12 个工具页）。
 
 更细的说明（各设置项、特效参数、布局、清理缓存 / 重建配置）见 [docs/shell.md](docs/shell.md)。
@@ -97,7 +98,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（用法 / 设置项 / 数据位置 / 注意事项），跟着代码一起走；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；踩坑细节按需查 [docs/dev/pitfalls.md](docs/dev/pitfalls.md)；
-- ✅ **自检**：4270 项行为逐条真跑（退出码 0 = 全通过）。按改动影响面只跑相关组，不每轮全量：
+- ✅ **自检**：4280 项行为逐条真跑（退出码 0 = 全通过）。按改动影响面只跑相关组，不每轮全量：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -112,7 +113,7 @@ build.ps1 / publish.ps1                  # 一键构建 / 一键发布（发布�
 scripts/check.ps1                        # 按改动自动选组的自检触发器
 src/YuLiangToolkit.Core/                 # 核心库：工具契约 / MVVM / 存储 / 配置 / 维护 / 特效 / 联机底座
 src/YuLiangToolkit.Tools.*/              # 各工具，一个功能一个项目（新功能复制 Tools.Sample）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 自检控制台：4270 项行为逐条真跑
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 自检控制台：4280 项行为逐条真跑
 docs/                                    # 每个工具一页详细说明（索引 docs/README.md）
 AGENTS.md                                # 开发入口地图：流程 / 硬性规则 / 找东西
 ```

@@ -28,6 +28,45 @@ public partial class HomeView : UserControl
 
     private MainViewModel? ViewModel => DataContext as MainViewModel;
 
+    // ---------- 主页卡片 → 左侧快捷功能栏（拖拽） ----------
+
+    /// <summary>按下的是哪张卡片 / 按下位置；拖动超过系统阈值才真正发起拖拽（否则还是普通点击）。</summary>
+    private ToolCard? _quickDragCard;
+    private Point _quickDragStart;
+
+    /// <summary>
+    /// 按住功能卡片：只有「快捷功能栏 + 侧边栏都开着」才记录拖拽起点。
+    /// 关着时完全不影响卡片原有的点击打开行为。
+    /// </summary>
+    private void OnToolCardPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: ToolCard card }) return;
+        if (ViewModel is not { QuickSidebarEnabled: true, ShowSidebar: true }) return;
+        _quickDragCard = card;
+        _quickDragStart = e.GetPosition(this);
+    }
+
+    /// <summary>移动超过系统拖拽阈值 → 发起拖拽；数据只带工具 Id（见 <see cref="ToolDragData"/>）。</summary>
+    private void OnToolCardPreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_quickDragCard is null || e.LeftButton != MouseButtonState.Pressed) return;
+
+        var position = e.GetPosition(this);
+        if (Math.Abs(position.X - _quickDragStart.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(position.Y - _quickDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        var card = _quickDragCard;
+        _quickDragCard = null;
+        DragDrop.DoDragDrop((DependencyObject)sender, ToolDragData.Create(card.Id), DragDropEffects.Copy);
+        e.Handled = true;
+    }
+
+    private void OnToolCardPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        => _quickDragCard = null;
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         _hostWindow = Window.GetWindow(this);

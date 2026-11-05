@@ -26,6 +26,11 @@
                     <TextBlock Text="工具集主页" FontSize="22" FontWeight="SemiBold" />
                     <TextBlock FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0"
                                Text="按类别浏览，或直接搜索名称 / 标签 / 描述；点类别卡片进分类页，左侧导航列出根层分类与工具。" />
+                    <!-- 快捷功能栏开启时提示怎么把卡片放进去（关掉时整行不占地方） -->
+                    <TextBlock FontSize="11" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap"
+                               Margin="0,6,0,0"
+                               Text="💡 左侧已开启快捷功能栏：按住功能卡片拖到左边即可加入；拖动侧栏条目右侧的 ⋮ 调整顺序，点 ✕ 移除。"
+                               Visibility="{Binding ShowQuickSidebarDragHint, Converter={StaticResource BoolToVis}}" />
                 </StackPanel>
 
                 <Button Grid.Column="1" Content="⚙ 主页设置" Style="{StaticResource SecondaryButtonStyle}"
@@ -197,6 +202,9 @@
                         <DataTemplate>
                             <Button Style="{StaticResource ToolCardButtonStyle}" Width="300" Margin="0,0,16,16"
                                     ToolTip="{Binding ToolTipText}"
+                                    PreviewMouseLeftButtonDown="OnToolCardPreviewMouseLeftButtonDown"
+                                    PreviewMouseMove="OnToolCardPreviewMouseMove"
+                                    PreviewMouseLeftButtonUp="OnToolCardPreviewMouseLeftButtonUp"
                                     Command="{Binding DataContext.OpenToolCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                     CommandParameter="{Binding Tool}">
                                 <Grid>

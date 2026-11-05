@@ -380,6 +380,12 @@
 - 横向滚动容器别让内层 `ScrollViewer` 吃掉滚轮：它 `OnMouseWheel` 是无条件 `e.Handled = true` 的
   （见 `ScrollChaining`），普通滚轮要在 `PreviewMouseWheel` 里转给外层页面；`Shift + 滚轮` 想横滚也得自己算
   （WPF 原生 `ScrollViewer` 不支持 Shift + 滚轮，跟很多应用的习惯不一样）。
+- **侧栏快捷功能栏的拖拽（v0.88.0）**：拖拽源用 `PreviewMouseLeftButtonDown` / `PreviewMouseMove` + 系统阈值，
+  不能只靠 `Click`（拖动时 Button 收不到 MouseUp）；落点目标放在外层 `Border AllowDrop="True"` 上（子元素没有
+  `AllowDrop` 也会冒泡上来）。⚠ `ListBoxItem` 里的 ✕ / ⋮ 必须先在 `PreviewMouseLeftButtonDown` 里
+  `Handled = true` + `CaptureMouse()`，否则按下就会选中整行并跳到那个工具；`DragLeave` 在条目之间移动会频繁触发，
+  直接用它会闪，用 120ms 延时 +「最近一次 DragOver 时间戳」判断是否真的离开。落点用条目 `TranslatePoint` 的半高
+  算插入下标（完整列表第 0 项固定是「首页」，拖拽下标要减 1）。
 
 ### 构建与工具链
 - 主项目在仓库根，`DefaultItemExcludes` 排除 `src\`、`Data\`、`Config\`、`tests\` 等；新增顶层目录同步加。

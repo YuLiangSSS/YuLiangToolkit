@@ -1,7 +1,9 @@
+using System.IO;
 using YuLiangToolkit.App;
 using YuLiangToolkit.App.Models;
 using YuLiangToolkit.App.ViewModels;
 using YuLiangToolkit.Core.Mvvm;
+using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Core.Tools;
 
 namespace YuLiangToolkit.FrameworkSelfCheck;
@@ -329,6 +331,47 @@ public static class NavigationChecks
             && ShellLocation.ForCategory(music).Kind == ShellLocationKind.Category
             && ShellLocation.ForCategory(music).Title == "音游工具"
             && sameToolA.Kind == ShellLocationKind.Tool && sameToolA.Title == deepTool.Name);
+
+        // ============================ 8. 左侧快捷功能栏（顺序纯逻辑 + 配置） ============================
+        // 拖拽本身要真窗口（没法无头跑），但“落点 -> 新顺序”和配置读写是纯逻辑，直接断言。
+        var normalizedQuick = QuickSidebarList.Normalize(
+            new[] { "b", " A ", "b", "", "missing", "a" }, new[] { "a", "b", "c" });
+        check("快捷栏：清洗空格 / 重复项 / 已不存在的工具，保持原顺序",
+            normalizedQuick.Count == 2 && normalizedQuick[0] == "b" && normalizedQuick[1] == "A",
+            string.Join(",", normalizedQuick));
+
+        check("快捷栏：往下拖到末尾（落点 3）→ a,c,b",
+            string.Join(",", QuickSidebarList.Move(new[] { "a", "b", "c" }, "b", 3)) == "a,c,b");
+        check("快捷栏：拖回原处（b 落点 2）→ 顺序不变",
+            string.Join(",", QuickSidebarList.Move(new[] { "a", "b", "c" }, "b", 2)) == "a,b,c");
+        check("快捷栏：拖到最前（c 落点 0）→ c,a,b",
+            string.Join(",", QuickSidebarList.Move(new[] { "a", "b", "c" }, "c", 0)) == "c,a,b");
+        check("快捷栏：新工具插到中间（d 落点 1）→ a,d,b,c",
+            string.Join(",", QuickSidebarList.Move(new[] { "a", "b", "c" }, "d", 1)) == "a,d,b,c");
+        check("快捷栏：重复 Id 大小写不敏感，不会出现两个",
+            string.Join(",", QuickSidebarList.Move(new[] { "a", "B" }, "b", 0)) == "b,a");
+        check("快捷栏：移除忽略大小写",
+            string.Join(",", QuickSidebarList.Remove(new[] { "a", "b" }, "A")) == "b");
+
+        var quickDefault = new ShellConfig();
+        check("快捷栏默认关闭且为空（老配置升级后界面不变）",
+            !quickDefault.QuickSidebarEnabled && quickDefault.QuickSidebarTools.Count == 0);
+        var quickJson = JsonFileStore.Serialize(quickDefault);
+        check("快捷栏配置键写进 shell/config.json（quickSidebarEnabled / quickSidebarTools）",
+            quickJson.Contains("\"quickSidebarEnabled\": false")
+            && quickJson.Contains("\"quickSidebarTools\": []"),
+            quickJson.Replace(Environment.NewLine, " "));
+
+        quickDefault.QuickSidebarEnabled = true;
+        quickDefault.QuickSidebarTools.Add("media-editor");
+        quickDefault.QuickSidebarTools.Add("calculator");
+        var quickPath = Path.Combine(SelfCheckScratch.MakeDirectory("shell-quick"), "config.json");
+        File.WriteAllText(quickPath, JsonFileStore.Serialize(quickDefault));
+        var quickRead = JsonFileStore.Read<ShellConfig>(quickPath);
+        check("快捷栏开关 + 顺序能往返读写（原地改 List 也能序列化）",
+            quickRead is { QuickSidebarEnabled: true }
+            && string.Join(",", quickRead.QuickSidebarTools) == "media-editor,calculator",
+            JsonFileStore.Serialize(quickRead).Replace(Environment.NewLine, " "));
     }
 }
 
