@@ -51,6 +51,10 @@ public partial class GlassBackdrop : UserControl
     private Storyboard? _ambient;
     private bool _running;
 
+    /// <summary>云间天上的云漂移动画（只在 CloudSky 且可见时跑）。</summary>
+    private Storyboard? _cloudDrift;
+    private bool _cloudRunning;
+
     public GlassBackdrop()
     {
         InitializeComponent();
@@ -59,12 +63,25 @@ public partial class GlassBackdrop : UserControl
         {
             RefreshVisualState();
             StartAmbientIfNeeded();
+            StartCloudDriftIfNeeded();
         };
-        Unloaded += (_, _) => StopAmbient();
+        Unloaded += (_, _) =>
+        {
+            StopAmbient();
+            StopCloudDrift();
+        };
         IsVisibleChanged += (_, _) =>
         {
-            if (IsVisible) StartAmbientIfNeeded();
-            else StopAmbient();
+            if (IsVisible)
+            {
+                StartAmbientIfNeeded();
+                StartCloudDriftIfNeeded();
+            }
+            else
+            {
+                StopAmbient();
+                StopCloudDrift();
+            }
         };
     }
 
@@ -102,6 +119,8 @@ public partial class GlassBackdrop : UserControl
         => ((GlassBackdrop)d).RefreshVisualState();
 
     private Storyboard Ambient => _ambient ??= (Storyboard)FindResource("AmbientStoryboard");
+
+    private Storyboard CloudDrift => _cloudDrift ??= (Storyboard)FindResource("CloudDriftStoryboard");
 
     /// <summary>把 DP 的值落到实际图层上：背景图显隐 / 铺法 / 模糊、液态玻璃光晕层的显隐。</summary>
     private void RefreshVisualState()
@@ -147,6 +166,25 @@ public partial class GlassBackdrop : UserControl
 
         if (liquid && IsVisible) StartAmbientIfNeeded();
         else StopAmbient();
+
+        if (cloudSky && IsVisible) StartCloudDriftIfNeeded();
+        else StopCloudDrift();
+    }
+
+    private void StartCloudDriftIfNeeded()
+    {
+        if (_cloudRunning || !IsVisible || Theme != UiTheme.CloudSky) return;
+        if (PresentationSource.FromVisual(this) is null) return;
+
+        _cloudRunning = true;
+        CloudDrift.Begin(this, isControllable: true);
+    }
+
+    private void StopCloudDrift()
+    {
+        if (!_cloudRunning) return;
+        _cloudRunning = false;
+        CloudDrift.Stop(this);
     }
 
     private void StartAmbientIfNeeded()
