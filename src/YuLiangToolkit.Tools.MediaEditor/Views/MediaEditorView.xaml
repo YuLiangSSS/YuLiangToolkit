@@ -100,7 +100,7 @@
                                     </StackPanel>
                                 </Grid>
                                 <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
-                                              Margin="0,10,0,0">
+                                              Margin="0,10,0,0" core:ScrollChaining.Enabled="True">
                                     <ItemsControl ItemsSource="{Binding Thumbnails}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
@@ -186,7 +186,8 @@
                                     </StackPanel>
                                 </Grid>
                                 <ListBox ItemsSource="{Binding Segments}" SelectedItem="{Binding SelectedSegment}"
-                                         Style="{StaticResource FileListStyle}" Height="150" Margin="0,8,0,0">
+                                         Style="{StaticResource FileListStyle}" Height="150" Margin="0,8,0,0"
+                                         core:ScrollChaining.Enabled="True">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
                                             <Grid>
