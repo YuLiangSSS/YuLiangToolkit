@@ -8,10 +8,10 @@
 | 项 | 内容 |
 | --- | --- |
 | 技术栈 | Windows 10 2004+ + .NET 9（主程序 / 自检 `net9.0-windows10.0.19041.0`，工具库 `net9.0-windows`）+ WPF + 手写 MVVM；NuGet 包：`OsuParsers`（MIT）、`Microsoft.Web.WebView2`（浏览器工具用的 Chromium 内核，运行时是系统组件）、`AvalonEdit`（MIT，文本编辑器内核）、`SharpCompress`（MIT，压缩包工具内核：解 RAR / ZIP / 7Z / TAR.*，写 ZIP / 7Z）；PDF 渲染用系统 `Windows.Data.Pdf`，文字搜索 / 书签目录是手写 PDF 解析器 |
-| 主程序 | 根目录 `YuLiangTookit.csproj`（少一个 `l` 是历史拼写）：标题栏 / 主页 / 类别页 / 面包屑、四套主题 + 背景图、粒子 |
+| 主程序 | 根目录 `YuLiangTookit.csproj`（少一个 `l` 是历史拼写）：标题栏 / 主页 / 类别页 / 面包屑、五套主题（深浅色 + 配色）、背景图、粒子 |
 | 核心库 | `src/YuLiangToolkit.Core/`：工具契约 / MVVM / 存储 / 配置 / 维护（缓存清理·配置重建）/ OOXML 包读取（docx·xlsx 共用）/ FFmpeg / 粒子 / TCP 房间 |
 | 功能 | 29 个（26 个 `Tools.*`）：音频工具（视频转音频 / 分段合成） / 录屏 / GIF（GIF / MP4·MKV·MOV·AVI·WebM 多编码器 + 声音 / 摄像头 / 自定义快捷键 / 截图） / 剪辑工具（视频 / GIF 裁剪 + 多片段拼接 + 缩略图时间轴 + 低清预览） / 播放器 / 图片阅读器 / PDF 阅读器 / Word 阅读器 / Excel 阅读器 / 重命名 / 文本编辑器 / 压缩包工具 / 打开方式 / Flash / 聊天室 / 网页浏览器 / osu! 下图器 / osu!mania 三件套 / 棋牌 / KPS 按键统计 / Spug 验证码测试 / Live2D 桌宠 / 右键菜单管理 / 软件升级器（winget 读应用与可用更新 + 多选批量升级） / 计算器（科学计算器，共用 `Core/Expressions/` 表达式引擎） / 函数绘图（多函数 + 每条定义域 + 自动求点） / 示例模板 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`：4280 项（31 组），退出码 0 = 通过（按分组跑） |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`：4337 项（31 组），退出码 0 = 通过（按分组跑） |
 | 数据 | **在 exe 旁边**（`bin\Debug\net9.0-windows10.0.19041.0\Data`、`Config`、`Cache`）；仓库根同名目录只有说明 |
 
 ## 开工 / 收尾（硬性）
@@ -36,7 +36,7 @@ git add -A; git commit -m "<中文提交信息>"   # ③ 提交：每轮改动�
 3. **带 setter 的计算属性必须 `[JsonIgnore]`**；配置自动落盘（无保存按钮）；要「一敲键就刷新」用 `Set(ref 字段, 值)`。
 4. **后台线程改界面走 `Ui(...)` / `UiAsync(...)`**；切走时在 `NotifyClosed()` 里摘缓存对象上的事件；绕过 `ToolConfigStore` 的持久化入口自己接 `FlushAll`。
 5. **数据目录里的相对路径不能带 `..`、不能是绝对路径**（`ToolStorage` 故意抛异常防逃逸）。
-6. **改主题 token 要一起改**：四套字典（`DefaultTheme` / `LiquidGlassTheme` / `FrostedGlassTheme` / `AcrylicTheme`）+ `ThemeManager.RequiredTokenKeys`（几何 key 在 `RequiredRadiusKeys`）；界面颜色一律 `{DynamicResource}`。
+6. **改主题 token 要一起改**：四套深色字典（`DefaultTheme` / `LiquidGlassTheme` / `FrostedGlassTheme` / `AcrylicTheme`）+ `ThemeManager.RequiredTokenKeys`（几何 key 在 `RequiredRadiusKeys`）；道系 / 浅色 / 配色由 `ThemePaletteBuilder` 生成的 token 补全，新增颜色要保证生成器也覆盖；界面颜色一律 `{DynamicResource}`。
 7. **新增顶层目录**时同步改主项目 `DefaultItemExcludes` **和** `.gitignore`。
 8. **别用 PowerShell 改 XAML / 源码**（5.1 按 GBK 读会乱码）；`.ps1` 纯 ASCII 或 UTF-8 with BOM。
 9. **`ParticleOverlay` 必须放 Window 内 Grid 铺满 + `IsHitTestVisible="False"`**。

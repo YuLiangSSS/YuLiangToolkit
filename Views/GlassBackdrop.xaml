@@ -177,26 +177,24 @@
             </Ellipse>
         </Grid>
 
-        <!-- ⑥ 顶部一道斜向柔光：玻璃顶边“接住光”的感觉 -->
-        <Rectangle>
-            <Rectangle.Fill>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                    <GradientStop Color="#1AFFFFFF" Offset="0" />
-                    <GradientStop Color="#07FFFFFF" Offset="0.34" />
-                    <GradientStop Color="#00FFFFFF" Offset="0.62" />
-                </LinearGradientBrush>
-            </Rectangle.Fill>
-        </Rectangle>
+        <!-- ⑤·道系（墨金）：金色光晕 + 两层远山剪影（其它主题整层隐藏；颜色由主题 token 提供，深 / 浅都适用） -->
+        <Grid x:Name="DaoLayer" Visibility="Collapsed">
+            <Ellipse Width="1000" Height="1000" HorizontalAlignment="Right" VerticalAlignment="Top"
+                     Margin="0,-420,-220,0" Fill="{DynamicResource DaoGlowBrush}" />
+            <Grid VerticalAlignment="Bottom" Height="360" IsHitTestVisible="False">
+                <Polygon Points="0,360 260,120 520,300 820,60 1200,360" Stretch="Fill"
+                         Fill="{DynamicResource DaoSilhouetteBrush}" Opacity="0.9" />
+            </Grid>
+            <Grid VerticalAlignment="Bottom" Height="220" IsHitTestVisible="False">
+                <Polygon Points="0,220 200,100 430,190 700,30 1030,180 1250,80 1450,220" Stretch="Fill"
+                         Fill="{DynamicResource DaoSilhouetteBrush}" Opacity="0.55" />
+            </Grid>
+        </Grid>
+
+        <!-- ⑥ 顶部一道斜向柔光：玻璃顶边“接住光”的感觉（token 化，浅色模式可替换） -->
+        <Rectangle Fill="{DynamicResource BackdropTopLightBrush}" />
 
         <!-- ⑥ 暗角：四周压暗，中间亮，视线集中到内容上（也让白字更稳） -->
-        <Rectangle>
-            <Rectangle.Fill>
-                <RadialGradientBrush>
-                    <GradientStop Color="#00000000" Offset="0.42" />
-                    <GradientStop Color="#40000000" Offset="0.78" />
-                    <GradientStop Color="#99000000" Offset="1" />
-                </RadialGradientBrush>
-            </Rectangle.Fill>
-        </Rectangle>
+        <Rectangle Fill="{DynamicResource BackdropVignetteBrush}" />
     </Grid>
 </UserControl>

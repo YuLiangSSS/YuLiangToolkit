@@ -58,11 +58,35 @@
                     </StackPanel>
                     <TextBlock FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0"
                                TextWrapping="Wrap"
-                               Text="外壳自己的设置：界面风格（默认 / 液态玻璃 / 毛玻璃 / 亚克力）与窗口背景图、主页显示、鼠标自动 / 点击特效（含数量 / 范围 / 半径滑块）、粒子颜色、窗口与托盘、打开方式关联；最下面是清理缓存与重建配置（恢复默认设置）。改一下立即生效并自动保存。" />
+                               Text="外壳自己的设置：外观模式（深色 / 浅色 / 跟随系统）、界面风格（默认 / 液态玻璃 / 毛玻璃 / 亚克力 / 道系）与配色、窗口背景图、主页显示、鼠标自动 / 点击特效（含数量 / 范围 / 半径滑块）、粒子颜色、窗口与托盘、打开方式关联；最下面是清理缓存与重建配置（恢复默认设置）。改一下立即生效并自动保存。" />
                 </StackPanel>
                 <Button Grid.Column="1" Content="返回主页" Style="{StaticResource SecondaryButtonStyle}"
                         VerticalAlignment="Top" Command="{Binding GoHomeCommand}" ToolTip="回到主页（也可以点面包屑的「🏠 主页」或后退按钮）" />
             </Grid>
+
+            <!-- ===== 外观模式（v0.89.0：深色 / 浅色 / 跟随系统） ===== -->
+            <TextBlock Text="外观模式" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource AccentBrush}" Margin="0,22,0,0" />
+            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
+                <StackPanel>
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               Text="深色 / 浅色 / 跟随系统，对所有界面风格生效。「跟随系统」= 跟 Windows 设置 → 个性化 → 颜色里的「应用模式」；改 Windows 设置后本程序会在几秒内自动跟上。" />
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <RadioButton Style="{StaticResource RadioButtonStyle}" GroupName="ThemeMode"
+                                     Content="深色" IsChecked="{Binding DarkModeSelected}" Margin="0,0,26,0"
+                                     ToolTip="深色：所有界面风格都使用深色 token" />
+                        <RadioButton Style="{StaticResource RadioButtonStyle}" GroupName="ThemeMode"
+                                     Content="浅色" IsChecked="{Binding LightModeSelected}" Margin="0,0,26,0"
+                                     ToolTip="浅色：所有界面风格都使用浅色 token（玻璃风格会变成浅色玻璃）" />
+                        <RadioButton Style="{StaticResource RadioButtonStyle}" GroupName="ThemeMode"
+                                     Content="跟随系统" IsChecked="{Binding SystemModeSelected}"
+                                     ToolTip="跟随 Windows 的应用模式；系统切换深浅色后自动刷新" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding ThemeModeHint}" FontSize="11"
+                               Foreground="{DynamicResource FaintTextBrush}" Margin="0,10,0,0" />
+                </StackPanel>
+            </Border>
 
             <!-- ===== 界面风格 ===== -->
             <TextBlock Text="界面风格" FontSize="13" FontWeight="SemiBold"
@@ -70,9 +94,9 @@
             <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
                 <StackPanel>
                     <RadioButton Style="{StaticResource RadioButtonStyle}" GroupName="UiTheme"
-                                 AutomationProperties.Name="默认（深色）"
+                                 AutomationProperties.Name="默认（纯色）"
                                  IsChecked="{Binding DefaultThemeSelected}"
-                                 ToolTip="经典深色界面：纯色面板，最省资源（第一套 UI）">
+                                 ToolTip="经典纯色界面：最省资源（第一套 UI）；深浅色随上面的「外观模式」">
                         <StackPanel Orientation="Horizontal">
                             <Border Width="46" Height="32" CornerRadius="7" Background="#16181D"
                                     BorderBrush="#2C333F" BorderThickness="1" Margin="0,0,10,0">
@@ -82,7 +106,7 @@
                                 </StackPanel>
                             </Border>
                             <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="默认（深色）" FontWeight="SemiBold" />
+                                <TextBlock Text="默认（纯色）" FontWeight="SemiBold" />
                                 <TextBlock Text="经典纯色面板，最省资源" FontSize="11"
                                            Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
                             </StackPanel>
@@ -183,9 +207,118 @@
                                     Margin="25,0,0,2"
                                     Visibility="{Binding AcrylicThemeSelected, Converter={StaticResource BoolToVis}}" />
 
+                    <!-- 道系（墨金，v0.89.0）：参考道阶表——玄墨底 + 香槟金 + 远山 + 金色光晕 -->
+                    <RadioButton Style="{StaticResource RadioButtonStyle}" GroupName="UiTheme"
+                                 AutomationProperties.Name="道系（墨金）"
+                                 IsChecked="{Binding DaojiThemeSelected}" Margin="0,12,0,0"
+                                 ToolTip="道系（墨金）：玄墨底 + 香槟金 + 远山剪影 + 金色光晕，参考道阶表；支持深浅色">
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="46" Height="32" CornerRadius="7" BorderThickness="1" Margin="0,0,10,0"
+                                    BorderBrush="#8C8A6A2F">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Color="#0C0A07" Offset="0" />
+                                        <GradientStop Color="#2A2116" Offset="0.65" />
+                                        <GradientStop Color="#0C0A07" Offset="1" />
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <Grid>
+                                    <Ellipse Width="9" Height="9" Fill="#D6B26A" HorizontalAlignment="Right"
+                                             VerticalAlignment="Top" Margin="0,6,7,0" />
+                                    <Polygon Points="4,28 13,18 20,24 29,14 44,28" Fill="#33D6B26A"
+                                             VerticalAlignment="Bottom" />
+                                </Grid>
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="道系（墨金）" FontWeight="SemiBold" />
+                                <TextBlock Text="玄墨 + 香槟金、远山与金色光晕" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
+                            </StackPanel>
+                        </StackPanel>
+                    </RadioButton>
+
                     <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                TextWrapping="Wrap" Margin="0,10,0,0"
-                               Text="换主题立即生效、不用重启；选择会自动存进 Config\shell\config.json 的 uiTheme（旧配置没有这一项时按「默认」处理）。只有液态玻璃 / 毛玻璃 / 亚克力这三套半透明风格能透出下面的背景图；默认（深色）是纯色面板，不显示背景图。选中某个半透明风格后，它下面会出现「背景图模糊度」滑块（0 = 清晰，最大 60 px；三套风格各记各的值，默认液态玻璃 0 / 毛玻璃 28 / 亚克力 20）。液态玻璃会多画一层流动光晕，低配机器觉得费电 / 掉帧就换默认或毛玻璃（毛玻璃不跑动画）。" />
+                               Text="换主题立即生效、不用重启；选择会自动存进 Config\shell\config.json 的 uiTheme。液态玻璃 / 毛玻璃 / 亚克力是半透明面板，能透出下面的背景图；道系有远山 + 金色光晕的装饰背景，也可以放背景图（会盖住装饰）；默认是纯色面板。选中半透明风格后，它下面会出现「背景图模糊度」滑块（0 = 清晰，最大 60 px；三套风格各记各的值）。深浅色由上面的「外观模式」统一控制，五套风格都支持。" />
+                </StackPanel>
+            </Border>
+
+            <!-- ===== 配色（v0.89.0：只作用于默认风格；预设 + 自定义） ===== -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14"
+                    Visibility="{Binding DefaultThemeSelected, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <TextBlock Text="配色方案（仅默认风格）" FontSize="12.5" FontWeight="SemiBold" />
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,4,0,0"
+                               Text="给「默认（纯色）」风格换一套色系：多套预设 + 自己配色。每套都带深 / 浅两版，跟着上面的外观模式走；切到玻璃三套或道系时配色会保留、但不生效。" />
+
+                    <ItemsControl ItemsSource="{Binding PaletteOptions}" Margin="0,10,0,0">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <RadioButton Style="{StaticResource RadioButtonStyle}" GroupName="ThemePalette"
+                                             IsChecked="{Binding IsSelected}" Margin="0,0,16,12"
+                                             ToolTip="{Binding Description}">
+                                    <StackPanel Width="188">
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                                            <Border Width="20" Height="20" CornerRadius="5"
+                                                    Background="{Binding AccentBrush}"
+                                                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                                    Margin="0,0,5,0" />
+                                            <Border Width="20" Height="20" CornerRadius="5"
+                                                    Background="{Binding DarkBrush}"
+                                                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                                    Margin="0,0,5,0" />
+                                            <Border Width="20" Height="20" CornerRadius="5"
+                                                    Background="{Binding LightBrush}"
+                                                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" />
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Description}" FontSize="10.5"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   TextWrapping="Wrap" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                </RadioButton>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- 自定义配色：三个拾色器（主色 / 深色底 / 浅色底），其余颜色自动配 -->
+                    <StackPanel Visibility="{Binding IsCustomPaletteSelected, Converter={StaticResource BoolToVis}}">
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="主色" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <views:ColorPickerButton SelectedColor="{Binding CustomAccentColor, Mode=TwoWay}"
+                                                         Margin="0,5,0,0" ToolTip="按钮、选中态、标签等强调色" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Margin="22,0,0,0">
+                                <TextBlock Text="深色底色" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <views:ColorPickerButton SelectedColor="{Binding CustomDarkBackgroundColor, Mode=TwoWay}"
+                                                         Margin="0,5,0,0" ToolTip="深色模式下的窗口底色；卡片 / 文字会自动配对比度" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Margin="22,0,0,0">
+                                <TextBlock Text="浅色底色" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <views:ColorPickerButton SelectedColor="{Binding CustomLightBackgroundColor, Mode=TwoWay}"
+                                                         Margin="0,5,0,0" ToolTip="浅色模式下的窗口底色；卡片 / 文字会自动配对比度" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock FontSize="11" Foreground="{DynamicResource FaintTextBrush}" TextWrapping="Wrap"
+                                   Margin="0,8,0,0"
+                                   Text="自定义只需挑「主色 + 两种底色」，卡片、描边、悬停、文字明暗都会自动算；主色会按底色自动校正对比度，保证浅底 / 深底都读得清。" />
+                    </StackPanel>
+
+                    <TextBlock FontSize="11" Foreground="{DynamicResource FaintTextBrush}" TextWrapping="Wrap"
+                               Margin="0,8,0,0"
+                               Text="配色只影响「默认」风格；液态玻璃 / 毛玻璃 / 亚克力 / 道系有各自固定的配色（切换风格时不会丢你的配色，切回默认又生效）。" />
                 </StackPanel>
             </Border>
 
@@ -606,7 +739,7 @@
             </Border>
 
             <TextBlock FontSize="11" Foreground="{DynamicResource FaintTextBrush}" TextWrapping="Wrap" Margin="0,14,0,0"
-                       Text="主页设置只影响外壳本身（界面风格、主页显示、自动 / 点击特效、粒子颜色、关闭行为等）；各功能自己的选项在对应功能页面里，也可以在「重建配置」里一键恢复默认。" />
+                       Text="主页设置只影响外壳本身（外观模式、界面风格、配色方案、主页显示、自动 / 点击特效、粒子颜色、关闭行为等）；各功能自己的选项在对应功能页面里，也可以在「重建配置」里一键恢复默认。" />
 
             <Button Content="返回主页" Style="{StaticResource SecondaryButtonStyle}"
                     HorizontalAlignment="Left" Margin="0,18,0,0" Command="{Binding GoHomeCommand}" />

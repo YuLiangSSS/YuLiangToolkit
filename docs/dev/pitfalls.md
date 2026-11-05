@@ -309,7 +309,8 @@
   用法同 `YLT_SHOT`（见 AGENTS.md）。
 
 ### 液态玻璃 / 毛玻璃 / 亚克力主题（半透明界面 + 背景图）
-- ⚠ 改 token 一起改：四套字典（`DefaultTheme` / `LiquidGlassTheme` / `FrostedGlassTheme` / `AcrylicTheme`）+ `ThemeManager.RequiredTokenKeys`（几何 key 在 `RequiredRadiusKeys`）；少一个静默退回控件默认值。
+- ⚠ 改 token 一起改：四套深色字典（`DefaultTheme` / `LiquidGlassTheme` / `FrostedGlassTheme` / `AcrylicTheme`）+ `ThemeManager.RequiredTokenKeys`（几何 key 在 `RequiredRadiusKeys`）；道系 / 浅色 / 配色由 `ThemePaletteBuilder` 生成，新增颜色时它也要覆盖；少一个静默退回控件默认值。
+- ⚠ **渐变里“透明”的颜色别用 `Colors.Transparent` / `#00FFFFFF` 收尾**：WPF 会按 ARGB 线性插值，透明白 → 不透明黑会插出一层灰雾（v0.89.0 道系背景一开始整块泛灰的根因）。需要完全透明时用 `#00000000`（透明黑）或与起点同色相、alpha=0 的颜色。
 - 启动在 `new MainWindow()` 之前 `ThemeManager.Apply`；⚠ Storyboard 的 `TargetName` 必须同一命名域（写错启动崩）。
 - 窗口背景层是 `Views/GlassBackdrop.xaml`（v0.43.0 由 `LiquidBackdrop` 升级）：默认主题下整层 `Collapsed`，流动光晕只在液态玻璃时跑；
   背景图由 `MainViewModel` 解码（不锁文件、超宽图按 2560 解码），毛玻璃 / 亚克力给静态 `BlurEffect` + `BitmapCache`，别把模糊加在动画层上。

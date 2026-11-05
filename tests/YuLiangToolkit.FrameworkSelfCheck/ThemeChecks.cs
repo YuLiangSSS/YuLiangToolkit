@@ -6,10 +6,14 @@ using YuLiangToolkit.App.Models;
 using YuLiangToolkit.App.Themes;
 using YuLiangToolkit.Core.Storage;
 
+// 避开 System.Windows.ThemeMode（WPF 自带的同名枚举）：本文件的 ThemeMode 指外壳深浅模式
+using ThemeMode = YuLiangToolkit.App.Themes.ThemeMode;
+
 namespace YuLiangToolkit.FrameworkSelfCheck;
 
 /// <summary>
-/// 「四套 UI（默认 / 液态玻璃 / 毛玻璃 / 亚克力）」的纯逻辑自检（v0.25.0 起，v0.43.0 扩到四套主题）。
+/// 「五套 UI（默认 / 液态玻璃 / 毛玻璃 / 亚克力 / 道系）+ 深浅色 + 配色」的纯逻辑自检
+/// （v0.25.0 起，v0.43.0 扩到四套主题，v0.89.0 加到五套 + 外观模式 + 配色生成器）。
 ///
 /// <para>钉住四类东西（核心断言不需要开窗口；冷启动时会摸一下离屏窗口注册 pack URI，见 WarmUpWpf）：</para>
 /// <list type="bullet">
@@ -49,27 +53,33 @@ internal static class ThemeChecks
     private static void CheckEnumAndNames(CheckFn check)
     {
         check("枚举默认值是默认主题", default(UiTheme) == UiTheme.Default);
-        check("枚举里是四套 UI",
-            Enum.GetValues<UiTheme>().Length == 4
-            && Enum.GetNames<UiTheme>().SequenceEqual(new[] { "Default", "LiquidGlass", "FrostedGlass", "Acrylic" }),
+        check("枚举里是五套 UI",
+            Enum.GetValues<UiTheme>().Length == 5
+            && Enum.GetNames<UiTheme>().SequenceEqual(new[]
+                { "Default", "LiquidGlass", "FrostedGlass", "Acrylic", "Daoji" }),
             string.Join(", ", Enum.GetNames<UiTheme>()));
 
         check("默认主题名字", ThemeManager.DisplayName(UiTheme.Default) == "默认");
         check("液态玻璃名字", ThemeManager.DisplayName(UiTheme.LiquidGlass) == "液态玻璃");
         check("毛玻璃名字", ThemeManager.DisplayName(UiTheme.FrostedGlass) == "毛玻璃");
         check("亚克力名字", ThemeManager.DisplayName(UiTheme.Acrylic) == "亚克力");
-        check("四套主题说明都不为空且各不相同",
-            new[] { UiTheme.Default, UiTheme.LiquidGlass, UiTheme.FrostedGlass, UiTheme.Acrylic }
-                .Select(ThemeManager.Describe)
-                .All(text => text.Length > 0)
-            && new[] { UiTheme.Default, UiTheme.LiquidGlass, UiTheme.FrostedGlass, UiTheme.Acrylic }
-                .Select(ThemeManager.Describe).Distinct().Count() == 4);
+        check("道系名字", ThemeManager.DisplayName(UiTheme.Daoji) == "道系（墨金）");
+        check("五套主题说明都不为空且各不相同",
+            Enum.GetValues<UiTheme>().Select(ThemeManager.Describe).All(text => text.Length > 0)
+            && Enum.GetValues<UiTheme>().Select(ThemeManager.Describe).Distinct().Count() == 5);
 
-        check("半透明判定：默认主题不透明、其余三套半透明",
+        check("半透明判定：只有三套玻璃是半透明",
             !ThemeManager.HasTranslucentSurface(UiTheme.Default)
             && ThemeManager.HasTranslucentSurface(UiTheme.LiquidGlass)
             && ThemeManager.HasTranslucentSurface(UiTheme.FrostedGlass)
-            && ThemeManager.HasTranslucentSurface(UiTheme.Acrylic));
+            && ThemeManager.HasTranslucentSurface(UiTheme.Acrylic)
+            && !ThemeManager.HasTranslucentSurface(UiTheme.Daoji));
+        check("背景层判定：默认不显示，其它四套都显示",
+            !ThemeManager.UsesBackdrop(UiTheme.Default)
+            && ThemeManager.UsesBackdrop(UiTheme.LiquidGlass)
+            && ThemeManager.UsesBackdrop(UiTheme.FrostedGlass)
+            && ThemeManager.UsesBackdrop(UiTheme.Acrylic)
+            && ThemeManager.UsesBackdrop(UiTheme.Daoji));
 
         check("默认主题字典路径指向 DefaultTheme.xaml",
             ThemeManager.SourceFor(UiTheme.Default).OriginalString.EndsWith("Views/Themes/DefaultTheme.xaml"),
@@ -83,6 +93,9 @@ internal static class ThemeChecks
         check("亚克力字典路径指向 AcrylicTheme.xaml",
             ThemeManager.SourceFor(UiTheme.Acrylic).OriginalString.EndsWith("Views/Themes/AcrylicTheme.xaml"),
             ThemeManager.SourceFor(UiTheme.Acrylic).OriginalString);
+        check("道系没有独立 XAML（默认字典 + 生成的金色 token / 圆角）",
+            ThemeManager.SourceFor(UiTheme.Daoji).OriginalString.EndsWith("Views/Themes/DefaultTheme.xaml"),
+            ThemeManager.SourceFor(UiTheme.Daoji).OriginalString);
     }
 
     private static void CheckParsing(CheckFn check)
@@ -102,9 +115,14 @@ internal static class ThemeChecks
         check("解析 acrylic / Acrylic / 亚克力",
             Parsed("acrylic", UiTheme.Acrylic) && Parsed("Acrylic", UiTheme.Acrylic)
             && Parsed("ACRYLIC", UiTheme.Acrylic) && Parsed("亚克力", UiTheme.Acrylic));
+        check("解析 dao / dao-ji / 道系 / 墨金",
+            Parsed("dao", UiTheme.Daoji) && Parsed("dao-ji", UiTheme.Daoji)
+            && Parsed("Daoji", UiTheme.Daoji) && Parsed("4", UiTheme.Daoji)
+            && Parsed("道系", UiTheme.Daoji) && Parsed("墨金", UiTheme.Daoji));
         check("解析大小写 / 下划线 / 空格都不敏感",
             Parsed("LIQUID_GLASS", UiTheme.LiquidGlass) && Parsed(" liquid glass ", UiTheme.LiquidGlass)
-            && Parsed("FROSTED_GLASS", UiTheme.FrostedGlass) && Parsed("DEFAULT", UiTheme.Default));
+            && Parsed("FROSTED_GLASS", UiTheme.FrostedGlass) && Parsed("DEFAULT", UiTheme.Default)
+            && Parsed("DAO_JI", UiTheme.Daoji));
         check("空值 / 认不出的值返回 null（调用方回退默认）",
             ThemeManager.ParseThemeName(null) is null
             && ThemeManager.ParseThemeName("") is null
@@ -117,7 +135,7 @@ internal static class ThemeChecks
         var all = ThemeManager.RequiredTokenKeys.Concat(ThemeManager.RequiredRadiusKeys).ToList();
         check("必需 token 清单没有重复项", all.Count == all.Distinct(StringComparer.Ordinal).Count(),
             $"共 {all.Count} 个");
-        check("必需 token 清单覆盖四套 UI 的核心项",
+        check("必需 token 清单覆盖五套 UI 的核心项",
             ThemeManager.RequiredTokenKeys.Contains("WindowBackgroundBrush")
             && ThemeManager.RequiredTokenKeys.Contains("CardBackgroundBrush")
             && ThemeManager.RequiredTokenKeys.Contains("BorderBrush")
@@ -125,6 +143,10 @@ internal static class ThemeChecks
             && ThemeManager.RequiredTokenKeys.Contains("BackdropBaseBrush")
             && ThemeManager.RequiredTokenKeys.Contains("BackdropImageScrimBrush")
             && ThemeManager.RequiredTokenKeys.Contains("BackdropNoiseBrush")
+            && ThemeManager.RequiredTokenKeys.Contains("BackdropTopLightBrush")
+            && ThemeManager.RequiredTokenKeys.Contains("BackdropVignetteBrush")
+            && ThemeManager.RequiredTokenKeys.Contains("DaoSilhouetteBrush")
+            && ThemeManager.RequiredTokenKeys.Contains("DaoGlowBrush")
             && ThemeManager.RequiredRadiusKeys.Contains("CardCornerRadius"),
             $"画刷 {ThemeManager.RequiredTokenKeys.Count} 个 + 圆角 {ThemeManager.RequiredRadiusKeys.Count} 个");
     }
@@ -241,6 +263,77 @@ internal static class ThemeChecks
             dictionaries[UiTheme.Acrylic]["BackdropNoiseBrush"] is DrawingBrush);
         check("毛玻璃：不要颗粒噪点（Transparent）",
             ColorOfAnyBrush(dictionaries[UiTheme.FrostedGlass], "BackdropNoiseBrush").A == 0);
+
+        // ---- v0.89.0：浅色模式 / 道系 / 配色方案都是生成 token，必须同样覆盖完整 key 清单 ----
+        var requiredColors = ThemeManager.RequiredTokenKeys.OrderBy(k => k, StringComparer.Ordinal).ToList();
+        void CheckGenerated(string name, IReadOnlyDictionary<string, Brush> tokens)
+        {
+            var keys = tokens.Keys.OrderBy(k => k, StringComparer.Ordinal).ToList();
+            check($"{name}：生成 token 覆盖完整颜色清单（不多不少）",
+                keys.SequenceEqual(requiredColors), "缺：" + OnlyIn(requiredColors, keys) + "；多：" + OnlyIn(keys, requiredColors));
+        }
+
+        CheckGenerated("默认浅色", ThemePaletteBuilder.BuildDefaultLight());
+        foreach (var theme in new[] { UiTheme.LiquidGlass, UiTheme.FrostedGlass, UiTheme.Acrylic })
+            CheckGenerated($"{ThemeManager.DisplayName(theme)}浅色", ThemePaletteBuilder.BuildLightMode(theme));
+        CheckGenerated("道系深色", ThemePaletteBuilder.BuildDaoji(light: false));
+        CheckGenerated("道系浅色", ThemePaletteBuilder.BuildDaoji(light: true));
+
+        var lightDefault = ThemePaletteBuilder.BuildDefaultLight();
+        check("默认浅色：浅底 + 深字（对比度够）",
+            ThemePaletteBuilder.Luminance(((SolidColorBrush)lightDefault["WindowBackgroundBrush"]).Color) > 0.6
+            && ThemePaletteBuilder.Luminance(((SolidColorBrush)lightDefault["TextPrimaryBrush"]).Color) < 0.4
+            && ThemePaletteBuilder.Contrast(
+                ((SolidColorBrush)lightDefault["TextPrimaryBrush"]).Color,
+                ((SolidColorBrush)lightDefault["WindowBackgroundBrush"]).Color) > 7,
+            ((SolidColorBrush)lightDefault["TextPrimaryBrush"]).Color.ToString());
+        var lightLiquid = ThemePaletteBuilder.BuildLightMode(UiTheme.LiquidGlass);
+        check("液态玻璃浅色：白玻璃面板 + 深色字",
+            ThemePaletteBuilder.Luminance(((SolidColorBrush)lightLiquid["TextPrimaryBrush"]).Color) < 0.4
+            && ((SolidColorBrush)lightLiquid["CardBackgroundBrush"]).Color.R > 0xE0,
+            ((SolidColorBrush)lightLiquid["TextPrimaryBrush"]).Color.ToString());
+
+        var daoDark = ThemePaletteBuilder.BuildDaoji(light: false);
+        var daoLight = ThemePaletteBuilder.BuildDaoji(light: true);
+        check("道系深色：玄墨底 + 香槟金主色",
+            ThemePaletteBuilder.Luminance(((SolidColorBrush)daoDark["WindowBackgroundBrush"]).Color) < 0.02
+            && ColorOf(daoDark, "AccentBrush").R > 0xB0 && ColorOf(daoDark, "AccentBrush").G > 0x90,
+            ColorOf(daoDark, "AccentBrush").ToString());
+        check("道系浅色：象牙底 + 深金主色",
+            ThemePaletteBuilder.Luminance(((SolidColorBrush)daoLight["WindowBackgroundBrush"]).Color) > 0.7
+            && ColorOf(daoLight, "AccentBrush").R < 0xAA,
+            ColorOf(daoLight, "AccentBrush").ToString());
+        check("道系背景层有远山 / 金色光晕 token（不再是透明占位）",
+            ColorOfAnyBrush(daoDark, "DaoSilhouetteBrush").A > 0
+            && ColorOfAnyBrush(daoDark, "DaoGlowBrush").A > 0
+            && ColorOfAnyBrush(daoLight, "DaoSilhouetteBrush").A > 0
+            && ColorOfAnyBrush(daoLight, "DaoGlowBrush").A > 0);
+
+        // 预设配色：深 / 浅两版都能出完整 token，且主色不丢
+        foreach (var palette in ThemePalette.Presets)
+        {
+            foreach (var light in new[] { false, true })
+            {
+                var tokens = ThemePaletteBuilder.BuildPalette(palette, light);
+                CheckGenerated($"{palette.Name}{(light ? "浅色" : "深色")}配色", tokens);
+                check($"{palette.Name}{(light ? "浅色" : "深色")}配色：主色与底色保持",
+                    ColorOf(tokens, "AccentBrush").A == 0xFF
+                    && ColorOf(tokens, "WindowBackgroundBrush") == palette.BackgroundFor(light),
+                    ColorOf(tokens, "AccentBrush").ToString());
+            }
+        }
+
+        // 自定义配色：自动对比度 + 卡片色由底色推导
+        var custom = ThemePalette.CreateCustom(Hex("#FF5A5A"), Hex("#101418"), Hex("#FAF7F2"));
+        var customDark = ThemePaletteBuilder.BuildPalette(custom, light: false);
+        var customLight = ThemePaletteBuilder.BuildPalette(custom, light: true);
+        check("自定义配色：自动保证深 / 浅底色上的主色对比度",
+            ThemePaletteBuilder.Contrast(ColorOf(customDark, "AccentBrush"), Hex("#101418")) > 2.5
+            && ThemePaletteBuilder.Contrast(ColorOf(customLight, "AccentBrush"), Hex("#FAF7F2")) > 2.5,
+            $"{ColorOf(customDark, "AccentBrush")} / {ColorOf(customLight, "AccentBrush")}");
+        check("自定义配色：卡片色由所选底色自动推导（不会和底色完全一样）",
+            ColorOf(customDark, "CardBackgroundBrush") != Hex("#101418")
+            && ColorOf(customLight, "CardBackgroundBrush") != Hex("#FAF7F2"));
     }
 
     /// <summary>任何 Brush（SolidColor / Gradient / Drawing）的“可见性”：取第一个非零 alpha，认不出返回全透明。</summary>
@@ -297,8 +390,27 @@ internal static class ThemeChecks
 
     private static Color Rgb(byte r, byte g, byte b) => Color.FromRgb(r, g, b);
 
+    private static Color Hex(string value) => ThemePaletteBuilder.FromHex(value, Colors.Transparent);
+
     private static Color ColorOf(ResourceDictionary dictionary, string key)
         => dictionary[key] is SolidColorBrush brush ? brush.Color : Colors.Transparent;
+
+    private static Color ColorOf(IReadOnlyDictionary<string, Brush> tokens, string key)
+        => tokens.TryGetValue(key, out var brush) && brush is SolidColorBrush solid
+            ? solid.Color
+            : Colors.Transparent;
+
+    private static Color ColorOfAnyBrush(IReadOnlyDictionary<string, Brush> tokens, string key)
+        => tokens.TryGetValue(key, out var brush) ? ColorOfAnyBrush(brush) : Colors.Transparent;
+
+    private static Color ColorOfAnyBrush(Brush? brush)
+        => brush switch
+        {
+            SolidColorBrush solid => solid.Color,
+            GradientBrush gradient => gradient.GradientStops.FirstOrDefault(s => s.Color.A > 0)?.Color ?? Colors.Transparent,
+            DrawingBrush => Color.FromArgb(0x01, 0, 0, 0),
+            _ => Colors.Transparent,
+        };
 
     private static bool HasTranslucentStop(GradientBrush brush)
         => brush.GradientStops.Any(stop => stop.Color.A is > 0 and < 0xFF);
@@ -345,6 +457,61 @@ internal static class ThemeChecks
             File.ReadAllText(path).Contains("\"Acrylic\""));
         check("uiTheme 读回来是亚克力",
             JsonFileStore.Read<ShellConfig>(path)?.UiTheme == UiTheme.Acrylic);
+
+        // ---- v0.89.0：道系 / 外观模式 / 配色方案 ----
+        JsonFileStore.Write(path, new ShellConfig { UiTheme = UiTheme.Daoji });
+        check("uiTheme 按枚举名存成字符串 \"Daoji\"",
+            File.ReadAllText(path).Contains("\"Daoji\""));
+        check("uiTheme 读回来是道系",
+            JsonFileStore.Read<ShellConfig>(path)?.UiTheme == UiTheme.Daoji);
+
+        var modeDefaults = new ShellConfig();
+        check("外观模式默认深色，键名 themeMode",
+            modeDefaults.AppearanceMode == ThemeMode.Dark
+            && JsonFileStore.Serialize(modeDefaults).Contains("\"themeMode\": \"Dark\""),
+            JsonFileStore.Serialize(modeDefaults).Replace(Environment.NewLine, " "));
+        JsonFileStore.Write(path, new ShellConfig { AppearanceMode = ThemeMode.System });
+        check("外观模式按枚举名往返（System）",
+            File.ReadAllText(path).Contains("\"themeMode\": \"System\"")
+            && JsonFileStore.Read<ShellConfig>(path)?.AppearanceMode == ThemeMode.System);
+        File.WriteAllText(path, "{ \"sortMode\": \"NameAsc\" }");
+        check("旧配置没有 themeMode → 深色（升级后外观不变）",
+            JsonFileStore.Read<ShellConfig>(path)?.AppearanceMode == ThemeMode.Dark);
+        check("解析外观模式：大小写 / 中英文 / 跟随系统",
+            SystemThemeMode.Parse("light") == ThemeMode.Light
+            && SystemThemeMode.Parse("浅色") == ThemeMode.Light
+            && SystemThemeMode.Parse("SYSTEM") == ThemeMode.System
+            && SystemThemeMode.Parse("跟随系统") == ThemeMode.System
+            && SystemThemeMode.Parse("dark") == ThemeMode.Dark
+            && SystemThemeMode.Parse("乱写") is null);
+
+        var paletteDefaults = new ShellConfig();
+        check("配色默认 default，自定义种子色有默认值",
+            paletteDefaults.PaletteId == ThemePalette.Default.Id
+            && paletteDefaults.CustomAccentColor == "#4C8DFF"
+            && paletteDefaults.CustomDarkBackground == "#16181D"
+            && paletteDefaults.CustomLightBackground == "#F5F7FB");
+        JsonFileStore.Write(path, new ShellConfig
+        {
+            PaletteId = ThemePalette.CustomId,
+            CustomAccentColor = "#FF5A5A",
+            CustomDarkBackground = "#101418",
+            CustomLightBackground = "#FAF7F2",
+        });
+        var paletteRoundTrip = JsonFileStore.Read<ShellConfig>(path);
+        check("自定义配色字段往返（paletteId / 三个颜色）",
+            paletteRoundTrip is
+            {
+                PaletteId: ThemePalette.CustomId,
+                CustomAccentColor: "#FF5A5A",
+                CustomDarkBackground: "#101418",
+                CustomLightBackground: "#FAF7F2",
+            },
+            JsonFileStore.Serialize(paletteRoundTrip).Replace(Environment.NewLine, " "));
+        check("预设配色 Id 都能找到对应方案",
+            ThemePalette.Presets.All(p => ThemePalette.Find(p.Id)?.Id == p.Id)
+            && ThemePalette.Find("teal")?.Name == "青碧"
+            && ThemePalette.Find("乱写") is null);
 
         JsonFileStore.Write(path, new ShellConfig { BackgroundImage = "bg-20250101-120000-000.png", BackgroundImageFitWhole = true });
         var backgroundJson = File.ReadAllText(path);
@@ -459,7 +626,25 @@ internal static class ThemeChecks
         var second = ThemeManager.Apply(UiTheme.LiquidGlass);
         check("重复 Apply 同一主题是幂等的（返回 false）", !second);
 
-        check("切回默认主题成功", ThemeManager.Apply(UiTheme.Default) || ThemeManager.Current == UiTheme.Default);
-        check("最终停留在默认主题", ThemeManager.Current == UiTheme.Default);
+        // v0.89.0：外观模式 / 配色也要写进状态机（无界面时只记状态）
+        ThemeManager.Apply(UiTheme.Default, ThemeMode.Light, force: true);
+        check("无界面时 Apply 能记录浅色模式", ThemeManager.CurrentIsLight && ThemeManager.CurrentMode == ThemeMode.Light);
+        var teal = ThemePalette.Find("teal")!;
+        ThemeManager.Apply(UiTheme.Default, ThemeMode.Dark, teal, force: true);
+        check("无界面时 Apply 能记录默认风格的配色 Id",
+            ThemeManager.Current == UiTheme.Default && !ThemeManager.CurrentIsLight
+            && ThemeManager.CurrentPaletteId == teal.Id,
+            ThemeManager.CurrentPaletteId);
+        ThemeManager.Apply(UiTheme.Default, ThemeMode.System, force: true);
+        check("跟随系统会解析成当前系统的深 / 浅",
+            ThemeManager.CurrentIsLight == SystemThemeMode.IsLight(),
+            $"系统浅色={SystemThemeMode.IsLight()}，CurrentIsLight={ThemeManager.CurrentIsLight}");
+
+        check("切回默认主题成功",
+            ThemeManager.Apply(UiTheme.Default, ThemeMode.Dark, ThemePalette.Default, force: true)
+            || ThemeManager.Current == UiTheme.Default);
+        check("最终停留在默认主题 / 深色 / 默认配色",
+            ThemeManager.Current == UiTheme.Default && !ThemeManager.CurrentIsLight
+            && ThemeManager.CurrentPaletteId == ThemePalette.Default.Id);
     }
 }

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Media;
+using System.Windows.Threading;
 using YuLiangToolkit.App.Models;
 using YuLiangToolkit.App.Themes;
 using YuLiangToolkit.App.Views;
@@ -12,6 +13,9 @@ using YuLiangToolkit.Core.Services;
 using YuLiangToolkit.Core.Shell;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Core.Tools;
+
+// 避开 System.Windows.ThemeMode（WPF 自带的同名枚举）：本文件的 ThemeMode 一律指外壳的深浅模式
+using ThemeMode = YuLiangToolkit.App.Themes.ThemeMode;
 
 namespace YuLiangToolkit.App.ViewModels;
 
@@ -778,17 +782,26 @@ public class MainViewModel : ObservableObject
         => options.Any(option => option.IsSelected
                                  && string.Equals(option.Id, id, StringComparison.OrdinalIgnoreCase));
 
-    // ---------- 界面风格（v0.25.0 第二套 UI：液态玻璃；v0.43.0 扩到四套 + 背景图） ----------
+    // ---------- 界面风格 / 外观模式 / 配色（v0.25.0 起；v0.89.0 扩到五套 + 深浅色 + 配色） ----------
+
+    /// <summary>开发 / 截图用的临时主题覆盖（<c>YLT_THEME=dao</c>）；只影响本次运行、不写配置。</summary>
+    private ThemeMode? _appearanceModeOverride;
+
+    /// <summary>开发 / 截图用的临时配色覆盖（<c>YLT_PALETTE=teal</c>）。</summary>
+    private string? _paletteOverride;
+
+    /// <summary>「跟随系统」时定时看 Windows 应用模式有没有变（2 秒一次，只在 System 模式跑）。</summary>
+    private readonly DispatcherTimer _systemThemeTimer;
+
+    private bool _syncingPalette;
 
     /// <summary>
     /// 当前界面主题（读写 <see cref="ShellConfig.UiTheme"/>，由 <see cref="ToolConfigStore"/> 自动落盘）。
-    /// 真正的换肤由 <see cref="ThemeManager.Apply"/> 完成（替换 App.xaml 里合并的主题字典），
-    /// 界面其余部分只用 DynamicResource 跟着变，所以不用重启、设置窗口自己也即时变样。
-    /// <para>启动时 App.OnStartup 会在建主窗口之前按它应用一次。</para>
+    /// 真正的换肤由 <see cref="ApplyTheme"/> → <see cref="ThemeManager.Apply"/> 完成。
     /// </summary>
     public UiTheme UiTheme => _themeOverride ?? _shell.UiTheme;
 
-    /// <summary>设置窗口「默认（深色）」单选按钮（四选一，只处理 true）。</summary>
+    /// <summary>设置窗口「默认」单选按钮（五选一，只处理 true）。</summary>
     public bool DefaultThemeSelected
     {
         get => UiTheme == UiTheme.Default;
@@ -816,29 +829,242 @@ public class MainViewModel : ObservableObject
         set { if (value) SelectUiTheme(UiTheme.Acrylic); }
     }
 
-    /// <summary>
-    /// 当前风格是不是**半透明界面**（液态玻璃 / 毛玻璃 / 亚克力）。
-    /// 默认（深色）风格是纯色面板 → 不显示背景图，也不显示背景层。
-    /// </summary>
+    /// <summary>设置窗口「道系（墨金）」单选按钮（v0.89.0，参考道阶表）。</summary>
+    public bool DaojiThemeSelected
+    {
+        get => UiTheme == UiTheme.Daoji;
+        set { if (value) SelectUiTheme(UiTheme.Daoji); }
+    }
+
+    /// <summary>当前风格是不是半透明玻璃（液态玻璃 / 毛玻璃 / 亚克力）；道系是纯色 + 装饰背景。</summary>
     public bool IsTranslucentTheme => ThemeManager.HasTranslucentSurface(UiTheme);
 
-    /// <summary>主窗口要不要显示最底下的背景层（背景图 / 底色 / 光晕）。默认主题 = false。</summary>
-    public bool ShowBackdrop => IsTranslucentTheme;
+    /// <summary>主窗口要不要显示最底下的背景层（背景图 / 底色 / 道系远山 / 光晕）。默认纯色 = false。</summary>
+    public bool ShowBackdrop => ThemeManager.UsesBackdrop(UiTheme);
+
+    // ---------- 外观模式（深色 / 浅色 / 跟随系统） ----------
+
+    /// <summary>当前外观模式（读写 <c>Config\shell\config.json</c> 的 themeMode）。</summary>
+    public ThemeMode CurrentThemeMode => _appearanceModeOverride ?? _shell.AppearanceMode;
+
+    /// <summary>设置页「深色」单选。</summary>
+    public bool DarkModeSelected
+    {
+        get => CurrentThemeMode == ThemeMode.Dark;
+        set { if (value) SelectThemeMode(ThemeMode.Dark); }
+    }
+
+    /// <summary>设置页「浅色」单选。</summary>
+    public bool LightModeSelected
+    {
+        get => CurrentThemeMode == ThemeMode.Light;
+        set { if (value) SelectThemeMode(ThemeMode.Light); }
+    }
+
+    /// <summary>设置页「跟随系统」单选。</summary>
+    public bool SystemModeSelected
+    {
+        get => CurrentThemeMode == ThemeMode.System;
+        set { if (value) SelectThemeMode(ThemeMode.System); }
+    }
+
+    /// <summary>外观模式下面的状态文案（跟随系统时带当前实际深浅）。</summary>
+    public string ThemeModeHint => SystemThemeMode.Describe(CurrentThemeMode);
+
+    private void SelectThemeMode(ThemeMode mode)
+    {
+        _appearanceModeOverride = null;
+        if (_shell.AppearanceMode != mode) _shell.AppearanceMode = mode;
+
+        EnsureSystemThemeTimer();
+        ApplyTheme(force: true);
+        NotifyUiThemeChanged();
+    }
+
+    private void EnsureSystemThemeTimer()
+    {
+        if (CurrentThemeMode == ThemeMode.System)
+        {
+            if (!_systemThemeTimer.IsEnabled) _systemThemeTimer.Start();
+        }
+        else
+        {
+            _systemThemeTimer.Stop();
+        }
+    }
+
+    private void OnSystemThemeTimerTick(object? sender, EventArgs e)
+    {
+        if (CurrentThemeMode != ThemeMode.System)
+        {
+            _systemThemeTimer.Stop();
+            return;
+        }
+
+        var wantLight = SystemThemeMode.IsLight();
+        if (wantLight == ThemeManager.CurrentIsLight) return;
+
+        ApplyTheme(force: true);
+        OnPropertyChanged(nameof(ThemeModeHint));
+    }
+
+    // ---------- 配色方案（只作用于「默认」风格） ----------
+
+    /// <summary>设置页的配色卡片（预设 + 自定义；默认选中哪张由配置决定）。</summary>
+    public IReadOnlyList<ThemePaletteOption> PaletteOptions { get; private set; } = Array.Empty<ThemePaletteOption>();
+
+    /// <summary>「自定义」那张卡片（三个色块会跟着拾色器更新）。</summary>
+    public ThemePaletteOption CustomPaletteOption { get; private set; } = null!;
+
+    /// <summary>当前选中的配色 Id（custom / default / teal / …）。</summary>
+    public string CurrentPaletteId
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(_paletteOverride)) return _paletteOverride!;
+            return _shell.PaletteId;
+        }
+    }
+
+    /// <summary>当前配色方案（给 ThemeManager 生成 token 用）。</summary>
+    public ThemePalette CurrentPalette => BuildCurrentPalette();
+
+    /// <summary>当前是不是「自定义配色」（设置页展开三个拾色器，且提示自定义只对默认风格生效）。</summary>
+    public bool IsCustomPaletteSelected => string.Equals(CurrentPaletteId, ThemePalette.CustomId,
+        StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>自定义配色主色（双向绑拾色器）。</summary>
+    public Color CustomAccentColor
+    {
+        get => ThemePaletteBuilder.FromHex(_shell.CustomAccentColor, ThemePalette.Default.AccentDark);
+        set => SetCustomColor(value, nameof(CustomAccentColor),
+            () => _shell.CustomAccentColor, hex => _shell.CustomAccentColor = hex);
+    }
+
+    /// <summary>自定义配色的深色模式底色。</summary>
+    public Color CustomDarkBackgroundColor
+    {
+        get => ThemePaletteBuilder.FromHex(_shell.CustomDarkBackground, ThemePalette.Default.DarkBackground);
+        set => SetCustomColor(value, nameof(CustomDarkBackgroundColor),
+            () => _shell.CustomDarkBackground, hex => _shell.CustomDarkBackground = hex);
+    }
+
+    /// <summary>自定义配色的浅色模式底色。</summary>
+    public Color CustomLightBackgroundColor
+    {
+        get => ThemePaletteBuilder.FromHex(_shell.CustomLightBackground, ThemePalette.Default.LightBackground);
+        set => SetCustomColor(value, nameof(CustomLightBackgroundColor),
+            () => _shell.CustomLightBackground, hex => _shell.CustomLightBackground = hex);
+    }
+
+    private void SetCustomColor(Color color, string propertyName, Func<string> read, Action<string> write)
+    {
+        var hex = ThemePaletteBuilder.ToHex(color);
+        if (string.Equals(read(), hex, StringComparison.OrdinalIgnoreCase)) return;
+        write(hex);
+        OnPropertyChanged(propertyName);
+        UpdateCustomPaletteOption();
+
+        if (IsCustomPaletteSelected) ApplyTheme(force: true);
+    }
+
+    private void InitializeThemePalettes()
+    {
+        var selectedId = ResolvePaletteId();
+        // 截图 / 调试用的 YLT_PALETTE 只是本次运行的覆盖，别把临时 Id 写进用户配置
+        if (string.IsNullOrWhiteSpace(_paletteOverride)
+            && !string.Equals(_shell.PaletteId, selectedId, StringComparison.OrdinalIgnoreCase))
+        {
+            _shell.PaletteId = selectedId;
+        }
+
+        var options = ThemePalette.Presets
+            .Select(palette => new ThemePaletteOption(palette,
+                string.Equals(palette.Id, selectedId, StringComparison.OrdinalIgnoreCase), SelectPalette))
+            .ToList();
+
+        CustomPaletteOption = new ThemePaletteOption(BuildCustomPalette(),
+            string.Equals(selectedId, ThemePalette.CustomId, StringComparison.OrdinalIgnoreCase), SelectPalette);
+        options.Add(CustomPaletteOption);
+        PaletteOptions = options;
+    }
+
+    private string ResolvePaletteId()
+    {
+        var id = CurrentPaletteId;
+        if (string.Equals(id, ThemePalette.CustomId, StringComparison.OrdinalIgnoreCase))
+            return ThemePalette.CustomId;
+        return ThemePalette.Find(id)?.Id ?? ThemePalette.Default.Id;
+    }
+
+    private ThemePalette BuildCurrentPalette()
+    {
+        var id = CurrentPaletteId;
+        if (string.Equals(id, ThemePalette.CustomId, StringComparison.OrdinalIgnoreCase))
+        {
+            return ThemePalette.CreateCustom(
+                CustomAccentColor, CustomDarkBackgroundColor, CustomLightBackgroundColor);
+        }
+        return ThemePalette.Find(id) ?? ThemePalette.Default;
+    }
+
+    private ThemePalette BuildCustomPalette() => ThemePalette.CreateCustom(
+        CustomAccentColor, CustomDarkBackgroundColor, CustomLightBackgroundColor);
+
+    private void UpdateCustomPaletteOption() => CustomPaletteOption?.UpdatePalette(BuildCustomPalette());
+
+    /// <summary>用户点了一张配色卡片：写配置 → 重建侧栏配色预览 → 立即换肤。</summary>
+    private void SelectPalette(string id)
+    {
+        if (_syncingPalette) return;
+        _paletteOverride = null;
+        var resolved = string.Equals(id, ThemePalette.CustomId, StringComparison.OrdinalIgnoreCase)
+            ? ThemePalette.CustomId
+            : ThemePalette.Find(id)?.Id ?? ThemePalette.Default.Id;
+        if (!string.Equals(_shell.PaletteId, resolved, StringComparison.OrdinalIgnoreCase))
+            _shell.PaletteId = resolved;
+
+        _syncingPalette = true;
+        try
+        {
+            foreach (var option in PaletteOptions)
+                option.IsSelected = string.Equals(option.Id, resolved, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            _syncingPalette = false;
+        }
+
+        UpdateCustomPaletteOption();
+        ApplyTheme(force: true);
+        NotifyPaletteChanged();
+    }
+
+    /// <summary>换主题 / 外观模式 / 配色都走这里：把当前选择交给 ThemeManager 重建主题字典。</summary>
+    public void ApplyTheme(bool force = true)
+    {
+        ThemeManager.Apply(UiTheme, CurrentThemeMode, BuildCurrentPalette(), force);
+        OnPropertyChanged(nameof(IsTranslucentTheme));
+        OnPropertyChanged(nameof(ShowBackdrop));
+        OnPropertyChanged(nameof(BackgroundImageBlurRadius));
+        OnPropertyChanged(nameof(BackgroundImageThemeHint));
+        OnPropertyChanged(nameof(ThemeModeHint));
+    }
 
     /// <summary>
     /// 用户点击「换主题」：清掉调试覆盖 → 写配置（自动落盘）→ 立即切换界面。
-    /// 四套主题都走这一条，单选按钮的 bool 属性只处理 true（WPF 取消选中时会传 false）。
+    /// 五套主题都走这一条，单选按钮的 bool 属性只处理 true（WPF 取消选中时会传 false）。
     /// </summary>
     private void SelectUiTheme(UiTheme theme)
     {
         _themeOverride = null;
         if (_shell.UiTheme != theme) _shell.UiTheme = theme;
 
-        ThemeManager.Apply(theme);
+        ApplyTheme(force: true);
         NotifyUiThemeChanged();
     }
 
-    /// <summary>换主题 / 重建配置后，把所有跟主题相关的绑定值一次通知到位（单选按钮、背景层、背景图模糊度…）。</summary>
+    /// <summary>换主题 / 外观模式 / 配色 / 重建配置后，把所有相关绑定值一次通知到位。</summary>
     private void NotifyUiThemeChanged()
     {
         OnPropertyChanged(nameof(UiTheme));
@@ -846,10 +1072,27 @@ public class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(LiquidGlassThemeSelected));
         OnPropertyChanged(nameof(FrostedGlassThemeSelected));
         OnPropertyChanged(nameof(AcrylicThemeSelected));
+        OnPropertyChanged(nameof(DaojiThemeSelected));
         OnPropertyChanged(nameof(IsTranslucentTheme));
         OnPropertyChanged(nameof(ShowBackdrop));
         OnPropertyChanged(nameof(BackgroundImageBlurRadius));
         OnPropertyChanged(nameof(BackgroundImageThemeHint));
+
+        OnPropertyChanged(nameof(CurrentThemeMode));
+        OnPropertyChanged(nameof(DarkModeSelected));
+        OnPropertyChanged(nameof(LightModeSelected));
+        OnPropertyChanged(nameof(SystemModeSelected));
+        OnPropertyChanged(nameof(ThemeModeHint));
+
+        NotifyPaletteChanged();
+    }
+
+    private void NotifyPaletteChanged()
+    {
+        OnPropertyChanged(nameof(CurrentPaletteId));
+        OnPropertyChanged(nameof(CurrentPalette));
+        OnPropertyChanged(nameof(PaletteOptions));
+        OnPropertyChanged(nameof(IsCustomPaletteSelected));
     }
 
     // ---------- 背景图（v0.43.0，「主页设置 → 界面风格 → 背景图」） ----------
@@ -975,9 +1218,12 @@ public class MainViewModel : ObservableObject
     }
 
     /// <summary>设置页里那句提示：当前风格会不会显示背景图。</summary>
-    public string BackgroundImageThemeHint => IsTranslucentTheme
-        ? "当前风格是半透明的：背景图会显示在面板后面（铺满窗口或完整显示，由上面的勾选决定）。"
-        : "当前是「默认（深色）」风格：纯色面板，背景图不会显示；切到液态玻璃 / 毛玻璃 / 亚克力就会透出来。";
+    public string BackgroundImageThemeHint => UiTheme switch
+    {
+        UiTheme.Daoji => "当前是「道系（墨金）」：有背景图时会显示在远山 / 金色光晕上面（会盖住道系装饰）。",
+        UiTheme.Default => "当前是「默认」纯色风格：不显示背景图；切到液态玻璃 / 毛玻璃 / 亚克力 / 道系就会透出来。",
+        _ => "当前风格是半透明的：背景图会显示在面板后面（铺满窗口或完整显示，由上面的勾选决定）。",
+    };
 
     /// <summary>选一张图片作为窗口背景（复制进数据目录，原图之后可以随便移动 / 删除）。</summary>
     public RelayCommand ChooseBackgroundImageCommand { get; }
@@ -1364,11 +1610,25 @@ public class MainViewModel : ObservableObject
         _shellStore = ToolConfigStore.For(ShellToolId);
         _shell = _shellStore.Load<ShellConfig>();
         InitializeEffects();
-        InitializeThemeBlurOptions();     // 四套界面风格的「背景图模糊度」滑块（选中对应风格才显示）
+        InitializeThemeBlurOptions();     // 三套半透明玻璃风格的「背景图模糊度」滑块（选中对应风格才显示）
         ApplyPaneSplitterHintOpacity();   // 工具页分隔条的「提示线」全局透明度（主页设置里可调）
 
-        // 开发 / 截图：YLT_THEME=liquid-glass 临时切到第二套 UI（不写配置；见 ShellConfig.UiTheme）
+        // 开发 / 截图：YLT_THEME=liquid-glass / dao 临时切 UI；YLT_THEME_MODE=light|dark 临时改深浅；
+        // YLT_PALETTE=teal|indigo|… 临时指定默认风格的配色（都只影响本次运行、不写配置）
         _themeOverride = ThemeManager.ParseThemeName(Environment.GetEnvironmentVariable("YLT_THEME"));
+        _appearanceModeOverride = SystemThemeMode.Parse(Environment.GetEnvironmentVariable("YLT_THEME_MODE"));
+        var paletteOverride = Environment.GetEnvironmentVariable("YLT_PALETTE")?.Trim();
+        _paletteOverride = string.IsNullOrWhiteSpace(paletteOverride) ? null : paletteOverride;
+
+        InitializeThemePalettes();
+
+        // 跟随系统：只在 System 模式跑定时器（2 秒看一次注册表，成本可忽略；退出时停掉）
+        _systemThemeTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromSeconds(2),
+        };
+        _systemThemeTimer.Tick += OnSystemThemeTimerTick;
+        EnsureSystemThemeTimer();
 
         // 背景图（v0.43.0）：启动时按配置解码一次；文件不在 / 损坏就当作没有背景图
         ReloadBackgroundImage();
@@ -1842,7 +2102,7 @@ public class MainViewModel : ObservableObject
             case ShellPageKind.Settings:
                 CurrentNodeName = "主页设置";
                 CurrentNodeEmoji = "⚙";
-                CurrentNodeDescription = "外壳设置：界面风格、主页显示、特效 / 粒子颜色、窗口行为，以及清理缓存与重建配置";
+                CurrentNodeDescription = "外壳设置：外观模式（深 / 浅 / 跟随系统）、界面风格与配色、背景图、主页显示、特效 / 粒子颜色、窗口行为，以及清理缓存与重建配置";
                 CurrentNodeSummary = "";
                 break;
 
@@ -1927,9 +2187,13 @@ public class MainViewModel : ObservableObject
     public void RefreshAfterShellConfigReset()
     {
         _themeOverride = null;              // 调试覆盖也清掉，以重建后的配置为准
+        _appearanceModeOverride = null;
+        _paletteOverride = null;
         _homeTagsVisibleOverride = null;
         IsTagBarExpanded = false;           // 回到默认：标签墙 3 行
-        ThemeManager.Apply(_shell.UiTheme);
+        InitializeThemePalettes();          // 配色卡片按新配置重新选默认项
+        EnsureSystemThemeTimer();
+        ApplyTheme(force: true);            // 主题 / 色调 / 外观模式都回默认
         ReloadBackgroundImage();            // 背景图也回默认（配置清空 → 不显示；旧图片文件留在 Data 里不删）
 
         InitializeEffects();
@@ -1942,6 +2206,7 @@ public class MainViewModel : ObservableObject
         foreach (var card in _allCards) card.LastUsed = null;   // LastUsed 字典已被重置为空
 
         OnPropertyChanged(string.Empty);    // 其余所有绑定（主题单选、粒子颜色、关闭行为、标签墙…）全部重读
+        NotifyUiThemeChanged();
         RebuildNavItems();                  // 快捷栏开关 / 内容也可能被重置回默认（完整功能列表）
         RefreshToolCards();
         RefreshHeader();
@@ -2030,6 +2295,8 @@ public class MainViewModel : ObservableObject
     /// </summary>
     public void ShutdownTools()
     {
+        _systemThemeTimer.Stop();
+
         if (CurrentView is FrameworkElement current) DisposeToolView(current);
         CurrentView = null;
 

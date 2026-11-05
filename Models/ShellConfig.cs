@@ -110,10 +110,33 @@ public sealed class ShellConfig : ToolConfig
 
     /// <summary>
     /// 界面主题（「主页设置 → 界面风格」，默认 <see cref="UiTheme.Default"/>）。
-    /// 除默认外还有液态玻璃 / 毛玻璃 / 亚克力三套半透明界面。
+    /// 除默认外还有液态玻璃 / 毛玻璃 / 亚克力 / 道系（墨金）四套。
     /// 旧配置文件没有这个字段时读出来就是默认值 —— 老用户升级后外观不变。
     /// </summary>
     public UiTheme UiTheme { get; set; } = UiTheme.Default;
+
+    /// <summary>
+    /// 外观模式（「主页设置 → 外观模式」，默认 <see cref="ThemeMode.Dark"/>）：
+    /// 深色 / 浅色 / 跟随系统。JSON 键是 <c>themeMode</c>。
+    /// 旧配置没有这个字段时按深色处理，升级后外观不变。
+    /// </summary>
+    [System.Text.Json.Serialization.JsonPropertyName("themeMode")]
+    public ThemeMode AppearanceMode { get; set; } = ThemeMode.Dark;
+
+    /// <summary>
+    /// 默认风格的配色方案 Id（<c>default</c> / <c>teal</c> / <c>indigo</c> / … / <c>custom</c>）。
+    /// 只对「默认」风格生效；玻璃三套和道系有自己的配色。旧配置没有时按 <c>default</c> 处理。
+    /// </summary>
+    public string PaletteId { get; set; } = ThemePalette.Default.Id;
+
+    /// <summary>自定义配色的主色（<c>#RRGGBB</c>；只在 <see cref="PaletteId"/> = <c>custom</c> 时生效）。</summary>
+    public string CustomAccentColor { get; set; } = "#4C8DFF";
+
+    /// <summary>自定义配色的深色模式底色（<c>#RRGGBB</c>）。</summary>
+    public string CustomDarkBackground { get; set; } = "#16181D";
+
+    /// <summary>自定义配色的浅色模式底色（<c>#RRGGBB</c>）。</summary>
+    public string CustomLightBackground { get; set; } = "#F5F7FB";
 
     /// <summary>
     /// 窗口背景图文件名（「主页设置 → 界面风格 → 背景图」，v0.43.0）。

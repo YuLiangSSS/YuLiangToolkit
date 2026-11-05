@@ -8,22 +8,22 @@ using YuLiangToolkit.App.Themes;
 namespace YuLiangToolkit.App.Views;
 
 /// <summary>
-/// 半透明界面风格的窗口背景层（v0.43.0，升级自原来的 <c>LiquidBackdrop</c>）。
+/// 半透明界面风格 + 道系的窗口背景层（v0.43.0，升级自原来的 <c>LiquidBackdrop</c>）。
 ///
 /// <para>放在 Window/Grid 的最底层、铺满整个窗口，<c>IsHitTestVisible="False"</c>（XAML 里已设）；
-/// 主窗口用 <c>Visibility="{Binding ShowBackdrop …}"</c> 控制 —— 默认深色风格下整层 Collapsed。</para>
+/// 主窗口用 <c>Visibility="{Binding ShowBackdrop …}"</c> 控制 —— 默认纯色风格下整层 Collapsed。</para>
 ///
-/// <para><b>三套主题共用一个控件，靠绑定切换</b>：
-/// <see cref="Theme"/> 决定流动光晕要不要跑；<see cref="ImageSource"/> / <see cref="ImageStretch"/> /
+/// <para><b>五套主题共用一个控件，靠绑定切换</b>：
+/// <see cref="Theme"/> 决定流动光晕 / 道系装饰要不要跑；<see cref="ImageSource"/> / <see cref="ImageStretch"/> /
 /// <see cref="ImageBlurRadius"/> 来自 <c>MainViewModel</c>（背景图、铺法、按主题的模糊度）。
 /// 背景图是**静态**的：模糊结果用 <see cref="BitmapCache"/> 缓存，窗口不动时不重算。</para>
 ///
 /// <para><b>性能约定</b>：流动光晕的动画由这里在「液态玻璃 + 可见」时开始，切走 / 隐藏 / 卸载时停掉。
-/// 否则另外两套主题下这层虽然看不见，时间线还在每秒 60 帧空跑（白白占 CPU）。</para>
+/// 否则别的主题下这层虽然看不见，时间线还在每秒 60 帧空跑（白白占 CPU）。</para>
 /// </summary>
 public partial class GlassBackdrop : UserControl
 {
-    /// <summary>当前界面主题（只有 <see cref="UiTheme.LiquidGlass"/> 才跑流动光晕动画）。</summary>
+    /// <summary>当前界面主题（只有 <see cref="UiTheme.LiquidGlass"/> 才跑流动光晕，<see cref="UiTheme.Daoji"/> 显示远山装饰）。</summary>
     public static readonly DependencyProperty ThemeProperty = DependencyProperty.Register(
         nameof(Theme), typeof(UiTheme), typeof(GlassBackdrop),
         new PropertyMetadata(UiTheme.Default, OnVisualStateChanged));
@@ -126,6 +126,7 @@ public partial class GlassBackdrop : UserControl
 
         var liquid = Theme == UiTheme.LiquidGlass;
         AmbientLayer.Visibility = liquid ? Visibility.Visible : Visibility.Collapsed;
+        DaoLayer.Visibility = Theme == UiTheme.Daoji ? Visibility.Visible : Visibility.Collapsed;
 
         if (liquid && IsVisible) StartAmbientIfNeeded();
         else StopAmbient();

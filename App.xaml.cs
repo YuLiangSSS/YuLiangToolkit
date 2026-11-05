@@ -106,9 +106,9 @@ public partial class App : Application
         // 就把 Windows 记住的旧登记清掉。只写 HKCU，失败不影响启动。
         vm.SyncOpenWithAssociationOnStartup();
 
-        // 建主窗口之前先应用主题（默认 / 液态玻璃）：窗口 XAML 一解析就要用主题里的颜色，
+        // 建主窗口之前先应用主题（风格 / 深浅 / 配色）：窗口 XAML 一解析就要用主题里的颜色，
         // 反过来的话第一帧会闪一下默认主题（见 Views/Themes/ThemeManager.cs）。
-        ThemeManager.Apply(vm.UiTheme);
+        vm.ApplyTheme(force: true);
 
         var window = new MainWindow { DataContext = vm };
         MainWindow = window;
