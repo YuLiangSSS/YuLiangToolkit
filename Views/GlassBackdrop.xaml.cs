@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using YuLiangToolkit.App.Themes;
 
@@ -51,12 +52,12 @@ public partial class GlassBackdrop : UserControl
         nameof(IsLight), typeof(bool), typeof(GlassBackdrop),
         new PropertyMetadata(false, OnVisualStateChanged));
 
-    /// <summary>云间天上：云朵速度倍率（1.0 = 基准；设置页滑块 0.3 ~ 3.0）。</summary>
+    /// <summary>云间天上：云朵速度倍率（1.0 = 基准；设置页滑块 0.3 ~ 150）。</summary>
     public static readonly DependencyProperty CloudSpeedProperty = DependencyProperty.Register(
         nameof(CloudSpeed), typeof(double), typeof(GlassBackdrop),
-        new PropertyMetadata(1.0));
+        new PropertyMetadata(1.5));
 
-    /// <summary>云间天上：云朵密度（每层显示几朵；设置页 1 ~ 10）。</summary>
+    /// <summary>云间天上：云朵密度（每层显示几朵；设置页 1 ~ 100）。</summary>
     public static readonly DependencyProperty CloudDensityProperty = DependencyProperty.Register(
         nameof(CloudDensity), typeof(int), typeof(GlassBackdrop),
         new PropertyMetadata(8, OnVisualStateChanged));
@@ -69,40 +70,21 @@ public partial class GlassBackdrop : UserControl
     private readonly Stopwatch _cloudClock = new();
     private DispatcherTimer? _cloudTimer;
     private bool _cloudRunning;
-    private bool _cloudPositionsInitialized;
+    private int _cloudBuildDensity = -1;
+    private double _cloudBuildWidth = -1;
+    private double _cloudBuildHeight = -1;
 
     private sealed class CloudMotion
     {
         public required TranslateTransform Transform { get; init; }
         public required double Speed { get; init; }
         public required double Width { get; init; }
-        public required double StartFraction { get; init; }
         public double X;
     }
 
     public GlassBackdrop()
     {
         InitializeComponent();
-
-        // 每条云的“原生宽度”（CloudShape 180 × ScaleTransform）用于判断什么时候完全飘出左边
-        _clouds.Add(new CloudMotion { Transform = DayCloud1Move, Speed = 7, Width = 378, StartFraction = 0.08 });
-        _clouds.Add(new CloudMotion { Transform = DayCloud2Move, Speed = 5, Width = 468, StartFraction = 0.42 });
-        _clouds.Add(new CloudMotion { Transform = DayCloud3Move, Speed = 8, Width = 306, StartFraction = 0.70 });
-        _clouds.Add(new CloudMotion { Transform = DayCloud4Move, Speed = 9, Width = 243, StartFraction = 0.20 });
-        _clouds.Add(new CloudMotion { Transform = DayCloud5Move, Speed = 6, Width = 306, StartFraction = 0.55 });
-        _clouds.Add(new CloudMotion { Transform = DayCloud6Move, Speed = 4.5, Width = 396, StartFraction = 0.85 });
-        _clouds.Add(new CloudMotion { Transform = DayCloud7Move, Speed = 7.5, Width = 252, StartFraction = 0.33 });
-        _clouds.Add(new CloudMotion { Transform = DayCloud8Move, Speed = 5.5, Width = 342, StartFraction = 0.62 });
-        _clouds.Add(new CloudMotion { Transform = DayCloud9Move, Speed = 8.5, Width = 216, StartFraction = 0.90 });
-        _clouds.Add(new CloudMotion { Transform = DayCloud10Move, Speed = 4, Width = 432, StartFraction = 0.47 });
-        _clouds.Add(new CloudMotion { Transform = NightCloud1Move, Speed = 6, Width = 432, StartFraction = 0.20 });
-        _clouds.Add(new CloudMotion { Transform = NightCloud2Move, Speed = 8, Width = 288, StartFraction = 0.52 });
-        _clouds.Add(new CloudMotion { Transform = NightCloud3Move, Speed = 4.5, Width = 468, StartFraction = 0.75 });
-        _clouds.Add(new CloudMotion { Transform = NightCloud4Move, Speed = 7, Width = 324, StartFraction = 0.38 });
-        _clouds.Add(new CloudMotion { Transform = NightCloud5Move, Speed = 6.5, Width = 360, StartFraction = 0.60 });
-        _clouds.Add(new CloudMotion { Transform = NightCloud6Move, Speed = 9, Width = 252, StartFraction = 0.30 });
-        _clouds.Add(new CloudMotion { Transform = NightCloud7Move, Speed = 4, Width = 396, StartFraction = 0.82 });
-        _clouds.Add(new CloudMotion { Transform = NightCloud8Move, Speed = 7.5, Width = 234, StartFraction = 0.12 });
 
         Loaded += (_, _) =>
         {
@@ -229,7 +211,7 @@ public partial class GlassBackdrop : UserControl
         CloudSkyLayer.Visibility = cloudSky ? Visibility.Visible : Visibility.Collapsed;
         DaySky.Visibility = cloudSky && IsLight ? Visibility.Visible : Visibility.Collapsed;
         NightSky.Visibility = cloudSky && !IsLight ? Visibility.Visible : Visibility.Collapsed;
-        ApplyCloudDensity();
+        if (cloudSky) EnsureClouds();
 
         if (liquid && IsVisible) StartAmbientIfNeeded();
         else StopAmbient();
@@ -242,17 +224,6 @@ public partial class GlassBackdrop : UserControl
     {
         if (_cloudRunning || !IsVisible || Theme != UiTheme.CloudSky) return;
         if (PresentationSource.FromVisual(this) is null) return;
-
-        if (!_cloudPositionsInitialized)
-        {
-            var width = Math.Max(ActualWidth, 800);
-            foreach (var cloud in _clouds)
-            {
-                cloud.X = cloud.StartFraction * (width + cloud.Width) - cloud.Width;
-                cloud.Transform.X = cloud.X;
-            }
-            _cloudPositionsInitialized = true;
-        }
 
         _cloudTimer ??= CreateCloudTimer();
         _cloudClock.Restart();
@@ -268,18 +239,79 @@ public partial class GlassBackdrop : UserControl
         _cloudClock.Stop();
     }
 
-    /// <summary>按设置的密度只显示前 N 朵云（白天池 10 朵 / 夜晚池 8 朵）。</summary>
-    private void ApplyCloudDensity()
+    /// <summary>按密度动态生成云朵：密度 1~100，每层都按窗口高度均匀分布，不再固定只有上下几朵。</summary>
+    private void EnsureClouds()
     {
         if (DayClouds is null || NightClouds is null) return;
-        var density = Math.Clamp(CloudDensity, 1, 10);
-        Apply(DayClouds, density);
-        Apply(NightClouds, Math.Min(density, 8));
 
-        static void Apply(Canvas layer, int count)
+        var density = Math.Clamp(CloudDensity, 1, 100);
+        var width = Math.Max(ActualWidth, 800);
+        var height = Math.Max(ActualHeight, 500);
+        if (density == _cloudBuildDensity
+            && Math.Abs(width - _cloudBuildWidth) < 1
+            && Math.Abs(height - _cloudBuildHeight) < 1
+            && DayClouds.Children.Count == density
+            && NightClouds.Children.Count == density)
         {
-            for (var i = 0; i < layer.Children.Count; i++)
-                layer.Children[i].Visibility = i < count ? Visibility.Visible : Visibility.Collapsed;
+            return;
+        }
+
+        DayClouds.Children.Clear();
+        NightClouds.Children.Clear();
+        _clouds.Clear();
+        BuildCloudLayer(DayClouds, density, width, height, day: true);
+        BuildCloudLayer(NightClouds, density, width, height, day: false);
+        _cloudBuildDensity = density;
+        _cloudBuildWidth = width;
+        _cloudBuildHeight = height;
+    }
+
+    private void BuildCloudLayer(Canvas layer, int count, double width, double height, bool day)
+    {
+        var geometry = (Geometry)FindResource("CloudShape");
+        string[] colors = day
+            ? new[] { "#D7E8F8", "#E2EFFB", "#EDF5FD", "#E3EFFA", "#FFFFFF" }
+            : new[] { "#132C4A", "#112742", "#0E2138", "#0A1A2E" };
+        double[] opacities = day
+            ? new[] { 0.85, 0.75, 0.7, 0.65, 0.9 }
+            : new[] { 0.9, 0.8, 0.85, 0.7 };
+
+        for (var i = 0; i < count; i++)
+        {
+            var scale = 1.0 + (i % 5) * 0.28;
+            var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(colors[i % colors.Length]));
+            brush.Freeze();
+
+            var path = new System.Windows.Shapes.Path
+            {
+                Data = geometry,
+                Fill = brush,
+                Opacity = opacities[i % opacities.Length],
+                IsHitTestVisible = false,
+                RenderTransform = new ScaleTransform(scale, scale),
+            };
+
+            // 上下均匀：按序号把整条窗口高度分段，再叠一点固定偏移避免像栅栏
+            var usable = Math.Max(120, height - 90);
+            var y = 15 + usable * (i + 0.5) / count + ((i * 37) % 23) - 11;
+            var x = (i * 173) % Math.Max(500, (int)width) - 120;
+            var transform = new TranslateTransform { X = x };
+            var group = new Canvas
+            {
+                IsHitTestVisible = false,
+                RenderTransform = transform,
+            };
+            group.Children.Add(path);
+            Canvas.SetTop(group, y);
+            layer.Children.Add(group);
+
+            _clouds.Add(new CloudMotion
+            {
+                Transform = transform,
+                Speed = 4.0 + (i % 7) * 0.9,
+                Width = 180 * scale,
+                X = x,
+            });
         }
     }
 
@@ -294,7 +326,7 @@ public partial class GlassBackdrop : UserControl
             var seconds = Math.Clamp(_cloudClock.Elapsed.TotalSeconds, 0, 0.1);
             _cloudClock.Restart();
             var width = Math.Max(ActualWidth, 200);
-            var speedScale = Math.Clamp(CloudSpeed, 0.1, 5.0);
+            var speedScale = Math.Clamp(CloudSpeed, 0.0, 200.0);
             foreach (var cloud in _clouds)
             {
                 cloud.X -= cloud.Speed * speedScale * seconds;

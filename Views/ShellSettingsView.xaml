@@ -301,22 +301,16 @@
                         </StackPanel>
                     </RadioButton>
 
+                    <!-- 云间天上：速度 / 密度滑块直接跟在主题选项下面（和亚克力下面的背景图模糊度同一种位置关系） -->
+                    <StackPanel Margin="25,4,0,2"
+                                Visibility="{Binding CloudSkyThemeSelected, Converter={StaticResource BoolToVis}}">
+                        <ItemsControl ItemsSource="{Binding CloudSliders}"
+                                      ItemTemplate="{StaticResource EffectSliderTemplate}" />
+                    </StackPanel>
+
                     <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                TextWrapping="Wrap" Margin="0,10,0,0"
-                               Text="换主题立即生效、不用重启；选择会自动存进 Config\shell\config.json 的 uiTheme。液态玻璃 / 毛玻璃 / 亚克力是半透明面板，能透出下面的背景图；道系有远山 + 金色光晕，云间天上会按深浅画云 / 太阳 / 月亮星空，这两个主题也可以放背景图（会盖住装饰）；默认是纯色面板。选中半透明风格后，它下面会出现「背景图模糊度」滑块（0 = 清晰，最大 60 px；三套风格各记各的值）。深浅色由上面的「外观模式」统一控制，六套风格都支持。" />
-                </StackPanel>
-            </Border>
-
-            <!-- ===== 云间天上：云朵速度 / 密度（只在选中这个主题时显示，v0.91.0） ===== -->
-            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14"
-                    Visibility="{Binding CloudSkyThemeSelected, Converter={StaticResource BoolToVis}}">
-                <StackPanel>
-                    <TextBlock Text="云间天上 · 云朵" FontSize="12.5" FontWeight="SemiBold" />
-                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
-                               TextWrapping="Wrap" Margin="0,4,0,0"
-                               Text="只影响「云间天上」主题：拖动下面两条滑块可改云朵横向漂移速度和每层显示数量；改一下立即生效并自动保存。" />
-                    <ItemsControl ItemsSource="{Binding CloudSliders}" Margin="0,2,0,0"
-                                  ItemTemplate="{StaticResource EffectSliderTemplate}" />
+                               Text="换主题立即生效、不用重启；选择会自动存进 Config\shell\config.json 的 uiTheme。液态玻璃 / 毛玻璃 / 亚克力是半透明面板，能透出下面的背景图；道系有远山 + 金色光晕，云间天上会按深浅画云 / 太阳 / 月亮星空，这两个主题也可以放背景图（会盖住装饰）；默认是纯色面板。选中半透明风格后，它下面会出现「背景图模糊度」滑块（0 = 清晰，最大 60 px；三套风格各记各的值）；选中云间天上后会出现「云朵速度 / 密度」滑块。深浅色由上面的「外观模式」统一控制，六套风格都支持。" />
                 </StackPanel>
             </Border>
 

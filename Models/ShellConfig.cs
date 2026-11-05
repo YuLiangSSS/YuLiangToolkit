@@ -139,14 +139,14 @@ public sealed class ShellConfig : ToolConfig
     public string CustomLightBackground { get; set; } = "#F5F7FB";
 
     /// <summary>
-    /// 「云间天上」的云朵速度倍率（v0.91.0，默认 1.5）：1.0 = 原来的基准速度，范围 0.3 ~ 3.0；
+    /// 「云间天上」的云朵速度倍率（v0.91.0，默认 1.5）：1.0 = 原来的基准速度，范围 0 ~ 150；
     /// 只影响云朵横向漂移，不改其它主题。
     /// </summary>
     public double CloudSpeed { get; set; } = 1.5;
 
     /// <summary>
-    /// 「云间天上」的云朵密度（v0.91.0，默认 8）：白天 / 夜晚每层最多显示几朵，范围 1 ~ 10；
-    /// 夜晚池子只有 8 朵，超过 8 按 8 处理。
+    /// 「云间天上」的云朵密度（v0.91.0，默认 8）：白天 / 夜晚每层显示几朵，范围 1 ~ 100；
+    /// 云朵按窗口高度上下均匀分布，由渲染层动态生成。
     /// </summary>
     public int CloudDensity { get; set; } = 8;
 

@@ -1228,16 +1228,16 @@ public class MainViewModel : ObservableObject
         CloudSliders = new[]
         {
             new ShellSliderOption(
-                "cloud-speed", "cloud", "云朵速度", "云从右往左飘的横向速度；1.0 × = 原来的基准速度。",
-                new CursorEffectRange(0.3, 3.0, 0.1), _shell.CloudSpeed, " ×",
+                "cloud-speed", "cloud", "云朵速度", "云从右往左飘的横向速度；1.0 × = 原来的基准速度，最高 150 ×。",
+                new CursorEffectRange(0.0, 150.0, 0.5), _shell.CloudSpeed, " ×",
                 value =>
                 {
                     _shell.CloudSpeed = value;
                     OnPropertyChanged(nameof(CloudSpeed));
                 }),
             new ShellSliderOption(
-                "cloud-density", "cloud", "云朵密度", "白天 / 夜晚每层最多显示几朵云（夜晚池子最多 8 朵，超过按 8 算）。",
-                new CursorEffectRange(1.0, 10.0, 1.0), _shell.CloudDensity, " 个",
+                "cloud-density", "cloud", "云朵密度", "白天 / 夜晚每层显示几朵云；按窗口高度上下均匀分布。",
+                new CursorEffectRange(1.0, 100.0, 1.0), _shell.CloudDensity, " 个",
                 value =>
                 {
                     _shell.CloudDensity = (int)Math.Round(value);
