@@ -552,4 +552,24 @@
   主表 / 冻结行表要共用同一套行高逻辑，同一行高度才会一致。
 - ⚠ **大表查找不要在 `TextChanged` 里同步全表扫描**（5000 × 200 会卡 UI）：防抖 + `Task.Run` + `CancellationToken`，
   命中数上限（如 2000）并提示截断；`Clipboard.SetText` 可能因别的进程占用抛 `COMException`，必须 try/catch。
+- ⚠ **Word 批注区间可以跨 run / 跨段落，同段还能叠多条**：解析时要用「当前生效的 comment id 集合」做上下文
+  （`commentRangeStart` 入栈、`commentRangeEnd` 出栈），run 上记 id 列表；不要假设 start/end 在同一个 run 里。
+  批注的显示编号按正文出现顺序分配，别用 `w:id` 当序号；批注内容在 `word/comments.xml`，正文的
+  `commentReference` 往往是个**空 run**，丢了它就丢标记。
+- ⚠ **修订视图的显示与模型要分开**：`w:ins` / `w:del` 是包在 run 外面的容器（`w:del` 里文字是 `w:delText`），
+  解析模型始终保留两侧内容；「显示修订」关掉只换渲染（删除不渲染、插入不套样式），
+  但**查找 / 大纲 / 复制全文 / HTML 导出要统一跳过删除文字**，否则会搜到 / 导出看不见的内容。
+- ⚠ **打印不要直接拿屏幕上那个 FlowDocument 的 Paginator 打**：分页会把它的 PageWidth / PageHeight / ColumnWidth
+  改掉（∞ 列宽还会抛异常），阅读中的排版会被打乱。另建一份 FlowDocument（同一模型 + 当前开关）设置
+  可打印区域的 PageSize / 有限列宽再分页打印；取消 / 没打印机只写状态栏。
+- ⚠ **HTML 导出是安全边界**：用户文档里的 `<script>`、引号、`&` 必须转义（不能直接拼标签）；超链接只放行
+  http / https / mailto，图片走 base64 data URI 并设总体积上限，否则一个大文档能把内存打满。
+- ⚠ **Excel「显示公式」是纯显示层**：不要为它克隆整张表的单元格（5000 × 200 会爆内存）；用单元格模板
+  MultiBinding(单元格, `ShowFormulas`) + 纯函数取文本，主表 / 冻结行表共用模板即可同时生效，不要重建列或重置选中。
+- ⚠ **Excel 超链接要按「工作表自己的 rels」解析**：`xl/worksheets/_rels/sheetN.xml.rels`（不是 workbook 的）；
+  `location` 支持 `A1` / `Sheet!A1` / `'我的 表'!B2` 与前导 `#`，区域取左上角；外部 URL 打开前必须过协议白名单
+  （http / https / mailto），`file:` / `javascript:` / `data:` 一律拒绝，不要直接 `Process.Start` 用户给的任意字符串。
+- ⚠ **行列标题高亮只能操作已生成出来的 header 容器**：`DataGridRowHeader` / `DataGridColumnHeader` 在虚拟化下
+  随时被回收，`LoadingRow` / 横向滚动 / 切换选中后都要按当前选中重新套一遍，切换 / 换表时先 `ClearValue` 恢复
+  表头样式，否则会残留或整列变蓝；颜色从主题 `AccentBrush` 取并克隆加透明度，别写死。
 

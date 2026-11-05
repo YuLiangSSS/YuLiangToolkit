@@ -27,6 +27,12 @@ public static class WordDocumentParser
     /// <summary>脚注 / 尾注各最多解析多少条（正常文档远小于这个数；防畸形文件刷出几万条）。</summary>
     private const int MaxNotes = 300;
 
+    /// <summary>批注最多解析多少条（超出省略并写说明；面板本来也显示不下几千条）。</summary>
+    public const int MaxComments = 500;
+
+    /// <summary>单条批注纯文本最多保留多少字符（超出截断并写说明，防止单条批注把内存撑爆）。</summary>
+    public const int MaxCommentTextLength = 20000;
+
     private static readonly XNamespace W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
     private static readonly XNamespace R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
     private static readonly XNamespace A = "http://schemas.openxmlformats.org/drawingml/2006/main";
@@ -114,6 +120,13 @@ public static class WordDocumentParser
         ParseNotesPart(package, "word/footnotes.xml", context, document.FootnoteList);
         ParseNotesPart(package, "word/endnotes.xml", context, document.EndnoteList);
         AssignNoteNumbers(document);
+
+        // 批注：正文里的 commentRangeStart/End/Reference 在解析正文时已经记到 run 上，
+        // 这里再解析 comments.xml 并把「批注 → 起始块下标 / 显示序号」补上。
+        ParseCommentsPart(package, context);
+        AssignCommentAnchors(document);
+        AssignCommentNumbers(document);
+        CountRevisions(document);
 
         return document;
     }
@@ -399,6 +412,220 @@ public static class WordDocumentParser
             note.Number = next++;
         notes.Sort((left, right) => left.Number.CompareTo(right.Number));
     }
+
+    // ---------- 批注 ----------
+
+    /// <summary>
+    /// 找批注部件 <c>word/comments.xml</c>：优先按主文档关系表里 <c>/comments</c> 类型的关系解析，
+    /// 关系缺失时退回约定俗成的 <c>word/comments.xml</c>。都不存在返回空串（正文照常打开）。
+    /// </summary>
+    private static string ResolveCommentsPart(OoxmlPackage package, ParseContext context)
+    {
+        foreach (var relationship in context.DocumentRelationships.Values)
+        {
+            if (relationship.IsExternal) continue;
+            if (!relationship.Type.EndsWith("/comments", StringComparison.OrdinalIgnoreCase)) continue;
+            if (package.Contains(relationship.Target)) return relationship.Target;
+        }
+
+        return package.Contains("word/comments.xml") ? "word/comments.xml" : "";
+    }
+
+    /// <summary>
+    /// 解析批注部件：每一条 <c>w:comment</c> 的 <c>w:author</c> / <c>w:date</c> / <c>w:initials</c>
+    /// 与内容块（段落 / 表格，复用正文块解析）。部件缺失 / 坏 XML 时静默跳过，正文里的区间与引用标记照常保留。
+    /// <para><b>不计入正文统计</b>：批注块用 <see cref="ParseContext.RunInOtherPart"/> 解析，
+    /// 段落数 / 表格数 / 图片数不会因为批注而变化。</para>
+    /// </summary>
+    private static void ParseCommentsPart(OoxmlPackage package, ParseContext context)
+    {
+        var partName = ResolveCommentsPart(package, context);
+        if (partName.Length == 0) return;
+
+        var xml = package.TryReadXml(partName);
+        if (xml?.Root is null) return;
+
+        var relationships = ReadPartRelationships(package, partName);
+        var target = context.Document.CommentList;
+
+        context.RunInOtherPart(partName, relationships, () =>
+        {
+            foreach (var commentElement in xml.Root.Elements())
+            {
+                if (commentElement.Name.LocalName != "comment") continue;
+
+                var id = ReadInt((string?)commentElement.Attribute(W + "id"));
+                if (id is null) continue;
+                if (target.Any(existing => existing.Id == id.Value)) continue;
+
+                if (target.Count >= MaxComments)
+                {
+                    context.NoteOnce($"说明：批注超过安全上限（{MaxComments} 条），后面的已省略");
+                    break;
+                }
+
+                var comment = new WordComment
+                {
+                    Id = id.Value,
+                    Author = ((string?)commentElement.Attribute(W + "author"))?.Trim() ?? "",
+                    Initials = ((string?)commentElement.Attribute(W + "initials"))?.Trim() ?? "",
+                    DateUtc = ParseUtcDate((string?)commentElement.Attribute(W + "date")),
+                };
+
+                foreach (var child in commentElement.Elements())
+                {
+                    if (child.Name.LocalName is "p" or "tbl" or "sdt")
+                        ParseBlockElement(child, comment.Blocks, context);
+                }
+
+                // 面板只显示文字：批注里的图片不保留（省内存，也避免面板里出现一大张图）
+                comment.Blocks.RemoveAll(block => block is WordImageBlock);
+
+                var text = BuildCommentPlainText(comment.Blocks);
+                if (text.Length > MaxCommentTextLength)
+                {
+                    text = text[..MaxCommentTextLength] + "\n…（批注内容过长，后面的已省略）";
+                    comment.IsTextTruncated = true;
+                    context.NoteOnce($"说明：单条批注超过 {MaxCommentTextLength} 字，已截断显示");
+                }
+
+                comment.Text = text;
+                target.Add(comment);   // 空内容的批注也保留（作者 / 时间本身也是信息）
+            }
+        });
+    }
+
+    /// <summary>把批注内容块拼成纯文本（段落一段一行，表格按「单元格 \t」、行之间换行）。</summary>
+    private static string BuildCommentPlainText(IReadOnlyList<WordBlock> blocks)
+    {
+        var builder = new System.Text.StringBuilder();
+
+        void AppendLine(string line)
+        {
+            if (line.Trim().Length == 0) return;
+            if (builder.Length > 0) builder.Append('\n');
+            builder.Append(line);
+        }
+
+        foreach (var block in blocks)
+        {
+            switch (block)
+            {
+                case WordParagraphBlock paragraph:
+                    AppendLine(paragraph.Text);
+                    break;
+
+                case WordTableBlock table:
+                    foreach (var row in table.Rows)
+                    {
+                        var cells = row.Cells
+                            .Where(cell => !cell.IsMergedContinuation)
+                            .Select(cell => string.Join(' ', cell.Blocks.OfType<WordParagraphBlock>()
+                                .Select(paragraph => paragraph.Text.Trim())
+                                .Where(text => text.Length > 0)));
+                        AppendLine(string.Join('\t', cells));
+                    }
+
+                    break;
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>
+    /// 把正文里的批注区间起点 / 引用位置映射成「批注 → 起始块下标」：
+    /// 段落直接用自己的块下标；表格单元格里的批注统一指到**表格块**（面板跳转只要求滚到那块）。
+    /// 只在第一次找到时写入（区间跨段落时取起点所在块）。
+    /// </summary>
+    private static void AssignCommentAnchors(WordDocument document)
+    {
+        if (document.CommentList.Count == 0) return;
+
+        var byId = new Dictionary<int, WordComment>();
+        foreach (var comment in document.CommentList) byId.TryAdd(comment.Id, comment);
+
+        void Anchor(int commentId, int blockIndex)
+        {
+            if (byId.TryGetValue(commentId, out var comment) && comment.BlockIndex < 0)
+                comment.BlockIndex = blockIndex;
+        }
+
+        void AnchorParagraph(WordParagraphBlock paragraph, int blockIndex)
+        {
+            foreach (var commentId in paragraph.CommentStartIds) Anchor(commentId, blockIndex);
+            foreach (var run in paragraph.Runs)
+            {
+                foreach (var commentId in run.CommentReferenceIds) Anchor(commentId, blockIndex);
+            }
+        }
+
+        for (var blockIndex = 0; blockIndex < document.Blocks.Count; blockIndex++)
+        {
+            switch (document.Blocks[blockIndex])
+            {
+                case WordParagraphBlock paragraph:
+                    AnchorParagraph(paragraph, blockIndex);
+                    break;
+
+                case WordTableBlock table:
+                    foreach (var row in table.Rows)
+                    {
+                        foreach (var cell in row.Cells)
+                        {
+                            foreach (var child in cell.Blocks.OfType<WordParagraphBlock>())
+                                AnchorParagraph(child, blockIndex);
+                        }
+                    }
+
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 给批注编显示序号：先按「被批注正文出现的先后」排（同一块内按原始 id），
+    /// 没有正文位置的批注排在最后。和脚注一样，编号是给人看的，不是 <c>w:id</c>。
+    /// </summary>
+    private static void AssignCommentNumbers(WordDocument document)
+    {
+        var ordered = document.CommentList
+            .OrderBy(comment => comment.BlockIndex >= 0 ? comment.BlockIndex : int.MaxValue)
+            .ThenBy(comment => comment.Id)
+            .ToList();
+
+        for (var index = 0; index < ordered.Count; index++) ordered[index].Number = index + 1;
+
+        // 列表也按显示序号排好：面板 / 其它消费方拿 Comments 时就是「批注 1、批注 2…」的顺序
+        document.CommentList.Sort((left, right) => left.Number.CompareTo(right.Number));
+    }
+
+    /// <summary>统计修订：只数有文字的 run（插入 / 删除各多少「处」），状态栏与摘要用。</summary>
+    private static void CountRevisions(WordDocument document)
+    {
+        var inserted = 0;
+        var deleted = 0;
+        foreach (var run in EnumerateRuns(document.BlockList))
+        {
+            if (run.Text.Length == 0) continue;
+            if (run.Revision == WordRevisionKind.Inserted) inserted++;
+            else if (run.Revision == WordRevisionKind.Deleted) deleted++;
+        }
+
+        document.InsertedRunCount = inserted;
+        document.DeletedRunCount = deleted;
+    }
+
+    /// <summary>读修订作者（<c>w:ins/@w:author</c> / <c>w:del/@w:author</c>）；没有返回 null。</summary>
+    private static string? ReadRevisionAuthor(XElement element)
+    {
+        var author = (string?)element.Attribute(W + "author");
+        return string.IsNullOrWhiteSpace(author) ? null : author.Trim();
+    }
+
+    /// <summary>读修订时间（<c>w:ins/@w:date</c> / <c>w:del/@w:date</c>）；格式不认识返回 null。</summary>
+    private static DateTime? ReadRevisionDate(XElement element)
+        => ParseUtcDate((string?)element.Attribute(W + "date"));
 
     /// <summary>按文档顺序遍历所有段落里的 run（含表格单元格里的段落）。</summary>
     private static IEnumerable<WordRun> EnumerateRuns(IReadOnlyList<WordBlock> blocks)
@@ -809,17 +1036,25 @@ public static class WordDocumentParser
         context.Document.OutlineList.Add(new WordHeading(level, text, paragraph.Index));
     }
 
-    /// <summary>递归遍历段落的行内内容（run / 超链接 / 修订 / 域 / 内容控件）。</summary>
+    /// <summary>
+    /// 递归遍历段落的行内内容（run / 超链接 / 修订 / 备注引用 / 域 / 内容控件）。
+    /// <para><paramref name="revision"/> 是当前所处的修订上下文（<c>w:ins</c> / <c>w:del</c> 会往下传），
+    /// run 解析时记下自己的修订状态与作者 / 时间，渲染层据此决定蓝色下划线 / 红色删除线。</para>
+    /// </summary>
     private static void ParseInline(
         XElement container, WordParagraphBlock block, List<WordImageBlock> images,
-        ParseContext context, bool hyperlink, string? url, WordParagraphStyle? forcePageBreak = null)
+        ParseContext context, bool hyperlink, string? url, WordParagraphStyle? forcePageBreak = null,
+        WordRevisionKind revision = WordRevisionKind.None,
+        string? revisionAuthor = null,
+        DateTime? revisionDateUtc = null)
     {
         foreach (var element in container.Elements())
         {
             switch (element.Name.LocalName)
             {
                 case "r":
-                    ParseRun(element, block, images, context, hyperlink, url, forcePageBreak);
+                    ParseRun(element, block, images, context, hyperlink, url, forcePageBreak,
+                        revision, revisionAuthor, revisionDateUtc);
                     break;
 
                 case "hyperlink":
@@ -833,7 +1068,8 @@ public static class WordDocumentParser
                         target = relationship.Target;
                     }
 
-                    ParseInline(element, block, images, context, hyperlink: true, url: target, forcePageBreak);
+                    ParseInline(element, block, images, context, hyperlink: true, url: target, forcePageBreak,
+                        revision, revisionAuthor, revisionDateUtc);
                     break;
                 }
 
@@ -842,31 +1078,61 @@ public static class WordDocumentParser
                     var instruction = (string?)element.Attribute(W + "instr");
                     var target = ParseHyperlinkInstruction(instruction);
                     ParseInline(element, block, images, context, hyperlink: target is not null, url: target,
-                        forcePageBreak);
+                        forcePageBreak, revision, revisionAuthor, revisionDateUtc);
                     break;
                 }
 
-                case "ins":          // 修订里的「插入」保留（和 Word 显示一致）
+                case "ins":          // 修订里的「插入」：蓝色下划线显示（ShowRevisions=false 时按普通文字）
                 case "moveTo":
+                    ParseInline(element, block, images, context, hyperlink, url, forcePageBreak,
+                        WordRevisionKind.Inserted, ReadRevisionAuthor(element), ReadRevisionDate(element));
+                    break;
+
+                case "del":          // 修订里的「删除」：红色删除线显示（ShowRevisions=false 时整段不显示）
+                case "moveFrom":
+                    ParseInline(element, block, images, context, hyperlink, url, forcePageBreak,
+                        WordRevisionKind.Deleted, ReadRevisionAuthor(element), ReadRevisionDate(element));
+                    break;
+
                 case "smartTag":
                 case "customXml":
                 case "sdtContent":
-                    ParseInline(element, block, images, context, hyperlink, url, forcePageBreak);
+                    ParseInline(element, block, images, context, hyperlink, url, forcePageBreak,
+                        revision, revisionAuthor, revisionDateUtc);
                     break;
 
                 case "sdt":
                 {
                     var content = element.Element(W + "sdtContent");
                     if (content is not null)
-                        ParseInline(content, block, images, context, hyperlink, url, forcePageBreak);
+                        ParseInline(content, block, images, context, hyperlink, url, forcePageBreak,
+                            revision, revisionAuthor, revisionDateUtc);
                     break;
                 }
 
-                case "del":          // 修订里的「删除」不显示
-                case "moveFrom":
+                // 批注区间：起点把 id 放进「当前生效的批注集合」，终点移除。
+                // 集合挂在解析上下文上，所以区间能跨 run / 段落（段落之间的新 run 照样被标记）。
+                case "commentRangeStart":
+                {
+                    var commentId = ReadInt((string?)element.Attribute(W + "id"));
+                    if (commentId is not null && !context.ActiveComments.Contains(commentId.Value))
+                    {
+                        context.ActiveComments.Add(commentId.Value);
+                        block.CommentStartIds.Add(commentId.Value);
+                    }
+
+                    break;
+                }
+
+                case "commentRangeEnd":
+                {
+                    var commentId = ReadInt((string?)element.Attribute(W + "id"));
+                    if (commentId is not null) context.ActiveComments.Remove(commentId.Value);
+                    break;
+                }
+
                 case "pPr":
                 case "instrText":    // 域代码本身不显示（域结果在 w:t 里）
-                case "delText":
                 case "bookmarkStart":
                 case "bookmarkEnd":
                 case "proofErr":
@@ -875,7 +1141,8 @@ public static class WordDocumentParser
                 default:
                     // 不认识的容器（AlternateContent 等）如果里面还有 run，就继续展开
                     if (element.Elements().Any(child => child.Name.LocalName is "r" or "hyperlink" or "sdt"))
-                        ParseInline(element, block, images, context, hyperlink, url, forcePageBreak);
+                        ParseInline(element, block, images, context, hyperlink, url, forcePageBreak,
+                            revision, revisionAuthor, revisionDateUtc);
                     break;
             }
         }
@@ -883,15 +1150,22 @@ public static class WordDocumentParser
 
     private static void ParseRun(
         XElement runElement, WordParagraphBlock block, List<WordImageBlock> images,
-        ParseContext context, bool hyperlink, string? url, WordParagraphStyle? forcePageBreak)
+        ParseContext context, bool hyperlink, string? url, WordParagraphStyle? forcePageBreak,
+        WordRevisionKind revision = WordRevisionKind.None,
+        string? revisionAuthor = null,
+        DateTime? revisionDateUtc = null)
     {
         var properties = runElement.Element(W + "rPr");
         var text = new System.Text.StringBuilder();
         var hasPageBreak = false;
+        var deleted = revision == WordRevisionKind.Deleted;
 
         // 脚注 / 尾注引用：引用本身不占正文文字，只记下 w:id，编号在正文全部解析完后统一分配
         int? footnoteId = null;
         int? endnoteId = null;
+
+        // 批注引用（w:commentReference）：通常是一个没有文字的 run，渲染器据此补「[批注 N]」上标
+        var commentReferenceIds = new List<int>();
 
         foreach (var child in runElement.Elements())
         {
@@ -904,12 +1178,27 @@ public static class WordDocumentParser
                 case "endnoteReference":
                     endnoteId = ReadInt((string?)child.Attribute(W + "id"));
                     break;
+
                 case "t":
-                    text.Append(child.Value);
+                    // 修订「删除」的文字在 w:delText 里；w:t 只属于正常文字 / 修订「插入」
+                    if (!deleted) text.Append(child.Value);
                     break;
 
+                case "delText":
+                    // w:del 里的文字：ShowRevisions=true 时用红色删除线显示，false 时整段不显示
+                    if (deleted) text.Append(child.Value);
+                    break;
+
+                case "commentReference":
+                {
+                    var commentId = ReadInt((string?)child.Attribute(W + "id"));
+                    if (commentId is not null && !commentReferenceIds.Contains(commentId.Value))
+                        commentReferenceIds.Add(commentId.Value);
+                    break;
+                }
+
                 case "tab":
-                    text.Append('\t');
+                    if (!deleted) text.Append('\t');
                     break;
 
                 case "br":
@@ -917,40 +1206,40 @@ public static class WordDocumentParser
                     // 分页符：在段落上标记「段前分页」；普通换行当软回车
                     if (string.Equals((string?)child.Attribute(W + "type"), "page", StringComparison.OrdinalIgnoreCase))
                         hasPageBreak = true;
-                    else
+                    else if (!deleted)
                         text.Append('\n');
                     break;
                 }
 
                 case "cr":
-                    text.Append('\n');
+                    if (!deleted) text.Append('\n');
                     break;
 
                 case "noBreakHyphen":
-                    text.Append('-');
+                    if (!deleted) text.Append('-');
                     break;
 
                 case "drawing":
-                    TryAddDrawing(child, images, context);
+                    // 删除内容里的图片不显示（ShowRevisions=false 时整段都不在，true 时也不还原图片）
+                    if (!deleted) TryAddDrawing(child, images, context);
                     break;
 
                 case "pict":
-                    TryAddVmlImage(child, images, context);
+                    if (!deleted) TryAddVmlImage(child, images, context);
                     break;
 
                 case "AlternateContent":
                 {
+                    if (deleted) break;
                     foreach (var drawing in child.Descendants(W + "drawing")) TryAddDrawing(drawing, images, context);
                     foreach (var pict in child.Descendants(W + "pict")) TryAddVmlImage(pict, images, context);
                     break;
                 }
 
-                // 旧格式的嵌入对象 / 批注引用 / 域字符：不支持，跳过
+                // 旧格式的嵌入对象 / 域字符：不支持，跳过
                 case "instrText":
-                case "delText":
                 case "fldChar":
                 case "object":
-                case "commentReference":
                 case "sym":
                 case "softHyphen":
                     break;
@@ -959,14 +1248,14 @@ public static class WordDocumentParser
 
         if (hasPageBreak && forcePageBreak is not null) forcePageBreak.IsPageBreakBefore = true;
 
-        // 只有脚注 / 尾注引用的 run 没有文字，但必须在模型里留一个 run（渲染器据此补 [n] 上标）
+        // 只有脚注 / 尾注引用、批注引用的 run 没有文字，但必须在模型里留一个 run（渲染器据此补标记）
         var hasNoteReference = footnoteId is >= 1 || endnoteId is >= 1;
-        if (text.Length == 0 && !hasNoteReference) return;
+        if (text.Length == 0 && !hasNoteReference && commentReferenceIds.Count == 0) return;
 
         // w:sz 是「半点」：28 → 14 磅
         var halfPoints = ReadInt((string?)properties?.Element(W + "sz")?.Attribute(W + "val"));
 
-        block.Runs.Add(new WordRun
+        var run = new WordRun
         {
             Text = text.ToString(),
             Bold = GetOnOff(properties?.Element(W + "b")),
@@ -985,7 +1274,16 @@ public static class WordDocumentParser
             HighlightHex = MapHighlight((string?)properties?.Element(W + "highlight")?.Attribute(W + "val")),
             FootnoteId = footnoteId is >= 1 ? footnoteId : null,
             EndnoteId = endnoteId is >= 1 ? endnoteId : null,
-        });
+            Revision = revision,
+            RevisionAuthor = revision == WordRevisionKind.None ? null : revisionAuthor,
+            RevisionDateUtc = revision == WordRevisionKind.None ? null : revisionDateUtc,
+        };
+
+        // 当前生效的批注区间：区间从前面段落一直延续到这里，所以整截文字都算被批注
+        foreach (var commentId in context.ActiveComments) run.CommentIds.Add(commentId);
+        run.CommentReferenceIds.AddRange(commentReferenceIds);
+
+        block.Runs.Add(run);
     }
 
     // ---------- 图片 ----------
@@ -1291,6 +1589,12 @@ public static class WordDocumentParser
 
         /// <summary>同级同 numId 的编号计数器。</summary>
         public Dictionary<string, Dictionary<int, int>> NumberingCounters { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// 当前生效的批注区间（<c>w:commentRangeStart</c> 加、<c>w:commentRangeEnd</c> 减）。
+        /// 挂在上下文上而不是段落上，区间才能跨 run / 段落继续生效。
+        /// </summary>
+        public List<int> ActiveComments { get; } = new();
 
         /// <summary>已解析的单元格总数（安全上限用）。</summary>
         public int TableCellCount { get; set; }

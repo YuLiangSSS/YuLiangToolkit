@@ -77,13 +77,14 @@ public sealed class ExcelRecentItem
 }
 
 /// <summary>
-/// 选中单元格后显示在状态栏的信息（地址 / 显示值 / 原始值 / 公式 / 格式）。
+/// 选中单元格后显示在状态栏的信息（地址 / 显示值 / 原始值 / 公式 / 超链接 / 格式）。
 /// <para>不可变对象：每次选格新建一个，界面绑定不会出现「一半旧值一半新值」。</para>
 /// </summary>
 public sealed class ExcelCellSelection
 {
     public ExcelCellSelection(string address, string displayText, string rawValue,
-        string? formula, string formatText, bool isMergedAnchor, bool isMergedCovered)
+        string? formula, string formatText, bool isMergedAnchor, bool isMergedCovered,
+        ExcelHyperlink? hyperlink = null)
     {
         Address = address;
         DisplayText = displayText;
@@ -92,6 +93,7 @@ public sealed class ExcelCellSelection
         FormatText = formatText;
         IsMergedAnchor = isMergedAnchor;
         IsMergedCovered = isMergedCovered;
+        Hyperlink = hyperlink;
     }
 
     /// <summary>单元格地址，例如 <c>B12</c>。</summary>
@@ -115,6 +117,9 @@ public sealed class ExcelCellSelection
     /// <summary>是否被合并区域覆盖（内容显示为空）。</summary>
     public bool IsMergedCovered { get; }
 
+    /// <summary>这一格的超链接（没有为 null）；状态栏会显示链接地址，双击可打开 / 跳转。</summary>
+    public ExcelHyperlink? Hyperlink { get; }
+
     /// <summary>拼给状态栏的一行文字。</summary>
     public string SummaryText
     {
@@ -130,6 +135,8 @@ public sealed class ExcelCellSelection
 
             if (!string.IsNullOrEmpty(Formula))
                 parts.Add($"公式：={Formula}（只显示缓存值，不计算）");
+
+            if (Hyperlink is not null) parts.Add(Hyperlink.StatusText);
 
             if (!string.IsNullOrEmpty(FormatText))
                 parts.Add($"格式：{FormatText}");

@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using YuLiangToolkit.Tools.WordViewer.Parsing;
@@ -52,6 +53,7 @@ public partial class WordViewerView : UserControl
 
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         _viewModel.ScrollRatioProvider = CaptureScrollRatio;
+        _viewModel.CenterBlockProvider = CenterBlockInViewer;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -59,8 +61,9 @@ public partial class WordViewerView : UserControl
         _viewModel ??= DataContext as WordViewerViewModel;
         if (_viewModel is null) return;
 
-        // 视图被外壳缓存后重新挂回来时，仍要把「读滚动比例」的能力接上
+        // 视图被外壳缓存后重新挂回来时，仍要把「读滚动比例 / 居中跳转」的能力接上
         _viewModel.ScrollRatioProvider = CaptureScrollRatio;
+        _viewModel.CenterBlockProvider = CenterBlockInViewer;
         _documentScrollViewer = null;   // 模板可能被重建，下次用到时重新找
 
         // 开发 / 截图用：YLT_WORD_OPEN 指定的文档只自动打开一次
@@ -121,6 +124,40 @@ public partial class WordViewerView : UserControl
         var scrollable = scrollViewer.ScrollableHeight;
         if (scrollable <= 0.5) return null;
         return Math.Clamp(scrollViewer.VerticalOffset / scrollable, 0, 1);
+    }
+
+    /// <summary>
+    /// 把某个块尽量滚到**窗口中间**（批注面板点击跳转用）：
+    /// 先 <c>BringIntoView</c> 保证可见，再按该段起始字符的文档坐标把视口中心对过去。
+    /// 表格 / 图片块也支持（<see cref="TextElement.ContentStart"/> 是 <see cref="Block"/> 的公共成员）；
+    /// 取不到坐标时退回「只滚到可见」，返回 <c>false</c> 让 ViewModel 的状态栏措辞更准确。
+    /// </summary>
+    private bool CenterBlockInViewer(int blockIndex)
+    {
+        var block = ViewModel?.GetRenderedBlock(blockIndex);
+        var scrollViewer = GetDocumentScrollViewer();
+        if (block is null || scrollViewer is null) return false;
+
+        try
+        {
+            block.BringIntoView();
+            if (block is not TextElement element) return false;
+
+            var rect = element.ContentStart.GetCharacterRect(LogicalDirection.Forward);
+            if (rect.IsEmpty || scrollViewer.ViewportHeight <= 0) return false;
+
+            // GetCharacterRect 给的是文档内容坐标；把它和当前偏移相加，让这段文字落在视口中间
+            var target = scrollViewer.VerticalOffset + rect.Top - scrollViewer.ViewportHeight / 2;
+            if (double.IsNaN(target) || double.IsInfinity(target)) return false;
+
+            scrollViewer.ScrollToVerticalOffset(Math.Max(0, target));
+            return true;
+        }
+        catch
+        {
+            // 布局还没完成 / 元素已被换掉：居中失败不影响跳转本身
+            return false;
+        }
     }
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -290,5 +327,38 @@ public partial class WordViewerView : UserControl
         if (ViewModel is null) return;
         if ((sender as FrameworkElement)?.DataContext is not WordOutlineItem item) return;
         ViewModel.BringBlockIntoView(item.BlockIndex);
+    }
+
+    // ---------------------------------------------------------------- 批注面板 / 打印 / 导出
+
+    /// <summary>点批注面板里的一条：跳正文 + 尽量居中（具体滚动在 <see cref="CenterBlockInViewer"/>）。</summary>
+    private void OnCommentItemClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel is null) return;
+        if ((sender as FrameworkElement)?.DataContext is not WordCommentItem item) return;
+        ViewModel.BringCommentIntoView(item);
+    }
+
+    /// <summary>
+    /// 「导出…」按钮左键也弹菜单（默认只有右键会开 ContextMenu）。菜单项自己带 Click，
+    /// 不依赖 ContextMenu 继承 DataContext（ContextMenu 不在可视树里，绑定容易踩空）。
+    /// </summary>
+    private void OnExportButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button || button.ContextMenu is null) return;
+        button.ContextMenu.PlacementTarget = button;
+        button.ContextMenu.IsOpen = true;
+    }
+
+    private void OnExportHtmlClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel is null) return;
+        _ = ViewModel.ExportHtmlAsync();
+    }
+
+    private void OnExportPlainTextClick(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel is null) return;
+        _ = ViewModel.ExportPlainTextAsync();
     }
 }

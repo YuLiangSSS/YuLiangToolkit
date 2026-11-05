@@ -64,6 +64,17 @@ public partial class ExcelViewerView : UserControl
     private double? _restoreRatio;
     private int _restoreTries;
 
+    // ---------- 行列标题高亮状态 ----------
+    /// <summary>当前选中的行 / 列（1 基坐标的模型对象；切换选中时用来清上一处高亮）。</summary>
+    private ExcelRow? _selectedRow;
+    private ExcelColumn? _selectedColumn;
+    private DataGridColumn? _selectedGridColumn;
+
+    /// <summary>当前被改成高亮样式的表头容器（清高亮时直接对它们 ClearValue，恢复主题样式）。</summary>
+    private DataGridRowHeader? _highlightedRowHeader;
+    private DataGridRowHeader? _highlightedFrozenRowHeader;
+    private DataGridColumnHeader? _highlightedColumnHeader;
+
     public ExcelViewerView()
     {
         InitializeComponent();
@@ -87,6 +98,7 @@ public partial class ExcelViewerView : UserControl
             _viewModel.FreezeLayoutChanged -= OnFreezeLayoutChanged;
             _viewModel.RowHeightChanged -= OnRowHeightChanged;
             _viewModel.SearchNavigateRequested -= OnSearchNavigateRequested;
+            _viewModel.CellNavigateRequested -= OnCellNavigateRequested;
         }
 
         _viewModel = DataContext as ExcelViewerViewModel;
@@ -97,6 +109,7 @@ public partial class ExcelViewerView : UserControl
             _viewModel.FreezeLayoutChanged += OnFreezeLayoutChanged;
             _viewModel.RowHeightChanged += OnRowHeightChanged;
             _viewModel.SearchNavigateRequested += OnSearchNavigateRequested;
+            _viewModel.CellNavigateRequested += OnCellNavigateRequested;
             RebuildColumns();   // 视图被缓存后切回来时，列可能已经没了：这里恢复一次
         }
         else
@@ -109,6 +122,7 @@ public partial class ExcelViewerView : UserControl
             FrozenGrid.Columns.Clear();
             FrozenGrid.ItemsSource = null;
             FrozenHost.Visibility = Visibility.Collapsed;
+            ResetHeaderHighlightState();
         }
     }
 
@@ -118,6 +132,7 @@ public partial class ExcelViewerView : UserControl
     {
         ApplyFreezeLayout();
         UpdateFrozenMaxHeight();
+        ApplyHeaderHighlight();   // 冻结行表刚换了 ItemsSource：选中的行如果在冻结区，行号头要跟着高亮
     }
 
     private void OnRowHeightChanged(object? sender, EventArgs e) => ApplyRowHeightSettings();
@@ -128,6 +143,9 @@ public partial class ExcelViewerView : UserControl
     private void RebuildColumns()
     {
         var previousSheet = _layoutSheet;
+
+        // 列要重建 → 旧的表头容器都会消失：先把高亮状态清掉，避免引用已废弃的容器
+        ResetHeaderHighlightState();
 
         SheetGrid.Columns.Clear();
         FrozenGrid.Columns.Clear();
@@ -273,13 +291,36 @@ public partial class ExcelViewerView : UserControl
     /// <summary>
     /// 行头显示 Excel 原始行号（隐藏行被跳过，行号会跳号，不能拿列表下标当行号）；
     /// 同时按配置设置行高。两张表共用这个处理器，保证同一行高度一致。
+    /// <para>Recycling 模式下同一行容器会复用，所以行头高亮也在这里重新挂一次 Loaded：
+    /// 容器生成完才能拿到 <see cref="DataGridRowHeader"/>，滚动 / 复用后也不会残留上一行的高亮。</para>
     /// </summary>
     private void OnLoadingRow(object? sender, DataGridRowEventArgs e)
     {
         if (e.Row.Item is not ExcelRow row) return;
         e.Row.Header = row.RowIndex;
         ApplyRowHeight(e.Row, row);
+
+        // 先摘再挂：同一个容器被复用时避免重复订阅
+        e.Row.Loaded -= OnRowContainerLoaded;
+        e.Row.Loaded += OnRowContainerLoaded;
     }
+
+    /// <summary>行容器加载完成：行号头已经生成，按当前选中行决定要不要高亮（滚动复用后不残留）。</summary>
+    private void OnRowContainerLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not DataGridRow container || container.Item is not ExcelRow row) return;
+
+        var grid = FindAncestor<DataGrid>(container);
+        if (grid is null) return;
+
+        if (FindVisualChild<DataGridRowHeader>(container) is not { } header) return;
+
+        if (IsSelectedRow(row)) SetHeaderHighlight(header);
+        else ClearHeaderHighlight(header);
+    }
+
+    /// <summary>这一行是不是当前选中的行（行号相同；冻结行表与主表共用同一个 ExcelRow 实例）。</summary>
+    private bool IsSelectedRow(ExcelRow row) => _selectedRow is not null && _selectedRow.RowIndex == row.RowIndex;
 
     /// <summary>
     /// 自动行高开：有 ht 用 ht（夹 18 ~ 180），没有就交给内容自动撑高（NaN）；
@@ -325,15 +366,23 @@ public partial class ExcelViewerView : UserControl
         }
     }
 
-    /// <summary>选中单元格变化 → 通知 ViewModel 更新状态栏（地址 / 值 / 公式 / 格式）。</summary>
+    /// <summary>
+    /// 选中单元格变化 → 通知 ViewModel 更新状态栏（地址 / 值 / 公式 / 链接 / 格式），
+    /// 同时把该行行号头与列字母头高亮（切换选中会清掉上一处）。
+    /// </summary>
     private void OnSelectedCellsChanged(object? sender, SelectedCellsChangedEventArgs e)
     {
-        if (_viewModel is null) return;
+        if (_viewModel is null)
+        {
+            SetSelection(null, null, null);
+            return;
+        }
 
         var selected = SheetGrid.SelectedCells.FirstOrDefault();
         if (selected.Item is not ExcelRow row || selected.Column is null)
         {
             _viewModel.SelectCell(null);
+            SetSelection(null, null, null);
             return;
         }
 
@@ -341,6 +390,7 @@ public partial class ExcelViewerView : UserControl
         if (displayIndex < 0 || displayIndex >= _visibleColumns.Count)
         {
             _viewModel.SelectCell(null);
+            SetSelection(null, null, null);
             return;
         }
 
@@ -349,10 +399,22 @@ public partial class ExcelViewerView : UserControl
         if (cellIndex < 0 || cellIndex >= row.Cells.Count)
         {
             _viewModel.SelectCell(null);
+            SetSelection(null, null, null);
             return;
         }
 
         _viewModel.SelectCell(row.Cells[cellIndex]);
+        SetSelection(row, excelColumn, selected.Column);
+    }
+
+    /// <summary>记录当前选中的行 / 列并刷新表头高亮（传 null 表示清空选择）。</summary>
+    private void SetSelection(ExcelRow? row, ExcelColumn? column, DataGridColumn? gridColumn)
+    {
+        _selectedRow = row;
+        _selectedColumn = column;
+        _selectedGridColumn = gridColumn;
+
+        ApplyHeaderHighlight();
     }
 
     // ---------------------------------------------------------------- 右键菜单
@@ -375,26 +437,44 @@ public partial class ExcelViewerView : UserControl
         cell.Focus();
     }
 
-    // ---------------------------------------------------------------- 查找跳转
+    // ---------------------------------------------------------------- 查找 / 超链接跳转
 
     private void OnSearchNavigateRequested(object? sender, ExcelSearchNavigateEventArgs e)
+        => NavigateToCell(e.Hit.RowIndex, e.Hit.ColumnIndex, "命中");
+
+    /// <summary>
+    /// 内部超链接 / YLT_EXCEL_SELECT 触发的定位：工作表已经切好，等布局完成后滚到目标格并选中。
+    /// </summary>
+    private void OnCellNavigateRequested(object? sender, ExcelCellNavigateEventArgs e)
+    {
+        var rowIndex = e.RowIndex;
+        var columnIndex = e.ColumnIndex;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded,
+            new Action(() => NavigateToCell(rowIndex, columnIndex, "目标单元格")));
+    }
+
+    /// <summary>
+    /// 把指定 Excel 坐标（1 基）滚入视野并选中；找不到（隐藏行 / 截断 / 隐藏列）时只给状态栏提示。
+    /// 查找命中、内部超链接、截图自动选中都走这里，保证行为一致。
+    /// </summary>
+    private void NavigateToCell(int rowIndex, int columnIndex, string targetName)
     {
         var sheet = _viewModel?.CurrentSheet;
         if (sheet is null) return;
 
-        var row = sheet.Rows.FirstOrDefault(item => item.RowIndex == e.Hit.RowIndex);
+        var row = sheet.Rows.FirstOrDefault(item => item.RowIndex == rowIndex);
         if (row is null)
         {
-            _viewModel?.NoteNavigationFailed("命中行已被隐藏或截断，无法定位");
+            _viewModel?.NoteNavigationFailed($"{targetName}所在的行已被隐藏或截断，无法定位");
             return;
         }
 
-        var displayIndex = _visibleColumns.FindIndex(column => column.ColumnIndex == e.Hit.ColumnIndex);
+        var displayIndex = _visibleColumns.FindIndex(column => column.ColumnIndex == columnIndex);
         if (displayIndex < 0 || displayIndex >= SheetGrid.Columns.Count)
         {
             SheetGrid.ScrollIntoView(row);
             _viewModel?.NoteNavigationFailed(
-                $"命中在隐藏列 {ExcelAddresses.ColumnName(e.Hit.ColumnIndex)}，这条列不显示");
+                $"{targetName}在隐藏列 {ExcelAddresses.ColumnName(columnIndex)}，这条列不显示");
             return;
         }
 
@@ -416,10 +496,157 @@ public partial class ExcelViewerView : UserControl
 
         SheetGrid.Focus();
 
-        // 状态栏地址 / 值同步：即使容器还没生成，也先让 ViewModel 拿到选中格信息
-        var cellIndex = e.Hit.ColumnIndex - 1;
+        // 状态栏地址 / 值同步 + 行列标题高亮：即使容器还没生成，也先按模型更新
+        var cellIndex = columnIndex - 1;
         if (cellIndex >= 0 && cellIndex < row.Cells.Count) _viewModel?.SelectCell(row.Cells[cellIndex]);
+        SetSelection(row, _visibleColumns[displayIndex], column);
     }
+
+    // ---------------------------------------------------------------- 双击打开超链接
+
+    /// <summary>
+    /// 双击带链接的单元格：交给 ViewModel 处理（外部链接过协议白名单后打开，内部链接切表 + 定位）。
+    /// 不含链接的格子双击保持原样（仍然只是选中，没有编辑入口）。
+    /// </summary>
+    private void OnSheetGridMouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (_viewModel is null) return;
+
+        var cellControl = FindAncestor<DataGridCell>(e.OriginalSource as DependencyObject);
+        if (cellControl?.Column is null || cellControl.DataContext is not ExcelRow row) return;
+
+        var displayIndex = SheetGrid.Columns.IndexOf(cellControl.Column);
+        if (displayIndex < 0 || displayIndex >= _visibleColumns.Count) return;
+
+        var cellIndex = _visibleColumns[displayIndex].ColumnIndex - 1;
+        if (cellIndex < 0 || cellIndex >= row.Cells.Count) return;
+
+        var cell = row.Cells[cellIndex];
+        if (cell.Hyperlink is null) return;
+
+        e.Handled = true;
+        _viewModel.ActivateCellHyperlink(cell);
+    }
+
+    // ---------------------------------------------------------------- 行列标题高亮
+
+    /// <summary>只给一个已经生成的行号头设置高亮（行容器生成 / 滚动复用后按当前选中重设）。</summary>
+    private void SetHeaderHighlight(Control header)
+    {
+        var background = GetHeaderHighlightBackground();
+        var foreground = GetHeaderHighlightForeground();
+        if (background is null || foreground is null) return;
+
+        header.Background = background;
+        header.Foreground = foreground;
+    }
+
+    /// <summary>
+    /// 按当前选中行 / 列高亮表头：
+    /// <list type="bullet">
+    ///   <item>列字母头（主表）→ 该列高亮；</item>
+    ///   <item>行号头（主表）→ 该行高亮；</item>
+    ///   <item>冻结行表如果显示着同一行，它的行号头也高亮（它在主表行号头上叠着）。</item>
+    /// </list>
+    /// 只改已生成的表头容器的 Background / Foreground（从主题 <c>AccentBrush</c> 克隆），
+    /// 不重建整张表；切换选中时对旧容器 <c>ClearValue</c>，让它回到表头样式。
+    /// </summary>
+    private void ApplyHeaderHighlight()
+    {
+        var background = GetHeaderHighlightBackground();
+        var foreground = GetHeaderHighlightForeground();
+        if (background is null || foreground is null) return;   // 主题里没有 AccentBrush 时不做高亮（不写死颜色）
+
+        // 主表的行号头
+        DataGridRowHeader? mainRowHeader = null;
+        if (_selectedRow is not null
+            && SheetGrid.ItemContainerGenerator.ContainerFromItem(_selectedRow) is DataGridRow mainContainer)
+        {
+            mainRowHeader = FindVisualChild<DataGridRowHeader>(mainContainer);
+        }
+
+        ReplaceHighlightedHeader(ref _highlightedRowHeader, mainRowHeader, background, foreground);
+
+        // 冻结行表的行号头：选中的行在冻结区时才处理（冻结表在数据区顶部叠一层）
+        DataGridRowHeader? frozenRowHeader = null;
+        if (_selectedRow is not null
+            && FrozenHost.Visibility == Visibility.Visible
+            && FrozenGrid.ItemContainerGenerator.ContainerFromItem(_selectedRow) is DataGridRow frozenContainer)
+        {
+            frozenRowHeader = FindVisualChild<DataGridRowHeader>(frozenContainer);
+        }
+
+        ReplaceHighlightedHeader(ref _highlightedFrozenRowHeader, frozenRowHeader, background, foreground);
+
+        // 列字母头
+        DataGridColumnHeader? columnHeader = _selectedGridColumn is null
+            ? null
+            : FindColumnHeader(SheetGrid, _selectedGridColumn);
+        ReplaceHighlightedHeader(ref _highlightedColumnHeader, columnHeader, background, foreground);
+    }
+
+    /// <summary>把旧的高亮表头清掉、新的设置上（同一个容器不重复设置）。</summary>
+    private static void ReplaceHighlightedHeader<T>(ref T? previous, T? current, Brush background, Brush foreground)
+        where T : Control
+    {
+        if (ReferenceEquals(previous, current)) return;
+
+        ClearHeaderHighlight(previous);
+        previous = current;
+        if (current is null) return;
+
+        current.Background = background;
+        current.Foreground = foreground;
+    }
+
+    /// <summary>清掉某个表头容器上的高亮，让它恢复主题表头样式（等效于「没设置过局部值」）。</summary>
+    private static void ClearHeaderHighlight(Control? header)
+    {
+        if (header is null) return;
+        header.ClearValue(Control.BackgroundProperty);
+        header.ClearValue(Control.ForegroundProperty);
+    }
+
+    /// <summary>高亮背景：主题 AccentBrush 的半透明版本（约 33% 不透明度），克隆后冻结。</summary>
+    private Brush? GetHeaderHighlightBackground()
+    {
+        // 每次都从主题取：四套主题切换后，下一次刷新选中 / 滚动就会用新强调色（不缓存旧主题的画笔）
+        if (TryFindResource("AccentBrush") is not SolidColorBrush accent) return null;
+
+        var color = accent.Color;
+        var background = new SolidColorBrush(Color.FromArgb(0x55, color.R, color.G, color.B));
+        background.Freeze();
+        return background;
+    }
+
+    /// <summary>高亮前景：主题 AccentBrush（在浅色 / 深色表头上都保持对比度），克隆后冻结。</summary>
+    private Brush? GetHeaderHighlightForeground()
+    {
+        if (TryFindResource("AccentBrush") is not SolidColorBrush accent) return null;
+
+        var foreground = accent.Clone();
+        foreground.Freeze();
+        return foreground;
+    }
+
+    /// <summary>清空当前所有高亮状态（切表 / 重建列 / 清空选择时用）。</summary>
+    private void ResetHeaderHighlightState()
+    {
+        ClearHeaderHighlight(_highlightedRowHeader);
+        ClearHeaderHighlight(_highlightedFrozenRowHeader);
+        ClearHeaderHighlight(_highlightedColumnHeader);
+
+        _highlightedRowHeader = null;
+        _highlightedFrozenRowHeader = null;
+        _highlightedColumnHeader = null;
+        _selectedRow = null;
+        _selectedColumn = null;
+        _selectedGridColumn = null;
+    }
+
+    /// <summary>在 DataGrid 的可视化树里找某一列的列标题容器（列虚拟化时可能还没生成 → 返回 null，滚动后会重试）。</summary>
+    private static DataGridColumnHeader? FindColumnHeader(DataGrid grid, DataGridColumn column)
+        => FindVisualChild<DataGridColumnHeader>(grid, header => ReferenceEquals(header.Column, column));
 
     // ---------------------------------------------------------------- 滚动位置记忆 / 冻结行横向同步
 
@@ -472,6 +699,9 @@ public partial class ExcelViewerView : UserControl
         {
             _frozenScrollViewer.ScrollToHorizontalOffset(e.HorizontalOffset);
         }
+
+        // 列虚拟化时横向滚动会重建列标题容器：重新找一次，保证高亮的列字母头还亮着
+        if (Math.Abs(e.HorizontalChange) > 0.5) ApplyHeaderHighlight();
 
         // 只有纵向滚动 / 行高变化才更新阅读位置，横向滚动不用写配置
         if (Math.Abs(e.VerticalChange) < 0.0001 && Math.Abs(e.ExtentHeightChange) < 0.0001) return;
@@ -545,15 +775,25 @@ public partial class ExcelViewerView : UserControl
         e.Handled = true;
     }
 
-    // ---------------------------------------------------------------- 键盘：Ctrl+F 聚焦查找
+    // ---------------------------------------------------------------- 键盘：Ctrl+F 聚焦查找 / Ctrl+` 显示公式
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key != Key.F || Keyboard.Modifiers != ModifierKeys.Control) return;
+        if (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            SearchBox.Focus();
+            SearchBox.SelectAll();
+            e.Handled = true;
+            return;
+        }
 
-        SearchBox.Focus();
-        SearchBox.SelectAll();
-        e.Handled = true;
+        // Ctrl+`（反引号 / 波浪号键）。WPF 里 Key.Oem3 与 Key.OemTilde 是同一个值（别名），
+        // 不同键盘布局报的名字不一样，这里直接用 OemTilde 即可。
+        if (e.Key == Key.OemTilde && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            _viewModel?.ToggleShowFormulas();
+            e.Handled = true;
+        }
     }
 
     private void OnSearchBoxKeyDown(object sender, KeyEventArgs e)
@@ -606,6 +846,11 @@ public partial class ExcelViewerView : UserControl
 
     /// <summary>深度优先找第一个指定类型的孩子（DataGrid 模板里的 ScrollViewer / 单元格）。</summary>
     private static T? FindVisualChild<T>(DependencyObject? root) where T : DependencyObject
+        => FindVisualChild<T>(root, predicate: null);
+
+    /// <summary>深度优先找第一个满足条件的指定类型孩子（例如「某一列的列标题容器」）。</summary>
+    private static T? FindVisualChild<T>(DependencyObject? root, Predicate<T>? predicate)
+        where T : DependencyObject
     {
         if (root is null) return null;
 
@@ -613,9 +858,9 @@ public partial class ExcelViewerView : UserControl
         for (var index = 0; index < count; index++)
         {
             var child = VisualTreeHelper.GetChild(root, index);
-            if (child is T hit) return hit;
+            if (child is T hit && (predicate is null || predicate(hit))) return hit;
 
-            var deeper = FindVisualChild<T>(child);
+            var deeper = FindVisualChild(child, predicate);
             if (deeper is not null) return deeper;
         }
 
@@ -718,14 +963,23 @@ public sealed class ExcelCellBackgroundConverter : IValueConverter
 }
 
 /// <summary>
-/// 单元格文字颜色：有显式字体色就用它；只有填充色就按填充色自动选深 / 浅；
-/// 都没有则返回 <see cref="DependencyProperty.UnsetValue"/>（让 TextBlock 继承主题的 TextPrimaryBrush）。
+/// 单元格文字颜色：带超链接的格子用主题强调色（蓝字 + 下划线由模板里的
+/// <see cref="ExcelCellTextDecorationsConverter"/> 负责）；有显式字体色就用它；
+/// 只有填充色就按填充色自动选深 / 浅；都没有则返回 <see cref="DependencyProperty.UnsetValue"/>
+/// （让 TextBlock 继承主题的 TextPrimaryBrush）。
 /// </summary>
 public sealed class ExcelCellForegroundConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
         if (value is not ExcelCell cell) return DependencyProperty.UnsetValue;
+
+        // 超链接优先：链接文字统一用主题强调色（深色主题下仍然清晰）
+        if (cell.Hyperlink is not null)
+        {
+            return Application.Current?.TryFindResource("AccentBrush") as Brush
+                ?? DependencyProperty.UnsetValue;
+        }
 
         var explicitColor = ExcelBrushCache.FromArgb(cell.Style.FontColorArgb);
         if (explicitColor is not null && explicitColor.Color.A >= 16) return explicitColor;
@@ -743,6 +997,57 @@ public sealed class ExcelCellForegroundConverter : IValueConverter
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => Binding.DoNothing;
+}
+
+/// <summary>
+/// 带超链接的格子加下划线；普通格子返回空装饰集合（不留上一格的样式）。
+/// 链接文字颜色由 <see cref="ExcelCellForegroundConverter"/> 提供主题强调色。
+/// </summary>
+public sealed class ExcelCellTextDecorationsConverter : IValueConverter
+{
+    /// <summary>空的装饰集合 = 没有下划线（静态共享，避免每格 new）。</summary>
+    private static readonly TextDecorationCollection NoDecorations = CreateEmptyDecorations();
+
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        => value is ExcelCell { Hyperlink: not null } ? TextDecorations.Underline : NoDecorations;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => Binding.DoNothing;
+
+    private static TextDecorationCollection CreateEmptyDecorations()
+    {
+        var decorations = new TextDecorationCollection();
+        decorations.Freeze();
+        return decorations;
+    }
+}
+
+/// <summary>
+/// 「显示公式」用 MultiBinding 转换器：<c>[0]=ExcelCell</c>、<c>[1]=ShowFormulas</c>。
+/// <list type="bullet">
+///   <item>不带参数（<c>TextBlock.Text</c>）→ 显示文字：有公式且开关打开时 <c>=公式原文</c>，否则显示值；</item>
+///   <item>参数为 <c>ToolTip</c> → 悬停提示：完整公式 / 链接地址 / 很长的显示值，没有可提示内容时返回 UnsetValue（不弹空框）。</item>
+/// </list>
+/// 纯计算在 <see cref="Parsing.ExcelCellText"/> 里（自检直接断言），这里只做 WPF 桥接。
+/// </summary>
+public sealed class ExcelCellTextConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        var cell = values.Length > 0 ? values[0] as ExcelCell : null;
+        var showFormulas = values.Length > 1 && values[1] is bool flag && flag;
+
+        if (parameter is string mode && mode.Equals("ToolTip", StringComparison.Ordinal))
+        {
+            var toolTip = ExcelCellText.ToolTipFor(cell, showFormulas);
+            return toolTip is null ? DependencyProperty.UnsetValue : toolTip;
+        }
+
+        return ExcelCellText.For(cell, showFormulas);
+    }
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        => throw new NotSupportedException("单元格显示文本是只读的");
 }
 
 /// <summary>粗体 → FontWeight。</summary>

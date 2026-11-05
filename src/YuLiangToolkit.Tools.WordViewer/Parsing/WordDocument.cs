@@ -19,6 +19,23 @@ public enum WordTextAlignment
 }
 
 /// <summary>
+/// 文档里一截文字的**修订状态**（对应 <c>w:ins</c> / <c>w:del</c>）。
+/// <para>只读浏览的两种显示方式：<c>ShowRevisions = true</c> 时「插入」蓝色下划线、<c>ShowRevisions = false</c> 时
+/// 删除内容完全不显示、插入按普通文字显示（见 <c>WordRenderOptions</c>）。</para>
+/// </summary>
+public enum WordRevisionKind
+{
+    /// <summary>不是修订内容（普通正文）。</summary>
+    None = 0,
+
+    /// <summary>修订「插入」的文字（<c>w:ins</c>）。</summary>
+    Inserted = 1,
+
+    /// <summary>修订「删除」的文字（<c>w:del</c>，文字在 <c>w:delText</c> 里）。</summary>
+    Deleted = 2,
+}
+
+/// <summary>
 /// 一段文字里格式相同的一小截（≈ <c>w:r</c>）。解析时把「文字内容」和「怎么显示」分开存，
 /// 这样模型层不依赖任何 WPF 类型，自检可以在控制台里直接断言；渲染交给 <c>WordFlowRenderer</c>。
 /// </summary>
@@ -77,6 +94,33 @@ public sealed class WordRun
 
     /// <summary>尾注在正文里的显示编号（1 起）。</summary>
     public int? EndnoteNumber { get; set; }
+
+    /// <summary>
+    /// 这一截文字落在哪些**批注区间**里（<c>w:commentRangeStart</c> ~ <c>w:commentRangeEnd</c>，
+    /// 存的是批注原始的 <c>w:id</c>）。区间可以跨 run / 段落，所以一段文字可能同时属于多条批注。
+    /// </summary>
+    public List<int> CommentIds { get; } = new();
+
+    /// <summary>
+    /// 这个 run 里的批注引用（<c>w:commentReference w:id</c>）。引用 run 往往没有文字，
+    /// 渲染器会在引用处补一个上标 <c>[批注 N]</c>。
+    /// </summary>
+    public List<int> CommentReferenceIds { get; } = new();
+
+    /// <summary>这一截文字是不是修订内容（插入 / 删除）；普通正文是 <see cref="WordRevisionKind.None"/>。</summary>
+    public WordRevisionKind Revision { get; set; }
+
+    /// <summary>修订作者（<c>w:ins/@w:author</c> / <c>w:del/@w:author</c>）；没有时为空串。</summary>
+    public string? RevisionAuthor { get; set; }
+
+    /// <summary>修订时间（<c>w:ins/@w:date</c> / <c>w:del/@w:date</c>，UTC）；没有时为 <c>null</c>。</summary>
+    public DateTime? RevisionDateUtc { get; set; }
+
+    /// <summary>这一截文字是否被批注区间覆盖（渲染时加淡黄底）。</summary>
+    public bool HasCommentRange => CommentIds.Count > 0;
+
+    /// <summary>这一截文字里有没有批注引用标记。</summary>
+    public bool HasCommentReference => CommentReferenceIds.Count > 0;
 }
 
 /// <summary>
@@ -120,16 +164,24 @@ public sealed class WordParagraphBlock : WordBlock
     /// <summary>按出现顺序排列的文字片段。</summary>
     public List<WordRun> Runs { get; } = new();
 
-    /// <summary>整段纯文本（查找、大纲、复制用）。</summary>
-    public string Text
-    {
-        get
-        {
-            if (Runs.Count == 0) return "";
-            var text = string.Concat(Runs.Select(run => run.Text));
-            return text;
-        }
-    }
+    /// <summary>
+    /// 本段里出现过的批注区间起点（<c>w:commentRangeStart w:id</c>）。
+    /// 解析完正文后用它把「批注 → 起始块下标」补上（点批注面板时跳到这里）。
+    /// </summary>
+    internal List<int> CommentStartIds { get; } = new();
+
+    /// <summary>
+    /// 整段纯文本（查找、大纲、复制用）。
+    /// <para><b>不含修订里「删除」的文字</b>：那部分在 <c>ShowRevisions = false</c> 时本来就看不见，
+    /// 查找 / 复制 / 大纲统一按「用户能看到的正文」处理（插入的文字正常算进来）。
+    /// 需要连删除内容一起取时用 <see cref="TextWithDeleted"/>。</para>
+    /// </summary>
+    public string Text => string.Concat(Runs
+        .Where(run => run.Revision != WordRevisionKind.Deleted)
+        .Select(run => run.Text));
+
+    /// <summary>连修订「删除」的文字一起拼出来（调试 / 导出需要完整内容时用，界面查找不用它）。</summary>
+    public string TextWithDeleted => Runs.Count == 0 ? "" : string.Concat(Runs.Select(run => run.Text));
 }
 
 /// <summary>表格。</summary>
@@ -202,6 +254,55 @@ public sealed class WordNote
         Blocks.OfType<WordParagraphBlock>().Select(paragraph => paragraph.Text));
 }
 
+/// <summary>
+/// 一条批注（<c>word/comments.xml</c> 里的一个 <c>w:comment</c>）。
+///
+/// <para>正文里用 <c>w:commentRangeStart</c> / <c>w:commentRangeEnd</c> 圈出被批注的文字、
+/// 用 <c>w:commentReference</c> 标出引用位置；这里把批注本身的内容（块）与「正文起始块下标」存在一起，
+/// 右侧面板点击时按 <see cref="BlockIndex"/> 滚到被批注的段落。</para>
+///
+/// <para><b>上限</b>：批注条数 / 单条文字长度都有安全上限（见 <c>WordDocumentParser.MaxComments</c> /
+/// <c>MaxCommentTextLength</c>），超出会截断并把说明写进 <see cref="WordDocument.Notes"/>。</para>
+/// </summary>
+public sealed class WordComment
+{
+    /// <summary>部件里的原始 <c>w:id</c>。</summary>
+    public int Id { get; internal set; }
+
+    /// <summary>显示序号（1 起，按被批注正文在文档里出现的先后分配；没有正文位置的排最后）。</summary>
+    public int Number { get; internal set; }
+
+    /// <summary>作者（<c>w:author</c>）；没有时为空串。</summary>
+    public string Author { get; set; } = "";
+
+    /// <summary>作者缩写（<c>w:initials</c>）；没有时为空串。</summary>
+    public string Initials { get; set; } = "";
+
+    /// <summary>批注时间（<c>w:date</c>，UTC）；没有 / 格式不认识时为 <c>null</c>。</summary>
+    public DateTime? DateUtc { get; set; }
+
+    /// <summary>批注内容块（段落 / 简单表格，复用正文的块解析；图片会跳过）。</summary>
+    public List<WordBlock> Blocks { get; } = new();
+
+    /// <summary>批注纯文本（段落之间换行，表格按「单元格 \t」）；超长时已按上限截断并带省略说明。</summary>
+    public string Text { get; internal set; } = "";
+
+    /// <summary>文字是不是因为超过长度上限被截断了（面板 ToolTip 会提示）。</summary>
+    public bool IsTextTruncated { get; internal set; }
+
+    /// <summary>
+    /// 被批注正文的**起始块下标**（<see cref="WordDocument.Blocks"/> 里的下标）；
+    /// 找不到正文标记时为 -1（面板里仍列出内容，只是点了不给跳转）。
+    /// </summary>
+    public int BlockIndex { get; internal set; } = -1;
+
+    /// <summary>有没有可跳转的正文位置。</summary>
+    public bool HasBlockAnchor => BlockIndex >= 0;
+
+    /// <summary>显示用的日期文本（本地时间，精确到分钟）；没有时间时为空串。</summary>
+    public string DateText => DateUtc is { } date ? date.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "";
+}
+
 /// <summary>图片（字节已经从 docx 里拷出来，可脱离 <c>OoxmlPackage</c> 独立使用）。</summary>
 public sealed class WordImageBlock : WordBlock
 {
@@ -242,6 +343,7 @@ public sealed class WordDocument
     private readonly List<WordBlock> _footerBlocks = new();
     private readonly List<WordNote> _footnotes = new();
     private readonly List<WordNote> _endnotes = new();
+    private readonly List<WordComment> _comments = new();
 
     /// <summary>源文件完整路径；从流解析时为空串。</summary>
     public string SourcePath { get; internal set; } = "";
@@ -281,6 +383,32 @@ public sealed class WordDocument
 
     /// <summary>尾注（同脚注规则）。</summary>
     public IReadOnlyList<WordNote> Endnotes => _endnotes;
+
+    /// <summary>批注（按正文出现顺序编号；<c>comments.xml</c> 缺失时为空列表）。</summary>
+    public IReadOnlyList<WordComment> Comments => _comments;
+
+    /// <summary>修订「插入」的文字片段数（只数有文字的 run；状态栏「N 处插入」用）。</summary>
+    public int InsertedRunCount { get; internal set; }
+
+    /// <summary>修订「删除」的文字片段数（只数有文字的 run）。</summary>
+    public int DeletedRunCount { get; internal set; }
+
+    /// <summary>有没有批注（界面决定批注面板能不能开）。</summary>
+    public bool HasComments => _comments.Count > 0;
+
+    /// <summary>有没有修订痕迹（状态栏 / 摘要提示用）。</summary>
+    public bool HasRevisions => InsertedRunCount > 0 || DeletedRunCount > 0;
+
+    /// <summary>按批注原始 <c>w:id</c> 查一条批注；找不到返回 <c>null</c>。</summary>
+    public WordComment? FindComment(int id)
+    {
+        foreach (var comment in _comments)
+        {
+            if (comment.Id == id) return comment;
+        }
+
+        return null;
+    }
 
     /// <summary>有没有页眉（界面 / 状态栏提示用）。</summary>
     public bool HasHeader => _headerBlocks.Count > 0;
@@ -324,6 +452,9 @@ public sealed class WordDocument
     /// <summary>内部用的尾注列表。</summary>
     internal List<WordNote> EndnoteList => _endnotes;
 
+    /// <summary>内部用的批注列表（解析器写，编号 / 起始块下标在解析末尾统一填）。</summary>
+    internal List<WordComment> CommentList => _comments;
+
     /// <summary>
     /// 取某个正文块的纯文本；下标越界、或这个块不是段落（表格 / 图片）时返回空串。
     /// <para>自检用它验证「块下标 → 文字」的对应关系；界面的查找高亮也按这个下标找段落。</para>
@@ -352,6 +483,9 @@ public sealed class WordDocument
     ///
     /// <para>默认只复制**正文**（含表格单元格）—— 页眉页脚 / 脚注尾注属于版面附属内容，不算正文；
     /// 需要时传 <paramref name="includeHeaderFooter"/> / <paramref name="includeNotes"/> 一起带上。</para>
+    ///
+    /// <para><b>修订里「删除」的文字不会出现在结果里</b>（它可能根本不可见；查找 / 大纲 / 复制统一按可见正文处理），
+    /// 修订「插入」的文字正常复制。</para>
     /// </summary>
     public string ExtractPlainText(bool includeHeaderFooter = false, bool includeNotes = false)
     {

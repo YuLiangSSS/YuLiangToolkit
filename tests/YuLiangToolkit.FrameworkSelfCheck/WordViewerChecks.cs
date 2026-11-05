@@ -7,6 +7,7 @@ using System.Windows.Media;
 using YuLiangToolkit.Core.Documents;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Tools.WordViewer;
+using YuLiangToolkit.Tools.WordViewer.Export;
 using YuLiangToolkit.Tools.WordViewer.Parsing;
 using YuLiangToolkit.Tools.WordViewer.Rendering;
 using YuLiangToolkit.Tools.WordViewer.ViewModels;
@@ -63,6 +64,25 @@ internal static class WordViewerChecks
             var barePath = Path.Combine(root, "缺附属部件.docx");
             CreateFeatureDocx(barePath, withExtras: false);
             CheckMissingParts(check, barePath, feature);
+
+            // ---------- 最后一批：批注 / 修订 / 打印与导出 ----------
+            var annotatedPath = Path.Combine(root, "批注修订.docx");
+            CreateCommentRevisionDocx(annotatedPath, withComments: true);
+            var annotated = WordDocumentParser.Parse(annotatedPath);
+
+            CheckComments(check, annotated);
+            CheckCommentPanelItem(check, annotated);
+            CheckRevisions(check, annotated);
+            CheckRendererCommentsRevisions(check, annotated);
+
+            CheckHtmlExport(check, document, annotated);
+            CheckTextExport(check, annotated, root);
+            CheckCommentRevisionConfig(check, root);
+
+            // 缺 comments.xml：正文里的区间 / 引用标记仍在，批注列表为空，不能崩
+            var noCommentPath = Path.Combine(root, "缺批注部件.docx");
+            CreateCommentRevisionDocx(noCommentPath, withComments: false);
+            CheckMissingComments(check, noCommentPath, annotated);
         }
         finally
         {
@@ -721,6 +741,449 @@ internal static class WordViewerChecks
                 ?? $"正文 {bare?.Blocks.Count} 块 / 页眉 {bare?.HeaderBlocks.Count} / 页脚 {bare?.FooterBlocks.Count} / 脚注 {bare?.Footnotes.Count}");
     }
 
+    // ---------------------------------------------------------------- 批注解析
+
+    private static void CheckComments(Action<string, bool, string> check, WordDocument document)
+    {
+        check("[Word阅读器] 批注解析：条数 / 作者 / 缩写 / 日期（comments.xml）",
+            document.Comments.Count == 4
+            && document.Comments.Any(comment => comment.Id == 5 && comment.Author == "张三"
+                && comment.Initials == "ZS" && comment.DateUtc is { Year: 2024, Month: 4, Day: 1 })
+            && document.Comments.Any(comment => comment.Id == 1 && comment.Author == "李四"
+                && comment.Initials == "LS"),
+            string.Join(" | ", document.Comments.Select(comment =>
+                $"id={comment.Id}→#{comment.Number} {comment.Author} {comment.DateText}")));
+
+        var first = document.FindComment(5);
+        check("[Word阅读器] 批注内容：多段按段落解析，纯文本用换行连接",
+            first is not null && first.Blocks.Count == 2
+            && first.Text == "第一条批注第一段\n第一条批注第二段",
+            first is null ? "没找到 id=5 的批注" : first.Text.Replace('\n', '/'));
+
+        var coveredParagraph = FindParagraph(document, "批注覆盖一");
+        var coveredRuns = coveredParagraph?.Runs.Where(run => run.CommentIds.Contains(5)).ToList() ?? new List<WordRun>();
+        check("[Word阅读器] 批注区间跨 run：同一条批注覆盖的两个 run 都带上 w:id",
+            coveredRuns.Count == 2
+            && coveredRuns[0].Text == "批注覆盖一"
+            && coveredRuns[1].Text == "批注覆盖二",
+            coveredParagraph is null ? "没找到被批注段落" : string.Join(" | ", coveredRuns.Select(run => run.Text)));
+
+        var crossFirst = FindParagraph(document, "跨段第一段");
+        var crossSecond = FindParagraph(document, "跨段第二段");
+        check("[Word阅读器] 批注区间跨段落：起点段的 run 与终点段的 run 都属于同一条批注",
+            crossFirst is not null && crossSecond is not null
+            && crossFirst.Runs.Count > 0 && crossFirst.Runs.All(run => run.CommentIds.Contains(1))
+            && crossSecond.Runs.Any(run => run.Text == "跨段第二段" && run.CommentIds.Contains(1)),
+            $"第一段 {crossFirst?.Runs.Count} run / 第二段 {crossSecond?.Runs.Count} run");
+
+        check("[Word阅读器] 批注 → 起始块下标指向被批注段落（面板跳转用）",
+            first is not null && first.BlockIndex >= 0
+            && document.Blocks[first.BlockIndex] is WordParagraphBlock anchor
+            && anchor.Text.Contains("批注覆盖一", StringComparison.Ordinal),
+            first is null ? "没找到批注" : $"BlockIndex={first.BlockIndex}");
+
+        check("[Word阅读器] 批注编号按正文出现顺序：id=5 先出现 → 批注 1，id=1 → 批注 2，无位置的排最后",
+            first is { Number: 1 }
+            && document.FindComment(1) is { Number: 2 }
+            && document.FindComment(9) is { Number: 3, BlockIndex: -1 }
+            && document.FindComment(99) is { Number: 4, BlockIndex: -1 }
+            && document.Comments.Select(comment => comment.Number).SequenceEqual(new[] { 1, 2, 3, 4 }),
+            string.Join(" | ", document.Comments.OrderBy(comment => comment.Number)
+                .Select(comment => $"#{comment.Number}=id{comment.Id}@块{comment.BlockIndex}")));
+
+        var referenceRuns = document.Blocks.OfType<WordParagraphBlock>()
+            .SelectMany(paragraph => paragraph.Runs)
+            .Where(run => run.CommentReferenceIds.Contains(5))
+            .ToList();
+        check("[Word阅读器] 批注引用 run（通常没有文字）保留，记录 w:commentReference w:id",
+            referenceRuns.Count == 1
+            && referenceRuns[0].Text.Length == 0
+            && referenceRuns[0].CommentReferenceIds.SequenceEqual(new[] { 5 }),
+            string.Join(" | ", referenceRuns.Select(run => $"'{run.Text}' → {string.Join(",", run.CommentReferenceIds)}")));
+
+        var longComment = document.FindComment(99);
+        check("[Word阅读器] 单条批注超长：按 20000 字上限截断并标记 IsTextTruncated",
+            longComment is { IsTextTruncated: true }
+            && longComment.Text.Length <= WordDocumentParser.MaxCommentTextLength + 40
+            && longComment.Text.EndsWith("省略）", StringComparison.Ordinal),
+            longComment is null ? "没找到超长批注" : $"{longComment.Text.Length} 字 / 截断={longComment.IsTextTruncated}");
+    }
+
+    /// <summary>批注面板条目（纯逻辑 ViewModel 对象）：标题 / 摘要 / ToolTip / 跳转下标。</summary>
+    private static void CheckCommentPanelItem(Action<string, bool, string> check, WordDocument document)
+    {
+        var comment = document.FindComment(5);
+        var item = comment is null ? null : new WordCommentItem(comment);
+        check("[Word阅读器] 批注面板条目：标题含序号 / 作者 / 日期，ToolTip 含全文，带跳转下标",
+            item is not null
+            && item.HeaderText.Contains("批注 1", StringComparison.Ordinal)
+            && item.HeaderText.Contains("张三", StringComparison.Ordinal)
+            && item.DateText.Length > 0
+            && item.ToolTipText.Contains("第一条批注第二段", StringComparison.Ordinal)
+            && item.PreviewText.Contains("第一条批注第一段", StringComparison.Ordinal)
+            && item.HasAnchor && item.BlockIndex == (comment?.BlockIndex ?? -2),
+            item?.HeaderText ?? "没找到批注面板条目");
+
+        var longItem = document.FindComment(99) is { } longComment ? new WordCommentItem(longComment) : null;
+        check("[Word阅读器] 批注面板删除超长内容：摘要 ≤160 字 + 省略号，全文完整保留",
+            longItem is not null
+            && longItem.PreviewText.Length <= 161
+            && longItem.PreviewText.EndsWith('…')
+            && longItem.FullText.Length > WordDocumentParser.MaxCommentTextLength,
+            longItem is null ? "没找到超长批注条目" : $"摘要 {longItem.PreviewText.Length} 字 / 全文 {longItem.FullText.Length} 字");
+    }
+
+    // ---------------------------------------------------------------- 修订解析
+
+    private static void CheckRevisions(Action<string, bool, string> check, WordDocument document)
+    {
+        var allRuns = document.Blocks.OfType<WordParagraphBlock>()
+            .SelectMany(paragraph => paragraph.Runs)
+            .ToList();
+
+        var inserted = allRuns.FirstOrDefault(run => run.Text == "插入的文字");
+        check("[Word阅读器] 修订插入：w:ins 里的 run 标记 Inserted + 作者 / 日期",
+            inserted is { Revision: WordRevisionKind.Inserted, RevisionAuthor: "王五" }
+            && inserted.RevisionDateUtc is { Year: 2024, Month: 5, Day: 1 },
+            inserted is null ? "没找到插入的文字" : $"{inserted.Revision} / {inserted.RevisionAuthor} / {inserted.RevisionDateUtc:o}");
+
+        var deleted = allRuns.FirstOrDefault(run => run.Text == "删除的文字");
+        check("[Word阅读器] 修订删除：w:del 的 w:delText 进模型，标记 Deleted + 作者 / 日期",
+            deleted is { Revision: WordRevisionKind.Deleted, RevisionAuthor: "王五" }
+            && deleted.RevisionDateUtc is { Year: 2024, Month: 5, Day: 2 },
+            deleted is null ? "没找到删除的文字" : $"{deleted.Revision} / {deleted.RevisionAuthor} / {deleted.RevisionDateUtc:o}");
+
+        check("[Word阅读器] 修订统计：插入 1 处 / 删除 1 处，HasRevisions=true",
+            document.InsertedRunCount == 1 && document.DeletedRunCount == 1 && document.HasRevisions,
+            $"插入 {document.InsertedRunCount} / 删除 {document.DeletedRunCount}");
+
+        var revisionParagraph = FindParagraph(document, "修订前");
+        check("[Word阅读器] 段落可见文字跳过删除内容（Text 不含删除，TextWithDeleted 含）",
+            revisionParagraph is not null
+            && revisionParagraph.Text == "修订前插入的文字修订后"
+            && revisionParagraph.TextWithDeleted.Contains("删除的文字", StringComparison.Ordinal),
+            revisionParagraph?.Text ?? "没找到修订段落");
+
+        check("[Word阅读器] 查找跳过删除文字、插入文字正常命中",
+            WordTextSearch.Find(document, "删除的文字").Count == 0
+            && WordTextSearch.Find(document, "插入的文字").Count == 1,
+            $"删除={WordTextSearch.Find(document, "删除的文字").Count} / 插入={WordTextSearch.Find(document, "插入的文字").Count}");
+
+        var plain = document.ExtractPlainText();
+        check("[Word阅读器] 复制全文（ExtractPlainText）跳过删除内容、保留插入内容",
+            plain.Contains("插入的文字", StringComparison.Ordinal)
+            && !plain.Contains("删除的文字", StringComparison.Ordinal),
+            plain.Length > 80 ? plain[..80] + "…" : plain);
+    }
+
+    // ---------------------------------------------------------------- 批注 / 修订渲染 + 打印排版（STA）
+
+    private static void CheckRendererCommentsRevisions(Action<string, bool, string> check, WordDocument document)
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var withAll = WordFlowRenderer.Build(document, new WordRenderOptions
+                {
+                    ShowComments = true,
+                    ShowRevisions = true,
+                });
+                var withoutComments = WordFlowRenderer.Build(document, new WordRenderOptions
+                {
+                    ShowComments = false,
+                    ShowRevisions = true,
+                });
+                var withoutRevisions = WordFlowRenderer.Build(document, new WordRenderOptions
+                {
+                    ShowComments = true,
+                    ShowRevisions = false,
+                });
+
+                check("[Word阅读器] 渲染：批注高亮 4 个 run、[批注 N] 标记 2 个（区间跨 run / 跨段落）",
+                    withAll.CommentHighlightRunCount == 4 && withAll.CommentMarkerCount == 2,
+                    $"高亮 {withAll.CommentHighlightRunCount} / 标记 {withAll.CommentMarkerCount}");
+
+                var highlighted = FindRunText(withAll.Document, "批注覆盖一");
+                check("[Word阅读器] 渲染：被批注的 run 加淡黄底 #FFF3C4",
+                    HasBrushColor(highlighted?.Background, Color.FromRgb(0xFF, 0xF3, 0xC4)),
+                    highlighted?.Background?.ToString() ?? "没找到被批注的 run");
+
+                var allText = TextOf(withAll.Document);
+                check("[Word阅读器] 渲染：引用处显示上标 [批注 1] / [批注 2] 标记",
+                    allText.Contains("[批注 1]", StringComparison.Ordinal)
+                    && allText.Contains("[批注 2]", StringComparison.Ordinal),
+                    allText.Length > 120 ? allText[..120] + "…" : allText);
+
+                check("[Word阅读器] 渲染：ShowComments=false 时没有高亮 / 标记，正文文字照常显示",
+                    withoutComments.CommentHighlightRunCount == 0
+                    && withoutComments.CommentMarkerCount == 0
+                    && TextOf(withoutComments.Document).Contains("批注覆盖一", StringComparison.Ordinal)
+                    && !TextOf(withoutComments.Document).Contains("[批注", StringComparison.Ordinal),
+                    $"高亮 {withoutComments.CommentHighlightRunCount} / 标记 {withoutComments.CommentMarkerCount}");
+
+                var insertedRun = FindRunText(withAll.Document, "插入的文字");
+                var deletedRun = FindRunText(withAll.Document, "删除的文字");
+                check("[Word阅读器] 渲染：插入蓝色下划线、删除红色删除线（同时显示）",
+                    insertedRun is not null && HasBrushColor(insertedRun.Foreground, Color.FromRgb(0x1A, 0x66, 0xCC))
+                    && HasDecoration(insertedRun, TextDecorationLocation.Underline)
+                    && deletedRun is not null && HasBrushColor(deletedRun.Foreground, Color.FromRgb(0xC0, 0x00, 0x00))
+                    && HasDecoration(deletedRun, TextDecorationLocation.Strikethrough),
+                    $"插入={insertedRun?.Text ?? "无"} / 删除={deletedRun?.Text ?? "无"}");
+
+                var noRevisionText = TextOf(withoutRevisions.Document);
+                var plainInserted = FindRunText(withoutRevisions.Document, "插入的文字");
+                check("[Word阅读器] 渲染：ShowRevisions=false 隐藏删除内容、插入按普通文字（无蓝字下划线）",
+                    !noRevisionText.Contains("删除的文字", StringComparison.Ordinal)
+                    && noRevisionText.Contains("插入的文字", StringComparison.Ordinal)
+                    && !HasBrushColor(plainInserted?.Foreground, Color.FromRgb(0x1A, 0x66, 0xCC))
+                    && !HasDecoration(plainInserted, TextDecorationLocation.Underline),
+                    $"插入 run{(plainInserted is null ? "丢失" : "存在")} / 删除文字{(noRevisionText.Contains("删除的文字") ? "仍在" : "已隐藏")}");
+
+                var printable = WordPrintLayout.CreatePrintableDocument(
+                    document, new WordRenderOptions { ShowRevisions = false }, new Size(800, 1100));
+                var paginator = ((IDocumentPaginatorSource)printable).DocumentPaginator;
+                check("[Word阅读器] 打印排版：另建文档按可打印区域设页尺寸 / 有限列宽，且跟随渲染开关",
+                    Math.Abs(printable.PageWidth - 800) < 0.01
+                    && Math.Abs(printable.PageHeight - 1100) < 0.01
+                    && printable.ColumnWidth > 0 && printable.ColumnWidth <= printable.PageWidth
+                    && Math.Abs(paginator.PageSize.Width - 800) < 0.01
+                    && !TextOf(printable).Contains("删除的文字", StringComparison.Ordinal),
+                    $"{printable.PageWidth:0}×{printable.PageHeight:0} / 列宽 {printable.ColumnWidth:0} / 分页器 {paginator.PageSize.Width:0}×{paginator.PageSize.Height:0}");
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        if (failure is not null)
+            check("[Word阅读器] 渲染：批注 / 修订 / 打印排版构建成功", false,
+                $"{failure.GetType().Name}: {failure.Message}");
+    }
+
+    // ---------------------------------------------------------------- HTML / 纯文本导出
+
+    private static void CheckHtmlExport(
+        Action<string, bool, string> check, WordDocument minimal, WordDocument annotated)
+    {
+        var html = WordHtmlExporter.BuildHtml(minimal);
+
+        check("[Word阅读器] HTML 导出：DOCTYPE / UTF-8 meta / 文档标题",
+            html.Contains("<!DOCTYPE html>", StringComparison.Ordinal)
+            && html.Contains("<meta charset=\"utf-8\">", StringComparison.Ordinal)
+            && html.Contains("<title>自检标题</title>", StringComparison.Ordinal),
+            html.Length > 100 ? html[..100].Replace('\n', ' ') + "…" : html);
+
+        check("[Word阅读器] HTML 导出：标题 1 / 标题 2 用 h1 / h2",
+            html.Contains("<h1", StringComparison.Ordinal)
+            && html.Contains("第一章 简介", StringComparison.Ordinal)
+            && html.Contains("<h2", StringComparison.Ordinal)
+            && html.Contains("1.1 小节", StringComparison.Ordinal),
+            "h1 / h2");
+
+        check("[Word阅读器] HTML 导出：粗体 / 斜体 / 下划线 / 删除线 run 输出 b/i/u/s",
+            html.Contains("<b>", StringComparison.Ordinal)
+            && html.Contains("<i>", StringComparison.Ordinal)
+            && html.Contains("<u>", StringComparison.Ordinal)
+            && html.Contains("<s>", StringComparison.Ordinal)
+            && html.Contains(">格式<", StringComparison.Ordinal),
+            "格式 run");
+
+        check("[Word阅读器] HTML 导出：表格 gridSpan → colspan，表头行用 th 并加粗",
+            html.Contains("colspan=\"2\"", StringComparison.Ordinal)
+            && html.Contains("<th", StringComparison.Ordinal)
+            && html.Contains("合并表头", StringComparison.Ordinal),
+            "合并表头 / th");
+
+        check("[Word阅读器] HTML 导出：图片输出自包含 data URI + alt",
+            html.Contains("data:image/png;base64,", StringComparison.Ordinal)
+            && html.Contains("alt=\"测试图片\"", StringComparison.Ordinal),
+            "data URI / alt");
+
+        check("[Word阅读器] HTML 导出：超链接输出 a href（只允许 http/https/mailto）",
+            html.Contains("href=\"https://example.com/docs\"", StringComparison.Ordinal)
+            && !WordHtmlExporter.BuildHtml(annotated).Contains("href=\"javascript:", StringComparison.Ordinal),
+            "示例链接 / 危险链接");
+
+        var capped = WordHtmlExporter.BuildHtml(minimal, 1, out var omitted);
+        check("[Word阅读器] HTML 导出：图片总体积上限（超限图片输出占位文字并计数）",
+            omitted == 1
+            && !capped.Contains("data:image/png;base64,", StringComparison.Ordinal)
+            && capped.Contains("图片过大，已省略", StringComparison.Ordinal),
+            $"省略 {omitted} 张");
+
+        var annotatedHtml = WordHtmlExporter.BuildHtml(annotated);
+        check("[Word阅读器] HTML 导出：<script> 等用户文字被转义，不能变成标签",
+            annotatedHtml.Contains("&lt;script&gt;alert", StringComparison.Ordinal)
+            && !annotatedHtml.Contains("<script>alert", StringComparison.Ordinal)
+            && !annotatedHtml.Contains("</script>", StringComparison.Ordinal),
+            "script 转义");
+
+        check("[Word阅读器] HTML 导出：& / 双引号 / 单引号都转成实体",
+            annotatedHtml.Contains("&amp;", StringComparison.Ordinal)
+            && annotatedHtml.Contains("&quot;", StringComparison.Ordinal)
+            && annotatedHtml.Contains("&#39;单引号&#39;", StringComparison.Ordinal),
+            "实体转义");
+
+        check("[Word阅读器] HTML 导出：非法控制字符被丢弃（不生成坏 HTML）",
+            WordHtmlExporter.EscapeText("a\u0001b\u0002c") == "abc"
+            && !annotatedHtml.Contains('\u0001'),
+            WordHtmlExporter.EscapeText("a\u0001b\u0002c"));
+
+        check("[Word阅读器] HTML 导出：修订删除内容不导出、插入内容正常导出",
+            annotatedHtml.Contains("插入的文字", StringComparison.Ordinal)
+            && !annotatedHtml.Contains("删除的文字", StringComparison.Ordinal),
+            "插入 / 删除");
+
+        var empty = new WordDocument();
+        check("[Word阅读器] HTML 导出：空文档也有提示页，不会抛异常",
+            WordHtmlExporter.BuildHtml(empty).Contains("没有可显示的正文内容", StringComparison.Ordinal)
+            && empty.ExtractPlainText().Length == 0,
+            "空文档");
+    }
+
+    private static void CheckTextExport(Action<string, bool, string> check, WordDocument annotated, string root)
+    {
+        var path = Path.Combine(root, "导出纯文本.txt");
+        var characters = WordTextExporter.Write(annotated, path);
+        var bytes = File.ReadAllBytes(path);
+        var text = File.ReadAllText(path);
+
+        check("[Word阅读器] 纯文本导出：UTF-8 BOM + 段落换行 + 跳过修订删除内容",
+            characters > 0
+            && bytes.Length > 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF
+            && text.Contains("插入的文字", StringComparison.Ordinal)
+            && !text.Contains("删除的文字", StringComparison.Ordinal)
+            && text.Contains('\n'),
+            $"{characters} 字 / {bytes.Length} 字节");
+
+        var emptyPath = Path.Combine(root, "导出空文本.txt");
+        var emptyCharacters = WordTextExporter.Write(new WordDocument(), emptyPath);
+        check("[Word阅读器] 纯文本导出：空文档写 0 字文件不崩（仍带 BOM）",
+            emptyCharacters == 0 && File.Exists(emptyPath) && File.ReadAllBytes(emptyPath).Length == 3,
+            $"{emptyCharacters} 字");
+    }
+
+    // ---------------------------------------------------------------- 新开关配置
+
+    private static void CheckCommentRevisionConfig(Action<string, bool, string> check, string root)
+    {
+        var config = new WordViewerConfig();
+        check("[Word阅读器] 新开关默认值：showComments / showRevisions 都是 true",
+            config.ShowComments && config.ShowRevisions,
+            $"批注={config.ShowComments} / 修订={config.ShowRevisions}");
+
+        config.ShowComments = false;
+        config.ShowRevisions = false;
+        config.ZoomPercent = 200;
+        config.ResetToDefaults();
+        check("[Word阅读器] 恢复默认：批注 / 修订开关回 true，缩放回 100",
+            config.ShowComments && config.ShowRevisions && config.ZoomPercent == 100,
+            $"{config.ShowComments} / {config.ShowRevisions} / {config.ZoomPercent}");
+
+        var file = Path.Combine(root, "批注修订配置.docx");
+        File.WriteAllText(file, "x");
+        config.RememberRecent(file);
+        config.RememberReadingPosition(file, new WordReadingPosition { ScrollRatio = 0.5, SavedAtUtc = DateTime.UtcNow });
+        var json = config.ToJson();
+        check("[Word阅读器] 新开关进 JSON；最近打开 / 阅读位置记录不受影响",
+            json.Contains("\"showComments\"", StringComparison.Ordinal)
+            && json.Contains("\"showRevisions\"", StringComparison.Ordinal)
+            && json.Contains("\"recentEntries\"", StringComparison.Ordinal)
+            && json.Contains("\"readingPositions\"", StringComparison.Ordinal)
+            && config.RecentEntries.Count == 1
+            && config.FindReadingPosition(file) is not null,
+            json.Length > 200 ? json[..200] + "…" : json);
+    }
+
+    // ---------------------------------------------------------------- 缺 comments.xml 容错
+
+    private static void CheckMissingComments(
+        Action<string, bool, string> check, string barePath, WordDocument reference)
+    {
+        Exception? failure = null;
+        WordDocument? bare = null;
+        try { bare = WordDocumentParser.Parse(barePath); }
+        catch (Exception ex) { failure = ex; }
+
+        var taggedRun = bare?.Blocks.OfType<WordParagraphBlock>()
+            .SelectMany(paragraph => paragraph.Runs)
+            .FirstOrDefault(run => run.CommentIds.Contains(5));
+
+        check("[Word阅读器] 缺 comments.xml 正常打开：批注列表为空、正文区间标记仍保留、统计不变",
+            failure is null && bare is not null
+            && bare.Comments.Count == 0
+            && !bare.HasComments
+            && taggedRun is not null
+            && bare.Blocks.Count == reference.Blocks.Count
+            && bare.ParagraphCount == reference.ParagraphCount,
+            failure?.Message ?? $"批注 {bare?.Comments.Count} / 正文块 {bare?.Blocks.Count} / 引用标记{(taggedRun is null ? "丢失" : "保留")}");
+    }
+
+    // ---------------------------------------------------------------- 渲染相关小工具（STA 线程里用）
+
+    /// <summary>整篇渲染文档的纯文本（段落 / 表格都取，用来断言「删除内容是否画出来」）。</summary>
+    private static string TextOf(FlowDocument document)
+        => string.Join("\n", document.Blocks.Select(TextOf));
+
+    /// <summary>在渲染结果里找文字完全等于 <paramref name="text"/> 的 Run（含 Span / Hyperlink 里的）。</summary>
+    private static Run? FindRunText(FlowDocument document, string text)
+    {
+        foreach (var block in document.Blocks)
+        {
+            var runs = block switch
+            {
+                Paragraph paragraph => EnumerateRuns(paragraph.Inlines),
+                Table table => table.RowGroups
+                    .SelectMany(group => group.Rows)
+                    .SelectMany(row => row.Cells)
+                    .SelectMany(cell => cell.Blocks.OfType<Paragraph>())
+                    .SelectMany(paragraph => EnumerateRuns(paragraph.Inlines)),
+                _ => Enumerable.Empty<Run>(),
+            };
+
+            foreach (var run in runs)
+            {
+                if (string.Equals(run.Text, text, StringComparison.Ordinal)) return run;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>递归展开 Inline（Run 直接返回；Span / Hyperlink 展开子节点）。</summary>
+    private static IEnumerable<Run> EnumerateRuns(InlineCollection inlines)
+    {
+        foreach (var inline in inlines)
+        {
+            switch (inline)
+            {
+                case Run run:
+                    yield return run;
+                    break;
+                case Span span:
+                    foreach (var child in EnumerateRuns(span.Inlines)) yield return child;
+                    break;
+            }
+        }
+    }
+
+    private static bool HasBrushColor(Brush? brush, Color expected)
+        => brush is SolidColorBrush solid && solid.Color == expected;
+
+    private static bool HasDecoration(Run? run, TextDecorationLocation location)
+        => run?.TextDecorations?.Any(decoration => decoration.Location == location) == true;
+
+    /// <summary>找第一个文字包含 <paramref name="text"/> 的正文段落（允许包含）。</summary>
+    private static WordParagraphBlock? FindParagraph(WordDocument document, string text)
+        => document.Blocks.OfType<WordParagraphBlock>()
+            .FirstOrDefault(paragraph => paragraph.Text.Contains(text, StringComparison.Ordinal));
+
     // ---------------------------------------------------------------- 造一份「新功能」自检文档
 
     /// <summary>页眉 / 页脚 / 脚注 / 尾注 / 文档属性的文本，用于状态细节展示。</summary>
@@ -1086,6 +1549,119 @@ internal static class WordViewerChecks
               <w:endnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:endnote>
               <w:endnote w:id="1"><w:p><w:r><w:t>第一条尾注内容</w:t></w:r></w:p></w:endnote>
             </w:endnotes>
+            """);
+    }
+
+    // ---------------------------------------------------------------- 造「批注 / 修订」自检 docx
+
+    /// <summary>
+    /// 造一份带**批注（含跨 run / 跨段落区间、超长内容）与修订（w:ins / w:del + w:delText）**的 docx。
+    /// <paramref name="withComments"/> = false 时不写 comments.xml 和对应关系，但正文里的
+    /// commentRangeStart / commentReference 仍在：验证「缺批注部件不崩、区间标记保留」。
+    /// 还带一段 HTML 转义用文字（<c>&amp; &lt;script&gt; 引号</c>）和一个 <c>javascript:</c> 危险链接。
+    /// </summary>
+    private static void CreateCommentRevisionDocx(string path, bool withComments)
+    {
+        using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+
+        var commentsType = withComments
+            ? """
+                <Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/>
+              """
+            : "";
+
+        WriteText(archive, "[Content_Types].xml", $"""
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+              <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+              <Default Extension="xml" ContentType="application/xml"/>
+              <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+              {commentsType}
+            </Types>
+            """);
+
+        WriteText(archive, "_rels/.rels", """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+              <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+            </Relationships>
+            """);
+
+        var commentsRelationship = withComments
+            ? """
+                <Relationship Id="rIdComments" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/>
+              """
+            : "";
+
+        WriteText(archive, "word/_rels/document.xml.rels", $"""
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+              <Relationship Id="rIdJs" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="javascript:alert(1)" TargetMode="External"/>
+              {commentsRelationship}
+            </Relationships>
+            """);
+
+        WriteText(archive, "word/document.xml", """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:document
+                xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+              <w:body>
+                <!-- 批注 1：区间覆盖同一段里的两个 run，引用 run 在区间终点 -->
+                <w:p>
+                  <w:r><w:t>正文开头</w:t></w:r>
+                  <w:commentRangeStart w:id="5"/>
+                  <w:r><w:t>批注覆盖一</w:t></w:r>
+                  <w:r><w:t>批注覆盖二</w:t></w:r>
+                  <w:commentRangeEnd w:id="5"/>
+                  <w:r><w:commentReference w:id="5"/></w:r>
+                </w:p>
+                <!-- 批注 2：区间跨两个段落 -->
+                <w:p>
+                  <w:commentRangeStart w:id="1"/>
+                  <w:r><w:t>跨段第一段</w:t></w:r>
+                </w:p>
+                <w:p>
+                  <w:r><w:t>跨段第二段</w:t></w:r>
+                  <w:commentRangeEnd w:id="1"/>
+                  <w:r><w:commentReference w:id="1"/></w:r>
+                </w:p>
+                <!-- 修订：插入（w:ins + w:t）与删除（w:del + w:delText） -->
+                <w:p>
+                  <w:r><w:t>修订前</w:t></w:r>
+                  <w:ins w:id="10" w:author="王五" w:date="2024-05-01T08:00:00Z"><w:r><w:t>插入的文字</w:t></w:r></w:ins>
+                  <w:del w:id="11" w:author="王五" w:date="2024-05-02T09:00:00Z"><w:r><w:delText>删除的文字</w:delText></w:r></w:del>
+                  <w:r><w:t>修订后</w:t></w:r>
+                </w:p>
+                <!-- HTML 转义测试：尖括号 / & / 引号 / 单引号 -->
+                <w:p><w:r><w:t>转义测试 &amp; &lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; &#39;单引号&#39;</w:t></w:r></w:p>
+                <!-- 危险协议链接：导出 HTML 时只能留文字 -->
+                <w:p><w:hyperlink r:id="rIdJs"><w:r><w:t>危险链接</w:t></w:r></w:hyperlink></w:p>
+                <w:sectPr/>
+              </w:body>
+            </w:document>
+            """);
+
+        if (!withComments) return;
+
+        var longText = new string('长', WordDocumentParser.MaxCommentTextLength + 50);
+        WriteText(archive, "word/comments.xml", $"""
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+              <w:comment w:id="5" w:author="张三" w:date="2024-04-01T12:00:00Z" w:initials="ZS">
+                <w:p><w:r><w:t>第一条批注第一段</w:t></w:r></w:p>
+                <w:p><w:r><w:t>第一条批注第二段</w:t></w:r></w:p>
+              </w:comment>
+              <w:comment w:id="1" w:author="李四" w:date="2024-04-02T12:00:00Z" w:initials="LS">
+                <w:p><w:r><w:t>第二条批注内容</w:t></w:r></w:p>
+              </w:comment>
+              <w:comment w:id="9" w:author="王五" w:initials="WW">
+                <w:p><w:r><w:t>没有正文位置的批注</w:t></w:r></w:p>
+              </w:comment>
+              <w:comment w:id="99" w:author="超长作者" w:initials="CC">
+                <w:p><w:r><w:t>{longText}</w:t></w:r></w:p>
+              </w:comment>
+            </w:comments>
             """);
     }
 

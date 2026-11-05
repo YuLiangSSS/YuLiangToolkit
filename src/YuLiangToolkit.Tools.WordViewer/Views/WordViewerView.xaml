@@ -45,11 +45,45 @@
             </Setter>
         </Style>
 
-        <!-- 工具条里的小按钮（缩放 +/- / 查找上一个下一个）：比 SecondaryButtonStyle 窄一点 -->
+        <!-- 工具条里的小按钮（缩放 +/- / 查找上一个下一个 / 打印导出）：比 SecondaryButtonStyle 窄一点 -->
         <Style x:Key="CompactButtonStyle" TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
             <Setter Property="Padding" Value="10,5" />
             <Setter Property="FontSize" Value="12" />
             <Setter Property="MinWidth" Value="30" />
+        </Style>
+
+        <!-- 导出菜单：默认 ContextMenu 模板在深色主题下会露出系统白底 / 图标列，这里换成主题色 + 悬停高亮 -->
+        <Style x:Key="ExportContextMenuStyle" TargetType="ContextMenu">
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="4" />
+        </Style>
+
+        <Style x:Key="ExportMenuItemStyle" TargetType="MenuItem">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="Row" Background="Transparent" CornerRadius="4" Padding="14,7">
+                            <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Row" Property="Background"
+                                        Value="{DynamicResource ListRowHoverBackgroundBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
     </UserControl.Resources>
 
@@ -182,7 +216,54 @@
                                 Command="{Binding ClearSearchCommand}" ToolTip="清除查找（Esc）" />
                         <Button Content="📋 复制全文" Style="{StaticResource CompactButtonStyle}" Margin="12,0,0,0"
                                 Command="{Binding CopyAllTextCommand}"
-                                ToolTip="把正文纯文本复制到剪贴板（表格按「单元格 + 制表符」；不含页眉页脚与脚注）" />
+                                ToolTip="把正文纯文本复制到剪贴板（表格按「单元格 + 制表符」；不含页眉页脚与脚注，跳过修订删除内容）" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- 第三行：批注 / 修订视图开关 + 打印 / 导出 -->
+                <Grid Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="视图" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <CheckBox Content="显示批注" IsChecked="{Binding ShowComments}"
+                                  Style="{StaticResource CheckBoxStyle}" VerticalAlignment="Center"
+                                  ToolTip="被批注的文字加淡黄底、引用处显示上标 [批注 N]（会记住）" />
+                        <CheckBox Content="显示修订" IsChecked="{Binding ShowRevisions}"
+                                  Style="{StaticResource CheckBoxStyle}" VerticalAlignment="Center" Margin="14,0,0,0"
+                                  ToolTip="插入蓝色下划线 / 删除红色删除线；关掉时删除内容不显示、插入按普通文字（会记住）" />
+                        <CheckBox Content="批注面板" IsChecked="{Binding IsCommentsPaneVisible}"
+                                  IsEnabled="{Binding HasComments}"
+                                  Style="{StaticResource CheckBoxStyle}" VerticalAlignment="Center" Margin="14,0,0,0"
+                                  ToolTip="右侧显示批注列表；当前文档没有批注时不可用" />
+                        <TextBlock Text="{Binding RevisionSummary}" FontSize="10.5" Margin="14,0,0,0"
+                                   VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   ToolTip="修订统计（本机只读展示，不改原文件）"
+                                   Visibility="{Binding RevisionSummary, Converter={StaticResource EmptyToVisInverse}}" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="🖨 打印…" Style="{StaticResource CompactButtonStyle}"
+                                Command="{Binding PrintCommand}" IsEnabled="{Binding HasDocument}"
+                                ToolTip="用系统打印对话框打印当前文档（按屏幕当前开关另排一份，不影响阅读位置）" />
+                        <Button x:Name="ExportButton" Content="📤 导出…" Margin="8,0,0,0"
+                                Style="{StaticResource CompactButtonStyle}" IsEnabled="{Binding HasDocument}"
+                                Click="OnExportButtonClick"
+                                ToolTip="导出为 HTML / 纯文本（另存新文件，不会改动原 docx）">
+                            <Button.ContextMenu>
+                                <ContextMenu Style="{StaticResource ExportContextMenuStyle}">
+                                    <MenuItem Header="导出为 HTML…" Style="{StaticResource ExportMenuItemStyle}"
+                                              Click="OnExportHtmlClick" />
+                                    <MenuItem Header="导出为纯文本…" Style="{StaticResource ExportMenuItemStyle}"
+                                              Click="OnExportPlainTextClick" />
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
                     </StackPanel>
                 </Grid>
             </StackPanel>
@@ -207,8 +288,18 @@
                 <ColumnDefinition
                     Width="{Binding ShowOutline, Converter={StaticResource BoolToPaneLength}, ConverterParameter=280}"
                     MinWidth="{Binding ShowOutline, Converter={StaticResource BoolToPaneLength}, ConverterParameter=200}" />
-                <ColumnDefinition Width="12" />
+                <!-- 大纲栏 / 阅读区 分隔条独占一列；大纲关掉时这一列也收成 0（不留空白） -->
+                <ColumnDefinition
+                    Width="{Binding ShowOutline, Converter={StaticResource BoolToPaneLength}, ConverterParameter=12}" />
+                <!-- 阅读区：随窗口缩放；左右两侧各有一条独立分隔条 -->
                 <ColumnDefinition Width="*" MinWidth="320" />
+                <!-- 阅读区 / 批注栏分隔条：批注面板关掉（或文档没批注）时一起收成 0 -->
+                <ColumnDefinition
+                    Width="{Binding IsCommentsPaneOpen, Converter={StaticResource BoolToPaneLength}, ConverterParameter=12}" />
+                <!-- 批注栏：可拖宽度，记忆在 Config\layout.json -->
+                <ColumnDefinition
+                    Width="{Binding IsCommentsPaneOpen, Converter={StaticResource BoolToPaneLength}, ConverterParameter=330}"
+                    MinWidth="{Binding IsCommentsPaneOpen, Converter={StaticResource BoolToPaneLength}, ConverterParameter=220}" />
             </Grid.ColumnDefinitions>
 
             <!-- 大纲栏 -->
@@ -258,7 +349,7 @@
             <!-- 阅读区 -->
             <Grid Grid.Column="2">
                 <!-- 白色纸面：圆角 + 投影 + 裁切。文档纸面颜色不跟深色主题走 -->
-                <Border Margin="0,0,14,10" Background="White" CornerRadius="6" ClipToBounds="True"
+                <Border Margin="0,0,10,10" Background="White" CornerRadius="6" ClipToBounds="True"
                         Visibility="{Binding HasDocument, Converter={StaticResource BoolToVis}}">
                     <Border.Effect>
                         <DropShadowEffect BlurRadius="16" ShadowDepth="1" Opacity="0.35" Color="#000000" />
@@ -283,7 +374,7 @@
                         <TextBlock Text="或者点左上角「📘 打开 Word 文档…」。只读浏览，不会改动原文件。"
                                    FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
                                    TextWrapping="Wrap" TextAlignment="Center" Margin="0,10,0,0" />
-                        <TextBlock Text="支持：段落样式 · 标题大纲 · 表格 · 图片 · 页眉页脚 · 脚注尾注 · 缩放 · 查找 · 复制全文"
+                        <TextBlock Text="支持：段落样式 · 标题大纲 · 表格 · 图片 · 页眉页脚 · 脚注尾注 · 批注 · 修订 · 缩放 · 查找 · 复制全文 · 打印 · 导出"
                                    FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
                                    TextAlignment="Center" TextWrapping="Wrap" Margin="0,14,0,0" />
                     </StackPanel>
@@ -291,7 +382,7 @@
 
                 <!-- 解析中：居中提示（不挡鼠标，避免用户重复点打开） -->
                 <Border Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}"
-                        IsHitTestVisible="False" Background="Transparent" Margin="0,0,14,10">
+                        IsHitTestVisible="False" Background="Transparent" Margin="0,0,10,10">
                     <Border Background="{DynamicResource CardBackgroundBrush}" CornerRadius="8" Padding="18,12"
                             HorizontalAlignment="Center" VerticalAlignment="Center"
                             BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
@@ -304,6 +395,64 @@
                     </Border>
                 </Border>
             </Grid>
+
+            <!-- 阅读区 / 批注栏 分隔条（面板收起或文档没有批注时一起隐藏，不会把收起的列撑回来） -->
+            <core:PaneSplitter Grid.Column="3" Style="{StaticResource PaneSplitterVerticalStyle}"
+                               Key="word-viewer.阅读区与批注栏"
+                               Visibility="{Binding IsCommentsPaneOpen, Converter={StaticResource BoolToVis}}" />
+
+            <!-- 批注栏：点一条跳到被批注的正文位置。没有批注时显示空提示 -->
+            <Border Grid.Column="4" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True"
+                    Visibility="{Binding IsCommentsPaneOpen, Converter={StaticResource BoolToVis}}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="80" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Margin="14,12,12,8">
+                        <TextBlock Text="💬 批注" FontSize="13" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding CommentSummary}" FontSize="10.5" Margin="0,4,0,0"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </StackPanel>
+
+                    <Grid Grid.Row="1">
+                        <ScrollViewer Margin="6,0" VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      core:ScrollChaining.Enabled="True">
+                            <ItemsControl ItemsSource="{Binding Comments}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource OutlineItemStyle}" Padding="10,8"
+                                                HorizontalContentAlignment="Stretch"
+                                                ToolTip="{Binding ToolTipText}"
+                                                Click="OnCommentItemClick">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding HeaderText}" FontSize="10.5"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <TextBlock Text="{Binding PreviewText}" FontSize="12"
+                                                           TextWrapping="Wrap" Margin="0,4,0,0" />
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+
+                        <!-- 空提示：有文档但没有批注时（面板开关此时其实是灰的，这里兜底显示） -->
+                        <TextBlock Text="这份文档没有批注" FontSize="11.5" Margin="14,10" TextWrapping="Wrap"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Visibility="{Binding HasComments, Converter={StaticResource InverseBoolToVis}}" />
+                    </Grid>
+
+                    <TextBlock Grid.Row="2" Text="点一条批注跳到正文对应位置" FontSize="10.5"
+                               Margin="14,8,14,10" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                </Grid>
+            </Border>
         </Grid>
 
         <!-- ================= 状态栏 ================= -->
@@ -327,6 +476,10 @@
                                Foreground="{DynamicResource TextSecondaryBrush}" />
                     <TextBlock Text="{Binding DocumentSummary}" FontSize="11.5" Margin="10,0,0,0"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBlock Text="{Binding RevisionSummary}" FontSize="11.5" Margin="10,0,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               ToolTip="修订统计（只读展示，不改原文件）"
+                               Visibility="{Binding RevisionSummary, Converter={StaticResource EmptyToVisInverse}}" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">

@@ -11,12 +11,24 @@ using YuLiangToolkit.Tools.WordViewer.Parsing;
 namespace YuLiangToolkit.Tools.WordViewer.Rendering;
 
 /// <summary>
-/// 渲染选项。目前只有「页眉页脚」一个开关（工具条上可切换，切换后从已解析模型重新排版、不重新读文件）。
+/// 渲染选项：页眉页脚 / 批注 / 修订三个开关（工具条上可切换，切换后从已解析模型重新排版、不重新读文件）。
 /// </summary>
 public sealed class WordRenderOptions
 {
     /// <summary>是否渲染页眉 / 页脚（默认渲染）。关掉时正文、脚注照常显示。</summary>
     public bool ShowHeaderFooter { get; set; } = true;
+
+    /// <summary>
+    /// 是否显示批注（默认显示）：被批注的文字加淡黄底、引用处补上标 <c>[批注 N]</c>。
+    /// 关掉后两者都不显示，正文按普通样式排版（批注面板仍可单独开关）。
+    /// </summary>
+    public bool ShowComments { get; set; } = true;
+
+    /// <summary>
+    /// 是否显示修订（默认显示）：插入文字蓝色下划线、删除文字红色删除线。
+    /// 关掉时**删除内容整段不显示**、插入内容按普通文字显示（和 Word「不显示标记」的观感一致）。
+    /// </summary>
+    public bool ShowRevisions { get; set; } = true;
 }
 
 /// <summary>渲染结果：<see cref="Document"/> 交给 <c>FlowDocumentScrollViewer</c>，映射表给查找 / 大纲跳转用。</summary>
@@ -37,6 +49,18 @@ public sealed record WordRenderResult(FlowDocument Document, IReadOnlyList<Parag
 
     /// <summary>本次渲染的脚注 / 尾注条数（没有脚注小节时为 0）。</summary>
     public int RenderedNoteCount { get; init; }
+
+    /// <summary>本次渲染出来的「插入」文字片段数（ShowRevisions=false 时仍统计，便于状态栏说明）。</summary>
+    public int InsertedRunCount { get; init; }
+
+    /// <summary>本次渲染出来的「删除」文字片段数（ShowRevisions=false 时为 0，删除内容没画出来）。</summary>
+    public int DeletedRunCount { get; init; }
+
+    /// <summary>本次被批注区间高亮的 run 数（ShowComments=false 时为 0）。</summary>
+    public int CommentHighlightRunCount { get; init; }
+
+    /// <summary>本次画出的批注引用上标数（ShowComments=false 时为 0）。</summary>
+    public int CommentMarkerCount { get; init; }
 }
 
 /// <summary>
@@ -89,6 +113,12 @@ public static class WordFlowRenderer
     private static readonly Brush NoteTitleBrush = CreateFrozenBrush(0x66, 0x66, 0x66);
     private static readonly Brush NoteReferenceBrush = CreateFrozenBrush(0x1A, 0x66, 0xCC);
 
+    // 批注 / 修订也是「文档内容色」，写死不跟主题走：淡黄底、灰蓝上标、插入蓝、删除红
+    private static readonly Brush CommentHighlightBrush = CreateFrozenBrush(0xFF, 0xF3, 0xC4);
+    private static readonly Brush CommentMarkerBrush = CreateFrozenBrush(0x4A, 0x6E, 0x9C);
+    private static readonly Brush InsertedBrush = CreateFrozenBrush(0x1A, 0x66, 0xCC);
+    private static readonly Brush DeletedBrush = CreateFrozenBrush(0xC0, 0x00, 0x00);
+
     /// <summary>
     /// 把整篇文档渲染成 <see cref="FlowDocument"/>（默认显示页眉页脚）。<b>必须在 UI 线程调用</b>（要在里面建 WPF 对象）。
     /// <para>保留这个单参重载：老调用方（自检 / 界面）不用改。</para>
@@ -121,10 +151,14 @@ public static class WordFlowRenderer
         var blockByBlockIndex = new List<Block?>(document.Blocks.Count);
         var hasHeaderFooter = false;
 
+        // 渲染期间的批注查找表 + 统计（批注 / 修订计数由它累加，自检和状态栏都能用）
+        var state = new RenderState(options);
+        foreach (var comment in document.Comments) state.CommentById.TryAdd(comment.Id, comment);
+
         // 页眉：连续浏览的简化 —— 只在文档顶部显示一次（取首个节的页眉），不逐页重复
         if (options.ShowHeaderFooter && document.HeaderBlocks.Count > 0)
         {
-            AppendHeaderFooterBlocks(flow, document.HeaderBlocks);
+            AppendHeaderFooterBlocks(flow, document.HeaderBlocks, state);
             AppendHeaderFooterDivider(flow, isHeader: true);
             hasHeaderFooter = true;
         }
@@ -135,7 +169,7 @@ public static class WordFlowRenderer
             {
                 case WordParagraphBlock paragraphBlock:
                 {
-                    var paragraph = BuildParagraph(paragraphBlock, inTable: false, forceBold: false);
+                    var paragraph = BuildParagraph(paragraphBlock, inTable: false, forceBold: false, state);
                     paragraphByBlockIndex.Add(paragraph);
                     blockByBlockIndex.Add(paragraph);
                     flow.Blocks.Add(paragraph);
@@ -144,7 +178,7 @@ public static class WordFlowRenderer
 
                 case WordTableBlock tableBlock:
                 {
-                    var table = BuildTable(tableBlock);
+                    var table = BuildTable(tableBlock, state);
                     paragraphByBlockIndex.Add(null);
                     blockByBlockIndex.Add(table);
                     flow.Blocks.Add(table);
@@ -171,13 +205,13 @@ public static class WordFlowRenderer
         var renderedNoteCount = 0;
         if (document.Footnotes.Count > 0)
         {
-            AppendNotesSection(flow, "脚注", document.Footnotes);
+            AppendNotesSection(flow, "脚注", document.Footnotes, state);
             renderedNoteCount += document.Footnotes.Count;
         }
 
         if (document.Endnotes.Count > 0)
         {
-            AppendNotesSection(flow, "尾注", document.Endnotes);
+            AppendNotesSection(flow, "尾注", document.Endnotes, state);
             renderedNoteCount += document.Endnotes.Count;
         }
 
@@ -185,7 +219,7 @@ public static class WordFlowRenderer
         if (options.ShowHeaderFooter && document.FooterBlocks.Count > 0)
         {
             AppendHeaderFooterDivider(flow, isHeader: false);
-            AppendHeaderFooterBlocks(flow, document.FooterBlocks);
+            AppendHeaderFooterBlocks(flow, document.FooterBlocks, state);
             hasHeaderFooter = true;
         }
 
@@ -196,7 +230,33 @@ public static class WordFlowRenderer
             BlockByBlockIndex = blockByBlockIndex,
             HasHeaderFooter = hasHeaderFooter,
             RenderedNoteCount = renderedNoteCount,
+            InsertedRunCount = state.InsertedRunCount,
+            DeletedRunCount = state.DeletedRunCount,
+            CommentHighlightRunCount = state.CommentHighlightRunCount,
+            CommentMarkerCount = state.CommentMarkerCount,
         };
+    }
+
+    /// <summary>
+    /// 一次渲染的临时状态：批注查找表 + 三个统计计数。
+    /// <para>为什么单独一个类：BuildParagraph / BuildParagraph（表格里）/ BuildInline 是递归调用的，
+    /// 把选项和计数一路传参数会很长；收进一个状态对象更清楚，也避免用静态字段（渲染可能被多个工具页并发调用）。</para>
+    /// </summary>
+    private sealed class RenderState
+    {
+        public RenderState(WordRenderOptions options) => Options = options;
+
+        public WordRenderOptions Options { get; }
+
+        public Dictionary<int, WordComment> CommentById { get; } = new();
+
+        public int InsertedRunCount;
+
+        public int DeletedRunCount;
+
+        public int CommentHighlightRunCount;
+
+        public int CommentMarkerCount;
     }
 
     // ---------------------------------------------------------------- 段落
@@ -208,7 +268,7 @@ public static class WordFlowRenderer
     /// 统一用浅灰小字，和正文一眼能分开。</para>
     /// </summary>
     private static Paragraph BuildParagraph(
-        WordParagraphBlock block, bool inTable, bool forceBold,
+        WordParagraphBlock block, bool inTable, bool forceBold, RenderState state,
         double? baseFontSizePt = null, Brush? foreground = null, Thickness? margin = null)
     {
         var paragraph = new Paragraph();
@@ -264,7 +324,7 @@ public static class WordFlowRenderer
 
         foreach (var wordRun in block.Runs)
         {
-            var inline = BuildInline(wordRun, forceBold || headingLevel > 0);
+            var inline = BuildInline(wordRun, forceBold || headingLevel > 0, state);
             if (inline is not null) paragraph.Inlines.Add(inline);
         }
 
@@ -273,12 +333,24 @@ public static class WordFlowRenderer
         return paragraph;
     }
 
-    private static Inline? BuildInline(WordRun wordRun, bool forceBold)
+    private static Inline? BuildInline(WordRun wordRun, bool forceBold, RenderState state)
     {
-        // 脚注 / 尾注引用常常是个「没有文字的 run」（w:footnoteReference 不占正文文字），
-        // 这种 run 也要渲染：补一个上标 [n]，否则正文里看不到引用标记。
+        // 关闭「显示修订」时：删除内容整段不画（语义等同「不显示标记」），插入内容按普通文字处理
+        if (wordRun.Revision == WordRevisionKind.Deleted && !state.Options.ShowRevisions) return null;
+
+        // 脚注 / 尾注引用与批注引用常常是「没有文字的 run」：补上标 [n] / [批注 N] 后再排版
         var noteNumber = wordRun.FootnoteNumber ?? wordRun.EndnoteNumber;
-        if (string.IsNullOrEmpty(wordRun.Text) && !wordRun.IsHyperlink && noteNumber is null) return null;
+        var commentMarkers = new List<WordComment>();
+        if (state.Options.ShowComments)
+        {
+            foreach (var commentId in wordRun.CommentReferenceIds)
+            {
+                if (state.CommentById.TryGetValue(commentId, out var comment)) commentMarkers.Add(comment);
+            }
+        }
+
+        var hasVisibleContent = !string.IsNullOrEmpty(wordRun.Text) || wordRun.IsHyperlink || noteNumber is not null;
+        if (!hasVisibleContent && commentMarkers.Count == 0) return null;
 
         var run = new Run(wordRun.Text)
         {
@@ -303,35 +375,82 @@ public static class WordFlowRenderer
         if (TryCreateBrush(wordRun.ColorHex) is { } foreground) run.Foreground = foreground;
         if (TryCreateBrush(wordRun.HighlightHex) is { } highlight) run.Background = highlight;
 
-        Inline inline;
-        if (!wordRun.IsHyperlink)
+        // 批注区间：淡黄底。文档里本来就有的高亮优先（不抢内容自己的强调色），只给有文字的 run 上底色
+        if (state.Options.ShowComments && wordRun.CommentIds.Count > 0
+            && wordRun.HighlightHex is null && wordRun.Text.Length > 0)
         {
-            inline = run;
+            run.Background = CommentHighlightBrush;
+            state.CommentHighlightRunCount++;
         }
-        else
-        {
-            // 超链接：蓝色 + 下划线；有地址就接 RequestNavigate，点击用系统默认浏览器打开
-            var link = new Hyperlink
-            {
-                Foreground = LinkBrush,
-                TextDecorations = TextDecorations.Underline,
-                ToolTip = wordRun.Url,
-            };
-            link.Inlines.Add(run);
 
-            if (!string.IsNullOrWhiteSpace(wordRun.Url)
-                && Uri.TryCreate(wordRun.Url, UriKind.Absolute, out var uri))
+        // 修订样式最后套（覆盖普通格式）：插入 = 蓝色下划线、删除 = 红色删除线。
+        // ⚠ 关闭「显示修订」时插入内容要按**普通文字**渲染（删除内容在上面已经整段返回 null 了），
+        // 这里只是仍然统计插入数，方便状态栏对照「解析到的修订数」。
+        if (wordRun.Revision == WordRevisionKind.Inserted)
+        {
+            if (wordRun.Text.Length > 0) state.InsertedRunCount++;
+            if (state.Options.ShowRevisions)
             {
-                link.NavigateUri = uri;
-                link.RequestNavigate += OnHyperlinkRequestNavigate;
+                run.Foreground = InsertedBrush;
+                run.TextDecorations = TextDecorations.Underline;
             }
-
-            inline = link;
+        }
+        else if (wordRun.Revision == WordRevisionKind.Deleted)
+        {
+            if (wordRun.Text.Length > 0) state.DeletedRunCount++;
+            run.Foreground = DeletedBrush;
+            run.TextDecorations = TextDecorations.Strikethrough;
         }
 
-        if (noteNumber is null) return inline;
+        Inline? inline = null;
+        if (hasVisibleContent)
+        {
+            if (!wordRun.IsHyperlink)
+            {
+                inline = run;
+            }
+            else
+            {
+                // 超链接：蓝色 + 下划线；有地址就接 RequestNavigate，点击用系统默认浏览器打开
+                var link = new Hyperlink
+                {
+                    Foreground = LinkBrush,
+                    TextDecorations = TextDecorations.Underline,
+                    ToolTip = wordRun.Url,
+                };
+                link.Inlines.Add(run);
 
-        // 上标 [n]：蓝色小字 + 悬停提示；颜色属于「文档内容」，写死不跟主题
+                if (!string.IsNullOrWhiteSpace(wordRun.Url)
+                    && Uri.TryCreate(wordRun.Url, UriKind.Absolute, out var uri))
+                {
+                    link.NavigateUri = uri;
+                    link.RequestNavigate += OnHyperlinkRequestNavigate;
+                }
+
+                inline = link;
+            }
+        }
+
+        var markers = new List<Inline>();
+        if (noteNumber is not null) markers.Add(BuildNoteMarker(wordRun, noteNumber.Value));
+        foreach (var comment in commentMarkers)
+        {
+            markers.Add(BuildCommentMarker(comment));
+            state.CommentMarkerCount++;
+        }
+
+        if (markers.Count == 0) return inline;
+        if (inline is null && markers.Count == 1) return markers[0];
+
+        var span = new Span();
+        if (inline is not null) span.Inlines.Add(inline);
+        foreach (var marker in markers) span.Inlines.Add(marker);
+        return span;
+    }
+
+    /// <summary>脚注 / 尾注引用标记：蓝色上标 [n] + 悬停提示（颜色属于文档内容，写死不跟主题）。</summary>
+    private static Inline BuildNoteMarker(WordRun wordRun, int noteNumber)
+    {
         var marker = new Run($"[{noteNumber}]")
         {
             BaselineAlignment = BaselineAlignment.Superscript,
@@ -342,11 +461,28 @@ public static class WordFlowRenderer
             wordRun.FootnoteId is not null
                 ? $"脚注 [{noteNumber}]（内容见文档末尾）"
                 : $"尾注 [{noteNumber}]（内容见文档末尾）");
+        return marker;
+    }
 
-        var span = new Span();
-        span.Inlines.Add(inline);
-        span.Inlines.Add(marker);
-        return span;
+    /// <summary>批注引用标记：灰蓝上标 [批注 N]，悬停显示作者 / 时间；不抢正文可读性。</summary>
+    private static Inline BuildCommentMarker(WordComment comment)
+    {
+        var marker = new Run($"[批注 {comment.Number}]")
+        {
+            BaselineAlignment = BaselineAlignment.Superscript,
+            Foreground = CommentMarkerBrush,
+            FontSize = OoxmlPackage.PointToDip(8.5),
+        };
+
+        var lines = new List<string> { $"批注 {comment.Number}" };
+        var meta = new List<string>();
+        if (!string.IsNullOrWhiteSpace(comment.Author)) meta.Add(comment.Author);
+        if (comment.DateText.Length > 0) meta.Add(comment.DateText);
+        if (meta.Count > 0) lines[0] += " · " + string.Join(" · ", meta);
+        lines.Add("内容见右侧批注面板");
+
+        ToolTipService.SetToolTip(marker, string.Join(Environment.NewLine, lines));
+        return marker;
     }
 
     private static void OnHyperlinkRequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
@@ -364,7 +500,8 @@ public static class WordFlowRenderer
 
     // ---------------------------------------------------------------- 表格
 
-    private static Table BuildTable(WordTableBlock block, double? baseFontSizePt = null, Brush? foreground = null)
+    private static Table BuildTable(WordTableBlock block, RenderState state,
+        double? baseFontSizePt = null, Brush? foreground = null)
     {
         // 先按每一行实际占的列数算总列数（合并单元格会让行内单元格个数变少）
         var columnCount = block.ColumnWidthDip.Count;
@@ -425,14 +562,14 @@ public static class WordFlowRenderer
                     {
                         case WordParagraphBlock paragraphBlock:
                             cell.Blocks.Add(BuildParagraph(paragraphBlock, inTable: true,
-                                forceBold: modelRow.IsHeader, baseFontSizePt: baseFontSizePt,
+                                forceBold: modelRow.IsHeader, state, baseFontSizePt: baseFontSizePt,
                                 foreground: foreground));
                             break;
                         case WordImageBlock imageBlock:
                             cell.Blocks.Add(BuildImage(imageBlock));
                             break;
                         case WordTableBlock nestedTable:
-                            cell.Blocks.Add(BuildTable(nestedTable, baseFontSizePt, foreground));
+                            cell.Blocks.Add(BuildTable(nestedTable, state, baseFontSizePt, foreground));
                             break;
                     }
                 }
@@ -523,20 +660,21 @@ public static class WordFlowRenderer
     /// 渲染页眉或页脚的内容块：统一 9 磅浅灰字（表格也一起缩小），和正文明显区分。
     /// 页眉页脚解析阶段已经保证只有段落 / 表格，这里遇到图片按正文图片处理（极少见）。
     /// </summary>
-    private static void AppendHeaderFooterBlocks(FlowDocument flow, IReadOnlyList<WordBlock> blocks)
+    private static void AppendHeaderFooterBlocks(FlowDocument flow, IReadOnlyList<WordBlock> blocks,
+        RenderState state)
     {
         foreach (var block in blocks)
         {
             switch (block)
             {
                 case WordParagraphBlock paragraphBlock:
-                    flow.Blocks.Add(BuildParagraph(paragraphBlock, inTable: false, forceBold: false,
+                    flow.Blocks.Add(BuildParagraph(paragraphBlock, inTable: false, forceBold: false, state,
                         baseFontSizePt: HeaderFooterFontSizePt, foreground: HeaderFooterBrush,
                         margin: new Thickness(0, 0, 0, OoxmlPackage.PointToDip(1))));
                     break;
 
                 case WordTableBlock tableBlock:
-                    flow.Blocks.Add(BuildTable(tableBlock, HeaderFooterFontSizePt, HeaderFooterBrush));
+                    flow.Blocks.Add(BuildTable(tableBlock, state, HeaderFooterFontSizePt, HeaderFooterBrush));
                     break;
 
                 case WordImageBlock imageBlock:
@@ -571,7 +709,8 @@ public static class WordFlowRenderer
     /// 文档末尾的「脚注」/「尾注」小节：灰色小标题 + 细分隔线，每条按 <c>[n] 内容</c> 排；
     /// 多段内容按段落排（表格照常渲染，图片在解析阶段已跳过）。
     /// </summary>
-    private static void AppendNotesSection(FlowDocument flow, string title, IReadOnlyList<WordNote> notes)
+    private static void AppendNotesSection(FlowDocument flow, string title, IReadOnlyList<WordNote> notes,
+        RenderState state)
     {
         flow.Blocks.Add(new Paragraph(new Run(title))
         {
@@ -593,7 +732,7 @@ public static class WordFlowRenderer
                 {
                     case WordParagraphBlock paragraphBlock:
                     {
-                        var paragraph = BuildParagraph(paragraphBlock, inTable: false, forceBold: false,
+                        var paragraph = BuildParagraph(paragraphBlock, inTable: false, forceBold: false, state,
                             baseFontSizePt: NoteFontSizePt, foreground: NoteTextBrush,
                             margin: new Thickness(0, 0, 0, OoxmlPackage.PointToDip(2)));
 
@@ -617,7 +756,7 @@ public static class WordFlowRenderer
                     }
 
                     case WordTableBlock tableBlock:
-                        flow.Blocks.Add(BuildTable(tableBlock, NoteFontSizePt, NoteTextBrush));
+                        flow.Blocks.Add(BuildTable(tableBlock, state, NoteFontSizePt, NoteTextBrush));
                         break;
                 }
 

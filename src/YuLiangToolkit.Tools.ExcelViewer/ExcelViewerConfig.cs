@@ -34,6 +34,14 @@ public sealed class ExcelViewerConfig : ToolConfig
     public bool AutoRowHeight { get; set; } = true;
 
     /// <summary>
+    /// 是否显示公式原文（默认关）：开 = 有公式的格子显示 <c>=公式</c>，没有公式的格子仍显示值；
+    /// 关 = 全部按正常值显示。
+    /// <para>界面不复制 / 不重建模型，只在单元格模板里用 MultiBinding 按这个开关换文本，
+    /// 所以切换时列宽 / 选中 / 冻结 / 行高都不会被重置。</para>
+    /// </summary>
+    public bool ShowFormulas { get; set; }
+
+    /// <summary>
     /// 是否记住每本工作簿的阅读位置（默认开）。关掉后不再写入 / 恢复阅读位置，
     /// 但<b>已有记录不会被删除</b>（下次重新打开开关还能用）。
     /// <para>字段名用复数是为了避开同名方法 <see cref="RememberReadingPosition"/>（C# 不允许属性和方法重名），
@@ -127,7 +135,7 @@ public sealed class ExcelViewerConfig : ToolConfig
     }
 
     /// <summary>
-    /// 「恢复默认设置」：网格线开、冻结窗格还原开、自动行高开、记住阅读位置开、最近上限回 50。
+    /// 「恢复默认设置」：网格线开、冻结窗格还原开、自动行高开、不显示公式、记住阅读位置开、最近上限回 50。
     /// <b>不清空最近记录</b>（只按新上限裁剪），<b>也不清阅读位置</b>，不动「上次打开的文件夹」——
     /// 那些不是显示设置，清了反而给用户添麻烦。
     /// </summary>
@@ -136,6 +144,7 @@ public sealed class ExcelViewerConfig : ToolConfig
         ShowGridLines = true;
         RestoreFreezePanes = true;
         AutoRowHeight = true;
+        ShowFormulas = false;
         RememberReadingPositions = true;
         RecentLimit = RecentFiles.DefaultLimit;
         TrimRecentToLimit();

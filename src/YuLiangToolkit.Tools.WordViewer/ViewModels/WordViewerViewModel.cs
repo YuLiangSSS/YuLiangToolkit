@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Media;
 using Microsoft.Win32;
@@ -8,6 +9,7 @@ using YuLiangToolkit.Core.Documents;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Core.Shell;
 using YuLiangToolkit.Core.Storage;
+using YuLiangToolkit.Tools.WordViewer.Export;
 using YuLiangToolkit.Tools.WordViewer.Parsing;
 using YuLiangToolkit.Tools.WordViewer.Rendering;
 
@@ -77,6 +79,9 @@ public sealed class WordViewerViewModel : ToolViewModelBase, IFileLaunchTarget
     /// <summary>查找命中的临时高亮色（属于文档纸面内容，可以写死）。</summary>
     private static readonly Brush SearchHighlightBrush = CreateFrozenBrush(0xFF, 0xE5, 0x8A);
 
+    /// <summary>导出用的 HTML 图片体积上限（20 MB）；自检会单独传更小的值验证占位逻辑。</summary>
+    private const long ExportImageBytesLimit = WordHtmlExporter.DefaultMaxImageBytes;
+
     private WordDocument? _document;
     private IReadOnlyList<Paragraph?> _paragraphs = Array.Empty<Paragraph?>();
     private IReadOnlyList<Block?> _renderedBlocks = Array.Empty<Block?>();
@@ -108,6 +113,9 @@ public sealed class WordViewerViewModel : ToolViewModelBase, IFileLaunchTarget
         SearchPrevCommand = new RelayCommand(_ => SearchPrev());
         ClearSearchCommand = new RelayCommand(_ => ClearSearch());
         CopyAllTextCommand = new RelayCommand(_ => CopyAllText());
+        PrintCommand = new RelayCommand(_ => PrintDocument());
+        ExportHtmlCommand = new AsyncRelayCommand(_ => ExportHtmlAsync());
+        ExportPlainTextCommand = new AsyncRelayCommand(_ => ExportPlainTextAsync());
         ClearRecentCommand = new RelayCommand(_ => ClearRecent());
         OpenRecentCommand = new RelayCommand(parameter =>
         {
@@ -161,6 +169,61 @@ public sealed class WordViewerViewModel : ToolViewModelBase, IFileLaunchTarget
         }
     }
 
+    /// <summary>
+    /// 工具条「显示批注」：控制正文里的淡黄底与 <c>[批注 N]</c> 标记（右侧批注面板另有开关）。
+    /// 切换后从已解析模型重新排版、不重新读文件，并尽量保持滚动比例。
+    /// </summary>
+    public bool ShowComments
+    {
+        get => Cfg.ShowComments;
+        set
+        {
+            if (Cfg.ShowComments == value) return;
+
+            var ratio = ScrollRatioProvider?.Invoke();
+            Cfg.ShowComments = value;
+            OnPropertyChanged();
+            RelayoutDocument(ratio);
+            if (_document is not null) StatusText = value ? "已显示批注高亮与标记" : "已隐藏批注高亮与标记（面板仍可开关）";
+        }
+    }
+
+    /// <summary>
+    /// 工具条「显示修订」：开 = 插入蓝色下划线 / 删除红色删除线同时显示；
+    /// 关 = 删除内容整段不显示、插入按普通文字显示。切换后重新排版，不重新解析。
+    /// </summary>
+    public bool ShowRevisions
+    {
+        get => Cfg.ShowRevisions;
+        set
+        {
+            if (Cfg.ShowRevisions == value) return;
+
+            var ratio = ScrollRatioProvider?.Invoke();
+            Cfg.ShowRevisions = value;
+            OnPropertyChanged();
+            RelayoutDocument(ratio);
+            if (_document is not null) StatusText = value ? "已显示修订（插入蓝 / 删除红）" : "已隐藏修订标记（删除内容不显示）";
+        }
+    }
+
+    /// <summary>
+    /// 右侧批注面板开关（**不落盘**，属于临时界面状态）：有批注的文档才允许打开；
+    /// 面板本身的显示还要求当前文档确实有批注（见 <see cref="IsCommentsPaneOpen"/>）。
+    /// </summary>
+    public bool IsCommentsPaneVisible
+    {
+        get => _isCommentsPaneVisible;
+        set
+        {
+            if (_isCommentsPaneVisible == value) return;
+            _isCommentsPaneVisible = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsCommentsPaneOpen));
+        }
+    }
+    private bool _isCommentsPaneVisible = true;
+
     /// <summary>是否记住阅读位置（默认开；工具条没有 UI，在配置文件里改）。关掉不会清已有记录。</summary>
     public bool RememberReadingPositionEnabled
     {
@@ -194,6 +257,13 @@ public sealed class WordViewerViewModel : ToolViewModelBase, IFileLaunchTarget
     /// <para>为什么用委托：滚动状态在 <c>FlowDocumentScrollViewer</c> 上，ViewModel 不该直接引用控件。</para>
     /// </summary>
     public Func<double?>? ScrollRatioProvider { get; set; }
+
+    /// <summary>
+    /// 由视图登记：把某个块尽量滚到**窗口中间**（批注面板点击跳转用）。
+    /// <para>为什么也走委托：居中需要 <c>FlowDocumentScrollViewer</c> 里 <c>ScrollViewer</c> 的视口高度，
+    /// ViewModel 不直接引用控件；视图返回 <c>false</c> 表示没做到居中（只做了普通的 BringIntoView）。</para>
+    /// </summary>
+    public Func<int, bool>? CenterBlockProvider { get; set; }
 
     /// <summary>界面取一次「这次排版后要滚到哪儿」的比例；没有要恢复的位置时返回 <c>null</c>。</summary>
     public double? ConsumePendingScrollRatio()
@@ -269,18 +339,25 @@ public sealed class WordViewerViewModel : ToolViewModelBase, IFileLaunchTarget
 
         ClearSearchHighlight();
 
-        var rendered = WordFlowRenderer.Build(_document, new WordRenderOptions
-        {
-            ShowHeaderFooter = Cfg.ShowHeaderFooter,
-        });
+        var rendered = WordFlowRenderer.Build(_document, BuildRenderOptions());
 
         _paragraphs = rendered.ParagraphByBlockIndex;
         _renderedBlocks = rendered.BlockByBlockIndex;
         FlowDocument = rendered.Document;
         _pendingScrollRatio = preserveRatio;
         OnPropertyChanged(nameof(FlowDocument));
-        Log($"已重新排版：页眉页脚{(Cfg.ShowHeaderFooter ? "显示" : "隐藏")}");
+        Log($"已重新排版：页眉页脚{(Cfg.ShowHeaderFooter ? "显示" : "隐藏")}"
+            + $" · 批注{(Cfg.ShowComments ? "显示" : "隐藏")}"
+            + $" · 修订{(Cfg.ShowRevisions ? "显示" : "隐藏")}");
     }
+
+    /// <summary>按当前配置拼渲染选项（打开文档 / 重新排版 / 打印都用同一套开关，保证屏幕和打印一致）。</summary>
+    private WordRenderOptions BuildRenderOptions() => new()
+    {
+        ShowHeaderFooter = Cfg.ShowHeaderFooter,
+        ShowComments = Cfg.ShowComments,
+        ShowRevisions = Cfg.ShowRevisions,
+    };
 
     // ---------------------------------------------------------------- 文档状态
 
@@ -320,6 +397,23 @@ public sealed class WordViewerViewModel : ToolViewModelBase, IFileLaunchTarget
     /// <summary>大纲条目（绑定到侧栏列表）。</summary>
     public ObservableCollection<WordOutlineItem> Outline { get; } = new();
 
+    /// <summary>批注面板条目（按正文出现顺序；没有批注时为空集合）。</summary>
+    public ObservableCollection<WordCommentItem> Comments { get; } = new();
+
+    /// <summary>当前文档有没有批注（决定「批注面板」开关能不能点）。</summary>
+    public bool HasComments { get; private set; }
+
+    /// <summary>批注面板这一列要不要占位：用户打开面板 + 当前文档有批注 + 打开了文档。</summary>
+    public bool IsCommentsPaneOpen => _isCommentsPaneVisible && HasComments && HasDocument;
+
+    /// <summary>批注面板标题下的计数（「5 条批注」/「没有批注」）。</summary>
+    public string CommentSummary { get; private set; } = "没有批注";
+
+    /// <summary>
+    /// 状态栏的修订摘要（「修订：N 处插入 · N 处删除」）；没有修订时为空串（界面按空串隐藏）。
+    /// </summary>
+    public string RevisionSummary { get; private set; } = "";
+
     // ---------------------------------------------------------------- 命令
 
     public AsyncRelayCommand OpenCommand { get; }
@@ -330,6 +424,9 @@ public sealed class WordViewerViewModel : ToolViewModelBase, IFileLaunchTarget
     public RelayCommand SearchPrevCommand { get; }
     public RelayCommand ClearSearchCommand { get; }
     public RelayCommand CopyAllTextCommand { get; }
+    public RelayCommand PrintCommand { get; }
+    public AsyncRelayCommand ExportHtmlCommand { get; }
+    public AsyncRelayCommand ExportPlainTextCommand { get; }
     public RelayCommand ClearRecentCommand { get; }
     public RelayCommand OpenRecentCommand { get; }
 
@@ -533,6 +630,199 @@ public sealed class WordViewerViewModel : ToolViewModelBase, IFileLaunchTarget
         }
     }
 
+    // ---------------------------------------------------------------- 批注面板跳转
+
+    /// <summary>
+    /// 点批注面板里的一条：滚到被批注的段落（用渲染器的「块 → 渲染元素」映射），
+    /// 并让视图尽量把这一段放到窗口中间；没有正文位置时只在状态栏说明。
+    /// </summary>
+    public void BringCommentIntoView(WordCommentItem? item)
+    {
+        if (item is null) return;
+
+        if (!item.HasAnchor)
+        {
+            StatusText = $"批注 {item.Number} 没有对应的正文位置（只在批注部件里有内容）";
+            Log($"批注 {item.Number}：没有 commentRangeStart / commentReference，无法跳转");
+            return;
+        }
+
+        BringBlockIntoView(item.BlockIndex);
+        var centered = CenterBlockProvider?.Invoke(item.BlockIndex) == true;
+        StatusText = $"已跳到批注 {item.Number}（{item.Author}）" + (centered ? " · 已尽量居中" : "");
+    }
+
+    // ---------------------------------------------------------------- 打印 / 导出
+
+    /// <summary>
+    /// 工具条「打印…」：弹系统 <c>PrintDialog</c>，按可打印区域**新建**一份 FlowDocument（当前开关全带上）
+    /// 交给分页器打印。
+    /// <para>不复用屏幕上的文档：打印是另一份版面，打印完不会影响当前阅读位置。
+    /// 取消 / 没有打印机 / 抛异常都只写状态栏，不打断阅读。</para>
+    /// </summary>
+    public void PrintDocument()
+    {
+        if (_document is null)
+        {
+            StatusText = "还没有打开文档，无法打印";
+            return;
+        }
+
+        try
+        {
+            var dialog = new System.Windows.Controls.PrintDialog();
+            if (dialog.ShowDialog() != true)
+            {
+                StatusText = "已取消打印";
+                return;
+            }
+
+            var width = dialog.PrintableAreaWidth;
+            var height = dialog.PrintableAreaHeight;
+            var printable = WordPrintLayout.CreatePrintableDocument(
+                _document, BuildRenderOptions(), new Size(width, height));
+
+            var paginator = ((IDocumentPaginatorSource)printable).DocumentPaginator;
+            // 用排版后的实际页尺寸（拿不到打印区域时 WordPrintLayout 会退回 A4，这里别再写回 0）
+            paginator.PageSize = new Size(printable.PageWidth, printable.PageHeight);
+            dialog.PrintDocument(paginator, $"Word 阅读器 - {FileName}");
+
+            StatusText = $"已发送到打印机：{FileName}（{paginator.PageCount} 页）";
+            Log($"打印：{FileName} · {paginator.PageCount} 页 · 纸张 {printable.PageWidth:0}×{printable.PageHeight:0}");
+        }
+        catch (Exception ex)
+        {
+            // 没有打印机 / 驱动异常 / 用户取消到一半：都只提示，绝不影响当前文档
+            StatusText = "打印失败：" + ex.Message;
+            Log("打印失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 工具条「导出为 HTML…」：<c>SaveFileDialog</c> 选路径 → 后台生成自包含 HTML（用户文字全部转义）。
+    /// 写盘失败只写状态栏，原 docx 不会被改动。
+    /// </summary>
+    public async Task ExportHtmlAsync()
+    {
+        if (_document is null)
+        {
+            StatusText = "还没有打开文档，没有可导出的内容";
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "导出为 HTML",
+            Filter = "HTML 文件 (*.html)|*.html|所有文件 (*.*)|*.*",
+            DefaultExt = ".html",
+            AddExtension = true,
+            OverwritePrompt = true,
+            FileName = BuildExportFileName(".html"),
+        };
+        ApplyExportFolder(dialog);
+
+        if (dialog.ShowDialog() != true) return;
+        var path = dialog.FileName;
+
+        try
+        {
+            var document = _document;
+            var result = await Task.Run(() => WordHtmlExporter.WriteToFile(document, path, ExportImageBytesLimit));
+            var omitted = result.OmittedImageCount > 0 ? $" · 省略 {result.OmittedImageCount} 张超大图片" : "";
+            StatusText = $"已导出 HTML：{path}（{FileSize.Format(result.ByteCount)}{omitted}）";
+            Log($"导出 HTML：{path} · {FileSize.Format(result.ByteCount)}{omitted}");
+        }
+        catch (Exception ex)
+        {
+            StatusText = "导出 HTML 失败：" + ex.Message;
+            Log("导出 HTML 失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 工具条「导出为纯文本…」：复用 <see cref="WordDocument.ExtractPlainText"/>（正文，不含页眉页脚 / 脚注，
+    /// 跳过修订删除内容），写 UTF-8 with BOM 的 <c>.txt</c>。
+    /// </summary>
+    public async Task ExportPlainTextAsync()
+    {
+        if (_document is null)
+        {
+            StatusText = "还没有打开文档，没有可导出的内容";
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "导出为纯文本",
+            Filter = "文本文件 (*.txt)|*.txt|所有文件 (*.*)|*.*",
+            DefaultExt = ".txt",
+            AddExtension = true,
+            OverwritePrompt = true,
+            FileName = BuildExportFileName(".txt"),
+        };
+        ApplyExportFolder(dialog);
+
+        if (dialog.ShowDialog() != true) return;
+        var path = dialog.FileName;
+
+        try
+        {
+            var document = _document;
+            var chars = await Task.Run(() => WordTextExporter.Write(document, path));
+            StatusText = $"已导出纯文本：{path}（{chars} 字）";
+            Log($"导出纯文本：{path} · {chars} 字");
+        }
+        catch (Exception ex)
+        {
+            StatusText = "导出纯文本失败：" + ex.Message;
+            Log("导出纯文本失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>导出对话框的默认文件名（当前文档名 + 目标扩展名；没有文档时用一个通用名）。</summary>
+    private string BuildExportFileName(string extension)
+    {
+        var baseName = "Word 文档";
+        if (_currentPath.Length > 0)
+        {
+            try
+            {
+                var name = Path.GetFileNameWithoutExtension(_currentPath);
+                if (!string.IsNullOrWhiteSpace(name)) baseName = name;
+            }
+            catch
+            {
+                // 非法路径：用通用名
+            }
+        }
+
+        return baseName + extension;
+    }
+
+    /// <summary>导出对话框起始目录：优先当前文档所在文件夹，其次上次打开文件所在文件夹。</summary>
+    private void ApplyExportFolder(SaveFileDialog dialog)
+    {
+        try
+        {
+            if (_currentPath.Length > 0)
+            {
+                var folder = Path.GetDirectoryName(_currentPath);
+                if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder))
+                {
+                    dialog.InitialDirectory = folder;
+                    return;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(Cfg.LastFolder) && Directory.Exists(Cfg.LastFolder))
+                dialog.InitialDirectory = Cfg.LastFolder;
+        }
+        catch
+        {
+            // 路径非法（被删 / 没权限）：用系统默认目录
+        }
+    }
+
     // ---------------------------------------------------------------- 打开文档
 
     /// <summary>文件对话框选一个文档并打开（起始目录 = 上次打开文件所在文件夹）。</summary>
@@ -678,10 +968,7 @@ public sealed class WordViewerViewModel : ToolViewModelBase, IFileLaunchTarget
         // 打开新文件先清掉旧文档与查找状态，避免旧高亮 / 旧大纲还挂着
         ReleaseDocumentState();
 
-        var rendered = WordFlowRenderer.Build(document, new WordRenderOptions
-        {
-            ShowHeaderFooter = Cfg.ShowHeaderFooter,
-        });
+        var rendered = WordFlowRenderer.Build(document, BuildRenderOptions());
 
         _document = document;
         _paragraphs = rendered.ParagraphByBlockIndex;
@@ -720,6 +1007,18 @@ public sealed class WordViewerViewModel : ToolViewModelBase, IFileLaunchTarget
         OutlineSummary = Outline.Count == 0 ? "没有标题" : $"{Outline.Count} 个标题";
         OnPropertyChanged(nameof(OutlineSummary));
 
+        // 批注面板 / 修订摘要：直接从已解析模型取，不参与段落计数
+        Comments.Clear();
+        foreach (var comment in document.Comments) Comments.Add(new WordCommentItem(comment));
+        HasComments = Comments.Count > 0;
+        CommentSummary = HasComments ? $"{Comments.Count} 条批注" : "没有批注";
+        RevisionSummary = BuildRevisionSummary(document);
+        OnPropertyChanged(nameof(HasComments));
+        OnPropertyChanged(nameof(Comments));
+        OnPropertyChanged(nameof(CommentSummary));
+        OnPropertyChanged(nameof(RevisionSummary));
+        OnPropertyChanged(nameof(IsCommentsPaneOpen));
+
         if (remember)
         {
             try { Cfg.LastFolder = Path.GetDirectoryName(path) ?? ""; } catch { /* 忽略非法路径 */ }
@@ -735,11 +1034,19 @@ public sealed class WordViewerViewModel : ToolViewModelBase, IFileLaunchTarget
         if (document.HasFooter) extraSummary.Add("页脚");
         if (document.Footnotes.Count > 0) extraSummary.Add($"脚注 {document.Footnotes.Count} 条");
         if (document.Endnotes.Count > 0) extraSummary.Add($"尾注 {document.Endnotes.Count} 条");
+        if (document.HasComments) extraSummary.Add($"批注 {document.Comments.Count} 条");
+        if (document.HasRevisions) extraSummary.Add(RevisionSummary);
 
         Log($"解析完成：{DocumentSummary} · 大纲 {Outline.Count} 条"
             + (extraSummary.Count > 0 ? " · " + string.Join(" · ", extraSummary) : ""));
         foreach (var note in document.Notes) Log(note);
     }
+
+    /// <summary>拼状态栏 / 摘要里的修订说明：没有修订时返回空串（界面按空串隐藏）。</summary>
+    private static string BuildRevisionSummary(WordDocument document)
+        => document.HasRevisions
+            ? $"修订：{document.InsertedRunCount} 处插入 · {document.DeletedRunCount} 处删除"
+            : "";
 
     /// <summary>
     /// 拼标题的悬停提示：有文档属性就显示作者 / 修改者 / 时间，没有就至少显示文件大小与路径。
@@ -787,6 +1094,10 @@ public sealed class WordViewerViewModel : ToolViewModelBase, IFileLaunchTarget
 
         Outline.Clear();
         OutlineSummary = "没有标题";
+        Comments.Clear();
+        HasComments = false;
+        CommentSummary = "没有批注";
+        RevisionSummary = "";
         _document = null;
         _paragraphs = Array.Empty<Paragraph?>();
         _renderedBlocks = Array.Empty<Block?>();
@@ -809,6 +1120,11 @@ public sealed class WordViewerViewModel : ToolViewModelBase, IFileLaunchTarget
         OnPropertyChanged(nameof(DocumentSummary));
         OnPropertyChanged(nameof(DocumentInfoText));
         OnPropertyChanged(nameof(OutlineSummary));
+        OnPropertyChanged(nameof(HasComments));
+        OnPropertyChanged(nameof(Comments));
+        OnPropertyChanged(nameof(CommentSummary));
+        OnPropertyChanged(nameof(RevisionSummary));
+        OnPropertyChanged(nameof(IsCommentsPaneOpen));
     }
 
     private void FilePathTextChanged() => OnPropertyChanged(nameof(FilePathText));

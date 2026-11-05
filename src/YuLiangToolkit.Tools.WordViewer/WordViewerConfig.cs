@@ -51,6 +51,18 @@ public sealed class WordViewerConfig : ToolConfig
     public bool ShowHeaderFooter { get; set; } = true;
 
     /// <summary>
+    /// 是否显示批注（默认显示）：被批注的文字加淡黄底、引用处补上标 <c>[批注 N]</c>。
+    /// 关掉只影响正文里的高亮与标记，右侧批注面板是否显示由 <c>IsCommentsPaneVisible</c> 单独控制。
+    /// </summary>
+    public bool ShowComments { get; set; } = true;
+
+    /// <summary>
+    /// 是否显示修订（默认显示）：插入文字蓝色下划线、删除文字红色删除线。
+    /// 关掉时删除内容整段不显示、插入内容按普通文字显示（复用同一份解析模型重新排版，不重读文件）。
+    /// </summary>
+    public bool ShowRevisions { get; set; } = true;
+
+    /// <summary>
     /// 是否记住每份文档的阅读位置（默认开）。关掉只是不再写新位置，
     /// **不会清掉已有记录**（重新打开开关还能接着用）。
     /// <para>属性名和「写位置」的方法 <see cref="RememberReadingPosition"/> 重名会冲突，
@@ -202,7 +214,8 @@ public sealed class WordViewerConfig : ToolConfig
     // ---------------------------------------------------------------- 其它
 
     /// <summary>
-    /// 「恢复默认设置」：缩放回 100%、大纲开、显示页眉页脚、记住阅读位置、不区分大小写、最近上限回 50。
+    /// 「恢复默认设置」：缩放回 100%、大纲开、显示页眉页脚 / 批注 / 修订、记住阅读位置、
+    /// 不区分大小写、最近上限回 50。
     /// <para><b>不动</b>「上次打开的文件夹」「最近记录」「已有的阅读位置」—— 那属于用户的使用痕迹，
     /// 清掉只会给用户添麻烦（最近记录有工具条里的清空入口）。</para>
     /// </summary>
@@ -211,6 +224,8 @@ public sealed class WordViewerConfig : ToolConfig
         ZoomPercent = DefaultZoomPercent;
         ShowOutline = true;
         ShowHeaderFooter = true;
+        ShowComments = true;
+        ShowRevisions = true;
         RememberReadingPositionEnabled = true;
         SearchMatchCase = false;
         RecentLimit = DefaultRecentLimit;

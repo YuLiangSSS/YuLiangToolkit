@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -64,9 +65,18 @@ public sealed class ExcelViewerViewModel : ToolViewModelBase, IFileLaunchTarget
     /// <summary>恢复工作簿 / 清空文档期间不要因为「选中工作表」而把旧位置写坏。</summary>
     private bool _suppressReadingPositionSave;
 
+    /// <summary>
+    /// 开发 / 截图用：环境变量 <c>YLT_EXCEL_SELECT=&lt;A1 地址&gt;</c>（也接受 <c>Sheet!A1</c>），
+    /// 打开工作簿后自动选中并滚到该格。<b>不写配置</b>，地址非法 / 超出范围时只写日志。
+    /// </summary>
+    private readonly string _autoSelectAddress;
+
     public ExcelViewerViewModel() : base(ExcelViewerConfig.ToolId)
     {
         Cfg = LoadConfig<ExcelViewerConfig>();
+
+        // 开发 / 截图选择地址先读好：YLT_EXCEL_OPEN 触发的自动打开是异步的，会晚于构造函数
+        _autoSelectAddress = Environment.GetEnvironmentVariable("YLT_EXCEL_SELECT")?.Trim() ?? "";
 
         // 最近列表按当前上限裁一次（手改坏配置时不会带出一长串），再把界面列表填好
         Cfg.TrimRecentToLimit();
@@ -99,6 +109,7 @@ public sealed class ExcelViewerViewModel : ToolViewModelBase, IFileLaunchTarget
         _searchDebounceTimer.Tick += OnSearchDebounceTick;
 
         Log($"配置文件：{Cfg.FilePath}");
+        if (_autoSelectAddress.Length > 0) Log($"YLT_EXCEL_SELECT={_autoSelectAddress}（打开后自动选中，不写配置）");
 
         // 开发 / 截图用的自动打开开关：只显示，不写配置（不改 LastFolder / 最近列表）
         var autoOpenPath = Environment.GetEnvironmentVariable("YLT_EXCEL_OPEN");
@@ -177,8 +188,8 @@ public sealed class ExcelViewerViewModel : ToolViewModelBase, IFileLaunchTarget
             OnPropertyChanged(nameof(EmptyStateText));
             OnPropertyChanged(nameof(FreezeText));
             OnPropertyChanged(nameof(AutoRowHeightText));
+            OnPropertyChanged(nameof(ShowFormulasText));
 
-            // 通知 View：列集合 / 列宽 / 冻结布局要跟着换（列是 DataGridTemplateColumn，只能在代码后置里重建）
             SheetLayoutChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -203,6 +214,12 @@ public sealed class ExcelViewerViewModel : ToolViewModelBase, IFileLaunchTarget
 
     /// <summary>查找命中需要跳转时触发，View 用它 ScrollIntoView + 选中单元格。</summary>
     public event EventHandler<ExcelSearchNavigateEventArgs>? SearchNavigateRequested;
+
+    /// <summary>
+    /// 需要把某个单元格滚入视野并选中时触发（内部超链接跳转 / YLT_EXCEL_SELECT 截图选择用；
+    /// 触发前工作表已经切好，View 只需等布局完成后定位）。
+    /// </summary>
+    public event EventHandler<ExcelCellNavigateEventArgs>? CellNavigateRequested;
 
     // ---------------------------------------------------------------- 显示开关
 
@@ -233,6 +250,33 @@ public sealed class ExcelViewerViewModel : ToolViewModelBase, IFileLaunchTarget
             RowHeightChanged?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    /// <summary>
+    /// 工具条「显示公式」勾选框（Ctrl+` 快捷键也改它）：开 = 有公式的格子显示 <c>=公式</c>，
+    /// 没公式的格子仍显示值。<b>只发属性通知，不重建列 / 不重新解析</b>，
+    /// 所以切换时列宽 / 选中 / 冻结窗格 / 行高都不会被重置（单元格模板自己按开关换文本）。
+    /// </summary>
+    public bool ShowFormulas
+    {
+        get => Cfg.ShowFormulas;
+        set
+        {
+            if (Cfg.ShowFormulas == value) return;
+
+            Cfg.ShowFormulas = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ShowFormulasText));
+            StatusText = value
+                ? "显示公式：有公式的格子显示 =公式原文（过长会截断，悬停可看全文）"
+                : "已恢复显示单元格值";
+        }
+    }
+
+    /// <summary>切换「显示公式」（Ctrl+` / 工具条勾选框都走这里）。</summary>
+    public void ToggleShowFormulas() => ShowFormulas = !ShowFormulas;
+
+    /// <summary>状态栏里的「显示公式」提示；关闭 / 没打开表时为空串。</summary>
+    public string ShowFormulasText => Cfg.ShowFormulas && HasSheetData ? "显示公式" : "";
 
     // ---------------------------------------------------------------- 顶栏 / 状态栏文字
 
@@ -387,7 +431,7 @@ public sealed class ExcelViewerViewModel : ToolViewModelBase, IFileLaunchTarget
 
     /// <summary>状态栏里选中单元格那一行（没选时给操作提示）。</summary>
     public string SelectedCellText => SelectedCellInfo?.SummaryText
-        ?? "单击任意单元格查看地址 / 值 / 公式；右键可复制；拖入 .xlsx / .xlsm 文件也可以直接打开";
+        ?? "单击任意单元格查看地址 / 值 / 公式 / 链接；双击带链接的单元格可打开 / 跳转；右键可复制；拖入 .xlsx / .xlsm 文件也可以直接打开";
 
     /// <summary>
     /// 由 View 在 <c>SelectedCellsChanged</c> 时调用：把选中的格子交给 ViewModel 组装成状态栏文字。
@@ -409,7 +453,107 @@ public sealed class ExcelViewerViewModel : ToolViewModelBase, IFileLaunchTarget
             cell.Formula,
             DescribeStyle(cell.Style),
             cell.IsMergedAnchor,
-            cell.IsMergedCovered);
+            cell.IsMergedCovered,
+            cell.Hyperlink);
+    }
+
+    /// <summary>
+    /// 双击带超链接的单元格时调用：
+    /// <list type="bullet">
+    ///   <item>外部链接：只放行 <c>http / https / mailto</c>，用系统默认程序打开；
+    ///         其它协议（file / javascript / data…）只给状态栏提示，绝不调用 <c>Process.Start</c>；</item>
+    ///   <item>内部链接：切到目标工作表并让 View 定位 / 选中目标格；工作表 / 单元格不存在时给中文提示。</item>
+    /// </list>
+    /// 不抛异常、不弹窗；失败都落在状态栏。
+    /// </summary>
+    public void ActivateCellHyperlink(ExcelCell? cell)
+    {
+        var link = cell?.Hyperlink;
+        if (link is null)
+        {
+            StatusText = "这个单元格没有链接";
+            return;
+        }
+
+        if (link.IsExternal)
+        {
+            if (!ExcelHyperlinks.TryCreateLaunchUri(link.Target, out var uri))
+            {
+                var protocol = ExcelHyperlinks.GetProtocol(link.Target);
+                StatusText = protocol.Length == 0
+                    ? "不打开这个链接：地址不是有效的 URL"
+                    : $"不打开这个链接：只允许 http / https / mailto，当前协议是 {protocol}";
+                return;
+            }
+
+            try
+            {
+                // UseShellExecute = true：交给系统默认浏览器 / 邮件程序，和双击文档里的链接一致
+                Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+                StatusText = $"已打开链接：{ShortenForStatus(uri.AbsoluteUri)}";
+            }
+            catch (Exception ex)
+            {
+                StatusText = $"打开链接失败：{ex.Message}";
+            }
+
+            return;
+        }
+
+        // ---------- 内部链接 ----------
+        if (!ExcelHyperlinks.TryParseLocation(link.Location, out var sheetName, out var row, out var column))
+        {
+            StatusText = $"内部链接指向的位置无法识别：{link.Location}";
+            return;
+        }
+
+        if (sheetName.Contains('[') || sheetName.Contains(']'))
+        {
+            StatusText = "不支持跨工作簿的内部链接（只能跳到本工作簿的工作表）";
+            return;
+        }
+
+        ExcelSheetItem? targetSheet = null;
+        if (sheetName.Length > 0)
+        {
+            targetSheet = Sheets.FirstOrDefault(item =>
+                string.Equals(item.Name, sheetName, StringComparison.OrdinalIgnoreCase));
+            if (targetSheet is null)
+            {
+                StatusText = $"链接指向的工作表不存在：{sheetName}";
+                return;
+            }
+        }
+
+        if (targetSheet is not null && !ReferenceEquals(targetSheet, _selectedSheet))
+        {
+            SelectedSheet = targetSheet;   // 切表会重建列；定位交给下面的 CellNavigateRequested（View 会等布局）
+        }
+
+        var sheet = CurrentSheet;
+        if (sheet is null) return;
+
+        var targetRow = sheet.Rows.FirstOrDefault(item => item.RowIndex == row);
+        if (targetRow is null)
+        {
+            StatusText = $"链接目标 {ExcelAddresses.CellReference(row, column)} 不在可见范围（隐藏行或被截断）";
+            return;
+        }
+
+        if (column < 1 || column > sheet.Columns.Count)
+        {
+            StatusText = $"链接目标 {ExcelAddresses.CellReference(row, column)} 超出工作表范围";
+            return;
+        }
+
+        if (sheet.Columns[column - 1].IsHidden)
+        {
+            StatusText = $"链接目标在隐藏列 {ExcelAddresses.ColumnName(column)}，无法定位";
+            return;
+        }
+
+        StatusText = $"已定位到 {ExcelAddresses.CellReference(row, column)}";
+        CellNavigateRequested?.Invoke(this, new ExcelCellNavigateEventArgs(row, column));
     }
 
     /// <summary>把样式翻译成中文说明（状态栏用；只挑用户看得懂的项）。</summary>
@@ -977,6 +1121,64 @@ public sealed class ExcelViewerViewModel : ToolViewModelBase, IFileLaunchTarget
         OnPropertyChanged(nameof(EmptyStateText));
         OnPropertyChanged(nameof(FreezeText));
         OnPropertyChanged(nameof(AutoRowHeightText));
+        OnPropertyChanged(nameof(ShowFormulasText));
+
+        TryApplyAutoSelect();
+    }
+
+    /// <summary>
+    /// 开发 / 截图用：如果设置了 <c>YLT_EXCEL_SELECT</c>，打开工作簿后自动选中并滚到该格。
+    /// <b>只读操作、不写配置</b>（切换工作表时也会压住阅读位置保存）；地址非法 / 超出范围只写日志。
+    /// </summary>
+    private void TryApplyAutoSelect()
+    {
+        if (_autoSelectAddress.Length == 0) return;
+
+        if (!ExcelHyperlinks.TryParseLocation(_autoSelectAddress, out var sheetName, out var row, out var column))
+        {
+            Log($"[截图选择] 无法识别 YLT_EXCEL_SELECT={_autoSelectAddress}（应为 A1 或 Sheet!A1），已忽略");
+            return;
+        }
+
+        var targetSheet = sheetName.Length == 0
+            ? _selectedSheet
+            : Sheets.FirstOrDefault(item =>
+                string.Equals(item.Name, sheetName, StringComparison.OrdinalIgnoreCase));
+        if (targetSheet is null)
+        {
+            Log($"[截图选择] YLT_EXCEL_SELECT={_autoSelectAddress} 指向的工作表不存在，已忽略");
+            return;
+        }
+
+        if (!ReferenceEquals(targetSheet, _selectedSheet))
+        {
+            _suppressReadingPositionSave = true;
+            try { SelectedSheet = targetSheet; }
+            finally { _suppressReadingPositionSave = false; }
+        }
+
+        var sheet = CurrentSheet;
+        var targetRow = sheet?.Rows.FirstOrDefault(item => item.RowIndex == row);
+        if (sheet is null || targetRow is null)
+        {
+            Log($"[截图选择] YLT_EXCEL_SELECT={_autoSelectAddress} 的目标行不在显示范围（隐藏行或被截断），已忽略");
+            return;
+        }
+
+        if (column < 1 || column > sheet.Columns.Count)
+        {
+            Log($"[截图选择] YLT_EXCEL_SELECT={_autoSelectAddress} 的目标列超出工作表范围，已忽略");
+            return;
+        }
+
+        if (sheet.Columns[column - 1].IsHidden)
+        {
+            Log($"[截图选择] YLT_EXCEL_SELECT={_autoSelectAddress} 的目标列是隐藏列，已忽略");
+            return;
+        }
+
+        StatusText = $"已自动选中 {ExcelAddresses.CellReference(row, column)}（YLT_EXCEL_SELECT，仅供截图 / 冒烟）";
+        CellNavigateRequested?.Invoke(this, new ExcelCellNavigateEventArgs(row, column));
     }
 
     /// <summary>打开失败 / 关闭工具时把界面上的旧文档清掉。</summary>
@@ -1005,6 +1207,7 @@ public sealed class ExcelViewerViewModel : ToolViewModelBase, IFileLaunchTarget
         OnPropertyChanged(nameof(EmptyStateText));
         OnPropertyChanged(nameof(FreezeText));
         OnPropertyChanged(nameof(AutoRowHeightText));
+        OnPropertyChanged(nameof(ShowFormulasText));
     }
 
     // ---------------------------------------------------------------- 最近列表
@@ -1087,4 +1290,23 @@ public sealed class ExcelSearchNavigateEventArgs : EventArgs
 
     /// <summary>一共多少处命中。</summary>
     public int Total { get; }
+}
+
+/// <summary>
+/// 单元格定位事件参数（内部超链接 / YLT_EXCEL_SELECT 用）：告诉界面要滚到哪个 Excel 坐标（1 基）。
+/// 触发时工作表已经切好，View 只需要等布局完成后 ScrollIntoView + 选中。
+/// </summary>
+public sealed class ExcelCellNavigateEventArgs : EventArgs
+{
+    public ExcelCellNavigateEventArgs(int rowIndex, int columnIndex)
+    {
+        RowIndex = rowIndex;
+        ColumnIndex = columnIndex;
+    }
+
+    /// <summary>Excel 原始行号（1 基）。</summary>
+    public int RowIndex { get; }
+
+    /// <summary>列号（1 基）。</summary>
+    public int ColumnIndex { get; }
 }

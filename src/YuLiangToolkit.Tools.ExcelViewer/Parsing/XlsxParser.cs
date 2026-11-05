@@ -18,6 +18,8 @@ namespace YuLiangToolkit.Tools.ExcelViewer.Parsing;
 /// <para><b>刻意做的取舍</b>：</para>
 /// <list type="bullet">
 ///   <item>公式<b>不算</b>，只显示 Excel 上次保存时写进文件的缓存值（见 <see cref="ExcelCell.Formula"/>）；</item>
+///   <item>超链接会解析（<see cref="ExcelCell.Hyperlink"/> + <see cref="ExcelSheet.Hyperlinks"/>），
+///         但只用于浏览 / 打开，绝不修改；</item>
 ///   <item>图表 / 图片 / 批注 / 数据透视表不解析（只影响显示，不影响单元格数据）；</item>
 ///   <item>超大表按 <see cref="XlsxParseLimits"/> 截断，并在 <see cref="ExcelSheet.TruncationNote"/> 里说明；</item>
 ///   <item>缺 styles / sharedStrings / rels 等部件时一律用默认值，坏文件才抛 <see cref="OoxmlException"/>。</item>
@@ -601,6 +603,9 @@ public static class XlsxParser
         var mergedRanges = ReadMergedRanges(xml);
         ApplyMergedCells(rows, mergedRanges, columnCount);
 
+        // 超链接同样在 sheetData 之后：按 ref 范围挂到已建好的格子上（缺 rels / 坏 XML 不崩）
+        var hyperlinks = ReadHyperlinks(package, partName, xml, rows, columnCount);
+
         // 列信息（含隐藏列；界面只给非隐藏列建 DataGrid 列）
         var columns = new List<ExcelColumn>(columnCount);
         for (var columnIndex = 1; columnIndex <= columnCount; columnIndex++)
@@ -641,6 +646,7 @@ public static class XlsxParser
                 .ToList(),
             MaxRow = maxRow,
             MaxColumn = maxColumn,
+            Hyperlinks = hyperlinks,
             IsTruncated = notes.Count > 0,
             TruncationNote = notes.Count > 0 ? string.Join("；", notes) : null,
             HiddenRowCount = hiddenRows,
@@ -728,6 +734,99 @@ public static class XlsxParser
         }
 
         return ranges;
+    }
+
+    // ---------------------------------------------------------------- 超链接
+
+    /// <summary>
+    /// 读工作表的 <c>hyperlinks/hyperlink</c>，并把它挂到已建好的格子上：
+    /// <list type="bullet">
+    ///   <item><c>r:id</c> → 工作表自己的 <c>_rels/sheetN.xml.rels</c>；
+    ///         <c>TargetMode="External"</c> 的 Target 是外部 URL（http / https / mailto / file…，打开时再按白名单拦截）；</item>
+    ///   <item><c>location</c> → 内部链接（A1 / Sheet2!A1 / '我的 表'!B2，可能带前导 #）；</item>
+    ///   <item><c>ref</c> 支持区域（A1:B2），范围内每个存在的格子都挂同一个链接。</item>
+    /// </list>
+    ///
+    /// <para><b>容错</b>：缺 rels / rels 是坏 XML / r:id 查不到关系 / ref 非法 / location 非法时一律跳过，
+    /// 不抛异常（一个坏链接不能拖垮整张表）；被截断的行 / 隐藏列超出的格子自然不存在，也直接跳过。
+    /// 用 <see cref="ExcelHyperlinks.MaxHyperlinkCells"/> 限制一张表的挂链接格数，防止畸形文件拖死解析。</para>
+    /// </summary>
+    private static Dictionary<string, ExcelHyperlink> ReadHyperlinks(
+        OoxmlPackage package,
+        string partName,
+        XDocument worksheetXml,
+        IReadOnlyList<ExcelRow> rows,
+        int columnCount)
+    {
+        var map = new Dictionary<string, ExcelHyperlink>(StringComparer.OrdinalIgnoreCase);
+        if (rows.Count == 0 || columnCount <= 0) return map;
+
+        var container = worksheetXml.Descendants().FirstOrDefault(e => e.Name.LocalName == "hyperlinks");
+        if (container is null) return map;
+
+        // 工作表自己的 .rels：缺文件返回空列表；坏 XML 抛 OoxmlException → 按「没有关系」处理
+        Dictionary<string, OoxmlRelationship> relationships;
+        try
+        {
+            relationships = new Dictionary<string, OoxmlRelationship>(StringComparer.OrdinalIgnoreCase);
+            foreach (var relationship in package.ReadRelationships(partName))
+            {
+                relationships.TryAdd(relationship.Id, relationship);
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            relationships = new Dictionary<string, OoxmlRelationship>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        // 行号 → 行（隐藏行 / 被截断的行不在列表里）；按行号查比每链接遍历一遍 rows 快。
+        // 用 TryAdd 而不是 ToDictionary：畸形文件里偶尔有重复 r 的行，不能因为一个坏行让整张表解析失败。
+        var rowsByIndex = new Dictionary<int, ExcelRow>(rows.Count);
+        foreach (var row in rows) rowsByIndex.TryAdd(row.RowIndex, row);
+        var marked = 0;
+
+        foreach (var element in container.Elements().Where(e => e.Name.LocalName == "hyperlink"))
+        {
+            if (marked >= ExcelHyperlinks.MaxHyperlinkCells) break;
+
+            if (!ExcelAddresses.TryParseRange((string?)element.Attribute("ref"),
+                    out var top, out var left, out var bottom, out var right))
+            {
+                continue;   // 坏 ref：跳过
+            }
+
+            // r:id 的属性本地名就是 id（和 workbook.xml 里取 sheet 的 r:id 同一套做法）
+            var relationshipId = element.Attributes()
+                .FirstOrDefault(attribute => attribute.Name.LocalName == "id")?.Value ?? "";
+            relationships.TryGetValue(relationshipId, out var relationship);
+
+            var link = ExcelHyperlinks.Resolve(
+                (string?)element.Attribute("location"),
+                (string?)element.Attribute("display"),
+                relationship);
+            if (link is null) continue;
+
+            var lastColumn = Math.Min(right, columnCount);
+            if (left < 1 || lastColumn < left) continue;
+
+            for (var rowIndex = top; rowIndex <= bottom; rowIndex++)
+            {
+                if (marked >= ExcelHyperlinks.MaxHyperlinkCells) break;
+                if (!rowsByIndex.TryGetValue(rowIndex, out var row)) continue;
+
+                for (var column = left; column <= lastColumn; column++)
+                {
+                    if (marked >= ExcelHyperlinks.MaxHyperlinkCells) break;
+
+                    var cell = row.Cells[column - 1];
+                    cell.Hyperlink = link;
+                    map[ExcelAddresses.CellReference(rowIndex, column)] = link;
+                    marked++;
+                }
+            }
+        }
+
+        return map;
     }
 
     // ---------------------------------------------------------------- 冻结窗格

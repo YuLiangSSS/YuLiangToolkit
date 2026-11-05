@@ -13,7 +13,8 @@ namespace YuLiangToolkit.FrameworkSelfCheck;
 /// <summary>
 /// 「Excel 阅读器」自检：手写一个最小的 .xlsx（ZipArchive + 手写各个 XML 部件），
 /// 真跑一遍解析链路（共享字符串 / 富文本 / 数字格式 / 日期系统 / 布尔 / 错误值 / 公式缓存值 /
-/// 样式 / 主题色 / 合并单元格 / 列宽 / 隐藏行列 / 截断），再断言配置默认值与「最近打开」规则。
+/// 样式 / 主题色 / 合并单元格 / 列宽 / 隐藏行列 / 截断 / 超链接 / 显示公式 / 截图选择地址），
+/// 再断言配置默认值与「最近打开」「阅读位置」规则。
 /// <b>不弹窗、不联网、不碰真实 Data / Config</b>（临时目录里造文件，finally 清理）。
 /// </summary>
 internal static class ExcelViewerChecks
@@ -32,12 +33,15 @@ internal static class ExcelViewerChecks
             BuildMinimalWorkbook(minimalPath);
             var freezePath = Path.Combine(tempDir, "冻结窗格.xlsx");
             BuildFreezeWorkbook(freezePath);
+            var hyperlinkPath = Path.Combine(tempDir, "超链接.xlsx");
+            BuildHyperlinkWorkbook(hyperlinkPath);
 
             CheckMetadata(check);
             CheckAddresses(check);
             CheckNumberFormat(check);
 
             var workbook = XlsxParser.Parse(workbookPath);
+            var hyperlinkWorkbook = XlsxParser.Parse(hyperlinkPath);
             CheckWorkbook(check, workbook, workbookPath);
             CheckSharedStrings(check, workbook);
             CheckCellValues(check, workbook);
@@ -46,6 +50,9 @@ internal static class ExcelViewerChecks
             CheckLayout(check, workbook);
             CheckRowHeights(check, workbook);
             CheckFreezePanes(check, freezePath);
+            CheckHyperlinks(check, hyperlinkWorkbook);
+            CheckCellText(check, workbook, hyperlinkWorkbook);
+            CheckSelectAddress(check);
             CheckSearch(check, workbook);
             CheckClipboard(check, workbook);
             CheckDate1904(check, workbook1904Path);
@@ -53,6 +60,7 @@ internal static class ExcelViewerChecks
             CheckTolerance(check, minimalPath, tempDir);
             CheckLimits(check);
             CheckConfig(check, tempDir);
+            CheckShowFormulasConfig(check);
             CheckReadingPositions(check, tempDir);
         }
         finally
@@ -60,7 +68,7 @@ internal static class ExcelViewerChecks
             try { Directory.Delete(tempDir, recursive: true); } catch { /* 临时目录清理失败忽略 */ }
         }
 
-        report("[Excel 阅读器] 手写 xlsx 解析 / 数字格式 / 合并单元格 / 截断 / 冻结窗格 / 行高 / 查找 / 复制 / 阅读位置 / 配置与最近列表", true);
+        report("[Excel 阅读器] 手写 xlsx 解析 / 数字格式 / 合并单元格 / 截断 / 冻结窗格 / 行高 / 查找 / 复制 / 超链接 / 显示公式 / 阅读位置 / 配置与最近列表", true);
     }
 
     // ---------------------------------------------------------------- 工具元数据
@@ -284,6 +292,173 @@ internal static class ExcelViewerChecks
             && sheet.Rows.First(row => row.RowIndex == 4).Cells[1].Kind == ExcelCellKind.Empty
             && CellText(sheet, 4, 4) == "99",
             $"A4 空 / D4={CellText(sheet, 4, 4)}");
+    }
+
+    // ---------------------------------------------------------------- 超链接 / 显示公式 / 截图选择地址
+
+    private static void CheckHyperlinks(Action<string, bool, string> check, ExcelWorkbook workbook)
+    {
+        ExcelSheet Sheet(string name) => workbook.Sheets.First(sheet => sheet.Name == name);
+
+        var data = Sheet("数据");
+        var external = FindCell(data, 1, 1)?.Hyperlink;
+        var externalByProtocolColumn = FindCell(data, 1, 7)?.Hyperlink;
+
+        check("[Excel 阅读器] 超链接解析：外部 URL（r:id + 工作表 rels 的 TargetMode=External）+ display + 映射表",
+            external is { IsExternal: true, Target: "https://example.com/表格", Display: "示例链接" }
+            && external.StatusText.Contains("https://example.com/表格", StringComparison.Ordinal)
+            && data.Hyperlinks.ContainsKey("A1"),
+            $"{external?.Target} / display={external?.Display} / 映射 {data.Hyperlinks.Count} 格");
+
+        check("[Excel 阅读器] 超链接解析：mailto 外部链接 + 隐藏列里的链接也能挂到对应单元格（不崩）",
+            FindCell(data, 1, 2)?.Hyperlink is { IsExternal: true, Target: "mailto:test@example.com" }
+            && FindCell(data, 1, 2)?.HasHyperlink == true
+            && FindCell(data, 2, 2)?.Hyperlink is { IsExternal: false },
+            $"{FindCell(data, 1, 2)?.Hyperlink?.Target} · B 列隐藏={data.Columns[1].IsHidden}");
+
+        check("[Excel 阅读器] 超链接解析：内部 location（A1 / 数据!B2 / '我的 表'!B2 / #A1 去井号）",
+            FindCell(data, 1, 3)?.Hyperlink is { IsExternal: false, Location: "A1" }
+            && FindCell(data, 1, 4)?.Hyperlink is { IsExternal: false, Location: "数据!B2" }
+            && FindCell(data, 1, 5)?.Hyperlink is { IsExternal: false, Location: "'我的 表'!B2" }
+            && FindCell(data, 1, 6)?.Hyperlink is { IsExternal: false, Location: "A1" },
+            $"{FindCell(data, 1, 3)?.Hyperlink?.Location} / {FindCell(data, 1, 4)?.Hyperlink?.Location} / "
+            + $"{FindCell(data, 1, 5)?.Hyperlink?.Location} / {FindCell(data, 1, 6)?.Hyperlink?.Location}");
+
+        data.Hyperlinks.TryGetValue("A2", out var rangeLink);
+        data.Hyperlinks.TryGetValue("B2", out var rangeLinkHidden);
+        check("[Excel 阅读器] 超链接解析：ref 区域（A2:B2）范围内每格都挂链接 + 坏 ref 被忽略",
+            data.Hyperlinks.Count == 9
+            && rangeLink is { Location: "'我的 表'!B2" }
+            && rangeLinkHidden is { Location: "'我的 表'!B2" }
+            && !data.Hyperlinks.ContainsKey("坏地址"),
+            $"{data.Hyperlinks.Count} 格 / A2={rangeLink?.Location}");
+
+        check("[Excel 阅读器] 超链接容错：没有 rels 文件时 r:id 查不到关系，仍能按 location 解析内部链接",
+            FindCell(Sheet("无rels"), 1, 1)?.Hyperlink is { IsExternal: false, Location: "A1" },
+            $"{FindCell(Sheet("无rels"), 1, 1)?.Hyperlink?.Location}");
+
+        check("[Excel 阅读器] 超链接容错：rels 是坏 XML 时不抛异常，退回 location 解析",
+            FindCell(Sheet("坏rels"), 1, 1)?.Hyperlink is { IsExternal: false, Location: "A1" },
+            $"{FindCell(Sheet("坏rels"), 1, 1)?.Hyperlink?.Location}");
+
+        check("[Excel 阅读器] 超链接容错：工作表没有 hyperlinks 节点时映射为空、单元格没有链接",
+            Sheet("我的 表").Hyperlinks.Count == 0
+            && FindCell(Sheet("我的 表"), 1, 1)?.Hyperlink is null,
+            $"{Sheet("我的 表").Hyperlinks.Count} 格");
+
+        check("[Excel 阅读器] 超链接协议白名单：http / https / mailto 允许，file / javascript / data / ftp / 空串拒绝",
+            ExcelHyperlinks.IsAllowedProtocol("https://example.com/a")
+            && ExcelHyperlinks.IsAllowedProtocol("http://example.com")
+            && ExcelHyperlinks.IsAllowedProtocol("mailto:test@example.com")
+            && !ExcelHyperlinks.IsAllowedProtocol("file:///C:/Windows/win.ini")
+            && !ExcelHyperlinks.IsAllowedProtocol("javascript:alert(1)")
+            && !ExcelHyperlinks.IsAllowedProtocol("data:text/html,hello")
+            && !ExcelHyperlinks.IsAllowedProtocol("ftp://example.com/a.zip")
+            && !ExcelHyperlinks.IsAllowedProtocol("")
+            && !ExcelHyperlinks.IsAllowedProtocol(null),
+            "http / https / mailto 允许；file / javascript / data / ftp 拒绝");
+
+        var hasHttpsUri = ExcelHyperlinks.TryCreateLaunchUri("HTTPS://Example.COM/Path", out var httpsUri);
+        var hasMailUri = ExcelHyperlinks.TryCreateLaunchUri("mailto:a@b.com", out var mailUri);
+        var blocksJavaScript = !ExcelHyperlinks.TryCreateLaunchUri("JavaScript:alert(1)", out _);
+        check("[Excel 阅读器] 超链接协议：大小写不敏感 + TryCreateLaunchUri 只产出白名单 URI + GetProtocol",
+            hasHttpsUri && httpsUri.Scheme == "https"
+            && hasMailUri && mailUri.Scheme == "mailto"
+            && blocksJavaScript
+            && ExcelHyperlinks.GetProtocol("file:///C:/a.txt") == "file"
+            && ExcelHyperlinks.GetProtocol("not a url") == "",
+            $"{httpsUri?.Scheme} / {mailUri?.Scheme} / GetProtocol(file)=file");
+
+        check("[Excel 阅读器] 超链接 location 解析：非法地址拒绝、$ 绝对引用 / 区域取左上角 / 引号表名转义",
+            !ExcelHyperlinks.TryParseLocation(null, out _, out _, out _)
+            && !ExcelHyperlinks.TryParseLocation("", out _, out _, out _)
+            && !ExcelHyperlinks.TryParseLocation("#", out _, out _, out _)
+            && !ExcelHyperlinks.TryParseLocation("NotACell", out _, out _, out _)
+            && !ExcelHyperlinks.TryParseLocation("数据!", out _, out _, out _)
+            && !ExcelHyperlinks.TryParseLocation("A0", out _, out _, out _)
+            && ExcelHyperlinks.TryParseLocation("$B$2", out _, out var absoluteRow, out var absoluteColumn)
+            && absoluteRow == 2 && absoluteColumn == 2
+            && ExcelHyperlinks.TryParseLocation("A1:B2", out _, out var rangeRow, out var rangeColumn)
+            && rangeRow == 1 && rangeColumn == 1
+            && ExcelHyperlinks.TryParseLocation("'O''Brien'!A1", out var quotedSheet, out _, out _)
+            && quotedSheet == "O'Brien",
+            "非法拒绝 / $B$2 / A1:B2 / 'O''Brien'");
+
+        check("[Excel 阅读器] 超链接：非白名单协议的外部链接照样能解析（记录模型），但 IsAllowedProtocol=false 不打开",
+            externalByProtocolColumn is { IsExternal: true, Target: "file:///C:/Windows/win.ini" }
+            && !ExcelHyperlinks.IsAllowedProtocol(externalByProtocolColumn.Target),
+            externalByProtocolColumn?.Target ?? "（没有解析到）");
+    }
+
+    private static void CheckCellText(Action<string, bool, string> check, ExcelWorkbook workbook, ExcelWorkbook hyperlinkWorkbook)
+    {
+        var sample = workbook.Sheets[0];
+        var formulaCell = FindCell(sample, 1, 11);
+        var plainCell = FindCell(sample, 1, 1);
+        var linkedCell = FindCell(hyperlinkWorkbook.Sheets.First(sheet => sheet.Name == "数据"), 1, 1);
+
+        check("[Excel 阅读器] 显示公式纯逻辑：开关开 + 有公式 → =公式原文；关 / 无公式 → 正常显示值",
+            ExcelCellText.For(formulaCell, showFormulas: true) == "=SUM(G1:G2)"
+            && ExcelCellText.For(formulaCell, showFormulas: false) == "1234.5"
+            && ExcelCellText.For(plainCell, showFormulas: true) == "普通文本"
+            && ExcelCellText.For(null, showFormulas: true) == "",
+            $"{ExcelCellText.For(formulaCell, true)} / {ExcelCellText.For(formulaCell, false)} / {ExcelCellText.For(plainCell, true)}");
+
+        check("[Excel 阅读器] 显示公式纯逻辑：公式单元格显示值为空 / 公式为空 / 全空 都不出错",
+            ExcelCellText.For(new ExcelCell { DisplayText = "", Formula = "NOW()" }, true) == "=NOW()"
+            && ExcelCellText.For(new ExcelCell { DisplayText = "", Formula = "NOW()" }, false) == ""
+            && ExcelCellText.For(new ExcelCell { DisplayText = "值" }, true) == "值"
+            && ExcelCellText.For(new ExcelCell { DisplayText = "值", Formula = "  " }, true) == "值"
+            && !ExcelCellText.HasFormula(new ExcelCell { Formula = "  " })
+            && ExcelCellText.ToolTipFor(null, true) is null,
+            "空显示值 / 空公式 / 空单元格");
+
+        check("[Excel 阅读器] 显示公式：ToolTip 给完整公式（截断的显示值不受影响）",
+            ExcelCellText.ToolTipFor(formulaCell, true) == "=SUM(G1:G2)"
+            && ExcelCellText.ToolTipFor(formulaCell, false) is null
+            && ExcelCellText.ToolTipFor(
+                new ExcelCell { DisplayText = new string('长', ExcelCellText.ToolTipLengthThreshold + 1) }, false)
+                is { Length: > ExcelCellText.ToolTipLengthThreshold },
+            "公式 ToolTip / 长文本 ToolTip");
+
+        var linkToolTip = linkedCell is null ? null : ExcelCellText.ToolTipFor(linkedCell, false);
+        check("[Excel 阅读器] 超链接单元格的 ToolTip 给链接地址（深色主题下用主题强调色 + 下划线）",
+            linkedCell?.Hyperlink is not null
+            && linkToolTip is not null
+            && linkToolTip.Contains("https://example.com", StringComparison.Ordinal)
+            && linkedCell.HasHyperlink,
+            linkToolTip ?? "（没有 ToolTip）");
+    }
+
+    private static void CheckSelectAddress(Action<string, bool, string> check)
+    {
+        // YLT_EXCEL_SELECT 用的就是 ExcelHyperlinks.TryParseLocation（A1 / Sheet!A1 都支持）
+        check("[Excel 阅读器] YLT_EXCEL_SELECT 地址解析：B12 → 第 12 行第 2 列；数据!B12 → 带工作表；非法地址忽略",
+            ExcelHyperlinks.TryParseLocation("B12", out var sheetName, out var row, out var column)
+            && sheetName == "" && row == 12 && column == 2
+            && ExcelHyperlinks.TryParseLocation("数据!B12", out var namedSheet, out var namedRow, out var namedColumn)
+            && namedSheet == "数据" && namedRow == 12 && namedColumn == 2
+            && !ExcelHyperlinks.TryParseLocation("B12!", out _, out _, out _)
+            && !ExcelHyperlinks.TryParseLocation("超出", out _, out _, out _),
+            "B12（当前表）/ 数据!B12 / 非法忽略");
+    }
+
+    private static void CheckShowFormulasConfig(Action<string, bool, string> check)
+    {
+        var config = new ExcelViewerConfig();
+        check("[Excel 阅读器] 配置默认值：显示公式默认关（ShowFormulas=false）且会写进 config.json（不带 [JsonIgnore]）",
+            !config.ShowFormulas
+            && typeof(ExcelViewerConfig).GetProperty(nameof(ExcelViewerConfig.ShowFormulas))
+                ?.GetCustomAttribute<JsonIgnoreAttribute>() is null,
+            $"ShowFormulas={config.ShowFormulas}");
+
+        config.ShowFormulas = true;
+        var json = config.ToJson();
+        config.ResetToDefaults();
+        check("[Excel 阅读器] 显示公式配置：序列化为 showFormulas，恢复默认设置后回到关",
+            json.Contains("\"showFormulas\": true", StringComparison.Ordinal)
+            && !config.ShowFormulas,
+            json.Contains("\"showFormulas\": true", StringComparison.Ordinal) ? "JSON 含 showFormulas" : "JSON 缺 showFormulas");
     }
 
     // ---------------------------------------------------------------- 行高 / 冻结窗格 / 查找 / 复制
@@ -966,6 +1141,151 @@ internal static class ExcelViewerChecks
             """);
         AddPart(zip, "xl/workbook.xml", workbookXml.ToString());
         AddPart(zip, "xl/_rels/workbook.xml.rels", relationships.ToString());
+    }
+
+    /// <summary>
+    /// 造一个「超链接」专用工作簿，覆盖：
+    /// 外部 https / mailto（工作表自己的 rels）、内部 location 的四种写法（A1 / 数据!B2 / 引号表名 / 带 #）、
+    /// ref 区域映射、隐藏列里的链接、坏 ref 忽略、缺 rels 容错、坏 rels XML 容错、非白名单协议（file）记录但不打开。
+    /// </summary>
+    private static void BuildHyperlinkWorkbook(string path)
+    {
+        using var stream = File.Create(path);
+        using var zip = new ZipArchive(stream, ZipArchiveMode.Create);
+
+        AddPart(zip, "[Content_Types].xml", """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+              <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+              <Default Extension="xml" ContentType="application/xml"/>
+              <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+              <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+              <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+              <Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+              <Override PartName="/xl/worksheets/sheet4.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+            </Types>
+            """);
+
+        AddPart(zip, "_rels/.rels", """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+              <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+            </Relationships>
+            """);
+
+        AddPart(zip, "xl/workbook.xml", """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+                      xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+              <sheets>
+                <sheet name="数据" sheetId="1" r:id="rId1"/>
+                <sheet name="我的 表" sheetId="2" r:id="rId2"/>
+                <sheet name="无rels" sheetId="3" r:id="rId3"/>
+                <sheet name="坏rels" sheetId="4" r:id="rId4"/>
+              </sheets>
+            </workbook>
+            """);
+
+        AddPart(zip, "xl/_rels/workbook.xml.rels", """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+              <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+              <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
+              <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>
+              <Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet4.xml"/>
+            </Relationships>
+            """);
+
+        AddPart(zip, "xl/worksheets/sheet1.xml", """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+                       xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+              <sheetFormatPr defaultColWidth="10"/>
+              <cols>
+                <col min="1" max="1" width="14" customWidth="1"/>
+                <col min="2" max="2" width="5" hidden="1" customWidth="1"/>
+                <col min="3" max="8" width="14" customWidth="1"/>
+              </cols>
+              <sheetData>
+                <row r="1">
+                  <c r="A1" t="inlineStr"><is><t>外部链接</t></is></c>
+                  <c r="B1" t="inlineStr"><is><t>隐藏列链接</t></is></c>
+                  <c r="C1" t="inlineStr"><is><t>内部A1</t></is></c>
+                  <c r="D1" t="inlineStr"><is><t>内部表引用</t></is></c>
+                  <c r="E1" t="inlineStr"><is><t>引号表名</t></is></c>
+                  <c r="F1" t="inlineStr"><is><t>带井号</t></is></c>
+                  <c r="G1" t="inlineStr"><is><t>file链接</t></is></c>
+                </row>
+                <row r="2">
+                  <c r="A2"><v>1</v></c>
+                  <c r="B2"><v>2</v></c>
+                </row>
+              </sheetData>
+              <hyperlinks>
+                <hyperlink ref="A1" r:id="rId1" display="示例链接"/>
+                <hyperlink ref="B1" r:id="rId2"/>
+                <hyperlink ref="C1" location="A1"/>
+                <hyperlink ref="D1" location="数据!B2"/>
+                <hyperlink ref="E1" location="'我的 表'!B2"/>
+                <hyperlink ref="F1" location="#A1"/>
+                <hyperlink ref="G1" r:id="rId3"/>
+                <hyperlink ref="A2:B2" location="'我的 表'!B2"/>
+                <hyperlink ref="坏地址" location="A1"/>
+              </hyperlinks>
+            </worksheet>
+            """);
+
+        // 工作表自己的关系文件：外部 URL / mailto / 非白名单的 file 链接（只记录，打开时被白名单拦）
+        AddPart(zip, "xl/worksheets/_rels/sheet1.xml.rels", """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+              <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
+                            Target="https://example.com/表格" TargetMode="External"/>
+              <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
+                            Target="mailto:test@example.com" TargetMode="External"/>
+              <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
+                            Target="file:///C:/Windows/win.ini" TargetMode="External"/>
+            </Relationships>
+            """);
+
+        AddPart(zip, "xl/worksheets/sheet2.xml", """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+              <sheetData>
+                <row r="1"><c r="A1"><v>1</v></c></row>
+                <row r="2"><c r="A2"><v>2</v></c><c r="B2"><v>3</v></c></row>
+              </sheetData>
+            </worksheet>
+            """);
+
+        // 没有 _rels/sheet3.xml.rels：r:id 查不到关系 → 退回 location
+        AddPart(zip, "xl/worksheets/sheet3.xml", """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+                       xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+              <sheetData>
+                <row r="1"><c r="A1" t="inlineStr"><is><t>缺rels</t></is></c></row>
+              </sheetData>
+              <hyperlinks>
+                <hyperlink ref="A1" r:id="rId99" location="A1"/>
+              </hyperlinks>
+            </worksheet>
+            """);
+
+        // _rels/sheet4.xml.rels 故意写成坏 XML：解析器要吞掉错误、退回 location
+        AddPart(zip, "xl/worksheets/sheet4.xml", """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+                       xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+              <sheetData>
+                <row r="1"><c r="A1" t="inlineStr"><is><t>坏rels</t></is></c></row>
+              </sheetData>
+              <hyperlinks>
+                <hyperlink ref="A1" r:id="rId1" location="A1"/>
+              </hyperlinks>
+            </worksheet>
+            """);
+        AddPart(zip, "xl/worksheets/_rels/sheet4.xml.rels", "这不是合法的 XML，只是一个坏文件的占位内容");
     }
 
     private static void AddPart(ZipArchive zip, string name, string content)

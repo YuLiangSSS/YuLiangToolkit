@@ -46,6 +46,15 @@ public sealed class ExcelSheet
     /// </summary>
     public ExcelFreezePane? FreezePane { get; init; }
 
+    /// <summary>
+    /// 工作表的超链接映射：key = 单元格地址（A1 形式，例如 <c>A1</c> / <c>B12</c>），
+    /// value = 该格的链接。<b>键忽略大小写</b>；没有超链接 / 缺 rels / 坏 XML 时为空字典。
+    /// <para>单元格本身也有 <see cref="ExcelCell.Hyperlink"/>（界面直接读它，不用再查字典）；
+    /// 这里保留映射是为了给「状态栏 / 自检 / 以后的导出」一个不遍历整张表的入口。</para>
+    /// </summary>
+    public IReadOnlyDictionary<string, ExcelHyperlink> Hyperlinks { get; init; }
+        = new Dictionary<string, ExcelHyperlink>(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>是否因为超过 <see cref="XlsxParseLimits"/> 被截断（界面要在状态栏提示）。</summary>
     public bool IsTruncated { get; init; }
 
@@ -223,6 +232,16 @@ public sealed class ExcelCell
 
     /// <summary>单元格样式（共享实例）。</summary>
     public ExcelCellStyle Style { get; init; } = ExcelCellStyle.Default;
+
+    /// <summary>
+    /// 这一格的超链接；没有链接时为 null。
+    /// <para>可写：超链接信息在 <c>sheetData</c> 之后（<c>hyperlinks</c> 节点）才读到，
+    /// 解析器建完行后再按 ref 范围挂到格子上，和合并单元格同一套处理方式。</para>
+    /// </summary>
+    public ExcelHyperlink? Hyperlink { get; set; }
+
+    /// <summary>这一格有没有超链接（XAML 触发器 / 转换器用；不参与解析 / 序列化）。</summary>
+    public bool HasHyperlink => Hyperlink is not null;
 
     /// <summary>是否是合并区域左上角的「锚点格」（只有锚点格显示内容）。</summary>
     public bool IsMergedAnchor { get; set; }

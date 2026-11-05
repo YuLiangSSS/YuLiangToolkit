@@ -22,17 +22,21 @@
         <views:ExcelCellTextAlignmentConverter x:Key="ExcelCellTextAlignment" />
         <views:ExcelCellTextWrappingConverter x:Key="ExcelCellTextWrapping" />
         <views:ExcelCellPaddingConverter x:Key="ExcelCellPadding" />
+        <views:ExcelCellTextConverter x:Key="ExcelCellText" />
+        <views:ExcelCellTextDecorationsConverter x:Key="ExcelCellTextDecorations" />
 
         <!-- ===== 单个单元格的样子：Border（填充色）+ TextBlock（字体 / 对齐 / 换行）。
              写法说明：每个 DataGridTemplateColumn 的内容是一个 ContentControl，Content 绑到该行
              的 Cells[列号-1]，再用这个模板渲染 —— 这样每列只多一层 ContentControl，
-             不会给 5000 行一次性生成整张表的 UIElement（行/列虚拟化仍然生效）。 ===== -->
+             不会给 5000 行一次性生成整张表的 UIElement（行/列虚拟化仍然生效）。
+             「显示公式」用 MultiBinding（单元格 + 页面级 ShowFormulas）延迟计算：
+             开关切换只发属性通知，不克隆模型 / 不重建列，列宽 / 选中 / 冻结 / 行高都不会被重置。 ===== -->
         <DataTemplate x:Key="ExcelCellTemplate">
             <Border Background="{Binding Converter={StaticResource ExcelCellBackground}}"
                     Padding="{Binding Converter={StaticResource ExcelCellPadding}}"
                     SnapsToDevicePixels="True">
-                <TextBlock Text="{Binding DisplayText}"
-                           Foreground="{Binding Converter={StaticResource ExcelCellForeground}}"
+                <TextBlock Foreground="{Binding Converter={StaticResource ExcelCellForeground}}"
+                           TextDecorations="{Binding Converter={StaticResource ExcelCellTextDecorations}}"
                            FontWeight="{Binding Converter={StaticResource ExcelCellFontWeight}}"
                            FontStyle="{Binding Converter={StaticResource ExcelCellFontStyle}}"
                            FontSize="{Binding Converter={StaticResource ExcelCellFontSize}}"
@@ -40,7 +44,22 @@
                            TextWrapping="{Binding Converter={StaticResource ExcelCellTextWrapping}}"
                            TextTrimming="CharacterEllipsis"
                            VerticalAlignment="Center"
-                           SnapsToDevicePixels="True" />
+                           SnapsToDevicePixels="True">
+                    <TextBlock.Text>
+                        <MultiBinding Converter="{StaticResource ExcelCellText}">
+                            <Binding />
+                            <Binding Path="DataContext.ShowFormulas"
+                                     RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                        </MultiBinding>
+                    </TextBlock.Text>
+                    <TextBlock.ToolTip>
+                        <MultiBinding Converter="{StaticResource ExcelCellText}" ConverterParameter="ToolTip">
+                            <Binding />
+                            <Binding Path="DataContext.ShowFormulas"
+                                     RelativeSource="{RelativeSource AncestorType=UserControl}" />
+                        </MultiBinding>
+                    </TextBlock.ToolTip>
+                </TextBlock>
             </Border>
         </DataTemplate>
 
@@ -302,7 +321,8 @@
                                   ToolTip="切换工作表（隐藏工作表名后面带「（隐藏）」）" />
                     </StackPanel>
 
-                    <!-- 显示开关：网格线 / 冻结窗格 / 自动行高（都持久化到 config.json） -->
+                    <!-- 显示开关：网格线 / 冻结窗格 / 自动行高（都持久化到 config.json）。
+                         「显示公式」放在第二行查找区右侧：第一行在 1280 宽度下已经排满，塞进来会把最后一个开关挤出窗口。 -->
                     <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
                         <CheckBox Content="网格线" Style="{StaticResource CheckBoxStyle}"
                                   IsChecked="{Binding Cfg.ShowGridLines}"
@@ -326,6 +346,7 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
                     <TextBlock Grid.Column="0" Text="查找" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
@@ -346,6 +367,10 @@
                     <TextBlock Grid.Column="6" Text="{Binding SearchStatusText}" FontSize="11.5"
                                Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"
                                Margin="12,0,0,0" TextTrimming="CharacterEllipsis" />
+                    <!-- 显示公式：放在查找区右侧（第一行宽度不够，见上面显示开关的注释） -->
+                    <CheckBox Grid.Column="7" Content="显示公式" Style="{StaticResource CheckBoxStyle}"
+                              IsChecked="{Binding ShowFormulas}" Margin="12,0,0,0" VerticalAlignment="Center"
+                              ToolTip="有公式的格子显示 =公式原文（过长会截断，悬停看全文），没有公式的仍显示值；快捷键 Ctrl+`" />
                 </Grid>
             </Grid>
         </Border>
@@ -397,6 +422,7 @@
                               ItemsSource="{Binding CurrentRows}"
                               LoadingRow="OnLoadingRow"
                               SelectedCellsChanged="OnSelectedCellsChanged"
+                              MouseDoubleClick="OnSheetGridMouseDoubleClick"
                               ColumnHeaderDragCompleted="OnColumnHeaderDragCompleted"
                               ContextMenuOpening="OnSheetGridContextMenuOpening">
                         <DataGrid.ContextMenu>
@@ -481,6 +507,8 @@
                                Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding AutoRowHeightText}" FontSize="11.5" Margin="14,0,0,0"
                                Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding ShowFormulasText}" FontSize="11.5" Margin="14,0,0,0"
+                               Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding UsedRangeText}" FontSize="11.5" Margin="14,0,0,0"
                                Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding SheetInfoText}" FontSize="11.5" Margin="14,0,0,0"

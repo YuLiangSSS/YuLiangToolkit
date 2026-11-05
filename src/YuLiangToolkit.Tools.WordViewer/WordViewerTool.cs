@@ -20,7 +20,7 @@ public class WordViewerTool : ITool, IToolCacheSource
 
     public string Name => "Word 阅读器";
 
-    public string Description => "只读浏览 .docx / .docm：段落样式、表格、图片、页眉页脚、脚注尾注、大纲、缩放、查找与复制全文，不会改动原文件";
+    public string Description => "只读浏览 .docx / .docm：段落样式、表格、图片、页眉页脚、脚注尾注、批注与修订、大纲、缩放、查找、复制全文、打印与导出，不会改动原文件";
 
     public string EmojiIcon => "📘";
 
@@ -29,7 +29,7 @@ public class WordViewerTool : ITool, IToolCacheSource
     public IReadOnlyList<string> Tags => new[]
     {
         "Word", "docx", "docm", "文档", "阅读器", "只读", "浏览", "大纲", "缩放", "查找", "阅读",
-        "页眉", "页脚", "脚注", "尾注", "复制全文", "阅读位置",
+        "页眉", "页脚", "脚注", "尾注", "复制全文", "阅读位置", "批注", "修订", "打印", "导出",
     };
 
     public int Order => 18;
