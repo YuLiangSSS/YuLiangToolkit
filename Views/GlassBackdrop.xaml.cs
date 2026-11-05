@@ -51,6 +51,16 @@ public partial class GlassBackdrop : UserControl
         nameof(IsLight), typeof(bool), typeof(GlassBackdrop),
         new PropertyMetadata(false, OnVisualStateChanged));
 
+    /// <summary>云间天上：云朵速度倍率（1.0 = 基准；设置页滑块 0.3 ~ 3.0）。</summary>
+    public static readonly DependencyProperty CloudSpeedProperty = DependencyProperty.Register(
+        nameof(CloudSpeed), typeof(double), typeof(GlassBackdrop),
+        new PropertyMetadata(1.0));
+
+    /// <summary>云间天上：云朵密度（每层显示几朵；设置页 1 ~ 10）。</summary>
+    public static readonly DependencyProperty CloudDensityProperty = DependencyProperty.Register(
+        nameof(CloudDensity), typeof(int), typeof(GlassBackdrop),
+        new PropertyMetadata(8, OnVisualStateChanged));
+
     private Storyboard? _ambient;
     private bool _running;
 
@@ -81,10 +91,18 @@ public partial class GlassBackdrop : UserControl
         _clouds.Add(new CloudMotion { Transform = DayCloud4Move, Speed = 9, Width = 243, StartFraction = 0.20 });
         _clouds.Add(new CloudMotion { Transform = DayCloud5Move, Speed = 6, Width = 306, StartFraction = 0.55 });
         _clouds.Add(new CloudMotion { Transform = DayCloud6Move, Speed = 4.5, Width = 396, StartFraction = 0.85 });
+        _clouds.Add(new CloudMotion { Transform = DayCloud7Move, Speed = 7.5, Width = 252, StartFraction = 0.33 });
+        _clouds.Add(new CloudMotion { Transform = DayCloud8Move, Speed = 5.5, Width = 342, StartFraction = 0.62 });
+        _clouds.Add(new CloudMotion { Transform = DayCloud9Move, Speed = 8.5, Width = 216, StartFraction = 0.90 });
+        _clouds.Add(new CloudMotion { Transform = DayCloud10Move, Speed = 4, Width = 432, StartFraction = 0.47 });
         _clouds.Add(new CloudMotion { Transform = NightCloud1Move, Speed = 6, Width = 432, StartFraction = 0.20 });
         _clouds.Add(new CloudMotion { Transform = NightCloud2Move, Speed = 8, Width = 288, StartFraction = 0.52 });
         _clouds.Add(new CloudMotion { Transform = NightCloud3Move, Speed = 4.5, Width = 468, StartFraction = 0.75 });
         _clouds.Add(new CloudMotion { Transform = NightCloud4Move, Speed = 7, Width = 324, StartFraction = 0.38 });
+        _clouds.Add(new CloudMotion { Transform = NightCloud5Move, Speed = 6.5, Width = 360, StartFraction = 0.60 });
+        _clouds.Add(new CloudMotion { Transform = NightCloud6Move, Speed = 9, Width = 252, StartFraction = 0.30 });
+        _clouds.Add(new CloudMotion { Transform = NightCloud7Move, Speed = 4, Width = 396, StartFraction = 0.82 });
+        _clouds.Add(new CloudMotion { Transform = NightCloud8Move, Speed = 7.5, Width = 234, StartFraction = 0.12 });
 
         Loaded += (_, _) =>
         {
@@ -153,6 +171,18 @@ public partial class GlassBackdrop : UserControl
         set => SetValue(IsLightProperty, value);
     }
 
+    public double CloudSpeed
+    {
+        get => (double)GetValue(CloudSpeedProperty);
+        set => SetValue(CloudSpeedProperty, value);
+    }
+
+    public int CloudDensity
+    {
+        get => (int)GetValue(CloudDensityProperty);
+        set => SetValue(CloudDensityProperty, value);
+    }
+
     private static void OnVisualStateChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
         => ((GlassBackdrop)d).RefreshVisualState();
 
@@ -199,6 +229,7 @@ public partial class GlassBackdrop : UserControl
         CloudSkyLayer.Visibility = cloudSky ? Visibility.Visible : Visibility.Collapsed;
         DaySky.Visibility = cloudSky && IsLight ? Visibility.Visible : Visibility.Collapsed;
         NightSky.Visibility = cloudSky && !IsLight ? Visibility.Visible : Visibility.Collapsed;
+        ApplyCloudDensity();
 
         if (liquid && IsVisible) StartAmbientIfNeeded();
         else StopAmbient();
@@ -237,6 +268,21 @@ public partial class GlassBackdrop : UserControl
         _cloudClock.Stop();
     }
 
+    /// <summary>按设置的密度只显示前 N 朵云（白天池 10 朵 / 夜晚池 8 朵）。</summary>
+    private void ApplyCloudDensity()
+    {
+        if (DayClouds is null || NightClouds is null) return;
+        var density = Math.Clamp(CloudDensity, 1, 10);
+        Apply(DayClouds, density);
+        Apply(NightClouds, Math.Min(density, 8));
+
+        static void Apply(Canvas layer, int count)
+        {
+            for (var i = 0; i < layer.Children.Count; i++)
+                layer.Children[i].Visibility = i < count ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
     private DispatcherTimer CreateCloudTimer()
     {
         var timer = new DispatcherTimer(DispatcherPriority.Render)
@@ -248,9 +294,10 @@ public partial class GlassBackdrop : UserControl
             var seconds = Math.Clamp(_cloudClock.Elapsed.TotalSeconds, 0, 0.1);
             _cloudClock.Restart();
             var width = Math.Max(ActualWidth, 200);
+            var speedScale = Math.Clamp(CloudSpeed, 0.1, 5.0);
             foreach (var cloud in _clouds)
             {
-                cloud.X -= cloud.Speed * seconds;
+                cloud.X -= cloud.Speed * speedScale * seconds;
                 if (cloud.X < -cloud.Width - 80) cloud.X = width + 80;
                 cloud.Transform.X = cloud.X;
             }

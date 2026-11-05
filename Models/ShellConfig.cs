@@ -139,12 +139,45 @@ public sealed class ShellConfig : ToolConfig
     public string CustomLightBackground { get; set; } = "#F5F7FB";
 
     /// <summary>
+    /// 「云间天上」的云朵速度倍率（v0.91.0，默认 1.5）：1.0 = 原来的基准速度，范围 0.3 ~ 3.0；
+    /// 只影响云朵横向漂移，不改其它主题。
+    /// </summary>
+    public double CloudSpeed { get; set; } = 1.5;
+
+    /// <summary>
+    /// 「云间天上」的云朵密度（v0.91.0，默认 8）：白天 / 夜晚每层最多显示几朵，范围 1 ~ 10；
+    /// 夜晚池子只有 8 朵，超过 8 按 8 处理。
+    /// </summary>
+    public int CloudDensity { get; set; } = 8;
+
+    /// <summary>
     /// 窗口背景图文件名（「主页设置 → 界面风格 → 背景图」，v0.43.0）。
     /// 只存**文件名**（图片本体在 <c>Data\shell\background\</c>，见 <see cref="ShellBackgroundImage"/>），
     /// 配置跟着整个程序目录搬走也不会失效；<c>null</c> / 空 = 没设置背景图（旧配置读出来就是这样）。
     /// 只有半透明界面风格（液态玻璃 / 毛玻璃 / 亚克力）才会把它显示在面板后面。
     /// </summary>
     public string? BackgroundImage { get; set; }
+
+    /// <summary>
+    /// 用过的背景图文件名历史（v0.91.0，最新在前）：换图 / 清除时不再删旧文件，
+    /// 设置页可以从历史里点回来。只存文件名，文件在 <c>Data\shell\background\</c>。
+    /// </summary>
+    public List<string> BackgroundImageHistory { get; set; } = new();
+
+    /// <summary>是否使用应用内自绘光标（v0.91.0，默认 false = 用 Windows 系统光标）。</summary>
+    public bool UseInAppCursor { get; set; }
+
+    /// <summary>
+    /// 应用内光标样式（v0.91.0）：<c>auto</c> = 跟随当前界面主题；<c>default</c> / <c>liquid</c> / <c>frosted</c> /
+    /// <c>acrylic</c> / <c>dao</c> / <c>cloud</c> = 指定某一套；<c>custom</c> = 用上传的图片。
+    /// </summary>
+    public string CursorStyle { get; set; } = InAppCursorStyle.Auto;
+
+    /// <summary>自定义光标图片文件名（<c>Data\shell\cursor\</c>；<c>null</c> = 没上传）。</summary>
+    public string? CustomCursorImage { get; set; }
+
+    /// <summary>用过的自定义光标图片历史（最新在前，和背景图历史同一套逻辑）。</summary>
+    public List<string> CursorImageHistory { get; set; } = new();
 
     /// <summary>
     /// 背景图铺法（v0.43.0）：<c>false</c>（默认）= 铺满窗口、保持比例、裁掉超出部分（UniformToFill）；

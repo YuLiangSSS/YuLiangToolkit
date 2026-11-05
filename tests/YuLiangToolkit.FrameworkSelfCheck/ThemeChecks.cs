@@ -590,6 +590,62 @@ internal static class ThemeChecks
         File.WriteAllText(path, "{ \"uiTheme\": \"FrostedGlass\" }");
         check("旧配置（没有模糊度字段）读出来 = 默认 28",
             JsonFileStore.Read<ShellConfig>(path)?.FrostedGlassBlurRadius == 28.0);
+
+        // ---- v0.91.0：云间天上速度 / 密度、应用内光标、图片历史 ----
+        var shellDefaults = new ShellConfig();
+        check("云间天上 / 光标默认值",
+            shellDefaults.CloudSpeed == 1.5
+            && shellDefaults.CloudDensity == 8
+            && !shellDefaults.UseInAppCursor
+            && shellDefaults.CursorStyle == InAppCursorStyle.Auto
+            && shellDefaults.CustomCursorImage is null
+            && shellDefaults.BackgroundImageHistory.Count == 0
+            && shellDefaults.CursorImageHistory.Count == 0);
+
+        JsonFileStore.Write(path, new ShellConfig
+        {
+            CloudSpeed = 2.4,
+            CloudDensity = 6,
+            UseInAppCursor = true,
+            CursorStyle = InAppCursorStyle.CloudSky,
+            CustomCursorImage = "cursor-20250101-120000-000.png",
+            BackgroundImageHistory = { "bg-a.png", "bg-b.png" },
+            CursorImageHistory = { "cursor-a.png", "cursor-b.png" },
+        });
+        var cursorRounded = JsonFileStore.Read<ShellConfig>(path);
+        var cursorJson = File.ReadAllText(path);
+        check("云间天上速度 / 密度 + 光标 / 历史字段往返",
+            cursorRounded is
+            {
+                CloudSpeed: 2.4,
+                CloudDensity: 6,
+                UseInAppCursor: true,
+                CursorStyle: InAppCursorStyle.CloudSky,
+                CustomCursorImage: "cursor-20250101-120000-000.png",
+            }
+            && cursorRounded.BackgroundImageHistory.SequenceEqual(new[] { "bg-a.png", "bg-b.png" })
+            && cursorRounded.CursorImageHistory.SequenceEqual(new[] { "cursor-a.png", "cursor-b.png" })
+            && cursorJson.Contains("\"cloudSpeed\": 2.4")
+            && cursorJson.Contains("\"backgroundImageHistory\""),
+            cursorJson.Replace(Environment.NewLine, " "));
+
+        check("光标样式解析：auto 跟主题 / custom 无图回退 / 未知值自动",
+            InAppCursorStyle.Normalize("liquid") == InAppCursorStyle.LiquidGlass
+            && InAppCursorStyle.Normalize("乱写") == InAppCursorStyle.Auto
+            && InAppCursorStyle.KindForTheme(UiTheme.CloudSky) == InAppCursorKind.CloudSky
+            && InAppCursorStyle.KindForTheme(UiTheme.Daoji) == InAppCursorKind.Daoji
+            && InAppCursorStyle.Resolve(InAppCursorStyle.Custom, UiTheme.CloudSky, hasCustomImage: false)
+                == InAppCursorKind.CloudSky
+            && InAppCursorStyle.Resolve(InAppCursorStyle.Custom, UiTheme.CloudSky, hasCustomImage: true)
+                == InAppCursorKind.Custom);
+
+        check("光标图：普通文件名合法 / 目录在 Data\\shell\\cursor",
+            ShellCursorImage.IsSafeFileName("cursor-20250101-120000-000.png")
+            && !ShellCursorImage.IsSafeFileName("../cursor.png")
+            && !ShellCursorImage.IsSafeFileName(@"C:\Windows\cursor.png")
+            && ShellCursorImage.Directory.EndsWith(
+                System.IO.Path.Combine("shell", "cursor"), StringComparison.OrdinalIgnoreCase),
+            ShellCursorImage.Directory);
     }
 
     // ---------------------------------------------------------------- 背景图文件名安全（v0.43.0）

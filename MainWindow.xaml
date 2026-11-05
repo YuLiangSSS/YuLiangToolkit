@@ -61,6 +61,8 @@
             <views:GlassBackdrop Grid.RowSpan="4" Panel.ZIndex="-100"
                                  Theme="{Binding UiTheme}"
                                  IsLight="{Binding IsLightMode}"
+                                 CloudSpeed="{Binding CloudSpeed}"
+                                 CloudDensity="{Binding CloudDensity}"
                                  ImageSource="{Binding BackgroundImageSource}"
                                  ImageStretch="{Binding BackgroundImageStretch}"
                                  ImageBlurRadius="{Binding BackgroundImageBlurRadius}"
@@ -277,6 +279,14 @@
                     BorderBrush="{DynamicResource WindowEdgeBorderBrush}" BorderThickness="1" />
         </Grid>
 
+        <!-- 应用内自绘光标：和 RootGrid 平级，放在 ParticleOverlay 下面。
+             这样光标会盖住背景 / 界面，但粒子拖尾、点击爆炸、反色圆环等效果仍然盖在光标上面。 -->
+        <views:InAppCursorOverlay Panel.ZIndex="900"
+                                  IsActive="{Binding UseInAppCursor}"
+                                  Kind="{Binding InAppCursorKind}"
+                                  ImageSource="{Binding CustomCursorImageSource}"
+                                  IsLight="{Binding IsLightMode}" />
+
         <!-- 光标特效覆盖层：铺满整个窗口（含标题栏 / 状态栏），不吃鼠标事件；和内容根节点平级，
              这样反色圆环取景时只看到「内容」，不会把自己画进去。
              两套特效完全独立、各自可多选（主页设置页里勾选，存 Config\shell\config.json）：
@@ -286,7 +296,7 @@
              CaptureSource / CaptureBackground 只给反色圆环取景用：内容根节点 + 窗口底色
              （RootGrid 自己通常不带背景，不补底色反色区域会出现透明空洞）。
              自定义颜色对粒子类效果生效（见 docs/shell.md）。 -->
-        <core:ParticleOverlay Panel.ZIndex="900"
+        <core:ParticleOverlay Panel.ZIndex="901"
                               IsHitTestVisible="False"
                               IsActive="True"
                               AutoEffects="{Binding AutoEffectIds}"

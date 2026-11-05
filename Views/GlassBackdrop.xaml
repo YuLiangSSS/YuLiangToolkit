@@ -296,7 +296,7 @@
                             </Path.RenderTransform>
                         </Path>
                     </Canvas>
-                    <Canvas Canvas.Top="420">
+                    <Canvas Canvas.Top="120">
                         <Canvas.RenderTransform>
                             <TranslateTransform x:Name="DayCloud3Move" X="980" />
                         </Canvas.RenderTransform>
@@ -306,7 +306,7 @@
                             </Path.RenderTransform>
                         </Path>
                     </Canvas>
-                    <Canvas Canvas.Top="210">
+                    <Canvas Canvas.Top="80">
                         <Canvas.RenderTransform>
                             <TranslateTransform x:Name="DayCloud4Move" X="40" />
                         </Canvas.RenderTransform>
@@ -321,7 +321,7 @@
                             </Path.RenderTransform>
                         </Path>
                     </Canvas>
-                    <Canvas Canvas.Top="300">
+                    <Canvas Canvas.Top="150">
                         <Canvas.RenderTransform>
                             <TranslateTransform x:Name="DayCloud5Move" X="760" />
                         </Canvas.RenderTransform>
@@ -336,7 +336,7 @@
                             </Path.RenderTransform>
                         </Path>
                     </Canvas>
-                    <Canvas Canvas.Top="640">
+                    <Canvas Canvas.Top="30">
                         <Canvas.RenderTransform>
                             <TranslateTransform x:Name="DayCloud6Move" X="540" />
                         </Canvas.RenderTransform>
@@ -348,6 +348,46 @@
                         <Path Data="{StaticResource CloudShape}" Fill="#FFFFFF">
                             <Path.RenderTransform>
                                 <ScaleTransform ScaleX="2.2" ScaleY="2.2" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Canvas>
+                    <Canvas Canvas.Top="100">
+                        <Canvas.RenderTransform>
+                            <TranslateTransform x:Name="DayCloud7Move" X="200" />
+                        </Canvas.RenderTransform>
+                        <Path Data="{StaticResource CloudShape}" Fill="#E6F1FC" Opacity="0.62">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="1.4" ScaleY="1.4" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Canvas>
+                    <Canvas Canvas.Top="170">
+                        <Canvas.RenderTransform>
+                            <TranslateTransform x:Name="DayCloud8Move" X="860" />
+                        </Canvas.RenderTransform>
+                        <Path Data="{StaticResource CloudShape}" Fill="#EFF7FF" Opacity="0.55">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="1.9" ScaleY="1.9" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Canvas>
+                    <Canvas Canvas.Top="60">
+                        <Canvas.RenderTransform>
+                            <TranslateTransform x:Name="DayCloud9Move" X="1000" />
+                        </Canvas.RenderTransform>
+                        <Path Data="{StaticResource CloudShape}" Fill="#E9F4FF" Opacity="0.65">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="1.2" ScaleY="1.2" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Canvas>
+                    <Canvas Canvas.Top="140">
+                        <Canvas.RenderTransform>
+                            <TranslateTransform x:Name="DayCloud10Move" X="320" />
+                        </Canvas.RenderTransform>
+                        <Path Data="{StaticResource CloudShape}" Fill="#E0EEFA" Opacity="0.5">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="2.4" ScaleY="2.4" />
                             </Path.RenderTransform>
                         </Path>
                     </Canvas>
@@ -410,7 +450,7 @@
                             </Path.RenderTransform>
                         </Path>
                     </Canvas>
-                    <Canvas Canvas.Top="620">
+                    <Canvas Canvas.Top="110">
                         <Canvas.RenderTransform>
                             <TranslateTransform x:Name="NightCloud3Move" X="980" />
                         </Canvas.RenderTransform>
@@ -420,13 +460,53 @@
                             </Path.RenderTransform>
                         </Path>
                     </Canvas>
-                    <Canvas Canvas.Top="330">
+                    <Canvas Canvas.Top="70">
                         <Canvas.RenderTransform>
                             <TranslateTransform x:Name="NightCloud4Move" X="420" />
                         </Canvas.RenderTransform>
                         <Path Data="{StaticResource CloudShape}" Fill="#0A1A2E">
                             <Path.RenderTransform>
                                 <ScaleTransform ScaleX="1.8" ScaleY="1.8" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Canvas>
+                    <Canvas Canvas.Top="160">
+                        <Canvas.RenderTransform>
+                            <TranslateTransform x:Name="NightCloud5Move" X="220" />
+                        </Canvas.RenderTransform>
+                        <Path Data="{StaticResource CloudShape}" Fill="#142B46" Opacity="0.78">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="2" ScaleY="2" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Canvas>
+                    <Canvas Canvas.Top="40">
+                        <Canvas.RenderTransform>
+                            <TranslateTransform x:Name="NightCloud6Move" X="760" />
+                        </Canvas.RenderTransform>
+                        <Path Data="{StaticResource CloudShape}" Fill="#0D2036" Opacity="0.85">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="1.4" ScaleY="1.4" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Canvas>
+                    <Canvas Canvas.Top="130">
+                        <Canvas.RenderTransform>
+                            <TranslateTransform x:Name="NightCloud7Move" X="1020" />
+                        </Canvas.RenderTransform>
+                        <Path Data="{StaticResource CloudShape}" Fill="#132B45" Opacity="0.7">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="2.2" ScaleY="2.2" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Canvas>
+                    <Canvas Canvas.Top="40">
+                        <Canvas.RenderTransform>
+                            <TranslateTransform x:Name="NightCloud8Move" X="460" />
+                        </Canvas.RenderTransform>
+                        <Path Data="{StaticResource CloudShape}" Fill="#16304D" Opacity="0.6">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="1.3" ScaleY="1.3" />
                             </Path.RenderTransform>
                         </Path>
                     </Canvas>

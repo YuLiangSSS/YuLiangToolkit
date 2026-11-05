@@ -41,6 +41,35 @@
                            TextWrapping="Wrap" Margin="0,2,0,0" />
             </StackPanel>
         </DataTemplate>
+
+        <!-- 背景图 / 自定义光标共用的历史缩略图：点一下切回这张图；当前使用的那张加主题色描边 -->
+        <DataTemplate x:Key="ImageHistoryTemplate">
+            <Button Command="{Binding UseCommand}" Margin="0,0,8,0" Padding="0"
+                    Background="Transparent" BorderThickness="0" Cursor="Hand"
+                    ToolTip="{Binding FileName}">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <ContentPresenter />
+                    </ControlTemplate>
+                </Button.Template>
+                <Border Width="72" Height="48" CornerRadius="7" ClipToBounds="True"
+                        Background="{DynamicResource InputBackgroundBrush}">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+                            <Setter Property="BorderThickness" Value="1" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                    <Setter Property="BorderThickness" Value="2" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" />
+                </Border>
+            </Button>
+        </DataTemplate>
     </UserControl.Resources>
 
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -278,6 +307,19 @@
                 </StackPanel>
             </Border>
 
+            <!-- ===== 云间天上：云朵速度 / 密度（只在选中这个主题时显示，v0.91.0） ===== -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14"
+                    Visibility="{Binding CloudSkyThemeSelected, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <TextBlock Text="云间天上 · 云朵" FontSize="12.5" FontWeight="SemiBold" />
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,4,0,0"
+                               Text="只影响「云间天上」主题：拖动下面两条滑块可改云朵横向漂移速度和每层显示数量；改一下立即生效并自动保存。" />
+                    <ItemsControl ItemsSource="{Binding CloudSliders}" Margin="0,2,0,0"
+                                  ItemTemplate="{StaticResource EffectSliderTemplate}" />
+                </StackPanel>
+            </Border>
+
             <!-- ===== 配色（v0.89.0：只作用于默认风格；预设 + 自定义） ===== -->
             <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14"
                     Visibility="{Binding DefaultThemeSelected, Converter={StaticResource BoolToVis}}">
@@ -363,7 +405,7 @@
                     <TextBlock Text="背景图" FontSize="12.5" FontWeight="SemiBold" />
                     <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                TextWrapping="Wrap" Margin="0,4,0,0"
-                               Text="上传一张图片铺在窗口最底层（不是桌面壁纸，只影响这个程序）。图片会复制一份到 Data\shell\background\，之后原图移动 / 删除都不影响；换图会自动清掉上一张。背景自适应窗口、不拉伸：默认铺满窗口（保持比例，多出来的部分裁掉），也可以勾「完整显示整张图」改成四周留边。" />
+                               Text="上传一张图片铺在窗口最底层（不是桌面壁纸，只影响这个程序）。图片会复制一份到 Data\shell\background\，之后原图移动 / 删除都不影响；换图 / 清除时旧图会保留在下面的历史里，随时可以点回来。背景自适应窗口、不拉伸：默认铺满窗口（保持比例，多出来的部分裁掉），也可以勾「完整显示整张图」改成四周留边。" />
                     <Grid Margin="0,12,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -389,10 +431,10 @@
                                 <Button Content="选择图片…" Style="{StaticResource SecondaryButtonStyle}"
                                         Command="{Binding ChooseBackgroundImageCommand}"
                                         ToolTip="支持 PNG / JPG / BMP / GIF / TIFF；选好立即生效并自动保存" />
-                                <Button Content="清除背景图" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                <Button Content="清除当前背景图" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
                                         Command="{Binding ClearBackgroundImageCommand}"
                                         IsEnabled="{Binding HasBackgroundImageSetting}"
-                                        ToolTip="删掉数据目录里的那份图片副本，恢复纯色背景" />
+                                        ToolTip="只停用当前背景图，图片文件仍保留在下面的历史里" />
                             </StackPanel>
                             <CheckBox Content="完整显示整张图（不裁剪，可能留边）" Style="{StaticResource CheckBoxStyle}"
                                       Margin="0,11,0,0" IsChecked="{Binding BackgroundImageFitWhole}"
@@ -403,6 +445,90 @@
                                        Margin="0,8,0,0" />
                         </StackPanel>
                     </Grid>
+
+                    <TextBlock Text="用过的背景图（点一下切回）" FontSize="11.5" FontWeight="SemiBold"
+                               Margin="0,12,0,6" />
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding BackgroundImageHistory}"
+                                      ItemTemplate="{StaticResource ImageHistoryTemplate}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+            </Border>
+
+            <!-- ===== 鼠标光标（v0.91.0）：应用内自绘光标 / 主题样式 / 上传图片 / 历史 ===== -->
+            <TextBlock Text="鼠标光标" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource AccentBrush}" Margin="0,22,0,0" />
+            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
+                <StackPanel>
+                    <CheckBox Content="使用应用内光标" Style="{StaticResource CheckBoxStyle}"
+                              IsChecked="{Binding UseInAppCursor}"
+                              ToolTip="开启后隐藏系统光标，由程序自己画一个跟随鼠标的光标；关闭则恢复 Windows 光标" />
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,6,0,0"
+                               Text="开启后，窗口内的鼠标由程序自己绘制（系统光标隐藏）。不同界面主题各有一套内置样式，也可以上传一张小图片当光标；图片会复制进 Data\shell\cursor\，历史图片不会删除。应用内光标会被粒子拖尾 / 点击爆炸 / 反色圆环等特效盖住，不会挡住它们。" />
+
+                    <Grid Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="光标样式" FontSize="12.5" FontWeight="SemiBold" />
+                            <ComboBox Style="{StaticResource ComboBoxStyle}" Margin="0,6,0,0"
+                                      ItemsSource="{Binding CursorStyleOptions}"
+                                      SelectedValuePath="Id"
+                                      SelectedValue="{Binding SelectedCursorStyleId}"
+                                      ToolTip="跟随界面主题 = 自动按当前主题换；也可以固定一套或选自定义图片">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Name}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <TextBlock Text="{Binding CursorStyleDescription}" FontSize="11"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap" Margin="0,4,0,0" />
+                        </StackPanel>
+                        <Border Grid.Column="1" Width="64" Height="64" Margin="14,0,0,0"
+                                CornerRadius="8" Background="{DynamicResource InputBackgroundBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                ClipToBounds="True">
+                            <Image Source="{Binding CustomCursorImageSource}" Stretch="Uniform"
+                                   Margin="8" ToolTip="当前自定义光标图" />
+                        </Border>
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Content="上传光标图片…" Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding ChooseCursorImageCommand}"
+                                ToolTip="支持 PNG / JPG / BMP / GIF / TIFF；建议透明底小图（≤ 64×64），选好会复制进数据目录并自动启用" />
+                        <Button Content="清除光标图片" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                Command="{Binding ClearCursorImageCommand}"
+                                IsEnabled="{Binding HasCustomCursorImageSetting}"
+                                ToolTip="清除当前自定义图片，光标样式回到「跟随界面主题」；历史图片仍保留" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding CursorImageInfoText}" FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,7,0,0"
+                               TextWrapping="Wrap" />
+
+                    <TextBlock Text="用过的光标图（点一下切回）" FontSize="11.5" FontWeight="SemiBold"
+                               Margin="0,12,0,6" />
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding CursorImageHistory}"
+                                      ItemTemplate="{StaticResource ImageHistoryTemplate}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                        </ItemsControl>
+                    </ScrollViewer>
                 </StackPanel>
             </Border>
 

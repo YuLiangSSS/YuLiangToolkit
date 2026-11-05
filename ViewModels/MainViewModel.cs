@@ -1090,6 +1090,7 @@ public class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowBackdrop));
         OnPropertyChanged(nameof(BackgroundImageBlurRadius));
         OnPropertyChanged(nameof(BackgroundImageThemeHint));
+        OnPropertyChanged(nameof(InAppCursorKind));
 
         OnPropertyChanged(nameof(CurrentThemeMode));
         OnPropertyChanged(nameof(DarkModeSelected));
@@ -1211,6 +1212,47 @@ public class MainViewModel : ObservableObject
         AcrylicBlurOption.Value = _shell.AcrylicBlurRadius;
     }
 
+    // ---------- 云间天上：云朵速度 / 密度（v0.91.0，只在选中云间天上时显示） ----------
+
+    /// <summary>云朵速度（倍率，绑给 <c>GlassBackdrop.CloudSpeed</c>）。</summary>
+    public double CloudSpeed => _shell.CloudSpeed;
+
+    /// <summary>云朵密度（白天 / 夜晚每层显示几朵，绑给 <c>GlassBackdrop.CloudDensity</c>）。</summary>
+    public int CloudDensity => _shell.CloudDensity;
+
+    /// <summary>云间天上的两条设置滑块（设置页用和特效参数同一个模板）。</summary>
+    public IReadOnlyList<ShellSliderOption> CloudSliders { get; private set; } = Array.Empty<ShellSliderOption>();
+
+    private void InitializeCloudOptions()
+    {
+        CloudSliders = new[]
+        {
+            new ShellSliderOption(
+                "cloud-speed", "cloud", "云朵速度", "云从右往左飘的横向速度；1.0 × = 原来的基准速度。",
+                new CursorEffectRange(0.3, 3.0, 0.1), _shell.CloudSpeed, " ×",
+                value =>
+                {
+                    _shell.CloudSpeed = value;
+                    OnPropertyChanged(nameof(CloudSpeed));
+                }),
+            new ShellSliderOption(
+                "cloud-density", "cloud", "云朵密度", "白天 / 夜晚每层最多显示几朵云（夜晚池子最多 8 朵，超过按 8 算）。",
+                new CursorEffectRange(1.0, 10.0, 1.0), _shell.CloudDensity, " 个",
+                value =>
+                {
+                    _shell.CloudDensity = (int)Math.Round(value);
+                    OnPropertyChanged(nameof(CloudDensity));
+                }),
+        };
+    }
+
+    private void SyncCloudOptions()
+    {
+        if (CloudSliders.Count < 2) return;
+        CloudSliders[0].Value = _shell.CloudSpeed;
+        CloudSliders[1].Value = _shell.CloudDensity;
+    }
+
     /// <summary>设置页里背景图的状态文字（文件名 + 大小 / 没设置 / 文件丢了）。</summary>
     public string BackgroundImageInfoText
     {
@@ -1260,12 +1302,11 @@ public class MainViewModel : ObservableObject
 
         if (dialog.ShowDialog() != true) return;
 
-        var oldFileName = _shell.BackgroundImage;
         try
         {
             var newFileName = ShellBackgroundImage.Save(dialog.FileName);
             _shell.BackgroundImage = newFileName;
-            ShellBackgroundImage.Delete(oldFileName);   // 新图复制成功后才删旧图，失败不会丢原来的背景
+            RememberBackgroundHistory(newFileName);
             ReloadBackgroundImage();
         }
         catch (Exception ex)
@@ -1281,7 +1322,6 @@ public class MainViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(oldFileName) && _backgroundImageSource is null) return;
 
         _shell.BackgroundImage = null;
-        ShellBackgroundImage.Delete(oldFileName);
         ReloadBackgroundImage();
     }
 
@@ -1300,14 +1340,14 @@ public class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(HasBackgroundImageSetting));
         OnPropertyChanged(nameof(BackgroundImageInfoText));
         OnPropertyChanged(nameof(BackgroundImageStretch));
+        RebuildBackgroundHistory();
     }
 
-    /// <summary>解码背景图：不锁文件（OnLoad）、超大图按 <see cref="MaxBackgroundDecodeWidth"/> 缩一下，冻结后跨绑定安全。</summary>
-    private static ImageSource? LoadBackgroundBitmap(string path)
+    /// <summary>解码图片：不锁文件（OnLoad）、超过 <paramref name="maxDecodeWidth"/> 的按它缩一下，冻结后跨绑定安全。</summary>
+    private static ImageSource? LoadImageBitmap(string path, int maxDecodeWidth)
     {
         try
         {
-            // 先只读文件头拿像素宽度：小图不设 DecodePixelWidth（避免被放大解码），大图才缩。
             var pixelWidth = 0;
             try
             {
@@ -1324,8 +1364,8 @@ public class MainViewModel : ObservableObject
             bitmap.BeginInit();
             bitmap.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;   // 不锁源文件
             bitmap.CreateOptions = System.Windows.Media.Imaging.BitmapCreateOptions.IgnoreColorProfile;
-            if (pixelWidth > MaxBackgroundDecodeWidth)
-                bitmap.DecodePixelWidth = MaxBackgroundDecodeWidth;
+            if (pixelWidth > maxDecodeWidth)
+                bitmap.DecodePixelWidth = maxDecodeWidth;
             bitmap.UriSource = new Uri(path, UriKind.Absolute);
             bitmap.EndInit();
             bitmap.Freeze();
@@ -1335,6 +1375,246 @@ public class MainViewModel : ObservableObject
         {
             return null;   // 损坏 / 不支持的格式：当成没有背景图
         }
+    }
+
+    private static ImageSource? LoadBackgroundBitmap(string path) => LoadImageBitmap(path, MaxBackgroundDecodeWidth);
+
+    private static ImageSource? LoadThumbnailBitmap(string path) => LoadImageBitmap(path, 180);
+
+    // ---------- 背景图 / 光标图历史（v0.91.0） ----------
+    //
+    // 背景图和自定义光标都保留所有用过的文件（不再换一张删一张），配置里各有一份文件名历史，
+    // 设置页显示缩略图，点一下即可切回。历史只存文件名，真实图片在 Data\shell\background / cursor。
+
+    /// <summary>用过的背景图（最新在前；点缩略图可切回）。</summary>
+    public ObservableCollection<ImageHistoryItem> BackgroundImageHistory { get; } = new();
+
+    /// <summary>用过的自定义光标图（最新在前；点缩略图可切回）。</summary>
+    public ObservableCollection<ImageHistoryItem> CursorImageHistory { get; } = new();
+
+    private void RememberBackgroundHistory(string? fileName)
+    {
+        _shell.BackgroundImageHistory ??= new();
+        if (string.IsNullOrWhiteSpace(fileName)) return;
+        _shell.BackgroundImageHistory.RemoveAll(f => string.Equals(f, fileName, StringComparison.OrdinalIgnoreCase));
+        _shell.BackgroundImageHistory.Insert(0, fileName);
+    }
+
+    private void RememberCursorHistory(string? fileName)
+    {
+        _shell.CursorImageHistory ??= new();
+        if (string.IsNullOrWhiteSpace(fileName)) return;
+        _shell.CursorImageHistory.RemoveAll(f => string.Equals(f, fileName, StringComparison.OrdinalIgnoreCase));
+        _shell.CursorImageHistory.Insert(0, fileName);
+    }
+
+    private void RebuildBackgroundHistory()
+    {
+        BackgroundImageHistory.Clear();
+        _shell.BackgroundImageHistory ??= new();
+
+        if (!string.IsNullOrWhiteSpace(_shell.BackgroundImage)
+            && ShellBackgroundImage.Exists(_shell.BackgroundImage)
+            && !_shell.BackgroundImageHistory.Contains(_shell.BackgroundImage, StringComparer.OrdinalIgnoreCase))
+        {
+            _shell.BackgroundImageHistory.Insert(0, _shell.BackgroundImage!);
+        }
+
+        var valid = new List<string>();
+        foreach (var file in _shell.BackgroundImageHistory)
+        {
+            if (string.IsNullOrWhiteSpace(file) || valid.Contains(file, StringComparer.OrdinalIgnoreCase)) continue;
+            var path = ShellBackgroundImage.Resolve(file);
+            if (path is null) continue;   // 文件被手动删了：从历史里剔掉，但不影响当前配置
+            valid.Add(file);
+            BackgroundImageHistory.Add(new ImageHistoryItem(
+                file, LoadThumbnailBitmap(path),
+                string.Equals(file, _shell.BackgroundImage, StringComparison.OrdinalIgnoreCase),
+                ApplyBackgroundHistory));
+        }
+
+        if (!valid.SequenceEqual(_shell.BackgroundImageHistory, StringComparer.OrdinalIgnoreCase))
+            _shell.BackgroundImageHistory = valid;
+    }
+
+    private void ApplyBackgroundHistory(string fileName)
+    {
+        if (ShellBackgroundImage.Resolve(fileName) is null) return;
+        _shell.BackgroundImage = fileName;
+        RememberBackgroundHistory(fileName);
+        ReloadBackgroundImage();
+    }
+
+    private void RebuildCursorHistory()
+    {
+        CursorImageHistory.Clear();
+        _shell.CursorImageHistory ??= new();
+
+        if (!string.IsNullOrWhiteSpace(_shell.CustomCursorImage)
+            && ShellCursorImage.Resolve(_shell.CustomCursorImage) is not null
+            && !_shell.CursorImageHistory.Contains(_shell.CustomCursorImage, StringComparer.OrdinalIgnoreCase))
+        {
+            _shell.CursorImageHistory.Insert(0, _shell.CustomCursorImage!);
+        }
+
+        var valid = new List<string>();
+        foreach (var file in _shell.CursorImageHistory)
+        {
+            if (string.IsNullOrWhiteSpace(file) || valid.Contains(file, StringComparer.OrdinalIgnoreCase)) continue;
+            var path = ShellCursorImage.Resolve(file);
+            if (path is null) continue;
+            valid.Add(file);
+            CursorImageHistory.Add(new ImageHistoryItem(
+                file, LoadThumbnailBitmap(path),
+                string.Equals(file, _shell.CustomCursorImage, StringComparison.OrdinalIgnoreCase),
+                ApplyCursorHistory));
+        }
+
+        if (!valid.SequenceEqual(_shell.CursorImageHistory, StringComparer.OrdinalIgnoreCase))
+            _shell.CursorImageHistory = valid;
+    }
+
+    private void ApplyCursorHistory(string fileName)
+    {
+        if (ShellCursorImage.Resolve(fileName) is null) return;
+        _shell.CustomCursorImage = fileName;
+        _shell.CursorStyle = InAppCursorStyle.Custom;
+        _shell.UseInAppCursor = true;
+        RememberCursorHistory(fileName);
+        ReloadCustomCursorImage();
+        OnPropertyChanged(nameof(SelectedCursorStyleId));
+        OnPropertyChanged(nameof(CursorStyleDescription));
+        OnPropertyChanged(nameof(UseInAppCursor));
+        OnPropertyChanged(nameof(InAppCursorKind));
+    }
+
+    // ---------- 应用内光标（v0.91.0） ----------
+
+    private ImageSource? _customCursorImageSource;
+
+    /// <summary>应用内光标是否启用（绑给 InAppCursorOverlay.IsActive）。</summary>
+    public bool UseInAppCursor
+    {
+        get => _shell.UseInAppCursor;
+        set
+        {
+            if (_shell.UseInAppCursor == value) return;
+            _shell.UseInAppCursor = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>自定义光标图片（null = 没有 / 文件丢了；此时回退到主题内置箭头）。</summary>
+    public ImageSource? CustomCursorImageSource => _customCursorImageSource;
+
+    public bool HasCustomCursorImage => _customCursorImageSource is not null;
+
+    /// <summary>配置里是不是记着一份光标图（文件丢了也算 true，让「清除」仍然可点）。</summary>
+    public bool HasCustomCursorImageSetting => !string.IsNullOrWhiteSpace(_shell.CustomCursorImage);
+
+    /// <summary>光标样式下拉框的选项。</summary>
+    public IReadOnlyList<CursorStyleDefinition> CursorStyleOptions => InAppCursorStyle.Definitions;
+
+    /// <summary>当前选中的光标样式 Id（auto / default / liquid / ... / custom）。</summary>
+    public string SelectedCursorStyleId
+    {
+        get => InAppCursorStyle.Normalize(_shell.CursorStyle);
+        set
+        {
+            var normalized = InAppCursorStyle.Normalize(value);
+            if (string.Equals(SelectedCursorStyleId, normalized, StringComparison.Ordinal)) return;
+            _shell.CursorStyle = normalized;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(InAppCursorKind));
+            OnPropertyChanged(nameof(CursorStyleDescription));
+        }
+    }
+
+    /// <summary>当前光标样式的一句话说明（设置页下拉框下方）。</summary>
+    public string CursorStyleDescription
+        => InAppCursorStyle.Definitions.FirstOrDefault(d => d.Id == SelectedCursorStyleId)?.Description ?? "";
+
+    /// <summary>实际画哪套光标：auto 跟主题；custom 没图片时回退主题样式。</summary>
+    public InAppCursorKind InAppCursorKind
+        => InAppCursorStyle.Resolve(_shell.CursorStyle, UiTheme, HasCustomCursorImage);
+
+    /// <summary>设置页里自定义光标的状态文字。</summary>
+    public string CursorImageInfoText
+    {
+        get
+        {
+            if (HasCustomCursorImage)
+            {
+                var size = ShellCursorImage.SizeText(_shell.CustomCursorImage);
+                return string.IsNullOrEmpty(size)
+                    ? _shell.CustomCursorImage!
+                    : $"{_shell.CustomCursorImage}（{size}）";
+            }
+
+            return string.IsNullOrWhiteSpace(_shell.CustomCursorImage)
+                ? "还没有上传自定义光标图。"
+                : "光标图文件不见了（可能被手动删了），请重新选择。";
+        }
+    }
+
+    public RelayCommand ChooseCursorImageCommand { get; }
+    public RelayCommand ClearCursorImageCommand { get; }
+
+    private void ChooseCursorImage()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "选择自定义光标图片",
+            Filter = "图片文件|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff|所有文件|*.*",
+            CheckFileExists = true,
+            Multiselect = false,
+            InitialDirectory = ShellCursorImage.Resolve(_shell.CustomCursorImage) is { } current
+                ? Path.GetDirectoryName(current)!
+                : Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
+        };
+
+        if (dialog.ShowDialog() != true) return;
+        try
+        {
+            var fileName = ShellCursorImage.Save(dialog.FileName);
+            _shell.CustomCursorImage = fileName;
+            _shell.CursorStyle = InAppCursorStyle.Custom;
+            _shell.UseInAppCursor = true;
+            RememberCursorHistory(fileName);
+            ReloadCustomCursorImage();
+            OnPropertyChanged(nameof(SelectedCursorStyleId));
+            OnPropertyChanged(nameof(CursorStyleDescription));
+            OnPropertyChanged(nameof(UseInAppCursor));
+            OnPropertyChanged(nameof(InAppCursorKind));
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"光标图片设置失败：{ex.Message}", "应用内光标",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void ClearCursorImage()
+    {
+        if (string.IsNullOrWhiteSpace(_shell.CustomCursorImage) && _customCursorImageSource is null) return;
+        _shell.CustomCursorImage = null;
+        _shell.CursorStyle = InAppCursorStyle.Auto;
+        ReloadCustomCursorImage();
+        OnPropertyChanged(nameof(SelectedCursorStyleId));
+        OnPropertyChanged(nameof(CursorStyleDescription));
+        OnPropertyChanged(nameof(InAppCursorKind));
+    }
+
+    private void ReloadCustomCursorImage()
+    {
+        var path = ShellCursorImage.Resolve(_shell.CustomCursorImage);
+        _customCursorImageSource = path is null ? null : LoadImageBitmap(path, 512);
+        OnPropertyChanged(nameof(CustomCursorImageSource));
+        OnPropertyChanged(nameof(HasCustomCursorImage));
+        OnPropertyChanged(nameof(HasCustomCursorImageSetting));
+        OnPropertyChanged(nameof(CursorImageInfoText));
+        OnPropertyChanged(nameof(InAppCursorKind));
+        RebuildCursorHistory();
     }
 
     // ---------- 粒子颜色（v0.22.0） ----------
@@ -1625,6 +1905,7 @@ public class MainViewModel : ObservableObject
         _shell = _shellStore.Load<ShellConfig>();
         InitializeEffects();
         InitializeThemeBlurOptions();     // 三套半透明玻璃风格的「背景图模糊度」滑块（选中对应风格才显示）
+        InitializeCloudOptions();          // 云间天上的云朵速度 / 密度滑块（选中云间天上才显示）
         ApplyPaneSplitterHintOpacity();   // 工具页分隔条的「提示线」全局透明度（主页设置里可调）
 
         // 开发 / 截图：YLT_THEME=liquid-glass / dao 临时切 UI；YLT_THEME_MODE=light|dark 临时改深浅；
@@ -1646,6 +1927,7 @@ public class MainViewModel : ObservableObject
 
         // 背景图（v0.43.0）：启动时按配置解码一次；文件不在 / 损坏就当作没有背景图
         ReloadBackgroundImage();
+        ReloadCustomCursorImage();
 
         // 截图 / 调试：YLT_HOME_TAGS=hidden 临时隐藏标签墙（验证「设置里关掉」的样子）、
         // =expanded 临时展开（同时强制显示，免得配置里刚好关着标签墙时截图截不到）；只影响本次运行，不写配置。
@@ -1704,6 +1986,8 @@ public class MainViewModel : ObservableObject
         // 背景图（v0.43.0）：选图 / 清除，都只改 Data\shell\background 里的那份副本
         ChooseBackgroundImageCommand = new RelayCommand(_ => ChooseBackgroundImage());
         ClearBackgroundImageCommand = new RelayCommand(_ => ClearBackgroundImage());
+        ChooseCursorImageCommand = new RelayCommand(_ => ChooseCursorImage());
+        ClearCursorImageCommand = new RelayCommand(_ => ClearCursorImage());
 
         BuildCatalog(tools);
 
@@ -2209,12 +2493,14 @@ public class MainViewModel : ObservableObject
         EnsureSystemThemeTimer();
         ApplyTheme(force: true);            // 主题 / 色调 / 外观模式都回默认
         ReloadBackgroundImage();            // 背景图也回默认（配置清空 → 不显示；旧图片文件留在 Data 里不删）
+        ReloadCustomCursorImage();          // 自定义光标也回默认（历史文件不删）
 
         InitializeEffects();
         OnPropertyChanged(nameof(AutoEffectOptions));
         OnPropertyChanged(nameof(ClickEffectOptions));
         NotifyTuningChanged();
         SyncThemeBlurOptions();           // 三条模糊度滑块也回默认值
+        SyncCloudOptions();               // 云间天上的速度 / 密度也回默认值
         ApplyPaneSplitterHintOpacity();   // 分隔条提示线也回默认（0.18）
 
         foreach (var card in _allCards) card.LastUsed = null;   // LastUsed 字典已被重置为空

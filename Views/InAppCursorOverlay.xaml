@@ -1,0 +1,21 @@
+<UserControl x:Class="YuLiangToolkit.App.Views.InAppCursorOverlay"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             IsHitTestVisible="False"
+             Focusable="False">
+    <!-- 应用内自绘光标（v0.91.0）：铺满窗口但不吃鼠标事件；位置由代码跟随 Window.PreviewMouseMove。
+         内置几套主题箭头 + 用户上传图片；放在 ParticleOverlay 下面，所以粒子 / 点击特效会盖在光标上面。 -->
+    <Canvas x:Name="RootCanvas" IsHitTestVisible="False">
+        <Grid x:Name="CursorVisual" Width="40" Height="44" Visibility="Collapsed"
+              RenderOptions.BitmapScalingMode="HighQuality">
+            <Path x:Name="ArrowPath"
+                  Data="M 2,2 L 2,34 L 10,26 L 16,40 L 22,37 L 16,23 L 28,23 Z"
+                  Stretch="None" HorizontalAlignment="Left" VerticalAlignment="Top"
+                  StrokeThickness="1.5" StrokeLineJoin="Round" />
+            <Ellipse x:Name="AccentDot" Width="6" Height="6" HorizontalAlignment="Right"
+                     VerticalAlignment="Bottom" Margin="0,0,3,3" />
+            <Image x:Name="CustomImage" Stretch="Uniform" MaxWidth="48" MaxHeight="48"
+                   HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed" />
+        </Grid>
+    </Canvas>
+</UserControl>
