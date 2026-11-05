@@ -192,6 +192,65 @@ public sealed class StickerSession
     }
 
     /// <summary>
+    /// 从剪贴板贴图（工具页「📋 粘贴剪贴板」按钮 / Ctrl+V / 调试环境变量都走这里）。
+    ///
+    /// <para>支持两种剪贴板内容：<b>复制的图片文件</b>（可多张，直接用原文件）与
+    /// <b>剪贴板位图</b>（截图 / 网页复制的一张，先编码成 PNG 存进 Data 再当普通贴纸）。
+    /// 读剪贴板在本方法开头同步完成（必须在 UI 线程），位图编码 / 落盘放后台，界面不卡。</para>
+    /// </summary>
+    public async Task<ClipboardPasteResult> PasteClipboardAsync()
+    {
+        LastError = null;
+        if (_shutdown) return new ClipboardPasteResult(0, 0, "程序正在退出，贴纸已停止工作");
+
+        ClipboardImageBatch batch;
+        try
+        {
+            batch = StickerClipboard.Read();
+        }
+        catch (Exception ex)
+        {
+            return new ClipboardPasteResult(0, 0, $"读取剪贴板失败：{ex.Message}");
+        }
+
+        if (batch.Error is not null) return new ClipboardPasteResult(0, 0, batch.Error);
+        if (batch.IsEmpty) return new ClipboardPasteResult(0, 0, null);
+
+        var added = 0;
+        var failed = 0;
+
+        // ① 复制的图片文件：原文件直接用，不复制、不重新编码
+        foreach (var path in batch.FilePaths)
+        {
+            if (AddSticker(path) is not null) added++;
+            else failed++;
+        }
+
+        // ② 剪贴板位图：编码 PNG 落盘（冻结位图可以放后台线程，避免大截图卡界面）
+        if (batch.Bitmaps.Count > 0)
+        {
+            List<string?> savedPaths;
+            if (batch.Bitmaps.All(bitmap => bitmap.IsFrozen))
+            {
+                savedPaths = await Task.Run(() => batch.Bitmaps.Select(StickerClipboard.SaveBitmap).ToList());
+            }
+            else
+            {
+                savedPaths = batch.Bitmaps.Select(StickerClipboard.SaveBitmap).ToList();
+            }
+
+            foreach (var path in savedPaths)
+            {
+                if (path is null) { failed++; continue; }
+                if (AddSticker(path) is not null) added++;
+                else failed++;
+            }
+        }
+
+        return new ClipboardPasteResult(added, failed, null);
+    }
+
+    /// <summary>
     /// 按配置把「还没显示」的贴纸放回桌面（启动自动恢复 / 工具页「恢复上次贴纸」按钮）。
     /// 图片已经不存在的记录会被顺手删掉。返回恢复了几张。
     /// </summary>

@@ -17,7 +17,8 @@ namespace YuLiangToolkit.Tools.ScreenSticker;
 /// 等 Dispatcher 空闲后再加载配置 / 放回贴纸 —— 构造函数里不做任何耗时操作、也不建窗口。</para>
 ///
 /// <para><b>截图调试</b>：<c>YLT_STICKER_DEMO=&lt;图片路径&gt;</c> 启动时贴一张图，
-/// 配合 <c>YLT_STICKER_SHOT=&lt;png&gt;</c> 截图后退出（见 <see cref="Views.StickerWindow"/>）。</para>
+/// 配合 <c>YLT_STICKER_SHOT=&lt;png&gt;</c> 截图后退出（见 <see cref="Views.StickerWindow"/>）；
+/// <c>YLT_STICKER_CLIPBOARD=1</c> 启动时直接读一次剪贴板并贴图（用于验收剪贴板功能）。</para>
 /// </summary>
 public sealed class ScreenStickerTool : ITool, IToolCacheSource
 {
@@ -31,6 +32,7 @@ public sealed class ScreenStickerTool : ITool, IToolCacheSource
 
         var demoPath = Environment.GetEnvironmentVariable("YLT_STICKER_DEMO");
         var hasDemo = !string.IsNullOrWhiteSpace(demoPath);
+        var clipboardDemo = Environment.GetEnvironmentVariable("YLT_STICKER_CLIPBOARD") is "1" or "on" or "true";
 
         var autoRestore = false;
         try
@@ -48,9 +50,9 @@ public sealed class ScreenStickerTool : ITool, IToolCacheSource
             // 配置读不出来就不自动恢复（不影响工具正常打开）
         }
 
-        if (!autoRestore && !hasDemo) return;
+        if (!autoRestore && !hasDemo && !clipboardDemo) return;
 
-        Application.Current.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
+        Application.Current.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(async () =>
         {
             try
             {
@@ -61,12 +63,19 @@ public sealed class ScreenStickerTool : ITool, IToolCacheSource
                     return;
                 }
 
+                if (clipboardDemo)
+                {
+                    // 剪贴板验收：贴完由第一张窗口的 YLT_STICKER_SHOT 截图退出。
+                    await StickerSession.Current.PasteClipboardAsync();
+                    return;
+                }
+
                 // 正常启动恢复；只开了 YLT_STICKER_SHOT 没给 demo 时，恢复后由第一张窗口截图退出。
                 StickerSession.Current.RestoreFromConfig();
             }
             catch
             {
-                // 自动恢复失败不影响程序启动（用户还可以在工具页手动点「恢复上次贴纸」）
+                // 自动恢复 / 剪贴板贴图失败不影响程序启动（用户还可以在工具页手动操作）
             }
         }));
     }

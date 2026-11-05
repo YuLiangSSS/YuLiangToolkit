@@ -320,8 +320,12 @@
 - 工具页视图被缓存淘汰 / 程序退出时（`DisposeToolView` → `NotifyClosed` 会 `StopWatching` 配置存储），
   贴纸仍可能继续拖动 / 缩放：这类后台改动走 `StickerSession.SaveSoon()`（500ms 防抖后显式 `SaveNow`），
   不要依赖配置自动保存定时器。
-- 调试：`YLT_STICKER_DEMO=<图片>` 启动贴一张（不恢复旧贴纸）、`YLT_STICKER_SHOT=<png>` 截第一张窗口后退出；
-  截图见 `shots/sticker-*.png`（不入库）。
+- **剪贴板贴图**（`StickerClipboard`）：读剪贴板必须 UI/STA 线程且会被别的程序占用（`ExternalException`），
+  已做 5 次重试；剪贴板位图没有路径，必须编码 PNG 落进 `Data\screen-sticker\clipboard\`（按内容哈希命名去重，
+  **别放 Cache**，清缓存会把桌面贴纸搞空白）。`Clipboard.GetImage()` 的位图未必可冻结，编码前要冻结或复制，
+  否则后台线程编码会抛「跨线程访问」。自检**不碰系统剪贴板**，只断言文件过滤 / 文件名哈希 / 编码落盘。
+- 调试：`YLT_STICKER_DEMO=<图片>` 启动贴一张（不恢复旧贴纸）、`YLT_STICKER_CLIPBOARD=1` 启动读一次剪贴板贴图、
+  `YLT_STICKER_SHOT=<png>` 截第一张窗口后退出；截图见 `shots/sticker-*.png`（不入库）。
 
 ### 液态玻璃 / 毛玻璃 / 亚克力主题（半透明界面 + 背景图）
 - ⚠ 改 token 一起改：四套深色字典（`DefaultTheme` / `LiquidGlassTheme` / `FrostedGlassTheme` / `AcrylicTheme`）+ `ThemeManager.RequiredTokenKeys`（几何 key 在 `RequiredRadiusKeys`）；道系 / 浅色 / 配色由 `ThemePaletteBuilder` 生成，新增颜色时它也要覆盖；少一个静默退回控件默认值。

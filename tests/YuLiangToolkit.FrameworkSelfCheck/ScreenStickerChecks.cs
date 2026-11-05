@@ -12,9 +12,10 @@ namespace YuLiangToolkit.FrameworkSelfCheck;
 /// 贴纸记录与「恢复默认设置」的边界 / 贴纸几何（宽度比例 / 放进工作区 / 层叠落点 / 以鼠标为锚点缩放 /
 /// 滚轮倍率 / 角点缩放 / 重置宽度 / 夹回屏幕）/ 层级顺序 / 图片格式识别与解码 / 配置 JSON 持久化。
 ///
-/// <para><b>本组共 91 条断言</b>（纯逻辑，不创建窗口、不 new 控件、不碰真实 Data/Config）：
-/// 需要 WPF 位图解码的几条放在单独的 STA 线程里跑（做法同 <c>Live2DChecks</c> / <c>WordViewerChecks</c>），
-/// 其余全部是 <see cref="StickerGeometry"/> / <see cref="StickerLayerOrder"/> / 配置对象的直接调用。</para>
+/// <para><b>本组共 103 条断言</b>（纯逻辑，不创建窗口、不 new 控件、不碰真实 Data/Config、不读写系统剪贴板）：
+/// 需要 WPF 位图解码 / 编码的几条放在单独的 STA 线程里跑（做法同 <c>Live2DChecks</c> / <c>WordViewerChecks</c>），
+/// 其余全部是 <see cref="StickerGeometry"/> / <see cref="StickerLayerOrder"/> / <see cref="StickerClipboard"/> /
+/// 配置对象的直接调用。</para>
 /// </summary>
 internal static class ScreenStickerChecks
 {
@@ -43,6 +44,7 @@ internal static class ScreenStickerChecks
         CheckGeometryResizeAndClamp(fn);
         CheckLayerOrder(fn);
         CheckImageFormats(fn);
+        CheckClipboard(fn);
         CheckSerialization(fn);
     }
 
@@ -797,6 +799,112 @@ internal static class ScreenStickerChecks
         check("[屏幕贴纸] 不存在 / null / 空路径：CanOpen=false、Load=null（不抛异常）",
             !canOpenMissing && nullArgumentsOk,
             $"CanOpen(不存在)={canOpenMissing} 空参数安全={nullArgumentsOk}");
+    }
+
+    // ---------------------------------------------------------------- 剪贴板贴图
+    //
+    // 只断言「读剪贴板之外」的纯逻辑：文件列表过滤、内容哈希文件名、PNG 编码与落盘去重。
+    // **不碰系统剪贴板**（自检不该改用户剪贴板），剪贴板的真实读取由人工 / 截图冒烟验收。
+
+    private static void CheckClipboard(CheckFn check)
+    {
+        var directory = SelfCheckScratch.MakeDirectory("screen-sticker-clipboard");
+        var pngPath = Path.Combine(directory, "clip-a.png");
+        var pngPath2 = Path.Combine(directory, "clip-b.png");
+        var textPath = Path.Combine(directory, "not-image.txt");
+        var missingPath = Path.Combine(directory, "missing.png");
+        var pngBytes = Convert.FromBase64String(OnePixelPngBase64);
+
+        var prewritten = true;
+        try
+        {
+            File.WriteAllBytes(pngPath, pngBytes);
+            File.WriteAllBytes(pngPath2, pngBytes);
+            File.WriteAllText(textPath, "不是图片");
+        }
+        catch
+        {
+            prewritten = false;
+        }
+
+        check("[屏幕贴纸] 剪贴板前置：临时目录里能写出两份 PNG 与一个 txt", prewritten, directory);
+
+        var filtered = StickerClipboard.CollectImageFiles(
+            new[] { pngPath, null, "", "   ", textPath, missingPath, pngPath, pngPath.ToUpperInvariant() });
+        check("[屏幕贴纸] 剪贴板文件过滤：只留存在的图片、忽略 null / 空 / 非图片 / 不存在的路径",
+            filtered.Count == 1 && SamePath(filtered[0], pngPath),
+            $"{filtered.Count} 条：{string.Join(" | ", filtered)}");
+
+        check("[屏幕贴纸] 剪贴板文件过滤：同一路径大小写不同只算一条（Windows 去重）",
+            filtered.Count == 1, string.Join(" | ", filtered));
+
+        var twoFiles = StickerClipboard.CollectImageFiles(new[] { pngPath, pngPath2 });
+        check("[屏幕贴纸] 剪贴板文件过滤：多选多张图片全部保留（顺序不变）",
+            twoFiles.Count == 2 && SamePath(twoFiles[0], pngPath) && SamePath(twoFiles[1], pngPath2),
+            string.Join(" | ", twoFiles));
+
+        check("[屏幕贴纸] 剪贴板文件过滤：null / 空集合返回空列表（不抛异常）",
+            StickerClipboard.CollectImageFiles(null).Count == 0
+            && StickerClipboard.CollectImageFiles(Array.Empty<string?>()).Count == 0);
+
+        var fileName = StickerClipboard.SuggestedFileName(pngBytes);
+        check("[屏幕贴纸] 剪贴板位图文件名：clipboard- &lt;16 位哈希&gt;.png",
+            fileName.StartsWith(StickerClipboard.FileNamePrefix, StringComparison.Ordinal)
+            && fileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+            && fileName.Length == StickerClipboard.FileNamePrefix.Length + 16 + 4,
+            fileName);
+
+        check("[屏幕贴纸] 剪贴板位图文件名：同内容稳定、不同内容不同名（用于去重）",
+            StickerClipboard.SuggestedFileName(pngBytes) == fileName
+            && StickerClipboard.SuggestedFileName(new byte[] { 1, 2, 3, 4 }) != fileName,
+            fileName);
+
+        // 编码 / 落盘 / 去重：WPF 位图操作放独立 STA 线程（同 CheckImageFormats）
+        var encodedOk = false;
+        var savedExists = false;
+        var savedDecodable = false;
+        var savedUnderDataClipboard = false;
+        var saveDeduplicated = false;
+        var saveNullSafe = false;
+        string? savedPath = null;
+        string? savedPathAgain = null;
+
+        var failure = RunOnSta(() =>
+        {
+            var bitmap = StickerImage.Load(pngPath);
+            var encoded = StickerImage.EncodePng(bitmap);
+            encodedOk = encoded is { Length: > 8 } && StickerImage.Load(pngPath) is not null;
+
+            savedPath = StickerClipboard.SaveBitmap(bitmap);
+            savedPathAgain = StickerClipboard.SaveBitmap(bitmap);
+            savedExists = savedPath is not null && File.Exists(savedPath);
+            savedDecodable = savedPath is not null && StickerImage.CanOpen(savedPath);
+            savedUnderDataClipboard = savedPath is not null
+                && savedPath.Replace('/', '\\').Contains(@"\screen-sticker\clipboard\", StringComparison.OrdinalIgnoreCase);
+            saveDeduplicated = savedPath is not null && SamePath(savedPath, savedPathAgain)
+                && StickerClipboard.SuggestedFileName(encoded!) == Path.GetFileName(savedPath);
+            saveNullSafe = StickerClipboard.SaveBitmap(null) is null;
+        });
+
+        check("[屏幕贴纸] 剪贴板：PNG 编码 / 落盘 / 去重跑到独立 STA 线程且没有抛异常",
+            failure is null, failure?.Message ?? "ok");
+
+        check("[屏幕贴纸] 剪贴板位图：EncodePng 返回可用的 PNG 字节", encodedOk);
+
+        check("[屏幕贴纸] 剪贴板位图：SaveBitmap 落进 Data\\screen-sticker\\clipboard\\ 且能再次解码",
+            savedExists && savedDecodable && savedUnderDataClipboard,
+            savedPath ?? "(null)");
+
+        check("[屏幕贴纸] 剪贴板位图：同一张图重复保存复用同一个文件（不重复写盘）",
+            saveDeduplicated, $"{savedPath} / {savedPathAgain}");
+
+        check("[屏幕贴纸] 剪贴板位图：SaveBitmap(null) 返回 null（失败不抛异常）", saveNullSafe);
+
+        // 自检的 Data 根是临时 YLT_HOME，删掉落盘文件即可，不碰真实数据
+        if (savedPath is not null)
+        {
+            try { File.Delete(savedPath); } catch { /* 临时目录，删不掉也不影响断言 */ }
+        }
     }
 
     // ---------------------------------------------------------------- 配置序列化

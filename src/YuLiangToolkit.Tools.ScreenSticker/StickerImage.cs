@@ -131,4 +131,25 @@ public static class StickerImage
     /// <summary>「最近使用」列表用的缩略图（固定解码宽度，失败返回 null）。</summary>
     public static BitmapSource? LoadThumbnail(string? path, int width = ThumbnailWidth)
         => Load(path, Math.Clamp(width, 8, 1024));
+
+    /// <summary>
+    /// 把位图编码成 PNG 字节（「从剪贴板贴图」要把没有路径的剪贴板位图落成文件）。
+    /// 位图最好是冻结的（冻结后可以放后台线程编码）；失败返回 null。
+    /// </summary>
+    public static byte[]? EncodePng(BitmapSource? bitmap)
+    {
+        if (bitmap is null) return null;
+        try
+        {
+            using var stream = new MemoryStream();
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            encoder.Save(stream);
+            return stream.ToArray();
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }

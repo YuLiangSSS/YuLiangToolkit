@@ -94,6 +94,7 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
@@ -101,10 +102,13 @@
                         <Button Content="🖼 选择图片…" Style="{StaticResource PrimaryButtonStyle}"
                                 Command="{Binding ChooseImagesCommand}" VerticalAlignment="Center"
                                 ToolTip="可以多选；支持的格式：png / jpg / bmp / gif / tif / ico / webp" />
-                        <Button Grid.Column="1" Content="🕘 恢复上次贴纸" Style="{StaticResource SecondaryButtonStyle}"
+                        <Button Grid.Column="1" Content="📋 粘贴剪贴板" Style="{StaticResource SecondaryButtonStyle}"
+                                Margin="8,0,0,0" Command="{Binding PasteClipboardCommand}" VerticalAlignment="Center"
+                                ToolTip="把剪贴板里的图片贴到桌面：截图 / 网页复制的一张图，或在资源管理器里复制的多张图片文件；也可以按 Ctrl+V" />
+                        <Button Grid.Column="2" Content="🕘 恢复上次贴纸" Style="{StaticResource SecondaryButtonStyle}"
                                 Margin="8,0,0,0" Command="{Binding RestoreStickersCommand}" VerticalAlignment="Center"
                                 ToolTip="按保存的记录把当前还没显示的贴纸放回桌面" />
-                        <TextBlock Grid.Column="3" Text="{Binding StickerSummaryText}" FontSize="11.5"
+                        <TextBlock Grid.Column="4" Text="{Binding StickerSummaryText}" FontSize="11.5"
                                    Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"
                                    Margin="12,0,0,0" TextTrimming="CharacterEllipsis"
                                    ToolTip="桌面上正在显示的贴纸数量 / 配置里保存着、可以恢复的贴纸数量" />

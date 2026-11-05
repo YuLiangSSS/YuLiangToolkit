@@ -45,6 +45,7 @@ public sealed class ScreenStickerViewModel : ToolViewModelBase
         Cfg = LoadConfig<ScreenStickerConfig>();
 
         ChooseImagesCommand = new RelayCommand(_ => ChooseImages());
+        PasteClipboardCommand = new AsyncRelayCommand(_ => PasteClipboardAsync());
         RestoreStickersCommand = new RelayCommand(_ => RestoreStickers());
         ClearRecentCommand = new RelayCommand(_ => ClearRecent());
         SetAllTopmostCommand = new RelayCommand(_ => SetAllTopmost(true));
@@ -58,7 +59,7 @@ public sealed class ScreenStickerViewModel : ToolViewModelBase
 
         RefreshRecentItems();
         RefreshStickers();
-        StatusText = "就绪：可以一次选多张图片，也可以点左侧的最近使用再贴一张";
+        StatusText = "就绪：可以选图 / 按 Ctrl+V 贴剪贴板图片，也可以点左侧的最近使用再贴一张";
     }
 
     // ===================== 会话 / 配置 =====================
@@ -119,6 +120,9 @@ public sealed class ScreenStickerViewModel : ToolViewModelBase
 
     /// <summary>选图（支持多选）并逐张贴到桌面。</summary>
     public RelayCommand ChooseImagesCommand { get; }
+
+    /// <summary>把剪贴板里的图片（截屏 / 网页复制的位图，或复制的图片文件，可多张）贴到桌面。</summary>
+    public AsyncRelayCommand PasteClipboardCommand { get; }
 
     /// <summary>按配置恢复上次的贴纸。</summary>
     public RelayCommand RestoreStickersCommand { get; }
@@ -279,6 +283,45 @@ public sealed class ScreenStickerViewModel : ToolViewModelBase
         StatusText = failures.Count == 0
             ? $"已贴 {added} 张图片"
             : $"已贴 {added} 张，失败 {failures.Count} 张（{failures[0]}）";
+    }
+
+    /// <summary>
+    /// 从剪贴板贴图：剪贴板里可能是「一张位图」（截图 / 网页复制），也可能是「复制的多个图片文件」。
+    /// 读取与落盘在 <see cref="StickerSession.PasteClipboardAsync"/> 里完成，这里只负责状态提示和刷新列表。
+    /// </summary>
+    private async Task PasteClipboardAsync()
+    {
+        var result = await Session.PasteClipboardAsync();
+
+        RefreshRecentItems();
+        RefreshStickers();
+
+        if (result.Error is not null)
+        {
+            StatusText = result.Error;
+            Log("从剪贴板贴图失败：" + result.Error);
+            return;
+        }
+
+        if (result.Added == 0 && result.Failed == 0)
+        {
+            StatusText = "剪贴板里没有图片：先复制一张图片，或在资源管理器里复制图片文件（可多选）";
+            return;
+        }
+
+        if (result.Added == 0)
+        {
+            StatusText = $"剪贴板里的 {result.Failed} 张图片没能贴到桌面";
+            Log($"从剪贴板贴图失败：{result.Failed} 张（原因见上方状态提示）");
+            return;
+        }
+
+        StatusText = result.Failed > 0
+            ? $"已从剪贴板贴了 {result.Added} 张，失败 {result.Failed} 张（{Session.LastError}）"
+            : $"已从剪贴板贴了 {result.Added} 张图片";
+        Log(result.Failed > 0
+            ? $"从剪贴板贴到桌面：{result.Added} 张成功、{result.Failed} 张失败"
+            : $"从剪贴板贴到桌面：{result.Added} 张");
     }
 
     private void RestoreStickers()
