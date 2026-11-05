@@ -1,0 +1,422 @@
+<UserControl x:Class="YuLiangToolkit.Tools.FunctionPlot.Views.FunctionPlotView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:YuLiangToolkit.Tools.FunctionPlot.Views"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core">
+
+    <!-- 函数绘图（function-plot）。布局约定见 docs/dev/layout.md：
+           · 左列「绘图区（*）｜ 求值 / 点值表（固定高）」，中间一条横分隔条；
+           · 左列与右列之间一条竖分隔条；
+           · 右列「函数列表（*）｜ 设置（固定高）」，中间一条横分隔条。
+         相邻区块之间都有独立的 core:PaneSplitter（Key=function-plot.*），可分别拖动 / 双击复位。
+         样式全部来自 App.xaml；网格 / 坐标轴 / 文字颜色走 {DynamicResource} 主题 token，
+         只有曲线颜色是每条函数自己的数据色（固定调色板）。 -->
+
+    <Grid Margin="28,22,28,26">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="380" />
+        </Grid.RowDefinitions>
+
+        <!-- ===== 页头 ===== -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,14">
+            <TextBlock Text="📈 函数绘图" FontSize="21" FontWeight="SemiBold" />
+            <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                       Text="同一张坐标图上同时画多个函数：每条可单独设颜色、显示开关与定义域；鼠标在图上移动会实时列出各函数在该 x 的值，也能输入 x 求值或按当前范围自动取 10 个点。" />
+        </StackPanel>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="440" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="392" MinWidth="330" />
+            </Grid.ColumnDefinitions>
+
+            <!-- ===================== 左列：绘图区 + 求值 ===================== -->
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" MinHeight="250" />
+                    <RowDefinition Height="12" />
+                    <RowDefinition Height="200" MinHeight="150" />
+                </Grid.RowDefinitions>
+
+                <!-- ===== 绘图区 ===== -->
+                <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" MinHeight="120" />
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" Margin="16,12,16,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="绘图区" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding ViewportSummary}" FontSize="10.5" Margin="0,3,0,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding CursorText}" FontSize="11" VerticalAlignment="Center"
+                                           Margin="0,0,12,0" MaxWidth="280" TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <Button Content="复位视图" Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding ResetViewCommand}"
+                                        ToolTip="回到默认范围 −10..10 / −6..6（也可以直接双击绘图区）" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Border Grid.Row="1" Background="{DynamicResource InputBackgroundBrush}" ClipToBounds="True">
+                            <!-- 自绘控件：State 绑渲染快照；网格 / 坐标轴 / 文字 / 准星 / 图例底色全部用主题 token -->
+                            <views:PlotCanvas x:Name="PlotArea"
+                                              State="{Binding PlotState}"
+                                              GridBrush="{DynamicResource BorderBrush}"
+                                              AxisBrush="{DynamicResource TextSecondaryBrush}"
+                                              TextBrush="{DynamicResource TextSecondaryBrush}"
+                                              CrosshairBrush="{DynamicResource AccentBrush}"
+                                              LegendBackgroundBrush="{DynamicResource CardBackgroundBrush}" />
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- 横分隔条：绘图区 ↔ 求值 / 点值表 -->
+                <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                                   Key="function-plot.绘图区与求值" />
+
+                <!-- ===== 求值 / 点值表 ===== -->
+                <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="14,10" ClipToBounds="True">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" MinHeight="60" />
+                        </Grid.RowDefinitions>
+
+                        <!-- 工具条：输入 x + 求值 / 自动取点 -->
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="x =" FontSize="12" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Grid.Column="1" Width="110" Margin="6,0,0,0"
+                                     Text="{Binding EvaluateX, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource TextBoxStyle}"
+                                     ToolTip="输入一个 x，点「求值」列出所有可见函数在这一点的值" />
+                            <Button Grid.Column="2" Content="求值" Style="{StaticResource PrimaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding EvaluateCommand}"
+                                    ToolTip="在输入的这个 x 处，列出所有可见函数的 y（MathFormat 格式化，无定义显示「无定义」）" />
+                            <Button Grid.Column="3" Content="自动取点" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding AutoSampleCommand}"
+                                    ToolTip="在当前可视 x 范围里均匀取 10 个点，生成点值表" />
+                            <TextBlock Grid.Column="4" Text="{Binding EvaluateError}" FontSize="11" VerticalAlignment="Center"
+                                       Margin="12,0,0,0" TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       Visibility="{Binding HasEvaluateError, Converter={StaticResource BoolToVis}}" />
+                        </Grid>
+
+                        <!-- 左：光标处各函数的值 / 右：点值表 -->
+                        <Grid Grid.Row="1" Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="0.95*" MinWidth="150" />
+                                <ColumnDefinition Width="10" />
+                                <ColumnDefinition Width="1.05*" MinWidth="180" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border Grid.Column="0" Background="{DynamicResource InputBackgroundBrush}"
+                                    CornerRadius="8" Padding="10,8">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="光标处数值" FontSize="11.5" FontWeight="SemiBold" />
+                                    <ScrollViewer Grid.Row="1" Margin="0,6,0,0"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled"
+                                                  core:ScrollChaining.Enabled="True">
+                                        <ItemsControl ItemsSource="{Binding CursorRows}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="0,1">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <Border Width="10" Height="10" CornerRadius="2"
+                                                                Background="{Binding Brush}" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="11.5"
+                                                                   Margin="6,0,6,0" TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Grid.Column="2" Text="{Binding ValueText}" FontSize="11.5"
+                                                                   TextAlignment="Right"
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Grid>
+                            </Border>
+
+                            <Border Grid.Column="2" Background="{DynamicResource InputBackgroundBrush}"
+                                    CornerRadius="8" Padding="10,8">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="{Binding PointTableTitle}" FontSize="11.5" FontWeight="SemiBold" />
+                                    <ScrollViewer Grid.Row="1" Margin="0,6,0,0"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled"
+                                                  core:ScrollChaining.Enabled="True">
+                                        <ItemsControl ItemsSource="{Binding PointRows}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Margin="0,2">
+                                                        <TextBlock Text="{Binding XText}" FontSize="11"
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                        <TextBlock Text="{Binding ValuesText}" FontSize="11.5"
+                                                                   TextWrapping="Wrap" Margin="0,1,0,0" />
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- 竖分隔条：左列（绘图 / 求值） ↔ 右列（函数列表 / 设置） -->
+            <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                               Key="function-plot.左列与右列" />
+
+            <!-- ===================== 右列：函数列表 + 设置 ===================== -->
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <!-- 上：函数列表（*，窗口变高时先长这里）；下：设置（固定像素，照 docs/dev/layout.md
+                         的「一侧 * 一侧固定」写法，拖分隔条时一块变高另一块变矮）。
+                         设置区默认 300 而不是 380：1280×820 默认窗口下函数列表要能完整露出 2 行，
+                         设置内容本身在 ScrollViewer 里，窗口再矮也不会被裁。 -->
+                    <RowDefinition Height="*" MinHeight="240" />
+                    <RowDefinition Height="12" />
+                    <RowDefinition Height="300" MinHeight="220" />
+                </Grid.RowDefinitions>
+
+                <!-- ===== 函数列表 ===== -->
+                <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" MinHeight="90" />
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" Margin="16,12,16,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="函数列表" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Text="每条可改表达式 / 颜色 / 显示 / 定义域" FontSize="10.5" Margin="0,3,0,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="＋ 添加函数" Style="{StaticResource PrimaryButtonStyle}"
+                                    VerticalAlignment="Center" Command="{Binding AddFunctionCommand}"
+                                    ToolTip="新增一条函数（默认填一个常见表达式，可随手改）" />
+                        </Grid>
+
+                        <TextBlock Grid.Row="1" Margin="16,0,16,8" FontSize="10.5" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   Text="表达式写错只会把这一行标红，不影响其它曲线；定义域留空表示使用当前可视范围。" />
+
+                        <ListBox Grid.Row="2" Margin="8,0,8,8" ItemsSource="{Binding Functions}"
+                                 Style="{StaticResource FileListStyle}"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 core:ScrollChaining.Enabled="True"
+                                 ToolTip="每条函数一行：勾选=显示，色块=曲线颜色，✕=删除">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,3,0,5">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+
+                                            <CheckBox IsChecked="{Binding IsVisible}" VerticalAlignment="Center"
+                                                      Style="{StaticResource CheckBoxStyle}"
+                                                      ToolTip="显示 / 隐藏这条曲线（不影响其它函数）" />
+
+                                            <ComboBox Grid.Column="1" Width="58" Margin="6,0,6,0"
+                                                      ItemsSource="{Binding ColorOptions}"
+                                                      SelectedItem="{Binding SelectedColor}"
+                                                      Style="{StaticResource ComboBoxStyle}"
+                                                      ToolTip="曲线颜色（8 色调色板，深浅主题都看得清）">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Width="18" Height="14" CornerRadius="3" Background="{Binding Brush}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+
+                                            <TextBox Grid.Column="2" FontSize="12" VerticalContentAlignment="Center"
+                                                     Text="{Binding Expression, UpdateSourceTrigger=PropertyChanged}"
+                                                     ToolTip="例如 sin(x)、x^2、1/x、2x、sin(x)+cos(x)">
+                                                <TextBox.Style>
+                                                    <Style TargetType="TextBox" BasedOn="{StaticResource TextBoxStyle}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasError}" Value="True">
+                                                                <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+                                                                <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBox.Style>
+                                            </TextBox>
+
+                                            <Button Grid.Column="3" Content="✕" Width="30" Margin="6,0,0,0"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Command="{Binding RemoveCommand}"
+                                                    ToolTip="删除这条函数" />
+                                        </Grid>
+
+                                        <TextBlock Text="{Binding ErrorText}" FontSize="10.5" Margin="28,3,0,0"
+                                                   TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}"
+                                                   Visibility="{Binding HasError, Converter={StaticResource BoolToVis}}" />
+
+                                        <WrapPanel Margin="28,3,0,0">
+                                            <TextBlock Text="定义域" FontSize="10.5" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBox Width="62" Margin="6,0,0,0" FontSize="11"
+                                                     Text="{Binding DomainMinText, UpdateSourceTrigger=PropertyChanged}"
+                                                     Style="{StaticResource TextBoxStyle}"
+                                                     ToolTip="左端 a；留空 = 不限制" />
+                                            <TextBlock Text="≤ x ≤" FontSize="10.5" Margin="6,0" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBox Width="62" FontSize="11"
+                                                     Text="{Binding DomainMaxText, UpdateSourceTrigger=PropertyChanged}"
+                                                     Style="{StaticResource TextBoxStyle}"
+                                                     ToolTip="右端 b；留空 = 不限制" />
+                                            <TextBlock Text="留空 = 当前可视范围" FontSize="10" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource FaintTextBrush}" />
+                                        </WrapPanel>
+
+                                        <TextBlock Text="{Binding DomainErrorText}" FontSize="10" Margin="28,2,0,0"
+                                                   TextWrapping="Wrap" Foreground="{DynamicResource DangerBrush}"
+                                                   Visibility="{Binding HasDomainError, Converter={StaticResource BoolToVis}}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Border>
+
+                <!-- 横分隔条：函数列表 ↔ 设置 -->
+                <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                                   Key="function-plot.函数列表与设置" />
+
+                <!-- ===== 设置 ===== -->
+                <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                  core:ScrollChaining.Enabled="True">
+                        <StackPanel Margin="16,12,16,16">
+                            <TextBlock Text="设置" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock Text="改一下立即生效并自动保存（没有保存按钮）" FontSize="10.5" Margin="0,3,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                            <!-- 显示 -->
+                            <TextBlock Text="显示" FontSize="12" FontWeight="SemiBold" Margin="0,14,0,0" />
+                            <CheckBox Content="隐藏坐标系（坐标轴与刻度）" Margin="0,8,0,0"
+                                      IsChecked="{Binding Cfg.HideAxes}" Style="{StaticResource CheckBoxStyle}" />
+                            <CheckBox Content="隐藏网格" Margin="0,8,0,0"
+                                      IsChecked="{Binding Cfg.HideGrid}" Style="{StaticResource CheckBoxStyle}" />
+                            <CheckBox Content="显示十字准星" Margin="0,8,0,0"
+                                      IsChecked="{Binding Cfg.ShowCrosshair}" Style="{StaticResource CheckBoxStyle}" />
+                            <CheckBox Content="显示图例" Margin="0,8,0,0"
+                                      IsChecked="{Binding Cfg.ShowLegend}" Style="{StaticResource CheckBoxStyle}" />
+
+                            <!-- 角度制 -->
+                            <TextBlock Text="三角函数角度单位" FontSize="12" Margin="0,14,0,6"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <ComboBox ItemsSource="{Binding AngleOptions}" DisplayMemberPath="Label"
+                                      SelectedItem="{Binding SelectedAngleUnit}"
+                                      Style="{StaticResource ComboBoxStyle}"
+                                      ToolTip="只影响 sin / cos / tan / asin / acos / atan 等三角函数" />
+
+                            <!-- 采样点数 -->
+                            <Grid Margin="0,14,0,0">
+                                <TextBlock Text="采样点数（200 ~ 4000）" FontSize="12"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding Cfg.Samples}" FontSize="12" HorizontalAlignment="Right"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Grid>
+                            <Slider Minimum="200" Maximum="4000" SmallChange="100" LargeChange="400"
+                                    TickFrequency="100" IsSnapToTickEnabled="True" Margin="0,6,0,0"
+                                    Value="{Binding Cfg.Samples}" Style="{StaticResource SliderStyle}"
+                                    ToolTip="越大曲线越平滑，也越费 CPU；默认 1200" />
+
+                            <!-- 范围 -->
+                            <CheckBox Content="自动计算 Y 范围" Margin="0,14,0,0"
+                                      IsChecked="{Binding Cfg.AutoYRange}" Style="{StaticResource CheckBoxStyle}"
+                                      ToolTip="按当前可见曲线的数据自动定 Y 上下界；关掉后使用下面的手动 Y 范围" />
+
+                            <TextBlock Text="X 范围" FontSize="12" Margin="0,12,0,6"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Text="{Binding XMinText, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource TextBoxStyle}" FontSize="11.5" />
+                                <TextBlock Grid.Column="1" Text="~" Margin="6,0" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBox Grid.Column="2" Text="{Binding XMaxText, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource TextBoxStyle}" FontSize="11.5" />
+                            </Grid>
+
+                            <TextBlock Text="Y 范围（自动 Y 范围关闭时才生效）" FontSize="12" Margin="0,10,0,6"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Grid IsEnabled="{Binding IsManualYRange}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox Text="{Binding YMinText, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource TextBoxStyle}" FontSize="11.5" />
+                                <TextBlock Grid.Column="1" Text="~" Margin="6,0" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBox Grid.Column="2" Text="{Binding YMaxText, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource TextBoxStyle}" FontSize="11.5" />
+                            </Grid>
+
+                            <TextBlock Text="{Binding RangeError}" FontSize="10.5" Margin="0,6,0,0" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       Visibility="{Binding HasRangeError, Converter={StaticResource BoolToVis}}" />
+
+                            <TextBlock FontSize="10.5" TextWrapping="Wrap" Margin="0,14,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Text="操作：左键拖动平移 · 滚轮以光标为中心缩放 · 双击绘图区复位。曲线颜色是数据色，网格 / 坐标轴 / 文字会跟随主题。" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

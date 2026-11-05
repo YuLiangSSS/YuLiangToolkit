@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「函数绘图」：多函数曲线 + 定义域 + 光标自动求值 / 点值表。
+       只依赖 Core（共享表达式引擎 Core/Expressions 与 MVVM / 配置轮子），不引任何第三方包。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.FunctionPlot</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.FunctionPlot</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

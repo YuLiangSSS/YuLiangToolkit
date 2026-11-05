@@ -33,6 +33,8 @@
 | 📦 压缩包工具 | 拖入即用：解压 RAR（RAR4/RAR5）/ ZIP / 7Z / TAR / TAR.GZ / TAR.BZ2 / TAR.XZ / TAR.ZST / GZ / BZ2 / XZ / ZST（支持密码、旧版 GBK 文件名、批量、进度、取消、路径穿越防护）；压缩成 ZIP / 7Z。**RAR 因版权原因只能解、不能压** | [tools/archive.md](tools/archive.md) |
 | 🗂️ 打开方式 | 把本工具登记进 Windows 右键「打开方式」：**按文件类型自动分流 / 以文本方式 / 以压缩包方式** 3 个入口；PDF / 图片 / Word / Excel / 压缩包 / 音视频 / 文本自动找对应工具；开关在主页设置（只有 Release / 发布版可开），关掉后启动自动清理旧条目；只写 HKCU、不需要管理员 | [tools/open-with.md](tools/open-with.md) |
 | ⬆️ 软件升级器 | 用系统自带的 winget 读出本机已安装应用与可用版本；逐个勾选 / Ctrl·Shift 多选行 / 全选 / 全不选 / 反选后一键批量升级，带搜索过滤、升级前确认、逐个进度与日志、可取消；包 Id 白名单校验、扫描只读、不需要管理员 | [tools/software-updater.md](tools/software-updater.md) |
+| 🧮 计算器 | 科学计算器：表达式直接输入、边打边出结果；三角函数 / 反三角 / 双曲 / 对数 / 阶乘 / 常量，角度制与弧度制切换，结果有效位数可调；历史记录点选回填并自动保存；Ans、复制结果 | [tools/calculator.md](tools/calculator.md) |
+| 📈 函数绘图 | 同时画多条函数曲线：每条可单独设定义域 / 颜色 / 显示开关；拖动平移、滚轮缩放、双击复位，网格与坐标轴可隐藏；自动求点——光标处实时读数、输入 x 求所有函数值、按范围自动生成点值表 | [tools/function-plot.md](tools/function-plot.md) |
 | 🧪 框架示例 | 开发用模板（Data/Config 轮子演示，可整目录删除） | [tools/sample-framework.md](tools/sample-framework.md) |
 
 > 🎵 上面四个 osu! 工具和「KPS 按键统计」在主页上收在「**音游工具**」类别里：点类别卡片进类别页，顶部面包屑可点回上一级。

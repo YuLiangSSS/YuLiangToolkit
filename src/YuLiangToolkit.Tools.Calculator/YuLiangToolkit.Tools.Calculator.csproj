@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「计算器」：普通计算 + 科学计算，复用 Core/Expressions 的表达式引擎（解析 / 求值 / 格式化都在 Core，
+       本工程只做界面与输入、历史、配置）。不引任何第三方包。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.Calculator</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.Calculator</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

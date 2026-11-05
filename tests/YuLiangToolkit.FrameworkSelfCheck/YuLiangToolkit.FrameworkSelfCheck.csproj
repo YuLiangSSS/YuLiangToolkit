@@ -89,6 +89,12 @@
          批量勾选规则（多选·全选·全不选·反选·表头三态）/ 元数据与配置默认值；全部纯逻辑，
          **绝不启动 winget.exe**，真实扫描与升级留给人工冒烟。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.SoftwareUpdater\YuLiangToolkit.Tools.SoftwareUpdater.csproj" />
+    <!-- 「计算器」：共享表达式引擎（解析 / 优先级 / 省略乘号 / 阶乘 / 角度制 / 格式化）+
+         计算器输入构造与历史记录纯逻辑；全部无头跑，不创建窗口。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Calculator\YuLiangToolkit.Tools.Calculator.csproj" />
+    <!-- 「函数绘图」：视口换算（世界↔屏幕 / 缩放 / 平移）/ 好看刻度 / 自动 Y 范围 /
+         配置默认值 + 与 FunctionSampler 的采样集成；全部纯逻辑，不创建窗口、不渲染。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.FunctionPlot\YuLiangToolkit.Tools.FunctionPlot.csproj" />
   </ItemGroup>
 
 </Project>

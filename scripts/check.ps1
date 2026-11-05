@@ -142,6 +142,8 @@ $mapping = @(
 (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/ExcelViewerChecks.cs'    @('excel-viewer') 'L3' 'excel-viewer assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/MaintenanceChecks.cs'     @('maintenance') 'L3' 'maintenance assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/SoftwareUpdaterChecks.cs' @('software-updater') 'L3' 'software-updater assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/CalculatorChecks.cs'     @('calculator') 'L3' 'calculator + shared expression engine assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/FunctionPlotChecks.cs'   @('function-plot') 'L3' 'function plot viewport / ticks / config assertions')
 
     # ---------- tests: anything else in the self-check project is unknown wiring ----------
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/*.cs' @('ALL') 'L4' 'unmapped self-check source' -Fallback)
@@ -179,6 +181,8 @@ $mapping = @(
     (New-Rule 'src/YuLiangToolkit.Tools.ScreenRecorder/*'    @('screen-recorder') 'L2' 'screen recorder / GIF tool')
     (New-Rule 'src/YuLiangToolkit.Tools.MediaEditor/*'       @('media-editor') 'L2' 'video / GIF editor tool')
     (New-Rule 'src/YuLiangToolkit.Tools.SoftwareUpdater/*'   @('software-updater') 'L2' 'winget software updater tool')
+    (New-Rule 'src/YuLiangToolkit.Tools.Calculator/*'         @('calculator') 'L2' 'calculator tool (expression engine lives in Core)')
+    (New-Rule 'src/YuLiangToolkit.Tools.FunctionPlot/*'       @('function-plot') 'L2' 'function plot tool')
     (New-Rule 'src/YuLiangToolkit.Tools.Sample/*'          @() 'L1' 'framework template, no dedicated group: build + manual smoke')
     (New-Rule 'src/*'                                      @('ALL') 'L4' 'unmapped src project' -Fallback)
 

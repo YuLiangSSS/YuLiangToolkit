@@ -44,7 +44,7 @@
 ```powershell
 .\scripts\check.ps1              # 日常唯一需要的命令：自动选组 + build + 定向自检
 .\scripts\check.ps1 -DryRun      # 只看这次会跑什么，不动手（改前规划 / 解释给用户）
-.\scripts\check.ps1 -List        # 看 29 个组 + 完整「路径 → 组」映射表
+.\scripts\check.ps1 -List        # 看 31 个组 + 完整「路径 → 组」映射表
 .\scripts\check.ps1 -SelfTest    # 单独校验映射/接线/工程/文档是否漂移（退出码 2 = 漂移）
 .\scripts\check.ps1 -Files a.cs,b.md   # 假装这些文件改了（提交后复查 / 指定影响面）
 .\scripts\check.ps1 -Groups theme      # 强制指定组（少数场景；优先让脚本自动选）
@@ -128,7 +128,11 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `src/YuLiangToolkit.Tools.ScreenRecorder/**` | `screen-recorder` | L2 |
 | `src/YuLiangToolkit.Tools.MediaEditor/**` | `media-editor` | L2 |
 | `src/YuLiangToolkit.Tools.SoftwareUpdater/**` | `software-updater` | L2 |
+| `src/YuLiangToolkit.Tools.Calculator/**` | `calculator`（表达式引擎在 `Core/Expressions/`，改那边走 ALL） | L2 |
+| `src/YuLiangToolkit.Tools.FunctionPlot/**` | `function-plot` | L2 |
 | `tests/.../SoftwareUpdaterChecks.cs` | `software-updater`（winget 表格解析 / 包 Id 白名单 / 命令拼装 / 批量勾选规则） | L3 |
+| `tests/.../CalculatorChecks.cs` | `calculator`（表达式解析与求值 / 优先级 / 省略乘号 / 阶乘 / 角度制 / 格式化 / 输入构造 / 历史） | L3 |
+| `tests/.../FunctionPlotChecks.cs` | `function-plot`（视口换算 / 以光标缩放 / 平移 / 好看刻度 / 自动 Y 范围 / 采样集成 / 配置） | L3 |
 | `tests/.../ScreenRecorderChecks.cs` | `screen-recorder`（区域换算 / FFmpeg 参数 / 文件名 / 配置默认值） | L3 |
 | `tests/.../MediaEditorChecks.cs` | `media-editor`（ffprobe 解析 / 片段数学 / 裁剪拼接滤镜 / GIF 参数） | L3 |
 | `src/YuLiangToolkit.Tools.Sample/**` | **无专属组** → build + 人工冒烟 | L1 |
@@ -186,7 +190,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 - 跨组共享文件映射是否符合期望（`MiniPlayerPanel`→`shell`+`media-player`、`ShellConfig`→`shell`+`theme`、
   `ShellCategories`→`shell`+`board-games`、`App.xaml`→`theme`+`shell` 等）；
 - 每个 `Tools.*` 工程是否同时被主 csproj、`YuLiangToolkit.sln`、自检 csproj（Sample 白名单）引用；
-- 无组项目是否仍显式标为 build-only；`docs/dev/verification.md` 是否提到全部 29 个组 id。
+- 无组项目是否仍显式标为 build-only；`docs/dev/verification.md` 是否提到全部 31 个组 id。
 
 新增功能 / 组的步骤：
 

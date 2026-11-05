@@ -1,0 +1,335 @@
+<UserControl x:Class="YuLiangToolkit.Tools.Calculator.Views.CalculatorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             PreviewKeyDown="OnPreviewKeyDown">
+
+    <!-- 计算器（calculator）。
+         布局约定见 docs/dev/layout.md：
+           · 页面级两块「左（主显示 + 键盘）｜ 右（历史 + 设置）」左右分栏，中间一条竖分隔条
+             （Key=calculator.左区与右区）；
+           · 左列内部「主显示 ↔ 键盘」是一条横分隔条（Key=calculator.主显示与键盘）；
+           · 右列内部「历史记录 ↔ 设置」也是一条横分隔条（Key=calculator.历史记录与设置）。
+         每个区块都能拖、尺寸自动记住（Config\layout.json），双击分隔条恢复这一处。
+         左右两列各自内部都是「固定像素行」：拖一条缝 = 一块变高、另一块变矮，列总高不变；
+         整页套 ScrollViewer（和别的工具页一样）：窗口太矮时自己出滚动条，不会把键盘裁掉。
+         颜色全部 {DynamicResource}，按钮 / 输入框等样式全部来自 App.xaml。 -->
+
+    <UserControl.Resources>
+        <!-- 键盘按钮模板：基础区 / 科学区共用。点了统一走 VM 的 KeyCommand，
+             代码后置再把焦点交还表达式输入框（OnKeypadButtonClick）。 -->
+        <DataTemplate x:Key="KeypadButtonTemplate">
+            <Button Content="{Binding Label}"
+                    Command="{Binding DataContext.KeyCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                    CommandParameter="{Binding}"
+                    Click="OnKeypadButtonClick"
+                    ToolTip="{Binding ToolTipText}">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+                        <Setter Property="Margin" Value="2" />
+                        <Setter Property="Padding" Value="4,2" />
+                        <Setter Property="FontSize" Value="13.5" />
+                        <Setter Property="MinHeight" Value="28" />
+                        <Setter Property="HorizontalAlignment" Value="Stretch" />
+                        <Setter Property="VerticalAlignment" Value="Stretch" />
+                        <Style.Triggers>
+                            <!-- 主按钮（=）用主色，和普通键区分开（悬停 / 按下反馈仍由基础样式提供） -->
+                            <DataTrigger Binding="{Binding IsAccent}" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource PrimaryButtonBackgroundBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                  core:ScrollChaining.Enabled="True">
+        <Grid Margin="28,16,28,18">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- ===================== 页头 ===================== -->
+            <StackPanel Grid.Row="0">
+                <TextBlock Text="🧮 计算器" FontSize="21" FontWeight="SemiBold" />
+                <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                           Text="直接输入表达式边打边看结果；三角函数可切角度制 / 弧度制，精度 3-12 位可调，算过的从历史一键回填。Enter 求值并记入历史，Esc 清空输入。" />
+            </StackPanel>
+
+            <Grid Grid.Row="1" Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="340" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="348" MinWidth="288" />
+                </Grid.ColumnDefinitions>
+
+                <!-- ===================== 左：主显示（上） + 键盘（下） ===================== -->
+                <Grid Grid.Column="0" ClipToBounds="True">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="184" MinHeight="172" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="404" MinHeight="330" />
+                    </Grid.RowDefinitions>
+
+                    <!-- ===== 主显示区：表达式输入 + 大字结果 + 错误提示 ===== -->
+                    <Border Grid.Row="0" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" MinHeight="40" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <!-- 上排：单位徽章 / Ans 提示 / 复制结果 -->
+                            <Grid Grid.Row="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="6"
+                                        Padding="8,3" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding AngleUnitBadgeText}" FontSize="11"
+                                               Foreground="{DynamicResource AccentBrush}" />
+                                </Border>
+                                <TextBlock Grid.Column="1" Text="{Binding AnsText}" Margin="12,0,10,0"
+                                           VerticalAlignment="Center" FontSize="11" TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <Button Grid.Column="2" Content="复制结果" Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding CopyResultCommand}"
+                                        ToolTip="把结果区的内容复制到剪贴板" />
+                            </Grid>
+
+                            <!-- 表达式输入框（大号等宽字体，直接打字；解析失败只在下面显示错误，不弹窗） -->
+                            <Grid Grid.Row="1" Margin="0,10,0,0">
+                                <TextBox x:Name="ExpressionBox" Style="{StaticResource TextBoxStyle}" Height="46"
+                                         FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI" FontSize="22"
+                                         Text="{Binding Expression, UpdateSourceTrigger=PropertyChanged}"
+                                         SpellCheck.IsEnabled="False"
+                                         ToolTip="输入表达式后按 Enter 求值；Esc 清空" />
+                                <TextBlock Text="输入表达式，例如 2+3*4 或 sin(30)" FontSize="13"
+                                           Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                                           Foreground="{DynamicResource FaintTextBrush}"
+                                           Visibility="{Binding Expression, Converter={StaticResource EmptyToVis}}" />
+                            </Grid>
+
+                            <!-- 结果（大号等宽；「无定义」/「+∞」也在这里显示） -->
+                            <TextBlock Grid.Row="2" Text="{Binding ResultText}" FontSize="30" FontWeight="SemiBold"
+                                       FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI"
+                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                       TextWrapping="Wrap" TextAlignment="Right"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       Visibility="{Binding ResultText, Converter={StaticResource EmptyToVisInverse}}" />
+
+                            <!-- 错误提示（红色小字：解析失败 / 用了变量 x；不弹窗） -->
+                            <TextBlock Grid.Row="3" Text="{Binding ErrorText}" FontSize="12" TextWrapping="Wrap"
+                                       Margin="0,6,0,0" Foreground="{DynamicResource DangerBrush}"
+                                       Visibility="{Binding ErrorText, Converter={StaticResource EmptyToVisInverse}}" />
+                        </Grid>
+                    </Border>
+
+                    <!-- 上下分隔条：拖「主显示」与「键盘」的高度（双击恢复这一处） -->
+                    <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                                       Key="calculator.主显示与键盘" />
+
+                    <!-- ===== 键盘区：科学键（上） + 基础键（下） ===== -->
+                    <Border Grid.Row="2" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" MinHeight="160" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0">
+                                <TextBlock Text="键盘" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <TextBlock Text="Enter 求值 · Esc 清空输入 · x 是函数绘图用的变量，这里不能用"
+                                           FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Grid>
+
+                            <!-- 科学区：6 列 × 4 行，按钮由 Core/CalculatorKey.Scientific 描述 -->
+                            <ItemsControl Grid.Row="1" Margin="0,10,0,0" ItemsSource="{Binding ScientificKeys}"
+                                          ItemTemplate="{StaticResource KeypadButtonTemplate}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Columns="6" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemContainerStyle>
+                                    <Style TargetType="ContentPresenter">
+                                        <Setter Property="HorizontalAlignment" Value="Stretch" />
+                                        <Setter Property="VerticalAlignment" Value="Stretch" />
+                                    </Style>
+                                </ItemsControl.ItemContainerStyle>
+                            </ItemsControl>
+
+                            <!-- 基础区：4 列 × 6 行，吃掉剩余高度（窗口变大按键跟着变高） -->
+                            <ItemsControl Grid.Row="2" Margin="0,4,0,0" ItemsSource="{Binding BasicKeys}"
+                                          ItemTemplate="{StaticResource KeypadButtonTemplate}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Columns="4" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemContainerStyle>
+                                    <Style TargetType="ContentPresenter">
+                                        <Setter Property="HorizontalAlignment" Value="Stretch" />
+                                        <Setter Property="VerticalAlignment" Value="Stretch" />
+                                    </Style>
+                                </ItemsControl.ItemContainerStyle>
+                            </ItemsControl>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- 左右分隔条：拖「左区（显示 + 键盘）」与「右区（历史 + 设置）」的宽度（双击恢复这一处） -->
+                <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                   Key="calculator.左区与右区" />
+
+                <!-- ===================== 右：历史记录（上） + 设置（下） ===================== -->
+                <Grid Grid.Column="2" ClipToBounds="True">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="236" MinHeight="170" />
+                        <RowDefinition Height="12" />
+                        <RowDefinition Height="352" MinHeight="270" />
+                    </Grid.RowDefinitions>
+
+                    <!-- ===== 历史记录：新的在前，点一条回填 ===== -->
+                    <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" MinHeight="70" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0" Margin="18,14,18,8">
+                                <TextBlock Text="历史记录" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <Button Content="清空" Style="{StaticResource SecondaryButtonStyle}"
+                                        HorizontalAlignment="Right" Command="{Binding ClearHistoryCommand}"
+                                        ToolTip="清空历史记录（配置文件里的也一起清掉）" />
+                            </Grid>
+
+                            <Grid Grid.Row="1" Margin="8,0,8,0">
+                                <ListBox x:Name="HistoryList" ItemsSource="{Binding HistoryItems}"
+                                         Style="{StaticResource FileListStyle}"
+                                         core:ScrollChaining.Enabled="True"
+                                         SelectionChanged="OnHistorySelectionChanged"
+                                         ToolTip="点一条把表达式回填到输入框">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Expression}" FontSize="12.5"
+                                                           TextTrimming="CharacterEllipsis" ToolTip="{Binding Entry}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding ResultText}" FontSize="12"
+                                                           Margin="10,0,0,0" TextTrimming="CharacterEllipsis"
+                                                           Foreground="{DynamicResource AccentBrush}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+
+                                <TextBlock Text="还没有历史记录。按 Enter 或 = 求值后会记在这里，点一条就能回填。"
+                                           Visibility="{Binding HasHistory, Converter={StaticResource InverseBoolToVis}}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           TextAlignment="Center" TextWrapping="Wrap" MaxWidth="260"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" IsHitTestVisible="False" />
+                            </Grid>
+
+                            <TextBlock Grid.Row="2" Text="{Binding HistoryCountText}" Margin="18,8,18,12"
+                                       FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </Grid>
+                    </Border>
+
+                    <!-- 上下分隔条：拖「历史记录」与「设置」的高度（双击恢复这一处） -->
+                    <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                                       Key="calculator.历史记录与设置" />
+
+                    <!-- ===== 设置：改一下自动存 config.json（没有保存按钮） ===== -->
+                    <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                      core:ScrollChaining.Enabled="True">
+                            <StackPanel Margin="18,16,18,18">
+                                <TextBlock Text="设置（改一下自动保存）" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Text="Config\calculator\config.json" FontSize="10.5" Margin="0,4,0,14"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                                <TextBlock Text="角度单位（影响 sin / cos / tan 与反三角）" FontSize="11.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <ComboBox ItemsSource="{Binding AngleUnitOptions}" SelectedItem="{Binding Cfg.AngleUnit}"
+                                          Style="{StaticResource ComboBoxStyle}" Margin="0,5,0,0"
+                                          ToolTip="角度制下 sin(90)=1；弧度制下 sin(π/2)=1" />
+
+                                <Grid Margin="0,16,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="结果有效位数" FontSize="11.5" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Cfg.SignificantDigits}" FontSize="12"
+                                               FontWeight="SemiBold" MinWidth="24" TextAlignment="Right"
+                                               Foreground="{DynamicResource AccentBrush}" />
+                                </Grid>
+                                <Slider Minimum="3" Maximum="12" TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding Cfg.SignificantDigits}" Style="{StaticResource SliderStyle}"
+                                        Margin="0,6,0,0" ToolTip="3 ~ 12 位有效数字（默认 12）" />
+
+                                <Grid Margin="0,14,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="历史记录条数" FontSize="11.5" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Cfg.HistoryLimit}" FontSize="12"
+                                               FontWeight="SemiBold" MinWidth="24" TextAlignment="Right"
+                                               Foreground="{DynamicResource AccentBrush}" />
+                                </Grid>
+                                <Slider Minimum="10" Maximum="200" TickFrequency="10" IsSnapToTickEnabled="True"
+                                        Value="{Binding Cfg.HistoryLimit}" Style="{StaticResource SliderStyle}"
+                                        Margin="0,6,0,0" ToolTip="10 ~ 200 条（默认 50；超出后旧的自动丢弃）" />
+
+                                <CheckBox Content="边打边实时预览结果" IsChecked="{Binding Cfg.EnableLivePreview}"
+                                          Style="{StaticResource CheckBoxStyle}" Margin="0,16,0,0"
+                                          ToolTip="关掉后只有按 Enter / = 才更新结果区" />
+
+                                <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8"
+                                        Padding="12,10" Margin="0,16,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="小提示" FontSize="12" FontWeight="SemiBold" />
+                                        <TextBlock FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Text="· 表达式里不能用变量 x（那是函数绘图用的），用了会提示。" />
+                                        <TextBlock FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Text="· 支持省略乘号：2(3+4)、2π、3sin(30)；× ÷ − ² ³ 与全角括号也能识别。" />
+                                        <TextBlock FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Text="· 数学上无定义（如 sqrt(-1)）显示「无定义」，除以 0 显示「+∞」，不弹窗。" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Button Content="打开配置文件夹" Style="{StaticResource SecondaryButtonStyle}"
+                                        HorizontalAlignment="Stretch" Margin="0,14,0,0"
+                                        Command="{Binding OpenConfigFolderCommand}" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </Grid>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

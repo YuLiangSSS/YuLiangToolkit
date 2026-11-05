@@ -47,6 +47,8 @@
 | [**📦 压缩包工具**](docs/tools/archive.md) | 拖入即用：解压 RAR（RAR4 / RAR5）/ ZIP / 7Z / TAR / TAR.GZ / TAR.BZ2 / TAR.XZ / TAR.ZST / GZ / BZ2 / XZ / ZST，支持**密码**、**旧版 GBK 文件名**、批量、进度、取消、**路径穿越防护**；也能把文件 / 文件夹压成 **ZIP / 7Z**，同名文件默认自动改名不覆盖；**RAR 因版权原因只能解不能压** |
 | [**🗂️ 打开方式**](docs/tools/open-with.md) | 把本工具集登记进 Windows 右键 **打开方式**：**3 个入口** —— **按文件类型自动分流**（PDF / 图片 / Word / Excel / 压缩包 / 音视频 / 文本）、**以文本方式打开**、**以压缩包方式打开**；任意文件右键都能选到，只写当前用户注册表（HKCU）、不需要管理员权限。开关在 **主页设置 → 打开方式关联**（**只有 Release / 发布版能打开**，Debug 固定关闭）；关掉后每次启动自动清掉 Windows 记住的旧条目，也有一键「清理」 |
 | [**⬆️ 软件升级器**](docs/tools/software-updater.md) | 用系统自带的 **winget** 读出本机装了哪些应用、哪些有新版本：列表里**逐个勾选**，也能 **Ctrl / Shift 多选行**后「勾选选中行」，或一键**全选 / 全不选 / 反选**（表头三态），再按顺序**批量升级**；支持搜索过滤、只看可更新、升级前确认清单、逐个进度与日志、可取消、单项失败不影响后续；包 Id 走白名单校验，扫描只读、不需要管理员权限，没装 winget 只提示不崩 |
+| [**🧮 计算器**](docs/tools/calculator.md) | 科学计算器：**直接打表达式**（`2(3+4)`、`sin(30)`、`5!`、`2^10` 都认）边打边出结果，键盘按钮 + 键盘输入都能用；三角函数 / 反三角 / 双曲 / 对数 / 阶乘 / 常量 π·e，**角度制 · 弧度制一键切换**，结果有效位数可调；**历史记录**点一下回填、可清空并自动保存；带 Ans、复制结果 |
+| [**📈 函数绘图**](docs/tools/function-plot.md) | 同时画**多条函数曲线**：每条可单独设**定义域**、颜色、显示开关；拖动平移、滚轮缩放、双击复位，网格 / 坐标轴可在设置里**隐藏**；**自动求点**——鼠标停在图上实时显示各函数在该 x 的 y，输入 x 一键求所有函数值，也能按当前范围自动生成点值表 |
 | [**🧪 框架示例**](docs/tools/sample-framework.md) | 开发用模板（Data / Config 轮子演示，可整目录删除） |
 
 > 🎵 **音游工具**是主页上的一个分类：点「音游工具」类别卡片进类别页，再点工具卡片打开；
@@ -99,7 +101,7 @@ dotnet run --project YuLiangTookit.csproj
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；
   踩坑细节按需查 **[docs/dev/pitfalls.md](docs/dev/pitfalls.md)**（只在排错 / 改危险代码时读）；
-- ✅ **自检**：3972 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
+- ✅ **自检**：4168 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -159,8 +161,10 @@ src/
 ├── YuLiangToolkit.Tools.ContextMenu/    # 功能：右键菜单管理（枚举 / 隐藏 / 恢复 / 删除残留 / 添加自定义打开菜单；隐藏写 HKCU、删除前自动备份 .reg、HKLM 项走 UAC 提权）
 ├── YuLiangToolkit.Tools.OpenWith/       # 功能：打开方式（登记 Windows 右键「打开方式」3 个入口：自动分流 / 文本 / 压缩包；入口副本 + 只写 HKCU）
 ├── YuLiangToolkit.Tools.SoftwareUpdater/# 功能：软件升级器（winget 读已安装应用 / 可用更新，多行多选 + 全选 / 全不选 / 反选后批量升级）
+├── YuLiangToolkit.Tools.Calculator/     # 功能：计算器（表达式直接输入 + 科学计算器：三角函数 / 对数 / 阶乘 / 角度制 / 历史记录；共用 Core 表达式引擎）
+├── YuLiangToolkit.Tools.FunctionPlot/   # 功能：函数绘图（多函数同时绘制 + 每条独立定义域 + 自动求点 / 点值表 + 坐标轴与网格可隐藏）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3972 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（4168 项行为逐条验证）
 ```
 
 ## 如何添加一个新工具
