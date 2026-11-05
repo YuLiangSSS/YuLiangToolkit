@@ -856,12 +856,16 @@ public sealed class TextEditorViewModel : ToolViewModelBase, IFileLaunchTarget
         Tabs.RemoveAt(index); // View 的 CollectionChanged 负责摘掉这个标签的编辑器控件
         ForgetAutoSaveState(tab);
 
-        if (nextIndex < 0 || Tabs.Count == 0)
+        if (Tabs.Count == 0)
         {
-            NewTab();
-            StatusText = "已关闭标签";
+            // 关掉最后一个标签就真的空着（不再自动补无标题标签）：编辑区显示空背景，
+            // 标签栏右边的 + / 文件夹 / 控制台按钮仍在，按 + 或 Ctrl+N 再新建
+            ActiveTab = null;
+            StatusText = "已关闭最后一个标签（Ctrl+N 新建 / Ctrl+O 打开文件）";
+            RefreshSessionConfig();
             return;
         }
+
         ActiveTab = Tabs[Math.Clamp(nextIndex, 0, Tabs.Count - 1)];
         RefreshSessionConfig();
     }
@@ -879,7 +883,11 @@ public sealed class TextEditorViewModel : ToolViewModelBase, IFileLaunchTarget
             Tabs.Remove(tab);
             ForgetAutoSaveState(tab);
         }
-        NewTab();
+
+        // 全部关完也不再补标签：编辑区留空（跟关单个标签的行为一致）
+        ActiveTab = Tabs.Count > 0 ? Tabs[^1] : null;
+        StatusText = Tabs.Count == 0 ? "已关闭全部标签（Ctrl+N 新建 / Ctrl+O 打开文件）" : "已关闭全部标签";
+        RefreshSessionConfig();
     }
 
     private bool ConfirmDiscard(EditorTab tab)

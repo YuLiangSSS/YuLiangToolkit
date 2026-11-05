@@ -173,6 +173,10 @@ public partial class TextEditorView : UserControl, IEditorHost
             if (Vm.ActiveConsole is null) Vm.NewConsole(ConsoleShellKind.Cmd);
             _ = Vm.RunConsoleAsync(autoCommand);
         }
+
+        // 截图验收：关掉所有标签，看「没有标签时的空背景 + 标签栏右侧按钮仍在」
+        if (Environment.GetEnvironmentVariable("YLT_EDITOR_CLOSE_ALL") == "1")
+            Vm.CloseAll();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -198,15 +202,20 @@ public partial class TextEditorView : UserControl, IEditorHost
     {
         vm.Tabs.CollectionChanged += (_, e) =>
         {
-            if (e.Action != NotifyCollectionChangedAction.Remove || e.OldItems is null) return;
-            foreach (var removed in e.OldItems.OfType<EditorTab>())
+            if (e.Action == NotifyCollectionChangedAction.Remove && e.OldItems is not null)
             {
-                if (!_editors.TryGetValue(removed, out var editor)) continue;
-                editor.TextArea.Caret.PositionChanged -= OnActiveCaretMoved;
-                removed.TextChanged -= OnTabTextChanged;
-                EditorHost.Children.Remove(editor);
-                _editors.Remove(removed);
+                foreach (var removed in e.OldItems.OfType<EditorTab>())
+                {
+                    if (!_editors.TryGetValue(removed, out var editor)) continue;
+                    editor.TextArea.Caret.PositionChanged -= OnActiveCaretMoved;
+                    removed.TextChanged -= OnTabTextChanged;
+                    EditorHost.Children.Remove(editor);
+                    _editors.Remove(removed);
+                }
             }
+
+            // 关到 0 个标签时编辑区换成空背景（不自动补无标题标签）
+            UpdateEmptyPlaceholder();
         };
 
         vm.PropertyChanged += (_, e) =>
@@ -219,6 +228,7 @@ public partial class TextEditorView : UserControl, IEditorHost
                     RefreshFindBarCount();
                     // 标签多到横向滚出视野时，把激活标签滚出来
                     if (vm.ActiveTab is not null) TabList.ScrollIntoView(vm.ActiveTab);
+                    else CloseFindBar();   // 最后一个标签关掉后，查找条也别留在空编辑区上
                     UpdatePreviewVisibility();   // 切到 .md 标签自动出预览，切走自动收起
                     break;
                 case nameof(TextEditorViewModel.IsPreviewVisible):
@@ -278,6 +288,15 @@ public partial class TextEditorView : UserControl, IEditorHost
 
         foreach (var (tab, editor) in _editors)
             editor.Visibility = ReferenceEquals(tab, vm.ActiveTab) ? Visibility.Visible : Visibility.Collapsed;
+
+        UpdateEmptyPlaceholder();
+    }
+
+    /// <summary>没有标签时显示跟标签栏同色的空背景（右侧 + / 文件夹 / 控制台按钮仍可用）。</summary>
+    private void UpdateEmptyPlaceholder()
+    {
+        if (EmptyEditorPlaceholder is null) return;
+        EmptyEditorPlaceholder.Visibility = Vm is { Tabs.Count: 0 } ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>按需创建一个标签的编辑器（挂好文档 / 高亮 / 配置 / 事件）。</summary>

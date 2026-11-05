@@ -478,6 +478,10 @@
   （用户手动 Ctrl+S 才解除暂停）。切走 / 关工具时要把还没到防抖时间的队列 `AutoSavePendingTabs()` 补写掉。
   自检里构造 `TextEditorViewModel` 时注意：关掉会话恢复后构造会先建一个无标题标签，**拿 `Tabs[0]` 会拿到它**，
   文件相关断言要用 `ActiveTab`（否则会走 `SaveTabAs` 弹出另存为对话框，自检直接卡死）。
+- ⚠ **关标签别在 `CloseTab` 里自动 `NewTab`**：用户明确要求「关到 0 个标签就真的空着」，否则点最后一个 × 会
+  又冒出一个无标题标签、永远关不干净。现在关完由 View 显示一个跟标签栏同色（`HeaderBackgroundBrush`）的
+  `EmptyEditorPlaceholder` 空背景（`IsHitTestVisible=False`，拖放还能落到 EditorHost），标签栏右侧的 + / 文件夹 /
+  控制台按钮保持可用；`CloseAll` 同理不再补标签。
 - ⚠ **左侧文件树别直接用 `ItemsSource + HierarchicalDataTemplate` 一把梭**：目录大 / 没权限的条目容易
   拖慢或抛异常，而且想「展开时才读盘」不好控制。这里用 **VM 节点（`FileTreeNode`）+ code-behind 手动构建
   `TreeViewItem`**：文件夹先放一个「加载中…」占位子项让箭头出现，`Expanded` 时才 `LoadChildren()` 枚举磁盘；

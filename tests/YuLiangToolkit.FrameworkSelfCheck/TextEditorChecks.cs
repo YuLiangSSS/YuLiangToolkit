@@ -915,6 +915,18 @@ internal static class TextEditorChecks
             check("[编辑器] 关闭文件夹后侧栏隐藏、LastFolder 清空",
                 !vm.HasWorkspace && !vm.IsSidebarVisible && vm.Cfg.LastFolder.Length == 0,
                 "closed");
+
+            // 最后一个标签关掉后保持空，不再自动补无标题标签（Ctrl+N 可再新建）
+            vm.CloseAll();
+            check("[编辑器] 关掉全部标签后保持空（不自动补无标题标签）",
+                vm.Tabs.Count == 0 && vm.ActiveTab is null,
+                $"tabs={vm.Tabs.Count}");
+
+            var recreated = vm.NewTab();
+            vm.CloseTab(recreated);
+            check("[编辑器] 关掉最后一个标签不自动补新标签；Ctrl+N 能重新新建",
+                vm.Tabs.Count == 0 && vm.ActiveTab is null,
+                $"tabs={vm.Tabs.Count}");
         }
 
         ResetWorkspaceCheckConfig(cfg);

@@ -733,6 +733,18 @@
                 <Grid x:Name="EditorHost" Grid.Row="2" Background="{DynamicResource WindowBackgroundBrush}"
                       PreviewMouseWheel="OnEditorHostPreviewMouseWheel" />
 
+                <!-- 没有标签时的空背景：跟标签栏同色（不自动补无标题标签；右侧 + / 文件夹 / 控制台按钮照常可用） -->
+                <Border x:Name="EmptyEditorPlaceholder" Grid.Row="2" Visibility="Collapsed"
+                        Background="{DynamicResource HeaderBackgroundBrush}" IsHitTestVisible="False">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.85">
+                        <TextBlock Text="没有打开的标签" FontSize="13" HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Text="Ctrl+N 新建 · Ctrl+O 打开文件 · Ctrl+Shift+O 打开文件夹"
+                                   FontSize="11.5" Margin="0,7,0,0" HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </StackPanel>
+                </Border>
+
                 <!-- Markdown「实际效果预览」：编辑区下方，打开 .md 且设置里没关预览时才出现；
                      高度可拖（PaneSplitter 记忆），双击缝隙恢复默认高度 -->
                 <core:PaneSplitter x:Name="PreviewSplitter" Grid.Row="3"
