@@ -308,6 +308,21 @@
 - 调试开关：`YLT_KPS_DEMO=1` 造假统计（截图冒烟）、`YLT_KPS_SHOT_OVERLAY=<png>` 把 Overlay 渲染成 PNG 后退出，
   用法同 `YLT_SHOT`（见 AGENTS.md）。
 
+### 屏幕贴纸
+- **生命周期在 `StickerSession`（进程单例）**：每张贴纸是一个独立的透明无边框窗口，工具页只是管理面板。
+  会话自己订阅 `Application.Exit` + `MainWindow.Closed` 并在 `Shutdown` 里关掉所有贴纸窗口 ——
+  否则「最后一个窗口关闭」永远不成立、进程退不掉（同 KPS Overlay，见上一节）。
+- `Config.Stickers` 的**列表顺序就是层级**（0 最靠下）；改完层级要按顺序 `ApplyZOrder()`（逐个
+  `SetWindowPos(HWND_TOP)`）才能真正生效，别指望窗口激活顺序。用户点中某张贴纸时激活事件会把它的记录移到末尾。
+- ⚠ 拖窗口用 `GetCursorPos` + `CompositionTarget.TransformFromDevice` 取屏幕 DIP，**别用 `e.GetPosition(this)`
+  反推位置**（窗口自己在移动，相对坐标会反馈抖动）；缩放 / 夹屏 / 角点等比缩放都在 `StickerGeometry` 纯函数里，
+  改动先跑 `screen-sticker` 组。
+- 工具页视图被缓存淘汰 / 程序退出时（`DisposeToolView` → `NotifyClosed` 会 `StopWatching` 配置存储），
+  贴纸仍可能继续拖动 / 缩放：这类后台改动走 `StickerSession.SaveSoon()`（500ms 防抖后显式 `SaveNow`），
+  不要依赖配置自动保存定时器。
+- 调试：`YLT_STICKER_DEMO=<图片>` 启动贴一张（不恢复旧贴纸）、`YLT_STICKER_SHOT=<png>` 截第一张窗口后退出；
+  截图见 `shots/sticker-*.png`（不入库）。
+
 ### 液态玻璃 / 毛玻璃 / 亚克力主题（半透明界面 + 背景图）
 - ⚠ 改 token 一起改：四套深色字典（`DefaultTheme` / `LiquidGlassTheme` / `FrostedGlassTheme` / `AcrylicTheme`）+ `ThemeManager.RequiredTokenKeys`（几何 key 在 `RequiredRadiusKeys`）；道系 / 浅色 / 配色由 `ThemePaletteBuilder` 生成，新增颜色时它也要覆盖；少一个静默退回控件默认值。
 - ⚠ **渐变里“透明”的颜色别用 `Colors.Transparent` / `#00FFFFFF` 收尾**：WPF 会按 ARGB 线性插值，透明白 → 不透明黑会插出一层灰雾（v0.89.0 道系背景一开始整块泛灰的根因）。需要完全透明时用 `#00000000`（透明黑）或与起点同色相、alpha=0 的颜色。
