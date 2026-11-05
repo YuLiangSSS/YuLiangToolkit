@@ -1,8 +1,11 @@
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
+using System.Windows.Threading;
 using YuLiangToolkit.App.Themes;
 
 namespace YuLiangToolkit.App.Views;
@@ -51,13 +54,37 @@ public partial class GlassBackdrop : UserControl
     private Storyboard? _ambient;
     private bool _running;
 
-    /// <summary>云间天上的云漂移动画（只在 CloudSky 且可见时跑）。</summary>
-    private Storyboard? _cloudDrift;
+    /// <summary>云间天上的云漂移：用 DispatcherTimer 按窗口实际宽度循环，形状 / 大小固定，不随窗口拉伸。</summary>
+    private readonly List<CloudMotion> _clouds = new();
+    private readonly Stopwatch _cloudClock = new();
+    private DispatcherTimer? _cloudTimer;
     private bool _cloudRunning;
+    private bool _cloudPositionsInitialized;
+
+    private sealed class CloudMotion
+    {
+        public required TranslateTransform Transform { get; init; }
+        public required double Speed { get; init; }
+        public required double Width { get; init; }
+        public required double StartFraction { get; init; }
+        public double X;
+    }
 
     public GlassBackdrop()
     {
         InitializeComponent();
+
+        // 每条云的“原生宽度”（CloudShape 180 × ScaleTransform）用于判断什么时候完全飘出左边
+        _clouds.Add(new CloudMotion { Transform = DayCloud1Move, Speed = 7, Width = 378, StartFraction = 0.08 });
+        _clouds.Add(new CloudMotion { Transform = DayCloud2Move, Speed = 5, Width = 468, StartFraction = 0.42 });
+        _clouds.Add(new CloudMotion { Transform = DayCloud3Move, Speed = 8, Width = 306, StartFraction = 0.70 });
+        _clouds.Add(new CloudMotion { Transform = DayCloud4Move, Speed = 9, Width = 243, StartFraction = 0.20 });
+        _clouds.Add(new CloudMotion { Transform = DayCloud5Move, Speed = 6, Width = 306, StartFraction = 0.55 });
+        _clouds.Add(new CloudMotion { Transform = DayCloud6Move, Speed = 4.5, Width = 396, StartFraction = 0.85 });
+        _clouds.Add(new CloudMotion { Transform = NightCloud1Move, Speed = 6, Width = 432, StartFraction = 0.20 });
+        _clouds.Add(new CloudMotion { Transform = NightCloud2Move, Speed = 8, Width = 288, StartFraction = 0.52 });
+        _clouds.Add(new CloudMotion { Transform = NightCloud3Move, Speed = 4.5, Width = 468, StartFraction = 0.75 });
+        _clouds.Add(new CloudMotion { Transform = NightCloud4Move, Speed = 7, Width = 324, StartFraction = 0.38 });
 
         Loaded += (_, _) =>
         {
@@ -81,6 +108,17 @@ public partial class GlassBackdrop : UserControl
             {
                 StopAmbient();
                 StopCloudDrift();
+            }
+        };
+        SizeChanged += (_, _) =>
+        {
+            // 窗口变窄时，别让已经跑到右侧很远的云等太久才重新进入；
+            // 云的尺寸仍是固定的，这里只挪位置，不缩放。
+            if (!_cloudRunning) return;
+            var width = Math.Max(ActualWidth, 200);
+            foreach (var cloud in _clouds)
+            {
+                if (cloud.X > width + cloud.Width) cloud.X = width + 80;
             }
         };
     }
@@ -119,8 +157,6 @@ public partial class GlassBackdrop : UserControl
         => ((GlassBackdrop)d).RefreshVisualState();
 
     private Storyboard Ambient => _ambient ??= (Storyboard)FindResource("AmbientStoryboard");
-
-    private Storyboard CloudDrift => _cloudDrift ??= (Storyboard)FindResource("CloudDriftStoryboard");
 
     /// <summary>把 DP 的值落到实际图层上：背景图显隐 / 铺法 / 模糊、液态玻璃光晕层的显隐。</summary>
     private void RefreshVisualState()
@@ -176,15 +212,50 @@ public partial class GlassBackdrop : UserControl
         if (_cloudRunning || !IsVisible || Theme != UiTheme.CloudSky) return;
         if (PresentationSource.FromVisual(this) is null) return;
 
+        if (!_cloudPositionsInitialized)
+        {
+            var width = Math.Max(ActualWidth, 800);
+            foreach (var cloud in _clouds)
+            {
+                cloud.X = cloud.StartFraction * (width + cloud.Width) - cloud.Width;
+                cloud.Transform.X = cloud.X;
+            }
+            _cloudPositionsInitialized = true;
+        }
+
+        _cloudTimer ??= CreateCloudTimer();
+        _cloudClock.Restart();
+        _cloudTimer.Start();
         _cloudRunning = true;
-        CloudDrift.Begin(this, isControllable: true);
     }
 
     private void StopCloudDrift()
     {
         if (!_cloudRunning) return;
         _cloudRunning = false;
-        CloudDrift.Stop(this);
+        _cloudTimer?.Stop();
+        _cloudClock.Stop();
+    }
+
+    private DispatcherTimer CreateCloudTimer()
+    {
+        var timer = new DispatcherTimer(DispatcherPriority.Render)
+        {
+            Interval = TimeSpan.FromMilliseconds(33),
+        };
+        timer.Tick += (_, _) =>
+        {
+            var seconds = Math.Clamp(_cloudClock.Elapsed.TotalSeconds, 0, 0.1);
+            _cloudClock.Restart();
+            var width = Math.Max(ActualWidth, 200);
+            foreach (var cloud in _clouds)
+            {
+                cloud.X -= cloud.Speed * seconds;
+                if (cloud.X < -cloud.Width - 80) cloud.X = width + 80;
+                cloud.Transform.X = cloud.X;
+            }
+        };
+        return timer;
     }
 
     private void StartAmbientIfNeeded()

@@ -26,30 +26,36 @@
         <PathGeometry x:Key="CloudShape"
                       Figures="M0,44 C0,26 14,14 32,14 C38,2 54,-4 70,0 C80,-12 104,-12 116,2 C134,-4 152,6 154,24 C170,26 180,36 180,44 Z" />
 
-        <!-- 云间天上：云朵从右往左缓慢漂。每条云的 TranslateTransform 在下面 XAML 里命名，
-             起点 / 终点都在屏幕外，循环回跳时看不出来；不同时长 + 负 BeginTime 让云错开。 -->
-        <Storyboard x:Key="CloudDriftStoryboard">
-            <DoubleAnimation Storyboard.TargetName="DayCloud1Move" Storyboard.TargetProperty="X"
-                             From="1280" To="-2200" Duration="0:1:20" BeginTime="-0:0:15" RepeatBehavior="Forever" />
-            <DoubleAnimation Storyboard.TargetName="DayCloud2Move" Storyboard.TargetProperty="X"
-                             From="1280" To="-2200" Duration="0:1:05" BeginTime="-0:0:40" RepeatBehavior="Forever" />
-            <DoubleAnimation Storyboard.TargetName="DayCloud3Move" Storyboard.TargetProperty="X"
-                             From="1280" To="-2200" Duration="0:1:45" BeginTime="-0:1:05" RepeatBehavior="Forever" />
-            <DoubleAnimation Storyboard.TargetName="DayCloud4Move" Storyboard.TargetProperty="X"
-                             From="1280" To="-2200" Duration="0:1:10" BeginTime="-0:0:55" RepeatBehavior="Forever" />
-            <DoubleAnimation Storyboard.TargetName="DayCloud5Move" Storyboard.TargetProperty="X"
-                             From="1280" To="-2200" Duration="0:1:35" BeginTime="-0:0:20" RepeatBehavior="Forever" />
-            <DoubleAnimation Storyboard.TargetName="DayCloud6Move" Storyboard.TargetProperty="X"
-                             From="1280" To="-2200" Duration="0:2:00" BeginTime="-0:1:30" RepeatBehavior="Forever" />
-            <DoubleAnimation Storyboard.TargetName="NightCloud1Move" Storyboard.TargetProperty="X"
-                             From="1280" To="-2200" Duration="0:1:30" BeginTime="-0:0:30" RepeatBehavior="Forever" />
-            <DoubleAnimation Storyboard.TargetName="NightCloud2Move" Storyboard.TargetProperty="X"
-                             From="1280" To="-2200" Duration="0:1:50" BeginTime="-0:1:10" RepeatBehavior="Forever" />
-            <DoubleAnimation Storyboard.TargetName="NightCloud3Move" Storyboard.TargetProperty="X"
-                             From="1280" To="-2200" Duration="0:2:10" BeginTime="-0:0:50" RepeatBehavior="Forever" />
-            <DoubleAnimation Storyboard.TargetName="NightCloud4Move" Storyboard.TargetProperty="X"
-                             From="1280" To="-2200" Duration="0:1:40" BeginTime="-0:1:25" RepeatBehavior="Forever" />
-        </Storyboard>
+        <!-- 云间天上：星星用固定像素的平铺画刷，窗口怎么拉都不会变形 / 变大 -->
+        <DrawingBrush x:Key="StarFieldBrush" TileMode="Tile" Stretch="None"
+                      Viewport="0,0,220,160" ViewportUnits="Absolute">
+            <DrawingBrush.Drawing>
+                <DrawingGroup>
+                    <GeometryDrawing Brush="#E9F1FF">
+                        <GeometryDrawing.Geometry>
+                            <GeometryGroup>
+                                <EllipseGeometry Center="18,22" RadiusX="1.2" RadiusY="1.2" />
+                                <EllipseGeometry Center="86,60" RadiusX="0.8" RadiusY="0.8" />
+                                <EllipseGeometry Center="150,30" RadiusX="1.4" RadiusY="1.4" />
+                                <EllipseGeometry Center="196,110" RadiusX="0.9" RadiusY="0.9" />
+                                <EllipseGeometry Center="42,132" RadiusX="1.1" RadiusY="1.1" />
+                                <EllipseGeometry Center="118,140" RadiusX="0.7" RadiusY="0.7" />
+                            </GeometryGroup>
+                        </GeometryDrawing.Geometry>
+                    </GeometryDrawing>
+                    <GeometryDrawing Brush="#D9FFF4D6">
+                        <GeometryDrawing.Geometry>
+                            <GeometryGroup>
+                                <EllipseGeometry Center="55,88" RadiusX="1.6" RadiusY="1.6" />
+                                <EllipseGeometry Center="170,72" RadiusX="1.8" RadiusY="1.8" />
+                                <EllipseGeometry Center="112,18" RadiusX="1.3" RadiusY="1.3" />
+                                <EllipseGeometry Center="202,42" RadiusX="1" RadiusY="1" />
+                            </GeometryGroup>
+                        </GeometryDrawing.Geometry>
+                    </GeometryDrawing>
+                </DrawingGroup>
+            </DrawingBrush.Drawing>
+        </DrawingBrush>
 
         <Storyboard x:Key="AmbientStoryboard">
             <!-- 蓝色大光斑：缓慢左右上下漂 + 呼吸 -->
@@ -221,232 +227,210 @@
         </Grid>
 
         <!-- ⑤·云间天上：白天 = 云朵 + 暖阳；夜晚 = 暗云 + 月牙 + 星星。
-             两层都画在固定 1280×820 的 Canvas 里再用 Viewbox 铺满，窗口比例变化时整体缩放。
-             层次靠「后层低透明度 / 前层实色 + 大小错落」，不加大阴影（和参考图的处理一致）；
-             云朵各自带 TranslateTransform，由 CloudDriftStoryboard 做从右往左的循环漂移。 -->
+             装饰元素全部用「固定像素大小 + 锚定右上角 / 满窗口 Canvas」，不再套 Viewbox，
+             所以窗口怎么拉，太阳 / 月亮 / 云 / 星星的形状和大小都不变；云由代码按窗口宽度循环平移。 -->
         <Grid x:Name="CloudSkyLayer" Visibility="Collapsed">
             <!-- ===== 白天 ===== -->
             <Grid x:Name="DaySky" Visibility="Collapsed">
-                <Viewbox Stretch="Fill">
-                    <Canvas Width="1280" Height="820" IsHitTestVisible="False">
-                        <!-- 太阳：外圈柔光 + 白色填充粗圆环 + 奶金圆盘（左亮右暗的横向渐变）+ 细金环 + 中心金点 -->
-                        <Ellipse Canvas.Left="840" Canvas.Top="-20" Width="360" Height="360">
-                            <Ellipse.Fill>
-                                <RadialGradientBrush>
-                                    <GradientStop Color="#66FFE8B0" Offset="0" />
-                                    <GradientStop Color="#22FFE8B0" Offset="0.55" />
-                                    <GradientStop Color="#00FFE8B0" Offset="1" />
-                                </RadialGradientBrush>
-                            </Ellipse.Fill>
-                        </Ellipse>
-                        <!-- 白色圆环是实心环带（外圆减内圆），不是描边细线；加一层极浅的蓝灰柔边，避免白底上看不见 -->
-                        <Path Canvas.Left="920" Canvas.Top="50" Fill="#FFFFFFFF">
-                            <Path.Effect>
-                                <DropShadowEffect Color="#8FB3D2" BlurRadius="16" ShadowDepth="0" Opacity="0.32" />
-                            </Path.Effect>
-                            <Path.Data>
-                                <CombinedGeometry GeometryCombineMode="Exclude">
-                                    <CombinedGeometry.Geometry1>
-                                        <EllipseGeometry Center="100,100" RadiusX="100" RadiusY="100" />
-                                    </CombinedGeometry.Geometry1>
-                                    <CombinedGeometry.Geometry2>
-                                        <EllipseGeometry Center="100,100" RadiusX="75" RadiusY="75" />
-                                    </CombinedGeometry.Geometry2>
-                                </CombinedGeometry>
-                            </Path.Data>
+                <!-- 太阳固定 200px 外环，锚定右上角；窗口拉宽 / 拉高都不拉伸它 -->
+                <Canvas Width="360" Height="360" HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Margin="0,0,80,0" IsHitTestVisible="False">
+                    <Ellipse Width="360" Height="360">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush>
+                                <GradientStop Color="#66FFE8B0" Offset="0" />
+                                <GradientStop Color="#22FFE8B0" Offset="0.55" />
+                                <GradientStop Color="#00FFE8B0" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+                    <!-- 白色圆环是实心环带（外圆减内圆），不是描边细线；厚度比上一版再细 1/4 -->
+                    <Path Canvas.Left="86.25" Canvas.Top="56.25" Fill="#FFFFFFFF">
+                        <Path.Effect>
+                            <DropShadowEffect Color="#8FB3D2" BlurRadius="14" ShadowDepth="0" Opacity="0.28" />
+                        </Path.Effect>
+                        <Path.Data>
+                            <CombinedGeometry GeometryCombineMode="Exclude">
+                                <CombinedGeometry.Geometry1>
+                                    <EllipseGeometry Center="93.75,93.75" RadiusX="93.75" RadiusY="93.75" />
+                                </CombinedGeometry.Geometry1>
+                                <CombinedGeometry.Geometry2>
+                                    <EllipseGeometry Center="93.75,93.75" RadiusX="75" RadiusY="75" />
+                                </CombinedGeometry.Geometry2>
+                            </CombinedGeometry>
+                        </Path.Data>
+                    </Path>
+                    <Ellipse Canvas.Left="105" Canvas.Top="75" Width="150" Height="150">
+                        <Ellipse.Fill>
+                            <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
+                                <GradientStop Color="#FFFFFB" Offset="0" />
+                                <GradientStop Color="#FFF7DF" Offset="0.55" />
+                                <GradientStop Color="#F4DDA4" Offset="1" />
+                            </LinearGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+                    <Ellipse Canvas.Left="158" Canvas.Top="128" Width="44" Height="44"
+                             Stroke="#C9A227" StrokeThickness="1.2" />
+                    <Ellipse Canvas.Left="174" Canvas.Top="144" Width="12" Height="12" Fill="#C9A227" />
+                </Canvas>
+
+                <!-- 云层铺满窗口，但每朵云自身是固定尺寸；X 由代码按窗口宽度循环 -->
+                <Canvas x:Name="DayClouds" IsHitTestVisible="False">
+                    <Canvas Canvas.Top="55">
+                        <Canvas.RenderTransform>
+                            <TranslateTransform x:Name="DayCloud1Move" X="120" />
+                        </Canvas.RenderTransform>
+                        <Path Data="{StaticResource CloudShape}" Fill="#D7E8F8" Opacity="0.85">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="2.1" ScaleY="2.1" />
+                            </Path.RenderTransform>
                         </Path>
-                        <Ellipse Canvas.Left="945" Canvas.Top="75" Width="150" Height="150">
-                            <Ellipse.Fill>
-                                <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
-                                    <GradientStop Color="#FFFFFB" Offset="0" />
-                                    <GradientStop Color="#FFF7DF" Offset="0.55" />
-                                    <GradientStop Color="#F4DDA4" Offset="1" />
-                                </LinearGradientBrush>
-                            </Ellipse.Fill>
-                        </Ellipse>
-                        <Ellipse Canvas.Left="998" Canvas.Top="128" Width="44" Height="44"
-                                 Stroke="#C9A227" StrokeThickness="1.2" />
-                        <Ellipse Canvas.Left="1014" Canvas.Top="144" Width="12" Height="12" Fill="#C9A227" />
-
-                        <!-- 后层云：低透明度、偏冷白，从右往左慢慢漂 -->
-                        <Canvas Canvas.Left="240" Canvas.Top="55">
-                            <Canvas.RenderTransform>
-                                <TranslateTransform x:Name="DayCloud1Move" />
-                            </Canvas.RenderTransform>
-                            <Path Data="{StaticResource CloudShape}" Fill="#D7E8F8" Opacity="0.85">
-                                <Path.RenderTransform>
-                                    <ScaleTransform ScaleX="2.1" ScaleY="2.1" />
-                                </Path.RenderTransform>
-                            </Path>
-                        </Canvas>
-                        <Canvas Canvas.Left="720" Canvas.Top="40">
-                            <Canvas.RenderTransform>
-                                <TranslateTransform x:Name="DayCloud2Move" />
-                            </Canvas.RenderTransform>
-                            <Path Data="{StaticResource CloudShape}" Fill="#E2EFFB" Opacity="0.75">
-                                <Path.RenderTransform>
-                                    <ScaleTransform ScaleX="2.6" ScaleY="2.6" />
-                                </Path.RenderTransform>
-                            </Path>
-                        </Canvas>
-                        <Canvas Canvas.Left="390" Canvas.Top="420">
-                            <Canvas.RenderTransform>
-                                <TranslateTransform x:Name="DayCloud3Move" />
-                            </Canvas.RenderTransform>
-                            <Path Data="{StaticResource CloudShape}" Fill="#EDF5FD" Opacity="0.7">
-                                <Path.RenderTransform>
-                                    <ScaleTransform ScaleX="1.7" ScaleY="1.7" />
-                                </Path.RenderTransform>
-                            </Path>
-                        </Canvas>
-
-                        <!-- 前层云：浅蓝灰云底 + 实白云面，一起漂，保持平铺层次 -->
-                        <Canvas Canvas.Left="150" Canvas.Top="210">
-                            <Canvas.RenderTransform>
-                                <TranslateTransform x:Name="DayCloud4Move" />
-                            </Canvas.RenderTransform>
-                            <Path Data="{StaticResource CloudShape}" Fill="#E3EFFA" Canvas.Top="8">
-                                <Path.RenderTransform>
-                                    <ScaleTransform ScaleX="1.35" ScaleY="1.35" />
-                                </Path.RenderTransform>
-                            </Path>
-                            <Path Data="{StaticResource CloudShape}" Fill="#FFFFFF">
-                                <Path.RenderTransform>
-                                    <ScaleTransform ScaleX="1.35" ScaleY="1.35" />
-                                </Path.RenderTransform>
-                            </Path>
-                        </Canvas>
-                        <Canvas Canvas.Left="860" Canvas.Top="300">
-                            <Canvas.RenderTransform>
-                                <TranslateTransform x:Name="DayCloud5Move" />
-                            </Canvas.RenderTransform>
-                            <Path Data="{StaticResource CloudShape}" Fill="#E8F2FC" Canvas.Top="8">
-                                <Path.RenderTransform>
-                                    <ScaleTransform ScaleX="1.7" ScaleY="1.7" />
-                                </Path.RenderTransform>
-                            </Path>
-                            <Path Data="{StaticResource CloudShape}" Fill="#FFFFFF">
-                                <Path.RenderTransform>
-                                    <ScaleTransform ScaleX="1.7" ScaleY="1.7" />
-                                </Path.RenderTransform>
-                            </Path>
-                        </Canvas>
-                        <Canvas Canvas.Left="520" Canvas.Top="640">
-                            <Canvas.RenderTransform>
-                                <TranslateTransform x:Name="DayCloud6Move" />
-                            </Canvas.RenderTransform>
-                            <Path Data="{StaticResource CloudShape}" Fill="#ECF4FD" Canvas.Top="8">
-                                <Path.RenderTransform>
-                                    <ScaleTransform ScaleX="2.2" ScaleY="2.2" />
-                                </Path.RenderTransform>
-                            </Path>
-                            <Path Data="{StaticResource CloudShape}" Fill="#FFFFFF">
-                                <Path.RenderTransform>
-                                    <ScaleTransform ScaleX="2.2" ScaleY="2.2" />
-                                </Path.RenderTransform>
-                            </Path>
-                        </Canvas>
                     </Canvas>
-                </Viewbox>
+                    <Canvas Canvas.Top="40">
+                        <Canvas.RenderTransform>
+                            <TranslateTransform x:Name="DayCloud2Move" X="600" />
+                        </Canvas.RenderTransform>
+                        <Path Data="{StaticResource CloudShape}" Fill="#E2EFFB" Opacity="0.75">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="2.6" ScaleY="2.6" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Canvas>
+                    <Canvas Canvas.Top="420">
+                        <Canvas.RenderTransform>
+                            <TranslateTransform x:Name="DayCloud3Move" X="980" />
+                        </Canvas.RenderTransform>
+                        <Path Data="{StaticResource CloudShape}" Fill="#EDF5FD" Opacity="0.7">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="1.7" ScaleY="1.7" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Canvas>
+                    <Canvas Canvas.Top="210">
+                        <Canvas.RenderTransform>
+                            <TranslateTransform x:Name="DayCloud4Move" X="40" />
+                        </Canvas.RenderTransform>
+                        <Path Data="{StaticResource CloudShape}" Fill="#E3EFFA" Canvas.Top="8">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="1.35" ScaleY="1.35" />
+                            </Path.RenderTransform>
+                        </Path>
+                        <Path Data="{StaticResource CloudShape}" Fill="#FFFFFF">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="1.35" ScaleY="1.35" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Canvas>
+                    <Canvas Canvas.Top="300">
+                        <Canvas.RenderTransform>
+                            <TranslateTransform x:Name="DayCloud5Move" X="760" />
+                        </Canvas.RenderTransform>
+                        <Path Data="{StaticResource CloudShape}" Fill="#E8F2FC" Canvas.Top="8">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="1.7" ScaleY="1.7" />
+                            </Path.RenderTransform>
+                        </Path>
+                        <Path Data="{StaticResource CloudShape}" Fill="#FFFFFF">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="1.7" ScaleY="1.7" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Canvas>
+                    <Canvas Canvas.Top="640">
+                        <Canvas.RenderTransform>
+                            <TranslateTransform x:Name="DayCloud6Move" X="540" />
+                        </Canvas.RenderTransform>
+                        <Path Data="{StaticResource CloudShape}" Fill="#ECF4FD" Canvas.Top="8">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="2.2" ScaleY="2.2" />
+                            </Path.RenderTransform>
+                        </Path>
+                        <Path Data="{StaticResource CloudShape}" Fill="#FFFFFF">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="2.2" ScaleY="2.2" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Canvas>
+                </Canvas>
             </Grid>
 
             <!-- ===== 夜晚 ===== -->
             <Grid x:Name="NightSky" Visibility="Collapsed">
-                <Viewbox Stretch="Fill">
-                    <Canvas Width="1280" Height="820" IsHitTestVisible="False">
-                        <!-- 星星：大小 / 透明度错落 -->
-                        <Ellipse Canvas.Left="120" Canvas.Top="70" Width="2.5" Height="2.5" Fill="#E9F1FF" Opacity="0.9" />
-                        <Ellipse Canvas.Left="210" Canvas.Top="160" Width="1.6" Height="1.6" Fill="#E9F1FF" Opacity="0.6" />
-                        <Ellipse Canvas.Left="300" Canvas.Top="95" Width="3" Height="3" Fill="#FFF4D6" Opacity="0.85" />
-                        <Ellipse Canvas.Left="380" Canvas.Top="220" Width="1.8" Height="1.8" Fill="#E9F1FF" Opacity="0.55" />
-                        <Ellipse Canvas.Left="470" Canvas.Top="60" Width="2.2" Height="2.2" Fill="#E9F1FF" Opacity="0.8" />
-                        <Ellipse Canvas.Left="560" Canvas.Top="180" Width="1.5" Height="1.5" Fill="#E9F1FF" Opacity="0.5" />
-                        <Ellipse Canvas.Left="650" Canvas.Top="90" Width="2.8" Height="2.8" Fill="#FFF4D6" Opacity="0.9" />
-                        <Ellipse Canvas.Left="730" Canvas.Top="250" Width="1.8" Height="1.8" Fill="#E9F1FF" Opacity="0.6" />
-                        <Ellipse Canvas.Left="820" Canvas.Top="50" Width="2" Height="2" Fill="#E9F1FF" Opacity="0.7" />
-                        <Ellipse Canvas.Left="920" Canvas.Top="140" Width="1.5" Height="1.5" Fill="#E9F1FF" Opacity="0.55" />
-                        <Ellipse Canvas.Left="1060" Canvas.Top="60" Width="2.4" Height="2.4" Fill="#FFF4D6" Opacity="0.85" />
-                        <Ellipse Canvas.Left="1180" Canvas.Top="200" Width="1.7" Height="1.7" Fill="#E9F1FF" Opacity="0.6" />
-                        <Ellipse Canvas.Left="90" Canvas.Top="320" Width="1.8" Height="1.8" Fill="#E9F1FF" Opacity="0.55" />
-                        <Ellipse Canvas.Left="260" Canvas.Top="390" Width="2.2" Height="2.2" Fill="#FFF4D6" Opacity="0.8" />
-                        <Ellipse Canvas.Left="450" Canvas.Top="330" Width="1.5" Height="1.5" Fill="#E9F1FF" Opacity="0.5" />
-                        <Ellipse Canvas.Left="700" Canvas.Top="410" Width="2.6" Height="2.6" Fill="#E9F1FF" Opacity="0.8" />
-                        <Ellipse Canvas.Left="960" Canvas.Top="360" Width="1.6" Height="1.6" Fill="#E9F1FF" Opacity="0.55" />
-                        <Ellipse Canvas.Left="1220" Canvas.Top="420" Width="2" Height="2" Fill="#FFF4D6" Opacity="0.7" />
-                        <Ellipse Canvas.Left="120" Canvas.Top="600" Width="2" Height="2" Fill="#E9F1FF" Opacity="0.55" />
-                        <Ellipse Canvas.Left="360" Canvas.Top="700" Width="1.5" Height="1.5" Fill="#E9F1FF" Opacity="0.45" />
-                        <Ellipse Canvas.Left="820" Canvas.Top="680" Width="2.2" Height="2.2" Fill="#E9F1FF" Opacity="0.6" />
-                        <Ellipse Canvas.Left="1100" Canvas.Top="620" Width="1.8" Height="1.8" Fill="#FFF4D6" Opacity="0.7" />
+                <!-- 星星是固定像素的平铺画刷，窗口拉伸不改变大小 -->
+                <Rectangle Fill="{StaticResource StarFieldBrush}" IsHitTestVisible="False" />
 
-                        <!-- 月亮：泛黄光 + 月牙造型，不描边 -->
-                        <Ellipse Canvas.Left="950" Canvas.Top="-10" Width="420" Height="420">
-                            <Ellipse.Fill>
-                                <RadialGradientBrush>
-                                    <GradientStop Color="#88FFE9A8" Offset="0" />
-                                    <GradientStop Color="#44FFE9A8" Offset="0.45" />
-                                    <GradientStop Color="#00FFE9A8" Offset="1" />
-                                </RadialGradientBrush>
-                            </Ellipse.Fill>
-                        </Ellipse>
-                        <Path Canvas.Left="1060" Canvas.Top="80" Fill="#F8E9BE">
-                            <Path.Data>
-                                <CombinedGeometry GeometryCombineMode="Exclude">
-                                    <CombinedGeometry.Geometry1>
-                                        <EllipseGeometry Center="100,100" RadiusX="95" RadiusY="95" />
-                                    </CombinedGeometry.Geometry1>
-                                    <CombinedGeometry.Geometry2>
-                                        <EllipseGeometry Center="178,20" RadiusX="92" RadiusY="92" />
-                                    </CombinedGeometry.Geometry2>
-                                </CombinedGeometry>
-                            </Path.Data>
+                <!-- 月亮固定 200px，锚定右上角；月牙 + 黄光，不描边 -->
+                <Canvas Width="360" Height="360" HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Margin="0,0,20,0" IsHitTestVisible="False">
+                    <Ellipse Width="360" Height="360">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush>
+                                <GradientStop Color="#88FFE9A8" Offset="0" />
+                                <GradientStop Color="#44FFE9A8" Offset="0.45" />
+                                <GradientStop Color="#00FFE9A8" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+                    <Path Canvas.Left="80" Canvas.Top="80" Fill="#F8E9BE">
+                        <Path.Data>
+                            <CombinedGeometry GeometryCombineMode="Exclude">
+                                <CombinedGeometry.Geometry1>
+                                    <EllipseGeometry Center="100,100" RadiusX="95" RadiusY="95" />
+                                </CombinedGeometry.Geometry1>
+                                <CombinedGeometry.Geometry2>
+                                    <EllipseGeometry Center="178,20" RadiusX="92" RadiusY="92" />
+                                </CombinedGeometry.Geometry2>
+                            </CombinedGeometry>
+                        </Path.Data>
+                        <Path.RenderTransform>
+                            <RotateTransform Angle="18" CenterX="100" CenterY="100" />
+                        </Path.RenderTransform>
+                    </Path>
+                </Canvas>
+
+                <!-- 暗云同样固定尺寸，从右往左漂 -->
+                <Canvas x:Name="NightClouds" IsHitTestVisible="False">
+                    <Canvas Canvas.Top="90">
+                        <Canvas.RenderTransform>
+                            <TranslateTransform x:Name="NightCloud1Move" X="250" />
+                        </Canvas.RenderTransform>
+                        <Path Data="{StaticResource CloudShape}" Fill="#132C4A" Opacity="0.9">
                             <Path.RenderTransform>
-                                <RotateTransform Angle="18" CenterX="100" CenterY="100" />
+                                <ScaleTransform ScaleX="2.4" ScaleY="2.4" />
                             </Path.RenderTransform>
                         </Path>
-
-                        <!-- 暗云：从右往左漂，压住夜空下缘 -->
-                        <Canvas Canvas.Left="250" Canvas.Top="90">
-                            <Canvas.RenderTransform>
-                                <TranslateTransform x:Name="NightCloud1Move" />
-                            </Canvas.RenderTransform>
-                            <Path Data="{StaticResource CloudShape}" Fill="#132C4A" Opacity="0.9">
-                                <Path.RenderTransform>
-                                    <ScaleTransform ScaleX="2.4" ScaleY="2.4" />
-                                </Path.RenderTransform>
-                            </Path>
-                        </Canvas>
-                        <Canvas Canvas.Left="660" Canvas.Top="150">
-                            <Canvas.RenderTransform>
-                                <TranslateTransform x:Name="NightCloud2Move" />
-                            </Canvas.RenderTransform>
-                            <Path Data="{StaticResource CloudShape}" Fill="#112742" Opacity="0.8">
-                                <Path.RenderTransform>
-                                    <ScaleTransform ScaleX="1.6" ScaleY="1.6" />
-                                </Path.RenderTransform>
-                            </Path>
-                        </Canvas>
-                        <Canvas Canvas.Left="520" Canvas.Top="620">
-                            <Canvas.RenderTransform>
-                                <TranslateTransform x:Name="NightCloud3Move" />
-                            </Canvas.RenderTransform>
-                            <Path Data="{StaticResource CloudShape}" Fill="#0E2138">
-                                <Path.RenderTransform>
-                                    <ScaleTransform ScaleX="2.6" ScaleY="2.6" />
-                                </Path.RenderTransform>
-                            </Path>
-                        </Canvas>
-                        <Canvas Canvas.Left="880" Canvas.Top="330">
-                            <Canvas.RenderTransform>
-                                <TranslateTransform x:Name="NightCloud4Move" />
-                            </Canvas.RenderTransform>
-                            <Path Data="{StaticResource CloudShape}" Fill="#0A1A2E">
-                                <Path.RenderTransform>
-                                    <ScaleTransform ScaleX="1.8" ScaleY="1.8" />
-                                </Path.RenderTransform>
-                            </Path>
-                        </Canvas>
                     </Canvas>
-                </Viewbox>
+                    <Canvas Canvas.Top="150">
+                        <Canvas.RenderTransform>
+                            <TranslateTransform x:Name="NightCloud2Move" X="700" />
+                        </Canvas.RenderTransform>
+                        <Path Data="{StaticResource CloudShape}" Fill="#112742" Opacity="0.8">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="1.6" ScaleY="1.6" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Canvas>
+                    <Canvas Canvas.Top="620">
+                        <Canvas.RenderTransform>
+                            <TranslateTransform x:Name="NightCloud3Move" X="980" />
+                        </Canvas.RenderTransform>
+                        <Path Data="{StaticResource CloudShape}" Fill="#0E2138">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="2.6" ScaleY="2.6" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Canvas>
+                    <Canvas Canvas.Top="330">
+                        <Canvas.RenderTransform>
+                            <TranslateTransform x:Name="NightCloud4Move" X="420" />
+                        </Canvas.RenderTransform>
+                        <Path Data="{StaticResource CloudShape}" Fill="#0A1A2E">
+                            <Path.RenderTransform>
+                                <ScaleTransform ScaleX="1.8" ScaleY="1.8" />
+                            </Path.RenderTransform>
+                        </Path>
+                    </Canvas>
+                </Canvas>
             </Grid>
         </Grid>
 
