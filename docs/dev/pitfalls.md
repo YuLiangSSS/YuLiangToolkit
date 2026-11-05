@@ -478,6 +478,20 @@
   （用户手动 Ctrl+S 才解除暂停）。切走 / 关工具时要把还没到防抖时间的队列 `AutoSavePendingTabs()` 补写掉。
   自检里构造 `TextEditorViewModel` 时注意：关掉会话恢复后构造会先建一个无标题标签，**拿 `Tabs[0]` 会拿到它**，
   文件相关断言要用 `ActiveTab`（否则会走 `SaveTabAs` 弹出另存为对话框，自检直接卡死）。
+- ⚠ **左侧文件树别直接用 `ItemsSource + HierarchicalDataTemplate` 一把梭**：目录大 / 没权限的条目容易
+  拖慢或抛异常，而且想「展开时才读盘」不好控制。这里用 **VM 节点（`FileTreeNode`）+ code-behind 手动构建
+  `TreeViewItem`**：文件夹先放一个「加载中…」占位子项让箭头出现，`Expanded` 时才 `LoadChildren()` 枚举磁盘；
+  `TreeViewItem` 用隐式 Style（`EditorTreeItemStyle`）保证所有层级都是深色主题，不然 WPF 默认浅蓝选中块很突兀。
+- ⚠ **控制台两种 shell 的输出编码不一样**：`cmd.exe` 重定向输出仍按**系统 OEM 代码页**写字节（中文系统 GBK），
+  用 UTF-8 解码会变成 `���Ŀ���̨`；`powershell.exe` 则要在命令前垫
+  `[Console]::OutputEncoding = [Text.Encoding]::UTF8;` 再按 UTF-8 解码。所以 `ConsoleProcessRunner` 按
+  `ConsoleShellKind` 选 `StandardOutputEncoding`（`ConsoleCommandLine.OutputEncodingFor`）。
+  .NET Core 默认没有 GBK 代码页，静态构造里要 `Encoding.RegisterProvider(CodePagesEncodingProvider.Instance)`。
+- ⚠ **控制台一次一条命令 ≠ 终端**：每次 `cmd /c` / `powershell -Command` 都是新进程（没有 ConPTY），
+  `cd` 是自己解析后改 ViewModel 的工作目录（不能指望子进程的 cd 影响下一次）；停止用
+  `Kill(entireProcessTree: true)`，切走 / 关闭工具时要把所有 `Cancellation` 取消，别让编译进程在后台残留。
+  面板显隐 / 高度同样别绑 `RowDefinition`，在 code-behind 里设（先设行高再改分隔条可见性，否则
+  `PaneSplitter` 会把 0 记成「双击复位」默认值）。
 
 ### FFmpeg（音频工具：视频转音频 / 分段合成）
 - ⚠ **本地 m3u8 直接 `-i playlist.m3u8` 会报 “Unsafe script / extension not allowed”**：HLS demuxer 默认只放行白名单扩展名，必须加

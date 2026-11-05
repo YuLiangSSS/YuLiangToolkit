@@ -3,6 +3,8 @@ using System.Windows.Input;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Core.Shell;
 using YuLiangToolkit.Tools.TextEditor.Core;
+using YuLiangToolkit.Tools.TextEditor.Core.Terminal;
+using YuLiangToolkit.Tools.TextEditor.Core.Workspace;
 
 namespace YuLiangToolkit.Tools.TextEditor.ViewModels;
 
@@ -57,6 +59,11 @@ public sealed class TextEditorViewModel : ToolViewModelBase, IFileLaunchTarget
     /// <summary>自动保存正在写盘（防止计时器 / 关工具兜底重入）。</summary>
     private bool _autoSaveBusy;
 
+    private FileTreeNode? _workspaceRoot;
+    private ConsoleTabViewModel? _activeConsole;
+    private int _cmdConsoleSeq;
+    private int _powerShellConsoleSeq;
+
     public TextEditorViewModel() : base(TextEditorConfig.ToolId)
     {
         Cfg = LoadConfig<TextEditorConfig>();
@@ -90,7 +97,18 @@ public sealed class TextEditorViewModel : ToolViewModelBase, IFileLaunchTarget
                         _pendingAutoSave.Add(tab);
                 }
             }
+            else if (e.PropertyName == nameof(TextEditorConfig.ShowWorkspaceSidebar))
+            {
+                OnPropertyChanged(nameof(IsSidebarVisible));
+            }
+            else if (e.PropertyName == nameof(TextEditorConfig.ShowTerminalPanel))
+            {
+                OnPropertyChanged(nameof(IsTerminalVisible));
+            }
         };
+
+        // 控制台标签集合：侧栏/面板的显隐与命令可用性都跟着它走
+        Consoles = new ObservableCollection<ConsoleTabViewModel>();
 
         NewFileCommand = new RelayCommand(_ => NewTab());
         OpenFileCommand = new RelayCommand(_ => OpenFilesByDialog());
@@ -118,7 +136,28 @@ public sealed class TextEditorViewModel : ToolViewModelBase, IFileLaunchTarget
         ShowSettingsCommand = new RelayCommand(_ => IsSettingsVisible = !IsSettingsVisible);
         CloseSettingsCommand = new RelayCommand(_ => IsSettingsVisible = false);
 
+        // 工作区（左侧文件浏览器）
+        OpenFolderCommand = new RelayCommand(_ => OpenFolderByDialog());
+        CloseFolderCommand = new RelayCommand(_ => CloseFolder(), _ => HasWorkspace);
+        RefreshFolderCommand = new RelayCommand(_ => RefreshFolder(), _ => HasWorkspace);
+        ToggleSidebarCommand = new RelayCommand(
+            _ => { if (HasWorkspace) Cfg.ShowWorkspaceSidebar = !Cfg.ShowWorkspaceSidebar; });
+
+        // 底部控制台（CMD / PowerShell 标签页）
+        ToggleTerminalCommand = new RelayCommand(_ => ToggleTerminal());
+        NewCmdConsoleCommand = new RelayCommand(_ => NewConsole(ConsoleShellKind.Cmd));
+        NewPowerShellConsoleCommand = new RelayCommand(_ => NewConsole(ConsoleShellKind.PowerShell));
+        CloseConsoleCommand = new RelayCommand(_ => CloseConsole(ActiveConsole), _ => ActiveConsole is not null);
+        ClearConsoleCommand = new RelayCommand(_ => ActiveConsole?.Clear(), _ => ActiveConsole is not null);
+        StopConsoleCommand = new RelayCommand(_ => StopConsole(), _ => ActiveConsole is { IsRunning: true });
+        RunConsoleCommand = new RelayCommand(_ => _ = RunConsoleAsync(), _ => ActiveConsole is { IsRunning: false });
+
         RestoreSession();
+        RestoreWorkspace();
+
+        // 上次关工具时控制台面板是开着的：恢复时先补一个 CMD 控制台（标签页不持久化）
+        if (Cfg.ShowTerminalPanel && Consoles.Count == 0)
+            NewConsole(ConsoleShellKind.Cmd);
     }
 
     /// <summary>配置（<c>Config\text-editor\config.json</c>）。</summary>
@@ -219,6 +258,295 @@ public sealed class TextEditorViewModel : ToolViewModelBase, IFileLaunchTarget
 
     /// <summary>收起偏好设置面板（面板标题栏的 × / Esc）。</summary>
     public RelayCommand CloseSettingsCommand { get; }
+
+    // ---------------- 工作区（打开文件夹 → 左侧文件浏览器） ----------------
+
+    /// <summary>打开文件夹（弹系统文件夹选择框）。</summary>
+    public RelayCommand OpenFolderCommand { get; }
+
+    /// <summary>关闭当前文件夹（文件浏览器整体收起）。</summary>
+    public RelayCommand CloseFolderCommand { get; }
+
+    /// <summary>重新读一遍文件夹目录树（外部新增 / 删除文件后手动刷新）。</summary>
+    public RelayCommand RefreshFolderCommand { get; }
+
+    /// <summary>Ctrl+B：有文件夹时展开 / 收起左侧文件浏览器。</summary>
+    public RelayCommand ToggleSidebarCommand { get; }
+
+    /// <summary>显示 / 隐藏底部控制台（打开时若没有控制台会建一个 CMD）。</summary>
+    public RelayCommand ToggleTerminalCommand { get; }
+
+    /// <summary>新建一个 CMD 控制台标签页。</summary>
+    public RelayCommand NewCmdConsoleCommand { get; }
+
+    /// <summary>新建一个 PowerShell 控制台标签页。</summary>
+    public RelayCommand NewPowerShellConsoleCommand { get; }
+
+    /// <summary>关闭当前控制台标签页。</summary>
+    public RelayCommand CloseConsoleCommand { get; }
+
+    /// <summary>清空当前控制台输出。</summary>
+    public RelayCommand ClearConsoleCommand { get; }
+
+    /// <summary>停止当前控制台里正在跑的命令。</summary>
+    public RelayCommand StopConsoleCommand { get; }
+
+    /// <summary>运行输入框里的命令（回车 / 点「运行」都会走它）。</summary>
+    public RelayCommand RunConsoleCommand { get; }
+
+    /// <summary>文件浏览器的根节点（<c>null</c> = 没打开文件夹，整栏不显示）。</summary>
+    public FileTreeNode? WorkspaceRoot
+    {
+        get => _workspaceRoot;
+        private set
+        {
+            if (!Set(ref _workspaceRoot, value)) return;
+            OnPropertyChanged(nameof(HasWorkspace));
+            OnPropertyChanged(nameof(WorkspaceName));
+            OnPropertyChanged(nameof(IsSidebarVisible));
+            RefreshCommandState();
+        }
+    }
+
+    /// <summary>是否打开了文件夹。</summary>
+    public bool HasWorkspace => _workspaceRoot is not null;
+
+    /// <summary>文件夹显示名（根节点名字；没打开时为空）。</summary>
+    public string WorkspaceName => _workspaceRoot?.Name ?? "";
+
+    /// <summary>左侧文件浏览器当前是否显示：有文件夹且用户没把它收起来。</summary>
+    public bool IsSidebarVisible => HasWorkspace && Cfg.ShowWorkspaceSidebar;
+
+    /// <summary>弹系统文件夹选择框并打开。</summary>
+    internal void OpenFolderByDialog()
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "打开文件夹（作为编辑器工作区）",
+            Multiselect = false,
+        };
+        if (dialog.ShowDialog() == true) OpenFolder(dialog.FolderName);
+    }
+
+    /// <summary>打开一个文件夹作为工作区（会记进配置，下次打开工具自动恢复）；失败只写状态栏。</summary>
+    internal bool OpenFolder(string? path)
+    {
+        var root = WorkspaceTree.TryCreateRoot(path);
+        if (root is null)
+        {
+            StatusText = "打开文件夹失败：目录不存在或没有权限";
+            return false;
+        }
+
+        WorkspaceRoot = root;
+        Cfg.LastFolder = root.FullPath;
+        Cfg.ShowWorkspaceSidebar = true;
+        StatusText = $"已打开文件夹：{root.Name}";
+        Log($"打开文件夹：{root.FullPath}");
+        return true;
+    }
+
+    /// <summary>关闭工作区文件夹（文件浏览器消失；已经打开的标签不受影响）。</summary>
+    internal void CloseFolder()
+    {
+        if (!HasWorkspace) return;
+        WorkspaceRoot = null;
+        Cfg.LastFolder = "";
+        StatusText = "已关闭文件夹";
+    }
+
+    /// <summary>刷新文件浏览器（重新建根节点，展开状态会重置）。</summary>
+    internal void RefreshFolder()
+    {
+        var path = _workspaceRoot?.FullPath ?? Cfg.LastFolder;
+        if (string.IsNullOrWhiteSpace(path)) return;
+
+        var root = WorkspaceTree.TryCreateRoot(path);
+        if (root is null)
+        {
+            StatusText = "刷新失败：文件夹可能已被删除 / 移到别处";
+            return;
+        }
+        WorkspaceRoot = root;
+        StatusText = "已刷新文件浏览器";
+    }
+
+    /// <summary>启动时恢复上次打开的文件夹（文件夹已不存在就静默清掉记录）。</summary>
+    private void RestoreWorkspace()
+    {
+        if (string.IsNullOrWhiteSpace(Cfg.LastFolder)) return;
+
+        var root = WorkspaceTree.TryCreateRoot(Cfg.LastFolder);
+        if (root is null)
+        {
+            Cfg.LastFolder = "";
+            return;
+        }
+        WorkspaceRoot = root;
+    }
+
+    /// <summary>新控制台默认工作目录：有工作区用工作区，否则用当前用户目录。</summary>
+    public string DefaultConsoleDirectory
+        => HasWorkspace ? WorkspaceRoot!.FullPath : ConsoleCommandLine.NormalizeWorkingDirectory(null);
+
+    // ---------------- 底部控制台（CMD / PowerShell 标签页） ----------------
+
+    /// <summary>打开着的控制台标签页（顺序即右侧标签列表顺序）。</summary>
+    public ObservableCollection<ConsoleTabViewModel> Consoles { get; }
+
+    /// <summary>当前激活的控制台。</summary>
+    public ConsoleTabViewModel? ActiveConsole
+    {
+        get => _activeConsole;
+        set
+        {
+            if (!Set(ref _activeConsole, value)) return;
+            OnPropertyChanged(nameof(HasConsoles));
+            RefreshCommandState();
+        }
+    }
+
+    /// <summary>是否有控制台标签页。</summary>
+    public bool HasConsoles => Consoles.Count > 0;
+
+    /// <summary>底部控制台面板当前是否显示。</summary>
+    public bool IsTerminalVisible => Cfg.ShowTerminalPanel;
+
+    /// <summary>「终端」菜单 / 工具栏：显示或隐藏底部控制台（打开时若没有控制台就建一个 CMD）。</summary>
+    internal void ToggleTerminal()
+    {
+        if (Cfg.ShowTerminalPanel)
+        {
+            Cfg.ShowTerminalPanel = false;
+            return;
+        }
+
+        Cfg.ShowTerminalPanel = true;
+        if (Consoles.Count == 0) NewConsole(ConsoleShellKind.Cmd);
+    }
+
+    /// <summary>新建一个控制台标签页并激活（默认面板会展开）。</summary>
+    internal ConsoleTabViewModel NewConsole(ConsoleShellKind kind, string? workingDirectory = null)
+    {
+        var index = kind == ConsoleShellKind.Cmd ? ++_cmdConsoleSeq : ++_powerShellConsoleSeq;
+        var console = new ConsoleTabViewModel(kind, index, workingDirectory ?? DefaultConsoleDirectory);
+
+        Consoles.Add(console);
+        OnPropertyChanged(nameof(HasConsoles));
+        ActiveConsole = console;
+        Cfg.ShowTerminalPanel = true;
+        RefreshCommandState();
+        StatusText = $"已新建 {console.Title} 控制台（工作目录 {console.WorkingDirectory}）";
+        return console;
+    }
+
+    /// <summary>关闭一个控制台标签页（正在跑的命令先停掉；关到 0 个时面板自动收起）。</summary>
+    internal void CloseConsole(ConsoleTabViewModel? console)
+    {
+        if (console is null) return;
+        var index = Consoles.IndexOf(console);
+        if (index < 0) return;
+
+        try { console.Cancellation?.Cancel(); } catch { /* 已经结束 */ }
+        Consoles.RemoveAt(index);
+        OnPropertyChanged(nameof(HasConsoles));
+
+        if (Consoles.Count == 0)
+        {
+            ActiveConsole = null;
+            Cfg.ShowTerminalPanel = false;
+            StatusText = "已关闭最后一个控制台";
+        }
+        else
+        {
+            ActiveConsole = Consoles[Math.Clamp(index, 0, Consoles.Count - 1)];
+        }
+        RefreshCommandState();
+    }
+
+    /// <summary>停止激活控制台正在跑的命令（杀进程树）。</summary>
+    internal void StopConsole()
+    {
+        try { ActiveConsole?.Cancellation?.Cancel(); } catch { /* 忽略 */ }
+    }
+
+    /// <summary>
+    /// 在激活控制台里执行一条命令（参数为空时取输入框里的内容）。
+    /// <c>cls</c>/<c>clear</c> 清屏、<c>cd</c> 直接换工作目录（不启动进程），其它交给 CMD / PowerShell 跑。
+    /// </summary>
+    internal async Task RunConsoleAsync(string? command = null)
+    {
+        var console = ActiveConsole;
+        if (console is null) return;
+
+        var trimmed = (command ?? console.Input).Trim();
+        if (trimmed.Length == 0) return;
+        if (console.IsRunning)
+        {
+            StatusText = "控制台还有命令在跑，先点「停止」或等它结束";
+            return;
+        }
+
+        if (ConsoleCommandLine.IsClearCommand(trimmed))
+        {
+            console.Clear();
+            console.Input = "";
+            console.ResetHistoryCursor();
+            return;
+        }
+
+        console.RecordHistory(trimmed);
+        console.Append($"{console.Prompt} {trimmed}{Environment.NewLine}");
+        console.Input = "";
+        console.ResetHistoryCursor();
+
+        if (ConsoleCommandLine.TryResolveChangeDirectory(trimmed, console.WorkingDirectory, out var directory))
+        {
+            console.WorkingDirectory = directory;
+            console.Append($"{console.Prompt}{Environment.NewLine}");
+            StatusText = $"控制台工作目录：{directory}";
+            return;
+        }
+
+        var cancellation = new CancellationTokenSource();
+        console.Cancellation = cancellation;
+        console.IsRunning = true;
+        RefreshCommandState();
+
+        try
+        {
+            var exitCode = await ConsoleProcessRunner.RunAsync(
+                console.Kind,
+                trimmed,
+                console.WorkingDirectory,
+                line => Ui(() => console.Append(line + Environment.NewLine)),
+                cancellation.Token);
+
+            if (cancellation.IsCancellationRequested)
+            {
+                console.Append($"[已停止]{Environment.NewLine}");
+                StatusText = "控制台命令已停止";
+            }
+            else
+            {
+                console.Append($"[退出码 {exitCode}]{Environment.NewLine}");
+                StatusText = $"控制台命令结束（退出码 {exitCode}）";
+            }
+        }
+        catch (Exception ex)
+        {
+            console.Append($"[启动失败] {ex.Message}{Environment.NewLine}");
+            StatusText = "控制台命令启动失败：" + ex.Message;
+            Log($"控制台命令失败：{trimmed} → {ex.Message}");
+        }
+        finally
+        {
+            console.IsRunning = false;
+            console.Cancellation = null;
+            cancellation.Dispose();
+            RefreshCommandState();
+        }
+    }
 
     // ---------------- 文件操作（View / 自检可调） ----------------
 
@@ -642,6 +970,13 @@ public sealed class TextEditorViewModel : ToolViewModelBase, IFileLaunchTarget
     {
         // 切走 / 退出前把「还没到防抖时间」的自动保存队列补写掉，避免改动只留在内存里
         if (Cfg.AutoSave) AutoSavePendingTabs();
+
+        // 正在跑的控制台命令先停掉（工具视图可能被缓存，但进程不该在后台继续跑）
+        foreach (var console in Consoles)
+        {
+            try { console.Cancellation?.Cancel(); }
+            catch { /* 忽略 */ }
+        }
 
         SaveSession();
         Cfg.SaveNow();   // OnClosed 在 NotifyClosed 的 Flush 之后才调，必须自己补一次落盘

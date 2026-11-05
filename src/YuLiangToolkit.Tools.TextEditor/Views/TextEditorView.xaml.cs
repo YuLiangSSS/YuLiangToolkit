@@ -11,6 +11,8 @@ using ICSharpCode.AvalonEdit.Indentation;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Tools.TextEditor.Core;
 using YuLiangToolkit.Tools.TextEditor.Core.Markdown;
+using YuLiangToolkit.Tools.TextEditor.Core.Terminal;
+using YuLiangToolkit.Tools.TextEditor.Core.Workspace;
 using YuLiangToolkit.Tools.TextEditor.Rendering;
 using YuLiangToolkit.Tools.TextEditor.ViewModels;
 
@@ -57,12 +59,31 @@ public partial class TextEditorView : UserControl, IEditorHost
     /// <summary>预览高度 / 分隔条的布局记忆键。</summary>
     private static readonly string PreviewPaneKey = TextEditorConfig.ToolId + ".Markdown预览与编辑区";
 
+    /// <summary>左侧文件浏览器宽度的默认 / 最小 / 最大像素（拖过的宽度由 PaneSplitter 记在 Config\layout.json）。</summary>
+    private const double SidebarDefaultWidth = 260;
+    private const double SidebarMinWidth = 180;
+    private const double SidebarMaxWidth = 520;
+
+    /// <summary>文件浏览器列宽的布局记忆键。</summary>
+    private static readonly string SidebarPaneKey = TextEditorConfig.ToolId + ".文件浏览器与编辑区";
+
+    /// <summary>底部控制台面板高度的默认 / 最小 / 最大像素。</summary>
+    private const double TerminalDefaultHeight = 300;
+    private const double TerminalMinHeight = 140;
+    private const double TerminalMaxHeight = 700;
+
+    /// <summary>控制台面板高度的布局记忆键。</summary>
+    private static readonly string TerminalPaneKey = TextEditorConfig.ToolId + ".控制台与编辑区";
+
     private Window? _hostWindow;
     private bool _vmWired;
     private DispatcherTimer? _previewTimer;
     private DispatcherTimer? _autoSaveTimer;
     private string? _lastPreviewText;
     private string? _lastPreviewStyleKey;
+
+    /// <summary>当前已经建到 TreeView 里的工作区根（换了文件夹 / 刷新后要重建）。</summary>
+    private FileTreeNode? _treeRoot;
 
     public TextEditorView()
     {
@@ -109,6 +130,8 @@ public partial class TextEditorView : UserControl, IEditorHost
         ApplySettingsToAllEditors();
         ApplySettingsColumnWidth(vm.IsSettingsVisible);
         UpdatePreviewVisibility();
+        UpdateSidebarVisibility();
+        UpdateTerminalVisibility();
         ApplyScreenshotHooks();
 
         // 布局完成后把焦点交回编辑器（切到这个工具就能直接打字）
@@ -117,7 +140,9 @@ public partial class TextEditorView : UserControl, IEditorHost
 
     /// <summary>
     /// 截图 / 调试钩子（只影响本次运行，不写配置）：
-    /// <c>YLT_EDITOR_SETTINGS=1</c> 展开偏好设置面板；<c>YLT_EDITOR_FIND=文字</c> 展开查找条并填入内容。
+    /// <c>YLT_EDITOR_SETTINGS=1</c> 展开偏好设置面板；<c>YLT_EDITOR_FIND=文字</c> 展开查找条并填入内容；
+    /// <c>YLT_EDITOR_FOLDER=路径</c> 直接打开文件夹；<c>YLT_EDITOR_TERMINAL=cmd|powershell</c> 打开控制台；
+    /// <c>YLT_EDITOR_TERMINAL_CMD=命令</c> 打开控制台后自动执行一条命令（截图验收用）。
     /// </summary>
     private void ApplyScreenshotHooks()
     {
@@ -131,6 +156,22 @@ public partial class TextEditorView : UserControl, IEditorHost
         {
             FindBox.Text = find;
             ShowFindBarInternal(false);
+        }
+
+        var folder = Environment.GetEnvironmentVariable("YLT_EDITOR_FOLDER");
+        if (!string.IsNullOrWhiteSpace(folder)) Vm.OpenFolder(folder);
+
+        var terminal = Environment.GetEnvironmentVariable("YLT_EDITOR_TERMINAL");
+        if (string.Equals(terminal, "powershell", StringComparison.OrdinalIgnoreCase))
+            Vm.NewConsole(ConsoleShellKind.PowerShell);
+        else if (string.Equals(terminal, "cmd", StringComparison.OrdinalIgnoreCase))
+            Vm.NewConsole(ConsoleShellKind.Cmd);
+
+        var autoCommand = Environment.GetEnvironmentVariable("YLT_EDITOR_TERMINAL_CMD");
+        if (!string.IsNullOrWhiteSpace(autoCommand))
+        {
+            if (Vm.ActiveConsole is null) Vm.NewConsole(ConsoleShellKind.Cmd);
+            _ = Vm.RunConsoleAsync(autoCommand);
         }
     }
 
@@ -188,6 +229,20 @@ public partial class TextEditorView : UserControl, IEditorHost
                     // 收起时顺手把焦点交回编辑器，免得用 Esc 关面板后按键落到已经藏起来的控件上
                     ApplySettingsColumnWidth(vm.IsSettingsVisible);
                     if (!vm.IsSettingsVisible && !FindBarOpen) ActiveEditor?.Focus();
+                    break;
+                case nameof(TextEditorViewModel.WorkspaceRoot):
+                    RebuildWorkspaceTree();
+                    UpdateSidebarVisibility();
+                    break;
+                case nameof(TextEditorViewModel.IsSidebarVisible):
+                    UpdateSidebarVisibility();
+                    break;
+                case nameof(TextEditorViewModel.IsTerminalVisible):
+                    UpdateTerminalVisibility();
+                    break;
+                case nameof(TextEditorViewModel.ActiveConsole):
+                    UpdateTerminalVisibility();
+                    ScrollConsoleToEnd();
                     break;
             }
         };
@@ -588,6 +643,11 @@ public partial class TextEditorView : UserControl, IEditorHost
         {
             case (Key.N, true, false): vm.NewFileCommand.Execute(null); e.Handled = true; break;
             case (Key.O, true, false): vm.OpenFileCommand.Execute(null); e.Handled = true; break;
+            case (Key.O, true, true): vm.OpenFolderCommand.Execute(null); e.Handled = true; break;
+            case (Key.B, true, false):
+                if (vm.HasWorkspace) vm.ToggleSidebarCommand.Execute(null);
+                e.Handled = true; break;
+            case (Key.OemTilde, true, _): vm.ToggleTerminalCommand.Execute(null); e.Handled = true; break;
             case (Key.S, true, false): vm.SaveCommand.Execute(null); e.Handled = true; break;
             case (Key.S, true, true): vm.SaveAsCommand.Execute(null); e.Handled = true; break;
             case (Key.W, true, _): vm.CloseTabCommand.Execute(null); e.Handled = true; break;
@@ -940,6 +1000,221 @@ public partial class TextEditorView : UserControl, IEditorHost
             Cfg.BackgroundHex = preset.Background;
             Cfg.ForegroundHex = preset.Foreground;
         }
+    }
+
+    // ---------- 左侧文件浏览器（打开文件夹才出现） ----------
+
+    private void UpdateSidebarVisibility()
+    {
+        var vm = Vm;
+        var visible = vm?.IsSidebarVisible == true;
+        if (!visible)
+        {
+            SidebarColumn.MinWidth = 0;
+            SidebarColumn.Width = new GridLength(0);
+            WorkspacePanel.Visibility = Visibility.Collapsed;
+            SidebarSplitter.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        SidebarColumn.MinWidth = SidebarMinWidth;
+        var saved = LayoutMemory.GetPixel(SidebarPaneKey + ".px");
+        var width = saved is { } pixel
+            ? Math.Clamp(pixel, SidebarMinWidth, SidebarMaxWidth)
+            : SidebarDefaultWidth;
+        SidebarColumn.Width = new GridLength(width);
+        WorkspacePanel.Visibility = Visibility.Visible;
+        SidebarSplitter.Visibility = Visibility.Visible;
+
+        if (!ReferenceEquals(_treeRoot, vm!.WorkspaceRoot)) RebuildWorkspaceTree();
+    }
+
+    /// <summary>按工作区根节点重建 TreeView（只建第一层，子文件夹展开时才枚举）。</summary>
+    private void RebuildWorkspaceTree()
+    {
+        var vm = Vm;
+        _treeRoot = vm?.WorkspaceRoot;
+        WorkspaceFileTree.Items.Clear();
+        if (vm?.WorkspaceRoot is not { } root) return;
+
+        root.LoadChildren();
+        foreach (var child in root.Children)
+            WorkspaceFileTree.Items.Add(CreateTreeItem(child));
+    }
+
+    /// <summary>把一个文件节点变成 TreeViewItem（文件夹带「加载中…」占位子项，展开时真正读盘）。</summary>
+    private TreeViewItem CreateTreeItem(FileTreeNode node)
+    {
+        var item = new TreeViewItem
+        {
+            Header = BuildTreeHeader(node),
+            DataContext = node,
+            ToolTip = node.FullPath,
+            Padding = new Thickness(0),
+        };
+
+        if (node.IsDirectory)
+        {
+            item.Items.Add(new TreeViewItem { Header = "加载中…", IsEnabled = false });
+            item.Expanded += OnWorkspaceTreeItemExpanded;
+        }
+        return item;
+    }
+
+    private static FrameworkElement BuildTreeHeader(FileTreeNode node)
+    {
+        var panel = new StackPanel { Orientation = Orientation.Horizontal };
+
+        var icon = new TextBlock
+        {
+            Text = node.Glyph,
+            FontFamily = new FontFamily("Segoe Fluent Icons, Segoe MDL2 Assets"),
+            FontSize = 12,
+            Margin = new Thickness(0, 0, 6, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        icon.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+
+        var label = new TextBlock
+        {
+            Text = node.Name,
+            FontSize = 12.5,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        label.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimaryBrush");
+
+        panel.Children.Add(icon);
+        panel.Children.Add(label);
+        return panel;
+    }
+
+    private void OnWorkspaceTreeItemExpanded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not TreeViewItem item || item.DataContext is not FileTreeNode node || !node.IsDirectory) return;
+        node.IsExpanded = true;
+        if (node.IsLoaded) return;
+
+        item.Items.Clear();
+        node.LoadChildren();
+        foreach (var child in node.Children)
+            item.Items.Add(CreateTreeItem(child));
+    }
+
+    private void OnWorkspaceTreeDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        var item = FindAncestor<TreeViewItem>(e.OriginalSource as DependencyObject);
+        if (item?.DataContext is not FileTreeNode node || node.IsPlaceholder) return;
+
+        if (node.IsDirectory)
+        {
+            item.IsExpanded = !item.IsExpanded;
+            e.Handled = true;
+            return;
+        }
+
+        Vm?.OpenPath(node.FullPath);
+        e.Handled = true;
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? node) where T : DependencyObject
+    {
+        while (node is not null)
+        {
+            if (node is T match) return match;
+            node = node is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(node)
+                : LogicalTreeHelper.GetParent(node);
+        }
+        return null;
+    }
+
+    // ---------- 底部控制台（CMD / PowerShell 标签页） ----------
+
+    private static double LoadTerminalHeight()
+    {
+        var saved = LayoutMemory.GetPixel(TerminalPaneKey + ".px");
+        return saved is { } pixel
+            ? Math.Clamp(pixel, TerminalMinHeight, TerminalMaxHeight)
+            : TerminalDefaultHeight;
+    }
+
+    private void UpdateTerminalVisibility()
+    {
+        var vm = Vm;
+        var visible = vm?.IsTerminalVisible == true;
+        if (!visible)
+        {
+            TerminalRow.MinHeight = 0;
+            TerminalRow.MaxHeight = double.PositiveInfinity;
+            TerminalRow.Height = new GridLength(0);
+            TerminalPanel.Visibility = Visibility.Collapsed;
+            TerminalSplitter.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        TerminalRow.MinHeight = TerminalMinHeight;
+        TerminalRow.MaxHeight = TerminalMaxHeight;
+        TerminalRow.Height = new GridLength(LoadTerminalHeight());
+        TerminalPanel.Visibility = Visibility.Visible;
+        TerminalSplitter.Visibility = Visibility.Visible;
+
+        if (vm?.ActiveConsole is not null)
+        {
+            ConsoleTabList.ScrollIntoView(vm.ActiveConsole);
+            Dispatcher.BeginInvoke(() =>
+            {
+                ConsoleInput.Focus();
+                ScrollConsoleToEnd();
+            }, DispatcherPriority.Background);
+        }
+    }
+
+    private void ScrollConsoleToEnd()
+    {
+        if (!ConsoleOutput.IsLoaded) return;
+        ConsoleOutput.ScrollToEnd();
+    }
+
+    private void OnConsoleOutputTextChanged(object sender, TextChangedEventArgs e) => ScrollConsoleToEnd();
+
+    private void OnConsoleInputKeyDown(object sender, KeyEventArgs e)
+    {
+        var vm = Vm;
+        var console = vm?.ActiveConsole;
+        if (console is null) return;
+
+        if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            _ = vm!.RunConsoleAsync(console.Input);
+            return;
+        }
+
+        if (e.Key is Key.Up or Key.Down)
+        {
+            var text = console.MoveHistory(e.Key == Key.Up ? -1 : 1);
+            if (text is not null)
+            {
+                console.Input = text;
+                ConsoleInput.CaretIndex = ConsoleInput.Text.Length;
+                e.Handled = true;
+            }
+            return;
+        }
+
+        if (e.Key == Key.L && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            console.Clear();
+            e.Handled = true;
+        }
+    }
+
+    private void OnConsoleTabCloseClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is ConsoleTabViewModel console)
+            Vm?.CloseConsole(console);
+        e.Handled = true;
     }
 
     // ---------- IEditorHost（给 ViewModel 的编辑区操作，都作用在激活编辑器上） ----------

@@ -26,14 +26,19 @@
    `Ctrl+Shift+S` 另存为、菜单「全部保存」一次保存所有改过的标签。
 6. **查看 / 设置**：`Ctrl+=` / `Ctrl+-` / `Ctrl+0` 缩放，`Ctrl+滚轮` 也行；`Ctrl+Shift+M` 开关 Markdown 预览；
    字体 / 颜色等在「偏好设置」面板里调。
+7. **打开文件夹**（`Ctrl+Shift+O`）：左边出现跟 Zed 一样的**文件浏览器**，双击文件在编辑器里打开；
+   没打开文件夹时左侧这栏**不会出现**，`Ctrl+B` 可以展开 / 收起。
+8. **控制台**（`Ctrl+`` 或菜单「终端」）：底部出现 **CMD / PowerShell 标签页**，左边是输出和输入行、
+   右边是控制台列表；工具栏上也有 **>_** 按钮可以随时开关。
 
 ## 菜单与快捷键
 
 | 菜单 | 项目 | 说明 |
 | --- | --- | --- |
-| 文件 | 新建 `Ctrl+N` / 打开… `Ctrl+O` / 打开最近 / 保存 `Ctrl+S` / 另存为… `Ctrl+Shift+S` / 全部保存 / 关闭标签 `Ctrl+W` / 关闭全部 | 「打开最近」是子菜单（最多 10 条）；「打开…」可多选；「全部保存」只保存有改动的标签 |
+| 文件 | 新建 `Ctrl+N` / 打开… `Ctrl+O` / 打开最近 / **打开文件夹… `Ctrl+Shift+O`** / **关闭文件夹** / **刷新文件浏览器** / 保存 `Ctrl+S` / 另存为… `Ctrl+Shift+S` / 全部保存 / 关闭标签 `Ctrl+W` / 关闭全部 | 「打开最近」是子菜单（最多 10 条）；「打开…」可多选；「全部保存」只保存有改动的标签 |
 | 编辑 | 撤销 `Ctrl+Z` / 重做 `Ctrl+Y` / 剪切 `Ctrl+X` / 复制 `Ctrl+C` / 粘贴 `Ctrl+V` / 全选 `Ctrl+A` / 查找 `Ctrl+F` / 替换 `Ctrl+H` | 撤销 / 重做是否可用跟着当前标签的撤销栈走；这些命令都只作用于激活标签的编辑器 |
-| 查看 | 放大 `Ctrl+=` / 缩小 `Ctrl+-` / 重置缩放 `Ctrl+0` / 行号 ✓ / 自动换行 ✓ / Markdown 预览 `Ctrl+Shift+M` | 缩放只改编辑区文字大小（25%~400%，一步 10%）；「行号 / 自动换行 / Markdown 预览」打勾即生效并写进配置 |
+| 查看 | 放大 `Ctrl+=` / 缩小 `Ctrl+-` / 重置缩放 `Ctrl+0` / 行号 ✓ / 自动换行 ✓ / **文件浏览器 `Ctrl+B`** / **显示 / 隐藏控制台 `Ctrl+``** / Markdown 预览 `Ctrl+Shift+M` | 缩放只改编辑区文字大小（25%~400%，一步 10%）；「行号 / 自动换行 / Markdown 预览」打勾即生效并写进配置；文件浏览器只在打开文件夹后可用 |
+| 终端 | 显示 / 隐藏控制台 `Ctrl+`` / 新建 CMD 控制台 / 新建 PowerShell 控制台 / 清空当前控制台 / 停止当前命令 / 关闭当前控制台 | 控制台按标签页管理，可以同时开多个 CMD / PowerShell |
 | 偏好设置 | 打开偏好设置面板 / 重置缩放为 100% | 字体 / 字号 / 行距 / 缩放 / 颜色 / 行号 / 换行 / 缩进都在面板里 |
 
 ## 多标签
@@ -44,6 +49,27 @@
 - 关到 0 个标签会立刻补一个无标题标签，不会出现空窗口。
 - **会话恢复**：打开工具时恢复上次的标签和选中项（设置里的 `RememberSession` 可关）。
   **只恢复有文件路径的标签**，无标题草稿不记（关程序前记得先存）；文件已经被删 / 移走的会跳过。
+
+## 打开文件夹（左侧文件浏览器）
+
+- 菜单「文件 → 打开文件夹…」（`Ctrl+Shift+O`）选一个文件夹，左侧出现文件浏览器（跟 Zed 的工作区侧栏一样）；
+  **没打开文件夹时这一栏不会占位置**，打开过之后会记住，下次进工具自动恢复（文件夹被删就自动清掉记录）。
+- 目录树：文件夹在前、文件在后，按名字排序；**文件夹展开时才读盘**（大目录不卡）；
+  右上角 ↻ 重新读一遍（外部新建 / 删除文件后手动刷新），× 关闭文件夹。
+- 双击文件在编辑器里打开；`Ctrl+B` 展开 / 收起侧栏；侧栏宽度可拖分隔条，双击缝隙恢复默认。
+- 新开控制台的默认工作目录就是当前文件夹（没打开文件夹时是用户目录）。
+
+## 控制台（CMD / PowerShell）
+
+- 菜单「终端」、工具栏 **>_** 按钮或 `Ctrl+`` 打开底部控制台；面板**左边是输出 + 输入行，右边是控制台标签列表**，
+  点列表切换、× 关闭；`+ CMD` / `+ PS` 新建（「终端」菜单里也有）。
+- 输入命令回车执行，`↑` / `↓` 翻命令历史，`Ctrl+L` 清屏；`cd` / `cd ..` / `cd "带 空格"` 直接换工作目录
+  （提示词和工作目录跟着变）；运行中可以点「停止」杀整个进程树。
+- 实现上是「一次执行一条命令」（`cmd /c` / `powershell -Command`）而不是终端模拟器：编译、git、跑脚本够用；
+  `vim`、交互式 REPL 这类需要真终端的程序请用系统终端。
+- 输出编码：CMD 按系统 OEM 代码页解码（中文系统 GBK 不乱码），PowerShell 会先把 Console 输出编码设成 UTF-8。
+- 控制台标签页不持久化（重启后按 `ShowTerminalPanel` 决定面板开不开，开的话补一个 CMD）；
+  切走 / 关闭工具时正在跑的命令会被停掉，不会留在后台。
 
 ## 自动保存（默认开）
 
@@ -104,6 +130,9 @@
 | `SessionFiles` | `[]` | 上次打开着的标签（只记有文件路径的，会话恢复用） |
 | `SessionActiveIndex` | `0` | 上次激活的标签序号（越界自动夹回） |
 | `RememberSession` | `true` | 是否恢复上次的标签会话 |
+| `LastFolder` | 空 | 上次打开的工作区文件夹（重启恢复；文件夹不存在自动清空） |
+| `ShowWorkspaceSidebar` | `true` | 有文件夹时左侧文件浏览器是否展开（Ctrl+B） |
+| `ShowTerminalPanel` | `false` | 底部控制台面板是否展开（Ctrl+`；打开过就记住） |
 
 ## 编码与换行
 
@@ -205,6 +234,8 @@
   撑高元素实现，只会作用于折行后的最后一段；写代码时默认关自动换行，一般不受影响。
 - 单文件 32MB 上限，超大日志 / 数据文件请用别的方式看。
 - 查找替换是纯文本匹配，不支持正则。
+- **控制台不是完整终端**：一次执行一条命令（无 ConPTY），不支持 `vim` / 交互式 REPL / 全屏 TUI 程序；
+  每次命令都是新进程，`set`、`$env:X=...` 这类只影响当前命令的环境改动不会留到下一次。
 
 ## 实现位置
 
@@ -222,7 +253,11 @@
 | 最近文件 / 会话路径清洗 | `src/YuLiangToolkit.Tools.TextEditor/Core/RecentFileList.cs` |
 | 单个标签的状态（路径 / 脏标记 / 编码 / 换行） | `src/YuLiangToolkit.Tools.TextEditor/ViewModels/EditorTab.cs` |
 | ViewModel（标签 / 文件与编辑命令 / 缩放 / 会话恢复） | `src/YuLiangToolkit.Tools.TextEditor/ViewModels/TextEditorViewModel.cs` |
-| 界面（菜单 / 标签条 / 查找条 / 设置面板 / Markdown 预览 / 快捷键） | `src/YuLiangToolkit.Tools.TextEditor/Views/TextEditorView.xaml(.cs)` |
+| 界面（菜单 / 标签条 / 查找条 / 设置面板 / Markdown 预览 / 文件浏览器 / 控制台 / 快捷键） | `src/YuLiangToolkit.Tools.TextEditor/Views/TextEditorView.xaml(.cs)` |
+| 工作区文件树（懒加载目录枚举 + 排序） | `src/YuLiangToolkit.Tools.TextEditor/Core/Workspace/FileTreeNode.cs` |
+| 控制台命令行规则（exe / 参数 / 编码 / cd / 清屏） | `src/YuLiangToolkit.Tools.TextEditor/Core/Terminal/ConsoleCommandLine.cs` |
+| 控制台进程执行（流式回收输出 / 取消杀进程树） | `src/YuLiangToolkit.Tools.TextEditor/Core/Terminal/ConsoleProcessRunner.cs` |
+| 控制台标签页 ViewModel（输出缓冲 / 历史 / 工作目录） | `src/YuLiangToolkit.Tools.TextEditor/ViewModels/ConsoleTabViewModel.cs` |
 
 > 菜单模板、标签条横向滚动、宿主快捷键重挂、会话落盘顺序、高亮注册 / Markdown 预览这些坑：
 > [docs/dev/pitfalls.md](../dev/pitfalls.md) 的「文本编辑器（AvalonEdit）」小节。

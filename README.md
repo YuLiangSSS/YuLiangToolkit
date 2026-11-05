@@ -33,7 +33,7 @@
 | [**💬 联机聊天室**](docs/tools/chat-room.md) | 主机开端口、客户端连进来，文字 / 图片 / 文件随便传，带单次流量上限；房间内还能开**群语音 / 群视频通话**（最多 8 人，媒体复用同一个端口，不计入文件流量上限），也能**按住说话发语音消息**（自动转 MP3、气泡显示秒数、**可拖进度条反复听**、计入文件流量上限） |
 | [**🌐 网页浏览器**](docs/tools/browser.md) | Chromium 内核（WebView2）**多标签浏览器**：**上方 / 左侧两种标签栏**一键切换（+ 新建 / 中键关标签 / **会话恢复（只恢复标签、点开才加载）**），地址栏输入网址 / 搜索词（默认 Google），**前进 / 后退 / 刷新 / 主页**按钮，**网页里右键也能刷新**；工具条 **⚙ 齿轮**里还有**历史记录 / 下载侧栏、页面缩放（Ctrl+滚轮）、默认主页设置、清空浏览记录**；**右键图片可「图片另存为…」/ 复制图片**；**☆ 收藏 / 书签侧栏**；**🧲 资源嗅探（图片 / 音频 / 视频）**；`target=_blank` 在新标签页打开 |
 | [**🏷️ 批量重命名**](docs/tools/batch-rename.md) | 规则清单 + 实时预览 + 两阶段改名 + 可撤销 |
-| [**📝 文本编辑器**](docs/tools/text-editor.md) | 轻量代码 / 文本编辑器（AvalonEdit 内核）：**26 种语言 / 格式的语法高亮**（C / C++ / C# / Java / Python / Go / Rust / Ruby / F# / Kotlin / PHP / JS / TypeScript / Vue / HTML / CSS / JSON / XML / YAML / INI / Batch / PowerShell / Lua / SQL / Dockerfile / Markdown…）、**多标签**、**Markdown 实际效果预览**（标题 / 表格 / 列表 / 代码块 / 本地图片真渲染）、**行号 + VS 深色配色**、**查找 / 替换**（区分大小写 / 全部替换可一步撤销）、**界面缩放 25% ~ 400%**、**偏好设置**调字体 / 字号 / **行距** / 背景颜色 / 自动换行 / 缩进；**自动识别编码（GBK 文件不乱码）**并保持原换行风格，**自动保存（默认开）** + 最近文件 + 会话恢复 |
+| [**📝 文本编辑器**](docs/tools/text-editor.md) | 轻量代码 / 文本编辑器（AvalonEdit 内核）：**26 种语言 / 格式的语法高亮**（C / C++ / C# / Java / Python / Go / Rust / Ruby / F# / Kotlin / PHP / JS / TypeScript / Vue / HTML / CSS / JSON / XML / YAML / INI / Batch / PowerShell / Lua / SQL / Dockerfile / Markdown…）、**打开文件夹（Zed 风格左侧文件浏览器，可收起）**、**内置 CMD / PowerShell 控制台（底部标签页，左输出右标签列表）**、**多标签**、**Markdown 实际效果预览**、**行号 + VS 深色配色**、**查找 / 替换**、**界面缩放 25% ~ 400%**、**偏好设置**调字体 / 字号 / **行距** / 背景颜色 / 自动换行 / 缩进；**自动识别编码（GBK 文件不乱码）**并保持原换行风格，**自动保存（默认开）** + 最近文件 + 会话恢复 |
 | [**🎧 osu! 下图器**](docs/tools/map-downloader.md) | 搜谱面集、批量下 `.osz`（含视频 / 无视频） |
 | [**🎹 osu! Key 转换器**](docs/tools/osu-key-converter.md) | 把低键数 mania 谱面「复制列 / 插空白列」加成高键数（2~10 可选），支持批量 |
 | [**🍜 osu! LN 转换器**](docs/tools/osu-ln-transformer.md) | 按 14 档强度把普通键改成 LN（长条），可选保留原 LN / 修尾巴误差 |
@@ -98,7 +98,7 @@ dotnet run --project YuLiangTookit.csproj
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（就是 GitHub Wiki 那种用法，但它跟着代码一起走）；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看它：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；
   踩坑细节按需查 **[docs/dev/pitfalls.md](docs/dev/pitfalls.md)**（只在排错 / 改危险代码时读）；
-- ✅ **自检**：3955 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
+- ✅ **自检**：3970 项行为逐条真跑（退出码 0 = 全通过）。**按改动影响面只跑相关组，不每轮全量**：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -147,7 +147,7 @@ src/
 ├── YuLiangToolkit.Tools.FlashDownloader/# 功能：Flash 下载器（五站点解析 + 本地服务器 + 自动补全资源）
 ├── YuLiangToolkit.Tools.ChatRoom/       # 功能：联机聊天室（TCP 直连 / 内网穿透 + 传文件 + 流量上限）
 ├── YuLiangToolkit.Tools.Browser/        # 功能：网页浏览器（WebView2 / Chromium 内核 + 多标签页 / 历史记录 / 下载 / 缩放 / 主页设置）
-├── YuLiangToolkit.Tools.TextEditor/     # 功能：文本编辑器（AvalonEdit 内核 + 26 种语言高亮 + 多标签 + Markdown 实际效果预览 + 查找替换 + 界面缩放）
+├── YuLiangToolkit.Tools.TextEditor/     # 功能：文本编辑器（AvalonEdit 内核 + 26 种语言高亮 + 打开文件夹文件浏览器 + 内置 CMD/PowerShell 控制台 + Markdown 预览 + 查找替换 + 界面缩放）
 ├── YuLiangToolkit.Tools.Archive/        # 功能：压缩包工具（解压 RAR / ZIP / 7Z / TAR.* / GZ / BZ2 / XZ / ZST + 创建 ZIP / 7Z；RAR 只能解不能压）
 ├── YuLiangToolkit.Tools.MapDownloader/  # 功能：osu! 下图器（搜谱面集 + 批量下 .osz）
 ├── YuLiangToolkit.Tools.OsuMania/       # 功能：音游工具（osu! Key 转换器 / LN 转换器 / 等级计算器）
@@ -158,7 +158,7 @@ src/
 ├── YuLiangToolkit.Tools.ContextMenu/    # 功能：右键菜单管理（枚举 / 隐藏 / 恢复 / 删除残留 / 添加自定义打开菜单；隐藏写 HKCU、删除前自动备份 .reg、HKLM 项走 UAC 提权）
 ├── YuLiangToolkit.Tools.OpenWith/       # 功能：打开方式（登记 Windows 右键「打开方式」3 个入口：自动分流 / 文本 / 压缩包；入口副本 + 只写 HKCU）
 └── YuLiangToolkit.Tools.Sample/         # 框架示例（新功能的复制模板，可整目录删除）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3955 项行为逐条验证）
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 轮子自检控制台程序（3970 项行为逐条验证）
 ```
 
 ## 如何添加一个新工具

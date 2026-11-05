@@ -199,6 +199,30 @@ public sealed class TextEditorConfig : ToolConfig
     /// <summary>是否恢复上次会话。</summary>
     public bool RememberSession { get; set; } = true;
 
+    /// <summary>上次打开的文件夹（左侧文件浏览器的工作区；重启时存在就恢复，不存在就清空）。</summary>
+    public string LastFolder { get; set; } = "";
+
+    private bool _showWorkspaceSidebar = true;
+
+    /// <summary>有文件夹时左侧文件浏览器是否展开（「查看 → 文件浏览器」/ Ctrl+B 切换）。</summary>
+    public bool ShowWorkspaceSidebar
+    {
+        get => _showWorkspaceSidebar;
+        set => Set(ref _showWorkspaceSidebar, value);
+    }
+
+    private bool _showTerminalPanel;
+
+    /// <summary>
+    /// 底部控制台面板是否展开（「终端」菜单 / Ctrl+` 切换）。
+    /// 默认关：用户打开过控制台后记住状态，下次打开工具直接恢复。
+    /// </summary>
+    public bool ShowTerminalPanel
+    {
+        get => _showTerminalPanel;
+        set => Set(ref _showTerminalPanel, value);
+    }
+
     // ---------------- 纯函数（自检直接断言） ----------------
 
     /// <summary>字号夹取：非法值 / 越界都回到合法范围（8 ~ 36）。</summary>

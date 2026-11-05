@@ -316,6 +316,124 @@
         <Style x:Key="FindMiniButtonStyle" TargetType="Button" BasedOn="{StaticResource TabMiniButtonStyle}">
             <Setter Property="Width" Value="28" />
         </Style>
+
+        <!-- ================= 左侧文件浏览器（打开文件夹才出现） ================= -->
+
+        <!-- 展开箭头（无边框小三角，展开时转 90°） -->
+        <Style x:Key="EditorTreeExpanderStyle" TargetType="ToggleButton">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Width" Value="16" />
+            <Setter Property="Height" Value="18" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="Transparent">
+                            <TextBlock x:Name="Arrow" Text="&#xE76C;"
+                                       FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                       FontSize="9" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Arrow" Property="Text" Value="&#xE70D;" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 文件树条目：悬停 / 选中都是主题事件色，不用 WPF 默认的浅蓝选中块 -->
+        <Style x:Key="EditorTreeItemStyle" TargetType="TreeViewItem">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TreeViewItem">
+                        <StackPanel>
+                            <Border x:Name="Row" Background="Transparent"
+                                    CornerRadius="{DynamicResource ControlCornerRadius}"
+                                    Padding="2,2" Margin="0,0,0,1" SnapsToDevicePixels="True">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="16" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <ToggleButton x:Name="Expander" Style="{StaticResource EditorTreeExpanderStyle}"
+                                                  ClickMode="Press"
+                                                  IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}" />
+                                    <ContentPresenter Grid.Column="1" ContentSource="Header"
+                                                      RecognizesAccessKey="True" VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                            <ItemsPresenter x:Name="ItemsHost" Margin="14,0,0,0" Visibility="Collapsed" />
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsExpanded" Value="True">
+                                <Setter TargetName="ItemsHost" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="Expander" Property="Visibility" Value="Hidden" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Row" Property="Background"
+                                        Value="{DynamicResource ListRowHoverBackgroundBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Row" Property="Background"
+                                        Value="{DynamicResource CardBackgroundBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 所有层级的文件树条目都用同一套深色样式（手动构建 TreeViewItem 时也能套上） -->
+        <Style TargetType="TreeViewItem" BasedOn="{StaticResource EditorTreeItemStyle}" />
+
+        <!-- ================= 底部控制台 ================= -->
+
+        <!-- 右侧控制台标签列表项：标题 + 关闭 × -->
+        <Style x:Key="ConsoleTabItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Row" Background="Transparent" Padding="8,5" Margin="0,0,0,1"
+                                CornerRadius="{DynamicResource ControlCornerRadius}" SnapsToDevicePixels="True">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Row" Property="Background"
+                                        Value="{DynamicResource ListRowHoverBackgroundBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Row" Property="Background"
+                                        Value="{DynamicResource CardBackgroundBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 控制台输出区（只读、等宽字体、不做边框） -->
+        <Style x:Key="ConsoleOutputStyle" TargetType="TextBox">
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="FontFamily" Value="Cascadia Mono, Consolas, Microsoft YaHei UI" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+            <Setter Property="HorizontalScrollBarVisibility" Value="Auto" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
+            <Setter Property="AcceptsReturn" Value="True" />
+            <Setter Property="IsReadOnlyCaretVisible" Value="False" />
+        </Style>
     </UserControl.Resources>
 
     <Grid>
@@ -350,6 +468,14 @@
                             </Style>
                         </MenuItem.ItemContainerStyle>
                     </MenuItem>
+                    <Separator Style="{StaticResource EditorMenuSeparatorStyle}" />
+                    <MenuItem Header="打开文件夹…" InputGestureText="Ctrl+Shift+O"
+                              Command="{Binding OpenFolderCommand}" Style="{StaticResource EditorMenuItemStyle}"
+                              ToolTip="选一个文件夹作为工作区，左侧出现文件浏览器（跟 Zed 一样）" />
+                    <MenuItem Header="关闭文件夹" Command="{Binding CloseFolderCommand}"
+                              Style="{StaticResource EditorMenuItemStyle}" />
+                    <MenuItem Header="刷新文件浏览器" Command="{Binding RefreshFolderCommand}"
+                              Style="{StaticResource EditorMenuItemStyle}" />
                     <Separator Style="{StaticResource EditorMenuSeparatorStyle}" />
                     <MenuItem Header="保存" InputGestureText="Ctrl+S"
                               Command="{Binding SaveCommand}" Style="{StaticResource EditorMenuItemStyle}" />
@@ -403,11 +529,40 @@
                               IsChecked="{Binding Cfg.WordWrap, Mode=TwoWay}"
                               Style="{StaticResource EditorMenuItemStyle}" />
                     <Separator Style="{StaticResource EditorMenuSeparatorStyle}" />
+                    <MenuItem Header="文件浏览器" IsCheckable="True"
+                              IsChecked="{Binding Cfg.ShowWorkspaceSidebar, Mode=TwoWay}"
+                              IsEnabled="{Binding HasWorkspace}"
+                              InputGestureText="Ctrl+B"
+                              Style="{StaticResource EditorMenuItemStyle}"
+                              ToolTip="打开文件夹后才可用；Ctrl+B 展开 / 收起左侧文件浏览器" />
+                    <MenuItem Header="显示 / 隐藏控制台" InputGestureText="Ctrl+`"
+                              Command="{Binding ToggleTerminalCommand}"
+                              Style="{StaticResource EditorMenuItemStyle}"
+                              ToolTip="底部控制台（CMD / PowerShell 标签页）" />
+                    <Separator Style="{StaticResource EditorMenuSeparatorStyle}" />
                     <MenuItem Header="Markdown 预览" IsCheckable="True"
                               IsChecked="{Binding Cfg.ShowMarkdownPreview, Mode=TwoWay}"
                               InputGestureText="Ctrl+Shift+M"
                               Style="{StaticResource EditorMenuItemStyle}"
                               ToolTip="打开 .md 文件时在编辑区下方显示「实际效果预览」（排版 / 表格 / 代码块都真渲染）" />
+                </MenuItem>
+
+                <!-- ── 终端（底部控制台：CMD / PowerShell 标签页） ── -->
+                <MenuItem Header="终端" Style="{StaticResource EditorTopMenuItemStyle}">
+                    <MenuItem Header="显示 / 隐藏控制台" InputGestureText="Ctrl+`"
+                              Command="{Binding ToggleTerminalCommand}" Style="{StaticResource EditorMenuItemStyle}" />
+                    <Separator Style="{StaticResource EditorMenuSeparatorStyle}" />
+                    <MenuItem Header="新建 CMD 控制台" Command="{Binding NewCmdConsoleCommand}"
+                              Style="{StaticResource EditorMenuItemStyle}" />
+                    <MenuItem Header="新建 PowerShell 控制台" Command="{Binding NewPowerShellConsoleCommand}"
+                              Style="{StaticResource EditorMenuItemStyle}" />
+                    <Separator Style="{StaticResource EditorMenuSeparatorStyle}" />
+                    <MenuItem Header="清空当前控制台" Command="{Binding ClearConsoleCommand}"
+                              Style="{StaticResource EditorMenuItemStyle}" />
+                    <MenuItem Header="停止当前命令" Command="{Binding StopConsoleCommand}"
+                              Style="{StaticResource EditorMenuItemStyle}" />
+                    <MenuItem Header="关闭当前控制台" Command="{Binding CloseConsoleCommand}"
+                              Style="{StaticResource EditorMenuItemStyle}" />
                 </MenuItem>
 
                 <!-- ── 偏好设置 ── -->
@@ -422,9 +577,13 @@
             </Menu>
         </Border>
 
-        <!-- ================= 主区域 = 编辑列 + 偏好设置浮层 ================= -->
+        <!-- ================= 主区域 = 文件浏览器 + 编辑列 + 偏好设置浮层 ================= -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="SidebarColumn" Width="0" MaxWidth="520" />
+                <!-- 左侧文件浏览器：打开文件夹才占宽度（关着时 0，编辑区拿回空间） -->
+                <ColumnDefinition Width="Auto" />
+                <!-- 文件浏览器与编辑区的分隔条 -->
                 <ColumnDefinition x:Name="EditorColumn" Width="*" MinWidth="320" />
                 <!-- 编辑列：随窗口缩放 -->
                 <ColumnDefinition x:Name="SplitterColumn" Width="Auto" />
@@ -435,14 +594,60 @@
                      视觉树里，拿不到 DataContext，绑定会静默失效。 -->
             </Grid.ColumnDefinitions>
 
-            <!-- ── 编辑列：标签条 / 查找条 / 编辑器宿主 / Markdown 预览 ── -->
-            <Grid Grid.Column="0">
+            <!-- ── 左侧文件浏览器（打开文件夹才出现；Zed 那种工作区侧栏） ── -->
+            <Border x:Name="WorkspacePanel" Grid.Column="0" Visibility="Collapsed"
+                    Background="{DynamicResource HeaderBackgroundBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" Margin="10,8,6,5">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="&#xE8B7;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                       FontSize="12" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBlock Text="{Binding WorkspaceName}" FontSize="12.5" FontWeight="SemiBold"
+                                       Margin="6,0,0,0" VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding Cfg.LastFolder}"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="&#xE72C;" Style="{StaticResource TabMiniButtonStyle}"
+                                ToolTip="刷新文件浏览器" Command="{Binding RefreshFolderCommand}" />
+                        <Button Grid.Column="2" Content="&#xE711;" Style="{StaticResource TabMiniButtonStyle}"
+                                ToolTip="关闭文件夹" Command="{Binding CloseFolderCommand}" />
+                    </Grid>
+                    <Border DockPanel.Dock="Bottom" Padding="10,6"
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0">
+                        <TextBlock Text="双击文件在编辑器中打开" FontSize="10.5"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </Border>
+                    <TreeView x:Name="WorkspaceFileTree" Background="Transparent" BorderThickness="0"
+                              Padding="4,4,4,8"
+                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                              MouseDoubleClick="OnWorkspaceTreeDoubleClick" />
+                </DockPanel>
+            </Border>
+
+            <!-- 文件浏览器与编辑区的分隔条（打开文件夹才出现；拖动宽度随界面布局一起记住） -->
+            <core:PaneSplitter x:Name="SidebarSplitter" Grid.Column="1"
+                               Style="{StaticResource PaneSplitterVerticalStyle}"
+                               Key="text-editor.文件浏览器与编辑区"
+                               Visibility="Collapsed" />
+
+            <!-- ── 编辑列：标签条 / 查找条 / 编辑器宿主 / Markdown 预览 / 底部控制台 ── -->
+            <Grid Grid.Column="2">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition x:Name="PreviewRow" Height="0" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition x:Name="TerminalRow" Height="0" />
                 </Grid.RowDefinitions>
 
                 <!-- 标签条 -->
@@ -453,6 +658,13 @@
                         <Button DockPanel.Dock="Right" Content="&#xE710;" ToolTip="新建标签页（Ctrl+N）"
                                 Style="{StaticResource TabMiniButtonStyle}" Margin="4,0,2,0"
                                 VerticalAlignment="Center" Command="{Binding NewFileCommand}" />
+                        <Button DockPanel.Dock="Right" Content="&gt;_" ToolTip="打开 / 隐藏控制台（Ctrl+`）"
+                                Style="{StaticResource TabMiniButtonStyle}" Margin="4,0,2,0"
+                                VerticalAlignment="Center" FontFamily="Cascadia Mono, Consolas" FontSize="11"
+                                Command="{Binding ToggleTerminalCommand}" />
+                        <Button DockPanel.Dock="Right" Content="&#xE8B7;" ToolTip="打开文件夹（Ctrl+Shift+O）"
+                                Style="{StaticResource TabMiniButtonStyle}" Margin="4,0,2,0"
+                                VerticalAlignment="Center" Command="{Binding OpenFolderCommand}" />
                         <ListBox x:Name="TabList" Style="{StaticResource EditorTabListBoxStyle}"
                                  ItemsSource="{Binding Tabs}"
                                  PreviewMouseDown="OnTabListMouseDown"
@@ -555,15 +767,129 @@
                                                   Background="Transparent" Padding="0" />
                     </DockPanel>
                 </Border>
+
+            <!-- ── 底部控制台（左：输出 + 输入；右：控制台标签页列表，可选用 CMD / PowerShell） ── -->
+            <core:PaneSplitter x:Name="TerminalSplitter" Grid.Row="5"
+                               Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="text-editor.控制台与编辑区"
+                               Visibility="Collapsed" />
+            <Border x:Name="TerminalPanel" Grid.Row="6" Visibility="Collapsed"
+                    Background="{DynamicResource InputBackgroundBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 左：当前控制台（工具条 + 输出 + 输入行） -->
+                    <Grid Grid.Column="0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <DockPanel Grid.Row="0" Margin="10,5,8,4">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding ActiveConsole.Title}" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding ActiveConsole.WorkingDirectory}" FontSize="11" Margin="8,0,0,0"
+                                           TextTrimming="CharacterEllipsis" MaxWidth="420" VerticalAlignment="Center"
+                                           ToolTip="{Binding ActiveConsole.WorkingDirectory}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </StackPanel>
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Button Content="清空" Padding="8,3" Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding ClearConsoleCommand}" ToolTip="清空当前控制台输出（Ctrl+L）" />
+                                <Button Content="停止" Padding="8,3" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="6,0,0,0" Command="{Binding StopConsoleCommand}"
+                                        ToolTip="停止当前正在跑的命令（会杀子进程树）" />
+                                <Button Content="&#xE711;" Style="{StaticResource TabMiniButtonStyle}"
+                                        Margin="6,0,0,0" Command="{Binding CloseConsoleCommand}"
+                                        ToolTip="关闭当前控制台标签页" />
+                            </StackPanel>
+                        </DockPanel>
+
+                        <TextBox x:Name="ConsoleOutput" Grid.Row="1" Style="{StaticResource ConsoleOutputStyle}"
+                                 Text="{Binding ActiveConsole.OutputText, Mode=OneWay}"
+                                 TextChanged="OnConsoleOutputTextChanged" />
+
+                        <DockPanel Grid.Row="2" Margin="10,0,8,8">
+                            <TextBlock DockPanel.Dock="Left" Text="{Binding ActiveConsole.Prompt}"
+                                       FontFamily="Cascadia Mono, Consolas" FontSize="12"
+                                       VerticalAlignment="Center" Margin="0,0,6,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Button DockPanel.Dock="Right" Content="运行" Padding="12,4"
+                                    Style="{StaticResource PrimaryButtonStyle}" Margin="6,0,0,0"
+                                    Command="{Binding RunConsoleCommand}" ToolTip="运行输入的命令（回车）" />
+                            <TextBox x:Name="ConsoleInput" Height="30" Style="{StaticResource TextBoxStyle}"
+                                     VerticalContentAlignment="Center"
+                                     FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI"
+                                     Text="{Binding ActiveConsole.Input, UpdateSourceTrigger=PropertyChanged}"
+                                     KeyDown="OnConsoleInputKeyDown"
+                                     ToolTip="输入命令，回车执行；↑ / ↓ 翻命令历史；Ctrl+L 清屏" />
+                        </DockPanel>
+                    </Grid>
+
+                    <!-- 右：控制台标签页列表（在这里选用哪个控制台） -->
+                    <Border Grid.Column="1" Width="164"
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1,0,0,0">
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Top" Text="控制台" FontSize="11.5" FontWeight="SemiBold"
+                                       Margin="10,7,8,4" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="6,0,6,6">
+                                <Button Content="+ CMD" Height="26" Width="72" Padding="0"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding NewCmdConsoleCommand}" ToolTip="新建 CMD 控制台"
+                                        FontSize="11" />
+                                <Button Content="+ PS" Height="26" Width="72" Margin="6,0,0,0" Padding="0"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding NewPowerShellConsoleCommand}" ToolTip="新建 PowerShell 控制台"
+                                        FontSize="11" />
+                            </StackPanel>
+                            <ListBox x:Name="ConsoleTabList" ItemsSource="{Binding Consoles}"
+                                     SelectedItem="{Binding ActiveConsole, Mode=TwoWay}"
+                                     Background="Transparent" BorderThickness="0" Padding="4,0,4,4"
+                                     ItemContainerStyle="{StaticResource ConsoleTabItemStyle}"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Title}" FontSize="12"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                <TextBlock Text="{Binding WorkingDirectory}" FontSize="10"
+                                                           TextTrimming="CharacterEllipsis" Margin="0,1,0,0"
+                                                           ToolTip="{Binding WorkingDirectory}"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            </StackPanel>
+                                            <Button Grid.Column="1" Content="&#xE711;"
+                                                    Style="{StaticResource TabMiniButtonStyle}"
+                                                    ToolTip="关闭这个控制台" VerticalAlignment="Center"
+                                                    Click="OnConsoleTabCloseClick" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+            </Border>
             </Grid>
 
             <!-- 偏好设置与编辑区的分隔条（设置面板开着才出现；拖动宽度随界面布局一起记住） -->
-            <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+            <core:PaneSplitter Grid.Column="3" Style="{StaticResource PaneSplitterVerticalStyle}"
                                Key="text-editor.偏好设置与编辑区"
                                Visibility="{Binding IsSettingsVisible, Converter={StaticResource BoolToVis}}" />
 
             <!-- ── 偏好设置浮层（页内面板，Esc / × 关闭；宽度由所在列决定，可拖） ── -->
-            <Border Grid.Column="2"
+            <Border Grid.Column="4"
                     Margin="0,8,8,8" Padding="16,14"
                     Style="{StaticResource CardStyle}"
                     Visibility="{Binding IsSettingsVisible, Converter={StaticResource BoolToVis}}">

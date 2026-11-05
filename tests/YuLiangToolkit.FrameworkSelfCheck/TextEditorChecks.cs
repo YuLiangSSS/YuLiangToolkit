@@ -6,6 +6,8 @@ using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Tools.TextEditor;
 using YuLiangToolkit.Tools.TextEditor.Core;
 using YuLiangToolkit.Tools.TextEditor.Core.Markdown;
+using YuLiangToolkit.Tools.TextEditor.Core.Terminal;
+using YuLiangToolkit.Tools.TextEditor.Core.Workspace;
 using YuLiangToolkit.Tools.TextEditor.ViewModels;
 
 namespace YuLiangToolkit.FrameworkSelfCheck;
@@ -13,7 +15,8 @@ namespace YuLiangToolkit.FrameworkSelfCheck;
 /// <summary>
 /// 「文本编辑器」自检：工具元数据、文件编解码（编码探测 / 换行风格 / BOM / 真读写往返）、
 /// 最近文件列表、查找替换纯逻辑、标签规则（标题 / 无标题命名 / 关标签补位）、
-/// 高亮暗色调色、多语言高亮定义解析、Markdown 解析、配置默认值与落盘、标签文档的脏标记链路。
+/// 高亮暗色调色、多语言高亮定义解析、Markdown 解析、工作区文件树 / 控制台命令规则、
+/// 配置默认值与落盘、标签文档的脏标记链路。
 /// <b>全程不弹窗、不开界面</b>（AvalonEdit 控件 / 菜单栏 / 预览渲染属于人工截图冒烟的部分）。
 /// </summary>
 internal static class TextEditorChecks
@@ -32,6 +35,7 @@ internal static class TextEditorChecks
         CheckMarkdownParser(check);
         CheckConfig(check);
         CheckAutoSave(check);
+        CheckWorkspaceAndConsole(check);
     }
 
     // ---------------------------------------------------------------- 工具元数据
@@ -614,6 +618,8 @@ internal static class TextEditorChecks
             && config.ShowLineNumbers && !config.WordWrap
             && config.ShowMarkdownPreview
             && config.AutoSave
+            && config.LastFolder.Length == 0
+            && config.ShowWorkspaceSidebar && !config.ShowTerminalPanel
             && config.ConvertTabsToSpaces && config.IndentSize == 4
             && config.RecentFiles.Count == 0 && config.SessionFiles.Count == 0
             && config.RememberSession,
@@ -669,6 +675,9 @@ internal static class TextEditorChecks
         config.ShowLineNumbers = fresh.ShowLineNumbers;
         config.ShowMarkdownPreview = fresh.ShowMarkdownPreview;
         config.AutoSave = fresh.AutoSave;
+        config.LastFolder = fresh.LastFolder;
+        config.ShowWorkspaceSidebar = fresh.ShowWorkspaceSidebar;
+        config.ShowTerminalPanel = fresh.ShowTerminalPanel;
         config.RecentFiles = fresh.RecentFiles;
         config.SessionFiles = fresh.SessionFiles;
         config.SessionActiveIndex = fresh.SessionActiveIndex;
@@ -756,5 +765,207 @@ internal static class TextEditorChecks
         cfg.SessionActiveIndex = 0;
         cfg.RecentFiles = new List<string>();
         cfg.SaveNow();
+    }
+
+    // ---------------------------------------------------------------- 工作区（打开文件夹）+ 控制台
+
+    private static void CheckWorkspaceAndConsole(Action<string, bool, string> check)
+    {
+        // ---- 控制台命令行规则 ----
+        var cmdArgs = ConsoleCommandLine.BuildArguments(ConsoleShellKind.Cmd, "echo hi");
+        var psArgs = ConsoleCommandLine.BuildArguments(ConsoleShellKind.PowerShell, "Write-Output hi");
+        check("[编辑器] 控制台命令参数：CMD 用 /d /s /c，PowerShell 用 -NoLogo -NoProfile -NonInteractive -Command",
+            cmdArgs.SequenceEqual(new[] { "/d", "/s", "/c", "echo hi" })
+            && psArgs.Contains("-NoLogo") && psArgs.Contains("-NoProfile")
+            && psArgs.Contains("-NonInteractive") && psArgs.Contains("-Command")
+            && psArgs[^1] == "Write-Output hi",
+            $"{string.Join(' ', cmdArgs)} | {string.Join(' ', psArgs)}");
+
+        check("[编辑器] 控制台输出编码：CMD 按系统 OEM 代码页解、PowerShell 先设 UTF-8 Console 编码",
+            ConsoleCommandLine.PrepareCommandText(ConsoleShellKind.Cmd, "echo hi") == "echo hi"
+            && ConsoleCommandLine.OutputEncodingFor(ConsoleShellKind.Cmd).WebName
+                == System.Text.Encoding.GetEncoding(
+                    System.Globalization.CultureInfo.CurrentCulture.TextInfo.OEMCodePage).WebName
+            && ConsoleCommandLine.PrepareCommandText(ConsoleShellKind.PowerShell, "echo hi")
+                .Contains("[Console]::OutputEncoding", StringComparison.Ordinal),
+            "OEM / UTF-8");
+
+        var powerShellExe = ConsoleCommandLine.ResolveExecutable(ConsoleShellKind.PowerShell);
+        check("[编辑器] 控制台可执行文件 / 提示词：cmd.exe、pwsh 或 powershell、C:\\x> / PS C:\\x>",
+            ConsoleCommandLine.ResolveExecutable(ConsoleShellKind.Cmd) == "cmd.exe"
+            && (powerShellExe.EndsWith("powershell.exe", StringComparison.OrdinalIgnoreCase)
+                || powerShellExe.EndsWith("pwsh.exe", StringComparison.OrdinalIgnoreCase))
+            && ConsoleCommandLine.BuildPrompt(ConsoleShellKind.Cmd, @"C:\x") == @"C:\x>"
+            && ConsoleCommandLine.BuildPrompt(ConsoleShellKind.PowerShell, @"C:\x") == @"PS C:\x>",
+            powerShellExe);
+
+        var workspaceDirectory = SelfCheckScratch.MakeDirectory("text-editor-workspace");
+        var childDirectory = Path.Combine(workspaceDirectory, "sub dir");
+        Directory.CreateDirectory(childDirectory);
+
+        check("[编辑器] 控制台工作目录规整：存在目录用绝对路径，空 / 不存在回用户目录",
+            ConsoleCommandLine.NormalizeWorkingDirectory(workspaceDirectory) == Path.GetFullPath(workspaceDirectory)
+            && ConsoleCommandLine.NormalizeWorkingDirectory(null) == Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            workspaceDirectory);
+
+        check("[编辑器] 控制台 cd 规则：.. / 带空格目录 / 非 cd / 不存在目录；cls/clear 清屏",
+            ConsoleCommandLine.TryResolveChangeDirectory("cd ..", childDirectory, out var parent)
+            && parent == Path.GetFullPath(workspaceDirectory)
+            && ConsoleCommandLine.TryResolveChangeDirectory("cd \"sub dir\"", workspaceDirectory, out var relative)
+            && relative == Path.GetFullPath(childDirectory)
+            && ConsoleCommandLine.TryResolveChangeDirectory("cd \"" + childDirectory + "\"", workspaceDirectory, out var absolute)
+            && absolute == Path.GetFullPath(childDirectory)
+            && !ConsoleCommandLine.TryResolveChangeDirectory("echo hi", workspaceDirectory, out _)
+            && !ConsoleCommandLine.TryResolveChangeDirectory("cd 绝对不存在的目录", workspaceDirectory, out _)
+            && ConsoleCommandLine.IsClearCommand("cls")
+            && !ConsoleCommandLine.IsClearCommand("dir"),
+            ".. / 带空格 / 非法");
+
+        // ---- 文件树 ----
+        var treeDirectory = SelfCheckScratch.MakeDirectory("text-editor-tree");
+        Directory.CreateDirectory(Path.Combine(treeDirectory, "zeta"));
+        Directory.CreateDirectory(Path.Combine(treeDirectory, "Alpha"));
+        File.WriteAllText(Path.Combine(treeDirectory, "b.txt"), "b", new UTF8Encoding(false));
+        File.WriteAllText(Path.Combine(treeDirectory, "a.txt"), "a", new UTF8Encoding(false));
+
+        var root = WorkspaceTree.TryCreateRoot(treeDirectory);
+        root?.LoadChildren();
+        check("[编辑器] 文件树：文件夹在前 + 名字不区分大小写排序 + 文件 / 目录标记",
+            root is { IsDirectory: true, IsLoaded: true }
+            && root.Children.Select(node => node.Name).SequenceEqual(new[] { "Alpha", "zeta", "a.txt", "b.txt" })
+            && root.Children[0].IsDirectory && !root.Children[2].IsDirectory
+            && WorkspaceTree.TryCreateRoot(Path.Combine(treeDirectory, "不存在")) is null,
+            root is null ? "<null>" : string.Join(", ", root.Children.Select(node => node.Name)));
+
+        var folderNode = FileTreeNode.CreateDirectory("sub", childDirectory);
+        var hadPlaceholder = folderNode.Children.Count == 1 && folderNode.Children[0].IsPlaceholder;
+        folderNode.LoadChildren();
+        check("[编辑器] 文件树懒加载：先占位、展开后真正枚举（文件节点没有子项）",
+            hadPlaceholder && folderNode.IsLoaded && folderNode.Children.All(node => !node.IsPlaceholder)
+            && root is not null && root.Children[2].Children.Count == 0,
+            hadPlaceholder ? "占位 → 已加载" : "没有占位");
+
+        // ---- 控制台标签页模型 ----
+        var consoleTab = new ConsoleTabViewModel(ConsoleShellKind.Cmd, 1, workspaceDirectory);
+        consoleTab.Append("line-1\n");
+        consoleTab.Append("line-2\n");
+        var appendedText = consoleTab.OutputText;
+        consoleTab.RecordHistory("dir");
+        consoleTab.RecordHistory("dir");   // 连续重复不重复记
+        consoleTab.RecordHistory("cd ..");
+        consoleTab.Clear();
+        check("[编辑器] 控制台标签页：追加 / 清空输出、历史上下翻页（连续重复只记一次）",
+            appendedText.Contains("line-1", StringComparison.Ordinal)
+            && appendedText.Contains("line-2", StringComparison.Ordinal)
+            && consoleTab.OutputText.Length == 0
+            && consoleTab.History.Count == 2
+            && consoleTab.MoveHistory(-1) == "cd .."
+            && consoleTab.MoveHistory(-1) == "dir"
+            && consoleTab.MoveHistory(1) == "cd .."
+            && consoleTab.MoveHistory(1) == ""
+            && consoleTab.Prompt == ConsoleCommandLine.NormalizeWorkingDirectory(workspaceDirectory) + ">",
+            $"history={consoleTab.History.Count}");
+
+        // ---- ViewModel：工作区 + 控制台标签页 ----
+        var store = ToolConfigStore.For(TextEditorConfig.ToolId);
+        var cfg = store.Load<TextEditorConfig>();
+        ResetWorkspaceCheckConfig(cfg);
+
+        using (var vm = new TextEditorViewModel())
+        {
+            var opened = vm.OpenFolder(treeDirectory);
+            check("[编辑器] 打开 / 关闭文件夹：HasWorkspace、侧栏显示、LastFolder 记忆",
+                opened && vm.HasWorkspace && vm.IsSidebarVisible
+                && string.Equals(vm.Cfg.LastFolder, Path.GetFullPath(treeDirectory), StringComparison.OrdinalIgnoreCase)
+                && vm.WorkspaceName == Path.GetFileName(treeDirectory),
+                vm.WorkspaceName);
+
+            vm.Cfg.ShowWorkspaceSidebar = false;
+            var sidebarCollapsed = !vm.IsSidebarVisible;
+            vm.Cfg.ShowWorkspaceSidebar = true;
+
+            vm.NewConsole(ConsoleShellKind.Cmd);
+            var cmdConsole = vm.ActiveConsole;
+            var defaultWorkingDirectory = cmdConsole?.WorkingDirectory;
+            vm.NewConsole(ConsoleShellKind.PowerShell);
+            vm.ActiveConsole = cmdConsole;
+            vm.CloseConsole(cmdConsole);
+            check("[编辑器] 控制台标签页：新建 CMD / PowerShell、默认工作目录=工作区、关闭后自动选邻居",
+                sidebarCollapsed && vm.Consoles.Count == 1
+                && vm.ActiveConsole?.Kind == ConsoleShellKind.PowerShell
+                && string.Equals(defaultWorkingDirectory, Path.GetFullPath(treeDirectory), StringComparison.OrdinalIgnoreCase)
+                && vm.IsTerminalVisible,
+                $"consoles={vm.Consoles.Count}");
+
+            vm.ToggleTerminal();
+            var hidden = !vm.IsTerminalVisible;
+            vm.ToggleTerminal();
+            vm.ActiveConsole?.Append("hello");
+            vm.ClearConsoleCommand.Execute(null);
+            check("[编辑器] 控制台面板开关 / 清空当前控制台命令",
+                hidden && vm.IsTerminalVisible && vm.ActiveConsole?.OutputText.Length == 0,
+                $"visible={vm.IsTerminalVisible}");
+
+            vm.CloseConsole(vm.ActiveConsole);
+            check("[编辑器] 关掉最后一个控制台自动收起面板",
+                !vm.HasConsoles && !vm.IsTerminalVisible && vm.ActiveConsole is null,
+                "panel hidden");
+
+            vm.CloseFolder();
+            check("[编辑器] 关闭文件夹后侧栏隐藏、LastFolder 清空",
+                !vm.HasWorkspace && !vm.IsSidebarVisible && vm.Cfg.LastFolder.Length == 0,
+                "closed");
+        }
+
+        ResetWorkspaceCheckConfig(cfg);
+
+        // ---- 真实进程：CMD / PowerShell 各跑一条命令（顺带验中文输出不乱码） ----
+        var cmdOutput = RunConsoleCapture(ConsoleShellKind.Cmd, "echo 中文控制台OK", out var cmdError);
+        check("[编辑器] 控制台真跑 CMD 命令（中文输出不乱码）",
+            cmdOutput.Contains("中文控制台OK", StringComparison.Ordinal),
+            cmdError ?? cmdOutput.Trim());
+
+        var psOutput = RunConsoleCapture(ConsoleShellKind.PowerShell, "Write-Output 'PS-OK'", out var psError);
+        check("[编辑器] 控制台真跑 PowerShell 命令",
+            psOutput.Contains("PS-OK", StringComparison.Ordinal),
+            psError ?? psOutput.Trim());
+    }
+
+    /// <summary>工作区/控制台检查前后的配置归零（避免把测试状态写进后面的检查）。</summary>
+    private static void ResetWorkspaceCheckConfig(TextEditorConfig cfg)
+    {
+        cfg.LastFolder = "";
+        cfg.ShowWorkspaceSidebar = true;
+        cfg.ShowTerminalPanel = false;
+        cfg.RememberSession = false;
+        cfg.SessionFiles = new List<string>();
+        cfg.SessionActiveIndex = 0;
+        cfg.RecentFiles = new List<string>();
+        cfg.AutoSave = false;
+        cfg.SaveNow();
+    }
+
+    /// <summary>真跑一条控制台命令并收集输出（自检用；最多等 15 秒，失败不抛）。</summary>
+    private static string RunConsoleCapture(ConsoleShellKind kind, string command, out string? error)
+    {
+        var output = new StringBuilder();
+        error = null;
+        try
+        {
+            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var exitCode = ConsoleProcessRunner
+                .RunAsync(kind, command, Environment.CurrentDirectory,
+                    line => { lock (output) output.AppendLine(line); },
+                    cancellation.Token)
+                .GetAwaiter().GetResult();
+
+            if (exitCode != 0) error = $"退出码 {exitCode}";
+            lock (output) return output.ToString();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            lock (output) return output.ToString();
+        }
     }
 }
