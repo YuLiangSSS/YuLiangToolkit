@@ -30,6 +30,8 @@ internal static class ExcelViewerChecks
             BuildSampleWorkbook(workbook1904Path, date1904: true);
             var minimalPath = Path.Combine(tempDir, "缺样式部件.xlsx");
             BuildMinimalWorkbook(minimalPath);
+            var freezePath = Path.Combine(tempDir, "冻结窗格.xlsx");
+            BuildFreezeWorkbook(freezePath);
 
             CheckMetadata(check);
             CheckAddresses(check);
@@ -42,18 +44,23 @@ internal static class ExcelViewerChecks
             CheckStyles(check, workbook);
             CheckMergedCells(check, workbook);
             CheckLayout(check, workbook);
+            CheckRowHeights(check, workbook);
+            CheckFreezePanes(check, freezePath);
+            CheckSearch(check, workbook);
+            CheckClipboard(check, workbook);
             CheckDate1904(check, workbook1904Path);
             CheckTruncation(check, workbookPath);
             CheckTolerance(check, minimalPath, tempDir);
             CheckLimits(check);
             CheckConfig(check, tempDir);
+            CheckReadingPositions(check, tempDir);
         }
         finally
         {
             try { Directory.Delete(tempDir, recursive: true); } catch { /* 临时目录清理失败忽略 */ }
         }
 
-        report("[Excel 阅读器] 手写 xlsx 解析 / 数字格式 / 合并单元格 / 截断 / 配置与最近列表", true);
+        report("[Excel 阅读器] 手写 xlsx 解析 / 数字格式 / 合并单元格 / 截断 / 冻结窗格 / 行高 / 查找 / 复制 / 阅读位置 / 配置与最近列表", true);
     }
 
     // ---------------------------------------------------------------- 工具元数据
@@ -279,6 +286,127 @@ internal static class ExcelViewerChecks
             $"A4 空 / D4={CellText(sheet, 4, 4)}");
     }
 
+    // ---------------------------------------------------------------- 行高 / 冻结窗格 / 查找 / 复制
+
+    private static void CheckRowHeights(Action<string, bool, string> check, ExcelWorkbook workbook)
+    {
+        var sheet = workbook.Sheets[0];
+        var first = sheet.Rows.First(row => row.RowIndex == 1);
+        var second = sheet.Rows.First(row => row.RowIndex == 2);
+        var fourth = sheet.Rows.First(row => row.RowIndex == 4);
+        var fifth = sheet.Rows.First(row => row.RowIndex == 5);
+
+        check("[Excel 阅读器] 行高解析：ht 磅 → DIP（30 磅 = 40 DIP、18 磅 = 24 DIP）",
+            first.HeightDip is { } firstHeight && Math.Abs(firstHeight - 40) < 0.01
+            && second.HeightDip is { } secondHeight && Math.Abs(secondHeight - 24) < 0.01,
+            $"{first.HeightDip} / {second.HeightDip}");
+
+        check("[Excel 阅读器] 行高解析：缺失 ht / ht=0 为 null（界面按内容自动撑高）",
+            fourth.HeightDip is null && fifth.HeightDip is null,
+            $"{fourth.HeightDip} / {fifth.HeightDip}");
+    }
+
+    private static void CheckFreezePanes(Action<string, bool, string> check, string freezePath)
+    {
+        var workbook = XlsxParser.Parse(freezePath);
+        ExcelSheet Sheet(string name) => workbook.Sheets.First(sheet => sheet.Name == name);
+
+        var rowsOnly = Sheet("仅行冻结").FreezePane;
+        check("[Excel 阅读器] 冻结窗格解析：只有行冻结（ySplit/topLeftCell → FrozenRows）",
+            rowsOnly is { IsFrozen: true, FrozenRows: 1, FrozenColumns: 0 }
+            && (rowsOnly.Description.Contains("首行", StringComparison.Ordinal)),
+            $"行={rowsOnly?.FrozenRows} 列={rowsOnly?.FrozenColumns} / {rowsOnly?.Description}");
+
+        var columnsOnly = Sheet("仅列冻结").FreezePane;
+        check("[Excel 阅读器] 冻结窗格解析：只有列冻结（xSplit/topLeftCell → FrozenColumns）",
+            columnsOnly is { IsFrozen: true, FrozenRows: 0, FrozenColumns: 2 }
+            && columnsOnly.Description.Contains("前 2 列", StringComparison.Ordinal),
+            $"行={columnsOnly?.FrozenRows} 列={columnsOnly?.FrozenColumns} / {columnsOnly?.Description}");
+
+        var both = Sheet("行列冻结").FreezePane;
+        check("[Excel 阅读器] 冻结窗格解析：行列都冻结 + TopLeftCell + 中文描述",
+            both is { IsFrozen: true, FrozenRows: 2, FrozenColumns: 1, TopLeftCell: "B3" }
+            && both.Description.Contains("前 2 行", StringComparison.Ordinal)
+            && both.Description.Contains("首列", StringComparison.Ordinal),
+            $"行={both?.FrozenRows} 列={both?.FrozenColumns} / {both?.TopLeftCell} / {both?.Description}");
+
+        check("[Excel 阅读器] 冻结窗格解析：state=split（拆分）不还原成冻结",
+            Sheet("split不生效").FreezePane is null,
+            "split → FreezePane=null");
+
+        check("[Excel 阅读器] 冻结窗格解析：没有 sheetViews/pane 时不冻结",
+            Sheet("无pane").FreezePane is null,
+            "无 pane → FreezePane=null");
+
+        var fallback = Sheet("拆分兜底").FreezePane;
+        check("[Excel 阅读器] 冻结窗格解析：没有 topLeftCell 时用 xSplit / ySplit 兜底",
+            fallback is { IsFrozen: true, FrozenRows: 1, FrozenColumns: 2, TopLeftCell: "" },
+            $"行={fallback?.FrozenRows} 列={fallback?.FrozenColumns} / topLeft={fallback?.TopLeftCell}");
+
+        var hidden = Sheet("隐藏行列边界").FreezePane;
+        check("[Excel 阅读器] 冻结窗格解析：冻结计数按界面可见行列（隐藏行/列不占）",
+            hidden is { IsFrozen: true, FrozenRows: 2, FrozenColumns: 2, TopLeftCell: "D4" },
+            $"行={hidden?.FrozenRows}（第 2 行隐藏）列={hidden?.FrozenColumns}（B 列隐藏）");
+
+        var clamped = Sheet("边界夹取").FreezePane;
+        check("[Excel 阅读器] 冻结窗格解析：边界不超过实际行列数（topLeftCell=Z99 也夹住）",
+            clamped is { IsFrozen: true, FrozenRows: 2, FrozenColumns: 3 },
+            $"行={clamped?.FrozenRows} 列={clamped?.FrozenColumns}");
+    }
+
+    private static void CheckSearch(Action<string, bool, string> check, ExcelWorkbook workbook)
+    {
+        var rows = workbook.Sheets[0].Rows;
+
+        var displayHits = ExcelSearch.Search(rows, "普通", caseSensitive: false);
+        var rawHits = ExcelSearch.Search(rows, "0.256", caseSensitive: false);
+        var formulaHits = ExcelSearch.Search(rows, "SUM", caseSensitive: false);
+        check("[Excel 阅读器] 查找纯逻辑：显示值 / 原始值 / 公式三个字段都能命中",
+            displayHits.Hits.Count == 1
+            && displayHits.Hits[0] is { Address: "A1", Field: ExcelSearchField.DisplayText }
+            && rawHits.Hits.Count == 1
+            && rawHits.Hits[0] is { Address: "H1", Field: ExcelSearchField.RawValue }
+            && formulaHits.Hits.Count == 1
+            && formulaHits.Hits[0] is { Address: "K1", Field: ExcelSearchField.Formula },
+            $"{displayHits.Hits.Count} / {rawHits.Hits.Count} / {formulaHits.Hits.Count}");
+
+        var insensitive = ExcelSearch.Search(rows, "sum", caseSensitive: false);
+        var sensitive = ExcelSearch.Search(rows, "sum", caseSensitive: true);
+        check("[Excel 阅读器] 查找纯逻辑：不区分 / 区分大小写开关生效",
+            insensitive.Hits.Count == 1 && sensitive.Hits.Count == 0,
+            $"不敏感 {insensitive.Hits.Count} 处 · 敏感 {sensitive.Hits.Count} 处");
+
+        var limited = ExcelSearch.Search(rows, "1", caseSensitive: false, maxHits: 2);
+        var unlimited = ExcelSearch.Search(rows, "1", caseSensitive: false);
+        check("[Excel 阅读器] 查找纯逻辑：命中上限与「还有更多」截断标记",
+            limited.Hits.Count == 2 && limited.IsTruncated
+            && unlimited.Hits.Count > 2 && !unlimited.IsTruncated,
+            $"上限 2 → {limited.Hits.Count} 处（截断={limited.IsTruncated}）· 不限 → {unlimited.Hits.Count} 处");
+    }
+
+    private static void CheckClipboard(Action<string, bool, string> check, ExcelWorkbook workbook)
+    {
+        var sheet = workbook.Sheets[0];
+        var formulaCell = FindCell(sheet, 1, 11);
+        var mergedAnchor = FindCell(sheet, 2, 3);
+        var plainCell = FindCell(sheet, 1, 1);
+
+        check("[Excel 阅读器] 右键复制文本：显示值 / 原始值 / 公式（带等号）/ 地址（A1）",
+            ExcelClipboardText.ForCell(formulaCell, ExcelCopyKind.DisplayValue) == "1234.5"
+            && ExcelClipboardText.ForCell(formulaCell, ExcelCopyKind.RawValue) == "1234.5"
+            && ExcelClipboardText.FormulaText(formulaCell) == "=SUM(G1:G2)"
+            && ExcelClipboardText.AddressText(formulaCell) == "K1"
+            && ExcelClipboardText.AddressText(mergedAnchor) == "C2",
+            $"{ExcelClipboardText.FormulaText(formulaCell)} / {ExcelClipboardText.AddressText(formulaCell)}");
+
+        check("[Excel 阅读器] 右键复制：没有公式的格子「复制公式」不可用 / 公式文本为空",
+            !ExcelClipboardText.CanCopy(plainCell, ExcelCopyKind.Formula)
+            && ExcelClipboardText.FormulaText(plainCell) == ""
+            && ExcelClipboardText.CanCopy(plainCell, ExcelCopyKind.DisplayValue)
+            && !ExcelClipboardText.CanCopy(null, ExcelCopyKind.Address),
+            $"{plainCell?.Formula ?? "（无公式）"}");
+    }
+
     private static void CheckDate1904(Action<string, bool, string> check, string workbook1904Path)
     {
         var workbook = XlsxParser.Parse(workbook1904Path);
@@ -364,10 +492,13 @@ internal static class ExcelViewerChecks
     private static void CheckConfig(Action<string, bool, string> check, string tempDir)
     {
         var config = new ExcelViewerConfig();
-        check("[Excel 阅读器] 配置默认值：网格线开、最近上限 50、最近列表空、上次文件夹空",
-            config.ShowGridLines && config.RecentLimit == 50 && config.RecentLimitEffective == 50
+        check("[Excel 阅读器] 配置默认值：网格线/冻结还原/自动行高/阅读位置开关都为开、最近上限 50、列表空、文件夹空",
+            config.ShowGridLines && config.RestoreFreezePanes && config.AutoRowHeight
+            && config.RememberReadingPositions && config.ReadingPositions.Count == 0
+            && config.RecentLimit == 50 && config.RecentLimitEffective == 50
             && config.RecordsRecent && config.RecentEntries.Count == 0 && config.LastFolder == "",
-            $"网格线={config.ShowGridLines} · 上限={config.RecentLimitEffective} · 记录={config.RecentEntries.Count}");
+            $"网格线={config.ShowGridLines} · 冻结={config.RestoreFreezePanes} · 行高={config.AutoRowHeight} · "
+            + $"上限={config.RecentLimitEffective} · 记录={config.RecentEntries.Count}");
 
         var first = Path.Combine(tempDir, "一.xlsx");
         var second = Path.Combine(tempDir, "二.xlsx");
@@ -400,17 +531,79 @@ internal static class ExcelViewerChecks
 
         config.RecentLimit = 3;
         config.ShowGridLines = false;
+        config.RestoreFreezePanes = false;
+        config.AutoRowHeight = false;
+        config.RememberReadingPositions = false;
         config.ResetToDefaults();
-        check("[Excel 阅读器] 恢复默认设置：网格线开、最近上限回 50",
-            config.ShowGridLines && config.RecentLimit == 50 && config.RecentLimitEffective == 50,
-            $"网格线={config.ShowGridLines} · 上限={config.RecentLimitEffective}");
+        check("[Excel 阅读器] 恢复默认设置：网格线 / 冻结还原 / 自动行高 / 记住阅读位置回开、最近上限回 50",
+            config.ShowGridLines && config.RestoreFreezePanes && config.AutoRowHeight
+            && config.RememberReadingPositions && config.RecentLimit == 50 && config.RecentLimitEffective == 50,
+            $"网格线={config.ShowGridLines} · 冻结={config.RestoreFreezePanes} · 行高={config.AutoRowHeight} · 上限={config.RecentLimitEffective}");
 
-        var ignoredProperties = new[] { nameof(ExcelViewerConfig.RecentLimitEffective), nameof(ExcelViewerConfig.RecordsRecent) };
+        var ignoredProperties = new[]
+        {
+            nameof(ExcelViewerConfig.RecentLimitEffective),
+            nameof(ExcelViewerConfig.RecordsRecent),
+            nameof(ExcelViewerConfig.ReadingPositionCount),
+        };
         var allIgnored = ignoredProperties.All(name =>
             typeof(ExcelViewerConfig).GetProperty(name)?.GetCustomAttribute<JsonIgnoreAttribute>() is not null);
-        check("[Excel 阅读器] 计算属性带 [JsonIgnore]（不会被写进 config.json）",
+        check("[Excel 阅读器] 计算属性带 [JsonIgnore]（最近上限 / 是否记录 / 阅读位置条数不写进 config.json）",
             allIgnored,
             string.Join(" / ", ignoredProperties));
+    }
+
+    // ---------------------------------------------------------------- 阅读位置
+
+    private static void CheckReadingPositions(Action<string, bool, string> check, string tempDir)
+    {
+        var config = new ExcelViewerConfig();
+        var workbookPath = Path.Combine(tempDir, "阅读位置.xlsx");
+
+        config.RememberReadingPosition(workbookPath,
+            new ExcelReadingPosition { SheetName = "数据", ScrollRatio = 0.42 });
+        // 再用大写路径存一次：规范化 key 应该认成同一本（Windows 路径不区分大小写）
+        config.RememberReadingPosition(workbookPath.ToUpperInvariant(),
+            new ExcelReadingPosition { SheetName = "数据", ScrollRatio = 0.42 });
+        var found = config.FindReadingPosition(workbookPath.ToUpperInvariant());
+        check("[Excel 阅读器] 阅读位置：保存 / 查询 / 完整路径小写去重 / 工作表名",
+            found is { SheetName: "数据" } && Math.Abs(found.ScrollRatio - 0.42) < 0.0001
+            && config.ReadingPositionCount == 1
+            && ExcelViewerConfig.NormalizePositionKey(workbookPath) == workbookPath.ToLowerInvariant(),
+            $"{found?.SheetName} / {found?.ScrollRatio} / {config.ReadingPositionCount} 条");
+
+        var position = new ExcelReadingPosition { SheetName = "数据" };
+        position.ScrollRatio = 2;
+        var high = position.ScrollRatio;
+        position.ScrollRatio = -1;
+        var low = position.ScrollRatio;
+        position.ScrollRatio = double.NaN;
+        var nan = position.ScrollRatio;
+        check("[Excel 阅读器] 阅读位置：滚动比例夹到 0 ~ 1（NaN / 负值兜底为 0）",
+            high == 1 && low == 0 && nan == 0,
+            $"2→{high} · -1→{low} · NaN→{nan}");
+
+        for (var index = 0; index < 205; index++)
+        {
+            config.RememberReadingPosition(Path.Combine(tempDir, $"书{index}.xlsx"), new ExcelReadingPosition
+            {
+                SheetName = "表",
+                ScrollRatio = index / 205.0,
+                SavedAtUtc = DateTime.UtcNow.AddMinutes(index),
+            });
+        }
+
+        check($"[Excel 阅读器] 阅读位置：上限 {ExcelViewerConfig.MaxReadingPositions} 条，超出淘汰最老",
+            config.ReadingPositionCount == ExcelViewerConfig.MaxReadingPositions
+            && config.FindReadingPosition(Path.Combine(tempDir, "书0.xlsx")) is null
+            && config.FindReadingPosition(Path.Combine(tempDir, "书204.xlsx")) is not null,
+            $"{config.ReadingPositionCount} 条 · 书0={config.FindReadingPosition(Path.Combine(tempDir, "书0.xlsx"))?.SheetName ?? "已淘汰"}");
+
+        config.ForgetReadingPosition(Path.Combine(tempDir, "书204.xlsx"));
+        check("[Excel 阅读器] 阅读位置：忘记单条记录（只删记录，不影响别的书）",
+            config.FindReadingPosition(Path.Combine(tempDir, "书204.xlsx")) is null
+            && config.ReadingPositionCount == ExcelViewerConfig.MaxReadingPositions - 1,
+            $"{config.ReadingPositionCount} 条");
     }
 
     // ---------------------------------------------------------------- 最小 xlsx 生成器
@@ -542,7 +735,7 @@ internal static class ExcelViewerChecks
                 <col min="3" max="13" width="12" customWidth="1"/>
               </cols>
               <sheetData>
-                <row r="1">
+                <row r="1" ht="30" customHeight="1">
                   <c r="A1" t="s"><v>0</v></c>
                   <c r="B1" t="s"><v>1</v></c>
                   <c r="C1" t="s"><v>2</v></c>
@@ -557,7 +750,7 @@ internal static class ExcelViewerChecks
                   <c r="L1" t="b"><v>0</v></c>
                   <c r="M1" s="4"><v>0.5</v></c>
                 </row>
-                <row r="2">
+                <row r="2" ht="18" customHeight="1">
                   <c r="A2" s="5" t="inlineStr"><is><t>样式文本</t></is></c>
                   <c r="B2" s="6"><v>42</v></c>
                   <c r="C2" t="inlineStr"><is><t>合并文本</t></is></c>
@@ -565,7 +758,7 @@ internal static class ExcelViewerChecks
                   <c r="M2" s="3"><v>0</v></c>
                 </row>
                 <row r="3" hidden="1"><c r="A3"><v>隐藏行</v></c></row>
-                <row r="4"><c r="D4"><v>99</v></c></row>
+                <row r="4" ht="0" customHeight="1"><c r="D4"><v>99</v></c></row>
                 <row r="5"><c r="A5" t="inlineStr"><is><t>跨行合并</t></is></c></row>
                 <row r="6"><c r="B6"><v>被覆盖</v></c></row>
               </sheetData>
@@ -631,6 +824,148 @@ internal static class ExcelViewerChecks
               </sheetData>
             </worksheet>
             """);
+    }
+
+    /// <summary>
+    /// 造一个「冻结窗格」专用工作簿：8 张表分别覆盖——
+    /// 只冻结行 / 只冻结列 / 行列都冻结 / <c>state="split"</c> 不生效 / 没有 pane /
+    /// 没有 topLeftCell 时 xSplit 兜底 / 隐藏行列边界 / 边界超过实际行列数时夹取。
+    /// </summary>
+    private static void BuildFreezeWorkbook(string path)
+    {
+        using var stream = File.Create(path);
+        using var zip = new ZipArchive(stream, ZipArchiveMode.Create);
+
+        var sheets = new (string Name, string Body)[]
+        {
+            ("仅行冻结", """
+                <sheetViews><sheetView workbookViewId="0">
+                  <pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>
+                </sheetView></sheetViews>
+                <sheetData>
+                  <row r="1"><c r="A1"><v>1</v></c></row>
+                  <row r="2"><c r="A2"><v>2</v></c></row>
+                  <row r="3"><c r="A3"><v>3</v></c></row>
+                </sheetData>
+                """),
+            ("仅列冻结", """
+                <sheetViews><sheetView workbookViewId="0">
+                  <pane xSplit="2" topLeftCell="C1" activePane="topRight" state="frozen"/>
+                </sheetView></sheetViews>
+                <sheetData>
+                  <row r="1"><c r="A1"><v>1</v></c><c r="B1"><v>2</v></c><c r="C1"><v>3</v></c></row>
+                </sheetData>
+                """),
+            ("行列冻结", """
+                <sheetViews><sheetView workbookViewId="0">
+                  <pane xSplit="1" ySplit="2" topLeftCell="B3" activePane="bottomRight" state="frozen"/>
+                </sheetView></sheetViews>
+                <sheetData>
+                  <row r="1"><c r="A1"><v>1</v></c><c r="B1"><v>2</v></c><c r="C1"><v>3</v></c></row>
+                  <row r="2"><c r="A2"><v>4</v></c><c r="B2"><v>5</v></c><c r="C2"><v>6</v></c></row>
+                  <row r="3"><c r="A3"><v>7</v></c><c r="B3"><v>8</v></c><c r="C3"><v>9</v></c></row>
+                </sheetData>
+                """),
+            ("split不生效", """
+                <sheetViews><sheetView workbookViewId="0">
+                  <pane xSplit="1" ySplit="1" topLeftCell="B2" activePane="bottomRight" state="split"/>
+                </sheetView></sheetViews>
+                <sheetData>
+                  <row r="1"><c r="A1"><v>1</v></c><c r="B1"><v>2</v></c></row>
+                  <row r="2"><c r="A2"><v>3</v></c><c r="B2"><v>4</v></c></row>
+                </sheetData>
+                """),
+            ("隐藏行列边界", """
+                <sheetViews><sheetView workbookViewId="0">
+                  <pane xSplit="3" ySplit="3" topLeftCell="D4" activePane="bottomRight" state="frozen"/>
+                </sheetView></sheetViews>
+                <cols>
+                  <col min="1" max="1" width="10" customWidth="1"/>
+                  <col min="2" max="2" width="5" hidden="1" customWidth="1"/>
+                  <col min="3" max="3" width="10" customWidth="1"/>
+                </cols>
+                <sheetData>
+                  <row r="1"><c r="A1"><v>1</v></c><c r="C1"><v>2</v></c></row>
+                  <row r="2" hidden="1"><c r="A2"><v>3</v></c><c r="C2"><v>4</v></c></row>
+                  <row r="3"><c r="A3"><v>5</v></c><c r="C3"><v>6</v></c></row>
+                  <row r="4"><c r="A4"><v>7</v></c><c r="C4"><v>8</v></c></row>
+                </sheetData>
+                """),
+            ("无pane", """
+                <sheetData>
+                  <row r="1"><c r="A1"><v>1</v></c></row>
+                </sheetData>
+                """),
+            ("拆分兜底", """
+                <sheetViews><sheetView workbookViewId="0">
+                  <pane xSplit="2" ySplit="1" activePane="bottomRight" state="frozen"/>
+                </sheetView></sheetViews>
+                <sheetData>
+                  <row r="1"><c r="A1"><v>1</v></c><c r="B1"><v>2</v></c><c r="C1"><v>3</v></c></row>
+                  <row r="2"><c r="A2"><v>4</v></c><c r="B2"><v>5</v></c><c r="C2"><v>6</v></c></row>
+                </sheetData>
+                """),
+            ("边界夹取", """
+                <sheetViews><sheetView workbookViewId="0">
+                  <pane xSplit="1" ySplit="1" topLeftCell="Z99" activePane="bottomRight" state="frozen"/>
+                </sheetView></sheetViews>
+                <sheetData>
+                  <row r="1"><c r="A1"><v>1</v></c><c r="B1"><v>2</v></c><c r="C1"><v>3</v></c></row>
+                  <row r="2"><c r="A2"><v>4</v></c><c r="B2"><v>5</v></c><c r="C2"><v>6</v></c></row>
+                </sheetData>
+                """),
+        };
+
+        var contentTypes = new StringBuilder("""
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+              <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+              <Default Extension="xml" ContentType="application/xml"/>
+              <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+            """);
+        var workbookXml = new StringBuilder("""
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+                      xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+              <sheets>
+            """);
+        var relationships = new StringBuilder("""
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+            """);
+
+        for (var index = 0; index < sheets.Length; index++)
+        {
+            var partNumber = index + 1;
+            contentTypes.AppendLine($"  <Override PartName=\"/xl/worksheets/sheet{partNumber}.xml\" "
+                + "ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>");
+            workbookXml.AppendLine($"    <sheet name=\"{sheets[index].Name}\" sheetId=\"{partNumber}\" r:id=\"rId{partNumber}\"/>");
+            relationships.AppendLine($"  <Relationship Id=\"rId{partNumber}\" "
+                + "Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" "
+                + $"Target=\"worksheets/sheet{partNumber}.xml\"/>");
+
+            AddPart(zip, $"xl/worksheets/sheet{partNumber}.xml", $"""
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+                {sheets[index].Body}
+                </worksheet>
+                """);
+        }
+
+        contentTypes.AppendLine("</Types>");
+        workbookXml.AppendLine("  </sheets>");
+        workbookXml.AppendLine("</workbook>");
+        relationships.AppendLine("</Relationships>");
+
+        AddPart(zip, "[Content_Types].xml", contentTypes.ToString());
+        AddPart(zip, "_rels/.rels", """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+              <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+            </Relationships>
+            """);
+        AddPart(zip, "xl/workbook.xml", workbookXml.ToString());
+        AddPart(zip, "xl/_rels/workbook.xml.rels", relationships.ToString());
     }
 
     private static void AddPart(ZipArchive zip, string name, string content)

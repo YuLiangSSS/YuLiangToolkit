@@ -45,6 +45,24 @@ internal static class WordViewerChecks
 
             CheckExtensionsAndErrors(check, root, docxPath, document);
             CheckConfig(check, root);
+
+            // ---------- 新增浏览功能：页眉页脚 / 脚注尾注 / 阅读位置 / 复制全文 / 查找增强 / 文档属性 ----------
+            var featurePath = Path.Combine(root, "功能自检.docx");
+            CreateFeatureDocx(featurePath, withExtras: true);
+            var feature = WordDocumentParser.Parse(featurePath);
+
+            CheckHeaderFooter(check, feature);
+            CheckFootnotes(check, feature);
+            CheckDocumentProperties(check, feature);
+            CheckPlainText(check, feature);
+            CheckSearchTable(check, feature);
+            CheckFeatureConfig(check, root);
+            CheckRendererHeaderFooter(check, feature);
+
+            // 缺少页眉页脚 / 脚注部件的文档：必须照常打开，只是那些内容为空
+            var barePath = Path.Combine(root, "缺附属部件.docx");
+            CreateFeatureDocx(barePath, withExtras: false);
+            CheckMissingParts(check, barePath, feature);
         }
         finally
         {
@@ -423,6 +441,331 @@ internal static class WordViewerChecks
             $"{missingItem.DisplayText} / {existingItem.DisplayText}");
     }
 
+    // ---------------------------------------------------------------- 页眉 / 页脚
+
+    private static void CheckHeaderFooter(Action<string, bool, string> check, WordDocument document)
+    {
+        var headerText = TextOfBlocks(document.HeaderBlocks);
+
+        check("[Word阅读器] 页眉：sectPr 的 headerReference default → header 部件，文字解析出来",
+            document.HasHeader && headerText.Contains("默认页眉文字", StringComparison.Ordinal),
+            headerText.Length == 0 ? "没有页眉内容" : headerText);
+
+        check("[Word阅读器] 页眉 type 优先级：default 优先于 first / even",
+            !headerText.Contains("首页页眉", StringComparison.Ordinal)
+            && !headerText.Contains("偶数页页眉", StringComparison.Ordinal),
+            headerText);
+
+        check("[Word阅读器] 页眉部件里的表格也被解析（段落 + 表格）",
+            document.HeaderBlocks.OfType<WordTableBlock>().Any(table => table.Rows
+                .SelectMany(row => row.Cells)
+                .SelectMany(cell => cell.Blocks.OfType<WordParagraphBlock>())
+                .Any(paragraph => paragraph.Text.Contains("页眉表格", StringComparison.Ordinal))),
+            $"{document.HeaderBlocks.Count} 个页眉块");
+
+        var footerText = TextOfBlocks(document.FooterBlocks);
+        check("[Word阅读器] 页脚：footerReference default → footer 部件，文字解析出来",
+            document.HasFooter && footerText.Contains("页脚文字", StringComparison.Ordinal),
+            footerText.Length == 0 ? "没有页脚内容" : footerText);
+
+        check("[Word阅读器] 页眉页脚不参与大纲 / 查找，页眉里的表格不计入正文表格数",
+            document.Outline.All(heading => !heading.Text.Contains("默认页眉", StringComparison.Ordinal))
+            && WordTextSearch.Find(document, "默认页眉文字").Count == 0
+            && document.TableCount == 1,
+            $"大纲 {document.Outline.Count} 条 / 正文表格 {document.TableCount} 个");
+    }
+
+    // ---------------------------------------------------------------- 脚注 / 尾注
+
+    private static void CheckFootnotes(Action<string, bool, string> check, WordDocument document)
+    {
+        check("[Word阅读器] 脚注：过滤 w:id < 1 的分隔符，按正文引用顺序编号（id=2 → [1]、id=1 → [2]）",
+            document.Footnotes.Count == 2
+            && document.Footnotes[0] is { Id: 2, Number: 1 }
+            && document.Footnotes[1] is { Id: 1, Number: 2 },
+            string.Join(" | ", document.Footnotes.Select(note => $"id={note.Id}→[{note.Number}]")));
+
+        check("[Word阅读器] 脚注内容：多段按段落保留、分隔符条目不出现",
+            document.Footnotes.Any(note => note.Id == 2 && note.Blocks.Count == 2
+                && note.Text.Contains("第二条脚注第二段", StringComparison.Ordinal))
+            && document.Footnotes.Any(note => note.Id == 1
+                && note.Text.Contains("第一条脚注内容", StringComparison.Ordinal)),
+            string.Join(" | ", document.Footnotes.Select(note => note.Text.Replace('\n', '/'))));
+
+        var footnoteRuns = document.Blocks.OfType<WordParagraphBlock>()
+            .SelectMany(paragraph => paragraph.Runs)
+            .Where(run => run.FootnoteId is not null)
+            .ToList();
+        check("[Word阅读器] 正文 run 记录 FootnoteId / 显示编号，纯引用 run（无文字）也保留",
+            footnoteRuns.Count == 2
+            && footnoteRuns.Any(run => run.FootnoteId == 2 && run.FootnoteNumber == 1 && run.Text.Length == 0)
+            && footnoteRuns.Any(run => run.FootnoteId == 1 && run.FootnoteNumber == 2),
+            string.Join(" | ", footnoteRuns.Select(run => $"id={run.FootnoteId}→[{run.FootnoteNumber}] '{run.Text}'")));
+
+        var endnoteRuns = document.Blocks.OfType<WordParagraphBlock>()
+            .SelectMany(paragraph => paragraph.Runs)
+            .Where(run => run.EndnoteId is not null)
+            .ToList();
+        check("[Word阅读器] 尾注：endnotes.xml 解析 + run 记录 EndnoteId / 编号 1",
+            document.Endnotes.Count == 1
+            && document.Endnotes[0] is { Id: 1, Number: 1 }
+            && document.Endnotes[0].Text.Contains("第一条尾注内容", StringComparison.Ordinal)
+            && endnoteRuns.Any(run => run.EndnoteId == 1 && run.EndnoteNumber == 1),
+            $"{document.Endnotes.Count} 条尾注 / {endnoteRuns.Count} 个引用");
+
+        check("[Word阅读器] 脚注 / 尾注内容不参与查找与大纲，也不占用正文块下标",
+            WordTextSearch.Find(document, "第一条脚注内容").Count == 0
+            && document.Outline.All(heading => !heading.Text.Contains("脚注", StringComparison.Ordinal))
+            && document.GetParagraphText(0).Contains("功能自检正文", StringComparison.Ordinal),
+            document.GetParagraphText(0));
+    }
+
+    // ---------------------------------------------------------------- 文档属性
+
+    private static void CheckDocumentProperties(Action<string, bool, string> check, WordDocument document)
+    {
+        check("[Word阅读器] 文档属性：作者 / 最后修改者 / 创建时间 / 修改时间（docProps/core.xml）",
+            document.Author == "测试作者"
+            && document.LastModifiedBy == "测试修改者"
+            && document.CreatedUtc is { } created && created is { Year: 2024, Month: 5, Day: 1 }
+            && document.ModifiedUtc is { } modified && modified is { Year: 2024, Month: 6, Day: 2 },
+            $"作者={document.Author} / 修改者={document.LastModifiedBy} / 创建={document.CreatedUtc:o} / 修改={document.ModifiedUtc:o}");
+    }
+
+    // ---------------------------------------------------------------- 复制全文（纯文本抽取）
+
+    private static void CheckPlainText(Action<string, bool, string> check, WordDocument document)
+    {
+        var text = document.ExtractPlainText();
+
+        check("[Word阅读器] 复制全文：段落换行、表格单元格用 \\t、不含页眉页脚 / 脚注",
+            text.Contains("功能自检正文", StringComparison.Ordinal)
+            && text.Contains('\n')
+            && text.Contains("表格甲\t表格乙", StringComparison.Ordinal)
+            && !text.Contains("默认页眉文字", StringComparison.Ordinal)
+            && !text.Contains("页脚文字", StringComparison.Ordinal)
+            && !text.Contains("第一条脚注内容", StringComparison.Ordinal),
+            text.Length > 120 ? text[..120] + "…" : text);
+    }
+
+    // ---------------------------------------------------------------- 查找增强（表格 / 大小写 / 无命中）
+
+    private static void CheckSearchTable(Action<string, bool, string> check, WordDocument document)
+    {
+        var tableHits = WordTextSearch.Find(document, "表格甲");
+        check("[Word阅读器] 查找表格文字：命中 1 处、InTable=true、块下标指向表格块",
+            tableHits.Count == 1
+            && tableHits[0].InTable
+            && tableHits[0].BlockIndex >= 0
+            && document.Blocks[tableHits[0].BlockIndex] is WordTableBlock,
+            tableHits.Count == 0
+                ? "没有命中"
+                : $"块 {tableHits[0].BlockIndex} / InTable={tableHits[0].InTable}");
+
+        check("[Word阅读器] 查找：区分大小写与无命中（正文 + 表格同规则）",
+            WordTextSearch.Find(document, "hello").Count == 1
+            && WordTextSearch.Find(document, "hello", matchCase: true).Count == 0
+            && WordTextSearch.Find(document, "HELLO", matchCase: true).Count == 0
+            && WordTextSearch.Find(document, "不存在的词").Count == 0
+            && WordTextSearch.Find(document, "表格甲", matchCase: true).Count == 1,
+            $"不区分={WordTextSearch.Find(document, "hello").Count} / 区分={WordTextSearch.Find(document, "hello", true).Count}");
+    }
+
+    // ---------------------------------------------------------------- 阅读位置 + 新开关配置
+
+    private static void CheckFeatureConfig(Action<string, bool, string> check, string root)
+    {
+        var config = new WordViewerConfig();
+        check("[Word阅读器] 新开关默认值：显示页眉页脚 / 记住阅读位置 开，查找不区分大小写",
+            config.ShowHeaderFooter && config.RememberReadingPositionEnabled && !config.SearchMatchCase,
+            $"页眉页脚={config.ShowHeaderFooter} / 记住位置={config.RememberReadingPositionEnabled} / 区分大小写={config.SearchMatchCase}");
+
+        var fileA = Path.Combine(root, "阅读位置甲.docx");
+        var fileB = Path.Combine(root, "阅读位置乙.docx");
+        File.WriteAllText(fileA, "x");
+        File.WriteAllText(fileB, "x");
+
+        config.RememberReadingPosition(fileA,
+            new WordReadingPosition { ScrollRatio = 0.42, SavedAtUtc = DateTime.UtcNow });
+        check("[Word阅读器] 阅读位置：保存 / 查询 / 路径大小写去重（同一个文件只存一条）",
+            config.FindReadingPosition(fileA) is { } saved
+            && Math.Abs(saved.ScrollRatio - 0.42) < 1e-9
+            && config.ReadingPositions.Count == 1
+            && config.FindReadingPosition(fileA.ToUpperInvariant()) is not null,
+            $"{config.ReadingPositions.Count} 条 / 取回比例 {config.FindReadingPosition(fileA)?.ScrollRatio}");
+
+        check("[Word阅读器] 阅读位置：非法比例夹取（NaN → 0、5 → 1、-1 → 0）",
+            Math.Abs(new WordReadingPosition { ScrollRatio = double.NaN }.ScrollRatioEffective) < 1e-9
+            && Math.Abs(WordReadingPosition.ClampScrollRatio(5) - 1) < 1e-9
+            && Math.Abs(WordReadingPosition.ClampScrollRatio(-1)) < 1e-9,
+            "NaN / 5 / -1");
+
+        // 上限 200：批量写 205 份（保存时间递增），最老的应被淘汰
+        var baseTime = DateTime.UtcNow.AddDays(-30);
+        for (var index = 0; index < WordViewerConfig.MaxReadingPositions + 5; index++)
+        {
+            config.RememberReadingPosition(Path.Combine(root, $"批量阅读位置{index}.docx"),
+                new WordReadingPosition { ScrollRatio = index / 1000.0, SavedAtUtc = baseTime.AddMinutes(index) });
+        }
+
+        check("[Word阅读器] 阅读位置：超过上限（200）按保存时间淘汰最老的记录",
+            config.ReadingPositions.Count == WordViewerConfig.MaxReadingPositions
+            && config.FindReadingPosition(Path.Combine(root, "批量阅读位置0.docx")) is null,
+            $"{config.ReadingPositions.Count} 条");
+
+        config.RememberReadingPosition(fileA, new WordReadingPosition { ScrollRatio = 0.8 });
+        var json = config.ToJson();
+        check("[Word阅读器] 新开关与 readingPositions 能序列化，[JsonIgnore] 计算属性不进 JSON",
+            json.Contains("\"showHeaderFooter\"", StringComparison.Ordinal)
+            && json.Contains("\"rememberReadingPosition\"", StringComparison.Ordinal)
+            && json.Contains("\"searchMatchCase\"", StringComparison.Ordinal)
+            && json.Contains("\"readingPositions\"", StringComparison.Ordinal)
+            && json.Contains("\"scrollRatio\"", StringComparison.Ordinal)
+            && !json.Contains("\"scrollRatioEffective\"", StringComparison.Ordinal)
+            && !json.Contains("\"zoomScale\"", StringComparison.Ordinal)
+            && !json.Contains("\"recentLimitEffective\"", StringComparison.Ordinal),
+            json.Length > 160 ? json[..160] + "…" : json);
+    }
+
+    // ---------------------------------------------------------------- 页眉页脚 / 脚注渲染（STA）
+
+    private static void CheckRendererHeaderFooter(Action<string, bool, string> check, WordDocument document)
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var withHeaderFooter = WordFlowRenderer.Build(document);
+                var withoutHeaderFooter = WordFlowRenderer.Build(document, new WordRenderOptions { ShowHeaderFooter = false });
+
+                check("[Word阅读器] 渲染：ShowHeaderFooter 开关生效（true 比 false 多页眉页脚块），映射数量不变",
+                    withHeaderFooter.HasHeaderFooter && !withoutHeaderFooter.HasHeaderFooter
+                    && withHeaderFooter.Document.Blocks.Count > withoutHeaderFooter.Document.Blocks.Count
+                    && withHeaderFooter.BlockByBlockIndex.Count == document.Blocks.Count
+                    && withHeaderFooter.ParagraphByBlockIndex.Count == document.Blocks.Count,
+                    $"{withHeaderFooter.Document.Blocks.Count} / {withoutHeaderFooter.Document.Blocks.Count} 个渲染块");
+
+                var blocks = withHeaderFooter.Document.Blocks.ToList();
+                var bodyIndex = IndexOfText(blocks, "功能自检正文");
+                var noteIndex = IndexOfText(blocks, "脚注", exact: true);
+                var footerIndex = IndexOfText(blocks, "页脚文字");
+
+                check("[Word阅读器] 渲染：页眉在最顶部（9 磅浅灰字）",
+                    blocks.FirstOrDefault() is Paragraph headerParagraph
+                    && TextOf(headerParagraph).Contains("默认页眉文字", StringComparison.Ordinal)
+                    && Math.Abs(headerParagraph.FontSize - OoxmlPackage.PointToDip(9)) < 0.01
+                    && headerParagraph.Foreground is SolidColorBrush headerBrush
+                    && !headerBrush.Color.Equals(Colors.Black),
+                    blocks.FirstOrDefault() is Paragraph first ? TextOf(first) : "第一个渲染块不是段落");
+
+                check("[Word阅读器] 渲染：脚注小节在正文之后、页脚之前，正文里有 [1] 上标标记",
+                    blocks.LastOrDefault() is Paragraph footerParagraph
+                    && TextOf(footerParagraph).Contains("页脚文字", StringComparison.Ordinal)
+                    && bodyIndex >= 0 && noteIndex >= 0 && footerIndex >= 0
+                    && bodyIndex < noteIndex && noteIndex < footerIndex
+                    && blocks.Any(block => TextOf(block).Contains("第一条脚注内容", StringComparison.Ordinal))
+                    && TextOfBodyParagraph(blocks, "引用顺序测试").Contains("[1]", StringComparison.Ordinal),
+                    $"正文 {bodyIndex} / 脚注 {noteIndex} / 页脚 {footerIndex}");
+
+                var tableIndex = -1;
+                for (var index = 0; index < document.Blocks.Count; index++)
+                {
+                    if (document.Blocks[index] is WordTableBlock)
+                    {
+                        tableIndex = index;
+                        break;
+                    }
+                }
+
+                check("[Word阅读器] 渲染：表格块也有 Block 映射（查找命中表格可 BringIntoView）",
+                    tableIndex >= 0
+                    && withHeaderFooter.BlockByBlockIndex[tableIndex] is Table
+                    && withHeaderFooter.ParagraphByBlockIndex[tableIndex] is null,
+                    tableIndex < 0 ? "没有表格块" : $"表格块下标 {tableIndex}");
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        if (failure is not null)
+            check("[Word阅读器] 渲染：页眉页脚 / 脚注小节渲染成功", false,
+                $"{failure.GetType().Name}: {failure.Message}");
+    }
+
+    // ---------------------------------------------------------------- 缺部件容错
+
+    private static void CheckMissingParts(
+        Action<string, bool, string> check, string barePath, WordDocument reference)
+    {
+        Exception? failure = null;
+        WordDocument? bare = null;
+        try { bare = WordDocumentParser.Parse(barePath); }
+        catch (Exception ex) { failure = ex; }
+
+        check("[Word阅读器] 缺页眉页脚 / 脚注部件时正常打开：正文照常、附属内容为空、引用只显示标记",
+            failure is null && bare is not null
+            && bare.Blocks.Count == reference.Blocks.Count
+            && bare.HeaderBlocks.Count == 0
+            && bare.FooterBlocks.Count == 0
+            && bare.Footnotes.Count == 0
+            && bare.Endnotes.Count == 0
+            && bare.Blocks.OfType<WordParagraphBlock>().SelectMany(paragraph => paragraph.Runs)
+                .Any(run => run.FootnoteId == 1),
+            failure?.Message
+                ?? $"正文 {bare?.Blocks.Count} 块 / 页眉 {bare?.HeaderBlocks.Count} / 页脚 {bare?.FooterBlocks.Count} / 脚注 {bare?.Footnotes.Count}");
+    }
+
+    // ---------------------------------------------------------------- 造一份「新功能」自检文档
+
+    /// <summary>页眉 / 页脚 / 脚注 / 尾注 / 文档属性的文本，用于状态细节展示。</summary>
+    private static string TextOfBlocks(IReadOnlyList<WordBlock> blocks) => string.Join("\n", blocks.Select(block =>
+        block switch
+        {
+            WordParagraphBlock paragraph => paragraph.Text,
+            WordTableBlock table => string.Join(" | ", table.Rows.Select(row => string.Join(" ",
+                row.Cells.SelectMany(cell => cell.Blocks.OfType<WordParagraphBlock>())
+                    .Select(paragraph => paragraph.Text)))),
+            _ => "",
+        }));
+
+    /// <summary>渲染出来的块（段落 / 表格）的纯文本，供渲染断言用（STA 线程里调用）。</summary>
+    private static string TextOf(Block block) => block switch
+    {
+        Paragraph paragraph => new TextRange(paragraph.ContentStart, paragraph.ContentEnd).Text,
+        Table table => string.Join(" ", table.RowGroups
+            .SelectMany(group => group.Rows)
+            .SelectMany(row => row.Cells)
+            .SelectMany(cell => cell.Blocks.OfType<Paragraph>())
+            .Select(paragraph => new TextRange(paragraph.ContentStart, paragraph.ContentEnd).Text)),
+        _ => "",
+    };
+
+    /// <summary>找第一个文字包含（或完全等于）<paramref name="text"/> 的渲染块下标；找不到返回 -1。</summary>
+    private static int IndexOfText(IReadOnlyList<Block> blocks, string text, bool exact = false)
+    {
+        for (var index = 0; index < blocks.Count; index++)
+        {
+            var blockText = TextOf(blocks[index]).Trim();
+            if (exact
+                ? string.Equals(blockText, text, StringComparison.Ordinal)
+                : blockText.Contains(text, StringComparison.Ordinal))
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private static string TextOfBodyParagraph(IReadOnlyList<Block> blocks, string marker)
+        => blocks.Select(TextOf).FirstOrDefault(text => text.Contains(marker, StringComparison.Ordinal)) ?? "";
+
     // ---------------------------------------------------------------- 造一个最小 docx
 
     /// <summary>临时目录里写一个最小但功能齐全的 docx（样式 / 编号 / 表格 / 图片 / 链接 / 分页）。</summary>
@@ -571,6 +914,179 @@ internal static class WordViewerChecks
         // 1×1 透明 PNG（足够验证「关系 → media 字节」这条链路）
         WriteBytes(archive, "word/media/pixel.png", Convert.FromBase64String(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="));
+    }
+
+    // ---------------------------------------------------------------- 造「新功能」自检 docx
+
+    /// <summary>
+    /// 造一份带**页眉 / 页脚 / 脚注 / 尾注 / 文档属性**的 docx（临时目录现造，跑完删）。
+    /// <paramref name="withExtras"/> = false 时不写这些部件、也不写对应关系（但正文里仍有引用、
+    /// sectPr 里仍有指向不存在关系的 r:id）：验证「缺部件不崩、正文照常、引用只显示标记」。
+    /// </summary>
+    private static void CreateFeatureDocx(string path, bool withExtras)
+    {
+        using var archive = ZipFile.Open(path, ZipArchiveMode.Create);
+
+        var contentTypes = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+              <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+              <Default Extension="xml" ContentType="application/xml"/>
+              <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+              <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+            </Types>
+            """;
+
+        var extraTypeOverrides = withExtras
+            ? """
+                <Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
+                <Override PartName="/word/header2.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
+                <Override PartName="/word/header3.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>
+                <Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>
+                <Override PartName="/word/footnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/>
+                <Override PartName="/word/endnotes.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml"/>
+              """
+            : "";
+
+        WriteText(archive, "[Content_Types].xml",
+            contentTypes.Replace("</Types>", extraTypeOverrides + "</Types>"));
+
+        WriteText(archive, "_rels/.rels", """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+              <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+              <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+            </Relationships>
+            """);
+
+        WriteText(archive, "docProps/core.xml", """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <cp:coreProperties
+                xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
+                xmlns:dc="http://purl.org/dc/elements/1.1/"
+                xmlns:dcterms="http://purl.org/dc/terms/"
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+              <dc:title>功能自检标题</dc:title>
+              <dc:creator>测试作者</dc:creator>
+              <cp:lastModifiedBy>测试修改者</cp:lastModifiedBy>
+              <dcterms:created xsi:type="dcterms:W3CDTF">2024-05-01T08:30:00Z</dcterms:created>
+              <dcterms:modified xsi:type="dcterms:W3CDTF">2024-06-02T09:45:00Z</dcterms:modified>
+            </cp:coreProperties>
+            """);
+
+        var extraRelationships = withExtras
+            ? """
+                <Relationship Id="rId20" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/>
+                <Relationship Id="rId21" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>
+                <Relationship Id="rId22" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header2.xml"/>
+                <Relationship Id="rId23" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header3.xml"/>
+              """
+            : "";
+
+        WriteText(archive, "word/_rels/document.xml.rels", $"""
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+            {extraRelationships}
+            </Relationships>
+            """);
+
+        // 有附属部件：sectPr 指向真实关系；缺部件：指向不存在的 r:id（模拟关系文件缺失）
+        var sectionXml = withExtras
+            ? """
+              <w:sectPr>
+                <w:headerReference w:type="default" r:id="rId20"/>
+                <w:headerReference w:type="first" r:id="rId22"/>
+                <w:headerReference w:type="even" r:id="rId23"/>
+                <w:footerReference w:type="default" r:id="rId21"/>
+              </w:sectPr>
+              """
+            : """
+              <w:sectPr>
+                <w:headerReference w:type="default" r:id="rIdMissingHeader"/>
+                <w:footerReference w:type="default" r:id="rIdMissingFooter"/>
+              </w:sectPr>
+              """;
+
+        var documentXml = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:document
+                xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+              <w:body>
+                <w:p><w:r><w:t>功能自检正文</w:t></w:r></w:p>
+                <w:tbl>
+                  <w:tblGrid><w:gridCol w:w="1440"/><w:gridCol w:w="1440"/></w:tblGrid>
+                  <w:tr>
+                    <w:tc><w:p><w:r><w:t>表格甲</w:t></w:r></w:p></w:tc>
+                    <w:tc><w:p><w:r><w:t>表格乙</w:t></w:r></w:p></w:tc>
+                  </w:tr>
+                </w:tbl>
+                <w:p><w:r><w:t>引用顺序测试</w:t></w:r><w:r><w:footnoteReference w:id="2"/></w:r><w:r><w:t>（脚注甲）</w:t></w:r></w:p>
+                <w:p><w:r><w:t>第二个引用</w:t></w:r><w:r><w:footnoteReference w:id="1"/></w:r></w:p>
+                <w:p><w:r><w:t>带尾注</w:t></w:r><w:r><w:endnoteReference w:id="1"/></w:r></w:p>
+                <w:p><w:r><w:t>Hello 表格外</w:t></w:r></w:p>
+                <!-- §SECTION§ -->
+              </w:body>
+            </w:document>
+            """.Replace("<!-- §SECTION§ -->", sectionXml, StringComparison.Ordinal);
+
+        WriteText(archive, "word/document.xml", documentXml);
+
+        if (!withExtras) return;
+
+        WriteText(archive, "word/header1.xml", """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                   xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+              <w:p><w:r><w:t>默认页眉文字</w:t></w:r></w:p>
+              <w:tbl>
+                <w:tblGrid><w:gridCol w:w="1440"/></w:tblGrid>
+                <w:tr><w:tc><w:p><w:r><w:t>页眉表格</w:t></w:r></w:p></w:tc></w:tr>
+              </w:tbl>
+            </w:hdr>
+            """);
+
+        WriteText(archive, "word/header2.xml", """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+              <w:p><w:r><w:t>首页页眉文字</w:t></w:r></w:p>
+            </w:hdr>
+            """);
+
+        WriteText(archive, "word/header3.xml", """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+              <w:p><w:r><w:t>偶数页页眉文字</w:t></w:r></w:p>
+            </w:hdr>
+            """);
+
+        WriteText(archive, "word/footer1.xml", """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:ftr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+              <w:p><w:r><w:t>页脚文字</w:t></w:r></w:p>
+            </w:ftr>
+            """);
+
+        WriteText(archive, "word/footnotes.xml", """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+              <w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>
+              <w:footnote w:type="continuationSeparator" w:id="0"><w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>
+              <w:footnote w:id="1"><w:p><w:r><w:t>第一条脚注内容</w:t></w:r></w:p></w:footnote>
+              <w:footnote w:id="2">
+                <w:p><w:r><w:t>第二条脚注第一段</w:t></w:r></w:p>
+                <w:p><w:r><w:t>第二条脚注第二段</w:t></w:r></w:p>
+              </w:footnote>
+            </w:footnotes>
+            """);
+
+        WriteText(archive, "word/endnotes.xml", """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:endnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+              <w:endnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:endnote>
+              <w:endnote w:id="1"><w:p><w:r><w:t>第一条尾注内容</w:t></w:r></w:p></w:endnote>
+            </w:endnotes>
+            """);
     }
 
     private static void WriteText(ZipArchive archive, string entryName, string content)

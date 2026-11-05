@@ -62,6 +62,21 @@ public sealed class WordRun
 
     /// <summary>高亮底色，<c>#RRGGBB</c>（把 <c>w:highlight</c> 的颜色名换成十六进制）。</summary>
     public string? HighlightHex { get; set; }
+
+    /// <summary>
+    /// 脚注引用（<c>w:footnoteReference</c>）对应的脚注 <c>w:id</c>；不是脚注引用时为 <c>null</c>。
+    /// <para>这个 run 往往没有 <c>w:t</c>（引用本身不占正文字符），渲染器会补一个上标 <c>[n]</c>。</para>
+    /// </summary>
+    public int? FootnoteId { get; set; }
+
+    /// <summary>脚注在正文里的显示编号（1 起，和文档末尾「脚注」小节里的编号一致）。</summary>
+    public int? FootnoteNumber { get; set; }
+
+    /// <summary>尾注引用（<c>w:endnoteReference</c>）对应的尾注 <c>w:id</c>；不是尾注引用时为 <c>null</c>。</summary>
+    public int? EndnoteId { get; set; }
+
+    /// <summary>尾注在正文里的显示编号（1 起）。</summary>
+    public int? EndnoteNumber { get; set; }
 }
 
 /// <summary>
@@ -162,6 +177,31 @@ public sealed class WordTableCell
     public bool IsMergedContinuation { get; set; }
 }
 
+/// <summary>
+/// 一条脚注 / 尾注（<c>word/footnotes.xml</c> / <c>word/endnotes.xml</c> 里的一个 <c>w:footnote</c> /
+/// <c>w:endnote</c>）。
+///
+/// <para><b>编号规则</b>：<c>w:id</c> 只是部件里的内部编号（Word 会按创建顺序给），用户看到的
+/// 上标 <c>[n]</c> 应该按**正文里引用的先后**递增 —— 所以解析完正文后统一编号，
+/// 没被正文引用的脚注排在最后（仍然列出来，方便看到孤立内容）。
+/// <c>w:id &lt; 1</c> 的「分隔符」条目（-1 / 0）在解析时已经过滤掉。</para>
+/// </summary>
+public sealed class WordNote
+{
+    /// <summary>部件里的原始 <c>w:id</c>（≥ 1）。</summary>
+    public int Id { get; internal set; }
+
+    /// <summary>显示编号（1 起，按正文引用顺序；没被引用的排在最后）。</summary>
+    public int Number { get; internal set; }
+
+    /// <summary>内容块（段落 / 简单表格；按约定跳过图片）。</summary>
+    public List<WordBlock> Blocks { get; } = new();
+
+    /// <summary>内容的纯文本（自检 / 日志用，段落之间换行）。</summary>
+    public string Text => string.Join('\n',
+        Blocks.OfType<WordParagraphBlock>().Select(paragraph => paragraph.Text));
+}
+
 /// <summary>图片（字节已经从 docx 里拷出来，可脱离 <c>OoxmlPackage</c> 独立使用）。</summary>
 public sealed class WordImageBlock : WordBlock
 {
@@ -198,6 +238,10 @@ public sealed class WordDocument
     private readonly List<WordBlock> _blocks = new();
     private readonly List<WordHeading> _outline = new();
     private readonly List<string> _notes = new();
+    private readonly List<WordBlock> _headerBlocks = new();
+    private readonly List<WordBlock> _footerBlocks = new();
+    private readonly List<WordNote> _footnotes = new();
+    private readonly List<WordNote> _endnotes = new();
 
     /// <summary>源文件完整路径；从流解析时为空串。</summary>
     public string SourcePath { get; internal set; } = "";
@@ -205,11 +249,47 @@ public sealed class WordDocument
     /// <summary>文档标题（<c>docProps/core.xml</c> 的 <c>dc:title</c>，缺失时用文件名）。</summary>
     public string Title { get; internal set; } = "";
 
+    /// <summary>作者（<c>docProps/core.xml</c> 的 <c>dc:creator</c>）；没有时为空串。</summary>
+    public string Author { get; internal set; } = "";
+
+    /// <summary>最后修改者（<c>cp:lastModifiedBy</c>）；没有时为空串。</summary>
+    public string LastModifiedBy { get; internal set; } = "";
+
+    /// <summary>创建时间（<c>dcterms:created</c>，UTC）；文件里没写时为 <c>null</c>。</summary>
+    public DateTime? CreatedUtc { get; internal set; }
+
+    /// <summary>最后修改时间（<c>dcterms:modified</c>，UTC）；文件里没写时为 <c>null</c>。</summary>
+    public DateTime? ModifiedUtc { get; internal set; }
+
     /// <summary>正文内容块（段落 / 表格 / 图片，按出现顺序）。</summary>
     public IReadOnlyList<WordBlock> Blocks => _blocks;
 
     /// <summary>标题大纲（按出现顺序，级别 1 ~ 6）。</summary>
     public IReadOnlyList<WordHeading> Outline => _outline;
+
+    /// <summary>
+    /// 页眉内容块（段落 / 表格）。连续浏览只取**首个节**的页眉显示在文档顶部；
+    /// 没有页眉（或部件缺失 / 损坏）时为空列表。不参与大纲、查找与块下标映射。
+    /// </summary>
+    public IReadOnlyList<WordBlock> HeaderBlocks => _headerBlocks;
+
+    /// <summary>页脚内容块（取**最后一个节**的页脚显示在文档底部）；没有时为空列表。</summary>
+    public IReadOnlyList<WordBlock> FooterBlocks => _footerBlocks;
+
+    /// <summary>脚注（已过滤 <c>w:id &lt; 1</c> 的分隔符，按正文引用顺序编号）。</summary>
+    public IReadOnlyList<WordNote> Footnotes => _footnotes;
+
+    /// <summary>尾注（同脚注规则）。</summary>
+    public IReadOnlyList<WordNote> Endnotes => _endnotes;
+
+    /// <summary>有没有页眉（界面 / 状态栏提示用）。</summary>
+    public bool HasHeader => _headerBlocks.Count > 0;
+
+    /// <summary>有没有页脚。</summary>
+    public bool HasFooter => _footerBlocks.Count > 0;
+
+    /// <summary>有没有脚注 / 尾注。</summary>
+    public bool HasNotes => _footnotes.Count > 0 || _endnotes.Count > 0;
 
     /// <summary>段落总数（含表格单元格里的段落）。</summary>
     public int ParagraphCount { get; internal set; }
@@ -232,6 +312,18 @@ public sealed class WordDocument
     /// <summary>内部用的说明列表。</summary>
     internal List<string> NoteList => _notes;
 
+    /// <summary>内部用的页眉块列表（解析器写）。</summary>
+    internal List<WordBlock> HeaderBlockList => _headerBlocks;
+
+    /// <summary>内部用的页脚块列表（解析器写）。</summary>
+    internal List<WordBlock> FooterBlockList => _footerBlocks;
+
+    /// <summary>内部用的脚注列表（解析器写，编号表填 Number）。</summary>
+    internal List<WordNote> FootnoteList => _footnotes;
+
+    /// <summary>内部用的尾注列表。</summary>
+    internal List<WordNote> EndnoteList => _endnotes;
+
     /// <summary>
     /// 取某个正文块的纯文本；下标越界、或这个块不是段落（表格 / 图片）时返回空串。
     /// <para>自检用它验证「块下标 → 文字」的对应关系；界面的查找高亮也按这个下标找段落。</para>
@@ -252,5 +344,82 @@ public sealed class WordDocument
         }
 
         return -1;
+    }
+
+    /// <summary>
+    /// 抽取纯文本（工具条「复制全文」用）：段落之间换行、表格按「单元格 \t」、行之间换行；
+    /// 空段落与图片跳过（它们复制成文字没有意义）。
+    ///
+    /// <para>默认只复制**正文**（含表格单元格）—— 页眉页脚 / 脚注尾注属于版面附属内容，不算正文；
+    /// 需要时传 <paramref name="includeHeaderFooter"/> / <paramref name="includeNotes"/> 一起带上。</para>
+    /// </summary>
+    public string ExtractPlainText(bool includeHeaderFooter = false, bool includeNotes = false)
+    {
+        var builder = new System.Text.StringBuilder();
+
+        if (includeHeaderFooter) AppendPlainText(_headerBlocks, builder);
+        AppendPlainText(_blocks, builder);
+        if (includeHeaderFooter) AppendPlainText(_footerBlocks, builder);
+
+        if (includeNotes)
+        {
+            AppendNotesPlainText(_footnotes, builder);
+            AppendNotesPlainText(_endnotes, builder);
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>把一个块列表拼成纯文本：段落一段一行，表格一行一行（单元格之间制表符）。</summary>
+    private static void AppendPlainText(IReadOnlyList<WordBlock> blocks, System.Text.StringBuilder builder)
+    {
+        foreach (var block in blocks)
+        {
+            switch (block)
+            {
+                case WordParagraphBlock paragraph:
+                    if (paragraph.Text.Trim().Length == 0) continue;
+                    AppendLine(builder, paragraph.Text);
+                    break;
+
+                case WordTableBlock table:
+                    foreach (var row in table.Rows)
+                    {
+                        var cells = row.Cells
+                            .Where(cell => !cell.IsMergedContinuation)
+                            .Select(ExtractCellText)
+                            .ToList();
+                        var line = string.Join('\t', cells);
+                        if (line.Trim().Length == 0) continue;
+                        AppendLine(builder, line);
+                    }
+
+                    break;
+            }
+        }
+    }
+
+    private static void AppendNotesPlainText(IReadOnlyList<WordNote> notes, System.Text.StringBuilder builder)
+    {
+        foreach (var note in notes)
+        {
+            var noteBuilder = new System.Text.StringBuilder();
+            AppendPlainText(note.Blocks, noteBuilder);
+            var text = noteBuilder.ToString();
+            if (text.Length == 0) continue;
+            AppendLine(builder, $"[{note.Number}] " + text.Replace("\r", " ").Replace('\n', ' '));
+        }
+    }
+
+    /// <summary>单元格里的文字：多个段落之间用空格连起来（保持一格里一行）。</summary>
+    private static string ExtractCellText(WordTableCell cell) => string.Join(' ',
+        cell.Blocks.OfType<WordParagraphBlock>()
+            .Select(paragraph => paragraph.Text.Trim())
+            .Where(text => text.Length > 0));
+
+    private static void AppendLine(System.Text.StringBuilder builder, string line)
+    {
+        if (builder.Length > 0) builder.Append('\n');
+        builder.Append(line);
     }
 }

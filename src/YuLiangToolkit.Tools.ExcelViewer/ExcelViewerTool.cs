@@ -44,28 +44,45 @@ public class ExcelViewerTool : ITool, IToolCacheSource
 
     /// <summary>
     /// 告诉主页「设置 → 清理缓存」本功能有哪些可以清的东西。
-    /// <para>本工具没有 Cache 目录；只有「最近打开记录」混在
-    /// <c>Config\excel-viewer\config.json</c> 里，所以只报告这一项，清它不会动网格线等设置。
+    /// <para>本工具没有 Cache 目录；只有「最近打开记录」和「阅读位置」混在
+    /// <c>Config\excel-viewer\config.json</c> 里，所以报告这两项，清理它们不会动网格线 / 冻结 / 行高等设置。
     /// 记录为空时返回空数组（设置页就不会出现空条目）。</para>
     /// </summary>
     public IReadOnlyList<ToolCacheItem> DescribeCacheItems()
     {
-        // 直接读盘上的配置（不触发工具加载），只拿「最近打开记录」条数
-        var count = ToolConfigPeek.Read<ExcelViewerConfig>(ExcelViewerConfig.ToolId)?.RecentEntries?.Count ?? 0;
-        if (count == 0) return Array.Empty<ToolCacheItem>();
+        // 直接读盘上的配置（不触发工具加载），只拿条数
+        var config = ToolConfigPeek.Read<ExcelViewerConfig>(ExcelViewerConfig.ToolId);
+        var recentCount = config?.RecentEntries?.Count ?? 0;
+        var positionCount = config?.ReadingPositionCount ?? 0;
 
-        return new[]
+        var items = new List<ToolCacheItem>();
+        if (recentCount > 0)
         {
-            new ToolCacheItem
+            items.Add(new ToolCacheItem
             {
                 Id = "recent",
                 Name = "最近打开记录",
                 Description = "存在 Config\\excel-viewer\\config.json 里；只清最近打开记录，不动网格线等设置",
-                Detail = $"{count} 条",
+                Detail = $"{recentCount} 条",
                 // 清空后配置照常自动落盘；下次打开 Excel 阅读器，「最近」下拉就是空的
                 Clear = () => ToolConfigPeek.Mutate<ExcelViewerConfig>(
-                    ExcelViewerConfig.ToolId, config => config.ClearRecent()),
-            },
-        };
+                    ExcelViewerConfig.ToolId, viewerConfig => viewerConfig.ClearRecent()),
+            });
+        }
+
+        if (positionCount > 0)
+        {
+            items.Add(new ToolCacheItem
+            {
+                Id = "reading-positions",
+                Name = "阅读位置记录",
+                Description = "记住每本工作簿上次看到哪张表、滚到哪；只清记录，不删工作簿，也不动其它设置",
+                Detail = $"{positionCount} 本",
+                Clear = () => ToolConfigPeek.Mutate<ExcelViewerConfig>(
+                    ExcelViewerConfig.ToolId, viewerConfig => viewerConfig.ClearReadingPositions()),
+            });
+        }
+
+        return items;
     }
 }

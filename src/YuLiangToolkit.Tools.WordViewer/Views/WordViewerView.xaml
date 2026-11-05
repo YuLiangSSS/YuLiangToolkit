@@ -110,18 +110,23 @@
                                 Command="{Binding ClearRecentCommand}" ToolTip="清空最近打开记录（不会删除本地文件）" />
                     </StackPanel>
 
-                    <!-- 当前文档标题 / 路径 -->
+                    <!-- 当前文档标题 / 路径（悬停显示作者 / 修改时间 / 大小 / 完整路径） -->
                     <StackPanel Grid.Column="2" Margin="16,0,16,0" VerticalAlignment="Center">
                         <TextBlock Text="{Binding DocumentTitle}" FontSize="13" FontWeight="SemiBold"
-                                   TextTrimming="CharacterEllipsis" />
+                                   TextTrimming="CharacterEllipsis" ToolTip="{Binding DocumentInfoText}" />
                         <TextBlock Text="{Binding FilePathText}" FontSize="10.5" Margin="0,3,0,0"
                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                    TextTrimming="CharacterEllipsis" ToolTip="{Binding FilePathText}" />
                     </StackPanel>
 
-                    <CheckBox Grid.Column="3" Content="显示大纲" IsChecked="{Binding ShowOutline}"
-                              Style="{StaticResource CheckBoxStyle}" VerticalAlignment="Center"
-                              ToolTip="显示 / 隐藏左侧大纲栏（会记住）" />
+                    <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                        <CheckBox Content="显示大纲" IsChecked="{Binding ShowOutline}"
+                                  Style="{StaticResource CheckBoxStyle}" VerticalAlignment="Center"
+                                  ToolTip="显示 / 隐藏左侧大纲栏（会记住）" />
+                        <CheckBox Content="页眉页脚" IsChecked="{Binding ShowHeaderFooter}"
+                                  Style="{StaticResource CheckBoxStyle}" VerticalAlignment="Center" Margin="14,0,0,0"
+                                  ToolTip="显示 / 隐藏页眉和页脚（连续浏览只在顶部 / 底部各显示一次；会记住）" />
+                    </StackPanel>
                 </Grid>
 
                 <!-- 第二行：缩放 / 查找 -->
@@ -162,6 +167,10 @@
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        Visibility="{Binding Text, ElementName=SearchBox, Converter={StaticResource EmptyToVis}}" />
                         </Grid>
+                        <CheckBox Content="区分大小写" IsChecked="{Binding SearchMatchCase}"
+                                  Style="{StaticResource CheckBoxStyle}" VerticalAlignment="Center"
+                                  Margin="8,0,0,0"
+                                  ToolTip="查找时区分大小写（正文 + 表格文字；页眉页脚 / 脚注不参与查找）" />
                         <TextBlock Text="{Binding SearchStatus}" MinWidth="72" FontSize="10.5" Margin="8,0,4,0"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -171,6 +180,9 @@
                                 Command="{Binding SearchNextCommand}" ToolTip="下一个命中（回车）" />
                         <Button Content="✕" Style="{StaticResource CompactButtonStyle}" Margin="4,0,0,0"
                                 Command="{Binding ClearSearchCommand}" ToolTip="清除查找（Esc）" />
+                        <Button Content="📋 复制全文" Style="{StaticResource CompactButtonStyle}" Margin="12,0,0,0"
+                                Command="{Binding CopyAllTextCommand}"
+                                ToolTip="把正文纯文本复制到剪贴板（表格按「单元格 + 制表符」；不含页眉页脚与脚注）" />
                     </StackPanel>
                 </Grid>
             </StackPanel>
@@ -271,7 +283,7 @@
                         <TextBlock Text="或者点左上角「📘 打开 Word 文档…」。只读浏览，不会改动原文件。"
                                    FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
                                    TextWrapping="Wrap" TextAlignment="Center" Margin="0,10,0,0" />
-                        <TextBlock Text="支持：段落样式 · 标题大纲 · 表格 · 图片 · 缩放 · 查找"
+                        <TextBlock Text="支持：段落样式 · 标题大纲 · 表格 · 图片 · 页眉页脚 · 脚注尾注 · 缩放 · 查找 · 复制全文"
                                    FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
                                    TextAlignment="Center" TextWrapping="Wrap" Margin="0,14,0,0" />
                     </StackPanel>

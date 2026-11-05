@@ -24,6 +24,9 @@ public static class WordDocumentParser
     private const int MaxImages = 200;
     private const long MaxTotalImageBytes = 48L * 1024 * 1024;
 
+    /// <summary>脚注 / 尾注各最多解析多少条（正常文档远小于这个数；防畸形文件刷出几万条）。</summary>
+    private const int MaxNotes = 300;
+
     private static readonly XNamespace W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
     private static readonly XNamespace R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
     private static readonly XNamespace A = "http://schemas.openxmlformats.org/drawingml/2006/main";
@@ -80,13 +83,12 @@ public static class WordDocumentParser
         var body = documentXml.Root?.Element(W + "body")
             ?? throw new OoxmlException("word/document.xml 里没有正文（文件可能损坏）");
 
-        var document = new WordDocument
-        {
-            SourcePath = sourcePath,
-            Title = ReadTitle(package) is { Length: > 0 } title
-                ? title
-                : Path.GetFileNameWithoutExtension(sourcePath),
-        };
+        var document = new WordDocument { SourcePath = sourcePath };
+
+        // 标题 / 作者 / 修改时间都从 docProps/core.xml 读；标题缺失时退回文件名
+        ReadCoreProperties(package, document);
+        if (string.IsNullOrWhiteSpace(document.Title))
+            document.Title = Path.GetFileNameWithoutExtension(sourcePath);
 
         var context = new ParseContext(package, document)
         {
@@ -96,7 +98,7 @@ public static class WordDocumentParser
 
         foreach (var relationship in package.ReadRelationships(mainPart))
         {
-            context.Relationships.TryAdd(relationship.Id, relationship);
+            context.DocumentRelationships.TryAdd(relationship.Id, relationship);
         }
 
         // 按出现顺序解析正文：段落 / 表格 / 内容控件（sdt）都要展开。
@@ -104,6 +106,14 @@ public static class WordDocumentParser
         {
             ParseBlockElement(element, document.BlockList, context);
         }
+
+        // 页眉 / 页脚与脚注 / 尾注：都属于「缺部件就跳过」的可选内容，任何一处坏掉都不能影响正文
+        var sections = CollectSectionProperties(body);
+        ParseHeaderOrFooter(package, context, sections.FirstOrDefault(), isHeader: true);
+        ParseHeaderOrFooter(package, context, sections.LastOrDefault(), isHeader: false);
+        ParseNotesPart(package, "word/footnotes.xml", context, document.FootnoteList);
+        ParseNotesPart(package, "word/endnotes.xml", context, document.EndnoteList);
+        AssignNoteNumbers(document);
 
         return document;
     }
@@ -128,14 +138,291 @@ public static class WordDocumentParser
         throw new OoxmlException("这不是有效的 Word 文档（缺少 word/document.xml 主部件）");
     }
 
-    /// <summary>文档标题：<c>docProps/core.xml</c> 的 <c>dc:title</c>，没有就由调用方退回文件名。</summary>
-    private static string? ReadTitle(OoxmlPackage package)
+    /// <summary>
+    /// 读 <c>docProps/core.xml</c> 的标题 / 作者 / 最后修改者 / 创建与修改时间。
+    /// <para>这个部件是「可以没有」的：缺失 / 坏 XML 时保持空值，界面退回文件名与文件大小，
+    /// 不会因此拒绝打开文档。</para>
+    /// </summary>
+    private static void ReadCoreProperties(OoxmlPackage package, WordDocument document)
     {
         var core = package.TryReadXml("docProps/core.xml");
-        var title = core?.Descendants()
-            .FirstOrDefault(element => element.Name.LocalName == "title")?
+        if (core?.Root is null) return;
+
+        string? ValueOf(string localName) => core.Descendants()
+            .FirstOrDefault(element => element.Name.LocalName == localName)?
             .Value;
-        return string.IsNullOrWhiteSpace(title) ? null : title.Trim();
+
+        var title = ValueOf("title");
+        if (!string.IsNullOrWhiteSpace(title)) document.Title = title.Trim();
+
+        var author = ValueOf("creator");
+        if (!string.IsNullOrWhiteSpace(author)) document.Author = author.Trim();
+
+        var lastModifiedBy = ValueOf("lastModifiedBy");
+        if (!string.IsNullOrWhiteSpace(lastModifiedBy)) document.LastModifiedBy = lastModifiedBy.Trim();
+
+        document.CreatedUtc = ParseUtcDate(ValueOf("created"));
+        document.ModifiedUtc = ParseUtcDate(ValueOf("modified"));
+    }
+
+    /// <summary>
+    /// 把 <c>dcterms:created</c> / <c>dcterms:modified</c> 的 W3CDTF 时间（例如
+    /// <c>2024-05-01T08:30:00Z</c>）解析成 UTC 时间；格式不认识时返回 <c>null</c>（界面就不显示时间）。
+    /// </summary>
+    private static DateTime? ParseUtcDate(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+
+        if (DateTime.TryParse(text.Trim(), System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AdjustToUniversal
+                | System.Globalization.DateTimeStyles.AssumeUniversal, out var parsed))
+        {
+            return parsed.ToUniversalTime();
+        }
+
+        return null;
+    }
+
+    // ---------- 节属性 / 页眉 / 页脚 ----------
+
+    /// <summary>
+    /// 按文档顺序收集所有 <c>w:sectPr</c>：段落里的（分节符）和 body 末尾的那个（最后一节）。
+    /// 连续浏览只需要「首个节的页眉」和「最后一个节的页脚」，所以只要顺序正确即可。
+    /// </summary>
+    private static List<XElement> CollectSectionProperties(XElement body)
+    {
+        var sections = new List<XElement>();
+        foreach (var element in body.Elements())
+        {
+            switch (element.Name.LocalName)
+            {
+                case "sectPr":
+                    sections.Add(element);
+                    break;
+
+                case "p":
+                    if (element.Element(W + "pPr")?.Element(W + "sectPr") is { } section)
+                        sections.Add(section);
+                    break;
+            }
+        }
+
+        return sections;
+    }
+
+    /// <summary>
+    /// 解析某一节的页眉 / 页脚部件：<c>w:headerReference</c> / <c>w:footerReference</c> → <c>r:id</c>
+    /// → <c>word/_rels/document.xml.rels</c> → <c>word/headerN.xml</c> / <c>word/footerN.xml</c>，
+    /// 然后**用该部件自己的关系表**解析里面的图片 / 超链接。
+    ///
+    /// <para>连续浏览的简化：首个节的页眉显示在文档顶部、最后一个节的页脚显示在文档底部，
+    /// 不做「每页重复」。部件缺失 / 坏 XML 时静默跳过，正文照常显示。</para>
+    /// </summary>
+    private static void ParseHeaderOrFooter(
+        OoxmlPackage package, ParseContext context, XElement? sectionProperties, bool isHeader)
+    {
+        if (sectionProperties is null) return;
+
+        var partName = ResolveHeaderFooterPart(package, context, sectionProperties, isHeader);
+        if (string.IsNullOrWhiteSpace(partName)) return;
+
+        XDocument xml;
+        try
+        {
+            xml = package.ReadXml(partName);
+        }
+        catch (OoxmlException)
+        {
+            context.NoteOnce($"说明：{(isHeader ? "页眉" : "页脚")}部件损坏，已跳过");
+            return;
+        }
+
+        if (xml.Root is null) return;
+
+        var relationships = ReadPartRelationships(package, partName);
+        var target = isHeader ? context.Document.HeaderBlockList : context.Document.FooterBlockList;
+
+        context.RunInOtherPart(partName, relationships, () =>
+        {
+            foreach (var element in xml.Root.Elements())
+            {
+                if (element.Name.LocalName is "p" or "tbl" or "sdt")
+                    ParseBlockElement(element, target, context);
+            }
+        });
+    }
+
+    /// <summary>
+    /// 在节的 <c>w:headerReference</c> / <c>w:footerReference</c> 里按「default → first → even」的顺序
+    /// 选一个，再顺着关系表找到部件名；找不到关系 / 部件不存在时返回 <c>null</c>（跳过页眉页脚）。
+    /// </summary>
+    private static string? ResolveHeaderFooterPart(
+        OoxmlPackage package, ParseContext context, XElement sectionProperties, bool isHeader)
+    {
+        var referenceName = isHeader ? W + "headerReference" : W + "footerReference";
+        var references = sectionProperties.Elements(referenceName).ToList();
+        if (references.Count == 0) return null;
+
+        // 连续浏览只看一种页眉页脚：默认页优先，其次首页，最后偶数页
+        foreach (var preferredType in new[] { "default", "first", "even" })
+        {
+            foreach (var reference in references)
+            {
+                var type = (string?)reference.Attribute(W + "type");
+                if (!string.IsNullOrEmpty(type)
+                    && !string.Equals(type, preferredType, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var relationshipId = (string?)reference.Attribute(R + "id");
+                if (string.IsNullOrEmpty(relationshipId)) continue;
+                if (!context.DocumentRelationships.TryGetValue(relationshipId, out var relationship))
+                    continue;   // 关系文件缺失 / id 对不上：当作没有页眉页脚
+                if (relationship.IsExternal || !package.Contains(relationship.Target)) continue;
+                return relationship.Target;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>读某个部件自己的关系表（页眉页脚里的图片 / 超链接要用它）；关系文件坏了返回空表。</summary>
+    private static Dictionary<string, OoxmlRelationship> ReadPartRelationships(
+        OoxmlPackage package, string partName)
+    {
+        var relationships = new Dictionary<string, OoxmlRelationship>(StringComparer.Ordinal);
+        try
+        {
+            foreach (var relationship in package.ReadRelationships(partName))
+                relationships.TryAdd(relationship.Id, relationship);
+        }
+        catch (OoxmlException)
+        {
+            // 关系文件缺失 / 坏 XML：文字照样显示，只是图片 / 链接解析不到
+        }
+
+        return relationships;
+    }
+
+    // ---------- 脚注 / 尾注 ----------
+
+    /// <summary>
+    /// 解析 <c>word/footnotes.xml</c> / <c>word/endnotes.xml</c>：过滤 <c>w:id &lt; 1</c> 的分隔符、
+    /// 按出现顺序收集内容块。部件缺失 / 坏 XML 时什么都不加（正文里的引用仍会显示 [n] 标记）。
+    /// </summary>
+    private static void ParseNotesPart(
+        OoxmlPackage package, string partName, ParseContext context, List<WordNote> target)
+    {
+        var xml = package.TryReadXml(partName);
+        if (xml?.Root is null) return;
+
+        var relationships = ReadPartRelationships(package, partName);
+
+        context.RunInOtherPart(partName, relationships, () =>
+        {
+            foreach (var noteElement in xml.Root.Elements())
+            {
+                var localName = noteElement.Name.LocalName;
+                if (localName is not ("footnote" or "endnote")) continue;
+
+                // 分隔符（-1 / 0）与 continuationSeparator 等特殊条目不是用户内容
+                var id = ReadInt((string?)noteElement.Attribute(W + "id")) ?? 0;
+                if (id < 1) continue;
+                var type = (string?)noteElement.Attribute(W + "type");
+                if (type is not null && type.Contains("separator", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (target.Count >= MaxNotes)
+                {
+                    context.NoteOnce($"说明：脚注 / 尾注超过安全上限（{MaxNotes} 条），后面的已省略");
+                    break;
+                }
+
+                var note = new WordNote { Id = id };
+                foreach (var child in noteElement.Elements())
+                {
+                    if (child.Name.LocalName is "p" or "tbl" or "sdt")
+                        ParseBlockElement(child, note.Blocks, context);
+                }
+
+                // 脚注里只要求文本 / 段落 / 简单表格：图片块去掉（文档里也这么写）
+                note.Blocks.RemoveAll(block => block is WordImageBlock);
+                if (note.Blocks.Count == 0) continue;
+
+                target.Add(note);
+            }
+        });
+    }
+
+    /// <summary>
+    /// 给脚注 / 尾注编号：先按**正文引用出现的先后**编 1、2、3…（Word 里显示的就是这个顺序），
+    /// 再把编号写回 run；没被任何引用指向的脚注排在最后，照样列出来。
+    /// </summary>
+    private static void AssignNoteNumbers(WordDocument document)
+    {
+        AssignNoteNumbers(document, document.FootnoteList, isFootnote: true);
+        AssignNoteNumbers(document, document.EndnoteList, isFootnote: false);
+    }
+
+    private static void AssignNoteNumbers(WordDocument document, List<WordNote> notes, bool isFootnote)
+    {
+        // 即使脚注部件缺失（notes 为空）也要给正文引用编号：界面至少要显示 [n] 标记，不能什么都不显示
+        // 第一遍：按正文顺序收集引用，得到「w:id → 显示编号」
+        var numberById = new Dictionary<int, int>();
+        var next = 1;
+        foreach (var run in EnumerateRuns(document.BlockList))
+        {
+            var id = isFootnote ? run.FootnoteId : run.EndnoteId;
+            if (id is null || id.Value < 1) continue;
+            if (numberById.ContainsKey(id.Value)) continue;
+            numberById[id.Value] = next++;
+        }
+
+        // 第二遍：编号写回 run（找不到内容的引用也照样给号，界面只显示标记）
+        foreach (var run in EnumerateRuns(document.BlockList))
+        {
+            var id = isFootnote ? run.FootnoteId : run.EndnoteId;
+            if (id is null || id.Value < 1) continue;
+            if (!numberById.TryGetValue(id.Value, out var number)) continue;
+            if (isFootnote) run.FootnoteNumber = number;
+            else run.EndnoteNumber = number;
+        }
+
+        // 第三遍：脚注列表按显示编号排序；没被引用的接在后面
+        foreach (var note in notes)
+        {
+            if (numberById.TryGetValue(note.Id, out var number)) note.Number = number;
+        }
+
+        foreach (var note in notes.Where(note => note.Number <= 0).ToList())
+            note.Number = next++;
+        notes.Sort((left, right) => left.Number.CompareTo(right.Number));
+    }
+
+    /// <summary>按文档顺序遍历所有段落里的 run（含表格单元格里的段落）。</summary>
+    private static IEnumerable<WordRun> EnumerateRuns(IReadOnlyList<WordBlock> blocks)
+    {
+        foreach (var block in blocks)
+        {
+            switch (block)
+            {
+                case WordParagraphBlock paragraph:
+                    foreach (var run in paragraph.Runs) yield return run;
+                    break;
+
+                case WordTableBlock table:
+                    foreach (var row in table.Rows)
+                    {
+                        foreach (var cell in row.Cells)
+                        {
+                            foreach (var run in EnumerateRuns(cell.Blocks)) yield return run;
+                        }
+                    }
+
+                    break;
+            }
+        }
     }
 
     // ---------- 样式 ----------
@@ -602,10 +889,21 @@ public static class WordDocumentParser
         var text = new System.Text.StringBuilder();
         var hasPageBreak = false;
 
+        // 脚注 / 尾注引用：引用本身不占正文文字，只记下 w:id，编号在正文全部解析完后统一分配
+        int? footnoteId = null;
+        int? endnoteId = null;
+
         foreach (var child in runElement.Elements())
         {
             switch (child.Name.LocalName)
             {
+                case "footnoteReference":
+                    footnoteId = ReadInt((string?)child.Attribute(W + "id"));
+                    break;
+
+                case "endnoteReference":
+                    endnoteId = ReadInt((string?)child.Attribute(W + "id"));
+                    break;
                 case "t":
                     text.Append(child.Value);
                     break;
@@ -647,13 +945,11 @@ public static class WordDocumentParser
                     break;
                 }
 
-                // 旧格式的嵌入对象 / 脚注引用 / 批注引用 / 域字符：不支持，跳过
+                // 旧格式的嵌入对象 / 批注引用 / 域字符：不支持，跳过
                 case "instrText":
                 case "delText":
                 case "fldChar":
                 case "object":
-                case "footnoteReference":
-                case "endnoteReference":
                 case "commentReference":
                 case "sym":
                 case "softHyphen":
@@ -663,7 +959,9 @@ public static class WordDocumentParser
 
         if (hasPageBreak && forcePageBreak is not null) forcePageBreak.IsPageBreakBefore = true;
 
-        if (text.Length == 0) return;
+        // 只有脚注 / 尾注引用的 run 没有文字，但必须在模型里留一个 run（渲染器据此补 [n] 上标）
+        var hasNoteReference = footnoteId is >= 1 || endnoteId is >= 1;
+        if (text.Length == 0 && !hasNoteReference) return;
 
         // w:sz 是「半点」：28 → 14 磅
         var halfPoints = ReadInt((string?)properties?.Element(W + "sz")?.Attribute(W + "val"));
@@ -685,6 +983,8 @@ public static class WordDocumentParser
             FontFamily = ReadFontFamily(properties?.Element(W + "rFonts")),
             FontSizePt = halfPoints.HasValue && halfPoints.Value > 0 ? halfPoints.Value / 2.0 : null,
             HighlightHex = MapHighlight((string?)properties?.Element(W + "highlight")?.Attribute(W + "val")),
+            FootnoteId = footnoteId is >= 1 ? footnoteId : null,
+            EndnoteId = endnoteId is >= 1 ? endnoteId : null,
         });
     }
 
@@ -966,6 +1266,7 @@ public static class WordDocumentParser
         {
             _package = package;
             Document = document;
+            _relationships = DocumentRelationships;   // 默认按主文档的关系表解析
         }
 
         public WordDocument Document { get; }
@@ -974,7 +1275,19 @@ public static class WordDocumentParser
 
         public Dictionary<string, NumberingDefinition> Numbering { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 
-        public Dictionary<string, OoxmlRelationship> Relationships { get; } = new(StringComparer.Ordinal);
+        /// <summary>主文档 <c>word/document.xml</c> 的关系表（页眉页脚 / 脚注部件名都从它查）。</summary>
+        public Dictionary<string, OoxmlRelationship> DocumentRelationships { get; } = new(StringComparer.Ordinal);
+
+        /// <summary>当前正在解析的部件的关系表：正文是主文档，页眉页脚 / 脚注按部件切换。</summary>
+        public Dictionary<string, OoxmlRelationship> Relationships => _relationships;
+
+        private Dictionary<string, OoxmlRelationship> _relationships;
+
+        /// <summary>当前部件名（图片缓存按「部件 + 关系 Id」区分，避免不同部件的 rId 撞车）。</summary>
+        public string CurrentPartName { get; private set; } = "word/document.xml";
+
+        /// <summary>是否把块计入文档统计（正文计；页眉页脚 / 脚注不计，否则状态栏数字会虚高）。</summary>
+        public bool CountInDocument { get; private set; } = true;
 
         /// <summary>同级同 numId 的编号计数器。</summary>
         public Dictionary<string, Dictionary<int, int>> NumberingCounters { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -993,6 +1306,10 @@ public static class WordDocumentParser
 
             block.Index = target.Count;
             target.Add(block);
+
+            // 页眉页脚 / 脚注的内容块不算进正文统计（但同样受总块数上限保护）
+            if (!CountInDocument) return;
+
             _totalBlocks++;
 
             switch (block)
@@ -1010,12 +1327,40 @@ public static class WordDocumentParser
             }
         }
 
+        /// <summary>
+        /// 临时切到另一个部件（页眉 / 页脚 / 脚注）解析：换用该部件自己的关系表与图片缓存命名空间，
+        /// 同时关掉「计入正文统计」。解析完自动恢复现场。
+        /// </summary>
+        public void RunInOtherPart(
+            string partName, Dictionary<string, OoxmlRelationship> relationships, Action action)
+        {
+            var previousPart = CurrentPartName;
+            var previousRelationships = _relationships;
+            var previousCount = CountInDocument;
+
+            CurrentPartName = partName;
+            _relationships = relationships;
+            CountInDocument = false;
+            try
+            {
+                action();
+            }
+            finally
+            {
+                CurrentPartName = previousPart;
+                _relationships = previousRelationships;
+                CountInDocument = previousCount;
+            }
+        }
+
         /// <summary>按关系 Id 读图片字节（同一张图片只解压一次；超上限返回 null 并记录说明）。</summary>
         public (byte[] Bytes, string ContentType)? ReadImage(string? relationshipId)
         {
             if (string.IsNullOrWhiteSpace(relationshipId)) return null;
 
-            if (_imageCache.TryGetValue(relationshipId, out var cached)) return cached;
+            // 不同部件里的关系 Id 可能重名（页眉的 rId1 ≠ 正文的 rId1），缓存键要带上部件名
+            var cacheKey = CurrentPartName + "|" + relationshipId;
+            if (_imageCache.TryGetValue(cacheKey, out var cached)) return cached;
 
             if (!Relationships.TryGetValue(relationshipId, out var relationship) || relationship.IsExternal)
                 return null;   // 关系缺失 / 外链图片：跳过（不能联网取图）
@@ -1045,7 +1390,7 @@ public static class WordDocumentParser
 
             _totalImageBytes += bytes.Length;
             var image = (bytes, ContentTypeFromPath(relationship.Target));
-            _imageCache[relationshipId] = image;
+            _imageCache[cacheKey] = image;
             return image;
         }
 

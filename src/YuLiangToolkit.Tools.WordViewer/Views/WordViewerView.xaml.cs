@@ -1,25 +1,37 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using YuLiangToolkit.Tools.WordViewer.Parsing;
 using YuLiangToolkit.Tools.WordViewer.ViewModels;
 
 namespace YuLiangToolkit.Tools.WordViewer.Views;
 
 /// <summary>
-/// 「Word 阅读器」页面的代码后置：只做**必须碰输入 / 焦点 / 拖放**的事情 ——
-/// 拖入打开、Ctrl+滚轮缩放、Ctrl+F 聚焦查找框、回车 / Shift+回车 / Esc 查找导航、点大纲跳转。
-/// 业务逻辑（打开 / 解析 / 排版 / 查找命中）都在 <see cref="WordViewerViewModel"/> 里。
+/// 「Word 阅读器」页面的代码后置：只做**必须碰输入 / 焦点 / 拖放 / 滚动位置**的事情 ——
+/// 拖入打开、Ctrl+滚轮缩放、Ctrl+F 聚焦查找框、回车 / Shift+回车 / Esc 查找导航、点大纲跳转、
+/// 记住 / 恢复阅读位置。业务逻辑（打开 / 解析 / 排版 / 查找命中）都在 <see cref="WordViewerViewModel"/> 里。
 /// </summary>
 public partial class WordViewerView : UserControl
 {
     private WordViewerViewModel? _viewModel;
     private bool _autoOpenRequested;
 
+    /// <summary>恢复阅读位置时「滚动范围还没量出来」的重试次数（FlowDocument 刚换过时要等布局）。</summary>
+    private int _pendingScrollApplyAttempts;
+
+    /// <summary>
+    /// <c>FlowDocumentScrollViewer</c> 自己不暴露滚动偏移 / 滚动范围，要拿模板里的 <see cref="ScrollViewer"/>。
+    /// 找到后缓存（视图被缓存再挂回来时还能用）。
+    /// </summary>
+    private ScrollViewer? _documentScrollViewer;
+
     public WordViewerView()
     {
         InitializeComponent();
         Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+        DataContextChanged += OnDataContextChanged;
     }
 
     private WordViewerViewModel? ViewModel
@@ -31,15 +43,124 @@ public partial class WordViewerView : UserControl
         }
     }
 
+    private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (_viewModel is not null) _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+
+        _viewModel = DataContext as WordViewerViewModel;
+        if (_viewModel is null) return;
+
+        _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        _viewModel.ScrollRatioProvider = CaptureScrollRatio;
+    }
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         _viewModel ??= DataContext as WordViewerViewModel;
         if (_viewModel is null) return;
 
+        // 视图被外壳缓存后重新挂回来时，仍要把「读滚动比例」的能力接上
+        _viewModel.ScrollRatioProvider = CaptureScrollRatio;
+        _documentScrollViewer = null;   // 模板可能被重建，下次用到时重新找
+
         // 开发 / 截图用：YLT_WORD_OPEN 指定的文档只自动打开一次
         if (_autoOpenRequested) return;
         _autoOpenRequested = true;
         _viewModel.TryOpenPendingAutoOpen();
+    }
+
+    /// <summary>
+    /// 切走工具页（视图被外壳回收 / 缓存）时保存阅读位置：把当前滚动比例交给 ViewModel 并立刻落盘。
+    /// 切回来时视图没有重新排版，位置保持原样。
+    /// </summary>
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel is not { } viewModel) return;
+
+        var scrollViewer = GetDocumentScrollViewer();
+        viewModel.NoteReadingPosition(
+            scrollViewer?.VerticalOffset ?? 0,
+            scrollViewer?.ScrollableHeight ?? 0);
+        viewModel.FlushReadingPosition(saveNow: true);
+    }
+
+    // ---------------------------------------------------------------- 阅读位置
+
+    /// <summary>
+    /// 取 <c>FlowDocumentScrollViewer</c> 模板里的滚动容器：它自己的公开 API 没有 VerticalOffset /
+    /// ScrollableHeight / ScrollToVerticalOffset，只能沿可视树往下找第一个 <see cref="ScrollViewer"/>。
+    /// </summary>
+    private ScrollViewer? GetDocumentScrollViewer()
+    {
+        if (_documentScrollViewer is not null) return _documentScrollViewer;
+        _documentScrollViewer = FindChild<ScrollViewer>(DocumentViewer);
+        return _documentScrollViewer;
+    }
+
+    private static T? FindChild<T>(DependencyObject? parent) where T : DependencyObject
+    {
+        if (parent is null) return null;
+
+        var count = VisualTreeHelper.GetChildrenCount(parent);
+        for (var index = 0; index < count; index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is T match) return match;
+            if (FindChild<T>(child) is { } found) return found;
+        }
+
+        return null;
+    }
+
+    /// <summary>读当前竖向滚动比例（0 ~ 1）；没文档 / 内容撑不满一屏时返回 null。</summary>
+    private double? CaptureScrollRatio()
+    {
+        var scrollViewer = GetDocumentScrollViewer();
+        if (scrollViewer is null || DocumentViewer.Document is null) return null;
+
+        var scrollable = scrollViewer.ScrollableHeight;
+        if (scrollable <= 0.5) return null;
+        return Math.Clamp(scrollViewer.VerticalOffset / scrollable, 0, 1);
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        // 打开文档 / 切换页眉页脚后 FlowDocument 会被换掉，等布局完成再把滚动位置应用上去
+        if (e.PropertyName == nameof(WordViewerViewModel.FlowDocument)) ApplyPendingScrollRatio();
+    }
+
+    private void ApplyPendingScrollRatio()
+    {
+        if (ViewModel?.ConsumePendingScrollRatio() is not { } ratio) return;
+
+        _pendingScrollApplyAttempts = 0;
+        TryApply(ratio);
+
+        // 局部函数递归：滚动范围=0 说明还没布局完，空闲优先级下重试几次（最多 3 次）
+        void TryApply(double targetRatio)
+        {
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, new Action(() =>
+            {
+                if (DocumentViewer.Document is null) return;
+
+                var scrollViewer = GetDocumentScrollViewer();
+                if (scrollViewer is null) return;
+
+                var scrollable = scrollViewer.ScrollableHeight;
+                if (scrollable <= 0.5 && _pendingScrollApplyAttempts < 3)
+                {
+                    _pendingScrollApplyAttempts++;
+                    TryApply(targetRatio);
+                    return;
+                }
+
+                _pendingScrollApplyAttempts = 0;
+                var safeRatio = double.IsNaN(targetRatio) || double.IsInfinity(targetRatio)
+                    ? 0
+                    : Math.Clamp(targetRatio, 0, 1);
+                scrollViewer.ScrollToVerticalOffset(safeRatio * Math.Max(0, scrollable));
+            }));
+        }
     }
 
     // ---------------------------------------------------------------- 拖入打开

@@ -40,6 +40,12 @@ public sealed class ExcelSheet
     /// <summary>实际使用到的最大列号（1 基；空表为 0）。</summary>
     public int MaxColumn { get; init; }
 
+    /// <summary>
+    /// 冻结窗格信息（来自 <c>sheetViews/sheetView/pane</c>）；没有冻结 / 只识别 <c>frozen</c> 与
+    /// <c>frozenSplit</c> 时为 null（<c>split</c> 是「拆分」不是「冻结」，不还原）。
+    /// </summary>
+    public ExcelFreezePane? FreezePane { get; init; }
+
     /// <summary>是否因为超过 <see cref="XlsxParseLimits"/> 被截断（界面要在状态栏提示）。</summary>
     public bool IsTruncated { get; init; }
 
@@ -67,6 +73,56 @@ public sealed class ExcelRow
 
     /// <summary>这一行是否隐藏（解析时会被跳过；保留字段是为了以后「显示隐藏行」用）。</summary>
     public bool IsHidden { get; init; }
+
+    /// <summary>
+    /// 文件里写的行高（已从磅换算成 WPF 的 DIP）；<b>null = 没有 ht，界面按内容自动撑高</b>。
+    /// <para>Excel 的 <c>ht</c> 单位是磅（1 磅 = 96/72 DIP），这里统一换算好，
+    /// 免得界面层到处再乘一遍、还容易把「磅」和「像素」搞混。</para>
+    /// </summary>
+    public double? HeightDip { get; init; }
+}
+
+/// <summary>
+/// 一个工作表的冻结窗格（<c>sheetViews/sheetView/pane</c> 的 <c>frozen</c> / <c>frozenSplit</c>）。
+///
+/// <para><b>为什么只存「界面可见的行列数」而不是原始 xSplit / ySplit</b>：Excel 的 xSplit / ySplit
+/// 是「冻结了几列 / 几行（含隐藏行列）」，而界面只显示可见行列；直接用数字会让隐藏列把冻结边界带偏。
+/// 所以解析器优先用 <c>topLeftCell</c>（第一个可滚动单元格）换算出边界，再数「边界内有多少可见行列」，
+/// 界面拿到的就是可以直接用的 <see cref="FrozenColumns"/> / <see cref="FrozenRows"/>。</para>
+/// </summary>
+public sealed class ExcelFreezePane
+{
+    /// <summary>界面里可见的冻结行数（主表上方第二个 DataGrid 显示前 N 行）。</summary>
+    public int FrozenRows { get; init; }
+
+    /// <summary>界面里可见的冻结列数（主 DataGrid 的 <c>FrozenColumnCount</c>）。</summary>
+    public int FrozenColumns { get; init; }
+
+    /// <summary>原始 <c>topLeftCell</c>（第一个可滚动单元格，例如 <c>B3</c>）；没有时为空串。</summary>
+    public string TopLeftCell { get; init; } = "";
+
+    /// <summary>是否真的冻结了行列（两个计数都为 0 时不算）。</summary>
+    public bool IsFrozen => FrozenRows > 0 || FrozenColumns > 0;
+
+    /// <summary>
+    /// 状态栏用的一句话，例如「冻结：首行 · 前 2 列」「冻结：首列」「冻结：前 3 行」。
+    /// </summary>
+    public string Description
+    {
+        get
+        {
+            if (!IsFrozen) return "";
+
+            if (FrozenRows > 0 && FrozenColumns > 0)
+                return $"冻结：{DescribeRows()} · {DescribeColumns()}";
+
+            return FrozenRows > 0 ? $"冻结：{DescribeRows()}" : $"冻结：{DescribeColumns()}";
+        }
+    }
+
+    private string DescribeRows() => FrozenRows == 1 ? "首行" : $"前 {FrozenRows} 行";
+
+    private string DescribeColumns() => FrozenColumns == 1 ? "首列" : $"前 {FrozenColumns} 列";
 }
 
 /// <summary>单元格的显示类型（来自 XML 的 <c>t</c> 属性 + 数字格式判断）。</summary>

@@ -21,6 +21,36 @@ public sealed class ExcelViewerConfig : ToolConfig
     public bool ShowGridLines { get; set; } = true;
 
     /// <summary>
+    /// 打开工作簿时是否还原文件里的冻结窗格（默认开）。
+    /// <b>关掉只是不冻结，不修改原文件</b>；冻结列用 DataGrid 的 FrozenColumnCount，
+    /// 冻结行用主表上方的第二个只读表（见 ExcelViewerView.xaml.cs）。
+    /// </summary>
+    public bool RestoreFreezePanes { get; set; } = true;
+
+    /// <summary>
+    /// 是否按内容自动设置行高（默认开）：文件里写了 <c>ht</c> 的行用 ht（夹在 18 ~ 180 DIP），
+    /// 没写的行按内容自动撑高（自动换行的长文本不再被裁）。关掉 = 统一 24 DIP，回到旧版行为。
+    /// </summary>
+    public bool AutoRowHeight { get; set; } = true;
+
+    /// <summary>
+    /// 是否记住每本工作簿的阅读位置（默认开）。关掉后不再写入 / 恢复阅读位置，
+    /// 但<b>已有记录不会被删除</b>（下次重新打开开关还能用）。
+    /// <para>字段名用复数是为了避开同名方法 <see cref="RememberReadingPosition"/>（C# 不允许属性和方法重名），
+    /// JSON 里的键是 <c>rememberReadingPositions</c>。</para>
+    /// </summary>
+    public bool RememberReadingPositions { get; set; } = true;
+
+    /// <summary>最多记住多少本工作簿的阅读位置（超出按最后保存时间淘汰最老的，避免配置文件无限长）。</summary>
+    public const int MaxReadingPositions = 200;
+
+    /// <summary>
+    /// 每本工作簿的上次阅读位置：key = <see cref="NormalizePositionKey"/> 规范化后的完整路径（小写），
+    /// value = 工作表名 / 滚动比例 / 保存时间。打开同一本工作簿时自动回到这里。
+    /// </summary>
+    public Dictionary<string, ExcelReadingPosition> ReadingPositions { get; set; } = new();
+
+    /// <summary>
     /// 「最近打开」最多记多少条：默认 50，允许 0 ~ 100。
     /// 0 = 不记录（并清空已有列表）；调小会立刻裁掉多余的老记录。
     /// </summary>
@@ -56,6 +86,10 @@ public sealed class ExcelViewerConfig : ToolConfig
     /// <summary>现在要不要记录最近打开（上限 0 = 不记录）。</summary>
     [JsonIgnore]
     public bool RecordsRecent => RecentLimitEffective > 0;
+
+    /// <summary>当前记住了多少本工作簿的阅读位置（「清理缓存」显示条数用；只读，不写进 JSON）。</summary>
+    [JsonIgnore]
+    public int ReadingPositionCount => ReadingPositions?.Count ?? 0;
 
     // ---------- 最近打开 ----------
 
@@ -93,14 +127,89 @@ public sealed class ExcelViewerConfig : ToolConfig
     }
 
     /// <summary>
-    /// 「恢复默认设置」：网格线开、最近上限回 50。
-    /// <b>不清空最近记录</b>（只按新上限裁剪），也不动「上次打开的文件夹」——
-    /// 那不是显示设置，清了反而给用户添麻烦。
+    /// 「恢复默认设置」：网格线开、冻结窗格还原开、自动行高开、记住阅读位置开、最近上限回 50。
+    /// <b>不清空最近记录</b>（只按新上限裁剪），<b>也不清阅读位置</b>，不动「上次打开的文件夹」——
+    /// 那些不是显示设置，清了反而给用户添麻烦。
     /// </summary>
     public void ResetToDefaults()
     {
         ShowGridLines = true;
+        RestoreFreezePanes = true;
+        AutoRowHeight = true;
+        RememberReadingPositions = true;
         RecentLimit = RecentFiles.DefaultLimit;
         TrimRecentToLimit();
+    }
+
+    // ---------- 阅读位置（记住上次看到哪张表、滚到哪） ----------
+
+    /// <summary>
+    /// 把文件路径规范成配置里的 key：完整路径 + 小写（Windows 路径不区分大小写）。非法路径返回空串。
+    /// </summary>
+    public static string NormalizePositionKey(string? filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath)) return "";
+        try { return Path.GetFullPath(filePath.Trim().Trim('"')).ToLowerInvariant(); }
+        catch { return ""; }
+    }
+
+    /// <summary>查某本工作簿记住的阅读位置；没有记录 / 路径非法返回 null。</summary>
+    public ExcelReadingPosition? FindReadingPosition(string? filePath)
+    {
+        var key = NormalizePositionKey(filePath);
+        if (key.Length == 0 || ReadingPositions is null) return null;
+        if (!ReadingPositions.TryGetValue(key, out var position) || position is null) return null;
+
+        // 手改坏配置时也兜一下：比例在 ScrollRatio 的 setter 里夹取
+        position.ScrollRatio = position.ScrollRatio;
+        return position;
+    }
+
+    /// <summary>
+    /// 记住某本工作簿的阅读位置（同一本覆盖旧值；超过 <see cref="MaxReadingPositions"/> 本时淘汰最老的）。
+    /// 改完主动通知属性变更 → 配置自动落盘（见 AGENTS.md：没有保存按钮）。
+    /// </summary>
+    public void RememberReadingPosition(string? filePath, ExcelReadingPosition? position)
+    {
+        var key = NormalizePositionKey(filePath);
+        if (key.Length == 0 || position is null) return;
+
+        ReadingPositions ??= new Dictionary<string, ExcelReadingPosition>();
+        position.ScrollRatio = position.ScrollRatio;   // 再夹一次（调用方绕过 setter 直接改字段也不会写坏）
+        if (position.SavedAtUtc == default) position.SavedAtUtc = DateTime.UtcNow;
+        ReadingPositions[key] = position;
+
+        if (ReadingPositions.Count > MaxReadingPositions)
+        {
+            var staleKeys = ReadingPositions
+                .OrderBy(pair => pair.Value?.SavedAtUtc ?? DateTime.MinValue)
+                .Take(ReadingPositions.Count - MaxReadingPositions)
+                .Select(pair => pair.Key)
+                .ToList();
+            foreach (var stale in staleKeys) ReadingPositions.Remove(stale);
+        }
+
+        OnPropertyChanged(nameof(ReadingPositions));   // 配置靠属性变更自动落盘
+        OnPropertyChanged(nameof(ReadingPositionCount));
+    }
+
+    /// <summary>忘掉某本工作簿的阅读位置（一般用不到，留给「清理缓存」/ 以后的手动清理入口）。</summary>
+    public void ForgetReadingPosition(string? filePath)
+    {
+        var key = NormalizePositionKey(filePath);
+        if (key.Length == 0 || ReadingPositions is null) return;
+        if (!ReadingPositions.Remove(key)) return;
+        OnPropertyChanged(nameof(ReadingPositions));
+        OnPropertyChanged(nameof(ReadingPositionCount));
+    }
+
+    /// <summary>清空全部阅读位置（「主页设置 → 清理缓存」用；只删记录，不动工作簿）。</summary>
+    public void ClearReadingPositions()
+    {
+        ReadingPositions ??= new Dictionary<string, ExcelReadingPosition>();
+        if (ReadingPositions.Count == 0) return;
+        ReadingPositions.Clear();
+        OnPropertyChanged(nameof(ReadingPositions));
+        OnPropertyChanged(nameof(ReadingPositionCount));
     }
 }

@@ -10,12 +10,34 @@ using YuLiangToolkit.Tools.WordViewer.Parsing;
 
 namespace YuLiangToolkit.Tools.WordViewer.Rendering;
 
-/// <summary>渲染结果：<see cref="Document"/> 交给 <c>FlowDocumentScrollViewer</c>，段落映射表给查找 / 大纲跳转用。</summary>
+/// <summary>
+/// 渲染选项。目前只有「页眉页脚」一个开关（工具条上可切换，切换后从已解析模型重新排版、不重新读文件）。
+/// </summary>
+public sealed class WordRenderOptions
+{
+    /// <summary>是否渲染页眉 / 页脚（默认渲染）。关掉时正文、脚注照常显示。</summary>
+    public bool ShowHeaderFooter { get; set; } = true;
+}
+
+/// <summary>渲染结果：<see cref="Document"/> 交给 <c>FlowDocumentScrollViewer</c>，映射表给查找 / 大纲跳转用。</summary>
 /// <param name="Document">排好版的 FlowDocument（白色纸面）。</param>
 /// <param name="ParagraphByBlockIndex">
 /// 「模型块下标 → 渲染出来的段落」；表格 / 图片块没有单独的段落，对应项是 <c>null</c>。
 /// </param>
-public sealed record WordRenderResult(FlowDocument Document, IReadOnlyList<Paragraph?> ParagraphByBlockIndex);
+public sealed record WordRenderResult(FlowDocument Document, IReadOnlyList<Paragraph?> ParagraphByBlockIndex)
+{
+    /// <summary>
+    /// 「模型块下标 → 渲染出来的 <see cref="Block"/>」：段落 / 表格 / 图片都有映射。
+    /// 查找命中表格时没有段落可高亮，就用它把整个表格滚进视野。
+    /// </summary>
+    public IReadOnlyList<Block?> BlockByBlockIndex { get; init; } = Array.Empty<Block?>();
+
+    /// <summary>本次是否渲染了页眉 / 页脚（自检与状态栏提示用）。</summary>
+    public bool HasHeaderFooter { get; init; }
+
+    /// <summary>本次渲染的脚注 / 尾注条数（没有脚注小节时为 0）。</summary>
+    public int RenderedNoteCount { get; init; }
+}
 
 /// <summary>
 /// 把 <see cref="WordDocument"/> 模型渲染成 WPF 的 <see cref="FlowDocument"/>。
@@ -34,6 +56,15 @@ public static class WordFlowRenderer
     /// <summary>正文默认字号（磅）。</summary>
     public const double BodyFontSizePt = 11;
 
+    /// <summary>页眉 / 页脚字号（磅）：比正文小一圈，像「版面附属内容」。</summary>
+    private const double HeaderFooterFontSizePt = 9;
+
+    /// <summary>脚注 / 尾注正文字号（磅）。</summary>
+    private const double NoteFontSizePt = 9;
+
+    /// <summary>「脚注」「尾注」小节标题字号（磅）。</summary>
+    private const double NoteTitleFontSizePt = 10;
+
     /// <summary>纸面内边距（左右 / 上下，DIP）。</summary>
     private const double PagePaddingHorizontal = 56;
     private const double PagePaddingVertical = 48;
@@ -45,17 +76,33 @@ public static class WordFlowRenderer
     /// <summary>标题 1 ~ 6 级的字号（磅）：逐级递减，正文 11 磅收尾。</summary>
     private static readonly double[] HeadingFontSizesPt = { 22, 18, 15.5, 13.5, 12.5, 11.5 };
 
-    // 文档纸面用色（不随主题变化）：白纸、近黑字、浅灰网格线、表头浅灰底、链接蓝、空文档提示灰
+    // 文档纸面用色（不随主题变化）：白纸、近黑字、浅灰网格线、表头浅灰底、链接蓝、空文档提示灰、
+    // 页眉页脚 / 脚注的浅灰字与分隔线、脚注引用蓝
     private static readonly Brush InkBrush = CreateFrozenBrush(0x1F, 0x23, 0x28);
     private static readonly Brush GridLineBrush = CreateFrozenBrush(0xD0, 0xD0, 0xD0);
     private static readonly Brush TableHeaderBrush = CreateFrozenBrush(0xF2, 0xF2, 0xF2);
     private static readonly Brush LinkBrush = CreateFrozenBrush(0x1A, 0x66, 0xCC);
     private static readonly Brush HintBrush = CreateFrozenBrush(0x88, 0x88, 0x88);
+    private static readonly Brush HeaderFooterBrush = CreateFrozenBrush(0x78, 0x78, 0x78);
+    private static readonly Brush SeparatorBrush = CreateFrozenBrush(0xD6, 0xD6, 0xD6);
+    private static readonly Brush NoteTextBrush = CreateFrozenBrush(0x44, 0x44, 0x44);
+    private static readonly Brush NoteTitleBrush = CreateFrozenBrush(0x66, 0x66, 0x66);
+    private static readonly Brush NoteReferenceBrush = CreateFrozenBrush(0x1A, 0x66, 0xCC);
 
-    /// <summary>把整篇文档渲染成 <see cref="FlowDocument"/>。<b>必须在 UI 线程调用</b>（要在里面建 WPF 对象）。</summary>
-    public static WordRenderResult Build(WordDocument document)
+    /// <summary>
+    /// 把整篇文档渲染成 <see cref="FlowDocument"/>（默认显示页眉页脚）。<b>必须在 UI 线程调用</b>（要在里面建 WPF 对象）。
+    /// <para>保留这个单参重载：老调用方（自检 / 界面）不用改。</para>
+    /// </summary>
+    public static WordRenderResult Build(WordDocument document) => Build(document, new WordRenderOptions());
+
+    /// <summary>
+    /// 按 <paramref name="options"/> 渲染：正文 → 脚注 / 尾注小节 → 页脚，页眉在最顶部。
+    /// <para>页眉页脚开关只影响排版，不会重新解析文件（见 <c>WordViewerViewModel.ShowHeaderFooter</c>）。</para>
+    /// </summary>
+    public static WordRenderResult Build(WordDocument document, WordRenderOptions? options)
     {
         ArgumentNullException.ThrowIfNull(document);
+        options ??= new WordRenderOptions();
 
         var flow = new FlowDocument
         {
@@ -71,6 +118,16 @@ public static class WordFlowRenderer
         };
 
         var paragraphByBlockIndex = new List<Paragraph?>(document.Blocks.Count);
+        var blockByBlockIndex = new List<Block?>(document.Blocks.Count);
+        var hasHeaderFooter = false;
+
+        // 页眉：连续浏览的简化 —— 只在文档顶部显示一次（取首个节的页眉），不逐页重复
+        if (options.ShowHeaderFooter && document.HeaderBlocks.Count > 0)
+        {
+            AppendHeaderFooterBlocks(flow, document.HeaderBlocks);
+            AppendHeaderFooterDivider(flow, isHeader: true);
+            hasHeaderFooter = true;
+        }
 
         foreach (var block in document.Blocks)
         {
@@ -80,40 +137,85 @@ public static class WordFlowRenderer
                 {
                     var paragraph = BuildParagraph(paragraphBlock, inTable: false, forceBold: false);
                     paragraphByBlockIndex.Add(paragraph);
+                    blockByBlockIndex.Add(paragraph);
                     flow.Blocks.Add(paragraph);
                     break;
                 }
 
                 case WordTableBlock tableBlock:
+                {
+                    var table = BuildTable(tableBlock);
                     paragraphByBlockIndex.Add(null);
-                    flow.Blocks.Add(BuildTable(tableBlock));
+                    blockByBlockIndex.Add(table);
+                    flow.Blocks.Add(table);
                     break;
+                }
 
                 case WordImageBlock imageBlock:
+                {
+                    var container = BuildImage(imageBlock);
                     paragraphByBlockIndex.Add(null);
-                    flow.Blocks.Add(BuildImage(imageBlock));
+                    blockByBlockIndex.Add(container);
+                    flow.Blocks.Add(container);
                     break;
+                }
 
                 default:
                     paragraphByBlockIndex.Add(null);
+                    blockByBlockIndex.Add(null);
                     break;
             }
         }
 
+        // 脚注 / 尾注小节：放在正文之后、页脚之前（内容不多，但用户需要能看到引用解释）
+        var renderedNoteCount = 0;
+        if (document.Footnotes.Count > 0)
+        {
+            AppendNotesSection(flow, "脚注", document.Footnotes);
+            renderedNoteCount += document.Footnotes.Count;
+        }
+
+        if (document.Endnotes.Count > 0)
+        {
+            AppendNotesSection(flow, "尾注", document.Endnotes);
+            renderedNoteCount += document.Endnotes.Count;
+        }
+
+        // 页脚：连续浏览的简化 —— 只在文档底部显示一次（取最后一个节的页脚）
+        if (options.ShowHeaderFooter && document.FooterBlocks.Count > 0)
+        {
+            AppendHeaderFooterDivider(flow, isHeader: false);
+            AppendHeaderFooterBlocks(flow, document.FooterBlocks);
+            hasHeaderFooter = true;
+        }
+
         if (flow.Blocks.Count == 0) flow.Blocks.Add(BuildEmptyHint());
 
-        return new WordRenderResult(flow, paragraphByBlockIndex);
+        return new WordRenderResult(flow, paragraphByBlockIndex)
+        {
+            BlockByBlockIndex = blockByBlockIndex,
+            HasHeaderFooter = hasHeaderFooter,
+            RenderedNoteCount = renderedNoteCount,
+        };
     }
 
     // ---------------------------------------------------------------- 段落
 
-    private static Paragraph BuildParagraph(WordParagraphBlock block, bool inTable, bool forceBold)
+    /// <summary>
+    /// 把一个段落模型渲染成 <see cref="Paragraph"/>。
+    /// <para><paramref name="baseFontSizePt"/> / <paramref name="foreground"/> / <paramref name="margin"/>
+    /// 是给页眉页脚、脚注这类「附属内容」用的覆盖值：给了它们就不再套标题样式，
+    /// 统一用浅灰小字，和正文一眼能分开。</para>
+    /// </summary>
+    private static Paragraph BuildParagraph(
+        WordParagraphBlock block, bool inTable, bool forceBold,
+        double? baseFontSizePt = null, Brush? foreground = null, Thickness? margin = null)
     {
         var paragraph = new Paragraph();
         var style = block.Style;
 
         // 标题：级别越高字号越大 + 粗体 + 明显的段前段后距
-        var headingLevel = inTable ? 0 : Math.Clamp(style.HeadingLevel, 0, 6);
+        var headingLevel = inTable || baseFontSizePt.HasValue ? 0 : Math.Clamp(style.HeadingLevel, 0, 6);
         double topMargin;
         double bottomMargin;
 
@@ -126,10 +228,13 @@ public static class WordFlowRenderer
         }
         else
         {
-            paragraph.FontSize = OoxmlPackage.PointToDip(inTable ? BodyFontSizePt - 0.5 : BodyFontSizePt);
+            var bodySizePt = baseFontSizePt ?? (inTable ? BodyFontSizePt - 0.5 : BodyFontSizePt);
+            paragraph.FontSize = OoxmlPackage.PointToDip(bodySizePt);
             topMargin = 0;
             bottomMargin = OoxmlPackage.PointToDip(inTable ? 2 : 4);
         }
+
+        if (foreground is not null) paragraph.Foreground = foreground;
 
         paragraph.TextAlignment = style.Alignment switch
         {
@@ -139,15 +244,15 @@ public static class WordFlowRenderer
             _ => TextAlignment.Left,
         };
 
-        // 缩进：列表按层级缩进，普通段落用 w:ind 的左缩进
+        // 缩进：列表按层级缩进，普通段落用 w:ind 的左缩进（页眉页脚 / 脚注不缩进）
         var leftIndent = 0d;
-        if (headingLevel == 0 && !inTable)
+        if (headingLevel == 0 && !inTable && !baseFontSizePt.HasValue)
         {
             leftIndent = style.LeftIndentDip > 0 ? style.LeftIndentDip : style.IndentLevel * 24;
             if (!string.IsNullOrEmpty(style.ListMarker)) leftIndent = Math.Max(leftIndent, (style.IndentLevel + 1) * 24);
         }
 
-        paragraph.Margin = new Thickness(leftIndent, topMargin, 0, bottomMargin);
+        paragraph.Margin = margin ?? new Thickness(leftIndent, topMargin, 0, bottomMargin);
         if (!string.IsNullOrEmpty(style.ListMarker))
         {
             // 列表标记挂在首行：负的 TextIndent 让标记比正文往左突出一点
@@ -170,7 +275,10 @@ public static class WordFlowRenderer
 
     private static Inline? BuildInline(WordRun wordRun, bool forceBold)
     {
-        if (string.IsNullOrEmpty(wordRun.Text) && !wordRun.IsHyperlink) return null;
+        // 脚注 / 尾注引用常常是个「没有文字的 run」（w:footnoteReference 不占正文文字），
+        // 这种 run 也要渲染：补一个上标 [n]，否则正文里看不到引用标记。
+        var noteNumber = wordRun.FootnoteNumber ?? wordRun.EndnoteNumber;
+        if (string.IsNullOrEmpty(wordRun.Text) && !wordRun.IsHyperlink && noteNumber is null) return null;
 
         var run = new Run(wordRun.Text)
         {
@@ -195,25 +303,50 @@ public static class WordFlowRenderer
         if (TryCreateBrush(wordRun.ColorHex) is { } foreground) run.Foreground = foreground;
         if (TryCreateBrush(wordRun.HighlightHex) is { } highlight) run.Background = highlight;
 
-        if (!wordRun.IsHyperlink) return run;
-
-        // 超链接：蓝色 + 下划线；有地址就接 RequestNavigate，点击用系统默认浏览器打开
-        var link = new Hyperlink
+        Inline inline;
+        if (!wordRun.IsHyperlink)
         {
-            Foreground = LinkBrush,
-            TextDecorations = TextDecorations.Underline,
-            ToolTip = wordRun.Url,
-        };
-        link.Inlines.Add(run);
-
-        if (!string.IsNullOrWhiteSpace(wordRun.Url)
-            && Uri.TryCreate(wordRun.Url, UriKind.Absolute, out var uri))
+            inline = run;
+        }
+        else
         {
-            link.NavigateUri = uri;
-            link.RequestNavigate += OnHyperlinkRequestNavigate;
+            // 超链接：蓝色 + 下划线；有地址就接 RequestNavigate，点击用系统默认浏览器打开
+            var link = new Hyperlink
+            {
+                Foreground = LinkBrush,
+                TextDecorations = TextDecorations.Underline,
+                ToolTip = wordRun.Url,
+            };
+            link.Inlines.Add(run);
+
+            if (!string.IsNullOrWhiteSpace(wordRun.Url)
+                && Uri.TryCreate(wordRun.Url, UriKind.Absolute, out var uri))
+            {
+                link.NavigateUri = uri;
+                link.RequestNavigate += OnHyperlinkRequestNavigate;
+            }
+
+            inline = link;
         }
 
-        return link;
+        if (noteNumber is null) return inline;
+
+        // 上标 [n]：蓝色小字 + 悬停提示；颜色属于「文档内容」，写死不跟主题
+        var marker = new Run($"[{noteNumber}]")
+        {
+            BaselineAlignment = BaselineAlignment.Superscript,
+            Foreground = NoteReferenceBrush,
+        };
+        ToolTipService.SetToolTip(
+            marker,
+            wordRun.FootnoteId is not null
+                ? $"脚注 [{noteNumber}]（内容见文档末尾）"
+                : $"尾注 [{noteNumber}]（内容见文档末尾）");
+
+        var span = new Span();
+        span.Inlines.Add(inline);
+        span.Inlines.Add(marker);
+        return span;
     }
 
     private static void OnHyperlinkRequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
@@ -231,7 +364,7 @@ public static class WordFlowRenderer
 
     // ---------------------------------------------------------------- 表格
 
-    private static Table BuildTable(WordTableBlock block)
+    private static Table BuildTable(WordTableBlock block, double? baseFontSizePt = null, Brush? foreground = null)
     {
         // 先按每一行实际占的列数算总列数（合并单元格会让行内单元格个数变少）
         var columnCount = block.ColumnWidthDip.Count;
@@ -292,13 +425,14 @@ public static class WordFlowRenderer
                     {
                         case WordParagraphBlock paragraphBlock:
                             cell.Blocks.Add(BuildParagraph(paragraphBlock, inTable: true,
-                                forceBold: modelRow.IsHeader));
+                                forceBold: modelRow.IsHeader, baseFontSizePt: baseFontSizePt,
+                                foreground: foreground));
                             break;
                         case WordImageBlock imageBlock:
                             cell.Blocks.Add(BuildImage(imageBlock));
                             break;
                         case WordTableBlock nestedTable:
-                            cell.Blocks.Add(BuildTable(nestedTable));
+                            cell.Blocks.Add(BuildTable(nestedTable, baseFontSizePt, foreground));
                             break;
                     }
                 }
@@ -381,6 +515,115 @@ public static class WordFlowRenderer
         bitmap.EndInit();
         bitmap.Freeze();   // 冻结后可以安全地跨线程复用
         return bitmap;
+    }
+
+    // ---------------------------------------------------------------- 页眉 / 页脚 / 脚注
+
+    /// <summary>
+    /// 渲染页眉或页脚的内容块：统一 9 磅浅灰字（表格也一起缩小），和正文明显区分。
+    /// 页眉页脚解析阶段已经保证只有段落 / 表格，这里遇到图片按正文图片处理（极少见）。
+    /// </summary>
+    private static void AppendHeaderFooterBlocks(FlowDocument flow, IReadOnlyList<WordBlock> blocks)
+    {
+        foreach (var block in blocks)
+        {
+            switch (block)
+            {
+                case WordParagraphBlock paragraphBlock:
+                    flow.Blocks.Add(BuildParagraph(paragraphBlock, inTable: false, forceBold: false,
+                        baseFontSizePt: HeaderFooterFontSizePt, foreground: HeaderFooterBrush,
+                        margin: new Thickness(0, 0, 0, OoxmlPackage.PointToDip(1))));
+                    break;
+
+                case WordTableBlock tableBlock:
+                    flow.Blocks.Add(BuildTable(tableBlock, HeaderFooterFontSizePt, HeaderFooterBrush));
+                    break;
+
+                case WordImageBlock imageBlock:
+                    flow.Blocks.Add(BuildImage(imageBlock));
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 页眉 / 页脚与正文之间的细分隔线：用一个「空段落 + 单边框」实现，
+    /// 比插真的 <c>Border</c> 元素更省事，也不会在打印 / 缩放时变成一块色块。
+    /// </summary>
+    private static void AppendHeaderFooterDivider(FlowDocument flow, bool isHeader)
+    {
+        var divider = new Paragraph(new Run(""))
+        {
+            FontSize = 1,
+            LineHeight = 1,
+            Margin = isHeader
+                ? new Thickness(0, OoxmlPackage.PointToDip(2), 0, OoxmlPackage.PointToDip(6))
+                : new Thickness(0, OoxmlPackage.PointToDip(8), 0, OoxmlPackage.PointToDip(4)),
+            Padding = new Thickness(0),
+            BorderBrush = SeparatorBrush,
+            BorderThickness = isHeader ? new Thickness(0, 0, 0, 1) : new Thickness(0, 1, 0, 0),
+        };
+
+        flow.Blocks.Add(divider);
+    }
+
+    /// <summary>
+    /// 文档末尾的「脚注」/「尾注」小节：灰色小标题 + 细分隔线，每条按 <c>[n] 内容</c> 排；
+    /// 多段内容按段落排（表格照常渲染，图片在解析阶段已跳过）。
+    /// </summary>
+    private static void AppendNotesSection(FlowDocument flow, string title, IReadOnlyList<WordNote> notes)
+    {
+        flow.Blocks.Add(new Paragraph(new Run(title))
+        {
+            FontSize = OoxmlPackage.PointToDip(NoteTitleFontSizePt),
+            FontWeight = FontWeights.SemiBold,
+            Foreground = NoteTitleBrush,
+            Margin = new Thickness(0, OoxmlPackage.PointToDip(14), 0, OoxmlPackage.PointToDip(4)),
+            Padding = new Thickness(0, OoxmlPackage.PointToDip(6), 0, 0),
+            BorderBrush = SeparatorBrush,
+            BorderThickness = new Thickness(0, 1, 0, 0),
+        });
+
+        foreach (var note in notes)
+        {
+            var isFirstBlock = true;
+            foreach (var block in note.Blocks)
+            {
+                switch (block)
+                {
+                    case WordParagraphBlock paragraphBlock:
+                    {
+                        var paragraph = BuildParagraph(paragraphBlock, inTable: false, forceBold: false,
+                            baseFontSizePt: NoteFontSizePt, foreground: NoteTextBrush,
+                            margin: new Thickness(0, 0, 0, OoxmlPackage.PointToDip(2)));
+
+                        // 编号只加在这一条脚注的第一段前面
+                        if (isFirstBlock)
+                        {
+                            var prefix = new Run($"[{note.Number}] ")
+                            {
+                                Foreground = NoteReferenceBrush,
+                                FontWeight = FontWeights.SemiBold,
+                            };
+
+                            if (paragraph.Inlines.FirstInline is { } firstInline)
+                                paragraph.Inlines.InsertBefore(firstInline, prefix);
+                            else
+                                paragraph.Inlines.Add(prefix);
+                        }
+
+                        flow.Blocks.Add(paragraph);
+                        break;
+                    }
+
+                    case WordTableBlock tableBlock:
+                        flow.Blocks.Add(BuildTable(tableBlock, NoteFontSizePt, NoteTextBrush));
+                        break;
+                }
+
+                isFirstBlock = false;
+            }
+        }
     }
 
     // ---------------------------------------------------------------- 杂项

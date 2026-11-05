@@ -70,11 +70,12 @@
             </Style.Triggers>
         </Style>
 
-        <!-- ===== 数据行：透明底 + 悬停高亮（空格子不画白块） ===== -->
+        <!-- ===== 数据行：透明底 + 悬停高亮（空格子不画白块）；最小高度 18，防止自动行高把空行压没 ===== -->
         <Style x:Key="ExcelRowStyle" TargetType="DataGridRow">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
             <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="MinHeight" Value="18" />
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
                     <Setter Property="Background" Value="{DynamicResource ListRowHoverBackgroundBrush}" />
@@ -107,7 +108,9 @@
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
 
-        <!-- ===== DataGrid 本体：只读、单元格选择、行/列虚拟化、网格线颜色走主题 ===== -->
+        <!-- ===== DataGrid 本体：只读、单元格选择、行/列虚拟化、网格线颜色走主题。
+             ⚠ 不设 RowHeight：默认 NaN 才能让「自动行高」按内容撑开；
+             关掉自动行高时由代码后置把 RowHeight 设成 24（见 ExcelViewerView.xaml.cs）。 ===== -->
         <Style x:Key="ExcelDataGridStyle" TargetType="DataGrid">
             <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
@@ -119,7 +122,6 @@
             <Setter Property="AlternatingRowBackground" Value="Transparent" />
             <Setter Property="HeadersVisibility" Value="All" />
             <Setter Property="GridLinesVisibility" Value="All" />
-            <Setter Property="RowHeight" Value="24" />
             <Setter Property="ColumnHeaderHeight" Value="28" />
             <Setter Property="RowHeaderWidth" Value="56" />
             <Setter Property="SelectionUnit" Value="Cell" />
@@ -156,6 +158,83 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+
+        <!-- ===== 冻结行用的第二张表：没有列标题（主表保留）、没有自己的滚动条、不吃鼠标 ===== -->
+        <Style x:Key="ExcelFrozenGridStyle" TargetType="DataGrid" BasedOn="{StaticResource ExcelDataGridStyle}">
+            <Setter Property="HeadersVisibility" Value="Row" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="IsTabStop" Value="False" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Hidden" />
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Disabled" />
+        </Style>
+
+        <!-- ===== 右键菜单（复制用）。
+             ⚠ WPF 默认 ContextMenu / MenuItem 模板在深色主题下会留「图标列」白底竖条，
+             只设 Background 盖不掉，所以用自定义模板（和网页浏览器右键菜单同一套做法）。 ===== -->
+        <Style x:Key="ExcelContextMenuStyle" TargetType="ContextMenu">
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="4" />
+            <Setter Property="HasDropShadow" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{DynamicResource ControlCornerRadius}"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ExcelMenuItemStyle" TargetType="MenuItem">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="Row" Background="Transparent"
+                                CornerRadius="{DynamicResource ControlCornerRadius}"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Row" Property="Background"
+                                        Value="{DynamicResource CardHoverBackgroundBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.4" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ExcelMenuSeparatorStyle" TargetType="Separator">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Margin" Value="6,4" />
+            <Setter Property="Background" Value="{DynamicResource BorderBrush}" />
+        </Style>
+
+        <!-- 查找区的小按钮（上一条 / 下一条 / 清除） -->
+        <Style x:Key="ExcelSmallButtonStyle" TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Margin" Value="8,0,0,0" />
+        </Style>
     </UserControl.Resources>
 
     <Grid>
@@ -166,61 +245,108 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- ================= ① 工具条 ================= -->
+        <!-- ================= ① 工具条（两行：上面打开/最近/工作表/显示开关，下面查找） ================= -->
         <Border Grid.Row="0" Background="{DynamicResource HeaderBackgroundBrush}"
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="16,10">
             <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
-                <Button Grid.Column="0" Content="📂 打开…" Style="{StaticResource PrimaryButtonStyle}"
-                        Command="{Binding OpenCommand}" ToolTip="打开 .xlsx / .xlsm 工作簿（Ctrl+O）；也可以直接把文件拖进窗口" />
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-                <!-- 最近打开：选一条直接打开；不存在的文件会标出来 -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="14,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="最近" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                    <Button Grid.Column="0" Content="📂 打开…" Style="{StaticResource PrimaryButtonStyle}"
+                            Command="{Binding OpenCommand}" ToolTip="打开 .xlsx / .xlsm 工作簿（Ctrl+O）；也可以直接把文件拖进窗口" />
+
+                    <!-- 最近打开：选一条直接打开；不存在的文件会标出来 -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="14,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="最近" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <ComboBox Width="270" Style="{StaticResource ComboBoxStyle}"
+                                  ItemsSource="{Binding RecentItems}"
+                                  SelectedItem="{Binding SelectedRecentItem}"
+                                  ToolTip="最近打开的工作簿（点一条直接打开）">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,2">
+                                        <TextBlock Text="{Binding FileName}" FontSize="12.5" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   Text="{Binding Folder}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock FontSize="10.5" Foreground="{DynamicResource DangerBrush}"
+                                                   Text="{Binding MissingText}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock Text="（暂无记录）" FontSize="11" Foreground="{DynamicResource FaintTextBrush}"
+                                   VerticalAlignment="Center" Margin="8,0,0,0"
+                                   Visibility="{Binding HasRecentItems, Converter={StaticResource InverseBoolToVis}}" />
+                    </StackPanel>
+
+                    <!-- 工作表切换 -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="18,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="工作表" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <ComboBox Width="190" Style="{StaticResource ComboBoxStyle}"
+                                  ItemsSource="{Binding Sheets}"
+                                  SelectedItem="{Binding SelectedSheet}"
+                                  DisplayMemberPath="DisplayName"
+                                  ToolTip="切换工作表（隐藏工作表名后面带「（隐藏）」）" />
+                    </StackPanel>
+
+                    <!-- 显示开关：网格线 / 冻结窗格 / 自动行高（都持久化到 config.json） -->
+                    <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
+                        <CheckBox Content="网格线" Style="{StaticResource CheckBoxStyle}"
+                                  IsChecked="{Binding Cfg.ShowGridLines}"
+                                  ToolTip="关掉后不显示单元格网格线（设置自动保存）" />
+                        <CheckBox Content="冻结窗格" Style="{StaticResource CheckBoxStyle}" Margin="14,0,0,0"
+                                  IsChecked="{Binding RestoreFreezePanes}"
+                                  ToolTip="按文件里的冻结窗格还原（只认 Excel 的「冻结」；取消勾选则不冻结行列，不改原文件）" />
+                        <CheckBox Content="自动行高" Style="{StaticResource CheckBoxStyle}" Margin="14,0,0,0"
+                                  IsChecked="{Binding AutoRowHeight}"
+                                  ToolTip="按文件行高 / 内容自动撑高，自动换行的长文本不再被裁；取消勾选则统一 24 像素" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- 查找区：输入停顿 300ms 自动查；回车立即查并跳第一处；Ctrl+F 聚焦输入框 -->
+                <Grid Grid.Row="1" Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0" Text="查找" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
                                VerticalAlignment="Center" Margin="0,0,8,0" />
-                    <ComboBox Width="270" Style="{StaticResource ComboBoxStyle}"
-                              ItemsSource="{Binding RecentItems}"
-                              SelectedItem="{Binding SelectedRecentItem}"
-                              ToolTip="最近打开的工作簿（点一条直接打开）">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel Margin="0,2">
-                                    <TextBlock Text="{Binding FileName}" FontSize="12.5" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
-                                               Text="{Binding Folder}" TextTrimming="CharacterEllipsis" />
-                                    <TextBlock FontSize="10.5" Foreground="{DynamicResource DangerBrush}"
-                                               Text="{Binding MissingText}" />
-                                </StackPanel>
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-                    <TextBlock Text="（暂无记录）" FontSize="11" Foreground="{DynamicResource FaintTextBrush}"
-                               VerticalAlignment="Center" Margin="8,0,0,0"
-                               Visibility="{Binding HasRecentItems, Converter={StaticResource InverseBoolToVis}}" />
-                </StackPanel>
-
-                <!-- 工作表切换 -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="18,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="工作表" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
-                               VerticalAlignment="Center" Margin="0,0,8,0" />
-                    <ComboBox Width="190" Style="{StaticResource ComboBoxStyle}"
-                              ItemsSource="{Binding Sheets}"
-                              SelectedItem="{Binding SelectedSheet}"
-                              DisplayMemberPath="DisplayName"
-                              ToolTip="切换工作表（隐藏工作表名后面带「（隐藏）」）" />
-                </StackPanel>
-
-                <!-- 网格线开关（持久化到 config.json） -->
-                <CheckBox Grid.Column="4" Content="网格线" Style="{StaticResource CheckBoxStyle}"
-                          IsChecked="{Binding Cfg.ShowGridLines}" VerticalAlignment="Center"
-                          ToolTip="关掉后不显示单元格网格线（设置自动保存）" />
+                    <TextBox x:Name="SearchBox" Grid.Column="1" Width="240" Style="{StaticResource TextBoxStyle}"
+                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             KeyDown="OnSearchBoxKeyDown"
+                             ToolTip="查找当前工作表的全部单元格（显示值 / 原始值 / 公式）；输入停顿 300 毫秒自动查找，回车立即跳到第一处" />
+                    <CheckBox Grid.Column="2" Content="区分大小写" Style="{StaticResource CheckBoxStyle}"
+                              IsChecked="{Binding SearchCaseSensitive}" Margin="12,0,0,0"
+                              ToolTip="默认不区分大小写（和 Excel 的「查找」一致）" />
+                    <Button Grid.Column="3" Content="上一个" Style="{StaticResource ExcelSmallButtonStyle}"
+                            Command="{Binding FindPreviousCommand}" ToolTip="上一个命中（Shift+回车）" />
+                    <Button Grid.Column="4" Content="下一个" Style="{StaticResource ExcelSmallButtonStyle}"
+                            Command="{Binding FindNextCommand}" ToolTip="下一个命中（回车）" />
+                    <Button Grid.Column="5" Content="清除" Style="{StaticResource ExcelSmallButtonStyle}"
+                            Command="{Binding ClearSearchCommand}" ToolTip="清空查找框和命中状态" />
+                    <TextBlock Grid.Column="6" Text="{Binding SearchStatusText}" FontSize="11.5"
+                               Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"
+                               Margin="12,0,0,0" TextTrimming="CharacterEllipsis" />
+                </Grid>
             </Grid>
         </Border>
 
@@ -262,13 +388,48 @@
             </Border>
         </Grid>
 
-        <!-- ================= ③ 数据区（DataGrid + 空状态 + 解析中遮罩） ================= -->
-        <Grid Grid.Row="2" Margin="14,0,14,10">
+        <!-- ================= ③ 数据区（主表 + 冻结行覆盖层 + 空状态 + 解析中遮罩） ================= -->
+        <Grid x:Name="DataArea" Grid.Row="2" Margin="14,0,14,10" SizeChanged="OnDataAreaSizeChanged">
             <Border Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
-                <DataGrid x:Name="SheetGrid" Style="{StaticResource ExcelDataGridStyle}"
-                          ItemsSource="{Binding CurrentRows}"
-                          LoadingRow="OnLoadingRow"
-                          SelectedCellsChanged="OnSelectedCellsChanged" />
+                <Grid>
+                    <!-- 主表：列标题保留在这里；冻结列靠 FrozenColumnCount（代码后置设置） -->
+                    <DataGrid x:Name="SheetGrid" Style="{StaticResource ExcelDataGridStyle}"
+                              ItemsSource="{Binding CurrentRows}"
+                              LoadingRow="OnLoadingRow"
+                              SelectedCellsChanged="OnSelectedCellsChanged"
+                              ColumnHeaderDragCompleted="OnColumnHeaderDragCompleted"
+                              ContextMenuOpening="OnSheetGridContextMenuOpening">
+                        <DataGrid.ContextMenu>
+                            <!-- ContextMenu 不在可视化树里，DataContext 要通过 PlacementTarget（主表）拿 -->
+                            <ContextMenu Style="{StaticResource ExcelContextMenuStyle}"
+                                         DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                <MenuItem Header="复制显示值" Style="{StaticResource ExcelMenuItemStyle}"
+                                          Command="{Binding CopyDisplayValueCommand}" />
+                                <MenuItem Header="复制原始值" Style="{StaticResource ExcelMenuItemStyle}"
+                                          Command="{Binding CopyRawValueCommand}" />
+                                <MenuItem Header="复制公式（=…）" Style="{StaticResource ExcelMenuItemStyle}"
+                                          Command="{Binding CopyFormulaCommand}" />
+                                <Separator Style="{StaticResource ExcelMenuSeparatorStyle}" />
+                                <MenuItem Header="复制地址（A1）" Style="{StaticResource ExcelMenuItemStyle}"
+                                          Command="{Binding CopyAddressCommand}" />
+                            </ContextMenu>
+                        </DataGrid.ContextMenu>
+                    </DataGrid>
+
+                    <!-- 冻结行：主表上方第二张只读表，只显示前 N 行。
+                         不吃鼠标（DataGrid IsHitTestVisible=False），由这层 Border 兜住点击、
+                         把滚轮转给主表；横向滚动在主表 ScrollChanged 里同步（见代码后置）。
+                         Margin 的顶部偏移（列标题高度）在代码后置里按主表设置。 -->
+                    <Border x:Name="FrozenHost" Visibility="Collapsed"
+                            VerticalAlignment="Top" HorizontalAlignment="Stretch"
+                            Background="Transparent" ClipToBounds="True"
+                            PreviewMouseDown="OnFrozenHostPreviewMouseDown"
+                            PreviewMouseRightButtonDown="OnFrozenHostPreviewMouseDown"
+                            PreviewMouseWheel="OnFrozenHostPreviewMouseWheel">
+                        <DataGrid x:Name="FrozenGrid" Style="{StaticResource ExcelFrozenGridStyle}"
+                                  LoadingRow="OnLoadingRow" />
+                    </Border>
+                </Grid>
             </Border>
 
             <!-- 空状态：没打开文件 / 当前工作表没有数据 -->
@@ -315,6 +476,10 @@
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
                     <TextBlock Text="{Binding DocumentSummary}" FontSize="11.5"
+                               Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding FreezeText}" FontSize="11.5" Margin="14,0,0,0"
+                               Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding AutoRowHeightText}" FontSize="11.5" Margin="14,0,0,0"
                                Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding UsedRangeText}" FontSize="11.5" Margin="14,0,0,0"
                                Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />

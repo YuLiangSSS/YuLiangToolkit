@@ -588,7 +588,12 @@ public static class XlsxParser
                 cellArray[tailColumn - 1] = CreateEmptyCell(rowIndex, tailColumn);
             }
 
-            rows.Add(new ExcelRow { RowIndex = rowIndex, Cells = cellArray });
+            rows.Add(new ExcelRow
+            {
+                RowIndex = rowIndex,
+                Cells = cellArray,
+                HeightDip = ReadRowHeightDip(rowElement),
+            });
             includedRows++;
         }
 
@@ -640,7 +645,24 @@ public static class XlsxParser
             TruncationNote = notes.Count > 0 ? string.Join("；", notes) : null,
             HiddenRowCount = hiddenRows,
             HiddenColumnCount = hiddenColumns,
+            FreezePane = ReadFreezePane(xml, rows, columns),
         };
+    }
+
+    /// <summary>
+    /// 读一行的高度：<c>&lt;row ht="30" customHeight="1"&gt;</c> 的 <c>ht</c> 单位是<b>磅</b>，
+    /// 换算成 DIP（<c>× 96 / 72</c>）后交给界面。
+    /// <para><c>customHeight</c> 只是 Excel 的「用户手动调过」标记，对显示没有影响，不参与判断；
+    /// 文件里偶尔有 <c>ht="0"</c> / 负数的畸形写法，按「没有行高」处理，不让界面把行压成 0。</para>
+    /// </summary>
+    private static double? ReadRowHeightDip(XElement rowElement)
+    {
+        var text = (string?)rowElement.Attribute("ht");
+        if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var points))
+            return null;
+        if (points <= 0) return null;
+
+        return OoxmlPackage.PointToDip(points);
     }
 
     private static ExcelCell CreateEmptyCell(int rowIndex, int columnIndex) => new()
@@ -706,6 +728,76 @@ public static class XlsxParser
         }
 
         return ranges;
+    }
+
+    // ---------------------------------------------------------------- 冻结窗格
+
+    /// <summary>
+    /// 读冻结窗格：<c>&lt;sheetViews&gt;&lt;sheetView&gt;&lt;pane xSplit ySplit topLeftCell state/&gt;</c>。
+    /// <list type="bullet">
+    ///   <item>只认 <c>state="frozen"</c> / <c>"frozenSplit"</c>；<c>split</c>（拆分窗格）不是冻结，忽略；</item>
+    ///   <item>冻结边界优先用 <c>topLeftCell</c>（第一个可滚动单元格）反推：
+    ///         它前面有多少可见列 / 可见行就冻结多少；<c>xSplit</c> / <c>ySplit</c> 只在没有
+    ///         <c>topLeftCell</c> 时兜底；</item>
+    ///   <item>隐藏列不建界面列、隐藏行解析时已跳过，所以这里数出来的是<b>界面可见</b>的冻结行列数；</item>
+    ///   <item>边界夹在实际解析到的行列数以内（文件里写 <c>topLeftCell="Z99"</c> 也只冻结实际存在的部分）。</item>
+    /// </list>
+    /// 没有 <c>pane</c> / 没有冻结 / 边界全为 0 时返回 null。
+    /// </summary>
+    private static ExcelFreezePane? ReadFreezePane(
+        XDocument worksheetXml,
+        IReadOnlyList<ExcelRow> rows,
+        IReadOnlyList<ExcelColumn> columns)
+    {
+        var sheetView = worksheetXml.Descendants().FirstOrDefault(e => e.Name.LocalName == "sheetView");
+        var pane = sheetView?.Elements().FirstOrDefault(e => e.Name.LocalName == "pane");
+        if (pane is null) return null;
+
+        var state = ((string?)pane.Attribute("state") ?? "").Trim();
+        if (!state.Equals("frozen", StringComparison.OrdinalIgnoreCase)
+            && !state.Equals("frozenSplit", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var topLeftCell = ((string?)pane.Attribute("topLeftCell") ?? "").Trim();
+        var xSplit = ParseDoubleAttribute(pane.Attribute("xSplit"));
+        var ySplit = ParseDoubleAttribute(pane.Attribute("ySplit"));
+
+        var xSplitCount = xSplit is > 0 ? (int)Math.Floor(xSplit.Value) : 0;
+        var ySplitCount = ySplit is > 0 ? (int)Math.Floor(ySplit.Value) : 0;
+
+        var visibleColumnCount = columns.Count(column => !column.IsHidden);
+
+        int frozenColumns;
+        int frozenRows;
+        if (ExcelAddresses.TryParseCellReference(topLeftCell, out var topRow, out var leftColumn))
+        {
+            // topLeftCell 是「第一个可滚动的格子」，它前面（不含自己）的行列就是冻结区。
+            // 数可见列的个数而不是直接用 leftColumn-1：中间若有隐藏列，界面里不占位置。
+            var columnBoundary = leftColumn - 1;
+            var rowBoundary = topRow - 1;
+            frozenColumns = columns.Count(column => column.ColumnIndex <= columnBoundary && !column.IsHidden);
+            frozenRows = rows.Count(row => row.RowIndex <= rowBoundary);
+        }
+        else
+        {
+            // 兜底：没有 topLeftCell 时只能按 xSplit / ySplit 数。
+            // 隐藏行列拿不到具体位置，这里直接取「前 N 个可见行列」，近似的误差只出现在畸形文件里。
+            frozenColumns = xSplitCount;
+            frozenRows = ySplitCount;
+        }
+
+        frozenColumns = Math.Clamp(frozenColumns, 0, visibleColumnCount);
+        frozenRows = Math.Clamp(frozenRows, 0, rows.Count);
+        if (frozenColumns == 0 && frozenRows == 0) return null;
+
+        return new ExcelFreezePane
+        {
+            FrozenRows = frozenRows,
+            FrozenColumns = frozenColumns,
+            TopLeftCell = topLeftCell,
+        };
     }
 
     /// <summary>
@@ -902,6 +994,15 @@ public static class XlsxParser
     {
         if (attribute is null) return null;
         return int.TryParse(attribute.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : null;
+    }
+
+    /// <summary>读浮点属性（冻结窗格的 <c>xSplit</c> / <c>ySplit</c> 是 double，虽然实际多为整数）。</summary>
+    private static double? ParseDoubleAttribute(XAttribute? attribute)
+    {
+        if (attribute is null) return null;
+        return double.TryParse(attribute.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
             ? value
             : null;
     }

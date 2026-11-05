@@ -533,4 +533,23 @@
   「块下标 → `Paragraph`」映射，表格 / 图片块没有段落要判空。
 - ⚠ **Excel 列宽单位是「字符数」**：近似 `width × 7 + 5` 像素并夹在 24 ~ 600；`width=0` / `hidden="1"` 的列别显示。
   行高同理（`ht` 单位是磅），两个阅读器都不还原真合并（DataGrid 逐格显示，合并区只在锚点格有值 + 状态栏说明）。
+- ⚠ **Word 页眉页脚在「连续浏览」里没有真正的每页重复**：`w:headerReference` / `w:footerReference` 是按 `w:type`
+  （default → first → even）挂在 `sectPr` 上的，页眉部件还有**自己的 `.rels`**（页眉里的图片必须用页眉部件的 rels 解析，
+  不能复用 document 的）。FlowDocument 不分页，所以只把「首个节的页眉」放纸面顶部、「最后一个节的页脚」放底部各一次；
+  别为了「每页都有」去伪造分页。
+- ⚠ **脚注 / 尾注的 `w:id` 不是显示编号**：正文里用 `w:footnoteReference` / `w:endnoteReference` 引用，内容在
+  `word/footnotes.xml` / `endnotes.xml`；`w:id < 1`（-1、0）是分隔符必须过滤。编号按**正文引用出现顺序**重新分配，
+  不要直接拿 id 当编号（Word 的 id 常从 1 起但不保证连续）。纯引用 run（没有 `w:t`）也要保留，否则标记会丢。
+- ⚠ **阅读位置记「滚动比例」而不是行号 / 像素**：窗口宽度、缩放、行高都会改变像素位置；恢复时要在文档换掉、
+  布局量出 `ScrollableHeight` 之后再 `ScrollToVerticalOffset`，并重试几次（虚拟化 / 自动行高会让可滚高度晚一点才准）。
+  视图被外壳缓存时，`Unloaded` 是唯一可靠的「切走保存」时机（切回来 `Loaded` 再按比例恢复）。
+- ⚠ **冻结窗格的两个坑**：`pane` 的 `xSplit` / `ySplit` 是「冻结了几行 / 列（含隐藏行列）」，而界面只显示可见行列 →
+  必须用 `topLeftCell` 反推边界、按可见行列计数，否则隐藏行列会把冻结边界带偏；WPF `DataGrid` 只有
+  `FrozenColumnCount`（列冻结），**没有行冻结** → 行冻结只能用顶部第二张只读 DataGrid 叠上去，
+  列宽 / 行高 / 行号要同步、横向滚动要同步、别让它吃鼠标。
+- ⚠ **自动行高与 `Recycling`**：`DataGrid.RowHeight = NaN` 才是「按内容自动」；Recycling 下同一个 `DataGridRow`
+  会被复用给别的行，`LoadingRow` **每次都要重设高度**（有 `ht` 用显式值并夹取、否则 NaN），否则上一行高度会残留。
+  主表 / 冻结行表要共用同一套行高逻辑，同一行高度才会一致。
+- ⚠ **大表查找不要在 `TextChanged` 里同步全表扫描**（5000 × 200 会卡 UI）：防抖 + `Task.Run` + `CancellationToken`，
+  命中数上限（如 2000）并提示截断；`Clipboard.SetText` 可能因别的进程占用抛 `COMException`，必须 try/catch。
 
