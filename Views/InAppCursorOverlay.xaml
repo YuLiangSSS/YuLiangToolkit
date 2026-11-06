@@ -4,7 +4,8 @@
              IsHitTestVisible="False"
              Focusable="False">
     <!-- 应用内自绘光标（v0.91.0）：铺满窗口但不吃鼠标事件；位置由代码跟随 Window.PreviewMouseMove。
-         内置几套主题箭头 + 用户上传图片；放在 ParticleOverlay 下面，所以粒子 / 点击特效会盖在光标上面。 -->
+         内置几套主题箭头（v0.97.0 起每套都有深 / 浅两套配色，浅色界面自动用深色系）+ 用户上传图片；
+         放在 ParticleOverlay 下面，所以粒子 / 点击特效会盖在光标上面。 -->
     <Canvas x:Name="RootCanvas" IsHitTestVisible="False">
         <Grid x:Name="CursorVisual" Width="40" Height="44" Visibility="Collapsed"
               RenderOptions.BitmapScalingMode="HighQuality">

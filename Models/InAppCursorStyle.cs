@@ -5,22 +5,22 @@ namespace YuLiangToolkit.App.Models;
 /// <summary>应用内光标实际画哪一套（<c>auto</c> 会先按当前界面主题解析成这里的某一项）。</summary>
 public enum InAppCursorKind
 {
-    /// <summary>经典白色箭头 + 深色描边（默认风格 / 自动时默认主题用）。</summary>
+    /// <summary>经典箭头：深色界面白色箭头 + 深色描边；浅色界面深色箭头 + 浅色描边。</summary>
     Default,
 
-    /// <summary>液态玻璃：半透明白 + 蓝色描边 + 柔光。</summary>
+    /// <summary>液态玻璃：半透明玻璃箭头 + 蓝色描边 + 柔光；浅色界面换成深色玻璃。</summary>
     LiquidGlass,
 
-    /// <summary>毛玻璃：奶白 + 灰蓝描边。</summary>
+    /// <summary>毛玻璃：奶白磨砂 + 灰蓝描边；浅色界面换成深灰磨砂。</summary>
     FrostedGlass,
 
-    /// <summary>亚克力：深紫 + 淡紫描边。</summary>
+    /// <summary>亚克力：深紫 + 淡紫描边；浅色界面颜色再压深一档。</summary>
     Acrylic,
 
-    /// <summary>道系：墨色 + 香槟金描边 / 金点。</summary>
+    /// <summary>道系：墨底 + 香槟金描边 / 金点；浅色界面用墨金深色版。</summary>
     Daoji,
 
-    /// <summary>云间天上：白色 + 暖金描边 + 小太阳点。</summary>
+    /// <summary>云间天上：白色 + 暖金描边 + 小太阳点；浅色界面换成夜空蓝 + 金边。</summary>
     CloudSky,
 
     /// <summary>用户上传的图片。</summary>
@@ -29,7 +29,8 @@ public enum InAppCursorKind
 
 /// <summary>
 /// 应用内光标样式清单 / 解析（v0.91.0）：配置只存稳定字符串 Id，<c>auto</c> 跟随当前 <see cref="UiTheme"/>。
-/// <para>设置页的下拉框由 <see cref="Definitions"/> 生成；渲染层用 <see cref="Resolve"/> 得到实际 <see cref="InAppCursorKind"/>。</para>
+/// <para>设置页的下拉框由 <see cref="Definitions"/> 生成；渲染层用 <see cref="Resolve"/> 得到实际 <see cref="InAppCursorKind"/>，
+/// 再用 <see cref="Palette"/> 按界面深浅取配色（v0.97.0：浅色界面自动换成深色系，深色界面沿用原浅色系）。</para>
 /// </summary>
 public static class InAppCursorStyle
 {
@@ -45,13 +46,13 @@ public static class InAppCursorStyle
     /// <summary>设置页下拉框里的全部选项（顺序即显示顺序）。</summary>
     public static IReadOnlyList<CursorStyleDefinition> Definitions { get; } = new[]
     {
-        new CursorStyleDefinition(Auto, "跟随界面主题", "默认风格用经典箭头；玻璃 / 道系 / 云间天上各用自己的一套。"),
-        new CursorStyleDefinition(Default, "经典箭头", "白色箭头 + 深色描边，最百搭。"),
-        new CursorStyleDefinition(LiquidGlass, "液态玻璃", "半透明玻璃箭头 + 蓝色描边 + 柔光。"),
-        new CursorStyleDefinition(FrostedGlass, "毛玻璃", "奶白磨砂箭头 + 灰蓝描边，安静。"),
-        new CursorStyleDefinition(Acrylic, "亚克力", "深紫底 + 淡紫描边，类似 Win11 亚克力。"),
-        new CursorStyleDefinition(Daoji, "道系（墨金）", "墨底 + 香槟金描边 / 金点。"),
-        new CursorStyleDefinition(CloudSky, "云间天上", "白色箭头 + 暖金描边 + 小太阳点。"),
+        new CursorStyleDefinition(Auto, "跟随界面主题", "默认风格用经典箭头；玻璃 / 道系 / 云间天上各用自己的一套，深 / 浅色自动跟外观模式。"),
+        new CursorStyleDefinition(Default, "经典箭头", "深色界面白色箭头 + 深色描边；浅色界面换成深色箭头 + 浅色描边，最百搭。"),
+        new CursorStyleDefinition(LiquidGlass, "液态玻璃", "半透明玻璃箭头 + 蓝色描边 + 柔光；浅色界面换成深色玻璃。"),
+        new CursorStyleDefinition(FrostedGlass, "毛玻璃", "奶白磨砂箭头 + 灰蓝描边；浅色界面换成深灰磨砂。"),
+        new CursorStyleDefinition(Acrylic, "亚克力", "深紫底 + 淡紫描边，类似 Win11 亚克力；浅色界面颜色再压深一档。"),
+        new CursorStyleDefinition(Daoji, "道系（墨金）", "墨底 + 香槟金描边 / 金点；浅色界面用墨金深色版。"),
+        new CursorStyleDefinition(CloudSky, "云间天上", "白色箭头 + 暖金描边 + 小太阳点；浅色界面换成夜空蓝 + 金边。"),
         new CursorStyleDefinition(Custom, "自定义图片", "用你上传的小图片作为光标；可在下面选择历史图片。"),
     };
 
@@ -92,7 +93,45 @@ public static class InAppCursorStyle
             _ => InAppCursorKind.Default,
         };
     }
+
+    /// <summary>
+    /// 取内置箭头在当前界面深浅下的一套配色（v0.97.0）。
+    /// <para><paramref name="isLightTheme"/> = 浅色界面 → 用**深色系**（深色填充 + 浅色描边，浅色底上才看得清）；
+    /// false = 深色界面 → 沿用 v0.91.0 的浅色系（浅色填充 + 深色描边）。两档都保留每套主题自己的强调色。</para>
+    /// <para><see cref="InAppCursorKind.Custom"/> 不画箭头（用上传的图片），这里回退经典箭头，
+    /// 保证调用方永远能拿到一套合法配色。</para>
+    /// </summary>
+    public static InAppCursorPalette Palette(InAppCursorKind kind, bool isLightTheme)
+        => isLightTheme ? DarkTone(kind) : LightTone(kind);
+
+    /// <summary>深色界面用的浅色系（v0.91.0 原配色，深色界面上看得清）。</summary>
+    private static InAppCursorPalette LightTone(InAppCursorKind kind) => kind switch
+    {
+        InAppCursorKind.LiquidGlass => new InAppCursorPalette("#D9FFFFFF", "#7FB8FF", "#8FB4FF", true),
+        InAppCursorKind.FrostedGlass => new InAppCursorPalette("#F5FAFF", "#7A8B9C", "#9FB4C8", false),
+        InAppCursorKind.Acrylic => new InAppCursorPalette("#E62A2140", "#A98BFF", "#D7C7FF", false),
+        InAppCursorKind.Daoji => new InAppCursorPalette("#F2E4C2", "#2A2116", "#D6B26A", false),
+        InAppCursorKind.CloudSky => new InAppCursorPalette("#FFFFFF", "#A57C45", "#D9C08A", false),
+        _ => new InAppCursorPalette("#FFFFFF", "#1B2430", "#4C8DFF", false),
+    };
+
+    /// <summary>浅色界面用的深色系（v0.97.0 新增：深色填充 + 浅色描边，浅色底上看得清）。</summary>
+    private static InAppCursorPalette DarkTone(InAppCursorKind kind) => kind switch
+    {
+        InAppCursorKind.LiquidGlass => new InAppCursorPalette("#E61A2638", "#9CC6FF", "#7FB8FF", true),
+        InAppCursorKind.FrostedGlass => new InAppCursorPalette("#FF2B3644", "#DCE6F2", "#8FB4C8", false),
+        InAppCursorKind.Acrylic => new InAppCursorPalette("#F0241C38", "#D7C7FF", "#A98BFF", false),
+        InAppCursorKind.Daoji => new InAppCursorPalette("#FF241D12", "#D6B26A", "#D6B26A", false),
+        InAppCursorKind.CloudSky => new InAppCursorPalette("#FF2C3A55", "#E2B65C", "#FFC94D", false),
+        _ => new InAppCursorPalette("#FF232B36", "#F4F7FB", "#4C8DFF", false),
+    };
 }
+
+/// <summary>
+/// 应用内光标的一套配色（v0.97.0）：填充 / 描边 / 强调点都是 <c>#AARRGGBB</c> 字符串，
+/// <see cref="Glow"/> = 是否加柔光（只有液态玻璃有）。渲染层解析成画刷，自检直接断言色值。
+/// </summary>
+public sealed record InAppCursorPalette(string Fill, string Stroke, string Dot, bool Glow);
 
 /// <summary>应用内光标下拉框的一项。</summary>
 public sealed record CursorStyleDefinition(string Id, string Name, string Description);

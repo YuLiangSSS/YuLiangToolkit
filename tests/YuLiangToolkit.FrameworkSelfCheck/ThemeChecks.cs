@@ -639,6 +639,41 @@ internal static class ThemeChecks
             && InAppCursorStyle.Resolve(InAppCursorStyle.Custom, UiTheme.CloudSky, hasCustomImage: true)
                 == InAppCursorKind.Custom);
 
+        // ---- v0.97.0：应用内光标深 / 浅两套配色（浅色界面自动切深色系） ----
+        var builtInCursorKinds = new[]
+        {
+            InAppCursorKind.Default, InAppCursorKind.LiquidGlass, InAppCursorKind.FrostedGlass,
+            InAppCursorKind.Acrylic, InAppCursorKind.Daoji, InAppCursorKind.CloudSky,
+        };
+        check("应用内光标：浅色界面六套内置样式都切深色系（深填充 + 浅描边 / 强调点不透明）",
+            builtInCursorKinds.All(kind =>
+            {
+                var dark = InAppCursorStyle.Palette(kind, isLightTheme: true);
+                var light = InAppCursorStyle.Palette(kind, isLightTheme: false);
+                return dark != light
+                    && ThemePaletteBuilder.Luminance(Hex(dark.Fill)) < 0.35
+                    && ThemePaletteBuilder.Luminance(Hex(dark.Stroke)) > 0.35
+                    && Hex(dark.Fill).A > 0
+                    && Hex(dark.Stroke).A > 0
+                    && Hex(dark.Dot).A > 0;
+            }),
+            string.Join(" / ", builtInCursorKinds.Select(
+                kind => InAppCursorStyle.Palette(kind, isLightTheme: true).Fill)));
+
+        check("应用内光标：深色界面沿用 v0.91.0 原配色 / 自定义图片回退经典 / 柔光只跟液态玻璃",
+            InAppCursorStyle.Palette(InAppCursorKind.Default, isLightTheme: false)
+                == new InAppCursorPalette("#FFFFFF", "#1B2430", "#4C8DFF", false)
+            && InAppCursorStyle.Palette(InAppCursorKind.FrostedGlass, isLightTheme: false)
+                == new InAppCursorPalette("#F5FAFF", "#7A8B9C", "#9FB4C8", false)
+            && InAppCursorStyle.Palette(InAppCursorKind.LiquidGlass, isLightTheme: false).Glow
+            && InAppCursorStyle.Palette(InAppCursorKind.LiquidGlass, isLightTheme: true).Glow
+            && !InAppCursorStyle.Palette(InAppCursorKind.Default, isLightTheme: true).Glow
+            && InAppCursorStyle.Palette(InAppCursorKind.Custom, isLightTheme: true)
+                == InAppCursorStyle.Palette(InAppCursorKind.Default, isLightTheme: true)
+            && InAppCursorStyle.Palette(InAppCursorKind.Custom, isLightTheme: false)
+                == InAppCursorStyle.Palette(InAppCursorKind.Default, isLightTheme: false),
+            "深色界面 = 白箭头 + 深描边，浅色界面 = 深箭头 + 浅描边");
+
         check("光标图：普通文件名合法 / 目录在 Data\\shell\\cursor",
             ShellCursorImage.IsSafeFileName("cursor-20250101-120000-000.png")
             && !ShellCursorImage.IsSafeFileName("../cursor.png")

@@ -19,6 +19,9 @@ namespace YuLiangToolkit.App.Views;
 ///
 /// <para><b>自定义图片</b>：<see cref="ImageSource"/> 有值时使用图片；否则按 <see cref="Kind"/> 画内置箭头。
 /// 系统光标只在启用时改成 <see cref="Cursors.None"/>，关闭 / 卸载时还原。</para>
+///
+/// <para><b>深浅两套配色</b>（v0.97.0）：内置箭头按 <see cref="IsLight"/> 选配色 —— 浅色界面用深色系、
+/// 深色界面用浅色系（见 <see cref="InAppCursorStyle.Palette"/>），换外观模式立即生效；自定义图片不受影响。</para>
 /// </summary>
 public partial class InAppCursorOverlay : UserControl
 {
@@ -69,6 +72,7 @@ public partial class InAppCursorOverlay : UserControl
         set => SetValue(ImageSourceProperty, value);
     }
 
+    /// <summary>当前界面是不是浅色模式（决定内置箭头用深色系还是浅色系，见 <see cref="InAppCursorStyle.Palette"/>）。</summary>
     public bool IsLight
     {
         get => (bool)GetValue(IsLightProperty);
@@ -201,20 +205,13 @@ public partial class InAppCursorOverlay : UserControl
         CursorVisual.Width = 40;
         CursorVisual.Height = 44;
 
-        var (fill, stroke, dot, glow) = Kind switch
-        {
-            InAppCursorKind.LiquidGlass => (Hex("#D9FFFFFF"), Hex("#7FB8FF"), Hex("#8FB4FF"), true),
-            InAppCursorKind.FrostedGlass => (Hex("#F5FAFF"), Hex("#7A8B9C"), Hex("#9FB4C8"), false),
-            InAppCursorKind.Acrylic => (Hex("#E62A2140"), Hex("#A98BFF"), Hex("#D7C7FF"), false),
-            InAppCursorKind.Daoji => (Hex("#F2E4C2"), Hex("#2A2116"), Hex("#D6B26A"), false),
-            InAppCursorKind.CloudSky => (Hex("#FFFFFF"), Hex("#A57C45"), Hex("#D9C08A"), false),
-            _ => (Hex("#FFFFFF"), Hex("#1B2430"), Hex("#4C8DFF"), false),
-        };
-
-        ArrowPath.Fill = new SolidColorBrush(fill);
-        ArrowPath.Stroke = new SolidColorBrush(stroke);
-        AccentDot.Fill = new SolidColorBrush(dot);
-        ArrowPath.Effect = glow
+        // 配色按界面深浅取（v0.97.0）：浅色界面用深色系，深色界面沿用原来的浅色系；
+        // 每套主题自己的强调色保留，所以六套主题在两种深浅下各有自己的样子。
+        var palette = InAppCursorStyle.Palette(Kind, IsLight);
+        ArrowPath.Fill = new SolidColorBrush(Hex(palette.Fill));
+        ArrowPath.Stroke = new SolidColorBrush(Hex(palette.Stroke));
+        AccentDot.Fill = new SolidColorBrush(Hex(palette.Dot));
+        ArrowPath.Effect = palette.Glow
             ? new DropShadowEffect { Color = Color.FromRgb(0x4C, 0x8D, 0xFF), BlurRadius = 10, ShadowDepth = 0, Opacity = 0.55 }
             : null;
 

@@ -510,7 +510,7 @@
                               ToolTip="开启后隐藏系统光标，由程序自己画一个跟随鼠标的光标；关闭则恢复 Windows 光标" />
                     <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                TextWrapping="Wrap" Margin="0,6,0,0"
-                               Text="开启后，窗口内的鼠标由程序自己绘制（系统光标隐藏）。不同界面主题各有一套内置样式，也可以上传一张小图片当光标；图片会复制进 Data\shell\cursor\，历史图片不会删除。应用内光标会被粒子拖尾 / 点击爆炸 / 反色圆环等特效盖住，不会挡住它们。" />
+                               Text="开启后，窗口内的鼠标由程序自己绘制（系统光标隐藏）。不同界面主题各有一套内置样式，而且深 / 浅色各有一套配色：浅色界面自动换成深色系（深色箭头 / 深色玻璃 / 墨金底），深色界面用浅色箭头，不用手动选；也可以上传一张小图片当光标，图片会复制进 Data\shell\cursor\，历史图片不会删除。应用内光标会被粒子拖尾 / 点击爆炸 / 反色圆环等特效盖住，不会挡住它们。" />
 
                     <Grid Margin="0,12,0,0">
                         <Grid.ColumnDefinitions>
@@ -523,7 +523,7 @@
                                       ItemsSource="{Binding CursorStyleOptions}"
                                       SelectedValuePath="Id"
                                       SelectedValue="{Binding SelectedCursorStyleId}"
-                                      ToolTip="跟随界面主题 = 自动按当前主题换；也可以固定一套或选自定义图片">
+                                      ToolTip="跟随界面主题 = 自动按当前主题换；也可以固定一套或选自定义图片。每套内置样式都有深 / 浅两套配色，自动跟外观模式">
                                 <ComboBox.ItemTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding Name}" />
