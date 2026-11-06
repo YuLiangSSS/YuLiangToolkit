@@ -58,6 +58,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("software-updater", "软件升级器：winget 表格解析 / 包 Id 安全 / 命令拼装 / 批量勾选规则（不启动 winget）"),
     ("calculator", "计算器：表达式求值 / 优先级 / 省略乘号 / 阶乘 / 角度制 / 结果格式化 / 历史与配置"),
     ("function-plot", "函数绘图：视口换算 / 缩放平移 / 好看刻度 / 自动 Y 范围 / 配置 / 采样集成"),
+    ("mail", "邮箱代收：IMAP 预设 / 地址与 HTML 处理 / DPAPI 授权码加密 / 配置往返（纯逻辑，不联网）"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1232,6 +1233,10 @@ RunGroupModule("calculator", "计算器", CalculatorChecks.Run);
 // 自动 Y 范围（空集合 / NaN / 上下界写反）、每条函数的配置校验，以及与 FunctionSampler 的采样集成
 // （tan 多段 / 定义域收窄 / 越界断线）。纯逻辑，不创建窗口、不渲染。
 RunGroupModule("function-plot", "函数绘图", FunctionPlotChecks.Run);
+
+// 「邮箱代收」：服务商预设匹配 / 地址打码 / HTML→纯文本 / 附件名清洗 / 配置 JSON 往返 /
+// DPAPI 授权码加解密 / 错误翻译。纯逻辑，**不联网**；真实 Gmail / QQ IMAP 登录由界面人工冒烟。
+RunGroupModule("mail", "邮箱代收", MailChecks.Run);
 
 EnterGroup("shell");
 

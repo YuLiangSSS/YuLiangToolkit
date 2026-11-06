@@ -42,6 +42,35 @@
   `rar.exe` / `7z.exe`，用户机器不用预装任何压缩软件。RAR 的**压缩**算法是专有格式，
   该库只提供读取、没有写入器，因此本工具「RAR 只能解、不能压」。
 
+## MailKit 4.18.2 / MimeKit 4.18.2（NuGet 依赖）
+
+- 用途：「邮箱代收」（`src/YuLiangToolkit.Tools.Mail/`）的 IMAP 客户端与 MIME 邮件解析：
+  只读连接收件箱、拉取邮件摘要 / 正文 / 附件，识别 HTML 与纯文本、文件名与字符集
+- 项目主页：<https://github.com/jstedfast/MailKit>、<https://github.com/jstedfast/MimeKit>
+- 许可：MIT License
+- 版权：Copyright (c) 2013-2026 Jeffrey Stedfast
+- 说明：本项目只引用 NuGet 包（纯托管程序集），**没有修改**其源码；不包含任何邮件服务商 SDK，
+  IMAP 连接只发生在「邮箱代收」工具里用户主动填写的服务器上。首次从源码构建需要联网还原一次，
+  之后走本机 NuGet 缓存。
+
+## BouncyCastle.Cryptography 2.7.0（MimeKit 传递依赖）
+
+- 用途：MimeKit 的加密 / 签名邮件支持（本项目只用到普通邮件，但 NuGet 依赖会随发布输出）
+- 项目主页：<https://www.bouncycastle.org/stable/nuget/csharp/website>
+- 许可：MIT License
+- 版权：Copyright © Legion of the Bouncy Castle Inc. 2000-2026
+- 说明：只作为 MimeKit 的依赖随程序分发，**没有修改**其源码。
+
+## System.Security.Cryptography.ProtectedData 9.0.4（NuGet 依赖）
+
+- 用途：「邮箱代收」用 Windows DPAPI 加密保存 QQ 授权码 / Gmail 应用专用密码
+  （`src/YuLiangToolkit.Tools.Mail/SecureStore.cs`）
+- 项目主页：<https://dot.net/>
+- 许可：MIT License
+- 版权：Copyright (c) .NET Foundation and Contributors
+- 说明：微软官方运行时库，调用 Windows 自带的 DPAPI（`CryptProtectData` / `CryptUnprotectData`），
+  不把任何数据发到网络；密文与当前 Windows 用户绑定，换用户 / 换机器解不开。
+
 ## Microsoft.Web.WebView2 1.0.4314.35（NuGet 依赖）
 
 - 用途：「网页浏览器」（`src/YuLiangToolkit.Tools.Browser/`）承载 Chromium 内核（和 Edge 同源）的 WPF 控件

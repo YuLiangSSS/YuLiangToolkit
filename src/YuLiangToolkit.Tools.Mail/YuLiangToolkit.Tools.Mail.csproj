@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「邮箱代收」功能：用 IMAP 把多个邮箱的收件箱收到一起看（只读，不改服务器上的已读状态）。
+       为什么引 NuGet 包：
+         · MailKit / MimeKit：成熟的 IMAP + MIME 解析实现（MIT），比手写 IMAP 可靠得多；
+         · System.Security.Cryptography.ProtectedData：用 Windows DPAPI（当前用户）加密保存授权码 /
+           应用专用密码，配置文件里不出现明文。
+       两个包都只引用、不修改源码；许可与用途登记在仓库根 THIRD-PARTY-NOTICES.md。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.Mail</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.Mail</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- IMAP 客户端 / MIME 解析（只读收件箱；不收发 SMTP） -->
+    <PackageReference Include="MailKit" Version="4.18.2" />
+    <!-- Windows DPAPI：授权码 / 应用专用密码落盘前加密（CurrentUser 范围） -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.4" />
+  </ItemGroup>
+
+</Project>

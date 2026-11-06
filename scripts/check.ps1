@@ -148,6 +148,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/SoftwareUpdaterChecks.cs' @('software-updater') 'L3' 'software-updater assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/CalculatorChecks.cs'     @('calculator') 'L3' 'calculator + shared expression engine assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/FunctionPlotChecks.cs'   @('function-plot') 'L3' 'function plot viewport / ticks / config assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/MailChecks.cs'           @('mail') 'L3' 'mail collector presets / html / dpapi / config assertions')
 
     # ---------- tests: anything else in the self-check project is unknown wiring ----------
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/*.cs' @('ALL') 'L4' 'unmapped self-check source' -Fallback)
@@ -189,6 +190,7 @@ $mapping = @(
     (New-Rule 'src/YuLiangToolkit.Tools.Calculator/*'         @('calculator') 'L2' 'calculator tool (expression engine lives in Core)')
     (New-Rule 'src/YuLiangToolkit.Tools.FunctionPlot/*'       @('function-plot') 'L2' 'function plot tool')
     (New-Rule 'src/YuLiangToolkit.Tools.ScreenSticker/*'       @('screen-sticker') 'L2' 'screen sticker tool')
+    (New-Rule 'src/YuLiangToolkit.Tools.Mail/*'               @('mail') 'L2' 'mail collector tool')
     (New-Rule 'src/YuLiangToolkit.Tools.Sample/*'          @() 'L1' 'framework template, no dedicated group: build + manual smoke')
     (New-Rule 'src/*'                                      @('ALL') 'L4' 'unmapped src project' -Fallback)
 

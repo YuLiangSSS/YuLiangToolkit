@@ -101,6 +101,9 @@
     <!-- 「函数绘图」：视口换算（世界↔屏幕 / 缩放 / 平移）/ 好看刻度 / 自动 Y 范围 /
          配置默认值 + 与 FunctionSampler 的采样集成；全部纯逻辑，不创建窗口、不渲染。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.FunctionPlot\YuLiangToolkit.Tools.FunctionPlot.csproj" />
+    <!-- 「邮箱代收」：服务商预设匹配 / 地址打码 / HTML→纯文本 / 附件名清洗 / 配置 JSON 往返 /
+         DPAPI 授权码加解密；全部纯逻辑，**不联网**（真实 IMAP 登录由人工冒烟）。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Mail\YuLiangToolkit.Tools.Mail.csproj" />
   </ItemGroup>
 
 </Project>
