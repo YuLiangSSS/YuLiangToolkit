@@ -48,7 +48,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 | [**📄 PDF 阅读器**](docs/tools/pdf-reader.md) | 连续滚动 + 双页并排、25% ~ 800% 缩放、Ctrl+F 搜索、书签目录、记忆阅读位置；只读不改原文件；`.pdf` 拖进页面即打开 |
 | [**📘 Word 阅读器**](docs/tools/word-viewer.md) | 只读 `.docx`：标题大纲、表格、图片、页眉页脚、脚注尾注、批注、修订视图、查找、打印、导出 HTML / 纯文本 |
 | [**📊 Excel 阅读器**](docs/tools/excel-viewer.md) | 只读 `.xlsx`：工作表页签、数字格式、合并单元格、冻结窗格、自动行高、显示公式、超链接、Ctrl+F 查找 |
-| [**📽️ PPT 阅读器**](docs/tools/ppt-viewer.md) | 只读 `.pptx`：幻灯片原样还原（文字 / 图片 / 表格 / 形状 / 主题色）、缩略图导航、备注、查找、缩放与全屏放映，不装 Office |
+| [**📽️ PPT 阅读器**](docs/tools/ppt-viewer.md) | 只读 `.pptx`：幻灯片原样还原（文字 / 图片 / 表格 / 形状 / 主题色）、缩略图导航、备注、查找、缩放与全屏放映，支持文件关联（双击演示文稿直接打开），不装 Office |
 | [**⚡ Flash 下载器**](docs/tools/flash-downloader.md) | 4399 / 7k7k / 17yy / ArmorGames / Kongregate 的小游戏下载到本地离线玩 |
 | [**💬 联机聊天室**](docs/tools/chat-room.md) | 主机开房间、客户端直连，文字 / 图片 / 文件随便传；还能群语音 / 群视频（最多 8 人）和按住说话发语音消息 |
 | [**🌐 网页浏览器**](docs/tools/browser.md) | Chromium 内核（WebView2）多标签浏览器：历史 / 下载 / 书签 / 资源嗅探、会话恢复、页面缩放、右键图片另存为 |
@@ -103,7 +103,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（用法 / 设置项 / 数据位置 / 注意事项），跟着代码一起走；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；踩坑细节按需查 [docs/dev/pitfalls.md](docs/dev/pitfalls.md)；
-- ✅ **自检**：4571 项行为逐条真跑（退出码 0 = 全通过）。按改动影响面只跑相关组，不每轮全量：
+- ✅ **自检**：4593 项行为逐条真跑（退出码 0 = 全通过）。按改动影响面只跑相关组，不每轮全量：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -118,7 +118,7 @@ build.ps1 / publish.ps1                  # 一键构建 / 一键发布（发布�
 scripts/check.ps1                        # 按改动自动选组的自检触发器
 src/YuLiangToolkit.Core/                 # 核心库：工具契约 / MVVM / 存储 / 配置 / 维护 / 特效 / 联机底座
 src/YuLiangToolkit.Tools.*/              # 各工具，一个功能一个项目（新功能复制 Tools.Sample）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 自检控制台：4571 项行为逐条真跑
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 自检控制台：4593 项行为逐条真跑
 docs/                                    # 每个工具一页详细说明（索引 docs/README.md）
 AGENTS.md                                # 开发入口地图：流程 / 硬性规则 / 找东西
 ```

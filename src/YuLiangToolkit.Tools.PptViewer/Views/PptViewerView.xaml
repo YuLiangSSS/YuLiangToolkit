@@ -141,6 +141,43 @@
                         <CheckBox Content="备注" IsChecked="{Binding ShowNotes}" IsEnabled="{Binding CanShowNotes}"
                                   Style="{StaticResource CheckBoxStyle}" VerticalAlignment="Center" Margin="14,0,0,0"
                                   ToolTip="显示 / 隐藏右侧备注栏；当前页没有备注时不可用（会记住开关）" />
+
+                        <!-- 设置浮层：文件关联（双击 .pptx 用本工具打开）+ 主页设置里的打开方式关联说明。
+                             Popup 不在可视树里，DataContext 在代码后置里手动接（同查找结果浮层）。 -->
+                        <Button x:Name="SettingsButton" Content="⚙ 设置" Style="{StaticResource CompactButtonStyle}"
+                                Margin="14,0,0,0" Command="{Binding ToggleSettingsCommand}"
+                                ToolTip="文件关联（双击 .pptx / .pptm / .ppsx 用本工具打开）/ 打开方式关联说明" />
+                        <Popup x:Name="SettingsPopup"
+                               PlacementTarget="{Binding ElementName=SettingsButton}" Placement="Bottom"
+                               HorizontalOffset="-150" StaysOpen="False" AllowsTransparency="True"
+                               Opened="OnSettingsPopupOpened"
+                               IsOpen="{Binding IsSettingsOpen, Mode=TwoWay}">
+                            <Border Background="{DynamicResource CardBackgroundBrush}"
+                                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                    CornerRadius="8" Padding="16,14" Width="410">
+                                <StackPanel>
+                                    <TextBlock Text="⚙ 文件关联与打开方式" FontSize="13" FontWeight="SemiBold" />
+                                    <TextBlock FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Text="勾选后把 .pptx / .pptm / .ppsx 登记到 Windows「打开方式」；双击最终用哪个程序还受系统「默认应用」控制。" />
+                                    <CheckBox Content="双击 .pptx / .pptm / .ppsx 用本工具打开" FontSize="12"
+                                              Style="{StaticResource CheckBoxStyle}" Margin="0,10,0,0"
+                                              IsChecked="{Binding IsFileAssociationEnabled}" />
+                                    <TextBlock Text="{Binding FileAssociationStatus}" FontSize="10.5"
+                                               TextWrapping="Wrap" Margin="0,6,0,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <Button Content="打开 Windows「默认应用」设置"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            Height="28" Padding="8,0" FontSize="10.5"
+                                            HorizontalAlignment="Left" Margin="0,8,0,0"
+                                            Command="{Binding OpenDefaultAppsCommand}" />
+                                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,12,0,10" />
+                                    <TextBlock Text="{Binding FileAssociationHint}" FontSize="10.5"
+                                               TextWrapping="Wrap" LineHeight="17"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                </StackPanel>
+                            </Border>
+                        </Popup>
                     </StackPanel>
                 </Grid>
 
@@ -220,6 +257,7 @@
                         <Popup x:Name="SearchResultsPopup"
                                PlacementTarget="{Binding ElementName=SearchBox}" Placement="Bottom"
                                StaysOpen="False" AllowsTransparency="True"
+                               Opened="OnSearchResultsPopupOpened"
                                IsOpen="{Binding IsSearchResultOpen, Mode=TwoWay}">
                             <Border Background="{DynamicResource CardBackgroundBrush}"
                                     BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"

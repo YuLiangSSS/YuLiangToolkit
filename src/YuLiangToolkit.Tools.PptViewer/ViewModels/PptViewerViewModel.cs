@@ -96,6 +96,8 @@ public sealed class PptViewerViewModel : ToolViewModelBase, IFileLaunchTarget
         ClearSearchCommand = new RelayCommand(_ => ClearSearch());
         CopySlideTextCommand = new RelayCommand(_ => CopySlideText(), _ => HasDocument);
         StartPresentationCommand = new RelayCommand(_ => StartPresentation(), _ => HasDocument);
+        ToggleSettingsCommand = new RelayCommand(_ => IsSettingsOpen = !IsSettingsOpen);
+        OpenDefaultAppsCommand = new RelayCommand(_ => PptFileAssociation.OpenDefaultAppsSettings());
 
         _readingPositionTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -104,6 +106,7 @@ public sealed class PptViewerViewModel : ToolViewModelBase, IFileLaunchTarget
         _readingPositionTimer.Tick += OnReadingPositionTimerTick;
 
         _pendingAutoOpenPath = Environment.GetEnvironmentVariable(AutoOpenEnvironmentVariable);
+        _fileAssociationStatus = PptFileAssociation.DescribeState();
         Log($"PPT 阅读器就绪 · 配置文件：{Cfg.FilePath}");
         if (!string.IsNullOrWhiteSpace(_pendingAutoOpenPath))
             Log($"开发调试：启动后自动打开 {_pendingAutoOpenPath}（不会写进配置）");
@@ -158,6 +161,82 @@ public sealed class PptViewerViewModel : ToolViewModelBase, IFileLaunchTarget
 
     /// <summary>从当前页开始全屏放映（F5）。</summary>
     public RelayCommand StartPresentationCommand { get; }
+
+    /// <summary>工具条「⚙ 设置」：展开 / 收起文件关联与打开方式浮层。</summary>
+    public RelayCommand ToggleSettingsCommand { get; }
+
+    /// <summary>设置浮层里的「打开 Windows「默认应用」设置」。</summary>
+    public RelayCommand OpenDefaultAppsCommand { get; }
+
+    // ---------------------------------------------------------------- 设置浮层 / 文件关联
+
+    private bool _isSettingsOpen;
+    private bool? _fileAssociationEnabled;
+    private string _fileAssociationStatus = "";
+
+    /// <summary>设置浮层（文件关联 / 打开方式说明）是否展开；打开时重新读一次注册表状态。</summary>
+    public bool IsSettingsOpen
+    {
+        get => _isSettingsOpen;
+        set
+        {
+            if (!Set(ref _isSettingsOpen, value)) return;
+            if (value) RefreshFileAssociationState();
+        }
+    }
+
+    /// <summary>
+    /// 是否已把三种后缀登记到本工具（读注册表；带缓存）。勾选 = 登记，取消 = 撤销登记。
+    /// <para>只写当前用户注册表（HKCU），不需要管理员；双击最终是否用本工具还受 Windows「默认应用」影响。</para>
+    /// </summary>
+    public bool IsFileAssociationEnabled
+    {
+        get
+        {
+            _fileAssociationEnabled ??= PptFileAssociation.IsRegistered();
+            return _fileAssociationEnabled.Value;
+        }
+        set
+        {
+            var current = IsFileAssociationEnabled;
+            if (value == current) return;
+
+            var result = value ? PptFileAssociation.Register() : PptFileAssociation.Unregister();
+            _fileAssociationStatus = result.Message;
+            OnPropertyChanged(nameof(FileAssociationStatus));
+
+            if (!result.Success)
+            {
+                OnPropertyChanged();   // 失败时勾选状态保持原样
+                StatusText = result.Message;
+                Log($"[文件关联] 操作失败：{result.Message}");
+                return;
+            }
+
+            _fileAssociationEnabled = value;
+            OnPropertyChanged();
+            StatusText = value ? "已登记 PPT 文件关联" : "已取消 PPT 文件关联";
+            Log($"[文件关联] {result.Message}");
+        }
+    }
+
+    /// <summary>文件关联区的状态说明（已登记 / 需要去系统「默认应用」确认一次）。</summary>
+    public string FileAssociationStatus => _fileAssociationStatus;
+
+    /// <summary>设置浮层里关于注册表范围 / 主页设置的补充说明。</summary>
+    public string FileAssociationHint =>
+        "只写当前用户注册表（HKCU），不需要管理员；双击是否生效最终由 Windows「默认应用」决定。"
+        + "右键「打开方式」里的 3 个凉雨工具集入口（按文件类型会自动分流到 PPT 阅读器）在 "
+        + "主页设置 → 打开方式关联 里开关。";
+
+    /// <summary>重新读一次注册表状态（打开设置浮层时用，避免外部改过之后显示旧状态）。</summary>
+    private void RefreshFileAssociationState()
+    {
+        _fileAssociationEnabled = PptFileAssociation.IsRegistered();
+        _fileAssociationStatus = PptFileAssociation.DescribeState();
+        OnPropertyChanged(nameof(IsFileAssociationEnabled));
+        OnPropertyChanged(nameof(FileAssociationStatus));
+    }
 
     // ---------------------------------------------------------------- 视图开关（双向绑配置）
 
@@ -1238,6 +1317,9 @@ public sealed class PptViewerViewModel : ToolViewModelBase, IFileLaunchTarget
     {
         if (_autoOpenRequested) return;
         _autoOpenRequested = true;
+
+        // 截图冒烟用：YLT_PPT_SETTINGS=1 时直接把文件关联设置浮层展开（不写配置、不影响正常使用）
+        if (Environment.GetEnvironmentVariable("YLT_PPT_SETTINGS") is "1" or "on" or "true") IsSettingsOpen = true;
 
         var path = _pendingAutoOpenPath;
         _pendingAutoOpenPath = null;

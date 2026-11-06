@@ -54,7 +54,7 @@
 - **取消勾选**：立即清掉本工具写进注册表的打开方式入口和入口副本 exe，并把开关落盘成关闭。
 - **每次启动自动清**：开关关着时，程序启动会检查一次；只要系统里还有**本功能**留下的痕迹
   （状态键 / 入口副本 exe / 我们自己的 Applications 条目），就自动清掉，不需要每次手动点清理。
-  （如果从来没用过本开关，PDF / 图片阅读器自己的「文件关联」条目归那些阅读器的设置管，本功能不会擅自删。）
+  （如果从来没用过本开关，PDF / 图片 / PPT 阅读器自己的「文件关联」条目归那些阅读器的设置管，本功能不会擅自删。）
 - **「清理打开方式关联」按钮**：立即执行同样的清理（Debug 版也能点），并把开关置为关闭。
 - 清理只删「打开方式」相关条目：**不改任何后缀的默认程序 / 双击关联**（那属于 Windows「默认应用」和
   各阅读器自己的文件关联开关）；清完后资源管理器的列表可能要等几秒 / 重开对话框才刷新。
@@ -82,20 +82,20 @@
 | --- | --- |
 | 入口副本 exe | 和主程序 **同一个目录**：`<主程序名>.open-text.exe` / `<主程序名>.open-archive.exe`（只是同一个程序的两个入口名，依赖仍在主程序目录；「按文件类型」直接用主程序 exe） |
 | 打开方式注册 | `HKCU\Software\Classes\Applications\<入口 exe 名>`（`FriendlyAppName` / `DefaultIcon` / `shell\open\command`） |
-| PDF / 图片阅读器的打开方式引用 | `HKCU\Software\Classes\<后缀>\OpenWithProgids` 与 `Explorer\FileExts\<后缀>\OpenWithProgids` 里的 `YuLiangToolkit.PdfReader` / `YuLiangToolkit.PictureViewer`（打开或关闭本开关时都会清掉这些**打开方式引用**，避免列表里出现重复 / 旧路径条目；不删 ProgId、不改双击关联） |
+| PDF / 图片 / PPT 阅读器的打开方式引用 | `HKCU\Software\Classes\<后缀>\OpenWithProgids` 与 `Explorer\FileExts\<后缀>\OpenWithProgids` 里的 `YuLiangToolkit.PdfReader` / `YuLiangToolkit.PictureViewer` / `YuLiangToolkit.PptViewer`（打开或关闭本开关时都会清掉这些**打开方式引用**，避免列表里出现重复 / 旧路径条目；不删 ProgId、不改双击关联） |
 | 本功能状态 | `HKCU\Software\YuLiangToolkit\OpenWith`（只记「已登记 + 主程序路径」；清理时整个删掉） |
 | 开关配置 | `Config\shell\config.json` 的 `openWithAssociationEnabled`（主页设置里改，自动落盘） |
 | 页面配置 | `Config\open-with\config.json`（只记「模拟」输入框上次的路径） |
 
 > **只写当前用户（HKCU）**，不需要管理员权限；**不改任何后缀的默认程序**（`UserChoice` 由 Windows 保护，
 > 也属于未公开行为，本工具不硬抢）。取消勾选 / 清理会删掉 3 个 Applications 条目、2 个入口副本，
-> 以及 PDF / 图片阅读器登记的打开方式引用（双击关联仍然有效）。
+> 以及 PDF / 图片 / PPT 阅读器登记的打开方式引用（双击关联仍然有效）。
 
 ## 常见问题
 
 **Q：为什么列表里出现 4 个「凉雨工具集」？**
-A：如果之前单独开过 **PDF 阅读器 / 图片阅读器设置里的「文件关联」**，那两个阅读器会额外登记打开方式条目
-（`YuLiangToolkit.PdfReader` / `YuLiangToolkit.PictureViewer`）。本功能**在关闭 / 清理自己登记时会把它们也一起清掉**，
+A：如果之前单独开过 **PDF 阅读器 / 图片阅读器 / PPT 阅读器设置里的「文件关联」**，那些阅读器会额外登记打开方式条目
+（`YuLiangToolkit.PdfReader` / `YuLiangToolkit.PictureViewer` / `YuLiangToolkit.PptViewer`）。本功能**在关闭 / 清理自己登记时会把它们也一起清掉**，
 所以正常情况下看不到；如果你从没开过本开关、只开过阅读器的关联，那些条目归阅读器设置管。
 阅读器的双击关联/默认程序不受影响。
 
@@ -104,8 +104,8 @@ A：Windows 会把「打开方式」的选择 / 旧登记记在注册表里（Ap
 光把开关改成关闭不一定能立刻让它从列表消失。所以本功能做了两层保障：
 ① 关闭开关 / 点「清理」时立即删干净；② 开关关着时**每次启动**再自动检查清理一次。
 
-**Q：关掉开关后，某个后缀（例如 .png）的「打开方式」里还看得到本工具？**
-A：如果那个后缀的**默认程序**已经被设成了本工具的图片 / PDF 阅读器（阅读器自己设置里的「文件关联」），
+**Q：关掉开关后，某个后缀（例如 .png / .pptx）的「打开方式」里还看得到本工具？**
+A：如果那个后缀的**默认程序**已经被设成了本工具的图片 / PDF / PPT 阅读器（阅读器自己设置里的「文件关联」），
 Windows 会把「默认程序」也列在打开方式里 —— 这是系统行为，本开关**不会去改默认程序**（否则双击行为会变）。
 本功能自己的 3 个入口会全部消失；想连那一条也去掉，去对应阅读器的设置里关掉文件关联，或在 Windows
 「默认应用」里换一个默认程序。
@@ -126,7 +126,7 @@ A：开关开着时启动会自动按当前路径刷新入口副本和命令；�
 
 **Q：想彻底恢复原状？**
 A：主页设置里取消勾选，或点「清理打开方式关联」；`HKCU\Software\YuLiangToolkit\OpenWith` 会一起删掉。
-之后 Windows 的「打开方式」里不会再出现本软件（PDF / 图片阅读器如果单独开了关联，双击行为仍在，
+之后 Windows 的「打开方式」里不会再出现本软件（PDF / 图片 / PPT 阅读器如果单独开了关联，双击行为仍在，
 但它们的打开方式引用也会被本功能的清理清掉）。
 
 ## 自检

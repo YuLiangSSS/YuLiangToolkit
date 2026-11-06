@@ -143,6 +143,7 @@ $mapping = @(
 (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/WordViewerChecks.cs'     @('word-viewer') 'L3' 'word-viewer assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/ExcelViewerChecks.cs'     @('excel-viewer') 'L3' 'excel-viewer assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/PptViewerChecks.cs'       @('ppt-viewer') 'L3' 'ppt-viewer assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/PptAssociationChecks.cs' @('ppt-viewer') 'L3' 'ppt-viewer file association assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/MaintenanceChecks.cs'     @('maintenance') 'L3' 'maintenance assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/SoftwareUpdaterChecks.cs' @('software-updater') 'L3' 'software-updater assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/CalculatorChecks.cs'     @('calculator') 'L3' 'calculator + shared expression engine assertions')

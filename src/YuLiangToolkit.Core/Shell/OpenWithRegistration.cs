@@ -67,7 +67,7 @@ public static class OpenWithRegistration
 #endif
 
     /// <summary>
-    /// PDF / 图片阅读器的「文件关联」开关登记时用的 ProgId。它们也会把本工具加进
+    /// PDF / 图片 / PPT 阅读器的「文件关联」开关登记时用的 ProgId。它们也会把本工具加进
     /// 「打开方式」（OpenWithProgids），所以本功能关闭时要顺手清掉这些打开方式条目 ——
     /// 用户关掉「打开方式」关联的预期是本软件从列表里消失；**只删 OpenWithProgids 引用，
     /// 不删 ProgId 本身 / 不改后缀默认程序**，所以双击关联不受影响。
@@ -76,11 +76,12 @@ public static class OpenWithRegistration
     {
         "YuLiangToolkit.PictureViewer",
         "YuLiangToolkit.PdfReader",
+        "YuLiangToolkit.PptViewer",
     };
 
-    /// <summary>上述 ProgId 可能登记在哪些后缀的 OpenWithProgids（= 图片 8 种 + PDF）。</summary>
+    /// <summary>上述 ProgId 可能登记在哪些后缀的 OpenWithProgids（= 图片 8 种 + PDF + PPT 3 种）。</summary>
     private static readonly string[] s_readerOpenWithExtensions = OpenWithCatalog.Targets
-        .Where(target => target.ToolId is "picture-viewer" or "pdf-reader")
+        .Where(target => target.ToolId is "picture-viewer" or "pdf-reader" or "ppt-viewer")
         .SelectMany(target => target.Extensions)
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .ToArray();
@@ -91,7 +92,7 @@ public static class OpenWithRegistration
         new OpenWithOpener(
             OpenWithMode.Auto,
             AppDisplayName + "（按文件类型打开）",
-            "按扩展名自动选 PDF / 图片 / Word / Excel / 压缩包 / 播放器 / 文本编辑器；认不出用文本编辑器兜底",
+            "按扩展名自动选 PDF / 图片 / Word / Excel / PPT / 压缩包 / 播放器 / 文本编辑器；认不出用文本编辑器兜底",
             ""),
         new OpenWithOpener(
             OpenWithMode.Text,
@@ -273,8 +274,8 @@ public static class OpenWithRegistration
                 WriteApplicationEntry(classes, opener, main, openerPath);
             }
 
-            // PDF / 图片阅读器如果也登记了打开方式，列表里会和本功能的「自动」入口重复（还可能是旧 exe 路径）。
-            // 打开本开关时顺手清掉那些 OpenWithProgids 引用；本功能的自动入口会把 PDF / 图片继续交给对应阅读器。
+            // PDF / 图片 / PPT 阅读器如果也登记了打开方式，列表里会和本功能的「自动」入口重复（还可能是旧 exe 路径）。
+            // 打开本开关时顺手清掉那些 OpenWithProgids 引用；本功能的自动入口会把 PDF / 图片 / PPT 继续交给对应阅读器。
             RemoveReaderOpenWithProgids();
 
             using (var state = Registry.CurrentUser.CreateSubKey(StateKeyPath))
@@ -324,13 +325,13 @@ public static class OpenWithRegistration
                 }
             }
 
-            // PDF / 图片阅读器通过 OpenWithProgids 登记的打开方式条目也清掉（只删引用，不动双击关联）
+            // PDF / 图片 / PPT 阅读器通过 OpenWithProgids 登记的打开方式条目也清掉（只删引用，不动双击关联）
             RemoveReaderOpenWithProgids();
 
             Registry.CurrentUser.DeleteSubKeyTree(StateKeyPath, throwOnMissingSubKey: false);
             NotifyShell();
             return new(true, "已清理「打开方式」：本工具在右键 → 打开方式里的入口已全部移除"
-                             + "（PDF / 图片阅读器登记的打开方式条目也一并清掉；双击关联不受影响）。");
+                             + "（PDF / 图片 / PPT 阅读器登记的打开方式条目也一并清掉；双击关联不受影响）。");
         }
         catch (Exception ex) when (IsRegistryIoException(ex))
         {
@@ -565,7 +566,7 @@ public static class OpenWithRegistration
         }
     }
 
-    /// <summary>把 PDF / 图片阅读器登记在 OpenWithProgids 里的「打开方式」引用删掉（不动 ProgId 本身）。</summary>
+    /// <summary>把 PDF / 图片 / PPT 阅读器登记在 OpenWithProgids 里的「打开方式」引用删掉（不动 ProgId 本身）。</summary>
     private static void RemoveReaderOpenWithProgids()
     {
         foreach (var extension in s_readerOpenWithExtensions)

@@ -148,6 +148,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `tests/.../WordViewerChecks.cs` | `word-viewer`（docx 解析纯逻辑） | L3 |
 | `tests/.../ExcelViewerChecks.cs` | `excel-viewer`（xlsx 解析纯逻辑） | L3 |
 | `tests/.../PptViewerChecks.cs` | `ppt-viewer`（pptx 解析 / 查找 / 缩放纯逻辑） | L3 |
+| `tests/.../PptAssociationChecks.cs` | `ppt-viewer`（文件关联纯逻辑；只读，不写注册表） | L3 |
 | `tests/.../MaintenanceChecks.cs` | `maintenance`（缓存清理 / 重建配置） | L3 |
 | `tests/.../ContextMenuChecks.cs` | `context-menu`（内存假注册表断言） | L3 |
 | `tests/.../ArchiveChecks.cs` | `archive`（格式识别 / 解压 / 创建 / 密码 / 路径穿越） | L3 |

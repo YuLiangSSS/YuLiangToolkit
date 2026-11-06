@@ -70,6 +70,7 @@ public partial class PptViewerView : UserControl
     {
         // 切走工具页（视图被外壳缓存）：把当前页号立刻落盘，切回来位置不变
         SearchResultsPopup.IsOpen = false;
+        SettingsPopup.IsOpen = false;
         ViewModel?.FlushReadingPosition(saveNow: true);
         DetachViewModel();
     }
@@ -78,10 +79,39 @@ public partial class PptViewerView : UserControl
     {
         if (_subscribed || ViewModel is null) return;
 
-        // Popup 不在可视树里，DataContext 不会从 UserControl 继承，手动接上（否则结果列表是空的）
+        // Popup 不在可视树里，DataContext 不会从 UserControl 继承，手动接上（否则结果列表 / 设置浮层是空的）。
+        // 连 Popup 的 Child 一起设：Popup 的 Child 是另一棵可视树的根，某些情况下不会从 Popup 继承 DataContext。
         SearchResultsPopup.DataContext = ViewModel;
+        SettingsPopup.DataContext = ViewModel;
+        if (SearchResultsPopup.Child is FrameworkElement searchContent) searchContent.DataContext = ViewModel;
+        if (SettingsPopup.Child is FrameworkElement settingsContent) settingsContent.DataContext = ViewModel;
+
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         _subscribed = true;
+    }
+
+    /// <summary>
+    /// 查找结果 Popup 打开时把 DataContext 补给内容：Popup 打开时 Child 会被挪到独立的 PopupRoot 上，
+    /// 之前继承的 DataContext 可能失效（表现是结果列表 / 状态文字全空）。
+    /// </summary>
+    private void OnSearchResultsPopupOpened(object? sender, EventArgs e)
+    {
+        if (SearchResultsPopup.Child is FrameworkElement content && ViewModel is { } viewModel)
+        {
+            // 先置 null 再赋值：Child 已经被挪到 PopupRoot，直接赋同一个值不会重新触发向下继承
+            content.DataContext = null;
+            content.DataContext = viewModel;
+        }
+    }
+
+    /// <summary>设置浮层打开时补 DataContext（原因同上；不补的话复选框 / 状态说明都是空绑定）。</summary>
+    private void OnSettingsPopupOpened(object? sender, EventArgs e)
+    {
+        if (SettingsPopup.Child is FrameworkElement content && ViewModel is { } viewModel)
+        {
+            content.DataContext = null;
+            content.DataContext = viewModel;
+        }
     }
 
     private void DetachViewModel()

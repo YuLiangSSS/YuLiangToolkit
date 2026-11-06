@@ -15,7 +15,7 @@
 | 📄 PDF 阅读器 | 简单 PDF 阅读器：纵向 / 横向连续滚动 + 双页并排一次翻两页，支持缩放、Ctrl+F 文字搜索、书签目录、双页页面间距、拖动惯性 / 滚轮惯性、自动记住每本 PDF 上次阅读位置、页码跳转、🕘 最近浏览（上限可调）、F11 全屏沉浸阅读（工具条自动隐藏）与双击 .pdf 关联；只读不改原文件 | [tools/pdf-reader.md](tools/pdf-reader.md) |
 | 📘 Word 阅读器 | 只读浏览 `.docx`：标题大纲、字符格式、列表、表格、图片、超链接、页眉页脚、脚注 / 尾注、批注面板、修订视图，50% ~ 300% 缩放、Ctrl+F 查找（区分大小写 / 表格内）、复制全文、打印、导出 HTML / 纯文本、自动记住阅读位置、🕘 最近打开、拖入即开；手写 OOXML 解析，不改原文件 | [tools/word-viewer.md](tools/word-viewer.md) |
 | 📊 Excel 阅读器 | 只读浏览 `.xlsx`：工作表页签、列宽 / 行号 / 列标题、数字 / 日期 / 百分比格式、合并单元格、字体与填充色、冻结窗格还原、自动行高 / 换行、显示公式、超链接单元格、行列标题高亮，Ctrl+F 查找单元格、右键复制值 / 公式 / 地址、自动记住工作表与阅读位置；手写 OOXML 解析，只显示公式缓存值、不改原文件 | [tools/excel-viewer.md](tools/excel-viewer.md) |
-| 📽️ PPT 阅读器 | 只读浏览 `.pptx` / `.pptm` / `.ppsx`：幻灯片原样还原（文字 / 图片 / 表格 / 形状 / 背景 / 主题色）、缩略图导航、25% ~ 400% 缩放与适应窗口、演讲者备注、Ctrl+F 查找、复制本页文字、F5 全屏放映、最近打开、阅读位置记忆；手写 OOXML 解析，不装 Office、不改原文件 | [tools/ppt-viewer.md](tools/ppt-viewer.md) |
+| 📽️ PPT 阅读器 | 只读浏览 `.pptx` / `.pptm` / `.ppsx`：幻灯片原样还原（文字 / 图片 / 表格 / 形状 / 背景 / 主题色）、缩略图导航、25% ~ 400% 缩放与适应窗口、演讲者备注、Ctrl+F 查找、复制本页文字、F5 全屏放映、最近打开、阅读位置记忆、文件关联（⚙ 设置里勾选后双击演示文稿直接打开）；手写 OOXML 解析，不装 Office、不改原文件 | [tools/ppt-viewer.md](tools/ppt-viewer.md) |
 | ⚡ Flash 下载器 | 4399 / 7k7k / 17yy / ArmorGames / Kongregate 小游戏下载到本地离线玩 | [tools/flash-downloader.md](tools/flash-downloader.md) |
 | 💬 联机聊天室 | 主机开端口、客户端连进来，局域网 / 内网穿透都能用，带流量上限；房间内还能开**群语音 / 群视频通话**（最多 8 人，媒体复用同一个端口），也能**按住说话发语音消息**（自动转 MP3、气泡显示秒数、**可拖进度条反复听**、计入文件流量上限） | [tools/chat-room.md](tools/chat-room.md) |
 | 🌐 网页浏览器 | Chromium 内核（WebView2）多标签：上方 / 左侧标签栏、前进后退刷新、网页右键刷新、会话恢复（懒加载）、历史记录 / 下载 / 书签 / 资源嗅探侧栏、页面缩放（Ctrl+滚轮）、主页与清空记录 | [tools/browser.md](tools/browser.md) |

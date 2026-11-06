@@ -202,7 +202,7 @@ internal static class OpenWithChecks
                 .SequenceEqual(PdfFileAssociation.SupportedExtensions)
             && OpenWithCatalog.Targets.Single(t => t.ToolId == PptViewerConfig.ToolId).Extensions
                 .OrderBy(e => e, StringComparer.OrdinalIgnoreCase)
-                .SequenceEqual(PptViewerConfig.SupportedExtensions
+                .SequenceEqual(PptFileAssociation.SupportedExtensions
                     .OrderBy(e => e, StringComparer.OrdinalIgnoreCase)));
 
         Check("扩展名表：播放器表覆盖 MediaTypes 的全部音频；除 .ts 冲突外覆盖全部视频",
@@ -332,10 +332,15 @@ internal static class OpenWithChecks
             !OpenWithRegistration.HasRegistrationArtifacts("")
             && !OpenWithRegistration.HasRegistrationArtifacts(null));
 
-        Check("清理：已知 ProgId 与 PDF / 图片阅读器一致（只清本软件的打开方式引用，不误删别的程序）",
+        Check("清理：已知 ProgId 与 PDF / 图片 / PPT 阅读器一致（只清本软件的打开方式引用，不误删别的程序）",
             OpenWithRegistration.KnownAssociationProgIds
                 .OrderBy(p => p, StringComparer.Ordinal)
-                .SequenceEqual(new[] { PictureFileAssociation.ProgId, PdfFileAssociation.ProgId }
+                .SequenceEqual(new[]
+                    {
+                        PictureFileAssociation.ProgId,
+                        PdfFileAssociation.ProgId,
+                        PptFileAssociation.ProgId,
+                    }
                     .OrderBy(p => p, StringComparer.Ordinal)),
             string.Join(",", OpenWithRegistration.KnownAssociationProgIds));
 

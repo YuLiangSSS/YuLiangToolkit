@@ -1192,6 +1192,10 @@ RunGroupModule("excel-viewer", "Excel 阅读器", ExcelViewerChecks.Run);
 // 纯逻辑查找 / 缩放 / 配置与最近列表；**无头跑，不弹窗、不碰真 Data**（界面渲染由截图冒烟验收）。
 RunGroupModule("ppt-viewer", "PPT 阅读器", PptViewerChecks.Run);
 
+// 「PPT 文件关联」：ProgId / 后缀表 / 后缀判断 / 命令行拼装 / 状态说明；
+// **只读，不写 HKCU 注册表**（真正的关联登记由用户点界面开关）。
+RunGroupModule("ppt-viewer", "PPT 文件关联", PptAssociationChecks.Run);
+
 // 「右键菜单管理」：枚举 / 隐藏 / 恢复 / 恢复全部 / 筛选 / CLSID 规范化。
 // 全部走内存假注册表（FakeContextMenuRegistry），**绝不写用户真实注册表**，无头跑、可在任何机器重复。
 RunGroupModule("context-menu", "右键菜单管理", ContextMenuChecks.Run, "[右键菜单] ");
