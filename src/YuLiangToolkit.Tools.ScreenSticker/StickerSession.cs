@@ -171,8 +171,9 @@ public sealed class StickerSession
 
         var config = EnsureConfig();
         var workArea = WorkArea;
-        var aspect = media.Aspect;
-        var size = StickerGeometry.FitInside(workArea, config.DefaultWidthEffective, aspect);
+
+        // 新贴纸按图片自身原始尺寸出现（超大图 / 竖图会先缩到屏幕 90% 内，极小图有 48px 兜底）
+        var size = StickerGeometry.NaturalSize(workArea, media.Still.PixelWidth, media.Still.PixelHeight);
         var placement = StickerGeometry.PlacementForNew(workArea, size, _windows.Count);
 
         var entry = new StickerEntry
@@ -401,8 +402,74 @@ public sealed class StickerSession
             index.GetValueOrDefault(a.Entry, int.MaxValue).CompareTo(index.GetValueOrDefault(b.Entry, int.MaxValue)));
     }
 
-    /// <summary>把某张贴纸宽度重置成配置里的默认宽度（中心点不动）。</summary>
-    public void ResetStickerZoom(StickerWindow window) => window.ResetZoom(EnsureConfig().DefaultWidthEffective);
+    // ===================== 恢复默认（单张 / 全部） =====================
+
+    /// <summary>把一张贴纸的尺寸恢复成「图片自身原始尺寸」（过大按屏幕 90% 缩，中心点不动）。</summary>
+    public void ResetStickerSize(StickerWindow window)
+    {
+        window.ResetToNaturalSize();
+        SaveSoon();
+        RaiseStickersChanged();
+    }
+
+    /// <summary>把一张 GIF 贴纸的播放速度恢复成设置里的默认速度。</summary>
+    public void ResetStickerSpeed(StickerWindow window)
+        => SetStickerSpeed(window, EnsureConfig().DefaultGifSpeedEffective);
+
+    /// <summary>
+    /// 一张贴纸的「恢复默认」：大小 + GIF 速度 + 置顶都回到默认（位置不动，方便用户接着摆）。
+    /// </summary>
+    public void ResetStickerDefaults(StickerWindow window)
+    {
+        var config = EnsureConfig();
+        window.ResetToNaturalSize();
+        window.Entry.GifSpeed = config.DefaultGifSpeedEffective;
+        window.ApplyPlaybackSpeed(window.Entry.GifSpeed);
+        window.Entry.Topmost = config.DefaultTopmost;
+        window.ApplyTopmost(config.DefaultTopmost);
+        SaveSoon();
+        RaiseStickersChanged();
+    }
+
+    /// <summary>全部贴纸恢复默认大小；返回处理了几张。</summary>
+    public int ResetAllStickerSizes()
+    {
+        foreach (var window in _windows) window.ResetToNaturalSize();
+        SaveSoon();
+        RaiseStickersChanged();
+        return _windows.Count;
+    }
+
+    /// <summary>全部贴纸恢复默认 GIF 速度（静态图只是记一下值）；返回处理了几张。</summary>
+    public int ResetAllStickerSpeeds()
+    {
+        var speed = EnsureConfig().DefaultGifSpeedEffective;
+        foreach (var window in _windows)
+        {
+            window.Entry.GifSpeed = speed;
+            window.ApplyPlaybackSpeed(speed);
+        }
+        SaveSoon();
+        RaiseStickersChanged();
+        return _windows.Count;
+    }
+
+    /// <summary>全部贴纸「恢复默认」（大小 + GIF 速度 + 置顶；位置不动）；返回处理了几张。</summary>
+    public int ResetAllStickerDefaults()
+    {
+        var config = EnsureConfig();
+        foreach (var window in _windows)
+        {
+            window.ResetToNaturalSize();
+            window.Entry.GifSpeed = config.DefaultGifSpeedEffective;
+            window.ApplyPlaybackSpeed(window.Entry.GifSpeed);
+            window.Entry.Topmost = config.DefaultTopmost;
+            window.ApplyTopmost(config.DefaultTopmost);
+        }
+        SaveSoon();
+        RaiseStickersChanged();
+        return _windows.Count;
+    }
 
     // ===================== 窗口回调 =====================
 

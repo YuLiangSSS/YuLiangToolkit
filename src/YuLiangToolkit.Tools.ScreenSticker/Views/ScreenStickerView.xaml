@@ -344,8 +344,8 @@
                                            Visibility="{Binding HasStickers, Converter={StaticResource InverseBoolToVis}}" />
                             </Grid>
 
-                            <!-- 底部批量操作：置顶 / 取消置顶 / 恢复 / 关闭全部
-                                 Padding 收到 10：四个按钮并排要在卡片默认宽度 420 里放得下，不换行 -->
+                            <!-- 底部批量操作：置顶 / 取消置顶 / 恢复 / 恢复默认（大小 / 速度 / 全部） / 关闭全部。
+                                 按钮多、卡片宽度只有 420，用 WrapPanel 自动换行，别挤成一行 -->
                             <WrapPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right"
                                        Margin="18,2,18,14">
                                 <Button Content="全部置顶" Style="{StaticResource SecondaryButtonStyle}" Padding="10,7"
@@ -357,6 +357,15 @@
                                 <Button Content="恢复上次贴纸" Style="{StaticResource SecondaryButtonStyle}" Padding="10,7"
                                         Margin="0,0,6,6" Command="{Binding RestoreStickersCommand}"
                                         ToolTip="按保存的记录把还没显示的贴纸放回桌面" />
+                                <Button Content="恢复默认大小" Style="{StaticResource SecondaryButtonStyle}" Padding="10,7"
+                                        Margin="0,0,6,6" Command="{Binding ResetAllSizesCommand}"
+                                        ToolTip="把所有贴纸恢复成图片自身原始尺寸（超大图缩到屏幕内；位置不动）" />
+                                <Button Content="恢复默认速度" Style="{StaticResource SecondaryButtonStyle}" Padding="10,7"
+                                        Margin="0,0,6,6" Command="{Binding ResetAllSpeedsCommand}"
+                                        ToolTip="把所有 GIF 贴纸的播放速度恢复成设置里的默认速度" />
+                                <Button Content="全部恢复默认" Style="{StaticResource SecondaryButtonStyle}" Padding="10,7"
+                                        Margin="0,0,6,6" Command="{Binding ResetAllDefaultsCommand}"
+                                        ToolTip="把所有贴纸的大小 / GIF 速度 / 置顶一起恢复默认（会先确认；位置和图片不变）" />
                                 <Button Content="全部关闭" Style="{StaticResource SecondaryButtonStyle}" Padding="10,7"
                                         Margin="0,0,0,6" Foreground="{DynamicResource DangerBrush}"
                                         Command="{Binding CloseAllStickersCommand}"
@@ -404,26 +413,9 @@
                                               IsChecked="{Binding DefaultTopmost}"
                                               Style="{StaticResource CheckBoxStyle}"
                                               ToolTip="打开 = 以后新贴的图片默认强制置顶；已经贴上去的贴纸不受影响" />
-
-                                    <TextBlock Text="新贴纸默认宽度" FontSize="11.5" Margin="0,14,0,0"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" />
-                                    <Grid Margin="0,6,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <Slider Minimum="48" Maximum="2400" SmallChange="8" LargeChange="80"
-                                                VerticalAlignment="Center" Style="{StaticResource SliderStyle}"
-                                                Value="{Binding DefaultWidth, Mode=TwoWay}"
-                                                ToolTip="范围 48 ~ 2400，默认 320（单位 DIP；图片特别高时还会按屏幕高度自动再缩小一次）" />
-                                        <TextBlock Grid.Column="1" Text="{Binding DefaultWidthText}" FontSize="11"
-                                                   MinWidth="56" TextAlignment="Right" Margin="10,0,0,0"
-                                                   VerticalAlignment="Center"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                                    </Grid>
                                     <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
-                                               TextWrapping="Wrap" Margin="0,4,0,0"
-                                               Text="范围 48 ~ 2400，默认 320；图片特别高时还会按屏幕高度自动再缩小一次。" />
+                                               TextWrapping="Wrap" Margin="0,8,0,0"
+                                               Text="新贴纸出现时按图片自身原始尺寸显示（超大图会先缩到屏幕内，极小图最小 48px）；想改回去用贴纸右键「恢复默认大小」。" />
 
                                     <TextBlock Text="GIF 默认播放速度（0.25× ~ 3×）" FontSize="11.5" Margin="0,14,0,0"
                                                Foreground="{DynamicResource TextSecondaryBrush}" />

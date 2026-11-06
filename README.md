@@ -60,7 +60,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 | [**⭐ osu! 等级计算器**](docs/tools/osu-level-calculator.md) | 拖入 mania 谱面算星数与等级，批量表格（等级按 8K 谱面拟合，只对 8K 有参考意义） |
 | [**🎹 KPS 按键统计**](docs/tools/kps.md) | 实时 KPS / 峰值 / 平均 + 每键计数器 + 键位可视化 + 透明置顶 Overlay（可锁定点击穿透）；4K~8K 预设、改键、键音、全局热键 |
 | [**🐟 Live2D 桌宠**](docs/tools/live2d.md) | 透明置顶桌宠 + 模型测试台：参数 / 动作 / 表情 / 鼠标跟随 / 摄像头动捕 / 音乐律动 / 语音说话，全本地、不需要显卡 |
-| [**📌 屏幕贴纸**](docs/tools/screen-sticker.md) | 把图片贴到桌面：多选打开 / 图片拖进页面即贴 / 从剪贴板直接粘贴、GIF 完整动画并可调播放速度；每张独立窗口可自由拖动 / 滚轮缩放 / 调整层级 / 单独强制置顶，带最近使用与贴纸管理 |
+| [**📌 屏幕贴纸**](docs/tools/screen-sticker.md) | 把图片贴到桌面：多选 / 拖入 / 剪贴板贴图，按图片原始尺寸出现；GIF 完整动画并可调播放速度；每张独立窗口可自由拖动 / 滚轮缩放 / 调整层级 / 单独强制置顶，支持单张 / 批量恢复默认，带最近使用与贴纸管理 |
 | [**⚫ 联机五子棋**](docs/tools/gomoku.md) | TCP 房间联机：最多 16 人多人观战 + 房主安排上场 / 自动轮换、禁手、悔棋、聊天 |
 | [**🀄 联机象棋**](docs/tools/xiangqi.md) | TCP 房间联机：多人观战 + 房主安排上场 / 自动轮换、自由摆棋、让子 / 让先、中文记谱 |
 | [**📨 Spug 验证码测试**](docs/tools/spug-captcha.md) | 联调 Spug 推送助手（push.spug.cc）的短信 / 邮箱验证码模板：发验证码 + 本地比对 + 接口日志 |
@@ -103,7 +103,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（用法 / 设置项 / 数据位置 / 注意事项），跟着代码一起走；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；踩坑细节按需查 [docs/dev/pitfalls.md](docs/dev/pitfalls.md)；
-- ✅ **自检**：4593 项行为逐条真跑（退出码 0 = 全通过）。按改动影响面只跑相关组，不每轮全量：
+- ✅ **自检**：4596 项行为逐条真跑（退出码 0 = 全通过）。按改动影响面只跑相关组，不每轮全量：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -118,7 +118,7 @@ build.ps1 / publish.ps1                  # 一键构建 / 一键发布（发布�
 scripts/check.ps1                        # 按改动自动选组的自检触发器
 src/YuLiangToolkit.Core/                 # 核心库：工具契约 / MVVM / 存储 / 配置 / 维护 / 特效 / 联机底座
 src/YuLiangToolkit.Tools.*/              # 各工具，一个功能一个项目（新功能复制 Tools.Sample）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 自检控制台：4593 项行为逐条真跑
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 自检控制台：4596 项行为逐条真跑
 docs/                                    # 每个工具一页详细说明（索引 docs/README.md）
 AGENTS.md                                # 开发入口地图：流程 / 硬性规则 / 找东西
 ```

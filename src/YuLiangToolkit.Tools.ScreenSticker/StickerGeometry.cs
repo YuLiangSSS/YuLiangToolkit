@@ -20,8 +20,8 @@ public static class StickerGeometry
     /// <summary>贴纸最小宽度（DIP）：再小就抓不住了。</summary>
     public const double MinWidth = 48;
 
-    /// <summary>贴纸最大宽度（DIP）：再大一张图就能盖满两台显示器。</summary>
-    public const double MaxWidth = 2400;
+    /// <summary>贴纸最大宽度（DIP）：既防手滑放大到离谱，也要给「按图片原始尺寸显示」留够空间。</summary>
+    public const double MaxWidth = 4096;
 
     /// <summary>拖出屏幕后至少留在可见区域里的尺寸（DIP）：保证还能用鼠标抓回来。</summary>
     public const double MinVisible = 48;
@@ -61,8 +61,8 @@ public static class StickerGeometry
         => new(0, 0, ClampWidth(width), ClampWidth(width) * ClampAspect(aspect));
 
     /// <summary>
-    /// 图片按目标宽度放进工作区：宽度夹到 48 ~ 2400，同时不超过工作区宽 / 高的 90%
-    /// （4K 竖图默认 320 宽也会比屏幕高，这时按高度再缩一次）。
+    /// 图片按目标宽度放进工作区：宽度夹到 48 ~ 4096，同时不超过工作区宽 / 高的 90%
+    /// （很大的图 / 竖图都会先缩到屏幕里，保证整张贴纸一开始就看得全）。
     /// </summary>
     public static StickerBounds FitInside(Rect workArea, double width, double aspect)
     {
@@ -75,6 +75,23 @@ public static class StickerGeometry
             fittedWidth = Math.Max(MinWidth, Math.Min(fittedWidth, workArea.Height * 0.9 / aspect));
         }
         return new StickerBounds(0, 0, fittedWidth, fittedWidth * aspect);
+    }
+
+    /// <summary>
+    /// 一张新贴纸的「自身默认大小」：按图片的**原始像素尺寸**（1:1，DIP）显示，
+    /// 但不超过 <see cref="MaxWidth"/> / 工作区 90%（手机巨图 / 4K 截图也会先缩到屏幕里）；
+    /// 极小图按 <see cref="MinWidth"/> 兜底（保证还能用鼠标抓住）。
+    ///
+    /// <para>用户要求「贴纸出现时就是它自身的默认大小」，所以不再有「新贴纸默认宽度」设置；
+    /// 之后想再回到这个尺寸，用贴纸右键菜单的「恢复默认大小」。</para>
+    /// </summary>
+    public static StickerBounds NaturalSize(Rect workArea, double pixelWidth, double pixelHeight)
+    {
+        var aspect = AspectOf(pixelWidth, pixelHeight);
+        var width = double.IsNaN(pixelWidth) || double.IsInfinity(pixelWidth) || pixelWidth <= 0
+            ? ScreenStickerConfig.DefaultStickerWidth
+            : pixelWidth;
+        return FitInside(workArea, width, aspect);
     }
 
     /// <summary>在工作区正中放一个 <paramref name="width"/> × <paramref name="height"/>（已按图片比例）的贴纸。</summary>

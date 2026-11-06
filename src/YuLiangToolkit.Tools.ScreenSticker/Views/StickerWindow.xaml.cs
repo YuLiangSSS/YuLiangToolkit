@@ -132,11 +132,16 @@ public partial class StickerWindow : Window
         BringToFront();
     }
 
-    /// <summary>把宽度改成默认宽度，中心点不动（右键「重置缩放」）。</summary>
-    public void ResetZoom(double width)
+    /// <summary>
+    /// 把尺寸恢复成「图片自身原始尺寸」（中心点不动）。超大图会先缩到工作区 90% 内，
+    /// 极小图有 48px 兜底 —— 与刚贴到桌面时的尺寸算法同一个（<see cref="StickerGeometry.NaturalSize"/>）。
+    /// </summary>
+    public void ResetToNaturalSize()
     {
+        var natural = StickerGeometry.NaturalSize(
+            StickerSession.WorkArea, _media.Still.PixelWidth, _media.Still.PixelHeight);
         var bounds = StickerGeometry.ResetWidthKeepingCenter(
-            CurrentBounds, width, _aspect, StickerSession.VirtualScreenBounds);
+            CurrentBounds, natural.Width, _aspect, StickerSession.VirtualScreenBounds);
         ApplyBounds(bounds);
     }
 
@@ -370,6 +375,7 @@ public partial class StickerWindow : Window
         _menuOpen = true;
         MenuItemTopmost.IsChecked = _entry.Topmost;
         UpdateGifSpeedMenu();
+        MenuItemResetSpeed.IsEnabled = IsAnimated;
     }
 
     /// <summary>右键菜单打开时刷新「GIF 播放速度」：静态图整项禁用，动画图显示当前倍速并勾选。</summary>
@@ -404,8 +410,16 @@ public partial class StickerWindow : Window
         _session.SetStickerSpeed(this, speed);
     }
 
-    private void OnMenuGifSpeedResetClick(object sender, RoutedEventArgs e)
-        => _session.SetStickerSpeed(this, _session.EnsureConfig().DefaultGifSpeedEffective);
+    // ---- 恢复默认（单张） ----
+
+    private void OnMenuResetSizeClick(object sender, RoutedEventArgs e)
+        => _session.ResetStickerSize(this);
+
+    private void OnMenuResetSpeedClick(object sender, RoutedEventArgs e)
+        => _session.ResetStickerSpeed(this);
+
+    private void OnMenuResetDefaultsClick(object sender, RoutedEventArgs e)
+        => _session.ResetStickerDefaults(this);
 
     private void OnMenuClosed(object sender, RoutedEventArgs e)
     {
@@ -423,9 +437,6 @@ public partial class StickerWindow : Window
     private void OnMenuMoveToTopClick(object sender, RoutedEventArgs e) => _session.MoveStickerToTop(this);
 
     private void OnMenuMoveToBottomClick(object sender, RoutedEventArgs e) => _session.MoveStickerToBottom(this);
-
-    private void OnMenuResetZoomClick(object sender, RoutedEventArgs e)
-        => _session.ResetStickerZoom(this);
 
     private void OnMenuCenterClick(object sender, RoutedEventArgs e)
     {

@@ -85,7 +85,7 @@ public sealed class ScreenStickerTool : ITool, IToolCacheSource
     public string Name => "屏幕贴纸";
 
     public string Description =>
-        "把图片贴到桌面上：多选打开、每张可自由拖动 / 滚轮缩放 / 调整层级 / 单独强制置顶；带最近使用列表与贴纸管理";
+        "把图片贴到桌面上：多选 / 拖入 / 剪贴板贴图，按图片原始尺寸出现；每张可自由拖动 / 滚轮缩放 / 调整层级 / 单独置顶，GIF 可播动画并调速度，带最近使用与单贴纸 / 批量恢复默认";
 
     public string EmojiIcon => "📌";
 
@@ -96,6 +96,7 @@ public sealed class ScreenStickerTool : ITool, IToolCacheSource
     public IReadOnlyList<string> Tags => new[]
     {
         "贴纸", "桌面", "图片", "置顶", "悬浮", "截图", "参考图", "看图", "最近使用", "缩放", "拖动",
+        "GIF", "动画", "恢复默认",
     };
 
     public int Order => 162;

@@ -52,9 +52,16 @@
                           Click="OnMenuGifSpeedClick" />
                 <MenuItem x:Name="MenuItemGifSpeed300" Header="3×" Tag="3" IsCheckable="True"
                           Click="OnMenuGifSpeedClick" />
+            </MenuItem>
+            <MenuItem x:Name="MenuItemReset" Header="恢复默认" Foreground="{DynamicResource TextPrimaryBrush}"
+                      ToolTip="把这张贴纸恢复成刚贴上去时的默认状态">
+                <MenuItem Header="恢复默认大小（图片原始尺寸）" Click="OnMenuResetSizeClick"
+                          ToolTip="按图片自身像素尺寸显示；超大图会缩到屏幕内，中心点不动" />
+                <MenuItem x:Name="MenuItemResetSpeed" Header="恢复默认速度（跟随设置）" Click="OnMenuResetSpeedClick"
+                          ToolTip="GIF 播放速度回到「设置 → GIF 默认播放速度」；静态图不可用" />
                 <Separator />
-                <MenuItem Header="用设置里的默认速度" Click="OnMenuGifSpeedResetClick"
-                          ToolTip="取「设置 → GIF 默认播放速度」的当前值" />
+                <MenuItem Header="全部恢复默认（大小 + 速度 + 置顶）" Click="OnMenuResetDefaultsClick"
+                          ToolTip="大小 / GIF 速度 / 置顶一起恢复；位置不动" />
             </MenuItem>
             <Separator />
             <MenuItem Header="层级：上移一层" Foreground="{DynamicResource TextPrimaryBrush}"
@@ -66,8 +73,6 @@
             <MenuItem Header="层级：置于最下层" Foreground="{DynamicResource TextPrimaryBrush}"
                       Click="OnMenuMoveToBottomClick" />
             <Separator />
-            <MenuItem Header="重置缩放（默认宽度）" Foreground="{DynamicResource TextPrimaryBrush}"
-                      Click="OnMenuResetZoomClick" />
             <MenuItem Header="居中显示" Foreground="{DynamicResource TextPrimaryBrush}"
                       Click="OnMenuCenterClick" />
             <Separator />

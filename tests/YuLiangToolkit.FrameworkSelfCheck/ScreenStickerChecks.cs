@@ -16,7 +16,7 @@ namespace YuLiangToolkit.FrameworkSelfCheck;
 /// 滚轮倍率 / 角点缩放 / 重置宽度 / 夹回屏幕）/ 层级顺序 / 图片格式识别与解码 / 拖入图片的过滤与空提示 /
 /// 配置 JSON 持久化。
 ///
-/// <para><b>本组共 120 条断言</b>（纯逻辑，不创建窗口、不 new 控件、不碰真实 Data/Config、不读写系统剪贴板）：
+/// <para><b>本组共 123 条断言</b>（纯逻辑，不创建窗口、不 new 控件、不碰真实 Data/Config、不读写系统剪贴板）：
 /// 需要 WPF 位图解码 / 编码 / GIF 编码的几条放在单独的 STA 线程里跑（做法同 <c>Live2DChecks</c> / <c>WordViewerChecks</c>），
 /// 拖入判定那条也只 new 一个 <see cref="ScreenStickerViewModel"/>（不调 <c>Session.AddSticker</c>，不会弹出贴纸窗口），
 /// 其余全部是 <see cref="StickerGeometry"/> / <see cref="StickerLayerOrder"/> / <see cref="StickerClipboard"/> /
@@ -98,14 +98,14 @@ internal static class ScreenStickerChecks
     {
         var config = new ScreenStickerConfig();
 
-        check("[屏幕贴纸] 配置默认值：启动自动恢复开 / 新贴纸不置顶 / 默认宽度 320 / 最近上限 50",
+        check("[屏幕贴纸] 配置默认值：启动自动恢复开 / 新贴纸不置顶 / GIF 默认 1× / 最近上限 50",
             config.AutoRestoreOnStartup
             && !config.DefaultTopmost
-            && Near(config.DefaultWidth, 320)
+            && Near(config.DefaultGifSpeed, StickerTiming.DefaultSpeed)
             && config.RecentLimit == 50
             && config.LastFolder == "",
             $"AutoRestore={config.AutoRestoreOnStartup} Topmost={config.DefaultTopmost} "
-            + $"Width={config.DefaultWidth} Limit={config.RecentLimit}");
+            + $"GifSpeed={config.DefaultGifSpeed} Limit={config.RecentLimit}");
 
         check("[屏幕贴纸] 配置默认值：最近使用与贴纸列表都非 null 且为空",
             config.RecentEntries is not null && config.RecentEntries.Count == 0
@@ -131,17 +131,7 @@ internal static class ScreenStickerChecks
         check("[屏幕贴纸] RecordsRecent：上限 0 时不记录，上限 > 0 时记录",
             !recordsWhenZero && recordsWhenOne, $"{recordsWhenZero} / {recordsWhenOne}");
 
-        config.DefaultWidth = double.NaN;
-        var nanWidth = config.DefaultWidthEffective;
-        config.DefaultWidth = 10;
-        var tooNarrow = config.DefaultWidthEffective;
-        config.DefaultWidth = 9999;
-        var tooWide = config.DefaultWidthEffective;
-        config.DefaultWidth = 500;
-        var legal = config.DefaultWidthEffective;
-        check("[屏幕贴纸] DefaultWidthEffective：夹到 48 ~ 2400（NaN→320、10→48、9999→2400）",
-            Near(nanWidth, 320) && Near(tooNarrow, 48) && Near(tooWide, 2400) && Near(legal, 500),
-            $"{nanWidth} / {tooNarrow} / {tooWide} / {legal}");
+        // 注意：v0.101.0 起没有「新贴纸默认宽度」配置了 —— 贴纸按图片原始尺寸出现（NaturalSize）
     }
 
     // ---------------------------------------------------------------- 最近使用
@@ -274,7 +264,7 @@ internal static class ScreenStickerChecks
         {
             AutoRestoreOnStartup = false,
             DefaultTopmost = true,
-            DefaultWidth = 111,
+            DefaultGifSpeed = 2.0,
             RecentLimit = 2,
         };
         resetTarget.Stickers.Add(new StickerEntry { Path = a });
@@ -284,14 +274,14 @@ internal static class ScreenStickerChecks
         resetTarget.RememberRecent(Path.Combine(SelfCheckScratch.Root, "screen-sticker-sticker-c.png"));
         resetTarget.ResetPreferences();
 
-        check("[屏幕贴纸] ResetPreferences：只把偏好项恢复默认（自动恢复开 / 不置顶 / 320 / 上限 50）",
+        check("[屏幕贴纸] ResetPreferences：只把偏好项恢复默认（自动恢复开 / 不置顶 / GIF 1× / 上限 50）",
             resetTarget.AutoRestoreOnStartup
             && !resetTarget.DefaultTopmost
-            && Near(resetTarget.DefaultWidth, ScreenStickerConfig.DefaultStickerWidth)
+            && Near(resetTarget.DefaultGifSpeed, StickerTiming.DefaultSpeed)
             && resetTarget.RecentLimit == ScreenStickerConfig.DefaultRecentLimit
             && resetTarget.RecentLimitEffective == ScreenStickerConfig.DefaultRecentLimit,
             $"AutoRestore={resetTarget.AutoRestoreOnStartup} Topmost={resetTarget.DefaultTopmost} "
-            + $"Width={resetTarget.DefaultWidth} Limit={resetTarget.RecentLimit}");
+            + $"GifSpeed={resetTarget.DefaultGifSpeed} Limit={resetTarget.RecentLimit}");
 
         check("[屏幕贴纸] ResetPreferences：不清桌面贴纸与最近使用（是用户当下的成果，不能一键丢掉）",
             resetTarget.Stickers.Count == 2 && resetTarget.RecentEntries.Count == 2
@@ -318,7 +308,7 @@ internal static class ScreenStickerChecks
             $"{StickerGeometry.ClampWidth(0)} / {StickerGeometry.ClampWidth(-123)} / "
             + $"{StickerGeometry.ClampWidth(double.NaN, 111)}");
 
-        check("[屏幕贴纸] ClampWidth：小于 48 夹到 48、大于 2400 夹到 2400、合法值原样",
+        check("[屏幕贴纸] ClampWidth：小于 48 夹到 48、大于 4096 夹到 4096、合法值原样",
             Near(StickerGeometry.ClampWidth(10), StickerGeometry.MinWidth)
             && Near(StickerGeometry.ClampWidth(9999), StickerGeometry.MaxWidth)
             && Near(StickerGeometry.ClampWidth(320), 320)
@@ -362,7 +352,7 @@ internal static class ScreenStickerChecks
         var size = StickerGeometry.SizeForWidth(320, 0.5);
         var illegalSize = StickerGeometry.SizeForWidth(double.NaN, double.NaN);
         var tinySize = StickerGeometry.SizeForWidth(10, 1);
-        check("[屏幕贴纸] SizeForWidth：目标宽度 + 比例算尺寸，宽度先夹 48 ~ 2400",
+        check("[屏幕贴纸] SizeForWidth：目标宽度 + 比例算尺寸，宽度先夹 48 ~ 4096",
             Near(size.Width, 320) && Near(size.Height, 160)
             && Near(illegalSize.Width, 320) && Near(illegalSize.Height, 320)
             && Near(tinySize.Width, 48) && Near(tinySize.Height, 48),
@@ -399,6 +389,29 @@ internal static class ScreenStickerChecks
         check("[屏幕贴纸] FitInside：工作区为 0 时不崩，仍返回夹取后的尺寸",
             Near(zeroArea.Width, 320) && Near(zeroArea.Height, 320),
             zeroArea.ToString());
+
+        // 「新贴纸按图片自身原始尺寸出现」（v0.101.0 去掉默认宽度设置后由 NaturalSize 决定）
+        var naturalNormal = StickerGeometry.NaturalSize(workArea, 800, 600);
+        check("[屏幕贴纸] NaturalSize：普通图片按原始像素尺寸（800×600）出现",
+            Near(naturalNormal.Width, 800) && Near(naturalNormal.Height, 600),
+            naturalNormal.ToString());
+
+        var naturalLarge = StickerGeometry.NaturalSize(workArea, 3840, 2160);
+        check("[屏幕贴纸] NaturalSize：4K 截图先缩到工作区 90% 内（1728×972），不会一贴就超出屏幕",
+            Near(naturalLarge.Width, 1728) && Near(naturalLarge.Height, 972),
+            naturalLarge.ToString());
+
+        var naturalTall = StickerGeometry.NaturalSize(workArea, 800, 4000);
+        check("[屏幕贴纸] NaturalSize：超长竖图按工作区高度 90% 再缩（宽约 194.4、高 972）",
+            Near(naturalTall.Height, 972) && Near(naturalTall.Width, 194.4),
+            naturalTall.ToString());
+
+        var naturalTiny = StickerGeometry.NaturalSize(workArea, 16, 16);
+        var naturalInvalid = StickerGeometry.NaturalSize(workArea, double.NaN, 0);
+        check("[屏幕贴纸] NaturalSize：极小图按 48 兜底、像素尺寸非法时回退 320",
+            Near(naturalTiny.Width, StickerGeometry.MinWidth) && Near(naturalTiny.Height, StickerGeometry.MinWidth)
+            && Near(naturalInvalid.Width, ScreenStickerConfig.DefaultStickerWidth) && Near(naturalInvalid.Height, 320),
+            $"{naturalTiny} / {naturalInvalid}");
 
         var centered = StickerGeometry.CenterIn(workArea, 320, 180);
         check("[屏幕贴纸] CenterIn：把贴纸放在工作区正中",
@@ -452,7 +465,7 @@ internal static class ScreenStickerChecks
 
         var broken = StickerGeometry.NormalizeStored(double.NaN, double.NaN, 9999, 1, screen);
         check("[屏幕贴纸] NormalizeStored：NaN 位置 / 超大宽度也变成合法坐标与尺寸",
-            Near(broken.Width, 2400) && Near(broken.Height, 2400)
+            Near(broken.Width, StickerGeometry.MaxWidth) && Near(broken.Height, StickerGeometry.MaxWidth)
             && !double.IsNaN(broken.Left) && !double.IsNaN(broken.Top)
             && VisibleEnough(broken, screen),
             broken.ToString());
@@ -504,8 +517,9 @@ internal static class ScreenStickerChecks
         var zoomOut = current;
         for (var i = 0; i < 80; i++)
             zoomOut = StickerGeometry.ScaleAround(zoomOut, 1 / 1.12, AnchorX, AnchorY, screen);
-        check("[屏幕贴纸] ScaleAround：连续放大 / 缩小最终夹到 48 ~ 2400，不会缩成 0",
-            Near(zoomIn.Width, StickerGeometry.MaxWidth) && Near(zoomIn.Height, 1200)
+        check("[屏幕贴纸] ScaleAround：连续放大 / 缩小最终夹到 48 ~ 4096，不会缩成 0",
+            Near(zoomIn.Width, StickerGeometry.MaxWidth)
+            && Near(zoomIn.Height, StickerGeometry.MaxWidth / 2)
             && Near(zoomOut.Width, StickerGeometry.MinWidth) && Near(zoomOut.Height, 24),
             $"放大后 {zoomIn.Width}×{zoomIn.Height} / 缩小后 {zoomOut.Width}×{zoomOut.Height}");
 
@@ -568,8 +582,9 @@ internal static class ScreenStickerChecks
         // 起点宽 200，拖 −152 → 48（正好到最小宽度）；再往左拖属于非法宽度，ClampWidth 会回退默认 320。
         var resizedSmall = StickerGeometry.ResizeFromCorner(start, -152, 0, screen);
         var resizedNegative = StickerGeometry.ResizeFromCorner(start, -100000, 0, screen);
-        check("[屏幕贴纸] ResizeFromCorner：宽度夹到 48 ~ 2400，图片比例保持（非法宽度回退默认）",
-            Near(resizedLarge.Width, StickerGeometry.MaxWidth) && Near(resizedLarge.Height, 1200)
+        check("[屏幕贴纸] ResizeFromCorner：宽度夹到 48 ~ 4096，图片比例保持（非法宽度回退默认）",
+            Near(resizedLarge.Width, StickerGeometry.MaxWidth)
+            && Near(resizedLarge.Height, StickerGeometry.MaxWidth / 2)
             && Near(resizedSmall.Width, StickerGeometry.MinWidth) && Near(resizedSmall.Height, 24)
             && Near(resizedNegative.Width, ScreenStickerConfig.DefaultStickerWidth)
             && Near(resizedNegative.Height, 160),
@@ -578,7 +593,7 @@ internal static class ScreenStickerChecks
 
         var centerCurrent = new StickerBounds(100, 100, 200, 100);
         var reset = StickerGeometry.ResetWidthKeepingCenter(centerCurrent, 320, 0.5, screen);
-        check("[屏幕贴纸] ResetWidthKeepingCenter：宽度重置成默认 320、中心点不动",
+        check("[屏幕贴纸] ResetWidthKeepingCenter：按给定宽度重置、中心点不动",
             Near(reset.Width, 320) && Near(reset.Height, 160)
             && Near(reset.Left + reset.Width / 2, 200)
             && Near(reset.Top + reset.Height / 2, 150),
@@ -1190,7 +1205,7 @@ internal static class ScreenStickerChecks
             RecentLimit = 7,
             AutoRestoreOnStartup = false,
             DefaultTopmost = true,
-            DefaultWidth = 500,
+            DefaultGifSpeed = 2.0,
         };
         config.RememberRecent(recentPath);
         config.Stickers.Add(new StickerEntry
@@ -1201,37 +1216,41 @@ internal static class ScreenStickerChecks
             Width = 300,
             Height = 200,
             Topmost = true,
+            GifSpeed = 1.5,
         });
 
         var json = config.ToJson();
-        check("[屏幕贴纸] 配置 JSON 包含全部持久化字段（camelCase）",
+        check("[屏幕贴纸] 配置 JSON 包含全部持久化字段（camelCase），且不再有 defaultWidth",
             json.Contains("\"lastFolder\"")
             && json.Contains("\"recentLimit\"")
             && json.Contains("\"recentEntries\"")
             && json.Contains("\"stickers\"")
             && json.Contains("\"autoRestoreOnStartup\"")
             && json.Contains("\"defaultTopmost\"")
-            && json.Contains("\"defaultWidth\""),
+            && json.Contains("\"defaultGifSpeed\"")
+            && json.Contains("\"gifSpeed\"")
+            && !json.Contains("\"defaultWidth\""),
             json.Length > 240 ? json[..240] + "…" : json);
 
         check("[屏幕贴纸] 配置 JSON 不写 [JsonIgnore] 计算属性",
             !json.Contains("recentLimitEffective")
             && !json.Contains("recordsRecent")
-            && !json.Contains("defaultWidthEffective"),
-            "recentLimitEffective / recordsRecent / defaultWidthEffective 都不在 JSON 里");
+            && !json.Contains("defaultGifSpeedEffective"),
+            "recentLimitEffective / recordsRecent / defaultGifSpeedEffective 都不在 JSON 里");
 
         var parsed = JsonSerializer.Deserialize<ScreenStickerConfig>(json, JsonFileStore.Options);
-        check("[屏幕贴纸] 配置 JSON 往返：设置 / 最近使用 / 贴纸位置都不丢",
+        check("[屏幕贴纸] 配置 JSON 往返：设置 / 最近使用 / 贴纸位置与 GIF 速度都不丢",
             parsed is not null
             && parsed.RecentLimit == 7
             && !parsed.AutoRestoreOnStartup
             && parsed.DefaultTopmost
-            && Near(parsed.DefaultWidth, 500)
+            && Near(parsed.DefaultGifSpeed, 2.0)
             && parsed.RecentEntries.Count == 1
             && parsed.Stickers.Count == 1
             && Near(parsed.Stickers[0].Left, 12)
             && Near(parsed.Stickers[0].Top, 34)
             && Near(parsed.Stickers[0].Width, 300)
+            && Near(parsed.Stickers[0].GifSpeed, 1.5)
             && parsed.Stickers[0].Topmost,
             parsed is null ? "反序列化为 null" : $"贴纸 {parsed.Stickers.Count} 张 / 最近 {parsed.RecentEntries.Count} 条");
     }

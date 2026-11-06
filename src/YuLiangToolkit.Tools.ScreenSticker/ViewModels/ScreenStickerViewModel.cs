@@ -51,6 +51,9 @@ public sealed class ScreenStickerViewModel : ToolViewModelBase
         SetAllTopmostCommand = new RelayCommand(_ => SetAllTopmost(true));
         ClearAllTopmostCommand = new RelayCommand(_ => SetAllTopmost(false));
         CloseAllStickersCommand = new RelayCommand(_ => CloseAllStickers());
+        ResetAllSizesCommand = new RelayCommand(_ => ResetAllSizes());
+        ResetAllSpeedsCommand = new RelayCommand(_ => ResetAllSpeeds());
+        ResetAllDefaultsCommand = new RelayCommand(_ => ResetAllDefaults());
         ResetSettingsCommand = new RelayCommand(_ => ResetSettings());
         OpenConfigFolderCommand = new RelayCommand(_ => OpenConfigFolder());
 
@@ -139,6 +142,15 @@ public sealed class ScreenStickerViewModel : ToolViewModelBase
     /// <summary>关闭全部贴纸（弹一次确认）。</summary>
     public RelayCommand CloseAllStickersCommand { get; }
 
+    /// <summary>全部贴纸恢复默认大小（图片原始尺寸）。</summary>
+    public RelayCommand ResetAllSizesCommand { get; }
+
+    /// <summary>全部贴纸恢复默认 GIF 播放速度。</summary>
+    public RelayCommand ResetAllSpeedsCommand { get; }
+
+    /// <summary>全部贴纸恢复默认状态（大小 + GIF 速度 + 置顶；确认后执行）。</summary>
+    public RelayCommand ResetAllDefaultsCommand { get; }
+
     /// <summary>恢复默认偏好设置（不动贴纸与最近使用记录）。</summary>
     public RelayCommand ResetSettingsCommand { get; }
 
@@ -170,23 +182,6 @@ public sealed class ScreenStickerViewModel : ToolViewModelBase
             OnPropertyChanged();
         }
     }
-
-    /// <summary>新贴纸默认宽度（DIP，48 ~ 2400）。</summary>
-    public double DefaultWidth
-    {
-        get => StickerGeometry.ClampWidth(Cfg.DefaultWidth);
-        set
-        {
-            var width = StickerGeometry.ClampWidth(value);
-            if (Math.Abs(Cfg.DefaultWidth - width) < 0.01) return;
-            Cfg.DefaultWidth = width;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(DefaultWidthText));
-        }
-    }
-
-    /// <summary>默认宽度旁边的数值文本。</summary>
-    public string DefaultWidthText => $"{DefaultWidth:0} px";
 
     /// <summary>新贴纸（GIF）的默认播放速度（0.25× ~ 3×）。</summary>
     public double DefaultGifSpeed
@@ -696,6 +691,59 @@ public sealed class ScreenStickerViewModel : ToolViewModelBase
         Log("已关闭全部贴纸并清空保存记录");
     }
 
+    // ===================== 恢复默认（全部贴纸） =====================
+
+    private void ResetAllSizes()
+    {
+        if (Session.Windows.Count == 0)
+        {
+            StatusText = "桌面上还没有贴纸";
+            return;
+        }
+
+        var count = Session.ResetAllStickerSizes();
+        RefreshStickers();
+        StatusText = $"已把 {count} 张贴纸恢复默认大小（图片原始尺寸）";
+        Log(StatusText);
+    }
+
+    private void ResetAllSpeeds()
+    {
+        if (Session.Windows.Count == 0)
+        {
+            StatusText = "桌面上还没有贴纸";
+            return;
+        }
+
+        var count = Session.ResetAllStickerSpeeds();
+        RefreshStickers();
+        StatusText = $"已把 {count} 张贴纸的 GIF 播放速度恢复默认";
+        Log(StatusText);
+    }
+
+    private void ResetAllDefaults()
+    {
+        var count = Session.Windows.Count;
+        if (count == 0)
+        {
+            StatusText = "桌面上还没有贴纸";
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            $"确定把全部 {count} 张贴纸恢复默认？\n\n"
+            + "大小 / GIF 播放速度 / 置顶都会恢复成默认，图片和当前位置不变。",
+            "恢复默认贴纸",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Question);
+        if (confirm != MessageBoxResult.OK) return;
+
+        Session.ResetAllStickerDefaults();
+        RefreshStickers();
+        StatusText = $"已把 {count} 张贴纸全部恢复默认（位置未变）";
+        Log(StatusText);
+    }
+
     // ===================== 设置 =====================
 
     private void ResetSettings()
@@ -706,8 +754,6 @@ public sealed class ScreenStickerViewModel : ToolViewModelBase
         // ResetPreferences 只改持久化字段、不发通知；这里手动把界面刷新一遍
         OnPropertyChanged(nameof(AutoRestoreOnStartup));
         OnPropertyChanged(nameof(DefaultTopmost));
-        OnPropertyChanged(nameof(DefaultWidth));
-        OnPropertyChanged(nameof(DefaultWidthText));
         OnPropertyChanged(nameof(DefaultGifSpeed));
         OnPropertyChanged(nameof(DefaultGifSpeedText));
         OnPropertyChanged(nameof(RecentLimitText));

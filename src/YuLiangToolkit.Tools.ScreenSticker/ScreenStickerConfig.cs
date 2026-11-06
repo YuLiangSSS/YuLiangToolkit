@@ -48,7 +48,8 @@ public sealed class StickerEntry
 /// 「屏幕贴纸」的设置 → <c>Config\screen-sticker\config.json</c>。
 ///
 /// <para>改动即时落盘、没有保存按钮（规则见 AGENTS.md）：最近使用的图片列表、贴到桌面上的贴纸状态、
-/// 启动时要不要自动恢复、新贴纸默认宽度 / 默认是否置顶。</para>
+/// 启动时要不要自动恢复、GIF 默认播放速度 / 新贴纸默认是否置顶。
+/// <b>没有「新贴纸默认宽度」</b>：贴纸出现时按图片自身原始尺寸显示（见 <see cref="StickerGeometry.NaturalSize"/>）。</para>
 /// </summary>
 public sealed class ScreenStickerConfig : ToolConfig
 {
@@ -61,7 +62,10 @@ public sealed class ScreenStickerConfig : ToolConfig
     /// <summary>「最近使用」上限的最大值；范围 0 ~ 100。</summary>
     public const int MaxRecentLimit = 100;
 
-    /// <summary>新贴纸的默认宽度（DIP）；真正的合法范围在 <see cref="StickerGeometry"/> 里。</summary>
+    /// <summary>
+    /// 图片像素尺寸拿不到时的保底宽度（DIP）。正常情况下新贴纸按图片原始尺寸出现，
+    /// 只有解码器给不出像素尺寸时才会用到这个值。
+    /// </summary>
     public const double DefaultStickerWidth = 320;
 
     // ---------- 持久化字段 ----------
@@ -84,9 +88,6 @@ public sealed class ScreenStickerConfig : ToolConfig
     /// <summary>新贴上去的贴纸默认「强制置顶」（默认关：先像桌面贴纸一样待在普通窗口层）。</summary>
     public bool DefaultTopmost { get; set; }
 
-    /// <summary>新贴纸的默认宽度（DIP，48 ~ 2400）；恢复时按图片比例算高度。</summary>
-    public double DefaultWidth { get; set; } = DefaultStickerWidth;
-
     /// <summary>
     /// 新贴纸（GIF）的默认播放速度（0.25× ~ 3×，1× = GIF 自带速度）。
     /// 只影响以后新贴的 GIF；已经贴上的贴纸各自保存自己的速度，可在右键菜单 / 工具页列表里单独调。
@@ -106,10 +107,6 @@ public sealed class ScreenStickerConfig : ToolConfig
     /// <summary>现在要不要记录最近使用（上限 0 = 不记录）。</summary>
     [JsonIgnore]
     public bool RecordsRecent => RecentLimitEffective > 0;
-
-    /// <summary>生效的新贴纸默认宽度。</summary>
-    [JsonIgnore]
-    public double DefaultWidthEffective => StickerGeometry.ClampWidth(DefaultWidth);
 
     // ---------- 最近使用 ----------
 
@@ -177,7 +174,6 @@ public sealed class ScreenStickerConfig : ToolConfig
     {
         AutoRestoreOnStartup = true;
         DefaultTopmost = false;
-        DefaultWidth = DefaultStickerWidth;
         DefaultGifSpeed = StickerTiming.DefaultSpeed;
         RecentLimit = DefaultRecentLimit;
         TrimRecentToLimit();
