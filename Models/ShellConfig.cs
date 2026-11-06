@@ -183,6 +183,13 @@ public sealed class ShellConfig : ToolConfig
     /// </summary>
     public string CursorStyle { get; set; } = InAppCursorStyle.Auto;
 
+    /// <summary>
+    /// 应用内光标的深浅色系（v0.98.0）：<c>auto</c>（默认，跟着界面深 / 浅色走：浅色界面用深色系、深色界面用浅色系）/
+    /// <c>light</c>（始终浅色系）/ <c>dark</c>（始终深色系）。和 <see cref="CursorStyle"/> 正交，只影响内置箭头的配色，
+    /// 自定义图片不受影响。可选值见 <see cref="InAppCursorStyle.ToneDefinitions"/>。
+    /// </summary>
+    public string CursorTone { get; set; } = InAppCursorStyle.ToneAuto;
+
     /// <summary>自定义光标图片文件名（<c>Data\shell\cursor\</c>；<c>null</c> = 没上传）。</summary>
     public string? CustomCursorImage { get; set; }
 

@@ -20,8 +20,9 @@ namespace YuLiangToolkit.App.Views;
 /// <para><b>自定义图片</b>：<see cref="ImageSource"/> 有值时使用图片；否则按 <see cref="Kind"/> 画内置箭头。
 /// 系统光标只在启用时改成 <see cref="Cursors.None"/>，关闭 / 卸载时还原。</para>
 ///
-/// <para><b>深浅两套配色</b>（v0.97.0）：内置箭头按 <see cref="IsLight"/> 选配色 —— 浅色界面用深色系、
-/// 深色界面用浅色系（见 <see cref="InAppCursorStyle.Palette"/>），换外观模式立即生效；自定义图片不受影响。</para>
+/// <para><b>深浅两套配色</b>（v0.97.0）：内置箭头按 <see cref="UseDarkTone"/> 选配色 —— 浅色系 / 深色系
+/// （见 <see cref="InAppCursorStyle.Palette"/>）。默认跟随界面外观模式，设置页「光标深浅」也可以强制指定，
+/// 换外观模式 / 改设置立即生效；自定义图片不受影响。</para>
 /// </summary>
 public partial class InAppCursorOverlay : UserControl
 {
@@ -37,8 +38,8 @@ public partial class InAppCursorOverlay : UserControl
         nameof(ImageSource), typeof(ImageSource), typeof(InAppCursorOverlay),
         new PropertyMetadata(null, OnVisualStateChanged));
 
-    public static readonly DependencyProperty IsLightProperty = DependencyProperty.Register(
-        nameof(IsLight), typeof(bool), typeof(InAppCursorOverlay),
+    public static readonly DependencyProperty UseDarkToneProperty = DependencyProperty.Register(
+        nameof(UseDarkTone), typeof(bool), typeof(InAppCursorOverlay),
         new PropertyMetadata(false, OnVisualStateChanged));
 
     private Window? _window;
@@ -72,11 +73,14 @@ public partial class InAppCursorOverlay : UserControl
         set => SetValue(ImageSourceProperty, value);
     }
 
-    /// <summary>当前界面是不是浅色模式（决定内置箭头用深色系还是浅色系，见 <see cref="InAppCursorStyle.Palette"/>）。</summary>
-    public bool IsLight
+    /// <summary>
+    /// 内置箭头是否用深色系（设置页「光标深浅」）：auto 时由 ViewModel 按界面深浅算好传进来，
+    /// light / dark 时就是用户强制指定的值（见 <see cref="InAppCursorStyle.UseDarkTone"/>）。
+    /// </summary>
+    public bool UseDarkTone
     {
-        get => (bool)GetValue(IsLightProperty);
-        set => SetValue(IsLightProperty, value);
+        get => (bool)GetValue(UseDarkToneProperty);
+        set => SetValue(UseDarkToneProperty, value);
     }
 
     private static void OnVisualStateChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
@@ -205,9 +209,9 @@ public partial class InAppCursorOverlay : UserControl
         CursorVisual.Width = 40;
         CursorVisual.Height = 44;
 
-        // 配色按界面深浅取（v0.97.0）：浅色界面用深色系，深色界面沿用原来的浅色系；
-        // 每套主题自己的强调色保留，所以六套主题在两种深浅下各有自己的样子。
-        var palette = InAppCursorStyle.Palette(Kind, IsLight);
+        // 配色按界面深浅 / 设置页的「光标深浅」取（v0.97.0 起浅色界面自动用深色系，
+        // v0.98.0 起可以独立强制）；每套主题自己的强调色保留，六套样式在两种深浅下各有自己的样子。
+        var palette = InAppCursorStyle.Palette(Kind, UseDarkTone);
         ArrowPath.Fill = new SolidColorBrush(Hex(palette.Fill));
         ArrowPath.Stroke = new SolidColorBrush(Hex(palette.Stroke));
         AccentDot.Fill = new SolidColorBrush(Hex(palette.Dot));

@@ -1071,6 +1071,8 @@ public class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(BackgroundImageBlurRadius));
         OnPropertyChanged(nameof(BackgroundImageThemeHint));
         OnPropertyChanged(nameof(ThemeModeHint));
+        // 光标深浅 auto 跟外观模式：跟随系统深浅时这里也要通知，否则自绘光标要等下一次改设置才换色。
+        OnPropertyChanged(nameof(InAppCursorToneIsDark));
     }
 
     /// <summary>
@@ -1102,6 +1104,7 @@ public class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(BackgroundImageBlurRadius));
         OnPropertyChanged(nameof(BackgroundImageThemeHint));
         OnPropertyChanged(nameof(InAppCursorKind));
+        OnPropertyChanged(nameof(InAppCursorToneIsDark));
 
         OnPropertyChanged(nameof(CurrentThemeMode));
         OnPropertyChanged(nameof(DarkModeSelected));
@@ -1678,6 +1681,35 @@ public class MainViewModel : ObservableObject
     /// <summary>当前光标样式的一句话说明（设置页下拉框下方）。</summary>
     public string CursorStyleDescription
         => InAppCursorStyle.Definitions.FirstOrDefault(d => d.Id == SelectedCursorStyleId)?.Description ?? "";
+
+    /// <summary>光标深浅下拉框的选项（v0.98.0）。</summary>
+    public IReadOnlyList<CursorToneDefinition> CursorToneOptions => InAppCursorStyle.ToneDefinitions;
+
+    /// <summary>
+    /// 当前选中的光标深浅 Id（<c>auto</c> / <c>light</c> / <c>dark</c>，v0.98.0）：
+    /// 读写 <see cref="ShellConfig.CursorTone"/>；auto 跟外观模式，light / dark 强制指定。
+    /// </summary>
+    public string SelectedCursorToneId
+    {
+        get => InAppCursorStyle.NormalizeTone(_shell.CursorTone);
+        set
+        {
+            var normalized = InAppCursorStyle.NormalizeTone(value);
+            if (string.Equals(SelectedCursorToneId, normalized, StringComparison.Ordinal)) return;
+            _shell.CursorTone = normalized;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CursorToneDescription));
+            OnPropertyChanged(nameof(InAppCursorToneIsDark));
+        }
+    }
+
+    /// <summary>当前光标深浅的一句话说明（设置页下拉框下方）。</summary>
+    public string CursorToneDescription
+        => InAppCursorStyle.ToneDefinitions.FirstOrDefault(d => d.Id == SelectedCursorToneId)?.Description ?? "";
+
+    /// <summary>内置箭头是否用深色系（绑给 <c>InAppCursorOverlay.UseDarkTone</c>；跟着界面深浅或用户强制）。</summary>
+    public bool InAppCursorToneIsDark
+        => InAppCursorStyle.UseDarkTone(_shell.CursorTone, IsLightMode);
 
     /// <summary>实际画哪套光标：auto 跟主题；custom 没图片时回退主题样式。</summary>
     public InAppCursorKind InAppCursorKind

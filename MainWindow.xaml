@@ -285,7 +285,7 @@
                                   IsActive="{Binding UseInAppCursor}"
                                   Kind="{Binding InAppCursorKind}"
                                   ImageSource="{Binding CustomCursorImageSource}"
-                                  IsLight="{Binding IsLightMode}" />
+                                  UseDarkTone="{Binding InAppCursorToneIsDark}" />
 
         <!-- 光标特效覆盖层：铺满整个窗口（含标题栏 / 状态栏），不吃鼠标事件；和内容根节点平级，
              这样反色圆环取景时只看到「内容」，不会把自己画进去。

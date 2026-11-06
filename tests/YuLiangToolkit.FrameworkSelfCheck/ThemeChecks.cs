@@ -648,8 +648,8 @@ internal static class ThemeChecks
         check("应用内光标：浅色界面六套内置样式都切深色系（深填充 + 浅描边 / 强调点不透明）",
             builtInCursorKinds.All(kind =>
             {
-                var dark = InAppCursorStyle.Palette(kind, isLightTheme: true);
-                var light = InAppCursorStyle.Palette(kind, isLightTheme: false);
+                var dark = InAppCursorStyle.Palette(kind, useDarkTone: true);
+                var light = InAppCursorStyle.Palette(kind, useDarkTone: false);
                 return dark != light
                     && ThemePaletteBuilder.Luminance(Hex(dark.Fill)) < 0.35
                     && ThemePaletteBuilder.Luminance(Hex(dark.Stroke)) > 0.35
@@ -658,21 +658,47 @@ internal static class ThemeChecks
                     && Hex(dark.Dot).A > 0;
             }),
             string.Join(" / ", builtInCursorKinds.Select(
-                kind => InAppCursorStyle.Palette(kind, isLightTheme: true).Fill)));
+                kind => InAppCursorStyle.Palette(kind, useDarkTone: true).Fill)));
 
         check("应用内光标：深色界面沿用 v0.91.0 原配色 / 自定义图片回退经典 / 柔光只跟液态玻璃",
-            InAppCursorStyle.Palette(InAppCursorKind.Default, isLightTheme: false)
+            InAppCursorStyle.Palette(InAppCursorKind.Default, useDarkTone: false)
                 == new InAppCursorPalette("#FFFFFF", "#1B2430", "#4C8DFF", false)
-            && InAppCursorStyle.Palette(InAppCursorKind.FrostedGlass, isLightTheme: false)
+            && InAppCursorStyle.Palette(InAppCursorKind.FrostedGlass, useDarkTone: false)
                 == new InAppCursorPalette("#F5FAFF", "#7A8B9C", "#9FB4C8", false)
-            && InAppCursorStyle.Palette(InAppCursorKind.LiquidGlass, isLightTheme: false).Glow
-            && InAppCursorStyle.Palette(InAppCursorKind.LiquidGlass, isLightTheme: true).Glow
-            && !InAppCursorStyle.Palette(InAppCursorKind.Default, isLightTheme: true).Glow
-            && InAppCursorStyle.Palette(InAppCursorKind.Custom, isLightTheme: true)
-                == InAppCursorStyle.Palette(InAppCursorKind.Default, isLightTheme: true)
-            && InAppCursorStyle.Palette(InAppCursorKind.Custom, isLightTheme: false)
-                == InAppCursorStyle.Palette(InAppCursorKind.Default, isLightTheme: false),
+            && InAppCursorStyle.Palette(InAppCursorKind.LiquidGlass, useDarkTone: false).Glow
+            && InAppCursorStyle.Palette(InAppCursorKind.LiquidGlass, useDarkTone: true).Glow
+            && !InAppCursorStyle.Palette(InAppCursorKind.Default, useDarkTone: true).Glow
+            && InAppCursorStyle.Palette(InAppCursorKind.Custom, useDarkTone: true)
+                == InAppCursorStyle.Palette(InAppCursorKind.Default, useDarkTone: true)
+            && InAppCursorStyle.Palette(InAppCursorKind.Custom, useDarkTone: false)
+                == InAppCursorStyle.Palette(InAppCursorKind.Default, useDarkTone: false),
             "深色界面 = 白箭头 + 深描边，浅色界面 = 深箭头 + 浅描边");
+
+        // ---- v0.98.0：光标深浅可以独立于界面主题强制指定 ----
+        check("光标深浅解析：auto 跟外观模式 / light、dark 强制 / 未知值回退 auto",
+            InAppCursorStyle.NormalizeTone("dark") == InAppCursorStyle.ToneDark
+            && InAppCursorStyle.NormalizeTone("乱写") == InAppCursorStyle.ToneAuto
+            && InAppCursorStyle.UseDarkTone(InAppCursorStyle.ToneAuto, isLightTheme: true)
+            && !InAppCursorStyle.UseDarkTone(InAppCursorStyle.ToneAuto, isLightTheme: false)
+            && InAppCursorStyle.UseDarkTone(InAppCursorStyle.ToneDark, isLightTheme: false)
+            && !InAppCursorStyle.UseDarkTone(InAppCursorStyle.ToneLight, isLightTheme: true)
+            && InAppCursorStyle.UseDarkTone(null, isLightTheme: true)
+            && InAppCursorStyle.ToneDefinitions.Count == 3
+            // 强制「深色系」时，深色界面也要拿到深色填充（不再跟主题走）
+            && ThemePaletteBuilder.Luminance(Hex(InAppCursorStyle.Palette(
+                InAppCursorKind.Default,
+                InAppCursorStyle.UseDarkTone(InAppCursorStyle.ToneDark, isLightTheme: false)).Fill)) < 0.35);
+
+        JsonFileStore.Write(path, new ShellConfig { CursorTone = InAppCursorStyle.ToneDark });
+        var toneJson = File.ReadAllText(path);
+        var toneRoundTrip = JsonFileStore.Read<ShellConfig>(path)?.CursorTone;
+        File.WriteAllText(path, "{ \"uiTheme\": \"Default\" }");
+        check("光标深浅默认 auto / 写入读回 / 旧配置没有该字段 = auto",
+            new ShellConfig().CursorTone == InAppCursorStyle.ToneAuto
+            && toneRoundTrip == InAppCursorStyle.ToneDark
+            && toneJson.Contains("\"cursorTone\": \"dark\"")
+            && JsonFileStore.Read<ShellConfig>(path)?.CursorTone == InAppCursorStyle.ToneAuto,
+            toneJson.Replace(Environment.NewLine, " "));
 
         check("光标图：普通文件名合法 / 目录在 Data\\shell\\cursor",
             ShellCursorImage.IsSafeFileName("cursor-20250101-120000-000.png")
