@@ -250,7 +250,12 @@
                                         BorderBrush="{DynamicResource CheckBoxBorderBrush}"
                                         Background="{DynamicResource InputBackgroundBrush}"
                                         VerticalAlignment="Center">
-                                    <Ellipse x:Name="Dot" Width="7" Height="7" Fill="{DynamicResource AccentBrush}" Visibility="Collapsed" />
+                                    <!-- 圆点必须相对圆环正居中：Border 的 1.5px 边框把内容区挤到半像素上，
+                                         7px 圆点的落点 4.5 再被布局取整（MainWindow 的 UseLayoutRounding=True）
+                                         吸附到 4（左上 0.5px）→ 看着“偏左上”。这里给圆点单独关掉布局取整，
+                                         让它按 4.5 的几何位置对称渲染，和圆环同心，任何 DPI 下都不会偏。 -->
+                                    <Ellipse x:Name="Dot" Width="7" Height="7" Fill="{DynamicResource AccentBrush}"
+                                             UseLayoutRounding="False" Visibility="Collapsed" />
                                 </Border>
                                 <ContentPresenter Margin="9,0,0,0" VerticalAlignment="Center" />
                             </StackPanel>
