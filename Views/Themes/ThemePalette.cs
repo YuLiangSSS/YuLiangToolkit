@@ -221,9 +221,28 @@ public static class ThemePaletteBuilder
         tokens["WindowEdgeBorderBrush"] = Solid(Colors.Transparent);
 
         // 背景层：浅色 = 上白下淡蓝的天空；深色 = 深夜蓝。云 / 太阳 / 月亮 / 星星是 GlassBackdrop 里的装饰层。
-        tokens["BackdropBaseBrush"] = Linear(
-            light ? Hex("#F3F9FF") : Hex("#050A18"),
-            light ? Hex("#D3E6F8") : Hex("#0F233B"));
+        // 背景层：照原项目 upper.css 的 body 背景——上白下淡蓝，非常淡：
+        // linear-gradient(180deg, #fbfdff 0%, #edf5fc 46%, #dceaf8 100%)。
+        if (light)
+        {
+            var sky = new LinearGradientBrush
+            {
+                StartPoint = new Point(0, 0),
+                EndPoint = new Point(0, 1),
+                GradientStops =
+                {
+                    new GradientStop(Hex("#FBFDFF"), 0),
+                    new GradientStop(Hex("#EDF5FC"), 0.46),
+                    new GradientStop(Hex("#DCEAF8"), 1),
+                },
+            };
+            sky.Freeze();
+            tokens["BackdropBaseBrush"] = sky;
+        }
+        else
+        {
+            tokens["BackdropBaseBrush"] = Linear(Hex("#050A18"), Hex("#0F233B"));
+        }
         tokens["BackdropImageScrimBrush"] = Solid(light ? WithAlpha(Colors.White, 0xA6) : WithAlpha(Colors.Black, 0x66));
         tokens["BackdropNoiseBrush"] = Solid(Colors.Transparent);
         tokens["BackdropTopLightBrush"] = Solid(Colors.Transparent);
