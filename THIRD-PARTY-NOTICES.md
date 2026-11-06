@@ -127,6 +127,18 @@
 - 说明：本项目只引用 NuGet 包（托管程序集与主题资源），**没有修改**其源码；从源码构建时首次需要联网还原一次，
   之后走本机 NuGet 缓存，运行时不依赖额外的系统组件。
 
+## SkiaSharp 2.88.9 / SkiaSharp.NativeAssets.Win32（NuGet 依赖）
+
+- 用途：「屏幕贴纸」（`src/YuLiangToolkit.Tools.ScreenSticker/`）的 **GIF / 动图 WebP 逐帧解码**：
+  Windows 自带的 WIC / GDI+ 不解 WebP，而且很多聊天软件导出的 GIF 是**帧尺寸不一致的优化 GIF**
+  （WIC 只给子矩形帧、拼不回整幅画面）——这些情况改由 Skia 的 `SKCodec` 按帧合成后交给贴纸播放器。
+- 项目主页：<https://github.com/mono/SkiaSharp>
+- 许可：MIT License（Copyright (c) Microsoft Corporation / Mono Project，详见包内 `LICENSE`）
+- 说明：只引用 NuGet 包，**没有修改**其源码；`SkiaSharp.NativeAssets.Win32` 会随程序分发
+  `runtimes/win-*/native/libSkiaSharp.dll`（x64 / x86 / arm64，约 9 MB/个），因此发布目录会比以前大一些。
+  APNG（动图 PNG）由本项目手写的解析器解码，不依赖 Skia。
+- 首次从源码构建需要联网还原一次，之后走本机 NuGet 缓存。
+
 ## MIT License 全文
 
 ```

@@ -327,8 +327,9 @@
 - `Config.Stickers` 的**列表顺序就是层级**（0 最靠下）；改完层级要按顺序 `ApplyZOrder()`（逐个
   `SetWindowPos(HWND_TOP)`）才能真正生效，别指望窗口激活顺序。用户点中某张贴纸时激活事件会把它的记录移到末尾。
 - ⚠ 拖窗口用 `GetCursorPos` + `CompositionTarget.TransformFromDevice` 取屏幕 DIP，**别用 `e.GetPosition(this)`
-  反推位置**（窗口自己在移动，相对坐标会反馈抖动）；缩放 / 夹屏 / 角点等比缩放都在 `StickerGeometry` 纯函数里，
-  改动先跑 `screen-sticker` 组。
+  反推位置**（窗口自己在移动，相对坐标会反馈抖动）；四边四角拉伸（默认自由、Shift 等比）、滚轮缩放、夹屏都在
+  `StickerGeometry` 纯函数里，改动先跑 `screen-sticker` 组。恢复配置时宽高都用存的值（自由拉伸过的比例要保留），
+  别再按图片比例强行重算高度。
 - 工具页视图被缓存淘汰 / 程序退出时（`DisposeToolView` → `NotifyClosed` 会 `StopWatching` 配置存储），
   贴纸仍可能继续拖动 / 缩放：这类后台改动走 `StickerSession.SaveSoon()`（500ms 防抖后显式 `SaveNow`），
   不要依赖配置自动保存定时器。
@@ -338,11 +339,16 @@
   否则后台线程编码会抛「跨线程访问」。自检**不碰系统剪贴板**，只断言文件过滤 / 文件名哈希 / 编码落盘。
 - 调试：`YLT_STICKER_DEMO=<图片>` 启动贴一张（不恢复旧贴纸）、`YLT_STICKER_CLIPBOARD=1` 启动读一次剪贴板贴图、
   `YLT_STICKER_SHOT=<png>` 截第一张窗口后退出；截图见 `shots/sticker-*.png`（不入库）。
-- **GIF 动画**（`StickerMedia` / `StickerTiming`）：WPF 的 `BitmapDecoder` 能拆帧但不会自己播，窗口用
-  `DispatcherTimer` 按「帧延时 ÷ 速度」切 `Image.Source`；帧延时在 GIF 元数据 `/grctlext/Delay`（单位 1/100 秒），
-  0 / 10ms 按浏览器惯例改 100ms。**别把所有帧 OnLoad 后长期持有**：帧数 × 单帧像素 × 4 字节很容易几百 MB，
-  现在有 `StickerTiming.MaxFrameCount` / `MaxAnimatedPixels` 预算 + 单帧 1280 宽上限，超了退静态并在日志提示；
-  帧尺寸不一致的极端优化 GIF 也退静态（WIC 一般给整幅画面，别赌）。播放定时器必须在窗口 `Closed` 停掉并放掉 `Image.Source`。
+- **动图解码**（`StickerMedia` / `StickerSkia` / `StickerApng` / `StickerTiming`）：分派**按文件头真实内容**，
+  不信后缀（PNG + `acTL` → 手写 APNG；GIF / WebP → SkiaSharp；其它 → WIC）。⚠ Skia 解 GIF / WebP 时必须
+  **复用同一个 `SKBitmap` 画布按帧顺序 `GetPixels`**：partial 帧只写变化区域，每帧 new 一个空 bitmap 只会拿到一块局部图；
+  `RequiredFrame` 不是 `i-1` 的异常依赖目前退回静态图，别赌错画面。WIC 拆 GIF 给的是子矩形且偏移元数据不可靠，
+  这就是「优化 GIF 只显示静态第一帧」的根因（例如用户那张 huaji5.gif，238 帧全是 partial 帧）。
+  APNG 的帧数据本身就是标准 PNG 的 IDAT / fdAT：手写解析 + 重组成单帧 PNG 交给 WIC 解，再按 dispose / blend 合成
+  （SkiaSharp 2.88 不支持 APNG）。`DispatcherTimer` 仍按「帧延时 ÷ 速度」切 `Image.Source`；
+  **帧数 × 单帧像素 × 4 字节很容易几百 MB**，继续用 `StickerTiming.MaxFrameCount` / `MaxAnimatedPixels` 预算 +
+  单帧 1280 宽上限，超了退静态并提示。窗口 `Closed` 必须停表并放掉 `Image.Source`。SkiaSharp 原生库
+  `libSkiaSharp.dll` 随 `SkiaSharp.NativeAssets.Win32` 分发，缺了会自动退静态、不能崩。
 
 ### 液态玻璃 / 毛玻璃 / 亚克力主题（半透明界面 + 背景图）
 - ⚠ 改 token 一起改：四套深色字典（`DefaultTheme` / `LiquidGlassTheme` / `FrostedGlassTheme` / `AcrylicTheme`）+ `ThemeManager.RequiredTokenKeys`（几何 key 在 `RequiredRadiusKeys`）；道系 / 浅色 / 配色由 `ThemePaletteBuilder` 生成，新增颜色时它也要覆盖；少一个静默退回控件默认值。
@@ -395,6 +401,7 @@
   程序运行时不能覆盖正在运行的那个副本（`EnsureOpenerFile` 会跳过自己）。
 
 ### WPF 与界面
+- **右键菜单别用 WPF 默认模板**：深色主题下 `MenuItem` 默认模板会在左侧留一条白色「图标列」，只设 `Background` 盖不掉。统一用 `App.xaml` 的 `DarkContextMenuStyle` + `DarkMenuLeafItemStyle` / `DarkMenuParentItemStyle` / `DarkMenuSeparatorStyle`（`ContextMenu.Resources` 里隐式套；有子菜单的父项用 Parent 样式）。v1.1.0 已修屏幕贴纸 / Live2D 桌宠 / 录屏摄像头覆盖；浏览器 / Excel / Word / 文本编辑器保留各自等价模板即可，新菜单直接抄这四套，别再逐处复制模板。
 - 工具页有多个区块时**别把区块大小写死**：用 `core:PaneSplitter` + `App.xaml` 的 `PaneSplitterVerticalStyle` / `PaneSplitterHorizontalStyle`（悬停蓝线 / ↔ ↕ 光标 / 自动记忆 / 双击复位），约定见 [layout.md](layout.md)。分隔条必须独占一行 / 一列，相邻两块要给 `MinWidth` / `MinHeight`，否则窗口小时会被拖没；写死像素的上下两块才适合放进 `ScrollViewer` 里上下拖，`*` 行在里面会塌成内容高度。
 - 分隔条模板里有**两层线**：`RestLine` = 提示线（透明度由 `PaneSplitterSettings` 控制，主页设置滑块调）、`SplitterLine` = 悬停亮线（模板触发器改它）。⚠ 别把悬停触发器改到 `RestLine` 上，也别在代码里改 `SplitterLine.Opacity`（局部值会盖过触发器），否则悬停就不亮了。
 - **每个页面级区块的相邻边界都要有分隔条**（v0.42.0 硬性要求）：别把两块塞进一个可拖块里再用 `*` 均分，用户要的是「每一块都能单独拖」；标题 / 状态条这类纯信息条不算。
@@ -454,7 +461,7 @@
 - WebView2 是**独立原生窗口**（HwndHost）：WPF 的粒子 / 覆盖层 / 圆角裁剪都盖不住网页区域；`YLT_SHOT` 的 `RenderTargetBitmap` 也**抓不到网页内容**（只能截到工具条）。验证网页真的渲染出来要用 `CapturePreviewAsync`（工具里已接好：截图模式会另存 `<截图>.web.png`，`YLT_SHOT_DELAY_MS` 给足时间）。
 - 外壳会缓存工具页（最多 12 个）：网页内核必须在 `Unloaded` 里 `Dispose`、`Loaded` 里重建，否则切走一个工具就多一个隐藏的 Edge 进程；用户数据目录放 `Cache\browser\WebView2`（「清理缓存」能清），内核运行中清不干净属正常，下次再清。
 - **别把 `AreDefaultContextMenusEnabled` 设成 `false`**：微软文档写明那样会让 `ContextMenuRequested` 事件**完全不触发**（右键没有任何反应，v0.58.0 踩过）。正确做法：保持 `true`，在事件里 `Handled = true` + `GetDeferral()`（菜单 `Closed` 时 `Complete`），再弹自己的 WPF 菜单（第一条放「刷新」）。
-- WPF 默认 `ContextMenu` / `MenuItem` 模板会给菜单项左侧留一条**白底「图标列」**（深色主题下非常突兀），只设 `Background` 是盖不掉的，必须换 `ControlTemplate`（见 `BrowserView.xaml` 的 `BrowserMenuItemStyle`）；自建菜单项时别忘了 `InputGestureText` 和 `IsHighlighted` 悬停色。
+- WPF 默认 `ContextMenu` / `MenuItem` 模板会给菜单项左侧留一条**白底「图标列」**（深色主题下非常突兀），只设 `Background` 是盖不掉的。现在统一用 `App.xaml` 里的 keyed 样式 `DarkContextMenuStyle` / `DarkMenuLeafItemStyle` / `DarkMenuParentItemStyle` / `DarkMenuSeparatorStyle`（见「WPF 与界面」第一条）；浏览器 / Excel / Word / 文本编辑器的私有模板等价，别再逐处复制新模板。
 - **多标签页**（v0.59.0 起）：每个标签一个 `WebView2` 实例，**共享一次 `CoreWebView2Environment`**（同一用户数据目录）——这样 Cookie / 登录态互通、第二个标签起启动很快；别每个标签各 `CreateAsync` 一份环境。多个内核全叠在同一个 `Grid` 里，只有激活标签 `Visibility.Visible`：WebView2 的 `Collapsed` 会真正隐藏原生 HWND（直接从 `Children` 摘掉反而会触发重新挂载的坑）。创建是异步的，创建期间标签可能被关掉 → `EnsureCoreWebView2Async` 返回后要核对「字典里还是这个实例」再接线。
 - `target=_blank` / `window.open` 走 `NewWindowRequested`：不处理就什么都不发生，本工具在**新标签页**里打开（`e.Handled = true` 再开标签）。
 - 快捷键（Ctrl+T / Ctrl+W / Ctrl+Tab）挂在 UserControl 的 `PreviewKeyDown`：焦点在网页内部时 WebView2（HwndHost）可能自己吃掉按键，WPF 收不到——这是键盘路由限制，按钮永远可用，文档里如实写。
@@ -480,7 +487,8 @@
 ### 文本编辑器（AvalonEdit）
 - ⚠ **WPF `Menu` / `MenuItem` 默认模板左侧有一条白底「图标列」**：深色主题下非常突兀，只设 `Background` 盖不住，
   必须给 `Menu` / `MenuItem` 写页面私有的 `ControlTemplate`（`TextEditorView.xaml` 的 `EditorMenuBarStyle` /
-  `EditorMenuItemStyle`）；**别动 `App.xaml`**（会波及全程序菜单）。浏览器右键菜单踩过同一个坑。
+  `EditorMenuItemStyle`）；**别在 `App.xaml` 加隐式 `Menu` / `MenuItem` 样式**（会波及全程序菜单），但同一文件里
+  keyed 的 `DarkMenu*` 右键菜单样式可以直接复用。
 - ⚠ **标签条 `ListBox` 的默认 `ItemsPanel` 是纵向 `VirtualizingStackPanel`**：不换面板标签会竖着叠、只看得见一个，
   必须内联 `<ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>`；横向溢出还得套
   `ScrollViewer` + 在 `PreviewMouseWheel` 里自己把滚轮换成横向滚动，别指望 `ListBox` 原生横滚。

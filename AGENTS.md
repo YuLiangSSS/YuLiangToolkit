@@ -7,11 +7,11 @@
 
 | 项 | 内容 |
 | --- | --- |
-| 技术栈 | Windows 10 2004+ + .NET 9（主程序 / 自检 `net9.0-windows10.0.19041.0`，工具库 `net9.0-windows`）+ WPF + 手写 MVVM；NuGet 包：`OsuParsers`（MIT）、`Microsoft.Web.WebView2`（浏览器工具用的 Chromium 内核，运行时是系统组件）、`AvalonEdit`（MIT，文本编辑器内核）、`SharpCompress`（MIT，压缩包工具内核：解 RAR / ZIP / 7Z / TAR.*，写 ZIP / 7Z）；PDF 渲染用系统 `Windows.Data.Pdf`，文字搜索 / 书签目录是手写 PDF 解析器 |
+| 技术栈 | Windows 10 2004+ + .NET 9（主程序 / 自检 `net9.0-windows10.0.19041.0`，工具库 `net9.0-windows`）+ WPF + 手写 MVVM；NuGet 包：`OsuParsers`（MIT）、`Microsoft.Web.WebView2`（浏览器工具用的 Chromium 内核，运行时是系统组件）、`AvalonEdit`（MIT，文本编辑器内核）、`SharpCompress`（MIT，压缩包工具内核：解 RAR / ZIP / 7Z / TAR.*，写 ZIP / 7Z）、`SkiaSharp`（MIT，屏幕贴纸的 GIF / 动图 WebP 帧解码内核）；PDF 渲染用系统 `Windows.Data.Pdf`，文字搜索 / 书签目录是手写 PDF 解析器 |
 | 主程序 | 根目录 `YuLiangTookit.csproj`（少一个 `l` 是历史拼写）：标题栏 / 主页 / 类别页 / 面包屑、六套主题（深浅色 + 配色）、背景图、粒子 |
 | 核心库 | `src/YuLiangToolkit.Core/`：工具契约 / MVVM / 存储 / 配置 / 维护（缓存清理·配置重建）/ OOXML 包读取（docx·xlsx 共用）/ FFmpeg / 粒子 / TCP 房间 |
-| 功能 | 31 个（28 个 `Tools.*`）：音频工具（视频转音频 / 分段合成） / 录屏 / GIF（GIF / MP4·MKV·MOV·AVI·WebM 多编码器 + 声音 / 摄像头 / 自定义快捷键 / 截图） / 剪辑工具（视频 / GIF 裁剪 + 多片段拼接 + 缩略图时间轴 + 低清预览） / 播放器 / 图片阅读器 / PDF 阅读器 / Word 阅读器 / Excel 阅读器 / PPT 阅读器（pptx 幻灯片还原 + 缩略图 + 备注 + 全屏放映） / 重命名 / 文本编辑器 / 压缩包工具 / 打开方式 / Flash / 聊天室 / 网页浏览器 / osu! 下图器 / osu!mania 三件套 / 棋牌 / KPS 按键统计 / Spug 验证码测试 / Live2D 桌宠 / 屏幕贴纸（图片贴到桌面：原始尺寸 / 拖动 / 缩放 / 层级 / 单独置顶 / GIF 动画 / 恢复默认 + 最近使用） / 右键菜单管理 / 软件升级器（winget 读应用与可用更新 + 多选批量升级） / 计算器（科学计算器，共用 `Core/Expressions/` 表达式引擎） / 函数绘图（多函数 + 每条定义域 + 自动求点） / 示例模板 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`：4596 项（33 组），退出码 0 = 通过（按分组跑） |
+| 功能 | 31 个（28 个 `Tools.*`）：音频工具（视频转音频 / 分段合成） / 录屏 / GIF（GIF / MP4·MKV·MOV·AVI·WebM 多编码器 + 声音 / 摄像头 / 自定义快捷键 / 截图） / 剪辑工具（视频 / GIF 裁剪 + 多片段拼接 + 缩略图时间轴 + 低清预览） / 播放器 / 图片阅读器 / PDF 阅读器 / Word 阅读器 / Excel 阅读器 / PPT 阅读器（pptx 幻灯片还原 + 缩略图 + 备注 + 全屏放映） / 重命名 / 文本编辑器 / 压缩包工具 / 打开方式 / Flash / 聊天室 / 网页浏览器 / osu! 下图器 / osu!mania 三件套 / 棋牌 / KPS 按键统计 / Spug 验证码测试 / Live2D 桌宠 / 屏幕贴纸（图片贴到桌面：原始尺寸 / 拖动 / 四边四角自由拉伸（Shift 等比）/ 滚轮缩放 / 层级 / 单独置顶 / GIF · APNG · WebP 动画 / 恢复默认 + 最近使用） / 右键菜单管理 / 软件升级器（winget 读应用与可用更新 + 多选批量升级） / 计算器（科学计算器，共用 `Core/Expressions/` 表达式引擎） / 函数绘图（多函数 + 每条定义域 + 自动求点） / 示例模板 |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`：4604 项（33 组），退出码 0 = 通过（按分组跑） |
 | 数据 | **在 exe 旁边**（`bin\Debug\net9.0-windows10.0.19041.0\Data`、`Config`、`Cache`）；仓库根同名目录只有说明 |
 
 ## 开工 / 收尾（硬性）
@@ -32,7 +32,7 @@ git add -A; git commit -m "<中文提交信息>"   # ③ 提交：每轮改动�
 ## 硬性规则（违反 = 破坏项目或删用户数据；更多细节见踩坑清单）
 
 1. **运行时数据在 exe 旁边**；仓库根 `Data/`、`Config/`、`Cache/` 只放说明。绝不用 `<None CopyToOutputDirectory>` 拷 Data/Config；`dotnet clean` / 删 `bin`、`dist` = 删用户数据。
-2. **可以引 NuGet 包，但要有理由**：优先微软官方 / 维护活跃 / 许可证清晰的包（当前：`OsuParsers`、`Microsoft.Web.WebView2`、`AvalonEdit`、`SharpCompress`）；新增包必须登记 `THIRD-PARTY-NOTICES.md` 并在功能文档里说明用途与运行时要求。能手写的小轮子仍优先手写进 `Core/`。
+2. **可以引 NuGet 包，但要有理由**：优先微软官方 / 维护活跃 / 许可证清晰的包（当前：`OsuParsers`、`Microsoft.Web.WebView2`、`AvalonEdit`、`SharpCompress`、`SkiaSharp`）；新增包必须登记 `THIRD-PARTY-NOTICES.md` 并在功能文档里说明用途与运行时要求。能手写的小轮子仍优先手写进 `Core/`。
 3. **带 setter 的计算属性必须 `[JsonIgnore]`**；配置自动落盘（无保存按钮）；要「一敲键就刷新」用 `Set(ref 字段, 值)`。
 4. **后台线程改界面走 `Ui(...)` / `UiAsync(...)`**；切走时在 `NotifyClosed()` 里摘缓存对象上的事件；绕过 `ToolConfigStore` 的持久化入口自己接 `FlushAll`。
 5. **数据目录里的相对路径不能带 `..`、不能是绝对路径**（`ToolStorage` 故意抛异常防逃逸）。
@@ -43,6 +43,7 @@ git add -A; git commit -m "<中文提交信息>"   # ③ 提交：每轮改动�
 10. **缓存写 `Cache\<工具Id>\`**（`ToolCache`），「主页设置 → 清理缓存 / 重建配置」按已发现工具自动覆盖新工具；缓存混在 Config 里就实现 `IToolCacheSource` 报告清理项（详见 `Core/Maintenance/` 注释）。
 11. **改完必须提交 git**；其他别做 / 先问用户的见踩坑清单。
 12. **有多个区块的工具页必须可拖拽，而且每个页面级区块的相邻边界都要有分隔条**（v0.41.0 起；v0.42.0 强化：别把两块合并进一个可拖块，要最高自由度）：用 `core:PaneSplitter` + `App.xaml` 的样式（悬停蓝线 / ↔ ↕ 光标 / 自动记住 / 双击复位 / 提示线透明度可在主页设置调），**别再把区块大小写死**；新页面照 `docs/dev/layout.md` 做，布局恢复默认在「主页设置 → 界面布局」。
+13. **右键菜单必须套 `App.xaml` 的 `DarkMenu` 样式**（`DarkContextMenuStyle` + `ContextMenu.Resources` 里隐式套 `DarkMenuLeafItemStyle` / `DarkMenuSeparatorStyle`，有子菜单的父项用 `DarkMenuParentItemStyle`），别只设 Background：WPF 默认模板在深色主题下左侧会留一条白色图标列（详见 `docs/dev/pitfalls.md`）。
 
 ## 找东西
 

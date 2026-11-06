@@ -8,7 +8,23 @@ namespace YuLiangToolkit.Tools.ScreenSticker;
 public readonly record struct StickerBounds(double Left, double Top, double Width, double Height);
 
 /// <summary>
-/// 贴纸窗口的纯几何逻辑：默认大小 / 图片比例 / 以鼠标为锚点缩放 / 角点拖拽缩放 / 夹回屏幕。
+/// 贴纸窗口可拉伸的方向（四边 + 四角）。窗口按鼠标所在边缘决定光标和拉伸方式。
+/// </summary>
+public enum StickerResizeHandle
+{
+    None,
+    Left,
+    Right,
+    Top,
+    Bottom,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+/// <summary>
+/// 贴纸窗口的纯几何逻辑：默认大小 / 图片比例 / 以鼠标为锚点缩放 / 四边四角拉伸 / 夹回屏幕。
 ///
 /// <para><b>为什么单独抽出来</b>：这些换算最容易出现「贴纸飞没影 / 缩到 0 / 锚点乱跳」这类难复现的问题，
 /// 抽成纯函数后自检（<c>ScreenStickerChecks</c>）可以无头断言，窗口代码只负责把结果套到 Window 上。</para>
@@ -22,6 +38,12 @@ public static class StickerGeometry
 
     /// <summary>贴纸最大宽度（DIP）：既防手滑放大到离谱，也要给「按图片原始尺寸显示」留够空间。</summary>
     public const double MaxWidth = 4096;
+
+    /// <summary>贴纸最小高度（DIP）：自由拉伸时也不允许压成一条线（超宽图按比例可以更扁）。</summary>
+    public const double MinHeight = 16;
+
+    /// <summary>贴纸最大高度（DIP）。</summary>
+    public const double MaxHeight = 4096;
 
     /// <summary>拖出屏幕后至少留在可见区域里的尺寸（DIP）：保证还能用鼠标抓回来。</summary>
     public const double MinVisible = 48;
@@ -117,19 +139,34 @@ public static class StickerGeometry
         return ClampToBounds(bounds, workArea);
     }
 
+    /// <summary>把高度夹到 [<see cref="MinHeight"/>, <see cref="MaxHeight"/>]；NaN / 无穷 / 非正数用宽度兜底。</summary>
+    public static double ClampHeight(double height, double fallback = MinHeight)
+    {
+        if (double.IsNaN(height) || double.IsInfinity(height) || height <= 0) height = fallback;
+        return Math.Clamp(height, MinHeight, MaxHeight);
+    }
+
     /// <summary>
     /// 把一张已保存的贴纸恢复成「尺寸合法 + 至少留 <see cref="MinVisible"/> 在屏幕里」。
-    /// 图片比例以磁盘上的图片为准（配置里的 Height 只作参考，比例变了就按新的算）。
+    /// <b>宽高都用配置里存的值</b>（自由拉伸过的贴纸比例可以不是图片原始比例，不能强行按比例改回去）。
     /// </summary>
-    public static StickerBounds NormalizeStored(double left, double top, double width, double aspect, Rect screenBounds)
+    public static StickerBounds NormalizeStored(double left, double top, double width, double height, Rect screenBounds)
     {
-        var size = SizeForWidth(width, aspect);
         var bounds = new StickerBounds(
             double.IsNaN(left) || double.IsInfinity(left) ? 0 : left,
             double.IsNaN(top) || double.IsInfinity(top) ? 0 : top,
-            size.Width,
-            size.Height);
+            ClampWidth(width),
+            ClampHeight(height));
         return ClampToBounds(bounds, screenBounds);
+    }
+
+    /// <summary>
+    /// 老接口：用宽度 + 图片比例算高度（自检 / 兼容旧配置用）。
+    /// </summary>
+    public static StickerBounds NormalizeStoredByAspect(double left, double top, double width, double aspect, Rect screenBounds)
+    {
+        var size = SizeForWidth(width, aspect);
+        return NormalizeStored(left, top, size.Width, size.Height, screenBounds);
     }
 
     /// <summary>
@@ -158,28 +195,89 @@ public static class StickerGeometry
     }
 
     /// <summary>
-    /// 右下角拖拽缩放：先按横 / 竖位移里更明显的那个折算成宽度增量（保持图片比例），
-    /// 再夹宽度范围。左上角不动，所以只需要起点 + 增量。
+    /// 四边 / 四角拉伸。
+    ///
+    /// <para><paramref name="dx"/>/<paramref name="dy"/> 是鼠标相对按下位置的位移（DIP）。默认**自由拉伸**
+    /// （宽高独立变化，图片会被拉长 / 压扁）；<paramref name="keepAspect"/> = true（按住 Shift）时
+    /// 保持按下时的宽高比：左右边只按宽度驱动、上下边只按高度驱动、角点取变化更明显的那个轴。</para>
+    ///
+    /// <para>被拖的反方向 / 对边固定；结果只保证宽高在合法范围，位置是否越界由调用方在松手时
+    /// <see cref="ClampToBounds"/> 处理（拖出屏幕时体验更连续）。</para>
     /// </summary>
-    public static double WidthDeltaForCorner(double dx, double dy, double width, double height)
+    public static StickerBounds ResizeByHandle(
+        StickerBounds start, StickerResizeHandle handle, double dx, double dy, bool keepAspect)
     {
-        if (Math.Abs(dx) >= Math.Abs(dy)) return dx;
-        // 竖向位移折算成等比例的横向位移：dh = dy → dw = dy * 宽 / 高
-        if (double.IsNaN(height) || height <= 0) return 0;
-        return dy * Math.Max(1, width) / height;
+        if (handle == StickerResizeHandle.None) return start;
+        if (double.IsNaN(dx) || double.IsInfinity(dx)) dx = 0;
+        if (double.IsNaN(dy) || double.IsInfinity(dy)) dy = 0;
+
+        var resizeLeft = handle is StickerResizeHandle.Left or StickerResizeHandle.TopLeft or StickerResizeHandle.BottomLeft;
+        var resizeRight = handle is StickerResizeHandle.Right or StickerResizeHandle.TopRight or StickerResizeHandle.BottomRight;
+        var resizeTop = handle is StickerResizeHandle.Top or StickerResizeHandle.TopLeft or StickerResizeHandle.TopRight;
+        var resizeBottom = handle is StickerResizeHandle.Bottom or StickerResizeHandle.BottomLeft or StickerResizeHandle.BottomRight;
+
+        var width = start.Width + (resizeRight ? dx : 0) - (resizeLeft ? dx : 0);
+        var height = start.Height + (resizeBottom ? dy : 0) - (resizeTop ? dy : 0);
+        var aspect = ClampAspect(start.Height / Math.Max(1, start.Width));
+
+        if (keepAspect)
+        {
+            var horizontalOnly = (resizeLeft || resizeRight) && !resizeTop && !resizeBottom;
+            var verticalOnly = (resizeTop || resizeBottom) && !resizeLeft && !resizeRight;
+
+            if (horizontalOnly)
+            {
+                width = ClampResizeWidth(width);
+                height = ClampResizeHeight(width * aspect);
+            }
+            else if (verticalOnly)
+            {
+                height = ClampResizeHeight(height);
+                width = ClampResizeWidth(height / aspect);
+            }
+            else
+            {
+                // 角点：看哪个方向的变化更明显，用它当驱动轴
+                var widthChange = Math.Abs(width - start.Width) / Math.Max(1, start.Width);
+                var heightChange = Math.Abs(height - start.Height) / Math.Max(1, start.Height);
+                if (widthChange >= heightChange)
+                {
+                    width = ClampResizeWidth(width);
+                    height = ClampResizeHeight(width * aspect);
+                }
+                else
+                {
+                    height = ClampResizeHeight(height);
+                    width = ClampResizeWidth(height / aspect);
+                }
+            }
+        }
+        else
+        {
+            width = ClampResizeWidth(width);
+            height = ClampResizeHeight(height);
+        }
+
+        var left = resizeLeft ? start.Left + start.Width - width : start.Left;
+        var top = resizeTop ? start.Top + start.Height - height : start.Top;
+        return new StickerBounds(left, top, width, height);
     }
 
-    /// <summary>右下角拖拽的结果（左上角不变）。</summary>
-    public static StickerBounds ResizeFromCorner(
-        StickerBounds start, double dx, double dy, Rect screenBounds)
+    /// <summary>拉伸时的宽度夹取：负数 / 0 都是「拖过头」→ 直接贴到最小宽度（不是回退默认 320）。</summary>
+    private static double ClampResizeWidth(double width)
     {
-        var width = ClampWidth(start.Width + WidthDeltaForCorner(dx, dy, start.Width, start.Height));
-        var ratio = width / Math.Max(0.01, start.Width);
-        var height = Math.Max(1, start.Height * ratio);
-        return ClampToBounds(new StickerBounds(start.Left, start.Top, width, height), screenBounds);
+        if (double.IsNaN(width)) return MinWidth;
+        return Math.Clamp(width, MinWidth, MaxWidth);
     }
 
-    /// <summary>把宽度改成 <paramref name="width"/>，中心点不动（右键菜单「重置缩放」用）。</summary>
+    /// <summary>拉伸时的高度夹取：负数 / 0 都贴到最小高度。</summary>
+    private static double ClampResizeHeight(double height)
+    {
+        if (double.IsNaN(height)) return MinHeight;
+        return Math.Clamp(height, MinHeight, MaxHeight);
+    }
+
+    /// <summary>把宽度改成 <paramref name="width"/>，中心点不动（右键菜单「恢复默认大小」用）。</summary>
     public static StickerBounds ResetWidthKeepingCenter(
         StickerBounds current, double width, double aspect, Rect screenBounds)
     {

@@ -1,8 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- 「屏幕贴纸」：把图片贴到桌面上（每张一个透明无边框窗口），可自由移动 / 滚轮缩放 /
+  <!-- 「屏幕贴纸」：把图片贴到桌面上（每张一个透明无边框窗口），可自由移动 / 缩放 /
        调层级 / 单独强制置顶；工具页负责选图、最近使用与贴纸管理。
-       只依赖 Core（配置 / MVVM / 最近列表轮子），不引任何第三方包。 -->
+       依赖 Core（配置 / MVVM / 最近列表轮子）；GIF / 动图 WebP 的逐帧解码用 SkiaSharp
+       （MIT；Windows 自带的 WIC 不解 WebP、也解不了部分帧尺寸不一致的 GIF）。 -->
   <PropertyGroup>
     <TargetFramework>net9.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
@@ -12,6 +13,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+    <PackageReference Include="SkiaSharp" Version="2.88.9" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.9" />
   </ItemGroup>
 
 </Project>

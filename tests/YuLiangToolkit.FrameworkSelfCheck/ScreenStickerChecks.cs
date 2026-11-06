@@ -1,7 +1,10 @@
+using System.Buffers.Binary;
+using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using SkiaSharp;
 using YuLiangToolkit.Core.Maintenance;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Core.Tools;
@@ -52,6 +55,7 @@ internal static class ScreenStickerChecks
         CheckClipboard(fn);
         CheckDropImages(fn);
         CheckGifPlayback(fn);
+        CheckMediaFormats(fn);
         CheckSerialization(fn);
     }
 
@@ -456,25 +460,32 @@ internal static class ScreenStickerChecks
             clampedPlacement.ToString());
 
         var screen = new Rect(0, 0, 1920, 1080);
-        var offscreen = StickerGeometry.NormalizeStored(-5000, 5000, 320, 0.5, screen);
+        var offscreen = StickerGeometry.NormalizeStoredByAspect(-5000, 5000, 320, 0.5, screen);
         check("[屏幕贴纸] NormalizeStored：屏幕外的旧位置被拉回，至少留 48 可见",
             Near(offscreen.Width, 320) && Near(offscreen.Height, 160)
             && Near(offscreen.Left, -272) && Near(offscreen.Top, 1032)
             && VisibleEnough(offscreen, screen),
             offscreen.ToString());
 
-        var broken = StickerGeometry.NormalizeStored(double.NaN, double.NaN, 9999, 1, screen);
+        var broken = StickerGeometry.NormalizeStoredByAspect(double.NaN, double.NaN, 9999, 1, screen);
         check("[屏幕贴纸] NormalizeStored：NaN 位置 / 超大宽度也变成合法坐标与尺寸",
             Near(broken.Width, StickerGeometry.MaxWidth) && Near(broken.Height, StickerGeometry.MaxWidth)
             && !double.IsNaN(broken.Left) && !double.IsNaN(broken.Top)
             && VisibleEnough(broken, screen),
             broken.ToString());
 
-        var negativeWidth = StickerGeometry.NormalizeStored(100, 100, -50, 0.5, screen);
+        var negativeWidth = StickerGeometry.NormalizeStoredByAspect(100, 100, -50, 0.5, screen);
         check("[屏幕贴纸] NormalizeStored：负数宽度回退默认 320，并按比例算高度",
             Near(negativeWidth.Width, 320) && Near(negativeWidth.Height, 160)
             && Near(negativeWidth.Left, 100) && Near(negativeWidth.Top, 100),
             negativeWidth.ToString());
+
+        // 自由拉伸过的贴纸：宽高都按配置保留（不能按图片原始比例强行改回去）
+        var stretched = StickerGeometry.NormalizeStored(100, 200, 500, 120, screen);
+        check("[屏幕贴纸] NormalizeStored：自由拉伸过的宽高按配置保留（不强行恢复图片比例）",
+            Near(stretched.Width, 500) && Near(stretched.Height, 120)
+            && Near(stretched.Left, 100) && Near(stretched.Top, 200),
+            stretched.ToString());
     }
 
     // ---------------------------------------------------------------- 几何：以鼠标为锚点缩放 / 滚轮倍率
@@ -550,46 +561,60 @@ internal static class ScreenStickerChecks
     {
         var screen = new Rect(0, 0, 1920, 1080);
 
-        check("[屏幕贴纸] WidthDeltaForCorner：横向位移主导时直接用 dx",
-            Near(StickerGeometry.WidthDeltaForCorner(40, 10, 200, 100), 40)
-            && Near(StickerGeometry.WidthDeltaForCorner(-40, 10, 200, 100), -40)
-            && Near(StickerGeometry.WidthDeltaForCorner(10, 10, 200, 100), 10),
-            $"{StickerGeometry.WidthDeltaForCorner(40, 10, 200, 100)} / "
-            + $"{StickerGeometry.WidthDeltaForCorner(-40, 10, 200, 100)}");
-
-        check("[屏幕贴纸] WidthDeltaForCorner：竖向位移主导时按宽 / 高折算成横向增量",
-            Near(StickerGeometry.WidthDeltaForCorner(5, 20, 200, 100), 40)
-            && Near(StickerGeometry.WidthDeltaForCorner(-5, -20, 200, 100), -40)
-            && Near(StickerGeometry.WidthDeltaForCorner(1, 10, 200, 0), 0)
-            && Near(StickerGeometry.WidthDeltaForCorner(1, 10, 200, double.NaN), 0),
-            $"{StickerGeometry.WidthDeltaForCorner(5, 20, 200, 100)} / "
-            + $"{StickerGeometry.WidthDeltaForCorner(1, 10, 200, 0)}");
-
         var start = new StickerBounds(100, 100, 200, 100);
-        var resized = StickerGeometry.ResizeFromCorner(start, 50, 10, screen);
-        check("[屏幕贴纸] ResizeFromCorner：左上角不动、宽度随横向拖动变化、高度等比",
-            Near(resized.Left, 100) && Near(resized.Top, 100)
-            && Near(resized.Width, 250) && Near(resized.Height, 125),
-            resized.ToString());
 
-        var resizedVertical = StickerGeometry.ResizeFromCorner(start, 0, 50, screen);
-        check("[屏幕贴纸] ResizeFromCorner：纯竖向拖动也能等比缩放",
-            Near(resizedVertical.Left, 100) && Near(resizedVertical.Top, 100)
-            && Near(resizedVertical.Width, 300) && Near(resizedVertical.Height, 150),
-            resizedVertical.ToString());
+        // 自由拉伸：只改被拖的那条边 / 那个角，另一方向不动（图片会被拉长 / 压扁）
+        var rightFree = StickerGeometry.ResizeByHandle(start, StickerResizeHandle.Right, 50, 999, keepAspect: false);
+        var leftFree = StickerGeometry.ResizeByHandle(start, StickerResizeHandle.Left, -50, 999, keepAspect: false);
+        var bottomFree = StickerGeometry.ResizeByHandle(start, StickerResizeHandle.Bottom, 999, 100, keepAspect: false);
+        var topFree = StickerGeometry.ResizeByHandle(start, StickerResizeHandle.Top, 999, 50, keepAspect: false);
+        check("[屏幕贴纸] 自由拉伸四边：只改一个方向，拖左边 / 上边时对边固定",
+            Near(rightFree.Width, 250) && Near(rightFree.Height, 100) && Near(rightFree.Left, 100)
+            && Near(leftFree.Width, 250) && Near(leftFree.Left, 50) && Near(leftFree.Top, 100)
+            && Near(bottomFree.Height, 200) && Near(bottomFree.Width, 200) && Near(bottomFree.Top, 100)
+            && Near(topFree.Height, 50) && Near(topFree.Top, 150) && Near(topFree.Left, 100),
+            $"右={rightFree} 左={leftFree} 下={bottomFree} 上={topFree}");
 
-        var resizedLarge = StickerGeometry.ResizeFromCorner(start, 100000, 0, screen);
-        // 起点宽 200，拖 −152 → 48（正好到最小宽度）；再往左拖属于非法宽度，ClampWidth 会回退默认 320。
-        var resizedSmall = StickerGeometry.ResizeFromCorner(start, -152, 0, screen);
-        var resizedNegative = StickerGeometry.ResizeFromCorner(start, -100000, 0, screen);
-        check("[屏幕贴纸] ResizeFromCorner：宽度夹到 48 ~ 4096，图片比例保持（非法宽度回退默认）",
-            Near(resizedLarge.Width, StickerGeometry.MaxWidth)
-            && Near(resizedLarge.Height, StickerGeometry.MaxWidth / 2)
-            && Near(resizedSmall.Width, StickerGeometry.MinWidth) && Near(resizedSmall.Height, 24)
-            && Near(resizedNegative.Width, ScreenStickerConfig.DefaultStickerWidth)
-            && Near(resizedNegative.Height, 160),
-            $"{resizedLarge.Width}×{resizedLarge.Height} / {resizedSmall.Width}×{resizedSmall.Height} / "
-            + $"{resizedNegative.Width}×{resizedNegative.Height}");
+        var cornerFree = StickerGeometry.ResizeByHandle(start, StickerResizeHandle.BottomRight, 50, 50, keepAspect: false);
+        check("[屏幕贴纸] 自由拉伸四角：宽高各自变化，左上角固定",
+            Near(cornerFree.Width, 250) && Near(cornerFree.Height, 150)
+            && Near(cornerFree.Left, 100) && Near(cornerFree.Top, 100),
+            cornerFree.ToString());
+
+        // 按住 Shift：保持按下时的宽高比。左右边按宽度驱动、上下边按高度驱动
+        var rightShift = StickerGeometry.ResizeByHandle(start, StickerResizeHandle.Right, 100, 0, keepAspect: true);
+        check("[屏幕贴纸] Shift 等比拉伸：左右边按宽度驱动，高度跟着比例走",
+            Near(rightShift.Width, 300) && Near(rightShift.Height, 150)
+            && Near(rightShift.Left, 100) && Near(rightShift.Top, 100),
+            rightShift.ToString());
+
+        var bottomShift = StickerGeometry.ResizeByHandle(start, StickerResizeHandle.Bottom, 0, 100, keepAspect: true);
+        check("[屏幕贴纸] Shift 等比拉伸：上下边按高度驱动，宽度跟着比例走",
+            Near(bottomShift.Height, 200) && Near(bottomShift.Width, 400)
+            && Near(bottomShift.Left, 100) && Near(bottomShift.Top, 100),
+            bottomShift.ToString());
+
+        var cornerShift = StickerGeometry.ResizeByHandle(start, StickerResizeHandle.BottomRight, 200, 50, keepAspect: true);
+        check("[屏幕贴纸] Shift 等比拉伸：角点取变化更明显的轴做驱动，比例不变",
+            Near(cornerShift.Width, 400) && Near(cornerShift.Height, 200)
+            && Near(cornerShift.Left, 100) && Near(cornerShift.Top, 100),
+            cornerShift.ToString());
+
+        var clampLarge = StickerGeometry.ResizeByHandle(start, StickerResizeHandle.Right, 100000, 0, keepAspect: false);
+        var clampSmall = StickerGeometry.ResizeByHandle(start, StickerResizeHandle.Right, -100000, 0, keepAspect: false);
+        var clampTall = StickerGeometry.ResizeByHandle(start, StickerResizeHandle.Bottom, 0, 100000, keepAspect: false);
+        check("[屏幕贴纸] 拉伸夹取：宽度 48 ~ 4096、高度 16 ~ 4096（不会缩成线 / 拉到离谱）",
+            Near(clampLarge.Width, StickerGeometry.MaxWidth)
+            && Near(clampSmall.Width, StickerGeometry.MinWidth)
+            && Near(clampTall.Height, StickerGeometry.MaxHeight),
+            $"{clampLarge} / {clampSmall} / {clampTall}");
+
+        var noHandle = StickerGeometry.ResizeByHandle(start, StickerResizeHandle.None, 100, 100, keepAspect: false);
+        check("[屏幕贴纸] 拉伸：手柄为 None 时原样返回，NaN 位移按 0 处理",
+            StickerGeometry.NearlyEqual(noHandle, start)
+            && StickerGeometry.NearlyEqual(
+                StickerGeometry.ResizeByHandle(start, StickerResizeHandle.Right, double.NaN, 0, false), start),
+            $"{noHandle}");
 
         var centerCurrent = new StickerBounds(100, 100, 200, 100);
         var reset = StickerGeometry.ResetWidthKeepingCenter(centerCurrent, 320, 0.5, screen);
@@ -1192,6 +1217,231 @@ internal static class ScreenStickerChecks
         bitmap.WritePixels(new Int32Rect(0, 0, width, height), pixels, width * 4, 0);
         bitmap.Freeze();
         return bitmap;
+    }
+
+    // ---------------------------------------------------------------- APNG / WebP / 套壳格式
+
+    private static void CheckMediaFormats(CheckFn check)
+    {
+        var directory = SelfCheckScratch.MakeDirectory("screen-sticker-media");
+        var apngPath = Path.Combine(directory, "anim.png");
+        var webpPath = Path.Combine(directory, "still.webp");
+        var wrappedGifPath = Path.Combine(directory, "wrapped.gif");
+
+        StickerMedia? apngMedia = null;
+        StickerMedia? webpMedia = null;
+        string? apngError = null;
+        string? webpError = null;
+        var apngWritten = false;
+        var webpWritten = false;
+        var apngFrameColors = new List<(byte B, byte G, byte R, byte A)>();
+        string? wrappedError = null;
+        StickerMedia? wrappedMedia = null;
+
+        var failure = RunOnSta(() =>
+        {
+            apngWritten = TryWriteApng(apngPath);
+            webpWritten = TryWriteStillWebp(webpPath);
+            apngMedia = StickerMedia.Load(apngPath, out apngError);
+            webpMedia = StickerMedia.Load(webpPath, out webpError);
+
+            if (apngMedia?.Animation is { } animation)
+            {
+                foreach (var frame in animation.Frames) apngFrameColors.Add(CenterPixel(frame));
+            }
+
+            // 套壳：把刚才的 APNG 复制成 .gif 后缀，StickerMedia 必须按真实内容识别成 APNG
+            if (apngWritten)
+            {
+                try
+                {
+                    File.Copy(apngPath, wrappedGifPath, overwrite: true);
+                    wrappedMedia = StickerMedia.Load(wrappedGifPath, out wrappedError);
+                }
+                catch (Exception ex)
+                {
+                    wrappedError = ex.Message;
+                }
+            }
+        });
+
+        check("[屏幕贴纸] APNG / WebP 素材在独立 STA 线程里生成并加载，没有抛异常",
+            failure is null, failure?.Message ?? "ok");
+
+        check("[屏幕贴纸] APNG（2 帧、100/200ms）：识别为动画，帧数 / 延时 / 比例正确",
+            apngWritten
+            && apngMedia is { IsAnimated: true, Warning: null }
+            && apngMedia.Animation?.FrameCount == 2
+            && apngMedia.Animation.DelaysMs.SequenceEqual(new[] { 100, 200 })
+            && apngError is null
+            && Near(apngMedia.Aspect, 4.0 / 6.0),
+            $"written={apngWritten} frames={apngMedia?.Animation?.FrameCount} " +
+            $"delays={(apngMedia?.Animation is { } a ? string.Join(",", a.DelaysMs) : "null")} error={apngError ?? "null"}");
+
+        check("[屏幕贴纸] APNG 合成：第一帧红、第二帧蓝（blend / 整幅画面都对）",
+            apngFrameColors.Count == 2
+            && apngFrameColors[0].R > 200 && apngFrameColors[0].G < 80 && apngFrameColors[0].B < 80
+            && apngFrameColors[1].B > 200 && apngFrameColors[1].R < 80
+            && apngFrameColors.All(color => color.A == 255),
+            string.Join(" / ", apngFrameColors.Select(color => $"{color.R},{color.G},{color.B},{color.A}")));
+
+        check("[屏幕贴纸] 静态 WebP：走 Skia 解码，识别为静态图、能拿到画面与比例",
+            webpWritten
+            && webpMedia is { IsAnimated: false, Still: not null }
+            && webpError is null
+            && Near(webpMedia.Aspect, 4.0 / 6.0),
+            $"written={webpWritten} error={webpError ?? "null"}");
+
+        check("[屏幕贴纸] 套壳格式：APNG 改名成 .gif 仍按真实内容解码（不只看后缀）",
+            wrappedMedia is { IsAnimated: true }
+            && wrappedMedia.Animation?.FrameCount == 2
+            && wrappedError is null,
+            $"error={wrappedError ?? "null"}");
+    }
+
+    /// <summary>自检用：写一张 2 帧 APNG（红/蓝，100ms / 200ms），验证解码器不依赖 Skia 的 APNG 支持。</summary>
+    private static bool TryWriteApng(string path)
+    {
+        try
+        {
+            var pngA = EncodePng(CreateSolidBitmap(Colors.Red));
+            var pngB = EncodePng(CreateSolidBitmap(Colors.Blue));
+            var (ihdrA, idatsA) = SplitPng(pngA);
+            var (_, idatsB) = SplitPng(pngB);
+            if (ihdrA.Length == 0) return false;
+
+            using var output = new MemoryStream();
+            output.Write(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
+            WritePngChunk(output, "IHDR", ihdrA);
+
+            var actl = new byte[8];
+            BinaryPrimitives.WriteUInt32BigEndian(actl, 2);
+            BinaryPrimitives.WriteUInt32BigEndian(actl.AsSpan(4), 0);
+            WritePngChunk(output, "acTL", actl);
+
+            WritePngChunk(output, "fcTL", FrameControl(0, 6, 4, 10, 100, 0, 0));
+            foreach (var idat in idatsA) WritePngChunk(output, "IDAT", idat);
+
+            WritePngChunk(output, "fcTL", FrameControl(1, 6, 4, 20, 100, 0, 0));
+            var sequence = 2;
+            foreach (var idat in idatsB)
+            {
+                var frameData = new byte[4 + idat.Length];
+                BinaryPrimitives.WriteUInt32BigEndian(frameData, (uint)sequence++);
+                idat.CopyTo(frameData, 4);
+                WritePngChunk(output, "fdAT", frameData);
+            }
+
+            WritePngChunk(output, "IEND", Array.Empty<byte>());
+            File.WriteAllBytes(path, output.ToArray());
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>自检用：Skia 编码一张很小的静态 WebP。</summary>
+    private static bool TryWriteStillWebp(string path)
+    {
+        try
+        {
+            using var bitmap = new SKBitmap(6, 4, SKColorType.Bgra8888, SKAlphaType.Unpremul);
+            bitmap.Erase(new SKColor(40, 90, 220));
+            using var image = SKImage.FromBitmap(bitmap);
+            using var data = image.Encode(SKEncodedImageFormat.Webp, 80);
+            if (data.Size <= 0) return false;
+            File.WriteAllBytes(path, data.ToArray());
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static byte[] EncodePng(BitmapSource bitmap)
+    {
+        using var stream = new MemoryStream();
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        encoder.Save(stream);
+        return stream.ToArray();
+    }
+
+    private static (byte[] Ihdr, List<byte[]> Idats) SplitPng(byte[] png)
+    {
+        var ihdr = Array.Empty<byte>();
+        var idats = new List<byte[]>();
+        var index = 8;
+        while (index + 8 <= png.Length)
+        {
+            var length = BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(index));
+            if (length < 0 || index + 12 + length > png.Length) break;
+            var type = Encoding.ASCII.GetString(png, index + 4, 4);
+            var data = png.AsSpan(index + 8, length).ToArray();
+            if (type == "IHDR") ihdr = data;
+            else if (type == "IDAT") idats.Add(data);
+            index += 12 + length;
+        }
+        return (ihdr, idats);
+    }
+
+    private static byte[] FrameControl(int sequence, int width, int height, int delayNum, int delayDen, byte dispose, byte blend)
+    {
+        var data = new byte[26];
+        BinaryPrimitives.WriteUInt32BigEndian(data, (uint)sequence);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(4), (uint)width);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(8), (uint)height);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(12), 0);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(16), 0);
+        BinaryPrimitives.WriteUInt16BigEndian(data.AsSpan(20), (ushort)delayNum);
+        BinaryPrimitives.WriteUInt16BigEndian(data.AsSpan(22), (ushort)delayDen);
+        data[24] = dispose;
+        data[25] = blend;
+        return data;
+    }
+
+    private static void WritePngChunk(Stream output, string type, byte[] data)
+    {
+        var length = new byte[4];
+        BinaryPrimitives.WriteInt32BigEndian(length, data.Length);
+        output.Write(length);
+        var typeBytes = Encoding.ASCII.GetBytes(type);
+        output.Write(typeBytes);
+        output.Write(data);
+
+        var crcInput = new byte[4 + data.Length];
+        typeBytes.CopyTo(crcInput, 0);
+        data.CopyTo(crcInput, 4);
+        var crc = new byte[4];
+        BinaryPrimitives.WriteUInt32BigEndian(crc, Crc32(crcInput));
+        output.Write(crc);
+    }
+
+    private static uint Crc32(ReadOnlySpan<byte> data)
+    {
+        var crc = 0xFFFFFFFFu;
+        foreach (var value in data)
+        {
+            crc ^= value;
+            for (var bit = 0; bit < 8; bit++)
+            {
+                crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320u : crc >> 1;
+            }
+        }
+        return ~crc;
+    }
+
+    private static (byte B, byte G, byte R, byte A) CenterPixel(BitmapSource source)
+    {
+        var converted = new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+        var stride = converted.PixelWidth * 4;
+        var pixels = new byte[stride * converted.PixelHeight];
+        converted.CopyPixels(pixels, stride, 0);
+        var index = ((converted.PixelHeight / 2) * converted.PixelWidth + converted.PixelWidth / 2) * 4;
+        return (pixels[index], pixels[index + 1], pixels[index + 2], pixels[index + 3]);
     }
 
     // ---------------------------------------------------------------- 配置序列化

@@ -21,21 +21,28 @@
     <!-- 说明：每张贴纸 = 一个独立透明无边框窗口（和 Live2D 桌宠同一个思路，见 PetWindow）。
          窗口大小 = 图片显示大小（不留边距，所以拖到屏幕边缘不会有一圈透明死区），
          背景全透明 → PNG 的透明部分也透出桌面；整块矩形都能点（包括图片的透明像素）。
-         图片本身不参与命中测试，鼠标事件统一由 Root 网格处理（拖动 / 滚轮缩放）。 -->
+         图片本身不参与命中测试：鼠标事件统一由 Root 网格处理（拖动 / 四边四角拉伸 / 滚轮缩放）。 -->
 
     <Window.ContextMenu>
-        <!-- 右键菜单：层级 / 强制置顶 / 重置大小 / 居中 / 打开所在文件夹 / 关闭这张。
-             独立窗口不套 App.xaml 里的样式，这里显式用主题 token（DynamicResource）保持四套主题协调。 -->
-        <ContextMenu x:Name="StickerMenu"
-                     Background="{DynamicResource CardBackgroundBrush}"
-                     Foreground="{DynamicResource TextPrimaryBrush}"
-                     BorderBrush="{DynamicResource BorderBrush}"
+        <!-- 右键菜单：全部用 App.xaml 的深色菜单模板（DarkContextMenuStyle + 隐式菜单项样式），
+             否则 WPF 默认 MenuItem 模板会在左边留一条白色图标列（见 AGENTS.md 硬性规则 13）。 -->
+        <ContextMenu x:Name="StickerMenu" Style="{StaticResource DarkContextMenuStyle}"
                      Opened="OnMenuOpened" Closed="OnMenuClosed">
+            <ContextMenu.Resources>
+                <Style TargetType="MenuItem" BasedOn="{StaticResource DarkMenuLeafItemStyle}" />
+                <Style TargetType="Separator" BasedOn="{StaticResource DarkMenuSeparatorStyle}" />
+            </ContextMenu.Resources>
+
             <MenuItem x:Name="MenuItemTopmost" Header="强制置顶（覆盖其它窗口）" IsCheckable="True"
-                      Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuTopmostClick"
+                      Click="OnMenuTopmostClick"
                       ToolTip="打开后这张贴纸会一直盖在普通窗口上面；再点一次取消" />
-            <MenuItem x:Name="MenuItemGifSpeed" Header="GIF 播放速度" Foreground="{DynamicResource TextPrimaryBrush}"
-                      ToolTip="只对会动的 GIF 有效；静态图这一项是灰的">
+
+            <MenuItem x:Name="MenuItemGifSpeed" Header="动图播放速度"
+                      Style="{StaticResource DarkMenuParentItemStyle}"
+                      ToolTip="对 GIF / APNG / 动图 WebP 有效；静态图这一项是灰的">
+                <MenuItem.Resources>
+                    <Style TargetType="MenuItem" BasedOn="{StaticResource DarkMenuLeafItemStyle}" />
+                </MenuItem.Resources>
                 <MenuItem x:Name="MenuItemGifSpeed025" Header="0.25×" Tag="0.25" IsCheckable="True"
                           Click="OnMenuGifSpeedClick" ToolTip="四分之一速（很慢）" />
                 <MenuItem x:Name="MenuItemGifSpeed050" Header="0.5×" Tag="0.5" IsCheckable="True"
@@ -53,64 +60,48 @@
                 <MenuItem x:Name="MenuItemGifSpeed300" Header="3×" Tag="3" IsCheckable="True"
                           Click="OnMenuGifSpeedClick" />
             </MenuItem>
-            <MenuItem x:Name="MenuItemReset" Header="恢复默认" Foreground="{DynamicResource TextPrimaryBrush}"
+
+            <MenuItem x:Name="MenuItemReset" Header="恢复默认"
+                      Style="{StaticResource DarkMenuParentItemStyle}"
                       ToolTip="把这张贴纸恢复成刚贴上去时的默认状态">
+                <MenuItem.Resources>
+                    <Style TargetType="MenuItem" BasedOn="{StaticResource DarkMenuLeafItemStyle}" />
+                    <Style TargetType="Separator" BasedOn="{StaticResource DarkMenuSeparatorStyle}" />
+                </MenuItem.Resources>
                 <MenuItem Header="恢复默认大小（图片原始尺寸）" Click="OnMenuResetSizeClick"
                           ToolTip="按图片自身像素尺寸显示；超大图会缩到屏幕内，中心点不动" />
                 <MenuItem x:Name="MenuItemResetSpeed" Header="恢复默认速度（跟随设置）" Click="OnMenuResetSpeedClick"
-                          ToolTip="GIF 播放速度回到「设置 → GIF 默认播放速度」；静态图不可用" />
+                          ToolTip="动图播放速度回到「设置 → 动图默认播放速度」；静态图不可用" />
                 <Separator />
                 <MenuItem Header="全部恢复默认（大小 + 速度 + 置顶）" Click="OnMenuResetDefaultsClick"
-                          ToolTip="大小 / GIF 速度 / 置顶一起恢复；位置不动" />
+                          ToolTip="大小 / 速度 / 置顶一起恢复；位置不动" />
             </MenuItem>
+
             <Separator />
-            <MenuItem Header="层级：上移一层" Foreground="{DynamicResource TextPrimaryBrush}"
-                      Click="OnMenuMoveUpClick" />
-            <MenuItem Header="层级：下移一层" Foreground="{DynamicResource TextPrimaryBrush}"
-                      Click="OnMenuMoveDownClick" />
-            <MenuItem Header="层级：置于最上层" Foreground="{DynamicResource TextPrimaryBrush}"
-                      Click="OnMenuMoveToTopClick" />
-            <MenuItem Header="层级：置于最下层" Foreground="{DynamicResource TextPrimaryBrush}"
-                      Click="OnMenuMoveToBottomClick" />
+            <MenuItem Header="层级：上移一层" Click="OnMenuMoveUpClick" />
+            <MenuItem Header="层级：下移一层" Click="OnMenuMoveDownClick" />
+            <MenuItem Header="层级：置于最上层" Click="OnMenuMoveToTopClick" />
+            <MenuItem Header="层级：置于最下层" Click="OnMenuMoveToBottomClick" />
             <Separator />
-            <MenuItem Header="居中显示" Foreground="{DynamicResource TextPrimaryBrush}"
-                      Click="OnMenuCenterClick" />
+            <MenuItem Header="居中显示" Click="OnMenuCenterClick" />
             <Separator />
-            <MenuItem Header="打开图片所在文件夹" Foreground="{DynamicResource TextPrimaryBrush}"
-                      Click="OnMenuRevealClick" />
-            <MenuItem Header="把主窗口叫到前面（管理贴纸）" Foreground="{DynamicResource TextPrimaryBrush}"
-                      Click="OnMenuOpenToolPageClick"
+            <MenuItem Header="打开图片所在文件夹" Click="OnMenuRevealClick" />
+            <MenuItem Header="把主窗口叫到前面（管理贴纸）" Click="OnMenuOpenToolPageClick"
                       ToolTip="贴纸管理页在侧边栏「桌面 → 屏幕贴纸」" />
             <Separator />
-            <MenuItem Header="关闭这张贴纸" Foreground="{DynamicResource TextPrimaryBrush}"
-                      Click="OnMenuCloseClick" />
+            <MenuItem Header="关闭这张贴纸" Click="OnMenuCloseClick" />
         </ContextMenu>
     </Window.ContextMenu>
 
     <Grid x:Name="Root" Background="Transparent">
-        <!-- 图片：Stretch=Fill（窗口宽高已经按图片比例算好，Fill 不会变形，还能避免 Uniform 时
-             亚像素取整留下一条透明缝）；高画质缩放保证缩小后不糊。 -->
+        <!-- 图片：Stretch=Fill。窗口默认按图片比例，但允许用户拖四边 / 四角自由拉伸；
+             自由拉伸后窗口比例可以和图不同，所以这里必须 Fill（Uniform 会留边）。 -->
         <Image x:Name="Picture" Stretch="Fill" IsHitTestVisible="False"
                RenderOptions.BitmapScalingMode="HighQuality" />
 
-        <!-- 悬浮提示框：只在鼠标进入时出现，告诉用户「这里可以拖 / 可以滚轮缩放」；
+        <!-- 悬浮提示框：只在鼠标进入 / 靠近边缘时出现（边缘会同时换 ↔ ↕ 等光标）；
              不参与命中测试，不影响拖动。 -->
         <Border x:Name="HoverFrame" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1.5"
                 CornerRadius="3" IsHitTestVisible="False" Visibility="Collapsed" />
-
-        <!-- 右下角缩放手柄：鼠标进入贴纸时出现，按住拖 = 等比缩放（左上角不动）。 -->
-        <Thumb x:Name="ResizeGrip" Width="18" Height="18" HorizontalAlignment="Right" VerticalAlignment="Bottom"
-               Cursor="SizeNWSE" Visibility="Collapsed"
-               DragStarted="OnGripDragStarted" DragDelta="OnGripDragDelta" DragCompleted="OnGripDragCompleted">
-            <Thumb.Template>
-                <ControlTemplate TargetType="Thumb">
-                    <Grid Width="18" Height="18" Background="Transparent">
-                        <Path Data="M 12,18 L 18,12 L 18,18 Z" Fill="{DynamicResource AccentBrush}" Opacity="0.9" />
-                        <Path Data="M 6,18 L 18,6" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.4"
-                              Opacity="0.55" />
-                    </Grid>
-                </ControlTemplate>
-            </Thumb.Template>
-        </Thumb>
     </Grid>
 </Window>

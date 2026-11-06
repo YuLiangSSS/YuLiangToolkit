@@ -717,7 +717,7 @@ public sealed class ScreenStickerViewModel : ToolViewModelBase
 
         var count = Session.ResetAllStickerSpeeds();
         RefreshStickers();
-        StatusText = $"已把 {count} 张贴纸的 GIF 播放速度恢复默认";
+        StatusText = $"已把 {count} 张贴纸的动图播放速度恢复默认";
         Log(StatusText);
     }
 
@@ -732,7 +732,7 @@ public sealed class ScreenStickerViewModel : ToolViewModelBase
 
         var confirm = MessageBox.Show(
             $"确定把全部 {count} 张贴纸恢复默认？\n\n"
-            + "大小 / GIF 播放速度 / 置顶都会恢复成默认，图片和当前位置不变。",
+            + "大小 / 动图播放速度 / 置顶都会恢复成默认，图片和当前位置不变。",
             "恢复默认贴纸",
             MessageBoxButton.OKCancel,
             MessageBoxImage.Question);

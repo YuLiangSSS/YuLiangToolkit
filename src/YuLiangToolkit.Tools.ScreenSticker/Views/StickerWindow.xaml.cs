@@ -3,7 +3,6 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -48,7 +47,8 @@ public partial class StickerWindow : Window
     private double _dragStartTop;
 
     private bool _resizing;
-    private StickerBounds _resizeStart;
+    private StickerResizeHandle _resizeHandle;
+    private StickerBounds _resizeStartBounds;
     private Point _resizeStartCursor;
 
     private bool _closingForShutdown;
@@ -67,16 +67,19 @@ public partial class StickerWindow : Window
         _aspect = media.Aspect;
         Picture.Source = media.Still;
 
-        // GIF 帧播放器：一个窗口一个定时器，按当前帧的延时 × 播放速度切 Image.Source。
+        // GIF / APNG / WebP 帧播放器：一个窗口一个定时器，按当前帧的延时 × 播放速度切 Image.Source。
         _frameTimer = new DispatcherTimer(DispatcherPriority.Render)
         {
             Interval = TimeSpan.FromMilliseconds(StickerTiming.DefaultFrameDelayMs),
         };
         _frameTimer.Tick += OnAnimationTick;
 
-        // 恢复：尺寸合法 + 至少留一角在屏幕里（显示器拔掉 / 分辨率变小也不会「丢」）。
+        // 恢复：宽高都用配置里存的值（自由拉伸过的比例要保留），再拉回可见区域。
+        var storedHeight = double.IsNaN(entry.Height) || double.IsInfinity(entry.Height) || entry.Height <= 0
+            ? entry.Width * _aspect
+            : entry.Height;
         var bounds = StickerGeometry.NormalizeStored(
-            entry.Left, entry.Top, entry.Width, _aspect, StickerSession.VirtualScreenBounds);
+            entry.Left, entry.Top, entry.Width, storedHeight, StickerSession.VirtualScreenBounds);
         ApplyBounds(bounds, save: false);
         Topmost = entry.Topmost;
 
@@ -87,8 +90,9 @@ public partial class StickerWindow : Window
         // 恢复 / 新增时如果尺寸是 0（老配置 / 手改坏），这里兜一下，保证窗口能正常显示。
         if (Width < StickerGeometry.MinWidth || Height <= 0)
         {
-            var fallback = StickerGeometry.FitInside(StickerSession.WorkArea, entry.Width, _aspect);
-            ApplyBounds(StickerGeometry.CenterIn(StickerSession.WorkArea, fallback.Width, fallback.Height), save: false);
+            var natural = StickerGeometry.NaturalSize(
+                StickerSession.WorkArea, media.Still.PixelWidth, media.Still.PixelHeight);
+            ApplyBounds(StickerGeometry.CenterIn(StickerSession.WorkArea, natural.Width, natural.Height), save: false);
         }
     }
 
@@ -219,15 +223,15 @@ public partial class StickerWindow : Window
     {
         try { _frameTimer.Stop(); } catch { /* 窗口已关忽略 */ }
         _frameTimer.Tick -= OnAnimationTick;
-        Picture.Source = null;   // 尽快释放动画帧（GIF 帧可能占不少内存）
+        Picture.Source = null;   // 尽快释放动画帧（GIF / APNG / WebP 帧可能占不少内存）
 
         if (_closingForShutdown) _session.NotifyWindowClosedKeepEntry(this);
         else _session.NotifyWindowClosedByUser(this);
     }
 
-    // ===================== GIF 动画 =====================
+    // ===================== 动画（GIF / APNG / WebP） =====================
 
-    /// <summary>开始播 GIF（如果这贴是静态图则什么都不做）。</summary>
+    /// <summary>开始播动图（如果这贴是静态图则什么都不做）。</summary>
     private void StartAnimation()
     {
         if (_animation is null || _animation.FrameCount <= 1) return;
@@ -261,38 +265,70 @@ public partial class StickerWindow : Window
         RestartFrameTimer();
     }
 
-    // ===================== 鼠标：拖动 / 滚轮缩放 =====================
+    // ===================== 鼠标：拖动 / 四边四角拉伸 / 滚轮缩放 =====================
 
     private void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left) return;
-        if (ResizeGrip.IsMouseOver) return;                 // 手柄自己处理
-        if (!TryGetCursorDip(out var cursor)) return;
 
+        // 靠近四边 / 四角 → 拉伸；否则拖动整个窗口
+        var handle = HitTestResizeHandle(e.GetPosition(Root));
+        if (handle != StickerResizeHandle.None && TryGetCursorDip(out var resizeCursor))
+        {
+            _resizing = true;
+            _resizeHandle = handle;
+            _resizeStartBounds = CurrentBounds;
+            _resizeStartCursor = resizeCursor;
+            CaptureMouse();
+            e.Handled = true;
+            return;
+        }
+
+        if (!TryGetCursorDip(out var cursor)) return;
         _dragging = true;
         _dragStartCursor = cursor;
         _dragStartLeft = Left;
         _dragStartTop = Top;
+        Cursor = Cursors.SizeAll;
         CaptureMouse();
         e.Handled = true;
     }
 
     private void OnMouseMove(object sender, MouseEventArgs e)
     {
-        if (!_dragging) return;
-        if (!TryGetCursorDip(out var cursor))
+        if (_resizing)
         {
-            FinishDrag();
+            ResizeToCursor();
+            e.Handled = true;
             return;
         }
 
-        Left = _dragStartLeft + (cursor.X - _dragStartCursor.X);
-        Top = _dragStartTop + (cursor.Y - _dragStartCursor.Y);
-        e.Handled = true;
+        if (_dragging)
+        {
+            if (!TryGetCursorDip(out var cursor))
+            {
+                FinishDrag();
+                return;
+            }
+
+            Left = _dragStartLeft + (cursor.X - _dragStartCursor.X);
+            Top = _dragStartTop + (cursor.Y - _dragStartCursor.Y);
+            e.Handled = true;
+            return;
+        }
+
+        UpdateHover(e.GetPosition(Root));
     }
 
     private void OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if (_resizing)
+        {
+            FinishResize();
+            e.Handled = true;
+            return;
+        }
+
         if (!_dragging) return;
         FinishDrag();
         e.Handled = true;
@@ -303,9 +339,39 @@ public partial class StickerWindow : Window
         if (!_dragging) return;
         _dragging = false;
         if (IsMouseCaptured) ReleaseMouseCapture();
+        Cursor = Cursors.Arrow;
 
         var bounds = StickerGeometry.ClampToBounds(CurrentBounds, StickerSession.VirtualScreenBounds);
         ApplyBounds(bounds);
+    }
+
+    private void ResizeToCursor()
+    {
+        if (!TryGetCursorDip(out var cursor))
+        {
+            FinishResize();
+            return;
+        }
+
+        // 默认自由拉伸（宽高独立）；按住 Shift 保持按下时的宽高比
+        var bounds = StickerGeometry.ResizeByHandle(
+            _resizeStartBounds,
+            _resizeHandle,
+            cursor.X - _resizeStartCursor.X,
+            cursor.Y - _resizeStartCursor.Y,
+            Keyboard.Modifiers.HasFlag(ModifierKeys.Shift));
+        ApplyBounds(bounds);
+    }
+
+    private void FinishResize()
+    {
+        if (!_resizing) return;
+        _resizing = false;
+        if (IsMouseCaptured) ReleaseMouseCapture();
+        Cursor = Cursors.Arrow;
+
+        // 拉伸过程中允许越出屏幕（手感连续），松手再拉回可见区域
+        ApplyBounds(StickerGeometry.ClampToBounds(CurrentBounds, StickerSession.VirtualScreenBounds));
     }
 
     private void OnMouseWheel(object sender, MouseWheelEventArgs e)
@@ -320,52 +386,54 @@ public partial class StickerWindow : Window
         e.Handled = true;
     }
 
-    private void OnMouseEnter(object sender, MouseEventArgs e) => SetHoverChrome(true);
+    private void OnMouseEnter(object sender, MouseEventArgs e)
+    {
+        SetHoverChrome(true);
+        UpdateHover(e.GetPosition(Root));
+    }
 
     private void OnMouseLeave(object sender, MouseEventArgs e)
     {
         if (_dragging || _resizing || _menuOpen) return;
         SetHoverChrome(false);
+        Cursor = Cursors.Arrow;
     }
 
     private void SetHoverChrome(bool visible)
+        => HoverFrame.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>鼠标离哪条边 / 哪个角最近（边缘 3~10px 的判区；小贴纸会自动收窄，中心仍可拖动）。</summary>
+    private StickerResizeHandle HitTestResizeHandle(Point point)
     {
-        HoverFrame.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-        ResizeGrip.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        var edge = Math.Clamp(Math.Min(10.0, Math.Min(Width, Height) / 4), 3, 10);
+        var left = point.X <= edge;
+        var right = point.X >= Width - edge;
+        var top = point.Y <= edge;
+        var bottom = point.Y >= Height - edge;
+
+        if (left && top) return StickerResizeHandle.TopLeft;
+        if (right && top) return StickerResizeHandle.TopRight;
+        if (left && bottom) return StickerResizeHandle.BottomLeft;
+        if (right && bottom) return StickerResizeHandle.BottomRight;
+        if (left) return StickerResizeHandle.Left;
+        if (right) return StickerResizeHandle.Right;
+        if (top) return StickerResizeHandle.Top;
+        if (bottom) return StickerResizeHandle.Bottom;
+        return StickerResizeHandle.None;
     }
 
-    // ===================== 右下角手柄缩放 =====================
-
-    private void OnGripDragStarted(object sender, DragStartedEventArgs e)
+    /// <summary>悬停在四边 / 四角时换成 ↔ ↕ ↖↗↙↘ 光标，并显示描边（提示可以拉伸）。</summary>
+    private void UpdateHover(Point point)
     {
-        if (!TryGetCursorDip(out var cursor)) return;
-        _resizing = true;
-        _resizeStart = CurrentBounds;
-        _resizeStartCursor = cursor;
+        Cursor = HitTestResizeHandle(point) switch
+        {
+            StickerResizeHandle.Left or StickerResizeHandle.Right => Cursors.SizeWE,
+            StickerResizeHandle.Top or StickerResizeHandle.Bottom => Cursors.SizeNS,
+            StickerResizeHandle.TopLeft or StickerResizeHandle.BottomRight => Cursors.SizeNWSE,
+            StickerResizeHandle.TopRight or StickerResizeHandle.BottomLeft => Cursors.SizeNESW,
+            _ => Cursors.Arrow,
+        };
         SetHoverChrome(true);
-        e.Handled = true;
-    }
-
-    private void OnGripDragDelta(object sender, DragDeltaEventArgs e)
-    {
-        if (!_resizing) return;
-        if (!TryGetCursorDip(out var cursor)) return;
-
-        var bounds = StickerGeometry.ResizeFromCorner(
-            _resizeStart,
-            cursor.X - _resizeStartCursor.X,
-            cursor.Y - _resizeStartCursor.Y,
-            StickerSession.VirtualScreenBounds);
-        ApplyBounds(bounds);
-        e.Handled = true;
-    }
-
-    private void OnGripDragCompleted(object sender, DragCompletedEventArgs e)
-    {
-        if (!_resizing) return;
-        _resizing = false;
-        ApplyBounds(StickerGeometry.ClampToBounds(CurrentBounds, StickerSession.VirtualScreenBounds));
-        e.Handled = true;
     }
 
     // ===================== 右键菜单 =====================
@@ -378,13 +446,13 @@ public partial class StickerWindow : Window
         MenuItemResetSpeed.IsEnabled = IsAnimated;
     }
 
-    /// <summary>右键菜单打开时刷新「GIF 播放速度」：静态图整项禁用，动画图显示当前倍速并勾选。</summary>
+    /// <summary>右键菜单打开时刷新「动图播放速度」：静态图整项禁用，动画图显示当前倍速并勾选。</summary>
     private void UpdateGifSpeedMenu()
     {
         MenuItemGifSpeed.IsEnabled = IsAnimated;
         MenuItemGifSpeed.Header = IsAnimated
-            ? $"GIF 播放速度（当前 {StickerTiming.FormatSpeed(_speed)}）"
-            : "GIF 播放速度（这是静态图）";
+            ? $"动图播放速度（当前 {StickerTiming.FormatSpeed(_speed)}）"
+            : "动图播放速度（这是静态图）";
 
         var items = new (MenuItem Item, double Speed)[]
         {
@@ -417,7 +485,6 @@ public partial class StickerWindow : Window
 
     private void OnMenuResetSpeedClick(object sender, RoutedEventArgs e)
         => _session.ResetStickerSpeed(this);
-
     private void OnMenuResetDefaultsClick(object sender, RoutedEventArgs e)
         => _session.ResetStickerDefaults(this);
 

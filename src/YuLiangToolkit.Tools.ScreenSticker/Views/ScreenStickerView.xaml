@@ -9,58 +9,12 @@
 
     <UserControl.Resources>
         <!-- 「最近使用」缩略图的右键菜单。
-             ⚠ WPF 默认的 ContextMenu / MenuItem 模板在深色主题下会留一条「图标列」白底竖条，
-             只设 Background 盖不掉，所以这里用自定义模板（与 Excel / 浏览器右键菜单同一套做法）。 -->
-        <Style x:Key="StickerContextMenuStyle" TargetType="ContextMenu">
-            <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="4" />
-            <Setter Property="HasDropShadow" Value="True" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ContextMenu">
-                        <Border Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="{DynamicResource ControlCornerRadius}"
-                                Padding="{TemplateBinding Padding}"
-                                SnapsToDevicePixels="True">
-                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
-                        </Border>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style x:Key="StickerMenuItemStyle" TargetType="MenuItem">
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-            <Setter Property="FontSize" Value="12.5" />
-            <Setter Property="Padding" Value="14,7" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="MenuItem">
-                        <Border x:Name="Row" Background="Transparent"
-                                CornerRadius="{DynamicResource ControlCornerRadius}"
-                                Padding="{TemplateBinding Padding}"
-                                SnapsToDevicePixels="True">
-                            <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
-                                              VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsHighlighted" Value="True">
-                                <Setter TargetName="Row" Property="Background"
-                                        Value="{DynamicResource CardHoverBackgroundBrush}" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.4" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
+             统一用 App.xaml 的深色菜单模板（DarkContextMenuStyle / DarkMenuLeafItemStyle）：
+             WPF 默认 ContextMenu / MenuItem 模板在深色主题下会留一条白色图标列，只设 Background 盖不掉。 -->
+        <Style x:Key="StickerContextMenuStyle" TargetType="ContextMenu"
+               BasedOn="{StaticResource DarkContextMenuStyle}" />
+        <Style x:Key="StickerMenuItemStyle" TargetType="MenuItem"
+               BasedOn="{StaticResource DarkMenuLeafItemStyle}" />
     </UserControl.Resources>
 
     <!-- 屏幕贴纸工具页（工具 Id = screen-sticker）。
@@ -303,14 +257,14 @@
                                                                Foreground="{DynamicResource TextSecondaryBrush}" />
                                                 </StackPanel>
 
-                                                <!-- GIF 倍速按钮：只在动画 GIF 行显示；点一下循环换档（右键菜单可选具体倍速） -->
+                                                <!-- 动图倍速按钮：只在 GIF / APNG / 动图 WebP 行显示；点一下循环换档（右键菜单可选具体倍速） -->
                                                 <Button Grid.Column="2" Content="{Binding SpeedText}"
                                                         Width="42" Height="24" Padding="0" FontSize="10.5"
                                                         Margin="0,0,6,0" VerticalAlignment="Center"
                                                         Style="{StaticResource SecondaryButtonStyle}"
                                                         Command="{Binding CycleSpeedCommand}"
                                                         Visibility="{Binding IsAnimated, Converter={StaticResource BoolToVis}}"
-                                                        ToolTip="GIF 播放速度：点一下换一档（0.25× ~ 3×）；也可以右键贴纸选具体倍速" />
+                                                        ToolTip="动图播放速度：点一下换一档（0.25× ~ 3×）；也可以右键贴纸选具体倍速" />
 
                                                 <CheckBox Grid.Column="3" Content="置顶" VerticalAlignment="Center"
                                                           Margin="0,0,6,0" Style="{StaticResource CheckBoxStyle}"
@@ -362,10 +316,10 @@
                                         ToolTip="把所有贴纸恢复成图片自身原始尺寸（超大图缩到屏幕内；位置不动）" />
                                 <Button Content="恢复默认速度" Style="{StaticResource SecondaryButtonStyle}" Padding="10,7"
                                         Margin="0,0,6,6" Command="{Binding ResetAllSpeedsCommand}"
-                                        ToolTip="把所有 GIF 贴纸的播放速度恢复成设置里的默认速度" />
+                                        ToolTip="把所有动图贴纸（GIF / APNG / WebP）的播放速度恢复成设置里的默认速度" />
                                 <Button Content="全部恢复默认" Style="{StaticResource SecondaryButtonStyle}" Padding="10,7"
                                         Margin="0,0,6,6" Command="{Binding ResetAllDefaultsCommand}"
-                                        ToolTip="把所有贴纸的大小 / GIF 速度 / 置顶一起恢复默认（会先确认；位置和图片不变）" />
+                                        ToolTip="把所有贴纸的大小 / 动图速度 / 置顶一起恢复默认（会先确认；位置和图片不变）" />
                                 <Button Content="全部关闭" Style="{StaticResource SecondaryButtonStyle}" Padding="10,7"
                                         Margin="0,0,0,6" Foreground="{DynamicResource DangerBrush}"
                                         Command="{Binding CloseAllStickersCommand}"
@@ -417,7 +371,7 @@
                                                TextWrapping="Wrap" Margin="0,8,0,0"
                                                Text="新贴纸出现时按图片自身原始尺寸显示（超大图会先缩到屏幕内，极小图最小 48px）；想改回去用贴纸右键「恢复默认大小」。" />
 
-                                    <TextBlock Text="GIF 默认播放速度（0.25× ~ 3×）" FontSize="11.5" Margin="0,14,0,0"
+                                    <TextBlock Text="动图默认播放速度（0.25× ~ 3×）" FontSize="11.5" Margin="0,14,0,0"
                                                Foreground="{DynamicResource TextSecondaryBrush}" />
                                     <Grid Margin="0,6,0,0">
                                         <Grid.ColumnDefinitions>
@@ -428,7 +382,7 @@
                                                 TickFrequency="0.25" IsSnapToTickEnabled="True"
                                                 VerticalAlignment="Center" Style="{StaticResource SliderStyle}"
                                                 Value="{Binding DefaultGifSpeed, Mode=TwoWay}"
-                                                ToolTip="1× = GIF 文件自带的播放速度；只影响以后新贴的 GIF" />
+                                                ToolTip="1× = 动图文件自带的播放速度；只影响以后新贴的 GIF / APNG / WebP" />
                                         <TextBlock Grid.Column="1" Text="{Binding DefaultGifSpeedText}" FontSize="11"
                                                    MinWidth="56" TextAlignment="Right" Margin="10,0,0,0"
                                                    VerticalAlignment="Center"
@@ -436,7 +390,7 @@
                                     </Grid>
                                     <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                                TextWrapping="Wrap" Margin="0,4,0,0"
-                                               Text="只影响以后新贴的 GIF；已经贴上的可以在贴纸右键菜单或「桌面上的贴纸」列表里逐张调。" />
+                                               Text="只影响以后新贴的 GIF / APNG / 动图 WebP；已经贴上的可以在贴纸右键菜单或「桌面上的贴纸」列表里逐张调。" />
 
                                     <TextBlock Text="最近使用上限（0 ~ 100，0 = 不记录）" FontSize="11.5" Margin="0,14,0,0"
                                                Foreground="{DynamicResource TextSecondaryBrush}" />

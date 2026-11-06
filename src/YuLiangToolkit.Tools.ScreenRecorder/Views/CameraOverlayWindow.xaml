@@ -23,7 +23,12 @@
             MouseLeftButtonUp="OnRootMouseLeftButtonUp"
             MouseWheel="OnRootMouseWheel">
         <Border.ContextMenu>
-            <ContextMenu>
+            <!-- 用 App.xaml 的深色菜单模板：默认 MenuItem 模板在深色主题下左侧会留一条白色图标列 -->
+            <ContextMenu Style="{StaticResource DarkContextMenuStyle}">
+                <ContextMenu.Resources>
+                    <Style TargetType="MenuItem" BasedOn="{StaticResource DarkMenuLeafItemStyle}" />
+                    <Style TargetType="Separator" BasedOn="{StaticResource DarkMenuSeparatorStyle}" />
+                </ContextMenu.Resources>
                 <MenuItem x:Name="MirrorMenuItem" Header="左右镜像" IsCheckable="True" Click="OnMirrorMenuClick" />
                 <MenuItem Header="重置到屏幕右下角" Click="OnResetMenuClick" />
                 <Separator />

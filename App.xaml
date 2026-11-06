@@ -890,6 +890,140 @@
                 </Setter>
             </Style>
 
+            <!-- ================= 右键菜单（深色统一模板） =================
+                 ⚠ WPF 默认的 ContextMenu / MenuItem 模板在深色主题下会留一条白色「图标列」竖条；
+                 只设 Background / Foreground 盖不掉。所有右键菜单统一用这四套样式：
+                   ContextMenu → DarkContextMenuStyle
+                   ContextMenu.Resources 里隐式套 DarkMenuLeafItemStyle + DarkMenuSeparatorStyle
+                   带子菜单的父项 → DarkMenuParentItemStyle
+                 详见 AGENTS.md 硬性规则 13 与 docs/dev/pitfalls.md。 -->
+            <Style x:Key="DarkContextMenuStyle" TargetType="ContextMenu">
+                <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Padding" Value="4" />
+                <Setter Property="HasDropShadow" Value="True" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ContextMenu">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="{DynamicResource ControlCornerRadius}"
+                                    Padding="{TemplateBinding Padding}"
+                                    SnapsToDevicePixels="True">
+                                <StackPanel IsItemsHost="True"
+                                            KeyboardNavigation.DirectionalNavigation="Cycle" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="DarkMenuLeafItemStyle" TargetType="MenuItem">
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                <Setter Property="FontSize" Value="12.5" />
+                <Setter Property="Padding" Value="12,6" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="MenuItem">
+                            <Border x:Name="Row" Background="Transparent"
+                                    CornerRadius="{DynamicResource ControlCornerRadius}"
+                                    Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="CheckGlyph" Grid.Column="0" Text="✓"
+                                               Margin="0,0,8,0" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource AccentBrush}"
+                                               Visibility="Collapsed" />
+                                    <ContentPresenter Grid.Column="1" ContentSource="Header"
+                                                      RecognizesAccessKey="True" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}"
+                                               Margin="28,0,0,0" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                </Grid>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter TargetName="Row" Property="Background"
+                                            Value="{DynamicResource CardHoverBackgroundBrush}" />
+                                </Trigger>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="CheckGlyph" Property="Visibility" Value="Visible" />
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.4" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="DarkMenuParentItemStyle" TargetType="MenuItem">
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                <Setter Property="FontSize" Value="12.5" />
+                <Setter Property="Padding" Value="12,6" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="MenuItem">
+                            <Grid>
+                                <Border x:Name="Row" Background="Transparent"
+                                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                                        Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <ContentPresenter ContentSource="Header" RecognizesAccessKey="True"
+                                                          VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="›" Margin="24,0,0,0"
+                                                   VerticalAlignment="Center" FontSize="14"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    </Grid>
+                                </Border>
+                                <Popup x:Name="PART_Popup" Placement="Right"
+                                       IsOpen="{Binding IsSubmenuOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                                       AllowsTransparency="True" Focusable="False" PopupAnimation="Fade">
+                                    <Border Background="{DynamicResource CardBackgroundBrush}"
+                                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                            CornerRadius="{DynamicResource ControlCornerRadius}" Padding="4"
+                                            Margin="4,0,16,16" SnapsToDevicePixels="True">
+                                        <StackPanel IsItemsHost="True"
+                                                    KeyboardNavigation.DirectionalNavigation="Cycle" />
+                                    </Border>
+                                </Popup>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter TargetName="Row" Property="Background"
+                                            Value="{DynamicResource CardHoverBackgroundBrush}" />
+                                </Trigger>
+                                <Trigger Property="IsSubmenuOpen" Value="True">
+                                    <Setter TargetName="Row" Property="Background"
+                                            Value="{DynamicResource InputBackgroundBrush}" />
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.4" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="DarkMenuSeparatorStyle" TargetType="Separator">
+                <Setter Property="Height" Value="1" />
+                <Setter Property="Margin" Value="6,4" />
+                <Setter Property="Background" Value="{DynamicResource BorderBrush}" />
+            </Style>
+
         </ResourceDictionary>
     </Application.Resources>
 </Application>

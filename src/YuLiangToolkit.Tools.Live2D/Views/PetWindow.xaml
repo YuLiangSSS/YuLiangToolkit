@@ -25,12 +25,13 @@
 
     <Window.ContextMenu>
         <!-- 右键菜单：显隐 / 置顶 / 点击穿透 / 缩放重置 / 居中 / 打开测试页 / 隐藏。
-             独立窗口不套 App.xaml 里的样式，这里显式用主题 token（DynamicResource）保持四套主题协调。 -->
-        <ContextMenu x:Name="PetMenu"
-                     Background="{DynamicResource CardBackgroundBrush}"
-                     Foreground="{DynamicResource TextPrimaryBrush}"
-                     BorderBrush="{DynamicResource BorderBrush}"
+             用 App.xaml 的深色菜单模板（DarkMenu*）：WPF 默认 MenuItem 模板在深色主题下左侧会留一条白色图标列。 -->
+        <ContextMenu x:Name="PetMenu" Style="{StaticResource DarkContextMenuStyle}"
                      Opened="OnPetMenuOpened">
+            <ContextMenu.Resources>
+                <Style TargetType="MenuItem" BasedOn="{StaticResource DarkMenuLeafItemStyle}" />
+                <Style TargetType="Separator" BasedOn="{StaticResource DarkMenuSeparatorStyle}" />
+            </ContextMenu.Resources>
             <MenuItem x:Name="MenuItemTopMost" Header="置顶显示" IsCheckable="True"
                       Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuTopMostClick" />
             <MenuItem x:Name="MenuItemClickThrough" Header="透明区域点击穿透" IsCheckable="True"
