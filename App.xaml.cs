@@ -1,5 +1,8 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Threading;
+using YuLiangToolkit.App.Models;
+using YuLiangToolkit.App.Rendering;
 using YuLiangToolkit.App.Themes;
 using YuLiangToolkit.App.ViewModels;
 using YuLiangToolkit.App.Views;
@@ -45,6 +48,12 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // 「主页设置 → 渲染与性能」的「重启本程序」：新进程带着旧 PID 起来，先等旧进程彻底退出
+        // （单实例 Mutex / 命名管道 / 托盘图标都是按进程占用的），再走正常启动流程。
+        // 隐藏参数在这里被摘掉，后面的文件参数 / 单实例转发都看不到它。
+        var launchArgs = RestartLaunchArguments.Strip(e.Args, out var restartWaitPid);
+        if (restartWaitPid > 0) WaitForPreviousProcess(restartWaitPid);
+
         // 单实例：已经有窗口在跑时，把命令行（例如双击图片的路径）发给它，自己直接退出。
         // 截图 / 调试进程不参与（见 SingleInstance.IsEnabled），否则测试会被正在使用的窗口吸走。
         if (SingleInstance.IsEnabled)
@@ -52,7 +61,7 @@ public partial class App : Application
             _singleInstance = new SingleInstance();
             if (!_singleInstance.IsFirstInstance)
             {
-                var outgoing = NormalizeLaunchArguments(e.Args);
+                var outgoing = NormalizeLaunchArguments(launchArgs);
                 SingleInstance.AllowForegroundActivation();
                 if (_singleInstance.TrySendToExisting(outgoing, TimeSpan.FromSeconds(3)))
                 {
@@ -74,6 +83,13 @@ public partial class App : Application
         // 数据/配置目录（在 exe 旁边）首次运行时建好，并各放一份“这是干什么的”说明
         AppPaths.EnsureCreated();
         RuntimeReadme.EnsureSeeded();
+
+        // 渲染 GPU（v0.96.0「主页设置 → 渲染与性能」）：Windows 只在进程启动时按「图形首选项」挑卡，
+        // WPF 的软件渲染开关也必须在第一个窗口创建前定下来，所以这里先读外壳配置、应用本次启动的渲染模式。
+        // （云间天上的云朵 / 液态玻璃的光晕都靠 WPF 画，被分到核显或软件渲染上就会卡。）
+        var startupShell = ToolConfigStore.For("shell").Load<ShellConfig>();
+        var startupRenderGpu = ResolveStartupRenderGpu(startupShell);
+        GpuRenderPreference.ApplyProcessRenderMode(startupRenderGpu);
 
         // 退出前把还没落盘的配置写掉（防抖窗口内的改动不会丢），顺手把（可能被全屏藏起来的）任务栏还回去
         Exit += (_, _) =>
@@ -188,7 +204,7 @@ public partial class App : Application
 
         // 双击图片 / PDF / 右键「打开方式」等启动（文件关联 / 命令行参数）：统一交给路由，
         // 按模式（自动 / 文本 / 压缩包）打开对应工具并交出文件。
-        FileLaunchRouter.TryHandle(e.Args, tools, vm);
+        FileLaunchRouter.TryHandle(launchArgs, tools, vm);
 
         // 开发调试：YLT_OPEN_SETTINGS=1 进入「主页设置」页面（v0.26.0 起设置是页面而不是独立窗口；
         // 配 YLT_SHOT 时截的就是主窗口这一页，命令见 docs/shell.md）
@@ -227,6 +243,49 @@ public partial class App : Application
         {
             // 正常启动：开管道服务端，之后每次双击图片 / 再启动一次都交给这个窗口处理
             _singleInstance?.StartServer(args => HandleSecondInstance(args, window, vm, tools));
+        }
+    }
+
+    /// <summary>
+    /// 本次启动实际使用的渲染 GPU 模式（v0.96.0）。
+    /// <para>配置里有明确值就用它；老配置没有这个字段（<c>null</c>）时，先看 Windows 图形首选项里
+    /// 本程序是否已经被手动指定过（Windows 设置 / NVIDIA 控制面板 / 以前的版本），有就继承、没有就「自动」，
+    /// 然后落成明确值 —— 免得升级 / 换目录把用户原来的显卡偏好冲掉。</para>
+    /// <para>硬件模式顺便把图形首选项补写一次（程序目录搬动 / 注册表被清理后自动修好）。
+    /// 「自动」不主动写注册表：没有设置过就保持没有，别去覆盖用户在 Windows 里手动设的值。</para>
+    /// </summary>
+    private static ShellRenderGpu ResolveStartupRenderGpu(ShellConfig shell)
+    {
+        var resolved = shell.RenderGpu ?? GpuRenderPreference.ReadWindowsPreference() ?? ShellRenderGpu.Auto;
+        if (shell.RenderGpu != resolved) shell.RenderGpu = resolved;
+
+        if (resolved is ShellRenderGpu.HighPerformance or ShellRenderGpu.PowerSaving)
+            GpuRenderPreference.TryWriteWindowsPreference(resolved, out _);
+
+        return resolved;
+    }
+
+    /// <summary>
+    /// 「重启本程序」的新进程：等旧进程退出（最多 8 秒）再往下走。
+    /// 旧进程要是卡住没退，就设置 <c>YLT_NO_SINGLE_INSTANCE=1</c>，保证新窗口一定能起来，
+    /// 而不是被旧进程的单实例管道当成「第二实例」吞掉。
+    /// </summary>
+    private static void WaitForPreviousProcess(int processId)
+    {
+        var stillRunning = false;
+        try
+        {
+            using var previous = Process.GetProcessById(processId);
+            stillRunning = !previous.WaitForExit(8000);
+        }
+        catch
+        {
+            // 旧进程已经退出了：正常往下走
+        }
+
+        if (stillRunning)
+        {
+            Environment.SetEnvironmentVariable("YLT_NO_SINGLE_INSTANCE", "1");
         }
     }
 

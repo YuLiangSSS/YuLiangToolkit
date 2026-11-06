@@ -139,6 +139,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `tests/.../MediaEditorChecks.cs` | `media-editor`（ffprobe 解析 / 片段数学 / 裁剪拼接滤镜 / GIF 参数） | L3 |
 | `src/YuLiangToolkit.Tools.Sample/**` | **无专属组** → build + 人工冒烟 | L1 |
 | `tests/.../XxxChecks.cs` | 该模块对应的组（`ScrollChainingChecks.cs` → `core`；`PdfTextChecks.cs` → `pdf-reader`…） | L3 |
+| `tests/.../GpuRenderChecks.cs` | `shell`（渲染 GPU / Windows 图形首选项字符串 / 配置兼容 / 显卡文案 / 重启参数） | L3 |
 | `tests/.../Live2DChecks.cs` | `live2d` | L3 |
 | `tests/.../BrowserChecks.cs` | `browser` | L3 |
 | `tests/.../TextEditorChecks.cs` | `text-editor` | L3 |

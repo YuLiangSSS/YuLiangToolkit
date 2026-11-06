@@ -171,6 +171,18 @@
 - 反色圆环支持连点、多圈并存（各圈各自取景 + 时间线，最多 8 圈）；「两圈重叠变回正色」用
   `CombinedGeometry` 的 Xor / Exclude / Intersect 按覆盖次数奇偶画（每圈同时留正色 / 反色两份位图），
   别图省事改成简单叠图；关掉开关时才走简单叠图（后画的盖住先前的）。
+- 渲染 GPU（v0.96.0，`Models/ShellRenderGpu.cs` + `Views/Rendering/GpuRenderPreference.cs`）：
+  - Windows 只在**进程启动**时按图形首选项挑卡，WPF 的 `RenderOptions.ProcessRenderMode` 也必须在第一个窗口前设，
+    所以设置页只负责写设置、**必须重启**才生效；别试图在运行中切卡（WPF 没有公开 API，改了多半只是界面以为生效）。
+  - 图形首选项是 `HKCU\Software\Microsoft\DirectX\UserGpuPreferences` 下「值名 = exe 全路径，值 = `GpuPreference=2;`」，
+    **只替换 `GpuPreference=` 段**，驱动写的其它段（如 `SwapChainBufferCount`）原样保留；写之前用
+    `ResolveCanonicalExecutablePath` 把入口副本还原成主 exe，否则只对副本生效。
+  - 老配置的 `renderGpu` 是 `null`（继承 Windows 已有偏好），别把「null 默认」当成「自动」直接写 `GpuPreference=0;`，
+    否则会把用户以前在 Windows 设置 / 驱动面板里手动指定的独显冲掉。
+  - WPF 是 D3D9 合成：**选高性能不等于一定切到独显**（内屏接核显且没有 MUX 的笔记本仍可能走核显）。
+    别在 UI / 文档里承诺一定能换卡；设置页文案要留「以任务管理器 GPU 占用为准」的提示。
+  - DXGI 枚举只读（`dxgi.dll` + COM 接口），远程桌面 / 多显示器驱动可能枚举出重复项 → 按名字去重；
+    有真显卡时不要把软件适配器（Microsoft Basic Render Driver）列成「第 2 块卡」。
 
 ### osu!mania 三件套
 - ⚠ OsuParsers 解码器 static 状态、非线程安全：`OsuBeatmapFile` 里 `IoLock` 加锁 + 批量串行，别用 `Parallel.ForEachAsync`。

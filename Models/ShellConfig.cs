@@ -139,6 +139,16 @@ public sealed class ShellConfig : ToolConfig
     public string CustomLightBackground { get; set; } = "#F5F7FB";
 
     /// <summary>
+    /// 渲染 GPU 选择（v0.96.0，「主页设置 → 渲染与性能」，默认 <see cref="ShellRenderGpu.Auto"/>）。
+    /// <para><b>null = 老配置没有这个字段</b>：首次启动时先看 Windows 图形首选项里本程序已有的设置
+    /// （用户可能以前在 Windows 设置里手动指过独显），有就继承、没有就按「自动」，
+    /// 之后落成明确值。这样升级不会把用户原来的显卡偏好冲掉。</para>
+    /// <para>保存的值是 <c>"Auto"</c> / <c>"HighPerformance"</c> / <c>"PowerSaving"</c> / <c>"Software"</c>
+    /// 字符串；改完需要重启本程序才生效（见 <c>GpuRenderPreference</c>）。</para>
+    /// </summary>
+    public ShellRenderGpu? RenderGpu { get; set; }
+
+    /// <summary>
     /// 「云间天上」的云朵速度倍率（v0.91.0，默认 1.5）：1.0 = 原来的基准速度，范围 0 ~ 150；
     /// 只影响云朵横向漂移，不改其它主题。
     /// </summary>

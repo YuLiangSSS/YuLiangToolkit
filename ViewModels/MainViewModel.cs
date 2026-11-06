@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
 using YuLiangToolkit.App.Models;
+using YuLiangToolkit.App.Rendering;
 using YuLiangToolkit.App.Themes;
 using YuLiangToolkit.App.Views;
 using YuLiangToolkit.Core.Configuration;
@@ -89,6 +91,15 @@ public class MainViewModel : ObservableObject
 
     private readonly ToolConfigStore _shellStore;
     private readonly ShellConfig _shell;
+
+    /// <summary>本次启动实际应用的渲染 GPU 模式（v0.96.0）：用来判断设置改过之后要不要重启。</summary>
+    private ShellRenderGpu _renderGpuAppliedAtStartup;
+
+    /// <summary>写 Windows 图形首选项失败时的原因（成功为 null）。</summary>
+    private string? _renderGpuWriteError;
+
+    /// <summary>检测到的显卡列表文案（构造时枚举一次；DXGI 只读，失败就是空）。</summary>
+    private string _renderGpuAdapterText = string.Empty;
 
     /// <summary>
     /// 开发 / 截图用的临时主题覆盖（环境变量 <c>YLT_THEME=liquid-glass</c>）。
@@ -1253,6 +1264,140 @@ public class MainViewModel : ObservableObject
         CloudSliders[1].Value = _shell.CloudDensity;
     }
 
+    // ---------- 渲染 GPU（v0.96.0，「主页设置 → 渲染与性能」） ----------
+    //
+    // 云间天上的云朵 / 液态玻璃的光晕都由 WPF 画：Windows 把本程序分到核显、或者 WPF 退回软件渲染时
+    // 就会卡。这里让用户选择「自动 / 高性能 / 节能 / 软件渲染」，选完写进 Windows 图形首选项
+    // （和系统设置里的同名选项是同一份注册表数据），重启本程序后生效。
+    // 纯逻辑在 Models/ShellRenderGpu.cs，注册表 / WPF 渲染模式在 Views/Rendering/GpuRenderPreference.cs。
+
+    /// <summary>「渲染显卡」下拉框的四个选项（和自检共用同一份清单）。</summary>
+    public IReadOnlyList<ShellRenderGpuOption> RenderGpuOptions => ShellRenderGpuSettings.Options;
+
+    /// <summary>当前选择的渲染 GPU 模式（存 <c>Config\shell\config.json</c> 的 <c>renderGpu</c>）。</summary>
+    public ShellRenderGpu RenderGpuMode => _shell.RenderGpu ?? ShellRenderGpu.Auto;
+
+    /// <summary>
+    /// 绑定下拉框的 Id（和「光标样式」同一套 SelectedValuePath 写法）。
+    /// 改一下就写 Windows 图形首选项（软件渲染不写），并立刻把「需要重启」状态通知到界面。
+    /// </summary>
+    public string SelectedRenderGpuId
+    {
+        get => ShellRenderGpuSettings.IdOf(RenderGpuMode);
+        set
+        {
+            if (!ShellRenderGpuSettings.TryParseId(value, out var mode)) return;
+            if (mode == RenderGpuMode && _renderGpuWriteError is null) return;
+
+            _shell.RenderGpu = mode;
+
+            // 立即同步到 Windows 的图形首选项（失败只提示，不改配置：重启后还能再试）
+            var ok = GpuRenderPreference.TryWriteWindowsPreference(mode, out var error);
+            _renderGpuWriteError = ok ? null : error;
+            NotifyRenderGpuChanged();
+        }
+    }
+
+    /// <summary>选中项下面那句说明（四种模式各一句）。</summary>
+    public string RenderGpuOptionDescription => ShellRenderGpuSettings.Describe(RenderGpuMode);
+
+    /// <summary>检测到的显卡列表（DXGI 只读；远程桌面 / 无驱动时是一句「读不到」）。</summary>
+    public string RenderGpuAdapterText => _renderGpuAdapterText;
+
+    /// <summary>
+    /// 设置页状态行：WPF 这次实际是硬件还是软件渲染、Windows 图形首选项里存的是什么、
+    /// 以及「改了要不要重启」。每次读取都现算（打开设置页时渲染已经初始化过了）。
+    /// </summary>
+    public string RenderGpuStatusText
+    {
+        get
+        {
+            var parts = new List<string>
+            {
+                GpuRenderPreference.DescribeCurrentRenderer(),
+                GpuRenderPreference.DescribeWindowsPreference(),
+                RenderGpuRestartPending
+                    ? "改动已保存，重启本程序后生效"
+                    : "当前设置已在本次启动应用",
+            };
+            if (!string.IsNullOrEmpty(_renderGpuWriteError))
+                parts.Add("写 Windows 图形首选项失败：" + _renderGpuWriteError);
+            return string.Join("；", parts) + "。";
+        }
+    }
+
+    /// <summary>设置改过、但还没重启（只有重启才生效）。</summary>
+    public bool RenderGpuRestartPending
+        => ShellRenderGpuSettings.RequiresRestart(RenderGpuMode, _renderGpuAppliedAtStartup);
+
+    /// <summary>重启本程序（渲染设置 / 软件渲染开关都是「下次启动生效」）。</summary>
+    public RelayCommand RestartAppCommand { get; }
+
+    /// <summary>打开 Windows 自带的「图形设置」页面（核对 / 手动改同一份首选项）。</summary>
+    public RelayCommand OpenWindowsGraphicsSettingsCommand { get; }
+
+    private void InitializeRenderGpu()
+    {
+        // 正常启动时 App 已经把配置里 / Windows 里继承来的值解析成明确值了，这里直接记下「本次启动用的模式」。
+        _renderGpuAppliedAtStartup = RenderGpuMode;
+        _renderGpuWriteError = null;
+        _renderGpuAdapterText = GpuAdapterProbe.DescribeAdapters(GpuAdapterProbe.Enumerate());
+    }
+
+    private void NotifyRenderGpuChanged()
+    {
+        OnPropertyChanged(nameof(RenderGpuMode));
+        OnPropertyChanged(nameof(SelectedRenderGpuId));
+        OnPropertyChanged(nameof(RenderGpuOptionDescription));
+        OnPropertyChanged(nameof(RenderGpuRestartPending));
+        OnPropertyChanged(nameof(RenderGpuStatusText));
+    }
+
+    /// <summary>「重建配置」把外壳设置改回默认后：渲染 GPU 也回到「自动」，并清掉注册表里的本程序项（写 GpuPreference=0）。</summary>
+    private void ResetRenderGpu()
+    {
+        _shell.RenderGpu = ShellRenderGpu.Auto;
+        GpuRenderPreference.TryWriteWindowsPreference(ShellRenderGpu.Auto, out _);
+        _renderGpuWriteError = null;
+        NotifyRenderGpuChanged();
+    }
+
+    private void RestartForRenderGpu()
+    {
+        _shellStore.Flush();   // 刚改的设置先落盘，新进程起来才读得到
+
+        if (!GpuRenderPreference.TryRestart(out var error))
+        {
+            MessageBox.Show(
+                $"重启失败：{error}\n\n请手动关闭本程序再重新打开。",
+                "渲染与性能", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        YuLiangToolkit.App.App.RequestExit();
+    }
+
+    private static void OpenWindowsGraphicsSettings()
+    {
+        // Windows 10 1803+ 的「图形设置」；老系统 / 改过 URI 的机器退回「高级显示设置」
+        foreach (var uri in new[] { "ms-settings:display-advancedgraphics", "ms-settings:display-advanced" })
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true });
+                return;
+            }
+            catch
+            {
+                // 换下一个 URI 试试
+            }
+        }
+
+        MessageBox.Show(
+            "打不开 Windows 的图形设置页面，请手动打开：设置 → 系统 → 显示 → 图形。",
+            "渲染与性能", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
     /// <summary>设置页里背景图的状态文字（文件名 + 大小 / 没设置 / 文件丢了）。</summary>
     public string BackgroundImageInfoText
     {
@@ -1906,6 +2051,7 @@ public class MainViewModel : ObservableObject
         InitializeEffects();
         InitializeThemeBlurOptions();     // 三套半透明玻璃风格的「背景图模糊度」滑块（选中对应风格才显示）
         InitializeCloudOptions();          // 云间天上的云朵速度 / 密度滑块（选中云间天上才显示）
+        InitializeRenderGpu();              // 渲染 GPU（v0.96.0）：记录本次启动实际用的模式 + 检测显卡
         ApplyPaneSplitterHintOpacity();   // 工具页分隔条的「提示线」全局透明度（主页设置里可调）
 
         // 开发 / 截图：YLT_THEME=liquid-glass / dao 临时切 UI；YLT_THEME_MODE=light|dark 临时改深浅；
@@ -1988,6 +2134,10 @@ public class MainViewModel : ObservableObject
         ClearBackgroundImageCommand = new RelayCommand(_ => ClearBackgroundImage());
         ChooseCursorImageCommand = new RelayCommand(_ => ChooseCursorImage());
         ClearCursorImageCommand = new RelayCommand(_ => ClearCursorImage());
+
+        // 渲染 GPU（v0.96.0）：重启本程序 / 打开 Windows 图形设置核对（设置改完要重启才生效）
+        RestartAppCommand = new RelayCommand(_ => RestartForRenderGpu());
+        OpenWindowsGraphicsSettingsCommand = new RelayCommand(_ => OpenWindowsGraphicsSettings());
 
         BuildCatalog(tools);
 
@@ -2501,6 +2651,7 @@ public class MainViewModel : ObservableObject
         NotifyTuningChanged();
         SyncThemeBlurOptions();           // 三条模糊度滑块也回默认值
         SyncCloudOptions();               // 云间天上的速度 / 密度也回默认值
+        ResetRenderGpu();                 // 渲染 GPU 回「自动」并清掉 Windows 图形首选项里的本程序项
         ApplyPaneSplitterHintOpacity();   // 分隔条提示线也回默认（0.18）
 
         foreach (var card in _allCards) card.LastUsed = null;   // LastUsed 字典已被重置为空

@@ -91,7 +91,7 @@
                     </StackPanel>
                     <TextBlock FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0"
                                TextWrapping="Wrap"
-                               Text="外壳自己的设置：外观模式（深色 / 浅色 / 跟随系统）、界面风格（默认 / 液态玻璃 / 毛玻璃 / 亚克力 / 道系 / 云间天上）与配色、窗口背景图、主页显示、鼠标自动 / 点击特效（含数量 / 范围 / 半径滑块）、粒子颜色、窗口与托盘、打开方式关联；最下面是清理缓存与重建配置（恢复默认设置）。改一下立即生效并自动保存。" />
+                               Text="外壳自己的设置：外观模式（深色 / 浅色 / 跟随系统）、界面风格（默认 / 液态玻璃 / 毛玻璃 / 亚克力 / 道系 / 云间天上）与配色、渲染显卡（GPU，决定云朵 / 动画用哪块卡）、窗口背景图、主页显示、鼠标自动 / 点击特效（含数量 / 范围 / 半径滑块）、粒子颜色、窗口与托盘、打开方式关联；最下面是清理缓存与重建配置（恢复默认设置）。改一下立即生效并自动保存。" />
                 </StackPanel>
                 <Button Grid.Column="1" Content="返回主页" Style="{StaticResource SecondaryButtonStyle}"
                         VerticalAlignment="Top" Command="{Binding GoHomeCommand}" ToolTip="回到主页（也可以点面包屑的「🏠 主页」或后退按钮）" />
@@ -311,6 +311,51 @@
                     <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                TextWrapping="Wrap" Margin="0,10,0,0"
                                Text="换主题立即生效、不用重启；选择会自动存进 Config\shell\config.json 的 uiTheme。液态玻璃 / 毛玻璃 / 亚克力是半透明面板，能透出下面的背景图；道系有远山 + 金色光晕，云间天上会按深浅画云 / 太阳 / 月亮星空，这两个主题也可以放背景图（会盖住装饰）；默认是纯色面板。选中半透明风格后，它下面会出现「背景图模糊度」滑块（0 = 清晰，最大 60 px；三套风格各记各的值）；选中云间天上后会出现「云朵速度 / 密度」滑块。深浅色由上面的「外观模式」统一控制，六套风格都支持。" />
+                </StackPanel>
+            </Border>
+
+            <!-- ===== 渲染与性能（v0.96.0）：选择画界面 / 云朵用哪块显卡 ===== -->
+            <TextBlock Text="渲染与性能" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource AccentBrush}" Margin="0,22,0,0" />
+            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
+                <StackPanel>
+                    <TextBlock Text="渲染显卡" FontSize="12.5" FontWeight="SemiBold" />
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,4,0,0"
+                               Text="云间天上的云朵、液态玻璃的光晕、粒子这些动画都由 WPF 画。Windows 默认可能把本程序分给核显（甚至退回软件渲染），云朵就会卡；这里可以指定优先用高性能独显。选项会写进 Windows「设置 → 系统 → 显示 → 图形」里本程序的图形首选项（同一份数据），改完需要重启本程序才生效。" />
+                    <ComboBox Style="{StaticResource ComboBoxStyle}" Margin="0,10,0,0"
+                              ItemsSource="{Binding RenderGpuOptions}"
+                              SelectedValuePath="Id"
+                              SelectedValue="{Binding SelectedRenderGpuId}"
+                              ToolTip="自动 = 让 Windows 决定；高性能 = 优先独显；节能 = 优先核显；软件渲染 = 完全不用显卡（仅排查用）">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Name}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBlock Text="{Binding RenderGpuOptionDescription}" FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                               Margin="0,6,0,0" />
+                    <TextBlock Text="{Binding RenderGpuAdapterText}" FontSize="11"
+                               Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                               Margin="0,8,0,0" />
+                    <TextBlock Text="{Binding RenderGpuStatusText}" FontSize="11"
+                               Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap"
+                               Margin="0,4,0,0" />
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <Button Content="重启本程序" Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding RestartAppCommand}"
+                                IsEnabled="{Binding RenderGpuRestartPending}"
+                                ToolTip="渲染设置是「下次启动生效」：点这里自动重启（先把设置存盘）" />
+                        <Button Content="打开 Windows 图形设置" Style="{StaticResource SecondaryButtonStyle}"
+                                Margin="8,0,0,0"
+                                Command="{Binding OpenWindowsGraphicsSettingsCommand}"
+                                ToolTip="打开系统自带的「图形设置」页面，可以核对本程序当前是自动 / 高性能 / 节能" />
+                    </StackPanel>
+                    <TextBlock FontSize="11" Foreground="{DynamicResource FaintTextBrush}"
+                               TextWrapping="Wrap" Margin="0,8,0,0"
+                               Text="提示：切换后可以按 Ctrl+Shift+Esc 打开任务管理器，在「性能 → GPU」看本程序的占用落在哪块卡上。有的笔记本显示器接在核显上、又没有 MUX 开关，Windows 仍可能只让 WPF 用核显 —— 这是系统 / 驱动的限制，不是这里的设置没保存；这种情况下把云朵密度调小（1 ~ 20）比换卡更有效。" />
                 </StackPanel>
             </Border>
 
@@ -894,7 +939,7 @@
             </Border>
 
             <TextBlock FontSize="11" Foreground="{DynamicResource FaintTextBrush}" TextWrapping="Wrap" Margin="0,14,0,0"
-                       Text="主页设置只影响外壳本身（外观模式、界面风格、配色方案、主页显示、自动 / 点击特效、粒子颜色、关闭行为等）；各功能自己的选项在对应功能页面里，也可以在「重建配置」里一键恢复默认。" />
+                       Text="主页设置只影响外壳本身（外观模式、界面风格、配色方案、渲染显卡、主页显示、自动 / 点击特效、粒子颜色、关闭行为等）；各功能自己的选项在对应功能页面里，也可以在「重建配置」里一键恢复默认。" />
 
             <Button Content="返回主页" Style="{StaticResource SecondaryButtonStyle}"
                     HorizontalAlignment="Left" Margin="0,18,0,0" Command="{Binding GoHomeCommand}" />
