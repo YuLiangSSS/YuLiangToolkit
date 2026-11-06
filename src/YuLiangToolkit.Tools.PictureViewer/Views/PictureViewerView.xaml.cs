@@ -373,6 +373,52 @@ public partial class PictureViewerView : UserControl
         return dialog.ShowDialog() == true ? dialog.FolderName : null;
     }
 
+    // ---------------------------------------------------------------- 拖放：拖入图片 / 文件夹
+
+    /// <summary>
+    /// 拖入：数据里有本工具能接受的图片 / 文件夹才给「复制」光标，否则给禁止光标（不让用户误以为能放）。
+    /// <para>真正的打开逻辑在 ViewModel：拖图片 = 打开所在文件夹并定位到这一张，拖文件夹 = 直接打开。</para>
+    /// </summary>
+    private void OnPictureDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = HasAcceptableDrop(e.Data) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// 放下：多个文件时取**第一个能接受的**（文件夹 → 打开文件夹；图片 → 打开所在文件夹并定位到这一张）。
+    /// 一个都不能接受时只给状态文字提示，什么都不打开（拖错东西不会误开文件夹）。
+    /// </summary>
+    private void OnPictureDrop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        if (Vm is not { } vm) return;
+
+        if (e.Data.GetDataPresent(DataFormats.FileDrop)
+            && e.Data.GetData(DataFormats.FileDrop) is string[] paths)
+        {
+            foreach (var path in paths)
+            {
+                if (!vm.CanAcceptDrop(path)) continue;
+
+                vm.OpenDroppedPath(path);
+                return;
+            }
+        }
+
+        vm.StatusText = "只能拖入图片文件或包含图片的文件夹（支持 jpg / jpeg / png / bmp / gif / webp / tif / tiff）。";
+    }
+
+    /// <summary>拖放数据里有没有至少一个能接受的路径（图片文件 / 文件夹）。</summary>
+    private bool HasAcceptableDrop(IDataObject? data)
+    {
+        if (Vm is not { } vm || data is null) return false;
+        if (!data.GetDataPresent(DataFormats.FileDrop)) return false;
+
+        return data.GetData(DataFormats.FileDrop) is string[] paths
+               && paths.Any(vm.CanAcceptDrop);
+    }
+
     // ---------------------------------------------------------------- 搭长带
 
     /// <summary>

@@ -654,19 +654,89 @@ public sealed class MediaEditorViewModel : ToolViewModelBase
 
     // ================================================================== 载入 / 缩略图
 
+    /// <summary>支持的剪辑输入后缀（拖放白名单与「选择视频 / GIF…」对话框共用这一份，避免两处不一致）。</summary>
+    private static readonly string[] SupportedInputExtensions =
+    {
+        ".mp4", ".mkv", ".mov", ".avi", ".webm", ".gif", ".flv", ".ts", ".m4v", ".wmv", ".mpg", ".mpeg",
+    };
+
+    /// <summary>选择输入文件对话框的过滤器（由 <see cref="SupportedInputExtensions"/> 拼出来）。</summary>
+    private static readonly string InputFileDialogFilter =
+        "视频 / GIF|" + string.Join(";", SupportedInputExtensions.Select(extension => "*" + extension)) + "|所有文件|*.*";
+
     private async Task PickInputAsync()
     {
         if (IsBusy) return;
         var dialog = new OpenFileDialog
         {
             Title = "选择要剪辑的视频 / GIF",
-            Filter = "视频 / GIF|*.mp4;*.mkv;*.mov;*.avi;*.webm;*.gif;*.flv;*.ts;*.m4v;*.wmv;*.mpg;*.mpeg|所有文件|*.*",
+            Filter = InputFileDialogFilter,
             CheckFileExists = true,
         };
         if (dialog.ShowDialog() == true) await LoadInputAsync(dialog.FileName);
     }
 
     private Task ReloadInputAsync() => File.Exists(InputPath) ? LoadInputAsync(InputPath) : Task.CompletedTask;
+
+    // ================================================================== 拖入载入
+
+    /// <summary>
+    /// 后缀是不是本工具支持的视频 / GIF（只判断后缀，<b>不检查文件是否存在</b>；忽略大小写，
+    /// 前后空白与包裹的引号会先被去掉）。
+    /// </summary>
+    public static bool IsSupportedInputPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        var extension = Path.GetExtension(path.Trim().Trim('"'));
+        if (extension.Length == 0) return false;
+        foreach (var candidate in SupportedInputExtensions)
+        {
+            if (string.Equals(extension, candidate, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 拖放的文件能不能直接载入：文件真实存在，并且后缀受支持（不支持的格式返回 false）。
+    /// <para>做成<b>静态</b>的：拖放预览（DragOver）和自检都只依赖路径判断，不需要构造 ViewModel，
+    /// 因此不会触发构造函数里的后台 FFmpeg 探测 / 全局设置落盘等副作用。</para>
+    /// </summary>
+    public static bool CanAcceptDrop(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        try
+        {
+            if (!File.Exists(path)) return false;
+        }
+        catch
+        {
+            return false;
+        }
+        return IsSupportedInputPath(path);
+    }
+
+    /// <summary>
+    /// 拖入文件后调用：校验通过就复用「选择视频 / GIF…」同一条载入链路（<see cref="LoadInputAsync"/>）。
+    /// <para>非法文件 / 文件不存在 / 正在忙时只改 <c>StatusText</c> 提示，<b>不抛异常</b>、也不重复载入。</para>
+    /// </summary>
+    public Task OpenDroppedFileAsync(string path)
+    {
+        if (IsBusy)
+        {
+            StatusText = "正在处理上一个任务，请等它结束或点「取消」后再拖入文件";
+            return Task.CompletedTask;
+        }
+
+        if (!CanAcceptDrop(path))
+        {
+            StatusText = IsSupportedInputPath(path)
+                ? "文件不存在：" + path
+                : "不支持的文件类型：只能拖入视频（MP4 / MKV / MOV / AVI / WebM / FLV / TS 等）或 GIF";
+            return Task.CompletedTask;
+        }
+
+        return LoadInputAsync(path);
+    }
 
     private async Task LoadInputAsync(string path)
     {

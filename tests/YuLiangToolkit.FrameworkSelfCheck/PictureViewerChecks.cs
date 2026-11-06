@@ -658,6 +658,53 @@ internal static class PictureViewerChecks
         Check("[图片] 指定的图不在文件夹里：不定位（停在开头）",
             vm.ConsumePendingPageIndex() is null && !vm.StatusText.Contains("已定位"));
 
+        // ---- 拖入（拖图片 / 文件夹到窗口）：判定 + 打开并定位（复用 OpenLaunchedFile / LoadFolderAsync 链路） ----
+        var dropPagesBefore = vm.Pages.Count;
+        var canDropFolder = vm.CanAcceptDrop(folder);
+        var canDropImage = vm.CanAcceptDrop(Path.Combine(folder, "1.png"));
+        var canDropText = vm.CanAcceptDrop(Path.Combine(folder, "notes.txt"));
+        var canDropMissing = vm.CanAcceptDrop(Path.Combine(folder, "不存在.png"));
+        var canDropNull = vm.CanAcceptDrop(null);
+        vm.OpenDroppedPath(Path.Combine(folder, "notes.txt"));
+        Check("[图片] 拖入判定：文件夹 / 图片可以，txt / 不存在的图片 / null 不行；拖错东西只提示、不打开",
+            canDropFolder && canDropImage && !canDropText && !canDropMissing && !canDropNull
+            && vm.Pages.Count == dropPagesBefore
+            && vm.StatusText.Contains("不是支持的图片"),
+            $"{canDropFolder}/{canDropImage}/{canDropText}/{canDropMissing}/{canDropNull} · {vm.StatusText}");
+
+        vm.OpenDroppedPath(Path.Combine(folder, "2.png"));
+        var dropLocated = WaitUntil(() => vm.StatusText.Contains("已定位到第 2 张"), 5000);
+        Check("[图片] 拖入图片：打开所在文件夹并定位到这一张（连续滚动 / 翻页都会直接跳到这张）",
+            dropLocated
+            && vm.FolderPath == folder
+            && vm.Pages.Count == 3
+            && vm.ConsumePendingPageIndex() == 1
+            && vm.StatusText.Contains("已定位到第 2 张"),
+            vm.StatusText);
+
+        var dropFolder = SelfCheckScratch.MakeDirectory("picture-drop-folder");
+        try
+        {
+            WritePng(Path.Combine(dropFolder, "1.png"), 2, 3);
+            WritePng(Path.Combine(dropFolder, "2.png"), 4, 5);
+            WritePng(Path.Combine(dropFolder, "3.png"), 6, 7);
+
+            vm.OpenDroppedPath(dropFolder);
+            var dropFolderOpened = WaitUntil(
+                () => !vm.IsBusy && vm.FolderPath == dropFolder && vm.Pages.Count == 3, 5000);
+            Check("[图片] 拖入文件夹：直接打开它（页数 / 路径对，且没有待定位的某一页）",
+                dropFolderOpened
+                && vm.Pages.Count == 3
+                && vm.Pages[2].FileName == "3.png"
+                && vm.FolderPath == dropFolder
+                && vm.ConsumePendingPageIndex() is null,
+                $"{vm.Pages.Count} 张 / {vm.FolderPath} / {vm.StatusText}");
+        }
+        finally
+        {
+            try { Directory.Delete(dropFolder, recursive: true); } catch { /* 临时目录，删不掉无所谓 */ }
+        }
+
         // ---- 图片边框 / 恢复默认（无头跑） ----
         var borderEvents = 0;
         vm.BorderChanged += (_, _) => borderEvents++;

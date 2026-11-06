@@ -862,6 +862,58 @@ public partial class PdfReaderView : UserControl
         return dialog.ShowDialog() == true ? dialog.FileName : null;
     }
 
+    // ---------------------------------------------------------------- 拖入打开（从资源管理器拖 .pdf 进工具页）
+
+    /// <summary>
+    /// 拖动经过工具页：有能打开的 <c>.pdf</c> 才显示「复制」光标，否则显示禁止（判断在 ViewModel 里，
+    /// 自检可以直接断言 <c>CanAcceptDrop</c>）。
+    /// </summary>
+    private void OnFileDragOver(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        e.Effects = TryGetDroppedPdf(e) is null ? DragDropEffects.None : DragDropEffects.Copy;
+    }
+
+    /// <summary>
+    /// 在工具页松开拖放：第一个 <c>.pdf</c> 交给 ViewModel 打开（拖多个文件时只取第一个，其余忽略）。
+    /// 一个 <c>.pdf</c> 都没有时也交给 VM，让它按「不支持」在状态栏给提示，绝不错开别的文件。
+    /// </summary>
+    private void OnFileDrop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        if (Vm is not { } vm) return;
+
+        try
+        {
+            if (TryGetDroppedPdf(e) is { } pdf)
+            {
+                vm.OpenDroppedPath(pdf);
+                return;
+            }
+
+            if (TryGetFirstDroppedPath(e) is { } first) vm.OpenDroppedPath(first);
+        }
+        catch (Exception ex)
+        {
+            // 拖放回调由原生 OLE 直接调用，这里抛出去会把整个程序带崩
+            vm.StatusText = $"用 PDF 阅读器打开失败：{ex.Message}";
+        }
+    }
+
+    /// <summary>拖放数据里第一个能打开的 <c>.pdf</c>（用 ViewModel 的统一判断，便于自检）。</summary>
+    private string? TryGetDroppedPdf(DragEventArgs e)
+        => Vm is { } vm ? TryGetDroppedPaths(e).FirstOrDefault(path => vm.CanAcceptDrop(path)) : null;
+
+    /// <summary>拖放数据里第一个路径（用来在「一个 .pdf 都没有」时给状态栏提示）。</summary>
+    private static string? TryGetFirstDroppedPath(DragEventArgs e)
+        => TryGetDroppedPaths(e).FirstOrDefault();
+
+    /// <summary>拖放数据里的文件路径列表（不是文件拖放就返回空数组）。</summary>
+    private static string[] TryGetDroppedPaths(DragEventArgs e)
+        => e.Data.GetDataPresent(DataFormats.FileDrop) && e.Data.GetData(DataFormats.FileDrop) is string[] paths
+            ? paths
+            : Array.Empty<string>();
+
     private void OnDocumentChanged(object? sender, EventArgs e)
     {
         UpdateModeChrome();

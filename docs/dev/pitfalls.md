@@ -412,6 +412,17 @@
   直接用它会闪，用 120ms 延时 +「最近一次 DragOver 时间戳」判断是否真的离开。落点用条目 `TranslatePoint` 的半高
   算插入下标（完整列表第 0 项固定是「首页」，拖拽下标要减 1）。
 
+### 工具页拖入文件（v0.95.0 起）
+- 根 `UserControl` 要同时给 `AllowDrop="True"` 和**可命中的背景**：本来没有背景的页面补 `Background="Transparent"`，
+  否则页面空白处命中的是外壳，拖文件进来「没反应」（屏幕贴纸踩过）。
+- `DragOver` 里只对支持的类型给 `DragDropEffects.Copy`、其它给 `None`，并一律 `e.Handled = true`；
+  类型判断 / 状态提示放 ViewModel 的 `CanAcceptDrop` / `OpenDroppedPath`（自检能无头断言），
+  `Drop` 只做「取第一个可接受路径 → 调 VM」。
+- 拖放回调由原生 OLE 直接调：`Drop` 里（尤其 `async void`）必须 try/catch 兜住异常，否则直接带崩程序。
+- 每个文件处理工具**自己**在工具视图里接拖入（Word / Excel / PDF / 图片 / 压缩包 / 贴纸 / 文本 / 播放器 / 剪辑 / osu!mania / 批量重命名），
+  别在外壳 `ContentControl` 上再包一层统一拖入：子视图已 `e.Handled = true` 时虽然不会重复，
+  但两边各维护一份类型过滤，迟早漏一个。
+
 ### 构建与工具链
 - 主项目在仓库根，`DefaultItemExcludes` 排除 `src\`、`Data\`、`Config\`、`tests\` 等；新增顶层目录同步加。
 - 构建 `.\build.ps1`（`DOTNET_CLI_HOME` → `.dotnet-cli-home`）；发布 `.\publish.ps1` → `dist\YuLiangToolkit\`。

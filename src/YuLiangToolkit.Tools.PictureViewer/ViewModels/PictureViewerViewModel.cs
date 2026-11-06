@@ -573,6 +573,14 @@ public sealed class PictureViewerViewModel : ToolViewModelBase, IFileLaunchTarge
             return;
         }
 
+        // 后缀守卫：不是本工具支持的图片就别往下走，免得把 .txt / .exe 之类当成图片去扫文件夹
+        if (!PictureScanner.IsImageFile(full))
+        {
+            var name = Path.GetFileName(full);
+            StatusText = $"「{(string.IsNullOrEmpty(name) ? full : name)}」不是支持的图片（支持 {SupportedImageExtensionText}）";
+            return;
+        }
+
         if (!File.Exists(full) || string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
         {
             StatusText = $"文件不存在或已被移走：{full}";
@@ -591,6 +599,67 @@ public sealed class PictureViewerViewModel : ToolViewModelBase, IFileLaunchTarge
             StatusText = $"已加载「{Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))}」，"
                          + "但没找到刚才那张图，已停在开头。";
         }
+    }
+
+    /// <summary>本工具支持的图片后缀说明（由 <see cref="PictureScanner.Extensions"/> 生成，提示文案用）。</summary>
+    private static string SupportedImageExtensionText
+        => string.Join(" / ", PictureScanner.Extensions.Select(extension => extension.TrimStart('.')));
+
+    /// <summary>
+    /// 拖放接入：这个路径能不能被本工具接收 —— 文件夹（直接打开）或支持的图片文件（打开并定位到这一张）返回 true；
+    /// 其它类型 / 不存在 / 空值一律 false（拖放时光标显示禁止）。路径非法时吞掉异常、当不能收。
+    /// </summary>
+    public bool CanAcceptDrop(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+
+        try
+        {
+            var full = Path.GetFullPath(path.Trim().Trim('"'));
+            if (Directory.Exists(full)) return true;
+            return File.Exists(full) && PictureScanner.IsImageFile(full);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 拖放接入：打开一个拖进来的路径。
+    /// 文件夹 → 直接加载（不指定要定位的那张）；图片 → 复用 <see cref="OpenLaunchedFile"/> 那条链路：
+    /// 加载它所在的文件夹并把「待定位页」交给界面（连续滚动滚到这张、翻页 / 单页翻到这一张）。
+    /// 不支持的路径只改状态文字提示，不会误开。
+    /// </summary>
+    public void OpenDroppedPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+
+        string full;
+        try
+        {
+            full = Path.GetFullPath(path.Trim().Trim('"'));
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"无法识别拖进来的路径：{ex.Message}";
+            return;
+        }
+
+        if (Directory.Exists(full))
+        {
+            _ = LoadFolderAsync(full);
+            return;
+        }
+
+        if (PictureScanner.IsImageFile(full))
+        {
+            OpenLaunchedFile(full);
+            return;
+        }
+
+        var name = Path.GetFileName(full);
+        StatusText = $"「{(string.IsNullOrEmpty(name) ? full : name)}」不是支持的图片（支持 {SupportedImageExtensionText}）";
     }
 
     /// <summary>界面取走「加载后要定位到第几张」（取一次就清空，避免每次重建都跳回去）。</summary>

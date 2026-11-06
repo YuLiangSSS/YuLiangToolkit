@@ -1,7 +1,11 @@
 <UserControl x:Class="YuLiangToolkit.Tools.ScreenSticker.Views.ScreenStickerView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core">
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             Background="Transparent"
+             AllowDrop="True"
+             DragOver="OnStickerDragOver"
+             Drop="OnStickerDrop">
 
     <UserControl.Resources>
         <!-- 「最近使用」缩略图的右键菜单。
@@ -60,8 +64,11 @@
     </UserControl.Resources>
 
     <!-- 屏幕贴纸工具页（工具 Id = screen-sticker）。
-         页面职责：选图（可多选）/ 最近使用缩略图 / 桌面贴纸管理（置顶、层级、关闭）/ 偏好设置。
+         页面职责：选图（可多选）/ 拖入图片（可多张，松手即贴）/ 最近使用缩略图 /
+         桌面贴纸管理（置顶、层级、关闭）/ 偏好设置。
          贴纸窗口的存活与持久化在 StickerSession（见 ViewModels/ScreenStickerViewModel.cs）。
+         根节点必须 Background="Transparent"，否则页面空白处（ScrollViewer 没画到的区域）不参与命中，
+         从资源管理器拖进来的图片会「拖不进页面」。
 
          布局约定见 docs/dev/layout.md：
            · 页面 = 标题 / 工具条 + 三个页面级区块，整体套 ScrollViewer；

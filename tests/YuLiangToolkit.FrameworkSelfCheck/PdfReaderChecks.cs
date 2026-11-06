@@ -1859,6 +1859,34 @@ internal static class PdfReaderChecks
         }
 
         // ================================================================
+        // 11b. 拖入打开（VM 层：只认存在的 .pdf；拒绝时只改状态栏、不抛异常）
+        //      界面的 DragOver / Drop 只是把路径递进来，判断与提示都在 VM 里，所以能无头断言。
+        // ================================================================
+        var nonPdfDropPath = SelfCheckScratch.MakeFile("pdf-drop-not-pdf.txt");
+        File.WriteAllText(nonPdfDropPath, "这不是 PDF");
+        var missingPdfDropPath = SelfCheckScratch.MakeFile("pdf-drop-missing.pdf");
+        var dropVm = new PdfReaderViewModel();
+        try
+        {
+            Check("VM 拖入判定：存在的 .pdf 接受；非 .pdf / 空路径 / 不存在的 .pdf 都拒绝",
+                dropVm.CanAcceptDrop(demoPdfPath)
+                && !dropVm.CanAcceptDrop(nonPdfDropPath)
+                && !dropVm.CanAcceptDrop(null)
+                && !dropVm.CanAcceptDrop("   ")
+                && !dropVm.CanAcceptDrop(missingPdfDropPath),
+                $"pdf={dropVm.CanAcceptDrop(demoPdfPath)}、txt={dropVm.CanAcceptDrop(nonPdfDropPath)}、missing={dropVm.CanAcceptDrop(missingPdfDropPath)}");
+
+            dropVm.OpenDroppedPath(nonPdfDropPath);
+            Check("VM 拖入非 PDF：不打开文档、状态栏提示只支持 .pdf（不抛异常）",
+                !dropVm.HasDocument && !dropVm.IsBusy && dropVm.StatusText.Contains(".pdf"),
+                dropVm.StatusText);
+        }
+        finally
+        {
+            dropVm.NotifyClosed();
+        }
+
+        // ================================================================
         // 12. 全屏（沉浸阅读）状态机 —— VM 只记状态，真正的窗口操作在 View / 外壳 IFullscreenHost 里
         // ================================================================
         var previousPdfFullscreenEnv = Environment.GetEnvironmentVariable("YLT_PDF_FULLSCREEN");

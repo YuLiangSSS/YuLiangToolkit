@@ -6,16 +6,19 @@ using YuLiangToolkit.Core.Maintenance;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Core.Tools;
 using YuLiangToolkit.Tools.ScreenSticker;
+using YuLiangToolkit.Tools.ScreenSticker.ViewModels;
 
 namespace YuLiangToolkit.FrameworkSelfCheck;
 
 /// <summary>
 /// 「屏幕贴纸」自检：工具元数据 / 配置默认值与夹取 / 最近使用列表（去重·排序·裁剪·清空）/
 /// 贴纸记录与「恢复默认设置」的边界 / 贴纸几何（宽度比例 / 放进工作区 / 层叠落点 / 以鼠标为锚点缩放 /
-/// 滚轮倍率 / 角点缩放 / 重置宽度 / 夹回屏幕）/ 层级顺序 / 图片格式识别与解码 / 配置 JSON 持久化。
+/// 滚轮倍率 / 角点缩放 / 重置宽度 / 夹回屏幕）/ 层级顺序 / 图片格式识别与解码 / 拖入图片的过滤与空提示 /
+/// 配置 JSON 持久化。
 ///
-/// <para><b>本组共 117 条断言</b>（纯逻辑，不创建窗口、不 new 控件、不碰真实 Data/Config、不读写系统剪贴板）：
+/// <para><b>本组共 120 条断言</b>（纯逻辑，不创建窗口、不 new 控件、不碰真实 Data/Config、不读写系统剪贴板）：
 /// 需要 WPF 位图解码 / 编码 / GIF 编码的几条放在单独的 STA 线程里跑（做法同 <c>Live2DChecks</c> / <c>WordViewerChecks</c>），
+/// 拖入判定那条也只 new 一个 <see cref="ScreenStickerViewModel"/>（不调 <c>Session.AddSticker</c>，不会弹出贴纸窗口），
 /// 其余全部是 <see cref="StickerGeometry"/> / <see cref="StickerLayerOrder"/> / <see cref="StickerClipboard"/> /
 /// <see cref="StickerTiming"/> / <see cref="StickerMedia"/> / 配置对象的直接调用。</para>
 /// </summary>
@@ -47,6 +50,7 @@ internal static class ScreenStickerChecks
         CheckLayerOrder(fn);
         CheckImageFormats(fn);
         CheckClipboard(fn);
+        CheckDropImages(fn);
         CheckGifPlayback(fn);
         CheckSerialization(fn);
     }
@@ -908,6 +912,94 @@ internal static class ScreenStickerChecks
         {
             try { File.Delete(savedPath); } catch { /* 临时目录，删不掉也不影响断言 */ }
         }
+    }
+
+    // ---------------------------------------------------------------- 拖入图片
+    //
+    // 只断言「拖入前的过滤」与「过滤后为空时的状态提示」：CanAcceptDrop 只看文件存在 + 后缀，
+    // 不解码图片、不调 Session.AddSticker（否则自检会真的往桌面弹出贴纸窗口，既慢又干扰用户）。
+    // 真的能贴图由人工 / 截图冒烟验收。
+
+    private static void CheckDropImages(CheckFn check)
+    {
+        var directory = SelfCheckScratch.MakeDirectory("screen-sticker-drop");
+        var pngPath = Path.Combine(directory, "drop-ok.png");
+        var upperPngPath = Path.Combine(directory, "drop-upper.PNG");   // 后缀大小写不影响判定
+        var gifPath = Path.Combine(directory, "drop-anim.gif");
+        var textPath = Path.Combine(directory, "drop-note.txt");
+        var missingPath = Path.Combine(directory, "drop-missing.png");
+
+        var written = true;
+        try
+        {
+            File.WriteAllBytes(pngPath, Convert.FromBase64String(OnePixelPngBase64));
+            File.WriteAllBytes(upperPngPath, Convert.FromBase64String(OnePixelPngBase64));
+            File.WriteAllBytes(gifPath, new byte[] { 0x47, 0x49, 0x46, 0x38, 0x39, 0x61 });   // 只认后缀，不解码
+            File.WriteAllText(textPath, "不是图片");
+        }
+        catch
+        {
+            written = false;
+        }
+
+        var canAcceptPng = false;
+        var canAcceptUppercase = false;
+        var canAcceptGif = false;
+        var canAcceptText = true;
+        var canAcceptFolder = true;
+        var canAcceptMissing = true;
+        var canAcceptEmpty = true;
+        var windowsBefore = 0;
+        var windowsAfter = 0;
+        var statusAfterEmptyDrop = "";
+        var statusAfterUnsupportedDrop = "";
+        var logAfterUnsupportedDrop = "";
+
+        // ViewModel 构造函数会读临时 YLT_HOME 下的配置（不建窗口 / 不贴图），放独立 STA 线程跑更接近真实界面线程
+        var failure = RunOnSta(() =>
+        {
+            using var vm = new ScreenStickerViewModel();
+
+            canAcceptPng = vm.CanAcceptDrop(pngPath);
+            canAcceptUppercase = vm.CanAcceptDrop(upperPngPath);
+            canAcceptGif = vm.CanAcceptDrop(gifPath);
+            canAcceptText = vm.CanAcceptDrop(textPath);
+            canAcceptFolder = vm.CanAcceptDrop(directory);     // 拖文件夹不该被当成图片
+            canAcceptMissing = vm.CanAcceptDrop(missingPath);
+            canAcceptEmpty = vm.CanAcceptDrop("") || vm.CanAcceptDrop("   ") || vm.CanAcceptDrop(null);
+
+            windowsBefore = vm.Session.Windows.Count;
+
+            // 空拖入：只提示，不贴图
+            vm.AddDroppedImages(null);
+            vm.AddDroppedImages(Array.Empty<string>());
+            statusAfterEmptyDrop = vm.StatusText;
+
+            // 过滤后为空（非图片 + 不存在 + 空路径）：不贴图，状态栏 + 日志说明
+            vm.AddDroppedImages(new[] { textPath, missingPath, "" });
+            statusAfterUnsupportedDrop = vm.StatusText;
+            logAfterUnsupportedDrop = vm.LogText;
+            windowsAfter = vm.Session.Windows.Count;
+        });
+
+        check("[屏幕贴纸] 拖入判定：存在的图片（后缀大小写无关 / 含 GIF）能接受，非图片 / 文件夹 / 不存在 / 空 / null 都拒绝",
+            written && failure is null
+            && canAcceptPng && canAcceptUppercase && canAcceptGif
+            && !canAcceptText && !canAcceptFolder && !canAcceptMissing && !canAcceptEmpty,
+            $"写临时文件={written} 异常={failure?.Message ?? "无"} png={canAcceptPng} 大写={canAcceptUppercase} "
+            + $"gif={canAcceptGif} txt={canAcceptText} 文件夹={canAcceptFolder} 不存在={canAcceptMissing} 空={canAcceptEmpty}");
+
+        check("[屏幕贴纸] 拖入空内容：AddDroppedImages(null / 空列表) 只提示「没有文件」，不抛异常也不贴图",
+            written && failure is null && windowsAfter == windowsBefore
+            && statusAfterEmptyDrop.Contains("没有文件"),
+            $"状态={statusAfterEmptyDrop} 贴纸窗口 {windowsBefore}→{windowsAfter}");
+
+        check("[屏幕贴纸] 拖入内容过滤后为空：状态提示「3 个文件里没有支持的图片」，且不会真的 AddSticker（贴纸窗口数不变）",
+            written && failure is null && windowsAfter == windowsBefore
+            && statusAfterUnsupportedDrop.Contains("拖入的 3 个文件里没有支持的图片")
+            && logAfterUnsupportedDrop.Contains("忽略拖入的 3 个文件"),
+            $"状态={statusAfterUnsupportedDrop} 贴纸窗口 {windowsBefore}→{windowsAfter} "
+            + $"日志={logAfterUnsupportedDrop.Replace(Environment.NewLine, " ").Trim()}");
     }
 
     // ---------------------------------------------------------------- GIF 动画 / 播放速度

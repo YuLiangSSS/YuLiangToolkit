@@ -746,12 +746,51 @@ public sealed class PdfReaderViewModel : ToolViewModelBase, IFileLaunchTarget
                 return;
             }
 
+            // 命令行 / 「打开方式」交进来的不一定是 PDF（别的程序可能传错）：先看后缀，
+            // 给一句好懂的提示，别让它跑到解析阶段报一堆难懂的错。
+            if (!PdfFileAssociation.IsSupportedExtension(Path.GetExtension(full)))
+            {
+                StatusText = $"只能用 PDF 阅读器打开 .pdf 文件：{full}";
+                return;
+            }
+
             _ = LoadPdfAsync(full);
         }
         catch (Exception ex)
         {
             StatusText = $"用 PDF 阅读器打开失败：{ex.Message}";
         }
+    }
+
+    // ---------------------------------------------------------------- 拖入打开
+
+    /// <summary>
+    /// 这个路径能不能作为「拖进来的 PDF」打开（存在 + 后缀 <c>.pdf</c>，
+    /// 判断复用 <see cref="PdfFileAssociation.IsSupportedPdfFile"/>）。
+    /// 抽在 VM 里是为了自检能直接断言，界面只拿它决定拖动光标是「复制」还是「禁止」。
+    /// </summary>
+    public bool CanAcceptDrop(string? path) => PdfFileAssociation.IsSupportedPdfFile(path);
+
+    /// <summary>
+    /// 处理拖进工具页的文件：合法 <c>.pdf</c> 走正常打开流程；不是 PDF（或没拿到路径）时
+    /// **只改 <see cref="ToolViewModelBase.StatusText"/> 给提示**，不抛异常、不弹窗，也绝不会误开别的文件。
+    /// </summary>
+    public void OpenDroppedPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            StatusText = "没有识别到文件：请把 .pdf 文件拖进工具页。";
+            return;
+        }
+
+        if (!CanAcceptDrop(path))
+        {
+            StatusText = $"只能拖入 .pdf 文件（拖入的是：{Path.GetFileName(path)}）";
+            return;
+        }
+
+        // 合法 .pdf：和「打开 PDF…」走同一条流程，打不开时的中文提示由 LoadPdfAsync 负责
+        _ = LoadPdfAsync(path);
     }
 
     private void NotifyDocumentState()

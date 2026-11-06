@@ -1,5 +1,6 @@
 using System.Text.Json;
 using YuLiangToolkit.Tools.MediaEditor;
+using YuLiangToolkit.Tools.MediaEditor.ViewModels;
 using YuLiangToolkit.Tools.ScreenRecorder;
 
 namespace YuLiangToolkit.FrameworkSelfCheck;
@@ -22,6 +23,7 @@ internal static class MediaEditorChecks
         CheckExports(check);
         CheckOptions(check);
         CheckConfig(check);
+        CheckDrop(check);
     }
 
     // ---------------------------------------------------------------- 工具元数据
@@ -312,6 +314,35 @@ internal static class MediaEditorChecks
         check("[剪辑] 配置归一化：GIF 格式保持 gif，不被错误回退成视频",
             gifConfig.Format == "gif" && gifConfig.IsGif && !gifConfig.IsVideo,
             gifConfig.Format);
+    }
+
+    // ---------------------------------------------------------------- 拖入载入
+
+    private static void CheckDrop(Action<string, bool, string> check)
+    {
+        check("[剪辑] IsSupportedInputPath：后缀白名单忽略大小写（含 .GIF / .MP4），其它后缀 / 无后缀 / 空 / null 拒绝",
+            MediaEditorViewModel.IsSupportedInputPath(@"C:\media\clip.mp4")
+            && MediaEditorViewModel.IsSupportedInputPath(@"C:\media\clip.MP4")
+            && MediaEditorViewModel.IsSupportedInputPath(@"C:\media\动图.Gif")
+            && MediaEditorViewModel.IsSupportedInputPath(@"C:\media\clip.webm")
+            && MediaEditorViewModel.IsSupportedInputPath(@"C:\media\clip.mpeg")
+            && !MediaEditorViewModel.IsSupportedInputPath(@"C:\media\clip.txt")
+            && !MediaEditorViewModel.IsSupportedInputPath(@"C:\media\clip.mp4x")
+            && !MediaEditorViewModel.IsSupportedInputPath("no-extension")
+            && !MediaEditorViewModel.IsSupportedInputPath("")
+            && !MediaEditorViewModel.IsSupportedInputPath("   ")
+            && !MediaEditorViewModel.IsSupportedInputPath(null),
+            "mp4 / MP4 / Gif / webm / mpeg / txt / mp4x / 无后缀 / 空 / null");
+
+        // 拖入只认「文件真实存在 + 后缀受支持」：不存在的一律返回 false。
+        // CanAcceptDrop 是静态判定，自检不需要（也不应该）构造 ViewModel —— 那样会触发后台 FFmpeg 探测。
+        var missing = Path.Combine(Path.GetTempPath(), "ylt-media-editor-不存在的文件.mp4");
+        check("[剪辑] CanAcceptDrop：文件不存在返回 false（空路径 / null / 后缀不支持也一样拒绝）",
+            !MediaEditorViewModel.CanAcceptDrop(missing)
+            && !MediaEditorViewModel.CanAcceptDrop(Path.Combine(Path.GetTempPath(), "ylt-media-editor-不存在的文件.txt"))
+            && !MediaEditorViewModel.CanAcceptDrop("")
+            && !MediaEditorViewModel.CanAcceptDrop(null),
+            missing);
     }
 
     private static bool PropertyChangedFires(MediaEditorConfig config, Action<MediaEditorConfig> change)

@@ -2,7 +2,8 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
-             Background="{DynamicResource WindowBackgroundBrush}">
+             Background="{DynamicResource WindowBackgroundBrush}"
+             AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop">
 
     <!-- 剪辑工具（media-editor）
          布局照 docs/dev/layout.md：左侧设置（内部可滚）｜分隔条｜右侧预览，主区域｜分隔条｜底部日志。

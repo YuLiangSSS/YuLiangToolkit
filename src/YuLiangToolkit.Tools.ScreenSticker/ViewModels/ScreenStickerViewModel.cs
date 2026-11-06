@@ -59,7 +59,7 @@ public sealed class ScreenStickerViewModel : ToolViewModelBase
 
         RefreshRecentItems();
         RefreshStickers();
-        StatusText = "就绪：可以选图 / 按 Ctrl+V 贴剪贴板图片，也可以点左侧的最近使用再贴一张";
+        StatusText = "就绪：可以选图 / 把图片拖进来 / 按 Ctrl+V 贴剪贴板图片，也可以点左侧的最近使用再贴一张";
     }
 
     // ===================== 会话 / 配置 =====================
@@ -251,10 +251,25 @@ public sealed class ScreenStickerViewModel : ToolViewModelBase
 
         if (dialog.ShowDialog() != true) return;
 
-        var files = dialog.FileNames;
-        if (files.Length == 0) return;
+        AddStickerFiles(dialog.FileNames);
+    }
 
-        // 记住这次选图所在的文件夹（下次打开对话框还在这里）
+    /// <summary>
+    /// 把一批图片文件逐张贴到桌面——「选择图片…」与「拖入图片」共用这一条流程
+    /// （记住上次所在文件夹、批量期间暂停列表刷新、逐张 <see cref="StickerSession.AddSticker"/>、
+    /// 汇总失败原因写进状态栏与日志），避免两处各写一份。
+    /// <para>⚠ 必须在 UI / STA 线程调用：<see cref="StickerSession.AddSticker"/> 内部会 new 并 Show 贴纸窗口。</para>
+    /// </summary>
+    /// <param name="files">
+    /// 图片文件路径；可以包含不支持的格式（会按「贴图失败」逐张汇总，不抛异常）。
+    /// 过滤规则由调用方决定：选图对话框用 <see cref="StickerImage.DialogFilter"/>，
+    /// 拖入走 <see cref="AddDroppedImages"/> 的 <see cref="CanAcceptDrop"/> 预过滤。
+    /// </param>
+    public void AddStickerFiles(IReadOnlyList<string>? files)
+    {
+        if (files is null || files.Count == 0) return;
+
+        // 记住这次选图 / 拖入所在的文件夹（下次打开对话框还在这里）
         try
         {
             var folder = Path.GetDirectoryName(files[0]);
@@ -302,6 +317,69 @@ public sealed class ScreenStickerViewModel : ToolViewModelBase
         StatusText = failures.Count == 0
             ? $"已贴 {added} 张图片"
             : $"已贴 {added} 张，失败 {failures.Count} 张（{failures[0]}）";
+    }
+
+    // ===================== 拖入图片（整页放下即贴） =====================
+
+    /// <summary>
+    /// 拖入的路径能不能直接贴到桌面：文件存在 + 后缀是支持的图片
+    /// （见 <see cref="StickerImage.Extensions"/>，忽略大小写）。
+    /// 拖文件夹 / 非图片 / 不存在的路径都返回 false；路径非法等异常也吞掉返回 false。
+    /// </summary>
+    public bool CanAcceptDrop(string? path)
+    {
+        try
+        {
+            return !string.IsNullOrWhiteSpace(path)
+                && File.Exists(path)
+                && StickerImage.IsSupportedExtension(path);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 处理「从资源管理器拖进工具页」的文件：先滤出真正能贴的图片，再走与「选择图片…」
+    /// 相同的批量贴图流程（<see cref="AddStickerFiles"/>）。
+    /// 过滤后为空时只改状态栏 / 日志，不贴任何图、不弹窗。
+    /// <para>⚠ 拖放回调在 UI 线程，这里直接调 <see cref="StickerSession.AddSticker"/> 是安全的。</para>
+    /// </summary>
+    /// <param name="paths">拖入的全部路径（可以含文件夹 / 非图片 / 不存在的路径，会被忽略）。</param>
+    public void AddDroppedImages(IReadOnlyList<string>? paths)
+    {
+        if (paths is null || paths.Count == 0)
+        {
+            StatusText = "拖入的内容里没有文件";
+            return;
+        }
+
+        var files = new List<string>();
+        foreach (var path in paths)
+        {
+            if (CanAcceptDrop(path)) files.Add(path);
+        }
+
+        if (files.Count == 0)
+        {
+            StatusText = $"拖入的 {paths.Count} 个文件里没有支持的图片（支持 png / jpg / bmp / gif / tif / ico / webp）";
+            Log($"忽略拖入的 {paths.Count} 个文件：没有支持的图片格式");
+            return;
+        }
+
+        if (files.Count < paths.Count)
+        {
+            Log($"拖入的 {paths.Count} 个文件里有 {paths.Count - files.Count} 个不是支持的图片，已忽略");
+        }
+
+        AddStickerFiles(files);
+
+        // 批量贴图的状态提示只覆盖贴上的那些；这里补一句「忽略了几张」，用户才知道没漏
+        if (files.Count < paths.Count)
+        {
+            StatusText += $"（拖入的 {paths.Count} 个文件里有 {paths.Count - files.Count} 个不是支持的图片，已忽略）";
+        }
     }
 
     /// <summary>

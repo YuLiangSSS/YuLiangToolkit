@@ -3,7 +3,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
              Background="#0E1014"
-             Focusable="True">
+             Focusable="True"
+             AllowDrop="True"
+             DragOver="OnFileDragOver"
+             Drop="OnFileDrop">
 
     <UserControl.Resources>
         <!-- 目录面板里的一行：像列表项，悬停高亮 -->

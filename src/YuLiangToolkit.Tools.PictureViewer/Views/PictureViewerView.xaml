@@ -3,7 +3,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:views="clr-namespace:YuLiangToolkit.Tools.PictureViewer.Views"
              xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
-             Background="#0E1014">
+             Background="#0E1014"
+             AllowDrop="True"
+             DragOver="OnPictureDragOver"
+             Drop="OnPictureDrop">
 
     <UserControl.Resources>
         <views:HexToBrushConverter x:Key="HexToBrush" />
