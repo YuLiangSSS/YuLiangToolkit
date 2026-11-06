@@ -214,8 +214,30 @@
 
         <!-- ⑤·道系（墨金）：金色光晕 + 两层远山剪影（其它主题整层隐藏；颜色由主题 token 提供，深 / 浅都适用） -->
         <Grid x:Name="DaoLayer" Visibility="Collapsed">
+            <!-- 原项目 daoindex 的两团极淡顶光：左上青玉、右上朱砂；都用同色透明收边，避免灰色雾 -->
+            <Ellipse Width="1400" Height="900" HorizontalAlignment="Left" VerticalAlignment="Top"
+                     Margin="-300,-260,0,0" IsHitTestVisible="False">
+                <Ellipse.Fill>
+                    <RadialGradientBrush GradientOrigin="0.25,0.12" Center="0.5,0.5"
+                                         RadiusX="0.8" RadiusY="0.8">
+                        <GradientStop Color="#1674C3AB" Offset="0" />
+                        <GradientStop Color="#0074C3AB" Offset="1" />
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+            <Ellipse Width="1100" Height="800" HorizontalAlignment="Right" VerticalAlignment="Top"
+                     Margin="0,-220,-250,0" IsHitTestVisible="False">
+                <Ellipse.Fill>
+                    <RadialGradientBrush GradientOrigin="0.75,0.12" Center="0.5,0.5"
+                                         RadiusX="0.8" RadiusY="0.8">
+                        <GradientStop Color="#13D97B6C" Offset="0" />
+                        <GradientStop Color="#00D97B6C" Offset="1" />
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
             <Ellipse Width="1000" Height="1000" HorizontalAlignment="Right" VerticalAlignment="Top"
                      Margin="0,-420,-220,0" Fill="{DynamicResource DaoGlowBrush}" />
+
             <Grid VerticalAlignment="Bottom" Height="360" IsHitTestVisible="False">
                 <Polygon Points="0,360 260,120 520,300 820,60 1200,360" Stretch="Fill"
                          Fill="{DynamicResource DaoSilhouetteBrush}" Opacity="0.9" />
@@ -232,46 +254,29 @@
         <Grid x:Name="CloudSkyLayer" Visibility="Collapsed">
             <!-- ===== 白天 ===== -->
             <Grid x:Name="DaySky" Visibility="Collapsed">
-                <!-- 太阳固定 200px 外环，锚定右上角；窗口拉宽 / 拉高都不拉伸它 -->
-                <Canvas Width="360" Height="360" HorizontalAlignment="Right" VerticalAlignment="Top"
-                        Margin="0,0,80,0" IsHitTestVisible="False">
-                    <Ellipse Width="360" Height="360">
+                <!-- 太阳按原项目 upper.css 的 .sun 复刻：132px 圆盘 + 14px rgba(255,255,255,.4) 白色外环
+                     + radial-gradient(circle at 35% 30%, #fffdf6, #f6e8c8 62%, #e3c98f)
+                     + 0 24px 60px rgba(184,137,63,.24) 暖金投影；中间是 26px 金环 + 居中金点。 -->
+                <Canvas Width="160" Height="160" HorizontalAlignment="Right" VerticalAlignment="Top"
+                        Margin="0,70,180,0" IsHitTestVisible="False">
+                    <Canvas.Effect>
+                        <DropShadowEffect Color="#B8893F" BlurRadius="30" ShadowDepth="12"
+                                          Direction="270" Opacity="0.24" />
+                    </Canvas.Effect>
+                    <Ellipse Width="160" Height="160" Fill="#66FFFFFF" />
+                    <Ellipse Canvas.Left="14" Canvas.Top="14" Width="132" Height="132">
                         <Ellipse.Fill>
-                            <RadialGradientBrush>
-                                <GradientStop Color="#66FFE8B0" Offset="0" />
-                                <GradientStop Color="#22FFE8B0" Offset="0.55" />
-                                <GradientStop Color="#00FFE8B0" Offset="1" />
+                            <RadialGradientBrush GradientOrigin="0.35,0.3" Center="0.5,0.5"
+                                                 RadiusX="0.72" RadiusY="0.72">
+                                <GradientStop Color="#FFFDF6" Offset="0" />
+                                <GradientStop Color="#F6E8C8" Offset="0.62" />
+                                <GradientStop Color="#E3C98F" Offset="1" />
                             </RadialGradientBrush>
                         </Ellipse.Fill>
                     </Ellipse>
-                    <!-- 白色圆环是实心环带（外圆减内圆），不是描边细线；厚度比上一版再细 1/4 -->
-                    <Path Canvas.Left="86.25" Canvas.Top="56.25" Fill="#FFFFFFFF">
-                        <Path.Effect>
-                            <DropShadowEffect Color="#8FB3D2" BlurRadius="14" ShadowDepth="0" Opacity="0.28" />
-                        </Path.Effect>
-                        <Path.Data>
-                            <CombinedGeometry GeometryCombineMode="Exclude">
-                                <CombinedGeometry.Geometry1>
-                                    <EllipseGeometry Center="93.75,93.75" RadiusX="93.75" RadiusY="93.75" />
-                                </CombinedGeometry.Geometry1>
-                                <CombinedGeometry.Geometry2>
-                                    <EllipseGeometry Center="93.75,93.75" RadiusX="75" RadiusY="75" />
-                                </CombinedGeometry.Geometry2>
-                            </CombinedGeometry>
-                        </Path.Data>
-                    </Path>
-                    <Ellipse Canvas.Left="105" Canvas.Top="75" Width="150" Height="150">
-                        <Ellipse.Fill>
-                            <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5">
-                                <GradientStop Color="#FFFFFB" Offset="0" />
-                                <GradientStop Color="#FFF7DF" Offset="0.55" />
-                                <GradientStop Color="#F4DDA4" Offset="1" />
-                            </LinearGradientBrush>
-                        </Ellipse.Fill>
-                    </Ellipse>
-                    <Ellipse Canvas.Left="158" Canvas.Top="128" Width="44" Height="44"
-                             Stroke="#C9A227" StrokeThickness="1.2" />
-                    <Ellipse Canvas.Left="174" Canvas.Top="144" Width="12" Height="12" Fill="#C9A227" />
+                    <Ellipse Canvas.Left="67" Canvas.Top="67" Width="26" Height="26"
+                             Stroke="#B8893F" StrokeThickness="1" />
+                    <Ellipse Canvas.Left="75" Canvas.Top="75" Width="10" Height="10" Fill="#B8893F" />
                 </Canvas>
 
                 <!-- 云层铺满窗口，但每朵云自身是固定尺寸；X 由代码按窗口宽度循环 -->

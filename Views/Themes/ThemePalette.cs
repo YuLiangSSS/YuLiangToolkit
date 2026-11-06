@@ -490,9 +490,28 @@ public static class ThemePaletteBuilder
         tokens["WindowEdgeBorderBrush"] = Solid(light ? Hex("#33A88746") : Hex("#33D6B26A"));
 
         // 背景层：暖色渐变 + 金色光晕 + 远山剪影（GlassBackdrop 的 DaoLayer 用这两个 token）
-        tokens["BackdropBaseBrush"] = Linear(
-            light ? Hex("#F8F5EE") : Hex("#070604"),
-            light ? Hex("#EDF2F8") : Hex("#120E08"));
+        // 深色底按原项目 daoindex 的 linear-gradient(180deg, #14100d 0%, #0e0c0a 52%, #110e0b 100%)；
+        // 两团极淡的青玉 / 朱砂顶光在 DaoLayer 里直接画（固定装饰，不占主题 token）。
+        if (light)
+        {
+            tokens["BackdropBaseBrush"] = Linear(Hex("#F8F5EE"), Hex("#EDF2F8"));
+        }
+        else
+        {
+            var baseBrush = new LinearGradientBrush
+            {
+                StartPoint = new Point(0, 0),
+                EndPoint = new Point(0, 1),
+                GradientStops =
+                {
+                    new GradientStop(Hex("#14100D"), 0),
+                    new GradientStop(Hex("#0E0C0A"), 0.52),
+                    new GradientStop(Hex("#110E0B"), 1),
+                },
+            };
+            baseBrush.Freeze();
+            tokens["BackdropBaseBrush"] = baseBrush;
+        }
         tokens["BackdropImageScrimBrush"] = Solid(light ? WithAlpha(Colors.White, 0xB8) : WithAlpha(Colors.Black, 0x55));
         tokens["BackdropNoiseBrush"] = Solid(Colors.Transparent);
         var gold = Hex("#D6B26A");
@@ -504,7 +523,7 @@ public static class ThemePaletteBuilder
             : Radial(Color.FromArgb(0, 0, 0, 0), WithAlpha(Colors.Black, 0xAA));
         tokens["DaoSilhouetteBrush"] = Solid(light ? Hex("#147F93A8") : Hex("#1C2E2A1F"));
         tokens["DaoGlowBrush"] = Radial(
-            light ? WithAlpha(Hex("#C9A227"), 0x1A) : WithAlpha(gold, 0x18),
+            light ? WithAlpha(Hex("#C9A227"), 0x12) : WithAlpha(gold, 0x0E),
             WithAlpha(gold, 0x00));
         return tokens;
     }
