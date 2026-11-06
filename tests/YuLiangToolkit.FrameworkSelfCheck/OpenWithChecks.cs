@@ -6,6 +6,7 @@ using YuLiangToolkit.Tools.MediaPlayer;
 using YuLiangToolkit.Tools.OpenWith;
 using YuLiangToolkit.Tools.PdfReader;
 using YuLiangToolkit.Tools.PictureViewer;
+using YuLiangToolkit.Tools.PptViewer;
 using YuLiangToolkit.Tools.TextEditor;
 using YuLiangToolkit.Tools.WordViewer;
 
@@ -159,13 +160,14 @@ internal static class OpenWithChecks
         // ================================================================
         // 4. 自动分流表（扩展名 → 工具）
         // ================================================================
-        Check("分流表：7 个目标、Id 与各工具工程的 ToolId 一致",
+        Check("分流表：8 个目标、Id 与各工具工程的 ToolId 一致",
             OpenWithCatalog.Targets.Select(t => t.ToolId).SequenceEqual(new[]
             {
                 PdfReaderConfig.ToolId,
                 PictureViewerConfig.ToolId,
                 WordViewerConfig.ToolId,
                 ExcelViewerConfig.ToolId,
+                PptViewerConfig.ToolId,
                 new ArchiveTool().Id,
                 MediaPlayerConfig.ToolId,
                 TextEditorConfig.ToolId,
@@ -191,13 +193,17 @@ internal static class OpenWithChecks
                == OpenWithCatalog.Targets.SelectMany(t => t.Extensions)
                    .Distinct(StringComparer.OrdinalIgnoreCase).Count());
 
-        Check("扩展名表：图片 / PDF 与对应阅读器的关联表一致",
+        Check("扩展名表：图片 / PDF / PPT 与对应阅读器的关联表一致",
             OpenWithCatalog.Targets.Single(t => t.ToolId == PictureViewerConfig.ToolId).Extensions
                 .OrderBy(e => e, StringComparer.OrdinalIgnoreCase)
                 .SequenceEqual(PictureFileAssociation.SupportedExtensions
                     .OrderBy(e => e, StringComparer.OrdinalIgnoreCase))
             && OpenWithCatalog.Targets.Single(t => t.ToolId == PdfReaderConfig.ToolId).Extensions
-                .SequenceEqual(PdfFileAssociation.SupportedExtensions));
+                .SequenceEqual(PdfFileAssociation.SupportedExtensions)
+            && OpenWithCatalog.Targets.Single(t => t.ToolId == PptViewerConfig.ToolId).Extensions
+                .OrderBy(e => e, StringComparer.OrdinalIgnoreCase)
+                .SequenceEqual(PptViewerConfig.SupportedExtensions
+                    .OrderBy(e => e, StringComparer.OrdinalIgnoreCase)));
 
         Check("扩展名表：播放器表覆盖 MediaTypes 的全部音频；除 .ts 冲突外覆盖全部视频",
             MediaTypes.AudioExtensions.All(e => OpenWithCatalog.MediaExtensions.Contains(e, StringComparer.OrdinalIgnoreCase))
@@ -212,12 +218,14 @@ internal static class OpenWithChecks
                 .All(e => OpenWithCatalog.TextArchiveExtensions.Contains(e, StringComparer.OrdinalIgnoreCase)));
 
         string? Route(string? path) => OpenWithCatalog.ResolveToolId(path);
-        Check("分流：PDF / 图片 / Word / Excel / 压缩包 / 音视频 / 文本都进对应工具",
+        Check("分流：PDF / 图片 / Word / Excel / PPT / 压缩包 / 音视频 / 文本都进对应工具",
             Route(@"C:\a\b.pdf") == PdfReaderConfig.ToolId
             && Route(@"C:\a\B.PDF") == PdfReaderConfig.ToolId
             && Route(@"C:\a\b.png") == PictureViewerConfig.ToolId
             && Route(@"C:\a\b.docx") == WordViewerConfig.ToolId
             && Route(@"C:\a\b.xlsx") == ExcelViewerConfig.ToolId
+            && Route(@"C:\a\b.pptx") == PptViewerConfig.ToolId
+            && Route(@"C:\a\b.PPSX") == PptViewerConfig.ToolId
             && Route(@"C:\a\b.zip") == new ArchiveTool().Id
             && Route(@"C:\a\b.tar.gz") == new ArchiveTool().Id
             && Route(@"C:\a\b.mp3") == MediaPlayerConfig.ToolId

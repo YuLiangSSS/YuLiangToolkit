@@ -46,6 +46,9 @@
     <!-- 「Excel 阅读器」：手写 xlsx 解析（共享字符串 / 样式 / 合并 / 列宽 / 截断）/
          数字格式与日期序列 / 地址换算；临时目录里造最小 xlsx，无头跑。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.ExcelViewer\YuLiangToolkit.Tools.ExcelViewer.csproj" />
+    <!-- 「PPT 阅读器」：手写 pptx 解析（幻灯片顺序 / 版式继承 / 形状 / 文字 / 图片 / 表格 / 备注）/
+         纯逻辑查找 / 缩放 / 配置与最近列表；临时目录里造最小 pptx，无头跑。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.PptViewer\YuLiangToolkit.Tools.PptViewer.csproj" />
     <!-- 「osu!mania 转谱」：OsuParsers 解析桥往返 / 星数 / 等级公式 / 转 K / 转 LN，
          全部是纯逻辑（合成谱面文本在临时目录里造，不碰仓库 Data/Config）。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.OsuMania\YuLiangToolkit.Tools.OsuMania.csproj" />

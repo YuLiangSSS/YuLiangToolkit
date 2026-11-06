@@ -49,6 +49,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("audio-tools", "音频工具：视频转音频 / 分段合成（自然排序 / concat 清单 / FFmpeg 参数）"),
     ("word-viewer", "Word 阅读器：docx 解析（段落 / 格式 / 表格 / 图片 / 大纲）/ 查找 / 最近列表"),
     ("excel-viewer", "Excel 阅读器：xlsx 解析（共享字符串 / 样式 / 合并 / 列宽 / 截断）/ 数字格式 / 最近列表"),
+    ("ppt-viewer", "PPT 阅读器：pptx 解析（幻灯片顺序 / 版式继承 / 形状 / 文字 / 图片 / 表格 / 备注）/ 查找 / 缩放 / 放映"),
     ("context-menu", "右键菜单管理：注册表枚举 / 隐藏 / 恢复（内存假注册表）"),
     ("archive", "压缩包工具：格式识别 / 解压 / 创建 / 密码 / 路径穿越 / 覆盖策略"),
     ("open-with", "打开方式：三种模式 / 自动分流 / 注册表命令拼装（只读，不写注册表）"),
@@ -1186,6 +1187,10 @@ RunGroupModule("word-viewer", "Word 阅读器", WordViewerChecks.Run);
 // 「Excel 阅读器」：手写 xlsx 解析（共享字符串 / 样式 / 合并单元格 / 列宽 / 截断）/
 // 数字格式与日期序列 / 地址换算 / 配置与最近列表；同样无头跑。
 RunGroupModule("excel-viewer", "Excel 阅读器", ExcelViewerChecks.Run);
+
+// 「PPT 阅读器」：手写 pptx 解析（幻灯片顺序 / 版式继承 / 形状 / 文字 / 图片 / 表格 / 备注）/
+// 纯逻辑查找 / 缩放 / 配置与最近列表；**无头跑，不弹窗、不碰真 Data**（界面渲染由截图冒烟验收）。
+RunGroupModule("ppt-viewer", "PPT 阅读器", PptViewerChecks.Run);
 
 // 「右键菜单管理」：枚举 / 隐藏 / 恢复 / 恢复全部 / 筛选 / CLSID 规范化。
 // 全部走内存假注册表（FakeContextMenuRegistry），**绝不写用户真实注册表**，无头跑、可在任何机器重复。

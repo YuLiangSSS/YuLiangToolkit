@@ -17,7 +17,7 @@
             <StackPanel>
                 <TextBlock Text="🗂️ 打开方式" FontSize="21" FontWeight="SemiBold" />
                 <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
-                           Text="把凉雨工具集登记进 Windows 右键 → 打开方式：列表里会出现 3 个入口 —— 按文件类型自动分流、以文本方式打开、以压缩包方式打开。启用后，任意文件右键 → 打开方式 都能选到本工具；「按文件类型」会自动把 PDF / 图片 / Word / Excel / 压缩包 / 音视频 / 文本交给对应工具。" />
+                           Text="把凉雨工具集登记进 Windows 右键 → 打开方式：列表里会出现 3 个入口 —— 按文件类型自动分流、以文本方式打开、以压缩包方式打开。启用后，任意文件右键 → 打开方式 都能选到本工具；「按文件类型」会自动把 PDF / 图片 / Word / Excel / PPT / 压缩包 / 音视频 / 文本交给对应工具。" />
             </StackPanel>
 
             <!-- ===== 主区域（登记 + 映射）与运行日志：上下可拖 ===== -->

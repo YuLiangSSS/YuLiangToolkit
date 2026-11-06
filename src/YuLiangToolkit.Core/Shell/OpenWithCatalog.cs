@@ -89,6 +89,10 @@ public static class OpenWithCatalog
             "只读浏览 .xlsx / .xlsm 工作簿（多工作表、单元格样式与公式）",
             new[] { ".xlsx", ".xlsm" }),
         new OpenWithTarget(
+            "ppt-viewer", "PPT 阅读器", "📽️",
+            "只读浏览 .pptx / .pptm / .ppsx 演示文稿（幻灯片、图片、表格、备注与全屏放映）",
+            new[] { ".pptx", ".pptm", ".ppsx" }),
+        new OpenWithTarget(
             "archive", "压缩包工具", "📦",
             "解压 / 创建 ZIP、7Z，解压 RAR、TAR.*、GZ、BZ2、XZ、ZST 等",
             TextArchiveExtensions),

@@ -15,6 +15,7 @@
 | 📄 PDF 阅读器 | 简单 PDF 阅读器：纵向 / 横向连续滚动 + 双页并排一次翻两页，支持缩放、Ctrl+F 文字搜索、书签目录、双页页面间距、拖动惯性 / 滚轮惯性、自动记住每本 PDF 上次阅读位置、页码跳转、🕘 最近浏览（上限可调）、F11 全屏沉浸阅读（工具条自动隐藏）与双击 .pdf 关联；只读不改原文件 | [tools/pdf-reader.md](tools/pdf-reader.md) |
 | 📘 Word 阅读器 | 只读浏览 `.docx`：标题大纲、字符格式、列表、表格、图片、超链接、页眉页脚、脚注 / 尾注、批注面板、修订视图，50% ~ 300% 缩放、Ctrl+F 查找（区分大小写 / 表格内）、复制全文、打印、导出 HTML / 纯文本、自动记住阅读位置、🕘 最近打开、拖入即开；手写 OOXML 解析，不改原文件 | [tools/word-viewer.md](tools/word-viewer.md) |
 | 📊 Excel 阅读器 | 只读浏览 `.xlsx`：工作表页签、列宽 / 行号 / 列标题、数字 / 日期 / 百分比格式、合并单元格、字体与填充色、冻结窗格还原、自动行高 / 换行、显示公式、超链接单元格、行列标题高亮，Ctrl+F 查找单元格、右键复制值 / 公式 / 地址、自动记住工作表与阅读位置；手写 OOXML 解析，只显示公式缓存值、不改原文件 | [tools/excel-viewer.md](tools/excel-viewer.md) |
+| 📽️ PPT 阅读器 | 只读浏览 `.pptx` / `.pptm` / `.ppsx`：幻灯片原样还原（文字 / 图片 / 表格 / 形状 / 背景 / 主题色）、缩略图导航、25% ~ 400% 缩放与适应窗口、演讲者备注、Ctrl+F 查找、复制本页文字、F5 全屏放映、最近打开、阅读位置记忆；手写 OOXML 解析，不装 Office、不改原文件 | [tools/ppt-viewer.md](tools/ppt-viewer.md) |
 | ⚡ Flash 下载器 | 4399 / 7k7k / 17yy / ArmorGames / Kongregate 小游戏下载到本地离线玩 | [tools/flash-downloader.md](tools/flash-downloader.md) |
 | 💬 联机聊天室 | 主机开端口、客户端连进来，局域网 / 内网穿透都能用，带流量上限；房间内还能开**群语音 / 群视频通话**（最多 8 人，媒体复用同一个端口），也能**按住说话发语音消息**（自动转 MP3、气泡显示秒数、**可拖进度条反复听**、计入文件流量上限） | [tools/chat-room.md](tools/chat-room.md) |
 | 🌐 网页浏览器 | Chromium 内核（WebView2）多标签：上方 / 左侧标签栏、前进后退刷新、网页右键刷新、会话恢复（懒加载）、历史记录 / 下载 / 书签 / 资源嗅探侧栏、页面缩放（Ctrl+滚轮）、主页与清空记录 | [tools/browser.md](tools/browser.md) |
@@ -32,7 +33,7 @@
 | 📨 Spug 验证码测试 | 联调 Spug 推送助手（push.spug.cc）的短信 / 邮箱验证码模板：发验证码、本地比对验证；推送 URL 是调用凭证，别外传 | [tools/spug-captcha.md](tools/spug-captcha.md) |
 | 🖱️ 右键菜单管理 | 列出资源管理器右键菜单里的项目（所有文件 / 文件夹 / 文件夹空白处 / 驱动器 / 桌面背景），搜索 + 位置 / 类型筛选后一键隐藏、随时恢复；还能**删除残留菜单（删前自动备份 .reg，HKLM 弹 UAC）**与**添加「用 XX 打开」**（指定后缀 / 文件夹 / 所有文件）；隐藏 / 添加只写当前用户注册表（HKCU）、不需要管理员权限，系统关键项不可隐藏 / 删除 | [tools/context-menu-manager.md](tools/context-menu-manager.md) |
 | 📦 压缩包工具 | 拖入即用：解压 RAR（RAR4/RAR5）/ ZIP / 7Z / TAR / TAR.GZ / TAR.BZ2 / TAR.XZ / TAR.ZST / GZ / BZ2 / XZ / ZST（支持密码、旧版 GBK 文件名、批量、进度、取消、路径穿越防护）；压缩成 ZIP / 7Z。**RAR 因版权原因只能解、不能压** | [tools/archive.md](tools/archive.md) |
-| 🗂️ 打开方式 | 把本工具登记进 Windows 右键「打开方式」：**按文件类型自动分流 / 以文本方式 / 以压缩包方式** 3 个入口；PDF / 图片 / Word / Excel / 压缩包 / 音视频 / 文本自动找对应工具；开关在主页设置（只有 Release / 发布版可开），关掉后启动自动清理旧条目；只写 HKCU、不需要管理员 | [tools/open-with.md](tools/open-with.md) |
+| 🗂️ 打开方式 | 把本工具登记进 Windows 右键「打开方式」：**按文件类型自动分流 / 以文本方式 / 以压缩包方式** 3 个入口；PDF / 图片 / Word / Excel / PPT / 压缩包 / 音视频 / 文本自动找对应工具；开关在主页设置（只有 Release / 发布版可开），关掉后启动自动清理旧条目；只写 HKCU、不需要管理员 | [tools/open-with.md](tools/open-with.md) |
 | ⬆️ 软件升级器 | 用系统自带的 winget 读出本机已安装应用与可用版本；逐个勾选 / Ctrl·Shift 多选行 / 全选 / 全不选 / 反选后一键批量升级，带搜索过滤、升级前确认、逐个进度与日志、可取消；包 Id 白名单校验、扫描只读、不需要管理员 | [tools/software-updater.md](tools/software-updater.md) |
 | 🧮 计算器 | 科学计算器：表达式直接输入、边打边出结果；三角函数 / 反三角 / 双曲 / 对数 / 阶乘 / 常量，角度制与弧度制切换，结果有效位数可调；历史记录点选回填并自动保存；Ans、复制结果 | [tools/calculator.md](tools/calculator.md) |
 | 📈 函数绘图 | 同时画多条函数曲线：每条可单独设定义域 / 颜色 / 显示开关；拖动平移、滚轮缩放、双击复位，网格与坐标轴可隐藏；自动求点——光标处实时读数、输入 x 求所有函数值、按范围自动生成点值表 | [tools/function-plot.md](tools/function-plot.md) |

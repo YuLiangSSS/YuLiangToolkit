@@ -1,0 +1,46 @@
+<Window x:Class="YuLiangToolkit.Tools.PptViewer.Views.PptPresentationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PPT 放映"
+        WindowStyle="None"
+        WindowState="Maximized"
+        ResizeMode="NoResize"
+        Topmost="True"
+        ShowInTaskbar="False"
+        Background="Black"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
+
+    <!-- 全屏放映窗口（独立于工具页）：黑底、无边框、最大化、置顶。
+         中间一张幻灯片按 Uniform 铺满（保持宽高比，黑边留黑）；
+         底部小提示条显示页码与「按 Esc 退出」，鼠标不动 2.5 秒后淡出，动一下鼠标再出现。
+         窗口里的颜色属于「放映画面」，不跟界面主题走（写死黑底白字）。 -->
+
+    <Grid x:Name="RootGrid" Background="Black">
+        <Image x:Name="SlideImage"
+               Stretch="Uniform"
+               HorizontalAlignment="Center"
+               VerticalAlignment="Center"
+               RenderOptions.BitmapScalingMode="HighQuality" />
+
+        <Border x:Name="HintPanel"
+                VerticalAlignment="Bottom"
+                HorizontalAlignment="Center"
+                Margin="0,0,0,24"
+                Padding="18,8"
+                CornerRadius="16"
+                Background="#99000000"
+                BorderBrush="#33FFFFFF"
+                BorderThickness="1"
+                IsHitTestVisible="False"
+                Opacity="1">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock x:Name="PageText" Foreground="White" FontSize="14" FontWeight="SemiBold"
+                           Text="1 / 1" />
+                <TextBlock Text="· 按 Esc 退出 · ← / → 翻页 · 左键下一页 / 右键上一页"
+                           Foreground="#CCFFFFFF" FontSize="12.5" Margin="12,0,0,0"
+                           VerticalAlignment="Center" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

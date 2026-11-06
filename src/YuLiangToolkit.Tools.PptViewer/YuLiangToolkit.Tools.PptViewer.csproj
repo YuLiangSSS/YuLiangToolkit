@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「PPT 阅读器」工具库：只读浏览 .pptx / .pptm / .ppsx。
+       解析用 System.IO.Compression + System.Xml.Linq + Core 的 OoxmlPackage（不引第三方库），
+       渲染用 WPF 自己画（DrawingGroup / FormattedText），不需要装 PowerPoint / WPS。
+       复制自 Tools.Sample / Tools.WordViewer 模板。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.PptViewer</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.PptViewer</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

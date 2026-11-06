@@ -1,6 +1,6 @@
 # YuLiangToolkit（凉雨工具集）
 
-> **一个 Windows 上的自用小工具集：30 个常用工具装进同一个窗口。**
+> **一个 Windows 上的自用小工具集：31 个常用工具装进同一个窗口。**
 >
 > 99.99% AI Coding · .NET 9 + WPF · 绿色免安装 · Unlicense
 
@@ -11,7 +11,7 @@
 | 分类 | 主要功能 |
 | --- | --- |
 | 🎬 音视频 | 视频转音频、分段合成、录屏 / GIF、视频 / GIF 剪辑、本地播放器 |
-| 📖 阅读 | 条漫图片连续阅读器、PDF / Word / Excel 阅读器 |
+| 📖 阅读 | 条漫图片连续阅读器、PDF / Word / Excel / PPT 阅读器 |
 | 🎮 音游 | osu! 下图 / Key 转换 / LN 转换 / 等级计算、KPS 按键统计 |
 | 🕹️ 联机 | 聊天室（文字 / 语音 / 视频 / 文件）、五子棋、象棋 |
 | 🛠️ 系统 | 批量重命名、压缩包、打开方式、右键菜单管理、软件升级器 |
@@ -31,7 +31,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 
 - **FFmpeg**（音频工具 / 录屏 / 剪辑）：自动找 `PATH` 里的 `ffmpeg.exe`，也可以在工具里手动指定；
 - **WebView2 Runtime**（网页浏览器）：Win10 2004+ 一般随 Edge 自带，缺失时工具会提示安装，不随本项目打包；
-- **Word / Excel 阅读器**不需要安装 Office / WPS，**Live2D 桌宠**也不需要额外组件（仅 Windows x64）；
+- **Word / Excel / PPT 阅读器**不需要安装 Office / WPS，**Live2D 桌宠**也不需要额外组件（仅 Windows x64）；
 - 从源码构建**首次需要联网**还原一次 NuGet 包（OsuParsers / WebView2 / AvalonEdit / SharpCompress），之后走本机缓存。
 
 ## 工具一览
@@ -48,6 +48,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 | [**📄 PDF 阅读器**](docs/tools/pdf-reader.md) | 连续滚动 + 双页并排、25% ~ 800% 缩放、Ctrl+F 搜索、书签目录、记忆阅读位置；只读不改原文件；`.pdf` 拖进页面即打开 |
 | [**📘 Word 阅读器**](docs/tools/word-viewer.md) | 只读 `.docx`：标题大纲、表格、图片、页眉页脚、脚注尾注、批注、修订视图、查找、打印、导出 HTML / 纯文本 |
 | [**📊 Excel 阅读器**](docs/tools/excel-viewer.md) | 只读 `.xlsx`：工作表页签、数字格式、合并单元格、冻结窗格、自动行高、显示公式、超链接、Ctrl+F 查找 |
+| [**📽️ PPT 阅读器**](docs/tools/ppt-viewer.md) | 只读 `.pptx`：幻灯片原样还原（文字 / 图片 / 表格 / 形状 / 主题色）、缩略图导航、备注、查找、缩放与全屏放映，不装 Office |
 | [**⚡ Flash 下载器**](docs/tools/flash-downloader.md) | 4399 / 7k7k / 17yy / ArmorGames / Kongregate 的小游戏下载到本地离线玩 |
 | [**💬 联机聊天室**](docs/tools/chat-room.md) | 主机开房间、客户端直连，文字 / 图片 / 文件随便传；还能群语音 / 群视频（最多 8 人）和按住说话发语音消息 |
 | [**🌐 网页浏览器**](docs/tools/browser.md) | Chromium 内核（WebView2）多标签浏览器：历史 / 下载 / 书签 / 资源嗅探、会话恢复、页面缩放、右键图片另存为 |
@@ -102,7 +103,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（用法 / 设置项 / 数据位置 / 注意事项），跟着代码一起走；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；踩坑细节按需查 [docs/dev/pitfalls.md](docs/dev/pitfalls.md)；
-- ✅ **自检**：4512 项行为逐条真跑（退出码 0 = 全通过）。按改动影响面只跑相关组，不每轮全量：
+- ✅ **自检**：4571 项行为逐条真跑（退出码 0 = 全通过）。按改动影响面只跑相关组，不每轮全量：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -117,7 +118,7 @@ build.ps1 / publish.ps1                  # 一键构建 / 一键发布（发布�
 scripts/check.ps1                        # 按改动自动选组的自检触发器
 src/YuLiangToolkit.Core/                 # 核心库：工具契约 / MVVM / 存储 / 配置 / 维护 / 特效 / 联机底座
 src/YuLiangToolkit.Tools.*/              # 各工具，一个功能一个项目（新功能复制 Tools.Sample）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 自检控制台：4512 项行为逐条真跑
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 自检控制台：4571 项行为逐条真跑
 docs/                                    # 每个工具一页详细说明（索引 docs/README.md）
 AGENTS.md                                # 开发入口地图：流程 / 硬性规则 / 找东西
 ```
