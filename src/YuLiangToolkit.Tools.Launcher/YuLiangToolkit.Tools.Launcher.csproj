@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「软件启动器」：导入 exe / .lnk 快捷方式，像资源管理器小图标一样铺成图标墙；
+       右边显示详细信息（全名 / 路径 / 版本），可启动 / 重命名 / 换图标 / 删除，
+       还能一键清空失效快捷方式与已卸载的软件。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.Launcher</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.Launcher</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

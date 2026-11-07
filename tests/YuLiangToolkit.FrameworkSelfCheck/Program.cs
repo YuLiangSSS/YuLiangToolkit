@@ -59,6 +59,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("calculator", "计算器：表达式求值 / 优先级 / 省略乘号 / 阶乘 / 角度制 / 结果格式化 / 历史与配置"),
     ("function-plot", "函数绘图：视口换算 / 缩放平移 / 好看刻度 / 自动 Y 范围 / 配置 / 采样集成"),
     ("mail", "邮箱代收：IMAP 预设 / 地址与 HTML 处理 / DPAPI 授权码加密 / 配置往返（纯逻辑，不联网）"),
+    ("launcher", "软件启动器：导入校验 / 默认显示名 / 失效判定 / 清空无效项 / 配置往返（纯逻辑）"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1237,6 +1238,11 @@ RunGroupModule("function-plot", "函数绘图", FunctionPlotChecks.Run);
 // 「邮箱代收」：服务商预设匹配 / 地址打码 / HTML→纯文本 / 附件名清洗 / 配置 JSON 往返 /
 // DPAPI 授权码加解密 / 错误翻译。纯逻辑，**不联网**；真实 Gmail / QQ IMAP 登录由界面人工冒烟。
 RunGroupModule("mail", "邮箱代收", MailChecks.Run);
+
+// 「软件启动器」：导入校验（.exe / .lnk）/ 默认显示名（lnk 用快捷方式名、exe 优先文件说明）/
+// 路径规范化与导入去重 / 自定义图标缓存路径安全 / 失效判定（文件丢失·快捷方式损坏·目标已卸载）/
+// 「清空无效项」挑选项 / 配置 JSON 往返。假 probe 注入，**不启动 Shell、不启动任何程序**。
+RunGroupModule("launcher", "软件启动器", LauncherChecks.Run);
 
 EnterGroup("shell");
 

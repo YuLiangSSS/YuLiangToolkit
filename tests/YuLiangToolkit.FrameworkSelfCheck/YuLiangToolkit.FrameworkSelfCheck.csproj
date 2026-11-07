@@ -104,6 +104,10 @@
     <!-- 「邮箱代收」：服务商预设匹配 / 地址打码 / HTML→纯文本 / 附件名清洗 / 配置 JSON 往返 /
          DPAPI 授权码加解密；全部纯逻辑，**不联网**（真实 IMAP 登录由人工冒烟）。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Mail\YuLiangToolkit.Tools.Mail.csproj" />
+    <!-- 「软件启动器」：导入校验 / 默认显示名 / 路径规范化与去重 / 图标缓存路径安全 /
+         失效判定（假 probe 注入，不碰真实 Shell）/ 清空无效项 / 配置 JSON 往返；
+         全部纯逻辑，不启动任何程序。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Launcher\YuLiangToolkit.Tools.Launcher.csproj" />
   </ItemGroup>
 
 </Project>

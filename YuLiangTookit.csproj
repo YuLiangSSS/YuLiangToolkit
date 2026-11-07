@@ -59,6 +59,7 @@
     <ProjectReference Include="src\YuLiangToolkit.Tools.Calculator\YuLiangToolkit.Tools.Calculator.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.FunctionPlot\YuLiangToolkit.Tools.FunctionPlot.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.Mail\YuLiangToolkit.Tools.Mail.csproj" />
+    <ProjectReference Include="src\YuLiangToolkit.Tools.Launcher\YuLiangToolkit.Tools.Launcher.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.Sample\YuLiangToolkit.Tools.Sample.csproj" />
   </ItemGroup>
 

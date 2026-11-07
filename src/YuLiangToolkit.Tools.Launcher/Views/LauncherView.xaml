@@ -1,0 +1,508 @@
+<UserControl x:Class="YuLiangToolkit.Tools.Launcher.Views.LauncherView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             Background="Transparent"
+             AllowDrop="True"
+             Loaded="OnLoaded"
+             DragOver="OnFileDragOver"
+             Drop="OnFileDrop">
+
+    <!-- 软件启动器（launcher）。
+         布局约定见 docs/dev/layout.md：
+           · 整页不套外层 ScrollViewer，用 Grid 行 Auto / * / Auto 撑满；
+           · 主区域左右两栏 =「图标墙（*）｜ PaneSplitter（12，Key=launcher.图标区与详情）｜ 详情卡片（固定像素 380）」，
+             详情卡片内部自己滚并挂 core:ScrollChaining，图标墙用 ListBox 自带滚动；
+           · 底部 Auto 行是状态条（状态文本 / 进度 / 日志开关），日志面板展开时才出现，不占常驻高度；
+           · 所有颜色 / 圆角用 DynamicResource token，样式来自 App.xaml，右键菜单套 DarkMenu 系列样式。 -->
+
+    <UserControl.Resources>
+
+        <!-- 图标墙的方块：悬停 / 选中用全局 token，和列表行保持一致的反馈 -->
+        <Style x:Key="LauncherIconItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="TextElement.Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Width" Value="104" />
+            <Setter Property="Margin" Value="3" />
+            <Setter Property="Padding" Value="8,8" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Top" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Bd" Background="Transparent"
+                                BorderBrush="Transparent" BorderThickness="1"
+                                CornerRadius="{DynamicResource ControlCornerRadius}"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Top" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background"
+                                        Value="{DynamicResource ListRowHoverBackgroundBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background"
+                                        Value="{DynamicResource ListRowSelectedBackgroundBrush}" />
+                                <Setter TargetName="Bd" Property="BorderBrush"
+                                        Value="{DynamicResource ListRowSelectedBorderBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.5" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 详情卡片的「标签 / 值」两列文字样式 -->
+        <Style x:Key="DetailLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="Margin" Value="0,7,10,0" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+        </Style>
+        <Style x:Key="DetailValueStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="Margin" Value="0,7,0,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+    </UserControl.Resources>
+
+    <Grid Margin="28,22,28,26">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="240" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ===================== 页头 / 工具条 ===================== -->
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="260" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel>
+                <TextBlock Text="🚀 软件启动器" FontSize="21" FontWeight="SemiBold" />
+                <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                           Margin="0,5,0,0"
+                           Text="把常用的 exe / 快捷方式收进图标墙，双击就能启动；右侧看完整软件名与路径，可重命名、换图标、打开所在位置，还能一键清掉失效的快捷方式和已卸载的软件。" />
+                <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                           Margin="0,8,0,0" Text="{Binding StatsText}" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                <Button Content="导入 exe / 快捷方式…" Style="{StaticResource PrimaryButtonStyle}"
+                        Command="{Binding ImportCommand}"
+                        ToolTip="可以一次多选；也可以直接把文件拖进左侧图标墙" />
+                <Button Content="刷新状态" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                        Command="{Binding RefreshStatusCommand}"
+                        ToolTip="重新检查文件是否还在、快捷方式目标是否被卸载，并刷新图标与版本信息" />
+                <Button Content="{Binding ClearInvalidButtonText}" Style="{StaticResource SecondaryButtonStyle}"
+                        Margin="8,0,0,0" Command="{Binding ClearInvalidCommand}"
+                        ToolTip="一次移除所有已失效的启动项（只移除列表项与自定义图标，不会删磁盘文件）" />
+            </StackPanel>
+        </Grid>
+
+        <!-- ===================== 主区域：图标墙 ｜ 分隔条 ｜ 详情 ===================== -->
+        <Grid Grid.Row="1" Margin="0,16,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="320" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="380" MinWidth="300" />
+            </Grid.ColumnDefinitions>
+
+            <!-- ===== 左：图标墙 ===== -->
+            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="150" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="18,14,18,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="图标墙" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock Text="双击图标启动；右键可重命名 / 换图标 / 打开所在位置 / 移除"
+                                       FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Margin="0,4,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="打开数据文件夹" Style="{StaticResource SecondaryButtonStyle}"
+                                VerticalAlignment="Center" Command="{Binding OpenDataFolderCommand}"
+                                ToolTip="自定义图标就存在这里（Data\launcher\icons）" />
+                    </Grid>
+
+                    <Grid Grid.Row="1" Margin="10,0,10,10">
+                        <ListBox x:Name="IconList"
+                                 ItemsSource="{Binding Items}"
+                                 SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
+                                 SelectionMode="Single"
+                                 Style="{StaticResource FileListStyle}"
+                                 ItemContainerStyle="{StaticResource LauncherIconItemStyle}"
+                                 Background="Transparent" BorderThickness="0"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 core:ScrollChaining.Enabled="True"
+                                 MouseDoubleClick="OnItemDoubleClick"
+                                 PreviewMouseRightButtonDown="OnItemRightButtonDown"
+                                 PreviewKeyDown="OnItemKeyDown"
+                                 ToolTip="双击启动；右键菜单里可以重命名、换图标、打开所在位置">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Width="88" ToolTip="{Binding HintText}">
+                                        <!-- 48×48 图标；没有图标时显示占位方块 -->
+                                        <Grid Height="48" HorizontalAlignment="Center">
+                                            <Image x:Name="IconImage" Source="{Binding Icon}" Width="48" Height="48"
+                                                   Stretch="Uniform"
+                                                   RenderOptions.BitmapScalingMode="HighQuality"
+                                                   Visibility="{Binding HasIcon, Converter={StaticResource BoolToVis}}" />
+                                            <TextBlock Text="📦" FontSize="24" HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       Visibility="{Binding HasIcon, Converter={StaticResource InverseBoolToVis}}" />
+                                        </Grid>
+
+                                        <!-- 名字最多两行，超出用省略号（完整名字在右侧详情） -->
+                                        <TextBlock x:Name="NameText" Text="{Binding Name}" FontSize="11.5"
+                                                   TextAlignment="Center" TextWrapping="Wrap"
+                                                   TextTrimming="CharacterEllipsis" MaxHeight="32"
+                                                   Margin="0,6,0,0" HorizontalAlignment="Stretch" />
+
+                                        <!-- 失效提示：红色小字 + 图标 / 名字变暗 -->
+                                        <TextBlock x:Name="InvalidText" Text="失效" FontSize="10.5"
+                                                   Foreground="{DynamicResource DangerBrush}"
+                                                   TextAlignment="Center" Margin="0,2,0,0"
+                                                   Visibility="{Binding IsHealthy, Converter={StaticResource InverseBoolToVis}}" />
+                                    </StackPanel>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsHealthy}" Value="False">
+                                            <Setter TargetName="IconImage" Property="Opacity" Value="0.5" />
+                                            <Setter TargetName="NameText" Property="Opacity" Value="0.6" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                                     Value="True">
+                                            <Setter TargetName="NameText" Property="Foreground"
+                                                    Value="{DynamicResource AccentBrush}" />
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+
+                            <!-- 右键菜单：必须套 DarkContextMenuStyle + 隐式 DarkMenuLeafItemStyle / DarkMenuSeparatorStyle（AGENTS.md 规则 13） -->
+                            <ListBox.ContextMenu>
+                                <ContextMenu Style="{StaticResource DarkContextMenuStyle}"
+                                             DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                    <ContextMenu.Resources>
+                                        <Style TargetType="{x:Type MenuItem}" BasedOn="{StaticResource DarkMenuLeafItemStyle}" />
+                                        <Style TargetType="{x:Type Separator}" BasedOn="{StaticResource DarkMenuSeparatorStyle}" />
+                                    </ContextMenu.Resources>
+
+                                    <MenuItem Header="启动" Command="{Binding StartCommand}" InputGestureText="双击 / Enter" />
+                                    <MenuItem Header="打开所在位置" Command="{Binding OpenLocationCommand}" />
+                                    <Separator />
+                                    <MenuItem Header="重命名…" Command="{Binding BeginRenameCommand}" InputGestureText="F2" />
+                                    <MenuItem Header="更改图标…" Command="{Binding ChangeIconCommand}" />
+                                    <MenuItem Header="恢复默认图标" Command="{Binding ResetIconCommand}" />
+                                    <Separator />
+                                    <MenuItem Header="从启动器移除" Command="{Binding DeleteCommand}" InputGestureText="Delete" />
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
+                        </ListBox>
+
+                        <!-- 空列表提示 -->
+                        <TextBlock Text="{Binding EmptyHint}"
+                                   Visibility="{Binding HasItems, Converter={StaticResource InverseBoolToVis}}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   TextAlignment="Center" TextWrapping="Wrap" MaxWidth="360"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   IsHitTestVisible="False" />
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!-- 左右分隔条：拖动改「图标墙」与「详情」的宽度（双击恢复这一处） -->
+            <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                               Key="launcher.图标区与详情" />
+
+            <!-- ===== 右：选中项详情 ===== -->
+            <Border Grid.Column="2" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="120" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="18,14,18,10">
+                        <TextBlock Text="启动项详情" FontSize="13" FontWeight="SemiBold" />
+                    </Grid>
+
+                    <!-- 详情内容比卡片高时自己滚，滚到头交给页面（这里是 Grid 撑满，不会裁内容） -->
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  core:ScrollChaining.Enabled="True">
+                        <Grid Margin="18,0,18,18">
+                            <!-- 未选中时的提示 -->
+                            <TextBlock Text="在左侧图标墙上选一项，这里会显示完整的软件名、路径、版本、大小等信息。"
+                                       Visibility="{Binding HasSelection, Converter={StaticResource InverseBoolToVis}}"
+                                       TextWrapping="Wrap" MaxWidth="300"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       IsHitTestVisible="False" />
+
+                            <!-- 选中项详情 -->
+                            <StackPanel Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}">
+
+                                <!-- 大图标 64 + 名字 + 状态徽标 -->
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border Width="64" Height="64" VerticalAlignment="Top"
+                                            Background="{DynamicResource InputBackgroundBrush}"
+                                            CornerRadius="{DynamicResource ControlCornerRadius}">
+                                        <Grid>
+                                            <Image Source="{Binding SelectedItem.Icon}" Width="48" Height="48"
+                                                   Stretch="Uniform"
+                                                   RenderOptions.BitmapScalingMode="HighQuality"
+                                                   Visibility="{Binding SelectedItem.HasIcon, Converter={StaticResource BoolToVis}}" />
+                                            <TextBlock Text="📦" FontSize="28" HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       Visibility="{Binding SelectedItem.HasIcon, Converter={StaticResource InverseBoolToVis}}" />
+                                        </Grid>
+                                    </Border>
+
+                                    <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding SelectedItem.Name}" FontSize="17" FontWeight="SemiBold"
+                                                   TextWrapping="Wrap" />
+                                        <Border Background="{DynamicResource InputBackgroundBrush}"
+                                                CornerRadius="{DynamicResource ControlCornerRadius}"
+                                                Padding="8,2" HorizontalAlignment="Left" Margin="0,7,0,0">
+                                            <TextBlock Text="{Binding SelectedItem.StatusText}" FontSize="10.5">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding SelectedItem.IsHealthy}" Value="False">
+                                                                <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                                                <Setter Property="FontWeight" Value="SemiBold" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Border>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- 内联重命名：平时只显示按钮，点了以后原地出现输入框 -->
+                                <Grid Margin="0,14,0,0">
+                                    <Button Content="重命名" Style="{StaticResource SecondaryButtonStyle}"
+                                            HorizontalAlignment="Left"
+                                            Command="{Binding BeginRenameCommand}"
+                                            Visibility="{Binding IsRenaming, Converter={StaticResource InverseBoolToVis}}"
+                                            ToolTip="只改图标下面显示的名字，不会改磁盘上的文件名" />
+
+                                    <Grid Visibility="{Binding IsRenaming, Converter={StaticResource BoolToVis}}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox x:Name="RenameBox"
+                                                 Text="{Binding EditingName, UpdateSourceTrigger=PropertyChanged}"
+                                                 Style="{StaticResource TextBoxStyle}"
+                                                 IsVisibleChanged="OnRenameBoxVisibleChanged"
+                                                 KeyDown="OnRenameBoxKeyDown"
+                                                 ToolTip="输入新名字后按 Enter 保存，Esc 取消" />
+                                        <Button Grid.Column="1" Content="保存" Style="{StaticResource PrimaryButtonStyle}"
+                                                Margin="8,0,0,0" Command="{Binding CommitRenameCommand}" />
+                                        <Button Grid.Column="2" Content="取消" Style="{StaticResource SecondaryButtonStyle}"
+                                                Margin="8,0,0,0" Command="{Binding CancelRenameCommand}" />
+                                    </Grid>
+                                </Grid>
+
+                                <!-- 操作按钮组 -->
+                                <WrapPanel Margin="0,12,0,0">
+                                    <Button Content="▶ 启动" Style="{StaticResource PrimaryButtonStyle}"
+                                            Command="{Binding StartCommand}" Margin="0,0,8,8" />
+                                    <Button Content="更改图标…" Style="{StaticResource SecondaryButtonStyle}"
+                                            Command="{Binding ChangeIconCommand}" Margin="0,0,8,8" />
+                                    <Button Content="恢复默认图标" Style="{StaticResource SecondaryButtonStyle}"
+                                            Command="{Binding ResetIconCommand}" Margin="0,0,8,8"
+                                            ToolTip="删掉自定义图标，换回程序自己的图标" />
+                                    <Button Content="打开所在位置" Style="{StaticResource SecondaryButtonStyle}"
+                                            Command="{Binding OpenLocationCommand}" Margin="0,0,8,8" />
+                                    <Button Content="从启动器移除" Style="{StaticResource SecondaryButtonStyle}"
+                                            Command="{Binding DeleteCommand}" Margin="0,0,8,8"
+                                            ToolTip="只移除列表项与自定义图标，不删除磁盘上的程序或快捷方式" />
+                                </WrapPanel>
+
+                                <TextBlock Text="自定义图标：已启用（存在数据文件夹里，原图标文件删了也不影响）"
+                                           FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                                           TextWrapping="Wrap" Margin="0,0,0,4"
+                                           Visibility="{Binding SelectedItem.HasCustomIcon, Converter={StaticResource BoolToVis}}" />
+
+                                <!-- 详细信息 -->
+                                <TextBlock Text="详细信息" FontSize="12" FontWeight="SemiBold" Margin="0,16,0,0" />
+                                <Grid Margin="0,2,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="状态" Style="{StaticResource DetailLabelStyle}" />
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SelectedItem.StatusText}"
+                                               Style="{StaticResource DetailValueStyle}" />
+
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="类型" Style="{StaticResource DetailLabelStyle}" />
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedItem.TypeText}"
+                                               Style="{StaticResource DetailValueStyle}" />
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="导入路径" Style="{StaticResource DetailLabelStyle}" />
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedItem.Path}"
+                                               Style="{StaticResource DetailValueStyle}"
+                                               ToolTip="{Binding SelectedItem.Path}" />
+
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="程序路径" Style="{StaticResource DetailLabelStyle}"
+                                               Visibility="{Binding SelectedItem.HasTargetPath, Converter={StaticResource BoolToVis}}" />
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedItem.TargetPath}"
+                                               Style="{StaticResource DetailValueStyle}"
+                                               Visibility="{Binding SelectedItem.HasTargetPath, Converter={StaticResource BoolToVis}}"
+                                               ToolTip="{Binding SelectedItem.TargetPath}" />
+
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="启动参数" Style="{StaticResource DetailLabelStyle}"
+                                               Visibility="{Binding SelectedItem.HasArguments, Converter={StaticResource BoolToVis}}" />
+                                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SelectedItem.Arguments}"
+                                               Style="{StaticResource DetailValueStyle}"
+                                               Visibility="{Binding SelectedItem.HasArguments, Converter={StaticResource BoolToVis}}" />
+
+                                    <TextBlock Grid.Row="5" Grid.Column="0" Text="起始位置" Style="{StaticResource DetailLabelStyle}"
+                                               Visibility="{Binding SelectedItem.HasWorkingDirectory, Converter={StaticResource BoolToVis}}" />
+                                    <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding SelectedItem.WorkingDirectory}"
+                                               Style="{StaticResource DetailValueStyle}"
+                                               Visibility="{Binding SelectedItem.HasWorkingDirectory, Converter={StaticResource BoolToVis}}" />
+
+                                    <TextBlock Grid.Row="6" Grid.Column="0" Text="文件说明" Style="{StaticResource DetailLabelStyle}"
+                                               Visibility="{Binding SelectedItem.FileDescription, Converter={StaticResource EmptyToVisInverse}}" />
+                                    <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding SelectedItem.FileDescription}"
+                                               Style="{StaticResource DetailValueStyle}"
+                                               Visibility="{Binding SelectedItem.FileDescription, Converter={StaticResource EmptyToVisInverse}}" />
+
+                                    <TextBlock Grid.Row="7" Grid.Column="0" Text="产品名称" Style="{StaticResource DetailLabelStyle}"
+                                               Visibility="{Binding SelectedItem.ProductName, Converter={StaticResource EmptyToVisInverse}}" />
+                                    <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding SelectedItem.ProductName}"
+                                               Style="{StaticResource DetailValueStyle}"
+                                               Visibility="{Binding SelectedItem.ProductName, Converter={StaticResource EmptyToVisInverse}}" />
+
+                                    <TextBlock Grid.Row="8" Grid.Column="0" Text="公司" Style="{StaticResource DetailLabelStyle}"
+                                               Visibility="{Binding SelectedItem.CompanyName, Converter={StaticResource EmptyToVisInverse}}" />
+                                    <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding SelectedItem.CompanyName}"
+                                               Style="{StaticResource DetailValueStyle}"
+                                               Visibility="{Binding SelectedItem.CompanyName, Converter={StaticResource EmptyToVisInverse}}" />
+
+                                    <TextBlock Grid.Row="9" Grid.Column="0" Text="版本" Style="{StaticResource DetailLabelStyle}"
+                                               Visibility="{Binding SelectedItem.FileVersion, Converter={StaticResource EmptyToVisInverse}}" />
+                                    <TextBlock Grid.Row="9" Grid.Column="1" Text="{Binding SelectedItem.FileVersion}"
+                                               Style="{StaticResource DetailValueStyle}"
+                                               Visibility="{Binding SelectedItem.FileVersion, Converter={StaticResource EmptyToVisInverse}}" />
+
+                                    <TextBlock Grid.Row="10" Grid.Column="0" Text="大小" Style="{StaticResource DetailLabelStyle}" />
+                                    <TextBlock Grid.Row="10" Grid.Column="1" Text="{Binding SelectedItem.SizeText}"
+                                               Style="{StaticResource DetailValueStyle}" />
+
+                                    <TextBlock Grid.Row="11" Grid.Column="0" Text="修改时间" Style="{StaticResource DetailLabelStyle}" />
+                                    <TextBlock Grid.Row="11" Grid.Column="1" Text="{Binding SelectedItem.ModifiedText}"
+                                               Style="{StaticResource DetailValueStyle}" />
+
+                                    <TextBlock Grid.Row="12" Grid.Column="0" Text="导入时间" Style="{StaticResource DetailLabelStyle}" />
+                                    <TextBlock Grid.Row="12" Grid.Column="1" Text="{Binding SelectedItem.AddedAtText}"
+                                               Style="{StaticResource DetailValueStyle}" />
+                                </Grid>
+
+                                <!-- 自动检查开关（配置项，改一下自动保存） -->
+                                <CheckBox Content="打开页面时自动检查失效项" IsChecked="{Binding Cfg.AutoRefreshStatus}"
+                                          Style="{StaticResource CheckBoxStyle}" Margin="0,16,0,0"
+                                          ToolTip="关闭后打开页面不会自动探测，需要手动点右上角「刷新状态」" />
+                            </StackPanel>
+                        </Grid>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ===================== 底部状态条（Auto 行） ===================== -->
+        <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="14,10" Margin="0,12,0,0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Text="{Binding StatusText}" FontSize="11.5" TextWrapping="Wrap"
+                               VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                    <ProgressBar Grid.Column="1" Style="{StaticResource ProgressBarStyle}"
+                                 Minimum="0" Maximum="1" Value="{Binding Progress}"
+                                 Width="160" Margin="12,0,0,0" VerticalAlignment="Center"
+                                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
+
+                    <TextBlock Grid.Column="2" Text="{Binding ProgressText}" Margin="10,0,0,0" MinWidth="58"
+                               TextAlignment="Right" FontSize="11" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}" />
+
+                    <Button Grid.Column="3" Content="{Binding LogButtonText}" Style="{StaticResource SecondaryButtonStyle}"
+                            Margin="12,0,0,0" Command="{Binding ToggleLogCommand}"
+                            ToolTip="导入 / 刷新时的详细日志" />
+                </Grid>
+
+                <TextBox Grid.Row="1" Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
+                         Style="{StaticResource LogTextBoxStyle}" Height="120" Margin="0,10,0,0"
+                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                         core:ScrollChaining.Enabled="True"
+                         Visibility="{Binding ShowLog, Converter={StaticResource BoolToVis}}" />
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>
