@@ -92,15 +92,32 @@
                             </TextBlock>
                         </StackPanel>
 
-                        <!-- 硬盘读写 -->
+                        <!-- 硬盘读写：按物理磁盘分别显示（例如 C: / D: 各一条），不再只给一个总和；
+                             性能计数器不可用 / 第一次采样还没基准时回退成总读写 -->
                         <StackPanel Grid.Column="3">
                             <TextBlock Text="硬盘" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                            <TextBlock FontSize="11.5" Margin="0,7,0,0" TextTrimming="CharacterEllipsis">
-                                <Run Text="读 " Foreground="{DynamicResource TextSecondaryBrush}" /><Run Text="{Binding Overview.DiskReadText, Mode=OneWay}" />
-                            </TextBlock>
-                            <TextBlock FontSize="11.5" Margin="0,5,0,0" TextTrimming="CharacterEllipsis">
-                                <Run Text="写 " Foreground="{DynamicResource TextSecondaryBrush}" /><Run Text="{Binding Overview.DiskWriteText, Mode=OneWay}" />
-                            </TextBlock>
+                            <ItemsControl ItemsSource="{Binding Overview.Disks}" Margin="0,7,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock FontSize="10.5" Margin="0,0,0,4" TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding DisplayText}">
+                                            <Run Text="{Binding Name, Mode=OneWay}" FontWeight="SemiBold" /><Run
+                                                Text="  读 " Foreground="{DynamicResource TextSecondaryBrush}" /><Run
+                                                Text="{Binding ReadText, Mode=OneWay}" /><Run
+                                                Text="  写 " Foreground="{DynamicResource TextSecondaryBrush}" /><Run
+                                                Text="{Binding WriteText, Mode=OneWay}" />
+                                        </TextBlock>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <StackPanel Visibility="{Binding Overview.HasPerDiskActivity, Converter={StaticResource InverseBoolToVis}}">
+                                <TextBlock FontSize="11.5" Margin="0,7,0,0" TextTrimming="CharacterEllipsis">
+                                    <Run Text="读 " Foreground="{DynamicResource TextSecondaryBrush}" /><Run Text="{Binding Overview.DiskReadText, Mode=OneWay}" />
+                                </TextBlock>
+                                <TextBlock FontSize="11.5" Margin="0,5,0,0" TextTrimming="CharacterEllipsis">
+                                    <Run Text="写 " Foreground="{DynamicResource TextSecondaryBrush}" /><Run Text="{Binding Overview.DiskWriteText, Mode=OneWay}" />
+                                </TextBlock>
+                            </StackPanel>
                         </StackPanel>
                     </Grid>
 

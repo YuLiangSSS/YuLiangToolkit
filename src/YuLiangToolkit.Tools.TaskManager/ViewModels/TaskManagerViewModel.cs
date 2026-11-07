@@ -367,7 +367,7 @@ public sealed class TaskManagerViewModel : ToolViewModelBase
             ProcessDetailsData? lastDetails = null;
 
             // 前两次采样间隔短一点（350ms）：CPU / GPU / 磁盘都是「两次采样的差值」，
-            // 第一次必然是 0；早点采第二次，界面打开后不到半秒就能看到真实数字。
+            // 第一次必然全是 0；第 0 轮只当基准、不刷到界面，第二轮起再显示，避免打开瞬间满屏 0。
             var sampleIndex = 0;
             while (!token.IsCancellationRequested)
             {
@@ -400,9 +400,14 @@ public sealed class TaskManagerViewModel : ToolViewModelBase
                     Ui(() => StatusText = "采样失败：" + ex.Message);
                 }
 
-                var delayMs = sampleIndex < 3
-                    ? 350
-                    : TaskManagerConfig.ClampRefreshInterval(Cfg.RefreshIntervalMs);
+                var delayMs = sampleIndex switch
+                {
+                    // 第 0 轮：把内存 / 进程列表先刷出来（CPU / 磁盘这时必然是 0），
+                    // 紧接着立刻采第 2 轮（采样本身耗时几百毫秒，已经够做差值），CPU / 磁盘马上就有值。
+                    0 => 1,
+                    < 3 => 350,
+                    _ => TaskManagerConfig.ClampRefreshInterval(Cfg.RefreshIntervalMs),
+                };
                 sampleIndex++;
 
                 try

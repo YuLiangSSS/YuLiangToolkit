@@ -14,7 +14,9 @@ namespace YuLiangToolkit.Tools.TaskManager.Native;
 /// <item>CPU：<c>GetSystemTimes</c> 两次差值（Kernel 增量里包含 Idle，所以占用 =
 /// (总增量 − Idle 增量) / 总增量）；第一次没有基准，返回 0。</item>
 /// <item>内存：<c>GlobalMemoryStatusEx</c> 的 <c>ullTotalPhys</c> / <c>ullAvailPhys</c>。</item>
-/// <item>磁盘：PDH <c>\PhysicalDisk(_Total)\Disk Read/Write Bytes/sec</c>（虚拟机 / 精简系统可能没有）。</item>
+/// <item>磁盘：PDH <c>\PhysicalDisk(*)\Disk Read/Write Bytes/sec</c>，每个实例（一块物理盘，例如
+/// <c>0 C:</c>）各算一条读写速度，界面按盘分别显示；<c>_Total</c> 不单独显示，只作为回退用的总和。
+/// 虚拟机 / 精简系统没有这组计数器时整块降级为「不可用」。</item>
 /// <item>GPU：PDH <c>\GPU Engine(*)\Utilization Percentage</c> 全部实例求和后夹到 0 ~ 100；
 /// 显存优先用 <c>\GPU Adapter Memory(*)\Dedicated Usage</c>，部分老驱动没有这个计数器时退回
 /// <c>\GPU Process Memory(*)\Dedicated Usage</c>（两者都是字节，取到一个就够）。</item>
@@ -26,8 +28,11 @@ namespace YuLiangToolkit.Tools.TaskManager.Native;
 /// </summary>
 public sealed class SystemSampler : IDisposable
 {
-    private const string DiskReadCounter = @"\PhysicalDisk(_Total)\Disk Read Bytes/sec";
-    private const string DiskWriteCounter = @"\PhysicalDisk(_Total)\Disk Write Bytes/sec";
+    // 磁盘用「实例数组」而不是 (_Total)：每块物理盘各一条实例（"0 C:" / "1 D:" …），
+    // 这样界面能分别显示每块盘的读写速度，而不是只有一个总和。
+    private const string DiskReadCounter = @"\PhysicalDisk(*)\Disk Read Bytes/sec";
+    private const string DiskWriteCounter = @"\PhysicalDisk(*)\Disk Write Bytes/sec";
+    private const string DiskTotalInstance = "_Total";
     private const string GpuEngineCounter = @"\GPU Engine(*)\Utilization Percentage";
     private const string GpuAdapterMemoryCounter = @"\GPU Adapter Memory(*)\Dedicated Usage";
     private const string GpuProcessMemoryCounter = @"\GPU Process Memory(*)\Dedicated Usage";
@@ -85,6 +90,7 @@ public sealed class SystemSampler : IDisposable
                 DiskReadBytesPerSecond = disk.Read,
                 DiskWriteBytesPerSecond = disk.Write,
                 DiskAvailable = disk.Available,
+                Disks = disk.Disks,
                 CpuName = CpuName,
                 GpuName = GpuName,
                 OsText = OsText,
@@ -227,22 +233,62 @@ public sealed class SystemSampler : IDisposable
 
     // ------------------------------------------------------------------ 磁盘 / GPU
 
-    private (double Read, double Write, bool Available) ReadDisk()
+    private (double Read, double Write, bool Available, IReadOnlyList<DiskPerformanceInfo> Disks) ReadDisk()
     {
-        if (_diskQuery is null || !_diskAvailable) return (0, 0, false);
+        if (_diskQuery is null || !_diskAvailable)
+            return (0, 0, false, Array.Empty<DiskPerformanceInfo>());
 
         try
         {
-            if (!_diskQuery.Collect()) return (0, 0, true);
+            if (!_diskQuery.Collect())
+                return (0, 0, true, Array.Empty<DiskPerformanceInfo>());
 
-            var read = _diskQuery.GetSingleValue(DiskReadCounter) ?? 0;
-            var write = _diskQuery.GetSingleValue(DiskWriteCounter) ?? 0;
-            return (Math.Max(0, read), Math.Max(0, write), true);
+            var reads = ToInstanceMap(_diskQuery.GetArray(DiskReadCounter));
+            var writes = ToInstanceMap(_diskQuery.GetArray(DiskWriteCounter));
+
+            var disks = new List<DiskPerformanceInfo>(Math.Min(16, Math.Max(reads.Count, writes.Count)));
+            double totalRead = 0;
+            double totalWrite = 0;
+
+            foreach (var instance in reads.Keys.Concat(writes.Keys).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (string.Equals(instance, DiskTotalInstance, StringComparison.OrdinalIgnoreCase)) continue;
+
+                reads.TryGetValue(instance, out var read);
+                writes.TryGetValue(instance, out var write);
+                totalRead += Math.Max(0, read);
+                totalWrite += Math.Max(0, write);
+                disks.Add(DiskPerformanceInfo.Create(instance, read, write));
+            }
+
+            // 磁盘号升序（0 C: / 1 D: / 2 …），同号再按显示名，界面顺序稳定
+            disks.Sort(static (left, right) =>
+            {
+                var order = DiskPerformanceInfo.ParseDiskNumber(left.Instance)
+                    .CompareTo(DiskPerformanceInfo.ParseDiskNumber(right.Instance));
+                return order != 0 ? order : string.Compare(left.Name, right.Name, StringComparison.OrdinalIgnoreCase);
+            });
+
+            return (totalRead, totalWrite, true, disks);
         }
         catch
         {
-            return (0, 0, true);
+            return (0, 0, true, Array.Empty<DiskPerformanceInfo>());
         }
+    }
+
+    /// <summary>把 PDH 的「实例名 → 值」列表转成字典；同一个实例出现两次时取较大的（理论上不会）。</summary>
+    private static Dictionary<string, double> ToInstanceMap(IReadOnlyList<(string Instance, double Value)> values)
+    {
+        var map = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (instance, value) in values)
+        {
+            if (string.IsNullOrWhiteSpace(instance)) continue;
+            var key = instance.Trim();
+            var sanitized = double.IsNaN(value) || double.IsInfinity(value) || value < 0 ? 0 : value;
+            if (!map.TryGetValue(key, out var existing) || sanitized > existing) map[key] = sanitized;
+        }
+        return map;
     }
 
     private (double Percent, long Bytes, bool Available) ReadGpu()

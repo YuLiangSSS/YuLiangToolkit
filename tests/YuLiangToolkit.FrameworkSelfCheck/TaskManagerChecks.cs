@@ -24,6 +24,7 @@ internal static class TaskManagerChecks
 
         CheckToolMetadata(assert);
         CheckDisplayFormat(assert);
+        CheckDiskActivity(assert);
         CheckKillPlan(assert);
         CheckStartupApproved(assert);
         CheckStartupCommandParser(assert);
@@ -118,6 +119,46 @@ internal static class TaskManagerChecks
             && DisplayFormat.ShortPath(@"C:\very\long\folder\name\program-1.0.exe", 24).Contains('…')
             && DisplayFormat.ShortPath(@"C:\very\long\folder\name\program-1.0.exe", 24).EndsWith(".exe"),
             DisplayFormat.ShortPath(@"C:\very\long\folder\name\program-1.0.exe", 24));
+    }
+
+    // ---------------------------------------------------------------- 物理磁盘逐盘读写
+
+    private static void CheckDiskActivity(CheckFn check)
+    {
+        check("[任务管理器] 物理磁盘读写：PDH 实例名转显示名（0 c: → C: / 2 → 磁盘 2 / _Total 不显示）",
+            DiskPerformanceInfo.FormatName("0 c:") == "C:"
+            && DiskPerformanceInfo.FormatName("0 c: d:") == "C: D:"
+            && DiskPerformanceInfo.FormatName("2") == "磁盘 2"
+            && DiskPerformanceInfo.FormatName("_Total") == ""
+            && DiskPerformanceInfo.FormatName(null) == ""
+            && DiskPerformanceInfo.FormatName("  ") == "",
+            $"0 c: → {DiskPerformanceInfo.FormatName("0 c:")} / 2 → {DiskPerformanceInfo.FormatName("2")}");
+
+        check("[任务管理器] 物理磁盘读写：实例里的磁盘序号可解析（排序用）",
+            DiskPerformanceInfo.ParseDiskNumber("0 C:") == 0
+            && DiskPerformanceInfo.ParseDiskNumber("12 D:") == 12
+            && DiskPerformanceInfo.ParseDiskNumber("7") == 7
+            && DiskPerformanceInfo.ParseDiskNumber("_Total") == int.MaxValue
+            && DiskPerformanceInfo.ParseDiskNumber(null) == int.MaxValue);
+
+        var disk = DiskPerformanceInfo.Create("0 C:", 5.5 * 1024 * 1024, 232 * 1024);
+        check("[任务管理器] 物理磁盘读写：读 / 写各自格式化，行文案同时包含两者",
+            disk.Name == "C:" && disk.ReadText == "5.5 MB/s" && disk.WriteText == "232 KB/s"
+            && disk.DisplayText.Contains("C:") && disk.DisplayText.Contains("读")
+            && disk.DisplayText.Contains("写"),
+            disk.DisplayText);
+
+        var clamped = DiskPerformanceInfo.Create("1 D:", -1, double.NaN);
+        check("[任务管理器] 物理磁盘读写：负数 / NaN 按 0 处理（界面不会出现负速度）",
+            clamped.ReadBytesPerSecond == 0 && clamped.WriteBytesPerSecond == 0
+            && clamped.ReadText == "0 B/s" && clamped.WriteText == "0 B/s");
+
+        var withDisks = new SystemSnapshot
+        {
+            Disks = new[] { DiskPerformanceInfo.Create("0 C:", 1024, 2048) },
+        };
+        check("[任务管理器] 逐盘数据：有磁盘列表时 HasPerDiskActivity = true，空列表 = false",
+            withDisks.HasPerDiskActivity && !new SystemSnapshot().HasPerDiskActivity);
     }
 
     private static PortBinding Port(int localPort, int pid) => new() { LocalPort = localPort, Pid = pid };
@@ -520,8 +561,12 @@ internal static class TaskManagerChecks
                 && snapshot.Uptime > TimeSpan.Zero
                 && snapshot.Volumes.Count > 0
                 && snapshot.Volumes.All(v => v.TotalBytes > 0 && v.UsedPercent is >= 0 and <= 100)
+                && snapshot.Disks.All(d => d.Name.Length > 0
+                                           && !string.Equals(d.Instance, "_Total", StringComparison.OrdinalIgnoreCase)
+                                           && d.ReadBytesPerSecond >= 0 && d.WriteBytesPerSecond >= 0)
+                && snapshot.HasPerDiskActivity == (snapshot.Disks.Count > 0)
                 && !string.IsNullOrWhiteSpace(snapshot.HardwareText),
-                $"CPU {snapshot.CpuText} · 内存 {snapshot.MemoryText} · 卷 {snapshot.Volumes.Count} · {snapshot.HardwareText}");
+                $"CPU {snapshot.CpuText} · 内存 {snapshot.MemoryText} · 卷 {snapshot.Volumes.Count} · 磁盘 {snapshot.Disks.Count} 块 · {snapshot.HardwareText}");
         }
         catch (Exception ex)
         {

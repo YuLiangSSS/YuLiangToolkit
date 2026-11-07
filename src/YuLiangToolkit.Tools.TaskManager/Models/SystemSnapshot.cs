@@ -49,6 +49,15 @@ public sealed class SystemSnapshot
     /// <summary>固定磁盘（系统盘 / 数据盘）的容量信息。</summary>
     public IReadOnlyList<DiskVolumeInfo> Volumes { get; init; } = Array.Empty<DiskVolumeInfo>();
 
+    /// <summary>
+    /// 每块<b>物理磁盘</b>的实时读写速度（例如 <c>0 C:</c> / <c>1 D:</c> 各一条）。
+    /// 性能计数器不可用 / 第一次采样还没基准时为空，界面回退到总读写。
+    /// </summary>
+    public IReadOnlyList<DiskPerformanceInfo> Disks { get; init; } = Array.Empty<DiskPerformanceInfo>();
+
+    /// <summary>是否有逐盘读写数据（没有时界面显示回退的总读写）。</summary>
+    public bool HasPerDiskActivity => Disks.Count > 0;
+
     // ---------------------------------------------------------------- 计算 / 文本
 
     public long UsedMemoryBytes => Math.Max(0, TotalMemoryBytes - AvailableMemoryBytes);
