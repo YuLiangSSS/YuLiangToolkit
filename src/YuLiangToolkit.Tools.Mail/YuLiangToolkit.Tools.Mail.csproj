@@ -4,8 +4,10 @@
        为什么引 NuGet 包：
          · MailKit / MimeKit：成熟的 IMAP + MIME 解析实现（MIT），比手写 IMAP 可靠得多；
          · System.Security.Cryptography.ProtectedData：用 Windows DPAPI（当前用户）加密保存授权码 /
-           应用专用密码，配置文件里不出现明文。
-       两个包都只引用、不修改源码；许可与用途登记在仓库根 THIRD-PARTY-NOTICES.md。 -->
+           应用专用密码，配置文件里不出现明文；
+         · Microsoft.Web.WebView2：HTML 邮件的富文本预览（和「网页浏览器」同一个 Chromium 内核；
+           运行时是系统组件，不随本项目分发）。
+       这些包都只引用、不修改源码；许可与用途登记在仓库根 THIRD-PARTY-NOTICES.md。 -->
   <PropertyGroup>
     <TargetFramework>net9.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
@@ -22,6 +24,8 @@
     <PackageReference Include="MailKit" Version="4.18.2" />
     <!-- Windows DPAPI：授权码 / 应用专用密码落盘前加密（CurrentUser 范围） -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.4" />
+    <!-- HTML 邮件富文本预览（WebView2 运行时是系统组件，和「网页浏览器」共用） -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
   </ItemGroup>
 
 </Project>

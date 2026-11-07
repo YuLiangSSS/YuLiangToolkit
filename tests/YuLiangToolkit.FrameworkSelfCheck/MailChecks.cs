@@ -2,6 +2,7 @@ using System.Text.Json;
 using MimeKit;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Tools.Mail;
+using YuLiangToolkit.Tools.Mail.ViewModels;
 
 namespace YuLiangToolkit.FrameworkSelfCheck;
 
@@ -23,6 +24,7 @@ internal static class MailChecks
         CheckConfig(assert);
         CheckSecureStore(assert);
         CheckProxy(assert);
+        CheckHtmlAndSort(assert);
         CheckErrorMessages(assert);
     }
 
@@ -152,10 +154,11 @@ internal static class MailChecks
     private static void CheckConfig(CheckFn check)
     {
         var config = new MailCollectorConfig();
-        check("[邮箱代收] 配置默认值：30 封 / 打开自动刷新 / 账号为空",
+        check("[邮箱代收] 配置默认值：30 封 / 打开自动刷新 / 账号为空 / 日期降序",
             config.FetchCount == 30 && config.RefreshOnOpen && config.Accounts.Count == 0
-            && config.EffectiveFetchCount == 30,
-            $"fetch={config.FetchCount}");
+            && config.EffectiveFetchCount == 30
+            && config.SortBy == "date" && config.SortDescending,
+            $"fetch={config.FetchCount} sort={config.SortBy}:{config.SortDescending}");
 
         check("[邮箱代收] 代理默认跟随 Windows 系统代理（auto）",
             config.Proxy is { Mode: "auto" } && config.Proxy.Port == 7890,
@@ -285,6 +288,48 @@ internal static class MailChecks
         check("[邮箱代收] 代理失败的提示优先于泛泛的「连接超时」",
             ImapMailService.DescribeError(proxyFailure).Contains("代理连接失败"),
             ImapMailService.DescribeError(proxyFailure));
+    }
+
+    // ---------------------------------------------------------------- HTML 预览 / 排序
+
+    private static void CheckHtmlAndSort(CheckFn check)
+    {
+        var html = MailHtml.BuildDocument("<p>Hello <b>world</b><img src=\"cid:x@y\"></p>");
+        check("[邮箱代收] HTML 预览包装：CSP 禁脚本 / 图片自适应 / 保留原正文",
+            html.Contains("Content-Security-Policy", StringComparison.Ordinal)
+            && html.Contains("default-src 'none'", StringComparison.Ordinal)
+            && html.Contains("img-src data: http: https:", StringComparison.Ordinal)
+            && html.Contains("max-width: 100%", StringComparison.Ordinal)
+            && html.Contains("<p>Hello <b>world</b>", StringComparison.Ordinal)
+            && html.TrimStart().StartsWith("<!DOCTYPE html>", StringComparison.Ordinal),
+            "length=" + html.Length);
+
+        var account = new MailAccountConfig { DisplayName = "测试账号", Email = "a@example.com", Host = "imap.example.com" };
+        var now = DateTimeOffset.Now;
+        var rows = new[]
+        {
+            new MailMessageRow(new MailBrief(account, 1, "Zeta", "b@x.com", now.AddMinutes(-3), false, 300)),
+            new MailMessageRow(new MailBrief(account, 2, "Alpha", "a@x.com", now.AddMinutes(-1), true, 100)),
+            new MailMessageRow(new MailBrief(account, 3, "Mike", "c@x.com", now.AddMinutes(-2), false, 200)),
+        };
+
+        var byDateDesc = MailSort.Apply(rows, "date", true).Select(r => r.UniqueId).ToArray();
+        var byDateAsc = MailSort.Apply(rows, "date", false).Select(r => r.UniqueId).ToArray();
+        var byFrom = MailSort.Apply(rows, "from", false).Select(r => r.FromText).ToArray();
+        check("[邮箱代收] 排序：日期升 / 降序、发件人升序",
+            byDateDesc.SequenceEqual(new uint[] { 2, 3, 1 })
+            && byDateAsc.SequenceEqual(new uint[] { 1, 3, 2 })
+            && byFrom.SequenceEqual(new[] { "a@x.com", "b@x.com", "c@x.com" }),
+            $"desc={string.Join(",", byDateDesc)} asc={string.Join(",", byDateAsc)} from={string.Join(",", byFrom)}");
+
+        var bySizeDesc = MailSort.Apply(rows, "size", true).Select(r => r.SizeBytes).ToArray();
+        var byUnreadDesc = MailSort.Apply(rows, "unread", true).Select(r => r.UniqueId).ToArray();
+        var bySubject = MailSort.Apply(rows, "subject", false).Select(r => r.Subject).ToArray();
+        check("[邮箱代收] 排序：大小降序、未读优先、主题升序",
+            bySizeDesc.SequenceEqual(new long[] { 300, 200, 100 })
+            && byUnreadDesc.SequenceEqual(new uint[] { 2, 3, 1 })
+            && bySubject.SequenceEqual(new[] { "Alpha", "Mike", "Zeta" }),
+            $"size={string.Join(",", bySizeDesc)} unread={string.Join(",", byUnreadDesc)}");
     }
 
     // ---------------------------------------------------------------- 错误提示

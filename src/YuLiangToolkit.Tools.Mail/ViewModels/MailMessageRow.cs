@@ -13,6 +13,7 @@ public sealed class MailMessageRow
         FromText = brief.FromText;
         Date = brief.Date;
         IsUnread = brief.IsUnread;
+        SizeBytes = brief.SizeBytes;
     }
 
     /// <summary>来自哪个账号（列表里显示账号标签；拉详情时用它的配置重连）。</summary>
@@ -28,6 +29,12 @@ public sealed class MailMessageRow
     public DateTimeOffset Date { get; }
 
     public bool IsUnread { get; }
+
+    /// <summary>邮件大小（字节；0 = 服务器没给，排序 / 展示用）。</summary>
+    public long SizeBytes { get; }
+
+    /// <summary>人类可读大小（详情 / 排序提示用）。</summary>
+    public string SizeText => SizeBytes > 0 ? MailText.FormatSize(SizeBytes) : "—";
 
     /// <summary>列表里的日期文本。</summary>
     public string DateText => MailText.FormatListDate(Date);

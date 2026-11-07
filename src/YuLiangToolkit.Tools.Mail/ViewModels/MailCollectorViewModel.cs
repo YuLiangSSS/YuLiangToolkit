@@ -46,6 +46,9 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
     private string _detailDate = "";
     private string _detailStatus = "选中左侧列表里的一封邮件即可查看正文。";
     private string _messageBodyText = "";
+    private string? _messageHtml;
+    private bool _forcePlainText;
+    private bool _htmlPreviewUnavailable;
     private string _attachmentsSummary = "";
 
     public MailCollectorViewModel() : base("mail-collector")
@@ -70,6 +73,7 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
         TestConnectionCommand = new AsyncRelayCommand(_ => TestConnectionAsync());
         AddAccountCommand = new RelayCommand(_ => AddAccount());
         DeleteAccountCommand = new RelayCommand(_ => DeleteAccount(), _ => SelectedAccount is not null);
+        ToggleSortDirectionCommand = new RelayCommand(_ => SortDescending = !SortDescending);
         CancelCommand = new RelayCommand(_ => _refreshCts?.Cancel(), _ => IsBusy);
         SaveAttachmentCommand = new AsyncRelayCommand(
             p => SaveAttachmentAsync(p as MailAttachmentItem),
@@ -208,6 +212,50 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
         }
     }
 
+    // ---------- 排序 ----------
+
+    /// <summary>排序键：日期 / 发件人 / 主题 / 账号 / 是否未读 / 大小（Foxmail 风格）。</summary>
+    public IReadOnlyList<OptionItem<string>> SortOptions { get; } = OptionItem.From(
+        ("date", "日期"),
+        ("from", "发件人"),
+        ("subject", "主题"),
+        ("account", "账号"),
+        ("unread", "是否未读"),
+        ("size", "大小"));
+
+    /// <summary>排序下拉框桥接属性（存配置的是干净值）。</summary>
+    public OptionItem<string> SelectedSort
+    {
+        get => OptionItem<string>.Find(SortOptions, Cfg.SortBy) ?? SortOptions[0];
+        set
+        {
+            if (value is null) return;
+            Cfg.SortBy = value.Value;
+            OnPropertyChanged();
+            ApplyFilter();
+        }
+    }
+
+    /// <summary>是否降序（默认 true = 日期新的在上）。</summary>
+    public bool SortDescending
+    {
+        get => Cfg.SortDescending;
+        set
+        {
+            if (Cfg.SortDescending == value) return;
+            Cfg.SortDescending = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(SortDirectionText));
+            OnPropertyChanged(nameof(SortDirectionToolTip));
+            ApplyFilter();
+        }
+    }
+
+    /// <summary>排序方向按钮的文字。</summary>
+    public string SortDirectionText => SortDescending ? "↓ 降序" : "↑ 升序";
+
+    public string SortDirectionToolTip => SortDescending ? "当前降序；点击改成升序" : "当前升序；点击改成降序";
+
     public bool HasAccounts => Accounts.Count > 0;
 
     public bool HasVisibleMessages => VisibleMessages.Count > 0;
@@ -256,11 +304,58 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
         private set => Set(ref _detailStatus, value);
     }
 
-    /// <summary>正文（HTML 邮件会转成纯文本；本工具不加载网页内核看邮件）。</summary>
+    /// <summary>正文（纯文本；HTML 邮件的纯文本降级版本，复制正文用这个）。</summary>
     public string MessageBodyText
     {
         get => _messageBodyText;
         private set => Set(ref _messageBodyText, value);
+    }
+
+    /// <summary>HTML 富文本预览内容（完整文档；null = 这封邮件只有纯文本）。由 View 交给 WebView2 渲染。</summary>
+    public string? MessageHtml
+    {
+        get => _messageHtml;
+        private set
+        {
+            if (!Set(ref _messageHtml, value)) return;
+            OnPropertyChanged(nameof(MessageIsHtml));
+            OnPropertyChanged(nameof(ShowHtmlPreview));
+            OnPropertyChanged(nameof(ShowPlainBody));
+        }
+    }
+
+    /// <summary>当前邮件是否有 HTML 正文。</summary>
+    public bool MessageIsHtml => !string.IsNullOrWhiteSpace(MessageHtml);
+
+    /// <summary>用户勾选「纯文本」：即使有 HTML 也用纯文本显示（给怕样式花 / 排版乱的情况留退路）。</summary>
+    public bool ForcePlainText
+    {
+        get => _forcePlainText;
+        set
+        {
+            if (!Set(ref _forcePlainText, value)) return;
+            OnPropertyChanged(nameof(ShowHtmlPreview));
+            OnPropertyChanged(nameof(ShowPlainBody));
+        }
+    }
+
+    /// <summary>详情正文区显示 HTML 富文本预览（WebView2）还是纯文本。</summary>
+    public bool ShowHtmlPreview => MessageIsHtml && !ForcePlainText && !_htmlPreviewUnavailable;
+
+    /// <summary>纯文本正文是否可见（与 <see cref="ShowHtmlPreview"/> 互斥）。</summary>
+    public bool ShowPlainBody => !ShowHtmlPreview;
+
+    /// <summary>
+    /// WebView2 不可用（没装运行时 / 启动失败）时由 View 调用：强制纯文本，并在详情状态里说明原因。
+    /// 只在本进程里生效，不写配置。
+    /// </summary>
+    public void SetHtmlPreviewUnavailable(string reason)
+    {
+        if (_htmlPreviewUnavailable) return;
+        _htmlPreviewUnavailable = true;
+        ForcePlainText = true;
+        DetailStatus = reason;
+        Log("[邮箱代收] " + reason);
     }
 
     public string AttachmentsSummary
@@ -280,6 +375,7 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
     public AsyncRelayCommand TestConnectionCommand { get; }
     public RelayCommand AddAccountCommand { get; }
     public RelayCommand DeleteAccountCommand { get; }
+    public RelayCommand ToggleSortDirectionCommand { get; }
     public RelayCommand CancelCommand { get; }
     public AsyncRelayCommand SaveAttachmentCommand { get; }
     public RelayCommand CopyBodyCommand { get; }
@@ -573,6 +669,21 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
             // ApplyFilter 内部会按「账号 + UID」恢复刷新前选中的那封（还在的话）
             ApplyFilter();
 
+            // 开发截图冒烟用：YLT_MAIL_OPEN_FIRST=1 时自动选中第一封（看 HTML 富文本预览）；
+            // 也可以用 YLT_MAIL_OPEN_SUBJECT=关键词 选中第一封主题命中关键词的邮件。
+            if (SelectedMessage is null && VisibleMessages.Count > 0
+                && Environment.GetEnvironmentVariable("YLT_MAIL_OPEN_FIRST") == "1")
+            {
+                SelectedMessage = VisibleMessages[0];
+            }
+            else if (SelectedMessage is null && VisibleMessages.Count > 0
+                     && Environment.GetEnvironmentVariable("YLT_MAIL_OPEN_SUBJECT") is { Length: > 0 } subjectFilter)
+            {
+                SelectedMessage = VisibleMessages.FirstOrDefault(row =>
+                                       row.Subject.Contains(subjectFilter, StringComparison.OrdinalIgnoreCase))
+                                   ?? VisibleMessages[0];
+            }
+
             var unread = rows.Count(row => row.IsUnread);
             StatusText = $"代收完成：{rows.Count} 封（未读 {unread}）· 成功 {succeeded} / 失败 {failed}";
             Log($"===== 代收完成：共 {rows.Count} 封，成功 {succeeded} 个账号，失败 {failed} 个 =====");
@@ -674,7 +785,7 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
                 || row.Account.Email.Contains(term, StringComparison.OrdinalIgnoreCase));
         }
 
-        foreach (var row in query) VisibleMessages.Add(row);
+        foreach (var row in MailSort.Apply(query, Cfg.SortBy, Cfg.SortDescending)) VisibleMessages.Add(row);
 
         // 原来选中的那封如果还在筛选结果里，按账号 + UID 重新选中（刷新后对象是新实例）
         if (selectedAccountId is not null)
@@ -725,6 +836,7 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
         DetailDate = row.DateFullText;
         DetailStatus = $"正在从「{row.Account.DisplayTitle}」读取正文…";
         MessageBodyText = "";
+        MessageHtml = null;
         Attachments.Clear();
         AttachmentsSummary = "";
         OnPropertyChanged(nameof(HasAttachments));
@@ -739,9 +851,16 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
             DetailTo = detail.ToText;
             DetailDate = detail.DateText;
             MessageBodyText = detail.BodyText;
-            DetailStatus = detail.ConvertedFromHtml
-                ? "已读取（HTML 邮件已转成纯文本显示）"
-                : $"已读取 · {row.Account.DisplayTitle}";
+            MessageHtml = detail.HtmlDocument;
+            DetailStatus = detail.HtmlDocument is not null
+                ? _htmlPreviewUnavailable
+                    ? "已读取（WebView2 不可用，纯文本显示）"
+                    : ForcePlainText
+                        ? "已读取（纯文本模式）"
+                        : "已读取 · HTML 富文本预览"
+                : detail.ConvertedFromHtml
+                    ? "已读取（HTML 邮件已转成纯文本显示）"
+                    : $"已读取 · {row.Account.DisplayTitle}";
 
             Attachments.Clear();
             foreach (var attachment in detail.Attachments)
@@ -759,6 +878,7 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
             var message = ImapMailService.DescribeError(ex);
             DetailStatus = "读取正文失败：" + message;
             MessageBodyText = "";
+            MessageHtml = null;
             Log($"[{row.Account.DisplayTitle}] 读取邮件「{row.Subject}」失败：{message}");
         }
     }
@@ -772,6 +892,7 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
         DetailDate = "";
         DetailStatus = "选中左侧列表里的一封邮件即可查看正文。";
         MessageBodyText = "";
+        MessageHtml = null;
         Attachments.Clear();
         AttachmentsSummary = "";
         OnPropertyChanged(nameof(HasAttachments));

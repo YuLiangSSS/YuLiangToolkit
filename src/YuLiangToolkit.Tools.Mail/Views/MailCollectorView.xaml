@@ -241,6 +241,19 @@
                                        Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
                                        Visibility="{Binding Text, ElementName=SearchBox, Converter={StaticResource EmptyToVis}}" />
                         </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SelectedSort}"
+                                      DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}"
+                                      ToolTip="收件列表排序：日期 / 发件人 / 主题 / 账号 / 是否未读 / 大小" />
+                            <Button Grid.Column="1" Content="{Binding SortDirectionText}" Margin="8,0,0,0"
+                                    Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding ToggleSortDirectionCommand}"
+                                    ToolTip="{Binding SortDirectionToolTip}" />
+                        </Grid>
                     </StackPanel>
 
                     <Grid Grid.Row="2" Margin="0,8,0,0">
@@ -347,12 +360,20 @@
                         <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="16,6,16,0">
                             <Button Content="复制正文" Style="{StaticResource SecondaryButtonStyle}"
                                     Command="{Binding CopyBodyCommand}" />
+                            <CheckBox Content="纯文本" IsChecked="{Binding ForcePlainText}"
+                                      Style="{StaticResource CheckBoxStyle}" Margin="14,0,0,0" VerticalAlignment="Center"
+                                      ToolTip="有 HTML 正文时也强制用纯文本显示（不喜欢的排版 / 可疑邮件可以切过来）" />
                         </StackPanel>
 
-                        <TextBox Grid.Row="3" Text="{Binding MessageBodyText, Mode=OneWay}" IsReadOnly="True"
-                                 Style="{StaticResource LogTextBoxStyle}" Margin="12,6,12,0"
-                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-                                 core:ScrollChaining.Enabled="True" FontSize="12" />
+                        <Grid Grid.Row="3" Margin="12,6,12,0">
+                            <TextBox x:Name="PlainBody" Text="{Binding MessageBodyText, Mode=OneWay}" IsReadOnly="True"
+                                     Style="{StaticResource LogTextBoxStyle}"
+                                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                     core:ScrollChaining.Enabled="True" FontSize="12"
+                                     Visibility="{Binding ShowPlainBody, Converter={StaticResource BoolToVis}}" />
+                            <Grid x:Name="HtmlHost"
+                                  Visibility="{Binding ShowHtmlPreview, Converter={StaticResource BoolToVis}}" />
+                        </Grid>
 
                         <TextBlock Grid.Row="4" Text="{Binding AttachmentsSummary}" FontSize="11"
                                    Foreground="{DynamicResource TextSecondaryBrush}" Margin="16,6,16,0" />

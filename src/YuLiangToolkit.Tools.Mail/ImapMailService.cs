@@ -12,13 +12,15 @@ namespace YuLiangToolkit.Tools.Mail;
 /// <param name="FromText">发件人显示文本。</param>
 /// <param name="Date">发送时间（取不到时用服务器内部时间；都取不到为 <see cref="DateTimeOffset.MinValue"/>）。</param>
 /// <param name="IsUnread">是否未读（服务器上的 SEEN 标记）。</param>
+/// <param name="SizeBytes">服务器给的邮件大小（字节，0 = 服务器没给；列表排序用）。</param>
 public sealed record MailBrief(
     MailAccountConfig Account,
     uint UniqueId,
     string Subject,
     string FromText,
     DateTimeOffset Date,
-    bool IsUnread);
+    bool IsUnread,
+    long SizeBytes);
 
 /// <summary>邮件里的一个附件：显示名 + 大小 + 原始 MIME 部分（保存时直接解码，不占额外内存）。</summary>
 public sealed class MailAttachment
@@ -59,6 +61,12 @@ public sealed class MailDetail
 
     /// <summary>正文是不是从 HTML 转过来的（界面可以提示一句）。</summary>
     public bool ConvertedFromHtml { get; init; }
+
+    /// <summary>
+    /// 可直接交给 WebView2 渲染的完整 HTML 文档（已内联 cid 图片、已加安全 CSP / 基础样式）。
+    /// null = 这封邮件没有 HTML 正文，界面用 <see cref="BodyText"/> 纯文本显示。
+    /// </summary>
+    public string? HtmlDocument { get; init; }
 
     public IReadOnlyList<MailAttachment> Attachments { get; init; } = Array.Empty<MailAttachment>();
 }
@@ -109,7 +117,7 @@ public sealed class ImapMailService
                 start,
                 inbox.Count - 1,
                 MessageSummaryItems.UniqueId | MessageSummaryItems.Envelope
-                | MessageSummaryItems.Flags | MessageSummaryItems.InternalDate,
+                | MessageSummaryItems.Flags | MessageSummaryItems.InternalDate | MessageSummaryItems.Size,
                 cancellationToken);
 
             var result = new List<MailBrief>(summaries.Count);
@@ -127,7 +135,7 @@ public sealed class ImapMailService
                     : summary.Envelope!.Subject!;
                 var unread = summary.Flags is { } flags && !flags.HasFlag(MessageFlags.Seen);
 
-                result.Add(new MailBrief(account, uid, subject, from, date, unread));
+                result.Add(new MailBrief(account, uid, subject, from, date, unread, summary.Size ?? 0));
             }
 
             return result;
@@ -163,6 +171,15 @@ public sealed class ImapMailService
 
             if (string.IsNullOrWhiteSpace(textBody)) textBody = "（这封邮件没有可显示的正文）";
 
+            // HTML 邮件：把 cid: 内嵌图片换成 data URI，再包成带 CSP / 字体 / 图片宽度限制的完整文档，
+            // 交给 WebView2 渲染（Foxmail 那种效果）。失败就退化为纯文本，不影响阅读。
+            string? htmlDocument = null;
+            if (!string.IsNullOrWhiteSpace(htmlBody))
+            {
+                try { htmlDocument = MailHtml.BuildDocument(InlineCidImages(message, htmlBody)); }
+                catch { htmlDocument = null; }
+            }
+
             var attachments = new List<MailAttachment>();
             foreach (var part in message.BodyParts.OfType<MimePart>())
             {
@@ -180,6 +197,7 @@ public sealed class ImapMailService
                 DateText = MailText.FormatFullDate(message.Date),
                 BodyText = textBody,
                 ConvertedFromHtml = convertedFromHtml,
+                HtmlDocument = htmlDocument,
                 Attachments = attachments,
             };
         }
@@ -292,7 +310,7 @@ public sealed class ImapMailService
             try
             {
                 await client.IdentifyAsync(
-                    new ImapImplementation { Name = "YuLiangToolkit", Version = "1.5.1" },
+                    new ImapImplementation { Name = "YuLiangToolkit", Version = "1.6.0" },
                     cancellationToken);
             }
             catch
@@ -319,8 +337,51 @@ public sealed class ImapMailService
 
     private static bool IsAttachment(MimePart part)
     {
-        if (!string.IsNullOrEmpty(part.FileName)) return true;
-        return part.ContentDisposition?.Disposition == ContentDisposition.Attachment;
+        if (part.ContentDisposition?.Disposition == ContentDisposition.Attachment) return true;
+        // 有 Content-ID 的是正文内嵌资源（cid: 图片 / 样式），不算附件；正文里会内联成 data URI
+        if (!string.IsNullOrEmpty(part.ContentId)) return false;
+        return !string.IsNullOrEmpty(part.FileName);
+    }
+
+    /// <summary>
+    /// 把 HTML 正文里的 <c>cid:xxx</c> 内嵌图片替换成 data URI（WebView2 离线渲染用）。
+    /// 单个邮件最多内联 25 MB，防止超大邮件把内存吃满；解不出来的图片保留原样（显示为坏图，不影响其它内容）。
+    /// </summary>
+    private static string InlineCidImages(MimeMessage message, string html)
+    {
+        const long maxTotalBytes = 25L * 1024 * 1024;
+        long totalBytes = 0;
+
+        foreach (var part in message.BodyParts.OfType<MimePart>())
+        {
+            var contentId = (part.ContentId ?? "").Trim().Trim('<', '>');
+            if (contentId.Length == 0) continue;
+            if (part.ContentDisposition?.Disposition == ContentDisposition.Attachment) continue;
+
+            try
+            {
+                using var stream = new MemoryStream();
+                part.Content?.DecodeTo(stream);
+                if (stream.Length == 0) continue;
+                totalBytes += stream.Length;
+                if (totalBytes > maxTotalBytes) break;
+
+                var mimeType = part.ContentType?.MimeType ?? "application/octet-stream";
+                var dataUri = $"data:{mimeType};base64,{Convert.ToBase64String(stream.ToArray())}";
+
+                foreach (var token in new[] { "cid:" + contentId, "cid:" + Uri.EscapeDataString(contentId) })
+                {
+                    if (html.Contains(token, StringComparison.OrdinalIgnoreCase))
+                        html = html.Replace(token, dataUri, StringComparison.OrdinalIgnoreCase);
+                }
+            }
+            catch
+            {
+                // 单个内嵌资源解码失败不影响正文
+            }
+        }
+
+        return html;
     }
 
     /// <summary>附件大小（取编码后的原始流长度，解不出来时返回 -1，界面显示「—」）。</summary>

@@ -31,6 +31,12 @@ public sealed class MailCollectorConfig : ToolConfig
     /// </summary>
     public MailProxySettings Proxy { get; set; } = new();
 
+    /// <summary>收件列表排序键：date / from / subject / account / unread / size（见 <c>MailSort</c>）。</summary>
+    public string SortBy { get; set; } = "date";
+
+    /// <summary>排序是否降序（默认 true = 最新邮件在最上面）。</summary>
+    public bool SortDescending { get; set; } = true;
+
     /// <summary>实际使用的拉取数量（越界自动夹取；只读计算属性不落盘）。</summary>
     [JsonIgnore]
     public int EffectiveFetchCount => Math.Clamp(FetchCount, 5, 200);
