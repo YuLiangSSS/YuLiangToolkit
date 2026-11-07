@@ -7,20 +7,38 @@ namespace YuLiangToolkit.Tools.Mail;
 
 /// <summary>收件列表里的一封邮件（只含列表需要的轻量信息，正文 / 附件在选中时才拉）。</summary>
 /// <param name="Account">来自哪个邮箱账号（界面显示账号标签、回连拉详情都用它）。</param>
+/// <param name="Folder">来自哪个系统文件夹（收件箱 / 已发送 / 垃圾箱）。</param>
 /// <param name="UniqueId">IMAP UID（同一账号内唯一，重新连接后还能定位到同一封）。</param>
 /// <param name="Subject">主题。</param>
 /// <param name="FromText">发件人显示文本。</param>
+/// <param name="ToText">收件人显示文本。</param>
 /// <param name="Date">发送时间（取不到时用服务器内部时间；都取不到为 <see cref="DateTimeOffset.MinValue"/>）。</param>
 /// <param name="IsUnread">是否未读（服务器上的 SEEN 标记）。</param>
 /// <param name="SizeBytes">服务器给的邮件大小（字节，0 = 服务器没给；列表排序用）。</param>
+/// <param name="HasAttachments">摘要里的 MIME 结构是否含附件。</param>
+/// <param name="Priority">优先级（从常见邮件头解析）。</param>
 public sealed record MailBrief(
     MailAccountConfig Account,
+    MailFolderKind Folder,
     uint UniqueId,
     string Subject,
     string FromText,
+    string ToText,
     DateTimeOffset Date,
     bool IsUnread,
-    long SizeBytes);
+    long SizeBytes,
+    bool HasAttachments,
+    MailPriorityLevel Priority);
+
+/// <summary>一个系统文件夹的读取结果；文件夹不存在或读取失败时不影响其它文件夹。</summary>
+public sealed record MailFolderFetchResult(
+    MailFolderKind Folder,
+    bool Available,
+    string ErrorText,
+    IReadOnlyList<MailBrief> Messages);
+
+/// <summary>一个账号一次连接后读取三个系统文件夹的结果。</summary>
+public sealed record MailAccountFetchResult(IReadOnlyList<MailFolderFetchResult> Folders);
 
 /// <summary>邮件里的一个附件：显示名 + 大小 + 原始 MIME 部分（保存时直接解码，不占额外内存）。</summary>
 public sealed class MailAttachment
@@ -72,10 +90,10 @@ public sealed class MailDetail
 }
 
 /// <summary>
-/// IMAP 只读代收服务：连接 → 认证 → 打开收件箱（<see cref="FolderAccess.ReadOnly"/>）→
-/// 拉最近 N 封的摘要 / 单封完整内容 → 断开。
+/// IMAP 只读代收服务：连接 → 认证 → 依次打开收件箱 / 已发送 / 垃圾箱
+/// （<see cref="FolderAccess.ReadOnly"/>）→ 拉最近 N 封的摘要 / 单封完整内容 → 断开。
 ///
-/// <para><b>只读保证</b>：收件箱按只读方式打开，<c>GetMessage</c> 拉取时服务器不会把邮件标成已读；
+/// <para><b>只读保证</b>：三个系统文件夹都按只读方式打开，<c>GetMessage</c> 拉取时服务器不会把邮件标成已读；
 /// 本服务也没有删除 / 移动 / 标记命令，不会改动用户邮箱里的任何状态。</para>
 ///
 /// <para><b>线程</b>：方法都是 async，由 UI 线程 await（MailKit 的网络 IO 不会阻塞 UI）；
@@ -97,8 +115,11 @@ public sealed class ImapMailService
         _proxy = proxy ?? new MailProxySettings { Mode = "direct" };
     }
 
-    /// <summary>拉取某个账号收件箱最近 <paramref name="maxCount"/> 封的列表（只取摘要，不取正文）。</summary>
-    public async Task<IReadOnlyList<MailBrief>> FetchRecentAsync(
+    /// <summary>
+    /// 拉取某个账号收件箱 / 已发送 / 垃圾箱最近 <paramref name="maxCount"/> 封的摘要（不取正文）。
+    /// 某个文件夹未声明特殊用途时会尝试常见中英文名称；仍找不到就标记为不可用。
+    /// </summary>
+    public async Task<MailAccountFetchResult> FetchRecentAsync(
         MailAccountConfig account,
         int maxCount,
         CancellationToken cancellationToken = default)
@@ -107,38 +128,30 @@ public sealed class ImapMailService
         using var client = await ConnectAsync(account, cancellationToken);
         try
         {
-            var inbox = client.Inbox ?? throw new InvalidOperationException("这个账号没有 INBOX 收件箱");
-            await inbox.OpenAsync(FolderAccess.ReadOnly, cancellationToken);
-
-            if (inbox.Count == 0) return Array.Empty<MailBrief>();
-
-            var start = Math.Max(0, inbox.Count - limit);
-            var summaries = await inbox.FetchAsync(
-                start,
-                inbox.Count - 1,
-                MessageSummaryItems.UniqueId | MessageSummaryItems.Envelope
-                | MessageSummaryItems.Flags | MessageSummaryItems.InternalDate | MessageSummaryItems.Size,
-                cancellationToken);
-
-            var result = new List<MailBrief>(summaries.Count);
-            foreach (var summary in summaries)
+            var results = new List<MailFolderFetchResult>(MailFolders.All.Length);
+            foreach (var folderKind in MailFolders.All)
             {
-                var uid = summary.UniqueId.Id;
-                if (uid == 0) continue;
+                cancellationToken.ThrowIfCancellationRequested();
+                IMailFolder? folder = null;
+                try
+                {
+                    folder = await ResolveFolderAsync(client, folderKind, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    results.Add(new MailFolderFetchResult(
+                        folderKind, false, ImapMailService.DescribeError(ex), Array.Empty<MailBrief>()));
+                    continue;
+                }
 
-                var date = summary.Envelope?.Date
-                           ?? summary.InternalDate
-                           ?? DateTimeOffset.MinValue;
-                var from = MailText.FormatFirstAddress(summary.Envelope?.From);
-                var subject = string.IsNullOrWhiteSpace(summary.Envelope?.Subject)
-                    ? "（无主题）"
-                    : summary.Envelope!.Subject!;
-                var unread = summary.Flags is { } flags && !flags.HasFlag(MessageFlags.Seen);
-
-                result.Add(new MailBrief(account, uid, subject, from, date, unread, summary.Size ?? 0));
+                results.Add(await FetchFolderAsync(account, folderKind, folder, limit, cancellationToken));
             }
 
-            return result;
+            return new MailAccountFetchResult(results);
         }
         finally
         {
@@ -146,19 +159,21 @@ public sealed class ImapMailService
         }
     }
 
-    /// <summary>拉取一封邮件的完整内容（正文 + 附件），只读，不改变已读状态。</summary>
+    /// <summary>从指定系统文件夹拉取一封邮件的完整内容（正文 + 附件），只读，不改变已读状态。</summary>
     public async Task<MailDetail> GetMessageAsync(
         MailAccountConfig account,
+        MailFolderKind folderKind,
         uint uniqueId,
         CancellationToken cancellationToken = default)
     {
         using var client = await ConnectAsync(account, cancellationToken);
         try
         {
-            var inbox = client.Inbox ?? throw new InvalidOperationException("这个账号没有 INBOX 收件箱");
-            await inbox.OpenAsync(FolderAccess.ReadOnly, cancellationToken);
+            var folder = await ResolveFolderAsync(client, folderKind, cancellationToken)
+                         ?? throw new InvalidOperationException($"服务器未提供「{MailFolders.Label(folderKind)}」文件夹");
+            await folder.OpenAsync(FolderAccess.ReadOnly, cancellationToken);
 
-            var message = await inbox.GetMessageAsync(new UniqueId(uniqueId), cancellationToken);
+            var message = await folder.GetMessageAsync(new UniqueId(uniqueId), cancellationToken);
 
             var textBody = TryGetTextBody(message);
             var htmlBody = TryGetHtmlBody(message);
@@ -207,15 +222,34 @@ public sealed class ImapMailService
         }
     }
 
-    /// <summary>测试连接：连上 / 认证 / 打开收件箱后返回一句话结果（失败抛异常，由调用方转成错误提示）。</summary>
+    /// <summary>测试连接：连上 / 认证 / 读取三个系统文件夹后返回一句话结果。</summary>
     public async Task<string> TestConnectionAsync(MailAccountConfig account, CancellationToken cancellationToken = default)
     {
         using var client = await ConnectAsync(account, cancellationToken);
         try
         {
-            var inbox = client.Inbox ?? throw new InvalidOperationException("这个账号没有 INBOX 收件箱");
-            await inbox.OpenAsync(FolderAccess.ReadOnly, cancellationToken);
-            return $"✅ 连接成功：{inbox.FullName} 共 {inbox.Count} 封（只读）";
+            var parts = new List<string>();
+            foreach (var folderKind in MailFolders.All)
+            {
+                var folder = await ResolveFolderAsync(client, folderKind, cancellationToken);
+                if (folder is null)
+                {
+                    parts.Add($"{MailFolders.Label(folderKind)}未提供");
+                    continue;
+                }
+
+                try
+                {
+                    await folder.OpenAsync(FolderAccess.ReadOnly, cancellationToken);
+                    parts.Add($"{MailFolders.Label(folderKind)} {folder.Count} 封");
+                }
+                finally
+                {
+                    await TryCloseFolderAsync(folder);
+                }
+            }
+
+            return $"✅ 连接成功：{string.Join(" / ", parts)}（只读）";
         }
         finally
         {
@@ -266,6 +300,187 @@ public sealed class ImapMailService
 
     // ---------- 内部：连接 / 断开 ----------
 
+    private static async Task<MailFolderFetchResult> FetchFolderAsync(
+        MailAccountConfig account,
+        MailFolderKind folderKind,
+        IMailFolder? folder,
+        int limit,
+        CancellationToken cancellationToken)
+    {
+        if (folder is null)
+        {
+            return new MailFolderFetchResult(
+                folderKind, false, "服务器未提供该文件夹", Array.Empty<MailBrief>());
+        }
+
+        try
+        {
+            await folder.OpenAsync(FolderAccess.ReadOnly, cancellationToken);
+            if (folder.Count == 0)
+                return new MailFolderFetchResult(folderKind, true, "", Array.Empty<MailBrief>());
+
+            var start = Math.Max(0, folder.Count - limit);
+            var summaries = await folder.FetchAsync(
+                start,
+                folder.Count - 1,
+                MessageSummaryItems.UniqueId | MessageSummaryItems.Envelope
+                | MessageSummaryItems.Flags | MessageSummaryItems.InternalDate
+                | MessageSummaryItems.Size | MessageSummaryItems.BodyStructure
+                | MessageSummaryItems.Headers,
+                cancellationToken);
+
+            var result = new List<MailBrief>(summaries.Count);
+            foreach (var summary in summaries)
+            {
+                var uid = summary.UniqueId.Id;
+                if (uid == 0) continue;
+
+                var date = summary.Envelope?.Date
+                           ?? summary.InternalDate
+                           ?? DateTimeOffset.MinValue;
+                var from = MailText.FormatFirstAddress(summary.Envelope?.From);
+                var to = MailText.FormatAddressList(summary.Envelope?.To, "（未填写）");
+                var subject = string.IsNullOrWhiteSpace(summary.Envelope?.Subject)
+                    ? "（无主题）"
+                    : summary.Envelope!.Subject!;
+                var unread = summary.Flags is { } flags && !flags.HasFlag(MessageFlags.Seen);
+                var hasAttachments = SummaryHasAttachments(summary);
+                var priority = MailText.ParsePriority(
+                    TryGetHeader(summary, HeaderId.Priority),
+                    TryGetHeader(summary, HeaderId.XPriority),
+                    TryGetHeader(summary, HeaderId.Importance));
+
+                result.Add(new MailBrief(
+                    account, folderKind, uid, subject, from, to, date, unread,
+                    summary.Size ?? 0, hasAttachments, priority));
+            }
+
+            return new MailFolderFetchResult(folderKind, true, "", result);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return new MailFolderFetchResult(
+                folderKind, false, DescribeError(ex), Array.Empty<MailBrief>());
+        }
+        finally
+        {
+            await TryCloseFolderAsync(folder);
+        }
+    }
+
+    /// <summary>
+    /// 优先使用 IMAP SPECIAL-USE；服务器没有声明时按常见中英文文件夹名兜底。
+    /// 找不到返回 null，不把「没有垃圾箱」当成整个账号连接失败。
+    /// </summary>
+    private static async Task<IMailFolder?> ResolveFolderAsync(
+        ImapClient client,
+        MailFolderKind folderKind,
+        CancellationToken cancellationToken)
+    {
+        if (folderKind == MailFolderKind.Inbox) return client.Inbox;
+
+        var special = folderKind == MailFolderKind.Sent ? SpecialFolder.Sent : SpecialFolder.Trash;
+        try
+        {
+            var folder = client.GetFolder(special);
+            if (folder is not null) return folder;
+        }
+        catch
+        {
+            // 老服务器可能不认识 SPECIAL-USE，继续按名称查找。
+        }
+
+        var candidates = folderKind == MailFolderKind.Sent
+            ? new[] { "Sent", "Sent Items", "Sent Messages", "Sent Mail", "已发送", "已发送邮件", "发件箱" }
+            : new[] { "Trash", "Deleted Items", "Deleted Messages", "已删除", "已删除邮件", "垃圾箱" };
+
+        foreach (var candidate in candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                return await client.GetFolderAsync(candidate, cancellationToken);
+            }
+            catch (FolderNotFoundException)
+            {
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // 单个候选名不存在 / 服务器拒绝时继续找下一个。
+            }
+        }
+
+        foreach (var ns in client.PersonalNamespaces)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                var folders = await client.GetFoldersAsync(ns, StatusItems.None, false, cancellationToken);
+                var match = folders.FirstOrDefault(folder =>
+                    candidates.Any(candidate =>
+                        string.Equals(folder.Name, candidate, StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(folder.FullName, candidate, StringComparison.OrdinalIgnoreCase)
+                        || folder.FullName.EndsWith("/" + candidate, StringComparison.OrdinalIgnoreCase)));
+                if (match is not null) return match;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // 某些服务器不允许 LIST 整个命名空间；沿用前面的 SPECIAL-USE / 路径探测结果。
+            }
+        }
+
+        return null;
+    }
+
+    private static string? TryGetHeader(IMessageSummary summary, HeaderId headerId)
+    {
+        try
+        {
+            return summary.Headers?[headerId];
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool SummaryHasAttachments(IMessageSummary summary)
+    {
+        try
+        {
+            // Attachments 是遍历 BodyStructure 的惰性集合；服务器没给 BodyStructure 时返回空。
+            return summary.Attachments?.Any() == true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static async Task TryCloseFolderAsync(IMailFolder folder)
+    {
+        try
+        {
+            if (folder.IsOpen) await folder.CloseAsync(expunge: false, CancellationToken.None);
+        }
+        catch
+        {
+            // 文件夹关闭失败不覆盖已经拿到的数据
+        }
+    }
+
     private async Task<ImapClient> ConnectAsync(MailAccountConfig account, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(account.Host))
@@ -310,7 +525,7 @@ public sealed class ImapMailService
             try
             {
                 await client.IdentifyAsync(
-                    new ImapImplementation { Name = "YuLiangToolkit", Version = "1.7.0" },
+                    new ImapImplementation { Name = "YuLiangToolkit", Version = "1.8.0" },
                     cancellationToken);
             }
             catch

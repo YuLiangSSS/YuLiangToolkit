@@ -164,6 +164,34 @@ public static class MailText
     public static string FormatFullDate(DateTimeOffset date)
         => date == DateTimeOffset.MinValue ? "—" : date.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
 
+    /// <summary>
+    /// 从常见优先级头解析优先级。不同邮件客户端写法不统一：
+    /// <c>Priority: urgent/normal/non-urgent</c>、<c>Importance: high/low</c>、
+    /// <c>X-Priority: 1~5</c>。没有头或无法识别时按普通优先级。
+    /// </summary>
+    public static MailPriorityLevel ParsePriority(string? priority, string? xPriority, string? importance)
+    {
+        var importanceValue = (importance ?? "").Trim().ToLowerInvariant();
+        if (importanceValue is "high" or "urgent")
+            return MailPriorityLevel.High;
+        if (importanceValue is "low" or "non-urgent")
+            return MailPriorityLevel.Low;
+
+        var priorityValue = (priority ?? "").Trim().ToLowerInvariant();
+        if (priorityValue is "urgent" or "high")
+            return MailPriorityLevel.High;
+        if (priorityValue is "non-urgent" or "low")
+            return MailPriorityLevel.Low;
+
+        var xValue = (xPriority ?? "").Trim().ToLowerInvariant();
+        if (xValue.StartsWith('1') || xValue.StartsWith('2') || xValue == "high")
+            return MailPriorityLevel.High;
+        if (xValue.StartsWith('4') || xValue.StartsWith('5') || xValue == "low")
+            return MailPriorityLevel.Low;
+
+        return MailPriorityLevel.Normal;
+    }
+
     /// <summary>正文摘要（列表里暂未使用，留给后续做预览）。</summary>
     public static string Snippet(string? body, int maxLength = 120)
     {

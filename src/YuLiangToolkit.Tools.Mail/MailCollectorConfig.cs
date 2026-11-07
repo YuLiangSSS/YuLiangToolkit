@@ -25,13 +25,16 @@ public sealed class MailCollectorConfig : ToolConfig
     /// <summary>上次选中的账号 Id（重新打开工具时恢复选中）。</summary>
     public string LastSelectedAccountId { get; set; } = "";
 
+    /// <summary>上次选中的邮件夹：all / inbox / sent / trash（重新打开工具时恢复）。</summary>
+    public string LastSelectedFolder { get; set; } = "inbox";
+
     /// <summary>
     /// 网络代理（全局）：默认跟随 Windows 系统代理（浏览器能打开 Gmail、IMAP 直连却超时就是这里生效）。
     /// 详见 <see cref="MailProxySettings"/>。
     /// </summary>
     public MailProxySettings Proxy { get; set; } = new();
 
-    /// <summary>收件列表排序键：date / from / subject / account / unread / size（见 <c>MailSort</c>）。</summary>
+    /// <summary>收件列表排序键：date / from / to / subject / account / attachments / priority / unread / size（见 <c>MailSort</c>）。</summary>
     public string SortBy { get; set; } = "date";
 
     /// <summary>排序是否降序（默认 true = 最新邮件在最上面）。</summary>

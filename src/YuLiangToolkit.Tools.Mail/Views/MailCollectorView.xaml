@@ -4,8 +4,8 @@
              xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core">
 
     <!-- 布局（Foxmail 风格，v0.42.0 起可拖拽）：
-         左边账号 | 中间收件列表 | 右边整块阅读区（HTML 富文本 / 纯文本 / 附件）；
-         账号 / 收件列表、收件列表 / 阅读区之间各一条 core:PaneSplitter，拖动可调大小、松手记住；
+         左边邮件夹（账号 + 收件箱 / 已发送 / 垃圾箱） | 中间收件列表 | 右边整块阅读区（HTML 富文本 / 纯文本 / 附件）；
+         邮件夹 / 收件列表、收件列表 / 阅读区之间各一条 core:PaneSplitter，拖动可调大小、松手记住；
          账号编辑、网络代理、日志都改成弹窗，不再占用主界面（双击账号 = 编辑，工具条有「网络代理」「日志」）。 -->
     <Grid Margin="28,20,28,24">
         <Grid.RowDefinitions>
@@ -23,7 +23,7 @@
             <StackPanel>
                 <TextBlock Text="📬 邮箱代收" FontSize="21" FontWeight="SemiBold" />
                 <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
-                           Text="IMAP 只读代收：多个邮箱合并列表、HTML 富文本阅读（Ctrl+滚轮缩放）、筛选 / 搜索 / 排序、附件打开与保存；授权码用 Windows DPAPI 加密。" />
+                           Text="IMAP 只读代收：按收件箱 / 已发送 / 垃圾箱浏览多个邮箱，支持收件人 / 附件 / 优先级排序和附件拖到桌面；授权码用 Windows DPAPI 加密。" />
             </StackPanel>
             <Border Grid.Column="1" Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="12,8"
                     VerticalAlignment="Top" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" MaxWidth="340"
@@ -41,7 +41,7 @@
             <WrapPanel>
                 <Button Content="刷新全部" Style="{StaticResource PrimaryButtonStyle}" Margin="0,0,8,8"
                         Command="{Binding RefreshAllCommand}"
-                        ToolTip="逐个连接启用的账号，拉取每个收件箱最近的邮件并合并（只读）" />
+                        ToolTip="逐个连接启用的账号，读取收件箱 / 已发送 / 垃圾箱最近的邮件（只读）" />
                 <Button Content="取消" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,16,8"
                         Command="{Binding CancelCommand}" IsEnabled="{Binding IsBusy}" />
                 <Button Content="新增账号" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
@@ -76,7 +76,7 @@
         <!-- ===== 主区域：账号 | 收件列表 | 阅读区 ===== -->
         <Grid Grid.Row="2" Margin="0,12,0,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="210" MinWidth="150" />
+                <ColumnDefinition Width="230" MinWidth="160" />
                 <ColumnDefinition Width="12" />
                 <ColumnDefinition Width="330" MinWidth="230" />
                 <ColumnDefinition Width="12" />
@@ -97,7 +97,7 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Text="📥 账号" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock Text="📁 邮件夹" FontSize="13" FontWeight="SemiBold" />
                             <TextBlock Text="{Binding AccountsSummary}" FontSize="10.5"
                                        Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" />
                         </StackPanel>
@@ -106,31 +106,50 @@
                                 ToolTip="新增账号" />
                     </Grid>
                     <Grid Grid.Row="1">
-                        <ListBox ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedAccount}"
+                        <ListBox x:Name="NavigationListBox" ItemsSource="{Binding NavigationItems}" SelectedItem="{Binding SelectedNavigationItem}"
                                  Style="{StaticResource FileListStyle}" Margin="8,0,8,8"
                                  core:ScrollChaining.Enabled="True"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                  MouseDoubleClick="OnAccountDoubleClick">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid Margin="2,4">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <CheckBox IsChecked="{Binding Enabled}" Style="{StaticResource CheckBoxStyle}"
-                                                  VerticalAlignment="Top" Margin="0,1,8,0"
-                                                  ToolTip="勾选 = 参与代收（取消勾选只跳过这个账号，配置保留）" />
-                                        <StackPanel Grid.Column="1">
-                                            <TextBlock Text="{Binding DisplayTitle}" FontSize="12.5"
+                                    <Grid Margin="2,2">
+                                        <Grid Visibility="{Binding IsAccount, Converter={StaticResource BoolToVis}}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <CheckBox IsChecked="{Binding Account.Enabled}" Style="{StaticResource CheckBoxStyle}"
+                                                      VerticalAlignment="Top" Margin="0,2,8,0"
+                                                      ToolTip="勾选 = 参与代收（取消勾选只跳过这个账号，配置保留）" />
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock Text="{Binding Account.DisplayTitle}" FontSize="12.5" FontWeight="SemiBold"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="全部邮件" FontSize="10"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,2,0,0" />
+                                                <TextBlock Text="{Binding Account.StatusText}" FontSize="9.5"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                                           TextWrapping="Wrap" Margin="0,2,0,0" MaxHeight="30" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="2" Text="{Binding CountText}" FontSize="10"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,2,0,0" />
+                                        </Grid>
+                                        <Grid Margin="24,4,4,2"
+                                              Visibility="{Binding IsFolder, Converter={StaticResource BoolToVis}}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Glyph}" FontSize="11" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="1" Text="{Binding DisplayName}" FontSize="11.5"
+                                                       Margin="7,0,0,0" VerticalAlignment="Center"
                                                        TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Text="{Binding DisplaySubtitle}" FontSize="10"
-                                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                                       TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
-                                            <TextBlock Text="{Binding StatusText}" FontSize="10"
-                                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                                       TextWrapping="Wrap" Margin="0,2,0,0" />
-                                        </StackPanel>
+                                            <TextBlock Grid.Column="2" Text="{Binding CountText}" FontSize="10"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,0"
+                                                       VerticalAlignment="Center" ToolTip="{Binding StatusText}" />
+                                        </Grid>
                                     </Grid>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
@@ -149,7 +168,7 @@
                                     Command="{Binding DeleteAccountCommand}" IsEnabled="{Binding HasSelectedAccount}" />
                         </WrapPanel>
                         <TextBlock FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
-                                   Text="双击账号可编辑服务器 / 授权码 / 预设。" />
+                                   Text="点账号看全部邮件，点文件夹只看该类；双击账号可编辑。" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -173,7 +192,8 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Text="📬 收件箱（合并）" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding CurrentFolderTitle}" FontSize="13" FontWeight="SemiBold"
+                                       TextTrimming="CharacterEllipsis" />
                             <TextBlock Text="{Binding MessagesSummary}" FontSize="10.5"
                                        Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap" />
                         </StackPanel>
@@ -182,25 +202,16 @@
                     </Grid>
 
                     <StackPanel Grid.Row="1" Margin="16,8,16,0">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <ComboBox ItemsSource="{Binding FilterOptions}" SelectedItem="{Binding SelectedFilter}"
-                                      DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}"
-                                      ToolTip="只看某个账号的邮件" />
-                            <CheckBox Grid.Column="1" Content="只看未读" IsChecked="{Binding OnlyUnread}"
-                                      Style="{StaticResource CheckBoxStyle}" Margin="10,0,0,0" VerticalAlignment="Center" />
-                        </Grid>
                         <Grid Margin="0,8,0,0">
                             <TextBox x:Name="SearchBox" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                                      Style="{StaticResource TextBoxStyle}"
-                                     ToolTip="按主题 / 发件人 / 账号名搜索；空格分隔多个关键词需同时命中" />
-                            <TextBlock Text="搜索主题 / 发件人 / 账号…" IsHitTestVisible="False"
+                                     ToolTip="按主题 / 发件人 / 收件人 / 账号名搜索；空格分隔多个关键词需同时命中" />
+                            <TextBlock Text="搜索主题 / 发件人 / 收件人 / 账号…" IsHitTestVisible="False"
                                        Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
                                        Visibility="{Binding Text, ElementName=SearchBox, Converter={StaticResource EmptyToVis}}" />
                         </Grid>
+                        <CheckBox Content="只看未读" IsChecked="{Binding OnlyUnread}"
+                                  Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0" VerticalAlignment="Center" />
                     </StackPanel>
 
                     <Grid Grid.Row="2" Margin="16,8,16,0">
@@ -210,7 +221,7 @@
                         </Grid.ColumnDefinitions>
                         <ComboBox ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SelectedSort}"
                                   DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}"
-                                  ToolTip="收件列表排序：日期 / 发件人 / 主题 / 账号 / 是否未读 / 大小" />
+                                  ToolTip="排序：日期 / 发件人 / 收件人 / 主题 / 账号 / 附件 / 优先级 / 未读 / 大小" />
                         <Button Grid.Column="1" Content="{Binding SortDirectionText}" Margin="8,0,0,0"
                                 Style="{StaticResource SecondaryButtonStyle}"
                                 Command="{Binding ToggleSortDirectionCommand}"
@@ -234,33 +245,53 @@
                                         <StackPanel Grid.Column="1" Margin="2,0,0,0">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Text="{Binding Subject}" FontSize="12.5" TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Grid.Column="1" Text="{Binding DateText}" FontSize="10.5"
+                                                <TextBlock Text="{Binding PriorityMark}" FontSize="12" FontWeight="Bold"
+                                                           Foreground="{DynamicResource DangerBrush}" Margin="0,0,4,0"
+                                                           VerticalAlignment="Center" ToolTip="高优先级" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Subject}" FontSize="12.5"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Grid.Column="2" Text="{Binding DateText}" FontSize="10.5"
                                                            Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Top"
                                                            Margin="8,1,0,0" />
                                             </Grid>
-                                            <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
-                                                <TextBlock Text="{Binding FromText}" FontSize="10.5"
+                                            <Grid Margin="0,3,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock TextTrimming="CharacterEllipsis" FontSize="10.5"
                                                            Foreground="{DynamicResource TextSecondaryBrush}"
-                                                           TextTrimming="CharacterEllipsis" MaxWidth="110"
-                                                           ToolTip="{Binding FromText}" />
-                                                <Border Background="{DynamicResource TagChipBackgroundBrush}" CornerRadius="4"
-                                                        Padding="5,1" Margin="8,0,0,0" VerticalAlignment="Center">
+                                                           ToolTip="{Binding PartyText}">
+                                                    <Run Text="{Binding PartyLabel, Mode=OneWay}" />
+                                                    <Run Text=" " />
+                                                    <Run Text="{Binding PartyText, Mode=OneWay}" />
+                                                </TextBlock>
+                                                <TextBlock Grid.Column="1" Text="{Binding AttachmentMark}" FontSize="10"
+                                                           Margin="5,0,0,0" VerticalAlignment="Center"
+                                                           ToolTip="含附件" />
+                                                <Border Grid.Column="2" Background="{DynamicResource TagChipBackgroundBrush}" CornerRadius="4"
+                                                        Padding="5,1" Margin="5,0,0,0" VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding AccountBadge}" FontSize="9.5"
                                                                Foreground="{DynamicResource TextSecondaryBrush}"
-                                                               TextTrimming="CharacterEllipsis" MaxWidth="70"
+                                                               TextTrimming="CharacterEllipsis" MaxWidth="58"
                                                                ToolTip="{Binding AccountBadge}" />
                                                 </Border>
-                                            </StackPanel>
+                                                <TextBlock Grid.Column="3" Text="{Binding FolderBadge}" FontSize="9.5"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="6,0,0,0"
+                                                           VerticalAlignment="Center" />
+                                            </Grid>
                                         </StackPanel>
                                     </Grid>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
-                        <TextBlock Text="还没有邮件：填好账号后点「刷新全部」，这里会合并显示各邮箱最近的收件"
+                        <TextBlock Text="{Binding EmptyMessagesHint}"
                                    FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
                                    TextWrapping="Wrap" Margin="22,10,22,0" VerticalAlignment="Top"
                                    IsHitTestVisible="False"
@@ -342,7 +373,11 @@
                         <ItemsControl ItemsSource="{Binding Attachments}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid Margin="2,3">
+                                    <Grid Margin="2,3" Background="Transparent" Cursor="Hand"
+                                          ToolTip="按住拖到桌面或资源管理器即可复制附件"
+                                          PreviewMouseLeftButtonDown="OnAttachmentPreviewMouseLeftButtonDown"
+                                          PreviewMouseMove="OnAttachmentPreviewMouseMove"
+                                          PreviewMouseLeftButtonUp="OnAttachmentPreviewMouseLeftButtonUp">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />

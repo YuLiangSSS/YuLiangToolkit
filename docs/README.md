@@ -19,7 +19,7 @@
 | ⚡ Flash 下载器 | 4399 / 7k7k / 17yy / ArmorGames / Kongregate 小游戏下载到本地离线玩 | [tools/flash-downloader.md](tools/flash-downloader.md) |
 | 💬 联机聊天室 | 主机开端口、客户端连进来，局域网 / 内网穿透都能用，带流量上限；房间内还能开**群语音 / 群视频通话**（最多 8 人，媒体复用同一个端口），也能**按住说话发语音消息**（自动转 MP3、气泡显示秒数、**可拖进度条反复听**、计入文件流量上限） | [tools/chat-room.md](tools/chat-room.md) |
 | 🌐 网页浏览器 | Chromium 内核（WebView2）多标签：上方 / 左侧标签栏、前进后退刷新、网页右键刷新、会话恢复（懒加载）、历史记录 / 下载 / 书签 / 资源嗅探侧栏、页面缩放（Ctrl+滚轮）、主页与清空记录 | [tools/browser.md](tools/browser.md) |
-| 📬 邮箱代收 | 用 IMAP 把 Gmail / QQ / 163 / 126 / Outlook 等多个邮箱的收件箱收到一起看（只读，不改已读 / 不删邮件）：合并列表、账号筛选 / 关键词搜索、HTML 富文本预览（图片 / 表格 / 边框，Ctrl+滚轮缩放，可切纯文本）、附件打开 / 保存 / 全部保存、按日期 / 发件人 / 主题 / 账号 / 未读 / 大小排序；账号 / 代理 / 日志都是弹窗，授权码 / 应用专用密码用 Windows DPAPI 加密保存；可自动跟随 Windows 系统代理 | [tools/mail.md](tools/mail.md) |
+| 📬 邮箱代收 | 用 IMAP 把 Gmail / QQ / 163 / 126 / Outlook 等多个邮箱的**收件箱 / 已发送 / 垃圾箱**收到一起看（只读，不改已读 / 不删邮件）：账号文件夹导航、合并列表、关键词搜索、HTML 富文本预览（图片 / 表格 / 边框，Ctrl+滚轮缩放，可切纯文本）、附件打开 / 保存 / 全部保存 / 拖到桌面、按日期 / 发件人 / 收件人 / 主题 / 账号 / 附件 / 优先级 / 未读 / 大小排序；账号 / 代理 / 日志都是弹窗，授权码 / 应用专用密码用 Windows DPAPI 加密保存；可自动跟随 Windows 系统代理 | [tools/mail.md](tools/mail.md) |
 | 🏷️ 批量重命名 | 规则清单 + 预览 + 两阶段改名 + 撤销 | [tools/batch-rename.md](tools/batch-rename.md) |
 | 📝 文本编辑器 | 多标签文本 / 代码编辑（AvalonEdit）：语法高亮、查找替换、编码与换行自动识别、界面缩放 | [tools/text-editor.md](tools/text-editor.md) |
 | 🎧 osu! 下图器 | 搜谱面集、批量下 `.osz` | [tools/map-downloader.md](tools/map-downloader.md) |

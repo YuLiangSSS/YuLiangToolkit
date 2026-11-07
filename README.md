@@ -52,7 +52,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 | [**⚡ Flash 下载器**](docs/tools/flash-downloader.md) | 4399 / 7k7k / 17yy / ArmorGames / Kongregate 的小游戏下载到本地离线玩 |
 | [**💬 联机聊天室**](docs/tools/chat-room.md) | 主机开房间、客户端直连，文字 / 图片 / 文件随便传；还能群语音 / 群视频（最多 8 人）和按住说话发语音消息 |
 | [**🌐 网页浏览器**](docs/tools/browser.md) | Chromium 内核（WebView2）多标签浏览器：历史 / 下载 / 书签 / 资源嗅探、会话恢复、页面缩放、右键图片另存为 |
-| [**📬 邮箱代收**](docs/tools/mail.md) | 用 IMAP 把 Gmail / QQ / 163 / Outlook 等多个邮箱的收件箱收到一起看：只读拉取、合并列表、账号筛选 / 搜索、HTML 富文本预览（图片 / 表格 / 边框，Ctrl+滚轮缩放，可切纯文本）、附件打开 / 保存 / 全部保存、按日期 / 发件人 / 主题 / 账号 / 未读 / 大小排序；账号 / 代理 / 日志都是弹窗，授权码用 Windows DPAPI 加密保存；可自动跟随 Windows 系统代理（Gmail 直连超时时用） |
+| [**📬 邮箱代收**](docs/tools/mail.md) | 用 IMAP 把 Gmail / QQ / 163 / Outlook 等多个邮箱的**收件箱 / 已发送 / 垃圾箱**收到一起看：只读拉取、账号文件夹导航、合并列表、搜索、HTML 富文本预览（图片 / 表格 / 边框，Ctrl+滚轮缩放，可切纯文本）、附件打开 / 保存 / 全部保存 / 拖到桌面、按日期 / 发件人 / 收件人 / 主题 / 账号 / 附件 / 优先级 / 未读 / 大小排序；账号 / 代理 / 日志都是弹窗，授权码用 Windows DPAPI 加密保存；可自动跟随 Windows 系统代理（Gmail 直连超时时用） |
 | [**🏷️ 批量重命名**](docs/tools/batch-rename.md) | 规则清单 + 实时预览 + 两阶段改名 + 可撤销 |
 | [**📝 文本编辑器**](docs/tools/text-editor.md) | AvalonEdit 多标签代码编辑：26 种语言高亮、打开文件夹、内置 CMD / PowerShell 控制台、Markdown 预览、查找替换、界面缩放 |
 | [**🎧 osu! 下图器**](docs/tools/map-downloader.md) | 搜谱面集、批量下载 `.osz`（含视频 / 无视频可选） |
@@ -107,7 +107,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（用法 / 设置项 / 数据位置 / 注意事项），跟着代码一起走；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；踩坑细节按需查 [docs/dev/pitfalls.md](docs/dev/pitfalls.md)；
-- ✅ **自检**：4818 项行为逐条真跑（退出码 0 = 全通过）。按改动影响面只跑相关组，不每轮全量：
+- ✅ **自检**：4822 项行为逐条真跑（退出码 0 = 全通过）。按改动影响面只跑相关组，不每轮全量：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -122,7 +122,7 @@ build.ps1 / publish.ps1                  # 一键构建 / 一键发布（发布�
 scripts/check.ps1                        # 按改动自动选组的自检触发器
 src/YuLiangToolkit.Core/                 # 核心库：工具契约 / MVVM / 存储 / 配置 / 维护 / 特效 / 联机底座
 src/YuLiangToolkit.Tools.*/              # 各工具，一个功能一个项目（新功能复制 Tools.Sample）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 自检控制台：4818 项行为逐条真跑
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 自检控制台：4822 项行为逐条真跑
 docs/                                    # 每个工具一页详细说明（索引 docs/README.md）
 AGENTS.md                                # 开发入口地图：流程 / 硬性规则 / 找东西
 ```

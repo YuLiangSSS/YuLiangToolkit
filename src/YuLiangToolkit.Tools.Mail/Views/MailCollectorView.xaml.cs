@@ -30,6 +30,8 @@ public partial class MailCollectorView : UserControl
     private bool _webViewInitializing;
     private bool _detached;
     private string? _lastRenderedHtml;
+    private Point _attachmentDragStart;
+    private MailAttachmentItem? _pendingAttachmentDrag;
 
     public MailCollectorView()
     {
@@ -47,6 +49,7 @@ public partial class MailCollectorView : UserControl
         AttachViewModel();
         ViewModel?.OnViewLoaded();
         _ = InitializeHtmlPreviewAsync();
+        ScrollSelectedNavigationIntoView();
 
         // 开发截图冒烟用：YLT_MAIL_DIALOG=account / proxy / log 时自动打开对应弹窗
         var dialogMode = Environment.GetEnvironmentVariable("YLT_MAIL_DIALOG");
@@ -94,6 +97,18 @@ public partial class MailCollectorView : UserControl
         {
             RenderCurrentHtml();
         }
+
+        if (e.PropertyName == nameof(MailCollectorViewModel.SelectedNavigationItem))
+            ScrollSelectedNavigationIntoView();
+    }
+
+    private void ScrollSelectedNavigationIntoView()
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (ViewModel?.SelectedNavigationItem is { } node)
+                NavigationListBox.ScrollIntoView(node);
+        }), System.Windows.Threading.DispatcherPriority.Background);
     }
 
     // ---------- 账号 / 代理 / 日志弹窗 ----------
@@ -116,7 +131,7 @@ public partial class MailCollectorView : UserControl
         if (dialog.ShowDialog() != true) return;
 
         viewModel.Cfg.Accounts.Add(draft);
-        viewModel.SelectedAccount = draft;
+        viewModel.SelectAccount(draft, MailFolderKind.Inbox);
     }
 
     private void OnEditAccountClick(object sender, RoutedEventArgs e)
@@ -135,8 +150,67 @@ public partial class MailCollectorView : UserControl
 
     private void OnAccountDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (ViewModel?.SelectedAccount is null) return;
+        if (ViewModel?.SelectedNavigationItem is not { IsAccount: true }) return;
         OnEditAccountClick(sender, e);
+    }
+
+    // ---------- 附件拖到桌面 / 资源管理器 ----------
+
+    private void OnAttachmentPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _pendingAttachmentDrag = null;
+        if (sender is not FrameworkElement { DataContext: MailAttachmentItem item }) return;
+        if (FindAncestor<Button>(e.OriginalSource as DependencyObject) is not null) return;
+
+        _attachmentDragStart = e.GetPosition(null);
+        _pendingAttachmentDrag = item;
+    }
+
+    private async void OnAttachmentPreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_pendingAttachmentDrag is null || e.LeftButton != MouseButtonState.Pressed) return;
+
+        var position = e.GetPosition(null);
+        if (Math.Abs(position.X - _attachmentDragStart.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(position.Y - _attachmentDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        var item = _pendingAttachmentDrag;
+        _pendingAttachmentDrag = null;
+        var viewModel = ViewModel;
+        if (viewModel is null) return;
+
+        try
+        {
+            var path = await viewModel.PrepareAttachmentDragFileAsync(item);
+            if (path is null || _detached || Mouse.LeftButton != MouseButtonState.Pressed) return;
+
+            var data = new DataObject(DataFormats.FileDrop, new[] { path });
+            DragDrop.DoDragDrop((DependencyObject)sender, data, DragDropEffects.Copy);
+            e.Handled = true;
+        }
+        catch (Exception ex)
+        {
+            viewModel.Log("附件拖拽失败：" + ex.Message);
+        }
+    }
+
+    private void OnAttachmentPreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        _pendingAttachmentDrag = null;
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? current) where T : DependencyObject
+    {
+        while (current is not null)
+        {
+            if (current is T match) return match;
+            current = System.Windows.Media.VisualTreeHelper.GetParent(current);
+        }
+
+        return null;
     }
 
     private void OnProxyClick(object sender, RoutedEventArgs e)

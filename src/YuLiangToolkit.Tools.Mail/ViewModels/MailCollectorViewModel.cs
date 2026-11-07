@@ -5,17 +5,17 @@ using System.Diagnostics;
 using System.Windows;
 using Microsoft.Win32;
 using YuLiangToolkit.Core.Mvvm;
+using YuLiangToolkit.Core.Storage;
 
 namespace YuLiangToolkit.Tools.Mail.ViewModels;
 
 /// <summary>
-/// 「邮箱代收」的 ViewModel：账号管理 + 多账号 IMAP 只读拉取 + 合并列表 / 筛选 / 搜索 +
-/// 选中邮件后按需拉正文和附件 + 日志。
+/// 「邮箱代收」的 ViewModel：账号管理 + 多账号 IMAP 只读拉取（收件箱 / 已发送 / 垃圾箱）+ 文件夹导航 /
+/// 搜索 + 选中邮件后按需拉正文和附件 + 附件拖拽 + 日志。
 ///
-/// <para><b>数据流</b>：点「刷新全部」→ 逐个启用账号连 IMAP（只读）拉最近 N 封摘要 →
-/// 合并成一个按时间倒序的列表（<see cref="MailMessageRow"/>）→ 选中某行时才连回该账号拉完整正文
-/// （<see cref="ImapMailService.GetMessageAsync"/>）。列表本身不落盘，关掉程序就清空，不会把你邮箱里的
-/// 内容复制到 Data 目录；配置里只有账号信息和 DPAPI 加密后的授权码。</para>
+/// <para><b>数据流</b>：点「刷新全部」→ 逐个启用账号连 IMAP（只读）拉三个文件夹最近 N 封摘要 →
+/// 合并成一个按时间倒序的列表（<see cref="MailMessageRow"/>）→ 左侧导航只筛当前账号 / 文件夹 →
+/// 选中某行时才连回该账号拉完整正文（<see cref="ImapMailService.GetMessageAsync"/>）。列表本身不落盘...
 ///
 /// <para><b>线程</b>：所有 await 都从 UI 线程发起并回到 UI 线程；MailKit 的网络 IO 不会卡界面。
 /// 异常按账号隔离：一个账号认证失败只影响它自己的状态，其它账号照常收。</para>
@@ -24,14 +24,15 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
 {
     private readonly ImapMailService _service;
     private readonly List<MailMessageRow> _allMessages = new();
+    private readonly Dictionary<string, Dictionary<MailFolderKind, string>> _folderNotices = new();
 
     private CancellationTokenSource? _refreshCts;
     private CancellationTokenSource? _detailCts;
     private int _detailGeneration;
 
     private MailAccountConfig? _selectedAccount;
+    private MailNavigationNode? _selectedNavigationItem;
     private MailMessageRow? _selectedMessage;
-    private MailFilterOption? _selectedFilter;
     private string _searchText = "";
     private bool _onlyUnread;
     private bool _viewLoadedHintShown;
@@ -90,15 +91,17 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
         OpenConfigFolderCommand = new RelayCommand(_ => ConfigStore.OpenInExplorer());
         OpenDataFolderCommand = new RelayCommand(_ => Storage.OpenInExplorer());
 
-        RebuildFilterOptions();
-        SelectedAccount = Cfg.Accounts.FirstOrDefault(a => a.Id == Cfg.LastSelectedAccountId)
-                          ?? Cfg.Accounts.FirstOrDefault();
+        RebuildNavigationNodes();
+        SelectedNavigationItem =
+            FindNavigationNode(Cfg.LastSelectedAccountId, Cfg.LastSelectedFolder)
+            ?? NavigationItems.FirstOrDefault(node => node.Folder == MailFolderKind.Inbox)
+            ?? NavigationItems.FirstOrDefault();
         UpdateSummaries();
         ClearDetail();
 
         Log("===== 邮箱代收 =====");
         Log("用法：点「新增账号」→ 选服务商预设（Gmail / QQ / 163…）→ 填邮箱 + 授权码 / 应用专用密码 → 点「刷新全部」。");
-        Log("只读：只拉收件箱，不会删除 / 移动 / 标记已读；一个账号失败不影响其它账号。");
+        Log("只读：拉取收件箱 / 已发送 / 垃圾箱，不会删除 / 移动 / 标记已读；一个文件夹失败不影响其它文件夹。");
         Log($"配置文件：{ConfigPathText}（授权码已用 Windows DPAPI 加密，换电脑 / 换 Windows 用户要重新填）");
         Log($"代理：{Cfg.Proxy.Describe("imap.gmail.com")}（工具条「网络代理」里可改）");
 
@@ -117,8 +120,8 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
     /// <summary>服务商预设（下拉框数据源）。</summary>
     public IReadOnlyList<MailPreset> Presets => MailPresets.All;
 
-    /// <summary>账号筛选选项（「全部账号」+ 每个账号）。</summary>
-    public ObservableCollection<MailFilterOption> FilterOptions { get; } = new();
+    /// <summary>左侧邮件夹导航：每个账号一行「全部邮件」，随后平铺收件箱 / 已发送 / 垃圾箱。</summary>
+    public ObservableCollection<MailNavigationNode> NavigationItems { get; } = new();
 
     /// <summary>当前选中的账号（右侧表单编辑它；绑定直接改配置对象，自动落盘）。</summary>
     public MailAccountConfig? SelectedAccount
@@ -137,6 +140,43 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
     }
 
     public bool HasSelectedAccount => SelectedAccount is not null;
+
+    /// <summary>当前选中的邮件夹导航行；它同时决定账号操作对象和中间列表的数据范围。</summary>
+    public MailNavigationNode? SelectedNavigationItem
+    {
+        get => _selectedNavigationItem;
+        set
+        {
+            if (!Set(ref _selectedNavigationItem, value)) return;
+
+            if (value is not null)
+            {
+                SelectedAccount = value.Account;
+                Cfg.LastSelectedAccountId = value.Account.Id;
+                Cfg.LastSelectedFolder = value.FolderKey;
+            }
+            else
+            {
+                SelectedAccount = null;
+            }
+
+            OnPropertyChanged(nameof(CurrentFolderTitle));
+            OnPropertyChanged(nameof(EmptyMessagesHint));
+            ApplyFilter();
+        }
+    }
+
+    public string CurrentFolderTitle => SelectedNavigationItem is null
+        ? "邮件列表"
+        : SelectedNavigationItem.IsAccount
+            ? $"{SelectedNavigationItem.Account.DisplayTitle} · 全部邮件"
+            : $"{SelectedNavigationItem.Account.DisplayTitle} · {SelectedNavigationItem.DisplayName}";
+
+    public string EmptyMessagesHint => SelectedNavigationItem is null
+        ? "先新增账号，然后点「刷新全部」"
+        : SelectedNavigationItem.IsAccount
+            ? "当前账号还没有代收记录：点「刷新全部」读取收件箱 / 已发送 / 垃圾箱"
+            : $"「{SelectedNavigationItem.DisplayName}」还没有代收记录：点「刷新全部」读取";
 
     /// <summary>表单上的服务商预设：根据当前账号的服务器 / 端口反查；改它会把服务器 / 端口 / SSL 填好。</summary>
     public MailPreset SelectedPreset
@@ -183,18 +223,7 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
 
     public bool HasSelectedMessage => SelectedMessage is not null;
 
-    /// <summary>账号筛选下拉项。</summary>
-    public MailFilterOption? SelectedFilter
-    {
-        get => _selectedFilter;
-        set
-        {
-            if (!Set(ref _selectedFilter, value)) return;
-            ApplyFilter();
-        }
-    }
-
-    /// <summary>搜索框（同时匹配主题 / 发件人 / 账号名，空格分隔多个关键词需同时命中）。</summary>
+    /// <summary>搜索框（同时匹配主题 / 发件人 / 收件人 / 账号名，空格分隔多个关键词需同时命中）。</summary>
     public string SearchText
     {
         get => _searchText;
@@ -218,12 +247,15 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
 
     // ---------- 排序 ----------
 
-    /// <summary>排序键：日期 / 发件人 / 主题 / 账号 / 是否未读 / 大小（Foxmail 风格）。</summary>
+    /// <summary>排序键：日期 / 发件人 / 收件人 / 主题 / 账号 / 附件 / 优先级 / 是否未读 / 大小。</summary>
     public IReadOnlyList<OptionItem<string>> SortOptions { get; } = OptionItem.From(
         ("date", "日期"),
         ("from", "发件人"),
+        ("to", "收件人"),
         ("subject", "主题"),
         ("account", "账号"),
+        ("attachments", "附件"),
+        ("priority", "优先级"),
         ("unread", "是否未读"),
         ("size", "大小"));
 
@@ -535,7 +567,7 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
             StatusText = "未连接",
         };
         Cfg.Accounts.Add(account);
-        SelectedAccount = account;
+        SelectAccount(account, MailFolderKind.Inbox);
         ShowSettingsTab = true;
         Log("新增账号：先选服务商预设（会自动填服务器 / 端口），再填邮箱地址和授权码 / 应用专用密码。");
     }
@@ -552,7 +584,7 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
 
         Cfg.Accounts.Remove(account);
         _allMessages.RemoveAll(row => ReferenceEquals(row.Account, account));
-        SelectedAccount = null;
+        _folderNotices.Remove(account.Id);
         SelectedMessage = null;
         ShowDetailTab = true;
         ApplyFilter();
@@ -563,7 +595,11 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
     {
         if (e.OldItems is not null)
         {
-            foreach (MailAccountConfig account in e.OldItems) account.PropertyChanged -= OnAccountPropertyChanged;
+            foreach (MailAccountConfig account in e.OldItems)
+            {
+                account.PropertyChanged -= OnAccountPropertyChanged;
+                _folderNotices.Remove(account.Id);
+            }
         }
 
         if (e.NewItems is not null)
@@ -571,7 +607,13 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
             foreach (MailAccountConfig account in e.NewItems) account.PropertyChanged += OnAccountPropertyChanged;
         }
 
-        RebuildFilterOptions();
+        var selectedAccountId = SelectedNavigationItem?.Account.Id ?? Cfg.LastSelectedAccountId;
+        var selectedFolder = SelectedNavigationItem?.FolderKey ?? Cfg.LastSelectedFolder;
+        RebuildNavigationNodes();
+        SelectedNavigationItem =
+            FindNavigationNode(selectedAccountId, selectedFolder)
+            ?? NavigationItems.FirstOrDefault(node => node.Folder == MailFolderKind.Inbox)
+            ?? NavigationItems.FirstOrDefault();
         UpdateSummaries();
     }
 
@@ -579,7 +621,8 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
     {
         if (e.PropertyName is nameof(MailAccountConfig.DisplayName) or nameof(MailAccountConfig.Email))
         {
-            RebuildFilterOptions();
+            OnPropertyChanged(nameof(CurrentFolderTitle));
+            OnPropertyChanged(nameof(EmptyMessagesHint));
         }
 
         if (e.PropertyName is nameof(MailAccountConfig.Host)
@@ -598,13 +641,34 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
         UpdateSummaries();
     }
 
-    private void RebuildFilterOptions()
+    /// <summary>从账号列表重建左侧导航；账号行后面紧跟三个系统文件夹。</summary>
+    private void RebuildNavigationNodes()
     {
-        var currentId = SelectedFilter?.AccountId;
-        FilterOptions.Clear();
-        FilterOptions.Add(new MailFilterOption(null, "全部账号"));
-        foreach (var account in Accounts) FilterOptions.Add(new MailFilterOption(account.Id, account.DisplayTitle));
-        SelectedFilter = FilterOptions.FirstOrDefault(option => option.AccountId == currentId) ?? FilterOptions[0];
+        NavigationItems.Clear();
+        foreach (var account in Accounts)
+        {
+            NavigationItems.Add(new MailNavigationNode(account, null));
+            foreach (var folder in MailFolders.All)
+                NavigationItems.Add(new MailNavigationNode(account, folder));
+        }
+
+        UpdateNavigationCounts();
+    }
+
+    /// <summary>代码后置在新增账号后调用：选中新账号的指定系统文件夹。</summary>
+    public void SelectAccount(MailAccountConfig account, MailFolderKind? folder = MailFolderKind.Inbox)
+    {
+        var node = FindNavigationNode(account.Id, folder is { } kind ? MailFolders.Key(kind) : "all");
+        if (node is not null) SelectedNavigationItem = node;
+    }
+
+    private MailNavigationNode? FindNavigationNode(string? accountId, string? folderKey)
+    {
+        if (string.IsNullOrWhiteSpace(accountId)) return null;
+        var normalizedFolder = string.IsNullOrWhiteSpace(folderKey) ? "inbox" : folderKey.Trim().ToLowerInvariant();
+        return NavigationItems.FirstOrDefault(node =>
+            string.Equals(node.Account.Id, accountId, StringComparison.Ordinal)
+            && string.Equals(node.FolderKey, normalizedFolder, StringComparison.Ordinal));
     }
 
     // ---------- 代收 ----------
@@ -628,7 +692,7 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
         IsBusy = true;
         Progress = 0;
         ProgressText = $"0 / {accounts.Count}";
-        Log($"===== 开始代收：{accounts.Count} 个账号，每个取最近 {limit} 封 =====");
+        Log($"===== 开始代收：{accounts.Count} 个账号，每个文件夹取最近 {limit} 封 =====");
 
         var collected = new List<MailBrief>();
         var succeeded = 0;
@@ -646,7 +710,8 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
                     // 没填授权码 / 邮箱 / 服务器：不发网络请求，状态栏给一句短的，日志里给具体缺什么
                     failed++;
                     account.StatusText = "❌ 未配置：缺授权码 / 服务器";
-                    Log($"[{account.DisplayTitle}] 跳过：{DescribeMissing(account)}（在右栏「账号设置」里填好再刷新）");
+                    SetAllFolderNotices(account, "未配置");
+                    Log($"[{account.DisplayTitle}] 跳过：{DescribeMissing(account)}（在账号弹窗里填好再刷新）");
                 }
                 else
                 {
@@ -654,11 +719,26 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
                     Log($"[{account.DisplayTitle}] 连接方式：{Cfg.Proxy.Describe(account.Host)}");
                     try
                     {
-                        var briefs = await _service.FetchRecentAsync(account, limit, token);
-                        collected.AddRange(briefs);
-                        succeeded++;
-                        account.StatusText = $"✅ {briefs.Count} 封 · {DateTime.Now:HH:mm:ss}";
-                        Log($"[{account.DisplayTitle}] 成功：{briefs.Count} 封（{MailText.MaskEmail(account.Email)}）");
+                        var fetched = await _service.FetchRecentAsync(account, limit, token);
+                        var accountMessages = fetched.Folders.SelectMany(folder => folder.Messages).ToList();
+                        collected.AddRange(accountMessages);
+                        _folderNotices[account.Id] = fetched.Folders.ToDictionary(
+                            folder => folder.Folder,
+                            folder => folder.Available ? "" : folder.ErrorText);
+
+                        var availableFolders = fetched.Folders.Count(folder => folder.Available);
+                        if (availableFolders > 0) succeeded++;
+                        else failed++;
+
+                        account.StatusText = FormatAccountFetchStatus(fetched, accountMessages.Count);
+                        Log($"[{account.DisplayTitle}] {account.StatusText}（{MailText.MaskEmail(account.Email)}）");
+                        foreach (var folder in fetched.Folders)
+                        {
+                            var folderLabel = MailFolders.Label(folder.Folder);
+                            Log(folder.Available
+                                ? $"[{account.DisplayTitle}] {folderLabel}：{folder.Messages.Count} 封"
+                                : $"[{account.DisplayTitle}] {folderLabel}：{folder.ErrorText}");
+                        }
                     }
                     catch (OperationCanceledException)
                     {
@@ -669,6 +749,7 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
                         failed++;
                         var message = ImapMailService.DescribeError(ex);
                         account.StatusText = "❌ " + message;
+                        SetAllFolderNotices(account, "读取失败");
                         Log($"[{account.DisplayTitle}] 失败：{message}");
                     }
                 }
@@ -727,6 +808,19 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
         }
     }
 
+    private static string FormatAccountFetchStatus(MailAccountFetchResult fetched, int totalCount)
+    {
+        var folderParts = fetched.Folders.Select(folder =>
+            $"{MailFolders.Label(folder.Folder)} {folder.Messages.Count}");
+        return $"✅ {totalCount} 封 · {string.Join(" / ", folderParts)} · {DateTime.Now:HH:mm:ss}";
+    }
+
+    private void SetAllFolderNotices(MailAccountConfig account, string notice)
+    {
+        _folderNotices[account.Id] = MailFolders.All.ToDictionary(folder => folder, _ => notice);
+        UpdateNavigationCounts();
+    }
+
     private async Task TestConnectionAsync()
     {
         var account = SelectedAccount;
@@ -740,7 +834,7 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
         {
             var problem = DescribeMissing(account);
             StatusText = "连接测试前先填完整：" + problem;
-            Log($"[{account.DisplayTitle}] 配置不完整：{problem}（在右栏「账号设置」里填写）");
+            Log($"[{account.DisplayTitle}] 配置不完整：{problem}（在账号弹窗里填写）");
             return;
         }
 
@@ -784,13 +878,12 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
     {
         var selectedAccountId = SelectedMessage?.Account.Id;
         var selectedUniqueId = SelectedMessage?.UniqueId ?? 0;
+        var selectedFolder = SelectedMessage?.Folder;
 
         VisibleMessages.Clear();
         IEnumerable<MailMessageRow> query = _allMessages;
 
-        var filterId = SelectedFilter?.AccountId;
-        if (!string.IsNullOrWhiteSpace(filterId))
-            query = query.Where(row => string.Equals(row.Account.Id, filterId, StringComparison.Ordinal));
+        query = query.Where(IsInCurrentNavigationScope);
 
         if (OnlyUnread) query = query.Where(row => row.IsUnread);
 
@@ -801,21 +894,48 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
             query = query.Where(row =>
                 row.Subject.Contains(term, StringComparison.OrdinalIgnoreCase)
                 || row.FromText.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || row.ToText.Contains(term, StringComparison.OrdinalIgnoreCase)
                 || row.Account.DisplayTitle.Contains(term, StringComparison.OrdinalIgnoreCase)
                 || row.Account.Email.Contains(term, StringComparison.OrdinalIgnoreCase));
         }
 
         foreach (var row in MailSort.Apply(query, Cfg.SortBy, Cfg.SortDescending)) VisibleMessages.Add(row);
 
-        // 原来选中的那封如果还在筛选结果里，按账号 + UID 重新选中（刷新后对象是新实例）
+        // 原来选中的那封如果还在筛选结果里，按账号 + 文件夹 + UID 重新选中（刷新后对象是新实例）
         if (selectedAccountId is not null)
         {
             SelectedMessage = VisibleMessages.FirstOrDefault(row =>
                 string.Equals(row.Account.Id, selectedAccountId, StringComparison.Ordinal)
+                && row.Folder == selectedFolder
                 && row.UniqueId == selectedUniqueId);
         }
 
+        UpdateNavigationCounts();
         UpdateSummaries();
+    }
+
+    private bool IsInCurrentNavigationScope(MailMessageRow row)
+    {
+        var navigation = SelectedNavigationItem;
+        if (navigation is null) return false;
+        if (!string.Equals(row.Account.Id, navigation.Account.Id, StringComparison.Ordinal)) return false;
+        return navigation.Folder is not { } folder || row.Folder == folder;
+    }
+
+    private void UpdateNavigationCounts()
+    {
+        foreach (var node in NavigationItems)
+        {
+            node.MessageCount = _allMessages.Count(row =>
+                string.Equals(row.Account.Id, node.Account.Id, StringComparison.Ordinal)
+                && (node.Folder is not { } folder || row.Folder == folder));
+
+            node.StatusText = node.Folder is { } folderKind
+                              && _folderNotices.TryGetValue(node.Account.Id, out var notices)
+                              && notices.TryGetValue(folderKind, out var notice)
+                ? notice
+                : "";
+        }
     }
 
     private void UpdateSummaries()
@@ -825,11 +945,12 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
             : $"{Accounts.Count} 个账号 · {Accounts.Count(a => a.Enabled)} 个启用";
 
         var unread = VisibleMessages.Count(row => row.IsUnread);
-        MessagesSummary = _allMessages.Count == 0
-            ? "还没有代收记录：点右上角「刷新全部」开始"
-            : VisibleMessages.Count == _allMessages.Count
-                ? $"{_allMessages.Count} 封 · 未读 {unread}"
-                : $"筛选出 {VisibleMessages.Count} 封（全部 {_allMessages.Count} 封）";
+        var scopeCount = _allMessages.Count(IsInCurrentNavigationScope);
+        MessagesSummary = scopeCount == 0
+            ? "当前邮件夹还没有代收记录"
+            : VisibleMessages.Count == scopeCount
+                ? $"{scopeCount} 封 · 未读 {unread}"
+                : $"筛选出 {VisibleMessages.Count} 封（当前范围 {scopeCount} 封）";
 
         OnPropertyChanged(nameof(HasAccounts));
         OnPropertyChanged(nameof(HasVisibleMessages));
@@ -854,7 +975,7 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
         DetailFrom = row.FromText;
         DetailTo = "读取中…";
         DetailDate = row.DateFullText;
-        DetailStatus = $"正在从「{row.Account.DisplayTitle}」读取正文…";
+        DetailStatus = $"正在从「{row.Account.DisplayTitle} / {MailFolders.Label(row.Folder)}」读取正文…";
         MessageBodyText = "";
         MessageHtml = null;
         Attachments.Clear();
@@ -863,7 +984,7 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
 
         try
         {
-            var detail = await _service.GetMessageAsync(row.Account, row.UniqueId, token);
+            var detail = await _service.GetMessageAsync(row.Account, row.Folder, row.UniqueId, token);
             if (generation != _detailGeneration || token.IsCancellationRequested) return;
 
             DetailSubject = detail.Subject;
@@ -880,7 +1001,7 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
                         : "已读取 · HTML 富文本预览"
                 : detail.ConvertedFromHtml
                     ? "已读取（HTML 邮件已转成纯文本显示）"
-                    : $"已读取 · {row.Account.DisplayTitle}";
+                    : $"已读取 · {row.Account.DisplayTitle} / {MailFolders.Label(row.Folder)}";
 
             Attachments.Clear();
             foreach (var attachment in detail.Attachments)
@@ -942,6 +1063,61 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
         {
             StatusText = "保存附件失败：" + ex.Message;
             Log("保存附件失败：" + ex);
+        }
+    }
+
+    /// <summary>
+    /// 为 WPF 拖放准备一个真实文件。资源管理器只接受 FileDrop 路径，不能直接拖 MIME 对象；
+    /// 文件放 <c>Cache\mail-collector\drag</c>，由缓存清理统一回收，并在每次拖拽时顺手清理一天前的残留。
+    /// </summary>
+    public async Task<string?> PrepareAttachmentDragFileAsync(MailAttachmentItem? item)
+    {
+        if (item is null) return null;
+
+        try
+        {
+            var cache = ToolCache.For("mail-collector");
+            cache.EnsureCreated();
+            var root = cache.PathOf("drag");
+            Directory.CreateDirectory(root);
+            CleanupOldDragFiles(root);
+
+            var folder = Path.Combine(root, Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(folder);
+            var path = Path.Combine(folder, item.FileName);
+            await Task.Run(() => ImapMailService.SaveAttachment(item.Attachment, path));
+            StatusText = "附件已准备好，可拖到桌面或资源管理器：" + item.FileName;
+            return path;
+        }
+        catch (Exception ex)
+        {
+            StatusText = "准备附件拖拽失败：" + ex.Message;
+            Log("准备附件拖拽失败：" + ex);
+            return null;
+        }
+    }
+
+    private static void CleanupOldDragFiles(string root)
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-1);
+        try
+        {
+            foreach (var directory in Directory.EnumerateDirectories(root))
+            {
+                try
+                {
+                    if (Directory.GetLastWriteTimeUtc(directory) < cutoff)
+                        Directory.Delete(directory, recursive: true);
+                }
+                catch
+                {
+                    // 另一个拖拽可能正在使用；留到下次缓存清理。
+                }
+            }
+        }
+        catch
+        {
+            // 清理是尽力而为，不影响本次拖拽。
         }
     }
 

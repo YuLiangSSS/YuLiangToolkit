@@ -8,7 +8,8 @@ namespace YuLiangToolkit.FrameworkSelfCheck;
 
 /// <summary>
 /// 「邮箱代收」工具的自检：工具元数据 / 服务商预设 / 地址与 HTML 处理 / 配置默认值与 JSON 往返 /
-/// 授权码 DPAPI 加解密 / 网络代理解析 / 错误翻译。全部是纯逻辑，**不联网**（真实 Gmail / QQ 登录由人工冒烟）。
+/// 三文件夹模型 / 收件人与优先级排序 / 授权码 DPAPI 加解密 / 网络代理解析 / 错误翻译。
+/// 全部是纯逻辑，**不联网**（真实 Gmail / QQ 登录由人工冒烟）。
 /// </summary>
 internal static class MailChecks
 {
@@ -39,9 +40,9 @@ internal static class MailChecks
             && tool.Tags.Contains("邮箱") && tool.Tags.Contains("IMAP"),
             $"{tool.Id} / {tool.Name} / {tool.Category} / {tool.Order}");
 
-        check("[邮箱代收] 描述写明「多邮箱 / IMAP / 授权码加密」",
+        check("[邮箱代收] 描述写明「多邮箱 / 三文件夹 / IMAP / 授权码加密」",
             tool.Description.Contains("Gmail") && tool.Description.Contains("IMAP")
-            && tool.Description.Contains("DPAPI"),
+            && tool.Description.Contains("已发送") && tool.Description.Contains("DPAPI"),
             tool.Description);
     }
 
@@ -147,6 +148,21 @@ internal static class MailChecks
             MailText.FormatListDate(DateTimeOffset.MinValue) == "—"
             && MailText.FormatFullDate(DateTimeOffset.MinValue) == "—"
             && MailText.Snippet("  a \n b  ", 10) == "a b");
+
+        check("[邮箱代收] 文件夹键 / 中文名 / 文件夹解析稳定",
+            MailFolders.Key(MailFolderKind.Inbox) == "inbox"
+            && MailFolders.Key(MailFolderKind.Sent) == "sent"
+            && MailFolders.Key(MailFolderKind.Trash) == "trash"
+            && MailFolders.Label(MailFolderKind.Sent) == "已发送"
+            && MailFolders.ParseKey("TRASH") == MailFolderKind.Trash
+            && MailFolders.ParseKey("unknown") == MailFolderKind.Inbox);
+
+        check("[邮箱代收] 优先级头解析：Priority / Importance / X-Priority",
+            MailText.ParsePriority("urgent", "", "") == MailPriorityLevel.High
+            && MailText.ParsePriority("", "", "high") == MailPriorityLevel.High
+            && MailText.ParsePriority("", "1 (Highest)", "") == MailPriorityLevel.High
+            && MailText.ParsePriority("", "5 (Lowest)", "") == MailPriorityLevel.Low
+            && MailText.ParsePriority("normal", "", "") == MailPriorityLevel.Normal);
     }
 
     // ---------------------------------------------------------------- 配置
@@ -154,11 +170,12 @@ internal static class MailChecks
     private static void CheckConfig(CheckFn check)
     {
         var config = new MailCollectorConfig();
-        check("[邮箱代收] 配置默认值：30 封 / 打开自动刷新 / 账号为空 / 日期降序",
+        check("[邮箱代收] 配置默认值：30 封 / 打开自动刷新 / 账号为空 / 收件箱 / 日期降序",
             config.FetchCount == 30 && config.RefreshOnOpen && config.Accounts.Count == 0
             && config.EffectiveFetchCount == 30
-            && config.SortBy == "date" && config.SortDescending,
-            $"fetch={config.FetchCount} sort={config.SortBy}:{config.SortDescending}");
+            && config.SortBy == "date" && config.SortDescending
+            && config.LastSelectedFolder == "inbox",
+            $"fetch={config.FetchCount} folder={config.LastSelectedFolder} sort={config.SortBy}:{config.SortDescending}");
 
         check("[邮箱代收] 代理默认跟随 Windows 系统代理（auto）",
             config.Proxy is { Mode: "auto" } && config.Proxy.Port == 7890,
@@ -195,13 +212,15 @@ internal static class MailChecks
             json.Split('\n').FirstOrDefault(line => line.Contains("passwordCipher"))?.Trim() ?? json);
 
         config.Accounts.Add(account);
+        config.LastSelectedFolder = "sent";
         var roundTripJson = JsonFileStore.Serialize(config);
         var restored = JsonSerializer.Deserialize<MailCollectorConfig>(roundTripJson, JsonFileStore.Options);
-        check("[邮箱代收] 配置 JSON 往返：账号 / 密文 / 设置都保留，密码能解开",
+        check("[邮箱代收] 配置 JSON 往返：账号 / 密文 / 当前邮件夹 / 设置都保留，密码能解开",
             restored is not null && restored.Accounts.Count == 1
             && restored.Accounts[0].Email == "test@gmail.com"
             && restored.Accounts[0].Password == "abcd efgh ijkl mnop"
-            && restored.FetchCount == 500 && restored.RefreshOnOpen,
+            && restored.FetchCount == 500 && restored.RefreshOnOpen
+            && restored.LastSelectedFolder == "sent",
             restored is null ? "反序列化为 null" : $"{restored.Accounts.Count} 个账号");
     }
 
@@ -308,9 +327,15 @@ internal static class MailChecks
         var now = DateTimeOffset.Now;
         var rows = new[]
         {
-            new MailMessageRow(new MailBrief(account, 1, "Zeta", "b@x.com", now.AddMinutes(-3), false, 300)),
-            new MailMessageRow(new MailBrief(account, 2, "Alpha", "a@x.com", now.AddMinutes(-1), true, 100)),
-            new MailMessageRow(new MailBrief(account, 3, "Mike", "c@x.com", now.AddMinutes(-2), false, 200)),
+            new MailMessageRow(new MailBrief(
+                account, MailFolderKind.Inbox, 1, "Zeta", "b@x.com", "z@x.com",
+                now.AddMinutes(-3), false, 300, true, MailPriorityLevel.Low)),
+            new MailMessageRow(new MailBrief(
+                account, MailFolderKind.Sent, 2, "Alpha", "a@x.com", "y@x.com",
+                now.AddMinutes(-1), true, 100, false, MailPriorityLevel.High)),
+            new MailMessageRow(new MailBrief(
+                account, MailFolderKind.Trash, 3, "Mike", "c@x.com", "x@x.com",
+                now.AddMinutes(-2), false, 200, true, MailPriorityLevel.Normal)),
         };
 
         var byDateDesc = MailSort.Apply(rows, "date", true).Select(r => r.UniqueId).ToArray();
@@ -325,11 +350,30 @@ internal static class MailChecks
         var bySizeDesc = MailSort.Apply(rows, "size", true).Select(r => r.SizeBytes).ToArray();
         var byUnreadDesc = MailSort.Apply(rows, "unread", true).Select(r => r.UniqueId).ToArray();
         var bySubject = MailSort.Apply(rows, "subject", false).Select(r => r.Subject).ToArray();
-        check("[邮箱代收] 排序：大小降序、未读优先、主题升序",
+        var byRecipient = MailSort.Apply(rows, "to", false).Select(r => r.ToText).ToArray();
+        var byAttachments = MailSort.Apply(rows, "attachments", true).Select(r => r.UniqueId).ToArray();
+        var byPriority = MailSort.Apply(rows, "priority", true).Select(r => r.Priority).ToArray();
+        check("[邮箱代收] 排序：大小降序、未读优先、主题 / 收件人升序",
             bySizeDesc.SequenceEqual(new long[] { 300, 200, 100 })
             && byUnreadDesc.SequenceEqual(new uint[] { 2, 3, 1 })
-            && bySubject.SequenceEqual(new[] { "Alpha", "Mike", "Zeta" }),
-            $"size={string.Join(",", bySizeDesc)} unread={string.Join(",", byUnreadDesc)}");
+            && bySubject.SequenceEqual(new[] { "Alpha", "Mike", "Zeta" })
+            && byRecipient.SequenceEqual(new[] { "x@x.com", "y@x.com", "z@x.com" }),
+            $"size={string.Join(",", bySizeDesc)} unread={string.Join(",", byUnreadDesc)} " +
+            $"subject={string.Join(",", bySubject)} to={string.Join(",", byRecipient)}");
+
+        check("[邮箱代收] 排序：附件优先、优先级高到低",
+            byAttachments.SequenceEqual(new uint[] { 3, 1, 2 })
+            && byPriority.SequenceEqual(new[]
+            {
+                MailPriorityLevel.High,
+                MailPriorityLevel.Normal,
+                MailPriorityLevel.Low,
+            }),
+            $"attachments={string.Join(",", byAttachments)} priority={string.Join(",", byPriority)}");
+
+        check("[邮箱代收] 已发送列表显示收件人而不是只显示发件人",
+            rows[1].PartyLabel == "收件人" && rows[1].PartyText == "y@x.com"
+            && rows[1].FolderBadge == "已发送" && rows[1].IsHighPriority && !rows[1].HasAttachments);
     }
 
     // ---------------------------------------------------------------- 错误提示
