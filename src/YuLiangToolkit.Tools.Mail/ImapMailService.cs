@@ -310,7 +310,7 @@ public sealed class ImapMailService
             try
             {
                 await client.IdentifyAsync(
-                    new ImapImplementation { Name = "YuLiangToolkit", Version = "1.6.0" },
+                    new ImapImplementation { Name = "YuLiangToolkit", Version = "1.7.0" },
                     cancellationToken);
             }
             catch

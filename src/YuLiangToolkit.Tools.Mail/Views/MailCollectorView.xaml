@@ -3,61 +3,15 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core">
 
-    <UserControl.Resources>
-        <!-- App.xaml 里没有 PasswordBox 样式；这里补一个跟 TextBoxStyle 观感一致的局部样式
-             （和「压缩包工具」的 ArchivePasswordBoxStyle 同源，用主题画刷，四套主题都不会白底黑字）。 -->
-        <Style x:Key="MailPasswordBoxStyle" TargetType="PasswordBox">
-            <Setter Property="Background" Value="{DynamicResource InputBackgroundBrush}" />
-            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="10,0" />
-            <Setter Property="MinHeight" Value="30" />
-            <Setter Property="FontSize" Value="13" />
-            <Setter Property="VerticalContentAlignment" Value="Center" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="PasswordBox">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="{DynamicResource ControlCornerRadius}"
-                                Padding="{TemplateBinding Padding}">
-                            <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
-                                          Background="Transparent"
-                                          HorizontalScrollBarVisibility="Hidden"
-                                          VerticalScrollBarVisibility="Hidden" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ControlBorderHoverBrush}" />
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.45" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </UserControl.Resources>
-
-    <!-- 布局（v0.42.0 起的可拖拽约定，见 docs/dev/layout.md）：
-         整页 =「标题 / 工具条 / 主区域 / 日志」，主区域里三栏 =「账号 | 合并收件列表 | 详情·设置」；
-         账号栏与收件列表、收件列表与右栏、主区域与日志之间都有 core:PaneSplitter，拖动即可调大小，
-         松手自动记住（Config\layout.json），双击缝隙恢复这一处；全部恢复默认：主页设置 →「界面布局 → 恢复默认布局」。
-         右栏的「邮件详情 / 账号设置」是互斥页签（同一块地方切换显示），所以它们之间不需要分隔条；
-         邮箱阅读是常驻操作，所以整页撑满可视高度（主区域 *，日志固定行可拖），不像长表单那样整页滚动。 -->
+    <!-- 布局（Foxmail 风格，v0.42.0 起可拖拽）：
+         左边账号 | 中间收件列表 | 右边整块阅读区（HTML 富文本 / 纯文本 / 附件）；
+         账号 / 收件列表、收件列表 / 阅读区之间各一条 core:PaneSplitter，拖动可调大小、松手记住；
+         账号编辑、网络代理、日志都改成弹窗，不再占用主界面（双击账号 = 编辑，工具条有「网络代理」「日志」）。 -->
     <Grid Margin="28,20,28,24">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />                                  <!-- 标题 -->
-            <RowDefinition Height="Auto" />                                  <!-- 工具条 -->
-            <RowDefinition Height="*" MinHeight="220" />                     <!-- 三栏主区域（可上下拖） -->
-            <RowDefinition Height="12" />                                    <!-- 主区域 / 日志 -->
-            <RowDefinition Height="140" MinHeight="90" />                    <!-- 日志（可上下拖） -->
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="280" />
         </Grid.RowDefinitions>
 
         <!-- ===== 标题 ===== -->
@@ -69,7 +23,7 @@
             <StackPanel>
                 <TextBlock Text="📬 邮箱代收" FontSize="21" FontWeight="SemiBold" />
                 <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
-                           Text="IMAP 只读代收：把多个邮箱的收件箱合并成一个列表，支持筛选 / 搜索 / 看正文与附件；授权码 · 应用专用密码用 Windows DPAPI 加密。" />
+                           Text="IMAP 只读代收：多个邮箱合并列表、HTML 富文本阅读（Ctrl+滚轮缩放）、筛选 / 搜索 / 排序、附件打开与保存；授权码用 Windows DPAPI 加密。" />
             </StackPanel>
             <Border Grid.Column="1" Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="12,8"
                     VerticalAlignment="Top" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" MaxWidth="340"
@@ -90,12 +44,17 @@
                         ToolTip="逐个连接启用的账号，拉取每个收件箱最近的邮件并合并（只读）" />
                 <Button Content="取消" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,16,8"
                         Command="{Binding CancelCommand}" IsEnabled="{Binding IsBusy}" />
-                <Button Content="测试选中账号" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
-                        Command="{Binding TestConnectionCommand}" />
                 <Button Content="新增账号" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
-                        Command="{Binding AddAccountCommand}" />
-                <Button Content="删除选中账号" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,20,8"
+                        Click="OnAddAccountClick" ToolTip="弹出账号设置窗口，可同时选择服务商预设" />
+                <Button Content="编辑选中" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
+                        Click="OnEditAccountClick" IsEnabled="{Binding HasSelectedAccount}"
+                        ToolTip="也可以双击左侧账号直接打开" />
+                <Button Content="删除选中" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,16,8"
                         Command="{Binding DeleteAccountCommand}" IsEnabled="{Binding HasSelectedAccount}" />
+                <Button Content="网络代理" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
+                        Click="OnProxyClick" ToolTip="Gmail 直连超时时设置系统代理 / 自定义代理" />
+                <Button Content="日志" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,20,8"
+                        Click="OnLogClick" />
 
                 <StackPanel Orientation="Horizontal" Margin="0,0,20,8" VerticalAlignment="Center">
                     <TextBlock Text="每个账号取最近" VerticalAlignment="Center" FontSize="12"
@@ -114,17 +73,17 @@
             </WrapPanel>
         </Border>
 
-        <!-- ===== 三栏主区域 ===== -->
+        <!-- ===== 主区域：账号 | 收件列表 | 阅读区 ===== -->
         <Grid Grid.Row="2" Margin="0,12,0,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="250" MinWidth="180" />   <!-- 左：账号 -->
+                <ColumnDefinition Width="210" MinWidth="150" />
                 <ColumnDefinition Width="12" />
-                <ColumnDefinition Width="*" MinWidth="200" />     <!-- 中：合并收件列表 -->
+                <ColumnDefinition Width="330" MinWidth="230" />
                 <ColumnDefinition Width="12" />
-                <ColumnDefinition Width="1.6*" MinWidth="240" />  <!-- 右：详情 / 账号设置（随窗口伸缩） -->
+                <ColumnDefinition Width="*" MinWidth="280" />
             </Grid.ColumnDefinitions>
 
-            <!-- ===== 左栏：账号列表 ===== -->
+            <!-- ===== 左：账号 ===== -->
             <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -143,14 +102,15 @@
                                        Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" />
                         </StackPanel>
                         <Button Grid.Column="1" Content="＋" Padding="9,2" VerticalAlignment="Top"
-                                Style="{StaticResource SecondaryButtonStyle}" Command="{Binding AddAccountCommand}"
+                                Style="{StaticResource SecondaryButtonStyle}" Click="OnAddAccountClick"
                                 ToolTip="新增账号" />
                     </Grid>
                     <Grid Grid.Row="1">
                         <ListBox ItemsSource="{Binding Accounts}" SelectedItem="{Binding SelectedAccount}"
                                  Style="{StaticResource FileListStyle}" Margin="8,0,8,8"
                                  core:ScrollChaining.Enabled="True"
-                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 MouseDoubleClick="OnAccountDoubleClick">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <Grid Margin="2,4">
@@ -175,7 +135,7 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
-                        <TextBlock Text="还没有账号：点左上角「＋」或工具条「新增账号」开始"
+                        <TextBlock Text="还没有账号：点「＋」新增"
                                    FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
                                    TextWrapping="Wrap" Margin="20,6,16,0" VerticalAlignment="Top"
                                    IsHitTestVisible="False"
@@ -183,25 +143,25 @@
                     </Grid>
                     <StackPanel Grid.Row="2" Margin="16,0,16,10">
                         <WrapPanel>
-                            <Button Content="编辑账号" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,6,6"
-                                    Command="{Binding ShowSettingsTabCommand}" IsEnabled="{Binding HasSelectedAccount}" />
+                            <Button Content="编辑" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,6,6"
+                                    Click="OnEditAccountClick" IsEnabled="{Binding HasSelectedAccount}" />
                             <Button Content="删除" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,0,6"
                                     Command="{Binding DeleteAccountCommand}" IsEnabled="{Binding HasSelectedAccount}" />
                         </WrapPanel>
                         <TextBlock FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
-                                   Text="选中账号 → 点「编辑账号」改服务器 / 授权码。" />
+                                   Text="双击账号可编辑服务器 / 授权码 / 预设。" />
                     </StackPanel>
                 </Grid>
             </Border>
 
-            <!-- 账号栏 / 收件列表：左右分隔条 -->
             <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
                                Key="mail-collector.账号与收件列表" />
 
-            <!-- ===== 中栏：合并收件列表 ===== -->
+            <!-- ===== 中：收件列表 ===== -->
             <Border Grid.Column="2" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
                 <Grid>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" MinHeight="80" />
@@ -241,22 +201,23 @@
                                        Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
                                        Visibility="{Binding Text, ElementName=SearchBox, Converter={StaticResource EmptyToVis}}" />
                         </Grid>
-                        <Grid Margin="0,8,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <ComboBox ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SelectedSort}"
-                                      DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}"
-                                      ToolTip="收件列表排序：日期 / 发件人 / 主题 / 账号 / 是否未读 / 大小" />
-                            <Button Grid.Column="1" Content="{Binding SortDirectionText}" Margin="8,0,0,0"
-                                    Style="{StaticResource SecondaryButtonStyle}"
-                                    Command="{Binding ToggleSortDirectionCommand}"
-                                    ToolTip="{Binding SortDirectionToolTip}" />
-                        </Grid>
                     </StackPanel>
 
-                    <Grid Grid.Row="2" Margin="0,8,0,0">
+                    <Grid Grid.Row="2" Margin="16,8,16,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ComboBox ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SelectedSort}"
+                                  DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}"
+                                  ToolTip="收件列表排序：日期 / 发件人 / 主题 / 账号 / 是否未读 / 大小" />
+                        <Button Grid.Column="1" Content="{Binding SortDirectionText}" Margin="8,0,0,0"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding ToggleSortDirectionCommand}"
+                                ToolTip="{Binding SortDirectionToolTip}" />
+                    </Grid>
+
+                    <Grid Grid.Row="3" Margin="0,8,0,0">
                         <ListBox ItemsSource="{Binding VisibleMessages}" SelectedItem="{Binding SelectedMessage}"
                                  Style="{StaticResource FileListStyle}" Margin="8,0,8,8"
                                  core:ScrollChaining.Enabled="True"
@@ -308,254 +269,108 @@
                 </Grid>
             </Border>
 
-            <!-- 收件列表 / 右栏：左右分隔条 -->
             <core:PaneSplitter Grid.Column="3" Style="{StaticResource PaneSplitterVerticalStyle}"
                                Key="mail-collector.收件列表与邮件详情" />
 
-            <!-- ===== 右栏：邮件详情 / 账号设置（互斥页签） ===== -->
+            <!-- ===== 右：整块阅读区 ===== -->
             <Border Grid.Column="4" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="120" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <StackPanel Orientation="Horizontal" Margin="16,10,16,6">
-                        <RadioButton Content="✉ 邮件详情" GroupName="mail-right-tab" Style="{StaticResource RadioButtonStyle}"
-                                     IsChecked="{Binding ShowDetailTab, Mode=TwoWay}" Margin="0,0,18,0" />
-                        <RadioButton Content="⚙ 账号设置" GroupName="mail-right-tab" Style="{StaticResource RadioButtonStyle}"
-                                     IsChecked="{Binding ShowSettingsTab, Mode=TwoWay}" />
+                    <TextBlock Grid.Row="0" Text="{Binding DetailSubject}" FontSize="17" FontWeight="SemiBold"
+                               TextWrapping="Wrap" Margin="18,14,18,0" MaxHeight="56" />
+                    <StackPanel Grid.Row="1" Margin="18,6,18,0">
+                        <TextBlock FontSize="11.5" TextWrapping="Wrap">
+                            <Run Text="发件人：" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Run Text="{Binding DetailFrom, Mode=OneWay}" />
+                        </TextBlock>
+                        <TextBlock FontSize="11.5" TextWrapping="Wrap" Margin="0,3,0,0">
+                            <Run Text="收件人：" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Run Text="{Binding DetailTo, Mode=OneWay}" />
+                        </TextBlock>
+                        <TextBlock FontSize="11.5" TextWrapping="Wrap" Margin="0,3,0,0">
+                            <Run Text="时间：" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Run Text="{Binding DetailDate, Mode=OneWay}" />
+                        </TextBlock>
+                        <TextBlock Text="{Binding DetailStatus}" FontSize="10.5"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0" />
                     </StackPanel>
 
-                    <!-- 邮件详情 -->
-                    <Grid Grid.Row="1" Visibility="{Binding ShowDetailTab, Converter={StaticResource BoolToVis}}">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" MinHeight="60" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="18,6,18,0">
+                        <Button Content="复制正文" Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding CopyBodyCommand}" />
+                        <CheckBox Content="纯文本" IsChecked="{Binding ForcePlainText}"
+                                  Style="{StaticResource CheckBoxStyle}" Margin="14,0,0,0" VerticalAlignment="Center"
+                                  ToolTip="有 HTML 正文时也强制用纯文本显示" />
+                        <TextBlock Text="Ctrl + 滚轮缩放" FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center" Margin="14,0,0,0" />
+                    </StackPanel>
 
-                        <TextBlock Grid.Row="0" Text="{Binding DetailSubject}" FontSize="15" FontWeight="SemiBold"
-                                   TextWrapping="Wrap" Margin="16,4,16,0" MaxHeight="48" />
-                        <StackPanel Grid.Row="1" Margin="16,6,16,0">
-                            <TextBlock FontSize="11" TextWrapping="Wrap">
-                                <Run Text="发件人：" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                <Run Text="{Binding DetailFrom, Mode=OneWay}" />
-                            </TextBlock>
-                            <TextBlock FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0">
-                                <Run Text="收件人：" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                <Run Text="{Binding DetailTo, Mode=OneWay}" />
-                            </TextBlock>
-                            <TextBlock FontSize="11" TextWrapping="Wrap" Margin="0,3,0,0">
-                                <Run Text="时间：" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                <Run Text="{Binding DetailDate, Mode=OneWay}" />
-                            </TextBlock>
-                            <TextBlock Text="{Binding DetailStatus}" FontSize="10.5"
-                                       Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0" />
-                        </StackPanel>
-
-                        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="16,6,16,0">
-                            <Button Content="复制正文" Style="{StaticResource SecondaryButtonStyle}"
-                                    Command="{Binding CopyBodyCommand}" />
-                            <CheckBox Content="纯文本" IsChecked="{Binding ForcePlainText}"
-                                      Style="{StaticResource CheckBoxStyle}" Margin="14,0,0,0" VerticalAlignment="Center"
-                                      ToolTip="有 HTML 正文时也强制用纯文本显示（不喜欢的排版 / 可疑邮件可以切过来）" />
-                        </StackPanel>
-
-                        <Grid Grid.Row="3" Margin="12,6,12,0">
-                            <TextBox x:Name="PlainBody" Text="{Binding MessageBodyText, Mode=OneWay}" IsReadOnly="True"
-                                     Style="{StaticResource LogTextBoxStyle}"
-                                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-                                     core:ScrollChaining.Enabled="True" FontSize="12"
-                                     Visibility="{Binding ShowPlainBody, Converter={StaticResource BoolToVis}}" />
-                            <Grid x:Name="HtmlHost"
-                                  Visibility="{Binding ShowHtmlPreview, Converter={StaticResource BoolToVis}}" />
-                        </Grid>
-
-                        <TextBlock Grid.Row="4" Text="{Binding AttachmentsSummary}" FontSize="11"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="16,6,16,0" />
-                        <ScrollViewer Grid.Row="5" MaxHeight="110" VerticalScrollBarVisibility="Auto"
-                                      HorizontalScrollBarVisibility="Disabled" Margin="12,2,12,10"
-                                      core:ScrollChaining.Enabled="True">
-                            <ItemsControl ItemsSource="{Binding Attachments}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Grid Margin="2,3">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel>
-                                                <TextBlock Text="{Binding FileName}" FontSize="11.5"
-                                                           TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Text="{Binding SizeText}" FontSize="10"
-                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
-                                            </StackPanel>
-                                            <Button Grid.Column="1" Content="保存" Padding="10,2" Margin="8,0,0,0"
-                                                    Style="{StaticResource SecondaryButtonStyle}"
-                                                    Command="{Binding DataContext.SaveAttachmentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                    CommandParameter="{Binding}"
-                                                    ToolTip="另存为…（附件只在内存里解码，不写 Data 目录）" />
-                                        </Grid>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </ScrollViewer>
+                    <Grid Grid.Row="3" Margin="14,6,14,0">
+                        <TextBox x:Name="PlainBody" Text="{Binding MessageBodyText, Mode=OneWay}" IsReadOnly="True"
+                                 Style="{StaticResource LogTextBoxStyle}"
+                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                 VerticalContentAlignment="Top" Padding="10,8"
+                                 core:ScrollChaining.Enabled="True" FontSize="12"
+                                 Visibility="{Binding ShowPlainBody, Converter={StaticResource BoolToVis}}" />
+                        <Grid x:Name="HtmlHost"
+                              Visibility="{Binding ShowHtmlPreview, Converter={StaticResource BoolToVis}}" />
                     </Grid>
 
-                    <!-- 账号设置 -->
-                    <Grid Grid.Row="1" Visibility="{Binding ShowSettingsTab, Converter={StaticResource BoolToVis}}">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-                        <StackPanel Margin="16,4,16,4">
-                            <TextBlock Text="账号设置" FontSize="13" FontWeight="SemiBold" />
-                            <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
-                                       Text="选中账号后在这里改；所有改动自动保存，没有「保存」按钮。授权码只在本机 DPAPI 加密保存。" />
-                        </StackPanel>
-                        <ScrollViewer x:Name="SettingsScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                                      core:ScrollChaining.Enabled="True">
-                            <StackPanel Margin="16,4,16,14">
-                                <StackPanel IsEnabled="{Binding HasSelectedAccount}">
-                                <TextBlock Text="服务商预设（选好自动填服务器 / 端口）" FontSize="11"
-                                           Foreground="{DynamicResource TextSecondaryBrush}" />
-                                <ComboBox ItemsSource="{Binding Presets}" SelectedItem="{Binding SelectedPreset}"
-                                          DisplayMemberPath="Name" Style="{StaticResource ComboBoxStyle}"
-                                          HorizontalAlignment="Stretch" Margin="0,6,0,0" />
-                                <Button Content="{Binding HelpButtonText}" Margin="0,6,0,0" HorizontalAlignment="Left"
-                                        Style="{StaticResource SecondaryButtonStyle}"
-                                        Command="{Binding OpenHelpCommand}"
-                                        Visibility="{Binding HasPresetHelp, Converter={StaticResource BoolToVis}}" />
-                                <TextBlock Text="{Binding PresetHintText}" FontSize="10.5"
-                                           Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
-                                           Margin="0,6,0,0" />
-
-                                <TextBlock Text="显示名称（可选）" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,10,0,5" />
-                                <TextBox Text="{Binding SelectedAccount.DisplayName, UpdateSourceTrigger=PropertyChanged}"
-                                         Style="{StaticResource TextBoxStyle}" ToolTip="只在界面里显示，例如「主力 Gmail」" />
-
-                                <TextBlock Text="邮箱地址（同时是登录用户名）" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,10,0,5" />
-                                <Grid>
-                                    <TextBox x:Name="EmailBox" Text="{Binding SelectedAccount.Email, UpdateSourceTrigger=PropertyChanged}"
-                                             Style="{StaticResource TextBoxStyle}" />
-                                    <TextBlock Text="例如 fantasyuliang@qq.com" IsHitTestVisible="False"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
-                                               Visibility="{Binding Text, ElementName=EmailBox, Converter={StaticResource EmptyToVis}}" />
-                                </Grid>
-
-                                <TextBlock Text="授权码 / 应用专用密码" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,10,0,5" />
-                                <PasswordBox x:Name="PasswordInput" Style="{StaticResource MailPasswordBoxStyle}"
-                                             PasswordChanged="OnPasswordChanged"
-                                             ToolTip="QQ 邮箱 = 授权码；Gmail = 16 位应用专用密码（不是登录密码）；本机 DPAPI 加密保存，界面只显示圆点" />
-                                <TextBlock Text="已保存的授权码只显示为圆点；重新输入会覆盖（不会显示明文）。"
-                                           FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap" />
-
-                                <Grid Margin="0,10,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="58" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock Text="IMAP 服务器" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,5" />
-                                        <TextBox Text="{Binding SelectedAccount.Host, UpdateSourceTrigger=PropertyChanged}"
-                                                 Style="{StaticResource TextBoxStyle}" />
-                                    </StackPanel>
-                                    <TextBlock Grid.Column="1" Text="端口" FontSize="11" VerticalAlignment="Bottom"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,6,10" />
-                                    <TextBox Grid.Column="2" Text="{Binding SelectedAccount.Port, UpdateSourceTrigger=PropertyChanged}"
-                                             Style="{StaticResource TextBoxStyle}" VerticalAlignment="Bottom" />
-                                </Grid>
-
-                                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                                    <CheckBox Content="使用 SSL" IsChecked="{Binding SelectedAccount.UseSsl}"
-                                              Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,0" />
-                                    <CheckBox Content="参与代收" IsChecked="{Binding SelectedAccount.Enabled}"
-                                              Style="{StaticResource CheckBoxStyle}" />
-                                </StackPanel>
-
-                                <Button Content="测试选中账号" Style="{StaticResource SecondaryButtonStyle}"
-                                        HorizontalAlignment="Left" Margin="0,12,0,0"
-                                        Command="{Binding TestConnectionCommand}" />
-                                </StackPanel>
-
-                                <!-- ===== 网络代理（全局，不随账号禁用） ===== -->
-                                <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.6" Margin="0,16,0,12" />
-                                <TextBlock Text="网络代理" FontSize="12.5" FontWeight="SemiBold" />
-                                <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,8"
-                                           Text="Gmail 等境外邮箱在部分网络下「浏览器能打开、IMAP 直连却超时」——这里默认跟随 Windows 系统代理（和 Chrome 用同一个），并遵守系统代理的例外列表（如 QQ 会自动直连）。" />
-                                <ComboBox ItemsSource="{Binding ProxyModeOptions}" SelectedItem="{Binding SelectedProxyMode}"
-                                          DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}" />
-                                <TextBlock Text="{Binding ProxyStatusText}" FontSize="10.5"
-                                           Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,6,0,0" />
-                                <StackPanel Visibility="{Binding ShowCustomProxy, Converter={StaticResource BoolToVis}}">
-                                    <Grid Margin="0,8,0,0">
+                    <Grid Grid.Row="4" Margin="18,6,18,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding AttachmentsSummary}" FontSize="11"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="全部保存" Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding SaveAllAttachmentsCommand}"
+                                IsEnabled="{Binding HasAttachments}"
+                                ToolTip="选一个文件夹，把当前邮件的所有附件都存进去" />
+                    </Grid>
+                    <ScrollViewer Grid.Row="5" MaxHeight="120" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled" Margin="14,2,14,12"
+                                  core:ScrollChaining.Enabled="True">
+                        <ItemsControl ItemsSource="{Binding Attachments}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="2,3">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="58" />
+                                            <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel>
-                                            <TextBlock Text="代理服务器" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,5" />
-                                            <TextBox Text="{Binding Cfg.Proxy.Host, UpdateSourceTrigger=PropertyChanged}"
-                                                     Style="{StaticResource TextBoxStyle}" />
+                                            <TextBlock Text="{Binding FileName}" FontSize="11.5"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding SizeText}" FontSize="10"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
                                         </StackPanel>
-                                        <TextBlock Grid.Column="1" Text="端口" FontSize="11" VerticalAlignment="Bottom"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,6,10" />
-                                        <TextBox Grid.Column="2" Text="{Binding Cfg.Proxy.Port, UpdateSourceTrigger=PropertyChanged}"
-                                                 Style="{StaticResource TextBoxStyle}" VerticalAlignment="Bottom" />
+                                        <Button Grid.Column="1" Content="打开" Padding="10,2" Margin="8,0,0,0"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                Command="{Binding DataContext.OpenAttachmentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="保存到临时目录后用默认程序打开（不写 Data 目录）" />
+                                        <Button Grid.Column="2" Content="保存" Padding="10,2" Margin="8,0,0,0"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                Command="{Binding DataContext.SaveAttachmentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="另存为…" />
                                     </Grid>
-                                    <ComboBox ItemsSource="{Binding ProxyTypeOptions}" SelectedItem="{Binding SelectedProxyType}"
-                                              DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}" Margin="0,8,0,0" />
-                                </StackPanel>
-                                <Button Content="刷新代理状态" Style="{StaticResource SecondaryButtonStyle}"
-                                        HorizontalAlignment="Left" Margin="0,10,0,0"
-                                        Command="{Binding RefreshProxyStatusCommand}" />
-                            </StackPanel>
-                        </ScrollViewer>
-                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
                 </Grid>
             </Border>
         </Grid>
-
-        <!-- 主区域 / 日志：上下分隔条 -->
-        <core:PaneSplitter Grid.Row="3" Style="{StaticResource PaneSplitterHorizontalStyle}"
-                           Key="mail-collector.主区域与日志" />
-
-        <!-- ===== 日志 ===== -->
-        <Border Grid.Row="4" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-                <Grid Margin="16,10,16,6">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel>
-                        <TextBlock Text="运行日志" FontSize="13" FontWeight="SemiBold" />
-                        <TextBlock Text="账号连接 / 拉取结果、错误原因都在这里；不会打印授权码" FontSize="10.5"
-                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button Content="打开配置文件夹" Style="{StaticResource SecondaryButtonStyle}"
-                                Command="{Binding OpenConfigFolderCommand}" />
-                        <Button Content="打开数据文件夹" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
-                                Command="{Binding OpenDataFolderCommand}" />
-                        <Button Content="清空日志" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
-                                Command="{Binding ClearLogCommand}" />
-                    </StackPanel>
-                </Grid>
-                <TextBox Grid.Row="1" Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True"
-                         Style="{StaticResource LogTextBoxStyle}" Margin="12,0,12,10"
-                         core:ScrollChaining.Enabled="True" />
-            </Grid>
-        </Border>
     </Grid>
 </UserControl>

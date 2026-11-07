@@ -78,6 +78,10 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
         SaveAttachmentCommand = new AsyncRelayCommand(
             p => SaveAttachmentAsync(p as MailAttachmentItem),
             p => p is MailAttachmentItem);
+        OpenAttachmentCommand = new AsyncRelayCommand(
+            p => OpenAttachmentAsync(p as MailAttachmentItem),
+            p => p is MailAttachmentItem);
+        SaveAllAttachmentsCommand = new AsyncRelayCommand(_ => SaveAllAttachmentsAsync());
         CopyBodyCommand = new RelayCommand(_ => CopyBody());
         ClearLogCommand = new RelayCommand(_ => ClearLog());
         OpenHelpCommand = new RelayCommand(_ => OpenHelp(), _ => HasPresetHelp);
@@ -96,7 +100,7 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
         Log("用法：点「新增账号」→ 选服务商预设（Gmail / QQ / 163…）→ 填邮箱 + 授权码 / 应用专用密码 → 点「刷新全部」。");
         Log("只读：只拉收件箱，不会删除 / 移动 / 标记已读；一个账号失败不影响其它账号。");
         Log($"配置文件：{ConfigPathText}（授权码已用 Windows DPAPI 加密，换电脑 / 换 Windows 用户要重新填）");
-        Log($"代理：{Cfg.Proxy.Describe("imap.gmail.com")}（右侧「账号设置 → 网络代理」可改）");
+        Log($"代理：{Cfg.Proxy.Describe("imap.gmail.com")}（工具条「网络代理」里可改）");
 
         // 开发调试 / 截图冒烟用：YLT_MAIL_SETTINGS=1 时直接打开右栏「账号设置」页签（不联网、不改配置）
         if (Environment.GetEnvironmentVariable("YLT_MAIL_SETTINGS") == "1") ShowSettingsTab = true;
@@ -378,6 +382,8 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
     public RelayCommand ToggleSortDirectionCommand { get; }
     public RelayCommand CancelCommand { get; }
     public AsyncRelayCommand SaveAttachmentCommand { get; }
+    public AsyncRelayCommand OpenAttachmentCommand { get; }
+    public AsyncRelayCommand SaveAllAttachmentsCommand { get; }
     public RelayCommand CopyBodyCommand { get; }
     public RelayCommand ClearLogCommand { get; }
     public RelayCommand OpenHelpCommand { get; }
@@ -448,6 +454,20 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
             if (endpoint is null) return "当前：系统代理地址无法解析，将直连";
             return $"当前：系统代理 {endpoint.Host}:{endpoint.Port}（{MailProxySettings.TypeLabel(endpoint.Type)}）";
         }
+    }
+
+    /// <summary>把代理弹窗保存的结果抄回全局配置（服务对象持有的是同一个 Cfg.Proxy 实例，改字段立即生效）。</summary>
+    public void ApplyProxySettings(MailProxySettings source)
+    {
+        Cfg.Proxy.Mode = source.Mode;
+        Cfg.Proxy.Host = source.Host;
+        Cfg.Proxy.Port = source.Port;
+        Cfg.Proxy.Type = source.Type;
+        OnPropertyChanged(nameof(SelectedProxyMode));
+        OnPropertyChanged(nameof(SelectedProxyType));
+        OnPropertyChanged(nameof(ShowCustomProxy));
+        OnPropertyChanged(nameof(ProxyStatusText));
+        Log($"代理设置已更新：{Cfg.Proxy.Describe("imap.gmail.com")}");
     }
 
     // ---------- 右栏页签（邮件详情 / 账号设置） ----------
@@ -923,6 +943,80 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
             StatusText = "保存附件失败：" + ex.Message;
             Log("保存附件失败：" + ex);
         }
+    }
+
+    /// <summary>「打开」附件：先保存到临时目录，再用系统默认程序打开（PDF / 图片 / Office 都行）。</summary>
+    private async Task OpenAttachmentAsync(MailAttachmentItem? item)
+    {
+        if (item is null) return;
+        try
+        {
+            var folder = Path.Combine(Path.GetTempPath(), "YuLiangToolkit", "mail-attachments", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(folder);
+            var path = Path.Combine(folder, item.FileName);
+            await Task.Run(() => ImapMailService.SaveAttachment(item.Attachment, path));
+            Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
+            StatusText = "已用默认程序打开附件：" + item.FileName;
+            Log($"打开附件：{path}");
+        }
+        catch (Exception ex)
+        {
+            StatusText = "打开附件失败：" + ex.Message;
+            Log("打开附件失败：" + ex);
+        }
+    }
+
+    /// <summary>「全部保存」：选一个文件夹，把当前邮件的所有附件都存进去（重名自动加序号）。</summary>
+    private async Task SaveAllAttachmentsAsync()
+    {
+        if (Attachments.Count == 0)
+        {
+            StatusText = "当前邮件没有附件";
+            return;
+        }
+
+        var dialog = new OpenFolderDialog { Title = "选择附件保存文件夹", Multiselect = false };
+        if (dialog.ShowDialog() != true) return;
+
+        IsBusy = true;
+        var saved = 0;
+        try
+        {
+            foreach (var item in Attachments.ToList())
+            {
+                var path = MakeUniquePath(dialog.FolderName, item.FileName);
+                await Task.Run(() => ImapMailService.SaveAttachment(item.Attachment, path));
+                saved++;
+            }
+
+            StatusText = $"已保存 {saved} 个附件到：{dialog.FolderName}";
+            Log($"已保存 {saved} 个附件到：{dialog.FolderName}");
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"保存附件失败（已保存 {saved} 个）：{ex.Message}";
+            Log("批量保存附件失败：" + ex);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private static string MakeUniquePath(string folder, string fileName)
+    {
+        var path = Path.Combine(folder, fileName);
+        if (!File.Exists(path)) return path;
+
+        var stem = Path.GetFileNameWithoutExtension(fileName);
+        var extension = Path.GetExtension(fileName);
+        for (var i = 1; i < 1000; i++)
+        {
+            var candidate = Path.Combine(folder, $"{stem} ({i}){extension}");
+            if (!File.Exists(candidate)) return candidate;
+        }
+
+        return Path.Combine(folder, $"{stem}-{Guid.NewGuid():N}{extension}");
     }
 
     private void CopyBody()

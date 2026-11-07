@@ -1,0 +1,150 @@
+<Window x:Class="YuLiangToolkit.Tools.Mail.Views.MailAccountDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="邮箱账号设置"
+        Width="560" SizeToContent="Height" MaxHeight="760"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" ResizeMode="NoResize"
+        WindowStyle="None"
+        Background="{DynamicResource WindowBackgroundBrush}"
+        Foreground="{DynamicResource TextPrimaryBrush}"
+        FontFamily="Microsoft YaHei UI, Segoe UI"
+        UseLayoutRounding="True" SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display">
+
+    <Window.Resources>
+        <!-- App.xaml 没有 PasswordBox 样式；和主界面 / 压缩包工具保持同样的主题观感 -->
+        <Style x:Key="DialogPasswordBoxStyle" TargetType="PasswordBox">
+            <Setter Property="Background" Value="{DynamicResource InputBackgroundBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="PasswordBox">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{DynamicResource ControlCornerRadius}"
+                                Padding="{TemplateBinding Padding}">
+                            <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
+                                          Background="Transparent"
+                                          HorizontalScrollBarVisibility="Hidden"
+                                          VerticalScrollBarVisibility="Hidden" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ControlBorderHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+            Background="{DynamicResource WindowBackgroundBrush}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="40" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0" Background="{DynamicResource HeaderBackgroundBrush}"
+                  MouseLeftButtonDown="OnTitleBarMouseDown">
+                <TextBlock Text="邮箱账号设置" VerticalAlignment="Center" Margin="14,0" FontSize="12.5" FontWeight="SemiBold" />
+                <Button Content="×" HorizontalAlignment="Right" Style="{StaticResource WindowCloseButtonStyle}"
+                        Click="OnCloseClick" />
+            </Grid>
+
+            <Border Grid.Row="1" Padding="24,16,24,18">
+                <StackPanel>
+            <TextBlock Text="邮箱账号设置" FontSize="17" FontWeight="SemiBold" />
+            <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                       Text="选服务商预设会自动填好服务器 / 端口 / SSL；保存后立即生效（配置没有单独的「保存」按钮）。" />
+
+            <TextBlock Text="服务商预设" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,14,0,5" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <ComboBox x:Name="PresetCombo" DisplayMemberPath="Name"
+                          Style="{StaticResource ComboBoxStyle}" SelectionChanged="OnPresetChanged" />
+                <Button x:Name="HelpButton" Grid.Column="1" Content="打开帮助页" Margin="8,0,0,0"
+                        Style="{StaticResource SecondaryButtonStyle}" Click="OnHelpClick" />
+            </Grid>
+            <TextBlock x:Name="HintText" FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                       TextWrapping="Wrap" Margin="0,6,0,0" />
+
+            <TextBlock Text="显示名称（可选）" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,12,0,5" />
+            <TextBox Text="{Binding Draft.DisplayName, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{StaticResource TextBoxStyle}" ToolTip="只在界面里显示，例如「主力 Gmail」" />
+
+            <TextBlock Text="邮箱地址（同时是 IMAP 登录用户名）" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,10,0,5" />
+            <TextBox Text="{Binding Draft.Email, UpdateSourceTrigger=PropertyChanged}"
+                     Style="{StaticResource TextBoxStyle}" />
+
+            <TextBlock Text="授权码 / 应用专用密码" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,10,0,5" />
+            <PasswordBox x:Name="PasswordInput" Style="{StaticResource DialogPasswordBoxStyle}"
+                         PasswordChanged="OnPasswordChanged"
+                         ToolTip="QQ 邮箱 = 授权码；Gmail = 16 位应用专用密码；本机 DPAPI 加密保存，界面只显示圆点" />
+            <TextBlock Text="已保存的授权码只显示为圆点；重新输入会覆盖。"
+                       FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap" />
+
+            <Grid Margin="0,10,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="70" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="IMAP 服务器" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,5" />
+                    <TextBox Text="{Binding Draft.Host, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource TextBoxStyle}" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="端口" FontSize="11" VerticalAlignment="Bottom"
+                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="10,0,8,10" />
+                <TextBox Grid.Column="2" Text="{Binding Draft.Port, UpdateSourceTrigger=PropertyChanged}"
+                         Style="{StaticResource TextBoxStyle}" VerticalAlignment="Bottom" />
+            </Grid>
+
+            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                <CheckBox Content="使用 SSL" IsChecked="{Binding Draft.UseSsl}"
+                          Style="{StaticResource CheckBoxStyle}" Margin="0,0,20,0" />
+                <CheckBox Content="参与代收" IsChecked="{Binding Draft.Enabled}"
+                          Style="{StaticResource CheckBoxStyle}" />
+            </StackPanel>
+
+            <TextBlock x:Name="TestStatus" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                       TextWrapping="Wrap" Margin="0,10,0,0" Text="可以先点「测试连接」确认邮箱和授权码。" />
+
+            <Grid Margin="0,14,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="TestButton" Content="测试连接" Style="{StaticResource SecondaryButtonStyle}"
+                        Click="OnTestClick" />
+                <Button Grid.Column="2" Content="取消" Style="{StaticResource SecondaryButtonStyle}"
+                        Margin="0,0,8,0" Click="OnCancelClick" />
+                <Button Grid.Column="3" Content="保存" Style="{StaticResource PrimaryButtonStyle}"
+                        Click="OnSaveClick" />
+            </Grid>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>
