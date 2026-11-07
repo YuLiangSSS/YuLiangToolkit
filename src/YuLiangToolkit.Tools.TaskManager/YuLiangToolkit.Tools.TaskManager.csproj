@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「任务管理器」：系统监测（CPU / 内存 / GPU / 硬盘）+ 进程列表（PID / 内存 / CPU / GPU / 端口）
+       + 进程详情 + 结束任务 + 开机启动项管理。
+       底层全部走 Windows 自带 API（kernel32 / psapi / iphlpapi / pdh / advapi32），
+       不引任何新 NuGet 包（见 THIRD-PARTY-NOTICES.md 的依赖约定）。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.TaskManager</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.TaskManager</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -111,6 +111,10 @@
     <!-- 「表情包收藏夹」：会话名归一/目标窗口解析/随机延迟夹取/图片扩展名/配置往返；
          全部纯逻辑，不启动 QQ、不碰剪贴板、不创建窗口。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.MemeBoard\YuLiangToolkit.Tools.MemeBoard.csproj" />
+    <!-- 「任务管理器」：数字格式化轮子 / 结束任务三级方案（taskkill·wmic 参数）/ 开机启动命令解析 /
+         StartupApproved 启停标记 / 系统关键进程名单 / 进程行合并与筛选 / 配置默认值；
+         少量真实只读采样（本机自己的进程、端口表、整机内存），**不结束任何进程、不写注册表**。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.TaskManager\YuLiangToolkit.Tools.TaskManager.csproj" />
   </ItemGroup>
 
 </Project>

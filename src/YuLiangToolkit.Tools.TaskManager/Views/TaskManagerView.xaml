@@ -1,0 +1,693 @@
+<UserControl x:Class="YuLiangToolkit.Tools.TaskManager.Views.TaskManagerView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             xmlns:views="clr-namespace:YuLiangToolkit.Tools.TaskManager.Views">
+
+    <UserControl.Resources>
+        <!-- 表头末尾那一列用它占位：ListBox 给滚动条预留的宽度（见 ScrollBarWidthConverter 的说明） -->
+        <views:ScrollBarWidthConverter x:Key="ScrollBarWidth" />
+    </UserControl.Resources>
+
+    <!-- 布局（v0.42.0 起）：标题区 / 系统概览是纯信息条、不可拖；下面的「进程区（左进程列表 + 右详情）」与
+         「开机启动」按 docs/dev/layout.md 拆成固定像素行 + 每个相邻边界一条 core:PaneSplitter
+         （进程与详情是竖缝、进程区与开机启动是横缝）。整页包在 ScrollViewer 里，拖完页面总高度会变、自己出滚动条；
+         卡片内部只让列表 / 详情这类能滚的内容吃掉 * 行，别在控件上写死 Height。 -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="28,22,28,26">
+
+            <!-- ===== 标题区（纯信息条，不放分隔条） ===== -->
+            <StackPanel>
+                <TextBlock Text="🖥️ 任务管理器" FontSize="21" FontWeight="SemiBold" />
+                <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                           Text="看整机 CPU / 内存 / GPU / 硬盘读写的实时占用，列出每个进程的 PID、CPU、内存、GPU 与占用端口；可以结束任务、查看进程详情，并管理开机启动项。进程按设定间隔自动刷新，随时可以暂停。" />
+            </StackPanel>
+
+            <!-- ===== 系统概览（只读信息条，不放分隔条） ===== -->
+            <Border Style="{StaticResource CardStyle}" Margin="0,16,0,0" ClipToBounds="True">
+                <StackPanel>
+                    <!-- 标题行：左边标题，右边运行时间 / 进程数 -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="系统概览" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <WrapPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <TextBlock Text="运行时间 " FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBlock Text="{Binding Overview.UptimeText}" FontSize="11" VerticalAlignment="Center" />
+                            <TextBlock Text="  ·  " FontSize="11" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBlock Text="{Binding Overview.ProcessCountText}" FontSize="11" VerticalAlignment="Center" />
+                        </WrapPanel>
+                    </Grid>
+
+                    <!-- 四项指标：CPU / 内存 / GPU 带进度条；硬盘只有读写速度（性能计数器不可用时显示「不可用」） -->
+                    <Grid Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- CPU -->
+                        <StackPanel Grid.Column="0" Margin="0,0,18,0">
+                            <Grid>
+                                <TextBlock Text="CPU" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding Overview.CpuText}" FontSize="12" FontWeight="SemiBold"
+                                           HorizontalAlignment="Right" />
+                            </Grid>
+                            <ProgressBar Minimum="0" Maximum="100" Value="{Binding Overview.CpuPercent, Mode=OneWay}"
+                                         Style="{StaticResource ProgressBarStyle}" Margin="0,7,0,0" />
+                        </StackPanel>
+
+                        <!-- 内存 -->
+                        <StackPanel Grid.Column="1" Margin="0,0,18,0">
+                            <Grid>
+                                <TextBlock Text="内存" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding Overview.MemoryPercentText}" FontSize="12" FontWeight="SemiBold"
+                                           HorizontalAlignment="Right" />
+                            </Grid>
+                            <ProgressBar Minimum="0" Maximum="100" Value="{Binding Overview.MemoryPercent, Mode=OneWay}"
+                                         Style="{StaticResource ProgressBarStyle}" Margin="0,7,0,0" />
+                            <TextBlock Text="{Binding Overview.MemoryText}" FontSize="10.5" Margin="0,5,0,0"
+                                       TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+
+                        <!-- GPU -->
+                        <StackPanel Grid.Column="2" Margin="0,0,18,0">
+                            <Grid>
+                                <TextBlock Text="GPU" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding Overview.GpuText}" FontSize="12" FontWeight="SemiBold"
+                                           HorizontalAlignment="Right" />
+                            </Grid>
+                            <ProgressBar Minimum="0" Maximum="100" Value="{Binding Overview.GpuPercent, Mode=OneWay}"
+                                         Style="{StaticResource ProgressBarStyle}" Margin="0,7,0,0" />
+                            <TextBlock FontSize="10.5" Margin="0,5,0,0" TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource TextSecondaryBrush}">
+                                <Run Text="显存 " /><Run Text="{Binding Overview.GpuMemoryText, Mode=OneWay}" />
+                            </TextBlock>
+                        </StackPanel>
+
+                        <!-- 硬盘读写 -->
+                        <StackPanel Grid.Column="3">
+                            <TextBlock Text="硬盘" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBlock FontSize="11.5" Margin="0,7,0,0" TextTrimming="CharacterEllipsis">
+                                <Run Text="读 " Foreground="{DynamicResource TextSecondaryBrush}" /><Run Text="{Binding Overview.DiskReadText, Mode=OneWay}" />
+                            </TextBlock>
+                            <TextBlock FontSize="11.5" Margin="0,5,0,0" TextTrimming="CharacterEllipsis">
+                                <Run Text="写 " Foreground="{DynamicResource TextSecondaryBrush}" /><Run Text="{Binding Overview.DiskWriteText, Mode=OneWay}" />
+                            </TextBlock>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- 硬件信息（CPU 型号 · 显卡型号 · 系统版本） -->
+                    <TextBlock Text="{Binding Overview.HardwareText}" FontSize="11" TextWrapping="Wrap" Margin="0,12,0,0"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                    <!-- 固定磁盘（分区）容量：一项一张小卡，宽度不够自动换行 -->
+                    <ItemsControl ItemsSource="{Binding Overview.Volumes}" Margin="0,8,0,0">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{DynamicResource InputBackgroundBrush}"
+                                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                                        Padding="12,8" Margin="0,0,8,4" MinWidth="220">
+                                    <StackPanel>
+                                        <Grid>
+                                            <TextBlock Text="{Binding Name}" FontSize="11.5" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding PercentText}" FontSize="11"
+                                                       HorizontalAlignment="Right"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        </Grid>
+                                        <ProgressBar Minimum="0" Maximum="100" Value="{Binding UsedPercent, Mode=OneWay}"
+                                                     Style="{StaticResource ProgressBarStyle}" Margin="0,6,0,0" />
+                                        <Grid Margin="0,5,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding UsedText}" FontSize="10.5"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Grid.Column="1" Text="{Binding FreeText}" FontSize="10.5"
+                                                       Margin="10,0,0,0"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- ===== 进程区（左进程列表 / 右详情） + 开机启动（上下可拖） ===== -->
+            <Grid Margin="0,16,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="520" MinHeight="340" />
+                    <RowDefinition Height="12" />
+                    <RowDefinition Height="300" MinHeight="200" />
+                </Grid.RowDefinitions>
+
+                <!-- 进程区：左列表 *（随窗口缩放）+ 右详情固定像素，中间竖缝可拖 -->
+                <Grid Grid.Row="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" MinWidth="420" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="360" MinWidth="280" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- ===== 左：进程列表 ===== -->
+                    <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" MinHeight="120" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <!-- 工具条：搜索 / 排序 / 降序 / 隐藏系统进程 / 刷新间隔 / 刷新 / 暂停（窄了自动换行） -->
+                            <WrapPanel Grid.Row="0" Margin="18,14,18,8">
+                                <TextBlock Text="进程" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"
+                                           Margin="0,0,14,6" />
+                                <TextBox x:Name="SearchBox" Width="150" Margin="0,0,10,6"
+                                         Style="{StaticResource TextBoxStyle}"
+                                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="搜索进程名 / PID / 路径 / 端口" />
+                                <TextBlock Text="排序" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,6"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <ComboBox x:Name="SortCombo" MinWidth="90" Margin="0,0,10,6"
+                                          ItemsSource="{Binding SortOptions}" DisplayMemberPath="Label"
+                                          SelectedItem="{Binding SelectedSort}"
+                                          Style="{StaticResource ComboBoxStyle}"
+                                          ToolTip="按 CPU / 内存 / GPU / 名称 / PID / 端口数排序" />
+                                <CheckBox x:Name="DescendingCheckBox" Content="降序" Margin="0,0,14,6"
+                                          IsChecked="{Binding SortDescending}"
+                                          Style="{StaticResource CheckBoxStyle}"
+                                          ToolTip="从大到小（名称按字母倒序）" />
+                                <CheckBox x:Name="HideSystemCheckBox" Content="隐藏系统进程" Margin="0,0,14,6"
+                                          IsChecked="{Binding HideSystemProcesses}"
+                                          Style="{StaticResource CheckBoxStyle}"
+                                          ToolTip="系统目录里的 / 读不到路径的进程不显示" />
+                                <TextBlock Text="间隔" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,6"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <ComboBox x:Name="RefreshIntervalCombo" MinWidth="84" Margin="0,0,10,6"
+                                          ItemsSource="{Binding RefreshIntervalOptions}" DisplayMemberPath="Label"
+                                          SelectedItem="{Binding SelectedRefreshInterval}"
+                                          Style="{StaticResource ComboBoxStyle}"
+                                          ToolTip="自动刷新间隔" />
+                                <Button x:Name="RefreshButton" Content="刷新" Margin="0,0,10,6"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding RefreshCommand}"
+                                        ToolTip="立刻采样一次（暂停时也能用）" />
+                                <Button x:Name="PauseButton" Content="{Binding PauseButtonText}" Margin="0,0,0,6"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding TogglePauseCommand}"
+                                        ToolTip="{Binding MonitorStateText}" />
+                            </WrapPanel>
+
+                            <!-- ===== 进程列表（表头 + 数据行）=====
+                                 表头写在 ListBox 自己的 ControlTemplate 里，与数据行**同处一列**，
+                                 所以窗口怎么缩放两者都同宽，不需要监听布局事件。
+                                 三个边距 / 列把差异补平（照 SampleView 量出来的，别凭感觉改）：
+                                 · 左边距 33 = 行内容缩进（外边距10 + 内边距10 + 强调条3 + 内容左边距9 + 边框1）
+                                 · 右边距 21 = 行内容缩进（外边距10 + 内边距10 + 边框1）
+                                 · 末尾单独占一列「滚动条宽度」：ListBox 无论滚动条可不可见都给滚动条预留这一段，
+                                   不扣的话表头会比数据行宽一条，「端口」列就错开了。
+                                 数据行的 ColumnDefinitions 必须与表头**一字不差**，数值列都左对齐。 -->
+                            <ListBox x:Name="ProcessListBox" Grid.Row="1" ItemsSource="{Binding ProcessView}"
+                                     SelectedItem="{Binding SelectedProcess}"
+                                     Margin="8,0"
+                                     core:ScrollChaining.Enabled="True"
+                                     PreviewMouseRightButtonDown="OnProcessListPreviewMouseRightButtonDown"
+                                     ToolTip="单击选中（右侧显示详情），右键可结束任务 / 打开位置 / 复制">
+                                <!-- 行样式等沿用全局 FileListStyle，只替换模板（保持与其它列表一致） -->
+                                <ListBox.Style>
+                                    <Style TargetType="ListBox" BasedOn="{StaticResource FileListStyle}">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ListBox">
+                                                    <Grid>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="*" />
+                                                        </Grid.RowDefinitions>
+
+                                                        <!-- 表头：宽度 = 列表宽度 − 滚动条宽度（见 ScrollBarWidthConverter） -->
+                                                        <Grid x:Name="ProcessHeaderGrid" Grid.Row="0" Margin="33,0,21,6"
+                                                              HorizontalAlignment="Stretch"
+                                                              DataContext="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                                                            <!-- 固定列宽是「建议值 + 按默认 1280 窗口量出来的」：
+                                                                 名称列 * 是唯一伸缩列，右边这几个固定列加起来必须给名称留出
+                                                                 至少 ~110px（默认窗口下），否则名称会挤成省略号。
+                                                                 改这里时下面的 DataTemplate 必须同步改。 -->
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="48" />
+                                                                <ColumnDefinition Width="60" />
+                                                                <ColumnDefinition Width="78" />
+                                                                <ColumnDefinition Width="54" />
+                                                                <ColumnDefinition Width="72" />
+                                                                <ColumnDefinition Width="92" />
+                                                                <!-- ListBox 给滚动条预留的位置，表头也留一份 -->
+                                                                <ColumnDefinition Width="{Binding Converter={StaticResource ScrollBarWidth}}" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="名称" FontSize="11"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                            <TextBlock Grid.Column="1" Text="PID" FontSize="11"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                            <TextBlock Grid.Column="2" Text="CPU" FontSize="11"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                            <TextBlock Grid.Column="3" Text="内存" FontSize="11"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                            <TextBlock Grid.Column="4" Text="GPU" FontSize="11"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                            <TextBlock Grid.Column="5" Text="GPU 内存" FontSize="11"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                            <TextBlock Grid.Column="6" Text="端口" FontSize="11"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                        </Grid>
+
+                                                        <!-- 数据行（可滚动）
+                                                             ⚠ x:Name 必须叫 "ScrollViewer"：ItemsControl/ListBox 是按模板里
+                                                             这个名字找「滚动宿主」的，不起名就等于没有滚动宿主 ——
+                                                             表现是滚轮完全不起作用。 -->
+                                                        <ScrollViewer x:Name="ScrollViewer" Grid.Row="1" Focusable="False"
+                                                                      HorizontalScrollBarVisibility="Disabled"
+                                                                      VerticalScrollBarVisibility="Auto"
+                                                                      Padding="0" Background="Transparent">
+                                                            <ItemsPresenter />
+                                                        </ScrollViewer>
+                                                    </Grid>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ListBox.Style>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <!-- ⚠ 这串宽度必须与模板里的表头**一字不差**（包括最后那列） -->
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="48" />
+                                                <ColumnDefinition Width="60" />
+                                                <ColumnDefinition Width="78" />
+                                                <ColumnDefinition Width="54" />
+                                                <ColumnDefinition Width="72" />
+                                                <ColumnDefinition Width="92" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Name}" FontSize="12.5"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding Path}" />
+                                            <TextBlock Grid.Column="1" Text="{Binding PidText}" FontSize="12.5"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Grid.Column="2" Text="{Binding CpuText}" FontSize="12.5"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="3" Text="{Binding MemoryText}" FontSize="12.5"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="4" Text="{Binding GpuText}" FontSize="12.5"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Grid.Column="5" Text="{Binding GpuMemoryText}" FontSize="12.5"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Grid.Column="6" Text="{Binding PortsText}" FontSize="12.5"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding PortsText}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+
+                                <!-- 右键菜单：必须套 DarkContextMenuStyle + 隐式 DarkMenuLeafItemStyle / DarkMenuSeparatorStyle
+                                     （AGENTS.md 硬性规则 13），右键时由代码后置先把该行选中 -->
+                                <ListBox.ContextMenu>
+                                    <ContextMenu Style="{StaticResource DarkContextMenuStyle}"
+                                                 DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                        <ContextMenu.Resources>
+                                            <Style TargetType="{x:Type MenuItem}" BasedOn="{StaticResource DarkMenuLeafItemStyle}" />
+                                            <Style TargetType="{x:Type Separator}" BasedOn="{StaticResource DarkMenuSeparatorStyle}" />
+                                        </ContextMenu.Resources>
+
+                                        <MenuItem Header="结束任务" Command="{Binding KillSelectedCommand}" />
+                                        <MenuItem Header="打开文件位置" Command="{Binding OpenProcessLocationCommand}" />
+                                        <Separator />
+                                        <MenuItem Header="复制 PID" Command="{Binding CopyPidCommand}" />
+                                        <MenuItem Header="复制路径" Command="{Binding CopyPathCommand}" />
+                                    </ContextMenu>
+                                </ListBox.ContextMenu>
+                            </ListBox>
+
+                            <!-- 底部摘要 + 状态 + 采集开关 -->
+                            <StackPanel Grid.Row="2" Margin="18,8,18,12">
+                                <TextBlock Text="{Binding ProcessSummaryText}" FontSize="11"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding ProcessSummaryText}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <WrapPanel Margin="0,5,0,0">
+                                    <TextBlock Text="{Binding MonitorStateText}" FontSize="10.5" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBlock Text="  ·  " FontSize="10.5" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBlock Text="{Binding LastUpdatedText}" FontSize="10.5" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBlock Text="  ·  " FontSize="10.5" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBlock Text="{Binding ElevationText}" FontSize="10.5" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                </WrapPanel>
+                                <WrapPanel Margin="0,7,0,0">
+                                    <CheckBox x:Name="ConfirmKillCheckBox" Content="结束任务前确认" Margin="0,0,18,0"
+                                              IsChecked="{Binding Cfg.ConfirmBeforeKill}"
+                                              Style="{StaticResource CheckBoxStyle}"
+                                              ToolTip="结束进程前弹确认框，避免误点" />
+                                    <CheckBox x:Name="MonitorGpuCheckBox" Content="采集 GPU" Margin="0,0,18,0"
+                                              IsChecked="{Binding Cfg.MonitorGpu}"
+                                              Style="{StaticResource CheckBoxStyle}"
+                                              ToolTip="关掉可以少一点性能开销；显卡驱动不支持时自动显示「不可用」" />
+                                    <CheckBox x:Name="MonitorPortsCheckBox" Content="采集端口" Margin="0,0,0,0"
+                                              IsChecked="{Binding Cfg.MonitorPorts}"
+                                              Style="{StaticResource CheckBoxStyle}"
+                                              ToolTip="关掉后进程列表不显示端口，详情也不列端口" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- 左右分隔条：拖动改「进程列表」与「进程详情」的宽度（双击恢复这一处） -->
+                    <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                       Key="task-manager.进程与详情" />
+
+                    <!-- ===== 右：进程详情 ===== -->
+                    <Border Grid.Column="2" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" MinHeight="120" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0" Margin="18,14,18,10">
+                                <TextBlock Text="进程详情" FontSize="13" FontWeight="SemiBold" />
+                            </Grid>
+
+                            <!-- 详情内容比卡片高时自己滚，滚到头交给页面 -->
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          core:ScrollChaining.Enabled="True">
+                                <Grid Margin="18,0,18,18">
+                                    <!-- 未选中时的提示 -->
+                                    <TextBlock Text="在左边的进程列表里选一个进程，这里会显示它的路径、用户、启动时间、线程数、占用端口等详细信息。"
+                                               Visibility="{Binding HasSelectedProcess, Converter={StaticResource InverseBoolToVis}}"
+                                               TextWrapping="Wrap" MaxWidth="300"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               IsHitTestVisible="False" />
+
+                                    <!-- 选中项详情 -->
+                                    <StackPanel Visibility="{Binding HasSelectedProcess, Converter={StaticResource BoolToVis}}">
+
+                                        <!-- 进程名 + PID / CPU / 内存 / GPU / GPU 内存 -->
+                                        <TextBlock Text="{Binding SelectedProcess.Name}" FontSize="16" FontWeight="SemiBold"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding SelectedProcess.Path}" />
+                                        <WrapPanel Margin="0,8,0,0">
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
+                                                <TextBlock Text="PID" FontSize="10.5" VerticalAlignment="Center" Margin="0,0,5,0"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <TextBlock Text="{Binding SelectedProcess.PidText}" FontSize="12"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
+                                                <TextBlock Text="CPU" FontSize="10.5" VerticalAlignment="Center" Margin="0,0,5,0"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <TextBlock Text="{Binding SelectedProcess.CpuText}" FontSize="12"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
+                                                <TextBlock Text="内存" FontSize="10.5" VerticalAlignment="Center" Margin="0,0,5,0"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <TextBlock Text="{Binding SelectedProcess.MemoryText}" FontSize="12"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
+                                                <TextBlock Text="GPU" FontSize="10.5" VerticalAlignment="Center" Margin="0,0,5,0"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <TextBlock Text="{Binding SelectedProcess.GpuText}" FontSize="12"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,14,0">
+                                                <TextBlock Text="GPU 内存" FontSize="10.5" VerticalAlignment="Center" Margin="0,0,5,0"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <TextBlock Text="{Binding SelectedProcess.GpuMemoryText}" FontSize="12"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </WrapPanel>
+
+                                        <!-- 操作按钮 -->
+                                        <WrapPanel Margin="0,14,0,0">
+                                            <Button Content="结束任务" Style="{StaticResource PrimaryButtonStyle}"
+                                                    Command="{Binding KillSelectedCommand}"
+                                                    Margin="0,0,8,8"
+                                                    ToolTip="先试 Process.Kill()，失败再试 taskkill，最后 wmic；系统关键进程会被拦下" />
+                                            <Button Content="打开文件位置" Style="{StaticResource SecondaryButtonStyle}"
+                                                    Command="{Binding OpenProcessLocationCommand}"
+                                                    Margin="0,0,8,8" />
+                                            <Button Content="复制 PID" Style="{StaticResource SecondaryButtonStyle}"
+                                                    Command="{Binding CopyPidCommand}"
+                                                    Margin="0,0,8,8" />
+                                            <Button Content="复制路径" Style="{StaticResource SecondaryButtonStyle}"
+                                                    Command="{Binding CopyPathCommand}"
+                                                    Margin="0,0,8,8" />
+                                        </WrapPanel>
+
+                                        <!-- 端口占用 -->
+                                        <TextBlock Text="端口占用" FontSize="12" FontWeight="SemiBold" Margin="0,16,0,0" />
+                                        <TextBlock Text="{Binding SelectedPortSummaryText}" FontSize="11"
+                                                   TextWrapping="Wrap" Margin="0,4,0,6"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <Border Background="{DynamicResource InputBackgroundBrush}"
+                                                CornerRadius="{DynamicResource ControlCornerRadius}"
+                                                Padding="10,8">
+                                            <ItemsControl ItemsSource="{Binding SelectedPorts}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding DisplayText}" FontSize="11"
+                                                                   FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI"
+                                                                   TextWrapping="Wrap" Margin="0,1"
+                                                                   ToolTip="{Binding DisplayText}" />
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </Border>
+
+                                        <!-- 详细信息 -->
+                                        <TextBlock Text="详细信息" FontSize="12" FontWeight="SemiBold" Margin="0,16,0,0" />
+                                        <StackPanel Margin="0,7,0,0">
+                                            <TextBlock FontSize="11.5" TextWrapping="Wrap" Margin="0,0,0,5">
+                                                <Run Text="路径：" Foreground="{DynamicResource TextSecondaryBrush}" /><Run Text="{Binding SelectedPathText, Mode=OneWay}" />
+                                            </TextBlock>
+                                            <TextBlock FontSize="11.5" TextWrapping="Wrap" Margin="0,0,0,5">
+                                                <Run Text="用户：" Foreground="{DynamicResource TextSecondaryBrush}" /><Run Text="{Binding SelectedUserText, Mode=OneWay}" />
+                                            </TextBlock>
+                                            <TextBlock FontSize="11.5" TextWrapping="Wrap" Margin="0,0,0,5">
+                                                <Run Text="启动时间：" Foreground="{DynamicResource TextSecondaryBrush}" /><Run Text="{Binding SelectedStartTimeText, Mode=OneWay}" />
+                                            </TextBlock>
+                                            <TextBlock FontSize="11.5" TextWrapping="Wrap" Margin="0,0,0,5">
+                                                <Run Text="优先级：" Foreground="{DynamicResource TextSecondaryBrush}" /><Run Text="{Binding SelectedPriorityText, Mode=OneWay}" />
+                                            </TextBlock>
+                                            <TextBlock FontSize="11.5" TextWrapping="Wrap" Margin="0,0,0,5">
+                                                <Run Text="窗口标题：" Foreground="{DynamicResource TextSecondaryBrush}" /><Run Text="{Binding SelectedWindowText, Mode=OneWay}" />
+                                            </TextBlock>
+                                            <TextBlock FontSize="11.5" TextWrapping="Wrap" Margin="0,0,0,5">
+                                                <Run Text="线程数：" Foreground="{DynamicResource TextSecondaryBrush}" /><Run Text="{Binding SelectedThreadText, Mode=OneWay}" />
+                                            </TextBlock>
+                                            <TextBlock FontSize="11.5" TextWrapping="Wrap" Margin="0,0,0,5">
+                                                <Run Text="句柄数：" Foreground="{DynamicResource TextSecondaryBrush}" /><Run Text="{Binding SelectedHandleText, Mode=OneWay}" />
+                                            </TextBlock>
+                                            <TextBlock FontSize="11.5" TextWrapping="Wrap" Margin="0,0,0,5">
+                                                <Run Text="虚拟内存：" Foreground="{DynamicResource TextSecondaryBrush}" /><Run Text="{Binding SelectedVirtualText, Mode=OneWay}" />
+                                            </TextBlock>
+                                        </StackPanel>
+
+                                        <!-- 读取详情失败时的说明（没有错误就整行隐藏） -->
+                                        <TextBlock Text="{Binding SelectedDetailsError}" FontSize="11" TextWrapping="Wrap"
+                                                   Margin="0,4,0,0"
+                                                   Visibility="{Binding SelectedDetailsError, Converter={StaticResource EmptyToVisInverse}}"
+                                                   Foreground="{DynamicResource DangerBrush}" />
+                                    </StackPanel>
+                                </Grid>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- 上下分隔条：拖动改「进程区」与「开机启动」的高度（双击恢复这一处） -->
+                <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                                   Key="task-manager.进程区与开机启动" />
+
+                <!-- ===== 开机启动 ===== -->
+                <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" MinHeight="80" />
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0" Margin="18,14,18,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <WrapPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="开机启动" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"
+                                           Margin="0,0,12,0" />
+                                <Button x:Name="RefreshStartupButton" Content="刷新" Margin="0,0,8,0"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding RefreshStartupCommand}"
+                                        ToolTip="重新扫描注册表 Run / 启动文件夹" />
+                                <Button x:Name="ToggleStartupButton" Content="{Binding StartupToggleText}" Margin="0,0,8,0"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding ToggleStartupCommand}"
+                                        ToolTip="启用 / 禁用选中的启动项（系统级项目需要管理员权限）" />
+                                <Button x:Name="DeleteStartupButton" Content="删除" Margin="0,0,8,0"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding DeleteStartupCommand}"
+                                        ToolTip="只删这一条启动记录 / 快捷方式，不会卸载程序" />
+                                <Button x:Name="OpenStartupLocationButton" Content="打开位置" Margin="0,0,8,0"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding OpenStartupLocationCommand}"
+                                        ToolTip="在资源管理器里定位启动项对应的程序" />
+                                <Button x:Name="CopyStartupCommandButton" Content="复制命令"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding CopyStartupCommandCommand}"
+                                        ToolTip="把完整的启动命令复制到剪贴板" />
+                            </WrapPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding StartupSummaryText}" FontSize="11"
+                                       HorizontalAlignment="Right" VerticalAlignment="Center" Margin="12,0,0,0"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding StartupSummaryText}"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </Grid>
+
+                        <Grid Grid.Row="1">
+                            <!-- ===== 开机启动列表（表头 + 数据行，写法与进程列表一致） =====
+                                 列宽：名称 190 / 状态 76 / 来源 150 / 命令或目标 *，末尾一列滚动条宽度。
+                                 表头左边距 33、右边距 21 与进程列表相同（量出来的，别改）。 -->
+                            <ListBox x:Name="StartupListBox" ItemsSource="{Binding StartupItems}"
+                                     SelectedItem="{Binding SelectedStartupItem}"
+                                     Margin="8,0"
+                                     core:ScrollChaining.Enabled="True"
+                                     ToolTip="单击选中；启用 / 禁用 / 删除 / 打开位置 / 复制命令都作用于选中项">
+                                <ListBox.Style>
+                                    <Style TargetType="ListBox" BasedOn="{StaticResource FileListStyle}">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ListBox">
+                                                    <Grid>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="*" />
+                                                        </Grid.RowDefinitions>
+
+                                                        <Grid x:Name="StartupHeaderGrid" Grid.Row="0" Margin="33,0,21,6"
+                                                              HorizontalAlignment="Stretch"
+                                                              DataContext="{Binding DataContext, RelativeSource={RelativeSource AncestorType=UserControl}}">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="190" />
+                                                                <ColumnDefinition Width="76" />
+                                                                <ColumnDefinition Width="150" />
+                                                                <ColumnDefinition Width="*" />
+                                                                <!-- 末尾占一列滚动条宽度，否则表头会比数据行宽一条 -->
+                                                                <ColumnDefinition Width="{Binding Converter={StaticResource ScrollBarWidth}}" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="名称" FontSize="11"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                            <TextBlock Grid.Column="1" Text="状态" FontSize="11"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                            <TextBlock Grid.Column="2" Text="来源" FontSize="11"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                            <TextBlock Grid.Column="3" Text="命令 / 目标" FontSize="11"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                        </Grid>
+
+                                                        <!-- ⚠ x:Name 必须叫 "ScrollViewer"（滚动宿主） -->
+                                                        <ScrollViewer x:Name="ScrollViewer" Grid.Row="1" Focusable="False"
+                                                                      HorizontalScrollBarVisibility="Disabled"
+                                                                      VerticalScrollBarVisibility="Auto"
+                                                                      Padding="0" Background="Transparent">
+                                                            <ItemsPresenter />
+                                                        </ScrollViewer>
+                                                    </Grid>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ListBox.Style>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <!-- ⚠ 这串宽度必须与表头**一字不差** -->
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="190" />
+                                                <ColumnDefinition Width="76" />
+                                                <ColumnDefinition Width="150" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Name}" FontSize="12.5"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding Name}" />
+                                            <TextBlock Grid.Column="1" Text="{Binding StateText}" FontSize="12.5"
+                                                       VerticalAlignment="Center">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Enabled}" Value="True">
+                                                                <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Grid.Column="2" Text="{Binding SourceText}" FontSize="12.5"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding Location}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Grid.Column="3" Text="{Binding CommandSummary}" FontSize="12.5"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding Command}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <!-- 空列表提示 -->
+                            <TextBlock Text="没有开机启动项"
+                                       Visibility="{Binding HasItems, ElementName=StartupListBox, Converter={StaticResource InverseBoolToVis}}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       IsHitTestVisible="False" />
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -37,6 +37,7 @@
 | 🗂️ 打开方式 | 把本工具登记进 Windows 右键「打开方式」：**按文件类型自动分流 / 以文本方式 / 以压缩包方式** 3 个入口；PDF / 图片 / Word / Excel / PPT / 压缩包 / 音视频 / 文本自动找对应工具；开关在主页设置（只有 Release / 发布版可开），关掉后启动自动清理旧条目；只写 HKCU、不需要管理员 | [tools/open-with.md](tools/open-with.md) |
 | ⬆️ 软件升级器 | 用系统自带的 winget 读出本机已安装应用与可用版本；逐个勾选 / Ctrl·Shift 多选行 / 全选 / 全不选 / 反选后一键批量升级，带搜索过滤、升级前确认、逐个进度与日志、可取消；包 Id 白名单校验、扫描只读、不需要管理员 | [tools/software-updater.md](tools/software-updater.md) |
 | 🚀 软件启动器 | 把常用的 exe / 快捷方式收进图标墙，双击启动；右侧看软件全名 / 目标路径 / 版本 / 大小，可重命名、换图标、删除，一键清空失效快捷方式与已卸载的软件 | [tools/launcher.md](tools/launcher.md) |
+| 🖥️ 任务管理器 | 系统 CPU / 内存 / GPU / 硬盘读写实时监测 + 进程列表（PID / CPU / 内存 / GPU / 占用端口）+ 进程详情与结束任务（Process.Kill → taskkill → wmic 三级后备）+ 开机启动项查看 / 启用禁用 / 删除 | [tools/task-manager.md](tools/task-manager.md) |
 | 😆 表情包收藏夹 | 收藏图片，单击即复制并粘贴到 QQ 聊天框；自动检测 / 校验目标会话、可选自动发送（随机 0.5~1.5 秒延迟），也能切换成只复制到剪贴板 | [tools/meme-board.md](tools/meme-board.md) |
 | 🧮 计算器 | 科学计算器：表达式直接输入、边打边出结果；三角函数 / 反三角 / 双曲 / 对数 / 阶乘 / 常量，角度制与弧度制切换，结果有效位数可调；历史记录点选回填并自动保存；Ans、复制结果 | [tools/calculator.md](tools/calculator.md) |
 | 📈 函数绘图 | 同时画多条函数曲线：每条可单独设定义域 / 颜色 / 显示开关；拖动平移、滚轮缩放、双击复位，网格与坐标轴可隐藏；自动求点——光标处实时读数、输入 x 求所有函数值、按范围自动生成点值表 | [tools/function-plot.md](tools/function-plot.md) |

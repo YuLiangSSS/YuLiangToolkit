@@ -61,6 +61,7 @@
     <ProjectReference Include="src\YuLiangToolkit.Tools.Mail\YuLiangToolkit.Tools.Mail.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.Launcher\YuLiangToolkit.Tools.Launcher.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.MemeBoard\YuLiangToolkit.Tools.MemeBoard.csproj" />
+    <ProjectReference Include="src\YuLiangToolkit.Tools.TaskManager\YuLiangToolkit.Tools.TaskManager.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.Sample\YuLiangToolkit.Tools.Sample.csproj" />
   </ItemGroup>
 

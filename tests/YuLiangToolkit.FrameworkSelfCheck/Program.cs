@@ -61,6 +61,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("mail", "邮箱代收：IMAP 预设 / 地址与 HTML 处理 / DPAPI 授权码加密 / 配置往返（纯逻辑，不联网）"),
     ("launcher", "软件启动器：导入校验 / 默认显示名 / 失效判定 / 清空无效项 / 配置往返（纯逻辑）"),
     ("meme-board", "表情包收藏夹：会话名归一 / 目标窗口解析 / 随机延迟夹取 / 图片扩展名 / 配置往返（纯逻辑，不碰 QQ）"),
+    ("task-manager", "任务管理器：数字格式化 / 结束任务三级方案 / 开机启动解析与启停标记 / 保护名单 / 进程行 / 真实只读采样"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1249,6 +1250,13 @@ RunGroupModule("launcher", "软件启动器", LauncherChecks.Run);
 // 目标 QQ 窗口解析（多窗口优先非最小化、空目标不猜）/ 随机发送延迟的夹取与边界 / 图片扩展名 / 剪贴板导入文件名 /
 // 配置默认值与 JSON 往返。纯逻辑，**不启动 QQ、不碰剪贴板、不发送任何消息**；真实粘贴与自动发送由界面人工冒烟。
 RunGroupModule("meme-board", "表情包收藏夹", MemeBoardChecks.Run);
+
+// 「任务管理器」：DisplayFormat（字节 / 速度 / 百分比 / 运行时长 / 端口摘要 / TCP 状态 / 路径省略）、
+// KillPlan（三级顺序 / taskkill 参数 / wmic 参数与进程名规范化 / 失败不继续）、
+// StartupCommandParser（引号 / 无引号 / 环境变量 / rundll32）、StartupApprovedState（12 字节启停标记往返）、
+// ProcessProtection（关键进程 / 桌面外壳）、ProcessInfo（原地合并 / 搜索命中 / 显示文本）、配置默认值与 JSON 往返；
+// 另外真的只读采样本机（自己的进程 / 端口表 / 整机内存），**不结束任何进程、不写注册表**。
+RunGroupModule("task-manager", "任务管理器", TaskManagerChecks.Run);
 
 EnterGroup("shell");
 
