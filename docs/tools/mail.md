@@ -25,6 +25,9 @@
   附件可以「保存」到你自己选的位置，保存路径由「另存为」对话框确认。
 - **授权码加密保存**：QQ 的「授权码」、Gmail 的「应用专用密码」用 Windows DPAPI（当前用户）加密后
   写进配置；配置文件里没有明文，**换 Windows 用户 / 换电脑后解不开**，需要重新填一次。
+- **自动跟随 Windows 系统代理**：Gmail 等境外邮箱经常「浏览器能打开、IMAP 直连却超时」——默认读取
+  Windows 系统代理（和 Chrome 用同一个），并遵守系统代理的**例外列表**（例如 `*.qq.com` 会自动直连）；
+  也可以在「账号设置 → 网络代理」里改成直连或手动填代理。
 - **可选打开时自动刷新**：勾选后每次打开工具页自动收一次；也可以随时点「刷新全部」。
   一个账号失败只影响它自己的状态，其它账号照常收。
 
@@ -70,6 +73,23 @@
   Gmail 的收件箱很大时建议 30~50 封，太多会慢。
 - 「打开工具时自动刷新」默认勾选；不想每次打开都联网就取消勾选，需要时手动点「刷新全部」。
 
+### 5. 网络代理（Gmail 连接超时看这里）
+
+国内网络下 **Gmail 的 IMAP 常常直连不通**，表现是「Chrome 能打开 Gmail，工具却提示连接超时」。
+本工具默认 **自动跟随 Windows 系统代理**（也就是 Chrome / 系统正在用的那个代理）：
+
+1. 打开「账号设置 → 网络代理」；
+2. 默认是「自动（跟随 Windows 系统代理）」——工具会读取 Windows 的代理设置，
+   并遵守系统代理的**例外列表**（例如 `*.qq.com` 会直连，Gmail 走代理）；
+3. 状态行会显示当前实际使用的代理，例如 `当前：系统代理 127.0.0.1:7897（HTTP）`；
+4. 如果自动模式还是连不上：
+   - 代理软件可能只支持 SOCKS5：选「自定义代理」，填服务器 / 端口，类型选「SOCKS5」；
+   - 或者先选「直连（不使用代理）」排除代理本身的问题；
+5. 改完点「刷新代理状态」确认，再点「刷新全部」。
+
+> 同一份代理设置对**所有账号**生效，但每个域名会分别判断是否在例外列表里：
+> 所以 QQ 可以直连、Gmail 走代理，互不影响。
+
 ## 只读保证
 
 - 收件箱按 `FolderAccess.ReadOnly` 打开；
@@ -86,12 +106,13 @@
 | 每个账号取最近多少封 | 同上（`fetchCount`） | 5 ~ 200 |
 | 打开工具时自动刷新 | 同上（`refreshOnOpen`） | 默认开 |
 | 上次选中的账号 | 同上（`lastSelectedAccountId`） | 重新打开工具时恢复选中 |
+| 网络代理模式 / 服务器 / 端口 / 类型 | 同上（`proxy` 对象） | 默认 `auto`（跟随 Windows 系统代理）；可选 `direct` / `custom` |
 
 ## 数据与配置
 
 | 位置 | 内容 |
 | --- | --- |
-| `Config\mail-collector\config.json` | 账号信息、DPAPI 加密后的授权码、拉取设置 |
+| `Config\mail-collector\config.json` | 账号信息、DPAPI 加密后的授权码、拉取设置、网络代理设置 |
 | `Data\mail-collector\` | 暂时没用到（邮件不落盘；附件由「另存为」决定去哪里） |
 
 > 配置文件可以放心打开看：**看不到授权码明文**。但密文和你的 Windows 账户绑定，
@@ -100,7 +121,8 @@
 ## 安全提示
 
 - 授权码 / 应用专用密码等价于对应邮箱的登录凭证（但比主密码权限小、可单独吊销）：
-  **不要**把 `Config\mail-collector\config.json` 发给别人，截图时也留意别把工具页的密码框拍进去。
+  **不要**把 `Config\mail-collector\config.json` 发给别人。界面上授权码框已改为密码框（只显示圆点），
+  截图不会直接露出明文；但明文在内存里，公共电脑上仍建议用完清理配置并吊销。
 - 建议给每个邮箱单独生成一个应用专用密码，只在信任的电脑上使用；不用了随时去邮箱后台
   「吊销 / 删除」该密码，不影响主账号登录。
 - 本工具**只连你填的 IMAP 服务器**，不会把邮件内容 / 账号信息上传到任何第三方服务器；
@@ -114,8 +136,9 @@
 | --- | --- | --- |
 | `认证失败：邮箱地址或授权码 / 应用专用密码不对` | 填了登录密码而不是授权码 / 应用专用密码；或邮箱地址写错；Gmail 没开两步验证导致不能生成应用密码 | 按上面「准备授权码」重做；QQ 用授权码，Gmail 用 16 位应用专用密码 |
 | `SSL 握手失败` | 端口和 SSL 不匹配（常见是 993 选了「不使用 SSL」，或 143 选了 SSL） | 预设会自动填对；自建服务器按管理员给的值改 |
-| `网络连接失败` / `连接超时` | 网络不通、代理 / 防火墙拦截、服务器域名写错 | 先 `Test-NetConnection imap.gmail.com -Port 993` 能通再试；公司网络可能需要代理 |
+| `网络连接失败` / `连接超时` | 网络不通、代理 / 防火墙拦截、服务器域名写错；**Gmail 在国内常见直连超时** | 先看「账号设置 → 网络代理」的状态行是不是 `系统代理 127.0.0.1:...`；没有就开代理或选自定义 SOCKS5；QQ 直连正常但 Gmail 超时基本就是这个问题 |
 | Gmail 一直认证失败，但应用密码是对的 | Google 账号 / 组织策略关闭了「应用专用密码」，或没开两步验证 | 打开两步验证后重新生成；组织账号需要管理员允许 |
+| Gmail 应用专用密码页面显示 `The setting you are looking for is not available for your account` | 账号开启了两步验证，但应用密码入口被高级保护 / 组织策略 / 账号类型隐藏 | 先确认两步验证已开；如果仍不可用，本版没有 OAuth2，只能换账号或用支持应用密码的账号 |
 | QQ 认证失败 | QQ 邮箱没开启 IMAP/SMTP 服务，或授权码复制错 | 网页版 QQ 邮箱 → 设置 → 账号 → 开启 IMAP/SMTP 并重新生成授权码 |
 | Outlook 认证失败 | 微软已停用基础认证，需要 OAuth2 | 本版暂不支持 OAuth2；换用支持应用密码的个人账号，或等后续版本 |
 | 换了电脑 / 重装系统后密码框是空的 | DPAPI 密文和 Windows 用户绑定 | 重新填一次授权码即可 |
@@ -127,8 +150,9 @@
 
 - 项目：`src/YuLiangToolkit.Tools.Mail/`
   - `MailTool.cs` 工具入口；`MailPresets.cs` 服务商预设；`SecureStore.cs` DPAPI 加解密；
+  - `MailProxySettings.cs` 系统代理 / 例外列表 / 自定义代理解析；
   - `ImapMailService.cs` IMAP 只读拉取；`ViewModels/MailCollectorViewModel.cs` 界面逻辑；`Views/MailCollectorView.xaml` 界面。
-- 自检：`tests/YuLiangToolkit.FrameworkSelfCheck/MailChecks.cs`（预置 / HTML→文本 / 附件名 / 配置往返 / DPAPI，不联网）。
+- 自检：`tests/YuLiangToolkit.FrameworkSelfCheck/MailChecks.cs`（预置 / HTML→文本 / 附件名 / 配置往返 / DPAPI / 代理解析，不联网）。
 - 第三方：MailKit / MimeKit（MIT）、System.Security.Cryptography.ProtectedData（微软），见
   [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md)；踩坑见 [docs/dev/pitfalls.md](../dev/pitfalls.md)。
 - 参考：Gmail 应用专用密码 <https://myaccount.google.com/apppasswords>。

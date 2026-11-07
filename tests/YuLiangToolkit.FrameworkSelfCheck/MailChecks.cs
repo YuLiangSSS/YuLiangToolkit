@@ -7,7 +7,7 @@ namespace YuLiangToolkit.FrameworkSelfCheck;
 
 /// <summary>
 /// 「邮箱代收」工具的自检：工具元数据 / 服务商预设 / 地址与 HTML 处理 / 配置默认值与 JSON 往返 /
-/// 授权码 DPAPI 加解密 / 错误翻译。全部是纯逻辑，**不联网**（真实 Gmail / QQ 登录由人工冒烟）。
+/// 授权码 DPAPI 加解密 / 网络代理解析 / 错误翻译。全部是纯逻辑，**不联网**（真实 Gmail / QQ 登录由人工冒烟）。
 /// </summary>
 internal static class MailChecks
 {
@@ -22,6 +22,7 @@ internal static class MailChecks
         CheckTextHelpers(assert);
         CheckConfig(assert);
         CheckSecureStore(assert);
+        CheckProxy(assert);
         CheckErrorMessages(assert);
     }
 
@@ -156,6 +157,10 @@ internal static class MailChecks
             && config.EffectiveFetchCount == 30,
             $"fetch={config.FetchCount}");
 
+        check("[邮箱代收] 代理默认跟随 Windows 系统代理（auto）",
+            config.Proxy is { Mode: "auto" } && config.Proxy.Port == 7890,
+            $"proxy={config.Proxy.Mode}:{config.Proxy.Host}:{config.Proxy.Port}");
+
         config.FetchCount = 1;
         var low = config.EffectiveFetchCount;
         config.FetchCount = 500;
@@ -214,6 +219,72 @@ internal static class MailChecks
             SecureStore.Protect("") == ""
             && SecureStore.Unprotect("") == ""
             && SecureStore.Unprotect("plain-text-password") == "plain-text-password");
+    }
+
+    // ---------------------------------------------------------------- 网络代理
+
+    private static void CheckProxy(CheckFn check)
+    {
+        var plain = MailProxySettings.ParseSystemProxy("127.0.0.1:7897");
+        var socks = MailProxySettings.ParseSystemProxy("socks=127.0.0.1:1080");
+        var keyed = MailProxySettings.ParseSystemProxy("http=127.0.0.1:7897;https=127.0.0.1:7897");
+        check("[邮箱代收] 系统代理解析：纯 host:port / socks= / http=+https=",
+            plain is { Host: "127.0.0.1", Port: 7897, Type: "http" }
+            && socks is { Host: "127.0.0.1", Port: 1080, Type: "socks5" }
+            && keyed is { Host: "127.0.0.1", Port: 7897, Type: "http" }
+            && MailProxySettings.ParseSystemProxy("") is null
+            && MailProxySettings.ParseSystemProxy("no-port") is null,
+            $"{plain} / {socks} / {keyed}");
+
+        check("[邮箱代收] 系统代理例外列表：*.qq.com / <local> / 192.168.*",
+            MailProxySettings.IsBypassed("imap.qq.com", "*.qq.com;<local>")
+            && !MailProxySettings.IsBypassed("imap.gmail.com", "*.qq.com;<local>")
+            && MailProxySettings.IsBypassed("localhost", "*.qq.com;<local>")
+            && MailProxySettings.IsBypassed("192.168.1.5", "192.168.*")
+            && !MailProxySettings.IsBypassed("imap.gmail.com", "*.qq.com"));
+
+        var system = new SystemProxyInfo(true, "127.0.0.1:7897", "*.qq.com");
+        var autoGmail = new MailProxySettings { Mode = "auto" }.Resolve("imap.gmail.com", system);
+        var autoQq = new MailProxySettings { Mode = "auto" }.Resolve("imap.qq.com", system);
+        check("[邮箱代收] 自动模式：Gmail 走系统代理，QQ 命中例外则直连",
+            autoGmail.IsProxy && autoGmail.Client is not null && autoGmail.Description.Contains("7897")
+            && !autoQq.IsProxy && autoQq.Description.Contains("例外"),
+            $"{autoGmail.Description} / {autoQq.Description}");
+
+        var direct = new MailProxySettings { Mode = "direct" }.Resolve("imap.gmail.com", system);
+        var custom = new MailProxySettings
+        {
+            Mode = "custom",
+            Host = "10.0.0.2",
+            Port = 1080,
+            Type = "socks5",
+        }.Resolve("imap.gmail.com", system);
+        var customBad = new MailProxySettings { Mode = "custom", Host = "", Port = 0 }
+            .Resolve("imap.gmail.com", system);
+        check("[邮箱代收] 直连 / 自定义（含类型） / 自定义未填完整",
+            !direct.IsProxy
+            && custom.IsProxy && custom.Description.Contains("10.0.0.2:1080") && custom.Description.Contains("SOCKS5")
+            && !customBad.IsProxy && customBad.Description.Contains("没填完整"),
+            $"{direct.Description} / {custom.Description} / {customBad.Description}");
+
+        var disabled = new MailProxySettings { Mode = "auto" }
+            .Resolve("imap.gmail.com", new SystemProxyInfo(false, "", ""));
+        check("[邮箱代收] 自动模式：系统没开代理就直连",
+            !disabled.IsProxy && disabled.Description.Contains("未启用"),
+            disabled.Description);
+
+        check("[邮箱代收] 代理类型归一化 / 中文标签",
+            MailProxySettings.NormalizeType("SOCKS5") == "socks5"
+            && MailProxySettings.NormalizeType("http") == "http"
+            && MailProxySettings.TypeLabel("socks5") == "SOCKS5"
+            && MailProxySettings.TypeLabel("http") == "HTTP");
+
+        var proxyFailure = new IOException(
+            "代理连接失败（系统代理 127.0.0.1:7897（HTTP））：The operation has timed out。",
+            new TimeoutException("The operation has timed out."));
+        check("[邮箱代收] 代理失败的提示优先于泛泛的「连接超时」",
+            ImapMailService.DescribeError(proxyFailure).Contains("代理连接失败"),
+            ImapMailService.DescribeError(proxyFailure));
     }
 
     // ---------------------------------------------------------------- 错误提示

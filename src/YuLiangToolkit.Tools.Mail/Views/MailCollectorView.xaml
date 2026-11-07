@@ -1,8 +1,49 @@
 <UserControl x:Class="YuLiangToolkit.Tools.Mail.Views.MailCollectorView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
-             Loaded="OnLoaded">
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core">
+
+    <UserControl.Resources>
+        <!-- App.xaml 里没有 PasswordBox 样式；这里补一个跟 TextBoxStyle 观感一致的局部样式
+             （和「压缩包工具」的 ArchivePasswordBoxStyle 同源，用主题画刷，四套主题都不会白底黑字）。 -->
+        <Style x:Key="MailPasswordBoxStyle" TargetType="PasswordBox">
+            <Setter Property="Background" Value="{DynamicResource InputBackgroundBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="MinHeight" Value="30" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="PasswordBox">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{DynamicResource ControlCornerRadius}"
+                                Padding="{TemplateBinding Padding}">
+                            <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
+                                          Background="Transparent"
+                                          HorizontalScrollBarVisibility="Hidden"
+                                          VerticalScrollBarVisibility="Hidden" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ControlBorderHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
 
     <!-- 布局（v0.42.0 起的可拖拽约定，见 docs/dev/layout.md）：
          整页 =「标题 / 工具条 / 主区域 / 日志」，主区域里三栏 =「账号 | 合并收件列表 | 详情·设置」；
@@ -213,27 +254,34 @@
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="14" />
                                             <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Text="{Binding UnreadMark}" FontSize="10"
                                                    Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
                                         <StackPanel Grid.Column="1" Margin="2,0,0,0">
-                                            <TextBlock Text="{Binding Subject}" FontSize="12.5" TextTrimming="CharacterEllipsis" />
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Subject}" FontSize="12.5" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Grid.Column="1" Text="{Binding DateText}" FontSize="10.5"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Top"
+                                                           Margin="8,1,0,0" />
+                                            </Grid>
                                             <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
                                                 <TextBlock Text="{Binding FromText}" FontSize="10.5"
                                                            Foreground="{DynamicResource TextSecondaryBrush}"
-                                                           TextTrimming="CharacterEllipsis" MaxWidth="200" />
+                                                           TextTrimming="CharacterEllipsis" MaxWidth="110"
+                                                           ToolTip="{Binding FromText}" />
                                                 <Border Background="{DynamicResource TagChipBackgroundBrush}" CornerRadius="4"
                                                         Padding="5,1" Margin="8,0,0,0" VerticalAlignment="Center">
                                                     <TextBlock Text="{Binding AccountBadge}" FontSize="9.5"
                                                                Foreground="{DynamicResource TextSecondaryBrush}"
-                                                               TextTrimming="CharacterEllipsis" MaxWidth="90" />
+                                                               TextTrimming="CharacterEllipsis" MaxWidth="70"
+                                                               ToolTip="{Binding AccountBadge}" />
                                                 </Border>
                                             </StackPanel>
                                         </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="{Binding DateText}" FontSize="10.5"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Top"
-                                                   Margin="8,1,0,0" />
                                     </Grid>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
@@ -348,9 +396,10 @@
                             <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
                                        Text="选中账号后在这里改；所有改动自动保存，没有「保存」按钮。授权码只在本机 DPAPI 加密保存。" />
                         </StackPanel>
-                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                        <ScrollViewer x:Name="SettingsScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                       core:ScrollChaining.Enabled="True">
-                            <StackPanel Margin="16,4,16,14" IsEnabled="{Binding HasSelectedAccount}">
+                            <StackPanel Margin="16,4,16,14">
+                                <StackPanel IsEnabled="{Binding HasSelectedAccount}">
                                 <TextBlock Text="服务商预设（选好自动填服务器 / 端口）" FontSize="11"
                                            Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <ComboBox ItemsSource="{Binding Presets}" SelectedItem="{Binding SelectedPreset}"
@@ -378,14 +427,11 @@
                                 </Grid>
 
                                 <TextBlock Text="授权码 / 应用专用密码" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,10,0,5" />
-                                <Grid>
-                                    <TextBox x:Name="PasswordBox" Text="{Binding SelectedAccount.Password, UpdateSourceTrigger=PropertyChanged}"
-                                             Style="{StaticResource TextBoxStyle}"
-                                             ToolTip="QQ 邮箱 = 授权码；Gmail = 16 位应用专用密码（不是登录密码）；本机 DPAPI 加密保存" />
-                                    <TextBlock Text="QQ 授权码 / Gmail 应用专用密码" IsHitTestVisible="False"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
-                                               Visibility="{Binding Text, ElementName=PasswordBox, Converter={StaticResource EmptyToVis}}" />
-                                </Grid>
+                                <PasswordBox x:Name="PasswordInput" Style="{StaticResource MailPasswordBoxStyle}"
+                                             PasswordChanged="OnPasswordChanged"
+                                             ToolTip="QQ 邮箱 = 授权码；Gmail = 16 位应用专用密码（不是登录密码）；本机 DPAPI 加密保存，界面只显示圆点" />
+                                <TextBlock Text="已保存的授权码只显示为圆点；重新输入会覆盖（不会显示明文）。"
+                                           FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap" />
 
                                 <Grid Margin="0,10,0,0">
                                     <Grid.ColumnDefinitions>
@@ -414,6 +460,40 @@
                                 <Button Content="测试选中账号" Style="{StaticResource SecondaryButtonStyle}"
                                         HorizontalAlignment="Left" Margin="0,12,0,0"
                                         Command="{Binding TestConnectionCommand}" />
+                                </StackPanel>
+
+                                <!-- ===== 网络代理（全局，不随账号禁用） ===== -->
+                                <Border Height="1" Background="{DynamicResource BorderBrush}" Opacity="0.6" Margin="0,16,0,12" />
+                                <TextBlock Text="网络代理" FontSize="12.5" FontWeight="SemiBold" />
+                                <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,8"
+                                           Text="Gmail 等境外邮箱在部分网络下「浏览器能打开、IMAP 直连却超时」——这里默认跟随 Windows 系统代理（和 Chrome 用同一个），并遵守系统代理的例外列表（如 QQ 会自动直连）。" />
+                                <ComboBox ItemsSource="{Binding ProxyModeOptions}" SelectedItem="{Binding SelectedProxyMode}"
+                                          DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}" />
+                                <TextBlock Text="{Binding ProxyStatusText}" FontSize="10.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,6,0,0" />
+                                <StackPanel Visibility="{Binding ShowCustomProxy, Converter={StaticResource BoolToVis}}">
+                                    <Grid Margin="0,8,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="58" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="代理服务器" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,5" />
+                                            <TextBox Text="{Binding Cfg.Proxy.Host, UpdateSourceTrigger=PropertyChanged}"
+                                                     Style="{StaticResource TextBoxStyle}" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="1" Text="端口" FontSize="11" VerticalAlignment="Bottom"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,6,10" />
+                                        <TextBox Grid.Column="2" Text="{Binding Cfg.Proxy.Port, UpdateSourceTrigger=PropertyChanged}"
+                                                 Style="{StaticResource TextBoxStyle}" VerticalAlignment="Bottom" />
+                                    </Grid>
+                                    <ComboBox ItemsSource="{Binding ProxyTypeOptions}" SelectedItem="{Binding SelectedProxyType}"
+                                              DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}" Margin="0,8,0,0" />
+                                </StackPanel>
+                                <Button Content="刷新代理状态" Style="{StaticResource SecondaryButtonStyle}"
+                                        HorizontalAlignment="Left" Margin="0,10,0,0"
+                                        Command="{Binding RefreshProxyStatusCommand}" />
                             </StackPanel>
                         </ScrollViewer>
                     </Grid>

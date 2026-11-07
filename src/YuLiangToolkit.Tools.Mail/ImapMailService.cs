@@ -78,6 +78,17 @@ public sealed class ImapMailService
     /// <summary>连接 / 读超时（毫秒）：Gmail / QQ 一般 1~3 秒内完成；超过这个时间按网络问题提示。</summary>
     public const int TimeoutMs = 20_000;
 
+    private readonly MailProxySettings _proxy;
+
+    /// <summary>
+    /// 创建服务。<paramref name="proxy"/> 为 null 时按直连（单元测试 / 特殊场景用）；
+    /// 工具界面里总是传 <c>Cfg.Proxy</c>（默认跟随 Windows 系统代理）。
+    /// </summary>
+    public ImapMailService(MailProxySettings? proxy = null)
+    {
+        _proxy = proxy ?? new MailProxySettings { Mode = "direct" };
+    }
+
     /// <summary>拉取某个账号收件箱最近 <paramref name="maxCount"/> 封的列表（只取摘要，不取正文）。</summary>
     public async Task<IReadOnlyList<MailBrief>> FetchRecentAsync(
         MailAccountConfig account,
@@ -204,6 +215,10 @@ public sealed class ImapMailService
     /// <summary>把异常翻译成给用户看的中文提示（认证 / SSL / 网络 / 服务器拒绝分开说）。</summary>
     public static string DescribeError(Exception exception)
     {
+        // 代理连接失败的服务层包装（信息量最大，优先返回，别被 inner 的 TimeoutException 覆盖成泛泛的“连接超时”）
+        if (exception is IOException && exception.Message.StartsWith("代理连接失败", StringComparison.Ordinal))
+            return exception.Message;
+
         var chain = new List<Exception>();
         for (var current = exception; current is not null; current = current.InnerException) chain.Add(current);
 
@@ -233,7 +248,7 @@ public sealed class ImapMailService
 
     // ---------- 内部：连接 / 断开 ----------
 
-    private static async Task<ImapClient> ConnectAsync(MailAccountConfig account, CancellationToken cancellationToken)
+    private async Task<ImapClient> ConnectAsync(MailAccountConfig account, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(account.Host))
             throw new InvalidOperationException("IMAP 服务器地址为空：先选一个预设，或手动填服务器");
@@ -248,9 +263,27 @@ public sealed class ImapMailService
                 "授权码 / 应用专用密码为空：QQ 邮箱填「授权码」，Gmail 填「应用专用密码」");
         }
 
-        var client = new ImapClient { Timeout = TimeoutMs };
+        // 代理：默认跟随 Windows 系统代理，并遵守 ProxyOverride 例外列表（QQ 通常直连，Gmail 走代理）。
+        var route = _proxy.Resolve(account.Host);
+        var client = new ImapClient { Timeout = TimeoutMs, ProxyClient = route.Client };
         var options = account.UseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
-        await client.ConnectAsync(account.Host.Trim(), account.Port, options, cancellationToken);
+
+        try
+        {
+            await client.ConnectAsync(account.Host.Trim(), account.Port, options, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            client.Dispose();
+            throw;
+        }
+        catch (Exception ex) when (route.IsProxy)
+        {
+            client.Dispose();
+            throw new IOException(
+                $"代理连接失败（{route.Description}）：{ex.Message}。"
+                + "请确认代理软件正在运行、端口 / 类型填对；也可以把「网络代理」改成「直连」再试。", ex);
+        }
 
         // QQ / 163 等国内邮箱有些要求先发 IMAP ID（RFC 2971）才允许登录；只发送客户端名称 / 版本，
         // 不包含任何用户信息。服务器不声明 ID 能力就跳过；声明了但拒绝也不影响后面登录。
@@ -259,7 +292,7 @@ public sealed class ImapMailService
             try
             {
                 await client.IdentifyAsync(
-                    new ImapImplementation { Name = "YuLiangToolkit", Version = "1.2.0" },
+                    new ImapImplementation { Name = "YuLiangToolkit", Version = "1.5.1" },
                     cancellationToken);
             }
             catch

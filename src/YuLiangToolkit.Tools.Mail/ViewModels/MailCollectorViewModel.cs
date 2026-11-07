@@ -22,7 +22,7 @@ namespace YuLiangToolkit.Tools.Mail.ViewModels;
 /// </summary>
 public sealed class MailCollectorViewModel : ToolViewModelBase
 {
-    private readonly ImapMailService _service = new();
+    private readonly ImapMailService _service;
     private readonly List<MailMessageRow> _allMessages = new();
 
     private CancellationTokenSource? _refreshCts;
@@ -52,6 +52,8 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
     {
         Cfg = LoadConfig<MailCollectorConfig>();
         if (Cfg.Accounts is null) Cfg.Accounts = new ObservableCollection<MailAccountConfig>();
+        Cfg.Proxy ??= new MailProxySettings();
+        _service = new ImapMailService(Cfg.Proxy);
 
         Cfg.Accounts.CollectionChanged += OnAccountsCollectionChanged;
         foreach (var account in Cfg.Accounts)
@@ -76,6 +78,7 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
         ClearLogCommand = new RelayCommand(_ => ClearLog());
         OpenHelpCommand = new RelayCommand(_ => OpenHelp(), _ => HasPresetHelp);
         ShowSettingsTabCommand = new RelayCommand(_ => ShowSettingsTab = true);
+        RefreshProxyStatusCommand = new RelayCommand(_ => OnPropertyChanged(nameof(ProxyStatusText)));
         OpenConfigFolderCommand = new RelayCommand(_ => ConfigStore.OpenInExplorer());
         OpenDataFolderCommand = new RelayCommand(_ => Storage.OpenInExplorer());
 
@@ -89,6 +92,7 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
         Log("用法：点「新增账号」→ 选服务商预设（Gmail / QQ / 163…）→ 填邮箱 + 授权码 / 应用专用密码 → 点「刷新全部」。");
         Log("只读：只拉收件箱，不会删除 / 移动 / 标记已读；一个账号失败不影响其它账号。");
         Log($"配置文件：{ConfigPathText}（授权码已用 Windows DPAPI 加密，换电脑 / 换 Windows 用户要重新填）");
+        Log($"代理：{Cfg.Proxy.Describe("imap.gmail.com")}（右侧「账号设置 → 网络代理」可改）");
 
         // 开发调试 / 截图冒烟用：YLT_MAIL_SETTINGS=1 时直接打开右栏「账号设置」页签（不联网、不改配置）
         if (Environment.GetEnvironmentVariable("YLT_MAIL_SETTINGS") == "1") ShowSettingsTab = true;
@@ -282,8 +286,73 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
     public RelayCommand ClearLogCommand { get; }
     public RelayCommand OpenHelpCommand { get; }
     public RelayCommand ShowSettingsTabCommand { get; }
+    public RelayCommand RefreshProxyStatusCommand { get; }
     public RelayCommand OpenConfigFolderCommand { get; }
     public RelayCommand OpenDataFolderCommand { get; }
+
+    // ---------- 网络代理（全局） ----------
+
+    /// <summary>代理模式选项：自动跟随 Windows 系统代理 / 直连 / 自定义。</summary>
+    public IReadOnlyList<OptionItem<string>> ProxyModeOptions { get; } = OptionItem.From(
+        ("auto", "自动（跟随 Windows 系统代理）"),
+        ("direct", "直连（不使用代理）"),
+        ("custom", "自定义代理"));
+
+    /// <summary>代理类型选项（自定义模式用）。</summary>
+    public IReadOnlyList<OptionItem<string>> ProxyTypeOptions { get; } = OptionItem.From(
+        ("http", "HTTP 代理"),
+        ("socks5", "SOCKS5 代理"));
+
+    /// <summary>代理模式下拉框的桥接属性（真正存进配置的是干净值 auto / direct / custom）。</summary>
+    public OptionItem<string> SelectedProxyMode
+    {
+        get => OptionItem<string>.Find(ProxyModeOptions, Cfg.Proxy.Mode) ?? ProxyModeOptions[0];
+        set
+        {
+            if (value is null) return;
+            Cfg.Proxy.Mode = value.Value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ShowCustomProxy));
+            OnPropertyChanged(nameof(ProxyStatusText));
+        }
+    }
+
+    /// <summary>代理类型下拉框的桥接属性。</summary>
+    public OptionItem<string> SelectedProxyType
+    {
+        get => OptionItem<string>.Find(ProxyTypeOptions, Cfg.Proxy.Type) ?? ProxyTypeOptions[0];
+        set
+        {
+            if (value is null) return;
+            Cfg.Proxy.Type = value.Value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ProxyStatusText));
+        }
+    }
+
+    /// <summary>是否显示自定义代理的服务器 / 端口 / 类型输入框。</summary>
+    public bool ShowCustomProxy
+        => string.Equals((Cfg.Proxy.Mode ?? "auto").Trim(), "custom", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>当前代理路线的一句话状态（不联网，只读设置 / 系统代理）。</summary>
+    public string ProxyStatusText
+    {
+        get
+        {
+            var mode = (Cfg.Proxy.Mode ?? "auto").Trim().ToLowerInvariant();
+            if (mode == "direct") return "当前：直连（不使用代理）";
+            if (mode == "custom")
+            {
+                return $"当前：自定义 {Cfg.Proxy.Host}:{Cfg.Proxy.Port}（{MailProxySettings.TypeLabel(Cfg.Proxy.Type)}）";
+            }
+
+            var system = MailProxySettings.ReadWindowsSystemProxy();
+            if (!system.Enabled) return "当前：Windows 未启用系统代理，将直连";
+            var endpoint = MailProxySettings.ParseSystemProxy(system.Server);
+            if (endpoint is null) return "当前：系统代理地址无法解析，将直连";
+            return $"当前：系统代理 {endpoint.Host}:{endpoint.Port}（{MailProxySettings.TypeLabel(endpoint.Type)}）";
+        }
+    }
 
     // ---------- 右栏页签（邮件详情 / 账号设置） ----------
 
@@ -466,6 +535,7 @@ public sealed class MailCollectorViewModel : ToolViewModelBase
                 else
                 {
                     account.StatusText = "连接中…";
+                    Log($"[{account.DisplayTitle}] 连接方式：{Cfg.Proxy.Describe(account.Host)}");
                     try
                     {
                         var briefs = await _service.FetchRecentAsync(account, limit, token);

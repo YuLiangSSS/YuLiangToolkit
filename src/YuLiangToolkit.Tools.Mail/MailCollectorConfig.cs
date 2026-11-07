@@ -25,6 +25,12 @@ public sealed class MailCollectorConfig : ToolConfig
     /// <summary>上次选中的账号 Id（重新打开工具时恢复选中）。</summary>
     public string LastSelectedAccountId { get; set; } = "";
 
+    /// <summary>
+    /// 网络代理（全局）：默认跟随 Windows 系统代理（浏览器能打开 Gmail、IMAP 直连却超时就是这里生效）。
+    /// 详见 <see cref="MailProxySettings"/>。
+    /// </summary>
+    public MailProxySettings Proxy { get; set; } = new();
+
     /// <summary>实际使用的拉取数量（越界自动夹取；只读计算属性不落盘）。</summary>
     [JsonIgnore]
     public int EffectiveFetchCount => Math.Clamp(FetchCount, 5, 200);

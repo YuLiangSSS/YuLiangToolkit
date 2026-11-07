@@ -21,7 +21,7 @@ public sealed class MailTool : ITool
 
     public string Name => "邮箱代收";
 
-    public string Description => "把 Gmail / QQ / 163 / Outlook 等多个邮箱的收件箱收到一起看：IMAP 只读拉取最近邮件、合并列表、查看正文与附件；授权码用 DPAPI 加密保存。";
+    public string Description => "把 Gmail / QQ / 163 / Outlook 等多个邮箱的收件箱收到一起看：IMAP 只读拉取最近邮件、合并列表、查看正文与附件；授权码用 DPAPI 加密保存，可跟随 Windows 系统代理（Gmail 直连超时时用）。";
 
     public string EmojiIcon => "📬";
 
