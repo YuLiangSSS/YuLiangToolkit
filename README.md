@@ -70,7 +70,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 | [**🗂️ 打开方式**](docs/tools/open-with.md) | 把本工具登记进 Windows 右键「打开方式」：按文件类型自动分流 / 以文本方式 / 以压缩包方式 3 个入口（开关在主页设置，仅 Release / 发布版可开） |
 | [**⬆️ 软件升级器**](docs/tools/software-updater.md) | 用系统自带的 winget 列出已安装应用与可用更新，多选 / 全选后批量升级；扫描只读、不需要管理员 |
 | [**🚀 软件启动器**](docs/tools/launcher.md) | 把常用的 exe / 快捷方式收进图标墙，双击启动；右侧看软件全名 / 路径 / 版本，可重命名、换图标、删除，一键清空失效快捷方式与已卸载的软件 |
-| [**🖥️ 任务管理器**](docs/tools/task-manager.md) | 实时看 CPU / 内存 / GPU / 硬盘读写；进程列表带 PID / CPU / 内存 / GPU / 占用端口，可结束任务（Process.Kill → taskkill → wmic 三级后备）与查看详情；管理开机启动项（启用 / 禁用 / 删除），系统关键进程受保护会提前提示 |
+| [**🖥️ 任务管理器**](docs/tools/task-manager.md) | 实时看 CPU / 内存 / GPU / 硬盘读写；进程列表带 PID / CPU / 内存 / GPU / 占用端口，可结束任务（Process.Kill → taskkill → wmic 三级后备）与查看详情；管理开机启动项（启用 / 禁用 / 删除）；需要管理员权限的操作用「以管理员身份重启」按需弹 UAC，系统关键进程受保护会提前提示 |
 | [**😆 表情包收藏夹**](docs/tools/meme-board.md) | 收藏常用表情包图片，单击即复制并自动粘贴到 QQ 聊天框；自动检测 / 校验目标 QQ 会话、可选自动发送（随机 0.5~1.5 秒延迟），也能切换成只复制到剪贴板 |
 | [**🧮 计算器**](docs/tools/calculator.md) | 科学计算器：直接输入表达式边打边算（`2(3+4)`、`sin(30)`、`5!`），角度制 / 弧度制切换，历史记录可回填 |
 | [**📈 函数绘图**](docs/tools/function-plot.md) | 同时画多条函数曲线，每条可单独设定义域 / 颜色 / 显示开关；拖动平移、滚轮缩放、自动求点 / 点值表 |
@@ -107,7 +107,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（用法 / 设置项 / 数据位置 / 注意事项），跟着代码一起走；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；踩坑细节按需查 [docs/dev/pitfalls.md](docs/dev/pitfalls.md)；
-- ✅ **自检**：4796 项行为逐条真跑（退出码 0 = 全通过）。按改动影响面只跑相关组，不每轮全量：
+- ✅ **自检**：4802 项行为逐条真跑（退出码 0 = 全通过）。按改动影响面只跑相关组，不每轮全量：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -122,7 +122,7 @@ build.ps1 / publish.ps1                  # 一键构建 / 一键发布（发布�
 scripts/check.ps1                        # 按改动自动选组的自检触发器
 src/YuLiangToolkit.Core/                 # 核心库：工具契约 / MVVM / 存储 / 配置 / 维护 / 特效 / 联机底座
 src/YuLiangToolkit.Tools.*/              # 各工具，一个功能一个项目（新功能复制 Tools.Sample）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 自检控制台：4796 项行为逐条真跑
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 自检控制台：4802 项行为逐条真跑
 docs/                                    # 每个工具一页详细说明（索引 docs/README.md）
 AGENTS.md                                # 开发入口地图：流程 / 硬性规则 / 找东西
 ```

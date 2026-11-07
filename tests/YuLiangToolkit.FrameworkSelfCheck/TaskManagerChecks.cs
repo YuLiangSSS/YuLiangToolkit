@@ -32,6 +32,7 @@ internal static class TaskManagerChecks
         CheckProcessInfo(assert);
         CheckStartupEntry(assert);
         CheckConfig(assert);
+        CheckElevationHelpers(assert);
         CheckReadOnlySampling(assert);
         CheckTerminateOwnChild(assert);
     }
@@ -453,6 +454,52 @@ internal static class TaskManagerChecks
 
         check("[任务管理器] 配置 JSON 不写计算属性（SortModeText / FilePath / Store）",
             !json.Contains("SortModeText") && !json.Contains("FilePath") && !json.Contains("\"Store\""));
+    }
+
+    // ---------------------------------------------------------------- 按需管理员权限（UAC）
+
+    private static void CheckElevationHelpers(CheckFn check)
+    {
+        check("[任务管理器] 提权重启参数：--ylt-restart-pid 与 --ylt-tool 拼装",
+            AppElevation.BuildRestartArguments(4321, "task-manager") == "--ylt-restart-pid 4321 --ylt-tool task-manager"
+            && AppElevation.BuildRestartArguments(4321, null) == "--ylt-restart-pid 4321"
+            && AppElevation.BuildRestartArguments(4321, "   ") == "--ylt-restart-pid 4321",
+            AppElevation.BuildRestartArguments(4321, "task-manager"));
+
+        var kept = AppElevation.StripToolSwitch(
+            new[] { "--ylt-tool", "task-manager", @"C:\pics\a.png" }, out var toolId);
+        check("[任务管理器] 提权重启参数：--ylt-tool 被摘掉、文件参数原样保留",
+            toolId == "task-manager" && kept.SequenceEqual(new[] { @"C:\pics\a.png" }),
+            string.Join(" | ", kept));
+
+        var keptRestart = AppElevation.StripToolSwitch(
+            new[] { "--ylt-restart-pid", "4321", "--ylt-tool", "task-manager" }, out var reopenTool);
+        check("[任务管理器] 提权重启参数：摘 --ylt-tool 时不动 --ylt-restart-pid（旧进程等待仍生效）",
+            reopenTool == "task-manager"
+            && keptRestart.SequenceEqual(new[] { "--ylt-restart-pid", "4321" }),
+            string.Join(" | ", keptRestart));
+
+        var noValue = AppElevation.StripToolSwitch(new[] { "--ylt-tool" }, out var missing);
+        check("[任务管理器] 提权重启参数：--ylt-tool 缺值时忽略（不会当成文件参数）、不抛异常",
+            missing is null && noValue.Length == 0);
+
+        check("[任务管理器] 管理员权限判定与底层保持一致（普通 / 管理员环境都不抛异常）",
+            AppElevation.IsCurrentProcessElevated == ProcessTerminator.IsCurrentProcessElevated(),
+            AppElevation.IsCurrentProcessElevated ? "已提权" : "普通权限");
+
+        // 注入的退出回调：只验证回调被调用，不真的退出自检进程
+        var exited = false;
+        var previous = AppElevation.ExitApplication;
+        try
+        {
+            AppElevation.ExitApplication = () => exited = true;
+            AppElevation.RequestExit();
+        }
+        finally
+        {
+            AppElevation.ExitApplication = previous;
+        }
+        check("[任务管理器] 提权重启：RequestExit 走主程序注入的退出回调（不会误触发「最小化到托盘」）", exited);
     }
 
     // ---------------------------------------------------------------- 真实只读采样（安全）

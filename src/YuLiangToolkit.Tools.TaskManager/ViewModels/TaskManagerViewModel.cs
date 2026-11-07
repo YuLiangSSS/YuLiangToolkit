@@ -103,6 +103,7 @@ public sealed class TaskManagerViewModel : ToolViewModelBase
 
         RefreshCommand = new RelayCommand(_ => RequestRefresh(force: true));
         TogglePauseCommand = new RelayCommand(_ => TogglePause());
+        RestartElevatedCommand = new RelayCommand(_ => RestartElevated(), _ => CanRestartElevated);
         KillSelectedCommand = new AsyncRelayCommand(_ => KillSelectedAsync(), _ => HasSelectedProcess && !IsBusy);
         OpenProcessLocationCommand = new RelayCommand(_ => OpenProcessLocation(), _ => HasSelectedProcess);
         CopyPidCommand = new RelayCommand(_ => CopyToClipboard(SelectedProcess?.PidText ?? ""));
@@ -115,15 +116,15 @@ public sealed class TaskManagerViewModel : ToolViewModelBase
 
         Cfg.PropertyChanged += OnConfigChanged;
 
-        IsElevated = ProcessTerminator.IsCurrentProcessElevated();
+        IsElevated = AppElevation.IsCurrentProcessElevated;
         MonitorStateText = BuildMonitorStateText();
         RefreshStartup();
 
         Log($"配置文件：{Cfg.FilePath}");
         Log($"刷新间隔：{Cfg.RefreshIntervalMs} ms；排序：{TaskManagerConfig.SortModeLabel(Cfg.SortMode)}");
         Log(IsElevated
-            ? "当前以管理员身份运行：可以结束管理员权限进程。"
-            : "当前是普通权限：管理员权限进程可能提示「拒绝访问」，可右键以管理员身份重启本程序。");
+            ? "当前以管理员身份运行：可以结束管理员权限进程、修改系统级开机启动项。"
+            : "当前是普通权限：结束管理员进程 / 修改系统级启动项时会提示并可以「以管理员身份重启」（弹 UAC）。");
 
         StartMonitoring();
     }
@@ -223,13 +224,18 @@ public sealed class TaskManagerViewModel : ToolViewModelBase
         get => _isElevated;
         private set
         {
-            if (Set(ref _isElevated, value)) OnPropertyChanged(nameof(ElevationText));
+            if (!Set(ref _isElevated, value)) return;
+            OnPropertyChanged(nameof(ElevationText));
+            OnPropertyChanged(nameof(CanRestartElevated));
         }
     }
 
+    /// <summary>普通权限时才显示 / 可用「以管理员身份重启」（已经是管理员就没必要再提权）。</summary>
+    public bool CanRestartElevated => !IsElevated;
+
     public string ElevationText => IsElevated
-        ? "管理员权限（可以结束管理员进程）"
-        : "普通权限（管理员进程可能「拒绝访问」）";
+        ? "管理员权限（可以结束管理员进程、修改系统级启动项）"
+        : "普通权限（结束管理员进程 / 改系统级启动项需要管理员）";
 
     public bool IsPaused
     {
@@ -332,6 +338,9 @@ public sealed class TaskManagerViewModel : ToolViewModelBase
 
     public RelayCommand RefreshCommand { get; }
     public RelayCommand TogglePauseCommand { get; }
+
+    /// <summary>以管理员身份重新启动本程序（UAC），重启后自动回到任务管理器页面。</summary>
+    public RelayCommand RestartElevatedCommand { get; }
     public AsyncRelayCommand KillSelectedCommand { get; }
     public RelayCommand OpenProcessLocationCommand { get; }
     public RelayCommand CopyPidCommand { get; }
@@ -644,6 +653,66 @@ public sealed class TaskManagerViewModel : ToolViewModelBase
         return $"监测中 · 每 {seconds:0.#} 秒刷新";
     }
 
+    // ---------------------------------------------------------------- 按需管理员权限（UAC）
+
+    /// <summary>
+    /// 请求以管理员身份重启本程序（Windows 弹 UAC），重启后由 <c>--ylt-tool</c> 自动回到本工具页。
+    ///
+    /// <para>为什么不直接在本进程里做「一次提权操作」：Windows 不支持给运行中的进程临时加管理员令牌，
+    /// 要么重启整个进程、要么另起一个管理员进程当代理。这里采用前者（和「渲染与性能 → 重启本程序」
+    /// 共用同一套机制），实现简单、不需要常驻高权限进程；代价是当前窗口会关掉重开。</para>
+    /// </summary>
+    /// <param name="askConfirm">false = 用户已经在「操作失败」的询问框里点过「是」，不再重复确认。</param>
+    private void RestartElevated(bool askConfirm = true)
+    {
+        if (IsElevated) return;
+
+        if (askConfirm)
+        {
+            var confirm = MessageBox.Show(
+                "结束管理员权限进程、修改 / 删除系统级开机启动项需要管理员权限。\n\n"
+                + "点「确定」后会弹出 Windows 的 UAC 授权窗口；授权后本程序会以管理员身份重新启动，"
+                + "并自动回到「任务管理器」页面。\n\n是否继续？",
+                "获取管理员权限", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+            if (confirm != MessageBoxResult.OK) return;
+        }
+
+        // 重启前先落盘配置（新进程马上要读；退出流程还会再 Flush 一次，双保险）
+        try { Cfg.SaveNow(); } catch { /* 落盘失败不阻塞重启 */ }
+
+        if (!AppElevation.TryRestartElevated(ToolId, out var error))
+        {
+            StatusText = "以管理员身份重启失败：" + (error ?? "未知原因");
+            MessageBox.Show(
+                $"没能以管理员身份重启：{error}\n\n"
+                + "也可以手动关闭本程序，右键 exe →「以管理员身份运行」。",
+                "无法获取管理员权限", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        Log("已请求以管理员身份重新启动本程序（UAC），重启后自动回到任务管理器。");
+        AppElevation.RequestExit();
+    }
+
+    /// <summary>
+    /// 操作因为权限失败时：普通权限下问一句「要以管理员身份重启吗？」；
+    /// 已经是管理员就只把失败原因告诉用户。
+    /// </summary>
+    private void OfferElevation(string problem)
+    {
+        if (IsElevated)
+        {
+            MessageBox.Show(problem, "需要管理员权限", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var answer = MessageBox.Show(
+            problem + "\n\n要以管理员身份重新启动本程序吗？\n"
+            + "（会弹 UAC；重启后自动回到任务管理器，刚才的操作需要再做一次。）",
+            "需要管理员权限", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (answer == MessageBoxResult.Yes) RestartElevated(askConfirm: false);
+    }
+
     // ---------------------------------------------------------------- 结束任务
 
     private async Task KillSelectedAsync()
@@ -691,11 +760,21 @@ public sealed class TaskManagerViewModel : ToolViewModelBase
             }
             else
             {
-                MessageBox.Show(
+                var canOfferElevation = !IsElevated;
+                var answer = MessageBox.Show(
                     $"结束「{target.Name}」（PID {target.Pid}）失败。\n\n"
                     + string.Join("\n", outcome.Attempts.Select(a => "· " + a))
-                    + "\n\n" + outcome.Summary,
-                    "结束任务失败", MessageBoxButton.OK, MessageBoxImage.Error);
+                    + "\n\n" + outcome.Summary
+                    + (canOfferElevation
+                        ? "\n\n要以管理员身份重新启动本程序后重试吗？（会弹 UAC，重启后自动回到本页）"
+                        : ""),
+                    "结束任务失败",
+                    canOfferElevation ? MessageBoxButton.YesNo : MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                if (canOfferElevation && answer == MessageBoxResult.Yes)
+                {
+                    RestartElevated(askConfirm: false);
+                }
             }
         }
         catch (Exception ex)
@@ -803,7 +882,7 @@ public sealed class TaskManagerViewModel : ToolViewModelBase
         StatusText = ok
             ? $"已{(targetEnabled ? "启用" : "禁用")}「{item.Name}」"
             : $"修改「{item.Name}」失败：{message}";
-        if (!ok) MessageBox.Show(message, "修改开机启动项失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+        if (!ok) OfferElevation($"修改开机启动项「{item.Name}」失败：{message}");
         RefreshStartup();
     }
 
@@ -822,7 +901,7 @@ public sealed class TaskManagerViewModel : ToolViewModelBase
         var message = "";
         var ok = await Task.Run(() => _startupManager.Delete(item, out message));
         StatusText = ok ? $"已删除「{item.Name}」" : $"删除「{item.Name}」失败：{message}";
-        if (!ok) MessageBox.Show(message, "删除开机启动项失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+        if (!ok) OfferElevation($"删除开机启动项「{item.Name}」失败：{message}");
         RefreshStartup();
     }
 

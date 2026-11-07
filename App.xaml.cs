@@ -11,6 +11,7 @@ using YuLiangToolkit.Core.Services;
 using YuLiangToolkit.Core.Shell;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Core.Tools;
+using YuLiangToolkit.Tools.TaskManager;
 
 namespace YuLiangToolkit.App;
 
@@ -51,7 +52,12 @@ public partial class App : Application
         // 「主页设置 → 渲染与性能」的「重启本程序」：新进程带着旧 PID 起来，先等旧进程彻底退出
         // （单实例 Mutex / 命名管道 / 托盘图标都是按进程占用的），再走正常启动流程。
         // 隐藏参数在这里被摘掉，后面的文件参数 / 单实例转发都看不到它。
-        var launchArgs = RestartLaunchArguments.Strip(e.Args, out var restartWaitPid);
+        //
+        // 「任务管理器 → 以管理员身份重启」复用同一套机制，额外带一个 --ylt-tool（重启后回到哪个工具页）；
+        // 提权回调也在这里注入：工具层不能直接引用 App，靠 AppElevation.ExitApplication 拿到真正退出的入口。
+        AppElevation.ExitApplication = RequestExit;
+        var argsWithoutToolSwitch = AppElevation.StripToolSwitch(e.Args, out var reopenToolId);
+        var launchArgs = RestartLaunchArguments.Strip(argsWithoutToolSwitch, out var restartWaitPid);
         if (restartWaitPid > 0) WaitForPreviousProcess(restartWaitPid);
 
         // 单实例：已经有窗口在跑时，把命令行（例如双击图片的路径）发给它，自己直接退出。
@@ -165,8 +171,11 @@ public partial class App : Application
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
         }
 
-        // 开发调试：可选 YLT_SHOT_TOOL / YLT_NAV_TOOL 直接打开某个工具
-        var toolId = Environment.GetEnvironmentVariable("YLT_SHOT_TOOL") ?? Environment.GetEnvironmentVariable("YLT_NAV_TOOL");
+        // 开发调试：可选 YLT_SHOT_TOOL / YLT_NAV_TOOL 直接打开某个工具；
+        // 另外 --ylt-tool（任务管理器「以管理员身份重启」带回来的）也会自动打开对应工具页。
+        var toolId = Environment.GetEnvironmentVariable("YLT_SHOT_TOOL")
+                     ?? Environment.GetEnvironmentVariable("YLT_NAV_TOOL")
+                     ?? reopenToolId;
         if (!string.IsNullOrWhiteSpace(toolId))
         {
             var tool = tools.FirstOrDefault(t => t.Id == toolId);

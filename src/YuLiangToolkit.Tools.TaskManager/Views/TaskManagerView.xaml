@@ -208,10 +208,16 @@
                                         Style="{StaticResource SecondaryButtonStyle}"
                                         Command="{Binding RefreshCommand}"
                                         ToolTip="立刻采样一次（暂停时也能用）" />
-                                <Button x:Name="PauseButton" Content="{Binding PauseButtonText}" Margin="0,0,0,6"
+                                <Button x:Name="PauseButton" Content="{Binding PauseButtonText}" Margin="0,0,10,6"
                                         Style="{StaticResource SecondaryButtonStyle}"
                                         Command="{Binding TogglePauseCommand}"
                                         ToolTip="{Binding MonitorStateText}" />
+                                <!-- 普通权限时显示：点了弹 UAC，以管理员身份重启并自动回到本页（管理员权限下隐藏） -->
+                                <Button x:Name="ElevateButton" Content="以管理员身份重启" Margin="0,0,0,6"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding RestartElevatedCommand}"
+                                        Visibility="{Binding IsElevated, Converter={StaticResource InverseBoolToVis}}"
+                                        ToolTip="结束管理员权限进程 / 修改系统级开机启动项需要管理员权限；会弹 UAC，重启后自动回到本页" />
                             </WrapPanel>
 
                             <!-- ===== 进程列表（表头 + 数据行）=====
