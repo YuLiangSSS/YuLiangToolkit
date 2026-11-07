@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「表情包收藏夹」：收藏一堆图片；单击图片 → 复制到剪贴板 → 检测并置顶聚焦 QQ →
+       校验目标会话 → 聚焦聊天输入框 → Ctrl+V 粘贴；设置里可开 / 关自动发送与「仅复制」模式。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.MemeBoard</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.MemeBoard</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 只用 Core 的轮子（工具契约 / MVVM / 存储 / 配置），不引任何 NuGet 包。 -->
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

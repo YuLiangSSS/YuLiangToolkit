@@ -108,6 +108,9 @@
          失效判定（假 probe 注入，不碰真实 Shell）/ 清空无效项 / 配置 JSON 往返；
          全部纯逻辑，不启动任何程序。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Launcher\YuLiangToolkit.Tools.Launcher.csproj" />
+    <!-- 「表情包收藏夹」：会话名归一/目标窗口解析/随机延迟夹取/图片扩展名/配置往返；
+         全部纯逻辑，不启动 QQ、不碰剪贴板、不创建窗口。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.MemeBoard\YuLiangToolkit.Tools.MemeBoard.csproj" />
   </ItemGroup>
 
 </Project>

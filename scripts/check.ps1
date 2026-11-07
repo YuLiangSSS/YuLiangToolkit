@@ -150,6 +150,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/FunctionPlotChecks.cs'   @('function-plot') 'L3' 'function plot viewport / ticks / config assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/MailChecks.cs'           @('mail') 'L3' 'mail collector presets / html / dpapi / config assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/LauncherChecks.cs'       @('launcher') 'L3' 'launcher import / invalid detection / icon path / config assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/MemeBoardChecks.cs'      @('meme-board') 'L3' 'meme board rules / target matcher / timing / config assertions')
 
     # ---------- tests: anything else in the self-check project is unknown wiring ----------
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/*.cs' @('ALL') 'L4' 'unmapped self-check source' -Fallback)
@@ -193,6 +194,7 @@ $mapping = @(
     (New-Rule 'src/YuLiangToolkit.Tools.ScreenSticker/*'       @('screen-sticker') 'L2' 'screen sticker tool')
     (New-Rule 'src/YuLiangToolkit.Tools.Mail/*'               @('mail') 'L2' 'mail collector tool')
     (New-Rule 'src/YuLiangToolkit.Tools.Launcher/*'           @('launcher') 'L2' 'software launcher tool')
+    (New-Rule 'src/YuLiangToolkit.Tools.MemeBoard/*'          @('meme-board') 'L2' 'meme favorite board / QQ paste tool')
     (New-Rule 'src/YuLiangToolkit.Tools.Sample/*'          @() 'L1' 'framework template, no dedicated group: build + manual smoke')
     (New-Rule 'src/*'                                      @('ALL') 'L4' 'unmapped src project' -Fallback)
 

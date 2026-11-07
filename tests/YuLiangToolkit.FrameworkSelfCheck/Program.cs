@@ -60,6 +60,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("function-plot", "函数绘图：视口换算 / 缩放平移 / 好看刻度 / 自动 Y 范围 / 配置 / 采样集成"),
     ("mail", "邮箱代收：IMAP 预设 / 地址与 HTML 处理 / DPAPI 授权码加密 / 配置往返（纯逻辑，不联网）"),
     ("launcher", "软件启动器：导入校验 / 默认显示名 / 失效判定 / 清空无效项 / 配置往返（纯逻辑）"),
+    ("meme-board", "表情包收藏夹：会话名归一 / 目标窗口解析 / 随机延迟夹取 / 图片扩展名 / 配置往返（纯逻辑，不碰 QQ）"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1243,6 +1244,11 @@ RunGroupModule("mail", "邮箱代收", MailChecks.Run);
 // 路径规范化与导入去重 / 自定义图标缓存路径安全 / 失效判定（文件丢失·快捷方式损坏·目标已卸载）/
 // 「清空无效项」挑选项 / 配置 JSON 往返。假 probe 注入，**不启动 Shell、不启动任何程序**。
 RunGroupModule("launcher", "软件启动器", LauncherChecks.Run);
+
+// 「表情包收藏夹」：ActionMode 解析（未知值安全回退到只复制）/ 会话名归一与精确匹配（emoji 装饰 / 空白 / 大小写）/
+// 目标 QQ 窗口解析（多窗口优先非最小化、空目标不猜）/ 随机发送延迟的夹取与边界 / 图片扩展名 / 剪贴板导入文件名 /
+// 配置默认值与 JSON 往返。纯逻辑，**不启动 QQ、不碰剪贴板、不发送任何消息**；真实粘贴与自动发送由界面人工冒烟。
+RunGroupModule("meme-board", "表情包收藏夹", MemeBoardChecks.Run);
 
 EnterGroup("shell");
 
