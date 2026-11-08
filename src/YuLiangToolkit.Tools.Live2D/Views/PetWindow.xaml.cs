@@ -2,12 +2,14 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using YuLiangToolkit.Tools.Live2D.Model;
+using YuLiangToolkit.Tools.Live2D.Play;
 using YuLiangToolkit.Tools.Live2D.Rendering;
 
 namespace YuLiangToolkit.Tools.Live2D.Views;
@@ -218,6 +220,37 @@ public partial class PetWindow : Window
         }
         PetLeanTransform.Angle = Math.Clamp(leanDegrees, -30, 30);
         _renderedFrames++;
+    }
+
+    /// <summary>
+    /// 画布像素 → 屏幕 DIP（投喂 / 互动用：知道模型嘴巴在屏幕上的位置）。
+    /// <para>换算和渲染一致：FitCanvas 等比 + 居中，输出位图 = 窗口 DIP × 渲染倍率，
+    /// 两边约掉后就是 <c>local = canvas × fit + offset</c>；再叠加窗口 Left/Top。</para>
+    /// 拿不到模型 / 窗口尺寸时返回 false。
+    /// </summary>
+    public bool TryCanvasToScreen(float canvasX, float canvasY, out Point screenPoint)
+    {
+        screenPoint = default;
+        var model = _session.Runtime?.Model;
+        if (model is null) return false;
+        var width = ActualWidth;
+        var height = ActualHeight;
+        if (width < 2 || height < 2) return false;
+        var canvasWidth = Math.Max(model.CanvasWidthPixels, 1f);
+        var canvasHeight = Math.Max(model.CanvasHeightPixels, 1f);
+        var fit = Math.Min(width / canvasWidth, height / canvasHeight);
+        if (fit <= 0 || double.IsNaN(fit) || double.IsInfinity(fit)) return false;
+        var offsetX = (width - canvasWidth * fit) * 0.5;
+        var offsetY = (height - canvasHeight * fit) * 0.5;
+        screenPoint = new Point(Left + (canvasX * fit) + offsetX, Top + (canvasY * fit) + offsetY);
+        return true;
+    }
+
+    /// <summary>桌宠窗口的屏幕矩形（DIP；不可见 / 尺寸异常时返回 null）。</summary>
+    public Rect? GetScreenRect()
+    {
+        if (!IsVisible || ActualWidth < 2 || ActualHeight < 2) return null;
+        return new Rect(Left, Top, ActualWidth, ActualHeight);
     }
 
     /// <summary>渲染目标像素尺寸（窗口 DIP × 渲染倍率）。</summary>
@@ -835,6 +868,27 @@ public partial class PetWindow : Window
         MenuItemMusic.IsChecked = cfg.MusicReactiveEnabled;
         MenuItemAiChat.IsChecked = _session.IsAiChatWindowVisible;
         MenuItemAiProactive.IsChecked = cfg.AiProactiveEnabled;
+
+        // 养成：菜单里显示实时饱食度 / 金币 / 今日任务，饭团价格从目录取（避免文案漂移）
+        try
+        {
+            var care = _session.Care;
+            MenuItemCareInfo.Header =
+                $"🍙 饱食 {care.Fullness:0}%（{care.TierText}）· 🪙 {care.Coins} · 今日任务 {care.CompletedTaskCount}/3";
+            MenuItemFeedTriangle.Header = $"{RiceBallCatalog.Get(RiceBallKind.Triangle).Name}（{RiceBallCatalog.Get(RiceBallKind.Triangle).Price} 金币）";
+            MenuItemFeedSphere.Header = $"{RiceBallCatalog.Get(RiceBallKind.Sphere).Name}（{RiceBallCatalog.Get(RiceBallKind.Sphere).Price} 金币）";
+            MenuItemFeedTaiko.Header = $"{RiceBallCatalog.Get(RiceBallKind.Taiko).Name}（{RiceBallCatalog.Get(RiceBallKind.Taiko).Price} 金币）";
+            MenuItemFeedBale.Header = $"{RiceBallCatalog.Get(RiceBallKind.Bale).Name}（{RiceBallCatalog.Get(RiceBallKind.Bale).Price} 金币）";
+        }
+        catch { /* 养成服务没准备好：保留占位文案 */ }
+    }
+
+    /// <summary>右键菜单：投喂某种饭团（Tag 是 RiceBallKind；金币不够 / 库存不足由会话提示）。</summary>
+    private void OnMenuFeedClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem item || item.Tag is not string tag) return;
+        if (!Enum.TryParse<RiceBallKind>(tag, out var kind)) return;
+        _session.SpawnRiceBall(kind);
     }
 
     /// <summary>右键菜单：开 / 关 AI 聊天窗（贴桌宠下方 / 旁边）。</summary>

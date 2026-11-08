@@ -10,6 +10,7 @@ using YuLiangToolkit.Tools.Live2D.Audio;
 using YuLiangToolkit.Tools.Live2D.Interop;
 using YuLiangToolkit.Tools.Live2D.Mocap;
 using YuLiangToolkit.Tools.Live2D.Model;
+using YuLiangToolkit.Tools.Live2D.Play;
 using YuLiangToolkit.Tools.Live2D.Rendering;
 using YuLiangToolkit.Tools.Live2D.ViewModels;
 
@@ -90,6 +91,9 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
         // （密码框的 Loaded 可能比这里早，那时会话还没拿到 ViewModel，解密只能读到空串）
         viewModel.ReloadAiApiKey();
         SyncAiApiKeyBox();
+
+        // 养成卡：会话已 Activate，养成服务此时才真正可用（订阅状态事件 + 刷一次数值）
+        viewModel.ReloadCare();
 
         if (_window is not null) _window.StateChanged -= OnWindowStateChanged;
         _window = Window.GetWindow(this);
@@ -207,6 +211,27 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
 
         if (string.Equals(box.Password, viewModel.AiApiKey, StringComparison.Ordinal)) return;
         viewModel.AiApiKey = box.Password;
+    }
+
+    // ===================== 🍙 养成卡：饭团行的「买一个」「扔出去」 =====================
+    //
+    // 行里的按钮是 ItemsControl.ItemTemplate 生成的，直接用 RelativeSource 找 ViewModel 的命令
+    // 比较绕，所以用 Click + Tag={Binding Kind}（Tag = RiceBallKind 枚举）在代码后置里转成命令。
+
+    /// <summary>「买一个」：按 Tag 上的饭团种类调 ViewModel 的买饭团命令。</summary>
+    private void OnCareBuyClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: RiceBallKind kind }) return;
+        var viewModel = _viewModel ?? DataContext as Live2DViewModel;
+        viewModel?.BuyRiceBallCommand.Execute(kind);
+    }
+
+    /// <summary>「扔出去」：按 Tag 上的饭团种类调 ViewModel 的扔饭团命令。</summary>
+    private void OnCareSpawnClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { Tag: RiceBallKind kind }) return;
+        var viewModel = _viewModel ?? DataContext as Live2DViewModel;
+        viewModel?.SpawnRiceBallCommand.Execute(kind);
     }
 
     /// <summary>

@@ -1304,6 +1304,7 @@ internal static class Live2DChecks
         });
 
         Live2DAiChecks.Run(C, checkSimple);
+        Live2DCareChecks.Run(C, checkSimple);
     }
 
     // ====================================================================

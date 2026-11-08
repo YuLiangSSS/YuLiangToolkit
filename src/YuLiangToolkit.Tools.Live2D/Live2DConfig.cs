@@ -381,4 +381,42 @@ public sealed class Live2DConfig : ToolConfig
 
     /// <summary>是否让模型给出的好感度变化（-3 ~ +3）参与自然模式涨跌。</summary>
     public bool AiAffectionModelDelta { get; set; } = true;
+
+    /// <summary>锁定好感度：聊天 / 掉值 / 吃饭都不再改变它，只有手动拖动能改（方便保持某个状态）。</summary>
+    public bool AiAffectionLocked { get; set; }
+
+    // ==================== 养成：饱食度 · 金币 · 每日任务 · 投喂 ====================
+    //
+    // 数值状态（饱食度 / 金币 / 饭团库存 / 今日任务进度）存在 Data\live2d\care-state.json（用户数据，不进配置导出）；
+    // 这里只存开关和规则。饱食度 / 金币都支持「自然模式 / 手动 / 锁定」三态。
+
+    /// <summary>养成系统总开关（关掉 = 不会饿、不显示投喂 / 金币 / 每日任务入口）。</summary>
+    public bool PetCareEnabled { get; set; } = true;
+
+    /// <summary>饱食度自然模式：随时间按 <see cref="PetFullnessDecayPerHour"/> 下降（关掉 = 只有手动 / 吃饭改）。</summary>
+    public bool PetFullnessNatural { get; set; } = true;
+
+    /// <summary>锁定饱食度：时间 / 吃饭都不改，只有手动拖动能改。</summary>
+    public bool PetFullnessLocked { get; set; }
+
+    /// <summary>每小时掉多少饱食度（0 ~ 20，默认 4 = 约 25 小时从满到饿）。</summary>
+    public double PetFullnessDecayPerHour { get; set; } = 4.0;
+
+    /// <summary>金币自然模式：每日任务完成自动发币（关掉 = 只统计进度，金币只能手动改）。</summary>
+    public bool PetCoinsNatural { get; set; } = true;
+
+    /// <summary>锁定金币：任务奖励 / 消费都不改，只有手动拖动能改。</summary>
+    public bool PetCoinsLocked { get; set; }
+
+    /// <summary>每日任务是否自动统计 / 发奖（摸摸头 / 聊天 / 投喂）。</summary>
+    public bool PetDailyTasksEnabled { get; set; } = true;
+
+    /// <summary>很饿的时候是否主动说「好饿啊～…」。</summary>
+    public bool PetHungryReminderEnabled { get; set; } = true;
+
+    /// <summary>饱食度低于多少算「很饿」并主动说话（0 ~ 100，默认 25）。</summary>
+    public double PetHungryThreshold { get; set; } = 25;
+
+    /// <summary>饿的时候每隔多少分钟主动说一句（1 ~ 240，默认 8）。</summary>
+    public double PetHungryReminderMinutes { get; set; } = 8;
 }

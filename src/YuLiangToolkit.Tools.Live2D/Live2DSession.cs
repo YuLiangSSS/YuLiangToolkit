@@ -6,6 +6,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using YuLiangToolkit.Tools.Live2D.Ai;
 using YuLiangToolkit.Tools.Live2D.Audio;
+using YuLiangToolkit.Tools.Live2D.Play;
 using YuLiangToolkit.Tools.Live2D.Interop;
 using YuLiangToolkit.Tools.Live2D.Mocap;
 using YuLiangToolkit.Tools.Live2D.Model;
@@ -141,6 +142,16 @@ public sealed class Live2DSession
     private TimeSpan _aiExpressionClearAt = TimeSpan.MinValue;
     private readonly Random _aiMoodRandom = new();
     private string? _lastAiError;
+
+    // ===== 养成：饱食度 / 金币 / 每日任务 / 投喂（饭团物理层 + 吃饭动作） =====
+    private PetCareService? _care;
+    private PetFoodWindow? _foodWindow;
+    private TimeSpan _nextHungryReminderAt = TimeSpan.MinValue;
+    private bool _hungryReminderScheduled;
+    private string? _lastCareNotice;
+    private TimeSpan _lastFeedTraceAt = TimeSpan.MinValue;
+    private bool _feedShotApplied;
+    private long _lastInteractionEventCount;
 
     private Live2DSession()
     {
@@ -329,7 +340,7 @@ public sealed class Live2DSession
         {
             if (_aiChatWindow is null)
             {
-                var window = new AiChatWindow(chat, vm.Cfg,
+                var window = new AiChatWindow(chat, vm.Cfg, EnsureCare(), SpawnRiceBall,
                     onConfigChanged: OnAiChatWindowConfigChanged,
                     openSettings: OpenToolPageFromPet);
                 window.Closed += OnAiChatWindowClosed;
@@ -469,6 +480,576 @@ public sealed class Live2DSession
         }
     }
 
+    // ===================== 养成：饱食度 · 金币 · 每日任务 · 投喂 =====================
+
+    /// <summary>养成服务（饱食度 / 金币 / 饭团库存 / 每日任务；第一次访问懒创建）。</summary>
+    public PetCareService Care => EnsureCare();
+
+    /// <summary>投喂层现在有没有饭团。</summary>
+    public bool IsFoodLayerVisible => _foodWindow?.HasBalls == true;
+
+    /// <summary>
+    /// 把配置里的养成设置推给服务（自然模式 / 锁定 / 掉值速度 / 任务开关 / 饥饿提醒）。
+    /// 设置卡改滑杆 / 勾选框后调它。
+    /// </summary>
+    public void ApplyCareSettings()
+    {
+        if (_shutdown) return;
+        try
+        {
+            EnsureCare().ApplySettings();
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("应用养成设置失败：" + ex.Message);
+        }
+        try { _aiChatWindow?.RefreshCareHud(); } catch { /* 聊天窗没开：忽略 */ }
+        UpdateAiTickTimer();
+    }
+
+    /// <summary>花金币买一个饭团（只买不扔；库存 +1）。金币不足 / 锁定 / 总开关关闭返回 false。</summary>
+    public bool BuyRiceBall(RiceBallKind kind)
+    {
+        if (_shutdown) return false;
+        var vm = EnsureViewModel();
+        if (!vm.Cfg.PetCareEnabled)
+        {
+            ShowCareToast("养成系统已关闭（到「饥饿 · 金币 · 每日任务」卡里打开）", CareNoticeKind.Warning);
+            return false;
+        }
+
+        var care = EnsureCare();
+        if (!care.TryBuy(kind, out var error))
+        {
+            ShowCareToast(error, CareNoticeKind.Warning);
+            return false;
+        }
+
+        _viewModel?.Log($"买了一个{RiceBallCatalog.Get(kind).Name}（剩 {care.Coins} 金币，库存 {care.GetInventory(kind)}）");
+        RaiseAiChatStateChanged();
+        return true;
+    }
+
+    /// <summary>
+    /// 弄一个饭团丢到屏幕上（有库存就用库存，没有就自动买一个）。
+    /// 桌宠没显示会自动显示；调用后由投喂层负责物理 / 拖拽 / 进嘴判定。
+    /// </summary>
+    public bool SpawnRiceBall(RiceBallKind kind)
+    {
+        if (_shutdown) return false;
+        var vm = EnsureViewModel();
+        if (!vm.Cfg.PetCareEnabled)
+        {
+            ShowCareToast("养成系统已关闭（到「饥饿 · 金币 · 每日任务」卡里打开）", CareNoticeKind.Warning);
+            return false;
+        }
+
+        EnsureInitialized();
+        HookWindowClose();
+        var care = EnsureCare();
+
+        // 先出库；没库存就买一个再出库
+        string error;
+        if (care.GetInventory(kind) > 0)
+        {
+            if (!care.TryConsumeInventory(kind, out error))
+            {
+                ShowCareToast(error, CareNoticeKind.Warning);
+                return false;
+            }
+        }
+        else
+        {
+            if (!care.TryBuy(kind, out error))
+            {
+                ShowCareToast(error, CareNoticeKind.Warning);
+                return false;
+            }
+            if (!care.TryConsumeInventory(kind, out error))
+            {
+                ShowCareToast(error, CareNoticeKind.Warning);
+                return false;
+            }
+        }
+
+        try
+        {
+            if (!IsPetVisible) ShowPet();
+            var window = EnsureFoodWindow();
+            window.SpawnRiceBall(kind, ComputeFoodSpawnPoint());
+            vm.Log($"丢出一个{RiceBallCatalog.Get(kind).Name}：拖住它甩给大肥鱼，掉进嘴里才算吃掉");
+            RaiseAiChatStateChanged();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("丢饭团失败：" + ex.Message);
+            ShowCareToast("丢饭团失败：" + ex.Message, CareNoticeKind.Warning);
+            return false;
+        }
+    }
+
+    /// <summary>清掉投喂层上的所有饭团（隐藏桌宠 / 退出时用）。</summary>
+    public void ClearFoodLayer()
+    {
+        try { _foodWindow?.DisposeBalls(); } catch { /* 忽略 */ }
+        try { _runtime?.ClearFeedFocus(); } catch { /* 忽略 */ }
+    }
+
+    // ---------- 养成：内部实现 ----------
+
+    /// <summary>懒创建养成服务（配置回调现读）。</summary>
+    private PetCareService EnsureCare()
+    {
+        if (_care is not null) return _care;
+
+        var vm = EnsureViewModel();
+        var service = new PetCareService(new PetCareServiceOptions
+        {
+            Storage = vm.Storage,
+            Settings = BuildCareSettings,
+            Log = message => _viewModel?.Log(message),
+            Notice = OnCareNotice,
+        });
+        service.StateChanged += OnCareStateChanged;
+        _care = service;
+        try { service.ApplySettings(); }
+        catch (Exception ex) { _viewModel?.Log("养成服务初始化失败：" + ex.Message); }
+        UpdateAiTickTimer();
+        return service;
+    }
+
+    /// <summary>当前配置 → 养成设置（数值夹到合理区间）。</summary>
+    private PetCareSettings BuildCareSettings()
+    {
+        var cfg = _viewModel?.Cfg;
+        return new PetCareSettings
+        {
+            Enabled = cfg?.PetCareEnabled ?? true,
+            FullnessNatural = cfg?.PetFullnessNatural ?? true,
+            FullnessLocked = cfg?.PetFullnessLocked ?? false,
+            FullnessDecayPerHour = Math.Clamp(cfg?.PetFullnessDecayPerHour ?? 4, 0, 20),
+            FullnessInitial = 70,
+            CoinsNatural = cfg?.PetCoinsNatural ?? true,
+            CoinsLocked = cfg?.PetCoinsLocked ?? false,
+            CoinsInitial = 30,
+            DailyTasksEnabled = cfg?.PetDailyTasksEnabled ?? true,
+            HungryReminderEnabled = cfg?.PetHungryReminderEnabled ?? true,
+            HungryThreshold = Math.Clamp(cfg?.PetHungryThreshold ?? 25, 0, 100),
+            HungryReminderMinutes = Math.Clamp(cfg?.PetHungryReminderMinutes ?? 8, 1, 240),
+        };
+    }
+
+    private void OnCareStateChanged(object? sender, EventArgs e)
+    {
+        // 金币 / 饱食度变化时聊天窗的养成 HUD 也要刷新：统一转发一次 AI 状态变化
+        RaiseAiChatStateChanged();
+    }
+
+    /// <summary>养成提示（任务完成 / 金币不足）：写日志 + 聊天窗灰色系统提示。</summary>
+    private void OnCareNotice(CareNoticeEventArgs e)
+    {
+        if (e is null || string.IsNullOrWhiteSpace(e.Text)) return;
+        if (string.Equals(e.Text, _lastCareNotice, StringComparison.Ordinal)) return;
+        _lastCareNotice = e.Text;
+        _viewModel?.Log("养成：" + e.Text);
+        try
+        {
+            if (e.Kind is CareNoticeKind.Reward or CareNoticeKind.Warning)
+                EnsureAiChat().AppendNotice(e.Text);
+        }
+        catch { /* 聊天服务没准备好：只记日志 */ }
+        RaiseAiChatStateChanged();
+    }
+
+    /// <summary>没有聊天气泡时也要能看到提示：桌面右下角没有 toast 系统，这里用状态栏 + 日志即可（保留占位）。</summary>
+    private void ShowCareToast(string message, CareNoticeKind kind)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return;
+        _viewModel?.Log("养成：" + message);
+        _viewModel?.SetStatus(message);
+    }
+
+    /// <summary>投喂层窗口（第一次丢饭团时创建；坐标 / 嘴部点都是屏幕 DIP）。</summary>
+    private PetFoodWindow EnsureFoodWindow()
+    {
+        if (_foodWindow is not null) return _foodWindow;
+
+        var window = new PetFoodWindow(new PetFoodWindowOptions
+        {
+            GetMouthScreenPoint = GetPetMouthScreenPoint,
+            GetPetScreenRect = () => _pet?.GetScreenRect(),
+            OnEaten = OnRiceBallEaten,
+            OnFeedingFocus = OnFeedingFocus,
+            Log = message =>
+            {
+                _viewModel?.Log("投喂层：" + message);
+                if (Environment.GetEnvironmentVariable("YLT_LIVE2D_FEED_TRACE") is "1" or "on" or "true")
+                    WriteFeedTrace("投喂层：" + message);
+            },
+        });
+        window.Closed += (_, _) => _foodWindow = null;
+        _foodWindow = window;
+        return window;
+    }
+
+    /// <summary>嘴部中心的屏幕坐标（桌宠不可见 / 模型没加载 / 拿不到脸 = null）。</summary>
+    private Point? GetPetMouthScreenPoint()
+    {
+        var pet = _pet;
+        var runtime = _runtime;
+        if (pet is not { IsVisible: true } || runtime is not { IsLoaded: true })
+        {
+            TraceFeed($"嘴部不可用：pet={pet is { IsVisible: true }}，runtimeLoaded={runtime is { IsLoaded: true }}");
+            return null;
+        }
+        if (!runtime.TryGetMouthCanvasCenter(out var canvasX, out var canvasY))
+        {
+            TraceFeed("嘴部不可用：TryGetMouthCanvasCenter=false（脸部件包围盒没拿到？）");
+            return null;
+        }
+        if (!pet.TryCanvasToScreen(canvasX, canvasY, out var point))
+        {
+            TraceFeed("嘴部不可用：PetWindow.TryCanvasToScreen=false（模型/窗口尺寸没准备好）");
+            return null;
+        }
+
+        // 调试钩子：YLT_LIVE2D_FEED_TRACE=1 时每秒打一行嘴部坐标（投喂定位排错用）
+        if (Environment.GetEnvironmentVariable("YLT_LIVE2D_FEED_TRACE") is "1" or "on" or "true")
+        {
+            var now = _clock.Elapsed;
+            if (_lastFeedTraceAt == TimeSpan.MinValue || now - _lastFeedTraceAt > TimeSpan.FromSeconds(1))
+            {
+                _lastFeedTraceAt = now;
+                var petRect = pet.GetScreenRect();
+                var traceLine =
+                    $"投喂定位：嘴部画布 ({canvasX:0},{canvasY:0}) → 屏幕 ({point.X:0},{point.Y:0})；" +
+                    $"桌宠窗口 {petRect?.Left:0},{petRect?.Top:0} {petRect?.Width:0}×{petRect?.Height:0}" +
+                    $"；嘴半径（画布）{runtime.MouthCanvasRadius:0}";
+                _viewModel?.Log(traceLine);
+                WriteFeedTrace(traceLine);
+            }
+        }
+
+        return point;
+    }
+
+    /// <summary>调试钩子：把一行投喂定位信息写进 Data\live2d\feed-trace.log（只在 YLT_LIVE2D_FEED_TRACE 打开时写）。</summary>
+    private void TraceFeed(string line)
+    {
+        if (Environment.GetEnvironmentVariable("YLT_LIVE2D_FEED_TRACE") is not ("1" or "on" or "true")) return;
+        var now = _clock.Elapsed;
+        if (_lastFeedTraceAt != TimeSpan.MinValue && now - _lastFeedTraceAt <= TimeSpan.FromSeconds(1)) return;
+        _lastFeedTraceAt = now;
+        WriteFeedTrace(line);
+    }
+
+    private void WriteFeedTrace(string line)
+    {
+        try
+        {
+            var path = _viewModel?.Storage.PathOf("feed-trace.log");
+            if (!string.IsNullOrEmpty(path)) File.AppendAllText(path, line + Environment.NewLine);
+        }
+        catch { /* 调试钩子失败不影响投喂 */ }
+    }
+
+    /// <summary>饭团默认出现位置：桌宠左侧、贴地放（静止好抓；拖动甩出去后才有重力弹跳）。</summary>
+    private Point ComputeFoodSpawnPoint()
+    {
+        var area = SystemParameters.WorkArea;
+        var pet = _pet;
+        double x;
+        if (pet is { IsVisible: true } && pet.ActualWidth > 2)
+        {
+            x = pet.Left - 150;
+        }
+        else
+        {
+            x = area.Left + (area.Width * 0.5);
+        }
+
+        x = Math.Clamp(x, area.Left + 60, area.Right - 60);
+        var y = Math.Clamp(area.Bottom - 40, area.Top + 60, area.Bottom - 10);
+        return new Point(x, y);
+    }
+
+    /// <summary>投喂层每帧推来的「饭团靠近」状态：转给模型做凑近 / 张嘴。</summary>
+    private void OnFeedingFocus(float normalizedX, float normalizedY, float strength, float mouthOpen)
+    {
+        var runtime = _runtime;
+        if (runtime is null || !runtime.IsLoaded) return;
+        if (strength <= 0.01f && mouthOpen <= 0.01f)
+        {
+            runtime.ClearFeedFocus();
+        }
+        else
+        {
+            runtime.SetFeedFocus(normalizedX, normalizedY, strength, mouthOpen);
+        }
+    }
+
+    /// <summary>饭团真的掉进嘴里了：饱食度 / 好感度 / 每日任务 + 嚼嚼嚼 → 吞咽 → 说一句。</summary>
+    private void OnRiceBallEaten(RiceBallKind kind, Point screenPoint)
+    {
+        try
+        {
+            var care = EnsureCare();
+            var result = care.ApplyEat(kind, DateTimeOffset.Now);
+            _viewModel?.Log(
+                $"大肥鱼吃掉了{RiceBallCatalog.Get(kind).Name}：饱食度 {result.FullnessAfter:0}（{FeedingLines.TierText(result.Tier)}），" +
+                $"好感度 +{result.AffectionGain:0.#}" +
+                (result.CoinsRewarded > 0 ? $"、任务奖励 +{result.CoinsRewarded} 金币" : ""));
+
+            if (result.AffectionGain > 0)
+            {
+                try { EnsureAiChat().AddAffection(result.AffectionGain); }
+                catch (Exception ex) { _viewModel?.Log("投喂加好感度失败：" + ex.Message); }
+            }
+
+            var runtime = _runtime;
+            if (runtime is { IsLoaded: true })
+            {
+                runtime.ClearFeedFocus();
+                runtime.StartEating(1.5, 0.65);
+            }
+
+            // 好感度 / 饱食度变化完记得让界面刷新（Care 自己也会发 StateChanged）
+            RaiseAiChatStateChanged();
+            _ = AnnounceAfterEatingAsync(result);
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("处理投喂失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>等嚼完 + 咽下去，再按「吃饱 / 没吃饱 / 很饿」说一句（语音 + 气泡 + 聊天记录 + 表情）。</summary>
+    private async Task AnnounceAfterEatingAsync(FeedResult result)
+    {
+        try
+        {
+            await Task.Delay(2200);   // 1.5s 咀嚼 + 0.65s 吞咽，稍微多等一点
+            var address = BuildAiPersonaSettings().ResolvedAddress;
+            var line = FeedingLines.PickAfterEat(result.Tier, address);
+            var puff = result.Tier switch
+            {
+                FullnessTier.Full => 0f,
+                FullnessTier.Normal => 0.15f,
+                FullnessTier.Hungry => 0.3f,
+                _ => 0.4f,
+            };
+            ApplyCareExpression(FeedingLines.GetExpressionKeyword(result.Tier, afterEat: true), 7, puff);
+            try { EnsureAiChat().AppendLocalPetMessage(line); } catch { /* 聊天服务没准备好就只说话 */ }
+            SpeakText(line);
+            _viewModel?.Log("投喂台词：" + line);
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("投喂台词播放失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>饿的时候主动说话（由 2 秒调度检查；带难受表情 + 鼓嘴）。</summary>
+    private void UpdateHungryReminder()
+    {
+        var vm = _viewModel;
+        var care = _care;
+        if (vm is null || care is null) return;
+        var cfg = vm.Cfg;
+        if (!cfg.PetCareEnabled || !cfg.PetHungryReminderEnabled) return;
+        if (!IsPageOrPetVisible || IsSpeaking) return;
+
+        var threshold = Math.Clamp(cfg.PetHungryThreshold, 0, 100);
+        if (care.Fullness > threshold)
+        {
+            _hungryReminderScheduled = false;
+            return;
+        }
+
+        var interval = TimeSpan.FromMinutes(Math.Clamp(cfg.PetHungryReminderMinutes, 1, 240));
+        if (!_hungryReminderScheduled)
+        {
+            // 第一次只排期：避免刚启动 / 刚变饿就连环喊
+            _hungryReminderScheduled = true;
+            _nextHungryReminderAt = _clock.Elapsed + interval;
+            return;
+        }
+        if (_clock.Elapsed < _nextHungryReminderAt) return;
+        _nextHungryReminderAt = _clock.Elapsed + interval;
+
+        var address = BuildAiPersonaSettings().ResolvedAddress;
+        var line = FeedingLines.PickHungryReminder(address);
+        var tier = care.Tier;
+        ApplyCareExpression(tier == FullnessTier.Starving ? "流冷汗" : "", 5, 0.35f);
+        try { EnsureAiChat().AppendLocalPetMessage(line); } catch { /* 忽略 */ }
+        SpeakText(line);
+        vm.Log($"饿了主动说话（饱食 {care.Fullness:0} / {care.TierText}）：{line}");
+        RaiseAiChatStateChanged();
+    }
+
+    /// <summary>按表情文件名关键词换表情（找不到就跳过），并设置临时收回时间 + 鼓嘴。</summary>
+    private void ApplyCareExpression(string keyword, double seconds, float puff)
+    {
+        var runtime = _runtime;
+        if (runtime is null || !runtime.IsLoaded) return;
+
+        try { runtime.MoodPuffAmount = Math.Clamp(puff, 0, 1); } catch { /* 忽略 */ }
+        if (string.IsNullOrWhiteSpace(keyword)) return;
+
+        var expression = runtime.Expressions.FirstOrDefault(entry =>
+            entry.Name.Contains(keyword, StringComparison.Ordinal));
+        if (expression is null) return;
+        ApplyExpression(expression, 0.35);
+        _aiExpressionClearAt = _clock.Elapsed + TimeSpan.FromSeconds(Math.Clamp(seconds, 1, 30));
+    }
+
+    /// <summary>程序退出：停投喂层、落盘养成状态。</summary>
+    private void DisposeCareBlocking()
+    {
+        ClearFoodLayer();
+        try
+        {
+            if (_foodWindow is not null)
+            {
+                _foodWindow.ClearAll();
+                _foodWindow.Close();
+            }
+        }
+        catch { /* 退出流程忽略 */ }
+        _foodWindow = null;
+
+        try
+        {
+            if (_care is not null)
+            {
+                _care.StateChanged -= OnCareStateChanged;
+                _care.Dispose();
+            }
+        }
+        catch { /* 退出流程忽略 */ }
+        _care = null;
+    }
+
+    // ---------- 截图冒烟：YLT_LIVE2D_SHOT_FEED=<png>（桌宠 + 聊天窗 + 投喂层拼成一张图） ----------
+
+    private void TryBeginFeedShot()
+    {
+        if (_feedShotApplied) return;
+        var path = Environment.GetEnvironmentVariable("YLT_LIVE2D_SHOT_FEED")?.Trim();
+        if (string.IsNullOrEmpty(path)) return;
+        if (_viewModel is null) return;
+        _feedShotApplied = true;
+        _ = RunFeedShotAsync(path);
+    }
+
+    private async Task RunFeedShotAsync(string path)
+    {
+        var viewModel = _viewModel;
+        if (viewModel is null) return;
+        try
+        {
+            ShowPet();
+            var wait = Stopwatch.StartNew();
+            while (wait.ElapsedMilliseconds < 20_000 && !IsLoaded) await Task.Delay(100);
+            await Task.Delay(600);
+            if (!IsLoaded) { viewModel.Log("投喂截图：模型没加载出来"); return; }
+
+            // 截图用的人造数值（只影响这次临时数据目录）
+            var care = EnsureCare();
+            care.SetFullness(62);
+            care.SetCoins(46);
+
+            ShowAiChatWindow();
+            if (_aiChatWindow is null) { viewModel.Log("投喂截图：聊天窗没打开"); return; }
+            var pet = _pet;
+            if (pet is null) { viewModel.Log("投喂截图：桌宠没打开"); return; }
+            await Task.Delay(600);
+            UpdateAiChatWindowPosition();
+
+            // 摆两个饭团：一个贴地、一个停在空中（都放在聊天窗左边，截图不挡聊天内容）
+            var area = SystemParameters.WorkArea;
+            var food = EnsureFoodWindow();
+            var chatRight = _aiChatWindow.Left;
+            var ballX = Math.Clamp(chatRight - 90, area.Left + 60, area.Right - 60);
+            var floorPoint = new Point(ballX, area.Bottom - 50);
+            food.SpawnRiceBall(RiceBallKind.Triangle, floorPoint);
+            var airPoint = new Point(
+                Math.Clamp(ballX - 80, area.Left + 60, area.Right - 60),
+                Math.Clamp(area.Bottom - 50, area.Top + 60, area.Bottom - 10));
+            food.SpawnRiceBall(RiceBallKind.Sphere, airPoint);
+
+            // 让桌宠朝贴地的那个饭团凑过去张嘴（截图更生动）
+            if (pet.GetScreenRect() is { } petRect && _runtime is { IsLoaded: true })
+            {
+                var nx = (floorPoint.X - (petRect.Left + (petRect.Width * 0.5))) / (petRect.Width * 0.5);
+                var ny = (floorPoint.Y - (petRect.Top + (petRect.Height * 0.5))) / (petRect.Height * 0.5);
+                _runtime.SetFeedFocus((float)Math.Clamp(nx, -1, 1), (float)Math.Clamp(ny, -1, 1), 0.9f, 0.55f);
+            }
+
+            await Task.Delay(700);
+            UpdateAiChatWindowPosition();
+
+            var chatRoot = _aiChatWindow.Content as FrameworkElement;
+            var foodRoot = food.Content as FrameworkElement;
+            if (chatRoot is null || chatRoot.ActualWidth < 2 || chatRoot.ActualHeight < 2)
+            {
+                viewModel.Log("投喂截图：聊天窗还没布局完");
+                return;
+            }
+
+            var petBitmap = pet.RenderWindowBitmap();
+            var petScreen = pet.GetScreenRect() ?? new Rect(pet.Left, pet.Top, pet.ActualWidth, pet.ActualHeight);
+            var chatRect = new Rect(_aiChatWindow.Left, _aiChatWindow.Top, chatRoot.ActualWidth, chatRoot.ActualHeight);
+            var union = Rect.Union(new Rect(petScreen.Left, petScreen.Top, petScreen.Width, petScreen.Height), chatRect);
+            // 两个饭团在聊天窗左边：把它们的区域也算进拼图，别裁掉
+            union = Rect.Union(union, new Rect(floorPoint.X - 70, floorPoint.Y - 70, 140, 140));
+            union = Rect.Union(union, new Rect(airPoint.X - 70, airPoint.Y - 70, 140, 140));
+            union.Inflate(24, 24);
+            union.Intersect(new Rect(area.Left, area.Top, area.Width, area.Height));
+            if (union.Width < 2 || union.Height < 2) { viewModel.Log("投喂截图：拼图区域太小"); return; }
+
+            var width = (int)Math.Ceiling(union.Width);
+            var height = (int)Math.Ceiling(union.Height);
+            var visual = new DrawingVisual();
+            using (var dc = visual.RenderOpen())
+            {
+                dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(0x1E, 0x1F, 0x24)), null, new Rect(0, 0, width, height));
+                // 桌宠
+                dc.DrawImage(petBitmap, new Rect(
+                    petScreen.Left - union.Left, petScreen.Top - union.Top, petScreen.Width, petScreen.Height));
+                // 聊天窗
+                dc.DrawRectangle(new VisualBrush(chatRoot), null, new Rect(
+                    chatRect.Left - union.Left, chatRect.Top - union.Top, chatRect.Width, chatRect.Height));
+                // 投喂层（透明底，只有饭团 / 米粒）
+                if (foodRoot is not null && foodRoot.ActualWidth > 2)
+                {
+                    dc.DrawRectangle(new VisualBrush(foodRoot), null, new Rect(
+                        food.Left - union.Left, food.Top - union.Top, foodRoot.ActualWidth, foodRoot.ActualHeight));
+                }
+            }
+
+            var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(visual);
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            await using (var stream = File.Create(path))
+            {
+                encoder.Save(stream);
+            }
+            viewModel.Log($"投喂截图已保存：{path}（{width}×{height}）");
+        }
+        catch (Exception ex)
+        {
+            viewModel.Log("投喂截图失败：" + ex.Message);
+        }
+        finally
+        {
+            await Task.Delay(200);
+            Application.Current?.Shutdown();
+        }
+    }
+
     // ===================== 页面生命周期 =====================
 
     /// <summary>取（或创建）工具页 ViewModel（整个进程只建一次，页面重开复用）。</summary>
@@ -498,6 +1079,10 @@ public sealed class Live2DSession
         // AI 聊天服务：页面一打开就建（设置卡 / 好感度数值要及时显示），设置按当前配置套用
         try { EnsureAiChat(); } catch { /* 聊天服务初始化失败不影响模型 */ }
         ApplyAiSettings();
+
+        // 养成服务：饱食度 / 金币 / 任务（页面或桌宠可见时由 2 秒调度结算）
+        try { EnsureCare(); } catch { /* 养成服务初始化失败不影响模型 */ }
+        ApplyCareSettings();
 
         EnsureModelLoaded();
         ApplyRuntimeSettings();
@@ -561,6 +1146,7 @@ public sealed class Live2DSession
         DisposeMusicBlocking();
         DisposeSpeechBlocking();
         DisposeAiBlocking();
+        DisposeCareBlocking();
         DisposeRuntime();
 
         try { _viewModel?.ConfigStore.SaveNow(); } catch { /* 退出流程忽略 */ }
@@ -937,6 +1523,7 @@ public sealed class Live2DSession
         TryBeginBubbleShot();
         TryBeginInteractionDemo();
         TryBeginAiChatShot();
+        TryBeginFeedShot();
         if (IsLoaded)
         {
             try { _runtime!.Tick(TimeSpan.FromMilliseconds(16)); } catch { /* 忽略 */ }
@@ -2574,6 +3161,7 @@ public sealed class Live2DSession
             DecayPerDay = Math.Clamp(cfg?.AiAffectionDecayPerDay ?? 3.0, 0, 20),
             DecayAfterHours = Math.Clamp(cfg?.AiAffectionDecayAfterHours ?? 24, 1, 240),
             UseModelDelta = cfg?.AiAffectionModelDelta ?? true,
+            Locked = cfg?.AiAffectionLocked ?? false,
         };
     }
 
@@ -2643,12 +3231,12 @@ public sealed class Live2DSession
         try { window.PlaceBelow(pet); } catch { /* 窗口正在切换：忽略 */ }
     }
 
-    /// <summary>按「页面 / 桌宠 / 聊天窗是否有人看着」启停 2 秒一次的 AI 调度（掉值结算 + 主动说话）。</summary>
+    /// <summary>按「页面 / 桌宠 / 聊天窗是否有人看着」启停 2 秒一次的调度（AI 掉值/主动说话 + 饱食度结算）。</summary>
     private void UpdateAiTickTimer()
     {
         if (_shutdown) return;
 
-        var need = _aiChat is not null && (IsPageOrPetVisible || IsAiChatWindowVisible);
+        var need = (_aiChat is not null || _care is not null) && (IsPageOrPetVisible || IsAiChatWindowVisible);
         if (!need)
         {
             _aiTickTimer?.Stop();
@@ -2665,6 +3253,43 @@ public sealed class Live2DSession
 
     private void OnAiTick(object? sender, EventArgs e)
     {
+        // 养成：摸头每日任务（用模型互动计数，关掉「互动语音」也能完成）
+        try
+        {
+            var runtime = _runtime;
+            if (runtime is { IsLoaded: true })
+            {
+                var count = runtime.InteractionEventCount;
+                var diff = count - _lastInteractionEventCount;
+                _lastInteractionEventCount = count;
+                if (diff > 0 && string.Equals(runtime.LastInteractionVoiceEvent, "pat_head", StringComparison.OrdinalIgnoreCase))
+                {
+                    // 一次调度里连续摸了好几下：按次数补记（最多 8 次，防异常值）
+                    for (var i = 0; i < Math.Min(diff, 8); i++)
+                        _care?.ReportDailyEvent(DailyTaskKind.PetHead, DateTimeOffset.Now);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("每日任务（摸头）记录失败：" + ex.Message);
+        }
+
+        // 养成：饱食度按时间掉值 / 跨天重置每日任务 / 饿了主动说话
+        try
+        {
+            _care?.Tick(DateTimeOffset.Now);
+            UpdateHungryReminder();
+        }
+        catch (Exception ex)
+        {
+            if (_lastAiError != ex.Message)
+            {
+                _lastAiError = ex.Message;
+                _viewModel?.Log("养成结算出错：" + ex.Message);
+            }
+        }
+
         var chat = _aiChat;
         if (chat is null) return;
         try
@@ -2700,6 +3325,13 @@ public sealed class Live2DSession
         var gestureId = effects ? PickAiGesture(reply.Action) : "";
 
         if (effects) ApplyAiMoodEffects(reply, e.Proactive is not null);
+
+        // 每日任务：聊一次（主动搭话不算「用户陪着聊」，只算用户发起的回复）
+        if (e.Proactive is null)
+        {
+            try { _care?.ReportDailyEvent(DailyTaskKind.Chat, DateTimeOffset.Now); }
+            catch (Exception ex) { _viewModel?.Log("每日任务（聊天）记录失败：" + ex.Message); }
+        }
 
         if (cfg?.AiSpeakReply == true)
         {
@@ -3122,6 +3754,7 @@ public sealed class Live2DSession
         if (viewModel is null || string.IsNullOrWhiteSpace(voiceEvent)) return;
 
         _lastInteractionVoiceEvent = voiceEvent;
+
         if (viewModel.Cfg.PetInteractionVoiceEnabled != true) return;
 
         // 1.5 秒节流：连续点 / 抚摸时别把语音播成复读机
@@ -3802,6 +4435,7 @@ public sealed class Live2DSession
         if (_viewModel is not null) _viewModel.Cfg.PetEnabled = false;
         // 聊天窗是「贴桌宠」的：桌宠隐藏时一起收起来，避免一个无主窗口飘在桌面上
         if (IsAiChatWindowVisible) HideAiChatWindow();
+        ClearFoodLayer();
         ClosePetInternal(raiseEvent: true);
         UpdateFrameLoop();
         ApplyMocapSettings();
@@ -3871,6 +4505,7 @@ public sealed class Live2DSession
         if (_viewModel is not null) _viewModel.Cfg.PetEnabled = false;
         SaveConfigNow();
         if (IsAiChatWindowVisible) HideAiChatWindow();
+        ClearFoodLayer();
         UpdateFrameLoop();
         ApplyMocapSettings();   // 桌宠关了、页面也没开 → 关闭摄像头
         ApplyMusicSettings();   // 音频回环同理

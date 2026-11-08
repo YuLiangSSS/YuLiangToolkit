@@ -1210,6 +1210,8 @@ InteractionController._raiseInteraction(voiceEvent, displayName)
 | `YLT_LIVE2D_INTERACTION_DEMO=<区域/事件>` | 模拟桌宠互动「按下 → 抚摸移动 / 点按 → 抬起」，写 `Data\live2d\interaction-demo.log`（区域名 / 画布坐标 / 是否命中 / LastInteractionName / VoiceEvent / 会话台词 / 是否在说话），并打印到工具页日志；只写状态文本，不保存音频 |
 | `YLT_LIVE2D_INTERACTION_SHOT=<png>` | 配合上一条：互动后出**桌宠离屏**截图（不抓桌面）再自动退出 |
 | `YLT_LIVE2D_SHOT_CHAT=<png>` | **AI 聊天窗**离屏截图：打开聊天窗 → 塞示例消息 → 渲染成 PNG 后退出（不碰真实聊天数据，可和桌宠截图拼在一起验收）；`Loaded` 后再等布局完成 |
+| `YLT_LIVE2D_SHOT_FEED=<png>` | **养成投喂**离屏拼图截图：显示桌宠 + 聊天窗 + 两个大白饭团，拼成一张 PNG 后退出（验收投喂层 / 养成 HUD / 饭团外观用，不碰桌面） |
+| `YLT_LIVE2D_FEED_TRACE=1` | 投喂定位排错：每秒把「嘴部画布坐标 → 屏幕坐标 / 桌宠窗口矩形 / 嘴半径」和投喂层异常写 `Data\live2d\feed-trace.log`（只写坐标数字，不抓画面） |
 | `YLT_LIVE2D_PETCARD_SCROLL=<bottom/数字>` | 打开页面后把「桌面宠物」卡内部滚到指定位置（截图设置项用） |
 | `YLT_SELFCHECK_TRACE=1` | 自检排错：打印「进入 / 完成哪个分组」（查「全 PASS 但进程不退出」卡在哪一步） |
 
@@ -1365,3 +1367,166 @@ InteractionController._raiseInteraction(voiceEvent, displayName)
 思考强度映射 / 人格目录 / 称呼解析 / 提示词 / 状态行 / 主动指令 / 回复解析 / 请求体与 401·429 文案 /
 网络重试 / DPAPI / 好感度引擎 / `AiChatService` 全链路（假 handler + 临时 `ToolStorage` + 现读配置回调）/
 聊天窗定位 / 试管液面 / 配置默认值与 JSON 往返；全部纯逻辑、不联网、不弹窗。
+
+## 20. 饥饿 · 金币 · 每日任务 · 投喂（`Play/`）
+
+> 本轮新增（v1.10.0）。用户文档见 [docs/tools/live2d.md §🍙 饥饿 · 金币 · 每日任务（投喂）](../tools/live2d.md#-饥饿--金币--每日任务投喂)。
+> 四个设计口径：**状态与规则分离**（开关 / 速度在 `Config` 的 `Pet*`，数值在 `Data\live2d\care-state.json`）、
+> **纯逻辑可无头自检**（物理 / 台词 / 状态机 / 服务全是纯 C#，不碰 WPF）、**投喂层独立透明窗口**
+> （不抢焦点、动态点击穿透、空闲隐藏）、**不新增任何 NuGet 包**（物理 / 台词 / 任务 / 落盘全部手写）。
+
+### 20.1 文件与职责
+
+| 文件 | 职责 |
+| --- | --- |
+| `Play/PetCareContracts.cs` | **契约 + 实现**：`RiceBallKind` / `RiceBallFood` / `RiceBallCatalog`（4 种）/ `DailyTaskKind` / `DailyTaskCatalog`（3 个）/ `FullnessTier` / `PetCareSettings` / `PetCareState` / `FeedResult` / `CareNoticeKind` / `CareNoticeEventArgs` / `PetCareServiceOptions` / `PetCareService`（`Tick` / `ApplyEat` / `TryBuy` / `TryConsumeInventory` / `ReportDailyEvent` / `SetFullness` / `SetCoins` / `SetInventory` / `ApplySettings` / `SaveState` / `Dispose` / `StateChanged` / `NoticeRaised` / 落盘 + 归一化） |
+| `Play/RiceBallPhysics.cs` | `RiceBallBody` / `RiceCrumb` / `RiceBallDragSample` / `RiceBallPhysics`（常量 + `Step` / `ComputeThrowVelocity` / `TryHitMouth` / `SpawnCrumbs` / `StepCrumbs`），**全部纯静态**，自检直接喂固定 dt |
+| `Play/FeedingLines.cs` | 台词池（吃完 3 档 + 饿的提醒）+ `ResolveTier` / `TierText` / `PickAfterEat` / `PickHungryReminder` / `GetExpressionKeyword`；称呼 `{0}` 占位，空白回落「主人」 |
+| `Model/FeedingController.cs` | 凑近 / 咀嚼 / 吞咽**状态机**（`Phase` / `PhaseElapsed` / `IsEating` / `IsFocusActive` / `FocusX` / `FocusY` / `Strength` / `MouthOpen` / `HeadNodDegrees` / `BodyLeanDegrees` / `HasOutput` / `SetFocus` / `ClearFocus` / `StartEating` / `Reset` / `Update`） |
+| `Model/ModelRuntime.cs`「投喂」段 | `ApplyFeeding`：每帧 `Update`，把凑近 / 嘴型 / 点头 / 身体倾写进 `ParamAngleX/Y`、`ParamBodyAngleX`、`ParamEyeBallX/Y`、`ParamMouthOpenY/Form`、`JawOpen`；动捕有脸让位、说话只让嘴 |
+| `Model/InteractionController.cs` | `TryGetMouthCanvasCenter` / `MouthCanvasRadius`：嘴部锚点（脸椭圆中心下移 45%、半径按脸宽夹 18~80 画布像素） |
+| `Views/PetFoodWindow.xaml(.cs)` | 透明全屏**投喂层**：16ms 物理循环 / 40ms 动态点击穿透 / 拖拽 / 吃掉判定 / 米粒 / 靠近回调；空闲 `Hide()` |
+| `Views/Live2DView.xaml`「🍙 饥饿 · 金币 · 每日任务」卡 + `ViewModels/Live2DViewModel.cs`「养成」段 | 设置卡 + 绑定 / 命令（买饭团 / 扔出去 / 打开聊天窗 / 手动拖饱食度 / 金币输入） |
+| `ViewModels/PetCareViewModels.cs` | 饭团商店行 `RiceBallRowViewModel` / 每日任务行 `DailyTaskRowViewModel`（行对象复用，只刷库存 / 进度） |
+| `Views/AiChatWindow.xaml(.cs)`「养成 HUD / 投喂抽屉」段 | 聊天窗底部「🍙 饱食 · 🪙 金币」+「🍙 投喂 / 📋 任务」抽屉（4 行饭团商店 / 3 行任务） |
+| `Views/PetWindow.xaml(.cs)` | 右键菜单「🍙 投喂饭团」（4 种）+ 实时养成状态行 |
+| `Live2DSession.cs`「养成」段 | 懒创建 `PetCareService`（配置现读）、2 秒 `Tick` 调度、投喂回调结算（`ApplyEat` → `AddAffection` → `StartEating` → 2.2s 后说台词 / 表情）、饿了主动说话、右键投喂、退出落盘 |
+| `Live2DConfig.cs`「养成」段 | 全部 `Pet*` 配置项 + `AiAffectionLocked`（自动落盘） |
+
+### 20.2 数据流
+
+```text
+桌宠右键「🍙 投喂饭团」/ 聊天窗 HUD / 工具页饭团商店
+  → Live2DSession.SpawnRiceBall(kind)（有库存 → 出库；没库存 → 先买再出库）
+  → PetFoodWindow.SpawnRiceBall(kind, 屏幕 DIP 投放点)（铺满主屏工作区，Show + 开物理循环）
+       投放点 = 桌宠左侧 150 DIP、贴工作区底部（静止好抓）；**初速度 = 0**，放下后不弹，
+       拖起来甩出去才受重力影响（Spawn 时不再给随机向上 / 横向初速度）
+  → 16ms 物理循环：RiceBallPhysics.Step → RiceBallVisual 同步（Canvas.Left = X - Radius、Top = Y - Radius、旋转）
+       ├─ 拖动：IsDragging=true 物理暂停，松手 ComputeThrowVelocity(最近 5 个采样点) → 初速度（超 2600 夹住）
+       ├─ 每帧 GetMouthScreenPoint()（InteractionController 嘴部锚点 → PetWindow.TryCanvasToScreen）
+       ├─ 离嘴 < 300 DIP：OnFeedingFocus(nx, ny, strength, mouthOpen) → ModelRuntime.SetFeedFocus
+       │                        → FeedingController.SetFocus（凑过来 / 头眼朝饭团 / 张嘴）
+       └─ 离嘴 ≤ 34 DIP 或这一帧线段穿过嘴圆（TryHitMouth）：
+            OnEaten(kind, 屏幕点) → Live2DSession.OnRiceBallEaten
+              → PetCareService.ApplyEat(kind, now)（饱食度 + 喂食任务 + 可能发奖）
+              → AiChatService.AddAffection(result.AffectionGain)（好感度锁定在这里生效）
+              → ModelRuntime.StartEating(1.5, 0.65)（咀嚼 → 吞咽）
+              → 2.2s 后 FeedingLines.PickAfterEat(Tier, 称呼) + GetExpressionKeyword
+                 → 表情 / 鼓嘴 / TTS / 气泡 / 聊天记录一条本地桌宠消息
+```
+
+- **2 秒调度**（会话）：`Care.Tick(now)` 掉饱食度 + 跨天重置任务；`UpdateHungryReminder()` 按阈值 / 间隔主动说饿；
+  聊天完成 `ReportDailyEvent(Chat)`；摸头互动 `ReportDailyEvent(PetHead)`。
+- **配置现读**：`BuildCareSettings()` 每次 `Settings` 回调都从 `Cfg` 读并夹取（掉值 0~20、阈值 0~100、间隔 1~240），
+  改设置立刻生效（`ApplySettings()` 会把 `LastUpdateUnix` 拨到当前，避免解锁后暴扣）。
+
+### 20.3 物理参数（`RiceBallPhysics`，想调手感改这里 + 自检同步）
+
+| 常量 / 参数 | 值 | 说明 |
+| --- | --- | --- |
+| `Gravity` | 2200 DIP/s² | 重力（屏幕坐标 y 向下） |
+| `Restitution` | 0.45 | 地面 / 左右墙反弹系数 |
+| `FloorFriction` | 0.86 | 落地水平摩擦（**每秒**保留比例，实现里 `pow(0.86, dt)` 归一化） |
+| `AirDrag` | 0.9997 | 空气阻力（每帧保留比例，`pow(0.9997, dt*60)` 和帧率无关） |
+| `MaxThrowSpeed` | 2600 DIP/s | 松手速度上限（按**矢量长度**夹，方向不变） |
+| 天花板反弹 | 0.3 | 轻弹一下，不按地面全弹 |
+| 贴地归零阈值 | vy < 40 / vx < 10 | 落地后小速度直接归零，避免贴地无限抖动 |
+| 角速度 | vx × 0.4 | 纯观感（滚动感） |
+| 饭团半径 | 27 / 24 / 27 / 30 DIP | 三角 / 球形 / 太鼓 / 俵形 |
+| 物理循环 | 16ms | 只在「有球 / 有米粒 / 正在拖」时跑，空闲停 |
+| 拖拽采样 | 最多 8 个，只用最近 5 个 | 松手差分算速度；采样时间缺失用松手时刻兜底 |
+| 米粒 | 16 颗 / 120~420 DIP/s / 寿命 0.5~0.9s | 生成角度 -160°~-20°（朝上散开），重力 ×0.6 |
+
+### 20.4 喂食判定
+
+- **嘴部锚点**（`InteractionController`）：脸椭圆中心下移 `faceRy × 0.45`（画布像素）；半径 `clamp(faceRx × 0.55, 18, 80)`
+  （没有脸椭圆时 fallback 30）；会话用 `PetWindow.TryCanvasToScreen` 换成屏幕 DIP。
+  `TryGetMouthCanvasCenter` 第一次访问会先 `EnsureGeometry()`（按当前蒙皮算一遍部件包围盒），
+  所以不用先点模型也能拿到嘴部锚点（真机联调时修的：原来没建几何会一直返回 false）。
+- **命中半径**：饭团中心离嘴 ≤ **34 DIP**（`PetFoodWindow.EatDistance`）或这一帧线段穿过嘴圆；
+  `TryHitMouth` 用「水平直线 + 竖直二次近似 `vy·dt + ½g·dt²`」求线段与圆交点，高速下坠也不会从圆里漏过去；
+  起点已在圆内 → t = 0。
+- **靠近反馈**：`FocusDistance = 300`（< 300 开始凑过来，`strength = 1 - d/300`）、
+  `MouthOpenDistance = 120`（`mouthOpen = 1 - d/120`），都夹 0~1；与上次值相同不重复回调。
+- **只有「吃掉」才结算**：蹭到身体 / 桌宠窗口都不算；没吃完的饭团留在屏幕上（可再拖）。
+
+### 20.5 吃饭状态机（`FeedingController`）
+
+- 常量：`DefaultChewSeconds = 1.4` / `DefaultSwallowSeconds = 0.65` / `ChewFrequencyHz = 1.7`；
+  `StartEating` 里咀嚼夹 0.3~6s、吞咽夹 0.2~3s（会话固定传 `1.5 / 0.65`，多 0.1s 留余量）。
+- **Chewing**：`PhaseElapsed ≥ ChewSeconds` → Swallowing；嘴目标 = `0.28 + |sin(2π·1.7·t)| × 0.42`（0.28~0.70），
+  头 = `sin(...) × 2.2°`（一开一合 + 轻微点头）。
+- **Swallowing**：`PhaseElapsed ≥ SwallowSeconds` → Idle；嘴目标 = `0.06 + (1-t) × 0.12`，头 = `-sin(πt) × 7°`（低头再抬）。
+- **平滑**：凑近系数 `dt × 7`、嘴 `dt × 10`（指数逼近，`dt` 夹 0~0.25）；`BodyLeanDegrees = focusX × strength × 4.5°`（Idle / Chewing）。
+- **HasOutput**：凑近 / 吃 / 回落过程中为 true；彻底归零后 false。`ModelRuntime` 只在「有输出」时写参数，
+  落到 false 的第一帧把写过的参数恢复默认值一次（手动调的脸不会被残留值卡住）。
+- **Reset** 立即回 Idle 并清空全部输出（关投喂 / 重载模型用）。
+
+### 20.6 优先级（动捕 > 投喂；说话口型 > 投喂嘴型）
+
+- `ModelRuntime` 每帧顺序：… 语音口型（3.5）→ 身体晃动 / 音乐 / 整身轻倾 → 动作 / 手势表演 / 互动 → **表情（8）** → **`ApplyFeeding`（8.2，嘴型压过表情的嘴形）** → 待机随机小动作 → 物理 → Update。
+- **动捕有脸**（`mocapFace`）时 `ApplyFeeding` 整段 `return`：头 / 眼 / 嘴都交给真人脸；但 `Feeding` 状态机仍
+  每帧 `Update`（避免动捕消失瞬间跳变）。
+- **正在说话**（`_speechActive`）时头 / 身体 / 眼睛照常跟饭团，但**嘴部让给语音口型**（不写 `ParamMouthOpenY/Form/JawOpen`）。
+- 没有输出时参数写回默认值（只恢复自己写过的参数，不碰别人）。
+
+### 20.7 饱食度 / 金币 / 好感度三态语义
+
+- **饱食度**：自然模式 = `Enabled && FullnessNatural && !FullnessLocked` → `Tick` 按**完整小时**扣（一次补多段，最低 0）；
+  手动 / 锁定 / 总开关关 → 冻结时间，并把 `LastUpdateUnix` 拨到当前（恢复后不会一次性暴扣）；
+  锁定 / 总开关关时 `ApplyEat` 不改饱食度；`SetFullness` 永远可改（用户手动）。
+- **金币**：自然模式 = 任务达成时发奖（`CoinsNatural && !CoinsLocked`）；锁定 = 程序性加减全冻结
+  （`AddCoins` 提示「金币已锁定」、`TryBuy` 拒绝并给中文原因），但 `SetCoins` 手动可改；
+  任务达成即使不发奖也标记 `TaskRewarded`（`TaskNotice` 说明「未发奖励」），一天只提示一次。
+- **好感度**：`AffectionSettings.Locked` → `ApplyChat` / `ApplyDecay` / `ApplyDirectGain` 都返回 0，`SetValue` 不受限。
+  投喂的 `AffectionGain` 只在 `PetCareService.Enabled=true` 时给（和饱食度锁定无关），由会话交给
+  `AiChatService.AddAffection` → `AffectionEngine.ApplyDirectGain`，所以**好感度锁定会吃掉投喂加成**。
+
+### 20.8 每日任务跨天重置
+
+- 日期键 = **本地** `yyyy-MM-dd`；`ReportDailyEvent` / `Tick` / 构造 `LoadState` 都会 `ResetTasksIfNewDay`
+  （`TaskProgress` / `TaskRewarded` 全清零）。
+- 进度只加不减、封顶 `TargetCount`；达成后即使不发奖也标记 rewarded（一天只提示一次）。
+- 三个任务：**摸摸头**（3 次 +6）/ **聊聊天**（1 次 +4）/ **投喂饭团**（1 次 +8），全部完成 **+18**。
+- 事件来源：摸头互动 → `ReportDailyEvent(PetHead)`；AI 聊天 / 轻对话完成 → `ReportDailyEvent(Chat)`；
+  `ApplyEat` 内部 `ReportDailyEvent(Feed)`（跨天 / 已领奖 / 金币模式都在服务里判断）。
+
+### 20.9 持久化（`care-state.json`）
+
+- 位置：`Data\live2d\care-state.json`（`ToolStorage` 的 `care-state.json`），camelCase + `JsonFileStore.Options`；
+- 结构：`fullness` / `lastUpdateUnix` / `coins` / `inventory[4]` / `taskDate` / `taskProgress[3]` / `taskRewarded[3]`；
+- **构造 LoadState**：无文件 → 用 `PetCareSettings.FullnessInitial`（会话固定 70）/ `CoinsInitial`（30）建新档；
+  有文件 → clamp + 数组归一化（长度补 / 裁、库存 0~99、进度 0~TargetCount、金币 0~100000）+ 跨天清理；
+- **坏 JSON / 读失败**：只记日志按新存档开始，**绝不打断桌宠启动**；
+- **写**：每次状态变化同步写（小 JSON，操作频率低）；`Dispose` 再写一次；失败只记日志。
+
+### 20.10 坑（本轮踩过的，改之前必看）
+
+1. **投喂层是独立透明全屏窗口**：必须 `AllowsTransparency` + 动态 `WS_EX_TRANSPARENT`（40ms 轮询 `GetCursorPos`），
+   否则会挡住整个桌面；没有饭团 / 米粒时 `Hide()`，绝不能一直显示。
+2. **屏幕坐标全是 DIP**：`GetCursorPos` 是物理像素，要按当前 DPI 换算；饭团位置 / 嘴部锚点 / 桌宠窗口矩形
+   都在**同一 DIP 坐标系**比较，别混用屏幕像素。
+3. **WPF 全屏透明窗口开销**：只在有球时 `Show`，物理 Timer 只在「有球 / 有米粒 / 正在拖」时跑；
+   拖拽时用 `IsDragging` 暂停物理，松手按轨迹给初速度。
+4. **物理自检容差**：`Step` 先加重力再位移，地面反弹的「入射速度」是**加重力之后**的值（≈ `vy + g·dt`），
+   自检断言反弹速度要按这个算（±60 容差），别拿松手时的 `vy` 直接乘 0.45。
+5. **物理不补帧**：`Step` 用真实 delta（clamp 0~0.25），掉帧时位移会跳；60 帧归一化只作用于空气阻力 / 摩擦。
+6. **吃掉判定别用「碰到桌宠窗口」**：必须用嘴部锚点圆（34 DIP），否则身体 / 尾巴都会误吃。
+7. **时间基准统一**：`Tick` / `ApplyEat` / `ReportDailyEvent` 传同一个 `now`（会话用 `DateTimeOffset.Now`），
+   自检用固定 `DateTimeOffset`；系统时间往回调时 `Tick` 会重置基准（不补扣），别指望能「倒扣」。
+8. **金币锁定 vs 买饭团**：`TryBuy` 在锁定 / 总开关关时**直接拒绝并给中文 error**（不要静默扣 0 元）；
+   库存封顶 99 也要拒绝，避免白扣钱。
+9. **多 agent 并行改同一工具**（本轮协作经验）：契约文件（`PetCareContracts` / `RiceBallPhysics` / `FeedingController` /
+   `AiContracts.Locked`）先落签名与规则注释，再并行写 UI / 配置 / 自检；否则改签名会把别人正在写的代码全弄红。
+10. **投喂定位先看 trace**：`YLT_LIVE2D_FEED_TRACE=1` 会每秒把「嘴部画布 → 屏幕坐标 / 桌宠窗口矩形 / 嘴半径（画布）」
+    和「嘴部不可用」的具体原因写 `Data\live2d\feed-trace.log`；「拖不进嘴里」先看日志里嘴部坐标是否落在桌宠窗口内、
+    `TryGetMouthCanvasCenter` / `TryCanvasToScreen` 有没有失败。截图验收用 `YLT_LIVE2D_SHOT_FEED=<png>`（拼图不抓桌面）。
+
+### 20.11 自检覆盖
+
+`tests/YuLiangToolkit.FrameworkSelfCheck/Live2DCareChecks.cs`（由 `Live2DChecks.Run` 末尾调用，同属 `live2d` 组，约 100 条断言）：
+投喂台词（档位阈值 / 中文名 / 称呼替换 / 表情关键词）/ 饭团目录与半径 / 饭团物理（重力 / 反弹 / 拖拽速度 /
+嘴部求交 / 米粒）/ 饱食度（整小时掉值 / 封底 / 手动·锁定·总开关 / 吃饭封顶）/ 金币与商店（买·出库·各种拒绝原因 /
+夹取）/ 每日任务（进度 / 只发一次 / 金币锁定与自然模式关 / 跨天清零）/ 持久化（读回 / 坏 JSON / 手改坏值归一化）/
+吃饭状态机（凑近 / 咀嚼波动 / 吞咽 / Reset）/ 好感度锁定与直接加减 / 聊天服务投喂接口（`AddAffection` /
+`AppendNotice` / `AppendLocalPetMessage` / 落盘读回）/ 养成配置默认值与 JSON 往返；全部纯逻辑、不联网、不弹窗、不碰真实 `Data`。

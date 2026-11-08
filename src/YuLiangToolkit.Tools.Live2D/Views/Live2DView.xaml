@@ -87,7 +87,9 @@
                 <RowDefinition Height="12" />                                    <!-- 说话 / 日志分隔条 -->
                 <RowDefinition Height="200" MinHeight="130" />                   <!-- 日志 -->
                 <RowDefinition Height="12" />                                    <!-- 日志 / AI 聊天分隔条 -->
-                <RowDefinition Height="620" MinHeight="420" />                   <!-- AI 聊天 · 好感度卡（页面最底部） -->
+                <RowDefinition Height="620" MinHeight="420" />                   <!-- AI 聊天 · 好感度卡 -->
+                <RowDefinition Height="12" />                                    <!-- AI 聊天 / 养成分隔条 -->
+                <RowDefinition Height="520" MinHeight="360" />                   <!-- 饥饿 · 金币 · 每日任务（投喂）卡（页面最底部） -->
             </Grid.RowDefinitions>
 
             <!-- ==================================================== 标题 ==================================================== -->
@@ -2296,6 +2298,9 @@
                                 <CheckBox Content="自然模式（聊得多涨、长时间不聊掉）" Style="{StaticResource CheckBoxStyle}"
                                           Margin="0,10,0,4" IsChecked="{Binding AiAffectionNatural, Mode=TwoWay}"
                                           ToolTip="关掉 = 纯手动拖数值，聊天和时间都不会改好感度" />
+                                <CheckBox Content="锁定好感度（只有手动滑杆能改）" Style="{StaticResource CheckBoxStyle}"
+                                          Margin="0,0,0,4" IsChecked="{Binding AiAffectionLocked, Mode=TwoWay}"
+                                          ToolTip="锁定后聊天 / 吃饭 / 掉值都不会改好感度，只有手动拖滑杆能改（截图 / 保持某个状态时用）" />
 
                                 <Grid>
                                     <Grid.ColumnDefinitions>
@@ -2407,6 +2412,269 @@
                                               IsChecked="{Binding AiChatAutoOpen, Mode=TwoWay}"
                                               ToolTip="不想每次都被弹窗就关掉，需要时点上面的「打开 / 关闭聊天窗」" />
                                 </WrapPanel>
+                            </StackPanel>
+                        </Grid>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+            <!-- 上下分隔条：AI 聊天 / 养成 -->
+            <core:PaneSplitter Grid.Row="20" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="live2d.养成与AI" />
+
+            <!-- ==================================================== 🍙 饥饿 · 金币 · 每日任务（投喂） ====================================================
+                 饱食度 / 金币都是三态：自然模式（自己涨掉）· 手动（只有你改）· 锁定（自动变化全冻结，手动仍可改）。
+                 饭团可以在屏幕上抛来抛去（桌宠旁边的投喂层），掉进嘴里才算吃掉；金币靠每日任务赚。 -->
+            <Border Grid.Row="21" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="240" />
+                    </Grid.RowDefinitions>
+
+                    <!-- 标题条 -->
+                    <Grid Grid.Row="0" Margin="18,14,18,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🍙 饥饿 · 金币 · 每日任务（投喂）" Style="{StaticResource CardHeaderStyle}" />
+                                <TextBlock Text="{Binding CareStatusText}" FontSize="10.5" Margin="10,0,0,0"
+                                           VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"
+                                           TextTrimming="CharacterEllipsis" MaxWidth="430" />
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,4,0,0"
+                                       Text="饱食度 / 金币都有三态：自然模式（系统自己涨掉）· 手动（只有你能改）· 锁定（自动变化全部冻结，手动仍可改）。金币靠每日任务赚；饭团可以在屏幕上抛来抛去，拖住甩向大肥鱼的嘴，掉进嘴里才算吃掉。" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                            <TextBlock Text="{Binding CareTaskText}" FontSize="11" VerticalAlignment="Center" Margin="0,0,10,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Button Content="💬 聊天窗投喂" Style="{StaticResource CompactButtonStyle}"
+                                    Command="{Binding OpenCareChatCommand}"
+                                    ToolTip="打开 AI 聊天窗：聊天能刷「聊聊天」任务，窗口里也能直接投喂 / 看每日任务" />
+                        </StackPanel>
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1" Style="{StaticResource CardScrollerStyle}" Margin="0,10,0,0">
+                        <Grid Margin="18,0,18,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="460" MinWidth="380" />
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="*" MinWidth="360" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- ===== 左：饱食度 / 金币 ===== -->
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="饱食度" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding CareFullness, StringFormat={}{0:0.0}}"
+                                               FontSize="30" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
+                                    <TextBlock Text="/ 100" FontSize="12" VerticalAlignment="Bottom" Margin="6,0,0,5"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBlock Text="{Binding CareTierText}" FontSize="13" FontWeight="SemiBold"
+                                               VerticalAlignment="Bottom" Margin="14,0,0,7"
+                                               Foreground="{DynamicResource AccentBrush}" />
+                                </StackPanel>
+                                <Slider Minimum="0" Maximum="100" SmallChange="1" LargeChange="5"
+                                        Value="{Binding CareFullness, Mode=TwoWay}"
+                                        Style="{StaticResource SliderStyle}" Margin="0,4,0,0"
+                                        ToolTip="手动拖饱食度（0 ~ 100）；锁定 / 自然模式下时间与吃饭也会改它（锁定只冻结自动变化）" />
+                                <WrapPanel Margin="0,6,0,0">
+                                    <CheckBox Content="自然模式（按小时掉）" Style="{StaticResource CheckBoxStyle}"
+                                              Margin="0,0,16,6" IsChecked="{Binding PetFullnessNatural, Mode=TwoWay}"
+                                              ToolTip="关掉 = 时间不会让你饿，只有手动拖 / 吃米饭改饱食度" />
+                                    <CheckBox Content="锁定饱食度" Style="{StaticResource CheckBoxStyle}"
+                                              Margin="0,0,16,6" IsChecked="{Binding PetFullnessLocked, Mode=TwoWay}"
+                                              ToolTip="锁定后时间 / 吃饭都不改饱食度，只有手动滑杆 / 输入框能改" />
+                                </WrapPanel>
+                                <Grid Margin="0,2,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="92" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="每小时掉值" Style="{StaticResource SettingLabelStyle}" />
+                                    <TextBox Grid.Column="1" Width="76" Height="28" FontSize="12" TextAlignment="Center"
+                                             Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding PetFullnessDecayPerHour, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="每小时掉多少饱食度（0 ~ 20，默认 4 = 约 25 小时从满到饿）" />
+                                    <TextBlock Grid.Column="2" Text="点 / 小时（0 ~ 20）" Style="{StaticResource CardSubTextStyle}"
+                                               VerticalAlignment="Center" Margin="10,0,0,0" />
+                                </Grid>
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="92" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="很饿阈值" Style="{StaticResource SettingLabelStyle}" />
+                                    <TextBox Grid.Column="1" Width="76" Height="28" FontSize="12" TextAlignment="Center"
+                                             Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding PetHungryThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="饱食度低于多少算「很饿」并主动说话（0 ~ 100，默认 25）" />
+                                    <TextBlock Grid.Column="2" Text="低于它算很饿（0 ~ 100）" Style="{StaticResource CardSubTextStyle}"
+                                               VerticalAlignment="Center" Margin="10,0,0,0" />
+                                </Grid>
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="92" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox Content="饿时主动说话" Style="{StaticResource CheckBoxStyle}"
+                                              IsChecked="{Binding PetHungryReminderEnabled, Mode=TwoWay}"
+                                              ToolTip="饱食度低于阈值时，桌宠主动说「好饿啊～…」求投喂" />
+                                    <TextBox Grid.Column="1" Width="76" Height="28" FontSize="12" TextAlignment="Center"
+                                             Style="{StaticResource TextBoxStyle}" Margin="10,0,0,0"
+                                             Text="{Binding PetHungryReminderMinutes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="很饿的时候每隔多少分钟主动说一句（1 ~ 240，默认 8）" />
+                                    <TextBlock Grid.Column="2" Text="分钟一次（1 ~ 240）" Style="{StaticResource CardSubTextStyle}"
+                                               VerticalAlignment="Center" Margin="10,0,0,0" />
+                                </Grid>
+
+                                <TextBlock Text="金币" FontSize="11.5" FontWeight="SemiBold" Margin="0,12,0,4" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="92" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="当前金币" Style="{StaticResource SettingLabelStyle}" />
+                                    <TextBox Grid.Column="1" Width="76" Height="28" FontSize="12" TextAlignment="Center"
+                                             Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding CareCoins, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="手动改金币（0 ~ 100000）；买饭团会扣钱，每日任务完成会发奖" />
+                                    <TextBlock Grid.Column="2" Text="枚（0 ~ 100000）" Style="{StaticResource CardSubTextStyle}"
+                                               VerticalAlignment="Center" Margin="10,0,0,0" />
+                                </Grid>
+                                <WrapPanel Margin="0,6,0,0">
+                                    <CheckBox Content="自然模式（任务自动发币）" Style="{StaticResource CheckBoxStyle}"
+                                              Margin="0,0,16,6" IsChecked="{Binding PetCoinsNatural, Mode=TwoWay}"
+                                              ToolTip="每日任务完成自动发奖励金币；关掉 = 只统计进度（金币只能手动改）" />
+                                    <CheckBox Content="锁定金币" Style="{StaticResource CheckBoxStyle}"
+                                              Margin="0,0,16,6" IsChecked="{Binding PetCoinsLocked, Mode=TwoWay}"
+                                              ToolTip="锁定后任务奖励 / 买饭团都不改金币，只有手动输入能改" />
+                                </WrapPanel>
+                                <CheckBox Content="每日任务自动统计 / 发奖（摸摸头 · 聊天 · 投喂）" Style="{StaticResource CheckBoxStyle}"
+                                          IsChecked="{Binding PetDailyTasksEnabled, Mode=TwoWay}"
+                                          ToolTip="每天 0 点重置进度；完成 3 个任务共 +18 金币" />
+
+                                <TextBlock Text="{Binding CareInventoryText}" Style="{StaticResource CardSubTextStyle}" Margin="0,8,0,0" />
+
+                                <WrapPanel Margin="0,10,0,0">
+                                    <Button Content="💬 打开聊天窗投喂" Style="{StaticResource SecondaryButtonStyle}"
+                                            Command="{Binding OpenCareChatCommand}"
+                                            ToolTip="聊天窗里也能买 / 扔饭团、看每日任务（和右上角按钮一样）" />
+                                </WrapPanel>
+                            </StackPanel>
+
+                            <!-- ===== 右：饭团商店 / 每日任务 ===== -->
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="🍙 饭团商店" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,2" />
+                                <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,0,0,6"
+                                           Text="先买一个放进库存，再点「扔出去」丢到屏幕上；拖住饭团甩向大肥鱼的嘴，掉进嘴里才算吃掉（好感度 / 饱食度吃完才涨）。" />
+                                <ItemsControl ItemsSource="{Binding CareFoods}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8"
+                                                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                                    Padding="10,6" Margin="0,0,0,6">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="34" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="{Binding Glyph}" FontSize="24"
+                                                               VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                    <StackPanel Grid.Column="1" Margin="6,0,10,0" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Name}" FontSize="11.5" FontWeight="SemiBold"
+                                                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                        <TextBlock Text="{Binding Description}" Style="{StaticResource CardSubTextStyle}"
+                                                                   TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                                                   ToolTip="{Binding Description}" />
+                                                    </StackPanel>
+                                                    <StackPanel Grid.Column="2" Margin="0,0,12,0" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding PriceText}" FontSize="11"
+                                                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                        <TextBlock Text="{Binding ValueText}" Style="{StaticResource CardSubTextStyle}" />
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="3" Text="{Binding InventoryText}" FontSize="11"
+                                                               VerticalAlignment="Center" Margin="0,0,10,0"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                                               ToolTip="当前库存数量" />
+                                                    <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <Button Content="买一个" Style="{StaticResource CompactButtonStyle}"
+                                                                Margin="0,0,6,0" Click="OnCareBuyClick" Tag="{Binding Kind}"
+                                                                ToolTip="花金币买一个放进库存" />
+                                                        <Button Content="扔出去" Style="{StaticResource CompactButtonStyle}"
+                                                                Click="OnCareSpawnClick" Tag="{Binding Kind}"
+                                                                ToolTip="丢到屏幕上；没库存会先自动买一个" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Text="📋 今日任务（每天 0 点重置）" FontSize="11.5" FontWeight="SemiBold" Margin="0,8,0,4" />
+                                <ItemsControl ItemsSource="{Binding CareTasks}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8"
+                                                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                                    Padding="10,6" Margin="0,0,0,6">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="{Binding Title}" FontSize="11.5" FontWeight="SemiBold"
+                                                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                            <TextBlock Text="{Binding ProgressText}" FontSize="11" Margin="10,0,0,0"
+                                                                       VerticalAlignment="Center" Foreground="{DynamicResource AccentBrush}" />
+                                                        </StackPanel>
+                                                        <TextBlock Text="{Binding Description}" Style="{StaticResource CardSubTextStyle}"
+                                                                   TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                                                   ToolTip="{Binding Description}" />
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="1" Text="{Binding RewardText}" FontSize="11"
+                                                               VerticalAlignment="Center" Margin="0,0,12,0"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="2" Text="{Binding StatusText}" FontSize="10.5"
+                                                               VerticalAlignment="Center" MinWidth="88" TextAlignment="Right">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsDone}" Value="True">
+                                                                        <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8"
+                                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                        Padding="10,6" Margin="0,2,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding CareStatusText}" Style="{StaticResource CardSubTextStyle}" />
+                                        <TextBlock Text="{Binding CareActionText}" Style="{StaticResource CardSubTextStyle}"
+                                                   Margin="0,2,0,0" Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </Grid>
                     </ScrollViewer>

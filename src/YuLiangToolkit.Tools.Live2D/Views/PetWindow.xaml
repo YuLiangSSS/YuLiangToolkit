@@ -74,6 +74,22 @@
                       Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuAiProactiveClick"
                       ToolTip="允许桌宠隔一段时间主动找话题，或很久没回你时撒娇提醒（间隔在测试页设置）" />
             <Separator />
+            <!-- 养成：投喂饭团（金币不够会自动提示；饭团丢到屏幕上拖住甩给大肥鱼） -->
+            <MenuItem Header="🍙 投喂饭团" Foreground="{DynamicResource TextPrimaryBrush}"
+                      ToolTip="花金币买一个饭团丢到屏幕上：拖住它甩向大肥鱼，掉进嘴里才会吃掉">
+                <MenuItem x:Name="MenuItemFeedTriangle" Header="三角形饭团" Foreground="{DynamicResource TextPrimaryBrush}"
+                          Tag="Triangle" Click="OnMenuFeedClick" />
+                <MenuItem x:Name="MenuItemFeedSphere" Header="球形饭团" Foreground="{DynamicResource TextPrimaryBrush}"
+                          Tag="Sphere" Click="OnMenuFeedClick" />
+                <MenuItem x:Name="MenuItemFeedTaiko" Header="太鼓形饭团" Foreground="{DynamicResource TextPrimaryBrush}"
+                          Tag="Taiko" Click="OnMenuFeedClick" />
+                <MenuItem x:Name="MenuItemFeedBale" Header="俵形饭团" Foreground="{DynamicResource TextPrimaryBrush}"
+                          Tag="Bale" Click="OnMenuFeedClick" />
+            </MenuItem>
+            <MenuItem x:Name="MenuItemCareInfo" Header="养成：—" IsEnabled="False"
+                      Foreground="{DynamicResource TextSecondaryBrush}"
+                      ToolTip="饱食度 / 金币 / 今日任务（详细设置见测试页最下面的「🍙 饥饿 · 金币 · 每日任务」卡）" />
+            <Separator />
             <MenuItem Header="打开测试工具页" Foreground="{DynamicResource TextPrimaryBrush}"
                       Click="OnMenuOpenToolPageClick"
                       ToolTip="把主窗口切到「桌面 → Live2D 桌宠」测试台" />

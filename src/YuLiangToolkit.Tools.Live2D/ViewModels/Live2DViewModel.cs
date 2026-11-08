@@ -11,6 +11,7 @@ using YuLiangToolkit.Tools.Live2D.Speech;
 using YuLiangToolkit.Tools.Live2D.Interop;
 using YuLiangToolkit.Tools.Live2D.Mocap;
 using YuLiangToolkit.Tools.Live2D.Model;
+using YuLiangToolkit.Tools.Live2D.Play;
 using YuLiangToolkit.Tools.Live2D.Rendering;
 
 namespace YuLiangToolkit.Tools.Live2D.ViewModels;
@@ -111,6 +112,12 @@ public sealed class Live2DViewModel : ToolViewModelBase
     private OptionItem<string>? _selectedAiAddress;
     private OptionItem<string>? _selectedAiSelf;
 
+    // ===== 🍙 养成：饥饿 · 金币 · 每日任务（投喂） =====
+    private bool _careFullnessUpdating;      // 滑杆写饱食度期间置位：防止会话事件回写把滑杆抢回去抖动
+    private bool _careSubscribed;            // 是否已订阅养成服务的 StateChanged / NoticeRaised（只订一次）
+    private int _careNoticeRevision;         // 提示序号：买 / 扔失败时判断服务有没有给出更具体的原因
+    private string _careActionText = "还没操作过：买饭团 / 扔出去的结果会显示在这里";
+
     public Live2DViewModel() : base(Live2DTool.ToolId)
     {
         Cfg = LoadConfig<Live2DConfig>();
@@ -178,6 +185,18 @@ public sealed class Live2DViewModel : ToolViewModelBase
         // AI 聊天：先建好下拉选项（人格 / 称呼 / 思考强度），再订阅会话状态变化
         BuildAiOptions();
         Session.AiChatStateChanged += OnAiChatStateChanged;
+
+        // ===== 🍙 养成：饥饿 · 金币 · 每日任务（投喂） =====
+        BuyRiceBallCommand = new RelayCommand(parameter => BuyRiceBall(ToRiceBallKind(parameter)));
+        SpawnRiceBallCommand = new RelayCommand(parameter => SpawnRiceBall(ToRiceBallKind(parameter)));
+        OpenCareChatCommand = new RelayCommand(_ => Session.ToggleAiChatWindow());
+        BuildCareRows();
+
+        // 养成状态（饱食度 / 金币 / 库存 / 今日任务）每 2 秒由会话结算一次，变了就刷新界面。
+        // 注意：会话的养成服务是懒创建的，页面创建 ViewModel 时 Session.ViewModel 还没指过来
+        //（EnsureViewModel 正在 new 本对象），此时访问 Session.Care 可能又触发一次创建；
+        // 所以这里只在会话已就绪时订阅，页面 Loaded 后还会调 ReloadCare() 再兜一次。
+        if (Session.ViewModel is not null) EnsureCareSubscribed();
     }
 
     // ===================== 基础设施 =====================
@@ -3000,6 +3019,7 @@ public sealed class Live2DViewModel : ToolViewModelBase
     {
         get
         {
+            if (Cfg.AiAffectionLocked) return "已锁定：聊天 / 吃饭 / 掉值都不会改好感度，只有手动拖滑杆能改。";
             if (!Cfg.AiAffectionNatural) return "手动模式：数值只有你自己拖，聊天和时间都不会改它。";
 
             var text = $"自然模式：每聊一轮 +{AiAffectionGainPerChat:0.0}（每天最多 +15），" +
@@ -3043,6 +3063,23 @@ public sealed class Live2DViewModel : ToolViewModelBase
             OnPropertyChanged();
             OnPropertyChanged(nameof(AiAffectionHint));
             Session.ApplyAiSettings();
+        }
+    }
+
+    /// <summary>锁定好感度：聊天 / 吃饭 / 掉值都不再改变它，只有手动滑杆能改（方便保持某个状态）。</summary>
+    public bool AiAffectionLocked
+    {
+        get => Cfg.AiAffectionLocked;
+        set
+        {
+            if (Cfg.AiAffectionLocked == value) return;
+            Cfg.AiAffectionLocked = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AiAffectionHint));
+            Session.ApplyAiSettings();
+            Log(value
+                ? "AI：好感度已锁定（聊天 / 吃饭 / 掉值都不改，只有手动滑杆能改）"
+                : "AI：好感度锁定已解除");
         }
     }
 
@@ -3318,6 +3355,500 @@ public sealed class Live2DViewModel : ToolViewModelBase
         _aiApiKeyCache = null;
         OnPropertyChanged(nameof(AiApiKey));
         OnPropertyChanged(nameof(AiKeyMaskText));
+    }
+
+    // ===================== 🍙 养成：饥饿 · 金币 · 每日任务（投喂） =====================
+    //
+    // 配置全部落在 Live2DConfig 的 Pet* 属性里（自动保存）；setter 改完都调 Session.ApplyCareSettings()，
+    // 让养成服务立刻按新规则结算。饱食度 / 金币 / 饭团库存 / 今日任务进度存在
+    // Data\live2d\care-state.json（用户数据，不进配置导出），界面只负责展示与改规则。
+    //
+    // 时间流逝：会话每 2 秒调一次 Care.Tick（掉饱食度、跨天重置每日任务）并触发 StateChanged，
+    // 这里在 OnCareStateChanged 里一次性刷新数值 / 两列行（事件在 UI 线程触发）。
+
+    // ---------- 配置：总开关 / 饱食度 ----------
+
+    /// <summary>养成系统总开关（关掉 = 不会饿、不显示投喂 / 金币 / 每日任务入口）。</summary>
+    public bool PetCareEnabled
+    {
+        get => Cfg.PetCareEnabled;
+        set
+        {
+            if (Cfg.PetCareEnabled == value) return;
+            Cfg.PetCareEnabled = value;
+            OnPropertyChanged();
+            Session.ApplyCareSettings();
+            Log(value ? "养成：已开启（饱食度 / 金币 / 每日任务）" : "养成：已关闭（不会饿、任务不发奖励）");
+        }
+    }
+
+    /// <summary>饱食度自然模式：按小时自然下降（关掉 = 只有手动 / 吃饭改）。</summary>
+    public bool PetFullnessNatural
+    {
+        get => Cfg.PetFullnessNatural;
+        set
+        {
+            if (Cfg.PetFullnessNatural == value) return;
+            Cfg.PetFullnessNatural = value;
+            OnPropertyChanged();
+            Session.ApplyCareSettings();
+            Log(value ? "养成：饱食度自然模式开启（按小时掉）" : "养成：饱食度自然模式关闭（只有手动 / 吃饭改）");
+        }
+    }
+
+    /// <summary>锁定饱食度：时间 / 吃饭都不改它，只有手动拖动 / 输入能改。</summary>
+    public bool PetFullnessLocked
+    {
+        get => Cfg.PetFullnessLocked;
+        set
+        {
+            if (Cfg.PetFullnessLocked == value) return;
+            Cfg.PetFullnessLocked = value;
+            OnPropertyChanged();
+            Session.ApplyCareSettings();
+            Log(value ? "养成：饱食度已锁定（时间 / 吃饭都不改）" : "养成：饱食度锁定已解除");
+        }
+    }
+
+    /// <summary>每小时掉多少饱食度（0 ~ 20，默认 4 = 约 25 小时从满到饿）。</summary>
+    public double PetFullnessDecayPerHour
+    {
+        get => Math.Clamp(Cfg.PetFullnessDecayPerHour, 0, 20);
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 20);
+            if (Math.Abs(Cfg.PetFullnessDecayPerHour - clamped) < 0.05) return;
+            Cfg.PetFullnessDecayPerHour = clamped;
+            OnPropertyChanged();
+            Session.ApplyCareSettings();
+        }
+    }
+
+    /// <summary>很饿阈值：饱食度低于它算「很饿」并主动说话（0 ~ 100，默认 25）。</summary>
+    public double PetHungryThreshold
+    {
+        get => Math.Clamp(Cfg.PetHungryThreshold, 0, 100);
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 100);
+            if (Math.Abs(Cfg.PetHungryThreshold - clamped) < 0.05) return;
+            Cfg.PetHungryThreshold = clamped;
+            OnPropertyChanged();
+            Session.ApplyCareSettings();
+        }
+    }
+
+    /// <summary>很饿时每隔多少分钟主动说一句（1 ~ 240，默认 8）。</summary>
+    public double PetHungryReminderMinutes
+    {
+        get => Math.Clamp(Cfg.PetHungryReminderMinutes, 1, 240);
+        set
+        {
+            var clamped = Math.Clamp(value, 1, 240);
+            if (Math.Abs(Cfg.PetHungryReminderMinutes - clamped) < 0.05) return;
+            Cfg.PetHungryReminderMinutes = clamped;
+            OnPropertyChanged();
+            Session.ApplyCareSettings();
+        }
+    }
+
+    /// <summary>很饿的时候是否主动说话求投喂。</summary>
+    public bool PetHungryReminderEnabled
+    {
+        get => Cfg.PetHungryReminderEnabled;
+        set
+        {
+            if (Cfg.PetHungryReminderEnabled == value) return;
+            Cfg.PetHungryReminderEnabled = value;
+            OnPropertyChanged();
+            Session.ApplyCareSettings();
+            Log(value ? "养成：很饿时主动说话已开启" : "养成：很饿时主动说话已关闭");
+        }
+    }
+
+    // ---------- 配置：金币 / 每日任务 ----------
+
+    /// <summary>金币自然模式：每日任务完成自动发币（关掉 = 只统计进度，金币只能手动改）。</summary>
+    public bool PetCoinsNatural
+    {
+        get => Cfg.PetCoinsNatural;
+        set
+        {
+            if (Cfg.PetCoinsNatural == value) return;
+            Cfg.PetCoinsNatural = value;
+            OnPropertyChanged();
+            Session.ApplyCareSettings();
+            Log(value ? "养成：金币自然模式开启（任务完成自动发币）" : "养成：金币自然模式关闭（任务只统计进度）");
+        }
+    }
+
+    /// <summary>锁定金币：任务奖励 / 消费都不改它，只有手动输入能改。</summary>
+    public bool PetCoinsLocked
+    {
+        get => Cfg.PetCoinsLocked;
+        set
+        {
+            if (Cfg.PetCoinsLocked == value) return;
+            Cfg.PetCoinsLocked = value;
+            OnPropertyChanged();
+            Session.ApplyCareSettings();
+            Log(value ? "养成：金币已锁定（任务奖励 / 买饭团都不改）" : "养成：金币锁定已解除");
+        }
+    }
+
+    /// <summary>每日任务是否自动统计进度 / 发奖励。</summary>
+    public bool PetDailyTasksEnabled
+    {
+        get => Cfg.PetDailyTasksEnabled;
+        set
+        {
+            if (Cfg.PetDailyTasksEnabled == value) return;
+            Cfg.PetDailyTasksEnabled = value;
+            OnPropertyChanged();
+            Session.ApplyCareSettings();
+            Log(value ? "养成：每日任务已开启" : "养成：每日任务已关闭（不再统计 / 发奖）");
+        }
+    }
+
+    // ---------- 只读状态（数值随服务刷新） ----------
+
+    /// <summary>当前饱食度 0 ~ 100（滑杆 / 吃饭 / 自然掉值都改它）。</summary>
+    public double CareFullness
+    {
+        get
+        {
+            try { return Session.Care.Fullness; }
+            catch { return 0; }
+        }
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 100);
+            _careFullnessUpdating = true;
+            try
+            {
+                Session.Care.SetFullness(clamped);
+            }
+            catch (Exception ex)
+            {
+                Log("设置饱食度失败：" + ex.Message);
+            }
+            finally
+            {
+                _careFullnessUpdating = false;
+            }
+
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CareTierText));
+        }
+    }
+
+    /// <summary>当前金币（0 ~ 100000；任务奖励 / 买饭团 / 手动输入都改它）。</summary>
+    public int CareCoins
+    {
+        get
+        {
+            try { return Session.Care.Coins; }
+            catch { return 0; }
+        }
+        set
+        {
+            try
+            {
+                Session.Care.SetCoins(Math.Clamp(value, 0, 100000));
+            }
+            catch (Exception ex)
+            {
+                Log("设置金币失败：" + ex.Message);
+            }
+
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CareTaskText));
+        }
+    }
+
+    /// <summary>饱食度档位中文（很饿 / 没吃饱 / 正常 / 很饱）。</summary>
+    public string CareTierText
+    {
+        get
+        {
+            try { return Session.Care.TierText; }
+            catch { return "—"; }
+        }
+    }
+
+    /// <summary>养成状态的一句话（「饱食 72%（正常）· 🪙 35 · 饭团 2 · 今日任务 1/3」）。</summary>
+    public string CareStatusText
+    {
+        get
+        {
+            try { return Session.Care.StatusText; }
+            catch { return "养成状态：未就绪"; }
+        }
+    }
+
+    /// <summary>四种饭团库存的一句话（「库存：三角形 1 · 球形 0 · 太鼓 1 · 俵形 0」）。</summary>
+    public string CareInventoryText
+    {
+        get
+        {
+            try
+            {
+                var care = Session.Care;
+                var parts = new List<string>(RiceBallCatalog.Count);
+                foreach (var food in RiceBallCatalog.Foods)
+                {
+                    parts.Add($"{CareFoodShortName(food)} {care.GetInventory(food.Kind)}");
+                }
+
+                return "库存：" + string.Join(" · ", parts);
+            }
+            catch
+            {
+                return "库存：—";
+            }
+        }
+    }
+
+    /// <summary>今日任务完成数（「今日任务 1/3」）。</summary>
+    public string CareTaskText
+    {
+        get
+        {
+            try { return $"今日任务 {Session.Care.CompletedTaskCount}/{DailyTaskCatalog.Count}"; }
+            catch { return $"今日任务 0/{DailyTaskCatalog.Count}"; }
+        }
+    }
+
+    /// <summary>最近一次操作 / 提示的结果（买饭团、扔出去、任务完成发奖都会写这里）。</summary>
+    public string CareActionText
+    {
+        get => _careActionText;
+        private set => Set(ref _careActionText, value);
+    }
+
+    /// <summary>饭团商店的 4 行（形状 / 名字 / 价格 / 回复数值 / 库存）。</summary>
+    public ObservableCollection<RiceBallRowViewModel> CareFoods { get; } = new();
+
+    /// <summary>今日任务的 3 行（进度 / 奖励 / 是否完成）。</summary>
+    public ObservableCollection<DailyTaskRowViewModel> CareTasks { get; } = new();
+
+    /// <summary>把目录里的饭团 / 每日任务建成固定行（目录是静态的，刷新只改文本，不重建集合）。</summary>
+    private void BuildCareRows()
+    {
+        CareFoods.Clear();
+        foreach (var food in RiceBallCatalog.Foods)
+        {
+            CareFoods.Add(new RiceBallRowViewModel(food, GetCareInventorySafe(food.Kind)));
+        }
+
+        CareTasks.Clear();
+        foreach (var task in DailyTaskCatalog.Tasks)
+        {
+            CareTasks.Add(new DailyTaskRowViewModel(task,
+                GetCareProgressSafe(task.Kind),
+                IsCareTaskRewardedSafe(task.Kind)));
+        }
+    }
+
+    /// <summary>订阅养成服务的状态 / 提示事件（只订一次；服务没就绪就等下次）。</summary>
+    private void EnsureCareSubscribed()
+    {
+        if (_careSubscribed) return;
+        try
+        {
+            var care = Session.Care;
+            care.StateChanged += OnCareStateChanged;
+            care.NoticeRaised += OnCareNoticeRaised;
+            _careSubscribed = true;
+        }
+        catch (Exception ex)
+        {
+            Log("养成服务暂不可用：" + ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 页面 Loaded 后调用（会话已完成 Activate）：订阅养成事件并刷新一次数值。
+    /// 与 <see cref="ReloadAiApiKey"/> 同一套路 —— 页面首次加载时服务可能还没就绪。
+    /// </summary>
+    public void ReloadCare()
+    {
+        EnsureCareSubscribed();
+        RefreshCareState();
+    }
+
+    /// <summary>
+    /// 刷新养成状态（饱食度 / 金币 / 档位 / 状态行 / 库存 / 任务进度），
+    /// 同时把配置型属性也通知一遍（「重建配置」把默认值原地改回时不用重开页面）。
+    /// </summary>
+    private void RefreshCareState()
+    {
+        if (!_careFullnessUpdating) OnPropertyChanged(nameof(CareFullness));
+        OnPropertyChanged(nameof(CareCoins));
+        OnPropertyChanged(nameof(CareTierText));
+        OnPropertyChanged(nameof(CareStatusText));
+        OnPropertyChanged(nameof(CareInventoryText));
+        OnPropertyChanged(nameof(CareTaskText));
+
+        OnPropertyChanged(nameof(PetCareEnabled));
+        OnPropertyChanged(nameof(PetFullnessNatural));
+        OnPropertyChanged(nameof(PetFullnessLocked));
+        OnPropertyChanged(nameof(PetFullnessDecayPerHour));
+        OnPropertyChanged(nameof(PetCoinsNatural));
+        OnPropertyChanged(nameof(PetCoinsLocked));
+        OnPropertyChanged(nameof(PetDailyTasksEnabled));
+        OnPropertyChanged(nameof(PetHungryReminderEnabled));
+        OnPropertyChanged(nameof(PetHungryThreshold));
+        OnPropertyChanged(nameof(PetHungryReminderMinutes));
+
+        try
+        {
+            var care = Session.Care;
+            foreach (var row in CareFoods)
+            {
+                row.UpdateInventory(care.GetInventory(row.Kind));
+            }
+
+            foreach (var row in CareTasks)
+            {
+                row.Update(care.GetTaskProgress(row.Kind), care.IsTaskRewarded(row.Kind));
+            }
+        }
+        catch
+        {
+            // 服务还没就绪：保留上一次的展示，不打断其它刷新
+        }
+    }
+
+    // ---------- 买 / 扔 / 打开聊天窗 ----------
+
+    /// <summary>买一个饭团（参数：<see cref="RiceBallKind"/> 枚举 / int 下标都行）。</summary>
+    public RelayCommand BuyRiceBallCommand { get; }
+
+    /// <summary>把一个饭团丢到屏幕上（参数：<see cref="RiceBallKind"/> 枚举 / int 下标都行）。</summary>
+    public RelayCommand SpawnRiceBallCommand { get; }
+
+    /// <summary>打开 / 关闭 AI 聊天窗（聊天窗里也能投喂、看每日任务）。</summary>
+    public RelayCommand OpenCareChatCommand { get; }
+
+    /// <summary>命令参数转饭团种类（枚举 / 数字下标 / 名字三种都收，认不出按三角形）。</summary>
+    private static RiceBallKind ToRiceBallKind(object? parameter)
+    {
+        switch (parameter)
+        {
+            case RiceBallKind kind:
+                return kind;
+            case int index:
+                return (RiceBallKind)Math.Clamp(index, 0, RiceBallCatalog.Count - 1);
+            case string text when Enum.TryParse<RiceBallKind>(text, out var parsed):
+                return parsed;
+            default:
+                return RiceBallKind.Triangle;
+        }
+    }
+
+    private void BuyRiceBall(RiceBallKind kind)
+    {
+        var food = RiceBallCatalog.Get(kind);
+        var noticeRevision = _careNoticeRevision;
+        try
+        {
+            if (Session.BuyRiceBall(kind))
+            {
+                CareActionText = $"买了一个{food.Name}（-{food.Price} 金币），库存 +1";
+                Log("养成：" + CareActionText);
+            }
+            else if (_careNoticeRevision == noticeRevision)
+            {
+                // 服务没给更具体的原因（提示事件已经写进 CareActionText 的情况不覆盖）
+                CareActionText = "买不了：" + DescribeCareFailure(food);
+                Log("养成：" + CareActionText);
+            }
+        }
+        catch (Exception ex)
+        {
+            CareActionText = "买饭团失败：" + ex.Message;
+            Log("养成：" + CareActionText);
+        }
+    }
+
+    private void SpawnRiceBall(RiceBallKind kind)
+    {
+        var food = RiceBallCatalog.Get(kind);
+        var noticeRevision = _careNoticeRevision;
+        try
+        {
+            if (Session.SpawnRiceBall(kind))
+            {
+                CareActionText = $"把{food.Name}丢到了屏幕上，拖住甩给大肥鱼吧";
+                Log("把饭团丢到了屏幕上，拖住甩给大肥鱼吧");
+            }
+            else if (_careNoticeRevision == noticeRevision)
+            {
+                CareActionText = "扔不出去：" + DescribeCareFailure(food);
+                Log("养成：" + CareActionText);
+            }
+        }
+        catch (Exception ex)
+        {
+            CareActionText = "扔饭团失败：" + ex.Message;
+            Log("养成：" + CareActionText);
+        }
+    }
+
+    /// <summary>
+    /// 买 / 扔失败时按当前状态猜一句中文原因兜底（会话 API 只回 bool，
+    /// 服务自己发的提示会先写进 <see cref="CareActionText"/>，那种情况不会走到这里）。
+    /// </summary>
+    private string DescribeCareFailure(RiceBallFood food)
+    {
+        if (!Cfg.PetCareEnabled) return "养成系统总开关关着，先在左侧打开总开关。";
+        if (Cfg.PetCoinsLocked) return "金币已锁定，买不了、也扔不出去（先取消「锁定金币」）。";
+
+        try
+        {
+            var care = Session.Care;
+            if (care.GetInventory(food.Kind) <= 0)
+            {
+                var missing = food.Price - care.Coins;
+                return missing > 0
+                    ? $"没有{food.Name}库存，金币也还差 {missing} 枚。"
+                    : $"没有{food.Name}库存，先买一个。";
+            }
+        }
+        catch
+        {
+            // 服务未就绪：用下面的兜底文案
+        }
+
+        return "桌宠还没显示 / 养成服务未就绪，稍后再试。";
+    }
+
+    /// <summary>一句话库存 / 任务里的饭团简称（目录里的名字是「三角形饭团 / …」，省掉「饭团」两个字）。</summary>
+    private static string CareFoodShortName(RiceBallFood food)
+        => food.Name.EndsWith("饭团", StringComparison.Ordinal) ? food.Name[..^2] : food.Name;
+
+    private int GetCareInventorySafe(RiceBallKind kind)
+    {
+        // 页面首次创建 ViewModel 时 Session.ViewModel 还没指过来，这一刻访问懒创建的 Session.Care
+        // 会再触发一次 EnsureViewModel → 递归创建模型，所以先返回 0，等页面 Loaded 后 ReloadCare 再刷。
+        if (Session.ViewModel is null) return 0;
+        try { return Session.Care.GetInventory(kind); }
+        catch { return 0; }
+    }
+
+    private int GetCareProgressSafe(DailyTaskKind kind)
+    {
+        if (Session.ViewModel is null) return 0;
+        try { return Session.Care.GetTaskProgress(kind); }
+        catch { return 0; }
+    }
+
+    private bool IsCareTaskRewardedSafe(DailyTaskKind kind)
+    {
+        if (Session.ViewModel is null) return false;
+        try { return Session.Care.IsTaskRewarded(kind); }
+        catch { return false; }
     }
 
     // ===================== 截图 / 日志 =====================
@@ -3941,6 +4472,7 @@ public sealed class Live2DViewModel : ToolViewModelBase
         // AI 设置：下拉选中项跟着配置走，并让会话按新配置重建提示词 / 好感度规则
         ResyncAiSelections();
         Session.ApplyAiSettings();
+        Session.ApplyCareSettings();
         Session.ApplyRuntimeSettings();
         Session.ApplyMocapSettings();
         OnPropertyChanged(string.Empty);
@@ -3972,6 +4504,20 @@ public sealed class Live2DViewModel : ToolViewModelBase
         OnPropertyChanged(nameof(AiStatusSummaryText));
         OnPropertyChanged(nameof(AiKeyMaskText));
         OnPropertyChanged(nameof(AiTodayTokensText));
+    });
+
+    /// <summary>养成服务的状态变化（饱食度 / 金币 / 库存 / 每日任务）：切回 UI 线程刷新绑定。</summary>
+    private void OnCareStateChanged(object? sender, EventArgs e) => Ui(RefreshCareState);
+
+    /// <summary>
+    /// 养成服务的提示（买 / 卖 / 任务完成发奖 / 金币不足）：写进卡片底部的操作行 + 日志。
+    /// 任务完成这类「服务侧才知道」的消息靠它显示，命令失败时也能拿到具体原因。
+    /// </summary>
+    private void OnCareNoticeRaised(object? sender, CareNoticeEventArgs e) => Ui(() =>
+    {
+        _careNoticeRevision++;
+        CareActionText = e.Text;
+        Log("养成：" + e.Text);
     });
 
     /// <summary>把所有属性都通知一遍（运行时接上 / 摘掉之后用，省得逐个列）。</summary>

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Windows;
@@ -9,6 +10,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using YuLiangToolkit.Tools.Live2D.Ai;
 using YuLiangToolkit.Tools.Live2D.Controls;
+using YuLiangToolkit.Tools.Live2D.Play;
 
 namespace YuLiangToolkit.Tools.Live2D.Views;
 
@@ -27,6 +29,11 @@ namespace YuLiangToolkit.Tools.Live2D.Views;
 ///
 /// <para><b>不抢焦点</b>：<c>ShowActivated=False</c>，打开时不会抢走正在打字的窗口的焦点；
 /// 用户点进输入框就能输入。</para>
+///
+/// <para><b>养成 HUD</b>：好感度下面多一条「🍙 饱食 72%（正常）· 🪙 35 · 🍙 投喂 / 📋 任务」；
+/// 点「投喂」会在消息区上方盖一个半透明深色抽屉（4 行饭团商店），点「任务」显示 3 行每日任务。
+/// 数据来自 <see cref="PetCareService"/>（care 为 null / <c>PetCareEnabled=false</c> 时整条隐藏）；
+/// 点「买一个 / 扔出去」都走会话给的 <c>spawnRiceBall</c> 回调（内部处理买 / 用库存 / 丢到屏幕上）。</para>
 /// </summary>
 public partial class AiChatWindow : Window
 {
@@ -41,6 +48,34 @@ public partial class AiChatWindow : Window
 
     /// <summary>点 ⚙ 的回调（把主窗口 / 工具页叫到前面）。</summary>
     private readonly Action? _openSettings;
+
+    /// <summary>养成服务（null = 没接养成 → HUD / 投喂入口整条隐藏）。</summary>
+    private readonly PetCareService? _care;
+
+    /// <summary>会话给了「丢一颗饭团到屏幕上」的回调（内部处理买 / 用库存；成功返回 true）。</summary>
+    private readonly Func<RiceBallKind, bool>? _spawnRiceBall;
+
+    /// <summary>养成服务事件是否已挂上（窗口隐藏时退订，显示时重订）。</summary>
+    private bool _careEventsHooked;
+
+    /// <summary>抽屉当前是不是「任务」模式（false = 投喂模式）。</summary>
+    private bool _careDrawerShowsTasks;
+
+    /// <summary>投喂行的库存文本（按饭团种类，建一次行后复用）。</summary>
+    private readonly Dictionary<RiceBallKind, TextBlock> _feedInventoryTexts = new();
+
+    /// <summary>任务行的勾选 / 进度文本（按任务种类）。</summary>
+    private readonly Dictionary<DailyTaskKind, TaskRowUi> _taskRowUis = new();
+
+    // 抽屉是固定深色半透明面板，文字 / 按钮统一用这套浅色画刷（跟主题走反而在深色面板上看不清）。
+    private static readonly Brush CareStrongTextBrush = FrozenBrush(Color.FromRgb(0xF2, 0xF5, 0xF8));
+    private static readonly Brush CareDimTextBrush = FrozenBrush(Color.FromRgb(0xB9, 0xC2, 0xCE));
+    private static readonly Brush CareFaintTextBrush = FrozenBrush(Color.FromRgb(0x8F, 0x9A, 0xA8));
+    private static readonly Brush CareGoldBrush = FrozenBrush(Color.FromRgb(0xFF, 0xD9, 0x8A));
+    private static readonly Brush CareDoneBrush = FrozenBrush(Color.FromRgb(0x8B, 0xE2, 0x8B));
+    private static readonly Brush CareWarnBrush = FrozenBrush(Color.FromRgb(0xFF, 0xC9, 0x7A));
+    private static readonly Brush CareRowBackgroundBrush = FrozenBrush(Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF));
+    private static readonly Brush CareRowBorderBrush = FrozenBrush(Color.FromArgb(0x28, 0xFF, 0xFF, 0xFF));
 
     /// <summary>是否已经挂上服务事件。</summary>
     private bool _chatEventsHooked;
@@ -65,16 +100,22 @@ public partial class AiChatWindow : Window
     /// </summary>
     /// <param name="chat">AI 聊天服务。</param>
     /// <param name="config">桌宠配置。</param>
+    /// <param name="care">养成服务（可空：null = 不显示养成 HUD / 投喂入口）。</param>
+    /// <param name="spawnRiceBall">会话的「丢一颗饭团到屏幕上」回调（内部处理买 / 库存；可空）。</param>
     /// <param name="onConfigChanged">聊天窗里改了配置后回调（保存 + 同步工具页）。</param>
-    /// <param name="openSettings">点标题栏 ⚙ 时回调（打开工具页设置）。</param>
+    /// <param name="openSettings">点标题栏 ⚙ / 抽屉里「⚙ 养成设置」时回调（打开工具页设置）。</param>
     public AiChatWindow(
         AiChatService chat,
         Live2DConfig config,
-        Action? onConfigChanged,
-        Action? openSettings)
+        PetCareService? care = null,
+        Func<RiceBallKind, bool>? spawnRiceBall = null,
+        Action? onConfigChanged = null,
+        Action? openSettings = null)
     {
         _chat = chat ?? throw new ArgumentNullException(nameof(chat));
         _config = config ?? throw new ArgumentNullException(nameof(config));
+        _care = care;
+        _spawnRiceBall = spawnRiceBall;
         _onConfigChanged = onConfigChanged;
         _openSettings = openSettings;
 
@@ -87,6 +128,9 @@ public partial class AiChatWindow : Window
 
         // 消息列表先接上真实聊天记录；截图冒烟时再换成示例集合
         MessageItems.ItemsSource = _chat.Messages;
+
+        // 抽屉的 4 行饭团 / 3 行任务按目录建一次（之后各刷新文本；care 为 null 时不建）
+        BuildCareDrawerRows();
 
         LoadConfigToggles();
         RefreshAll();
@@ -119,10 +163,11 @@ public partial class AiChatWindow : Window
         if (!_demoMode) ScrollToEnd();
     }
 
-    /// <summary>隐藏聊天窗（不销毁，下次打开很快）；隐藏后立刻退订服务事件。</summary>
+    /// <summary>隐藏聊天窗（不销毁，下次打开很快）；隐藏后立刻退订服务事件、收起养成抽屉。</summary>
     public void HideChat()
     {
         UnhookChatEvents();
+        CloseCareDrawer();
         if (IsVisible) Hide();
     }
 
@@ -190,6 +235,7 @@ public partial class AiChatWindow : Window
 
         UpdateEmptyHint();
         LoadConfigToggles();
+        RefreshCareHud();   // 示例模式：HUD 显示真实养成数值（只展示，不改数据）
         ScrollToEnd();
     }
 
@@ -234,6 +280,7 @@ public partial class AiChatWindow : Window
         {
             UpdateEmptyHint();
             RefreshTypingIndicator();
+            RefreshCareHud();
             return;
         }
 
@@ -266,6 +313,7 @@ public partial class AiChatWindow : Window
             // 「正在输入…」不会因为一次漏发就卡在错误状态。
             RefreshTypingIndicator();
             UpdateEmptyHint();
+            RefreshCareHud();
         }
         catch
         {
@@ -303,18 +351,35 @@ public partial class AiChatWindow : Window
 
     private void HookChatEvents()
     {
-        if (_chatEventsHooked) return;
-        _chat.MessageAdded += OnChatMessageAdded;
-        _chat.StateChanged += OnChatStateChanged;
-        _chatEventsHooked = true;
+        if (!_chatEventsHooked)
+        {
+            _chat.MessageAdded += OnChatMessageAdded;
+            _chat.StateChanged += OnChatStateChanged;
+            _chatEventsHooked = true;
+        }
+
+        // 养成服务同样只在显示期间订阅（隐藏时退订，不白白刷新界面）
+        if (_care is not null && !_careEventsHooked)
+        {
+            _care.StateChanged += OnCareStateChanged;
+            _careEventsHooked = true;
+        }
     }
 
     private void UnhookChatEvents()
     {
-        if (!_chatEventsHooked) return;
-        _chat.MessageAdded -= OnChatMessageAdded;
-        _chat.StateChanged -= OnChatStateChanged;
-        _chatEventsHooked = false;
+        if (_chatEventsHooked)
+        {
+            _chat.MessageAdded -= OnChatMessageAdded;
+            _chat.StateChanged -= OnChatStateChanged;
+            _chatEventsHooked = false;
+        }
+
+        if (_care is not null && _careEventsHooked)
+        {
+            _care.StateChanged -= OnCareStateChanged;
+            _careEventsHooked = false;
+        }
     }
 
     /// <summary>新消息加入：滚到底（等布局跑完再滚，否则滚的是旧高度）。</summary>
@@ -342,6 +407,19 @@ public partial class AiChatWindow : Window
         }
 
         RefreshAll();
+    }
+
+    /// <summary>养成状态变化（饱食度 / 金币 / 库存 / 任务）：切到 UI 线程刷新 HUD 与抽屉。</summary>
+    private void OnCareStateChanged(object? sender, EventArgs e)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Background,
+                new Action(() => OnCareStateChanged(sender, e)));
+            return;
+        }
+
+        RefreshCareHud();
     }
 
     /// <summary>窗口真正被关闭（会话层退出时 Close）：退订事件，别留着引用。</summary>
@@ -541,6 +619,376 @@ public partial class AiChatWindow : Window
         }
 
         StatusTextBlock.Text = text;
+    }
+
+    // ==================== 养成 HUD / 投喂抽屉 ====================
+
+    /// <summary>养成 HUD 是否该显示（没接养成服务 / 配置里关了养成 → 隐藏）。</summary>
+    private bool IsCareHudAvailable => _care is not null && _config.PetCareEnabled;
+
+    /// <summary>
+    /// 刷新养成 HUD（饱食 / 金币 / 按钮）与（打开时）投喂抽屉。
+    /// <para>公开：会话在改完 <c>PetCareEnabled</c> / ApplyCareSettings 之后可以主动调一次立刻生效。</para>
+    /// </summary>
+    public void RefreshCareHud()
+    {
+        try
+        {
+            if (!IsCareHudAvailable)
+            {
+                CareHudPanel.Visibility = Visibility.Collapsed;
+                CloseCareDrawer();
+                return;
+            }
+
+            var care = _care!;
+            CareHudPanel.Visibility = Visibility.Visible;
+            CareFullnessText.Text = $"🍙 饱食 {care.Fullness:0}%（{care.TierText}）";
+            CareCoinsText.Text = $"🪙 {care.Coins}";
+            FeedDrawerButton.ToolTip = $"买 / 扔大白饭团喂桌宠（库存共 {care.TotalInventory} 个）";
+
+            if (CareDrawer.Visibility == Visibility.Visible) RefreshCareDrawer();
+        }
+        catch
+        {
+            // 服务正在构造 / 释放：保持上一次界面，后台异常不把窗口带崩
+        }
+    }
+
+    /// <summary>刷新抽屉：顶部金币 / 饱食 / 库存总览、4 行饭团库存、3 行任务进度（打开时才有意义）。</summary>
+    private void RefreshCareDrawer()
+    {
+        if (_care is null) return;
+        var care = _care;
+
+        CareDrawerSummaryText.Text =
+            $"🪙 {care.Coins} · 🍙 饱食 {care.Fullness:0}%（{care.TierText}）· 库存共 {care.TotalInventory} 个";
+
+        foreach (var pair in _feedInventoryTexts)
+        {
+            pair.Value.Text = $"库存 {care.GetInventory(pair.Key)}";
+        }
+
+        foreach (var pair in _taskRowUis)
+        {
+            var definition = DailyTaskCatalog.Get(pair.Key);
+            var progress = Math.Min(care.GetTaskProgress(pair.Key), definition.TargetCount);
+            var done = care.IsTaskRewarded(pair.Key) || progress >= definition.TargetCount;
+            pair.Value.Mark.Text = done ? "✓" : "○";
+            pair.Value.Mark.Foreground = done ? CareDoneBrush : CareFaintTextBrush;
+            pair.Value.Progress.Text = $"{progress}/{definition.TargetCount}";
+            pair.Value.Progress.Foreground = done ? CareDoneBrush : CareDimTextBrush;
+        }
+
+        CareTaskSummaryText.Text =
+            $"今日任务 {care.CompletedTaskCount}/{DailyTaskCatalog.Count} 已完成 · 全部完成共 +{DailyTaskCatalog.TotalReward} 金币";
+    }
+
+    /// <summary>打开抽屉（<paramref name="showTasks"/> = true 显示任务，false 显示饭团商店）。</summary>
+    private void OpenCareDrawer(bool showTasks)
+    {
+        if (!IsCareHudAvailable) return;
+
+        _careDrawerShowsTasks = showTasks;
+        CareDrawerTitle.Text = showTasks ? "📋 今日任务" : "🍙 投喂 · 大白饭团";
+        CareFeedSection.Visibility = showTasks ? Visibility.Collapsed : Visibility.Visible;
+        CareTaskSection.Visibility = showTasks ? Visibility.Visible : Visibility.Collapsed;
+        CareDrawer.Visibility = Visibility.Visible;
+        ShowDrawerHint("");
+        RefreshCareDrawer();
+    }
+
+    /// <summary>收起抽屉（隐藏窗口 / 投喂成功后都会调）。</summary>
+    private void CloseCareDrawer()
+    {
+        CareDrawer.Visibility = Visibility.Collapsed;
+        ShowDrawerHint("");
+    }
+
+    /// <summary>
+    /// 截图冒烟用：不点按钮，直接把养成抽屉打开（<paramref name="showTasks"/> = true 显示 3 行任务，
+    /// false 显示 4 行饭团商店）。会话 / 截图脚本在 <c>ShowChat()</c> 之后调一次即可截图。
+    /// </summary>
+    public void OpenCareDrawerForDemo(bool showTasks = false) => OpenCareDrawer(showTasks);
+
+    /// <summary>HUD「🍙 投喂」：打开 / 收起投喂抽屉。</summary>
+    private void OnFeedDrawerClick(object sender, RoutedEventArgs e)
+    {
+        if (CareDrawer.Visibility == Visibility.Visible && !_careDrawerShowsTasks) CloseCareDrawer();
+        else OpenCareDrawer(showTasks: false);
+    }
+
+    /// <summary>HUD「📋 任务」：打开 / 收起今日任务抽屉。</summary>
+    private void OnTaskDrawerClick(object sender, RoutedEventArgs e)
+    {
+        if (CareDrawer.Visibility == Visibility.Visible && _careDrawerShowsTasks) CloseCareDrawer();
+        else OpenCareDrawer(showTasks: true);
+    }
+
+    /// <summary>抽屉右上角 ✕：收起。</summary>
+    private void OnCareDrawerCloseClick(object sender, RoutedEventArgs e) => CloseCareDrawer();
+
+    /// <summary>抽屉底部「⚙ 养成设置」：打开工具页里的养成设置卡。</summary>
+    private void OnCareSettingsClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            _openSettings?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            ShowDrawerHint("打开养成设置失败：" + ex.Message, warning: true);
+        }
+    }
+
+    /// <summary>饭团行的「买一个 / 扔出去」：都走 spawnRiceBall（内部自己决定买还是用库存）。</summary>
+    private void OnFeedActionClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: RiceBallKind kind }) return;
+        TrySpawnRiceBall(kind);
+    }
+
+    /// <summary>让会话丢一颗饭团到屏幕上；失败在抽屉里给一句提示（不弹窗、不打断聊天）。</summary>
+    private void TrySpawnRiceBall(RiceBallKind kind)
+    {
+        var food = RiceBallCatalog.Get(kind);
+        if (_spawnRiceBall is null)
+        {
+            ShowDrawerHint("投喂还没接上：会话没有提供生成饭团的回调。", warning: true);
+            return;
+        }
+
+        bool success;
+        try
+        {
+            success = _spawnRiceBall(kind);
+        }
+        catch (Exception ex)
+        {
+            ShowDrawerHint("投喂失败：" + ex.Message, warning: true);
+            return;
+        }
+
+        if (success)
+        {
+            CloseCareDrawer();
+            StatusTextBlock.Text = $"已把「{food.Name}」丢到屏幕上：拖到桌宠嘴边喂它～";
+            RefreshCareHud();
+            return;
+        }
+
+        ShowDrawerHint(
+            $"投喂「{food.Name}」失败：金币不够（{food.Price} 金币）或者没有库存，先点「买一个」试试。",
+            warning: true);
+    }
+
+    /// <summary>抽屉提示文本（空串 = 隐藏）。</summary>
+    private void ShowDrawerHint(string text, bool warning = false)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            CareDrawerHintText.Text = "";
+            CareDrawerHintText.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        CareDrawerHintText.Text = text;
+        CareDrawerHintText.Foreground = warning ? CareWarnBrush : CareDimTextBrush;
+        CareDrawerHintText.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>按目录建抽屉内容：4 行饭团 + 3 行每日任务（只建一次，之后各刷新文本）。</summary>
+    private void BuildCareDrawerRows()
+    {
+        if (_care is null) return;
+
+        foreach (var food in RiceBallCatalog.Foods)
+        {
+            CareFeedRowsPanel.Children.Add(BuildFeedRow(food));
+        }
+
+        foreach (var task in DailyTaskCatalog.Tasks)
+        {
+            CareTaskRowsPanel.Children.Add(BuildTaskRow(task));
+        }
+    }
+
+    /// <summary>一行饭团商店：Glyph + 名字 / 价格·饱食·好感 + 库存 +「买一个」「扔出去」。</summary>
+    private Border BuildFeedRow(RiceBallFood food)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                          // Glyph
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });  // 名字 / 数值
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                         // 库存
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                         // 按钮
+
+        var glyph = new TextBlock
+        {
+            Text = food.Glyph,
+            FontSize = 17,
+            Width = 24,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextAlignment = TextAlignment.Center,
+            Foreground = CareStrongTextBrush,
+        };
+        grid.Children.Add(glyph);
+
+        var textPanel = new StackPanel { Margin = new Thickness(2, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center };
+        textPanel.Children.Add(new TextBlock
+        {
+            Text = food.Name,
+            FontSize = 11,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = CareStrongTextBrush,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        textPanel.Children.Add(new TextBlock
+        {
+            Text = $"价格 {food.Price} 金币 · 饱食 +{food.FullnessGain:0} · 好感 +{food.AffectionGain:0}",
+            FontSize = 9,
+            Foreground = CareDimTextBrush,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        Grid.SetColumn(textPanel, 1);
+        grid.Children.Add(textPanel);
+
+        var inventory = new TextBlock
+        {
+            Text = $"库存 {_care?.GetInventory(food.Kind) ?? 0}",
+            FontSize = 9.5,
+            Margin = new Thickness(4, 0, 6, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = CareGoldBrush,
+        };
+        Grid.SetColumn(inventory, 2);
+        grid.Children.Add(inventory);
+        _feedInventoryTexts[food.Kind] = inventory;
+
+        var buttons = new StackPanel { Orientation = Orientation.Vertical, VerticalAlignment = VerticalAlignment.Center };
+        buttons.Children.Add(CreateFeedButton("买一个", food.Kind));
+        var throwButton = CreateFeedButton("扔出去", food.Kind);
+        throwButton.Margin = new Thickness(0, 3, 0, 0);
+        buttons.Children.Add(throwButton);
+        Grid.SetColumn(buttons, 3);
+        grid.Children.Add(buttons);
+
+        return new Border
+        {
+            Background = CareRowBackgroundBrush,
+            BorderBrush = CareRowBorderBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(7, 4, 6, 4),
+            Margin = new Thickness(0, 0, 0, 5),
+            Child = grid,
+        };
+    }
+
+    /// <summary>一行每日任务：✓/○ + 标题·说明 + 进度 x/y + 奖励金币。</summary>
+    private Border BuildTaskRow(DailyTaskDefinition task)
+    {
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                          // ✓
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });  // 标题 / 说明
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                         // 进度
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });                         // 奖励
+
+        var mark = new TextBlock
+        {
+            Text = "○",
+            FontSize = 13,
+            Width = 18,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextAlignment = TextAlignment.Center,
+            Foreground = CareFaintTextBrush,
+        };
+        grid.Children.Add(mark);
+
+        var textPanel = new StackPanel { Margin = new Thickness(2, 0, 4, 0), VerticalAlignment = VerticalAlignment.Center };
+        textPanel.Children.Add(new TextBlock
+        {
+            Text = task.Title,
+            FontSize = 11,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = CareStrongTextBrush,
+        });
+        textPanel.Children.Add(new TextBlock
+        {
+            Text = task.Description,
+            FontSize = 9,
+            Foreground = CareDimTextBrush,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        Grid.SetColumn(textPanel, 1);
+        grid.Children.Add(textPanel);
+
+        var progress = new TextBlock
+        {
+            Text = $"0/{task.TargetCount}",
+            FontSize = 10,
+            Margin = new Thickness(4, 0, 8, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = CareDimTextBrush,
+        };
+        Grid.SetColumn(progress, 2);
+        grid.Children.Add(progress);
+
+        var reward = new TextBlock
+        {
+            Text = $"+{task.RewardCoins} 金币",
+            FontSize = 9.5,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = CareGoldBrush,
+        };
+        Grid.SetColumn(reward, 3);
+        grid.Children.Add(reward);
+
+        _taskRowUis[task.Kind] = new TaskRowUi { Mark = mark, Progress = progress };
+
+        return new Border
+        {
+            Background = CareRowBackgroundBrush,
+            BorderBrush = CareRowBorderBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(7, 4, 6, 4),
+            Margin = new Thickness(0, 0, 0, 5),
+            Child = grid,
+        };
+    }
+
+    /// <summary>建抽屉里的小按钮（Tag = 饭团种类，点击统一走 OnFeedActionClick）。</summary>
+    private Button CreateFeedButton(string text, RiceBallKind kind)
+    {
+        var button = new Button
+        {
+            Content = text,
+            Tag = kind,
+            Style = (Style)FindResource("CareDrawerButtonStyle"),
+            Margin = new Thickness(0),
+            Padding = new Thickness(7, 2, 7, 2),
+            FontSize = 9.5,
+        };
+        button.Click += OnFeedActionClick;
+        return button;
+    }
+
+    /// <summary>一行每日任务的界面引用（✓ 与进度文本；刷新时只改这两处）。</summary>
+    private sealed class TaskRowUi
+    {
+        /// <summary>✓ / ○。</summary>
+        public required TextBlock Mark { get; init; }
+
+        /// <summary>x/y。</summary>
+        public required TextBlock Progress { get; init; }
+    }
+
+    /// <summary>建一个冻结的纯色画刷（抽屉固定深色面板用）。</summary>
+    private static SolidColorBrush FrozenBrush(Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
     }
 
     // ==================== 小工具 ====================

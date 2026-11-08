@@ -224,6 +224,59 @@ public sealed partial class AiChatService
     }
 
     /// <inheritdoc/>
+    public void AddAffection(double delta)
+    {
+        var before = Affection.Value;
+        double changed;
+        try
+        {
+            changed = Affection.ApplyDirectGain(delta);
+        }
+        catch (Exception ex)
+        {
+            Log("投喂加好感度失败：" + ex.Message);
+            return;
+        }
+
+        if (changed == 0) return;
+        Log($"投喂让好感度 {(changed > 0 ? "+" : "")}{changed:0.0}（{before:0.0} → {Affection.Value:0.0}）");
+        RaiseAffectionChanged();
+        SaveStateInternal(force: false);
+        RaiseStateChanged();
+    }
+
+    /// <inheritdoc/>
+    public void AppendNotice(string text)
+    {
+        var content = (text ?? "").Trim();
+        if (content.Length == 0) return;
+        AddMessage(new AiChatMessage
+        {
+            TimestampUnix = DateTimeOffset.Now.ToUnixTimeSeconds(),
+            Role = "notice",
+            Text = content,
+        });
+        SaveStateInternal(force: false);
+        RaiseStateChanged();
+    }
+
+    /// <inheritdoc/>
+    public void AppendLocalPetMessage(string text, string emotion = "")
+    {
+        var content = (text ?? "").Trim();
+        if (content.Length == 0) return;
+        AddMessage(new AiChatMessage
+        {
+            TimestampUnix = DateTimeOffset.Now.ToUnixTimeSeconds(),
+            Role = "assistant",
+            Text = content,
+            Emotion = emotion ?? "",
+        });
+        SaveStateInternal(force: false);
+        RaiseStateChanged();
+    }
+
+    /// <inheritdoc/>
     public partial void ClearConversation()
     {
         Messages.Clear();

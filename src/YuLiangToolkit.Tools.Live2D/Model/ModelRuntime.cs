@@ -193,6 +193,21 @@ public sealed class ModelRuntime : IDisposable
     private float _moodPuffTarget;
     private float _moodPuffCurrent;
 
+    // ---------- 投喂 / 吃饭：凑过去张嘴 → 嚼嚼嚼 → 伪吞咽（由会话按投喂层坐标写入） ----------
+
+    private readonly FeedingController _feeding = new();
+    private CubismParameter? _feedAngleX;
+    private CubismParameter? _feedAngleY;
+    private CubismParameter? _feedBodyAngleX;
+    private CubismParameter? _feedEyeBallX;
+    private CubismParameter? _feedEyeBallY;
+    private CubismParameter? _feedMouthOpenY;
+    private CubismParameter? _feedMouthForm;
+    private CubismParameter? _feedJawOpen;
+    private int[] _feedTouchedIndices = new int[8];
+    private int _feedTouchedCount;
+    private bool _feedHadOutput;
+
     /// <summary>待机随机小动作的倒计时（秒；到 0 且条件允许时播一个随机手势 / 表演）。</summary>
     private double _idleRandomGestureTimer;
 
@@ -219,6 +234,7 @@ public sealed class ModelRuntime : IDisposable
     private bool _petIdleActionsEnabled = true;
     private string? _lastInteractionVoiceEvent;
     private string? _lastInteractionName;
+    private long _interactionEventCount;
 
     /// <summary>互动语音事件（参数 = 语音事件 key：pat_head / face_cycle / pinch / tickle / protect / hand）。</summary>
     public event EventHandler<string>? InteractionHappened;
@@ -578,6 +594,30 @@ public sealed class ModelRuntime : IDisposable
         set => _moodPuffTarget = Math.Clamp(value, 0f, 1f);
     }
 
+    // ---------- 投喂 / 吃饭（供会话驱动） ----------
+
+    /// <summary>投喂控制器（凑过去 / 张嘴 / 嚼嚼嚼 / 伪吞咽；状态机 + 纯数学，自检可测）。</summary>
+    public FeedingController Feeding => _feeding;
+
+    /// <summary>是否正在吃（咀嚼 / 吞咽中）。</summary>
+    public bool IsEating => _feeding.IsEating;
+
+    /// <summary>
+    /// 饭团靠近：让桌宠朝它偏头 / 身体前倾 / 张嘴。
+    /// <paramref name="normalizedX"/> / <paramref name="normalizedY"/> 是相对桌宠中心的方向（-1~1），
+    /// <paramref name="strength"/> 0~1（越近越大），<paramref name="mouthOpen"/> 0~1（越接近嘴张越大）。
+    /// </summary>
+    public void SetFeedFocus(float normalizedX, float normalizedY, float strength, float mouthOpen)
+        => _feeding.SetFocus(normalizedX, normalizedY, strength, mouthOpen);
+
+    /// <summary>饭团被扔远 / 收起了：取消凑近（平滑回平常）。</summary>
+    public void ClearFeedFocus() => _feeding.ClearFocus();
+
+    /// <summary>吃到饭团：开始「嚼嚼嚼（默认 1.4 秒）→ 伪吞咽（默认 0.65 秒）→ 平常」。</summary>
+    public void StartEating(double chewSeconds = FeedingController.DefaultChewSeconds,
+        double swallowSeconds = FeedingController.DefaultSwallowSeconds)
+        => _feeding.StartEating(chewSeconds, swallowSeconds);
+
     /// <summary>待机随机小动作开关（默认开；播动作 / 音乐 / 说话 / 跳舞 / 表演时不抢）。</summary>
     public bool IdleRandomGestureEnabled { get; set; } = true;
 
@@ -684,6 +724,18 @@ public sealed class ModelRuntime : IDisposable
     /// <summary>画布像素坐标命中哪个互动热区（关闭互动 / 拿不到几何时返回 None）。</summary>
     public InteractionRegion HitTest(float canvasX, float canvasY) => _interaction?.HitTest(canvasX, canvasY) ?? InteractionRegion.None;
 
+    /// <summary>嘴部在画布上的近似中心（投喂判定用；拿不到脸返回 false）。</summary>
+    public bool TryGetMouthCanvasCenter(out float canvasX, out float canvasY)
+    {
+        if (_interaction is not null) return _interaction.TryGetMouthCanvasCenter(out canvasX, out canvasY);
+        canvasX = 0;
+        canvasY = 0;
+        return false;
+    }
+
+    /// <summary>嘴部判定半径（画布像素；投喂判定用）。</summary>
+    public float MouthCanvasRadius => _interaction?.MouthCanvasRadius ?? 30f;
+
     /// <summary>旧名兼容。</summary>
     public InteractionRegion HitTestInteraction(float canvasX, float canvasY) => HitTest(canvasX, canvasY);
 
@@ -739,6 +791,12 @@ public sealed class ModelRuntime : IDisposable
 
     /// <summary>最近一次互动的中文名（摸头 / 额头表情 / 捏脸 / 挠痒 / 护住 / 竖食指 / 放下手 …）。</summary>
     public string? LastInteractionName => _lastInteractionName;
+
+    /// <summary>
+    /// 互动事件累计次数（每次摸头 / 捏脸 / 挠痒…都 +1；**不受「互动语音」开关影响**）。
+    /// 会话的每日任务「摸摸头」靠它计数，关掉互动语音也能完成任务。
+    /// </summary>
+    public long InteractionEventCount => _interactionEventCount;
 
     // ---------- 桌宠互动 / 待机小动作：自检观察口 ----------
 
@@ -1225,6 +1283,7 @@ public sealed class ModelRuntime : IDisposable
     {
         _lastInteractionVoiceEvent = voiceEvent;
         _lastInteractionName = displayName;
+        _interactionEventCount++;
         if (_interactionVoiceEnabled) InteractionHappened?.Invoke(this, voiceEvent);
     }
 
@@ -1315,6 +1374,88 @@ public sealed class ModelRuntime : IDisposable
         _speechMouthForm = model.FindParameter("ParamMouthForm");
         _speechJawOpen = model.FindParameter("JawOpen");
         ResolveMoodPuffParameters(model);
+        ResolveFeedingParameters(model);
+    }
+
+    /// <summary>解析投喂 / 吃饭要写的参数（模型没有的就跳过）。</summary>
+    private void ResolveFeedingParameters(CubismModel model)
+    {
+        _feedAngleX = model.FindParameter("ParamAngleX") ?? model.FindParameter("AngleX");
+        _feedAngleY = model.FindParameter("ParamAngleY") ?? model.FindParameter("AngleY");
+        _feedBodyAngleX = model.FindParameter("ParamBodyAngleX");
+        _feedEyeBallX = model.FindParameter("ParamEyeBallX");
+        _feedEyeBallY = model.FindParameter("ParamEyeBallY");
+        _feedMouthOpenY = model.FindParameter("ParamMouthOpenY");
+        _feedMouthForm = model.FindParameter("ParamMouthForm");
+        _feedJawOpen = model.FindParameter("JawOpen");
+    }
+
+    /// <summary>复位上一帧投喂写过的参数（没写就不碰，手动调的值能保留）。</summary>
+    private void ResetFeedTouchedParameters(CubismParameter[] parameters)
+    {
+        for (var i = 0; i < _feedTouchedCount; i++)
+        {
+            var parameter = parameters[_feedTouchedIndices[i]];
+            parameter.Value = parameter.DefaultValue;
+        }
+        _feedTouchedCount = 0;
+    }
+
+    /// <summary>
+    /// 投喂 / 吃饭表现：饭团靠近时头 / 身体 / 眼睛朝它偏、张嘴；吃到后嚼嚼嚼 → 伪吞咽。
+    /// <para>顺序放在表情之后（嘴型要压过表情的嘴形），物理之前。动捕有脸时整段让位（真人脸优先），
+    /// 说话时只让出嘴部（口型跟着语音）。</para>
+    /// </summary>
+    private void ApplyFeeding(double deltaSeconds, bool mocapFace)
+    {
+        _feeding.Update(deltaSeconds);
+
+        if (!_feeding.HasOutput)
+        {
+            if (!_feedHadOutput) return;
+            _feedHadOutput = false;
+            // 从「有输出」回到「没输出」：把上次写的参数恢复默认一次，之后不再碰
+            if (_feedAngleX is not null) _feedAngleX.Value = _feedAngleX.DefaultValue;
+            if (_feedAngleY is not null) _feedAngleY.Value = _feedAngleY.DefaultValue;
+            if (_feedBodyAngleX is not null) _feedBodyAngleX.Value = _feedBodyAngleX.DefaultValue;
+            if (_feedEyeBallX is not null) _feedEyeBallX.Value = _feedEyeBallX.DefaultValue;
+            if (_feedEyeBallY is not null) _feedEyeBallY.Value = _feedEyeBallY.DefaultValue;
+            if (_feedMouthOpenY is not null) _feedMouthOpenY.Value = _feedMouthOpenY.DefaultValue;
+            if (_feedMouthForm is not null) _feedMouthForm.Value = _feedMouthForm.DefaultValue;
+            if (_feedJawOpen is not null) _feedJawOpen.Value = _feedJawOpen.DefaultValue;
+            return;
+        }
+
+        _feedHadOutput = true;
+        if (mocapFace) return;   // 真人脸优先：头 / 眼 / 嘴都交给动捕
+
+        var fx = _feeding.FocusX;
+        var fy = _feeding.FocusY;
+        var strength = _feeding.Strength;
+        var mouth = Math.Clamp(_feeding.MouthOpen, 0f, 1f);
+
+        WriteFeedParameter(_feedAngleX, (fx * strength * 22f) + 0f);
+        WriteFeedParameter(_feedAngleY, (-fy * strength * 15f) + _feeding.HeadNodDegrees);
+        WriteFeedParameter(_feedBodyAngleX, _feeding.BodyLeanDegrees);
+        WriteFeedParameter(_feedEyeBallX, fx * 0.9f);
+        WriteFeedParameter(_feedEyeBallY, -fy * 0.9f);
+
+        // 说话时嘴型跟着语音，不抢
+        if (_speechActive) return;
+        WriteFeedParameter(_feedMouthOpenY, mouth);
+        WriteFeedParameter(_feedMouthForm, mouth > 0.04f ? 0.15f : 0f);
+        WriteFeedParameter(_feedJawOpen, mouth * 0.55f);
+    }
+
+    private void WriteFeedParameter(CubismParameter? parameter, float value)
+    {
+        if (parameter is null) return;
+        parameter.Value = value;   // setter 自带 min~max 夹取
+        if (_feedTouchedCount >= _feedTouchedIndices.Length)
+        {
+            Array.Resize(ref _feedTouchedIndices, _feedTouchedIndices.Length * 2);
+        }
+        _feedTouchedIndices[_feedTouchedCount++] = parameter.Index;
     }
 
     /// <summary>解析鼓嘴参数（模型没有这些参数的自定义模型会自动跳过）。</summary>
@@ -1668,6 +1809,7 @@ public sealed class ModelRuntime : IDisposable
         ResetMusicTouchedParameters(parameters);
         ResetSpeechTouchedParameters(parameters);
         ResetMoodPuffParameters();
+        ResetFeedTouchedParameters(parameters);
         _gesture?.ResetTouched(parameters);
         _performance?.ResetTouched(parameters);
         _dance?.ResetTouched(parameters);
@@ -1762,6 +1904,10 @@ public sealed class ModelRuntime : IDisposable
         _petIdleActions?.Update(deltaSeconds, IsPetIdleBlocked(mocapFace));
 
         _expressionManager.Update(model, deltaSeconds);
+
+        // 5.55) 投喂 / 吃饭：饭团靠近时头 / 身体 / 眼睛朝它偏、张嘴；吃到后嚼嚼嚼 → 伪吞咽。
+        //       放在表情之后，嘴型才能压过表情；动捕有脸时整段让位、说话时只让出嘴。
+        ApplyFeeding(deltaSeconds, mocapFace);
 
         // 5.6) 待机随机小动作：没有动捕 / 音乐 / 语音 / 舞蹈 / 表演 / 互动 / 用户动作时，按随机间隔播一个
         UpdateIdleRandomGesture(deltaSeconds, mocapFace);
@@ -1894,6 +2040,9 @@ public sealed class ModelRuntime : IDisposable
         _moodPuffTarget = 0f;
         _moodPuffCurrent = 0f;
         _moodPuffWrote = false;
+        _feedTouchedCount = 0;
+        _feedHadOutput = false;
+        _feeding.Reset();
         _idleRandomGestureTimer = 0;
         model.Update();
     }

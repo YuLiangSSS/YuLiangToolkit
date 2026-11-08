@@ -323,6 +323,11 @@ public sealed class AffectionSettings
 
     /// <summary>是否让模型的 <c>d</c> 字段（-3 ~ +3）参与好感度变化。</summary>
     public bool UseModelDelta { get; init; } = true;
+
+    /// <summary>
+    /// 锁定好感度：聊天 / 掉值 / 吃饭都不再改变它，只有手动 <see cref="AffectionEngine.SetValue"/> 能改。
+    /// </summary>
+    public bool Locked { get; init; }
 }
 
 /// <summary>好感度持久化状态（落盘到 <c>Data\live2d\ai\chat-state.json</c>）。</summary>
@@ -439,6 +444,18 @@ public sealed class AffectionEngine
     /// <summary>手动设置（用户自己拖；不受兜底限制）。</summary>
     public void SetValue(double value) => State.Value = Clamp(value);
 
+    /// <summary>
+    /// 直接加减好感度（投喂 / 礼物之类的玩法用）：锁定或 delta = 0 时返回 0；
+    /// 只做夹取，不参与每日上限 / 掉值规则，也不改 <see cref="AffectionState.LastChatUnix"/>。
+    /// </summary>
+    public double ApplyDirectGain(double delta)
+    {
+        if (Settings.Locked || double.IsNaN(delta) || delta == 0) return 0;
+        var before = State.Value;
+        State.Value = Clamp(State.Value + delta);
+        return State.Value - before;
+    }
+
     /// <summary>应用设置；若当前低于兜底值且自然模式 + 兜底开启，把值抬到兜底值。</summary>
     public void ApplySettings(AffectionSettings settings)
     {
@@ -449,11 +466,11 @@ public sealed class AffectionEngine
 
     /// <summary>
     /// 记一轮聊天（用户发言时调用一次）：返回实际好感度变化（可能为 0）。
-    /// 手动模式返回 0；自然模式下 = GainPerChat +（启用了模型 d 值时的 d），夹 -4 ~ +4、受每日上限与兜底约束。
+    /// 手动模式 / 锁定返回 0；自然模式下 = GainPerChat +（启用了模型 d 值时的 d），夹 -4 ~ +4、受每日上限与兜底约束。
     /// </summary>
     public int ApplyChat(double modelDelta, DateTimeOffset now)
     {
-        if (!Settings.NaturalMode) return 0;
+        if (!Settings.NaturalMode || Settings.Locked) return 0;
 
         var dayKey = now.ToLocalTime().ToString("yyyy-MM-dd");
         if (!string.Equals(State.TodayKey, dayKey, StringComparison.Ordinal))
@@ -488,7 +505,7 @@ public sealed class AffectionEngine
     /// </summary>
     public int ApplyDecay(DateTimeOffset now)
     {
-        if (!Settings.NaturalMode || Settings.DecayPerDay <= 0 || Settings.DecayAfterHours <= 0) return 0;
+        if (!Settings.NaturalMode || Settings.Locked || Settings.DecayPerDay <= 0 || Settings.DecayAfterHours <= 0) return 0;
         if (State.LastChatUnix <= 0) return 0;
 
         // 结算基点 = 最近一次聊天 / 最近一次已结算掉值里更晚的那个：
@@ -690,6 +707,9 @@ public sealed partial class AiChatService : INotifyPropertyChanged, IDisposable
 
     /// <summary>手动设置好感度（用户自己拖；不走自然模式规则）。</summary>
     public partial void SetAffection(double value);
+
+    // 说明：AddAffection（投喂加好感度）、AppendNotice（系统提示）、AppendLocalPetMessage（本地桌宠消息）
+    // 是普通方法（不是 partial 契约），实现只在 AiChatService.cs 里声明一次，这里不再重复声明。
 
     /// <summary>清空聊天记录（好感度不动）。</summary>
     public partial void ClearConversation();

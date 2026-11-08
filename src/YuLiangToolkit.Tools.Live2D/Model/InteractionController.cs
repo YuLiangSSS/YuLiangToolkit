@@ -330,6 +330,31 @@ internal sealed class InteractionController
         return InteractionRegion.None;
     }
 
+    /// <summary>
+    /// 嘴部在画布上的大致中心 + 半径：取脸部包围盒下半段（脸椭圆中心再往下 45%），
+    /// 给投喂的「饭团掉进嘴里」判定用（近似值，不依赖嘴部 drawable）。
+    /// </summary>
+    public bool TryGetMouthCanvasCenter(out float canvasX, out float canvasY)
+    {
+        canvasX = 0;
+        canvasY = 0;
+        EnsureGeometry();   // 第一次访问时按当前蒙皮算一遍部件包围盒（不点模型也能拿到脸）
+        if (!_geometryReady || !_hasFaceEllipse) return false;
+        canvasX = _faceCx;
+        canvasY = _faceCy + (_faceRy * 0.45f);
+        return !float.IsNaN(canvasX) && !float.IsNaN(canvasY);
+    }
+
+    /// <summary>嘴部判定半径（画布像素；按脸宽估算，夹在 18 ~ 80）。</summary>
+    public float MouthCanvasRadius
+    {
+        get
+        {
+            EnsureGeometry();
+            return _geometryReady && _hasFaceEllipse ? Math.Clamp(_faceRx * 0.55f, 18f, 80f) : 30f;
+        }
+    }
+
     /// <summary>某个热区的代表点（UI 调试钩子 / 自检模拟点击用）。拿不到返回 false。</summary>
     public bool GetRegionCenter(InteractionRegion region, out float canvasX, out float canvasY)
     {

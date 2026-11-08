@@ -204,6 +204,35 @@
             </Setter>
         </Style>
 
+        <!-- ================= 养成抽屉：半透明深色面板上的浅色小按钮 ================= -->
+        <!-- 抽屉是有意做成「固定深色半透明」的：不管主题深浅，压在消息列表上都看得清。 -->
+        <Style x:Key="CareDrawerButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="#F2F5F8" />
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="Margin" Value="0,0,5,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="#26FFFFFF" BorderBrush="#40FFFFFF" BorderThickness="1"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#44FFFFFF" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#5AFFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <!-- ================= 一条消息的气泡（用户右 / 桌宠左 / 系统提示居中） ================= -->
         <DataTemplate x:Key="ChatMessageTemplate">
             <Grid Margin="0,3">
@@ -259,7 +288,8 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />   <!-- 标题条（可拖动） -->
                 <RowDefinition Height="Auto" />   <!-- 好感度试管 + 数值 + 3 个开关 -->
-                <RowDefinition Height="*" />      <!-- 消息列表（撑满剩余高度） -->
+                <RowDefinition Height="Auto" />   <!-- 养成 HUD（饱食 / 金币 / 投喂·任务按钮） -->
+                <RowDefinition Height="*" />      <!-- 消息列表（撑满剩余高度；投喂抽屉也盖在这一行） -->
                 <RowDefinition Height="Auto" />   <!-- 正在输入… -->
                 <RowDefinition Height="Auto" />   <!-- 6 个快捷短语 -->
                 <RowDefinition Height="Auto" />   <!-- 输入框 + 发送 + 状态行 -->
@@ -336,8 +366,41 @@
                 </Grid>
             </Border>
 
+            <!-- ==================================== 养成 HUD ==================================== -->
+            <!-- care 为 null / 配置 PetCareEnabled=false 时整条 Hidden（代码后置 RefreshCareHud 控制）：
+                 左边「🍙 饱食 72%（正常）」、中间金币、右边两个入口按钮（🍙 投喂 / 📋 任务）。 -->
+            <Border x:Name="CareHudPanel" Grid.Row="2" Margin="12,0,12,8" Padding="10,5" CornerRadius="10"
+                    Background="{DynamicResource InputBackgroundBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                    Visibility="Collapsed">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock x:Name="CareFullnessText" Text="🍙 饱食 70%（正常）" FontSize="10.5"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                    <TextBlock x:Name="CareCoinsText" Grid.Column="1" Text="🪙 30" FontSize="10.5"
+                               Margin="8,0,10,0" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="FeedDrawerButton" Content="🍙 投喂" Margin="0,0,6,0"
+                                Style="{StaticResource AiChipButtonStyle}" Click="OnFeedDrawerClick"
+                                ToolTip="买 / 扔大白饭团喂桌宠（饭团会被拖到屏幕上，甩到桌宠嘴边就算吃掉）" />
+                        <Button x:Name="TaskDrawerButton" Content="📋 任务" Margin="0"
+                                Style="{StaticResource AiChipButtonStyle}" Click="OnTaskDrawerClick"
+                                ToolTip="今日养成任务进度与金币奖励" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
             <!-- ==================================== 消息列表 ==================================== -->
-            <Grid Grid.Row="2">
+            <Grid Grid.Row="3">
                 <ScrollViewer x:Name="MessageScroll" VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled" Focusable="False">
                     <ItemsControl x:Name="MessageItems" Focusable="False"
@@ -350,17 +413,81 @@
                            FontSize="11" Width="230" TextAlignment="Center" TextWrapping="Wrap"
                            HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"
                            Foreground="{DynamicResource FaintTextBrush}" />
+
+                <!-- ==================================== 养成抽屉（盖在消息区上方） ==================================== -->
+                <!-- 两种模式共用这个面板：「🍙 投喂」= 4 行饭团商店；「📋 任务」= 3 行每日任务。
+                     半透明深色底是刻意的（不管主题深浅，压在聊天气泡上都清晰）。 -->
+                <Border x:Name="CareDrawer" Margin="10,0,10,2" CornerRadius="12"
+                        Background="#F21A1E26" BorderBrush="#33FFFFFF" BorderThickness="1"
+                        Visibility="Collapsed" Panel.ZIndex="10">
+                    <Grid Margin="10,7,10,8">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />   <!-- 标题 + 关闭 -->
+                            <RowDefinition Height="Auto" />   <!-- 金币 / 饱食 / 库存 -->
+                            <RowDefinition Height="*" />      <!-- 内容（饭团 或 任务，可滚动） -->
+                            <RowDefinition Height="Auto" />   <!-- 失败提示 -->
+                            <RowDefinition Height="Auto" />   <!-- ⚙ 养成设置 -->
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="CareDrawerTitle" Text="🍙 投喂 · 大白饭团" FontSize="12"
+                                       FontWeight="SemiBold" VerticalAlignment="Center" Foreground="#F2F5F8" />
+                            <Button Grid.Column="1" Content="✕" Style="{StaticResource CareDrawerButtonStyle}"
+                                    Padding="5,1" Margin="0" FontSize="10"
+                                    Click="OnCareDrawerCloseClick" ToolTip="收起面板" />
+                        </Grid>
+
+                        <TextBlock x:Name="CareDrawerSummaryText" Grid.Row="1" Margin="0,2,0,0"
+                                   FontSize="9.5" TextWrapping="Wrap" Foreground="#B9C2CE" />
+
+                        <ScrollViewer Grid.Row="2" Margin="0,4,0,4" VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                            <StackPanel>
+                                <!-- 投喂模式 -->
+                                <StackPanel x:Name="CareFeedSection">
+                                    <TextBlock Text="花金币买饭团，然后把它拖到桌宠嘴边喂它（甩过去也算）"
+                                               FontSize="9.5" TextWrapping="Wrap" Foreground="#8F9AA8"
+                                               Margin="0,0,0,5" />
+                                    <StackPanel x:Name="CareFeedRowsPanel" />
+                                </StackPanel>
+
+                                <!-- 任务模式 -->
+                                <StackPanel x:Name="CareTaskSection" Visibility="Collapsed">
+                                    <TextBlock x:Name="CareTaskSummaryText" Text="今日任务 0/3 已完成"
+                                               FontSize="9.5" Foreground="#FFD98A" Margin="0,0,0,6" />
+                                    <StackPanel x:Name="CareTaskRowsPanel" />
+                                    <TextBlock Text="每天 0 点按本地时间重置进度；完成时自动把金币发到 🪙（金币锁定 / 自然模式关闭时只记进度）。"
+                                               FontSize="9" TextWrapping="Wrap" Foreground="#8F9AA8"
+                                               Margin="0,2,0,0" />
+                                </StackPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <TextBlock x:Name="CareDrawerHintText" Grid.Row="3" Visibility="Collapsed"
+                                   FontSize="9.5" TextWrapping="Wrap" Foreground="#FFC97A"
+                                   Margin="0,0,0,4" />
+
+                        <Button x:Name="CareSettingsButton" Grid.Row="4" Content="⚙ 养成设置"
+                                HorizontalAlignment="Left" Style="{StaticResource CareDrawerButtonStyle}"
+                                Margin="0" Click="OnCareSettingsClick"
+                                ToolTip="打开工具页里的「饥饿 · 金币 · 每日任务」设置卡" />
+                    </Grid>
+                </Border>
             </Grid>
 
             <!-- ==================================== 正在输入… ==================================== -->
             <!-- 绑定 chat.IsBusy（DataContext = AiChatService）；【不要】写本地 Visibility 默认值，否则会盖掉绑定 -->
-            <StackPanel x:Name="TypingRow" Grid.Row="3" Orientation="Horizontal" Margin="18,0,18,2"
+            <StackPanel x:Name="TypingRow" Grid.Row="4" Orientation="Horizontal" Margin="18,0,18,2"
                         Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}">
                 <TextBlock Text="正在输入…" FontSize="10" Foreground="{StaticResource PinkMidBrush}" />
             </StackPanel>
 
             <!-- ==================================== 快捷短语 ==================================== -->
-            <WrapPanel Grid.Row="4" Orientation="Horizontal" Margin="12,4,6,0">
+            <WrapPanel Grid.Row="5" Orientation="Horizontal" Margin="12,4,6,0">
                 <Button Content="在吗" Tag="在吗" Style="{StaticResource AiChipButtonStyle}" Click="OnQuickPhraseClick" />
                 <Button Content="摸摸头" Tag="摸摸头" Style="{StaticResource AiChipButtonStyle}" Click="OnQuickPhraseClick" />
                 <Button Content="陪我聊天" Tag="陪我聊天" Style="{StaticResource AiChipButtonStyle}" Click="OnQuickPhraseClick" />
@@ -370,7 +497,7 @@
             </WrapPanel>
 
             <!-- ==================================== 输入区 ==================================== -->
-            <Grid Grid.Row="5" Margin="12,6,12,10">
+            <Grid Grid.Row="6" Margin="12,6,12,10">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
