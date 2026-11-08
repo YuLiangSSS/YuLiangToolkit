@@ -955,6 +955,36 @@
                 </StackPanel>
             </Border>
 
+            <!-- ===== 配置导入导出（把设置 + 表情图打包成一个 zip，换电脑 / 备份用） ===== -->
+            <TextBlock Text="配置导入导出" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource AccentBrush}" Margin="0,22,0,0" />
+            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
+                <StackPanel>
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               Text="把当前所有设置打包成一个 zip，换台电脑 / 备份 / 分享给别人时用。导出内容：所有功能的配置文件（含这个设置页的选项、界面布局记忆）+ 表情包收藏的图片、主页背景图 / 光标图、启动器图标等个人数据。" />
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,8,0,0"
+                               Text="导入是覆盖式的：包里有的配置会盖掉本地同名功能的设置（点按钮后先弹一个预览框，确认才开始写）。图片不覆盖本地同名文件，重名的自动编号成「名字 (1)」两份都留着。缓存、下载的游戏、聊天记录、播放器播放列表不进包。" />
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource DangerBrush}"
+                               TextWrapping="Wrap" Margin="0,8,0,0"
+                               Text="含账号凭据的三份配置（邮箱代收的授权码、Spug 验证码的推送地址、osu! 下图器的客户端密钥）不会导出，导入时也会跳过 —— 换机器后请重新填一次。" />
+
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                        <Button Content="导出配置…" Style="{StaticResource PrimaryButtonStyle}"
+                                Command="{Binding Maintenance.ExportConfigCommand}"
+                                ToolTip="选一个保存位置，把当前所有设置和个人数据打包成 zip" />
+                        <Button Content="导入配置…" Style="{StaticResource SecondaryButtonStyle}" Margin="10,0,0,0"
+                                Command="{Binding Maintenance.ImportConfigCommand}"
+                                ToolTip="选一个配置包 zip，先看预览确认，再覆盖式还原（主题 / 背景 / 布局立即生效，渲染显卡设置要重启）" />
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding Maintenance.ArchiveStatusText}" FontSize="11.5"
+                               Foreground="{DynamicResource SuccessBrush}" TextWrapping="Wrap" Margin="0,10,0,0"
+                               Visibility="{Binding Maintenance.ArchiveStatusText, Converter={StaticResource EmptyToVisInverse}}" />
+                </StackPanel>
+            </Border>
+
             <TextBlock FontSize="11" Foreground="{DynamicResource FaintTextBrush}" TextWrapping="Wrap" Margin="0,14,0,0"
                        Text="主页设置只影响外壳本身（外观模式、界面风格、配色方案、渲染显卡、主页显示、自动 / 点击特效、粒子颜色、关闭行为等）；各功能自己的选项在对应功能页面里，也可以在「重建配置」里一键恢复默认。" />
 

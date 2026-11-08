@@ -166,6 +166,17 @@ public static class LayoutMemory
     }
 
     /// <summary>
+    /// 外部改过 <c>Config\layout.json</c> 后清一次内存缓存（「配置导入导出」的导入用）：
+    /// 下次取值重新读盘，正开着的分隔条会按新布局重排；不触发 <see cref="ResetCompleted"/>（不是恢复默认）。
+    /// </summary>
+    public static void ReloadFromDisk()
+    {
+        lock (Gate) _panes = null;
+        try { ResetCompleted?.Invoke(null, EventArgs.Empty); }
+        catch { /* 订阅方异常不影响导入 */ }
+    }
+
+    /// <summary>
     /// 「恢复默认布局」：清空内存里的布局 + 删掉 <c>Config\layout.json</c>，
     /// 然后触发 <see cref="ResetCompleted"/>（正开着的页面据此恢复默认尺寸）。
     /// </summary>

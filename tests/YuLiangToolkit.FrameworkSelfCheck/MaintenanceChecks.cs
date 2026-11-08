@@ -519,6 +519,194 @@ public static class MaintenanceChecks
 
         // ===================== 8. 界面布局记忆（v0.41.0：工具页分隔条 / 恢复默认布局） =====================
         RunLayoutChecks(C, P);
+
+        // ===================== 10. 配置导入导出（把设置 + 图片打包成 zip） =====================
+        RunConfigArchiveChecks(C, P, scratch);
+    }
+
+    /// <summary>
+    /// 「主页设置 → 配置导入导出」的底层：<see cref="ConfigArchive"/> 的导出 / 预览 / 导入。
+    ///
+    /// <para><b>钉死的三条承诺</b>：</para>
+    /// <list type="number">
+    ///   <item>导出包里<b>没有</b>凭据类配置（邮箱授权码 / Spug 推送地址 / osu! 密钥），导入时也跳过；</item>
+    ///   <item>导入后<b>同一个配置对象</b>换成包里的值（不是新对象），否则界面绑的旧对象不动、后台自动保存还会写回旧值；</item>
+    ///   <item>恶意压缩包（<c>../</c> 逃逸 / 盘符 / 陌生目录）一律不落盘。</item>
+    /// </list>
+    /// </summary>
+    private static void RunConfigArchiveChecks(
+        Action<string, bool, string> check, Action<string, bool> simpleCheck, Scratch scratch)
+    {
+        void C(string name, bool ok, string detail = "") => check(name, ok, detail);
+        void P(string name, bool ok) => simpleCheck(name, ok);
+
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var toolId = "maint-archive-" + suffix;
+        var configDir = AppPaths.ToolConfigDir(toolId);
+        scratch.TrackDirectory(configDir);
+
+        // ---- 造一份可识别的配置 + 一张「收藏的表情图」 ----
+        var store = scratch.TrackStore(ToolConfigStore.For(toolId));
+        var cfg = store.Load<TestCfg>();
+        cfg.Note = "导出时的值";
+        cfg.Repeat = 7;
+        cfg.Enable = false;
+        store.SaveNow();
+
+        var imageDir = Path.Combine(AppPaths.DataRoot, "meme-board", "images");
+        Directory.CreateDirectory(imageDir);
+        var imagePath = Path.Combine(imageDir, $"selfcheck-{suffix}.png");
+        File.WriteAllBytes(imagePath, new byte[] { 0x89, 0x50, 0x4E, 0x47, 1, 2, 3 });
+        scratch.TrackFile(imagePath);
+
+        // 凭据类配置：导出 / 导入都必须跳过
+        var credentialDir = AppPaths.ToolConfigDir("mail-collector");
+        scratch.TrackDirectory(credentialDir);
+        var credentialStore = scratch.TrackStore(ToolConfigStore.For("mail-collector"));
+        var credentialConfig = credentialStore.Load<TestCfg>();
+        credentialConfig.Note = "授权码密文（不该进包）";
+        credentialStore.SaveNow();
+
+        // ---- 导出 ----
+        var zipPath = SelfCheckScratch.MakeFile("config-archive.zip");
+        scratch.TrackFile(zipPath);
+        var export = ConfigArchive.Export(zipPath);
+        C("ConfigArchive.Export：成功、统计到配置、文件落在指定位置",
+            export.Ok && export.ConfigFileCount > 0 && export.ZipBytes > 0 && File.Exists(zipPath),
+            $"ok={export.Ok}, config={export.ConfigFileCount}, data={export.DataFileCount}, bytes={export.ZipBytes}, err={export.Error}");
+
+        var probe = ConfigArchive.Probe(zipPath);
+        C("Probe：读出清单、认出是本程序的配置包",
+            probe.Ok && probe.Manifest is not null
+            && string.Equals(probe.Manifest.Kind, "yuLiangToolkit-config", StringComparison.Ordinal)
+            && probe.Manifest.Version == ConfigArchive.CurrentVersion,
+            $"ok={probe.Ok}, err={probe.Error}");
+
+        C("导出包含刚造的功能配置，但<b>不含</b>凭据类配置（mail-collector）",
+            probe.Manifest is not null
+            && probe.Manifest.ConfigToolIds.Contains(toolId, StringComparer.OrdinalIgnoreCase)
+            && !probe.Manifest.ConfigToolIds.Contains("mail-collector", StringComparer.OrdinalIgnoreCase),
+            probe.Manifest is null ? "清单为空" : string.Join(",", probe.Manifest.ConfigToolIds));
+
+        C("导出带上了白名单里的表情包图片",
+            probe.Manifest is not null && probe.Manifest.DataFileCount > 0
+            && probe.Manifest.DataToolIds.Contains("meme-board", StringComparer.OrdinalIgnoreCase),
+            probe.Manifest is null ? "清单为空" : $"data={probe.Manifest.DataFileCount}");
+
+        P("白名单判定：表情图 / 背景图在包内，Cache 与聊天记录不在",
+            ConfigArchive.IsExportableDataPath("meme-board/images/a.png")
+            && ConfigArchive.IsExportableDataPath("shell/background/bg.png")
+            && !ConfigArchive.IsExportableDataPath("chat-room/history.json")
+            && !ConfigArchive.IsExportableDataPath("meme-board/videos/a.mp4"));
+
+        // ---- 改本地值，再导入（覆盖式还原） ----
+        cfg.Note = "本地改过的值";
+        cfg.Repeat = 99;
+        store.SaveNow();
+
+        var import = ConfigArchive.Import(zipPath);
+        C("ConfigArchive.Import：成功并回报被覆盖配置的功能 Id",
+            import.Ok && import.ConfigFileCount > 0
+            && import.AffectedConfigToolIds.Contains(toolId, StringComparer.OrdinalIgnoreCase),
+            $"ok={import.Ok}, config={import.ConfigFileCount}, affected={string.Join(",", import.AffectedConfigToolIds)}, err={import.Error}");
+
+        C("导入后<b>同一个配置对象</b>换成包里的值（热重载，界面绑定不用重建）",
+            ReferenceEquals(store.Load<TestCfg>(), cfg)
+            && cfg.Note == "导出时的值" && cfg.Repeat == 7 && !cfg.Enable,
+            $"Note={cfg.Note}, Repeat={cfg.Repeat}, Enable={cfg.Enable}");
+
+        var diskCfg = JsonFileStore.Read<TestCfg>(store.FilePath);
+        C("导入后磁盘 JSON 也是包里的值（后台自动保存不会把旧值写回）",
+            diskCfg is { Repeat: 7 } && diskCfg.Note == "导出时的值",
+            $"disk.Note={diskCfg?.Note}, disk.Repeat={diskCfg?.Repeat}");
+
+        C("导入跳过凭据类配置：本地那份没被包里的内容盖掉",
+            JsonFileStore.Read<TestCfg>(credentialStore.FilePath)?.Note == "授权码密文（不该进包）");
+
+        C("导入时同名的表情图不覆盖、自动编号一份（RenamedCount 统计到）",
+            import.RenamedCount >= 1 && File.Exists(imagePath),
+            $"renamed={import.RenamedCount}");
+
+        // ---- 布局记忆也随包走 ----
+        var layoutKey = "archive-check-" + suffix + ".left.px";
+        LayoutMemory.SetPixel(layoutKey, 321);
+        var layoutZip = SelfCheckScratch.MakeFile("config-archive-layout.zip");
+        scratch.TrackFile(layoutZip);
+        var layoutExport = ConfigArchive.Export(layoutZip);
+        LayoutMemory.ResetAll();
+        var layoutImport = ConfigArchive.Import(layoutZip);
+        C("布局记忆随包导出 / 导入（LayoutImported 且值回来了）",
+            layoutExport.Ok && layoutImport.Ok && layoutImport.LayoutImported
+            && LayoutMemory.GetPixel(layoutKey) == 321,
+            $"export={layoutExport.Ok}, import={layoutImport.Ok}, layout={layoutImport.LayoutImported}, px={LayoutMemory.GetPixel(layoutKey)}");
+        LayoutMemory.Remove(layoutKey);
+
+        // ---- 坏包 / 外来包一律拒绝 ----
+        var notZip = SelfCheckScratch.MakeFile("not-a-config.zip");
+        scratch.TrackFile(notZip);
+        File.WriteAllText(notZip, "这不是压缩包");
+        var badProbe = ConfigArchive.Probe(notZip);
+        C("Probe：不是 zip / 没有清单时明确拒绝并给出中文原因",
+            !badProbe.Ok && !string.IsNullOrWhiteSpace(badProbe.Error),
+            badProbe.Error ?? "");
+
+        var badImport = ConfigArchive.Import(notZip);
+        C("Import：坏包直接失败，不写任何文件",
+            !badImport.Ok && !string.IsNullOrWhiteSpace(badImport.Error),
+            badImport.Error ?? "");
+
+        var missingProbe = ConfigArchive.Probe(Path.Combine(AppPaths.Root, $"不存在-{suffix}.zip"));
+        C("Probe：文件不存在时说「文件不存在」", !missingProbe.Ok && missingProbe.Error == "文件不存在。", missingProbe.Error ?? "");
+
+        // ---- 恶意压缩包：../../ 逃逸 / 盘符 / 陌生目录都不能落盘 ----
+        var evilZip = SelfCheckScratch.MakeFile("config-archive-evil.zip");
+        scratch.TrackFile(evilZip);
+        WriteRawZip(evilZip, new (string Name, string Text)[]
+        {
+            ("manifest.json", JsonFileStore.Serialize(new ConfigArchiveManifest { CreatedAt = DateTime.Now })),
+            ("../逃逸.txt", "不该出现在任何地方"),
+            ("Config/../../逃逸2.json", "{}"),
+            ("Data/../../逃逸3.txt", "不该出现在任何地方"),
+            ("C:/Windows/逃逸4.txt", "不该出现"),
+            ("Data/meme-board/images/../../../../逃逸5.txt", "不该出现"),
+            ("Config/mail-collector/config.json", JsonFileStore.Serialize(new TestCfg { Note = "外来包里的授权码" })),
+        });
+
+        var evilProbe = ConfigArchive.Probe(evilZip);
+        var evilImport = ConfigArchive.Import(evilZip);
+        C("恶意包：认得出是本程序的包，导入不抛异常",
+            evilProbe.Ok && evilImport.Ok, $"probe={evilProbe.Ok}, import={evilImport.Ok}, err={evilImport.Error}");
+
+        C("恶意包：<c>..</c> 逃逸条目不落盘（根目录 / Data 上级都没多出文件）",
+            !File.Exists(Path.Combine(AppPaths.Root, "逃逸.txt"))
+            && !File.Exists(Path.Combine(AppPaths.Root, "逃逸2.json"))
+            && !File.Exists(Path.Combine(AppPaths.DataRoot, "逃逸3.txt"))
+            && !File.Exists(Path.Combine(Path.GetDirectoryName(AppPaths.DataRoot)!, "逃逸5.txt")));
+
+        C("恶意包：陌生条目计入「已忽略」",
+            evilImport.SkippedUnknownCount > 0, $"skipped={evilImport.SkippedUnknownCount}");
+
+        C("恶意包：夹带的凭据类配置被跳过，本地那份没被改",
+            evilImport.SkippedCredentialToolIds.Contains("mail-collector", StringComparer.OrdinalIgnoreCase)
+            && JsonFileStore.Read<TestCfg>(credentialStore.FilePath)?.Note == "授权码密文（不该进包）",
+            $"credential={string.Join(",", evilImport.SkippedCredentialToolIds)}");
+
+        C("导入后凭据目录里没有多出文件（只保留原来那一份 config.json）",
+            CountFilesUnder(credentialDir) == 1, $"files={CountFilesUnder(credentialDir)}");
+    }
+
+    /// <summary>按条目名原样写一个 zip（<see cref="System.IO.Compression.ZipArchive"/> 不会帮我们清洗路径，正好用来造恶意包）。</summary>
+    private static void WriteRawZip(string path, IEnumerable<(string Name, string Text)> entries)
+    {
+        using var stream = File.Create(path);
+        using var archive = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Create);
+        foreach (var (name, text) in entries)
+        {
+            var entry = archive.CreateEntry(name, System.IO.Compression.CompressionLevel.Optimal);
+            using var entryStream = entry.Open();
+            using var writer = new StreamWriter(entryStream);
+            writer.Write(text);
+        }
     }
 
     /// <summary>

@@ -2179,7 +2179,7 @@ public class MainViewModel : ObservableObject
         // （Config\shell\config.json 就是主页设置本身，重建它 = 主页设置恢复默认）。
         var configTargets = new List<ToolRef> { new(ShellToolId, "主页 / 外壳设置") };
         configTargets.AddRange(_catalogRoot.AllTools.Select(tool => new ToolRef(tool.Id, tool.Name)));
-        Maintenance = new MaintenanceViewModel(Tools.ToList(), configTargets, ResetToolConfig);
+        Maintenance = new MaintenanceViewModel(Tools.ToList(), configTargets, ResetToolConfig, OnConfigImported);
 
         // 开发调试：YLT_HOME_SEARCH=关键词 可以在启动时预置搜索词（截图验证“筛选后/无结果”状态用）
         var presetSearch = Environment.GetEnvironmentVariable("YLT_HOME_SEARCH");
@@ -2635,6 +2635,17 @@ public class MainViewModel : ObservableObject
     // ---------- 缓存清理 / 配置重建（v0.39.0，板块见 MaintenanceViewModel） ----------
 
     /// <summary>
+    /// 「导入配置」收尾：配置 / 数据已经写进本地，这里让界面按新配置重刷一遍（尽量不重启）。
+    /// 失败的异常由调用方（<see cref="MaintenanceViewModel"/>）捕获并显示，不吞在这里。
+    /// </summary>
+    private void OnConfigImported(ConfigArchiveResult result)
+    {
+        // 布局记忆（Config\layout.json）在 ConfigArchive 导入时已经 ReloadFromDisk 过，
+        // 它会触发 ResetCompleted 让开着的页面重新按记忆里的尺寸排；这里只管外壳自己的外观。
+        RefreshAfterConfigImport(result.AffectedConfigToolIds);
+    }
+
+    /// <summary>
     /// 「重建配置」真正执行的地方：删配置文件 + 把内存里的配置改回默认值（<see cref="ToolConfigStore.ResetTool"/>）。
     /// 外壳自己的配置被重建时要额外刷新界面（主题、特效、排序依据…），否则界面还在用重置前的状态。
     /// </summary>
@@ -2696,6 +2707,46 @@ public class MainViewModel : ObservableObject
     }
 
     // ---------- 工具切换 / 后台保活 ----------
+
+    /// <summary>
+    /// 「导入配置」写完盘之后刷新界面：与 <see cref="RefreshAfterShellConfigReset"/> 同样的重放清单，
+    /// 但<b>不</b>把任何东西改成默认值 —— 一切以刚导入的配置为准。
+    ///
+    /// <para>与重置版的差别：不清调试覆盖（用户可能正用 <c>YLT_THEME</c> 之类的调试参数）、
+    /// 不 <see cref="ResetRenderGpu"/>（渲染 GPU 是系统级设置、要重启才生效，交给用户自己决定）、
+    /// 不把标签墙 / 特效勾选的「临时展开状态」推回默认。</para>
+    /// </summary>
+    public void RefreshAfterConfigImport(IReadOnlyList<string> affectedToolIds)
+    {
+        // 被覆盖配置的功能很可能还开着旧界面 / 旧内存配置：丢掉缓存，下次进来按新配置重建
+        foreach (var toolId in affectedToolIds)
+        {
+            if (string.Equals(toolId, ShellToolId, StringComparison.OrdinalIgnoreCase)) continue;
+            DropCachedToolView(toolId);
+        }
+
+        // 外壳自己的配置（主题 / 背景 / 粒子 / 主页卡片…）——这些都不是绑定，要重放一遍
+        InitializeThemePalettes();          // 配色卡片按导入进来的配色重新选默认项
+        EnsureSystemThemeTimer();
+        ApplyTheme(force: true);            // 主题 / 色调 / 外观模式
+        ReloadBackgroundImage();            // 背景图（导入包里已换成新文件 / 新路径，这里读配置重挂）
+        ReloadCustomCursorImage();          // 自定义光标
+
+        InitializeEffects();
+        OnPropertyChanged(nameof(AutoEffectOptions));
+        OnPropertyChanged(nameof(ClickEffectOptions));
+        NotifyTuningChanged();
+        SyncThemeBlurOptions();
+        SyncCloudOptions();
+        ApplyPaneSplitterHintOpacity();     // 分隔条提示线透明度
+
+        OnPropertyChanged(nameof(RenderGpuRestartPending));   // 导入的渲染设置可能要重启才生效
+        OnPropertyChanged(string.Empty);     // 其余所有绑定（主题单选、粒子颜色、关闭行为、标签墙…）全部重读
+        NotifyUiThemeChanged();
+        RebuildNavItems();                   // 快捷栏开关 / 内容
+        RefreshToolCards();                  // 「最近使用」等卡片状态
+        RefreshHeader();
+    }
 
     /// <summary>
     /// 切换功能前通知上一个工具：落盘未保存的配置、停止后台任务。

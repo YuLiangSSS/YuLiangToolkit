@@ -423,6 +423,108 @@ public sealed class ToolConfigStore
         target.NotifyAllPropertiesChanged();
     }
 
+    /// <summary>
+    /// 从磁盘重新读一遍配置：<b>已加载的配置对象原地换成文件里的值</b>（对象身份不变）+ 立刻写回同一份 JSON。
+    ///
+    /// <para><b>用途</b>：「主页设置 → 配置导入导出」的导入。外部把 config.json 覆盖成导入包的内容后调它，
+    /// 界面上已经绑定的对象会收到「所有属性都变了」的通知，主题 / 选项立即生效；
+    /// 否则后台自动保存下一拍就把旧值写回文件，等于白导入。</para>
+    ///
+    /// <para><b>并发</b>：完全复用 <see cref="ResetToDefaults"/> 的 <c>_writeGate</c> + <c>_resetGeneration</c>
+    /// 骨架（重建配置那条已验证的路子）：持写盘锁期间自增代际让后台旧 JSON 那一拍作废，抄完值再自增一次。</para>
+    /// </summary>
+    /// <param name="json">导入包里该配置文件的 JSON 文本（调用方已经把文件写盘了）。</param>
+    /// <returns>是否成功；失败原因见 <see cref="LastError"/>。</returns>
+    public bool ApplyImportedJson(string json)
+    {
+        bool ok;
+        lock (_writeGate)
+        {
+            lock (_gate) _resetGeneration++;
+
+            ok = ApplyJsonToModels(json);
+
+            try
+            {
+                // 写盘内容以导入包为准（不要用内存对象重新序列化：缺字段 / 多余字段都要保留包里的原样）
+                lock (_gate) _lastJson = null;
+                ok &= JsonFileStore.WriteJson(FilePath, json, msg => LastError = msg);
+                if (ok) lock (_gate) _lastJson = json;
+            }
+            catch (Exception ex)
+            {
+                LastError = $"写入 {FilePath} 失败：{ex.Message}";
+                ok = false;
+            }
+
+            lock (_gate) _resetGeneration++;
+        }
+        return ok;
+    }
+
+    /// <summary>
+    /// 用一段 JSON 文本把已加载的模型原地更新（强类型按可写属性抄；动态配置按键替换）。
+    /// JSON 坏掉 / 类型不对时不动模型并返回 false（导入流程会中止，不会把界面刷成半套默认值）。
+    /// </summary>
+    private bool ApplyJsonToModels(string json)
+    {
+        List<object> models;
+        lock (_gate)
+        {
+            models = _instances.Values.ToList();
+            if (_model is not null && !models.Contains(_model)) models.Add(_model);
+        }
+
+        var ok = true;
+        foreach (var model in models)
+        {
+            try
+            {
+                switch (model)
+                {
+                    case ToolConfig config:
+                        var type = config.GetType();
+                        // 反序列化成同类型的新对象：缺字段走类里的默认值，多余字段被忽略（与首次 Load 一致）
+                        var fresh = System.Text.Json.JsonSerializer.Deserialize(json, type, JsonFileStore.Options);
+                        if (fresh is null) { ok = false; continue; }
+                        CopyValues(config, fresh);
+                        config.NotifyAllPropertiesChanged();
+                        break;
+                    case DynamicToolConfig dynamicConfig:
+                        // 用 JsonNode 字典读：保留包里所有键值的原类型（跟 DynamicToolConfig.Load 的读法一致）
+                        var values = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.Nodes.JsonNode?>>(
+                            json, JsonFileStore.Options);
+                        if (values is null) { ok = false; continue; }
+                        dynamicConfig.Clear();
+                        foreach (var (key, value) in values) dynamicConfig.SetValue(key, value);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                LastError = $"更新内存配置失败：{ex.Message}";
+                ok = false;
+            }
+        }
+        return ok;
+    }
+
+    /// <summary>
+    /// 把同类型源对象可写、会落盘的属性值抄到 <paramref name="target"/>（保持对象身份不变）。
+    /// 与 <see cref="CopyDefaultValues"/> 同一套规则：只读属性 &amp; [JsonIgnore] 不参与。
+    /// </summary>
+    private static void CopyValues(ToolConfig target, object source)
+    {
+        var type = target.GetType();
+        foreach (var property in type.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+        {
+            if (!property.CanWrite || property.GetIndexParameters().Length > 0) continue;
+            if (property.IsDefined(typeof(System.Text.Json.Serialization.JsonIgnoreAttribute), inherit: true)) continue;
+
+            property.SetValue(target, property.GetValue(source));
+        }
+    }
+
     /// <summary>当前进程里所有已创建的配置存储（诊断用）。</summary>
     public static IReadOnlyList<ToolConfigStore> All => Cache.Values.ToList();
 

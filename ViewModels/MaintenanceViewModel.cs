@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows;
+using Microsoft.Win32;
 using YuLiangToolkit.Core.Maintenance;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Core.Storage;
@@ -96,15 +97,18 @@ public sealed class MaintenanceViewModel : ObservableObject
     private readonly IReadOnlyList<ITool> _tools;
     private readonly IReadOnlyList<ToolRef> _configTargets;
     private readonly Func<string, bool> _resetConfig;
+    private readonly Action<ConfigArchiveResult>? _onConfigImported;
 
     public MaintenanceViewModel(
         IReadOnlyList<ITool> tools,
         IReadOnlyList<ToolRef> configTargets,
-        Func<string, bool> resetConfig)
+        Func<string, bool> resetConfig,
+        Action<ConfigArchiveResult>? onConfigImported = null)
     {
         _tools = tools ?? Array.Empty<ITool>();
         _configTargets = configTargets ?? Array.Empty<ToolRef>();
         _resetConfig = resetConfig ?? (_ => false);
+        _onConfigImported = onConfigImported;
 
         RefreshCommand = new RelayCommand(_ => Refresh());
         SelectAllCacheCommand = new RelayCommand(_ => SetAllCacheSelected(true));
@@ -115,6 +119,8 @@ public sealed class MaintenanceViewModel : ObservableObject
         SelectNoneConfigCommand = new RelayCommand(_ => SetAllConfigSelected(false));
         ResetConfigCommand = new RelayCommand(_ => ResetConfig());
         ResetLayoutCommand = new RelayCommand(_ => ResetLayout());
+        ExportConfigCommand = new RelayCommand(_ => ExportConfig());
+        ImportConfigCommand = new RelayCommand(_ => ImportConfig());
 
         CacheItems.CollectionChanged += (_, _) => UpdateSummaries();
         ConfigItems.CollectionChanged += (_, _) => UpdateSummaries();
@@ -199,6 +205,16 @@ public sealed class MaintenanceViewModel : ObservableObject
         private set => Set(ref _layoutSummaryText, value);
     }
 
+    private string _archiveStatusText = "";
+    /// <summary>上一次导出 / 导入的结果提示。</summary>
+    public string ArchiveStatusText
+    {
+        get => _archiveStatusText;
+        private set => Set(ref _archiveStatusText, value);
+    }
+
+    // ---------- 配置导入导出（v1.0：把习惯配置打包成 zip 分享） ----------
+
     private string _layoutStatusText = "";
     /// <summary>上一次恢复默认布局的结果提示。</summary>
     public string LayoutStatusText
@@ -223,6 +239,12 @@ public sealed class MaintenanceViewModel : ObservableObject
 
     /// <summary>「恢复默认布局」：清掉所有工具页记住的分隔条尺寸（<c>Config\layout.json</c>）。</summary>
     public RelayCommand ResetLayoutCommand { get; }
+
+    /// <summary>「导出配置」：把当前所有设置 + 个人数据打包成一个 zip。</summary>
+    public RelayCommand ExportConfigCommand { get; }
+
+    /// <summary>「导入配置」：选一个配置包 zip，先预览确认再覆盖式还原。</summary>
+    public RelayCommand ImportConfigCommand { get; }
 
     // ---------- 行为 ----------
 
@@ -372,6 +394,142 @@ public sealed class MaintenanceViewModel : ObservableObject
             : $"布局已恢复默认，但配置文件 Config\\layout.json 删不掉（可能被占用），下次拖分隔条时会覆盖。";
         UpdateLayoutSummary();
     }
+
+    // ---------- 配置导入导出 ----------
+
+    /// <summary>
+    /// 「导出配置…」：选个保存位置，把当前所有设置配置 + 个人数据（表情图 / 背景图 / 图标…）打包成 zip。
+    /// 含凭据的三份配置（邮箱授权码 / Spug 推送地址 / osu! 客户端密钥）按约定不进包。
+    /// </summary>
+    private void ExportConfig()
+    {
+        var dialog = new SaveFileDialog
+        {
+            Title = "导出配置",
+            Filter = "配置包 (*.zip)|*.zip",
+            DefaultExt = ".zip",
+            AddExtension = true,
+            FileName = $"YuLiangToolkit-config-{DateTime.Now:yyyyMMdd-HHmm}.zip",
+            InitialDirectory = SafeInitialDirectory(),
+            OverwritePrompt = true,
+        };
+        if (dialog.ShowDialog() is not true) return;
+
+        var result = ConfigArchive.Export(dialog.FileName);
+        if (!result.Ok)
+        {
+            ArchiveStatusText = result.Error ?? "导出失败。";
+            return;
+        }
+
+        ArchiveStatusText = $"已导出 {result.ConfigFileCount} 项配置"
+                            + (result.DataFileCount > 0 ? $" + {result.DataFileCount} 个图片 / 数据文件" : "")
+                            + $"（{FormatSize(result.ZipBytes)}）：{Path.GetFileName(dialog.FileName)}"
+                            + "（含凭据的邮箱 / Spug / osu! 配置未导出）";
+    }
+
+    /// <summary>
+    /// 「导入配置…」：选一个配置包，先读清单做预览确认（包多大、几项配置、几张图、哪些内容会被跳过），
+    /// 确认后覆盖式还原；已加载的配置对象原地换值并立刻写盘，尽量不用重启。
+    /// </summary>
+    private void ImportConfig()
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = "导入配置",
+            Filter = "配置包 (*.zip)|*.zip|所有文件 (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false,
+            InitialDirectory = SafeInitialDirectory(),
+        };
+        if (dialog.ShowDialog() is not true) return;
+
+        var probe = ConfigArchive.Probe(dialog.FileName);
+        if (!probe.Ok || probe.Manifest is null)
+        {
+            ArchiveStatusText = probe.Error ?? "这不是本程序的配置包。";
+            return;
+        }
+
+        var manifest = probe.Manifest;
+        var toolNames = manifest.ConfigToolIds
+            .Select(DescribeConfigTarget)
+            .Where(name => !string.IsNullOrEmpty(name))
+            .ToList();
+
+        var details = new System.Text.StringBuilder();
+        details.AppendLine($"包大小：{FormatSize(probe.ZipBytes)}");
+        details.AppendLine($"配置：{manifest.ConfigFileCount} 项"
+                            + (toolNames.Count > 0 ? $"（{string.Join("、", toolNames.Take(12))}"
+                                + (toolNames.Count > 12 ? $" 等 {toolNames.Count} 项" : "") + "）" : ""));
+        details.AppendLine($"图片 / 数据：{manifest.DataFileCount} 个"
+                            + (manifest.DataToolIds.Count > 0 ? $"（{string.Join("、", manifest.DataToolIds.Select(DescribeConfigTarget))}）" : ""));
+        if (manifest.AppVersion is { Length: > 0 }) details.AppendLine($"导出版本：v{manifest.AppVersion}");
+        details.AppendLine($"导出时间：{manifest.CreatedAt:yyyy-MM-dd HH:mm}");
+        details.AppendLine();
+        details.AppendLine("导入是覆盖式的：包里有的配置会盖掉本地同名功能设置（先在这个弹框点确定才开始写）。");
+        details.AppendLine("图片不会覆盖本地同名文件，重名的会自动编号成「名字 (1)」保留两份。");
+        details.AppendLine("含凭据的配置（邮箱授权码 / Spug 推送地址 / osu! 密钥）两个方向都不参与。");
+
+        if (!Confirm(details.ToString(), "导入配置")) return;
+
+        var result = ConfigArchive.Import(dialog.FileName);
+        if (!result.Ok)
+        {
+            ArchiveStatusText = result.Error ?? "导入失败。";
+            return;
+        }
+
+        // 让外壳把主题 / 背景 / 粒子 / 功能卡片按新配置刷一遍（尽量不重启）
+        try { _onConfigImported?.Invoke(result); }
+        catch (Exception ex) { ArchiveStatusText = $"配置已写入，但界面刷新失败：{ex.Message}"; return; }
+
+        var text = $"已导入 {result.ConfigFileCount} 项配置"
+                   + (result.DataFileCount > 0 ? $" + {result.DataFileCount} 个图片 / 数据文件" : "")
+                   + (result.RenamedCount > 0 ? $"（{result.RenamedCount} 张重名图已自动编号）" : "");
+        if (result.SkippedCredentialToolIds.Count > 0)
+            text += $"；含凭据的 {string.Join("、", result.SkippedCredentialToolIds.Select(DescribeConfigTarget))} 配置按约定跳过";
+        if (result.SkippedUnknownCount > 0)
+            text += $"；{result.SkippedUnknownCount} 个陌生条目已忽略";
+        text += "。主题 / 背景 / 布局已立即生效；渲染 GPU 设置要重启本程序才生效。";
+        ArchiveStatusText = text;
+
+        // 配置变了，恢复默认布局那块摘要也跟着重算
+        UpdateLayoutSummary();
+        Refresh();
+    }
+
+    /// <summary>配置清单里的功能 Id → 界面上看到的名字（shell / layout 特殊，陌生 Id 原样显示）。</summary>
+    private string DescribeConfigTarget(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return "";
+        if (id.Equals("shell", StringComparison.OrdinalIgnoreCase)) return "主页 / 外壳设置";
+        if (id.Equals("layout", StringComparison.OrdinalIgnoreCase)) return "界面布局";
+        return _configTargets.FirstOrDefault(target => string.Equals(target.Id, id, StringComparison.OrdinalIgnoreCase)).Name
+               ?? _tools.FirstOrDefault(tool => string.Equals(tool.Id, id, StringComparison.OrdinalIgnoreCase))?.Name
+               ?? id;
+    }
+
+    /// <summary>文件对话框的起始目录（数据目录存在就用它，否则让系统决定）。</summary>
+    private static string SafeInitialDirectory()
+    {
+        try
+        {
+            var root = AppPaths.Root;
+            return Directory.Exists(root) ? root : "";
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        >= 1024 * 1024 => $"{bytes / 1024d / 1024d:0.#} MB",
+        >= 1024 => $"{bytes / 1024d:0.#} KB",
+        _ => $"{bytes} B",
+    };
 
     /// <summary>把布局键里的工具 Id 换成界面上看到的功能名（设置页摘要用）。</summary>
     private string DescribeGroup(string id)
