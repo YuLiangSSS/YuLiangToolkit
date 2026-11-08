@@ -24,11 +24,9 @@ public sealed class Live2DViewModel : ToolViewModelBase
 {
     private Live2DSession _session = Live2DSession.Current;
 
-    /// <summary>
-    /// 当前激活的表情（官方语义：同一时间只有一个表情；切换时旧的淡出、新表情淡入）。
-    /// 表情卡是单选：点新的会切换，点当前激活的会取消回默认。
-    /// </summary>
-    private ExpressionRowViewModel? _activeExpression;
+    // 表情卡已从「单选」改成「多选叠加」：不再维护单选激活字段 —— 每一行的高亮状态直接由
+    // runtime.IsExpressionActive(该行表情) 现算（见 RefreshExpressionStates），所以
+    // 桌宠双击随机表情 / AI 联动表情 / 组合预设套用之后，工具页的高亮都会自己跟上。
     private bool _isLoading;
     private bool _isLoaded;
     private double _loadProgress;
@@ -139,6 +137,8 @@ public sealed class Live2DViewModel : ToolViewModelBase
         StopMotionCommand = new RelayCommand(_ => StopMotion());
         ToggleExpressionCommand = new RelayCommand(parameter => ToggleExpression(parameter as ExpressionRowViewModel));
         ClearExpressionsCommand = new RelayCommand(_ => ClearAllExpressions());
+        ApplyExpressionPresetCommand = new RelayCommand(parameter => ApplyExpressionPreset(parameter as ExpressionPresetItem));
+        BuildExpressionPresets();
         TogglePetCommand = new RelayCommand(_ => Session.TogglePet());
         CenterPetCommand = new RelayCommand(_ => Session.CenterPet());
         ResetPetPositionCommand = new RelayCommand(_ => Session.ResetPetPosition());
@@ -379,10 +379,29 @@ public sealed class Live2DViewModel : ToolViewModelBase
         }
     }
 
-    /// <summary>表情列表。</summary>
+    /// <summary>
+    /// 表情全表（加载模型时按 <c>runtime.Expressions</c> 建好；界面按下面的两个分组显示，
+    /// 这里主要用来数总数 / 给其它地方按名字找行）。
+    /// </summary>
     public ObservableCollection<ExpressionRowViewModel> Expressions { get; } = new();
 
-    /// <summary>表情统计文本。</summary>
+    /// <summary>
+    /// 「表情 / 姿势」分组（脸红、爱心眼、前倾、竖食指…）：会改五官或身体姿势，叠着用就是表情组合。
+    /// </summary>
+    public ObservableCollection<ExpressionRowViewModel> ExpressionGroupRows { get; } = new();
+
+    /// <summary>
+    /// 「装饰」分组（兔牙、眼镜、衣服、裙子、脱鞋、尾巴、钢盆、加载、体型…）：
+    /// 属于穿戴 / 摆件类，用户要求跟表情分开摆，免得和五官表情混在一起找。
+    /// </summary>
+    public ObservableCollection<ExpressionRowViewModel> DecorationRows { get; } = new();
+
+    /// <summary>
+    /// 组合预设（一键套用：先全部清除，再逐个叠加）。按钮由界面按这个集合生成，加预设只改这里。
+    /// </summary>
+    public ObservableCollection<ExpressionPresetItem> ExpressionPresets { get; } = new();
+
+    /// <summary>表情统计文本（「N 个表情 · 已激活 M 个」）。</summary>
     public string ExpressionSummaryText
     {
         get => _expressionSummaryText;
@@ -3872,6 +3891,9 @@ public sealed class Live2DViewModel : ToolViewModelBase
     public RelayCommand StopMotionCommand { get; }
     public RelayCommand ToggleExpressionCommand { get; }
     public RelayCommand ClearExpressionsCommand { get; }
+
+    /// <summary>套用组合预设（参数 = <see cref="ExpressionPresetItem"/>；先清空再逐个叠加）。</summary>
+    public RelayCommand ApplyExpressionPresetCommand { get; }
     public RelayCommand TogglePetCommand { get; }
     public RelayCommand CenterPetCommand { get; }
     public RelayCommand ResetPetPositionCommand { get; }
@@ -3965,15 +3987,16 @@ public sealed class Live2DViewModel : ToolViewModelBase
             PartGroups.Clear();
             Motions.Clear();
             Expressions.Clear();
+            ExpressionGroupRows.Clear();
+            DecorationRows.Clear();
             IdleMotionOptions.Clear();
-            _activeExpression = null;
             SelectedIdleMotion = null;
             SelectedDrawableIndex = -1;
             SelectedDrawableText = "（点击预览里的模型可命中网格 / 部件名）";
             ParameterTotalText = "0 个参数";
             PartTotalText = "0 个部件";
             MotionSummaryText = "0 个动作";
-            ExpressionSummaryText = "0 个表情";
+            ExpressionSummaryText = "0 个表情 · 已激活 0 个";
             CurrentMotionName = "（无）";
             IsMotionPlaying = false;
             MotionProgress = 0;
@@ -4032,6 +4055,10 @@ public sealed class Live2DViewModel : ToolViewModelBase
                 row.Progress = MotionProgress;
                 row.TimeText = MotionTimeText;
             }
+
+            // 表情是多选叠加的：每帧把每一行的高亮对到运行时的真实状态。
+            // 这样桌宠双击随机表情、AI 联动表情、某个表情淡出结束之后，工具页都会自己跟上。
+            RefreshExpressionStates(runtime);
         }
         catch
         {
@@ -4191,19 +4218,60 @@ public sealed class Live2DViewModel : ToolViewModelBase
         MotionSummaryText = $"{Motions.Count} 个动作";
     }
 
+    /// <summary>
+    /// 「装饰」类表情名单（用户要求把偏装饰的东西单独分组，别和五官表情混在一起）：
+    /// 兔牙、黑框眼镜、单片眼镜、裙子切换、胸口衣服、脱鞋、尾巴开关、钢盆、加载、体型1、体型2、默认体型。
+    /// <para>不在名单里的都归到「表情 / 姿势」分组 —— 以后模型加了新表情，默认还在这边，不会突然找不到。</para>
+    /// </summary>
+    private static readonly HashSet<string> DecorationExpressionNames = new(StringComparer.Ordinal)
+    {
+        "兔牙",
+        "黑框眼镜",
+        "单片眼镜",
+        "裙子切换",
+        "胸口衣服",
+        "脱鞋",
+        "尾巴开关",
+        "钢盆",
+        "加载",
+        "体型1",
+        "体型2",
+        "默认体型",
+    };
+
+    /// <summary>这个名字是不是「装饰」类（见 <see cref="DecorationExpressionNames"/>）。</summary>
+    private static bool IsDecorationExpression(string? name)
+        => !string.IsNullOrWhiteSpace(name) && DecorationExpressionNames.Contains(name.Trim());
+
     private void BuildExpressionRows(ModelRuntime runtime)
     {
         Expressions.Clear();
-        _activeExpression = null;
+        ExpressionGroupRows.Clear();
+        DecorationRows.Clear();
         try
         {
             foreach (var expression in runtime.Expressions)
             {
-                Expressions.Add(new ExpressionRowViewModel(expression));
+                var row = new ExpressionRowViewModel(expression);
+
+                // 同一批行对象分别塞进两个分组集合：行上的 IsApplied 是共享的，
+                // 所以不管从哪个分组点，两边的勾选状态都一致。
+                Expressions.Add(row);
+                if (IsDecorationExpression(expression.Name))
+                {
+                    DecorationRows.Add(row);
+                }
+                else
+                {
+                    ExpressionGroupRows.Add(row);
+                }
             }
         }
         catch { /* 运行时还在准备中 */ }
-        UpdateExpressionSummary();
+
+        // 加载完就按运行时真实状态刷一遍高亮（重新加载模型时可能已经有表情在生效）
+        RefreshExpressionStates(runtime);
+        Log($"表情分组：表情 / 姿势 {ExpressionGroupRows.Count} 个，装饰 {DecorationRows.Count} 个");
     }
 
     private void BuildIdleMotionOptions(ModelRuntime runtime)
@@ -4235,8 +4303,9 @@ public sealed class Live2DViewModel : ToolViewModelBase
         Session.ResetAll();
         foreach (var group in ParameterGroups) group.InvalidateRows();
         foreach (var group in PartGroups) group.InvalidateRows();
-        _activeExpression = null;
-        UpdateExpressionStates();
+
+        // 重置会把所有表情清掉：按运行时真实状态刷新每一行的高亮
+        RefreshExpressionStates();
         foreach (var row in Motions)
         {
             row.IsCurrent = false;
@@ -4277,8 +4346,8 @@ public sealed class Live2DViewModel : ToolViewModelBase
     }
 
     /// <summary>
-    /// 表情卡点击：官方语义是「同一时间只有一个激活表情」，所以这里是单选切换 ——
-    /// 点当前激活的 = 取消回默认；点别的 = 旧的淡出、新表情淡入（交叉淡化）。
+    /// 表情卡点击（多选开关）：没激活 → 淡入叠加这一个（不碰其它表情）；已激活 → 只取消这一个，
+    /// 其它叠加中的表情继续。全部清除用「全部清除」按钮（<see cref="ClearExpressionsCommand"/>）。
     /// </summary>
     private void ToggleExpression(ExpressionRowViewModel? row)
     {
@@ -4286,64 +4355,185 @@ public sealed class Live2DViewModel : ToolViewModelBase
         var runtime = Runtime;
         if (runtime is null || !runtime.IsLoaded) return;
 
-        var fade = Math.Clamp(Cfg.ExpressionFadeSeconds, 0, 2);
-        if (ReferenceEquals(_activeExpression, row))
+        try
         {
-            _activeExpression = null;
-            Session.ClearExpressions(fade);
-            UpdateExpressionStates();
-            Log($"取消表情：{row.Name}");
-            StatusText = $"已取消表情：{row.Name}";
-            return;
-        }
+            var fade = Math.Clamp(Cfg.ExpressionFadeSeconds, 0, 2);
+            if (runtime.IsExpressionActive(row.Expression))
+            {
+                // 只淡出这一个（其它已叠加的表情不动）
+                Session.RemoveExpression(row.Expression, fade);
+                Log($"取消表情：{row.Name}");
+                StatusText = $"已取消：{row.Name}";
+            }
+            else
+            {
+                // 叠加上去：不再清掉旧表情 —— 点新的不会让旧的淡出
+                Session.ApplyExpression(row.Expression, fade);
+                Log($"叠加表情：{row.Name}");
+                StatusText = $"已叠加：{row.Name}";
+            }
 
-        ActivateSingleExpression(row.Expression, fade);
+            RefreshExpressionStates(runtime);
+        }
+        catch (Exception ex)
+        {
+            Log("切换表情失败：" + ex.Message);
+        }
     }
 
     /// <summary>
-    /// 切换成「只激活这一个表情」（桌宠双击随机表情也走这里，保证工具页高亮跟着变）。
-    /// 先让旧表情淡出，再让新表情淡入 —— 就是官方的交叉淡化。
+    /// 切换成「只激活这一个表情」（桌宠双击随机表情仍走这里）：先全部清除，再施加这一个。
+    /// <para>表情卡本身已改成多选叠加；这个方法是给「只想留一个」的调用方用的，不再维护单选高亮字段，
+    /// 高亮由 <see cref="RefreshExpressionStates"/> 从运行时真实状态现算。</para>
     /// </summary>
     public void ActivateSingleExpression(ExpressionEntry expression, double fadeSeconds)
     {
         var runtime = Runtime;
         if (runtime is null || !runtime.IsLoaded) return;
 
-        var fade = Math.Clamp(fadeSeconds, 0, 2);
-        Session.ClearExpressions(fade);
-        Session.ApplyExpression(expression, fade);
-
-        _activeExpression = Expressions.FirstOrDefault(row => ReferenceEquals(row.Expression, expression))
-                            ?? Expressions.FirstOrDefault(row =>
-                                string.Equals(row.Expression.FilePath, expression.FilePath, StringComparison.OrdinalIgnoreCase))
-                            ?? Expressions.FirstOrDefault(row =>
-                                string.Equals(row.Name, expression.Name, StringComparison.OrdinalIgnoreCase));
-        UpdateExpressionStates();
-        Log(_activeExpression is null ? $"施加表情：{expression.Name}" : $"切换表情：{_activeExpression.Name}");
-        StatusText = $"当前表情：{_activeExpression?.Name ?? expression.Name}";
+        try
+        {
+            var fade = Math.Clamp(fadeSeconds, 0, 2);
+            Session.ClearExpressions(fade);
+            Session.ApplyExpression(expression, fade);
+            RefreshExpressionStates(runtime);
+            Log($"切换表情：{expression.Name}");
+            StatusText = $"当前表情：{expression.Name}";
+        }
+        catch (Exception ex)
+        {
+            Log("切换表情失败：" + ex.Message);
+        }
     }
 
     private void ClearAllExpressions()
     {
         var fade = Math.Clamp(Cfg.ExpressionFadeSeconds, 0, 2);
-        _activeExpression = null;
         Session.ClearExpressions(fade);
-        UpdateExpressionStates();
-        Log("已清除表情（回到默认表情）");
-        StatusText = "已清除表情";
+        RefreshExpressionStates();
+        Log("已清除全部表情（回到默认表情）");
+        StatusText = "已清除全部表情";
     }
 
-    /// <summary>把「当前激活的表情」同步到 UI（单选高亮 + 统计文本）。</summary>
-    private void UpdateExpressionStates()
+    /// <summary>
+    /// 把每一行的高亮对到运行时的真实状态（<c>runtime.IsExpressionActive(该行表情)</c>）：
+    /// 多选叠加下「哪些表情正生效」只有运行时知道，界面不再自己记一份，
+    /// 所以桌宠双击 / AI 联动 / 淡出结束之后高亮都能自己跟上。
+    /// </summary>
+    private void RefreshExpressionStates(ModelRuntime? runtime = null)
     {
-        foreach (var row in Expressions) row.IsApplied = ReferenceEquals(row, _activeExpression);
-        UpdateExpressionSummary();
+        runtime ??= Runtime;
+        if (runtime is null || !runtime.IsLoaded)
+        {
+            foreach (var row in Expressions) row.IsApplied = false;
+            UpdateExpressionSummary();
+            return;
+        }
+
+        var active = 0;
+        foreach (var row in Expressions)
+        {
+            var isActive = runtime.IsExpressionActive(row.Expression);
+            row.IsApplied = isActive;
+            if (isActive) active++;
+        }
+
+        ExpressionSummaryText = $"{Expressions.Count} 个表情 · 已激活 {active} 个";
     }
 
+    /// <summary>按行上的 IsApplied 现数一遍，更新「N 个表情 · 已激活 M 个」。</summary>
     private void UpdateExpressionSummary()
-        => ExpressionSummaryText = _activeExpression is null
-            ? $"{Expressions.Count} 个表情 · 未激活"
-            : $"{Expressions.Count} 个表情 · 当前：{_activeExpression.Name}";
+    {
+        var active = 0;
+        foreach (var row in Expressions)
+        {
+            if (row.IsApplied) active++;
+        }
+
+        ExpressionSummaryText = $"{Expressions.Count} 个表情 · 已激活 {active} 个";
+    }
+
+    // ===================== 组合预设（一键套用） =====================
+
+    /// <summary>组合预设名单（只在这里维护；界面自动按集合生成按钮）。</summary>
+    private void BuildExpressionPresets()
+    {
+        ExpressionPresets.Clear();
+        AddPreset("害羞心动", new[] { "爱心眼", "脸红", "前倾" });
+        AddPreset("委屈", new[] { "流泪", "＞＜" });
+        AddPreset("生气", new[] { "黑脸", "流冷汗" });
+        AddPreset("屑屑", new[] { "屑屑眼" });
+        AddPreset("撒娇", new[] { "爱心眼", "脸红" });
+        AddPreset("小恶魔", new[] { "黑脸", "爱心眼" });
+
+        void AddPreset(string name, string[] expressionNames)
+            => ExpressionPresets.Add(new ExpressionPresetItem(name, expressionNames));
+    }
+
+    /// <summary>
+    /// 套用组合预设：先全部清除，再按名字从 <c>runtime.Expressions</c> 里找出来逐个叠加。
+    /// 找不到的表情跳过（换模型后名字对不上也不报错），最后在日志里说清楚套了哪些 / 少了哪些。
+    /// </summary>
+    private void ApplyExpressionPreset(ExpressionPresetItem? preset)
+    {
+        if (preset is null) return;
+        var runtime = Runtime;
+        if (runtime is null || !runtime.IsLoaded) return;
+
+        try
+        {
+            var fade = Math.Clamp(Cfg.ExpressionFadeSeconds, 0, 2);
+            Session.ClearExpressions(fade);
+
+            var applied = new List<string>(preset.ExpressionNames.Count);
+            var missing = new List<string>(preset.ExpressionNames.Count);
+            foreach (var name in preset.ExpressionNames)
+            {
+                var expression = FindExpressionByName(runtime, name);
+                if (expression is null)
+                {
+                    missing.Add(name);
+                    continue;
+                }
+
+                Session.ApplyExpression(expression, fade);
+                applied.Add(expression.Name);
+            }
+
+            RefreshExpressionStates(runtime);
+            Log(applied.Count == 0
+                ? $"预设「{preset.Name}」没套上（模型里找不到：{string.Join(" / ", missing)}）"
+                : missing.Count == 0
+                    ? $"套用预设「{preset.Name}」：{string.Join(" + ", applied)}"
+                    : $"套用预设「{preset.Name}」：{string.Join(" + ", applied)}（缺少 {string.Join(" / ", missing)}）");
+            StatusText = applied.Count == 0
+                ? $"预设「{preset.Name}」里没有这个模型的表情"
+                : $"已套用预设：{preset.Name}";
+        }
+        catch (Exception ex)
+        {
+            Log("套用预设失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>按名字在模型的表情列表里找（先精确匹配、再忽略大小写；找不到返回 null）。</summary>
+    private static ExpressionEntry? FindExpressionByName(ModelRuntime runtime, string name)
+    {
+        var wanted = name?.Trim() ?? "";
+        if (wanted.Length == 0) return null;
+
+        foreach (var expression in runtime.Expressions)
+        {
+            if (string.Equals(expression.Name, wanted, StringComparison.Ordinal)) return expression;
+        }
+
+        foreach (var expression in runtime.Expressions)
+        {
+            if (string.Equals(expression.Name, wanted, StringComparison.OrdinalIgnoreCase)) return expression;
+        }
+
+        return null;
+    }
 
     // ===================== 模型文件夹 =====================
 
@@ -4525,4 +4715,32 @@ public sealed class Live2DViewModel : ToolViewModelBase
 
     /// <summary>设置状态栏文本（会话可能在后台线程调用，内部会切回 UI 线程）。</summary>
     public void SetStatus(string text) => Ui(() => StatusText = text);
+}
+
+/// <summary>
+/// 表情组合预设（一键套用）：名字 + 要叠加的表情名单（运行时按名字去 <c>runtime.Expressions</c> 里找）。
+/// <para>放在这个文件里是因为本轮只允许改 ViewModel / XAML；以后要挪到
+/// <c>Live2DListItemViewModels.cs</c> 里和别的行 ViewModel 放一起也没问题。</para>
+/// </summary>
+public sealed class ExpressionPresetItem
+{
+    public ExpressionPresetItem(string name, IReadOnlyList<string> expressionNames)
+    {
+        Name = name;
+        ExpressionNames = expressionNames;
+        Hint = expressionNames.Count == 0
+            ? name
+            : $"{name}：{string.Join(" + ", expressionNames)}";
+    }
+
+    /// <summary>按钮上的名字（害羞心动 / 委屈 / 生气 / 屑屑 / 撒娇 / 小恶魔）。</summary>
+    public string Name { get; }
+
+    /// <summary>要叠加的表情文件名（不含 <c>.exp3.json</c>）。</summary>
+    public IReadOnlyList<string> ExpressionNames { get; }
+
+    /// <summary>鼠标悬停提示（例如「害羞心动：爱心眼 + 脸红 + 前倾」）。</summary>
+    public string Hint { get; }
+
+    public override string ToString() => Name;
 }

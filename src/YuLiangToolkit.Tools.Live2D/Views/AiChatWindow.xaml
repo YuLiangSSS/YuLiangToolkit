@@ -313,6 +313,8 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                    <Button x:Name="FollowButton" Content="📌" Style="{StaticResource AiTitleButtonStyle}"
+                            Click="OnFollowClick" ToolTip="正在跟随桌宠（点一下改成自由摆放）" />
                     <Button x:Name="SettingsButton" Content="⚙" Style="{StaticResource AiTitleButtonStyle}"
                             Click="OnSettingsClick" ToolTip="打开工具页里的「AI 聊天 · 好感度」设置卡" />
                     <Button x:Name="CloseButton" Content="✕" Style="{StaticResource AiCloseButtonStyle}"

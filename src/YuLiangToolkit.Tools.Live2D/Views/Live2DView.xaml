@@ -46,6 +46,39 @@
             <Setter Property="FontSize" Value="11" />
             <Setter Property="Padding" Value="7,3" />
         </Style>
+        <!-- 表情卡的多选开关（小胶囊按钮，可自动换行）：激活时填主题强调色，一眼看出「这个正叠加着」 -->
+        <Style x:Key="ExpressionChipButtonStyle" TargetType="Button" BasedOn="{StaticResource CompactButtonStyle}">
+            <Setter Property="Margin" Value="0,0,5,5" />
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsApplied}" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                    <Setter Property="Foreground" Value="White" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <!-- 表情卡内部的小分组标题（表情 / 姿势、装饰） -->
+        <Style x:Key="ExpressionGroupHeaderStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="Margin" Value="1,7,0,3" />
+        </Style>
+        <!-- 表情卡里的一个开关（「表情 / 姿势」与「装饰」两个分组共用；点一下叠加、再点取消这一个） -->
+        <DataTemplate x:Key="ExpressionChipTemplate">
+            <Button Style="{StaticResource ExpressionChipButtonStyle}"
+                    Command="{Binding DataContext.ToggleExpressionCommand, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
+                    CommandParameter="{Binding}"
+                    ToolTip="点一下激活（淡入，可和别的表情叠加）；再点一次只取消这一个">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="✓" Width="12" FontSize="10"
+                               Visibility="{Binding IsApplied, Converter={StaticResource BoolToVis}}" />
+                    <TextBlock Text="{Binding Name}" />
+                </StackPanel>
+            </Button>
+        </DataTemplate>
         <!-- 面部测试卡里的一行参数：显示名 + 滑杆（Min/Max 用模型参数自带的）+ 当前值 -->
         <DataTemplate x:Key="FaceParameterRowTemplate">
             <Grid Margin="0,1" MinHeight="24">
@@ -627,19 +660,27 @@
                 <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
                                    Key="live2d.动作与表情" />
 
-                <!-- ② 表情卡：单选切换（官方语义：同一时间只有一个表情）+ 淡入淡出时长 + 全部清除 -->
+                <!-- ② 表情卡：多选开关（可叠加） + 「表情 / 姿势」与「装饰」两个小分组 + 组合预设 + 淡入淡出 + 全部清除 -->
                 <Border Grid.Column="2" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" MinHeight="56" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" MinHeight="48" />
                         </Grid.RowDefinitions>
 
                         <Grid Grid.Row="0" Margin="14,12,14,4">
-                            <TextBlock Text="表情" Style="{StaticResource CardHeaderStyle}" />
-                            <TextBlock Text="{Binding ExpressionSummaryText}" HorizontalAlignment="Right" FontSize="10.5"
-                                       VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="表情" Style="{StaticResource CardHeaderStyle}"
+                                       ToolTip="点一下叠加一个表情（淡入），再点一次只取消这一个 —— 多个表情可以同时生效" />
+                            <TextBlock Grid.Column="1" Text="{Binding ExpressionSummaryText}" HorizontalAlignment="Right"
+                                       FontSize="10" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       ToolTip="{Binding ExpressionSummaryText}" />
                         </Grid>
 
                         <StackPanel Grid.Row="1" Margin="14,0,14,4">
@@ -657,34 +698,59 @@
                                            Style="{StaticResource SettingValueStyle}" />
                             </Grid>
                             <Button Content="全部清除" Style="{StaticResource SecondaryButtonStyle}" Padding="10,4"
-                                    HorizontalAlignment="Left" Margin="0,4,0,0" Command="{Binding ClearExpressionsCommand}" />
+                                    HorizontalAlignment="Left" Margin="0,4,0,0" Command="{Binding ClearExpressionsCommand}"
+                                    ToolTip="把所有表情一起淡出，回到默认表情" />
                         </StackPanel>
 
-                        <!-- 表情列表：单选切换（点新的 = 切换，点当前 = 取消），按钮直接铺满行宽 -->
-                        <ScrollViewer Grid.Row="2" Style="{StaticResource CardScrollerStyle}" Margin="10,0,4,6">
-                            <ItemsControl ItemsSource="{Binding Expressions}">
+                        <!-- 组合预设：一键套用（先全部清除，再逐个叠加；模型里没有的表情自动跳过） -->
+                        <StackPanel Grid.Row="2" Margin="14,2,14,2">
+                            <TextBlock Text="🎀 组合预设（一键套用）" FontSize="10.5" Margin="0,0,0,4"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <ItemsControl ItemsSource="{Binding ExpressionPresets}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Button Style="{StaticResource CompactButtonStyle}" Margin="0,1" MinHeight="24"
-                                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
-                                                Command="{Binding DataContext.ToggleExpressionCommand, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
-                                                CommandParameter="{Binding}"
-                                                ToolTip="点一下激活（同一时间只有一个表情），再点当前激活的取消回默认">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Text="{Binding Name}" FontSize="11" TextWrapping="NoWrap"
-                                                           TextTrimming="CharacterEllipsis" MinWidth="0" />
-                                                <TextBlock Grid.Column="1" Text="✓ 当前" FontSize="10" Margin="6,0,0,0"
-                                                           Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center"
-                                                           Visibility="{Binding IsApplied, Converter={StaticResource BoolToVis}}" />
-                                            </Grid>
-                                        </Button>
+                                        <Button Content="{Binding Name}" Style="{StaticResource CompactButtonStyle}"
+                                                Margin="0,0,5,5" Padding="8,3"
+                                                Command="{Binding DataContext.ApplyExpressionPresetCommand, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
+                                                CommandParameter="{Binding}" ToolTip="{Binding Hint}" />
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
+                        </StackPanel>
+
+                        <!-- 两个小分组：表情 / 姿势（改五官、姿势）与 装饰（穿戴 / 摆件 / 体型），各自自动换行；
+                             整块放在滚动宿主里，卡片被拖矮时也能看全（下排默认 330 高度够用） -->
+                        <ScrollViewer Grid.Row="3" Style="{StaticResource CardScrollerStyle}" Margin="12,0,4,6">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource ExpressionGroupHeaderStyle}"
+                                           Text="{Binding ExpressionGroupRows.Count, StringFormat='😊 表情 / 姿势（{0}）'}"
+                                           ToolTip="会改五官或身体姿势的表情；多个可以同时叠着生效" />
+                                <ItemsControl ItemsSource="{Binding ExpressionGroupRows}"
+                                              ItemTemplate="{StaticResource ExpressionChipTemplate}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                </ItemsControl>
+
+                                <TextBlock Style="{StaticResource ExpressionGroupHeaderStyle}"
+                                           Text="{Binding DecorationRows.Count, StringFormat='🎀 装饰（{0}）'}"
+                                           ToolTip="穿戴 / 摆件 / 体型这类偏装饰的东西：和表情一样可以多个同时叠加" />
+                                <ItemsControl ItemsSource="{Binding DecorationRows}"
+                                              ItemTemplate="{StaticResource ExpressionChipTemplate}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                </ItemsControl>
+                            </StackPanel>
                         </ScrollViewer>
                     </Grid>
                 </Border>

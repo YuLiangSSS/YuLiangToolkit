@@ -1243,6 +1243,8 @@ InteractionController._raiseInteraction(voiceEvent, displayName)
 | `YLT_LIVE2D_SHOT_FEED=<png>` | **养成投喂**离屏拼图截图：显示桌宠 + 聊天窗 + 两个大白饭团，拼成一张 PNG 后退出（验收投喂层 / 养成 HUD / 饭团外观用，不碰桌面） |
 | `YLT_LIVE2D_FEED_TRACE=1` | 投喂定位排错：每秒把「嘴部画布坐标 → 屏幕坐标 / 桌宠窗口矩形 / 嘴半径」和投喂层异常写 `Data\live2d\feed-trace.log`（只写坐标数字，不抓画面） |
 | `YLT_LIVE2D_TTS_AUDITION=<folder\|1>`（+ `_EXIT=1`） | **语音试听对比**：用真实合成链路导出「4 音色 × 6 条台词」的 WAV + `index.md` + `audition.m3u`（指定目录或默认 `Data\live2d\voice-auditions`），给调语气用；不写聊天记录 |
+| `YLT_LIVE2D_CHAT_POS=<left,top>` | 打开聊天窗后把它摆成「用户手动位置」（等价于拖走标题条：关闭跟随、保存坐标），验收「拖走后不会被每帧拽回桌宠旁边」 |
+| `YLT_LIVE2D_CHAT_DEMO_AFFECTION=<0~100>` | 配合 `YLT_LIVE2D_SHOT_CHAT`：截图里把好感度改成指定值（默认 78），用来看满格爱心试管 / 心动档配色 |
 | `YLT_LIVE2D_PETCARD_SCROLL=<bottom/数字>` | 打开页面后把「桌面宠物」卡内部滚到指定位置（截图设置项用） |
 | `YLT_SELFCHECK_TRACE=1` | 自检排错：打印「进入 / 完成哪个分组」（查「全 PASS 但进程不退出」卡在哪一步） |
 
@@ -1561,3 +1563,82 @@ InteractionController._raiseInteraction(voiceEvent, displayName)
 夹取）/ 每日任务（进度 / 只发一次 / 金币锁定与自然模式关 / 跨天清零）/ 持久化（读回 / 坏 JSON / 手改坏值归一化）/
 吃饭状态机（凑近 / 咀嚼波动 / 吞咽 / Reset）/ 好感度锁定与直接加减 / 聊天服务投喂接口（`AddAffection` /
 `AppendNotice` / `AppendLocalPetMessage` / 落盘读回）/ 养成配置默认值与 JSON 往返；全部纯逻辑、不联网、不弹窗、不碰真实 `Data`。
+
+## 21. 互动动作 / 台词预设 · 聊天窗自由摆放（v1.12.0）
+
+> 用户文档见 [docs/tools/live2d.md §🐭 鼠标互动玩法](../tools/live2d.md#-鼠标互动玩法) 与
+> [§聊天窗怎么用](../tools/live2d.md#聊天窗怎么用)。目标：**同一部位按好感度给不同动作 + 台词**、
+> **表情可以多选叠加 / 装饰单独开关**、**聊天窗能自由拖**、**动作不再闪手**。
+
+### 21.1 数据驱动：`Play/InteractionScenarios.cs`
+
+- `InteractionScenario(Id, VoiceEvent, MinAffection, Expressions[], WiggleSeconds, Lines[])` +
+  可选 `GestureId` / `LeanForward`；再加一条数据就能加新互动（用户以后要加对话 / 动作，改这个文件即可，不用改会话逻辑）。
+- 档位：`ResolveTier(affection)` = **<30 冷淡 / 30~59 普通 / 60~84 亲近 / ≥85 心动**。
+- 匹配：同一事件取「`MinAffection ≤ 当前好感` 里门槛最高」的一条；没到门槛 = `null`，走老台词池
+  （`InteractionVoiceLines`）。**低好感不会出现爱心眼 / 前倾 / 扭动**——这是硬口径。
+- 当前目录覆盖：摸头（60 脸红+圈圈眼；85 爱心眼+脸红+前倾）、摸裙子（30 脸红；60 脸红+＞＜+扭动+「不要这样啦」）、
+  捏脸、挠痒、护住、腰 / 腿 / 脚 / 尾巴 / 胸口、点额头 / 点手。台词写得短、带语气词，每条 3~6 句。
+- 语音与视觉**分开触发**：`ModelRuntime.OnInteractionEvent` 里
+  - `InteractionTriggered`（新增，**不受互动语音开关影响**）→ 会话套表情 / 前倾 / 扭动；
+  - `InteractionHappened`（老事件，仅互动语音开时触发）→ 会话挑台词说话；
+  - 台词优先用场景里的，其次老台词池；高好感台词会 `AppendLocalPetMessage` 写进聊天记录。
+
+### 21.2 害羞扭动 `ModelRuntime.StartShyWiggle(seconds)`
+
+- 程序扭动，不新增模型动画：写 `ParamBodyAngleZ`（身体，1.1Hz、±7°）与 `ParamAngleZ`
+  （头，±4.5°、相位滞后 0.45 弧度 → **头比身体慢半拍**），两端各 20% 时间淡入 / 淡出，默认 2.2 秒后自动回正；
+- 写在 **表情之后、投喂 / 物理之前**（表情先算，扭动覆盖头部角度；投喂靠近时仍能抢头）；
+- 参数取 `ParamBodyAngleZ` / `ParamAngleZ`，模型没有就安静跳过；`StopShyWiggle()` 立刻回正；
+- 高好感摸裙子 / 摸腰 / 尾巴 / 挠痒用 1.2~2.4 秒。
+
+### 21.3 动作卡顿 / 闪手（用户反馈）修复
+
+- **根因**：互动台词走 `SpeakText` → `SpeakAsyncCore` 的 `onPlaybackStarted` 里，如果 AI 回复没带 gestureId
+  且「说话自动配小动作」开着，会再 `PlayRandomGesture()`；它和互动自己摆的手势（如「竖起食指」）抢手臂，
+  出现「手抬起来 → 闪回下面 → 又抬起来」；
+- 修复：
+  1. `SpeakText(text, tone, allowAutoGesture)` / `SpeakAsyncCore(..., allowAutoGesture)`：**互动 / 投喂 / 饥饿台词传 false**；
+  2. `PlayRandomGesture()` 发现 `runtime.ActiveGesture != null` 直接返回（不硬切正在播的手势）；
+  3. AI 回复自带手势的：台词播完在 `finally` 里 `runtime.StopGesture()`，走作者写的**退出过渡动作**回正；
+  4. 手势切新手势时本来就会 `ReleaseHold` + 播 enter，不会被动作层顶掉；互动开始会停待机演示。
+- 加新动作时注意：原生手势必须有 `ExitMotionName`（如 举手切默认手 / 竖手指切回默认 / 狗尾草切回默认手），
+  否则 `StopGesture` 只能走参数淡出。
+
+### 21.4 表情多选 + 装饰分组（工具页）
+
+- 底层 `ExpressionManager` 本来就能叠加（每个表情独立淡入淡出、逐条写参数）；之前 UI 是单选语义；
+- 现在「表情」卡 **点一下开、再点只关这一个**（`Session.ApplyExpression` / `Session.RemoveExpression`，
+  新增 `ModelRuntime.RemoveExpression` + `ActiveExpressionCount`），摘要「N 个表情 · 已激活 M 个」；
+- 装饰 = 兔牙 / 黑框眼镜 / 单片眼镜 / 裙子切换 / 胸口衣服 / 脱鞋 / 尾巴开关 / 钢盆 / 加载 / 体型1 / 体型2 / 默认体型；
+  其余为表情 / 姿势（名单在 `Live2DViewModel.IsDecorationExpression`）；
+- 组合预设：害羞心动（爱心眼+脸红+前倾）/ 委屈（流泪+＞＜）/ 生气（黑脸+流冷汗）/ 屑屑（屑屑眼）/
+  撒娇（爱心眼+脸红）/ 小恶魔（黑脸+爱心眼）；先 `ClearExpressions` 再逐个 `ApplyExpression`；
+- 刷新按 `runtime.IsExpressionActive(row.Expression)`（淡出期间仍算激活，点了马上变暗要另做待移除集合）。
+
+### 21.5 聊天窗自由拖动 / 跟随开关
+
+- 配置：`aiChatWindowFollow`（默认 true）、`aiChatWindowLeft/Top`（手动坐标，哨兵 -99999）；
+- `AiChatWindow.PlaceBelow` 在 `_followPet == false` 或正在拖标题条（`_draggingTitle`）时**直接返回**，
+  所以拖动期间不会和会话层的「每帧贴回桌宠」打架（原 bug：每帧被拽回，1 帧瞬移）；
+- 拖动结束检测位置变化 → 关闭跟随、`RememberManualPosition()` 写配置、`FollowToggled` 让会话保存；
+- 标题条 **📌 / 📍** 按钮切换跟随：开启时清掉手动坐标并立刻 `PlaceBelow`；自由摆放时保存当前位置；
+- 重新打开窗口时 `ApplySavedPositionIfManual()` 用回手动坐标（仅跟随关闭时）；
+- 调试：`YLT_LIVE2D_CHAT_POS=left,top` 走同一个 `PlaceManually(...)` 路径，`check` 用真实进程验「3 秒后不回弹」，
+  `YLT_LIVE2D_CHAT_DEMO_AFFECTION=100` 看试管满格（截图验收）。
+
+### 21.6 好感度试管满格（`AffectionVial`）
+
+- 原问题：液体裁剪区顶部封在 `LiquidTopY=30` 的平线，100% 时爱心上半部（y 0~30）永远填不满；
+- 修复：`LiquidTopY = InnerInset`（≈3），`BuildInnerClip` 顶部改成**沿心形内壁**（两个圆弧 + 中缝）而不是平线；
+  100% 时液体灌满整个爱心内腔；液面高光只在直筒段（liquidTop > 32）画，避免横穿爱心耳朵；
+- 坑：内腔路径是「右腰 → 右底 → 左底 → 左腰」方向，圆底弧必须用 `Clockwise`；用 `Counterclockwise`
+  会在瓶底挖出一个深色圆洞（本轮踩过，截图 `shots/vial-zoom.png` 对拍）。
+
+### 21.7 自检覆盖
+
+`tests/YuLiangToolkit.FrameworkSelfCheck/Live2DInteractionScenarioChecks.cs`（`live2d` 组，约 18 条）：
+好感档位边界 / NaN、场景按门槛匹配（低好感不触发亲密预设、高好感爱心眼 MinAffection ≥85）、
+目录完整性（Id 唯一 / 门槛唯一 / 台词非空 / 表情名合法）、PickLine 去重、配置默认值、
+试管比例与夹取；全部纯逻辑、不联网、不弹窗。
+

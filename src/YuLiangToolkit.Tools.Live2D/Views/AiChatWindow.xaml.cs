@@ -86,6 +86,15 @@ public partial class AiChatWindow : Window
     /// <summary>示例数据模式（<see cref="LoadDemoMessages"/> 打开；截图冒烟专用，不碰真实聊天数据）。</summary>
     private bool _demoMode;
 
+    /// <summary>是否自动跟随桌宠（false = 用户拖到别处了，会话层不再毎帧把它拽回去）。</summary>
+    private bool _followPet;
+
+    /// <summary>标题条正在拖动（拖动期间禁止跟随逻辑把它拽回去，否则会和鼠标打架）。</summary>
+    private bool _draggingTitle;
+
+    /// <summary>用户拖动 / 点 📌 后触发，会话层负责保存配置并在需要时重新贴回桌宠。</summary>
+    public event EventHandler? FollowToggled;
+
     /// <summary>示例消息（只在截图冒烟时替换显示源，真实 <c>chat.Messages</c> 一条都不动）。</summary>
     private readonly ObservableCollection<AiChatMessage> _demoMessages = new();
 
@@ -135,6 +144,9 @@ public partial class AiChatWindow : Window
         LoadConfigToggles();
         RefreshAll();
         MoveToDefaultCorner();
+        _followPet = _config.AiChatWindowFollow;
+        UpdateFollowButton();
+        ApplySavedPositionIfManual();
 
         Closed += OnWindowClosed;
     }
@@ -143,6 +155,59 @@ public partial class AiChatWindow : Window
 
     /// <summary>聊天窗当前是否显示着（隐藏 / 关闭都为 false）。</summary>
     public bool IsChatVisible => IsVisible;
+
+    /// <summary>是否自动跟随桌宠（用户拖走后为 false，点标题条 📌 恢复）。</summary>
+    public bool FollowPet => _followPet;
+
+    /// <summary>用户是否手动摆过窗口（有有效坐标）。</summary>
+    public bool HasManualPosition
+        => _config.AiChatWindowLeft > -90000 && _config.AiChatWindowTop > -90000;
+
+    /// <summary>重新打开时用保存的手动位置（只有关掉跟随时才用）。</summary>
+    public void ApplySavedPositionIfManual()
+    {
+        if (_followPet || !HasManualPosition) return;
+        try
+        {
+            Left = _config.AiChatWindowLeft;
+            Top = _config.AiChatWindowTop;
+        }
+        catch
+        {
+            // 窗口还没显示 / 坐标非法：忽略
+        }
+    }
+
+    /// <summary>把当前窗口位置记成「用户手动位置」（会话层保存配置）。</summary>
+    public void RememberManualPosition()
+    {
+        _config.AiChatWindowLeft = Left;
+        _config.AiChatWindowTop = Top;
+    }
+
+    /// <summary>
+    /// 用代码把窗口摆到指定位置，并当作「用户手动摆放」（关闭跟随、保存坐标）。
+    /// 拖动逻辑与调试钩子 <c>YLT_LIVE2D_CHAT_POS</c> 共用这一条路径，保证测的就是真实行为。
+    /// </summary>
+    public void PlaceManually(double left, double top)
+    {
+        _followPet = false;
+        _config.AiChatWindowFollow = false;
+        try
+        {
+            Left = left;
+            Top = top;
+        }
+        catch
+        {
+            // 窗口还没显示时忽略
+        }
+
+        RememberManualPosition();
+        UpdateFollowButton();
+        _onConfigChanged?.Invoke();
+        FollowToggled?.Invoke(this, EventArgs.Empty);
+    }
 
     /// <summary>
     /// 显示聊天窗（幂等；已显示时只刷新一次界面）。真正显示时才订阅服务事件。
@@ -178,6 +243,7 @@ public partial class AiChatWindow : Window
     public void PlaceBelow(Window? pet)
     {
         if (pet is null) return;
+        if (!_followPet || _draggingTitle) return;   // 用户拖到别处 / 正在拖：不要再拽回来
 
         // 窗口刚 Show 出来时 ActualWidth 可能还是 0，退回 XAML 里写的 Width / Height
         var width = ActualWidth > 1 ? ActualWidth : Width;
@@ -224,7 +290,13 @@ public partial class AiChatWindow : Window
         MessageItems.ItemsSource = _demoMessages;
 
         // 好感度只改「界面显示」：78 = 开心档，试管里的液体约 78% 高
+        // 截图验收可用 YLT_LIVE2D_CHAT_DEMO_AFFECTION=100 看满格爱心是否灌满。
         var demoValue = 78.0;
+        var demoOverride = Environment.GetEnvironmentVariable("YLT_LIVE2D_CHAT_DEMO_AFFECTION");
+        if (double.TryParse(demoOverride, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsedDemo))
+        {
+            demoValue = Math.Clamp(parsedDemo, 0, 100);
+        }
         Vial.Value = demoValue;
         Vial.Mood = AffectionEngine.ResolveMood(demoValue);
         AffectionValueText.Text = demoValue.ToString("0.0", CultureInfo.InvariantCulture);
@@ -438,11 +510,65 @@ public partial class AiChatWindow : Window
 
         try
         {
+            _draggingTitle = true;
             DragMove();
         }
         catch
         {
             // 鼠标在 DragMove 前已经松开之类的极端情况：忽略
+            return;
+        }
+        finally
+        {
+            _draggingTitle = false;
+        }
+
+        // 用户把窗口拖走了：停止跟随桌宠，记住位置（会话层落盘）
+        if (Math.Abs(Left - _config.AiChatWindowLeft) > 0.5 || Math.Abs(Top - _config.AiChatWindowTop) > 0.5)
+        {
+            _followPet = false;
+            RememberManualPosition();
+            UpdateFollowButton();
+            _config.AiChatWindowFollow = false;
+            _onConfigChanged?.Invoke();
+            FollowToggled?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>点标题条 📌：在「跟随桌宠 / 自由摆放」之间切换。</summary>
+    private void OnFollowClick(object sender, RoutedEventArgs e)
+    {
+        _followPet = !_followPet;
+        _config.AiChatWindowFollow = _followPet;
+        if (_followPet)
+        {
+            _config.AiChatWindowLeft = -99999;
+            _config.AiChatWindowTop = -99999;
+        }
+        else
+        {
+            RememberManualPosition();
+        }
+
+        UpdateFollowButton();
+        _onConfigChanged?.Invoke();
+        FollowToggled?.Invoke(this, EventArgs.Empty);
+        StatusTextBlock.Text = _followPet ? "已开启跟随：贴在桌宠旁边" : "已改为自由摆放：拖到你想放的位置";
+    }
+
+    /// <summary>更新 📌 按钮的图标 / 提示。</summary>
+    private void UpdateFollowButton()
+    {
+        try
+        {
+            FollowButton.Content = _followPet ? "📌" : "📍";
+            FollowButton.ToolTip = _followPet
+                ? "正在跟随桌宠（点一下改成自由摆放）"
+                : "自由摆放中（点一下重新贴回桌宠旁边）";
+        }
+        catch
+        {
+            // 构建期控件还没准备好：忽略
         }
     }
 

@@ -59,8 +59,11 @@ public sealed class AffectionVial : FrameworkElement
     /// <summary>内壁 / 液体相对外轮廓留的边（不然液体会盖住粉色描边）。</summary>
     private const double InnerInset = 3;
 
-    /// <summary>液体最高处（好感度 100 时的液面；再往上就是心形开口，不填）。</summary>
-    private const double LiquidTopY = 30;
+    /// <summary>
+    /// 液体最高处（好感度 100 时的液面）：铺到心形内壁顶端（设计坐标 y≈3），
+    /// 这样满好感时**爱心上半部分也会被液体填满**，而不是停在心形开口下面一条平线。
+    /// </summary>
+    private const double LiquidTopY = InnerInset;
 
     /// <summary>外轮廓描边粗细（设计坐标；会跟着整体一起缩放）。</summary>
     private const double OutlineThickness = 2.2;
@@ -234,8 +237,13 @@ public sealed class AffectionVial : FrameworkElement
             };
             dc.DrawRectangle(liquidBrush, null, new Rect(0, liquidTop, DesignWidth, DesignHeight - liquidTop));
 
-            // 液面高光：一条圆润的亮色椭圆（参考图里液面上缘的亮边）
-            dc.DrawEllipse(SurfaceHighlightBrush, null, new Point(CenterX, liquidTop), (DesignWidth / 2) - InnerInset - 1, 3.6);
+            // 液面高光：一条圆润的亮色椭圆（参考图里液面上缘的亮边）；
+            // 液面升到心形开口里（液体高过直筒段）时不再画，否则会横穿爱心两只耳朵。
+            if (liquidTop > LobeCenterY + 4)
+            {
+                dc.DrawEllipse(SurfaceHighlightBrush, null, new Point(CenterX, liquidTop),
+                    (DesignWidth / 2) - InnerInset - 1, 3.6);
+            }
 
             // 装饰小气泡：固定位置（不做动画），液体太浅时自然被圆底裁掉
             foreach (var (x, y, radius) in Bubbles)
@@ -345,7 +353,8 @@ public sealed class AffectionVial : FrameworkElement
     }
 
     /// <summary>
-    /// 液体裁剪区：外轮廓整体往里缩 <see cref="InnerInset"/> 的「直筒 + 圆底」，顶部封在液体最高处。
+    /// 液体裁剪区：外轮廓整体往里缩 <see cref="InnerInset"/> 的「心形顶部 + 直筒 + 圆底」。
+    /// <para>顶部不再是平线，而是沿心形内壁的两个圆弧 + 中缝：这样液面升到 100% 时能灌满爱心上半部分。</para>
     /// <para>⚠ 圆底弧必须 <see cref="SweepDirection.Counterclockwise"/>：起点在左、终点在右，
     /// 逆时针才会从瓶底绕过去；写成顺时针会往瓶身里凹一个圆洞（液体中间出现一块黑色空缺）。</para>
     /// </summary>
@@ -355,15 +364,28 @@ public sealed class AffectionVial : FrameworkElement
         var left = CenterX - innerRadius;
         var right = CenterX + innerRadius;
 
+        // 心形内壁：两个「耳朵」的圆弧半径 = 外轮廓圆弧半径 - InnerInset，
+        // 圆心仍是 (CenterX ∓ LobeOffset, LobeCenterY)，圆弧起点落在左右腰上。
+        var lobeRadius = LobeRadius - InnerInset;
+        var notchY = LobeCenterY - Math.Sqrt((lobeRadius * lobeRadius) - (LobeOffset * LobeOffset));
+
         var geometry = new StreamGeometry();
         using (var ctx = geometry.Open())
         {
-            ctx.BeginFigure(new Point(left, LiquidTopY), isFilled: true, isClosed: true);
-            ctx.LineTo(new Point(left, StraightBottomY), isStroked: false, isSmoothJoin: true);
-            ctx.ArcTo(new Point(right, StraightBottomY), new Size(innerRadius, innerRadius), 0,
-                isLargeArc: false, SweepDirection.Counterclockwise, isStroked: false, isSmoothJoin: true);
-            ctx.LineTo(new Point(right, LiquidTopY), isStroked: false, isSmoothJoin: true);
-            // 顶边由 IsClosed 自动连回，液体永远不会漫到心形开口里
+            // 从左腰开始沿左耳圆弧到中缝，再沿右耳圆弧回到右腰
+            ctx.BeginFigure(new Point(left, LobeCenterY), isFilled: true, isClosed: true);
+            ctx.ArcTo(new Point(CenterX, notchY), new Size(lobeRadius, lobeRadius), 0,
+                isLargeArc: false, SweepDirection.Clockwise, isStroked: false, isSmoothJoin: true);
+            ctx.ArcTo(new Point(right, LobeCenterY), new Size(lobeRadius, lobeRadius), 0,
+                isLargeArc: false, SweepDirection.Clockwise, isStroked: false, isSmoothJoin: true);
+
+            // 右直筒 → 圆底半圆 → 左直筒（顶边由 IsClosed 沿心形自动连回）。
+            // 注意：这里是从右往左画，绕瓶底的圆弧要用 Clockwise（和旧版从左往右画时相反），
+            // 用 Counterclockwise 会把瓶底「挖空」成一个深色圆洞。
+            ctx.LineTo(new Point(right, StraightBottomY), isStroked: false, isSmoothJoin: true);
+            ctx.ArcTo(new Point(left, StraightBottomY), new Size(innerRadius, innerRadius), 0,
+                isLargeArc: false, SweepDirection.Clockwise, isStroked: false, isSmoothJoin: true);
+            ctx.LineTo(new Point(left, LobeCenterY), isStroked: false, isSmoothJoin: true);
         }
         geometry.Freeze();
         return geometry;

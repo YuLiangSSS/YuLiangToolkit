@@ -347,6 +347,18 @@ public sealed class Live2DConfig : ToolConfig
     /// <summary>显示桌宠时自动打开聊天窗（默认开；不想每次都弹就关掉）。</summary>
     public bool AiChatAutoOpen { get; set; } = true;
 
+    /// <summary>
+    /// 聊天窗是否自动跟随桌宠（默认开：贴在桌宠下方/旁边）。
+    /// 用户用鼠标把聊天窗拖走后会自动关掉；标题条 📌 可以重新打开跟随。
+    /// </summary>
+    public bool AiChatWindowFollow { get; set; } = true;
+
+    /// <summary>用户手动摆的聊天窗位置（X，DIP；-99999 = 没手动摆过，重新打开时贴回桌宠旁边）。</summary>
+    public double AiChatWindowLeft { get; set; } = -99999;
+
+    /// <summary>用户手动摆的聊天窗位置（Y，DIP；-99999 = 没手动摆过）。</summary>
+    public double AiChatWindowTop { get; set; } = -99999;
+
     /// <summary>是否允许桌宠主动搭话（按 <see cref="AiProactiveIntervalMinutes"/> 随机间隔）。</summary>
     public bool AiProactiveEnabled { get; set; }
 

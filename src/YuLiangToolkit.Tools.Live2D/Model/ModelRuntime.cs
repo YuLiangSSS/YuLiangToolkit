@@ -236,8 +236,21 @@ public sealed class ModelRuntime : IDisposable
     private string? _lastInteractionName;
     private long _interactionEventCount;
 
+    // ---------- 害羞扭动（高好感互动用；写在表情之后、参数求值之前） ----------
+    private CubismParameter? _wiggleHeadAngleZ;
+    private CubismParameter? _wiggleBodyAngleZ;
+    private double _wiggleRemainingSeconds;
+    private double _wiggleDurationSeconds;
+    private double _wiggleElapsedSeconds;
+
     /// <summary>互动语音事件（参数 = 语音事件 key：pat_head / face_cycle / pinch / tickle / protect / hand）。</summary>
     public event EventHandler<string>? InteractionHappened;
+
+    /// <summary>
+    /// 互动触发事件：**每次互动都会触发**（不受「互动语音」开关影响）。
+    /// 会话用它做动作 / 表情预设（高好感摸头前倾脸红爱心眼、摸裙子害羞扭动…），语音只管说话。
+    /// </summary>
+    public event EventHandler<string>? InteractionTriggered;
 
     private double _time;
     private double _lastTickMilliseconds;
@@ -488,6 +501,65 @@ public sealed class ModelRuntime : IDisposable
     {
         _gesture?.Stop();
         _idleDemoActive = false;
+    }
+
+    // ---------- 害羞扭动（高好感互动 / 被摸裙子等） ----------
+
+    /// <summary>是不是正在害羞扭动（UI / 自检观察用）。</summary>
+    public bool IsShyWiggling => _wiggleRemainingSeconds > 0;
+
+    /// <summary>
+    /// 做一段「扭扭捏捏」：身体左右轻轻扭、头部延迟一点点跟着扭（头比身体慢约 0.45 弧度），
+    /// 幅度先淡入再淡出，约 2 秒后自动回到正常姿势。
+    /// 只写 <c>ParamBodyAngleZ</c> / <c>ParamAngleZ</c>；参数不存在的模型会安静跳过。
+    /// </summary>
+    /// <param name="seconds">持续秒数（0.3 ~ 6，默认 2.2）。</param>
+    public void StartShyWiggle(double seconds = 2.2)
+    {
+        _wiggleDurationSeconds = Math.Clamp(seconds, 0.3, 6.0);
+        _wiggleRemainingSeconds = _wiggleDurationSeconds;
+        _wiggleElapsedSeconds = 0;
+    }
+
+    /// <summary>立刻停止扭动并回正。</summary>
+    public void StopShyWiggle()
+    {
+        if (_wiggleRemainingSeconds <= 0) return;
+        _wiggleRemainingSeconds = 0;
+        WriteWiggleParameter(_wiggleBodyAngleZ, 0);
+        WriteWiggleParameter(_wiggleHeadAngleZ, 0);
+    }
+
+    /// <summary>推进害羞扭动：身体 1.1Hz 左右扭、头部滞后 0.45 弧度，幅度两端淡入淡出。</summary>
+    private void ApplyShyWiggle(double deltaSeconds)
+    {
+        if (_wiggleRemainingSeconds <= 0) return;
+
+        _wiggleElapsedSeconds += deltaSeconds;
+        _wiggleRemainingSeconds -= deltaSeconds;
+        var progress = _wiggleDurationSeconds <= 0
+            ? 1.0
+            : Math.Clamp(_wiggleElapsedSeconds / _wiggleDurationSeconds, 0.0, 1.0);
+        // 两端各用 20% 时间淡入 / 淡出，避免忽然开始扭、忽然定住
+        var envelope = Math.Min(1.0, Math.Min(progress / 0.2, (1.0 - progress) / 0.2));
+        var phase = 2.0 * Math.PI * 1.1 * _wiggleElapsedSeconds;
+        var body = Math.Sin(phase) * 7.0 * envelope;
+        var head = Math.Sin(phase - 0.45) * 4.5 * envelope;
+
+        WriteWiggleParameter(_wiggleBodyAngleZ, (float)body);
+        WriteWiggleParameter(_wiggleHeadAngleZ, (float)head);
+
+        if (_wiggleRemainingSeconds <= 0)
+        {
+            WriteWiggleParameter(_wiggleBodyAngleZ, 0);
+            WriteWiggleParameter(_wiggleHeadAngleZ, 0);
+        }
+    }
+
+    private static void WriteWiggleParameter(CubismParameter? parameter, float offset)
+    {
+        if (parameter is null) return;
+        parameter.Value = parameter.DefaultValue + offset;
     }
 
     /// <summary>所有时间线表演 id（中文名）。</summary>
@@ -1284,6 +1356,8 @@ public sealed class ModelRuntime : IDisposable
         _lastInteractionVoiceEvent = voiceEvent;
         _lastInteractionName = displayName;
         _interactionEventCount++;
+        // 每次都通知（视觉 / 动作反馈）；语音事件仍然受「互动语音」开关控制。
+        InteractionTriggered?.Invoke(this, voiceEvent);
         if (_interactionVoiceEnabled) InteractionHappened?.Invoke(this, voiceEvent);
     }
 
@@ -1375,6 +1449,8 @@ public sealed class ModelRuntime : IDisposable
         _speechJawOpen = model.FindParameter("JawOpen");
         ResolveMoodPuffParameters(model);
         ResolveFeedingParameters(model);
+        _wiggleHeadAngleZ = model.FindParameter("ParamAngleZ") ?? model.FindParameter("AngleZ");
+        _wiggleBodyAngleZ = model.FindParameter("ParamBodyAngleZ");
     }
 
     /// <summary>解析投喂 / 吃饭要写的参数（模型没有的就跳过）。</summary>
@@ -1905,6 +1981,9 @@ public sealed class ModelRuntime : IDisposable
 
         _expressionManager.Update(model, deltaSeconds);
 
+        // 5.56) 高好感互动的害羞扭动：写在表情之后、投喂 / 物理之前，身体与头部错开一点点
+        ApplyShyWiggle(deltaSeconds);
+
         // 5.55) 投喂 / 吃饭：饭团靠近时头 / 身体 / 眼睛朝它偏、张嘴；吃到后嚼嚼嚼 → 伪吞咽。
         //       放在表情之后，嘴型才能压过表情；动捕有脸时整段让位、说话时只让出嘴。
         ApplyFeeding(deltaSeconds, mocapFace);
@@ -2010,6 +2089,19 @@ public sealed class ModelRuntime : IDisposable
 
     /// <summary>清除所有表情（按 fadeSeconds 淡出）。</summary>
     public void ClearExpressions(double fadeSeconds = 0.3) => _expressionManager.Clear(fadeSeconds);
+
+    /// <summary>
+    /// 只移除一个表情（多选叠加时取消其中一项；其它表情继续）。
+    /// 表情卡改成多选开关后，UI 用这个接口逐项取消。
+    /// </summary>
+    public void RemoveExpression(ExpressionEntry expression, double fadeSeconds = 0.3)
+    {
+        ArgumentNullException.ThrowIfNull(expression);
+        _expressionManager.Remove(expression, fadeSeconds);
+    }
+
+    /// <summary>当前生效（含正在淡出）的表情个数。</summary>
+    public int ActiveExpressionCount => _expressionManager.ActiveCount;
 
     /// <summary>某个表情当前是否生效（UI 勾选状态用）。</summary>
     public bool IsExpressionActive(ExpressionEntry expression) => _expressionManager.IsActive(expression);

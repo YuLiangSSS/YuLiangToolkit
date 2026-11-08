@@ -130,6 +130,7 @@ public sealed class Live2DSession
     // ===== 桌宠鼠标互动（热区事件 → 软妹台词语音，1.5 秒节流） =====
     private bool _interactionDemoApplied;
     private TimeSpan _lastInteractionVoiceAt = TimeSpan.MinValue;
+    private TimeSpan _lastInteractionVisualAt = TimeSpan.MinValue;
     private string? _lastInteractionVoiceLine;
     private string? _lastInteractionVoiceEvent;
 
@@ -345,11 +346,14 @@ public sealed class Live2DSession
                     onConfigChanged: OnAiChatWindowConfigChanged,
                     openSettings: OpenToolPageFromPet);
                 window.Closed += OnAiChatWindowClosed;
+                window.FollowToggled += OnAiChatWindowFollowToggled;
                 _aiChatWindow = window;
             }
 
             _aiChatWindow.ShowChat();
+            _aiChatWindow.ApplySavedPositionIfManual();
             UpdateAiChatWindowPosition();
+            TryApplyAiChatDebugPosition();
             vm.Cfg.AiChatWindowOpen = true;
             SaveConfigNow();
             UpdateAiTickTimer();
@@ -847,7 +851,7 @@ public sealed class Live2DSession
                 FullnessTier.Full => SpeechToneCatalog.ForFeedSatisfied(),
                 FullnessTier.Starving => SpeechToneCatalog.ForFeedStarving(),
                 _ => SpeechToneCatalog.ForFeedStillHungry(),
-            });
+            }, allowAutoGesture: false);
             _viewModel?.Log("投喂台词：" + line);
         }
         catch (Exception ex)
@@ -889,7 +893,7 @@ public sealed class Live2DSession
         var tier = care.Tier;
         ApplyCareExpression(tier == FullnessTier.Starving ? "流冷汗" : "", 5, 0.35f);
         try { EnsureAiChat().AppendLocalPetMessage(line); } catch { /* 忽略 */ }
-        SpeakText(line, SpeechToneCatalog.ForHungryReminder());
+        SpeakText(line, SpeechToneCatalog.ForHungryReminder(), allowAutoGesture: false);
         vm.Log($"饿了主动说话（饱食 {care.Fullness:0} / {care.TierText}）：{line}");
         RaiseAiChatStateChanged();
     }
@@ -1431,6 +1435,7 @@ public sealed class Live2DSession
 
         // 桌宠鼠标互动：热区点击 / 抚摸 / 捏脸 → 运行时抛 voice event → 会话挑台词说话（气泡 + 口型）
         try { runtime.InteractionHappened += OnInteractionHappened; } catch { /* 运行时还没实现互动事件 */ }
+        try { runtime.InteractionTriggered += OnInteractionTriggered; } catch { /* 旧运行时没有这个事件 */ }
 
         // 桌宠用独立的渲染器（只共享只读纹理）：页面和桌宠同时显示时各画各的位图，互不覆盖
         _petRenderer = null;
@@ -1495,6 +1500,7 @@ public sealed class Live2DSession
         _petRenderer = null;
 
         try { if (runtime is not null) runtime.InteractionHappened -= OnInteractionHappened; } catch { /* 忽略 */ }
+        try { if (runtime is not null) runtime.InteractionTriggered -= OnInteractionTriggered; } catch { /* 忽略 */ }
         try { petRenderer?.Dispose(); } catch { /* 忽略 */ }
         try { runtime?.Dispose(); } catch { /* 忽略 */ }
 
@@ -1887,6 +1893,16 @@ public sealed class Live2DSession
         try { _runtime?.ClearExpressions(Math.Max(0, fadeSeconds)); }
         catch (Exception ex) { _viewModel?.Log("清除表情失败：" + ex.Message); }
     }
+
+    /// <summary>只移除一个表情（多选叠加时取消其中一项，其它表情继续）。</summary>
+    public void RemoveExpression(ExpressionEntry expression, double fadeSeconds)
+    {
+        try { _runtime?.RemoveExpression(expression, Math.Max(0, fadeSeconds)); }
+        catch (Exception ex) { _viewModel?.Log("取消表情失败：" + ex.Message); }
+    }
+
+    /// <summary>当前生效（含淡出中）的表情个数。</summary>
+    public int ActiveExpressionCount => _runtime?.ActiveExpressionCount ?? 0;
 
     /// <summary>把所有参数 / 部件恢复默认（同时停掉动作与表情）。</summary>
     public void ResetAll()
@@ -2865,6 +2881,8 @@ public sealed class Live2DSession
     /// <summary>随机换一个姿势（手势）。</summary>
     public void PlayRandomGesture()
     {
+        // 已经有手势在播时不要硬切：硬切会让手「闪一下掉下去再抬起来」（用户反馈的卡顿）。
+        if (_runtime?.ActiveGesture is not null) return;
         var gestures = _viewModel?.GestureActions;
         var id = gestures is { Count: > 0 }
             ? gestures[Random.Shared.Next(gestures.Count)].Id
@@ -2920,14 +2938,18 @@ public sealed class Live2DSession
     /// 语气覆盖（情感风格 / 语速 / 音调 / 音量 / 感叹后停顿）；null = 保持全局设置。
     /// 互动 / 投喂 / AI 回复都会带自己的语气，见 <see cref="SpeechToneCatalog"/>。
     /// </param>
-    public void SpeakText(string text, SpeechTone? tone = null)
+    /// <param name="allowAutoGesture">
+    /// 说话时能不能顺手随机配个小动作。互动 / 投喂 / 饥饿台词传 false —— 否则会和互动自己摆的手势
+    /// 抢手臂，出现「手闪一下掉下去又抬起来」的卡顿（用户反馈的 bug）。
+    /// </param>
+    public void SpeakText(string text, SpeechTone? tone = null, bool allowAutoGesture = true)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
         text = text.Trim();
         if (text.Length > 120) text = text[..120];
 
         _viewModel?.Log("说话：" + text + (tone?.HasStyle == true ? $"［语气 {tone.Style}］" : ""));
-        _ = SpeakAsyncCore(text, null, tone);
+        _ = SpeakAsyncCore(text, null, tone, allowAutoGesture);
     }
 
     /// <summary>停止说话（气泡稍后隐藏）。</summary>
@@ -2993,7 +3015,8 @@ public sealed class Live2DSession
         return _tts;
     }
 
-    private async Task SpeakAsyncCore(string text, string? gestureId = null, SpeechTone? tone = null)
+    private async Task SpeakAsyncCore(string text, string? gestureId = null, SpeechTone? tone = null,
+        bool allowAutoGesture = true)
     {
         var tts = EnsureSpeech();
         if (tts is null)
@@ -3012,7 +3035,7 @@ public sealed class Live2DSession
                 ShowBubble(text);
                 // AI 回复自带动作标签时优先摆那个手势；否则按配置随机配一个小动作
                 if (!string.IsNullOrWhiteSpace(gestureId)) PlayGesture(gestureId);
-                else if (_viewModel?.Cfg.SpeechAutoGesture == true) PlayRandomGesture();
+                else if (allowAutoGesture && _viewModel?.Cfg.SpeechAutoGesture == true) PlayRandomGesture();
                 RaiseSpeechStateChanged();
             });
             if (!ok)
@@ -3031,6 +3054,18 @@ public sealed class Live2DSession
         }
         finally
         {
+            // AI 回复自带的手势：说完话播「退出动作」回正，不要在结束位置突然定住 / 闪回。
+            if (!string.IsNullOrWhiteSpace(gestureId))
+            {
+                try
+                {
+                    var runtime = _runtime;
+                    if (runtime is not null && string.Equals(runtime.ActiveGesture, gestureId, StringComparison.Ordinal))
+                        runtime.StopGesture();
+                }
+                catch { /* 手势退出失败不影响说话 */ }
+            }
+
             RaiseSpeechStateChanged();
             HideBubbleSoon();
         }
@@ -3324,11 +3359,31 @@ public sealed class Live2DSession
     private void OnAiChatWindowClosed(object? sender, EventArgs e)
     {
         if (sender is not AiChatWindow window || !ReferenceEquals(window, _aiChatWindow)) return;
+        window.FollowToggled -= OnAiChatWindowFollowToggled;
         _aiChatWindow = null;
         if (_viewModel is not null) _viewModel.Cfg.AiChatWindowOpen = false;
         SaveConfigNow();
         UpdateAiTickTimer();
         RaiseAiChatStateChanged();
+    }
+
+    /// <summary>聊天窗拖动 / 点 📌：保存「跟随 / 自由摆放」状态；重新开启跟随时立刻贴回桌宠旁边。</summary>
+    private void OnAiChatWindowFollowToggled(object? sender, EventArgs e)
+    {
+        if (sender is not AiChatWindow window) return;
+        var vm = _viewModel;
+        if (vm is not null)
+        {
+            vm.Cfg.AiChatWindowFollow = window.FollowPet;
+            if (window.FollowPet)
+            {
+                vm.Cfg.AiChatWindowLeft = -99999;
+                vm.Cfg.AiChatWindowTop = -99999;
+            }
+        }
+
+        if (window.FollowPet) UpdateAiChatWindowPosition();
+        SaveConfigNow();
     }
 
     /// <summary>让主窗口到前面（聊天窗 ⚙ / 桌宠菜单「设置」用；工具工程引用不到外壳的 MainViewModel，只能激活窗口）。</summary>
@@ -3357,6 +3412,31 @@ public sealed class Live2DSession
         var pet = _pet;
         if (pet is not { IsVisible: true }) return;
         try { window.PlaceBelow(pet); } catch { /* 窗口正在切换：忽略 */ }
+    }
+
+    /// <summary>
+    /// 调试钩子：<c>YLT_LIVE2D_CHAT_POS=left,top</c> 把聊天窗摆成「用户手动位置」，
+    /// 用于验收「手动拖动后不会再被每帧拽回桌宠旁边」。
+    /// </summary>
+    private void TryApplyAiChatDebugPosition()
+    {
+        var window = _aiChatWindow;
+        if (window is null) return;
+        var raw = Environment.GetEnvironmentVariable("YLT_LIVE2D_CHAT_POS")?.Trim();
+        if (string.IsNullOrEmpty(raw)) return;
+        var parts = raw.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2 ||
+            !double.TryParse(parts[0], System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var left) ||
+            !double.TryParse(parts[1], System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var top))
+        {
+            _viewModel?.Log("YLT_LIVE2D_CHAT_POS 格式应为 left,top：" + raw);
+            return;
+        }
+
+        window.PlaceManually(left, top);
+        _viewModel?.Log($"调试：聊天窗已摆到手动位置 ({left:0},{top:0})，不再跟随桌宠");
     }
 
     /// <summary>按「页面 / 桌宠 / 聊天窗是否有人看着」启停 2 秒一次的调度（AI 掉值/主动说话 + 饱食度结算）。</summary>
@@ -3876,6 +3956,67 @@ public sealed class Live2DSession
         }
     }
 
+    /// <summary>互动触发（不受互动语音开关影响）：按好感度套用「表情 + 前倾 + 扭动」预设。</summary>
+    private void OnInteractionTriggered(object? sender, string voiceEvent)
+    {
+        try
+        {
+            var viewModel = _viewModel;
+            if (viewModel is null) return;
+            viewModel.Ui(() => ApplyInteractionScenarioVisuals(voiceEvent));
+        }
+        catch
+        {
+            // 互动反馈失败不影响桌宠
+        }
+    }
+
+    /// <summary>
+    /// 好感度驱动的互动动作：摸头（高好感 → 爱心眼 + 脸红 + 前倾）、摸裙子（脸红 + 扭扭捏捏）…
+    /// 数据在 <see cref="InteractionScenarios"/>；低好感只走默认反应，不会爱心眼 / 前倾 / 扭动。
+    /// </summary>
+    private void ApplyInteractionScenarioVisuals(string? voiceEvent)
+    {
+        var viewModel = _viewModel;
+        var runtime = _runtime;
+        if (viewModel is null || runtime is null || runtime.IsLoaded != true) return;
+        if (string.IsNullOrWhiteSpace(voiceEvent)) return;
+
+        // 0.9 秒节流：抚摸拖动时别每帧重新套表情 / 重新开始扭
+        var now = _clock.Elapsed;
+        if (_lastInteractionVisualAt != TimeSpan.MinValue &&
+            now - _lastInteractionVisualAt < TimeSpan.FromMilliseconds(900))
+        {
+            return;
+        }
+
+        var affection = _aiChat?.Affection.Value ?? 50.0;
+        var scenario = InteractionScenarios.TryMatch(voiceEvent, affection);
+        if (scenario is null) return;
+
+        _lastInteractionVisualAt = now;
+        foreach (var name in scenario.Expressions)
+        {
+            var expression = runtime.Expressions.FirstOrDefault(e =>
+                string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (expression is not null) runtime.ApplyExpression(expression, 0.28);
+        }
+
+        if (scenario.LeanForward)
+        {
+            var lean = runtime.Expressions.FirstOrDefault(e =>
+                string.Equals(e.Name, "前倾", StringComparison.OrdinalIgnoreCase));
+            if (lean is not null) runtime.ApplyExpression(lean, 0.6);
+        }
+
+        if (scenario.WiggleSeconds > 0) runtime.StartShyWiggle(scenario.WiggleSeconds);
+
+        viewModel.Log(
+            $"互动预设[{scenario.Id}]：好感 {affection:0} · 表情 {string.Join("+", scenario.Expressions)}" +
+            (scenario.LeanForward ? " · 前倾" : "") +
+            (scenario.WiggleSeconds > 0 ? $" · 扭动 {scenario.WiggleSeconds:0.0}s" : ""));
+    }
+
     private void HandleInteractionVoice(string? voiceEvent)
     {
         var viewModel = _viewModel;
@@ -3893,14 +4034,23 @@ public sealed class Live2DSession
             return;
         }
 
-        var line = PickInteractionVoiceLine(voiceEvent!);
+        var affection = _aiChat?.Affection.Value ?? 50.0;
+        var scenario = InteractionScenarios.TryMatch(voiceEvent, affection);
+        var line = scenario is not null
+            ? InteractionScenarios.PickLine(scenario, _lastInteractionVoiceLine, Random.Shared)
+            : PickInteractionVoiceLine(voiceEvent);
         if (string.IsNullOrEmpty(line)) return;
 
         _lastInteractionVoiceAt = now;
         _lastInteractionVoiceLine = line;
         var name = DescribeInteractionEvent(voiceEvent!);
-        viewModel.Log($"桌宠互动语音（{name}）：{line}");
-        SpeakText(line, SpeechToneCatalog.ForInteraction(voiceEvent));   // 语音 + 气泡 + 口型同步都走已有链路
+        viewModel.Log($"桌宠互动语音（{name}，好感 {affection:0}，{(scenario is null ? "默认" : scenario.Id)}）：{line}");
+        if (scenario is not null)
+        {
+            try { EnsureAiChat().AppendLocalPetMessage(line); } catch { /* 聊天服务没准备好就只说话 */ }
+        }
+        // 互动台词不再顺手随机配手势：否则会和互动自己摆的手势抢手臂（手闪一下的 bug）
+        SpeakText(line, SpeechToneCatalog.ForInteraction(voiceEvent), allowAutoGesture: false);
     }
 
     private string PickInteractionVoiceLine(string voiceEvent)

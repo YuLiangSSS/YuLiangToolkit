@@ -161,6 +161,28 @@ internal sealed class ExpressionManager
         }
     }
 
+    /// <summary>移除单个表情（只淡出它，其它叠加的表情继续；fadeSeconds ≤ 0 立即移除）。</summary>
+    public void Remove(ExpressionEntry entry, double fadeSeconds)
+    {
+        for (var i = _instances.Count - 1; i >= 0; i--)
+        {
+            var instance = _instances[i];
+            if (!ReferenceEquals(instance.Entry, entry) &&
+                !string.Equals(instance.Entry.FilePath, entry.FilePath, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (fadeSeconds <= 0)
+            {
+                _instances.RemoveAt(i);
+                continue;
+            }
+
+            instance.FadingOut = true;
+            instance.FadeOutStartTime = _userTime;
+            instance.FadeOutSeconds = fadeSeconds;
+        }
+    }
+
     /// <summary>立刻清空（不淡出）。</summary>
     public void ClearImmediate() => _instances.Clear();
 

@@ -1,4 +1,4 @@
-# AGENTS.md — YuLiangToolkit（凉雨工具集）开发入口
+﻿# AGENTS.md — YuLiangToolkit（凉雨工具集）开发入口
 
 > **入口地图**，不是手册：动手前读本文件；实现细节看源码 XML 注释，排错查 [`docs/dev/pitfalls.md`](docs/dev/pitfalls.md)。
 > 本文件 ≤120行/≤5KB，**别塞细节**；注释 / 提交 / 文档 / 回答一律用**中文**。
@@ -11,7 +11,7 @@
 | 主程序 | 根目录 `YuLiangTookit.csproj`（少一个 `l` 是历史拼写）：标题栏 / 主页 / 类别页 / 面包屑、六套主题（深浅色 + 配色）、背景图、粒子 |
 | 核心库 | `src/YuLiangToolkit.Core/`：工具契约 / MVVM / 存储 / 配置 / 维护（缓存清理·配置重建）/ OOXML 包读取（docx·xlsx 共用）/ FFmpeg / 粒子 / TCP 房间 |
 | 功能 | 35 个（32 个 `Tools.*`）：音频工具（视频转音频 / 分段合成） / 录屏 / GIF（GIF / MP4·MKV·MOV·AVI·WebM 多编码器 + 声音 / 摄像头 / 自定义快捷键 / 截图） / 剪辑工具（视频 / GIF 裁剪 + 多片段拼接 + 缩略图时间轴 + 低清预览） / 播放器 / 图片阅读器 / PDF 阅读器 / Word 阅读器 / Excel 阅读器 / PPT 阅读器（pptx 幻灯片还原 + 缩略图 + 备注 + 全屏放映） / 重命名 / 文本编辑器 / 压缩包工具 / 打开方式 / Flash / 聊天室 / 网页浏览器 / 邮箱代收（IMAP 只读拉多个邮箱的收件箱 / 已发送 / 垃圾箱 + 文件夹导航 + 合并列表 + 附件拖拽；HTML 富文本预览 + 排序；授权码 DPAPI 加密；可跟随系统代理） / osu! 下图器 / osu!mania 三件套 / 棋牌 / KPS 按键统计 / Spug 验证码测试 / Live2D 桌宠 / 屏幕贴纸（图片贴到桌面：原始尺寸 / 拖动 / 四边四角自由拉伸（Shift 等比）/ 滚轮缩放 / 层级 / 单独置顶 / GIF · APNG · WebP 动画 / 恢复默认 + 最近使用） / 右键菜单管理 / 软件升级器（winget 读应用与可用更新 + 多选批量升级） / 软件启动器（exe / 快捷方式图标墙 + 详情 + 清空无效项） / 表情包收藏夹（图片收藏 + 单击复制并粘贴到 QQ + 自动发送 / 仅复制） / 计算器（科学计算器，共用 `Core/Expressions/` 表达式引擎） / 函数绘图（多函数 + 每条定义域 + 自动求点） / 任务管理器（CPU / 内存 / GPU / 硬盘读写监测 + 进程 PID / CPU / 内存 / GPU / 占用端口 + 结束任务三级后备 + 开机启动项管理 + 按需 UAC 提权重启） / 示例模板 |
-| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`：5074 项（37 组），退出码 0 = 通过（按分组跑） |
+| 自检 | `tests/YuLiangToolkit.FrameworkSelfCheck/`：5092 项（37 组），退出码 0 = 通过（按分组跑） |
 | 数据 | **在 exe 旁边**（`bin\Debug\net9.0-windows10.0.19041.0\Data`、`Config`、`Cache`）；仓库根同名目录只有说明 |
 
 ## 开工 / 收尾（硬性）
