@@ -52,7 +52,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 | [**⚡ Flash 下载器**](docs/tools/flash-downloader.md) | 4399 / 7k7k / 17yy / ArmorGames / Kongregate 的小游戏下载到本地离线玩 |
 | [**💬 联机聊天室**](docs/tools/chat-room.md) | 主机开房间、客户端直连，文字 / 图片 / 文件随便传；还能群语音 / 群视频（最多 8 人）和按住说话发语音消息 |
 | [**🌐 网页浏览器**](docs/tools/browser.md) | Chromium 内核（WebView2）多标签浏览器：历史 / 下载 / 书签 / 资源嗅探、会话恢复、页面缩放、右键图片另存为 |
-| [**📬 邮箱代收**](docs/tools/mail.md) | 用 IMAP 把 Gmail / QQ / 163 / Outlook 等多个邮箱的**收件箱 / 已发送 / 垃圾箱**收到一起看：只读拉取、账号文件夹导航、合并列表、搜索、HTML 富文本预览（图片 / 表格 / 边框，Ctrl+滚轮缩放，可切纯文本）、附件打开 / 保存 / 全部保存 / 拖到桌面、按日期 / 发件人 / 收件人 / 主题 / 账号 / 附件 / 优先级 / 未读 / 大小排序；账号 / 代理 / 日志都是弹窗，授权码用 Windows DPAPI 加密保存；可自动跟随 Windows 系统代理（Gmail 直连超时时用） |
+| [**📬 邮箱代收**](docs/tools/mail.md) | 用 IMAP 把 Gmail / QQ / 163 / Outlook 等多个邮箱的**收件箱 / 已发送 / 垃圾箱**收到一起看：只读拉取、账号文件夹导航、合并列表、搜索、HTML 富文本预览（图片 / 表格 / 边框，Ctrl+滚轮缩放，可切纯文本）、**全屏浏览**（正文铺满整屏，Esc 退出，顶部悬浮工具栏放大 / 百分比 / 缩小 / 关闭）、附件打开 / 保存 / 全部保存 / 拖到桌面、按日期 / 发件人 / 收件人 / 主题 / 账号 / 附件 / 优先级 / 未读 / 大小排序；账号 / 代理 / 日志都是弹窗，授权码用 Windows DPAPI 加密保存；可自动跟随 Windows 系统代理（Gmail 直连超时时用） |
 | [**🏷️ 批量重命名**](docs/tools/batch-rename.md) | 规则清单 + 实时预览 + 两阶段改名 + 可撤销 |
 | [**📝 文本编辑器**](docs/tools/text-editor.md) | AvalonEdit 多标签代码编辑：26 种语言高亮、打开文件夹、内置 CMD / PowerShell 控制台、Markdown 预览、查找替换、界面缩放 |
 | [**🎧 osu! 下图器**](docs/tools/map-downloader.md) | 搜谱面集、批量下载 `.osz`（含视频 / 无视频可选） |
