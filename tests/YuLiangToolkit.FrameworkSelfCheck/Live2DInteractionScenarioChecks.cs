@@ -168,6 +168,34 @@ internal static class Live2DInteractionScenarioChecks
             ObservationScenarios.FacePresetNames.Contains("单眼闭眨"),
             string.Join("/", ObservationScenarios.FacePresetNames));
 
+        // ==================================================================
+        // 六点五、单眼闭眨的眨眼计划：连眨 1~3 下，长动作两组
+        // ==================================================================
+        var shortPlan = ObservationBlinkPlan.Build(2.0, new Random(7));
+        C("眨眼计划：短动作（2s）1 组，1~3 下，且动作结束前眨完",
+            shortPlan.Count == 1 &&
+            shortPlan[0].Count is >= 1 and <= 3 &&
+            shortPlan[0].StartSeconds >= 0.5 &&
+            shortPlan[0].EndSeconds <= 2.0 - 0.3,
+            $"{shortPlan[0].StartSeconds:0.0}+{shortPlan[0].Count}下 → {shortPlan[0].EndSeconds:0.0}s");
+
+        var longPlan = ObservationBlinkPlan.Build(4.0, new Random(7));
+        C("眨眼计划：长动作（4s）2 组，各组 1~3 下，两组之间留间隔且结束前眨完",
+            longPlan.Count == 2 &&
+            longPlan.All(b => b.Count is >= 1 and <= 3) &&
+            longPlan[1].StartSeconds > longPlan[0].EndSeconds + 0.5 &&
+            longPlan[1].EndSeconds <= 4.0 - 0.3,
+            string.Join(" / ", longPlan.Select(b => $"{b.StartSeconds:0.0}s+{b.Count}下")));
+
+        var single = new[] { new ObservationBlinkPlan.Burst(0.5, 2) };
+        C("眨眼脉冲：一组里闭→睁两次，间隔处为 0，组外为 0",
+            ObservationBlinkPlan.BlinkPulse(0.5 + 0.17, single) > 0.8f &&
+            ObservationBlinkPlan.BlinkPulse(0.5 + 0.5, single) < 0.2f &&
+            ObservationBlinkPlan.BlinkPulse(1.6, single) < 0.2f &&
+            ObservationBlinkPlan.BlinkPulse(5.0, single) == 0f &&
+            ObservationBlinkPlan.BlinkPulse(-1, single) == 0f,
+            "");
+
         C("逗你：好感 10 → 一直黑脸 + 白眼；好感 50 → 黑脸 50% 随机；好感 92 → 凑近 + 脸红 + 爱心眼",
             ObservationScenarios.TryMatch(ObservationScenarios.KindTease, 10) is { Id: "tease.low" } low2 &&
             low2.Expressions.Contains("黑脸") && !low2.RandomBlackFace &&

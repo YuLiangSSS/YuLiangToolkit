@@ -1673,7 +1673,7 @@ InteractionController._raiseInteraction(voiceEvent, displayName)
   | 单眼瞪大 | 1.15 / 0.42（随机哪边大） | 0 | +0.15 / -0.10 | +0.15 | 拿放大镜看你的感觉（小眼留一条缝，不闭死） |
   | 双眼微眯 | 0.55 / 0.55 | 0.35 | +0.15 / +0.05 | +0.15 | 普通观察 |
   | 微眯偏睁 | 0.72 / 0.72 | 0.18 | +0.28 / +0.05 | +0.20 | 高好感「好奇地观察」 |
-  | 单眼闭眨 | 闭 0.05 / 睁 1.0（左右随机） | 0 | +0.15 / +0.05 | +0.15 | 一闭一睁 + 睁眼每 1.4s 眨一下 |
+  | 单眼闭眨 | 闭 0.05 / 睁 1.0（左右随机） | 0 | +0.15 / +0.05 | +0.15 | 一闭一睁 + 睁眼连眨 1~3 下（长动作两组） |
   | 白眼 | 0.38 / 0.38 | 0.25 | +0.25 / +0.10 | -0.10 | 欠揍 / 逗你；眼球 Y=0.85 |
   | 不满 | 0.62 / 0.62 | 0.15 | -0.30 / -0.55 | -0.70 | 低好感嫌弃 |
   | 好奇 | 1.0 / 1.0 | 0 | +0.35 / +0.05 | +0.20 | 默认 |
@@ -1681,8 +1681,9 @@ InteractionController._raiseInteraction(voiceEvent, displayName)
 - 权重：0.18 时间淡入 / 淡出，写 `Default + (target-Default)*weight`；到点回写默认值再交给鼠标跟随；
 - **歪头 = 正面 Z 轴滚转**（`ParamAngleZ`，绕脸中心顺时针 / 逆时针转一点，随机方向），**不是左右转头**；
   身体 `ParamBodyAngleZ` 同向微扭（约头的 1/4）；两种观察动作（单眼瞪大 / 微眯 vs 单眼闭眨）共用这套滚转；
-- 「单眼闭眨」的睁眼眨眼：`BlinkOncePulse(elapsed)` 每 1.4 秒给一个 0.32 秒的三角脉冲（0→1→0），
-  睁眼开合 = `1 - pulse*0.95`；闭眼固定 0.05；
+- 「单眼闭眨」的睁眼眨眼：`ObservationBlinkPlan.Build(duration, random)` 生成计划——短动作 1 组、长动作（≥3.5s）2 组，
+  每组随机连眨 1~3 下（单次 0.34s + 间隔 0.34s，组间 0.85s，第一组 0.55s 后开始）；次数太多会压缩到动作结束前眨完；
+  `BlinkPulse(elapsed, bursts)` 把每次眨眼展开成 0→1→0 的三角脉冲，睁眼开合 = `1 - pulse*0.95`；
 - 眼球：`ParamEyeBallX = gazeX*0.9`、`ParamEyeBallY = gazeY*0.8`（白眼预设用固定 0.85）；
 - 与 `ShyWiggle` 的顺序：表情 → 扭动 → **观察** → 投喂；观察会覆盖头 / 眼，投喂靠近时仍抢头。
 
@@ -1713,8 +1714,9 @@ InteractionController._raiseInteraction(voiceEvent, displayName)
 
 ### 22.6 自检覆盖
 
-`Live2DInteractionScenarioChecks.cs` 追加约 10 条：观察 / 逗你三档匹配（低好感黑脸不满、高好感爱心眼）、
+`Live2DInteractionScenarioChecks.cs` 追加约 13 条：观察 / 逗你三档匹配（低好感黑脸不满、高好感爱心眼）、
 目录完整性（脸预设名合法 / 阈值唯一 / 台词非空 / `{user}` 占位）、PickLine 去重、
-`UserGaze` 右 / 左 / 中 / 下 / 夹取、`ShouldPauseEyeTracking` 真值表、配置默认值。
+`UserGaze` 右 / 左 / 中 / 下 / 夹取、`ShouldPauseEyeTracking` 真值表、配置默认值、
+`ObservationBlinkPlan` 短 / 长动作组数、次数 1~3、组间间隔、眨眼脉冲窗口。
 
 

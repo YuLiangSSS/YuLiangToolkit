@@ -146,9 +146,101 @@ public static class ObservationScenarios
 }
 
 /// <summary>
-/// 「眼睛盯着用户」的方向算法：用户一般正对屏幕中央，所以按「桌宠在屏幕上的位置 → 屏幕中央」算眼球偏移。
-/// 桌宠在屏幕右边 → 眼球往左看（X 为负）；在左下 → 往左上（X 正 / Y 正，Live2D 里 +Y 朝上）。
+/// 「单眼闭眨」里睁眼那只眼的眨眼计划：连眨 1~3 下为一组；动作时间长（≥3.5 秒）就做两组，
+/// 组间隔一会儿，别眨太快（每次眨眼 0.34 秒 + 间隔 0.34 秒，组间停 0.85 秒）。
+/// 纯数据 + 纯函数，自检可直接断言。
 /// </summary>
+public static class ObservationBlinkPlan
+{
+    /// <summary>单次眨眼时长（闭 + 睁，秒）。</summary>
+    public const double BlinkDurationSeconds = 0.34;
+
+    /// <summary>同一组里两次眨眼之间「睁开」的停顿（秒）。</summary>
+    public const double BlinkSpacingSeconds = 0.34;
+
+    /// <summary>两组眨眼之间的停顿（秒）。</summary>
+    public const double BurstGapSeconds = 0.85;
+
+    /// <summary>第一组开始时间（秒，等淡入基本完成）。</summary>
+    public const double FirstBurstStartSeconds = 0.55;
+
+    /// <summary>动作时长 ≥ 这个值就做两组眨眼。</summary>
+    public const double TwoBurstsMinDurationSeconds = 3.5;
+
+    /// <summary>一组眨眼：开始时间 + 连眨次数（1~3）。</summary>
+    public sealed record Burst(double StartSeconds, int Count)
+    {
+        /// <summary>这一组结束时间（含最后一次眨眼）。</summary>
+        public double EndSeconds => StartSeconds +
+                                    (Count * BlinkDurationSeconds) +
+                                    (Math.Max(0, Count - 1) * BlinkSpacingSeconds);
+    }
+
+    /// <summary>
+    /// 生成眨眼计划：短动作 1 组、长动作（≥3.5s）2 组；每组次数 1~3 随机，
+    /// 并在动作结束前留出至少 0.35s，避免眨到一半动作结束。
+    /// </summary>
+    public static IReadOnlyList<Burst> Build(double durationSeconds, Random random)
+    {
+        ArgumentNullException.ThrowIfNull(random);
+        var duration = Math.Max(1.0, durationSeconds);
+        var burstCount = duration >= TwoBurstsMinDurationSeconds ? 2 : 1;
+        var counts = new int[burstCount];
+        for (var i = 0; i < burstCount; i++) counts[i] = random.Next(1, 4); // 1~3 下
+
+        // 总时长超了就减少次数（至少每组 1 下），保证动作结束前眨完
+        var latestEnd = duration - 0.35;
+        double TotalEnd()
+        {
+            var end = FirstBurstStartSeconds;
+            for (var i = 0; i < burstCount; i++)
+                end += i == 0 ? 0 : BurstGapSeconds;
+            for (var i = 0; i < burstCount; i++) end += counts[i] * BlinkDurationSeconds + Math.Max(0, counts[i] - 1) * BlinkSpacingSeconds;
+            return end;
+        }
+
+        while (TotalEnd() > latestEnd && counts.Sum() > burstCount)
+        {
+            var index = Array.IndexOf(counts, counts.Max());
+            counts[index]--;
+        }
+
+        var bursts = new List<Burst>(burstCount);
+        var start = FirstBurstStartSeconds;
+        for (var i = 0; i < burstCount; i++)
+        {
+            var burst = new Burst(start, counts[i]);
+            bursts.Add(burst);
+            start = burst.EndSeconds + BurstGapSeconds;
+        }
+        return bursts;
+    }
+
+    /// <summary>
+    /// 某一时刻睁眼的闭合程度（0 = 完全睁开，1 = 闭合）：把计划里每次眨眼展开成
+    /// 「闭 0.17s → 睁 0.17s」的三角脉冲；不在眨眼窗口里返回 0。
+    /// </summary>
+    public static float BlinkPulse(double elapsedSeconds, IReadOnlyList<Burst>? bursts)
+    {
+        if (bursts is null || bursts.Count == 0 || elapsedSeconds < 0) return 0f;
+        foreach (var burst in bursts)
+        {
+            if (elapsedSeconds < burst.StartSeconds) continue;
+            for (var i = 0; i < burst.Count; i++)
+            {
+                var blinkStart = burst.StartSeconds + (i * (BlinkDurationSeconds + BlinkSpacingSeconds));
+                var local = elapsedSeconds - blinkStart;
+                if (local < 0 || local >= BlinkDurationSeconds) continue;
+                var half = BlinkDurationSeconds / 2;
+                return local < half
+                    ? (float)(local / half)
+                    : (float)((BlinkDurationSeconds - local) / half);
+            }
+        }
+        return 0f;
+    }
+}
+
 public static class UserGaze
 {
     /// <summary>

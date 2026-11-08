@@ -2,6 +2,7 @@ using System.Diagnostics;
 using YuLiangToolkit.Tools.Live2D.Audio;
 using YuLiangToolkit.Tools.Live2D.Interop;
 using YuLiangToolkit.Tools.Live2D.Mocap;
+using YuLiangToolkit.Tools.Live2D.Play;
 using YuLiangToolkit.Tools.Live2D.Rendering;
 
 namespace YuLiangToolkit.Tools.Live2D.Model;
@@ -271,6 +272,7 @@ public sealed class ModelRuntime : IDisposable
     private bool _obsLookAtUser;
     private bool _obsOverrideEyeBallY;
     private float _obsEyeBallYTarget;
+    private IReadOnlyList<ObservationBlinkPlan.Burst>? _obsBlinkBursts;
 
     /// <summary>互动语音事件（参数 = 语音事件 key：pat_head / face_cycle / pinch / tickle / protect / hand）。</summary>
     public event EventHandler<string>? InteractionHappened;
@@ -641,6 +643,9 @@ public sealed class ModelRuntime : IDisposable
         _obsLookAtUser = lookAtUser;
         _obsEyeWideLeft = Random.Shared.Next(2) == 0;
         _obsClosedEyeLeft = Random.Shared.Next(2) == 0;
+        _obsBlinkBursts = _obsFacePose == "单眼闭眨"
+            ? ObservationBlinkPlan.Build(_obsDurationSeconds, Random.Shared)
+            : null;
         var targets = ObservationFaceTargets.For(_obsFacePose);
         _obsOverrideEyeBallY = targets.OverrideEyeBallY;
         _obsEyeBallYTarget = targets.EyeBallY;
@@ -678,8 +683,8 @@ public sealed class ModelRuntime : IDisposable
         }
         else if (_obsFacePose == "单眼闭眨")
         {
-            // 一只眼闭上、另一只睁着；睁着的那只每隔约 1.4 秒眨一下（观察你的感觉）
-            var open = 1.0f - (BlinkOncePulse(_obsElapsedSeconds) * 0.95f);
+            // 一只眼闭上、另一只睁着；睁着的那只按计划「连眨 1~3 下」（长动作做两组），别眨太快
+            var open = 1.0f - (ObservationBlinkPlan.BlinkPulse(_obsElapsedSeconds, _obsBlinkBursts) * 0.95f);
             eyeL = _obsClosedEyeLeft ? 0.05f : open;
             eyeR = _obsClosedEyeLeft ? open : 0.05f;
         }
@@ -737,18 +742,7 @@ public sealed class ModelRuntime : IDisposable
         parameter.Value = parameter.DefaultValue + ((target - parameter.DefaultValue) * weight);
     }
 
-    /// <summary>「单眼闭眨」里睁着那只眼的眨眼脉冲：每 1.4 秒闭一下再睁开（0 = 完全睁开，1 = 闭上）。</summary>
-    private static float BlinkOncePulse(double elapsedSeconds)
-    {
-        const double period = 1.4;
-        const double blinkSeconds = 0.16;
-        var phase = (elapsedSeconds - 0.35) % period;
-        if (phase < 0) return 0f;
-        if (phase >= blinkSeconds * 2) return 0f;
-        return phase < blinkSeconds
-            ? (float)(phase / blinkSeconds)
-            : (float)((blinkSeconds * 2 - phase) / blinkSeconds);
-    }
+    /// <summary>「单眼闭眨」的眨眼计划在 StartObservation 时生成，这里不再需要额外脉冲函数。</summary>
 
     /// <summary>观察表情预设的参数目标（眼睛开合 / 眯眼 / 眉毛 / 嘴形 / 眼球 Y）。</summary>
     private readonly record struct ObservationFaceTargets(
