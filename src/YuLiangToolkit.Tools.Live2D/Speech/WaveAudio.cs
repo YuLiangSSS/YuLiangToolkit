@@ -100,6 +100,37 @@ public static class WaveAudio
     }
 
     /// <summary>
+    /// 把 16bit 单声道样本包成标准 44 字节头的 WAV（分段合成后拼接播放用）。
+    /// 自检可用 <see cref="TryParse"/> 再解析回来对拍。
+    /// </summary>
+    public static byte[] BuildPcm16Wav(ReadOnlySpan<short> samples, int sampleRate)
+    {
+        sampleRate = Math.Clamp(sampleRate, 8000, 192000);
+        var dataLength = samples.Length * 2;
+        var wav = new byte[44 + dataLength];
+        using var stream = new MemoryStream(wav);
+        using var writer = new BinaryWriter(stream);
+        writer.Write(new[] { (byte)'R', (byte)'I', (byte)'F', (byte)'F' });
+        writer.Write(36 + dataLength);
+        writer.Write(new[] { (byte)'W', (byte)'A', (byte)'V', (byte)'E' });
+        writer.Write(new[] { (byte)'f', (byte)'m', (byte)'t', (byte)' ' });
+        writer.Write(16);          // fmt 块大小
+        writer.Write((ushort)1);   // PCM
+        writer.Write((ushort)1);   // 单声道
+        writer.Write(sampleRate);
+        writer.Write(sampleRate * 2); // 字节率
+        writer.Write((ushort)2);   // 块对齐
+        writer.Write((ushort)16);  // 位深
+        writer.Write(new[] { (byte)'d', (byte)'a', (byte)'t', (byte)'a' });
+        writer.Write(dataLength);
+        foreach (var sample in samples)
+        {
+            writer.Write(sample);
+        }
+        return wav;
+    }
+
+    /// <summary>
     /// 由 16bit 单声道样本构建唇形包络：每 20ms 一个 RMS 值，按 95 分位归一化，再做快起慢落的平滑。
     /// </summary>
     public static float[] BuildEnvelope(ReadOnlySpan<short> samples, int sampleRate)

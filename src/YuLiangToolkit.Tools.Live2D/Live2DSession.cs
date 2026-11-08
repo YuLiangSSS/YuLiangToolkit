@@ -152,6 +152,7 @@ public sealed class Live2DSession
     private TimeSpan _lastFeedTraceAt = TimeSpan.MinValue;
     private bool _feedShotApplied;
     private long _lastInteractionEventCount;
+    private bool _ttsAuditionApplied;
 
     private Live2DSession()
     {
@@ -841,7 +842,12 @@ public sealed class Live2DSession
             };
             ApplyCareExpression(FeedingLines.GetExpressionKeyword(result.Tier, afterEat: true), 7, puff);
             try { EnsureAiChat().AppendLocalPetMessage(line); } catch { /* 聊天服务没准备好就只说话 */ }
-            SpeakText(line);
+            SpeakText(line, result.Tier switch
+            {
+                FullnessTier.Full => SpeechToneCatalog.ForFeedSatisfied(),
+                FullnessTier.Starving => SpeechToneCatalog.ForFeedStarving(),
+                _ => SpeechToneCatalog.ForFeedStillHungry(),
+            });
             _viewModel?.Log("投喂台词：" + line);
         }
         catch (Exception ex)
@@ -883,7 +889,7 @@ public sealed class Live2DSession
         var tier = care.Tier;
         ApplyCareExpression(tier == FullnessTier.Starving ? "流冷汗" : "", 5, 0.35f);
         try { EnsureAiChat().AppendLocalPetMessage(line); } catch { /* 忽略 */ }
-        SpeakText(line);
+        SpeakText(line, SpeechToneCatalog.ForHungryReminder());
         vm.Log($"饿了主动说话（饱食 {care.Fullness:0} / {care.TierText}）：{line}");
         RaiseAiChatStateChanged();
     }
@@ -1047,6 +1053,122 @@ public sealed class Live2DSession
         {
             await Task.Delay(200);
             Application.Current?.Shutdown();
+        }
+    }
+
+    // ---------- 语音试听对比：YLT_LIVE2D_TTS_AUDITION=<folder|1> ----------
+    //
+    // 用法：设 YLT_LIVE2D_TTS_AUDITION=1（或给一个文件夹）后启动程序（配合 YLT_SHOT_TOOL=live2d 打开本页），
+    // 会把「4 个音色 × 6 条台词」的语气化对比 MP3 合成到 Data\live2d\voice-auditions（或指定目录），
+    // 并写一个 index.md（Markdown 表格）+ audition.m3u 播放列表。
+    // 加 YLT_LIVE2D_TTS_AUDITION_EXIT=1 时生成完自动退出（自动化验收用）。
+
+    private void TryBeginTtsAudition()
+    {
+        if (_ttsAuditionApplied) return;
+        var spec = Environment.GetEnvironmentVariable("YLT_LIVE2D_TTS_AUDITION")?.Trim();
+        if (string.IsNullOrWhiteSpace(spec)) return;
+        if (_viewModel is null) return;
+        _ttsAuditionApplied = true;
+
+        string folder;
+        if (spec is "1" or "on" or "true")
+        {
+            folder = Path.Combine(AppContext.BaseDirectory, "Data", "live2d", "voice-auditions");
+        }
+        else
+        {
+            folder = Path.IsPathRooted(spec) ? spec : Path.Combine(AppContext.BaseDirectory, spec);
+        }
+
+        _ = RunTtsAuditionAsync(folder);
+    }
+
+    private async Task RunTtsAuditionAsync(string folder)
+    {
+        var viewModel = _viewModel;
+        if (viewModel is null) return;
+
+        var ok = 0;
+        try
+        {
+            Directory.CreateDirectory(folder);
+            var samples = SpeechToneCatalog.BuildAuditionSamples();
+            var rows = new List<string>();
+            var playlist = new List<string> { "#EXTM3U" };
+
+            // 每个音色用一个独立 TtsService（走真实合成链路：分段韵律 + WAV 拼接），
+            // 保存成 WAV 试听（不播放），这样听到的就是实际对话时的效果。
+            var services = new Dictionary<string, TtsService>();
+            try
+            {
+                var index = 0;
+                foreach (var sample in samples)
+                {
+                    if (_shutdown) return;
+                    index++;
+                    var file = sample.Id + ".wav";
+                    var path = Path.Combine(folder, file);
+                    if (!services.TryGetValue(sample.VoiceShortName, out var tts))
+                    {
+                        tts = new TtsService { VoiceId = "edge:" + sample.VoiceShortName };
+                        services[sample.VoiceShortName] = tts;
+                    }
+
+                    var utterance = await tts.SynthesizeAsync(sample.Text, sample.Tone, CancellationToken.None)
+                        .ConfigureAwait(true);
+                    string note;
+                    if (utterance is null || utterance.WaveBytes.Length < 512)
+                    {
+                        note = "合成失败：" + (tts.LastError ?? "未知原因");
+                    }
+                    else
+                    {
+                        await File.WriteAllBytesAsync(path, utterance.WaveBytes);
+                        ok++;
+                        note = sample.IsBaseline ? "原始（无韵律调整）" : "分段韵律（实际对话效果）";
+                        playlist.Add(path);
+                    }
+
+                    viewModel.Log($"[试听 {index}/{samples.Count}] {file}：{note}");
+                    rows.Add("| " + file + " | " + sample.VoiceLabel + " | " + sample.Scene + " | " +
+                             (sample.IsBaseline ? "（原始）" : "分段韵律") + " | " +
+                             sample.Text + " | " + note + " |");
+                }
+            }
+            finally
+            {
+                foreach (var tts in services.Values)
+                {
+                    try { tts.Dispose(); } catch { /* 忽略 */ }
+                }
+            }
+
+            var markdown = "# 大肥鱼语音试听对比（A：Edge 韵律化 / 情感风格实测）\n\n"
+                           + "> 同一批台词在不同音色 / 语气下的对比。直接双击 MP3 听；或双击 `audition.m3u` 整列表播放。\n"
+                           + "> **重要实测结论**：Edge 的朗读接口不接受 `mstts:express-as` 情感风格（24 个风格样本全部自动回退），\n"
+                           + "> 所以下面听到的是**纯韵律版**（语速 / 音调 / 音量 / 「呀！」重音 / 省略号停顿），也就是不换引擎时能达到的效果。\n"
+                           + "> 想要真正的「演技」需要换 Azure 官方（同样音色、支持风格）或商用情感 TTS（路线 B/C）。\n\n"
+                           + "| 文件 | 音色 | 场景 | 风格/强度 | 台词 | 结果 |\n| --- | --- | --- | --- | --- | --- |\n"
+                           + string.Join("\n", rows) + "\n\n"
+                           + "**重点对比**：`pinch`（呀！+ 停顿 + 后半句放轻）是否够「激烈」；`wait`（原始）vs `wait_affection`（慢一点、停顿多）差别是否明显；\n"
+                           + "`hungry` / `tsundere` 是否自然；同一句换 `晓伊 / 晓晓 / 晓北 / 晓雨` 哪个更像你想要的软妹。\n";
+            await File.WriteAllTextAsync(Path.Combine(folder, "index.md"), markdown);
+            await File.WriteAllLinesAsync(Path.Combine(folder, "audition.m3u"), playlist);
+
+            viewModel.Log($"语音试听生成完毕：{folder}（成功 {ok}/{samples.Count}）");
+        }
+        catch (Exception ex)
+        {
+            viewModel.Log("语音试听生成失败：" + ex.Message);
+        }
+        finally
+        {
+            if (Environment.GetEnvironmentVariable("YLT_LIVE2D_TTS_AUDITION_EXIT") is "1" or "on" or "true")
+            {
+                await Task.Delay(400);
+                Application.Current?.Shutdown();
+            }
         }
     }
 
@@ -1524,6 +1646,7 @@ public sealed class Live2DSession
         TryBeginInteractionDemo();
         TryBeginAiChatShot();
         TryBeginFeedShot();
+        TryBeginTtsAudition();
         if (IsLoaded)
         {
             try { _runtime!.Tick(TimeSpan.FromMilliseconds(16)); } catch { /* 忽略 */ }
@@ -2792,14 +2915,19 @@ public sealed class Live2DSession
     /// 说一句话：先合成，**真正开始播放的那一刻**才显示气泡 + 配小动作，保证声音 / 口型 / 气泡同时出现。
     /// 说话期间帧循环同步 <c>runtime.SpeechMouthOpen</c>。
     /// </summary>
-    public void SpeakText(string text)
+    /// <param name="text">要说的文本（超过 120 字截断）。</param>
+    /// <param name="tone">
+    /// 语气覆盖（情感风格 / 语速 / 音调 / 音量 / 感叹后停顿）；null = 保持全局设置。
+    /// 互动 / 投喂 / AI 回复都会带自己的语气，见 <see cref="SpeechToneCatalog"/>。
+    /// </param>
+    public void SpeakText(string text, SpeechTone? tone = null)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
         text = text.Trim();
         if (text.Length > 120) text = text[..120];
 
-        _viewModel?.Log("说话：" + text);
-        _ = SpeakAsyncCore(text);
+        _viewModel?.Log("说话：" + text + (tone?.HasStyle == true ? $"［语气 {tone.Style}］" : ""));
+        _ = SpeakAsyncCore(text, null, tone);
     }
 
     /// <summary>停止说话（气泡稍后隐藏）。</summary>
@@ -2823,7 +2951,7 @@ public sealed class Live2DSession
     public void SpeakRandomLine()
     {
         var line = Live2DViewModel.PickRandomSpeechLine();
-        if (!string.IsNullOrWhiteSpace(line)) SpeakText(line);
+        if (!string.IsNullOrWhiteSpace(line)) SpeakText(line, SpeechToneCatalog.ForIdle());
     }
 
     /// <summary>把语音相关配置推给 <see cref="TtsService"/>（还没创建时只记着，第一次说话时应用）。</summary>
@@ -2865,7 +2993,7 @@ public sealed class Live2DSession
         return _tts;
     }
 
-    private async Task SpeakAsyncCore(string text, string? gestureId = null)
+    private async Task SpeakAsyncCore(string text, string? gestureId = null, SpeechTone? tone = null)
     {
         var tts = EnsureSpeech();
         if (tts is null)
@@ -2879,7 +3007,7 @@ public sealed class Live2DSession
         {
             // 关键：onPlaybackStarted 在「音频真正开始播放」的一瞬间回调，
             // 气泡与小动作在这里才出现 → 声音 / 口型 / 气泡三者同步。
-            var ok = await tts.SpeakAsync(text, () =>
+            var ok = await tts.SpeakAsync(text, tone, () =>
             {
                 ShowBubble(text);
                 // AI 回复自带动作标签时优先摆那个手势；否则按配置随机配一个小动作
@@ -3336,7 +3464,7 @@ public sealed class Live2DSession
         if (cfg?.AiSpeakReply == true)
         {
             // 复用既有 TTS 链路：合成完成、真正开始播放时才弹气泡 + 摆动作（声音 / 口型 / 气泡同一时刻）
-            _ = SpeakAsyncCore(reply.Text, gestureId);
+            _ = SpeakAsyncCore(reply.Text, gestureId, SpeechToneCatalog.ForAiEmotion(reply.Emotion));
         }
         else
         {
@@ -3691,8 +3819,8 @@ public sealed class Live2DSession
         },
         ["pinch"] = new[]
         {
-            "呜…别捏啦～", "脸要变形了啦", "轻一点嘛…", "要漏气了要漏气了！",
-            "再捏我就生气了喔…大概。",
+            "呀！别、别捏啦……", "呀！脸要变形了啦…", "呜…别捏啦～", "轻一点嘛…",
+            "要漏气了要漏气了！", "再捏我就生气了喔…大概。",
         },
         ["tickle"] = new[]
         {
@@ -3772,7 +3900,7 @@ public sealed class Live2DSession
         _lastInteractionVoiceLine = line;
         var name = DescribeInteractionEvent(voiceEvent!);
         viewModel.Log($"桌宠互动语音（{name}）：{line}");
-        SpeakText(line);   // 语音 + 气泡 + 口型同步都走已有链路
+        SpeakText(line, SpeechToneCatalog.ForInteraction(voiceEvent));   // 语音 + 气泡 + 口型同步都走已有链路
     }
 
     private string PickInteractionVoiceLine(string voiceEvent)

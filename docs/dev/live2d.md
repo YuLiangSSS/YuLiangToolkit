@@ -965,6 +965,36 @@ BPM 估计（原来只在有声 hop 估算，稀疏点击永远估不出——�
    `rate="0.95"`（倍率）与 `pitch="+0st"`/百分比要按服务支持的写法，乱写会被忽略或报错。
 3. **在线协议是「非官方」的**：微软没承诺 Edge TTS 接口稳定，必须保留**本地回退**并把错误写 `LastError`；
    断网 / 代理拦截 / 服务改版时功能不能挂。
+
+### 15.7 语音语气（`SpeechTone` / 分段韵律）
+
+> 目标：让「摸头 / 捏脸 / 喂食 / 饿 / AI 情绪」听起来不一样，而不是所有台词一个朗读味。
+> 入口：`Speech/SpeechTone.cs`（参数包 + 目录 + 分段）、`TtsService`（合成时覆盖全局设置）、
+> 会话的 `SpeakText(text, tone)`（互动 / 投喂 / 饥饿 / AI 回复各带自己的语气）。
+
+**参数包（`SpeechTone`）**：语速倍率 `Rate`、音调偏移 `Pitch`（百分比）、音量倍率 `Volume`、
+情感风格 `Style` + `StyleDegree`（留给 Azure / 商用 TTS）、`PunchFirstExclaim`（第一声重音 + 停顿 + 后半句放轻）、
+`BreakAtEllipsisMs`（省略号后停顿）。`TtsService` 把「全局设置 × 语气」算成实际语速 / 音调 / 音量，缓存键里带上语气
+（同一句话不同情绪不能命中同一段音频）。
+
+**Edge 实测的两个硬限制（本轮踩过，别再试）**：
+1. `mstts:express-as` 情感风格：24 个样本（4 音色 × 6 情绪）**全部**触发「服务端返回空音频」→ 自动回退无风格。
+   结论：Edge 朗读接口不支持情感风格，风格字段只对 Azure / 商用 TTS 有意义；
+2. `<break time="..."/>` 停顿：同样返回空音频。**不能再往 SSML 里塞 break**。
+
+**替代方案：分段合成（不换引擎也能有起伏）**
+- `SpeechToneCatalog.BuildSegments(text, tone)` 按**句末标点**（！？。…；;、换行）切 1~8 段；逗号 / 顿号不切；
+- 每段自带语速倍率 / 音调偏移 / 段后静音：
+  - `PunchFirstExclaim` 的第一段：+16% 语速、+9 音调、段后 **150ms**；
+  - 以「！」结尾：+6% / +4 / 110ms；「？」：+2% / +3 / 95ms；「…」：-5% / -1 / `BreakAtEllipsisMs`（默认 120ms）；
+    「。」80ms；「；」70ms；最后一段静音 0；从第二段起隔段再 -2% / -1 音调（减少整句一个味）；
+- `TtsService.SynthesizeEdgeAsync` 对每段分别请求 Edge（只改 prosody，不碰 style / break）→ 每段 MP3 转 WAV →
+  读出 16bit 单声道样本 → 段间补静音 → `WaveAudio.BuildPcm16Wav` 重新打包 → 重新算口型包络；
+- 本地 Windows TTS 回退仍整句合成（不支持分段韵律，声音本身就是机械的）；
+- 试听钩子：`YLT_LIVE2D_TTS_AUDITION=<folder|1>`（+ `YLT_LIVE2D_TTS_AUDITION_EXIT=1`）会把
+  「4 音色 × 6 条台词」用**真实合成链路**导出 WAV + `index.md` + `audition.m3u`，用来 A/B 对比；
+- 调语气只改 `SpeechToneCatalog`（映射）和会话里 `SpeakText(line, tone)` 的调用；改完同步自检
+  `Live2DTtsToneChecks`（分段 / SSML / WAV 拼接 / 缓存键断言）。
 4. **MediaPlayer 的 `MediaEnded` 不可靠**：某些机器 / 格式不触发；实现按 WAV 时长轮询收尾。
    释放顺序：先 `Stop`/`Pause` → `Source=null` → `Dispose`，并把 `InMemoryRandomAccessStream` 保留到播放结束
    （提前释放会让播放中断）。
@@ -1212,6 +1242,7 @@ InteractionController._raiseInteraction(voiceEvent, displayName)
 | `YLT_LIVE2D_SHOT_CHAT=<png>` | **AI 聊天窗**离屏截图：打开聊天窗 → 塞示例消息 → 渲染成 PNG 后退出（不碰真实聊天数据，可和桌宠截图拼在一起验收）；`Loaded` 后再等布局完成 |
 | `YLT_LIVE2D_SHOT_FEED=<png>` | **养成投喂**离屏拼图截图：显示桌宠 + 聊天窗 + 两个大白饭团，拼成一张 PNG 后退出（验收投喂层 / 养成 HUD / 饭团外观用，不碰桌面） |
 | `YLT_LIVE2D_FEED_TRACE=1` | 投喂定位排错：每秒把「嘴部画布坐标 → 屏幕坐标 / 桌宠窗口矩形 / 嘴半径」和投喂层异常写 `Data\live2d\feed-trace.log`（只写坐标数字，不抓画面） |
+| `YLT_LIVE2D_TTS_AUDITION=<folder\|1>`（+ `_EXIT=1`） | **语音试听对比**：用真实合成链路导出「4 音色 × 6 条台词」的 WAV + `index.md` + `audition.m3u`（指定目录或默认 `Data\live2d\voice-auditions`），给调语气用；不写聊天记录 |
 | `YLT_LIVE2D_PETCARD_SCROLL=<bottom/数字>` | 打开页面后把「桌面宠物」卡内部滚到指定位置（截图设置项用） |
 | `YLT_SELFCHECK_TRACE=1` | 自检排错：打印「进入 / 完成哪个分组」（查「全 PASS 但进程不退出」卡在哪一步） |
 

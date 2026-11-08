@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text;
 using Windows.Media.Core;
@@ -156,8 +157,16 @@ public sealed class TtsService : IDisposable
         }
     }
 
-    /// <summary>把文本合成成 WAV + 唇形包络（不播放）。</summary>
-    public async Task<SpeechUtterance?> SynthesizeAsync(string text, CancellationToken cancellationToken = default)
+    /// <summary>把文本合成成 WAV + 唇形包络（不播放；用全局音色 / 语速 / 音调）。</summary>
+    public Task<SpeechUtterance?> SynthesizeAsync(string text, CancellationToken cancellationToken = default)
+        => SynthesizeAsync(text, null, cancellationToken);
+
+    /// <summary>
+    /// 把文本合成成 WAV + 唇形包络（不播放）。<paramref name="tone"/> 为本次的语速 / 音调 / 音量 /
+    /// 情感风格覆盖（null = 保持全局设置）。
+    /// </summary>
+    public async Task<SpeechUtterance?> SynthesizeAsync(string text, SpeechTone? tone,
+        CancellationToken cancellationToken = default)
     {
         text = (text ?? "").Trim();
         if (text.Length == 0)
@@ -167,7 +176,9 @@ public sealed class TtsService : IDisposable
         }
         if (text.Length > 500) text = text[..500];
 
-        var cacheKey = VoiceKey() + "|" + _rate.ToString("0.00") + "|" + _pitchPercent.ToString("0") + "|" + text;
+        var effectiveRate = EffectiveRate(tone);
+        var effectivePitch = EffectivePitch(tone);
+        var cacheKey = BuildCacheKey(VoiceKey(), effectiveRate, effectivePitch, text, tone);
         if (_cache.TryGetValue(cacheKey, out var cached))
         {
             _lastError = null;
@@ -182,7 +193,8 @@ public sealed class TtsService : IDisposable
             // 1) 在线神经网络语音（默认；失败自动回退本地）
             if (WantsOnlineVoice())
             {
-                var utterance = await SynthesizeEdgeAsync(text, cancellationToken).ConfigureAwait(false);
+                var utterance = await SynthesizeEdgeAsync(text, effectiveRate, effectivePitch, tone, cancellationToken)
+                    .ConfigureAwait(false);
                 if (utterance is not null)
                 {
                     RememberCache(cacheKey, utterance);
@@ -192,7 +204,8 @@ public sealed class TtsService : IDisposable
             }
 
             // 2) 本地 Windows TTS
-            var local = await SynthesizeWindowsAsync(text, cancellationToken).ConfigureAwait(false);
+            var local = await SynthesizeWindowsAsync(text, effectiveRate, effectivePitch, cancellationToken)
+                .ConfigureAwait(false);
             if (local is not null) RememberCache(cacheKey, local);
             return local;
         }
@@ -211,6 +224,27 @@ public sealed class TtsService : IDisposable
         }
     }
 
+    /// <summary>
+    /// 语音缓存键（public 便于自检断言：同一句话不同语气不能串音）。
+    /// </summary>
+    public static string BuildCacheKey(string voiceKey, double effectiveRate, double effectivePitch,
+        string text, SpeechTone? tone)
+        => voiceKey + "|" + effectiveRate.ToString("0.000", CultureInfo.InvariantCulture) + "|" +
+           effectivePitch.ToString("0.##", CultureInfo.InvariantCulture) + "|" +
+           (tone?.CacheKey ?? "neutral") + "|" + text;
+
+    /// <summary>全局语速 × 语气倍率（夹 0.5~2.0）。</summary>
+    private double EffectiveRate(SpeechTone? tone)
+        => Math.Clamp(_rate * (tone?.Rate ?? 1.0), 0.5, 2.0);
+
+    /// <summary>全局音调 + 语气偏移（夹 -50~80）。</summary>
+    private double EffectivePitch(SpeechTone? tone)
+        => Math.Clamp(_pitchPercent + (tone?.Pitch ?? 0.0), -50, 80);
+
+    /// <summary>全局音量 × 语气音量倍率（夹 0~1）。</summary>
+    private double EffectiveVolume(SpeechTone? tone)
+        => Math.Clamp(_volume * (tone?.Volume ?? 1.0), 0.0, 1.0);
+
     private bool WantsOnlineVoice() =>
         _voiceId.Length == 0 || _voiceId.StartsWith(EdgePrefix, StringComparison.OrdinalIgnoreCase);
 
@@ -222,43 +256,73 @@ public sealed class TtsService : IDisposable
         _cache[key] = utterance;
     }
 
-    private async Task<SpeechUtterance?> SynthesizeEdgeAsync(string text, CancellationToken cancellationToken)
+    private async Task<SpeechUtterance?> SynthesizeEdgeAsync(string text, double effectiveRate,
+        double effectivePitch, SpeechTone? tone, CancellationToken cancellationToken)
     {
         try
         {
             var shortName = _voiceId.StartsWith(EdgePrefix, StringComparison.OrdinalIgnoreCase)
                 ? _voiceId[EdgePrefix.Length..]
                 : EdgeTtsClient.DefaultShortName;
-            var ratePercent = (int)Math.Round((_rate - 1.0) * 100.0);
-            var rate = ratePercent >= 0 ? "+" + ratePercent + "%" : ratePercent + "%";
-            var pitchHz = (int)Math.Round(_pitchPercent * 1.2);
-            var pitch = pitchHz >= 0 ? "+" + pitchHz + "Hz" : pitchHz + "Hz";
 
-            var mp3 = await EdgeTtsClient.Shared.SynthesizeMp3Async(text, shortName, rate, pitch, cancellationToken)
-                .ConfigureAwait(false);
-            if (mp3 is null || mp3.Length < 512)
+            // Edge 朗读接口不支持情感风格 / <break>（实测会返回空音频），所以「语气」靠：
+            // 音色 + 全局语速音调 + 按句末标点分段合成（每段独立语速 / 音调）+ 段间插静音。
+            var segments = tone is null ? null : SpeechToneCatalog.BuildSegments(text, tone);
+            var useSegments = segments is { Count: > 1 };
+
+            var parts = new List<short[]>();
+            var gaps = new List<int>();
+            var sampleRate = 24_000;
+
+            if (!useSegments)
             {
-                _lastError = "在线语音没有返回音频" +
-                             (string.IsNullOrWhiteSpace(EdgeTtsClient.Shared.LastError) ? "" : "：" + EdgeTtsClient.Shared.LastError);
-                return null;
+                var one = await SynthesizeEdgeSegmentAsync(text, shortName, effectiveRate, effectivePitch, cancellationToken)
+                    .ConfigureAwait(false);
+                if (one is null) return null;
+                sampleRate = one.Value.SampleRate;
+                parts.Add(one.Value.Samples);
+            }
+            else
+            {
+                foreach (var segment in segments!)
+                {
+                    var segmentRate = Math.Clamp(effectiveRate * segment.RateMultiplier, 0.5, 2.0);
+                    var segmentPitch = Math.Clamp(effectivePitch + segment.PitchOffset, -50, 80);
+                    var one = await SynthesizeEdgeSegmentAsync(
+                            segment.Text, shortName, segmentRate, segmentPitch, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (one is null) return null;
+                    if (parts.Count == 0) sampleRate = one.Value.SampleRate;
+                    parts.Add(one.Value.Samples);
+                    gaps.Add(segment.GapAfterMs > 0 ? (sampleRate * segment.GapAfterMs) / 1000 : 0);
+                }
             }
 
-            var wav = await Mp3ToWavAsync(mp3).ConfigureAwait(false);
-            if (wav is null)
+            short[] combined;
+            if (parts.Count == 1)
             {
-                _lastError = "在线语音转码失败";
-                return null;
+                combined = parts[0];
             }
-            if (!WaveAudio.TryParse(wav, out var info, out var error))
+            else
             {
-                _lastError = "在线语音 WAV 解析失败：" + error;
-                return null;
+                var total = 0;
+                foreach (var part in parts) total += part.Length;
+                foreach (var gap in gaps) total += gap;
+                combined = new short[total];
+                var position = 0;
+                for (var i = 0; i < parts.Count; i++)
+                {
+                    Array.Copy(parts[i], 0, combined, position, parts[i].Length);
+                    position += parts[i].Length;
+                    if (i < gaps.Count) position += gaps[i];   // 默认 short 0 = 静音
+                }
             }
-            var samples = WaveAudio.ReadMonoSamples(wav, info);
-            var envelope = WaveAudio.BuildEnvelope(samples, info.SampleRate);
-            _lastEngine = "在线" + EdgeTtsClient.GetDisplayName(shortName);
-            return new SpeechUtterance(text, wav, info.SampleRate, info.Channels, info.BitsPerSample,
-                info.DurationSeconds, envelope);
+
+            var wav = WaveAudio.BuildPcm16Wav(combined, sampleRate);
+            var envelope = WaveAudio.BuildEnvelope(combined, sampleRate);
+            _lastEngine = "在线" + EdgeTtsClient.GetDisplayName(shortName) + (useSegments ? " · 分段韵律" : "");
+            return new SpeechUtterance(text, wav, sampleRate, 1, 16,
+                combined.Length / (double)sampleRate, envelope);
         }
         catch (OperationCanceledException)
         {
@@ -271,7 +335,40 @@ public sealed class TtsService : IDisposable
         }
     }
 
-    private async Task<SpeechUtterance?> SynthesizeWindowsAsync(string text, CancellationToken cancellationToken)
+    /// <summary>合成一个片段（单段 / 分段都是同一条路），返回 16bit 单声道样本。</summary>
+    private async Task<(short[] Samples, int SampleRate)?> SynthesizeEdgeSegmentAsync(
+        string text, string shortName, double rateMultiplier, double pitchPercent, CancellationToken cancellationToken)
+    {
+        var ratePercent = (int)Math.Round((rateMultiplier - 1.0) * 100.0);
+        var rate = ratePercent >= 0 ? "+" + ratePercent + "%" : ratePercent + "%";
+        var pitchHz = (int)Math.Round(pitchPercent * 1.2);
+        var pitch = pitchHz >= 0 ? "+" + pitchHz + "Hz" : pitchHz + "Hz";
+
+        var mp3 = await EdgeTtsClient.Shared.SynthesizeMp3Async(text, shortName, rate, pitch, cancellationToken)
+            .ConfigureAwait(false);
+        if (mp3 is null || mp3.Length < 512)
+        {
+            _lastError = "在线语音没有返回音频" +
+                         (string.IsNullOrWhiteSpace(EdgeTtsClient.Shared.LastError) ? "" : "：" + EdgeTtsClient.Shared.LastError);
+            return null;
+        }
+
+        var wav = await Mp3ToWavAsync(mp3).ConfigureAwait(false);
+        if (wav is null)
+        {
+            _lastError = "在线语音转码失败";
+            return null;
+        }
+        if (!WaveAudio.TryParse(wav, out var info, out var error))
+        {
+            _lastError = "在线语音 WAV 解析失败：" + error;
+            return null;
+        }
+        return (WaveAudio.ReadMonoSamples(wav, info), info.SampleRate);
+    }
+
+    private async Task<SpeechUtterance?> SynthesizeWindowsAsync(string text, double effectiveRate,
+        double effectivePitch, CancellationToken cancellationToken)
     {
         try
         {
@@ -282,7 +379,7 @@ public sealed class TtsService : IDisposable
                 try { synthesizer.Voice = voice; } catch { /* 语音被卸载时用默认 */ }
             }
 
-            var ssml = BuildWindowsSsml(text);
+            var ssml = BuildWindowsSsml(text, effectiveRate, effectivePitch);
             using var stream = await synthesizer.SynthesizeSsmlToStreamAsync(ssml).AsTask(cancellationToken).ConfigureAwait(false);
             var size = (int)stream.Size;
             if (size <= 0)
@@ -320,13 +417,20 @@ public sealed class TtsService : IDisposable
     /// <param name="text">要说的文本。</param>
     /// <param name="onPlaybackStarted">真正开始播放的那一刻回调（用来同一时刻显示气泡 / 动作）。</param>
     /// <param name="cancellationToken">取消。</param>
-    public async Task<bool> SpeakAsync(string text, Action? onPlaybackStarted = null,
+    public Task<bool> SpeakAsync(string text, Action? onPlaybackStarted = null,
+        CancellationToken cancellationToken = default)
+        => SpeakAsync(text, null, onPlaybackStarted, cancellationToken);
+
+    /// <summary>
+    /// 合成并播放一句话（带语气覆盖：情感风格 / 语速 / 音调 / 音量）。返回是否成功开始播放。
+    /// </summary>
+    public async Task<bool> SpeakAsync(string text, SpeechTone? tone, Action? onPlaybackStarted = null,
         CancellationToken cancellationToken = default)
     {
         StopCore();
         var generation = ++_speakGeneration;
         // 注意：这里故意不 ConfigureAwait(false)，让播放 / 回调回到调用线程（UI 线程）执行
-        var utterance = await SynthesizeAsync(text, cancellationToken);
+        var utterance = await SynthesizeAsync(text, tone, cancellationToken);
         if (utterance is null || generation != _speakGeneration) return false;
 
         try
@@ -335,7 +439,7 @@ public sealed class TtsService : IDisposable
             await stream.WriteAsync(utterance.WaveBytes.AsBuffer()).AsTask(cancellationToken);
             stream.Seek(0);
 
-            var player = new MediaPlayer { Volume = (float)_volume };
+            var player = new MediaPlayer { Volume = (float)EffectiveVolume(tone) };
             player.Source = MediaSource.CreateFromStream(stream, "audio/wav");
             player.MediaFailed += (_, args) =>
             {
@@ -430,13 +534,14 @@ public sealed class TtsService : IDisposable
         }
     }
 
-    private string BuildWindowsSsml(string text)
+    private string BuildWindowsSsml(string text, double effectiveRate, double effectivePitch)
     {
         var language = "zh-CN";
         var voice = ResolveWindowsVoice();
         if (voice is not null && voice.Language.Length > 0) language = voice.Language;
-        var rate = _rate.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
-        var pitch = (_pitchPercent >= 0 ? "+" : "") + _pitchPercent.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + "%";
+        var rate = Math.Clamp(effectiveRate, 0.5, 2.0).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+        var pitchPercent = (int)Math.Round(Math.Clamp(effectivePitch, -50, 80));
+        var pitch = (pitchPercent >= 0 ? "+" : "") + pitchPercent.ToString("0", System.Globalization.CultureInfo.InvariantCulture) + "%";
         return "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='" + language + "'>" +
                "<prosody rate='" + rate + "' pitch='" + pitch + "'>" + EscapeSsml(text) + "</prosody></speak>";
     }

@@ -82,6 +82,13 @@ public sealed class EdgeTtsClient
     /// <summary>最近一次失败原因（成功时清空；不会抛异常）。</summary>
     public string? LastError { get; private set; }
 
+    /// <summary>
+    /// 最近一次合成是否因为「情感风格不被该音色支持」而回退成了无风格版本。
+    /// <para>Edge 的 <c>mstts:express-as</c> 对部分音色 / 风格组合会直接失败；失败时自动去掉风格重试一次，
+    /// 让语音不至于完全没声音（只是没有演技）。诊断 / 试听清单会显示这个标记。</para>
+    /// </summary>
+    public bool LastStyleFallback { get; private set; }
+
     /// <summary>取内置音色的中文显示名；不认识的 ShortName 原样返回。</summary>
     public static string GetDisplayName(string? shortName)
     {
@@ -145,10 +152,16 @@ public sealed class EdgeTtsClient
         string rate = "+0%",
         string pitch = "+15Hz",
         CancellationToken ct = default,
-        bool useSharedInstance = true)
+        bool useSharedInstance = true,
+        string? style = null,
+        double styleDegree = 1.0,
+        int breakAfterExclaimMs = 0,
+        bool punchFirstExclaim = false,
+        int breakAtEllipsisMs = 0)
     {
         _ = useSharedInstance;
-        return Shared.SynthesizeMp3Async(text, voice, rate, pitch, ct);
+        return Shared.SynthesizeMp3Async(text, voice, rate, pitch, ct, style, styleDegree,
+            breakAfterExclaimMs, punchFirstExclaim, breakAtEllipsisMs);
     }
 
     /// <summary>静态入口使用的共享实例；走静态调用时 <see cref="LastError"/> 要从这里读。</summary>
@@ -163,13 +176,60 @@ public sealed class EdgeTtsClient
     /// <param name="rate">语速，格式如 <c>+0%</c> / <c>-10%</c>。</param>
     /// <param name="pitch">音调，格式如 <c>+15Hz</c> / <c>-5Hz</c>。</param>
     /// <param name="ct">取消令牌；取消时返回 <c>null</c>。</param>
+    /// <param name="style">
+    /// 可选的 <c>mstts:express-as</c> 情感风格名（gentle / cheerful / embarrassed / angry / sad / affectionate …）；
+    /// 空 = 老行为（无风格）。该音色不支持时会自动回退无风格重试，见 <see cref="LastStyleFallback"/>。
+    /// </param>
+    /// <param name="styleDegree">风格强度（0.5 ~ 2.0；>1 更夸张）。</param>
+    /// <param name="breakAfterExclaimMs">在第一个「！」后插 SSML 停顿的毫秒数（0 = 不加）。</param>
     /// <returns>MP3 字节；失败为 <c>null</c>。</returns>
     public async Task<byte[]?> SynthesizeMp3Async(
         string text,
         string voice = DefaultShortName,
         string rate = "+0%",
         string pitch = "+15Hz",
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? style = null,
+        double styleDegree = 1.0,
+        int breakAfterExclaimMs = 0,
+        bool punchFirstExclaim = false,
+        int breakAtEllipsisMs = 0)
+    {
+        LastStyleFallback = false;
+        var normalizedStyle = NormalizeStyle(style);
+        if (normalizedStyle.Length == 0)
+        {
+            return await SynthesizeCoreAsync(text, voice, rate, pitch, "", 1.0,
+                breakAfterExclaimMs, punchFirstExclaim, breakAtEllipsisMs, ct).ConfigureAwait(false);
+        }
+
+        var audio = await SynthesizeCoreAsync(
+            text, voice, rate, pitch, normalizedStyle,
+            Math.Clamp(styleDegree, 0.5, 2.0), Math.Clamp(breakAfterExclaimMs, 0, 2000),
+            punchFirstExclaim, Math.Clamp(breakAtEllipsisMs, 0, 600), ct).ConfigureAwait(false);
+        if (audio is not null) return audio;
+
+        // 这个音色 / 风格组合不被支持：去掉风格重试一次，别让整句没声音
+        // （停顿 / 重音这些纯 prosody 效果保留 —— Edge 接口本身是支持 <break> 和嵌套 prosody 的）
+        var styleError = LastError;
+        LastStyleFallback = true;
+        var fallback = await SynthesizeCoreAsync(text, voice, rate, pitch, "", 1.0,
+            breakAfterExclaimMs, punchFirstExclaim, breakAtEllipsisMs, ct).ConfigureAwait(false);
+        if (fallback is not null) LastError = styleError;
+        return fallback;
+    }
+
+    private async Task<byte[]?> SynthesizeCoreAsync(
+        string text,
+        string voice,
+        string rate,
+        string pitch,
+        string style,
+        double styleDegree,
+        int breakAfterExclaimMs,
+        bool punchFirstExclaim,
+        int breakAtEllipsisMs,
+        CancellationToken ct)
     {
         LastError = null;
 
@@ -209,7 +269,9 @@ public sealed class EdgeTtsClient
             using var output = new MemoryStream();
             foreach (string chunk in chunks)
             {
-                byte[]? audio = await SynthesizeChunkAsync(chunk, fullVoiceName, rate, pitch, ct)
+                byte[]? audio = await SynthesizeChunkAsync(
+                        chunk, fullVoiceName, rate, pitch, style, styleDegree,
+                        breakAfterExclaimMs, punchFirstExclaim, breakAtEllipsisMs, ct)
                     .ConfigureAwait(false);
                 if (audio is null)
                 {
@@ -237,6 +299,18 @@ public sealed class EdgeTtsClient
             LastError = "语音合成失败：" + ex.Message;
             return null;
         }
+    }
+
+    /// <summary>风格名只允许纯字母（避免把任意字符串塞进 SSML）；不合法 / 空 = 不用风格。</summary>
+    private static string NormalizeStyle(string? style)
+    {
+        var value = (style ?? "").Trim();
+        if (value.Length == 0 || value.Length > 32) return "";
+        foreach (var c in value)
+        {
+            if (!char.IsAsciiLetter(c)) return "";
+        }
+        return value.ToLowerInvariant();
     }
 
     // ==================================================================
@@ -627,6 +701,11 @@ public sealed class EdgeTtsClient
         string voice,
         string rate,
         string pitch,
+        string style,
+        double styleDegree,
+        int breakAfterExclaimMs,
+        bool punchFirstExclaim,
+        int breakAtEllipsisMs,
         CancellationToken ct)
     {
         using var socket = new ClientWebSocket();
@@ -688,7 +767,8 @@ public sealed class EdgeTtsClient
             return null;
         }
 
-        if (!await TrySendTextAsync(socket, BuildSsmlMessage(escapedText, voice, rate, pitch), ct)
+        if (!await TrySendTextAsync(socket, BuildSsmlMessage(escapedText, voice, rate, pitch, style, styleDegree,
+                    breakAfterExclaimMs, punchFirstExclaim, breakAtEllipsisMs), ct)
                 .ConfigureAwait(false))
         {
             return null;
@@ -859,14 +939,57 @@ public sealed class EdgeTtsClient
                + "}}}}\r\n";
     }
 
-    private static string BuildSsmlMessage(string escapedText, string voice, string rate, string pitch)
+    /// <summary>
+    /// 拼 SSML（public 便于自检直接断言结构）：
+    /// 可选 <c>mstts:express-as style=... styledegree=...</c> + 可选「第一个感叹号后停顿」。
+    /// </summary>
+    public static string BuildSsmlMessage(
+        string escapedText,
+        string voice,
+        string rate,
+        string pitch,
+        string? style = null,
+        double styleDegree = 1.0,
+        int breakAfterExclaimMs = 0,
+        bool punchFirstExclaim = false,
+        int breakAtEllipsisMs = 0)
     {
+        var normalizedStyle = NormalizeStyle(style);
+        var text = escapedText ?? "";
+
+        // 1) 「呀！……（小声）」：第一段用更快 / 更高 / 更响的 prosody，后面停顿再放慢放轻。
+        if (punchFirstExclaim && TrySplitAtFirstExclaim(text, out var head, out var tail))
+        {
+            var punch = "<prosody rate='+18%' pitch='+15Hz' volume='+15%'>" + head + "</prosody>"
+                        + "<break time='130ms'/>"
+                        + "<prosody rate='-8%' pitch='-2Hz' volume='-10%'>" + tail + "</prosody>";
+            text = punch;
+        }
+        else if (breakAfterExclaimMs > 0)
+        {
+            text = InsertExclaimBreak(text, Math.Clamp(breakAfterExclaimMs, 0, 2000));
+        }
+
+        // 2) 省略号处加停顿（前 3 个，避免一句话被切得太碎）
+        if (breakAtEllipsisMs > 0)
+        {
+            text = InsertEllipsisBreaks(text, Math.Clamp(breakAtEllipsisMs, 0, 600));
+        }
+
+        var styleNamespace = normalizedStyle.Length == 0 ? "" : " xmlns:mstts='https://www.w3.org/2001/mstts'";
+        var prosody = "<prosody pitch='" + pitch + "' rate='" + rate + "' volume='+0%'>" + text + "</prosody>";
+        // Azure 文档的层级：<voice><mstts:express-as ...><prosody ...>text</prosody></mstts:express-as></voice>
+        var body = normalizedStyle.Length == 0
+            ? prosody
+            : "<mstts:express-as style='" + normalizedStyle + "' styledegree='" +
+              Math.Clamp(styleDegree, 0.5, 2.0).ToString("0.##", CultureInfo.InvariantCulture) + "'>" +
+              prosody + "</mstts:express-as>";
+
         string ssml =
-            "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>"
+            "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis'" + styleNamespace + " xml:lang='en-US'>"
             + "<voice name='" + voice + "'>"
-            + "<prosody pitch='" + pitch + "' rate='" + rate + "' volume='+0%'>"
-            + escapedText
-            + "</prosody></voice></speak>";
+            + body
+            + "</voice></speak>";
 
         // 注意：X-Timestamp 后面的 "Z" 是微软 Edge 的“已知 bug”，Python 也这么发。
         return "X-RequestId:" + Guid.NewGuid().ToString("N") + "\r\n"
@@ -874,6 +997,60 @@ public sealed class EdgeTtsClient
                + "X-Timestamp:" + DateToString() + "Z\r\n"
                + "Path:ssml\r\n\r\n"
                + ssml;
+    }
+
+    /// <summary>在第一个感叹号后插 SSML 停顿（没有感叹号就不动）。</summary>
+    private static string InsertExclaimBreak(string escapedText, int milliseconds)
+    {
+        var index = FirstExclaimIndex(escapedText);
+        if (index < 0) return escapedText;
+        var insertAt = index + 1;
+        return escapedText[..insertAt] + "<break time='" + milliseconds.ToString(CultureInfo.InvariantCulture) + "ms'/>" +
+               escapedText[insertAt..];
+    }
+
+    /// <summary>把第一个感叹号前的短句切出来（含感叹号）；没有感叹号或前面没字返回 false。</summary>
+    private static bool TrySplitAtFirstExclaim(string escapedText, out string head, out string tail)
+    {
+        head = "";
+        tail = escapedText;
+        var index = FirstExclaimIndex(escapedText);
+        if (index <= 0) return false;
+        head = escapedText[..(index + 1)];
+        tail = escapedText[(index + 1)..];
+        return true;
+    }
+
+    private static int FirstExclaimIndex(string escapedText)
+    {
+        var fullWidth = escapedText.IndexOf('！');
+        var halfWidth = escapedText.IndexOf('!');
+        if (fullWidth < 0) return halfWidth;
+        if (halfWidth < 0) return fullWidth;
+        return Math.Min(fullWidth, halfWidth);
+    }
+
+    /// <summary>在省略号（… / ...）后插停顿，最多前 3 个。</summary>
+    private static string InsertEllipsisBreaks(string escapedText, int milliseconds)
+    {
+        var breakTag = "<break time='" + milliseconds.ToString(CultureInfo.InvariantCulture) + "ms'/>";
+        var builder = new StringBuilder(escapedText.Length + breakTag.Length * 3);
+        var inserted = 0;
+        for (var i = 0; i < escapedText.Length; i++)
+        {
+            var c = escapedText[i];
+            builder.Append(c);
+            if (inserted >= 3) continue;
+            // 全角「…」或三个点里的第三个点
+            var isEllipsis = c == '…' ||
+                             (c == '.' && i >= 2 && escapedText[i - 1] == '.' && escapedText[i - 2] == '.');
+            if (!isEllipsis) continue;
+            // 全角省略号常常连写两个「……」，只在最后一个后面加一次停顿
+            if (c == '…' && i + 1 < escapedText.Length && escapedText[i + 1] == '…') continue;
+            builder.Append(breakTag);
+            inserted++;
+        }
+        return builder.ToString();
     }
 
     /// <summary>

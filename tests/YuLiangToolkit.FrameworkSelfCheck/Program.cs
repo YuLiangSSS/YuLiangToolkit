@@ -1168,6 +1168,7 @@ RunGroupModule("spug", "Spug验证码", SpugChecks.Run);
 // / 眼睛跟随数学 / 软件渲染器纯逻辑；无头跑，不弹窗、不碰真 Data。
 // AI 聊天（DeepSeek）/ 好感度断言由 Live2DChecks.Run 末尾调用 Live2DAiChecks.Run(...)，共用 live2d 组。
 // 养成（饥饿 / 金币 / 每日任务 / 投喂）断言由 Live2DChecks.Run 末尾调用 Live2DCareChecks.Run(...)，同属 live2d 组。
+// 语音语气（SpeechTone / 分段韵律 / SSML / WAV 拼接）断言由 Live2DChecks.Run 末尾调用 Live2DTtsToneChecks.Run(...)，同属 live2d 组。
 RunGroupModule("live2d", "Live2D桌宠", Live2DChecks.Run, "[Live2D] ");
 
 // 「屏幕贴纸」：默认大小与图片比例 / 以鼠标为锚点缩放 / 角点缩放 / 夹回屏幕（多显示器非 0 原点）/
