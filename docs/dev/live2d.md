@@ -1245,6 +1245,7 @@ InteractionController._raiseInteraction(voiceEvent, displayName)
 | `YLT_LIVE2D_TTS_AUDITION=<folder\|1>`（+ `_EXIT=1`） | **语音试听对比**：用真实合成链路导出「4 音色 × 6 条台词」的 WAV + `index.md` + `audition.m3u`（指定目录或默认 `Data\live2d\voice-auditions`），给调语气用；不写聊天记录 |
 | `YLT_LIVE2D_CHAT_POS=<left,top>` | 打开聊天窗后把它摆成「用户手动位置」（等价于拖走标题条：关闭跟随、保存坐标），验收「拖走后不会被每帧拽回桌宠旁边」 |
 | `YLT_LIVE2D_CHAT_DEMO_AFFECTION=<0~100>` | 配合 `YLT_LIVE2D_SHOT_CHAT`：截图里把好感度改成指定值（默认 78），用来看满格爱心试管 / 心动档配色 |
+| `YLT_LIVE2D_OBSERVE_DEMO=<observe\|tease>`（+ `_AFFECTION` / `_FACE` / `_SHOT`） | **观察用户 / 逗你** 动作截图验收：按好感度触发观察或逗你，可强制 `_FACE=单眼瞪大/双眼微眯/微眯偏睁/白眼/不满/好奇`，`_SHOT=<png>` 把桌宠窗口离屏渲染后退出；`_AFFECTION` 默认 80 |
 | `YLT_LIVE2D_PETCARD_SCROLL=<bottom/数字>` | 打开页面后把「桌面宠物」卡内部滚到指定位置（截图设置项用） |
 | `YLT_SELFCHECK_TRACE=1` | 自检排错：打印「进入 / 完成哪个分组」（查「全 PASS 但进程不退出」卡在哪一步） |
 
@@ -1641,4 +1642,75 @@ InteractionController._raiseInteraction(voiceEvent, displayName)
 好感档位边界 / NaN、场景按门槛匹配（低好感不触发亲密预设、高好感爱心眼 MinAffection ≥85）、
 目录完整性（Id 唯一 / 门槛唯一 / 台词非空 / 表情名合法）、PickLine 去重、配置默认值、
 试管比例与夹取；全部纯逻辑、不联网、不弹窗。
+
+## 22. 观察用户 / 逗你（程序脸 + 盯人 + 动作时暂停鼠标跟随，v1.13.0）
+
+> 用户场景 1：前倾 + 歪头 + 「单眼瞪大 / 双眼微眯」随机，说「{user}真是个神奇的生物呢，让我仔细看看」；
+> 高好感改「用户真是可爱呢…」+ 微眯偏睁 + 脸红 + 爱心眼；低好感「这是什么脏东西黏我鞋底了」+ 黑脸 + 不满。
+> 场景 2：「喜欢我这样看着你吗？」戳脸 / 自然时触发；歪头 + 身体微扭 + 50% 黑脸 + 白眼 / 屑；
+> 高好感前倾 + 脸红 + 爱心眼；低好感一直黑脸。**视线要看着用户**（按桌宠屏幕位置算方向）。
+
+### 22.1 数据：`Play/ObservationScenarios.cs`
+
+- `ObservationScenario(Id, Kind, MinAffection, Expressions[], FacePoses[], LeanForward, RandomBlackFace,
+  TiltDegrees, BodyTwistDegrees, LookAtUser, Seconds, Lines[])`，Kind = `observe` / `tease`；
+  档位复用 `InteractionScenarios.ResolveTier`（<30 / 30~84 / ≥85，按 MinAffection 匹配最高档）。
+- 台词里的 `{user}` 由会话替换成用户称呼：`AiAddressCustom`（非空优先）→ `AiAddressPreset` → 默认主人。
+- 触发：
+  - 自然待机 `TryIdleChatter`：35% 观察 / 25% 逗你 / 40% 普通自言自语（60~120 秒一次）；
+  - 点额头 `face_cycle` → 逗你；捏脸 `pinch` → 50% 观察（其余走原有捏脸反应）；
+  - 这些路径**不再走旧的 `InteractionScenarios` 爱心眼规则**（观察场景自己带表情）；
+  - `speak` 与视觉分开：`InteractionTriggered` 只做视觉；`InteractionHappened` 只说话（互动语音关掉也会做动作）。
+
+### 22.2 程序脸（`ModelRuntime.StartObservation`）
+
+- 参数级表情，不新增 exp3：`ParamEyeLOpen/ROpen`、`LEyeSquint/REyeSquint`、`ParamBrowLY/RY`、
+  `ParamBrowLAngle/RAngle`、`ParamMouthForm`、`ParamEyeBallX/Y`、`ParamAngleZ`、`ParamBodyAngleZ`；
+- 预设目标（`ObservationFaceTargets.For`）：
+
+  | 预设 | 眼睛开合 L/R | 眯眼 | 眉毛 Y / 角度 | 嘴形 | 用途 |
+  | --- | --- | --- | --- | --- | --- |
+  | 单眼瞪大 | 1.15 / 0.18（随机哪边大） | 0 | +0.15 / -0.10 | +0.15 | 拿放大镜看你的感觉 |
+  | 双眼微眯 | 0.55 / 0.55 | 0.35 | +0.15 / +0.05 | +0.15 | 普通观察 |
+  | 微眯偏睁 | 0.72 / 0.72 | 0.18 | +0.28 / +0.05 | +0.20 | 高好感「好奇地观察」 |
+  | 白眼 | 0.38 / 0.38 | 0.25 | +0.25 / +0.10 | -0.10 | 欠揍 / 逗你；眼球 Y=0.85 |
+  | 不满 | 0.62 / 0.62 | 0.15 | -0.30 / -0.55 | -0.70 | 低好感嫌弃 |
+  | 好奇 | 1.0 / 1.0 | 0 | +0.35 / +0.05 | +0.20 | 默认 |
+
+- 权重：0.18 时间淡入 / 淡出，写 `Default + (target-Default)*weight`；到点回写默认值再交给鼠标跟随；
+- 歪头：`ParamAngleZ = default + direction*tiltDegrees*weight`；身体：`ParamBodyAngleZ = direction*bodyTwist*weight`；
+- 眼球：`ParamEyeBallX = gazeX*0.9`、`ParamEyeBallY = gazeY*0.8`（白眼预设用固定 0.85）；
+- 与 `ShyWiggle` 的顺序：表情 → 扭动 → **观察** → 投喂；观察会覆盖头 / 眼，投喂靠近时仍抢头。
+
+### 22.3 盯人方向（`Play/ObservationScenarios.UserGaze.Compute`）
+
+- 脸锚点 = 桌宠窗口 `(Left+W/2, Top+H*0.32)`；目标点 = 工作区中央偏上 `(workCenterX, workCenterY*0.45)`；
+- `X = (targetX - faceX) / (workW/2)`（桌宠在右 → 负 → 眼球往左）；`Y = (faceY - targetY)/(workH/2)`（**取反**：
+  Live2D 的 `ParamEyeBallY` 正方向朝上，屏幕 Y 朝下）；结果夹 -1~1；
+- 工作区 / 窗口尺寸无效返回 (0,0)（纯函数，自检覆盖右 / 左 / 正中 / 下方 / 夹取）。
+
+### 22.4 动作时暂停鼠标跟随（用户建议）
+
+- 用户反馈：做特定动作时鼠标跟随会把视线带偏（截图 / 测试时也受鼠标影响）；
+- 配置 `eyeTrackingPauseOnAction`（默认 true）+ 工具页「动作时暂停鼠标跟随」复选；
+- `ModelRuntime.ShouldPauseEyeTracking(pauseOnAction, observing, gesture, performance, dance, interacting)`
+  → 暂停条件 = 开总开关 + 任一动作模块激活；暂停期间跳过 `EyeController.Update`（眼睛回到默认中位，
+  动作自己的头 / 眼参数不被抢），结束自动恢复；
+- `EyeTrackingPaused` 暴露最近一帧状态（调试 / 自检）；暂停只影响**鼠标跟随**，不关自动眨眼 / 呼吸。
+
+### 22.5 截图验收
+
+- `YLT_LIVE2D_OBSERVE_DEMO=observe|tease` + `YLT_LIVE2D_OBSERVE_AFFECTION=<0~100>`（默认 80）+
+  `YLT_LIVE2D_OBSERVE_FACE=<预设名>`（可选，强制脸）+ `YLT_LIVE2D_OBSERVE_SHOT=<png>`：
+  显示桌宠 → 设置好感 → 触发观察 → 离屏渲染桌宠窗口 PNG 后退出（不抓桌面）；
+- 本轮截图：`shots/obs-faces-grid.png`（单眼瞪大 / 双眼微眯 / 白眼 / 不满 四宫格）、
+  `shots/observe-high.png`（高好感脸红+爱心眼+歪头），用来对拍表情幅度；
+- 注意：截图模式会**真的写**临时 `YLT_HOME` 下的聊天状态（好感度演示值），不会碰用户真实数据。
+
+### 22.6 自检覆盖
+
+`Live2DInteractionScenarioChecks.cs` 追加约 10 条：观察 / 逗你三档匹配（低好感黑脸不满、高好感爱心眼）、
+目录完整性（脸预设名合法 / 阈值唯一 / 台词非空 / `{user}` 占位）、PickLine 去重、
+`UserGaze` 右 / 左 / 中 / 下 / 夹取、`ShouldPauseEyeTracking` 真值表、配置默认值。
+
 

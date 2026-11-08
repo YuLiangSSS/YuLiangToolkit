@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using YuLiangToolkit.Tools.Live2D;
 using YuLiangToolkit.Tools.Live2D.Controls;
+using YuLiangToolkit.Tools.Live2D.Model;
 using YuLiangToolkit.Tools.Live2D.Play;
 
 namespace YuLiangToolkit.FrameworkSelfCheck;
@@ -137,5 +138,90 @@ internal static class Live2DInteractionScenarioChecks
             Math.Abs(AffectionVial.ClampValue(-20) - 0) < 0.001 &&
             Math.Abs(AffectionVial.ClampValue(double.NaN) - 50) < 0.001,
             AffectionVial.ClampValue(double.NaN).ToString("0.0"));
+
+        // ==================================================================
+        // 六、观察用户 / 逗你（场景 1 / 2：单眼瞪大、微眯、白眼、盯人、歪头）
+        // ==================================================================
+        C("观察：好感 10 → 嫌弃档（黑脸 + 不满脸 + 「脏东西黏鞋底」）",
+            ObservationScenarios.TryMatch(ObservationScenarios.KindObserve, 10) is { Id: "observe.low" } low &&
+            low.Expressions.Contains("黑脸") &&
+            low.FacePoses.Contains("不满") &&
+            low.Lines.Any(l => l.Contains("脏东西", StringComparison.Ordinal)),
+            "");
+
+        C("观察：好感 50 → 仔细看看档（单眼瞪大 / 双眼微眯 随机 + 前倾 + 歪头 + 盯人）",
+            ObservationScenarios.TryMatch(ObservationScenarios.KindObserve, 50) is { Id: "observe.mid" } mid &&
+            mid.FacePoses.Contains("单眼瞪大") && mid.FacePoses.Contains("双眼微眯") &&
+            mid.LeanForward && mid.LookAtUser && mid.TiltDegrees > 0 &&
+            mid.Lines.Any(l => l.Contains("仔细看看", StringComparison.Ordinal)),
+            "");
+
+        C("观察：好感 92 → 可爱档（爱心眼 + 脸红 + 微眯偏睁 + 前倾 + 盯人）",
+            ObservationScenarios.TryMatch(ObservationScenarios.KindObserve, 92) is { Id: "observe.high" } high &&
+            high.Expressions.Contains("爱心眼") && high.Expressions.Contains("脸红") &&
+            high.FacePoses.Contains("微眯偏睁") && high.LeanForward && high.LookAtUser,
+            "");
+
+        C("逗你：好感 10 → 一直黑脸 + 白眼；好感 50 → 黑脸 50% 随机；好感 92 → 凑近 + 脸红 + 爱心眼",
+            ObservationScenarios.TryMatch(ObservationScenarios.KindTease, 10) is { Id: "tease.low" } low2 &&
+            low2.Expressions.Contains("黑脸") && !low2.RandomBlackFace &&
+            ObservationScenarios.TryMatch(ObservationScenarios.KindTease, 50) is { RandomBlackFace: true } &&
+            ObservationScenarios.TryMatch(ObservationScenarios.KindTease, 92) is { LeanForward: true } high2 &&
+            high2.Expressions.Contains("爱心眼") && high2.Expressions.Contains("脸红"),
+            "");
+
+        C("观察/逗你：目录 Id 唯一、阈值不重复、脸预设名合法、台词非空",
+            ObservationScenarios.All.Select(s => s.Id).Distinct().Count() == ObservationScenarios.All.Count &&
+            ObservationScenarios.All
+                .GroupBy(s => s.Kind, StringComparer.OrdinalIgnoreCase)
+                .All(g => g.Select(s => s.MinAffection).Distinct().Count() == g.Count()) &&
+            ObservationScenarios.All.All(s =>
+                s.FacePoses.Length > 0 &&
+                s.FacePoses.All(p => ObservationScenarios.FacePresetNames.Contains(p)) &&
+                s.Lines.Length > 0),
+            $"count={ObservationScenarios.All.Count}");
+
+        C("观察台词：{user} 占位符存在（会被替换成用户称呼）",
+            ObservationScenarios.All.SelectMany(s => s.Lines).Any(l => l.Contains("{user}", StringComparison.Ordinal)),
+            "");
+
+        C("观察台词：PickLine 不连续重复同一句",
+            ObservationScenarios.TryMatch(ObservationScenarios.KindObserve, 50) is { } obs &&
+            Enumerable.Range(0, 6)
+                .Select(_ => ObservationScenarios.PickLine(obs, obs.Lines[0], new Random(42)))
+                .Any(l => !string.Equals(l, obs.Lines[0], StringComparison.Ordinal)),
+            "");
+
+        C("盯人算法：桌宠在屏幕右边 → 眼球往左（X < 0），左边 → 往右（X > 0），正中 → 接近 0",
+            UserGaze.Compute(1500, 500, 400, 800, 0, 0, 1920, 1080).X < -0.3 &&
+            UserGaze.Compute(100, 500, 400, 800, 0, 0, 1920, 1080).X > 0.3 &&
+            Math.Abs(UserGaze.Compute(760, 500, 400, 800, 0, 0, 1920, 1080).X) < 0.1,
+            $"{UserGaze.Compute(1500, 500, 400, 800, 0, 0, 1920, 1080)}");
+
+        C("盯人算法：桌宠在屏幕下半 → 用户在上方（Y > 0），并夹在 -1~1",
+            UserGaze.Compute(700, 700, 400, 800, 0, 0, 1920, 1080).Y > 0.1 &&
+            UserGaze.Compute(700, -5000, 100000, 100, 0, 0, 1920, 1080).Y <= 1f &&
+            UserGaze.Compute(700, 500, 400, 800, 0, 0, 0, 0) == (0f, 0f),
+            $"{UserGaze.Compute(700, 700, 400, 800, 0, 0, 1920, 1080)}");
+
+        // ==================================================================
+        // 七、动作时暂停鼠标跟随
+        // ==================================================================
+        C("鼠标跟随：做观察 / 手势 / 表演 / 舞蹈 / 互动时暂停（默认开）",
+            ModelRuntime.ShouldPauseEyeTracking(true, observing: true, false, false, false, false) &&
+            ModelRuntime.ShouldPauseEyeTracking(true, false, gestureActive: true, false, false, false) &&
+            ModelRuntime.ShouldPauseEyeTracking(true, false, false, performanceActive: true, false, false) &&
+            ModelRuntime.ShouldPauseEyeTracking(true, false, false, false, danceActive: true, false) &&
+            ModelRuntime.ShouldPauseEyeTracking(true, false, false, false, false, interacting: true),
+            "");
+
+        C("鼠标跟随：空闲不暂停；关掉「动作时暂停」后完全不暂停",
+            !ModelRuntime.ShouldPauseEyeTracking(true, false, false, false, false, false) &&
+            !ModelRuntime.ShouldPauseEyeTracking(false, true, true, true, true, true),
+            "");
+
+        C("鼠标跟随：配置默认开启「动作时暂停」（EyeTrackingPauseOnAction）",
+            new Live2DConfig().EyeTrackingPauseOnAction,
+            "");
     }
 }

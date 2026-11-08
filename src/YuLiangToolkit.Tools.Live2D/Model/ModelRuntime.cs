@@ -243,6 +243,34 @@ public sealed class ModelRuntime : IDisposable
     private double _wiggleDurationSeconds;
     private double _wiggleElapsedSeconds;
 
+    // ---------- 观察用户（单眼瞪大 / 微眯 / 歪头 / 盯人；写在表情与扭动之后） ----------
+    private CubismParameter? _obsEyeL;
+    private CubismParameter? _obsEyeR;
+    private CubismParameter? _obsSquintL;
+    private CubismParameter? _obsSquintR;
+    private CubismParameter? _obsEyeBallX;
+    private CubismParameter? _obsEyeBallY;
+    private CubismParameter? _obsAngleZ;
+    private CubismParameter? _obsBodyAngleZ;
+    private CubismParameter? _obsBrowLY;
+    private CubismParameter? _obsBrowRY;
+    private CubismParameter? _obsBrowLAngle;
+    private CubismParameter? _obsBrowRAngle;
+    private CubismParameter? _obsMouthForm;
+    private string? _obsFacePose;
+    private bool _obsEyeWideLeft;
+    private double _obsRemainingSeconds;
+    private double _obsDurationSeconds;
+    private double _obsElapsedSeconds;
+    private double _obsTiltDirection;
+    private double _obsTiltDegrees;
+    private double _obsBodyTwistDegrees;
+    private float _obsGazeX;
+    private float _obsGazeY;
+    private bool _obsLookAtUser;
+    private bool _obsOverrideEyeBallY;
+    private float _obsEyeBallYTarget;
+
     /// <summary>互动语音事件（参数 = 语音事件 key：pat_head / face_cycle / pinch / tickle / protect / hand）。</summary>
     public event EventHandler<string>? InteractionHappened;
 
@@ -468,8 +496,23 @@ public sealed class ModelRuntime : IDisposable
     /// </summary>
     public float BodyLeanDegrees { get; private set; }
 
+    /// <summary>
+    /// 动作 / 互动 / 观察时暂停「鼠标跟随」（默认开）：这些模块自己会驱动头 / 眼，
+    /// 不让鼠标跟随再抢一遍，否则视线会被鼠标带偏（用户反馈）。
+    /// </summary>
+    public bool EyeTrackingPauseOnAction { get; set; } = true;
+
+    /// <summary>暂停策略（纯函数，自检用）：总开关开 + 任一动作模块激活 → 暂停鼠标跟随。</summary>
+    public static bool ShouldPauseEyeTracking(bool pauseOnAction, bool observing, bool gestureActive,
+        bool performanceActive, bool danceActive, bool interacting)
+        => pauseOnAction && (observing || gestureActive || performanceActive || danceActive || interacting);
+
+    /// <summary>最近一帧鼠标跟随是否因动作模块被暂停（调试 / 自检观察用）。</summary>
+    public bool EyeTrackingPaused { get; private set; }
+
     /// <summary>最近一帧音乐内容类型（没在播 / 关闭时为 Silent；数据不足为 Unknown）。</summary>
     public MusicContentKind MusicKind => _musicKind;
+
 
     /// <summary>音乐状态文案："静音" / "识别中" / "纯音乐" / "带歌词"（不变时复用字符串）。</summary>
     public string MusicStatusText => _musicStatusText;
@@ -560,6 +603,151 @@ public sealed class ModelRuntime : IDisposable
     {
         if (parameter is null) return;
         parameter.Value = parameter.DefaultValue + offset;
+    }
+
+    // ---------- 观察用户：单眼瞪大 / 双眼微眯 / 白眼 / 不满 + 歪头 + 盯人 ----------
+
+    /// <summary>是不是正在做「观察用户」的表情 / 姿势（UI / 自检观察用）。</summary>
+    public bool IsObserving => _obsRemainingSeconds > 0;
+
+    /// <summary>当前观察表情预设名（没在观察为 null）。</summary>
+    public string? ObservationFacePose => _obsFacePose;
+
+    /// <summary>
+    /// 开始一段「观察用户」：
+    /// <list type="bullet">
+    ///   <item><paramref name="facePose"/>：单眼瞪大 / 双眼微眯 / 微眯偏睁 / 白眼 / 不满 / 好奇；</item>
+    ///   <item><paramref name="tiltDirection"/>：歪头方向（-1 左 / +1 右）；<paramref name="tiltDegrees"/>：歪头角度；</item>
+    ///   <item><paramref name="bodyTwistDegrees"/>：身体跟着微扭的角度（同方向，一般 2~4°）；</item>
+    ///   <item><paramref name="gazeX"/>/<paramref name="gazeY"/>：用户方向（-1~1，正 = 右 / 上）；</item>
+    ///   <item><paramref name="lookAtUser"/>：是否用眼球盯住用户方向；</item>
+    ///   <item><paramref name="seconds"/>：持续秒数（0.5~8，到点平滑回正）。</item>
+    /// </list>
+    /// 只写眼睛 / 眉毛 / 嘴形 / 头 Z / 身体 Z / 眼球参数；模型缺参数会安静跳过。
+    /// </summary>
+    public void StartObservation(string? facePose, double seconds, double tiltDirection, double tiltDegrees,
+        double bodyTwistDegrees, float gazeX, float gazeY, bool lookAtUser)
+    {
+        _obsFacePose = string.IsNullOrWhiteSpace(facePose) ? "好奇" : facePose.Trim();
+        _obsDurationSeconds = Math.Clamp(seconds, 0.5, 8.0);
+        _obsRemainingSeconds = _obsDurationSeconds;
+        _obsElapsedSeconds = 0;
+        _obsTiltDirection = Math.Sign(tiltDirection) == 0 ? 1 : Math.Sign(tiltDirection);
+        _obsTiltDegrees = Math.Clamp(tiltDegrees, 0, 24);
+        _obsBodyTwistDegrees = Math.Clamp(bodyTwistDegrees, 0, 12);
+        _obsGazeX = Math.Clamp(gazeX, -1f, 1f);
+        _obsGazeY = Math.Clamp(gazeY, -1f, 1f);
+        _obsLookAtUser = lookAtUser;
+        _obsEyeWideLeft = Random.Shared.Next(2) == 0;
+        var targets = ObservationFaceTargets.For(_obsFacePose);
+        _obsOverrideEyeBallY = targets.OverrideEyeBallY;
+        _obsEyeBallYTarget = targets.EyeBallY;
+    }
+
+    /// <summary>立刻停止观察并回正。</summary>
+    public void StopObservation()
+    {
+        if (_obsRemainingSeconds <= 0 && _obsFacePose is null) return;
+        _obsRemainingSeconds = 0;
+        _obsFacePose = null;
+        WriteObservationDefault();
+    }
+
+    private void ApplyObservation(double deltaSeconds)
+    {
+        if (_obsRemainingSeconds <= 0) return;
+
+        _obsElapsedSeconds += deltaSeconds;
+        _obsRemainingSeconds -= deltaSeconds;
+        var progress = _obsDurationSeconds <= 0
+            ? 1.0
+            : Math.Clamp(_obsElapsedSeconds / _obsDurationSeconds, 0.0, 1.0);
+        var weight = (float)Math.Min(1.0, Math.Min(progress / 0.18, (1.0 - progress) / 0.18));
+        if (weight < 0) weight = 0;
+
+        var targets = ObservationFaceTargets.For(_obsFacePose ?? "好奇");
+        var eyeWide = 1.15f;
+        var eyeNarrow = 0.18f;
+        var eyeL = _obsFacePose == "单眼瞪大" && !_obsEyeWideLeft ? eyeNarrow : targets.EyeL;
+        var eyeR = _obsFacePose == "单眼瞪大" && _obsEyeWideLeft ? eyeNarrow : targets.EyeR;
+        if (_obsFacePose == "单眼瞪大")
+        {
+            if (_obsEyeWideLeft) eyeL = eyeWide; else eyeR = eyeWide;
+        }
+
+        WriteObservationParameter(_obsEyeL, eyeL, weight);
+        WriteObservationParameter(_obsEyeR, eyeR, weight);
+        WriteObservationParameter(_obsSquintL, targets.SquintL, weight);
+        WriteObservationParameter(_obsSquintR, targets.SquintR, weight);
+        WriteObservationParameter(_obsBrowLY, targets.BrowY, weight);
+        WriteObservationParameter(_obsBrowRY, targets.BrowY, weight);
+        WriteObservationParameter(_obsBrowLAngle, targets.BrowAngle, weight);
+        WriteObservationParameter(_obsBrowRAngle, targets.BrowAngle, weight);
+        WriteObservationParameter(_obsMouthForm, targets.Mouth, weight);
+
+        if (_obsLookAtUser)
+        {
+            WriteObservationParameter(_obsEyeBallX, _obsGazeX * 0.9f, weight);
+            WriteObservationParameter(_obsEyeBallY,
+                _obsOverrideEyeBallY ? _obsEyeBallYTarget : _obsGazeY * 0.8f, weight);
+        }
+
+        // 歪头 + 身体同向微扭（头更大、身体更小，一起才像「歪着头打量」）
+        if (_obsAngleZ is not null)
+            _obsAngleZ.Value = _obsAngleZ.DefaultValue + (float)(_obsTiltDirection * _obsTiltDegrees) * weight;
+        if (_obsBodyAngleZ is not null)
+            _obsBodyAngleZ.Value = _obsBodyAngleZ.DefaultValue + (float)(_obsTiltDirection * _obsBodyTwistDegrees) * weight;
+
+        if (_obsRemainingSeconds <= 0)
+        {
+            WriteObservationDefault();
+            _obsFacePose = null;
+        }
+    }
+
+    private void WriteObservationDefault()
+    {
+        WriteObservationParameter(_obsEyeL, _obsEyeL?.DefaultValue ?? 1f, 1f);
+        WriteObservationParameter(_obsEyeR, _obsEyeR?.DefaultValue ?? 1f, 1f);
+        WriteObservationParameter(_obsSquintL, 0, 1f);
+        WriteObservationParameter(_obsSquintR, 0, 1f);
+        WriteObservationParameter(_obsBrowLY, 0, 1f);
+        WriteObservationParameter(_obsBrowRY, 0, 1f);
+        WriteObservationParameter(_obsBrowLAngle, 0, 1f);
+        WriteObservationParameter(_obsBrowRAngle, 0, 1f);
+        WriteObservationParameter(_obsMouthForm, 0, 1f);
+        WriteObservationParameter(_obsEyeBallX, 0, 1f);
+        WriteObservationParameter(_obsEyeBallY, 0, 1f);
+        if (_obsAngleZ is not null) _obsAngleZ.Value = _obsAngleZ.DefaultValue;
+        if (_obsBodyAngleZ is not null) _obsBodyAngleZ.Value = _obsBodyAngleZ.DefaultValue;
+    }
+
+    private static void WriteObservationParameter(CubismParameter? parameter, float target, float weight)
+    {
+        if (parameter is null) return;
+        parameter.Value = parameter.DefaultValue + ((target - parameter.DefaultValue) * weight);
+    }
+
+    /// <summary>观察表情预设的参数目标（眼睛开合 / 眯眼 / 眉毛 / 嘴形 / 眼球 Y）。</summary>
+    private readonly record struct ObservationFaceTargets(
+        float EyeL, float EyeR, float SquintL, float SquintR,
+        float BrowY, float BrowAngle, float Mouth, float EyeBallY, bool OverrideEyeBallY)
+    {
+        public static ObservationFaceTargets For(string pose) => pose switch
+        {
+            // 一只眼瞪大、一只眼眯小（参考「拿放大镜看」的表情）；具体哪边大由 StartObservation 随机
+            "单眼瞪大" => new(1.15f, 0.18f, 0.0f, 0.0f, 0.15f, -0.10f, 0.15f, 0, false),
+            // 双眼微眯
+            "双眼微眯" => new(0.55f, 0.55f, 0.35f, 0.35f, 0.15f, 0.05f, 0.15f, 0, false),
+            // 高好感「好奇地观察」：微眯但比平时稍微睁大一点
+            "微眯偏睁" => new(0.72f, 0.72f, 0.18f, 0.18f, 0.28f, 0.05f, 0.20f, 0, false),
+            // 白眼 / 欠揍：眼珠往上、上眼睑压一点
+            "白眼" => new(0.38f, 0.38f, 0.25f, 0.25f, 0.25f, 0.10f, -0.10f, 0.85f, true),
+            // 不满 / 嫌弃：眉头压低、嘴形下撇
+            "不满" => new(0.62f, 0.62f, 0.15f, 0.15f, -0.30f, -0.55f, -0.70f, 0, false),
+            // 好奇：眼睛正常、眉毛抬起
+            _ => new(1.0f, 1.0f, 0.0f, 0.0f, 0.35f, 0.05f, 0.20f, 0, false),
+        };
     }
 
     /// <summary>所有时间线表演 id（中文名）。</summary>
@@ -1451,6 +1639,19 @@ public sealed class ModelRuntime : IDisposable
         ResolveFeedingParameters(model);
         _wiggleHeadAngleZ = model.FindParameter("ParamAngleZ") ?? model.FindParameter("AngleZ");
         _wiggleBodyAngleZ = model.FindParameter("ParamBodyAngleZ");
+        _obsEyeL = model.FindParameter("ParamEyeLOpen");
+        _obsEyeR = model.FindParameter("ParamEyeROpen");
+        _obsSquintL = model.FindParameter("LEyeSquint");
+        _obsSquintR = model.FindParameter("REyeSquint");
+        _obsEyeBallX = model.FindParameter("ParamEyeBallX");
+        _obsEyeBallY = model.FindParameter("ParamEyeBallY");
+        _obsAngleZ = _wiggleHeadAngleZ;
+        _obsBodyAngleZ = _wiggleBodyAngleZ;
+        _obsBrowLY = model.FindParameter("ParamBrowLY");
+        _obsBrowRY = model.FindParameter("ParamBrowRY");
+        _obsBrowLAngle = model.FindParameter("ParamBrowLAngle");
+        _obsBrowRAngle = model.FindParameter("ParamBrowRAngle");
+        _obsMouthForm = model.FindParameter("ParamMouthForm");
     }
 
     /// <summary>解析投喂 / 吃饭要写的参数（模型没有的就跳过）。</summary>
@@ -1934,7 +2135,11 @@ public sealed class ModelRuntime : IDisposable
                 eye.DownGain = EyeTrackingDownGain;
                 eye.VerticalOffset = EyeTrackingVerticalOffset;
 
-                if (idleEnabled || EyeTrackingEnabled)
+                EyeTrackingPaused = ShouldPauseEyeTracking(
+                    EyeTrackingPauseOnAction, IsObserving,
+                    _gesture?.HasActive == true, _performance?.HasActive == true, _dance?.HasActive == true,
+                    _interaction?.IsInteracting == true);
+                if (!EyeTrackingPaused && (idleEnabled || EyeTrackingEnabled))
                 {
                     eye.Update(deltaSeconds, EyeTrackingEnabled,
                         idleEnabled ? _idle?.SwayAngleZ ?? 0f : 0f,
@@ -1983,6 +2188,9 @@ public sealed class ModelRuntime : IDisposable
 
         // 5.56) 高好感互动的害羞扭动：写在表情之后、投喂 / 物理之前，身体与头部错开一点点
         ApplyShyWiggle(deltaSeconds);
+
+        // 5.57) 观察用户（单眼瞪大 / 微眯 / 白眼 / 歪头 / 盯人）：写在表情与扭动之后，盖住眼睛与头角度
+        ApplyObservation(deltaSeconds);
 
         // 5.55) 投喂 / 吃饭：饭团靠近时头 / 身体 / 眼睛朝它偏、张嘴；吃到后嚼嚼嚼 → 伪吞咽。
         //       放在表情之后，嘴型才能压过表情；动捕有脸时整段让位、说话时只让出嘴。

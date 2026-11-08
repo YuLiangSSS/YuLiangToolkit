@@ -634,6 +634,19 @@ public sealed class Live2DViewModel : ToolViewModelBase
         }
     }
 
+    /// <summary>做动作 / 互动 / 观察时暂停鼠标跟随（默认开）。</summary>
+    public bool EyeTrackingPauseOnAction
+    {
+        get => Cfg.EyeTrackingPauseOnAction;
+        set
+        {
+            if (Cfg.EyeTrackingPauseOnAction == value) return;
+            Cfg.EyeTrackingPauseOnAction = value;
+            OnPropertyChanged();
+            Session.ApplyRuntimeSettings();
+        }
+    }
+
     /// <summary>跟随平滑度。</summary>
     public double EyeTrackingSmoothing
     {

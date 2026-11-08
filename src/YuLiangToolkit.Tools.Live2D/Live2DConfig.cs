@@ -111,6 +111,9 @@ public sealed class Live2DConfig : ToolConfig
     /// <summary>眼睛 / 头部是否跟随鼠标。</summary>
     public bool EyeTracking { get; set; } = true;
 
+    /// <summary>做动作 / 互动 / 观察时暂停鼠标跟随（默认开；不然鼠标会把头 / 眼带偏）。</summary>
+    public bool EyeTrackingPauseOnAction { get; set; } = true;
+
     /// <summary>跟随平滑度（0.05 ~ 1.0，越大越跟手、越小越柔和）。</summary>
     public double EyeTrackingSmoothing { get; set; } = 0.35;
 

@@ -131,6 +131,9 @@ public sealed class Live2DSession
     private bool _interactionDemoApplied;
     private TimeSpan _lastInteractionVoiceAt = TimeSpan.MinValue;
     private TimeSpan _lastInteractionVisualAt = TimeSpan.MinValue;
+    private TimeSpan _lastObservationAt = TimeSpan.MinValue;
+    private string? _lastObservationLine;
+    private bool _observationDemoApplied;
     private string? _lastInteractionVoiceLine;
     private string? _lastInteractionVoiceEvent;
 
@@ -1176,6 +1179,74 @@ public sealed class Live2DSession
         }
     }
 
+    // ---------- 观察用户 / 逗你 截图验收：YLT_LIVE2D_OBSERVE_DEMO=<observe|tease> ----------
+    //
+    // 配合 YLT_LIVE2D_OBSERVE_SHOT=<png> 把桌宠窗口离屏渲染成 PNG（不抓桌面）后退出；
+    // YLT_LIVE2D_OBSERVE_AFFECTION=<0~100> 设置演示用的好感度（默认 80，80+ 走 high 档）。
+    // 例：YLT_LIVE2D_OBSERVE_DEMO=observe YLT_LIVE2D_OBSERVE_AFFECTION=92 YLT_LIVE2D_OBSERVE_SHOT=shots/observe.png
+
+    private void TryBeginObservationDemo()
+    {
+        if (_observationDemoApplied) return;
+        var raw = Environment.GetEnvironmentVariable("YLT_LIVE2D_OBSERVE_DEMO")?.Trim();
+        if (string.IsNullOrEmpty(raw)) return;
+        if (_viewModel is null) return;
+        _observationDemoApplied = true;
+        _ = RunObservationDemoAsync(raw);
+    }
+
+    private async Task RunObservationDemoAsync(string raw)
+    {
+        var viewModel = _viewModel;
+        if (viewModel is null) return;
+        try
+        {
+            var wait = Stopwatch.StartNew();
+            while (wait.ElapsedMilliseconds < 20_000 && _runtime is not { IsLoaded: true }) await Task.Delay(100);
+            var runtime = _runtime;
+            if (runtime is not { IsLoaded: true })
+            {
+                viewModel.Log("观察演示：模型没加载出来");
+                return;
+            }
+
+            var affectionRaw = Environment.GetEnvironmentVariable("YLT_LIVE2D_OBSERVE_AFFECTION")?.Trim();
+            if (double.TryParse(affectionRaw, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var affection))
+            {
+                SetAiAffection(Math.Clamp(affection, 0, 100));
+            }
+
+            var shotPath = Environment.GetEnvironmentVariable("YLT_LIVE2D_OBSERVE_SHOT")?.Trim() ?? "";
+            if (shotPath.Length > 0)
+            {
+                try { if (!IsPetVisible) ShowPet(); } catch { /* 忽略 */ }
+                await Task.Delay(600);
+                UpdateAiChatWindowPosition();
+            }
+
+            var kind = raw.Trim().ToLowerInvariant() is "tease" or "逗你" or "逗"
+                ? ObservationScenarios.KindTease
+                : ObservationScenarios.KindObserve;
+            var faceOverride = Environment.GetEnvironmentVariable("YLT_LIVE2D_OBSERVE_FACE")?.Trim();
+            TriggerObservationScenario(kind, speak: false, faceOverride);
+            await Task.Delay(900);
+
+            if (shotPath.Length > 0)
+            {
+                await CaptureInteractionShotAsync(shotPath, viewModel);
+                viewModel.Log($"观察演示截图已保存：{shotPath}（{kind}，好感 {_aiChat?.Affection.Value ?? 50:0}）");
+            }
+
+            await Task.Delay(250);
+            if (shotPath.Length > 0) Application.Current?.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            viewModel.Log("观察演示失败：" + ex.Message);
+        }
+    }
+
     // ===================== 页面生命周期 =====================
 
     /// <summary>取（或创建）工具页 ViewModel（整个进程只建一次，页面重开复用）。</summary>
@@ -1543,6 +1614,7 @@ public sealed class Live2DSession
             runtime.IdleEnabled = cfg.IdleEnabled;
             runtime.AutoBlink = cfg.AutoBlink;
             runtime.EyeTrackingEnabled = cfg.EyeTracking;
+        runtime.EyeTrackingPauseOnAction = cfg.EyeTrackingPauseOnAction;
             runtime.EyeTrackingSmoothing = Math.Clamp(cfg.EyeTrackingSmoothing, 0.05, 1);
             runtime.EyeTrackingHeadStrength = Math.Clamp(cfg.EyeTrackingHeadStrength, 0.2, 1.5);
             runtime.EyeTrackingEyeStrength = Math.Clamp(cfg.EyeTrackingEyeStrength, 0.2, 1.5);
@@ -1653,6 +1725,7 @@ public sealed class Live2DSession
         TryBeginAiChatShot();
         TryBeginFeedShot();
         TryBeginTtsAudition();
+        TryBeginObservationDemo();
         if (IsLoaded)
         {
             try { _runtime!.Tick(TimeSpan.FromMilliseconds(16)); } catch { /* 忽略 */ }
@@ -3210,6 +3283,20 @@ public sealed class Live2DSession
         if (_clock.Elapsed < _idleChatterNextAt) return;
 
         _idleChatterNextAt = _clock.Elapsed + TimeSpan.FromSeconds(Random.Shared.Next(60, 120));
+
+        // 自然时也会突然凑近「观察你」或「逗你」：35% 观察 / 25% 逗你 / 40% 普通自言自语
+        var roll = Random.Shared.Next(100);
+        if (roll < 35)
+        {
+            TriggerObservationScenario(ObservationScenarios.KindObserve, speak: true);
+            return;
+        }
+        if (roll < 60)
+        {
+            TriggerObservationScenario(ObservationScenarios.KindTease, speak: true);
+            return;
+        }
+
         SpeakRandomLine();
     }
 
@@ -3982,6 +4069,19 @@ public sealed class Live2DSession
         if (viewModel is null || runtime is null || runtime.IsLoaded != true) return;
         if (string.IsNullOrWhiteSpace(voiceEvent)) return;
 
+        // 点额头 / 捏脸：有概率换成「逗你 / 观察你」的专属动作（场景 2）
+        if (string.Equals(voiceEvent, "face_cycle", StringComparison.OrdinalIgnoreCase))
+        {
+            TriggerObservationScenario(ObservationScenarios.KindTease, speak: false);
+            return;
+        }
+        if (string.Equals(voiceEvent, "pinch", StringComparison.OrdinalIgnoreCase) &&
+            Random.Shared.Next(2) == 0)
+        {
+            TriggerObservationScenario(ObservationScenarios.KindObserve, speak: false);
+            return;
+        }
+
         // 0.9 秒节流：抚摸拖动时别每帧重新套表情 / 重新开始扭
         var now = _clock.Elapsed;
         if (_lastInteractionVisualAt != TimeSpan.MinValue &&
@@ -4017,6 +4117,114 @@ public sealed class Live2DSession
             (scenario.WiggleSeconds > 0 ? $" · 扭动 {scenario.WiggleSeconds:0.0}s" : ""));
     }
 
+    // ===================== 观察用户 / 逗你（场景 1 / 2） =====================
+
+    /// <summary>
+    /// 触发一次「观察 / 逗你」：按好感度取台词 + 表情组合 + 程序脸（单眼瞪大 / 微眯 / 白眼 / 不满）+
+    /// 歪头（随机方向）+ 身体微扭 + 眼球盯向用户方向。
+    /// </summary>
+    private void TriggerObservationScenario(string kind, bool speak, string? faceOverride = null)
+    {
+        var viewModel = _viewModel;
+        var runtime = _runtime;
+        if (viewModel is null || runtime is null || runtime.IsLoaded != true) return;
+
+        var affection = _aiChat?.Affection.Value ?? 50.0;
+        var scenario = ObservationScenarios.TryMatch(kind, affection);
+        if (scenario is null) return;
+
+        var now = _clock.Elapsed;
+        if (_lastObservationAt == TimeSpan.MinValue ||
+            now - _lastObservationAt >= TimeSpan.FromMilliseconds(1200))
+        {
+            _lastObservationAt = now;
+            foreach (var name in scenario.Expressions)
+            {
+                var expression = runtime.Expressions.FirstOrDefault(e =>
+                    string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase));
+                if (expression is not null) runtime.ApplyExpression(expression, 0.3);
+            }
+
+            if (scenario.LeanForward)
+            {
+                var lean = runtime.Expressions.FirstOrDefault(e =>
+                    string.Equals(e.Name, "前倾", StringComparison.OrdinalIgnoreCase));
+                if (lean is not null) runtime.ApplyExpression(lean, 0.6);
+            }
+
+            if (scenario.RandomBlackFace && Random.Shared.Next(2) == 0)
+            {
+                var blackFace = runtime.Expressions.FirstOrDefault(e =>
+                    string.Equals(e.Name, "黑脸", StringComparison.OrdinalIgnoreCase));
+                if (blackFace is not null) runtime.ApplyExpression(blackFace, 0.35);
+            }
+
+            var facePose = !string.IsNullOrWhiteSpace(faceOverride)
+                ? faceOverride!.Trim()
+                : scenario.FacePoses.Length > 0
+                    ? scenario.FacePoses[Random.Shared.Next(scenario.FacePoses.Length)]
+                    : "好奇";
+            var tiltDirection = Random.Shared.Next(2) == 0 ? -1 : 1;
+            var gaze = ComputeUserGaze();
+            runtime.StartObservation(
+                facePose, scenario.Seconds, tiltDirection, scenario.TiltDegrees, scenario.BodyTwistDegrees,
+                gaze.X, gaze.Y, scenario.LookAtUser);
+
+            viewModel.Log(
+                $"观察预设[{scenario.Id}]：好感 {affection:0} · 表情 {string.Join("+", scenario.Expressions)}" +
+                (scenario.LeanForward ? " · 前倾" : "") +
+                $" · 程序脸 {facePose} · 歪头 {scenario.TiltDegrees:0}° · 盯人 {scenario.LookAtUser}");
+        }
+
+        if (speak) SpeakObservationLine(scenario, viewModel);
+    }
+
+    /// <summary>说观察 / 逗你的台词（`{user}` 替换成用户称呼）。</summary>
+    private void SpeakObservationLine(ObservationScenario scenario, Live2DViewModel viewModel)
+    {
+        if (viewModel.Cfg.PetInteractionVoiceEnabled != true) return;
+
+        var line = ObservationScenarios.PickLine(scenario, _lastObservationLine, Random.Shared);
+        if (string.IsNullOrEmpty(line)) return;
+        line = line.Replace("{user}", GetUserAddress(), StringComparison.Ordinal);
+        _lastObservationLine = line;
+
+        try { EnsureAiChat().AppendLocalPetMessage(line); } catch { /* 聊天服务没准备好就只说话 */ }
+        viewModel.Log($"观察台词（{scenario.Id}）：{line}");
+        var tone = string.Equals(scenario.Kind, ObservationScenarios.KindTease, StringComparison.Ordinal)
+            ? SpeechToneCatalog.ForInteraction("pinch")
+            : SpeechToneCatalog.ForInteraction("pat_head");
+        SpeakText(line, tone, allowAutoGesture: false);
+    }
+
+    /// <summary>用户称呼（自定义优先，其次预设；默认主人）。</summary>
+    private string GetUserAddress()
+    {
+        var cfg = _viewModel?.Cfg;
+        var custom = cfg?.AiAddressCustom?.Trim();
+        if (!string.IsNullOrEmpty(custom)) return custom;
+        var preset = cfg?.AiAddressPreset?.Trim();
+        return string.IsNullOrEmpty(preset) ? "主人" : preset;
+    }
+
+    /// <summary>按桌宠在屏幕上的位置算「看向用户（屏幕中央）」的眼球方向。</summary>
+    private (float X, float Y) ComputeUserGaze()
+    {
+        var pet = _pet;
+        if (pet is not { IsVisible: true }) return (0f, 0f);
+        try
+        {
+            var area = SystemParameters.WorkArea;
+            return UserGaze.Compute(
+                pet.Left, pet.Top, pet.ActualWidth, pet.ActualHeight,
+                area.Left, area.Top, area.Width, area.Height);
+        }
+        catch
+        {
+            return (0f, 0f);
+        }
+    }
+
     private void HandleInteractionVoice(string? voiceEvent)
     {
         var viewModel = _viewModel;
@@ -4035,6 +4243,21 @@ public sealed class Live2DSession
         }
 
         var affection = _aiChat?.Affection.Value ?? 50.0;
+        if (string.Equals(voiceEvent, "face_cycle", StringComparison.OrdinalIgnoreCase) ||
+            (string.Equals(voiceEvent, "pinch", StringComparison.OrdinalIgnoreCase) && Random.Shared.Next(2) == 0))
+        {
+            var kind = string.Equals(voiceEvent, "face_cycle", StringComparison.OrdinalIgnoreCase)
+                ? ObservationScenarios.KindTease
+                : ObservationScenarios.KindObserve;
+            var observation = ObservationScenarios.TryMatch(kind, affection);
+            if (observation is not null)
+            {
+                _lastInteractionVoiceAt = now;
+                SpeakObservationLine(observation, viewModel);
+                return;
+            }
+        }
+
         var scenario = InteractionScenarios.TryMatch(voiceEvent, affection);
         var line = scenario is not null
             ? InteractionScenarios.PickLine(scenario, _lastInteractionVoiceLine, Random.Shared)

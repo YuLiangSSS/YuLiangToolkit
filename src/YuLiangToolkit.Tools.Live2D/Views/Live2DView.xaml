@@ -789,7 +789,10 @@
                             <CheckBox Content="自动眨眼" Style="{StaticResource CheckBoxStyle}" Margin="0,6,0,0"
                                       IsChecked="{Binding AutoBlink}" />
                             <CheckBox Content="眼睛跟随鼠标" Style="{StaticResource CheckBoxStyle}" Margin="0,6,0,0"
-                                      IsChecked="{Binding EyeTracking}" />
+                                      IsChecked="{Binding EyeTracking}" ToolTip="鼠标在屏幕任意位置都看过去" />
+                            <CheckBox Content="动作时暂停鼠标跟随" Style="{StaticResource CheckBoxStyle}" Margin="0,6,0,0"
+                                      IsChecked="{Binding EyeTrackingPauseOnAction}"
+                                      ToolTip="做手势 / 表演 / 舞蹈 / 互动 / 观察用户时暂停鼠标跟随，避免鼠标把头 / 眼带偏（默认开）" />
 
                             <!-- 鼠标跟随灵敏度：横向 / 抬头 / 低头 / 纵向偏移（向下看跟不到 → 调大低头灵敏度） -->
                             <Grid Margin="0,6,0,0">
