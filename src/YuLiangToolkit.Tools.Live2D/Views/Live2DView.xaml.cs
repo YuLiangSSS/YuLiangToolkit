@@ -86,6 +86,11 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
         session.Activate(viewModel);
         session.AttachPageTarget(this);
 
+        // AI 设置卡：会话就绪后再读一次已保存的 API Key，并填进密码框
+        // （密码框的 Loaded 可能比这里早，那时会话还没拿到 ViewModel，解密只能读到空串）
+        viewModel.ReloadAiApiKey();
+        SyncAiApiKeyBox();
+
         if (_window is not null) _window.StateChanged -= OnWindowStateChanged;
         _window = Window.GetWindow(this);
         if (_window is not null) _window.StateChanged += OnWindowStateChanged;
@@ -171,6 +176,37 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
     private void OnReloadVoicesClick(object sender, RoutedEventArgs e)
     {
         _viewModel?.ReloadVoices();
+    }
+
+    // ===================== 🤖 AI 设置卡：API Key（PasswordBox 不能绑定，只能走事件） =====================
+
+    /// <summary>API Key 输入框加载时把 ViewModel 里的明文填进去（防止 Loaded 之前是空的）。</summary>
+    private void OnAiApiKeyBoxLoaded(object sender, RoutedEventArgs e) => SyncAiApiKeyBox();
+
+    /// <summary>把 ViewModel 里缓存的明文 Key 同步到密码框（两处调用：密码框 Loaded、页面 Loaded）。</summary>
+    private void SyncAiApiKeyBox()
+    {
+        if (!AiApiKeyBox.IsLoaded) return;
+        var viewModel = _viewModel ?? DataContext as Live2DViewModel;
+        if (viewModel is null) return;
+
+        var key = viewModel.AiApiKey;
+        if (string.Equals(AiApiKeyBox.Password, key, StringComparison.Ordinal)) return;
+        AiApiKeyBox.Password = key;
+    }
+
+    /// <summary>
+    /// 用户改 API Key：只把密码文本交给 ViewModel（<paramref name="e"/> 丢弃）；
+    /// 只在页面已加载且和 ViewModel 现值不同时写回，避免 Loaded 填值时重复保存 / 来回触发。
+    /// </summary>
+    private void OnAiApiKeyBoxChanged(object sender, RoutedEventArgs e)
+    {
+        if (sender is not PasswordBox box || !IsLoaded) return;
+        var viewModel = _viewModel ?? DataContext as Live2DViewModel;
+        if (viewModel is null) return;
+
+        if (string.Equals(box.Password, viewModel.AiApiKey, StringComparison.Ordinal)) return;
+        viewModel.AiApiKey = box.Password;
     }
 
     /// <summary>

@@ -366,7 +366,7 @@ public sealed class ChatMessageViewModel
         TimeText = DateTime.Now.ToString("HH:mm");
     }
 
-    /// <summary>角色（「我」/「小凉」）。</summary>
+    /// <summary>角色（「我」/「大肥鱼」）。</summary>
     public string Role { get; }
 
     /// <summary>消息内容。</summary>

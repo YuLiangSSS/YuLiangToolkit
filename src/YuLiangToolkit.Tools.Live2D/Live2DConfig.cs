@@ -286,4 +286,99 @@ public sealed class Live2DConfig : ToolConfig
 
     /// <summary>是否启用全局快捷键（Ctrl+Alt+L 切换鼠标穿透、Ctrl+Alt+0 退出程序）。</summary>
     public bool PetHotkeysEnabled { get; set; } = true;
+
+    // ==================== AI 聊天（DeepSeek API） ====================
+    //
+    // 说明：API Key 落盘前用 Windows DPAPI（当前用户）加密，`AiApiKeyProtected` 里存的是 `dpapi:...` 密文；
+    // 换 Windows 用户 / 换机器解不开（界面显示空，重新填一次即可）。聊天记录 / 好感度数值存在
+    // Data\live2d\ai\chat-state.json（用户数据，不进配置导出）。
+
+    /// <summary>DeepSeek API Key 的 DPAPI 密文（明文只在内存里；空 = 没填，走离线关键词兜底）。</summary>
+    public string AiApiKeyProtected { get; set; } = "";
+
+    /// <summary>接口根地址（默认官方 <c>https://api.deepseek.com</c>；兼容代理时改这里）。</summary>
+    public string AiBaseUrl { get; set; } = "https://api.deepseek.com";
+
+    /// <summary>模型名（默认 <c>deepseek-flash</c>；也可填 <c>deepseek-v4-pro</c>）。</summary>
+    public string AiModel { get; set; } = "deepseek-flash";
+
+    /// <summary>思考强度：关闭 / 低 / 中 / 高（关闭最省 token，桌宠聊天默认关闭）。</summary>
+    public string AiThinkingLevel { get; set; } = "关闭";
+
+    /// <summary>单次回复最大 token：40 ~ 1000，默认 160（越小越省；聊天不需要长回复）。</summary>
+    public int AiMaxTokens { get; set; } = 160;
+
+    /// <summary>带多少轮历史对话（0 ~ 20，默认 6；只算用户 + 桌宠消息，越大越费 token）。</summary>
+    public int AiHistoryTurns { get; set; } = 6;
+
+    /// <summary>人格预设 Id：gentle（温柔女友）/ tsundere（傲娇）/ yandere（病娇）/ genki（元气妹妹）。</summary>
+    public string AiPersonaId { get; set; } = "gentle";
+
+    /// <summary>自定义人格补充（可选，最多取前 200 字；会拼在人格预设后面）。</summary>
+    public string AiPersonaCustom { get; set; } = "";
+
+    /// <summary>用户称呼预设：用户 / 老公 / 主人。</summary>
+    public string AiAddressPreset { get; set; } = "主人";
+
+    /// <summary>自定义用户称呼（非空时优先于预设，最多 12 字）。</summary>
+    public string AiAddressCustom { get; set; } = "";
+
+    /// <summary>桌宠自称预设：我 / 本小姐 / 本姑娘 / 本鱼。</summary>
+    public string AiSelfPreset { get; set; } = "我";
+
+    /// <summary>自定义桌宠自称（非空时优先于预设，最多 12 字）。</summary>
+    public string AiSelfCustom { get; set; } = "";
+
+    /// <summary>人格属性（逗号分隔，可多选：容易害羞 / 爱吃醋 / 黏人 / 爱撒娇 / 傲娇口癖 / 容易生气 / 爱夸奖）。</summary>
+    public string AiAttributes { get; set; } = "";
+
+    /// <summary>自由「自我设定 / 背景 / 人格约束」（可选，最多取前 300 字）。</summary>
+    public string AiCustomSetting { get; set; } = "";
+
+    /// <summary>AI 回复是否朗读（TTS 语音 + 气泡；关掉只显示文字）。</summary>
+    public bool AiSpeakReply { get; set; } = true;
+
+    /// <summary>是否让 AI 回复联动表情 / 动作（害羞脸红、生气黑脸、比心挥手；关掉只说话）。</summary>
+    public bool AiMoodEffects { get; set; } = true;
+
+    /// <summary>聊天窗当前是否打开（关闭后记住；显示桌宠时按 <see cref="AiChatAutoOpen"/> 决定要不要自动打开）。</summary>
+    public bool AiChatWindowOpen { get; set; }
+
+    /// <summary>显示桌宠时自动打开聊天窗（默认开；不想每次都弹就关掉）。</summary>
+    public bool AiChatAutoOpen { get; set; } = true;
+
+    /// <summary>是否允许桌宠主动搭话（按 <see cref="AiProactiveIntervalMinutes"/> 随机间隔）。</summary>
+    public bool AiProactiveEnabled { get; set; }
+
+    /// <summary>主动搭话间隔（分钟，3 ~ 360，默认 20）。</summary>
+    public double AiProactiveIntervalMinutes { get; set; } = 20;
+
+    /// <summary>用户很久没回时，桌宠是否主动撒娇 / 求陪（按 <see cref="AiIdleSilenceMinutes"/> 判定）。</summary>
+    public bool AiIdleReminderEnabled { get; set; } = true;
+
+    /// <summary>「很久没回」的门限（分钟，1 ~ 720，默认 10）。</summary>
+    public double AiIdleSilenceMinutes { get; set; } = 10;
+
+    // ---------- 好感度（自然模式 / 兜底 / 涨掉速度） ----------
+
+    /// <summary>小聊到一定程度会主动理你（自然模式）：聊得多涨、长时间不聊掉；关掉 = 纯手动拖数值。</summary>
+    public bool AiAffectionNatural { get; set; } = true;
+
+    /// <summary>自然模式下是否启用好感度兜底（最低不掉破设定值）。</summary>
+    public bool AiAffectionFloorEnabled { get; set; } = true;
+
+    /// <summary>兜底数值（0 ~ 100，默认 20）。</summary>
+    public double AiAffectionFloor { get; set; } = 20;
+
+    /// <summary>每聊一轮涨多少（0.2 ~ 3，默认 1.0；每天最多涨 15）。</summary>
+    public double AiAffectionGainPerChat { get; set; } = 1.0;
+
+    /// <summary>每「一个不聊周期」掉多少（0 ~ 20，默认 3）。</summary>
+    public double AiAffectionDecayPerDay { get; set; } = 3.0;
+
+    /// <summary>多久不聊算一个掉值周期（小时，1 ~ 240，默认 24 = 一天）。</summary>
+    public double AiAffectionDecayAfterHours { get; set; } = 24;
+
+    /// <summary>是否让模型给出的好感度变化（-3 ~ +3）参与自然模式涨跌。</summary>
+    public bool AiAffectionModelDelta { get; set; } = true;
 }

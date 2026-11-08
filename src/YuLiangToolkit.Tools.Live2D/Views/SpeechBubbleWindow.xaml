@@ -1,7 +1,7 @@
 <Window x:Class="YuLiangToolkit.Tools.Live2D.Views.SpeechBubbleWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="小凉说话"
+        Title="大肥鱼说话"
         SizeToContent="WidthAndHeight"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -27,7 +27,7 @@
                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                 CornerRadius="12" Padding="14,10">
             <StackPanel>
-                <TextBlock Text="💬 小凉" FontSize="10.5"
+                <TextBlock Text="💬 大肥鱼" FontSize="10.5"
                            Foreground="{DynamicResource TextSecondaryBrush}" />
                 <TextBlock x:Name="MessageText" FontSize="13" LineHeight="19" MaxWidth="292"
                            TextWrapping="Wrap" Margin="0,3,0,0"

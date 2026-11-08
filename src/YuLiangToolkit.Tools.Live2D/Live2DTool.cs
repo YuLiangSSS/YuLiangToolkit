@@ -69,7 +69,8 @@ public sealed class Live2DTool : ITool
     public string Name => "Live2D 桌宠";
 
     public string Description =>
-        "内置 Live2D 模型测试台 + 桌面宠物：参数 / 部件 / 动作 / 表情 / 物理逐项调试，透明置顶、可拖动、眼睛跟随鼠标、点击穿透";
+        "内置 Live2D 模型测试台 + 桌面宠物：参数 / 部件 / 动作 / 表情 / 物理逐项调试，透明置顶、可拖动、眼睛跟随鼠标、点击穿透；" +
+        "可接 DeepSeek AI 聊天（自填 API Key，语音 + 气泡 + 表情动作联动、主动搭话、粉色好感度系统）";
 
     public string EmojiIcon => "🐟";
 
@@ -80,6 +81,7 @@ public sealed class Live2DTool : ITool
     public IReadOnlyList<string> Tags => new[]
     {
         "Live2D", "桌宠", "看板娘", "模型", "眼睛跟随", "Cubism", "VTuber", "物理",
+        "AI", "DeepSeek", "聊天", "好感度", "语音",
     };
 
     public int Order => 160;

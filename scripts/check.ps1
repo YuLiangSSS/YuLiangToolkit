@@ -136,6 +136,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/KpsInputChecks.cs'        @('kps') 'L3' 'kps assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/SpugChecks.cs'            @('spug') 'L3' 'spug assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/Live2DChecks.cs'         @('live2d') 'L3' 'live2d assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/Live2DAiChecks.cs'       @('live2d') 'L3' 'live2d AI chat / affection assertions (called from Live2DChecks.Run)')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/ScreenStickerChecks.cs'  @('screen-sticker') 'L3' 'screen-sticker assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/BrowserChecks.cs'       @('browser') 'L3' 'browser assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/TextEditorChecks.cs'    @('text-editor') 'L3' 'text-editor assertions')

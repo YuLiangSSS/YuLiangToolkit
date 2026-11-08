@@ -1,8 +1,10 @@
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using YuLiangToolkit.Tools.Live2D.Ai;
 using YuLiangToolkit.Tools.Live2D.Audio;
 using YuLiangToolkit.Tools.Live2D.Interop;
 using YuLiangToolkit.Tools.Live2D.Mocap;
@@ -130,6 +132,16 @@ public sealed class Live2DSession
     private string? _lastInteractionVoiceLine;
     private string? _lastInteractionVoiceEvent;
 
+    // ===== AI 聊天 · 好感度（DeepSeek；聊天窗 + 语音 / 气泡 / 表情 / 动作联动 + 主动说话调度） =====
+    private AiChatService? _aiChat;
+    private AiChatWindow? _aiChatWindow;
+    private DispatcherTimer? _aiTickTimer;
+    private bool _aiChatShotApplied;
+    private string? _aiChatShotPath;
+    private TimeSpan _aiExpressionClearAt = TimeSpan.MinValue;
+    private readonly Random _aiMoodRandom = new();
+    private string? _lastAiError;
+
     private Live2DSession()
     {
     }
@@ -172,7 +184,8 @@ public sealed class Live2DSession
     /// </summary>
     public bool IsDebugShotMode =>
         !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("YLT_SHOT"))
-        || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("YLT_LIVE2D_SHOT_PET"));
+        || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("YLT_LIVE2D_SHOT_PET"))
+        || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("YLT_LIVE2D_SHOT_CHAT"));
 
     /// <summary>桌宠截图钩子路径（环境变量 <c>YLT_LIVE2D_SHOT_PET</c>；没设置为空串）。</summary>
     public string PetDebugShotPath =>
@@ -266,6 +279,196 @@ public sealed class Live2DSession
     /// <summary>语音状态变化（开始 / 结束 / 出错；在 UI 线程触发）。</summary>
     public event EventHandler? SpeechStateChanged;
 
+    // ===================== AI 聊天 · 好感度 对外状态（DeepSeek） =====================
+
+    /// <summary>AI 聊天服务（没创建过为 null；聊天窗 / 测试页 AI 设置卡共用）。</summary>
+    public AiChatService? AiChat => _aiChat;
+
+    /// <summary>聊天窗当前是否显示着。</summary>
+    public bool IsAiChatWindowVisible => _aiChatWindow is { IsChatVisible: true };
+
+    /// <summary>今天累计消耗的 token（估成本用；界面显示）。</summary>
+    public long AiTodayTokens => _aiChat?.TodayTokens ?? 0;
+
+    /// <summary>AI 聊天的一句话状态（设置卡 / 聊天窗底部显示）。</summary>
+    public string AiStatusSummaryText
+    {
+        get
+        {
+            var cfg = _viewModel?.Cfg;
+            if (cfg is null) return "AI 聊天：未初始化";
+            var online = !string.IsNullOrWhiteSpace(GetAiApiKey());
+            var thinking = AiThinkingLevels.ToConfig(AiThinkingLevels.FromConfig(cfg.AiThinkingLevel));
+            var value = _aiChat?.Affection.Value ?? 50;
+            var mood = _aiChat?.Affection.MoodText ?? "平常";
+            return $"{(online ? "DeepSeek 在线" : "离线兜底（未填 API Key）")} · {cfg.AiModel} · 思考{thinking} · " +
+                   $"好感度 {value:0.0}（{mood}）";
+        }
+    }
+
+    /// <summary>AI 聊天状态变化（配置 / 好感度 / 忙碌状态；在 UI 线程触发）。</summary>
+    public event EventHandler? AiChatStateChanged;
+
+    /// <summary>打开聊天窗（没建就建；桌宠可见时贴桌宠下方 / 左侧跟随）。</summary>
+    public void ShowAiChatWindow()
+    {
+        if (_shutdown) return;
+        EnsureInitialized();
+        HookWindowClose();
+
+        var vm = EnsureViewModel();
+        var chat = EnsureAiChat();
+
+        if (_aiChatWindow is { IsChatVisible: true })
+        {
+            UpdateAiChatWindowPosition();
+            return;
+        }
+
+        try
+        {
+            if (_aiChatWindow is null)
+            {
+                var window = new AiChatWindow(chat, vm.Cfg,
+                    onConfigChanged: OnAiChatWindowConfigChanged,
+                    openSettings: OpenToolPageFromPet);
+                window.Closed += OnAiChatWindowClosed;
+                _aiChatWindow = window;
+            }
+
+            _aiChatWindow.ShowChat();
+            UpdateAiChatWindowPosition();
+            vm.Cfg.AiChatWindowOpen = true;
+            SaveConfigNow();
+            UpdateAiTickTimer();
+            _viewModel?.Log("AI 聊天窗已打开（在桌宠下方 / 旁边，跟着桌宠走）");
+        }
+        catch (Exception ex)
+        {
+            _aiChatWindow = null;
+            _viewModel?.Log("打开 AI 聊天窗失败：" + ex.Message);
+        }
+
+        RaiseAiChatStateChanged();
+    }
+
+    /// <summary>隐藏聊天窗（不销毁，下次打开很快）。</summary>
+    public void HideAiChatWindow()
+    {
+        if (_aiChatWindow is not null)
+        {
+            try { _aiChatWindow.HideChat(); } catch { /* 忽略 */ }
+        }
+        if (_viewModel is not null) _viewModel.Cfg.AiChatWindowOpen = false;
+        SaveConfigNow();
+        UpdateAiTickTimer();
+        RaiseAiChatStateChanged();
+    }
+
+    /// <summary>显示 / 隐藏聊天窗。</summary>
+    public void ToggleAiChatWindow()
+    {
+        if (IsAiChatWindowVisible) HideAiChatWindow();
+        else ShowAiChatWindow();
+    }
+
+    /// <summary>
+    /// 把配置里的 AI 设置（请求参数 / 人格 / 好感度规则 / 主动聊天）推给聊天服务。
+    /// 设置卡上的滑杆 / 下拉改一下就应该调它（内部会重读配置并落盘）。
+    /// </summary>
+    public void ApplyAiSettings()
+    {
+        if (_shutdown) return;
+        try
+        {
+            EnsureAiChat().ApplySettings();
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("应用 AI 设置失败：" + ex.Message);
+        }
+        UpdateAiTickTimer();
+        RaiseAiChatStateChanged();
+    }
+
+    /// <summary>设置 DeepSeek API Key（空白 = 清除；落盘走 DPAPI 密文）。</summary>
+    public void SetAiApiKey(string? plainKey)
+    {
+        var vm = EnsureViewModel();
+        var plain = (plainKey ?? "").Trim();
+        vm.Cfg.AiApiKeyProtected = plain.Length == 0 ? "" : AiSecretStore.Protect(plain);
+        SaveConfigNow();
+        if (_aiChat is not null)
+        {
+            _aiChat.ApplySettings();
+            // 让界面上的「在线 / 离线」立刻刷新
+            _aiChat.OnPropertyChanged(nameof(AiChatService.HasUsableApiKey));
+        }
+        vm.Log(plain.Length == 0 ? "已清除 DeepSeek API Key（聊天用离线兜底）" : "已保存 DeepSeek API Key（本机 DPAPI 加密）");
+        RaiseAiChatStateChanged();
+    }
+
+    /// <summary>取回明文 API Key（解不开 / 没填返回空串）。</summary>
+    public string GetAiApiKey()
+    {
+        try
+        {
+            return AiSecretStore.Unprotect(_viewModel?.Cfg.AiApiKeyProtected);
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    /// <summary>手动设置好感度（用户自己拖，不走自然模式规则）。</summary>
+    public void SetAiAffection(double value)
+    {
+        var chat = EnsureAiChat();
+        chat.SetAffection(value);
+        SaveConfigNow();
+        RaiseAiChatStateChanged();
+    }
+
+    /// <summary>好感度重置为 50（默认初始值）。</summary>
+    public void ResetAiAffection()
+    {
+        SetAiAffection(50);
+        _viewModel?.Log("好感度已重置为 50");
+    }
+
+    /// <summary>清空聊天记录（好感度不动）。</summary>
+    public void ClearAiConversation()
+    {
+        try
+        {
+            EnsureAiChat().ClearConversation();
+            _viewModel?.Log("AI 聊天记录已清空");
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("清空 AI 聊天记录失败：" + ex.Message);
+        }
+        RaiseAiChatStateChanged();
+    }
+
+    /// <summary>测试 API 连通性（设置卡「测试连接」按钮）。</summary>
+    public async Task<AiConnectionTestResult> TestAiConnectionAsync()
+    {
+        try
+        {
+            var result = await EnsureAiChat().TestConnectionAsync();
+            _viewModel?.Log("AI 连接测试：" + result.Message);
+            return result;
+        }
+        catch (Exception ex)
+        {
+            var message = "测试连接失败：" + ex.Message;
+            _viewModel?.Log(message);
+            return new AiConnectionTestResult { Ok = false, Message = message };
+        }
+    }
+
     // ===================== 页面生命周期 =====================
 
     /// <summary>取（或创建）工具页 ViewModel（整个进程只建一次，页面重开复用）。</summary>
@@ -291,6 +494,10 @@ public sealed class Live2DSession
         viewModel.Session = this;
         _pageActive = true;
         try { viewModel.NotifyOpened(); } catch { /* 恢复自动保存失败不影响使用 */ }
+
+        // AI 聊天服务：页面一打开就建（设置卡 / 好感度数值要及时显示），设置按当前配置套用
+        try { EnsureAiChat(); } catch { /* 聊天服务初始化失败不影响模型 */ }
+        ApplyAiSettings();
 
         EnsureModelLoaded();
         ApplyRuntimeSettings();
@@ -353,6 +560,7 @@ public sealed class Live2DSession
         DisposeMocapBlocking();
         DisposeMusicBlocking();
         DisposeSpeechBlocking();
+        DisposeAiBlocking();
         DisposeRuntime();
 
         try { _viewModel?.ConfigStore.SaveNow(); } catch { /* 退出流程忽略 */ }
@@ -728,6 +936,7 @@ public sealed class Live2DSession
         TryBeginSpeechSelfTest();
         TryBeginBubbleShot();
         TryBeginInteractionDemo();
+        TryBeginAiChatShot();
         if (IsLoaded)
         {
             try { _runtime!.Tick(TimeSpan.FromMilliseconds(16)); } catch { /* 忽略 */ }
@@ -774,6 +983,7 @@ public sealed class Live2DSession
         }
 
         ScheduleIdleUnload(pageTargetAttached: _pageTarget is not null, petVisible: _pet is not null);
+        UpdateAiTickTimer();
     }
 
     /// <summary>页面 / 桌宠都没了：过一会儿释放模型内存（避免在别的工具页呆着白占 ~100MB）。</summary>
@@ -843,6 +1053,12 @@ public sealed class Live2DSession
 
         // 聊天气泡跟随桌宠（拖动 / 缩放 / 多屏时每帧重算位置）
         UpdateBubblePosition();
+
+        // AI 聊天窗贴在桌宠下方 / 旁边，同样每帧跟随
+        UpdateAiChatWindowPosition();
+
+        // AI 临时表情 / 鼓嘴到期收回
+        UpdateAiMoodEffectsExpiry();
 
         // 空闲自言自语：每约 2 秒检查一次（内部还有 60~120 秒的随机间隔）
         if (_frameIndex % 60 == 0) TryIdleChatter();
@@ -2062,7 +2278,7 @@ public sealed class Live2DSession
         return _tts;
     }
 
-    private async Task SpeakAsyncCore(string text)
+    private async Task SpeakAsyncCore(string text, string? gestureId = null)
     {
         var tts = EnsureSpeech();
         if (tts is null)
@@ -2079,7 +2295,9 @@ public sealed class Live2DSession
             var ok = await tts.SpeakAsync(text, () =>
             {
                 ShowBubble(text);
-                if (_viewModel?.Cfg.SpeechAutoGesture == true) PlayRandomGesture();
+                // AI 回复自带动作标签时优先摆那个手势；否则按配置随机配一个小动作
+                if (!string.IsNullOrWhiteSpace(gestureId)) PlayGesture(gestureId);
+                else if (_viewModel?.Cfg.SpeechAutoGesture == true) PlayRandomGesture();
                 RaiseSpeechStateChanged();
             });
             if (!ok)
@@ -2237,6 +2455,8 @@ public sealed class Live2DSession
         if (viewModel?.Cfg.SpeechIdleChatterEnabled != true) return;
         if (!IsPageOrPetVisible || IsSpeaking) return;
         if (_music?.IsRunning == true) return;
+        // 开了 AI 主动搭话 / 聊天窗开着：交给 AI 那边开口，避免两条链路抢着说话
+        if (viewModel.Cfg.AiProactiveEnabled || IsAiChatWindowVisible) return;
         if (_clock.Elapsed < _idleChatterNextAt) return;
 
         _idleChatterNextAt = _clock.Elapsed + TimeSpan.FromSeconds(Random.Shared.Next(60, 120));
@@ -2266,6 +2486,560 @@ public sealed class Live2DSession
         }
         catch { /* 退出流程忽略 */ }
         _tts = null;
+    }
+
+    // ===================== AI 聊天 · 好感度（DeepSeek） =====================
+    //
+    // 数据流：
+    //   聊天窗输入 → AiChatService.SendUserMessageAsync → DeepSeek（思考默认关、160 token、只带最近几轮）
+    //   → 解析 JSON（r/e/a/d）→ 好感度引擎涨跌 → ReplyReady
+    //   → 会话：换表情 / 鼓嘴 + 动作手势 + TTS（声音 / 口型 / 头顶气泡同时出现）+ 聊天窗消息
+    //
+    // 主动说话：AiChatService.TickSchedule 由这里 2 秒一次的 DispatcherTimer 驱动（页面 / 桌宠 / 聊天窗有人看着时）；
+    // 久未回复撒娇 / 定时搭话都由服务内部节流（最小间隔、连续提醒次数上限、不打断正在回复的请求）。
+
+    /// <summary>懒创建 AI 聊天服务（配置回调都是「现读」，改设置立刻生效）。</summary>
+    private AiChatService EnsureAiChat()
+    {
+        if (_aiChat is not null) return _aiChat;
+
+        var vm = EnsureViewModel();
+        var service = new AiChatService(new AiChatServiceOptions
+        {
+            Storage = vm.Storage,
+            RequestOptions = BuildAiRequestOptions,
+            Persona = BuildAiPersonaSettings,
+            Affection = BuildAffectionSettings,
+            HistoryTurns = () => Math.Clamp(vm.Cfg.AiHistoryTurns, 0, 20),
+            Proactive = BuildAiProactiveSettings,
+            OfflineFallback = PickAiOfflineReply,
+            Log = message => _viewModel?.Log(message),
+        });
+
+        service.StateChanged += OnAiChatStateChanged;
+        service.ReplyReady += OnAiReplyReady;
+        _aiChat = service;
+
+        try { service.ApplySettings(); }
+        catch (Exception ex) { _viewModel?.Log("AI 聊天服务初始化失败：" + ex.Message); }
+
+        return service;
+    }
+
+    /// <summary>当前配置 → 请求参数（Key 解密；地址 / 模型空值回默认；token 预算夹取）。</summary>
+    private AiRequestOptions BuildAiRequestOptions()
+    {
+        var cfg = _viewModel?.Cfg;
+        var baseUrl = cfg?.AiBaseUrl?.Trim();
+        var model = cfg?.AiModel?.Trim();
+        return new AiRequestOptions
+        {
+            ApiKey = GetAiApiKey(),
+            BaseUrl = string.IsNullOrWhiteSpace(baseUrl) ? AiRequestOptions.DefaultBaseUrl : baseUrl,
+            Model = string.IsNullOrWhiteSpace(model) ? AiRequestOptions.DefaultModel : model,
+            Thinking = AiThinkingLevels.FromConfig(cfg?.AiThinkingLevel),
+            MaxTokens = Math.Clamp(cfg?.AiMaxTokens ?? 160, 40, 1000),
+            JsonOutput = true,
+        };
+    }
+
+    /// <summary>当前配置 → 人格 / 称呼 / 属性 / 自我设定（自定义称呼、自称优先）。</summary>
+    private AiPersonaSettings BuildAiPersonaSettings()
+    {
+        var cfg = _viewModel?.Cfg;
+        return new AiPersonaSettings
+        {
+            PersonaId = cfg?.AiPersonaId ?? "gentle",
+            CustomPersona = cfg?.AiPersonaCustom ?? "",
+            AddressPreset = string.IsNullOrWhiteSpace(cfg?.AiAddressPreset) ? "主人" : cfg.AiAddressPreset,
+            AddressCustom = cfg?.AiAddressCustom ?? "",
+            SelfPreset = string.IsNullOrWhiteSpace(cfg?.AiSelfPreset) ? "我" : cfg.AiSelfPreset,
+            SelfCustom = cfg?.AiSelfCustom ?? "",
+            Attributes = cfg?.AiAttributes ?? "",
+            CustomSetting = cfg?.AiCustomSetting ?? "",
+            PetName = "大肥鱼",
+        };
+    }
+
+    /// <summary>当前配置 → 好感度自然模式规则（数值夹到合理区间）。</summary>
+    private AffectionSettings BuildAffectionSettings()
+    {
+        var cfg = _viewModel?.Cfg;
+        return new AffectionSettings
+        {
+            NaturalMode = cfg?.AiAffectionNatural ?? true,
+            FloorEnabled = cfg?.AiAffectionFloorEnabled ?? true,
+            Floor = Math.Clamp(cfg?.AiAffectionFloor ?? 20, 0, 100),
+            GainPerChat = Math.Clamp(cfg?.AiAffectionGainPerChat ?? 1.0, 0, 5),
+            DecayPerDay = Math.Clamp(cfg?.AiAffectionDecayPerDay ?? 3.0, 0, 20),
+            DecayAfterHours = Math.Clamp(cfg?.AiAffectionDecayAfterHours ?? 24, 1, 240),
+            UseModelDelta = cfg?.AiAffectionModelDelta ?? true,
+        };
+    }
+
+    /// <summary>当前配置 → 主动聊天规则（间隔 / 久未回复门限夹取）。</summary>
+    private AiProactiveSettings BuildAiProactiveSettings()
+    {
+        var cfg = _viewModel?.Cfg;
+        return new AiProactiveSettings
+        {
+            Enabled = cfg?.AiProactiveEnabled ?? false,
+            IntervalMinutes = Math.Clamp(cfg?.AiProactiveIntervalMinutes ?? 20, 3, 360),
+            IdleReminderEnabled = cfg?.AiIdleReminderEnabled ?? true,
+            IdleSilenceMinutes = Math.Clamp(cfg?.AiIdleSilenceMinutes ?? 10, 1, 720),
+        };
+    }
+
+    private void OnAiChatStateChanged(object? sender, EventArgs e) => RaiseAiChatStateChanged();
+
+    private void RaiseAiChatStateChanged()
+    {
+        try { AiChatStateChanged?.Invoke(this, EventArgs.Empty); } catch { /* 订阅方异常不影响聊天 */ }
+    }
+
+    /// <summary>聊天窗里改了配置（主动聊天 / 自然好感度 / 语音）：立刻套用并刷新测试页绑定。</summary>
+    private void OnAiChatWindowConfigChanged()
+    {
+        ApplyAiSettings();
+        SaveConfigNow();
+        try { _viewModel?.RefreshAllBindings(); } catch { /* 页面没开时忽略 */ }
+    }
+
+    private void OnAiChatWindowClosed(object? sender, EventArgs e)
+    {
+        if (sender is not AiChatWindow window || !ReferenceEquals(window, _aiChatWindow)) return;
+        _aiChatWindow = null;
+        if (_viewModel is not null) _viewModel.Cfg.AiChatWindowOpen = false;
+        SaveConfigNow();
+        UpdateAiTickTimer();
+        RaiseAiChatStateChanged();
+    }
+
+    /// <summary>让主窗口到前面（聊天窗 ⚙ / 桌宠菜单「设置」用；工具工程引用不到外壳的 MainViewModel，只能激活窗口）。</summary>
+    private void OpenToolPageFromPet()
+    {
+        try
+        {
+            if (Application.Current?.MainWindow is { } mainWindow)
+            {
+                if (mainWindow.WindowState == WindowState.Minimized) mainWindow.WindowState = WindowState.Normal;
+                mainWindow.Activate();
+                _viewModel?.Log("已把主窗口叫到前面：侧边栏「桌面 → Live2D 桌宠」里的「AI 聊天」卡可以改设置");
+            }
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("打开设置失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>每帧把聊天窗贴到桌宠下方 / 左侧（跟随拖动 / 缩放 / 多屏）；桌宠不在时不重定位，保持原位。</summary>
+    private void UpdateAiChatWindowPosition()
+    {
+        var window = _aiChatWindow;
+        if (window is null || !window.IsChatVisible) return;
+        var pet = _pet;
+        if (pet is not { IsVisible: true }) return;
+        try { window.PlaceBelow(pet); } catch { /* 窗口正在切换：忽略 */ }
+    }
+
+    /// <summary>按「页面 / 桌宠 / 聊天窗是否有人看着」启停 2 秒一次的 AI 调度（掉值结算 + 主动说话）。</summary>
+    private void UpdateAiTickTimer()
+    {
+        if (_shutdown) return;
+
+        var need = _aiChat is not null && (IsPageOrPetVisible || IsAiChatWindowVisible);
+        if (!need)
+        {
+            _aiTickTimer?.Stop();
+            return;
+        }
+
+        if (_aiTickTimer is null)
+        {
+            _aiTickTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(2) };
+            _aiTickTimer.Tick += OnAiTick;
+        }
+        if (!_aiTickTimer.IsEnabled) _aiTickTimer.Start();
+    }
+
+    private void OnAiTick(object? sender, EventArgs e)
+    {
+        var chat = _aiChat;
+        if (chat is null) return;
+        try
+        {
+            chat.TickSchedule(DateTimeOffset.Now, IsPageOrPetVisible || IsAiChatWindowVisible);
+        }
+        catch (Exception ex)
+        {
+            if (_lastAiError == ex.Message) return;
+            _lastAiError = ex.Message;
+            _viewModel?.Log("AI 主动说话调度出错：" + ex.Message);
+        }
+    }
+
+    /// <summary>拿到 AI 回复：换表情 / 鼓嘴 + 手势 + 说话（声音 / 口型 / 气泡同步）。</summary>
+    private void OnAiReplyReady(object? sender, AiReplyEventArgs e)
+    {
+        var reply = e.Reply;
+        if (reply is null || string.IsNullOrWhiteSpace(reply.Text)) return;
+
+        var kindText = e.Proactive switch
+        {
+            AiProactiveKind.IdleReminder => "（久未回复撒娇）",
+            AiProactiveKind.Chatter => "（主动搭话）",
+            _ => "",
+        };
+        _viewModel?.Log($"AI 回复{kindText}：{reply.Text}" +
+                        (string.IsNullOrWhiteSpace(reply.Emotion) ? "" : $"［情绪 {reply.Emotion}］") +
+                        (string.IsNullOrWhiteSpace(reply.Action) ? "" : $"［动作 {reply.Action}］"));
+
+        var cfg = _viewModel?.Cfg;
+        var effects = cfg?.AiMoodEffects == true;
+        var gestureId = effects ? PickAiGesture(reply.Action) : "";
+
+        if (effects) ApplyAiMoodEffects(reply, e.Proactive is not null);
+
+        if (cfg?.AiSpeakReply == true)
+        {
+            // 复用既有 TTS 链路：合成完成、真正开始播放时才弹气泡 + 摆动作（声音 / 口型 / 气泡同一时刻）
+            _ = SpeakAsyncCore(reply.Text, gestureId);
+        }
+        else
+        {
+            // 不朗读也要有文字气泡：显示一段时间后自动淡出
+            ShowBubble(reply.Text);
+            HideBubbleSoon();
+        }
+
+        RaiseAiChatStateChanged();
+    }
+
+    /// <summary>情绪标签 → 表情 / 鼓嘴表现（好感度高容易脸红冒爱心眼，低 / 吃醋容易黑脸鼓嘴）。</summary>
+    private void ApplyAiMoodEffects(AiReply reply, bool proactive)
+    {
+        var runtime = _runtime;
+        if (runtime is null || !runtime.IsLoaded) return;
+
+        var affection = _aiChat?.Affection;
+        var mood = affection?.Mood ?? AiMood.Normal;
+        var emotion = NormalizeAiEmotion(reply.Emotion, mood);
+
+        var puff = 0f;
+        if (emotion is "angry" or "jealous" or "cold" || mood == AiMood.Angry) puff = 0.65f;
+        else if (emotion == "sad") puff = 0.3f;
+        else if (mood == AiMood.Sulky) puff = 0.35f;
+        try { runtime.MoodPuffAmount = puff; } catch { /* 老模型没有鼓嘴参数：忽略 */ }
+
+        var expression = PickAiExpression(emotion, mood, proactive);
+        if (expression is not null)
+        {
+            ApplyExpression(expression, 0.35);
+            _aiExpressionClearAt = _clock.Elapsed + TimeSpan.FromSeconds(emotion == "love" ? 7 : 5);
+        }
+        else if (puff > 0)
+        {
+            _aiExpressionClearAt = _clock.Elapsed + TimeSpan.FromSeconds(5);
+        }
+        else
+        {
+            ClearExpressions(0.6);
+            _aiExpressionClearAt = TimeSpan.MinValue;
+        }
+    }
+
+    /// <summary>帧循环里到期把 AI 临时表情 / 鼓嘴收回（别一直红着脸）。</summary>
+    private void UpdateAiMoodEffectsExpiry()
+    {
+        if (_aiExpressionClearAt == TimeSpan.MinValue || _clock.Elapsed < _aiExpressionClearAt) return;
+        _aiExpressionClearAt = TimeSpan.MinValue;
+        try
+        {
+            if (_runtime is not null) _runtime.MoodPuffAmount = 0f;
+            _runtime?.ClearExpressions(0.9);
+        }
+        catch { /* 忽略 */ }
+    }
+
+    /// <summary>情绪标签归一化（模型可能给中文 / 大写 / 空；空 = 按好感度档位推断）。</summary>
+    private static string NormalizeAiEmotion(string? emotion, AiMood mood)
+    {
+        var tag = (emotion ?? "").Trim().ToLowerInvariant();
+        if (tag.Length > 0)
+        {
+            if (tag.Contains("love") || tag.Contains("heart") || tag.Contains("爱")) return "love";
+            if (tag.Contains("shy") || tag.Contains("害羞") || tag.Contains("blush")) return "shy";
+            if (tag.Contains("jealous") || tag.Contains("醋") || tag.Contains("吃醋")) return "jealous";
+            if (tag.Contains("angry") || tag.Contains("生气") || tag.Contains("怒")) return "angry";
+            if (tag.Contains("cold") || tag.Contains("黑脸") || tag.Contains("冷")) return "cold";
+            if (tag.Contains("sad") || tag.Contains("难过") || tag.Contains("哭")) return "sad";
+            if (tag.Contains("surprised") || tag.Contains("惊讶") || tag.Contains("惊")) return "surprised";
+            if (tag.Contains("happy") || tag.Contains("开心") || tag.Contains("笑")) return "happy";
+            if (tag.Contains("neutral") || tag.Contains("normal") || tag.Contains("平常")) return "neutral";
+        }
+
+        return mood switch
+        {
+            AiMood.Love => "love",
+            AiMood.Happy => "happy",
+            AiMood.Sulky => "sulky",
+            AiMood.Angry => "angry",
+            _ => "neutral",
+        };
+    }
+
+    /// <summary>情绪 → 表情文件（按名字包含匹配；模型没有的表情自动跳过）。</summary>
+    private ExpressionEntry? PickAiExpression(string emotion, AiMood mood, bool proactive)
+    {
+        var runtime = _runtime;
+        if (runtime is null || !runtime.IsLoaded) return null;
+
+        var affection = _aiChat?.Affection;
+        var candidates = new List<string>();
+        switch (emotion)
+        {
+            case "love":
+                candidates.Add("爱心眼");
+                candidates.Add("脸红");
+                break;
+            case "shy":
+                candidates.Add("脸红");
+                candidates.Add("＞＜");
+                break;
+            case "happy":
+                if (affection?.IsBlushLikely(_aiMoodRandom.NextDouble()) == true) candidates.Add("脸红");
+                break;
+            case "jealous":
+            case "cold":
+                candidates.Add("黑脸");
+                candidates.Add("屑屑眼");
+                break;
+            case "angry":
+            case "sulky":
+                candidates.Add("黑脸");
+                candidates.Add("＞＜");
+                break;
+            case "sad":
+                candidates.Add("流泪");
+                break;
+            case "surprised":
+                candidates.Add("圈圈眼");
+                break;
+        }
+
+        // 好感度高的时候随机脸红 / 爱心眼（自然一点，不是每次都说）
+        if (candidates.Count == 0 && affection is not null && affection.Value >= 70 &&
+            affection.IsBlushLikely(_aiMoodRandom.NextDouble()))
+        {
+            candidates.Add(affection.Value >= 85 ? "爱心眼" : "脸红");
+        }
+
+        // 主动搭话时表情收敛一点：只在心动档位冒爱心眼
+        if (proactive && candidates.Count > 0 && !candidates[0].Contains("爱心眼") &&
+            affection?.Value < 80)
+        {
+            candidates.Clear();
+        }
+
+        foreach (var name in candidates)
+        {
+            var expression = runtime.Expressions.FirstOrDefault(entry =>
+                entry.Name.Contains(name, StringComparison.Ordinal));
+            if (expression is not null) return expression;
+        }
+        return null;
+    }
+
+    /// <summary>动作标签 → 手势（支持英文别名；none / 空 = 不摆动作，交给自动小动作）。</summary>
+    private static string PickAiGesture(string? action)
+    {
+        var tag = (action ?? "").Trim().ToLowerInvariant();
+        return tag switch
+        {
+            "wave" or "挥手" => "举手打招呼",
+            "heart" or "比心" => "比心",
+            "akimbo" or "叉腰" => "叉腰",
+            "head_hold" or "抱头" => "抱头",
+            "point" or "指" => "竖起食指",
+            "grass" or "狗尾草" => "拿起狗尾草",
+            _ => "",
+        };
+    }
+
+    // ---------- 离线兜底（没填 API Key / 请求失败时也有得聊） ----------
+
+    private static readonly (string[] Keys, string[] Replies)[] AiOfflineReplyRules =
+    {
+        (new[] { "你好", "嗨", "hi", "hello", "在吗", "在不在" },
+            new[] { "在的在的～叫我做什么呀？", "嗨嗨～我一直在这里喔。" }),
+        (new[] { "累", "困", "疲惫", "加班", "辛苦" },
+            new[] { "辛苦啦～先休息一下，我陪着你。", "累了就靠一会儿吧，我不吵你。" }),
+        (new[] { "开心", "高兴", "好耶", "哈哈" },
+            new[] { "嘿嘿，你开心我就开心～", "好耶！今天一定是顺利的一天！" }),
+        (new[] { "难过", "伤心", "不开心", "郁闷", "烦" },
+            new[] { "抱抱…不开心的事先放一放。", "别难过嘛，我把我最喜欢的星星分你一颗。" }),
+        (new[] { "晚安", "睡了", "睡觉" },
+            new[] { "晚安，做个好梦～梦里也要有我喔。", "去睡吧，我帮你把今天收好尾巴～" }),
+        (new[] { "喜欢你", "爱你", "么么", "亲亲" },
+            new[] { "唔…我也最喜欢你啦！…才没有害羞呢。", "诶嘿嘿，这种话要小声一点说啦。" }),
+        (new[] { "摸头", "摸摸" },
+            new[] { "诶嘿…摸头会让我变笨的啦…再摸一下也不是不行。", "唔…好舒服，再多摸一会儿也可以喔。" }),
+        (new[] { "工作", "上班", "学习", "写代码" },
+            new[] { "工作再忙也要记得站起来活动一下喔。", "加油！写完这一段我们就休息一下好不好？" }),
+    };
+
+    private static readonly string[] AiOfflineFallbackReplies =
+    {
+        "唔…这样呀，那你想听听我的想法吗？",
+        "诶嘿嘿，我好像没太听懂，但我会认真听的～",
+        "和你聊天真开心，再多说一点嘛。",
+        "嗯嗯，我在呢，继续说嘛～",
+        "这个嘛…我可能需要一点点提示～",
+    };
+
+    /// <summary>离线兜底回复（关键词匹配；给没填 API Key / 网络失败时用）。</summary>
+    private static string PickAiOfflineReply(string userText)
+    {
+        var text = userText ?? "";
+        foreach (var rule in AiOfflineReplyRules)
+        {
+            foreach (var key in rule.Keys)
+            {
+                if (text.Contains(key, StringComparison.OrdinalIgnoreCase))
+                    return rule.Replies[_sharedRandom.Next(rule.Replies.Length)];
+            }
+        }
+        return AiOfflineFallbackReplies[_sharedRandom.Next(AiOfflineFallbackReplies.Length)];
+    }
+
+    private static readonly Random _sharedRandom = new();
+
+    // ---------- 截图冒烟：YLT_LIVE2D_SHOT_CHAT=<png> ----------
+
+    private void TryBeginAiChatShot()
+    {
+        if (_aiChatShotApplied) return;
+        var path = Environment.GetEnvironmentVariable("YLT_LIVE2D_SHOT_CHAT")?.Trim();
+        if (string.IsNullOrEmpty(path)) return;
+        if (_viewModel is null) return;
+        _aiChatShotApplied = true;
+        _aiChatShotPath = path;
+        _ = RunAiChatShotAsync(path);
+    }
+
+    private async Task RunAiChatShotAsync(string path)
+    {
+        var viewModel = _viewModel;
+        if (viewModel is null) return;
+        try
+        {
+            // 先放出桌宠（截图模式同步加载模型），再把聊天窗按「桌宠下方 / 左侧」贴上去，
+            // 最后把两个窗口拼成一张桌面视角的图，验证定位 + 试管控件 + 气泡版式。
+            ShowPet();
+            var waitModel = Stopwatch.StartNew();
+            while (waitModel.ElapsedMilliseconds < 15_000 && !IsLoaded) await Task.Delay(100);
+            await Task.Delay(500);
+
+            ShowAiChatWindow();
+            if (_aiChatWindow is null)
+            {
+                viewModel.Log("聊天窗截图：聊天窗没打开");
+                return;
+            }
+            _aiChatWindow.LoadDemoMessages();
+            await Task.Delay(800);
+            UpdateAiChatWindowPosition();
+
+            var pet = _pet;
+            var chatRoot = _aiChatWindow.Content as FrameworkElement;
+            if (pet is null || chatRoot is null || chatRoot.ActualWidth < 2 || chatRoot.ActualHeight < 2 || !IsLoaded)
+            {
+                viewModel.Log("聊天窗截图：桌宠 / 聊天窗还没准备好");
+                return;
+            }
+
+            var petBitmap = pet.RenderWindowBitmap();
+            var chatWidth = (int)Math.Ceiling(chatRoot.ActualWidth);
+            var chatHeight = (int)Math.Ceiling(chatRoot.ActualHeight);
+            var chatVisual = new DrawingVisual();
+            using (var dc = chatVisual.RenderOpen())
+            {
+                dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(0x1E, 0x1F, 0x24)), null, new Rect(0, 0, chatWidth, chatHeight));
+                dc.DrawRectangle(new VisualBrush(chatRoot), null, new Rect(0, 0, chatWidth, chatHeight));
+            }
+            var chatBitmap = new RenderTargetBitmap(chatWidth, chatHeight, 96, 96, PixelFormats.Pbgra32);
+            chatBitmap.Render(chatVisual);
+
+            // 按窗口在屏幕上的相对位置拼图（聊天窗一般在桌宠左侧或下方）
+            var minLeft = Math.Min(pet.Left, _aiChatWindow.Left);
+            var minTop = Math.Min(pet.Top, _aiChatWindow.Top);
+            var maxRight = Math.Max(pet.Left + pet.ActualWidth, _aiChatWindow.Left + chatWidth);
+            var maxBottom = Math.Max(pet.Top + pet.ActualHeight, _aiChatWindow.Top + chatHeight);
+            var width = (int)Math.Ceiling(Math.Max(1, maxRight - minLeft));
+            var height = (int)Math.Ceiling(Math.Max(1, maxBottom - minTop));
+
+            var visual = new DrawingVisual();
+            using (var dc = visual.RenderOpen())
+            {
+                dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(0x1E, 0x1F, 0x24)), null, new Rect(0, 0, width, height));
+                dc.DrawImage(petBitmap, new Rect(pet.Left - minLeft, pet.Top - minTop,
+                    pet.ActualWidth, pet.ActualHeight));
+                dc.DrawRectangle(new VisualBrush(chatRoot), null, new Rect(
+                    _aiChatWindow.Left - minLeft, _aiChatWindow.Top - minTop, chatWidth, chatHeight));
+            }
+
+            var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(visual);
+
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            await using (var stream = File.Create(path))
+            {
+                encoder.Save(stream);
+            }
+            viewModel.Log($"聊天窗截图已保存：{path}（{width}×{height}，桌宠 {(int)pet.ActualWidth}×{(int)pet.ActualHeight}，聊天窗 {chatWidth}×{chatHeight}）");
+        }
+        catch (Exception ex)
+        {
+            viewModel.Log("聊天窗截图失败：" + ex.Message);
+        }
+        finally
+        {
+            await Task.Delay(200);
+            Application.Current?.Shutdown();
+        }
+    }
+
+    /// <summary>程序退出：停 AI 调度、关聊天窗、落盘聊天记录 / 好感度。</summary>
+    private void DisposeAiBlocking()
+    {
+        try { _aiTickTimer?.Stop(); } catch { /* 忽略 */ }
+        _aiTickTimer = null;
+
+        try
+        {
+            if (_aiChatWindow is not null)
+            {
+                _aiChatWindow.Closed -= OnAiChatWindowClosed;
+                _aiChatWindow.HideChat();
+                _aiChatWindow.Close();
+            }
+        }
+        catch { /* 退出流程忽略 */ }
+        _aiChatWindow = null;
+
+        try
+        {
+            if (_aiChat is not null)
+            {
+                _aiChat.StateChanged -= OnAiChatStateChanged;
+                _aiChat.ReplyReady -= OnAiReplyReady;
+                _aiChat.Dispose();
+            }
+        }
+        catch { /* 退出流程忽略 */ }
+        _aiChat = null;
     }
 
     // ===================== 桌宠鼠标互动（热区事件 → 软妹台词 + 语音/气泡/口型） =====================
@@ -2667,7 +3441,7 @@ public sealed class Live2DSession
 
             var callbackAtMs = -1L;
             var playWatch = Stopwatch.StartNew();
-            var spoken = await tts.SpeakAsync("你好呀，我是小凉，今天也要开心喔。",
+            var spoken = await tts.SpeakAsync("你好呀，我是大肥鱼，今天也要开心喔。",
                 () => callbackAtMs = playWatch.ElapsedMilliseconds);
             if (!spoken)
             {
@@ -3011,6 +3785,9 @@ public sealed class Live2DSession
             ApplyMusicSettings();   // 音乐回环同理
             StateChanged?.Invoke(this, EventArgs.Empty);
             PetVisibilityChanged?.Invoke(this, EventArgs.Empty);
+
+            // 桌宠出来时按配置自动带出 AI 聊天窗（默认开；不想每次弹就在设置卡里关掉）
+            if (vm.Cfg.AiChatAutoOpen) ShowAiChatWindow();
         }
         catch (Exception ex)
         {
@@ -3023,6 +3800,8 @@ public sealed class Live2DSession
     public void HidePet()
     {
         if (_viewModel is not null) _viewModel.Cfg.PetEnabled = false;
+        // 聊天窗是「贴桌宠」的：桌宠隐藏时一起收起来，避免一个无主窗口飘在桌面上
+        if (IsAiChatWindowVisible) HideAiChatWindow();
         ClosePetInternal(raiseEvent: true);
         UpdateFrameLoop();
         ApplyMocapSettings();
@@ -3091,6 +3870,7 @@ public sealed class Live2DSession
         _pet = null;
         if (_viewModel is not null) _viewModel.Cfg.PetEnabled = false;
         SaveConfigNow();
+        if (IsAiChatWindowVisible) HideAiChatWindow();
         UpdateFrameLoop();
         ApplyMocapSettings();   // 桌宠关了、页面也没开 → 关闭摄像头
         ApplyMusicSettings();   // 音频回环同理

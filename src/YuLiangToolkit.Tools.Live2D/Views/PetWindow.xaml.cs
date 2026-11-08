@@ -833,6 +833,29 @@ public partial class PetWindow : Window
         MenuItemMocap.IsChecked = cfg.MocapEnabled;
         MenuItemSway.IsChecked = cfg.BodySwayEnabled;
         MenuItemMusic.IsChecked = cfg.MusicReactiveEnabled;
+        MenuItemAiChat.IsChecked = _session.IsAiChatWindowVisible;
+        MenuItemAiProactive.IsChecked = cfg.AiProactiveEnabled;
+    }
+
+    /// <summary>右键菜单：开 / 关 AI 聊天窗（贴桌宠下方 / 旁边）。</summary>
+    private void OnMenuAiChatClick(object sender, RoutedEventArgs e)
+    {
+        _session.ToggleAiChatWindow();
+    }
+
+    /// <summary>右键菜单：开 / 关桌宠主动搭话（隔一段时间找话题 / 久未回复撒娇）。</summary>
+    private void OnMenuAiProactiveClick(object sender, RoutedEventArgs e)
+    {
+        var cfg = Config;
+        if (cfg is null) return;
+
+        cfg.AiProactiveEnabled = !cfg.AiProactiveEnabled;
+        _session.ApplyAiSettings();
+        _session.SaveConfigNow();
+        _session.ViewModel?.RefreshAllBindings();
+        _session.Log(cfg.AiProactiveEnabled
+            ? "桌宠菜单：已开启主动搭话（间隔 / 久未回复门限在测试页「AI 聊天」卡里调）"
+            : "桌宠菜单：已关闭主动搭话");
     }
 
     /// <summary>右键菜单：开 / 关音乐跟唱（WASAPI 回环采集系统声音；关掉立刻释放采集）。</summary>

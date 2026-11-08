@@ -22,6 +22,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- System.Security.Cryptography.ProtectedData：AI 聊天把 DeepSeek API Key 用 Windows DPAPI
+         （当前用户）加密后存进 Config\live2d\config.json，不落明文。仓库「邮箱代收」已经在用同一个
+         微软官方包（9.0.4），不是新增第三方依赖。 -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.4" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- 官方 Cubism Core 原生 DLL（Live2D Proprietary Software License；来源与许可见 ThirdParty\Live2DCubismCore\NOTICE.txt）。
          必须落在 exe 旁边：P/Invoke 用裸文件名加载。 -->
     <None Update="ThirdParty\Live2DCubismCore\Live2DCubismCore.dll"

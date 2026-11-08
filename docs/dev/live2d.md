@@ -13,7 +13,11 @@
 - **不新增任何 NuGet 包**（仓库硬性规则）：模型加载靠官方 Cubism Core 原生 DLL，渲染靠自己写的软件光栅器，
   摄像头动捕靠 Windows 自带 MediaCapture / FaceAnalysis（OS 组件，零第三方库）；
 - 可选**摄像头面部动捕**（转头 / 眨眼 / 张嘴，默认关）与**身体晃动测试**（看物理链）；
-- 不联网、不带音频 / 口型同步、不做 VTube Studio 之类的协议联动；
+- 本轮新增 **AI 聊天 / 好感度**（DeepSeek，用户自填 API Key，见 §19）：HTTP / JSON / 提示词 / 好感度全部手写，
+  API Key 的 DPAPI 加密复用已有的 `System.Security.Cryptography.ProtectedData` 包（邮箱代收已引），**不新增依赖**；
+- 联网只发生在两个可选功能：**在线语音**（只发送要说的文字）与 **AI 聊天**（只发送人格提示词 + 最近对话 +
+  好感度状态行）；其余功能全部本地；
+- 不做 VTube Studio / VSeeFace 之类的协议联动；
 - 只支持 Cubism 3+ 的 `.moc3` 模型（不支持 Cubism 2 的 `model.json`）。
 
 ## 2. 分层架构
@@ -61,6 +65,14 @@ YuLiangTookit（主程序）
       │   ├─ WaveAudio ─────────────── WAV RIFF 块解析 + 16bit 样本读取 + 20ms 唇形包络（纯静态，自检可测）
       │   └─ TtsService ────────────── 在线 Edge 软妹音（失败回退）→ 本地 WinRT TTS → MediaPlayer 播放 + 口型
       │
+      ├─ Ai/ ───────────────────────── DeepSeek AI 聊天 / 好感度（见 §19）
+      │   ├─ AiContracts / AiChatService ── 契约 + 好感度引擎 / 聊天流程 / 历史裁剪 / token / 主动调度 / 落盘
+      │   ├─ AiPromptBuilder / AiReplyParser ── 提示词与模型输出解析（纯函数，自检可测）
+      │   ├─ DeepSeekClient ────────── 手写 HTTP 客户端（可注入 HttpMessageHandler 自检）
+      │   ├─ AiSecretStore ─────────── API Key 的 DPAPI 加解密（dpapi: 前缀，兼容历史明文）
+      │   ├─ Controls/AffectionVial ── 粉色好感度试管（自绘 + LiquidRatio 纯函数）
+      │   └─ Views/AiChatWindow / AiChatPlacement ── 聊天窗 UI 与贴桌宠的纯定位算法
+      │
       ├─ Rendering/CubismRenderer ──── 手写软件光栅器（三角形光栅化 / 蒙版 / 三种混合 / 调试叠加）
       │   └─ Rendering/TextureAtlas ── 纹理 PNG 加载 → BGRA 像素（可选降到 2048）
       │
@@ -94,6 +106,12 @@ YuLiangTookit（主程序）
 `ModelRuntime.SpeechActive / SpeechMouthOpen`（Tick 里写嘴型，动捕有脸时让位）；播放完成靠按 WAV 时长轮询
 （`MediaEnded` 不可靠）收尾并释放播放器 / 流；App 退出时 Dispose。气泡窗口由会话每帧按桌宠位置重算坐标，
 不抢焦点、点击穿透。
+
+**AI 聊天线程模型**（细节见 §19.3）：`AiChatService` 由会话懒创建于 UI 线程，`await` 回构造时的
+`SynchronizationContext`（WPF 有 UI 上下文，事件也在 UI 线程触发）；请求用 `SemaphoreSlim` 串行化，
+同一时间只有一条在途（`IsBusy` 期间 `TickSchedule` 跳过主动说话，不打断正在等回复的那一轮）；
+主动说话由会话的 **2 秒 `DispatcherTimer`** 调 `TickSchedule(now, userPresent)`，内部 `FireAndForget`
+不阻塞 Tick；落盘是同步小 JSON（≤200 条消息，`ToolStorage.WriteText` 原子写），失败只记日志、绝不打断聊天。
 
 **为什么不引 WebView2 / SkiaSharp / 官方 C# SDK**：
 
@@ -1191,5 +1209,159 @@ InteractionController._raiseInteraction(voiceEvent, displayName)
 | `YLT_LIVE2D_BUBBLE_SHOT=<png>` | 桌宠 + 聊天气泡**离屏合成**截图（不抓桌面），验收气泡定位 / 透明度用 |
 | `YLT_LIVE2D_INTERACTION_DEMO=<区域/事件>` | 模拟桌宠互动「按下 → 抚摸移动 / 点按 → 抬起」，写 `Data\live2d\interaction-demo.log`（区域名 / 画布坐标 / 是否命中 / LastInteractionName / VoiceEvent / 会话台词 / 是否在说话），并打印到工具页日志；只写状态文本，不保存音频 |
 | `YLT_LIVE2D_INTERACTION_SHOT=<png>` | 配合上一条：互动后出**桌宠离屏**截图（不抓桌面）再自动退出 |
+| `YLT_LIVE2D_SHOT_CHAT=<png>` | **AI 聊天窗**离屏截图：打开聊天窗 → 塞示例消息 → 渲染成 PNG 后退出（不碰真实聊天数据，可和桌宠截图拼在一起验收）；`Loaded` 后再等布局完成 |
 | `YLT_LIVE2D_PETCARD_SCROLL=<bottom/数字>` | 打开页面后把「桌面宠物」卡内部滚到指定位置（截图设置项用） |
 | `YLT_SELFCHECK_TRACE=1` | 自检排错：打印「进入 / 完成哪个分组」（查「全 PASS 但进程不退出」卡在哪一步） |
+
+## 19. AI 聊天 · 好感度（DeepSeek，`Ai/`）
+
+> 本轮新增（v1.9.0）。用户文档见 [docs/tools/live2d.md §AI 聊天 · 好感度](../tools/live2d.md#-ai-聊天--好感度deepseek)。
+> 三个设计口径：**能省就省**（默认思考关闭 / 160 token / 历史 6 轮 / 系统提示词 ≤700 字）、
+> **失败绝不空屏**（没 Key / 断网 / 解析失败都走离线兜底 + 一条 notice）、**不新增任何 NuGet 包**
+> （HTTP / JSON / 提示词 / 好感度手写；DPAPI 复用邮箱代收已引的 `ProtectedData`）。
+
+### 19.1 文件与职责
+
+| 文件 | 职责 |
+| --- | --- |
+| `Ai/AiContracts.cs` | **对外契约**：`AiThinkingLevel(s)` / `AiPersonaCatalog` / `AiPersonaSettings` / `AiRequestOptions` / `AiReply` / `AiChatMessage` / `AffectionEngine` + `AffectionState`/`AffectionSettings` / `AiChatServiceOptions` / `AiProactiveSettings` / `AiReplyEventArgs` / `AiChatService`（partial 契约，只有签名与规则注释） |
+| `Ai/AiChatService.cs` | partial 实现：聊天流程 / 历史裁剪 / token 统计 / `TickSchedule` 主动调度 / 落盘 `ai/chat-state.json` |
+| `Ai/AiPromptBuilder.cs` | 纯函数：系统提示词 / 状态行 / 用户消息 / 主动指令 / 属性解析 / 文本压缩 |
+| `Ai/AiReplyParser.cs` | 纯函数：模型 content → `AiReply`（代码围栏 / 字段别名 / 未知标签置空 / d 夹取 / Markdown 清洗 / 截断 200） |
+| `Ai/DeepSeekClient.cs` | 手写 `HttpClient`：`BuildRequestBody` / `ParseResponse` / `ChatAsync` / `TestConnectionAsync` / `MapHttpError` / `NormalizeBaseUrl`；构造函数可注入 `HttpMessageHandler`（自检用假 handler，不联网） |
+| `Ai/AiSecretStore.cs` | API Key 的 DPAPI（`DataProtectionScope.CurrentUser`）加解密；`dpapi:` 前缀、空值 / 历史明文兼容 |
+| `Controls/AffectionVial.cs` | 粉色好感度试管（WPF 自绘；`LiquidRatio` / `ClampValue` 是公开纯函数，自检直接断言） |
+| `Views/AiChatWindow.xaml(.cs)` | 聊天窗：消息列表 / 快捷短语 / 忙碌与 token 状态 / 三个即时开关（主动聊天 / 自然好感度 / 语音）；有示例数据模式（截图冒烟用，不碰真实聊天数据） |
+| `Views/AiChatPlacement.cs` | 聊天窗贴桌宠的**纯定位算法**（下方 → 左侧 → 右侧 → 夹回工作区；脏参数兜底） |
+| `Live2DSession.cs`「AI 聊天」段 | 懒创建服务、2 秒 `DispatcherTimer`、`ReplyReady` → 表情 / 鼓嘴 / 手势 / TTS / 气泡、桌宠右键菜单、截图钩子、退出落盘 |
+| `ViewModels/Live2DViewModel.cs`「AI 聊天」段 | 设置卡绑定 + 命令（打开聊天窗 / 清空 / 重置好感度 / 测试连接 / 清除 Key）；API Key 只读 DPAPI 解密结果 |
+| `Live2DConfig.cs`「AI 聊天」段 | 全部 `Ai*` 配置项（自动落盘；`AiApiKeyProtected` 存密文） |
+
+### 19.2 数据流
+
+```text
+聊天窗输入 / 快捷短语
+  → AiChatService.SendUserMessageAsync(text)
+  → 取历史（最近 N 轮，跳过 notice）→ 拼系统提示词（人格 + JSON 契约）+ 历史 + [状态行 + 用户原话]
+  → DeepSeekClient.ChatAsync（POST {baseUrl}/chat/completions）
+       ├─ 成功：ParseResponse → AiReplyParser → 文本 / 情绪 / 动作 / d / usage
+       └─ 失败：中文错误文案 → 离线兜底回复 + 一条 notice（notice 不进请求、不进历史）
+  → 加桌宠消息 → AffectionEngine.ApplyChat(模型 d) → 落盘 → ReplyReady(AiReplyEventArgs)
+  → Live2DSession.OnAiReplyReady：PickAiGesture(action) + ApplyAiMoodEffects(emotion/mood)
+       + TTS（声音 / 口型 / 气泡同步；可单独关）
+```
+
+### 19.3 线程模型
+
+- 服务在 **UI 线程**创建；`await` 回构造时的 `SynchronizationContext`（WPF 有 UI 上下文，事件也在 UI 线程触发）；
+  自检控制台没有上下文，就回线程池（所以自检的事件收集要加锁）。
+- 请求用 `SemaphoreSlim` **串行化**：同一时间只有一条在途；`IsBusy` 期间 `TickSchedule` 跳过主动说话，
+  不会打断正在等回复的那一轮。
+- 主动说话由会话的 **2 秒 `DispatcherTimer`** 调 `TickSchedule(now, userPresent)`；内部 `FireAndForget`
+  （不阻塞 Tick、异常不外抛）。页面 / 桌宠 / 聊天窗**都不可见**时不结算掉值、也不主动说话。
+- 落盘是**同步小 JSON**（≤200 条消息，`ToolStorage.WriteText` 原子写）；失败只记日志，绝不打断聊天。
+
+### 19.4 提示词结构与 JSON 输出契约
+
+- **系统提示词** `AiPromptBuilder.BuildSystemPrompt`，总长硬上限 `MaxSystemPromptLength = 700` 字：
+  身份（桌宠名）/ 人格预设名 + 描述 / 实际称呼 + 自称 / 属性 / 说话要求（中文口语、1~2 句、不 Markdown）/
+  「只输出一个 json」/ `{"r","e","a","d"}` 示例 / e、a 取值 / d 说明 / 自定义人格（≤200 字）/ 自定义设定（≤300 字）；
+  自定义文本按**剩余预算**截断（`AppendBudgeted`），保证总长不超。
+- **JSON Output 模式**：DeepSeek 的 `response_format={"type":"json_object"}` 要求提示词里出现 `json` 字样，
+  所以提示词两处都有；关掉自然模式 / 模型 d 参与时提示词不带 `"d"` 契约。
+- **状态行** `BuildStateLine`：`[状态] 好感度 72.5/100，心情：开心；属性：…`；happy/love 追加「可以撒个娇」，
+  angry/sulky 追加「可以带点小脾气」；`includeAffectionDelta` 时提示可用 `d` 字段。
+- **用户消息** = `BuildUserContent(状态行, 原话)` → `"状态行\n用户说：原话"`。
+- **主动说话**不带历史（省 token），只带 system + 一条 `BuildProactiveInstruction`：
+  IdleReminder 带「已经 N 分钟没理你」；Chatter 是普通主动搭话；两者都可能带上一句桌宠台词做衔接。
+- **模型输出**意图：`{"r":"回复","e":"情绪","a":"动作","d":-3~3}`；解析器认别名：
+  `r/reply/text/content/message`、`e/emotion/mood/feeling`、`a/action/act/motion`、`d/delta/affection*`。
+- **容错**：代码围栏 / 前后解释 / 未知标签置空 / d 夹 -3~+3 / 纯文本回退 / JSON 正文为空交给离线兜底 /
+  Markdown 与多空白清洗 / 正文截断 200 字。
+- **请求参数**：关闭思考 = `{"thinking":{"type":"disabled"}}` + `temperature: 0.9`、不发 `reasoning_effort`；
+  打开思考 = `{"type":"enabled"}` + `reasoning_effort`（低 low / 中 high / 高 max），**不发 temperature**；
+  `response_format` 只在 JSON 输出模式发；`max_tokens` 客户端安全夹 1~4096（用户预算 40~1000 由
+  会话 / 设置卡夹），主动说话压到 ≤80、测试连接 16。
+
+### 19.5 情绪 → 表情 / 动作映射
+
+模型返回的 `e`（情绪）与 `a`（动作）在 `Live2DSession` 里转成表情 / 手势 / 鼓嘴：
+
+| `e`（情绪） | 表情（按名字包含匹配，模型没有就跳过） |
+| --- | --- |
+| `love` | 爱心眼 → 脸红 |
+| `shy` | 脸红 → ＞＜ |
+| `happy` | 随机脸红（`AffectionEngine.IsBlushLikely`） |
+| `jealous` / `cold` | 黑脸 → 屑屑眼 |
+| `angry` / `sulky` | 黑脸 → ＞＜ |
+| `sad` | 流泪 |
+| `surprised` | 圈圈眼 |
+| 空 / `neutral` | 按当前好感度档位推断（Love→love / Happy→happy / Angry→angry / 其它 neutral） |
+
+- **鼓嘴**：`angry / jealous / cold` 或当前好感度 Angry → `MoodPuffAmount = 0.65`；sad → 0.3；Sulky → 0.35；
+  到期由帧循环收回（爱心眼约 7 秒、其它 5 秒，然后 `ClearExpressions` / 鼓嘴归零）。
+- **主动搭话收敛**：主动说话时好感度 <80 只允许爱心眼类表情，不会每次都红脸。
+- **动作标签 → 手势**：`wave` 挥手 / `heart` 比心 / `nod` 点头 / `akimbo` 叉腰 / `head_hold` 抱头 /
+  `point` 竖食指 / `grass` 狗尾草；`none` 或空 = 不摆手势，交给自动小动作。
+- 表情 / 动作联动整体可关（`AiMoodEffects=false`），语音也可单独关（`AiSpeakReply=false`）。
+
+### 19.6 好感度规则与持久化
+
+- 常量：`DailyGainCap = 15`（每天聊天涨幅上限）、`MaxDeltaPerChat = 4`（单轮夹取）、0~100、
+  1 位小数、`MidpointRounding.AwayFromZero`。
+- 档位：`<30` 生气 / `30~49` 闹别扭 / `50~69` 平常 / `70~84` 开心 / `≥85` 心动（`AffectionEngine.ResolveMood`）。
+- **涨**：只在**用户发言**侧结算一次（桌宠回复不重复加）；`GainPerChat + 模型 d`（启用时）夹 ±4；
+  每日累计不超过 15；自然模式关（手动模式）时 `ApplyChat` / `ApplyDecay` 都返回 0。
+- **掉**：基线 = `max(LastChatUnix, LastDecayUnix)`，每满 `DecayAfterHours` 掉 `DecayPerDay`，只掉完整周期、
+  一次可补多个周期；这样每 2 秒 `TickSchedule` 调一次也不会重复扣。
+- **兜底**：`FloorEnabled` 时自动变化不跌破 `Floor`；手动 `SetValue` 不受兜底限制（用户想设 0 就 0）。
+- **脸红 / 爱心眼概率**：`Value ≥ 65` 才有机会，概率随好感度升高 + 「容易害羞」属性 +0.2；
+  `IsBlushLikely(random01)` 注入随机数便于自检。
+- **落盘**：`Data\live2d\ai\chat-state.json`（`ToolStorage` 的 `ai/chat-state.json`）：
+  `messages`（≤200 条）/ `affection`（Value / LastChatUnix / LastDecayUnix / TodayGain / TodayKey）/
+  今日 token 三项；构造时读回、每次发言 / 主动说话后保存、`Dispose` 再存一次；token 统计跨天自动清零。
+
+### 19.7 主动聊天节流规则
+
+- 前置条件：`userPresent`（页面 / 桌宠 / 聊天窗可见）；`IsBusy` 时跳过；两条主动消息 **≥120 秒**；
+  用户刚说完话 **2 分钟内**不打扰。
+- **久未回复**（`IdleReminderEnabled`）：距 `_lastUserAt` ≥ `IdleSilenceMinutes`（夹 1~720，默认 10）且
+  `now ≥ _nextIdleAt` → 触发 `IdleReminder`；连续 3 次后等待时间 ×4；每条主动消息成功后重排 `_nextIdleAt`。
+- **定时搭话**（`Enabled`）：`now ≥ _nextChatterAt`（首次 = now + `IntervalMinutes` × 随机 0.6~1.4）→ 触发
+  `Chatter`；每次成功 / 触发后重排。关掉再打开从下一次 Tick 重新排期，不会一打开就说话。
+- 主动请求限制：**不带历史**、`max_tokens = min(配置, 80)` 夹 16~200；**主动说话不改好感度**
+  （只有用户发言才算聊了一轮）。
+
+### 19.8 DPAPI（API Key）
+
+- `AiSecretStore.Protect` = `dpapi:` + Base64(`ProtectedData.Protect(UTF8, null, CurrentUser)`)；
+  `Unprotect` 兼容历史明文（不以 `dpapi:` 开头原样返回）；解不开（换用户 / 换机器）返回空串，界面显示未填。
+- 配置里只存 `AiApiKeyProtected`；请求时 `GetAiApiKey` 解密后**只放 Authorization Header**
+  （自检断言「请求体不含明文 Key」）；不写日志、不做跨用户漫游。
+- 换用户 / 换机器需要重新填 Key（这是 DPAPI 的设计，不是 bug）。
+
+### 19.9 坑（本轮踩过的，改之前必看）
+
+1. **JSON Output 可能返回空 / 被内容过滤替换成全空格**：`ParseResponse` 判空 → 兜底错误 + 离线回复；
+   绝不把空字符串上屏。
+2. **思考模式不吃 temperature**：打开思考时不发 `temperature`（发了也无效）；关闭时才发 0.9。
+3. **`max_tokens` 截断**：按 max_tokens 硬截断，配置过小回复会断；默认 160 对 1~2 句够用。
+   客户端安全夹 1~4096；面向用户的 40~1000 在 `Live2DSession.BuildAiRequestOptions` / ViewModel 夹。
+4. **代码围栏 / 字段别名**：DeepSeek 偶尔包 ```json 或字段名不同，解析器必须容忍（自检已覆盖）。
+5. **聊天窗跟随桌宠 / 多屏**：`AiChatPlacement` 用桌宠所在屏幕工作区；优先级下方 → 左 → 右 → 夹回；
+   脏参数（NaN / 无穷 / 0）退回默认窗口尺寸，别把窗口算到屏幕外。
+6. **离线兜底**：没 Key / 401 / 402 / 429 / 网络失败都走本地台词；失败额外加一条 notice
+   （notice 只在界面显示，不进请求、不进历史）。
+7. **自检不联网**：所有 HTTP 断言走 `FakeChatHandler`；落盘走临时 `YLT_HOME`；好感度用固定
+   `DateTimeOffset`；主动调度用 `TickSchedule(now)` 注入时间，但服务内部 `_lastUserAt` 用真实时钟，
+   所以测试要以「真实 now + 偏移」推进。
+8. **2 秒 DispatcherTimer 只是机会点**：主动说话不保证准点，调试时别用精确时间断言。
+9. **多 agent 并行改同一工具**（本轮协作经验）：`AiContracts.cs` 先定签名与规则注释，再并行写
+   `AiChatService` / UI / 配置卡；否则改签名会把别人正在写的代码全弄红。
+
+### 19.10 自检覆盖
+
+`tests/YuLiangToolkit.FrameworkSelfCheck/Live2DAiChecks.cs`（由 `Live2DChecks.Run` 末尾调用，同属 `live2d` 组）：
+思考强度映射 / 人格目录 / 称呼解析 / 提示词 / 状态行 / 主动指令 / 回复解析 / 请求体与 401·429 文案 /
+网络重试 / DPAPI / 好感度引擎 / `AiChatService` 全链路（假 handler + 临时 `ToolStorage` + 现读配置回调）/
+聊天窗定位 / 试管液面 / 配置默认值与 JSON 往返；全部纯逻辑、不联网、不弹窗。

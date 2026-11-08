@@ -2,6 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             xmlns:controls="clr-namespace:YuLiangToolkit.Tools.Live2D.Controls"
              Background="Transparent"
              Focusable="False">
 
@@ -85,6 +86,8 @@
                 <RowDefinition Height="380" MinHeight="260" />                   <!-- 说话 / 轻对话卡 -->
                 <RowDefinition Height="12" />                                    <!-- 说话 / 日志分隔条 -->
                 <RowDefinition Height="200" MinHeight="130" />                   <!-- 日志 -->
+                <RowDefinition Height="12" />                                    <!-- 日志 / AI 聊天分隔条 -->
+                <RowDefinition Height="620" MinHeight="420" />                   <!-- AI 聊天 · 好感度卡（页面最底部） -->
             </Grid.RowDefinitions>
 
             <!-- ==================================================== 标题 ==================================================== -->
@@ -101,6 +104,9 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" Margin="12,0,0,0">
                     <Button Content="{Binding PetButtonText}" Style="{StaticResource PrimaryButtonStyle}"
                             Command="{Binding TogglePetCommand}" MinWidth="98" />
+                    <Button Content="💬 AI 聊天" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                            Command="{Binding OpenAiChatWindowCommand}"
+                            ToolTip="打开 / 关闭桌宠旁边的 AI 聊天框（DeepSeek；设置在本页最下方「🤖 AI 聊天 · 好感度」卡）" />
                     <Button Content="重新加载模型" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
                             Command="{Binding ReloadModelCommand}" />
                 </StackPanel>
@@ -1792,7 +1798,7 @@
                                            TextTrimming="CharacterEllipsis" MaxWidth="540" />
                             </StackPanel>
                             <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,4,0,0"
-                                       Text="默认用微软 Edge 在线神经网络语音（晓伊 · 少女音，默认软妹；也可换晓晓/晓北等，断网自动回退 Windows 本地语音）。在线只把要说的文本发给微软、不保存音频。说话时桌宠头顶显示气泡、嘴型跟着发音变化，声音 / 口型 / 气泡同时出现；轻对话是离线关键词匹配（未知输入 → 随机软妹回复），以后可以换成 LLM。" />
+                                       Text="默认用微软 Edge 在线神经网络语音（晓伊 · 少女音，默认软妹；也可换晓晓/晓北等，断网自动回退 Windows 本地语音）。在线只把要说的文本发给微软、不保存音频。说话时桌宠头顶显示气泡、嘴型跟着发音变化，声音 / 口型 / 气泡同时出现。想和桌宠真正聊天请用页面最下方「🤖 AI 聊天 · 好感度」卡：填 DeepSeek API Key 后可以自由对话、主动搭话、联动表情动作；没填 Key 时本卡「发送对话」仍走离线关键词轻对话。" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
                             <Button Content="🎲 随便说一句" Style="{StaticResource CompactButtonStyle}" Margin="0,0,6,0"
@@ -1898,7 +1904,7 @@
                                             Command="{Binding SpeakCommand}" />
                                     <Button Content="发送对话" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,6"
                                             Command="{Binding SendChatCommand}"
-                                            ToolTip="先显示你的话，0.3~0.8 秒后小凉按关键词回一句并说出来" />
+                                            ToolTip="先显示你的话，0.3~0.8 秒后大肥鱼按关键词回一句并说出来" />
                                     <Button Content="⏹ 停止" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,6"
                                             Command="{Binding StopSpeakingCommand}" />
                                     <Button Content="清空聊天" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
@@ -2004,6 +2010,406 @@
                                    VerticalAlignment="Center" Foreground="{DynamicResource FaintTextBrush}"
                                    ToolTip="{Binding LastScreenshotText}" />
                     </Grid>
+                </Grid>
+            </Border>
+
+            <!-- 上下分隔条：日志 / AI 聊天 -->
+            <core:PaneSplitter Grid.Row="18" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="live2d.AI与日志" />
+
+            <!-- ==================================================== 🤖 AI 聊天 · 好感度 ==================================================== -->
+            <Border Grid.Row="19" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="260" />
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="18,14,18,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🤖 AI 聊天 · 好感度（DeepSeek）" Style="{StaticResource CardHeaderStyle}" />
+                                <TextBlock Text="{Binding AiStatusSummaryText}" FontSize="10.5" Margin="10,0,0,0"
+                                           VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"
+                                           TextTrimming="CharacterEllipsis" MaxWidth="430" />
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,4,0,0"
+                                       Text="Key 只存本机 DPAPI 密文；只把对话文字发给 DeepSeek；默认关闭思考 + 160 token 省着花。聊天记录 / 好感度存在 Data\live2d\ai\chat-state.json（不进配置导出）。" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                            <Button Content="💬 打开 / 关闭聊天窗" Style="{StaticResource CompactButtonStyle}" Margin="0,0,6,0"
+                                    Command="{Binding OpenAiChatWindowCommand}"
+                                    ToolTip="打开 / 关闭桌宠 AI 聊天窗（桌宠右键菜单里也能打开）" />
+                            <Button Content="清空聊天" Style="{StaticResource CompactButtonStyle}"
+                                    Command="{Binding ClearAiConversationCommand}"
+                                    ToolTip="清空聊天记录（好感度不变）" />
+                        </StackPanel>
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1" Style="{StaticResource CardScrollerStyle}" Margin="0,10,0,0">
+                        <Grid Margin="18,0,18,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="460" MinWidth="380" />
+                                <ColumnDefinition Width="18" />
+                                <ColumnDefinition Width="*" MinWidth="360" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- ===== 左：DeepSeek 接入 + 人格 / 称呼 / 属性 ===== -->
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="DeepSeek API Key" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <PasswordBox x:Name="AiApiKeyBox" Width="260" Height="28" Padding="8,0" FontSize="12"
+                                                 VerticalContentAlignment="Center"
+                                                 Background="{DynamicResource InputBackgroundBrush}"
+                                                 Foreground="{DynamicResource TextPrimaryBrush}"
+                                                 BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                                 Loaded="OnAiApiKeyBoxLoaded"
+                                                 PasswordChanged="OnAiApiKeyBoxChanged"
+                                                 ToolTip="DeepSeek API Key（sk-…）：只存本机 DPAPI 密文，换 Windows 用户 / 换机器要重填" />
+                                    <Button Grid.Column="1" Content="清除" Style="{StaticResource CompactButtonStyle}"
+                                            HorizontalAlignment="Left" Margin="8,0,0,0"
+                                            Command="{Binding ClearAiApiKeyCommand}"
+                                            ToolTip="清掉已保存的 Key（聊天退回离线关键词回复）" />
+                                </Grid>
+                                <TextBlock Text="{Binding AiKeyMaskText}" Style="{StaticResource CardSubTextStyle}" Margin="0,3,0,0" />
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="68" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="接口地址" Style="{StaticResource SettingLabelStyle}" />
+                                    <TextBox Grid.Column="1" Height="28" FontSize="12"
+                                             Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding AiBaseUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="默认官方 https://api.deepseek.com；走代理 / 中转时改这里" />
+                                </Grid>
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="68" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="模型" Style="{StaticResource SettingLabelStyle}" />
+                                    <TextBox Grid.Column="1" Height="28" FontSize="12"
+                                             Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding AiModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="默认 deepseek-flash；也可填 deepseek-v4-pro" />
+                                </Grid>
+
+                                <WrapPanel Margin="0,8,0,0">
+                                    <Button Content="🔌 测试连接" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,10,6"
+                                            Command="{Binding TestAiConnectionCommand}"
+                                            ToolTip="发一条极短请求验证 Key / 地址 / 模型是否可用（不写聊天记录）" />
+                                    <TextBlock Text="{Binding AiTestResultText}" Style="{StaticResource CardSubTextStyle}"
+                                               MaxWidth="290" VerticalAlignment="Center" Margin="0,0,0,6" />
+                                </WrapPanel>
+
+                                <Grid Margin="0,2,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="68" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="思考强度" Style="{StaticResource SettingLabelStyle}" />
+                                    <ComboBox Grid.Column="1" Width="160" HorizontalAlignment="Left" Height="28"
+                                              ItemsSource="{Binding AiThinkingOptions}" DisplayMemberPath="Label"
+                                              SelectedItem="{Binding SelectedAiThinking, Mode=TwoWay}"
+                                              Style="{StaticResource ComboBoxStyle}"
+                                              ToolTip="默认关闭（最省 token）；低 / 中 / 高 = 打开思考，回复更聪明但更费钱" />
+                                </Grid>
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="68" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="token 预算" Style="{StaticResource SettingLabelStyle}" />
+                                    <TextBox Grid.Column="1" Width="86" Height="28" FontSize="12" TextAlignment="Center"
+                                             Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding AiMaxTokens, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="单次回复最大 token（40 ~ 1000，默认 160；越小越省）" />
+                                    <TextBlock Grid.Column="2" Text="单次回复上限，默认 160" Style="{StaticResource CardSubTextStyle}"
+                                               VerticalAlignment="Center" Margin="10,0,0,0" />
+                                </Grid>
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="68" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="历史轮数" Style="{StaticResource SettingLabelStyle}" />
+                                    <TextBox Grid.Column="1" Width="86" Height="28" FontSize="12" TextAlignment="Center"
+                                             Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding AiHistoryTurns, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="带多少轮历史对话（0 ~ 20，默认 6；越大越费 token）" />
+                                    <TextBlock Grid.Column="2" Text="越大越费 token" Style="{StaticResource CardSubTextStyle}"
+                                               VerticalAlignment="Center" Margin="10,0,0,0" />
+                                </Grid>
+
+                                <TextBlock Text="人格 / 称呼" FontSize="11.5" FontWeight="SemiBold" Margin="0,10,0,4" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="68" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="人格" Style="{StaticResource SettingLabelStyle}" />
+                                    <ComboBox Grid.Column="1" Height="28"
+                                              ItemsSource="{Binding AiPersonaOptions}" DisplayMemberPath="Label"
+                                              SelectedItem="{Binding SelectedAiPersona, Mode=TwoWay}"
+                                              Style="{StaticResource ComboBoxStyle}"
+                                              ToolTip="温柔女友 / 傲娇 / 病娇 / 元气妹妹（会拼进系统提示词）" />
+                                </Grid>
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="68" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="人格补充" Style="{StaticResource SettingLabelStyle}" />
+                                    <TextBox Grid.Column="1" Height="28" FontSize="12"
+                                             Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding AiPersonaCustom, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="可选：人格补充（最多取前 200 字），会拼在预设人格后面" />
+                                </Grid>
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="68" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="称呼" Style="{StaticResource SettingLabelStyle}" />
+                                    <ComboBox Grid.Column="1" Height="28"
+                                              ItemsSource="{Binding AiAddressOptions}" DisplayMemberPath="Label"
+                                              SelectedItem="{Binding SelectedAiAddress, Mode=TwoWay}"
+                                              Style="{StaticResource ComboBoxStyle}"
+                                              ToolTip="桌宠管你叫什么（用户 / 老公 / 主人）" />
+                                </Grid>
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="68" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="自定义称呼" Style="{StaticResource SettingLabelStyle}" />
+                                    <TextBox Grid.Column="1" Height="28" FontSize="12"
+                                             Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding AiAddressCustom, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="非空时优先于下拉预设（最多 12 字）；留空就用上面的预设" />
+                                </Grid>
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="68" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="自称" Style="{StaticResource SettingLabelStyle}" />
+                                    <ComboBox Grid.Column="1" Height="28"
+                                              ItemsSource="{Binding AiSelfOptions}" DisplayMemberPath="Label"
+                                              SelectedItem="{Binding SelectedAiSelf, Mode=TwoWay}"
+                                              Style="{StaticResource ComboBoxStyle}"
+                                              ToolTip="桌宠怎么称呼自己（我 / 本小姐 / 本姑娘 / 本鱼）" />
+                                </Grid>
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="68" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="自定义自称" Style="{StaticResource SettingLabelStyle}" />
+                                    <TextBox Grid.Column="1" Height="28" FontSize="12"
+                                             Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding AiSelfCustom, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="非空时优先于下拉预设（最多 12 字）；留空就用上面的预设" />
+                                </Grid>
+
+                                <TextBlock Text="属性（可多选）" FontSize="11.5" FontWeight="SemiBold" Margin="0,10,0,4" />
+                                <WrapPanel>
+                                    <CheckBox Content="容易害羞" Style="{StaticResource CheckBoxStyle}" Margin="0,0,14,6"
+                                              IsChecked="{Binding AiAttrShy, Mode=TwoWay}" />
+                                    <CheckBox Content="爱吃醋" Style="{StaticResource CheckBoxStyle}" Margin="0,0,14,6"
+                                              IsChecked="{Binding AiAttrJealous, Mode=TwoWay}" />
+                                    <CheckBox Content="黏人" Style="{StaticResource CheckBoxStyle}" Margin="0,0,14,6"
+                                              IsChecked="{Binding AiAttrClingy, Mode=TwoWay}" />
+                                    <CheckBox Content="爱撒娇" Style="{StaticResource CheckBoxStyle}" Margin="0,0,14,6"
+                                              IsChecked="{Binding AiAttrCute, Mode=TwoWay}" />
+                                    <CheckBox Content="傲娇口癖" Style="{StaticResource CheckBoxStyle}" Margin="0,0,14,6"
+                                              IsChecked="{Binding AiAttrTsundere, Mode=TwoWay}" />
+                                    <CheckBox Content="容易生气" Style="{StaticResource CheckBoxStyle}" Margin="0,0,14,6"
+                                              IsChecked="{Binding AiAttrGrumpy, Mode=TwoWay}" />
+                                    <CheckBox Content="爱夸奖" Style="{StaticResource CheckBoxStyle}" Margin="0,0,14,6"
+                                              IsChecked="{Binding AiAttrPraise, Mode=TwoWay}" />
+                                </WrapPanel>
+
+                                <TextBlock Text="自定义自我设定" FontSize="11.5" FontWeight="SemiBold" Margin="0,4,0,4" />
+                                <TextBox Height="72" FontSize="12" AcceptsReturn="True" TextWrapping="Wrap"
+                                         VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" Padding="8,6"
+                                         Style="{StaticResource TextBoxStyle}"
+                                         Text="{Binding AiCustomSetting, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="自由写背景 / 人格约束（最多取前 300 字），会拼进系统提示词；留空就是默认设定" />
+                            </StackPanel>
+
+                            <!-- ===== 右：好感度 / 自然模式 / 主动聊天 ===== -->
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="好感度" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <!-- 粉色试管的液面 = 好感度；Mood 决定液体配色（心动更粉、生气偏灰粉） -->
+                                    <controls:AffectionVial Width="72" Height="172" VerticalAlignment="Top"
+                                                           Value="{Binding AiAffectionValue, Mode=OneWay}"
+                                                           Mood="{Binding AiMood, Mode=OneWay}" />
+                                    <StackPanel Grid.Column="1" Margin="16,4,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="{Binding AiAffectionValue, StringFormat={}{0:0.0}}"
+                                                       FontSize="28" FontWeight="Bold" Foreground="#FF7FAE" />
+                                            <TextBlock Text="/ 100" FontSize="12" VerticalAlignment="Bottom" Margin="6,0,0,6"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding AiMoodText}" FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="#FF7FAE" Margin="0,2,0,0" />
+                                        <TextBlock Text="{Binding AiStatusSummaryText}" Style="{StaticResource CardSubTextStyle}"
+                                                   Margin="0,6,0,0" />
+                                        <TextBlock Text="{Binding AiTodayTokensText}" Style="{StaticResource CardSubTextStyle}"
+                                                   Margin="0,2,0,0" />
+                                        <Grid Margin="0,8,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <Slider Minimum="0" Maximum="100" SmallChange="1" LargeChange="5"
+                                                    Value="{Binding AiAffectionValue, Mode=TwoWay}"
+                                                    Style="{StaticResource SliderStyle}" VerticalAlignment="Center"
+                                                    ToolTip="手动拖好感度（0 ~ 100）；自然模式下聊天 / 时间也会自己涨掉" />
+                                            <Button Grid.Column="1" Content="重置 50" Style="{StaticResource CompactButtonStyle}"
+                                                    Margin="8,0,0,0" Command="{Binding ResetAiAffectionCommand}"
+                                                    ToolTip="把好感度改回 50（平常）" />
+                                        </Grid>
+                                        <TextBlock Text="{Binding AiAffectionHint}" Style="{StaticResource CardSubTextStyle}"
+                                                   Margin="0,6,0,0" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <CheckBox Content="自然模式（聊得多涨、长时间不聊掉）" Style="{StaticResource CheckBoxStyle}"
+                                          Margin="0,10,0,4" IsChecked="{Binding AiAffectionNatural, Mode=TwoWay}"
+                                          ToolTip="关掉 = 纯手动拖数值，聊天和时间都不会改好感度" />
+
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox Content="兜底" Style="{StaticResource CheckBoxStyle}"
+                                              IsChecked="{Binding AiAffectionFloorEnabled, Mode=TwoWay}"
+                                              ToolTip="自然模式下好感度最低不低于下面这个值" />
+                                    <TextBox Grid.Column="1" Width="70" Height="28" FontSize="12" TextAlignment="Center"
+                                             Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding AiAffectionFloor, Mode=TwoWay}"
+                                             ToolTip="兜底数值（0 ~ 100，默认 20）" />
+                                    <TextBlock Grid.Column="2" Text="最低不低于这个值" Style="{StaticResource CardSubTextStyle}"
+                                               VerticalAlignment="Center" Margin="10,0,0,0" />
+                                </Grid>
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="每轮涨幅" Style="{StaticResource SettingLabelStyle}" />
+                                    <TextBox Grid.Column="1" Width="70" Height="28" FontSize="12" TextAlignment="Center"
+                                             Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding AiAffectionGainPerChat, Mode=TwoWay}"
+                                             ToolTip="每聊一轮涨多少（0.2 ~ 3，默认 1.0；每天最多涨 15）" />
+                                    <TextBlock Grid.Column="2" Text="每天最多涨 15" Style="{StaticResource CardSubTextStyle}"
+                                               VerticalAlignment="Center" Margin="10,0,0,0" />
+                                </Grid>
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="掉值 / 周期" Style="{StaticResource SettingLabelStyle}" />
+                                    <TextBox Grid.Column="1" Width="70" Height="28" FontSize="12" TextAlignment="Center"
+                                             Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding AiAffectionDecayPerDay, Mode=TwoWay}"
+                                             ToolTip="每个不聊周期掉多少（0 ~ 20，默认 3）" />
+                                    <TextBlock Grid.Column="2" Text="掉多少（默认 3）" Style="{StaticResource CardSubTextStyle}"
+                                               VerticalAlignment="Center" Margin="10,0,0,0" />
+                                </Grid>
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="周期" Style="{StaticResource SettingLabelStyle}" />
+                                    <TextBox Grid.Column="1" Width="70" Height="28" FontSize="12" TextAlignment="Center"
+                                             Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding AiAffectionDecayAfterHours, Mode=TwoWay}"
+                                             ToolTip="多久不聊算一个掉值周期（小时，1 ~ 240，默认 24）" />
+                                    <TextBlock Grid.Column="2" Text="小时不聊掉一次（默认 24）" Style="{StaticResource CardSubTextStyle}"
+                                               VerticalAlignment="Center" Margin="10,0,0,0" />
+                                </Grid>
+                                <CheckBox Content="模型给出的变化（-3 ~ +3）也计入" Style="{StaticResource CheckBoxStyle}"
+                                          Margin="0,6,0,0" IsChecked="{Binding AiAffectionModelDelta, Mode=TwoWay}"
+                                          ToolTip="让模型在回复里附带的情绪强度影响好感度（关掉 = 只看每轮涨幅 / 掉值）" />
+
+                                <TextBlock Text="主动聊天" FontSize="11.5" FontWeight="SemiBold" Margin="0,10,0,4" />
+                                <CheckBox Content="允许桌宠主动搭话" Style="{StaticResource CheckBoxStyle}"
+                                          IsChecked="{Binding AiProactiveEnabled, Mode=TwoWay}"
+                                          ToolTip="按下面的间隔随机找你说一句（玩别的工具时会弹气泡 / 说话）" />
+                                <Grid Margin="0,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="间隔" Style="{StaticResource SettingLabelStyle}" />
+                                    <TextBox Grid.Column="1" Width="70" Height="28" FontSize="12" TextAlignment="Center"
+                                             Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding AiProactiveIntervalMinutes, Mode=TwoWay}"
+                                             ToolTip="主动搭话间隔（分钟，3 ~ 360，默认 20）" />
+                                    <TextBlock Grid.Column="2" Text="分钟一次" Style="{StaticResource CardSubTextStyle}"
+                                               VerticalAlignment="Center" Margin="10,0,0,0" />
+                                </Grid>
+                                <CheckBox Content="久没回复时主动撒娇 / 求陪" Style="{StaticResource CheckBoxStyle}" Margin="0,6,0,0"
+                                          IsChecked="{Binding AiIdleReminderEnabled, Mode=TwoWay}"
+                                          ToolTip="你很久没回消息时，桌宠主动说一句求关注" />
+                                <Grid Margin="0,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="门限" Style="{StaticResource SettingLabelStyle}" />
+                                    <TextBox Grid.Column="1" Width="70" Height="28" FontSize="12" TextAlignment="Center"
+                                             Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding AiIdleSilenceMinutes, Mode=TwoWay}"
+                                             ToolTip="多久没回就算「很久」（分钟，1 ~ 720，默认 10）" />
+                                    <TextBlock Grid.Column="2" Text="分钟没回就提醒" Style="{StaticResource CardSubTextStyle}"
+                                               VerticalAlignment="Center" Margin="10,0,0,0" />
+                                </Grid>
+
+                                <TextBlock Text="表现" FontSize="11.5" FontWeight="SemiBold" Margin="0,10,0,4" />
+                                <WrapPanel>
+                                    <CheckBox Content="朗读回复（TTS + 气泡）" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6"
+                                              IsChecked="{Binding AiSpeakReply, Mode=TwoWay}"
+                                              ToolTip="关掉只显示文字，不发声" />
+                                    <CheckBox Content="表情 / 动作联动" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6"
+                                              IsChecked="{Binding AiMoodEffects, Mode=TwoWay}"
+                                              ToolTip="害羞脸红、生气黑脸、比心挥手（按回复里的情绪 / 动作标签）" />
+                                    <CheckBox Content="显示桌宠时自动打开聊天窗" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6"
+                                              IsChecked="{Binding AiChatAutoOpen, Mode=TwoWay}"
+                                              ToolTip="不想每次都被弹窗就关掉，需要时点上面的「打开 / 关闭聊天窗」" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Grid>
+                    </ScrollViewer>
                 </Grid>
             </Border>
         </Grid>

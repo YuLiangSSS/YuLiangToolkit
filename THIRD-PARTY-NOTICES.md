@@ -64,7 +64,8 @@
 ## System.Security.Cryptography.ProtectedData 9.0.4（NuGet 依赖）
 
 - 用途：「邮箱代收」用 Windows DPAPI 加密保存 QQ 授权码 / Gmail 应用专用密码
-  （`src/YuLiangToolkit.Tools.Mail/SecureStore.cs`）
+  （`src/YuLiangToolkit.Tools.Mail/SecureStore.cs`）；「Live2D 桌宠」的 **DeepSeek API Key** 同样用它加密
+  （`src/YuLiangToolkit.Tools.Live2D/Ai/AiSecretStore.cs`，配置里只存 `dpapi:` 密文）
 - 项目主页：<https://dot.net/>
 - 许可：MIT License
 - 版权：Copyright (c) .NET Foundation and Contributors
@@ -148,6 +149,22 @@
   本项目**没有引入任何第三方语音 / 音频 / 网络库**，HTTP / WebSocket / WAV 解析 / 唇形包络都是手写 C# 实现；
 - 说明：语音功能由用户主动触发（点「说出来 / 发送对话 / 试听」或打开空闲自言自语）；合成音频只在内存里播放，
   **不保存任何音频文件**、不申请麦克风；在线合成失败会自动回退本地语音。
+
+## DeepSeek API（在线服务，无第三方库）
+
+- 位置：`src/YuLiangToolkit.Tools.Live2D/Ai/`（调用处）
+- 用途：「Live2D 桌宠」的 **AI 聊天 · 好感度**调用 **DeepSeek 开放平台**的 Chat Completions 接口
+  （默认 `https://api.deepseek.com`，用户可在设置里改成代理 / 中转地址）
+- 说明：
+  - API Key 由**用户自己**在 DeepSeek 开放平台申请并填写，按 token 计费、费用由用户自己的 DeepSeek 账户承担；
+    本程序作者不提供 Key、不代付、也不收集 Key；
+  - 本项目**没有引入任何第三方 AI / HTTP / JSON SDK**：HTTP 请求、JSON 解析、提示词拼装、好感度引擎
+    都是手写 C#（`DeepSeekClient` / `AiPromptBuilder` / `AiReplyParser`），运行时不依赖额外的 AI 组件；
+  - 只把「人格提示词 + 最近几轮对话 + 好感度状态行」发给 DeepSeek，**不发送**模型 / 图片 / 音频 / 本机路径 /
+    其它工具的数据；聊天记录 / 好感度只存本机 `Data\live2d\ai\chat-state.json`；
+  - API Key 落盘用 **Windows DPAPI** 加密（见上面 `ProtectedData` 条目），不写日志；
+  - 使用 DeepSeek 服务需遵守其服务条款与内容政策，与本项目 Unlicense 无关；不填 Key 时 AI 聊天
+    只走本地离线关键词兜底、完全不联网。
 
 ## AvalonEdit 6.3.1.120（NuGet 依赖）
 

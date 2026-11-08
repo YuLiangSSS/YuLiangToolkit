@@ -5,6 +5,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using YuLiangToolkit.Core.Mvvm;
+using YuLiangToolkit.Tools.Live2D.Ai;
 using YuLiangToolkit.Tools.Live2D.Audio;
 using YuLiangToolkit.Tools.Live2D.Speech;
 using YuLiangToolkit.Tools.Live2D.Interop;
@@ -100,6 +101,16 @@ public sealed class Live2DViewModel : ToolViewModelBase
     private bool _isSpeaking;
     private double _speechMouthOpen;
 
+    // ===== 🤖 AI 聊天 · 好感度（DeepSeek） =====
+    private string? _aiApiKeyCache;          // API Key 明文缓存（只在内存；避免每次读属性都解密）
+    private bool _aiApiKeyLoaded;            // 是否已经从会话 / 配置里读过一次明文
+    private bool _aiAffectionUpdating;       // 滑杆写好感度期间置位：防止会话事件回写把滑杆抢回去抖动
+    private string _aiTestResultText = "还没测试过连接";
+    private OptionItem<string>? _selectedAiThinking;
+    private OptionItem<string>? _selectedAiPersona;
+    private OptionItem<string>? _selectedAiAddress;
+    private OptionItem<string>? _selectedAiSelf;
+
     public Live2DViewModel() : base(Live2DTool.ToolId)
     {
         Cfg = LoadConfig<Live2DConfig>();
@@ -142,7 +153,7 @@ public sealed class Live2DViewModel : ToolViewModelBase
         StopDanceCommand = new RelayCommand(_ => Session.StopDance());
         StopAllDemosCommand = new RelayCommand(_ => StopAllDemos());
         RandomActionCommand = new RelayCommand(_ => Session.RandomAction());
-        TryVoiceCommand = new RelayCommand(_ => SpeakText("你好呀，我是小凉～"));
+        TryVoiceCommand = new RelayCommand(_ => SpeakText("你好呀，我是大肥鱼～"));
         SpeakCommand = new RelayCommand(_ => SpeakText(SpeechInput));
         StopSpeakingCommand = new RelayCommand(_ => Session.StopSpeaking());
         RandomSayCommand = new RelayCommand(_ => SpeakText(PickRandomSpeechLine()));
@@ -150,12 +161,23 @@ public sealed class Live2DViewModel : ToolViewModelBase
         SendChatCommand = new RelayCommand(_ => SendChat());
         ClearChatCommand = new RelayCommand(_ => ChatMessages.Clear());
 
+        // ===== 🤖 AI 聊天 · 好感度（DeepSeek） =====
+        OpenAiChatWindowCommand = new RelayCommand(_ => Session.ToggleAiChatWindow());
+        TestAiConnectionCommand = new AsyncRelayCommand(_ => TestAiConnectionAsync());
+        ClearAiConversationCommand = new RelayCommand(_ => ClearAiConversation());
+        ResetAiAffectionCommand = new RelayCommand(_ => ResetAiAffection());
+        ClearAiApiKeyCommand = new RelayCommand(_ => AiApiKey = "");
+
         _selectedDanceMode = DanceModeOptions[0];
         _selectedVoice = null;
 
         Session.PetVisibilityChanged += OnPetVisibilityChanged;
         Session.StateChanged += OnSessionStateChanged;
         Session.MocapStateChanged += OnMocapStateChanged;
+
+        // AI 聊天：先建好下拉选项（人格 / 称呼 / 思考强度），再订阅会话状态变化
+        BuildAiOptions();
+        Session.AiChatStateChanged += OnAiChatStateChanged;
     }
 
     // ===================== 基础设施 =====================
@@ -2526,7 +2548,7 @@ public sealed class Live2DViewModel : ToolViewModelBase
     {
         await Task.Delay(Random.Shared.Next(300, 800));
         var reply = PickChatReply(userText);
-        AddChatMessage("小凉", reply);
+        AddChatMessage("大肥鱼", reply);
         SpeakTextCore(reply);
     }
 
@@ -2553,6 +2575,750 @@ public sealed class Live2DViewModel : ToolViewModelBase
 
     /// <summary>外部直接改 Cfg（截图演示钩子 / 校准写入）后把界面全部重绑一遍。</summary>
     public void RefreshAllBindings() => OnPropertyChanged(string.Empty);
+
+    // ===================== 🤖 AI 聊天 · 好感度（DeepSeek） =====================
+    //
+    // 配置全部落在 Live2DConfig 的 Ai* 属性里（自动保存）；setter 改完都调 Session.ApplyAiSettings()
+    // 让会话立刻用新设置重建提示词 / 好感度规则。API Key 明文只在内存里，落盘是 DPAPI 密文。
+
+    /// <summary>DeepSeek API Key（内存明文；清空 = 聊天退化为离线关键词回复）。</summary>
+    public string AiApiKey
+    {
+        get
+        {
+            if (_aiApiKeyLoaded) return _aiApiKeyCache ?? "";
+            _aiApiKeyLoaded = true;
+            try
+            {
+                _aiApiKeyCache = Session.GetAiApiKey() ?? "";
+            }
+            catch (Exception ex)
+            {
+                _aiApiKeyCache = "";
+                Log("读取 API Key 失败：" + ex.Message);
+            }
+            return _aiApiKeyCache ?? "";
+        }
+        set
+        {
+            var key = (value ?? "").Trim();
+            if (string.Equals(AiApiKey, key, StringComparison.Ordinal)) return;
+
+            _aiApiKeyCache = key;
+            _aiApiKeyLoaded = true;
+            try
+            {
+                Session.SetAiApiKey(key);
+                Log(string.IsNullOrEmpty(key)
+                    ? "AI：API Key 已清除（聊天退化为离线关键词回复）"
+                    : "AI：API Key 已保存（本机 DPAPI 加密）");
+            }
+            catch (Exception ex)
+            {
+                Log("保存 API Key 失败：" + ex.Message);
+            }
+
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AiKeyMaskText));
+        }
+    }
+
+    /// <summary>API Key 状态提示（已填 / 未填）。</summary>
+    public string AiKeyMaskText => string.IsNullOrWhiteSpace(AiApiKey)
+        ? "未填 —— 聊天会退化为离线关键词回复"
+        : "已保存（DPAPI 加密，本机可用）";
+
+    /// <summary>接口根地址（默认官方 <c>https://api.deepseek.com</c>；走代理 / 中转时改这里）。</summary>
+    public string AiBaseUrl
+    {
+        get => Cfg.AiBaseUrl;
+        set
+        {
+            var text = (value ?? "").Trim();
+            if (string.Equals(Cfg.AiBaseUrl, text, StringComparison.Ordinal)) return;
+            Cfg.AiBaseUrl = text;
+            OnPropertyChanged();
+            Session.ApplyAiSettings();
+        }
+    }
+
+    /// <summary>模型名（默认 <c>deepseek-flash</c>；也可填 <c>deepseek-v4-pro</c>）。</summary>
+    public string AiModel
+    {
+        get => Cfg.AiModel;
+        set
+        {
+            var text = (value ?? "").Trim();
+            if (string.Equals(Cfg.AiModel, text, StringComparison.Ordinal)) return;
+            Cfg.AiModel = text;
+            OnPropertyChanged();
+            Session.ApplyAiSettings();
+            Log("AI 模型：" + (text.Length == 0 ? "（空，会回退默认）" : text));
+        }
+    }
+
+    /// <summary>思考强度下拉（值 = 配置里的中文，标签 = 界面文案）。</summary>
+    public ObservableCollection<OptionItem<string>> AiThinkingOptions { get; } = new();
+
+    /// <summary>当前思考强度。</summary>
+    public OptionItem<string>? SelectedAiThinking
+    {
+        get => _selectedAiThinking;
+        set
+        {
+            if (!Set(ref _selectedAiThinking, value)) return;
+            var text = value?.Value ?? AiThinkingLevels.ToConfig(AiThinkingLevel.Off);
+            if (!string.Equals(Cfg.AiThinkingLevel, text, StringComparison.Ordinal))
+            {
+                Cfg.AiThinkingLevel = text;
+                Session.ApplyAiSettings();
+            }
+            Log("AI 思考强度：" + (value?.Label ?? "关闭"));
+        }
+    }
+
+    /// <summary>单次回复最大 token（40 ~ 1000，默认 160；越小越省）。</summary>
+    public int AiMaxTokens
+    {
+        get => Math.Clamp(Cfg.AiMaxTokens, 40, 1000);
+        set
+        {
+            var clamped = Math.Clamp(value, 40, 1000);
+            if (Cfg.AiMaxTokens == clamped) return;
+            Cfg.AiMaxTokens = clamped;
+            Session.ApplyAiSettings();
+            // 只有输入本身合法才回刷界面：否则用户删到一半（如「1」被夹成 40）会被强行改写，
+            // 根本没法把 160 重新打进去。
+            if (clamped == value) OnPropertyChanged();
+        }
+    }
+
+    /// <summary>带多少轮历史对话（0 ~ 20，默认 6；越大越费 token）。</summary>
+    public int AiHistoryTurns
+    {
+        get => Math.Clamp(Cfg.AiHistoryTurns, 0, 20);
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 20);
+            if (Cfg.AiHistoryTurns == clamped) return;
+            Cfg.AiHistoryTurns = clamped;
+            Session.ApplyAiSettings();
+            if (clamped == value) OnPropertyChanged();
+        }
+    }
+
+    /// <summary>人格预设下拉（值 = 人格 Id，标签 = 人格名）。</summary>
+    public ObservableCollection<OptionItem<string>> AiPersonaOptions { get; } = new();
+
+    /// <summary>当前人格预设。</summary>
+    public OptionItem<string>? SelectedAiPersona
+    {
+        get => _selectedAiPersona;
+        set
+        {
+            if (!Set(ref _selectedAiPersona, value)) return;
+            var id = value?.Value ?? AiPersonaCatalog.Personas[0].Id;
+            if (!string.Equals(Cfg.AiPersonaId, id, StringComparison.Ordinal))
+            {
+                Cfg.AiPersonaId = id;
+                Session.ApplyAiSettings();
+            }
+            Log("AI 人格：" + (value?.Label ?? AiPersonaCatalog.Personas[0].Name));
+        }
+    }
+
+    /// <summary>人格补充（可选，最多取前 200 字；会拼在人格预设后面）。</summary>
+    public string AiPersonaCustom
+    {
+        get => Cfg.AiPersonaCustom;
+        set
+        {
+            var text = value ?? "";
+            if (string.Equals(Cfg.AiPersonaCustom, text, StringComparison.Ordinal)) return;
+            Cfg.AiPersonaCustom = text;
+            OnPropertyChanged();
+            Session.ApplyAiSettings();
+        }
+    }
+
+    /// <summary>用户称呼预设下拉（值 = 称呼本身）。</summary>
+    public ObservableCollection<OptionItem<string>> AiAddressOptions { get; } = new();
+
+    /// <summary>当前用户称呼预设。</summary>
+    public OptionItem<string>? SelectedAiAddress
+    {
+        get => _selectedAiAddress;
+        set
+        {
+            if (!Set(ref _selectedAiAddress, value)) return;
+            var text = value?.Value ?? AiPersonaCatalog.AddressPresets[0];
+            if (!string.Equals(Cfg.AiAddressPreset, text, StringComparison.Ordinal))
+            {
+                Cfg.AiAddressPreset = text;
+                Session.ApplyAiSettings();
+            }
+            Log("AI 称呼：" + text);
+        }
+    }
+
+    /// <summary>自定义用户称呼（非空时优先于预设）。</summary>
+    public string AiAddressCustom
+    {
+        get => Cfg.AiAddressCustom;
+        set
+        {
+            var text = value ?? "";
+            if (string.Equals(Cfg.AiAddressCustom, text, StringComparison.Ordinal)) return;
+            Cfg.AiAddressCustom = text;
+            OnPropertyChanged();
+            Session.ApplyAiSettings();
+        }
+    }
+
+    /// <summary>桌宠自称预设下拉（值 = 自称本身）。</summary>
+    public ObservableCollection<OptionItem<string>> AiSelfOptions { get; } = new();
+
+    /// <summary>当前桌宠自称预设。</summary>
+    public OptionItem<string>? SelectedAiSelf
+    {
+        get => _selectedAiSelf;
+        set
+        {
+            if (!Set(ref _selectedAiSelf, value)) return;
+            var text = value?.Value ?? AiPersonaCatalog.SelfPresets[0];
+            if (!string.Equals(Cfg.AiSelfPreset, text, StringComparison.Ordinal))
+            {
+                Cfg.AiSelfPreset = text;
+                Session.ApplyAiSettings();
+            }
+            Log("AI 自称：" + text);
+        }
+    }
+
+    /// <summary>自定义桌宠自称（非空时优先于预设）。</summary>
+    public string AiSelfCustom
+    {
+        get => Cfg.AiSelfCustom;
+        set
+        {
+            var text = value ?? "";
+            if (string.Equals(Cfg.AiSelfCustom, text, StringComparison.Ordinal)) return;
+            Cfg.AiSelfCustom = text;
+            OnPropertyChanged();
+            Session.ApplyAiSettings();
+        }
+    }
+
+    // ---------- 人格属性（7 个勾选项；值统一落在 Cfg.AiAttributes 的逗号分隔字符串里） ----------
+
+    /// <summary>属性：容易害羞。</summary>
+    public bool AiAttrShy
+    {
+        get => GetAiAttribute(0);
+        set => SetAiAttribute(0, value, nameof(AiAttrShy));
+    }
+
+    /// <summary>属性：爱吃醋。</summary>
+    public bool AiAttrJealous
+    {
+        get => GetAiAttribute(1);
+        set => SetAiAttribute(1, value, nameof(AiAttrJealous));
+    }
+
+    /// <summary>属性：黏人。</summary>
+    public bool AiAttrClingy
+    {
+        get => GetAiAttribute(2);
+        set => SetAiAttribute(2, value, nameof(AiAttrClingy));
+    }
+
+    /// <summary>属性：爱撒娇。</summary>
+    public bool AiAttrCute
+    {
+        get => GetAiAttribute(3);
+        set => SetAiAttribute(3, value, nameof(AiAttrCute));
+    }
+
+    /// <summary>属性：傲娇口癖。</summary>
+    public bool AiAttrTsundere
+    {
+        get => GetAiAttribute(4);
+        set => SetAiAttribute(4, value, nameof(AiAttrTsundere));
+    }
+
+    /// <summary>属性：容易生气。</summary>
+    public bool AiAttrGrumpy
+    {
+        get => GetAiAttribute(5);
+        set => SetAiAttribute(5, value, nameof(AiAttrGrumpy));
+    }
+
+    /// <summary>属性：爱夸奖。</summary>
+    public bool AiAttrPraise
+    {
+        get => GetAiAttribute(6);
+        set => SetAiAttribute(6, value, nameof(AiAttrPraise));
+    }
+
+    /// <summary>读某个属性是否已勾选。</summary>
+    private bool GetAiAttribute(int index) => ParseAiAttributes().Contains(AiPersonaCatalog.AttributeOptions[index]);
+
+    /// <summary>勾选 / 取消某个属性：重建逗号分隔字符串写回配置。</summary>
+    private void SetAiAttribute(int index, bool value, string propertyName)
+    {
+        var attribute = AiPersonaCatalog.AttributeOptions[index];
+        var items = ParseAiAttributes();
+        if (items.Contains(attribute) == value) return;
+
+        if (value) items.Add(attribute);
+        else items.Remove(attribute);
+
+        Cfg.AiAttributes = string.Join(",", items);
+        OnPropertyChanged(propertyName);
+        Session.ApplyAiSettings();
+    }
+
+    /// <summary>把配置里的逗号分隔属性串解析成列表（去空 / 去重）。</summary>
+    private List<string> ParseAiAttributes()
+        => (Cfg.AiAttributes ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(item => item.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+    /// <summary>自由「自我设定 / 背景 / 人格约束」（会拼进系统提示词；空 = 默认设定）。</summary>
+    public string AiCustomSetting
+    {
+        get => Cfg.AiCustomSetting;
+        set
+        {
+            var text = value ?? "";
+            if (string.Equals(Cfg.AiCustomSetting, text, StringComparison.Ordinal)) return;
+            Cfg.AiCustomSetting = text;
+            OnPropertyChanged();
+            Session.ApplyAiSettings();
+        }
+    }
+
+    // ---------- 回复表现 ----------
+
+    /// <summary>AI 回复是否朗读（TTS 语音 + 气泡；关掉只显示文字）。</summary>
+    public bool AiSpeakReply
+    {
+        get => Cfg.AiSpeakReply;
+        set
+        {
+            if (Cfg.AiSpeakReply == value) return;
+            Cfg.AiSpeakReply = value;
+            OnPropertyChanged();
+            Session.ApplyAiSettings();
+        }
+    }
+
+    /// <summary>是否让 AI 回复联动表情 / 动作（害羞脸红、生气黑脸、比心挥手；关掉只说话）。</summary>
+    public bool AiMoodEffects
+    {
+        get => Cfg.AiMoodEffects;
+        set
+        {
+            if (Cfg.AiMoodEffects == value) return;
+            Cfg.AiMoodEffects = value;
+            OnPropertyChanged();
+            Session.ApplyAiSettings();
+        }
+    }
+
+    /// <summary>显示桌宠时自动打开聊天窗（默认开；不想每次都弹就关掉）。</summary>
+    public bool AiChatAutoOpen
+    {
+        get => Cfg.AiChatAutoOpen;
+        set
+        {
+            if (Cfg.AiChatAutoOpen == value) return;
+            Cfg.AiChatAutoOpen = value;
+            OnPropertyChanged();
+            Session.ApplyAiSettings();
+        }
+    }
+
+    // ---------- 好感度数值 / 情绪 ----------
+
+    /// <summary>当前好感度（0 ~ 100；手动滑杆 / 自然模式聊天涨掉都走这里）。</summary>
+    public double AiAffectionValue
+    {
+        get
+        {
+            try { return Session.AiChat?.Affection.Value ?? 50; }
+            catch { return 50; }
+        }
+        set
+        {
+            // 拖滑杆 → 写会话；会话同步发的 AiChatStateChanged 会再来回写数值。
+            // 这里用标志把那次回写挡掉，避免「四舍五入 / 夹取后的值」在拖动中途把滑杆抢回去抖动。
+            if (_aiAffectionUpdating) return;
+            _aiAffectionUpdating = true;
+            try
+            {
+                Session.SetAiAffection(value);
+            }
+            catch (Exception ex)
+            {
+                Log("设置好感度失败：" + ex.Message);
+            }
+            finally
+            {
+                _aiAffectionUpdating = false;
+            }
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AiMoodText));
+            OnPropertyChanged(nameof(AiMood));
+        }
+    }
+
+    /// <summary>好感度对应的情绪档位文案（生气 / 闹别扭 / 平常 / 开心 / 心动）。</summary>
+    public string AiMoodText
+    {
+        get
+        {
+            try { return Session.AiChat?.Affection.MoodText ?? "平常"; }
+            catch { return "平常"; }
+        }
+    }
+
+    /// <summary>情绪档位枚举（给粉色试管配色用：心动更粉、生气偏灰粉）。</summary>
+    public AiMood AiMood
+    {
+        get
+        {
+            try { return Session.AiChat?.Affection.Mood ?? AiMood.Normal; }
+            catch { return AiMood.Normal; }
+        }
+    }
+
+    /// <summary>好感度规则的一句话说明（自然模式显示涨 / 掉速度；手动模式说明只有自己拖）。</summary>
+    public string AiAffectionHint
+    {
+        get
+        {
+            if (!Cfg.AiAffectionNatural) return "手动模式：数值只有你自己拖，聊天和时间都不会改它。";
+
+            var text = $"自然模式：每聊一轮 +{AiAffectionGainPerChat:0.0}（每天最多 +15），" +
+                       $"{AiAffectionDecayAfterHours:0.#} 小时不聊 -{AiAffectionDecayPerDay:0.#}";
+            if (Cfg.AiAffectionModelDelta) text += "；模型给出的变化（-3 ~ +3）也计入";
+            if (Cfg.AiAffectionFloorEnabled) text += $"；最低不低于 {AiAffectionFloor:0.#}";
+            return text + "。";
+        }
+    }
+
+    /// <summary>会话的一句话状态（就绪 / 正在思考 / 离线模式 / 出错）。</summary>
+    public string AiStatusSummaryText
+    {
+        get
+        {
+            try { return Session.AiStatusSummaryText; }
+            catch { return "AI 未就绪"; }
+        }
+    }
+
+    /// <summary>今日 token 消耗（帮用户控制成本）。</summary>
+    public string AiTodayTokensText
+    {
+        get
+        {
+            try { return $"今日约 {Session.AiTodayTokens} token"; }
+            catch { return "今日约 0 token"; }
+        }
+    }
+
+    // ---------- 好感度自然模式设置 ----------
+
+    /// <summary>自然模式：聊得多涨、长时间不聊掉；关掉 = 纯手动拖数值。</summary>
+    public bool AiAffectionNatural
+    {
+        get => Cfg.AiAffectionNatural;
+        set
+        {
+            if (Cfg.AiAffectionNatural == value) return;
+            Cfg.AiAffectionNatural = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AiAffectionHint));
+            Session.ApplyAiSettings();
+        }
+    }
+
+    /// <summary>自然模式下是否启用好感度兜底（最低不掉破设定值）。</summary>
+    public bool AiAffectionFloorEnabled
+    {
+        get => Cfg.AiAffectionFloorEnabled;
+        set
+        {
+            if (Cfg.AiAffectionFloorEnabled == value) return;
+            Cfg.AiAffectionFloorEnabled = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AiAffectionHint));
+            Session.ApplyAiSettings();
+        }
+    }
+
+    /// <summary>好感度兜底数值（0 ~ 100，默认 20）。</summary>
+    public double AiAffectionFloor
+    {
+        get => Math.Clamp(Cfg.AiAffectionFloor, 0, 100);
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 100);
+            if (Math.Abs(Cfg.AiAffectionFloor - clamped) < 0.05) return;
+            Cfg.AiAffectionFloor = clamped;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AiAffectionHint));
+            Session.ApplyAiSettings();
+        }
+    }
+
+    /// <summary>每聊一轮涨多少（0.2 ~ 3，默认 1.0；每天最多涨 15）。</summary>
+    public double AiAffectionGainPerChat
+    {
+        get => Math.Clamp(Cfg.AiAffectionGainPerChat, 0.2, 3);
+        set
+        {
+            var clamped = Math.Clamp(value, 0.2, 3);
+            if (Math.Abs(Cfg.AiAffectionGainPerChat - clamped) < 0.05) return;
+            Cfg.AiAffectionGainPerChat = clamped;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AiAffectionHint));
+            Session.ApplyAiSettings();
+        }
+    }
+
+    /// <summary>每个不聊周期掉多少（0 ~ 20，默认 3）。</summary>
+    public double AiAffectionDecayPerDay
+    {
+        get => Math.Clamp(Cfg.AiAffectionDecayPerDay, 0, 20);
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 20);
+            if (Math.Abs(Cfg.AiAffectionDecayPerDay - clamped) < 0.05) return;
+            Cfg.AiAffectionDecayPerDay = clamped;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AiAffectionHint));
+            Session.ApplyAiSettings();
+        }
+    }
+
+    /// <summary>多久不聊算一个掉值周期（小时，1 ~ 240，默认 24）。</summary>
+    public double AiAffectionDecayAfterHours
+    {
+        get => Math.Clamp(Cfg.AiAffectionDecayAfterHours, 1, 240);
+        set
+        {
+            var clamped = Math.Clamp(value, 1, 240);
+            if (Math.Abs(Cfg.AiAffectionDecayAfterHours - clamped) < 0.05) return;
+            Cfg.AiAffectionDecayAfterHours = clamped;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AiAffectionHint));
+            Session.ApplyAiSettings();
+        }
+    }
+
+    /// <summary>是否让模型给出的好感度变化（-3 ~ +3）参与自然模式涨跌。</summary>
+    public bool AiAffectionModelDelta
+    {
+        get => Cfg.AiAffectionModelDelta;
+        set
+        {
+            if (Cfg.AiAffectionModelDelta == value) return;
+            Cfg.AiAffectionModelDelta = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AiAffectionHint));
+            Session.ApplyAiSettings();
+        }
+    }
+
+    // ---------- 主动聊天 ----------
+
+    /// <summary>是否允许桌宠主动搭话（按设定间隔随机）。</summary>
+    public bool AiProactiveEnabled
+    {
+        get => Cfg.AiProactiveEnabled;
+        set
+        {
+            if (Cfg.AiProactiveEnabled == value) return;
+            Cfg.AiProactiveEnabled = value;
+            OnPropertyChanged();
+            Session.ApplyAiSettings();
+            Log(value ? "AI 主动聊天：开启" : "AI 主动聊天：关闭");
+        }
+    }
+
+    /// <summary>主动搭话间隔（分钟，3 ~ 360，默认 20）。</summary>
+    public double AiProactiveIntervalMinutes
+    {
+        get => Math.Clamp(Cfg.AiProactiveIntervalMinutes, 3, 360);
+        set
+        {
+            var clamped = Math.Clamp(value, 3, 360);
+            if (Math.Abs(Cfg.AiProactiveIntervalMinutes - clamped) < 0.05) return;
+            Cfg.AiProactiveIntervalMinutes = clamped;
+            OnPropertyChanged();
+            Session.ApplyAiSettings();
+        }
+    }
+
+    /// <summary>用户很久没回时，桌宠是否主动撒娇 / 求陪。</summary>
+    public bool AiIdleReminderEnabled
+    {
+        get => Cfg.AiIdleReminderEnabled;
+        set
+        {
+            if (Cfg.AiIdleReminderEnabled == value) return;
+            Cfg.AiIdleReminderEnabled = value;
+            OnPropertyChanged();
+            Session.ApplyAiSettings();
+        }
+    }
+
+    /// <summary>「很久没回」的门限（分钟，1 ~ 720，默认 10）。</summary>
+    public double AiIdleSilenceMinutes
+    {
+        get => Math.Clamp(Cfg.AiIdleSilenceMinutes, 1, 720);
+        set
+        {
+            var clamped = Math.Clamp(value, 1, 720);
+            if (Math.Abs(Cfg.AiIdleSilenceMinutes - clamped) < 0.05) return;
+            Cfg.AiIdleSilenceMinutes = clamped;
+            OnPropertyChanged();
+            Session.ApplyAiSettings();
+        }
+    }
+
+    // ---------- 测试连接 / 命令实现 ----------
+
+    /// <summary>「测试连接」结果文案（成功：模型 / 耗时；失败：中文原因）。</summary>
+    public string AiTestResultText
+    {
+        get => _aiTestResultText;
+        private set => Set(ref _aiTestResultText, value);
+    }
+
+    /// <summary>测试 DeepSeek 连通性（只发一条极短请求，不写聊天记录）。</summary>
+    private async Task TestAiConnectionAsync()
+    {
+        AiTestResultText = "正在测试连接…";
+        try
+        {
+            var result = await Session.TestAiConnectionAsync();
+            AiTestResultText = result.Ok
+                ? $"连接成功：{result.Message}（{result.LatencyMs} ms）"
+                : "连接失败：" + result.Message;
+            Log("AI 连接测试：" + AiTestResultText);
+        }
+        catch (Exception ex)
+        {
+            AiTestResultText = "连接失败：" + ex.Message;
+            Log("AI 连接测试异常：" + ex.Message);
+        }
+    }
+
+    /// <summary>清空 AI 聊天记录（好感度不动）。</summary>
+    private void ClearAiConversation()
+    {
+        try
+        {
+            Session.ClearAiConversation();
+            OnPropertyChanged(nameof(AiStatusSummaryText));
+            OnPropertyChanged(nameof(AiTodayTokensText));
+            Log("AI：聊天记录已清空（好感度不变）");
+        }
+        catch (Exception ex)
+        {
+            Log("清空 AI 聊天记录失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>好感度重置为 50。</summary>
+    private void ResetAiAffection()
+    {
+        try
+        {
+            Session.ResetAiAffection();
+            OnPropertyChanged(nameof(AiAffectionValue));
+            OnPropertyChanged(nameof(AiMoodText));
+            Log("AI：好感度已重置为 50");
+        }
+        catch (Exception ex)
+        {
+            Log("重置好感度失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>建好 AI 设置卡的下拉选项（思考强度 / 人格 / 称呼 / 自称）并按配置选中。</summary>
+    private void BuildAiOptions()
+    {
+        AiThinkingOptions.Clear();
+        for (var i = 0; i < AiThinkingLevels.DisplayNames.Count; i++)
+        {
+            var level = AiThinkingLevels.FromDisplayIndex(i);
+            AiThinkingOptions.Add(new OptionItem<string>(AiThinkingLevels.ToConfig(level), AiThinkingLevels.DisplayNames[i]));
+        }
+
+        AiPersonaOptions.Clear();
+        foreach (var persona in AiPersonaCatalog.Personas)
+        {
+            AiPersonaOptions.Add(new OptionItem<string>(persona.Id, persona.Name));
+        }
+
+        AiAddressOptions.Clear();
+        foreach (var preset in AiPersonaCatalog.AddressPresets)
+        {
+            AiAddressOptions.Add(new OptionItem<string>(preset, preset));
+        }
+
+        AiSelfOptions.Clear();
+        foreach (var preset in AiPersonaCatalog.SelfPresets)
+        {
+            AiSelfOptions.Add(new OptionItem<string>(preset, preset));
+        }
+
+        ResyncAiSelections();
+    }
+
+    /// <summary>
+    /// 把下拉选中项重新对齐到当前配置（首次构造 / 「重建配置」原地改回默认值后用）；
+    /// 同时让 API Key 明文缓存在下次读取时重新从会话里解密。
+    /// </summary>
+    private void ResyncAiSelections()
+    {
+        _selectedAiThinking = OptionItem<string>.Find(
+                                  AiThinkingOptions,
+                                  AiThinkingLevels.ToConfig(AiThinkingLevels.FromConfig(Cfg.AiThinkingLevel)))
+                              ?? AiThinkingOptions.FirstOrDefault();
+
+        var personaId = string.IsNullOrWhiteSpace(Cfg.AiPersonaId) ? AiPersonaCatalog.Personas[0].Id : Cfg.AiPersonaId;
+        _selectedAiPersona = OptionItem<string>.Find(AiPersonaOptions, personaId) ?? AiPersonaOptions.FirstOrDefault();
+        _selectedAiAddress = OptionItem<string>.Find(AiAddressOptions, Cfg.AiAddressPreset) ?? AiAddressOptions.FirstOrDefault();
+        _selectedAiSelf = OptionItem<string>.Find(AiSelfOptions, Cfg.AiSelfPreset) ?? AiSelfOptions.FirstOrDefault();
+
+        _aiApiKeyLoaded = false;
+        _aiApiKeyCache = null;
+
+        OnPropertyChanged(nameof(SelectedAiThinking));
+        OnPropertyChanged(nameof(SelectedAiPersona));
+        OnPropertyChanged(nameof(SelectedAiAddress));
+        OnPropertyChanged(nameof(SelectedAiSelf));
+    }
+
+    /// <summary>
+    /// 重新从会话 / 配置里解一次 API Key 明文。
+    /// 页面首次加载时密码框可能比 <see cref="Live2DSession.Activate"/> 先 Loaded（那时会话还没拿到 ViewModel，
+    /// 解密只能读到空串），页面 Loaded 后再调一次这里，设置卡状态才是对的。
+    /// </summary>
+    public void ReloadAiApiKey()
+    {
+        _aiApiKeyLoaded = false;
+        _aiApiKeyCache = null;
+        OnPropertyChanged(nameof(AiApiKey));
+        OnPropertyChanged(nameof(AiKeyMaskText));
+    }
 
     // ===================== 截图 / 日志 =====================
 
@@ -2605,6 +3371,18 @@ public sealed class Live2DViewModel : ToolViewModelBase
     public RelayCommand SpeakPresetCommand { get; }
     public RelayCommand SendChatCommand { get; }
     public RelayCommand ClearChatCommand { get; }
+
+    // ===== 🤖 AI 聊天 · 好感度（DeepSeek） =====
+    /// <summary>打开 / 关闭 AI 聊天窗。</summary>
+    public RelayCommand OpenAiChatWindowCommand { get; }
+    /// <summary>测试 DeepSeek 连接。</summary>
+    public AsyncRelayCommand TestAiConnectionCommand { get; }
+    /// <summary>清空 AI 聊天记录（好感度不动）。</summary>
+    public RelayCommand ClearAiConversationCommand { get; }
+    /// <summary>好感度重置为 50。</summary>
+    public RelayCommand ResetAiAffectionCommand { get; }
+    /// <summary>清除已保存的 API Key。</summary>
+    public RelayCommand ClearAiApiKeyCommand { get; }
 
     // ===================== 加载状态回调（由 Live2DSession 调用） =====================
 
@@ -3159,6 +3937,10 @@ public sealed class Live2DViewModel : ToolViewModelBase
         _selectedSwayMode = SwayModeOptions.FirstOrDefault(option =>
                                 string.Equals(option.Value, Cfg.BodySwayMode, StringComparison.Ordinal))
                             ?? _selectedSwayMode;
+
+        // AI 设置：下拉选中项跟着配置走，并让会话按新配置重建提示词 / 好感度规则
+        ResyncAiSelections();
+        Session.ApplyAiSettings();
         Session.ApplyRuntimeSettings();
         Session.ApplyMocapSettings();
         OnPropertyChanged(string.Empty);
@@ -3176,6 +3958,20 @@ public sealed class Live2DViewModel : ToolViewModelBase
         OnPropertyChanged(nameof(IsPetVisible));
         OnPropertyChanged(nameof(PetButtonText));
         OnPropertyChanged(nameof(PetStateText));
+    });
+
+    /// <summary>会话的 AI 状态变化（好感度 / 聊天窗 / token 统计 / 状态行）：切回 UI 线程刷新绑定。</summary>
+    private void OnAiChatStateChanged(object? sender, EventArgs e) => Ui(() =>
+    {
+        // 正在由滑杆写好感度时不要回写数值（否则拖动中途会被会话里的四舍五入值抢回去抖动），
+        // 其余状态（情绪 / 状态行 / token）照常刷新。
+        if (!_aiAffectionUpdating) OnPropertyChanged(nameof(AiAffectionValue));
+        OnPropertyChanged(nameof(AiMoodText));
+        OnPropertyChanged(nameof(AiMood));
+        OnPropertyChanged(nameof(AiAffectionHint));
+        OnPropertyChanged(nameof(AiStatusSummaryText));
+        OnPropertyChanged(nameof(AiKeyMaskText));
+        OnPropertyChanged(nameof(AiTodayTokensText));
     });
 
     /// <summary>把所有属性都通知一遍（运行时接上 / 摘掉之后用，省得逐个列）。</summary>

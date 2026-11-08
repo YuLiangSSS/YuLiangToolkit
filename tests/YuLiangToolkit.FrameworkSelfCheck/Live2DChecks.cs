@@ -1302,6 +1302,8 @@ internal static class Live2DChecks
                 C("纹理图集加载运行期间抛出异常", false, $"{ex.GetType().Name}: {ex.Message}");
             }
         });
+
+        Live2DAiChecks.Run(C, checkSimple);
     }
 
     // ====================================================================

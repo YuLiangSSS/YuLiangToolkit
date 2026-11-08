@@ -183,6 +183,16 @@ public sealed class ModelRuntime : IDisposable
     private bool _speechActive;
     private float _speechMouthOpen;
 
+    // ---------- AI 聊天情绪鼓嘴（生气 / 闹别扭时鼓脸颊 + 撅嘴；由会话按 AI 回复的情绪写入） ----------
+
+    private CubismParameter? _moodCheekPuff;
+    private CubismParameter? _moodCheekPuffL;
+    private CubismParameter? _moodCheekPuffR;
+    private CubismParameter? _moodPucker;
+    private bool _moodPuffWrote;
+    private float _moodPuffTarget;
+    private float _moodPuffCurrent;
+
     /// <summary>待机随机小动作的倒计时（秒；到 0 且条件允许时播一个随机手势 / 表演）。</summary>
     private double _idleRandomGestureTimer;
 
@@ -555,6 +565,17 @@ public sealed class ModelRuntime : IDisposable
     {
         get => _speechMouthOpen;
         set => _speechMouthOpen = Math.Clamp(value, 0f, 1f);
+    }
+
+    /// <summary>
+    /// AI 聊天情绪鼓嘴（0~1）：生气 / 闹别扭 / 吃醋时鼓脸颊 + 轻微撅嘴，正常时 0。
+    /// <para>由会话按 AI 回复的情绪写入，Tick 里平滑逼近；不写嘴部张开参数（说话口型优先级更高），
+    /// 只写脸颊鼓起 + 轻微撅嘴。模型没有这些参数时自动跳过。</para>
+    /// </summary>
+    public float MoodPuffAmount
+    {
+        get => _moodPuffTarget;
+        set => _moodPuffTarget = Math.Clamp(value, 0f, 1f);
     }
 
     /// <summary>待机随机小动作开关（默认开；播动作 / 音乐 / 说话 / 跳舞 / 表演时不抢）。</summary>
@@ -1293,6 +1314,63 @@ public sealed class ModelRuntime : IDisposable
         _speechMouthOpenY = model.FindParameter("ParamMouthOpenY");
         _speechMouthForm = model.FindParameter("ParamMouthForm");
         _speechJawOpen = model.FindParameter("JawOpen");
+        ResolveMoodPuffParameters(model);
+    }
+
+    /// <summary>解析鼓嘴参数（模型没有这些参数的自定义模型会自动跳过）。</summary>
+    private void ResolveMoodPuffParameters(CubismModel model)
+    {
+        _moodCheekPuff = model.FindParameter("CheeckPuff") ?? model.FindParameter("CheekPuff");
+        _moodCheekPuffL = model.FindParameter("CheeckPuffL") ?? model.FindParameter("CheekPuffL");
+        _moodCheekPuffR = model.FindParameter("CheeckPuffR") ?? model.FindParameter("CheekPuffR");
+        _moodPucker = model.FindParameter("Mouthpucker") ?? model.FindParameter("MouthPucker");
+    }
+
+    /// <summary>复位上一帧鼓嘴写过的参数（只复位真的写过的，平时不碰这些参数）。</summary>
+    private void ResetMoodPuffParameters()
+    {
+        if (!_moodPuffWrote) return;
+        _moodPuffWrote = false;
+        foreach (var parameter in new[] { _moodCheekPuff, _moodCheekPuffL, _moodCheekPuffR, _moodPucker })
+        {
+            if (parameter is not null) parameter.Value = parameter.DefaultValue;
+        }
+    }
+
+    /// <summary>
+    /// 写鼓嘴：数值按 0~1 平滑逼近目标（约 0.2 秒），写左右脸颊鼓起 + 轻微撅嘴。
+    /// 只在目标 / 当前都接近 0 时不写，避免把用户手动调的脸颊参数每帧打回默认。
+    /// </summary>
+    private void ApplyMoodPuff(double deltaSeconds)
+    {
+        var target = _moodPuffTarget;
+        var current = _moodPuffCurrent;
+        if (Math.Abs(target - current) < 0.001f)
+        {
+            _moodPuffCurrent = current = target;
+        }
+        else
+        {
+            var speed = Math.Clamp(deltaSeconds * 6.0, 0.0, 1.0);
+            current += (target - current) * (float)speed;
+            _moodPuffCurrent = current;
+        }
+
+        if (current <= 0.002f) return;
+
+        WriteMoodPuffParameter(_moodCheekPuff, current * 0.75f);
+        WriteMoodPuffParameter(_moodCheekPuffL, current * 0.45f);
+        WriteMoodPuffParameter(_moodCheekPuffR, current * 0.45f);
+        WriteMoodPuffParameter(_moodPucker, current * 0.35f);
+    }
+
+    private void WriteMoodPuffParameter(CubismParameter? parameter, float value)
+    {
+        if (parameter is null) return;
+        parameter.Value = parameter.Maximum > parameter.DefaultValue
+            ? parameter.DefaultValue + (parameter.Maximum - parameter.DefaultValue) * value
+            : value;
+        _moodPuffWrote = true;
     }
 
     /// <summary>
@@ -1589,6 +1667,7 @@ public sealed class ModelRuntime : IDisposable
         ResetMotionTouchedParameters(parameters);
         ResetMusicTouchedParameters(parameters);
         ResetSpeechTouchedParameters(parameters);
+        ResetMoodPuffParameters();
         _gesture?.ResetTouched(parameters);
         _performance?.ResetTouched(parameters);
         _dance?.ResetTouched(parameters);
@@ -1648,6 +1727,9 @@ public sealed class ModelRuntime : IDisposable
 
         // 3.5) 语音口型（优先级：动捕有脸 > 语音 > 音乐；语音时音乐跟唱闭嘴）
         ApplySpeechMouth(mocapFace);
+
+        // 3.6) AI 聊天情绪鼓嘴（生气 / 闹别扭时鼓脸颊 + 轻微撅嘴；只写脸颊 / 撅嘴，不抢说话口型）
+        ApplyMoodPuff(deltaSeconds);
 
         // 4) 身体晃动测试（在动捕之后、动作之前）；动捕有脸时晃动不做头部补偿，让头跟脸
         UpdateBodySway(deltaSeconds, mocapFace);
@@ -1809,6 +1891,9 @@ public sealed class ModelRuntime : IDisposable
         _petIdleActions?.StopImmediate();
         _idleDemoActive = false;
         _speechTouchedCount = 0;
+        _moodPuffTarget = 0f;
+        _moodPuffCurrent = 0f;
+        _moodPuffWrote = false;
         _idleRandomGestureTimer = 0;
         model.Update();
     }

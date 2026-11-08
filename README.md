@@ -32,6 +32,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 - **FFmpeg**（音频工具 / 录屏 / 剪辑）：自动找 `PATH` 里的 `ffmpeg.exe`，也可以在工具里手动指定；
 - **WebView2 Runtime**（网页浏览器）：Win10 2004+ 一般随 Edge 自带，缺失时工具会提示安装，不随本项目打包；
 - **Word / Excel / PPT 阅读器**不需要安装 Office / WPS，**Live2D 桌宠**也不需要额外组件（仅 Windows x64）；
+  Live2D 的「AI 聊天」要自己填 DeepSeek API Key（按 token 计费，可全程不用——不填就只走离线兜底）；
 - 从源码构建**首次需要联网**还原一次 NuGet 包（OsuParsers / WebView2 / AvalonEdit / SharpCompress / SkiaSharp / MailKit 等），之后走本机缓存。
 
 ## 工具一览
@@ -60,7 +61,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 | [**🍜 osu! LN 转换器**](docs/tools/osu-ln-transformer.md) | 按 14 档强度把普通键改成 LN（长条），可选保留原 LN / 修尾巴误差 |
 | [**⭐ osu! 等级计算器**](docs/tools/osu-level-calculator.md) | 拖入 mania 谱面算星数与等级，批量表格（等级按 8K 谱面拟合，只对 8K 有参考意义） |
 | [**🎹 KPS 按键统计**](docs/tools/kps.md) | 实时 KPS / 峰值 / 平均 + 每键计数器 + 键位可视化 + 透明置顶 Overlay（可锁定点击穿透）；4K~8K 预设、改键、键音、全局热键 |
-| [**🐟 Live2D 桌宠**](docs/tools/live2d.md) | 透明置顶桌宠 + 模型测试台：参数 / 动作 / 表情 / 鼠标跟随 / 摄像头动捕 / 音乐律动 / 语音说话，全本地、不需要显卡 |
+| [**🐟 Live2D 桌宠**](docs/tools/live2d.md) | 透明置顶桌宠 + 模型测试台：参数 / 动作 / 表情 / 鼠标跟随 / 摄像头动捕 / 音乐律动 / 语音说话；**DeepSeek AI 聊天 / 粉色好感度**（人格 / 称呼 / 情绪动作联动 / 主动搭话）；全本地渲染、不需要显卡 |
 | [**📌 屏幕贴纸**](docs/tools/screen-sticker.md) | 把图片贴到桌面：多选 / 拖入 / 剪贴板贴图，按图片原始尺寸出现；GIF / APNG / 动图 WebP 完整动画并可调播放速度（按真实内容识别格式）；每张独立窗口可自由拖动 / 四边四角自由拉伸（Shift 等比）/ 滚轮缩放 / 调整层级 / 单独强制置顶，支持单张 / 批量恢复默认，带最近使用与贴纸管理 |
 | [**⚫ 联机五子棋**](docs/tools/gomoku.md) | TCP 房间联机：最多 16 人多人观战 + 房主安排上场 / 自动轮换、禁手、悔棋、聊天 |
 | [**🀄 联机象棋**](docs/tools/xiangqi.md) | TCP 房间联机：多人观战 + 房主安排上场 / 自动轮换、自由摆棋、让子 / 让先、中文记谱 |
@@ -108,7 +109,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（用法 / 设置项 / 数据位置 / 注意事项），跟着代码一起走；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；踩坑细节按需查 [docs/dev/pitfalls.md](docs/dev/pitfalls.md)；
-- ✅ **自检**：4822 项行为逐条真跑（退出码 0 = 全通过）。按改动影响面只跑相关组，不每轮全量：
+- ✅ **自检**：4944 项行为逐条真跑（退出码 0 = 全通过）。按改动影响面只跑相关组，不每轮全量：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -123,7 +124,7 @@ build.ps1 / publish.ps1                  # 一键构建 / 一键发布（发布�
 scripts/check.ps1                        # 按改动自动选组的自检触发器
 src/YuLiangToolkit.Core/                 # 核心库：工具契约 / MVVM / 存储 / 配置 / 维护 / 特效 / 联机底座
 src/YuLiangToolkit.Tools.*/              # 各工具，一个功能一个项目（新功能复制 Tools.Sample）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 自检控制台：4822 项行为逐条真跑
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 自检控制台：4944 项行为逐条真跑
 docs/                                    # 每个工具一页详细说明（索引 docs/README.md）
 AGENTS.md                                # 开发入口地图：流程 / 硬性规则 / 找东西
 ```

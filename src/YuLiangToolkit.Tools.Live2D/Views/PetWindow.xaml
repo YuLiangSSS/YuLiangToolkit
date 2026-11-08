@@ -66,6 +66,14 @@
             <MenuItem Header="停止动作" Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuStopDemosClick"
                       ToolTip="停止手势 / 表演 / 舞蹈，把身体交还手动参数与物理" />
             <Separator />
+            <!-- AI 聊天：聊天窗 + 主动搭话（API Key / 人格 / 好感度在测试页「AI 聊天 · 好感度」卡里改） -->
+            <MenuItem x:Name="MenuItemAiChat" Header="💬 AI 聊天窗：开 / 关" IsCheckable="True"
+                      Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuAiChatClick"
+                      ToolTip="打开 / 隐藏桌宠旁边的 AI 聊天框（DeepSeek；先在测试页「AI 聊天」卡里填 API Key）" />
+            <MenuItem x:Name="MenuItemAiProactive" Header="桌宠主动搭话：开 / 关" IsCheckable="True"
+                      Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuAiProactiveClick"
+                      ToolTip="允许桌宠隔一段时间主动找话题，或很久没回你时撒娇提醒（间隔在测试页设置）" />
+            <Separator />
             <MenuItem Header="打开测试工具页" Foreground="{DynamicResource TextPrimaryBrush}"
                       Click="OnMenuOpenToolPageClick"
                       ToolTip="把主窗口切到「桌面 → Live2D 桌宠」测试台" />

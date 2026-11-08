@@ -1,0 +1,415 @@
+<Window x:Class="YuLiangToolkit.Tools.Live2D.Views.AiChatWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:YuLiangToolkit.Tools.Live2D.Controls"
+        Title="大肥鱼 · 聊天"
+        Width="372" Height="524"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        WindowStartupLocation="Manual"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        SnapsToDevicePixels="True"
+        UseLayoutRounding="True"
+        FontFamily="Microsoft YaHei UI">
+
+    <!-- 说明：桌宠的 AI 聊天窗（运行时 new 出来的独立透明窗）。
+         ① 样式全部定义在本窗口的 Window.Resources 里（不依赖 Live2DView.xaml 的局部资源，也不依赖 App.xaml 的具体样式键）；
+         ② 颜色优先用主题 token（DynamicResource）；只有「好感度粉 / 用户气泡粉」这种聊天窗专属色用本窗口的粉色画刷；
+         ③ 布局：标题条（可拖） / 好感度试管 + 数值 + 3 个开关 / 消息列表 / 正在输入 / 快捷短语 / 输入框 + 状态行。 -->
+
+    <Window.Resources>
+
+        <!-- ================= 聊天窗专属的粉色（参考图的好感度试管就是这个粉） ================= -->
+        <SolidColorBrush x:Key="PinkDeepBrush" Color="#FF6FA3" />
+        <SolidColorBrush x:Key="PinkMidBrush" Color="#FF8FB8" />
+        <SolidColorBrush x:Key="PinkSoftBrush" Color="#FFB7CE" />
+        <SolidColorBrush x:Key="PinkLightBrush" Color="#FFD0DF" />
+        <!-- 用户气泡：半透明粉，深浅主题下都能看出「这是我说的话」 -->
+        <SolidColorBrush x:Key="UserBubbleBrush" Color="#3DFF8FB8" />
+        <SolidColorBrush x:Key="UserBubbleBorderBrush" Color="#66FF8FB8" />
+        <!-- 快捷短语悬停时的淡粉底 -->
+        <SolidColorBrush x:Key="PinkHoverBrush" Color="#24FF8FB8" />
+
+        <!-- bool → Visibility：本窗口自带一份，不依赖 App.xaml（截图 / 自检进程里也能正常加载） -->
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+        <!-- ================= 标题栏小按钮（⚙ / ✕） ================= -->
+        <Style x:Key="AiTitleButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="26" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="Transparent" CornerRadius="8">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource InputBackgroundBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CardHoverBackgroundBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 关闭按钮：悬停变危险色（和主程序的窗口关闭按钮手感一致） -->
+        <Style x:Key="AiCloseButtonStyle" TargetType="Button" BasedOn="{StaticResource AiTitleButtonStyle}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="Transparent" CornerRadius="8">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource DangerBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ================= 快捷短语小按钮 ================= -->
+        <Style x:Key="AiChipButtonStyle" TargetType="Button">
+            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="Padding" Value="9,3" />
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{DynamicResource InputBackgroundBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                CornerRadius="10" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource PinkHoverBrush}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource PinkSoftBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource PinkLightBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ================= 粉色发送按钮 ================= -->
+        <Style x:Key="AiSendButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" CornerRadius="9" Padding="{TemplateBinding Padding}">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#FF8FB8" Offset="0" />
+                                    <GradientStop Color="#FF6FA3" Offset="1" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.88" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.75" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.4" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ================= 输入框（外圈圆角由外层 Border 提供，这里只要透明无边框） ================= -->
+        <Style x:Key="AiInputTextBoxStyle" TargetType="TextBox">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="CaretBrush" Value="{StaticResource PinkMidBrush}" />
+            <Setter Property="SelectionBrush" Value="{StaticResource PinkMidBrush}" />
+            <Setter Property="VerticalContentAlignment" Value="Top" />
+            <Setter Property="AcceptsReturn" Value="True" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto" />
+            <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+        </Style>
+
+        <!-- ================= 粉色勾选框（主动聊天 / 自然好感度 / 语音） ================= -->
+        <Style x:Key="AiCheckBoxStyle" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <StackPanel Orientation="Horizontal" Background="Transparent">
+                            <Border x:Name="Box" Width="13" Height="13" CornerRadius="3.5" BorderThickness="1.2"
+                                    BorderBrush="{DynamicResource CheckBoxBorderBrush}"
+                                    Background="{DynamicResource InputBackgroundBrush}"
+                                    VerticalAlignment="Center">
+                                <Path x:Name="Check" Data="M 2.5,6.5 L 5.2,9.2 L 10.5,3.4" Stroke="White"
+                                      StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round" Stretch="Uniform" Margin="1.5"
+                                      Visibility="Collapsed" />
+                            </Border>
+                            <ContentPresenter Margin="6,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Box" Property="Background" Value="{StaticResource PinkMidBrush}" />
+                                <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource PinkMidBrush}" />
+                                <Setter TargetName="Check" Property="Visibility" Value="Visible" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource PinkSoftBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ================= 一条消息的气泡（用户右 / 桌宠左 / 系统提示居中） ================= -->
+        <DataTemplate x:Key="ChatMessageTemplate">
+            <Grid Margin="0,3">
+                <Border x:Name="Bubble" MaxWidth="246" HorizontalAlignment="Left"
+                        CornerRadius="12" Padding="10,6,10,5"
+                        Background="{DynamicResource CardBackgroundBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                    <StackPanel>
+                        <TextBlock x:Name="BubbleText" Text="{Binding Text}" TextWrapping="Wrap"
+                                   FontSize="12.5" LineHeight="18"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock x:Name="BubbleTime" Text="{Binding TimeText}" FontSize="9" Margin="0,3,0,0"
+                                   HorizontalAlignment="Right"
+                                   Foreground="{DynamicResource FaintTextBrush}" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+            <DataTemplate.Triggers>
+                <!-- 我说的：右对齐、半透明粉气泡 -->
+                <DataTrigger Binding="{Binding IsUser}" Value="True">
+                    <Setter TargetName="Bubble" Property="HorizontalAlignment" Value="Right" />
+                    <Setter TargetName="Bubble" Property="Background" Value="{StaticResource UserBubbleBrush}" />
+                    <Setter TargetName="Bubble" Property="BorderBrush" Value="{StaticResource UserBubbleBorderBrush}" />
+                    <Setter TargetName="Bubble" Property="CornerRadius" Value="12,12,4,12" />
+                </DataTrigger>
+                <!-- 系统提示（报错 / 状态 / 切换模式）：居中灰字，没有气泡 -->
+                <DataTrigger Binding="{Binding IsNotice}" Value="True">
+                    <Setter TargetName="Bubble" Property="HorizontalAlignment" Value="Center" />
+                    <Setter TargetName="Bubble" Property="Background" Value="Transparent" />
+                    <Setter TargetName="Bubble" Property="BorderThickness" Value="0" />
+                    <Setter TargetName="Bubble" Property="Padding" Value="4,2" />
+                    <Setter TargetName="BubbleText" Property="FontSize" Value="10" />
+                    <Setter TargetName="BubbleText" Property="TextAlignment" Value="Center" />
+                    <Setter TargetName="BubbleText" Property="Foreground" Value="{DynamicResource FaintTextBrush}" />
+                    <Setter TargetName="BubbleTime" Property="FontSize" Value="8.5" />
+                    <Setter TargetName="BubbleTime" Property="HorizontalAlignment" Value="Center" />
+                    <Setter TargetName="BubbleTime" Property="Margin" Value="0,1,0,0" />
+                </DataTrigger>
+                <!-- 桌宠说的：左对齐、主题卡片色（左上角留个小缺口，像小尾巴） -->
+                <DataTrigger Binding="{Binding IsBot}" Value="True">
+                    <Setter TargetName="Bubble" Property="CornerRadius" Value="12,12,12,4" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+    </Window.Resources>
+
+    <!-- 外层圆角深色面板（窗口本身透明，圆角外的部分是桌面的透明区域） -->
+    <Border x:Name="Shell" CornerRadius="16"
+            Background="{DynamicResource CardBackgroundBrush}"
+            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />   <!-- 标题条（可拖动） -->
+                <RowDefinition Height="Auto" />   <!-- 好感度试管 + 数值 + 3 个开关 -->
+                <RowDefinition Height="*" />      <!-- 消息列表（撑满剩余高度） -->
+                <RowDefinition Height="Auto" />   <!-- 正在输入… -->
+                <RowDefinition Height="Auto" />   <!-- 6 个快捷短语 -->
+                <RowDefinition Height="Auto" />   <!-- 输入框 + 发送 + 状态行 -->
+            </Grid.RowDefinitions>
+
+            <!-- ==================================== 标题条 ==================================== -->
+            <Grid x:Name="TitleBar" Grid.Row="0" Height="40" Background="Transparent"
+                  MouseLeftButtonDown="OnTitleBarMouseDown">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                    <TextBlock Text="🐟" FontSize="14" VerticalAlignment="Center" />
+                    <TextBlock Text="大肥鱼 · 聊天" FontSize="13" FontWeight="SemiBold" Margin="6,0,0,0"
+                               VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock x:Name="TitleStatusText" Text="就绪" FontSize="10.5" Margin="8,0,0,0"
+                               VerticalAlignment="Center" MaxWidth="132" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource FaintTextBrush}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                    <Button x:Name="SettingsButton" Content="⚙" Style="{StaticResource AiTitleButtonStyle}"
+                            Click="OnSettingsClick" ToolTip="打开工具页里的「AI 聊天 · 好感度」设置卡" />
+                    <Button x:Name="CloseButton" Content="✕" Style="{StaticResource AiCloseButtonStyle}"
+                            Click="OnCloseClick" Margin="4,0,0,0" ToolTip="隐藏聊天窗（关闭状态会记住）" />
+                </StackPanel>
+
+                <!-- 标题条和内容之间的分隔线 -->
+                <Border Grid.ColumnSpan="2" Height="1" VerticalAlignment="Bottom" IsHitTestVisible="False"
+                        Background="{DynamicResource BorderBrush}" />
+            </Grid>
+
+            <!-- ==================================== 好感度区 ==================================== -->
+            <Border Grid.Row="1" Margin="12,10,12,8" Padding="12,8" CornerRadius="12"
+                    Background="{DynamicResource InputBackgroundBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 粉色好感度试管：液体高度 = 好感度 -->
+                    <controls:AffectionVial x:Name="Vial" Width="42" Height="98" VerticalAlignment="Center" />
+
+                    <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="AffectionValueText" Text="50.0" FontSize="23" FontWeight="Bold"
+                                       VerticalAlignment="Bottom" Foreground="{StaticResource PinkDeepBrush}" />
+                            <TextBlock Text="好感度" FontSize="10.5" Margin="5,0,0,4" VerticalAlignment="Bottom"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                        <TextBlock x:Name="MoodTextBlock" Text="平常" FontSize="11.5" FontWeight="SemiBold"
+                                   Margin="0,2,0,0" Foreground="{StaticResource PinkMidBrush}" />
+                        <TextBlock Text="聊得多会慢慢涨，久不聊会掉" FontSize="9.5" Margin="0,1,0,0"
+                                   TextWrapping="Wrap" Foreground="{DynamicResource FaintTextBrush}" />
+                    </StackPanel>
+
+                    <!-- 三个常用开关：改完立刻写配置（onConfigChanged 回调），工具页里的设置卡同步 -->
+                    <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="8,0,0,0">
+                        <CheckBox x:Name="ProactiveCheck" Content="主动聊天" Style="{StaticResource AiCheckBoxStyle}"
+                                  Checked="OnConfigToggleChanged" Unchecked="OnConfigToggleChanged"
+                                  ToolTip="允许桌宠隔一段时间主动搭话 / 久未回复时撒娇" />
+                        <CheckBox x:Name="NaturalCheck" Content="自然好感度" Style="{StaticResource AiCheckBoxStyle}"
+                                  Checked="OnConfigToggleChanged" Unchecked="OnConfigToggleChanged"
+                                  ToolTip="打开：聊得多涨、久不聊掉；关掉：只用设置卡里的滑杆手动拖" />
+                        <CheckBox x:Name="VoiceCheck" Content="语音" Style="{StaticResource AiCheckBoxStyle}"
+                                  Checked="OnConfigToggleChanged" Unchecked="OnConfigToggleChanged"
+                                  ToolTip="AI 回复时同时朗读（Windows 自带 TTS）" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ==================================== 消息列表 ==================================== -->
+            <Grid Grid.Row="2">
+                <ScrollViewer x:Name="MessageScroll" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled" Focusable="False">
+                    <ItemsControl x:Name="MessageItems" Focusable="False"
+                                  ItemTemplate="{StaticResource ChatMessageTemplate}"
+                                  Margin="14,2,14,4" />
+                </ScrollViewer>
+
+                <!-- 空状态提示（有消息时由代码隐藏） -->
+                <TextBlock x:Name="EmptyHint" Text="还没聊过天～&#10;点下面的快捷短语，或者直接说点什么吧"
+                           FontSize="11" Width="230" TextAlignment="Center" TextWrapping="Wrap"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"
+                           Foreground="{DynamicResource FaintTextBrush}" />
+            </Grid>
+
+            <!-- ==================================== 正在输入… ==================================== -->
+            <!-- 绑定 chat.IsBusy（DataContext = AiChatService）；【不要】写本地 Visibility 默认值，否则会盖掉绑定 -->
+            <StackPanel x:Name="TypingRow" Grid.Row="3" Orientation="Horizontal" Margin="18,0,18,2"
+                        Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}">
+                <TextBlock Text="正在输入…" FontSize="10" Foreground="{StaticResource PinkMidBrush}" />
+            </StackPanel>
+
+            <!-- ==================================== 快捷短语 ==================================== -->
+            <WrapPanel Grid.Row="4" Orientation="Horizontal" Margin="12,4,6,0">
+                <Button Content="在吗" Tag="在吗" Style="{StaticResource AiChipButtonStyle}" Click="OnQuickPhraseClick" />
+                <Button Content="摸摸头" Tag="摸摸头" Style="{StaticResource AiChipButtonStyle}" Click="OnQuickPhraseClick" />
+                <Button Content="陪我聊天" Tag="陪我聊天" Style="{StaticResource AiChipButtonStyle}" Click="OnQuickPhraseClick" />
+                <Button Content="我今天好累" Tag="我今天好累" Style="{StaticResource AiChipButtonStyle}" Click="OnQuickPhraseClick" />
+                <Button Content="夸夸我" Tag="夸夸我" Style="{StaticResource AiChipButtonStyle}" Click="OnQuickPhraseClick" />
+                <Button Content="晚安" Tag="晚安" Style="{StaticResource AiChipButtonStyle}" Click="OnQuickPhraseClick" />
+            </WrapPanel>
+
+            <!-- ==================================== 输入区 ==================================== -->
+            <Grid Grid.Row="5" Margin="12,6,12,10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" CornerRadius="10"
+                        Background="{DynamicResource InputBackgroundBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBox x:Name="InputBox" Style="{StaticResource AiInputTextBoxStyle}"
+                                 MinHeight="34" MaxHeight="72" KeyDown="OnInputKeyDown"
+                                 ToolTip="Enter 发送，Shift+Enter 换行" />
+
+                        <Button x:Name="SendButton" Grid.Column="1" Content="发送"
+                                Style="{StaticResource AiSendButtonStyle}"
+                                Margin="4" VerticalAlignment="Bottom" Click="OnSendClick"
+                                ToolTip="发送（Enter）" />
+                    </Grid>
+                </Border>
+
+                <!-- 状态行：左边是服务状态（在线 / 正在思考 / 出错 / 离线兜底），右边是今日 token（帮用户省着花） -->
+                <Grid Grid.Row="1" Margin="2,4,2,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="StatusTextBlock" Text="就绪" FontSize="9.5"
+                               Foreground="{DynamicResource FaintTextBrush}"
+                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    <TextBlock x:Name="TokenTextBlock" Grid.Column="1" Text="今日约 0 token" FontSize="9.5"
+                               Margin="8,0,0,0" VerticalAlignment="Center"
+                               Foreground="{DynamicResource FaintTextBrush}" />
+                </Grid>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>
