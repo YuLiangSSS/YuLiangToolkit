@@ -4069,10 +4069,13 @@ public sealed class Live2DSession
         if (viewModel is null || runtime is null || runtime.IsLoaded != true) return;
         if (string.IsNullOrWhiteSpace(voiceEvent)) return;
 
-        // 点额头 / 捏脸：有概率换成「逗你 / 观察你」的专属动作（场景 2）
+        // 点额头 / 戳脸：随机触发「观察你 / 逗你」（和自然待机同两类动作）
         if (string.Equals(voiceEvent, "face_cycle", StringComparison.OrdinalIgnoreCase))
         {
-            TriggerObservationScenario(ObservationScenarios.KindTease, speak: false);
+            var kind = Random.Shared.Next(2) == 0
+                ? ObservationScenarios.KindObserve
+                : ObservationScenarios.KindTease;
+            TriggerObservationScenario(kind, speak: false);
             return;
         }
         if (string.Equals(voiceEvent, "pinch", StringComparison.OrdinalIgnoreCase) &&
@@ -4247,7 +4250,7 @@ public sealed class Live2DSession
             (string.Equals(voiceEvent, "pinch", StringComparison.OrdinalIgnoreCase) && Random.Shared.Next(2) == 0))
         {
             var kind = string.Equals(voiceEvent, "face_cycle", StringComparison.OrdinalIgnoreCase)
-                ? ObservationScenarios.KindTease
+                ? (Random.Shared.Next(2) == 0 ? ObservationScenarios.KindObserve : ObservationScenarios.KindTease)
                 : ObservationScenarios.KindObserve;
             var observation = ObservationScenarios.TryMatch(kind, affection);
             if (observation is not null)

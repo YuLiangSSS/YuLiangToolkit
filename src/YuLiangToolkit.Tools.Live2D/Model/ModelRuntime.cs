@@ -259,6 +259,7 @@ public sealed class ModelRuntime : IDisposable
     private CubismParameter? _obsMouthForm;
     private string? _obsFacePose;
     private bool _obsEyeWideLeft;
+    private bool _obsClosedEyeLeft;
     private double _obsRemainingSeconds;
     private double _obsDurationSeconds;
     private double _obsElapsedSeconds;
@@ -639,6 +640,7 @@ public sealed class ModelRuntime : IDisposable
         _obsGazeY = Math.Clamp(gazeY, -1f, 1f);
         _obsLookAtUser = lookAtUser;
         _obsEyeWideLeft = Random.Shared.Next(2) == 0;
+        _obsClosedEyeLeft = Random.Shared.Next(2) == 0;
         var targets = ObservationFaceTargets.For(_obsFacePose);
         _obsOverrideEyeBallY = targets.OverrideEyeBallY;
         _obsEyeBallYTarget = targets.EyeBallY;
@@ -667,12 +669,19 @@ public sealed class ModelRuntime : IDisposable
 
         var targets = ObservationFaceTargets.For(_obsFacePose ?? "好奇");
         var eyeWide = 1.15f;
-        var eyeNarrow = 0.18f;
+        var eyeNarrow = 0.42f;   // 小眼不再完全眯上：留一点缝，看起来是「一大一小」而不是单眼闭
         var eyeL = _obsFacePose == "单眼瞪大" && !_obsEyeWideLeft ? eyeNarrow : targets.EyeL;
         var eyeR = _obsFacePose == "单眼瞪大" && _obsEyeWideLeft ? eyeNarrow : targets.EyeR;
         if (_obsFacePose == "单眼瞪大")
         {
             if (_obsEyeWideLeft) eyeL = eyeWide; else eyeR = eyeWide;
+        }
+        else if (_obsFacePose == "单眼闭眨")
+        {
+            // 一只眼闭上、另一只睁着；睁着的那只每隔约 1.4 秒眨一下（观察你的感觉）
+            var open = 1.0f - (BlinkOncePulse(_obsElapsedSeconds) * 0.95f);
+            eyeL = _obsClosedEyeLeft ? 0.05f : open;
+            eyeR = _obsClosedEyeLeft ? open : 0.05f;
         }
 
         WriteObservationParameter(_obsEyeL, eyeL, weight);
@@ -728,6 +737,19 @@ public sealed class ModelRuntime : IDisposable
         parameter.Value = parameter.DefaultValue + ((target - parameter.DefaultValue) * weight);
     }
 
+    /// <summary>「单眼闭眨」里睁着那只眼的眨眼脉冲：每 1.4 秒闭一下再睁开（0 = 完全睁开，1 = 闭上）。</summary>
+    private static float BlinkOncePulse(double elapsedSeconds)
+    {
+        const double period = 1.4;
+        const double blinkSeconds = 0.16;
+        var phase = (elapsedSeconds - 0.35) % period;
+        if (phase < 0) return 0f;
+        if (phase >= blinkSeconds * 2) return 0f;
+        return phase < blinkSeconds
+            ? (float)(phase / blinkSeconds)
+            : (float)((blinkSeconds * 2 - phase) / blinkSeconds);
+    }
+
     /// <summary>观察表情预设的参数目标（眼睛开合 / 眯眼 / 眉毛 / 嘴形 / 眼球 Y）。</summary>
     private readonly record struct ObservationFaceTargets(
         float EyeL, float EyeR, float SquintL, float SquintR,
@@ -743,6 +765,8 @@ public sealed class ModelRuntime : IDisposable
             "微眯偏睁" => new(0.72f, 0.72f, 0.18f, 0.18f, 0.28f, 0.05f, 0.20f, 0, false),
             // 白眼 / 欠揍：眼珠往上、上眼睑压一点
             "白眼" => new(0.38f, 0.38f, 0.25f, 0.25f, 0.25f, 0.10f, -0.10f, 0.85f, true),
+            // 单眼闭上、一只眼睁开（开合由 ApplyObservation 里的眨眼脉冲单独写）
+            "单眼闭眨" => new(1.0f, 1.0f, 0.0f, 0.0f, 0.15f, 0.05f, 0.15f, 0, false),
             // 不满 / 嫌弃：眉头压低、嘴形下撇
             "不满" => new(0.62f, 0.62f, 0.15f, 0.15f, -0.30f, -0.55f, -0.70f, 0, false),
             // 好奇：眼睛正常、眉毛抬起

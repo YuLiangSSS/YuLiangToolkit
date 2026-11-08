@@ -149,18 +149,24 @@ internal static class Live2DInteractionScenarioChecks
             low.Lines.Any(l => l.Contains("脏东西", StringComparison.Ordinal)),
             "");
 
-        C("观察：好感 50 → 仔细看看档（单眼瞪大 / 双眼微眯 随机 + 前倾 + 歪头 + 盯人）",
+        C("观察：好感 50 → 仔细看看档（单眼瞪大 / 双眼微眯 / 单眼闭眨 随机 + 前倾 + 歪头 + 盯人）",
             ObservationScenarios.TryMatch(ObservationScenarios.KindObserve, 50) is { Id: "observe.mid" } mid &&
             mid.FacePoses.Contains("单眼瞪大") && mid.FacePoses.Contains("双眼微眯") &&
+            mid.FacePoses.Contains("单眼闭眨") &&
             mid.LeanForward && mid.LookAtUser && mid.TiltDegrees > 0 &&
             mid.Lines.Any(l => l.Contains("仔细看看", StringComparison.Ordinal)),
             "");
 
-        C("观察：好感 92 → 可爱档（爱心眼 + 脸红 + 微眯偏睁 + 前倾 + 盯人）",
+        C("观察：好感 92 → 可爱档（爱心眼 + 脸红 + 微眯偏睁 / 单眼闭眨 + 前倾 + 盯人）",
             ObservationScenarios.TryMatch(ObservationScenarios.KindObserve, 92) is { Id: "observe.high" } high &&
             high.Expressions.Contains("爱心眼") && high.Expressions.Contains("脸红") &&
-            high.FacePoses.Contains("微眯偏睁") && high.LeanForward && high.LookAtUser,
+            high.FacePoses.Contains("微眯偏睁") && high.FacePoses.Contains("单眼闭眨") &&
+            high.LeanForward && high.LookAtUser,
             "");
+
+        C("观察：脸预设清单包含「单眼闭眨」（一闭一睁 + 睁眼眨眼）",
+            ObservationScenarios.FacePresetNames.Contains("单眼闭眨"),
+            string.Join("/", ObservationScenarios.FacePresetNames));
 
         C("逗你：好感 10 → 一直黑脸 + 白眼；好感 50 → 黑脸 50% 随机；好感 92 → 凑近 + 脸红 + 爱心眼",
             ObservationScenarios.TryMatch(ObservationScenarios.KindTease, 10) is { Id: "tease.low" } low2 &&

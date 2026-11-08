@@ -28,7 +28,7 @@ public static class ObservationScenarios
     /// <summary>程序脸预设名（<c>ModelRuntime.ObservationFaceTargets</c> 认识这些名字）。</summary>
     public static IReadOnlyList<string> FacePresetNames { get; } = new[]
     {
-        "单眼瞪大", "双眼微眯", "微眯偏睁", "白眼", "不满", "好奇",
+        "单眼瞪大", "双眼微眯", "微眯偏睁", "单眼闭眨", "白眼", "不满", "好奇",
     };
 
     /// <summary>所有观察场景（同一 Kind 按 MinAffection 从高到低匹配）。</summary>
@@ -49,7 +49,7 @@ public static class ObservationScenarios
             }),
         new ObservationScenario(
             "observe.mid", KindObserve, 30,
-            Array.Empty<string>(), new[] { "单眼瞪大", "双眼微眯" }, LeanForward: true, RandomBlackFace: false,
+            Array.Empty<string>(), new[] { "单眼瞪大", "双眼微眯", "单眼闭眨" }, LeanForward: true, RandomBlackFace: false,
             TiltDegrees: 9, BodyTwistDegrees: 2.5, LookAtUser: true, Seconds: 3.6,
             Lines: new[]
             {
@@ -62,7 +62,7 @@ public static class ObservationScenarios
             }),
         new ObservationScenario(
             "observe.high", KindObserve, 85,
-            new[] { "脸红", "爱心眼" }, new[] { "微眯偏睁" }, LeanForward: true, RandomBlackFace: false,
+            new[] { "脸红", "爱心眼" }, new[] { "微眯偏睁", "单眼闭眨" }, LeanForward: true, RandomBlackFace: false,
             TiltDegrees: 11, BodyTwistDegrees: 3, LookAtUser: true, Seconds: 4.0,
             Lines: new[]
             {
