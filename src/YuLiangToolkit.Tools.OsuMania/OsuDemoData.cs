@@ -44,6 +44,9 @@ internal static class OsuDemoData
     {
         var paths = new List<string>(3);
 
+        // 演示背景图（截图 / 冒烟时才生成；谱面里的 [Events] 指向它）
+        EnsureDemoBackground(storage);
+
         Add(storage, paths, "demo", Demo4KName, BuildBeatmap(4, "Demo Song", "4K Demo", 8.0, withLongNotes: longNotes));
         Add(storage, paths, "demo", Demo7KName, BuildBeatmap(7, "Demo LN Song", "7K LN Demo", 7.5, withLongNotes: true));
         if (includeInvalid)
@@ -62,6 +65,174 @@ internal static class OsuDemoData
             paths.Add(written);
         }
     }
+
+    /// <summary>
+    /// 生成一张演示背景图（`demo-bg.png`）：几段渐变 + 斜条纹，纯粹为了截图 / 冒烟时看得出
+    /// 「背景图确实铺在轨道后面」—— 正常使用不生成。
+    /// </summary>
+    public static void EnsureDemoBackground(ToolStorage storage)
+    {
+        try
+        {
+            var path = storage.WriteText(Path.Combine("demo", "demo-bg.png"), "");
+            if (string.IsNullOrEmpty(path)) return;
+
+            const int width = 1280;
+            const int height = 720;
+            var pixels = new byte[width * height * 4];
+
+            // 简单的斜向双色渐变 + 几条亮条纹（纯手算，不引 Skia / 不依赖 GDI+）
+            for (var y = 0; y < height; y++)
+            {
+                for (var x = 0; x < width; x++)
+                {
+                    var t = (x / (double)width) * 0.6 + (y / (double)height) * 0.4;
+                    var r = (byte)(40 + 90 * t);
+                    var g = (byte)(70 + 110 * t);
+                    var b = (byte)(130 + 90 * (1 - t));
+
+                    // 斜条纹
+                    if ((x + y) % 120 < 6)
+                    {
+                        r = (byte)Math.Min(255, r + 60);
+                        g = (byte)Math.Min(255, g + 60);
+                        b = (byte)Math.Min(255, b + 40);
+                    }
+
+                    var offset = ((height - 1 - y) * width + x) * 4;   // PNG 是自下而上
+                    pixels[offset] = b;
+                    pixels[offset + 1] = g;
+                    pixels[offset + 2] = r;
+                    pixels[offset + 3] = 255;
+                }
+            }
+
+            WritePng(path, width, height, pixels);
+        }
+        catch
+        {
+            // 演示图生成失败不影响主流程（背景区域留空即可）
+        }
+    }
+
+    /// <summary>写一个最小的 24/32 位 PNG（不压 deflate，直接用 stored 块）。</summary>
+    private static void WritePng(string path, int width, int height, byte[] rgba)
+    {
+        using var stream = File.Create(path);
+
+        // 每行前面加一个 filter 字节（0 = None）
+        var stride = width * 4;
+        var raw = new byte[(stride + 1) * height];
+        for (var y = 0; y < height; y++)
+        {
+            raw[y * (stride + 1)] = 0;
+            Buffer.BlockCopy(rgba, y * stride, raw, y * (stride + 1) + 1, stride);
+        }
+
+        var compressed = ZlibStored(raw);
+
+        stream.Write(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
+
+        var ihdr = new byte[13];
+        WriteBigEndian(ihdr, 0, width);
+        WriteBigEndian(ihdr, 4, height);
+        ihdr[8] = 8;    // bit depth
+        ihdr[9] = 6;    // color type: RGBA
+        ihdr[10] = 0;
+        ihdr[11] = 0;
+        ihdr[12] = 0;
+        WriteChunk(stream, "IHDR", ihdr);
+        WriteChunk(stream, "IDAT", compressed);
+        WriteChunk(stream, "IEND", Array.Empty<byte>());
+    }
+
+    private static void WriteChunk(Stream stream, string type, byte[] data)
+    {
+        var length = new byte[4];
+        WriteBigEndian(length, 0, data.Length);
+        stream.Write(length);
+
+        var typeBytes = System.Text.Encoding.ASCII.GetBytes(type);
+        stream.Write(typeBytes);
+        stream.Write(data);
+
+        var crc = Crc32(typeBytes, data);
+        var crcBytes = new byte[4];
+        WriteBigEndian(crcBytes, 0, (int)crc);
+        stream.Write(crcBytes);
+    }
+
+    private static void WriteBigEndian(byte[] buffer, int offset, int value)
+    {
+        buffer[offset] = (byte)(value >> 24);
+        buffer[offset + 1] = (byte)(value >> 16);
+        buffer[offset + 2] = (byte)(value >> 8);
+        buffer[offset + 3] = (byte)value;
+    }
+
+    /// <summary>zlib 包装的「不压缩」deflate 块（PNG 允许 stored 块）。</summary>
+    private static byte[] ZlibStored(byte[] data)
+    {
+        using var output = new MemoryStream(data.Length + data.Length / 65535 * 5 + 16);
+
+        output.WriteByte(0x78);   // zlib header
+        output.WriteByte(0x01);
+
+        var position = 0;
+        while (position < data.Length)
+        {
+            var size = Math.Min(65535, data.Length - position);
+            var isLast = position + size >= data.Length;
+
+            output.WriteByte((byte)(isLast ? 1 : 0));   // BFINAL + BTYPE=00 (stored)
+            output.WriteByte((byte)(size & 0xFF));
+            output.WriteByte((byte)((size >> 8) & 0xFF));
+            output.WriteByte((byte)(~size & 0xFF));
+            output.WriteByte((byte)((~size >> 8) & 0xFF));
+            output.Write(data, position, size);
+            position += size;
+        }
+
+        // Adler-32
+        uint a = 1, b = 0;
+        foreach (var value in data)
+        {
+            a = (a + value) % 65521;
+            b = (b + a) % 65521;
+        }
+
+        var adler = (b << 16) | a;
+        output.WriteByte((byte)(adler >> 24));
+        output.WriteByte((byte)(adler >> 16));
+        output.WriteByte((byte)(adler >> 8));
+        output.WriteByte((byte)adler);
+
+        return output.ToArray();
+    }
+
+    private static uint Crc32(byte[] first, byte[] second)
+    {
+        var table = CrcTable.Value;
+        uint crc = 0xFFFFFFFF;
+        foreach (var value in first) crc = table[(crc ^ value) & 0xFF] ^ (crc >> 8);
+        foreach (var value in second) crc = table[(crc ^ value) & 0xFF] ^ (crc >> 8);
+        return crc ^ 0xFFFFFFFF;
+    }
+
+    private static readonly Lazy<uint[]> CrcTable = new(() =>
+    {
+        var table = new uint[256];
+        for (uint i = 0; i < 256; i++)
+        {
+            var value = i;
+            for (var bit = 0; bit < 8; bit++)
+            {
+                value = (value & 1) != 0 ? 0xEDB88320 ^ (value >> 1) : value >> 1;
+            }
+            table[i] = value;
+        }
+        return table;
+    });
 
     /// <summary>第 <paramref name="column"/> 列在 512 宽画布上的 x（与 OsuManiaBeatmap.ColumnX 同一公式）。</summary>
     private static int ColumnX(int keys, int column) => (int)Math.Floor(512.0 * (column + 0.5) / keys);
@@ -113,6 +284,7 @@ internal static class OsuDemoData
         sb.AppendLine();
         sb.AppendLine("[Events]");
         sb.AppendLine("//Background and Video events");
+        sb.AppendLine("0,0,\"demo-bg.png\",0,0");
         sb.AppendLine("//Break Periods");
         sb.AppendLine("//Storyboard Layer 0 (Background)");
         sb.AppendLine();

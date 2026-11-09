@@ -56,6 +56,34 @@ public sealed class OsuManiaEditorConfig : ToolConfig
     public double NoteAreaRatio { get; set; } = 1.0;
 
     /// <summary>
+    /// Note 浏览区的水平对齐（0 = 贴左 / 1 = 居中 / 2 = 贴右）。
+    /// 只在「宽度不足铺满」时才看得出来：决定空白落在哪边。
+    /// </summary>
+    public int NoteAreaAlign { get; set; }
+
+    /// <summary>是否显示谱面背景图（<c>[Events]</c> 里那张）；默认开。</summary>
+    public bool ShowBackgroundImage { get; set; } = true;
+
+    /// <summary>背景图不透明度（0.05~1.0，默认 0.75）。</summary>
+    public double BackgroundOpacity { get; set; } = 0.75;
+
+    /// <summary>Note 浏览区底色的 ARGB（默认半透明黑，见 <see cref="DefaultLaneBackgroundArgb"/>）。</summary>
+    public int LaneBackgroundArgb { get; set; } = DefaultLaneBackgroundArgbInt;
+
+    /// <summary>Note 浏览区默认底色：黑 + 55% 不透明。</summary>
+    public const byte DefaultLaneBackgroundAlpha = 140;   // 0x8C
+
+    /// <summary>默认底色的 ARGB 十六进制文字（界面显示 / 恢复默认用）。</summary>
+    public const string DefaultLaneBackgroundHex = "#8C000000";
+
+    /// <summary>默认底色的有符号 ARGB（存 JSON 用）。</summary>
+    public const int DefaultLaneBackgroundArgbInt = unchecked((int)0x8C000000);
+
+    /// <summary>Note 浏览区底色默认值（恢复默认用）。</summary>
+    public static System.Windows.Media.Color DefaultLaneBackgroundColor
+        => System.Windows.Media.Color.FromArgb(DefaultLaneBackgroundAlpha, 0, 0, 0);
+
+    /// <summary>
     /// 无操作多少秒后自动保存（默认 10 秒，范围 2~600）。
     /// 「无操作」包括摆放 / 拖动 / 删除 note、滚时间轴、缩放、移动鼠标等（鼠标停在页面上就算在操作）。
     /// </summary>

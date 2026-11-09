@@ -55,6 +55,15 @@ public sealed class EditorBeatmap
     /// <summary>加载时的警告（坏行 / 非 mania 等），界面上如实显示。</summary>
     public List<string> LoadWarnings { get; } = new();
 
+    /// <summary>
+    /// <c>[Events]</c> 里声明的背景图文件名（相对谱面目录；没有就是空串）。
+    /// 换背景时同步更新它，保存时按行替换 <c>[Events]</c> 里那一行。
+    /// </summary>
+    public string BackgroundFileName { get; set; } = "";
+
+    /// <summary>背景图文件的完整路径（不存在 / 没声明时为空串）。加载谱面时算好。</summary>
+    public string BackgroundPath { get; set; } = "";
+
     // ---------------------------------------------------------------- 谱面内容
 
     /// <summary>时间点（红 / 绿线），未排序也允许（查询前统一排序一次）。</summary>

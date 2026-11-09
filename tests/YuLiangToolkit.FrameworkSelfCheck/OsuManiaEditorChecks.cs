@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using YuLiangToolkit.Tools.OsuMania;
 using YuLiangToolkit.Tools.OsuMania.Core.Editor;
 using YuLiangToolkit.Tools.OsuMania.Views;
 
@@ -49,6 +50,9 @@ public static class OsuManiaEditorChecks
 
         // Note 浏览区宽度（左右可调 + 居中）
         CheckLaneLayout(checker);
+
+        // 背景图：解析 [Events]、写回、对齐
+        CheckBackground(checker);
 
         // 真机音频同步（真的开声卡播一段；没有声卡时 fail-open 跳过）
         CheckAudioSync(checker, dir);
@@ -112,6 +116,150 @@ public static class OsuManiaEditorChecks
             $"标尺 {state.RulerLeft:0.##} / 轨道 {state.LaneLeft:0.##}");
     }
 
+
+    // =====================================================================
+    // 背景图（解析 [Events] / 写回 / 对齐方式）
+    // =====================================================================
+
+    private static void CheckBackground(Checker C)
+    {
+        // ---- 对齐：贴左 / 居中 / 贴右 ----
+
+        const double ruler = LaneLayout.RulerWidth;
+        var left = LaneLayout.Compute(1000, ruler, 0.5, LaneLayout.LaneAlign.Left);
+        var center = LaneLayout.Compute(1000, ruler, 0.5, LaneLayout.LaneAlign.Center);
+        var right = LaneLayout.Compute(1000, ruler, 0.5, LaneLayout.LaneAlign.Right);
+
+        C("[背景/对齐] 贴左：标尺在 0", Math.Abs(left.RulerLeft) < 0.001, $"{left.RulerLeft:0.##}");
+        C("[背景/对齐] 贴右：右侧留白为 0", Math.Abs(right.RightMargin(1000)) < 0.001,
+            $"{right.RightMargin(1000):0.##}");
+        C("[背景/对齐] 居中：左右留白相等",
+            Math.Abs(center.RulerLeft - center.RightMargin(1000)) < 0.001,
+            $"左 {center.RulerLeft:0.##} / 右 {center.RightMargin(1000):0.##}");
+        C("[背景/对齐] 三种对齐下轨道宽度一致",
+            Math.Abs(left.LaneWidth - center.LaneWidth) < 0.001 &&
+            Math.Abs(left.LaneWidth - right.LaneWidth) < 0.001);
+        C("[背景/对齐] 标尺始终紧挨轨道左边",
+            Math.Abs(left.LaneLeft - left.RulerLeft - ruler) < 0.001 &&
+            Math.Abs(right.LaneLeft - right.RulerLeft - ruler) < 0.001);
+
+        var fullL = LaneLayout.Compute(1000, ruler, 1.0, LaneLayout.LaneAlign.Left);
+        var fullR = LaneLayout.Compute(1000, ruler, 1.0, LaneLayout.LaneAlign.Right);
+        C("[背景/对齐] 铺满时左右对齐等价", Math.Abs(fullL.RulerLeft - fullR.RulerLeft) < 0.001);
+
+        // ---- 解析 [Events] 背景行 ----
+
+        C("[背景] 解析带引号的标准写法",
+            BeatmapBackground.ParseBackgroundLine("0,0,\"bg.jpg\",0,0") == "bg.jpg",
+            BeatmapBackground.ParseBackgroundLine("0,0,\"bg.jpg\",0,0") ?? "(null)");
+        C("[背景] 解析不带引号的老写法",
+            BeatmapBackground.ParseBackgroundLine("0,0,bg.png") == "bg.png",
+            BeatmapBackground.ParseBackgroundLine("0,0,bg.png") ?? "(null)");
+        C("[背景] 解析新写法 Background,...",
+            BeatmapBackground.ParseBackgroundLine("Background,0,0,\"cover.jpg\"") == "cover.jpg",
+            BeatmapBackground.ParseBackgroundLine("Background,0,0,\"cover.jpg\"") ?? "(null)");
+        C("[背景] 视频事件不算背景图",
+            BeatmapBackground.ParseBackgroundLine("1,0,\"video.avi\"") is null);
+        C("[背景] 注释行不算背景图",
+            BeatmapBackground.ParseBackgroundLine("//Background and Video events") is null);
+        C("[背景] break 行不算背景图",
+            BeatmapBackground.ParseBackgroundLine("2,1000,2000") is null);
+        C("[背景] 空行返回 null", BeatmapBackground.ParseBackgroundLine("") is null);
+
+        // ---- 文件名安全 ----
+
+        C("[背景] 普通文件名安全", BeatmapBackground.IsSafeFileName("bg.jpg"));
+        C("[背景] 挡掉上跳路径", !BeatmapBackground.IsSafeFileName("../bg.jpg"));
+        C("[背景] 挡掉绝对路径", !BeatmapBackground.IsSafeFileName("C:\\bg.jpg"));
+        C("[背景] 挡掉带冒号的", !BeatmapBackground.IsSafeFileName("a:b.jpg"));
+        C("[背景] 图片扩展名判断", BeatmapBackground.IsSupportedImage("a.PNG") &&
+                                   BeatmapBackground.IsSupportedImage("b.jpeg") &&
+                                   !BeatmapBackground.IsSupportedImage("c.txt"));
+
+        // ---- 写回行 ----
+
+        C("[背景] 生成的背景行是标准格式",
+            BeatmapBackground.BuildBackgroundLine("bg.jpg") == "0,0,\"bg.jpg\",0,0",
+            BeatmapBackground.BuildBackgroundLine("bg.jpg"));
+
+        var lines = new List<string>
+        {
+            "osu file format v14", "", "[Events]",
+            "//Background and Video events",
+            "0,0,\"old.jpg\",0,0",
+            "2,1000,2000",              // break 行必须保留
+            "//Storyboard Layer 0",
+            "", "[TimingPoints]", "0,500,4,2,0,60,1,0",
+        };
+
+        var replaced = BeatmapBackground.TryReplaceBackgroundLine(lines, "0,0,\"new.png\",0,0");
+        C("[背景] 替换成功", replaced);
+        C("[背景] 旧背景行被换掉",
+            lines.Contains("0,0,\"new.png\",0,0") && !lines.Contains("0,0,\"old.jpg\",0,0"));
+        C("[背景] break 行原样保留", lines.Contains("2,1000,2000"));
+        C("[背景] 其它段落没被破坏",
+            lines.Contains("[TimingPoints]") && lines.Contains("0,500,4,2,0,60,1,0"));
+
+        var noBg = new List<string> { "[Events]", "//Break Periods", "", "[HitObjects]" };
+        BeatmapBackground.TryReplaceBackgroundLine(noBg, "0,0,\"x.jpg\",0,0");
+        C("[背景] 没有背景行时插入一行",
+            noBg.Contains("0,0,\"x.jpg\",0,0") && noBg.Contains("[HitObjects]"));
+
+        var noSection = new List<string> { "osu file format v14", "", "[TimingPoints]", "0,500,4,2,0,60,1,0" };
+        C("[背景] 没有 [Events] 段时返回 false",
+            !BeatmapBackground.TryReplaceBackgroundLine(noSection, "0,0,\"x.jpg\",0,0"));
+        BeatmapBackground.AppendEventsSection(noSection, "0,0,\"x.jpg\",0,0");
+        C("[背景] 补上 [Events] 段并写入背景行",
+            noSection.Contains("[Events]") && noSection.Contains("0,0,\"x.jpg\",0,0"));
+
+        // ---- 读谱面时自动带上背景图 ----
+
+        var chartText = new[]
+        {
+            "osu file format v14", "", "[General]", "AudioFilename: a.mp3", "Mode: 3", "",
+            "[Events]", "//Background and Video events", "0,0,\"mybg.jpg\",0,0", "",
+            "[Difficulty]", "CircleSize:4", "",
+            "[HitObjects]", "64,192,1000,1,0,0:0:0:0:",
+        };
+
+        var map = OsuFileDocument.Parse(chartText, Path.Combine(Path.GetTempPath(), "bgtest", "t.osu"));
+        C("[背景] 读谱面时解析出背景文件名", map.BackgroundFileName == "mybg.jpg", map.BackgroundFileName);
+        C("[背景] 图片不存在时路径为空（不崩）", map.BackgroundPath.Length == 0, map.BackgroundPath);
+
+        map.BackgroundFileName = "newbg.png";
+        var text = OsuFileDocument.BuildText(map);
+        C("[背景] 保存文本里是新背景", text.Contains("0,0,\"newbg.png\",0,0"));
+        C("[背景] 保存文本里没有旧背景", !text.Contains("mybg.jpg"));
+        C("[背景] 保存文本仍是合法谱面",
+            text.Contains("[HitObjects]") && text.Contains("64,192,1000,1,0,"));
+
+        var map2 = OsuFileDocument.Parse(chartText, "t2.osu");
+        map2.BackgroundFileName = "";
+        C("[背景] 没设背景时保留原声明",
+            OsuFileDocument.BuildText(map2).Contains("0,0,\"mybg.jpg\",0,0"));
+
+        C("[背景] 拖入 .osu 不会被当成图片", !BeatmapBackground.IsSupportedImage("chart.osu"));
+        C("[背景] 拖入 .txt 不会被当成图片", !BeatmapBackground.IsSupportedImage("readme.txt"));
+
+        // ---- Note 浏览区底色（颜色 + 透明度 + 恢复默认） ----
+
+        var defaultColor = OsuManiaEditorConfig.DefaultLaneBackgroundColor;
+        C("[背景/底色] 默认是黑 + 55% 不透明",
+            defaultColor.R == 0 && defaultColor.G == 0 && defaultColor.B == 0 &&
+            defaultColor.A == OsuManiaEditorConfig.DefaultLaneBackgroundAlpha,
+            $"#{defaultColor.A:X2}{defaultColor.R:X2}{defaultColor.G:X2}{defaultColor.B:X2}");
+        C("[背景/底色] 默认十六进制文字对得上",
+            OsuManiaEditorConfig.DefaultLaneBackgroundHex == "#8C000000",
+            OsuManiaEditorConfig.DefaultLaneBackgroundHex);
+
+        // 有符号存储能正确还原（JSON 里是负数也不影响）
+        var stored = OsuManiaEditorConfig.DefaultLaneBackgroundArgbInt;
+        var restored = System.Windows.Media.Color.FromArgb(
+            (byte)(stored >> 24), (byte)(stored >> 16), (byte)(stored >> 8), (byte)stored);
+        C("[背景/底色] 有符号存储可还原 alpha 与 RGB",
+            restored.A == defaultColor.A && restored.R == 0 && restored.G == 0 && restored.B == 0,
+            $"#{restored.A:X2}{restored.R:X2}{restored.G:X2}{restored.B:X2}");
+    }
 
     private static void CheckSelection(Checker C)
     {

@@ -384,7 +384,8 @@ public partial class OsuManiaEditorView : UserControl
 
     private void OnDragOver(object sender, DragEventArgs e)
     {
-        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+        var hasFiles = e.Data.GetDataPresent(DataFormats.FileDrop);
+        e.Effects = hasFiles ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
 
@@ -396,11 +397,17 @@ public partial class OsuManiaEditorView : UserControl
             if (_vm is null || !e.Data.GetDataPresent(DataFormats.FileDrop)) return;
             if (e.Data.GetData(DataFormats.FileDrop) is not string[] paths || paths.Length == 0) return;
 
+            // .osu → 打开谱面
             var chart = paths.FirstOrDefault(p => p.EndsWith(".osu", StringComparison.OrdinalIgnoreCase));
             if (chart is not null)
             {
                 _vm.LoadChart(chart);
+                return;
             }
+
+            // 图片 → 询问是否设为背景（用户明确要求：拖进 Note 浏览区就弹窗问）
+            var inNoteArea = IsDropInsideLane(e);
+            _vm.TryHandleBackgroundDrop(paths, inNoteArea);
         }
         catch (Exception ex)
         {
@@ -409,6 +416,21 @@ public partial class OsuManiaEditorView : UserControl
         finally
         {
             e.Handled = true;
+        }
+    }
+
+    /// <summary>拖放点是不是落在 Note 浏览区（轨道）上 —— 只用于提示文案，不阻止设置。</summary>
+    private bool IsDropInsideLane(DragEventArgs e)
+    {
+        try
+        {
+            var point = e.GetPosition(ActiveCanvas);
+            return point.X >= ActiveCanvas.LaneLeft &&
+                   point.X <= ActiveCanvas.LaneLeft + ActiveCanvas.LaneActualWidth;
+        }
+        catch
+        {
+            return false;
         }
     }
 

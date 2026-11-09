@@ -39,6 +39,22 @@ public sealed class ChartRenderState
     /// <summary>标尺左边界（「标尺 + 轨道」整块居中时它会大于 0）。</summary>
     public double RulerLeft { get; init; }
 
+    /// <summary>谱面背景图（没有背景 / 关掉了就是 null）。</summary>
+    public System.Windows.Media.ImageSource? BackgroundImage { get; init; }
+
+    /// <summary>背景图不透明度（0~1）。</summary>
+    public double BackgroundOpacity { get; init; } = 1.0;
+
+    /// <summary>
+    /// Note 浏览区（轨道）的底色：叠在背景图之上、note 之下。
+    /// 默认是半透明黑（见 <see cref="DefaultLaneBackgroundColor"/>），让轨道比两侧留白暗一档。
+    /// </summary>
+    public System.Windows.Media.Color LaneBackgroundColor { get; init; } = DefaultLaneBackgroundColor;
+
+    /// <summary>Note 浏览区默认底色（黑 + 55% 不透明）：既能压暗背景又不至于全黑。</summary>
+    public static System.Windows.Media.Color DefaultLaneBackgroundColor
+        => System.Windows.Media.Color.FromArgb(140, 0, 0, 0);
+
     /// <summary>轨道区宽度。</summary>
     public double LaneWidth { get; init; }
 
@@ -88,15 +104,17 @@ public sealed class ChartRenderState
     /// <param name="contentHeight">画布内容区高度（不含标尺）。</param>
     /// <param name="canvasWidth">画布总宽度（像素）。</param>
     /// <param name="noteAreaRatio">Note 浏览区占可用宽度的比例（0.2~1.0，见 <see cref="LaneLayout"/>）。</param>
+    /// <param name="align">Note 浏览区的水平对齐（宽度不足时空白落哪边）。</param>
     /// <param name="maxNotes">可见 note 的安全上限（超过就按时间抽稀，防止极端缩放下爆量）。</param>
     public static ChartRenderState Build(
-        ChartEditor editor, double contentHeight, double canvasWidth, double noteAreaRatio, int maxNotes = 12000)
+        ChartEditor editor, double contentHeight, double canvasWidth, double noteAreaRatio,
+        LaneLayout.LaneAlign align = LaneLayout.LaneAlign.Left, int maxNotes = 12000)
     {
         var beatmap = editor.Beatmap;
         var viewport = editor.Viewport;
 
-        // 横向布局：标尺 + 居中的轨道区（宽度按用户比例）
-        var layout = LaneLayout.Compute(canvasWidth, LaneLayout.RulerWidth, noteAreaRatio);
+        // 横向布局：标尺 + 轨道（宽度按用户比例，位置按对齐方式）
+        var layout = LaneLayout.Compute(canvasWidth, LaneLayout.RulerWidth, noteAreaRatio, align);
         var laneLeft = layout.LaneLeft;
         var laneWidth = layout.LaneWidth;
 

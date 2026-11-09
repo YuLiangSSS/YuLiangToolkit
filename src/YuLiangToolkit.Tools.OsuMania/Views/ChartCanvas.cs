@@ -315,15 +315,32 @@ public sealed class ChartCanvas : FrameworkElement
             return;
         }
 
-        // 轨道区用快照里的居中布局（宽度可由用户调）；标尺固定贴左边。
-        // 轨道区以外的部分画成更暗的底色，让「Note 浏览区」的边界一眼可见。
+        // 轨道区用快照里的布局（宽度可由用户调，位置可贴左/居中/贴右）。
         var laneLeft = state.LaneLeft;
         var laneWidth = Math.Max(1, state.LaneWidth);
         var columnWidth = laneWidth / Math.Max(1, state.KeyCount);
 
+        // ===== 绘制层次（自下而上，改顺序前先读这段）=====
+        // ① 整个中间区域的底色（包含轨道 + 两侧留白 + 标的区）
+        // ② 谱面背景图：**铺满整个中间区域**（不只是轨道那一块）
+        // ③ Note 浏览区（轨道）的深色底：可调颜色 + 透明度，默认半透明黑，
+        //    让轨道比两侧留白暗一档，note 更清楚（用户可自己调）
+        // ④ 网格 / note / 时间点 / 播放头 / 标尺
+        // ⚠ 不要反过来先画不透明底色再盖背景——那样背景图会被整个盖掉（截图里踩过）。
         dc.DrawRectangle(GetBrushFor("outside", LaneBrush, 0.35) ?? LaneBrush ?? Brushes.Transparent,
             null, new Rect(0, 0, width, height));
-        dc.DrawRectangle(LaneBrush ?? Brushes.Transparent, null, new Rect(laneLeft, 0, laneWidth, height));
+
+        DrawBackgroundImage(dc, state, width, height);
+
+        var laneFill = state.LaneBackgroundColor;
+        if (!laneFill.A.Equals(0.0))
+        {
+            var laneBrush = GetCachedSolidBrush("lane-fill", laneFill);
+            if (laneBrush is not null)
+            {
+                dc.DrawRectangle(laneBrush, null, new Rect(laneLeft, 0, laneWidth, height));
+            }
+        }
 
         DrawLaneBackground(dc, state, laneLeft, laneWidth, columnWidth, height);
         DrawGrid(dc, state, laneLeft, laneWidth, height);
@@ -341,6 +358,52 @@ public sealed class ChartCanvas : FrameworkElement
     {
         var text = MakeText("打开一个 .osu 谱面开始编辑", 13, RulerTextBrush);
         dc.DrawText(text, new Point((width - text.Width) / 2, (height - text.Height) / 2));
+    }
+
+    /// <summary>
+    /// 画谱面背景图：铺满**整个中间区域**（轨道 + 两侧留白），等比裁切填满（<c>UniformToFill</c> 的观感）。
+    /// 没有背景 / 用户关掉「显示背景图」时什么都不画。
+    /// </summary>
+    private void DrawBackgroundImage(DrawingContext dc, ChartRenderState state,
+        double width, double height)
+    {
+        var image = state.BackgroundImage;
+        if (image is null || width <= 1 || height <= 1) return;
+
+        var opacity = Math.Clamp(state.BackgroundOpacity, 0.05, 1.0);
+
+        // 等比缩放到「铺满」整个区域：取较大的缩放比，超出部分裁掉。
+        var imageWidth = image.Width;
+        var imageHeight = image.Height;
+        if (!double.IsFinite(imageWidth) || !double.IsFinite(imageHeight) ||
+            imageWidth <= 0 || imageHeight <= 0)
+        {
+            return;
+        }
+
+        var scale = Math.Max(width / imageWidth, height / imageHeight);
+        var drawWidth = imageWidth * scale;
+        var drawHeight = imageHeight * scale;
+        var x = (width - drawWidth) / 2;
+        var y = (height - drawHeight) / 2;
+
+        dc.PushOpacity(opacity);
+        dc.PushClip(new RectangleGeometry(new Rect(0, 0, width, height)));
+        dc.DrawImage(image, new Rect(x, y, drawWidth, drawHeight));
+        dc.Pop();
+        dc.Pop();
+    }
+
+    /// <summary>按颜色缓存一支冻结的画刷（轨道底色每次重绘会用到，别每帧 new）。</summary>
+    private Brush? GetCachedSolidBrush(string key, System.Windows.Media.Color color)
+    {
+        var fullKey = $"{key}:{color.A}:{color.R}:{color.G}:{color.B}";
+        if (_brushes.TryGetValue(fullKey, out var cached)) return cached;
+
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        _brushes[fullKey] = brush;
+        return brush;
     }
 
     /// <summary>轨道底：奇偶列交替一点点亮度，让人一眼看出分栏。</summary>

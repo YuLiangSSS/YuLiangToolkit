@@ -76,6 +76,9 @@ public sealed class OsuManiaEditorViewModel : ToolViewModelBase, YuLiangToolkit.
         JumpToFirstNoteCommand = new RelayCommand(_ => JumpToFirstNote(true), _ => _editor is not null);
         JumpToLastNoteCommand = new RelayCommand(_ => JumpToLastNote(true), _ => _editor is not null);
         ToggleFullscreenCommand = new RelayCommand(_ => ToggleFullscreen());
+        ChooseBackgroundCommand = new RelayCommand(_ => ChooseBackground(), _ => _editor is not null);
+        ClearBackgroundCommand = new RelayCommand(_ => ClearBackgroundImage(), _ => HasBackgroundImage);
+        ResetLaneBackgroundCommand = new RelayCommand(_ => ResetLaneBackgroundColor());
         SetToolCommand = new RelayCommand(param =>
         {
             if (param is ChartEditor.EditTool tool) Tool = tool;
@@ -515,6 +518,9 @@ public sealed class OsuManiaEditorViewModel : ToolViewModelBase, YuLiangToolkit.
     public RelayCommand JumpToFirstNoteCommand { get; }
     public RelayCommand JumpToLastNoteCommand { get; }
     public RelayCommand ToggleFullscreenCommand { get; }
+    public RelayCommand ChooseBackgroundCommand { get; }
+    public RelayCommand ClearBackgroundCommand { get; }
+    public RelayCommand ResetLaneBackgroundCommand { get; }
     public RelayCommand SetToolCommand { get; }
     public RelayCommand AddRedLineCommand { get; }
     public RelayCommand AddGreenLineCommand { get; }
@@ -588,6 +594,7 @@ public sealed class OsuManiaEditorViewModel : ToolViewModelBase, YuLiangToolkit.
 
             _audio.Volume = Cfg.Volume;
             LoadChartAudio(beatmap, path);
+            LoadBackgroundForChart(beatmap);
 
             // 打开时的视野：用上次记住的缩放，从谱面第一个 note 开始看。
             // 不直接 FitRange 整张谱面 —— 十几万 note 的谱面一适配就缩成一条线，什么都看不清。
@@ -1352,7 +1359,31 @@ public sealed class OsuManiaEditorViewModel : ToolViewModelBase, YuLiangToolkit.
         var layout = LaneLayout.Compute(ChartCanvasWidth, ChartCanvas.RulerWidth, NoteAreaRatio);
         _editor.SetLayout(layout.LaneLeft, layout.LaneWidth, _editor.Beatmap.KeyCount);
 
-        RenderState = ChartRenderState.Build(_editor, height, ChartCanvasWidth, NoteAreaRatio);
+        var state = ChartRenderState.Build(_editor, height, ChartCanvasWidth, NoteAreaRatio, NoteAreaAlign);
+        RenderState = new ChartRenderState
+        {
+            Notes = state.Notes,
+            GridLines = state.GridLines,
+            TimingPoints = state.TimingPoints,
+            StartTime = state.StartTime,
+            EndTime = state.EndTime,
+            PxPerMs = state.PxPerMs,
+            LaneLeft = state.LaneLeft,
+            LaneWidth = state.LaneWidth,
+            RulerLeft = state.RulerLeft,
+            KeyCount = state.KeyCount,
+            PlayheadMs = state.PlayheadMs,
+            ShowPlayhead = state.ShowPlayhead,
+            CreatePreview = state.CreatePreview,
+            SelectedIndices = state.SelectedIndices,
+            Marquee = state.Marquee,
+            SelectionCount = state.SelectionCount,
+            TotalNoteCount = state.TotalNoteCount,
+            IsDragging = state.IsDragging,
+            BackgroundImage = ShowBackgroundImage ? _backgroundImage : null,
+            BackgroundOpacity = BackgroundOpacity,
+            LaneBackgroundColor = LaneBackgroundColor,
+        };
         RequestRedraw();
     }
 
@@ -1389,6 +1420,443 @@ public sealed class OsuManiaEditorViewModel : ToolViewModelBase, YuLiangToolkit.
     {
         get => NoteAreaRatio * 100;
         set => NoteAreaRatio = value / 100.0;
+    }
+
+    /// <summary>Note 浏览区的水平对齐（0 贴左 / 1 居中 / 2 贴右）。</summary>
+    public LaneLayout.LaneAlign NoteAreaAlign
+    {
+        get => (LaneLayout.LaneAlign)Math.Clamp(Cfg.NoteAreaAlign, 0, 2);
+        set
+        {
+            if ((int)value == Cfg.NoteAreaAlign) return;
+            Cfg.NoteAreaAlign = (int)value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(IsAlignLeft));
+            OnPropertyChanged(nameof(IsAlignCenter));
+            OnPropertyChanged(nameof(IsAlignRight));
+            BuildAndPublishState();
+        }
+    }
+
+    /// <summary>对齐方式是不是「贴左」（单选按钮绑定）。</summary>
+    public bool IsAlignLeft
+    {
+        get => NoteAreaAlign == LaneLayout.LaneAlign.Left;
+        set { if (value) NoteAreaAlign = LaneLayout.LaneAlign.Left; }
+    }
+
+    /// <summary>对齐方式是不是「居中」。</summary>
+    public bool IsAlignCenter
+    {
+        get => NoteAreaAlign == LaneLayout.LaneAlign.Center;
+        set { if (value) NoteAreaAlign = LaneLayout.LaneAlign.Center; }
+    }
+
+    /// <summary>对齐方式是不是「贴右」。</summary>
+    public bool IsAlignRight
+    {
+        get => NoteAreaAlign == LaneLayout.LaneAlign.Right;
+        set { if (value) NoteAreaAlign = LaneLayout.LaneAlign.Right; }
+    }
+
+    /// <summary>用文件对话框选一张背景图（除了拖入之外的另一条入口）。</summary>
+    private void ChooseBackground()
+    {
+        if (_editor is null) return;
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "选择谱面背景图",
+            Filter = "图片 (*.jpg;*.jpeg;*.png;*.bmp;*.gif;*.webp)|*.jpg;*.jpeg;*.png;*.bmp;*.gif;*.webp|所有文件 (*.*)|*.*",
+            CheckFileExists = true,
+        };
+
+        var chartDir = Path.GetDirectoryName(_editor.Beatmap.FilePath) ?? "";
+        if (Directory.Exists(chartDir)) dialog.InitialDirectory = chartDir;
+
+        if (dialog.ShowDialog() != true) return;
+
+        if (!SetBackgroundImage(dialog.FileName, out var error))
+        {
+            System.Windows.MessageBox.Show($"设置背景失败：\n{error}", "设置背景图",
+                System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+        }
+    }
+
+    // ---------------------------------------------------------------- 背景图（加载 / 换图 / 清除）
+
+    /// <summary>
+    /// 解码一张图片（不锁文件；超大图按宽度缩一下省内存）。
+    /// </summary>
+    private static System.Windows.Media.ImageSource? DecodeImage(string path)
+    {
+        try
+        {
+            var image = new System.Windows.Media.Imaging.BitmapImage();
+            image.BeginInit();
+            image.UriSource = new Uri(path, UriKind.Absolute);
+            image.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;   // 不锁文件
+            image.CreateOptions = System.Windows.Media.Imaging.BitmapCreateOptions.IgnoreImageCache;
+            image.DecodePixelWidth = 1600;   // 背景只用来垫底，不需要原图分辨率
+            image.EndInit();
+            image.Freeze();                  // 冻结后才能跨线程 / 安全共享
+            return image;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 打开谱面后加载背景：优先用 <c>[Events]</c> 里声明的那张。
+    /// </summary>
+    private void LoadBackgroundForChart(EditorBeatmap beatmap)
+    {
+        if (!string.IsNullOrEmpty(beatmap.BackgroundPath) && File.Exists(beatmap.BackgroundPath))
+        {
+            var image = DecodeImage(beatmap.BackgroundPath);
+            if (image is not null)
+            {
+                BackgroundImage = image;
+                BackgroundStatus = Path.GetFileName(beatmap.BackgroundPath);
+                return;
+            }
+
+            BackgroundStatus = "背景图打不开：" + Path.GetFileName(beatmap.BackgroundPath);
+            Log($"⚠ 背景图打不开：{beatmap.BackgroundPath}");
+            BackgroundImage = null;
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(beatmap.BackgroundFileName))
+        {
+            // 谱面声明了背景，但文件不在同目录（很常见：只拷了 .osu）
+            BackgroundImage = null;
+            BackgroundStatus = $"找不到背景图：{beatmap.BackgroundFileName}";
+            return;
+        }
+
+        BackgroundImage = null;
+        BackgroundStatus = "没有背景图（把 .jpg / .png 拖进来即可设置）";
+    }
+
+    /// <summary>
+    /// 把一张图片设为谱面背景：复制到谱面同目录 → 写进 <c>[Events]</c> → 重新加载预览。
+    ///
+    /// <para>目标是**真的改谱面**（保存后 osu! 里也是这张图），所以同名文件会被覆盖。</para>
+    /// </summary>
+    public bool SetBackgroundImage(string sourcePath, out string? error)
+    {
+        error = null;
+        if (_editor is null)
+        {
+            error = "没有打开谱面。";
+            return false;
+        }
+
+        if (!File.Exists(sourcePath))
+        {
+            error = "图片文件不存在。";
+            return false;
+        }
+
+        var chartPath = _editor.Beatmap.FilePath;
+        var chartDir = Path.GetDirectoryName(chartPath) ?? "";
+        if (string.IsNullOrEmpty(chartDir) || !Directory.Exists(chartDir))
+        {
+            error = "谱面所在目录不可用。";
+            return false;
+        }
+
+        var fileName = Path.GetFileName(sourcePath);
+        if (!BeatmapBackground.IsSafeFileName(fileName))
+        {
+            error = "图片文件名里含有不允许的字符。";
+            return false;
+        }
+
+        try
+        {
+            var sameFile = string.Equals(Path.GetFullPath(sourcePath),
+                Path.GetFullPath(Path.Combine(chartDir, fileName)), StringComparison.OrdinalIgnoreCase);
+
+            var target = Path.Combine(chartDir, fileName);
+            if (!sameFile)
+            {
+                File.Copy(sourcePath, target, overwrite: true);
+            }
+
+            _editor.Beatmap.BackgroundFileName = fileName;
+            _editor.Beatmap.BackgroundPath = target;
+            _editor.Beatmap.IsDirty = true;
+            IsDirty = true;
+
+            var image = DecodeImage(target);
+            if (image is null)
+            {
+                error = "图片解码失败（不是有效的图片文件？）";
+                BackgroundStatus = error;
+                return false;
+            }
+
+            BackgroundImage = image;
+            BackgroundStatus = fileName;
+            StatusDetail = $"已把 {fileName} 设为背景图（保存后生效）";
+            Log($"背景图：{fileName}（复制到谱面目录 {chartDir}）");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = $"{ex.GetType().Name}: {ex.Message}";
+            BackgroundStatus = "设置背景失败：" + error;
+            Log($"✘ 设置背景图失败：{error}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 清除背景：只清编辑器里的显示 + <c>[Events]</c> 里那一行（不删用户的图片文件）。
+    /// </summary>
+    public void ClearBackgroundImage()
+    {
+        if (_editor is null) return;
+
+        _editor.Beatmap.BackgroundFileName = "";
+        _editor.Beatmap.BackgroundPath = "";
+        _editor.Beatmap.IsDirty = true;
+        IsDirty = true;
+
+        BackgroundImage = null;
+        BackgroundStatus = "没有背景图（把 .jpg / .png 拖进来即可设置）";
+        StatusDetail = "已清除背景图（保存后生效；图片文件没删）";
+        Log("已清除背景图");
+    }
+
+    /// <summary>
+    /// 拖入了一个文件：是图片就问一句要不要换成背景图。
+    /// </summary>
+    /// <param name="paths">拖进来的路径。</param>
+    /// <param name="inNoteArea">是否落在 Note 浏览区上（截图 / 冒烟会用到这个信息）。</param>
+    /// <returns>true = 已经按「换背景」处理了。</returns>
+    public bool TryHandleBackgroundDrop(IEnumerable<string>? paths, bool inNoteArea)
+    {
+        if (paths is null) return false;
+
+        var imagePath = paths.FirstOrDefault(BeatmapBackground.IsSupportedImage);
+        if (imagePath is null) return false;
+        if (_editor is null)
+        {
+            StatusDetail = "先打开一个谱面，再把图片拖进来当背景";
+            return false;
+        }
+
+        var where = inNoteArea ? "" : "（图片建议拖到 Note 浏览区里）";
+        var answer = System.Windows.MessageBox.Show(
+            $"把「{Path.GetFileName(imagePath)}」设为这张谱面的背景图？{where}\n\n" +
+            $"图片会被复制到谱面所在目录，并写进 .osu 的 [Events]（保存后生效）。",
+            "设置背景图",
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Question);
+
+        if (answer != System.Windows.MessageBoxResult.Yes)
+        {
+            StatusDetail = "已取消设置背景图";
+            return true;
+        }
+
+        if (!SetBackgroundImage(imagePath, out var error))
+        {
+            System.Windows.MessageBox.Show($"设置背景失败：\n{error}", "设置背景图",
+                System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+        }
+
+        return true;
+    }
+
+    // ---------------------------------------------------------------- 背景图
+
+    private System.Windows.Media.ImageSource? _backgroundImage;
+    private string _backgroundStatus = "没有背景图";
+
+    /// <summary>当前背景图（解码好的，可直接给 <c>DrawingContext.DrawImage</c>）。</summary>
+    public System.Windows.Media.ImageSource? BackgroundImage
+    {
+        get => _backgroundImage;
+        private set
+        {
+            if (!Set(ref _backgroundImage, value)) return;
+            OnPropertyChanged(nameof(HasBackgroundImage));
+            BuildAndPublishState();
+        }
+    }
+
+    /// <summary>有没有背景图（界面据此启用「清除背景」）。</summary>
+    public bool HasBackgroundImage => _backgroundImage is not null;
+
+    /// <summary>背景图状态文字（文件名 / 没有 / 加载失败原因）。</summary>
+    public string BackgroundStatus
+    {
+        get => _backgroundStatus;
+        private set => Set(ref _backgroundStatus, value);
+    }
+
+    /// <summary>是否显示背景图。</summary>
+    public bool ShowBackgroundImage
+    {
+        get => Cfg.ShowBackgroundImage;
+        set
+        {
+            if (Cfg.ShowBackgroundImage == value) return;
+            Cfg.ShowBackgroundImage = value;
+            OnPropertyChanged();
+            BuildAndPublishState();
+        }
+    }
+
+    /// <summary>背景图不透明度（0.05~1.0）。</summary>
+    public double BackgroundOpacity
+    {
+        get => Math.Clamp(Cfg.BackgroundOpacity, 0.05, 1.0);
+        set
+        {
+            var clamped = Math.Clamp(value, 0.05, 1.0);
+            if (Math.Abs(Cfg.BackgroundOpacity - clamped) < 1e-4) return;
+            Cfg.BackgroundOpacity = clamped;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(BackgroundOpacityPercentText));
+            BuildAndPublishState();
+        }
+    }
+
+    /// <summary>不透明度的百分比文字。</summary>
+    public string BackgroundOpacityPercentText => $"{BackgroundOpacity * 100:0}%";
+
+    /// <summary>不透明度滑块（0~100）。</summary>
+    public double BackgroundOpacityPercent
+    {
+        get => BackgroundOpacity * 100;
+        set => BackgroundOpacity = value / 100.0;
+    }
+
+    // ---- Note 浏览区底色（叠在背景图与 note 之间的那一层） ----
+
+    /// <summary>Note 浏览区底色（含透明度）。</summary>
+    public System.Windows.Media.Color LaneBackgroundColor
+    {
+        get
+        {
+            var argb = Cfg.LaneBackgroundArgb;
+            return System.Windows.Media.Color.FromArgb(
+                (byte)(argb >> 24), (byte)(argb >> 16), (byte)(argb >> 8), (byte)argb);
+        }
+        set
+        {
+            var argb = (value.A << 24) | (value.R << 16) | (value.G << 8) | value.B;
+            if (Cfg.LaneBackgroundArgb == argb) return;
+            Cfg.LaneBackgroundArgb = argb;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(LaneBackgroundHex));
+            OnPropertyChanged(nameof(LaneBackgroundOpacityPercentText));
+            OnPropertyChanged(nameof(LaneBackgroundOpacityPercent));
+            BuildAndPublishState();
+        }
+    }
+
+    /// <summary>Note 浏览区底色的十六进制文字（<c>#AARRGGBB</c>，可直接编辑）。</summary>
+    public string LaneBackgroundHex
+    {
+        get
+        {
+            var color = LaneBackgroundColor;
+            return $"#{color.A:X2}{color.R:X2}{color.G:X2}{color.B:X2}";
+        }
+        set => ApplyLaneBackgroundHex(value);
+    }
+
+    /// <summary>Note 浏览区底色的不透明度（0~100，百分比）。</summary>
+    public double LaneBackgroundOpacityPercent
+    {
+        get => LaneBackgroundColor.A / 255.0 * 100;
+        set
+        {
+            var clamped = (byte)Math.Round(Math.Clamp(value, 0, 100) / 100.0 * 255);
+            var color = LaneBackgroundColor;
+            if (color.A == clamped) return;
+            LaneBackgroundColor = System.Windows.Media.Color.FromArgb(clamped, color.R, color.G, color.B);
+        }
+    }
+
+    /// <summary>不透明度文字。</summary>
+    public string LaneBackgroundOpacityPercentText => $"{LaneBackgroundOpacityPercent:0}%";
+
+    /// <summary>是不是还是默认底色（界面据此启用「恢复默认」）。</summary>
+    public bool IsLaneBackgroundDefault
+        => Cfg.LaneBackgroundArgb == OsuManiaEditorConfig.DefaultLaneBackgroundArgbInt;
+
+    /// <summary>把十六进制文字写回底色（格式不对就忽略，不弹窗）。</summary>
+    private void ApplyLaneBackgroundHex(string text)
+    {
+        if (TryParseHexColor(text, out var color))
+        {
+            LaneBackgroundColor = color;
+        }
+    }
+
+    /// <summary>解析 <c>#AARRGGBB</c> / <c>#RRGGBB</c> / <c>#ARGB</c> / <c>#RGB</c>。</summary>
+    private static bool TryParseHexColor(string? text, out System.Windows.Media.Color color)
+    {
+        color = default;
+        if (string.IsNullOrWhiteSpace(text)) return false;
+
+        var hex = text.Trim().TrimStart('#');
+        if (hex.Length is not (3 or 4 or 6 or 8)) return false;
+
+        // 展开短格式：#RGB → #RRGGBB、#ARGB → #AARRGGBB
+        if (hex.Length is 3 or 4)
+        {
+            var expanded = new StringBuilder(hex.Length * 2);
+            foreach (var ch in hex) expanded.Append(ch).Append(ch);
+            hex = expanded.ToString();
+        }
+
+        if (!uint.TryParse(hex, System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture, out var value))
+        {
+            return false;
+        }
+
+        byte a, r, g, b;
+        if (hex.Length == 8)
+        {
+            a = (byte)(value >> 24);
+            r = (byte)(value >> 16);
+            g = (byte)(value >> 8);
+            b = (byte)value;
+        }
+        else
+        {
+            a = 255;
+            r = (byte)(value >> 16);
+            g = (byte)(value >> 8);
+            b = (byte)value;
+        }
+
+        color = System.Windows.Media.Color.FromArgb(a, r, g, b);
+        return true;
+    }
+
+    /// <summary>把 Note 浏览区底色恢复成默认（半透明黑）。</summary>
+    public void ResetLaneBackgroundColor()
+    {
+        Cfg.LaneBackgroundArgb = OsuManiaEditorConfig.DefaultLaneBackgroundArgbInt;
+        OnPropertyChanged(nameof(LaneBackgroundColor));
+        OnPropertyChanged(nameof(LaneBackgroundHex));
+        OnPropertyChanged(nameof(LaneBackgroundOpacityPercent));
+        OnPropertyChanged(nameof(LaneBackgroundOpacityPercentText));
+        OnPropertyChanged(nameof(IsLaneBackgroundDefault));
+        BuildAndPublishState();
+        StatusDetail = "Note 浏览区底色已恢复默认";
     }
 
     private void RequestRedraw() => RedrawRequested?.Invoke(this, EventArgs.Empty);

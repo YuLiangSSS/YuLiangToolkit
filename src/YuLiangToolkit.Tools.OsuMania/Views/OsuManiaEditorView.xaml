@@ -188,7 +188,7 @@
                         <TextBlock Text="双击列表项可跳到该时间点；绿线 SV 只做数据，不影响播放" FontSize="10.5"
                                    Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap" />
 
-                        <!-- Note 浏览区宽度：调小 = 轨道收窄并居中（4K 铺满宽屏时每列太宽） -->
+                        <!-- Note 浏览区宽度：调小 = 轨道收窄（4K 铺满宽屏时每列太宽） -->
                         <Grid Margin="0,12,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
@@ -200,8 +200,108 @@
                             <Slider Grid.Column="1" Minimum="20" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
                                     Margin="10,0,0,0" VerticalAlignment="Center" Style="{StaticResource SliderStyle}"
                                     Value="{Binding NoteAreaPercent}"
-                                    ToolTip="Note 浏览区占可用宽度的百分比；调小会让轨道收窄并居中" />
+                                    ToolTip="Note 浏览区占可用宽度的百分比；调小会让轨道收窄" />
                             <TextBlock Grid.Column="2" Text="{Binding NoteAreaPercentText}" MinWidth="38"
+                                       TextAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0"
+                                       FontSize="11" FontFamily="Consolas"
+                                       Foreground="{DynamicResource AccentBrush}" />
+                        </Grid>
+
+                        <!-- 对齐：宽度不足时整块（标尺 + 轨道）贴哪边 -->
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <TextBlock Text="对齐" VerticalAlignment="Center" FontSize="11.5"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <RadioButton Content="贴左" Style="{StaticResource RadioButtonStyle}" Margin="12,0,0,0"
+                                         IsChecked="{Binding IsAlignLeft}" ToolTip="空白留在右侧（osu! 编辑器默认）" />
+                            <RadioButton Content="居中" Style="{StaticResource RadioButtonStyle}" Margin="12,0,0,0"
+                                         IsChecked="{Binding IsAlignCenter}" />
+                            <RadioButton Content="贴右" Style="{StaticResource RadioButtonStyle}" Margin="12,0,0,0"
+                                         IsChecked="{Binding IsAlignRight}" />
+                        </StackPanel>
+
+                        <!-- 背景图 -->
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center">
+                                <CheckBox Content="显示背景图（背后的图）" Style="{StaticResource CheckBoxStyle}"
+                                          IsChecked="{Binding ShowBackgroundImage}"
+                                          ToolTip="背景图铺满整个中间区域；关掉就只看纯色" />
+                                <TextBlock Text="{Binding BackgroundStatus}" FontSize="10.5" Margin="0,4,0,0"
+                                           TextTrimming="CharacterEllipsis" MaxWidth="150"
+                                           Foreground="{DynamicResource FaintTextBrush}"
+                                           ToolTip="把 .jpg / .png 拖进 Note 浏览区即可换图" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="换…" Style="{StaticResource SecondaryButtonStyle}"
+                                    VerticalAlignment="Center" Command="{Binding ChooseBackgroundCommand}"
+                                    ToolTip="选一张图片作为谱面背景" />
+                            <Button Grid.Column="2" Content="清除" Style="{StaticResource SecondaryButtonStyle}"
+                                    Margin="6,0,0,0" VerticalAlignment="Center"
+                                    Command="{Binding ClearBackgroundCommand}" />
+                        </Grid>
+
+                        <!-- 背景图不透明度 -->
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="背景浓度" VerticalAlignment="Center" FontSize="11.5"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Slider Grid.Column="1" Minimum="5" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
+                                    Margin="10,0,0,0" VerticalAlignment="Center" Style="{StaticResource SliderStyle}"
+                                    Value="{Binding BackgroundOpacityPercent}"
+                                    IsEnabled="{Binding ShowBackgroundImage}"
+                                    ToolTip="背景图本身的显示强度" />
+                            <TextBlock Grid.Column="2" Text="{Binding BackgroundOpacityPercentText}" MinWidth="38"
+                                       TextAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0"
+                                       FontSize="11" FontFamily="Consolas"
+                                       Foreground="{DynamicResource AccentBrush}" />
+                        </Grid>
+
+                        <!-- Note 浏览区底色（叠在背景图与 note 之间的一层：颜色 + 透明度） -->
+                        <TextBlock Text="Note 浏览区底色" FontSize="11.5" Margin="0,12,0,6"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Width="22" Height="22" CornerRadius="4"
+                                    BorderThickness="1" BorderBrush="{DynamicResource BorderBrush}">
+                                <Border.Background>
+                                    <SolidColorBrush Color="{Binding LaneBackgroundColor}" />
+                                </Border.Background>
+                            </Border>
+                            <TextBox Grid.Column="1" Margin="8,0,0,0" Style="{StaticResource TextBoxStyle}"
+                                     Text="{Binding LaneBackgroundHex, UpdateSourceTrigger=LostFocus}"
+                                     ToolTip="颜色：#AARRGGBB（例如 #8C000000 = 黑 + 55% 不透明）" />
+                            <Button Grid.Column="2" Content="默认" Style="{StaticResource SecondaryButtonStyle}"
+                                    Margin="6,0,0,0" Command="{Binding ResetLaneBackgroundCommand}"
+                                    ToolTip="恢复默认底色（半透明黑 #8C000000）"
+                                    IsEnabled="{Binding IsLaneBackgroundDefault, Converter={StaticResource InverseBoolConverter}}" />
+                            <TextBlock Grid.Column="3" Text="%透明" VerticalAlignment="Center" Margin="8,0,0,0"
+                                       FontSize="10" Foreground="{DynamicResource FaintTextBrush}" />
+                        </Grid>
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="透明度" VerticalAlignment="Center" FontSize="11.5"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
+                                    Margin="10,0,0,0" VerticalAlignment="Center" Style="{StaticResource SliderStyle}"
+                                    Value="{Binding LaneBackgroundOpacityPercent}"
+                                    ToolTip="0% = 完全透明（能看见背景图）；100% = 完全不透明" />
+                            <TextBlock Grid.Column="2" Text="{Binding LaneBackgroundOpacityPercentText}" MinWidth="38"
                                        TextAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0"
                                        FontSize="11" FontFamily="Consolas"
                                        Foreground="{DynamicResource AccentBrush}" />
@@ -402,7 +502,7 @@
             <!-- ===== 主体：左侧工具栏 | 中间轨道画布 | 右侧检查器 ===== -->
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="176" MinWidth="150" />               <!-- TOOLS -->
+                    <ColumnDefinition Width="200" MinWidth="180" />               <!-- TOOLS -->
                     <ColumnDefinition Width="*" MinWidth="320" />                 <!-- 轨道 -->
                     <ColumnDefinition Width="248" MinWidth="200" />               <!-- INSPECTOR -->
                 </Grid.ColumnDefinitions>
@@ -450,7 +550,7 @@
                                            Foreground="{DynamicResource AccentBrush}" />
                             </StackPanel>
 
-                            <!-- Note 浏览区宽度（左右宽度可调；调小 = 轨道收窄并居中） -->
+                            <!-- Note 浏览区宽度（左右宽度可调；调小 = 轨道收窄） -->
                             <Grid Margin="0,10,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto" />
@@ -463,8 +563,96 @@
                                         IsSnapToTickEnabled="True" Margin="8,0,0,0"
                                         Style="{StaticResource SliderStyle}"
                                         Value="{Binding NoteAreaPercent}"
-                                        ToolTip="Note 浏览区占可用宽度的百分比；调小会让轨道收窄并居中" />
+                                        ToolTip="Note 浏览区占可用宽度的百分比；调小会让轨道收窄" />
                                 <TextBlock Grid.Column="2" Text="{Binding NoteAreaPercentText}" MinWidth="38"
+                                           TextAlignment="Right" VerticalAlignment="Center" Margin="6,0,0,0"
+                                           FontSize="10.5" FontFamily="Consolas"
+                                           Foreground="{DynamicResource AccentBrush}" />
+                            </Grid>
+
+                            <!-- 对齐：宽度不足时整块（标尺 + 轨道）贴哪边。用 WrapPanel 防止窄面板时被裁 -->
+                            <TextBlock Text="对齐" FontSize="11" Margin="2,8,0,4"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <WrapPanel>
+                                <RadioButton Content="贴左" Style="{StaticResource RadioButtonStyle}" Margin="0,0,10,0"
+                                             IsChecked="{Binding IsAlignLeft}" ToolTip="空白留在右侧" />
+                                <RadioButton Content="居中" Style="{StaticResource RadioButtonStyle}" Margin="0,0,10,0"
+                                             IsChecked="{Binding IsAlignCenter}" />
+                                <RadioButton Content="贴右" Style="{StaticResource RadioButtonStyle}"
+                                             IsChecked="{Binding IsAlignRight}" />
+                            </WrapPanel>
+
+                            <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,12" />
+
+                            <TextBlock Text="BACKGROUND" FontSize="11" FontWeight="SemiBold" Margin="2,0,0,8"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <CheckBox Content="显示背景图" Style="{StaticResource CheckBoxStyle}"
+                                      IsChecked="{Binding ShowBackgroundImage}"
+                                      ToolTip="背景图铺满整个中间区域；关掉就只看纯色" />
+                            <TextBlock Text="{Binding BackgroundStatus}" FontSize="10" Margin="0,4,0,0"
+                                       TextWrapping="Wrap" Foreground="{DynamicResource FaintTextBrush}"
+                                       ToolTip="把 .jpg / .png 拖进 Note 浏览区即可换图" />
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button Content="换图…" Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding ChooseBackgroundCommand}" />
+                                <Button Content="清除" Style="{StaticResource SecondaryButtonStyle}" Margin="6,0,0,0"
+                                        Command="{Binding ClearBackgroundCommand}" />
+                            </StackPanel>
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="浓度" VerticalAlignment="Center" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <Slider Grid.Column="1" Minimum="5" Maximum="100" TickFrequency="5"
+                                        IsSnapToTickEnabled="True" Margin="8,0,0,0"
+                                        Style="{StaticResource SliderStyle}"
+                                        Value="{Binding BackgroundOpacityPercent}"
+                                        IsEnabled="{Binding ShowBackgroundImage}" />
+                                <TextBlock Grid.Column="2" Text="{Binding BackgroundOpacityPercentText}" MinWidth="36"
+                                           TextAlignment="Right" VerticalAlignment="Center" Margin="6,0,0,0"
+                                           FontSize="10.5" FontFamily="Consolas"
+                                           Foreground="{DynamicResource AccentBrush}" />
+                            </Grid>
+
+                            <!-- Note 浏览区底色（背景图与 note 之间那层） -->
+                            <TextBlock Text="Note 区底色" FontSize="11" Margin="2,10,0,6"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border Width="20" Height="20" CornerRadius="4" BorderThickness="1"
+                                        BorderBrush="{DynamicResource BorderBrush}">
+                                    <Border.Background>
+                                        <SolidColorBrush Color="{Binding LaneBackgroundColor}" />
+                                    </Border.Background>
+                                </Border>
+                                <TextBox Grid.Column="1" Margin="6,0,0,0" Style="{StaticResource TextBoxStyle}"
+                                         FontSize="11"
+                                         Text="{Binding LaneBackgroundHex, UpdateSourceTrigger=LostFocus}"
+                                         ToolTip="颜色：#AARRGGBB（#8C000000 = 黑 + 55% 不透明）" />
+                                <Button Grid.Column="2" Content="默认" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="6,0,0,0" Command="{Binding ResetLaneBackgroundCommand}"
+                                        IsEnabled="{Binding IsLaneBackgroundDefault, Converter={StaticResource InverseBoolConverter}}" />
+                            </Grid>
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="透明" VerticalAlignment="Center" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="100" TickFrequency="5"
+                                        IsSnapToTickEnabled="True" Margin="8,0,0,0"
+                                        Style="{StaticResource SliderStyle}"
+                                        Value="{Binding LaneBackgroundOpacityPercent}" />
+                                <TextBlock Grid.Column="2" Text="{Binding LaneBackgroundOpacityPercentText}" MinWidth="36"
                                            TextAlignment="Right" VerticalAlignment="Center" Margin="6,0,0,0"
                                            FontSize="10.5" FontFamily="Consolas"
                                            Foreground="{DynamicResource AccentBrush}" />

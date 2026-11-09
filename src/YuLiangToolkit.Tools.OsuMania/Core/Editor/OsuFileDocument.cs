@@ -57,6 +57,7 @@ public static class OsuFileDocument
         var timingEnd = -1;
         var objectsStart = -1;
         var objectsEnd = -1;
+        string? backgroundFileName = null;
 
         for (var i = 0; i < lines.Count; i++)
         {
@@ -95,6 +96,13 @@ public static class OsuFileDocument
                 case "HitObjects":
                     ParseHitObject(map, line, i);
                     break;
+                case "Events":
+                    // 只关心背景图那一行；其它（break / storyboard）原样留着，保存时不动
+                    if (backgroundFileName is null)
+                    {
+                        backgroundFileName = BeatmapBackground.ParseBackgroundLine(line);
+                    }
+                    break;
                 default:
                     if (TryParseKeyValue(line, out var key, out var value))
                     {
@@ -122,6 +130,14 @@ public static class OsuFileDocument
                      int.TryParse(mode, NumberStyles.Integer, CultureInfo.InvariantCulture, out var modeId)
             ? modeId
             : 0;
+
+        // 背景图：记下文件名，并解析成实际存在的完整路径（相对谱面目录）
+        if (!string.IsNullOrWhiteSpace(backgroundFileName))
+        {
+            map.BackgroundFileName = backgroundFileName!;
+            var chartDir = Path.GetDirectoryName(sourcePath) ?? "";
+            map.BackgroundPath = BeatmapBackground.ResolveExisting(chartDir, backgroundFileName) ?? "";
+        }
 
         map.RefreshIndexes();
         return map;
@@ -314,11 +330,32 @@ public static class OsuFileDocument
         }
     }
 
+    /// <summary>
+    /// 把 <see cref="EditorBeatmap.BackgroundFileName"/> 写回 <c>[Events]</c> 段。
+    /// 没有背景文件名（空串）时不动原文件 —— 保留谱面原本的背景声明。
+    /// </summary>
+    private static void ApplyBackgroundLine(List<string> lines, EditorBeatmap map)
+    {
+        if (string.IsNullOrWhiteSpace(map.BackgroundFileName)) return;
+        if (!BeatmapBackground.IsSafeFileName(map.BackgroundFileName)) return;
+
+        var line = BeatmapBackground.BuildBackgroundLine(map.BackgroundFileName);
+        if (!BeatmapBackground.TryReplaceBackgroundLine(lines, line))
+        {
+            // 谱面原本没有 [Events] 段：补一个
+            BeatmapBackground.AppendEventsSection(lines, line);
+        }
+    }
+
     /// <summary>生成保存后的完整文本（自检直接断言文本）。</summary>
     public static string BuildText(EditorBeatmap map)
     {
         var sb = new StringBuilder(map.OriginalLines.Count * 32 + map.HitObjects.Count * 24);
         var lines = map.OriginalLines;
+
+        // 背景图：用户换了图就改 [Events] 里那一行（没有 [Events] 段就补一个）。
+        // 放在这里做，保存（Save → BuildText）与文本断言（自检）走同一条路径。
+        ApplyBackgroundLine(lines, map);
 
         // 段落边界：用加载时记下的行号（指向段标题行与下一段标题行）
         var timingHeader = map.TimingSectionStart - 1;
@@ -373,8 +410,7 @@ public static class OsuFileDocument
     }
 
     private static void AppendLines(StringBuilder sb, IReadOnlyList<string> lines, int from, int to)
-    {
-        for (var i = from; i < to && i < lines.Count; i++)
+    {        for (var i = from; i < to && i < lines.Count; i++)
         {
             sb.Append(lines[i]).Append('\n');
         }
