@@ -17,6 +17,12 @@
   <ItemGroup>
     <!-- osu! 谱面（.osu）解析 / 保存：只在这一层出现，算法层不直接依赖第三方类型。 -->
     <PackageReference Include="OsuParsers" Version="1.7.2" />
+
+    <!-- 「谱面编辑器」的音频引擎：NAudio 提供 waveOut 设备位置（谱面编辑器的播放时钟靠它精确对齐，
+         WPF 的 MediaElement 精度不够）；NAudio.Vorbis 补 OGG（大量 osu! 谱面用 .ogg）。
+         两者都是 MIT；NAudio.Vorbis 内部依赖 NVorbis（MIT，纯托管 Vorbis 解码）。 -->
+    <PackageReference Include="NAudio" Version="3.3.0" />
+    <PackageReference Include="NAudio.Vorbis" Version="3.0.0" />
   </ItemGroup>
 
 </Project>

@@ -30,6 +30,22 @@
 - 项目主页：<https://github.com/mrflashstudio/OsuParsers>
 - 许可：MIT License
 - 版权：Copyright (c) 2021 mrflashstudio
+- 说明：「osu!mania 谱面编辑器」（`src/YuLiangToolkit.Tools.OsuMania/Core/Editor/`）**不使用**它读写：
+  实测该库解码 → 保存会丢掉不认识的键与注释，而编辑器是改用户原谱，因此那边改用手写的
+  按行编辑读写器（`OsuFileDocument.cs`）。
+
+## NAudio 3.3.0 + NAudio.Vorbis 3.0.0 + NVorbis 0.10.5（NuGet 依赖）
+
+- 用途：「osu!mania 谱面编辑器」（`src/YuLiangToolkit.Tools.OsuMania/Core/Editor/ChartAudioEngine.cs`）的
+  **音频播放与精确播放位置**：用 waveOut 的设备字节位置（`IWavePosition.GetPosition`）驱动谱面时间轴，
+  WPF 的 `MediaElement.Position` 精度不够（只有几十毫秒）；NAudio.Vorbis / NVorbis 补 OGG 解码
+  （大量 osu! 谱面用 `.ogg`，Windows 自带解码器对 OGG 支持不可靠）
+- 项目主页：<https://github.com/naudio/NAudio>、<https://github.com/naudio/Vorbis>、<https://github.com/NVorbis/NVorbis>
+- 许可：MIT License（三者都是）
+- 版权：Copyright (c) Mark Heath & Contributors；Copyright (c) Andrew Ward
+- 说明：只引用 NuGet 包（纯托管程序集 + Windows 自带的 winmm / WASAPI），**没有修改**其源码；
+  不引入任何原生解码库，`.ogg` 由 NVorbis 纯托管解码。首次从源码构建需要联网还原一次，
+  之后走本机 NuGet 缓存。
 
 ## SharpCompress 0.50.4（NuGet 依赖）
 

@@ -23,6 +23,7 @@
 | 🏷️ 批量重命名 | 规则清单 + 预览 + 两阶段改名 + 撤销 | [tools/batch-rename.md](tools/batch-rename.md) |
 | 📝 文本编辑器 | 多标签文本 / 代码编辑（AvalonEdit）：语法高亮、查找替换、编码与换行自动识别、界面缩放 | [tools/text-editor.md](tools/text-editor.md) |
 | 🎧 osu! 下图器 | 搜谱面集、批量下 `.osz` | [tools/map-downloader.md](tools/map-downloader.md) |
+| 🎼 osu!mania 谱面编辑器 | 边听边摆 note（普通键 / LN / 右键删），音频设备位置精确同步，大量 note 自绘不卡 | [tools/osu-mania-editor.md](tools/osu-mania-editor.md) |
 | 🎹 osu! Key 转换器 | 低键数 mania 谱面「复制列 / 插空白列」加成高键数（2~10 可选） | [tools/osu-key-converter.md](tools/osu-key-converter.md) |
 | 🍜 osu! LN 转换器 | 按 14 档强度把普通键改成 LN（长条），可选保留原 LN / 修尾巴 | [tools/osu-ln-transformer.md](tools/osu-ln-transformer.md) |
 | ⭐ osu! 等级计算器 | 拖入 mania 谱面算星数与等级，批量表格；等级按 8K 谱面拟合（只对 8K 有参考意义），SR 通用 | [tools/osu-level-calculator.md](tools/osu-level-calculator.md) |

@@ -38,11 +38,13 @@ internal static class OsuDemoData
     /// </summary>
     /// <param name="storage">工具自己的数据目录（<c>Data\&lt;工具Id&gt;\</c>）。</param>
     /// <param name="includeInvalid">是否连那张“非 mania”的失败示例也生成。</param>
-    public static IReadOnlyList<string> EnsureDemoBeatmaps(ToolStorage storage, bool includeInvalid = false)
+    /// <param name="longNotes">4K 示例里是否也带 LN（谱面编辑器演示用；默认 false 保持原行为）。</param>
+    public static IReadOnlyList<string> EnsureDemoBeatmaps(ToolStorage storage, bool includeInvalid = false,
+        bool longNotes = false)
     {
         var paths = new List<string>(3);
 
-        Add(storage, paths, "demo", Demo4KName, BuildBeatmap(4, "Demo Song", "4K Demo", 8.0, withLongNotes: false));
+        Add(storage, paths, "demo", Demo4KName, BuildBeatmap(4, "Demo Song", "4K Demo", 8.0, withLongNotes: longNotes));
         Add(storage, paths, "demo", Demo7KName, BuildBeatmap(7, "Demo LN Song", "7K LN Demo", 7.5, withLongNotes: true));
         if (includeInvalid)
         {

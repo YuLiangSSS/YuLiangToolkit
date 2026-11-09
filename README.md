@@ -57,6 +57,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 | [**🏷️ 批量重命名**](docs/tools/batch-rename.md) | 规则清单 + 实时预览 + 两阶段改名 + 可撤销 |
 | [**📝 文本编辑器**](docs/tools/text-editor.md) | AvalonEdit 多标签代码编辑：26 种语言高亮、打开文件夹、内置 CMD / PowerShell 控制台、Markdown 预览、查找替换、界面缩放 |
 | [**🎧 osu! 下图器**](docs/tools/map-downloader.md) | 搜谱面集、批量下载 `.osz`（含视频 / 无视频可选） |
+| [**🎼 osu!mania 谱面编辑器**](docs/tools/osu-mania-editor.md) | 边听边摆 note：普通键 / 长条（LN）/ 右键删除 / 拖拽移动 / 撤销重做；音频用设备位置驱动时间轴精确同步，大量 note 零控件自绘不卡；可读写红线 BPM 与绿线 SV，直接改原 `.osu` |
 | [**🎹 osu! Key 转换器**](docs/tools/osu-key-converter.md) | 把低键数 mania 谱面「复制列 / 插空白列」加成高键数（2~10 可选），支持批量 |
 | [**🍜 osu! LN 转换器**](docs/tools/osu-ln-transformer.md) | 按 14 档强度把普通键改成 LN（长条），可选保留原 LN / 修尾巴误差 |
 | [**⭐ osu! 等级计算器**](docs/tools/osu-level-calculator.md) | 拖入 mania 谱面算星数与等级，批量表格（等级按 8K 谱面拟合，只对 8K 有参考意义） |
@@ -79,7 +80,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 | [**📈 函数绘图**](docs/tools/function-plot.md) | 同时画多条函数曲线，每条可单独设定义域 / 颜色 / 显示开关；拖动平移、滚轮缩放、自动求点 / 点值表 |
 | [**🧪 框架示例**](docs/tools/sample-framework.md) | 开发用模板（Data / Config 轮子演示，可整目录删除） |
 
-> 🎵 四个 osu! 工具和「KPS 按键统计」收在「音游工具」分类；🎲 联机五子棋 / 象棋在「棋牌」分类；🐟 Live2D 桌宠在「桌面」分类 —— 主页点类别卡片进类别页即可。
+> 🎵 五个 osu! 工具和「KPS 按键统计」收在「音游工具」分类；🎲 联机五子棋 / 象棋在「棋牌」分类；🐟 Live2D 桌宠在「桌面」分类 —— 主页点类别卡片进类别页即可。
 
 ## 界面与体验
 

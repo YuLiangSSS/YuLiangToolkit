@@ -71,8 +71,8 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 ```
 
 其余 `YLT_*` 调试开关在源码里 grep；截图放 `shots/`（不入库）。
-工具 Id ≠ 自检组 id：`osu-mania` 对应 3 个工具（`osu-key-converter` 等）、`board-games`/`board-net`/`board-room`
-对应 `gomoku`/`xiangqi`、`spug` 对应工具 `spug-captcha`。
+工具 Id ≠ 自检组 id：`osu-mania` 对应 3 个工具（`osu-key-converter` 等）、`osu-mania-editor` 对应工具 `osu-mania-editor`、
+`board-games`/`board-net`/`board-room` 对应 `gomoku`/`xiangqi`、`spug` 对应工具 `spug-captcha`。
 
 ## 自检的已知盲区（重要）
 
@@ -110,7 +110,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `src/YuLiangToolkit.Tools.ChatRoom/**` | `chat-room` | L2 |
 | `src/YuLiangToolkit.Tools.MapDownloader/**` | `map-downloader` | L2 |
 | `src/YuLiangToolkit.Tools.MediaPlayer/**` | `media-player` | L2 |
-| `src/YuLiangToolkit.Tools.OsuMania/**` | `osu-mania`（含星数） | L2 |
+| `src/YuLiangToolkit.Tools.OsuMania/**` | `osu-mania`（含星数）+ `osu-mania-editor`（同一个工程里还有谱面编辑器） | L3 |
 | `src/YuLiangToolkit.Tools.BoardGames/**` | `board-games` + `board-net` + `board-room` | L3 |
 | `src/YuLiangToolkit.Tools.PictureViewer/**` | `picture-viewer` | L2 |
 | `src/YuLiangToolkit.Tools.PdfReader/**` | `pdf-reader` | L2 |
@@ -175,7 +175,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
    改纯 XAML 会命中 L1 的 `src/**/Views/*.xaml` 规则只 build+截图；改代码则 3 组都跑；
 2. **Sample 没有自检组**——改它只 build + 人工冒烟（示例页截图）；音频工具已有 `audio-tools` 组（分段合成纯逻辑），但真实 FFmpeg 合成仍要人工冒烟，
    不要把「没跑自检」误当成「不用验」；
-3. **组 id ≠ 项目名 ≠ 工具 Id**：`SpugCaptcha` → 组 `spug`；`OsuMania` → 组 `osu-mania`；`BoardGames` → 三个 `board-*` 组；
+3. **组 id ≠ 项目名 ≠ 工具 Id**：`SpugCaptcha` → 组 `spug`；`OsuMania` → 组 `osu-mania` / `osu-mania-editor`；`BoardGames` → 三个 `board-*` 组；
    `ContextMenu` → 组 `context-menu`，工具 Id 是 `context-menu-manager`。
 
 ## 验证预算（硬性，防「验证通胀」）

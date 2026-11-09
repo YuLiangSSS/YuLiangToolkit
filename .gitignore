@@ -27,6 +27,8 @@ shots/**/*.wav
 shots/**/*.mp3
 shots/**/*.m3u
 shots/**/*.md
+# 压测用的临时谱面（谱面编辑器做大量 note 验证时生成，几十 MB 不入库）
+shots/**/*.osu
 # 换方向核对时写出的「切换前」几何快照（YLT_PICTURE_MEASURE + YLT_PICTURE_SWITCH_MODE）
 shots/*.before
 # 截图用的临时数据根（YLT_HOME），里面有 Data/Config

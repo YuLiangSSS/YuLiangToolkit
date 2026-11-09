@@ -190,6 +190,31 @@
 - 输出写原谱面目录、按元数据命名；别覆盖原文件（同名才覆盖），日志必须显示输出路径。
 - 星数别拿 osu!lazer 官方值对答案：Level 公式按 `StarRating.cs` 拟合，差 ~1.2 星；等级系数只按凉雨 8K 谱面拟合，别把 Level 外推到 4K / 7K。
 
+### osu!mania 谱面编辑器（音频同步 / 大量 note）
+- ⚠ **音频时钟不要用 `MediaElement.Position`**：它精度几十毫秒、刷新间隔可达 200ms。
+  用 NAudio `WaveOut` + `IWavePosition.GetPosition()`（`已播字节 ÷ AverageBytesPerSecond`）。
+- ⚠ **`GetPosition` 报的已经是「耳朵此刻听到的位置」**（它恒定落后真实时间一个缓冲深度，实测 25ms×3 → 64ms），
+  **不要再减延迟**：减了之后时钟 ≈ real−128ms，画面比声音还早、音符看着提前落下（实测踩过）。
+  也别拿 `IWaveLatency.CurrentLatency` 做校正 —— 它在 44~72ms 之间乱跳，会把播放头带得抖。
+  个体硬件差异留给用户的「音频偏移」（`config.json` 的 `audioOffsetMs`，叠加在 `ChartAudioEngine.PositionMs` 上，
+  **别加进 `Sync` 的目标值**：小偏移会被死区吃掉，改了没反应 —— 实测踩过）。
+- ⚠ **定位必须重建输出设备**（`Stop → 源 CurrentTime = 目标 → new WaveOut → Play → 时钟 Start`）：
+  `WaveOut.GetPosition()` 在 Stop 后归零，复用旧设备会让设备位置与源位置永久错开。
+- ⚠ **时钟要有平滑层**（`PlaybackClock`）：以单调时钟为锚点推进 + 定时用设备位置校准；
+  小漂移只微调速率（±4%，追平时间 800ms 量级），大漂移（>120ms）才硬对齐。
+  速率上限给小了会追不上（1.5% 追 50ms 要 3.3 秒，稳定态一直落后）。
+- ⚠ **时钟要防倒退**：单调时钟理论上不倒退，但注入时钟 / 休眠恢复 / 时钟源切换会往回跳；
+  `NowMs` 记住走过的最大值，倒退时冻结在最大值（否则播放头会突然往回跳）。
+- ⚠ **保存 .osu 别用 OsuParsers**：它解码 → 保存会丢未知键与注释（编辑器的 `OsuFileDocument` 因此改成手写按行编辑，
+  只重建 `[TimingPoints]` / `[HitObjects]` 两段正文）。另外 `.osu` 的普通键第 6 列**直接是 hitSample**，
+  只有 LN（type=128）才是 `endTime:hitSample` —— 把普通键当 LN 解析会把采样信息整段丢掉（自检抓到过）。
+  `BuildText` 拼接时从 `TimingSectionEnd` 起复制，别从 `timingHeader + 1` 起（会把旧时间点正文再复制一遍，数量翻倍）。
+- ⚠ **大量 note 不能一 note 一控件**：10 万 note = 10 万 Visual，创建慢 / 内存爆 / 布局 O(n)；
+  `VirtualizingStackPanel` 也救不了（它按线性顺序虚拟化，而谱面要按**时间窗口**取）。
+  现在是单个 `ChartCanvas.OnRender` 自绘 + `NoteIndex` 二分取窗口（LN 的下界按**全谱最长 LN** 放宽）
+  + 每帧只建一次 `ChartRenderState` 快照 + 极端缩放下抽稀到 12000 + 画笔冻结缓存。
+  自检硬指标（12 万 note）：单帧构建 < 8ms、快照只含可见 note、命中测试 200 次 < 60ms。
+
 ### 棋牌（五子棋 / 象棋）
 - 主机是唯一权威：客户端只从 `state` 重建，任意时刻状态都能整体重建房间与棋局。
 - ⚠ `stateFactory` 在网络线程调：只读加锁模型 + `_lastGameSnapshot`，别碰游戏 VM / UI。
