@@ -2841,6 +2841,53 @@ public class MainViewModel : ObservableObject
         ClearKeptAlive(stopPlayback: true);
     }
 
+    /// <summary>
+    /// 真正退出前问一遍所有还活着的工具「有没有未保存的东西」。
+    ///
+    /// <para>只认实现了 <see cref="ICloseConfirmer"/> 的工具（目前是谱面编辑器）。
+    /// 任意一个返回 false（用户点了「取消」）就中止退出。</para>
+    ///
+    /// <para>⚠ 顺序：先问**当前页**（用户眼前那个），再问缓存里的 —— 缓存里的工具也改过东西。</para>
+    /// </summary>
+    /// <returns>true = 可以退出；false = 用户取消。</returns>
+    public bool ConfirmCloseTools()
+    {
+        var seen = new HashSet<ToolViewModelBase>();
+
+        // 当前页优先（用户眼前那个）
+        if (CurrentView is FrameworkElement currentPage &&
+            currentPage.DataContext is ToolViewModelBase currentVm &&
+            !ConfirmOne(currentVm, seen))
+        {
+            return false;
+        }
+
+        // 缓存里的工具也改过东西
+        foreach (var view in _toolViewCache.Values)
+        {
+            if (view.DataContext is not ToolViewModelBase vm) continue;
+            if (!ConfirmOne(vm, seen)) return false;
+        }
+
+        return true;
+    }
+
+    private static bool ConfirmOne(ToolViewModelBase vm, HashSet<ToolViewModelBase> seen)
+    {
+        if (!seen.Add(vm)) return true;
+        if (vm is not ICloseConfirmer confirmer) return true;
+
+        try
+        {
+            return confirmer.ConfirmClose();
+        }
+        catch
+        {
+            // 确认流程出错时不要困住用户（但也别吞掉真正需要的保存：错误已由工具自己记日志）
+            return true;
+        }
+    }
+
     /// <summary>「重建配置」后把该工具缓存里的旧视图丢掉，下次打开按新配置重新建（否则界面还是旧设置）。</summary>
     private void DropCachedToolView(string toolId)
     {

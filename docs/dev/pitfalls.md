@@ -214,6 +214,21 @@
   现在是单个 `ChartCanvas.OnRender` 自绘 + `NoteIndex` 二分取窗口（LN 的下界按**全谱最长 LN** 放宽）
   + 每帧只建一次 `ChartRenderState` 快照 + 极端缩放下抽稀到 12000 + 画笔冻结缓存。
   自检硬指标（12 万 note）：单帧构建 < 8ms、快照只含可见 note、命中测试 200 次 < 60ms。
+- **自动保存**（`IdleAutoSaveTimer` + 视图侧 Preview 事件）：空闲计时是**纯逻辑类**（自检直接喂时间），
+  ViewModel 只做搬运。⚠ 视图在**页面根节点**上接 `PreviewMouseMove/Down/Up/Wheel` + `PreviewKeyDown/Up`
+  + 触摸 / 触笔来喂 `NoteActivity()` —— 别在每个鼠标处理器里逐个调（漏一个就会在用户还在操作时保存）。
+  播放中不保存（写盘可能卡一下），暂停后**重新计空闲**（不要立刻补一发）。
+  ⚠ 自动保存**不能挂在那个 8ms 的播放帧循环上**：它只在播放时跑，不播放时永远不 tick。
+- **退出提醒**走 Core 的 `ICloseConfirmer`：`App.RequestExit()` 统一入口先
+  `MainViewModel.ConfirmCloseTools()`，任一工具返回 false 就中止退出。⚠ 外壳不能直接引用工具类型，
+  所以用接口；⚠ 系统关机路径（`SessionEnding`）也要问一次；⚠ **`YLT_SHOT` 截图 / 自动化模式必须跳过**，
+  否则那条路径会自动 `RequestExit()`，弹出的确认框没人点、整个流程挂到超时。
+  切走工具页时外壳**不调 `NotifyClosed`**（视图进缓存），所以视图 `Unloaded` 里要补一次静默落盘。
+- ⚠ **`TextBlock FontFamily="Consolas"` 里不要放 emoji**（🔴 / 🟢）：等宽字体没有这些字形，
+  整行会渲染成空白。用色块 + 纯文字区分（自检截图里踩过）。
+- ⚠ **`hitSample` 别多写一个冒号**：普通键是 `x,y,time,type,hitSound,hitSample`，
+  `hitSample` 自己就是 `a:b:c:d:filename`（末尾那个 `:` 后面是可为空的文件名）。
+  再补一个 `":"` 会写出 `0:0:0:0::`（多一个空段）—— osu! 能容忍但文件里留了假空文件名（自检抓到过）。
 
 ### 棋牌（五子棋 / 象棋）
 - 主机是唯一权威：客户端只从 `state` 重建，任意时刻状态都能整体重建房间与棋局。

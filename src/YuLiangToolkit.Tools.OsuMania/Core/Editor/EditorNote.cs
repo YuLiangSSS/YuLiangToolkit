@@ -60,17 +60,43 @@ public readonly record struct EditorNote
     /// <summary>等价于 EndTime 的「含尾」时间跨度（普通键为 0）。</summary>
     public double Duration => Math.Max(0, EndTime - StartTime);
 
-    /// <summary>造一个普通键（保留全部采样字段）。</summary>
+    /// <summary>
+    /// 新写出来的 note 的采样组（editor 不做 hitsounds：一律用默认采样）。
+    /// 对应 osu! 的 <c>hitSample</c> 第 1 段 <c>normalSet</c>：0 = 跟随谱面默认。
+    /// </summary>
+    public const int DefaultSampleSet = 0;
+
+    /// <summary>新写出来的 note 的附加采样组（0 = 跟随默认）。</summary>
+    public const int DefaultAdditionSet = 0;
+
+    /// <summary>新写出来的 note 的自定义采样序号（0 = 不指定）。</summary>
+    public const int DefaultCustomIndex = 0;
+
+    /// <summary>
+    /// 新写出来的 note 的采样音量。**0 = 不单独指定**（沿用时间点 / 谱面的音量）。
+    /// </summary>
+    /// <remarks>
+    /// 编辑器不做 hitsounds（用户明确要求）：新 note 一律写 <c>0:0:0:0:</c>，
+    /// 也就是「默认采样 + 音量交给谱面」—— osu! 把 0 解释成"不覆盖默认音量"。
+    /// 已经存在的 note 上的采样信息照原样保留，不被这里改写。
+    /// </remarks>
+    public const int DefaultVolume = 0;
+
+    /// <summary>造一个普通键（采样字段用编辑器的默认值，见 <see cref="DefaultVolume"/> 的说明）。</summary>
     public static EditorNote NewNote(int column, double time) => new()
     {
         Column = column,
         StartTime = time,
         EndTime = time,
         IsLongNote = false,
+        SampleSet = DefaultSampleSet,
+        AdditionSet = DefaultAdditionSet,
+        CustomIndex = DefaultCustomIndex,
+        Volume = DefaultVolume,
         SampleFileName = "",
     };
 
-    /// <summary>造一个长条。</summary>
+    /// <summary>造一个长条（采样字段同样用编辑器默认值）。</summary>
     public static EditorNote NewLongNote(int column, double start, double end)
     {
         if (end < start) (start, end) = (end, start);
@@ -80,6 +106,10 @@ public readonly record struct EditorNote
             StartTime = start,
             EndTime = end,
             IsLongNote = true,
+            SampleSet = DefaultSampleSet,
+            AdditionSet = DefaultAdditionSet,
+            CustomIndex = DefaultCustomIndex,
+            Volume = DefaultVolume,
             SampleFileName = "",
         };
     }

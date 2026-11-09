@@ -436,6 +436,7 @@ public static class OsuFileDocument
             type.ToString(CultureInfo.InvariantCulture),
             note.HitSound.ToString(CultureInfo.InvariantCulture));
 
+        // hitSample = normalSet:additionSet:index:volume:filename（最后一段是文件名，可以为空）
         var sample = string.Join(':',
             note.SampleSet.ToString(CultureInfo.InvariantCulture),
             note.AdditionSet.ToString(CultureInfo.InvariantCulture),
@@ -443,8 +444,12 @@ public static class OsuFileDocument
             note.Volume.ToString(CultureInfo.InvariantCulture),
             note.SampleFileName ?? "");
 
-        if (!note.IsLongNote) return head + "," + sample + ":";
+        // 普通键：x,y,time,type,hitSound,hitSample
+        // ⚠ 别在 sample 后面再补一个 ":" —— 那样会写成 "0:0:0:0::"（多一个空段），
+        // 虽然 osu! 能容忍，但文件里会留一个假的空文件名（自检抓到过）。
+        if (!note.IsLongNote) return head + "," + sample;
 
+        // 长条：x,y,time,type,hitSound,endTime:hitSample
         var endTime = (long)Math.Round(note.EndTime);
         if (endTime < time) endTime = time;
         return head + "," + endTime.ToString(CultureInfo.InvariantCulture) + ":" + sample;

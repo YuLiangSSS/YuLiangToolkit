@@ -38,8 +38,146 @@ public static class OsuManiaEditorChecks
         CheckFileRoundTrip(checker, dir);
         CheckLargeChart(checker, dir);
 
+        // 自动保存（空闲计时纯逻辑 + 真的写盘）
+        CheckAutoSave(checker, dir);
+
+        // 新 note 的采样字段（编辑器不做 hitsounds）
+        CheckDefaultSampling(checker);
+
         // 真机音频同步（真的开声卡播一段；没有声卡时 fail-open 跳过）
         CheckAudioSync(checker, dir);
+    }
+
+    // =====================================================================
+    // 自动保存：空闲计时 + 真的写盘
+    // =====================================================================
+
+    private static void CheckAutoSave(Checker C, string dir)
+    {
+        // ---- 空闲计时（纯逻辑） ----
+
+        var timer = new IdleAutoSaveTimer { ThresholdMs = 10_000, Enabled = true };
+
+        var fired = false;
+        for (var i = 0; i < 39; i++) fired |= timer.Advance(250, suppressed: false);
+        C("[自动保存] 未到阈值不触发（9.75s < 10s）", !fired, $"idle={timer.IdleMs:0}ms");
+
+        // 第 40 次推进正好到 10s
+        fired = timer.Advance(250, suppressed: false);
+        C("[自动保存] 到阈值（10s）触发一次", fired, $"idle={timer.IdleMs:0}ms");
+        C("[自动保存] 触发后空闲重新计时", Math.Abs(timer.IdleMs) < 0.001, $"{timer.IdleMs:0}ms");
+
+        // 操作会清零
+        timer.Advance(9700, suppressed: false);
+        timer.NoteActivity();
+        fired = false;
+        for (var i = 0; i < 39; i++) fired |= timer.Advance(250, suppressed: false);
+        C("[自动保存] 中途有操作则重新计时", !fired, $"idle={timer.IdleMs:0}ms");
+
+        // 播放中不计空闲
+        var playing = new IdleAutoSaveTimer { ThresholdMs = 1000, Enabled = true };
+        var firedWhilePlaying = false;
+        for (var i = 0; i < 40; i++) firedWhilePlaying |= playing.Advance(250, suppressed: true);
+        C("[自动保存] 播放中不触发（不计空闲）", !firedWhilePlaying, $"idle={playing.IdleMs:0}ms");
+
+        // 暂停后要重新计时（不能立刻补一发）
+        var afterPause = playing.Advance(250, suppressed: false);
+        C("[自动保存] 暂停后重新计时（不立刻补触发）", !afterPause, $"idle={afterPause:0}");
+
+        var firedAfterPause = false;
+        for (var i = 0; i < 4; i++) firedAfterPause |= playing.Advance(250, suppressed: false);
+        C("[自动保存] 暂停后正常累计到阈值会触发", firedAfterPause, $"idle={playing.IdleMs:0}ms");
+
+        // 关闭时不触发
+        var disabled = new IdleAutoSaveTimer { ThresholdMs = 1000, Enabled = false };
+        var firedDisabled = false;
+        for (var i = 0; i < 20; i++) firedDisabled |= disabled.Advance(250, suppressed: false);
+        C("[自动保存] 关掉后永不触发", !firedDisabled);
+
+        // 自定义阈值生效（2 秒）
+        var fast = new IdleAutoSaveTimer { ThresholdMs = 2000, Enabled = true };
+        var count = 0;
+        for (var i = 0; i < 40; i++)
+        {
+            if (fast.Advance(250, suppressed: false)) count++;
+        }
+        C("[自动保存] 阈值改成 2 秒后 10 秒内触发 5 次", count == 5, $"{count}");
+
+        // ---- 真的写盘 ----
+
+        var map = BuildMap(keys: 4, bpm: 120, noteTimes: Array.Empty<double>());
+        map.FilePath = Path.Combine(dir, "autosave.osu");
+
+        // 先建一个合法的 .osu 骨架（保存时只替换两段正文，需要一个真实文件打底）
+        var lines = new List<string>
+        {
+            "osu file format v14", "", "[General]", "AudioFilename: a.mp3", "Mode: 3", "",
+            "[Difficulty]", "CircleSize:4", "OverallDifficulty:8", "",
+            "[TimingPoints]", "0,500,4,2,0,60,1,0", "",
+            "[HitObjects]", "",
+        };
+        File.WriteAllLines(map.FilePath, lines, new UTF8Encoding(false));
+
+        var reloaded = OsuFileDocument.Load(map.FilePath);
+        C("[自动保存] 打底文件能读", reloaded.HitObjects.Count == 0, $"{reloaded.HitObjects.Count}");
+
+        map.AddNote(EditorNote.NewNote(1, 1000));
+        map.AddNote(EditorNote.NewNote(2, 1500));
+        C("[自动保存] 编辑后标记为脏", map.IsDirty);
+
+        OsuFileDocument.Save(map, map.FilePath);
+        map.IsDirty = false;
+
+        var saved = OsuFileDocument.Load(map.FilePath);
+        C("[自动保存] 写盘后 note 真的进了文件", saved.HitObjects.Count == 2, $"{saved.HitObjects.Count}");
+        C("[自动保存] 保存后脏标记被清掉", !map.IsDirty);
+
+        // 同一张谱面再存一次（覆盖）不能把内容搞丢
+        map.AddNote(EditorNote.NewNote(0, 2000));
+        OsuFileDocument.Save(map, map.FilePath);
+        var saved2 = OsuFileDocument.Load(map.FilePath);
+        C("[自动保存] 反复保存不累积 / 不丢内容", saved2.HitObjects.Count == 3, $"{saved2.HitObjects.Count}");
+
+        // 残留临时文件不能留着（Save 用的是「写 tmp 再替换」）
+        C("[自动保存] 保存后不留临时文件", !File.Exists(map.FilePath + ".ylt-tmp"));
+    }
+
+    // =====================================================================
+    // 新 note 的采样字段：编辑器不做 hitsounds
+    // =====================================================================
+
+    private static void CheckDefaultSampling(Checker C)
+    {
+        var note = EditorNote.NewNote(2, 1234);
+        C("[采样] 新普通键用默认采样组（0:0:0:0）",
+            note.SampleSet == 0 && note.AdditionSet == 0 && note.CustomIndex == 0 && note.Volume == 0,
+            $"{note.SampleSet}:{note.AdditionSet}:{note.CustomIndex}:{note.Volume}");
+        C("[采样] 新普通键没有自定义采样文件名", note.SampleFileName.Length == 0);
+
+        var ln = EditorNote.NewLongNote(1, 500, 900);
+        C("[采样] 新长条用同一套默认采样值",
+            ln.SampleSet == 0 && ln.AdditionSet == 0 && ln.CustomIndex == 0 && ln.Volume == 0);
+
+        // 写回文件时应该是标准的 0:0:0:0:（最后一段是空文件名）
+        var noteText = OsuFileDocument.FormatHitObject(note, 4);
+        C("[采样] 普通键写回 0:0:0:0:", noteText.EndsWith("0:0:0:0:", StringComparison.Ordinal), noteText);
+        C("[采样] 普通键不以 :: 结尾（不写多余空段）", !noteText.EndsWith("::", StringComparison.Ordinal), noteText);
+
+        var lnText = OsuFileDocument.FormatHitObject(ln, 4);
+        C("[采样] 长条写回 endTime:0:0:0:0:", lnText.EndsWith(":0:0:0:0:", StringComparison.Ordinal), lnText);
+
+        // 已有 note 的采样信息不能被新写 note 的默认值改写（读进来的照原样保留）
+        var parsed = OsuFileDocument.Parse(new[]
+        {
+            "osu file format v14", "[Difficulty]", "CircleSize:4", "[HitObjects]",
+            "64,192,1000,1,0,2:3:5:40:custom.wav",
+        }, "sample.osu");
+
+        C("[采样] 已有 note 的采样信息原样保留",
+            parsed.HitObjects.Count == 1 && parsed.HitObjects[0].SampleSet == 2 &&
+            parsed.HitObjects[0].AdditionSet == 3 && parsed.HitObjects[0].Volume == 40 &&
+            parsed.HitObjects[0].SampleFileName == "custom.wav",
+            $"{parsed.HitObjects[0].SampleSet}:{parsed.HitObjects[0].AdditionSet}:{parsed.HitObjects[0].Volume}:{parsed.HitObjects[0].SampleFileName}");
     }
 
     // =====================================================================

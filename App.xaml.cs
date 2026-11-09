@@ -39,11 +39,58 @@ public partial class App : Application
     private static MainViewModel? _mainViewModel;
 
     /// <summary>真正退出程序（托盘「退出」/ 截图模式 / 系统关机）。</summary>
+    /// <remarks>
+    /// 退出前会先问一遍还活着的工具（<see cref="MainViewModel.ConfirmCloseTools"/>）：
+    /// 有未保存的谱面就弹「保存 / 不保存 / 取消」，用户点取消就中止这次退出。
+    /// ⚠ 只有**真正退出**走这里；「关闭 = 最小化到托盘」不经过它，所以不会被拦。
+    /// </remarks>
     public static void RequestExit()
     {
+        if (!ConfirmExitTools()) return;
+
         IsExiting = true;
         Current?.Shutdown();
     }
+
+    /// <summary>
+    /// 退出确认（可能弹窗）。返回 false = 用户取消，别继续退出。
+    ///
+    /// <para>⚠ 用静态「已确认」标记避免重复弹窗：<see cref="RequestExit"/> 会从好几条路径进来
+    /// （托盘 / 任务管理器 / 重启 / 关窗口），一次退出不该弹两次框。</para>
+    ///
+    /// <para>⚠ <b>截图 / 自动化模式下必须跳过</b>：<c>YLT_SHOT</c> 那条路径会自动
+    /// <c>RequestExit()</c>，一旦弹出确认框就没人点，整个自动化会挂在那里等超时。</para>
+    /// </summary>
+    private static bool ConfirmExitTools()
+    {
+        if (_exitConfirmed) return true;
+
+        // 截图 / 无头冒烟：没有真人点按钮，直接放行
+        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("YLT_SHOT")))
+        {
+            _exitConfirmed = true;
+            return true;
+        }
+
+        var viewModel = _mainViewModel;
+        if (viewModel is null) return true;
+
+        try
+        {
+            if (!viewModel.ConfirmCloseTools()) return false;
+        }
+        catch
+        {
+            // 确认流程本身出错时不要困住用户退出
+            return true;
+        }
+
+        _exitConfirmed = true;
+        return true;
+    }
+
+    /// <summary>本次退出已经问过用户了（避免多条退出路径重复弹窗）。</summary>
+    private static bool _exitConfirmed;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -112,6 +159,8 @@ public partial class App : Application
         };
         SessionEnding += (_, _) =>
         {
+            // 系统关机 / 注销：时间有限，先尽力问一次（赶不上就自动保存兜底，见工具的 OnClosed）
+            try { ConfirmExitTools(); } catch { /* 关机流程忽略 */ }
             IsExiting = true;   // 系统关机 / 注销：别再被「关闭=最小化到托盘」拦住
             TaskbarHider.Restore();
             try { _mainViewModel?.ShutdownTools(); } catch { /* 退出流程忽略 */ }

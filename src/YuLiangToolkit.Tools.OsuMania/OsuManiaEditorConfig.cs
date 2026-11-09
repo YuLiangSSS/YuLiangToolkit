@@ -34,12 +34,27 @@ public sealed class OsuManiaEditorConfig : ToolConfig
     public double PxPerMs { get; set; } = 0.15;
 
     /// <summary>
-    /// 音频偏移（毫秒）。**正数 = 播放头往后推**（音频听起来晚了就填正数）。
+    /// 音频偏移（毫秒）。**正数 = 播放头往后推**（音符看着比音乐早、就填正数把画面压后）。
     ///
-    /// <para>每条声卡链路的缓冲延迟都不一样（实测本机 25×3 缓冲下 GetPosition 落后真实时间
-    /// 约 64ms），用户耳朵最准：觉得音符整体比音乐早 / 晚，就用这个对齐。</para>
+    /// <para>每条声卡链路的缓冲延迟都不一样（本机实测 GetPosition 落后真实时间约 64ms），
+    /// 用户耳朵最准：觉得音符整体和音乐错开，就用这个对齐。</para>
     /// </summary>
     public double AudioOffsetMs { get; set; }
+
+    /// <summary>是否开启自动保存（默认开）。</summary>
+    public bool AutoSaveEnabled { get; set; } = true;
+
+    /// <summary>
+    /// 无操作多少秒后自动保存（默认 10 秒，范围 2~600）。
+    /// 「无操作」包括摆放 / 拖动 / 删除 note、滚时间轴、缩放、移动鼠标等（鼠标停在页面上就算在操作）。
+    /// </summary>
+    public int AutoSaveIdleSeconds { get; set; } = 10;
+
+    /// <summary>自动保存间隔的合法范围（秒）。</summary>
+    public const int MinAutoSaveSeconds = 2;
+
+    /// <summary>自动保存间隔的上限（秒）。</summary>
+    public const int MaxAutoSaveSeconds = 600;
 
     /// <summary>节拍细分下拉的可选值。</summary>
     public static readonly int[] DivisorOptions = { 1, 2, 3, 4, 6, 8, 12, 16 };

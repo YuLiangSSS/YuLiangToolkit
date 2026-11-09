@@ -44,11 +44,21 @@ public partial class OsuManiaEditorView : UserControl
         HookHostKeys(true);
         PublishViewportSize();
         _vm?.BuildAndPublishState(Canvas.ActualHeight);
+
+        // 自动保存计时从这里开始：视图没挂上之前（还在构造 / 切页中）不该算“用户无操作”
+        _vm?.StartAutoSaveTimerFromView();
+        HookActivityWatchers(true);
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         HookHostKeys(false);
+        HookActivityWatchers(false);
+
+        // 视图离开屏幕（切走工具页）：先把还没到点的改动落盘，再停计时。
+        // 外壳切走时**不调 NotifyClosed**（视图进缓存），这里是最可靠的兜底时机。
+        _vm?.AutoSaveFromView();
+        _vm?.StopAutoSaveTimerFromView();
     }
 
     /// <summary>
@@ -116,6 +126,56 @@ public partial class OsuManiaEditorView : UserControl
         _vm.ChartCanvasLaneWidth = laneWidth;
         _vm.Editor?.Viewport.Resize(Math.Max(1, Canvas.ActualHeight));
     }
+
+    // ---------------------------------------------------------------- 活动监听（自动保存用）
+
+    /// <summary>
+    /// 挂上「用户还在操作」的监听：**在页面根节点上接 Preview 事件**，
+    /// 这样鼠标移动、滚轮、按键、按钮点击、滚动条拖动……全都会走这里，不用在每个处理器里
+    /// 逐个调 <c>NoteActivity()</c>（漏一个就会在用户还在操作时自动保存）。
+    /// </summary>
+    private void HookActivityWatchers(bool attach)
+    {
+        if (attach)
+        {
+            if (_activityHooked) return;
+            _activityHooked = true;
+
+            PreviewMouseMove += OnActivityEvent;
+            PreviewMouseDown += OnActivityEvent;
+            PreviewMouseUp += OnActivityEvent;
+            PreviewMouseWheel += OnActivityEvent;
+            PreviewKeyDown += OnActivityEvent;
+            PreviewKeyUp += OnActivityEvent;
+            PreviewTouchMove += OnActivityTouch;
+            PreviewStylusMove += OnActivityStylus;
+            return;
+        }
+
+        if (!_activityHooked) return;
+        _activityHooked = false;
+
+        PreviewMouseMove -= OnActivityEvent;
+        PreviewMouseDown -= OnActivityEvent;
+        PreviewMouseUp -= OnActivityEvent;
+        PreviewMouseWheel -= OnActivityEvent;
+        PreviewKeyDown -= OnActivityEvent;
+        PreviewKeyUp -= OnActivityEvent;
+        PreviewTouchMove -= OnActivityTouch;
+        PreviewStylusMove -= OnActivityStylus;
+    }
+
+    private bool _activityHooked;
+
+    private void OnActivityEvent(object sender, InputEventArgs e)
+    {
+        // ⚠ 不要设 e.Handled：这里只观察，不能影响正常交互
+        _vm?.NoteActivity();
+    }
+
+    private void OnActivityTouch(object sender, TouchEventArgs e) => _vm?.NoteActivity();
+
+    private void OnActivityStylus(object sender, StylusEventArgs e) => _vm?.NoteActivity();
 
     // ---------------------------------------------------------------- 画布鼠标
 

@@ -28,7 +28,7 @@ namespace YuLiangToolkit.Tools.OsuMania.ViewModels;
 /// <para><b>编辑操作</b>全部转给 <see cref="ChartEditor"/>（在 Core 里，可无头自检）；
 /// 这个类只负责界面状态（按钮可用性、状态文字、时间点列表、选中项）。</para>
 /// </summary>
-public sealed class OsuManiaEditorViewModel : ToolViewModelBase
+public sealed class OsuManiaEditorViewModel : ToolViewModelBase, YuLiangToolkit.Core.Tools.ICloseConfirmer
 {
     /// <summary>界面刷新间隔（毫秒）。8ms ≈ 125Hz，足够让播放头看起来连续，又不至于吃满 UI 线程。</summary>
     private const int TickIntervalMs = 8;
@@ -129,7 +129,39 @@ public sealed class OsuManiaEditorViewModel : ToolViewModelBase
             {
                 Log("✘ 演示数据生成失败：" + ex.Message);
             }
+
+            // YLT_OSU_EDITOR_AUTOSAVE_PROBE=N：再改动一次谱面（加 N 个 note），
+            // 用来验证「自动保存真的会把改动写盘」。正常使用不设就不跑。
+            TryRunAutoSaveProbe();
         }), System.Windows.Threading.DispatcherPriority.Background);
+    }
+
+    /// <summary>
+    /// 调试探针：<c>YLT_OSU_EDITOR_AUTOSAVE_PROBE=&lt;note 数&gt;</c> 时加几个 note 再放着不动，
+    /// 让自动保存在空闲后把它们写盘（脚本 / 人工都能据此核对文件真的变了）。
+    /// </summary>
+    private void TryRunAutoSaveProbe()
+    {
+        var raw = Environment.GetEnvironmentVariable("YLT_OSU_EDITOR_AUTOSAVE_PROBE");
+        if (string.IsNullOrWhiteSpace(raw)) return;
+        if (_editor is null) return;
+
+        if (!int.TryParse(raw, out var count) || count <= 0) count = 3;
+        count = Math.Min(count, 50);
+
+        var start = _editor.Beatmap.TimeRange().First + 500;
+        for (var i = 0; i < count; i++)
+        {
+            var column = i % Math.Max(1, _editor.Beatmap.KeyCount);
+            _editor.Beatmap.AddNote(EditorNote.NewNote(column, start + i * 250));
+        }
+
+        _editor.Beatmap.RefreshIndexes();
+        RefreshSummary();
+        BuildAndPublishState();
+        IsDirty = true;
+        StatusDetail = $"探针：已加 {count} 个 note，等自动保存（{AutoSaveIdleSeconds} 秒无操作）";
+        Log($"探针：加了 {count} 个 note，等待自动保存");
     }
 
     // ---------------------------------------------------------------- 配置
@@ -518,23 +550,43 @@ public sealed class OsuManiaEditorViewModel : ToolViewModelBase
         }
     }
 
-    /// <summary>保存（覆盖原谱面）。</summary>
-    public void SaveChart()
+    /// <summary>保存（覆盖原谱面；界面上的「保存」按钮走它）。</summary>
+    public void SaveChart() => SaveChart(silent: false, out _);
+
+    /// <summary>
+    /// 保存到原文件。
+    /// </summary>
+    /// <param name="silent">true = 自动保存：成功时不写日志（只在状态栏更新），失败才记日志。</param>
+    /// <param name="error">失败原因（成功为 null）。</param>
+    /// <returns>是否保存成功。</returns>
+    public bool SaveChart(bool silent, out string? error)
     {
-        if (_editor is null) return;
+        error = null;
+        if (_editor is null)
+        {
+            error = "没有打开谱面。";
+            return false;
+        }
 
         try
         {
-            OsuFileDocument.Save(_editor.Beatmap, _editor.Beatmap.FilePath);
+            var path = _editor.Beatmap.FilePath;
+            OsuFileDocument.Save(_editor.Beatmap, path);
             _editor.Beatmap.IsDirty = false;
             IsDirty = false;
-            StatusDetail = $"已保存 {Path.GetFileName(_editor.Beatmap.FilePath)}";
-            Log($"保存 {_editor.Beatmap.FilePath}（{_editor.Beatmap.HitObjects.Count:N0} note）");
+            StatusDetail = silent
+                ? $"已自动保存（无操作 {AutoSaveIdleSeconds} 秒）"
+                : $"已保存 {Path.GetFileName(path)}";
+
+            if (!silent) Log($"保存 {path}（{_editor.Beatmap.HitObjects.Count:N0} note）");
+            return true;
         }
         catch (Exception ex)
         {
+            error = ex.Message;
             StatusDetail = $"保存失败：{ex.Message}";
             Log($"✘ 保存失败（{ex.GetType().Name}）：{ex.Message}");
+            return false;
         }
     }
 
@@ -571,7 +623,191 @@ public sealed class OsuManiaEditorViewModel : ToolViewModelBase
         }
     }
 
-    // ---------------------------------------------------------------- 播放
+    // ---------------------------------------------------------------- 自动保存 / 退出提醒
+
+    /// <summary>自动保存的检查间隔（毫秒）。空闲计时靠它累加，250ms 精度足够。</summary>
+    private const int AutoSaveCheckIntervalMs = 250;
+
+    private DispatcherTimer? _autoSaveTimer;
+    private int _autoSaveCount;
+
+    /// <summary>空闲计时（纯逻辑，自检可直接断言；见 <see cref="IdleAutoSaveTimer"/>）。</summary>
+    private readonly IdleAutoSaveTimer _idleTimer = new();
+
+    /// <summary>
+    /// 标记「刚发生过一次交互」。**所有**用户操作都要调它：摆放 / 拖动 / 删除 note、撤销重做、
+    /// 滚时间轴、缩放、移动鼠标、按键……否则自动保存会在用户还在操作时把谱面写盘。
+    ///
+    /// <para>实现上是把空闲计时清零（不依赖事件频率），开销只有一个字段赋值。</para>
+    /// </summary>
+    public void NoteActivity() => _idleTimer.NoteActivity();
+
+    /// <summary>自动保存间隔（秒）。界面绑定，夹在合法范围内。</summary>
+    public int AutoSaveIdleSeconds
+    {
+        get => Math.Clamp(Cfg.AutoSaveIdleSeconds, OsuManiaEditorConfig.MinAutoSaveSeconds,
+            OsuManiaEditorConfig.MaxAutoSaveSeconds);
+        set
+        {
+            var clamped = Math.Clamp(value, OsuManiaEditorConfig.MinAutoSaveSeconds,
+                OsuManiaEditorConfig.MaxAutoSaveSeconds);
+            if (Cfg.AutoSaveIdleSeconds == clamped) return;
+            Cfg.AutoSaveIdleSeconds = clamped;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AutoSaveHintText));
+        }
+    }
+
+    /// <summary>自动保存开关（界面绑定）。</summary>
+    public bool AutoSaveEnabled
+    {
+        get => Cfg.AutoSaveEnabled;
+        set
+        {
+            if (Cfg.AutoSaveEnabled == value) return;
+            Cfg.AutoSaveEnabled = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AutoSaveHintText));
+        }
+    }
+
+    /// <summary>自动保存的说明文字（当前设置 + 本次已自动保存几次）。</summary>
+    public string AutoSaveHintText
+    {
+        get
+        {
+            if (!AutoSaveEnabled) return "自动保存已关闭（切走 / 退出前记得 Ctrl+S）";
+            var text = $"无操作 {AutoSaveIdleSeconds} 秒后自动保存";
+            return _autoSaveCount > 0 ? $"{text}（本次已自动保存 {_autoSaveCount} 次）" : text;
+        }
+    }
+
+    /// <summary>
+    /// 起自动保存计时器。**必须在视图挂上之后调**（视图会持续喂 <see cref="NoteActivity"/>）。
+    /// 幂等：重复调只是重启计时。
+    /// </summary>
+    private void StartAutoSaveTimer()
+    {
+        if (_autoSaveTimer is null)
+        {
+            _autoSaveTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMilliseconds(AutoSaveCheckIntervalMs),
+            };
+            _autoSaveTimer.Tick += (_, _) => OnAutoSaveTick();
+        }
+
+        _idleTimer.NoteActivity();
+        _autoSaveTimer.Start();
+    }
+
+    private void StopAutoSaveTimer() => _autoSaveTimer?.Stop();
+
+    // ---- 视图侧调用（后置代码用；包一层是为了不让 View 直接碰私有成员） ----
+
+    /// <summary>视图挂上后启动自动保存计时（后置代码在 <c>Loaded</c> 里调）。</summary>
+    public void StartAutoSaveTimerFromView() => StartAutoSaveTimer();
+
+    /// <summary>视图离开屏幕时停计时（后置代码在 <c>Unloaded</c> 里调）。</summary>
+    public void StopAutoSaveTimerFromView()
+    {
+        StopAutoSaveTimer();
+        _idleTimer.NoteActivity();
+    }
+
+    /// <summary>视图离开屏幕时立刻落盘一次（不等空闲计时）。</summary>
+    public void AutoSaveFromView()
+    {
+        if (_editor is null || !_editor.Beatmap.IsDirty || !Cfg.AutoSaveEnabled) return;
+        if (AutoSave())
+        {
+            _autoSaveCount++;
+            OnPropertyChanged(nameof(AutoSaveHintText));
+        }
+    }
+
+    private void OnAutoSaveTick()
+    {
+        if (_editor is null) return;
+
+        var enabled = Cfg.AutoSaveEnabled;
+        _idleTimer.Enabled = enabled;
+        _idleTimer.ThresholdMs = AutoSaveIdleSeconds * 1000.0;
+
+        // 播放中（IsPlaying）不自动保存：写盘可能卡一下，正听节奏时闪一下很难受。
+        var due = _idleTimer.Advance(AutoSaveCheckIntervalMs, suppressed: IsPlaying);
+        if (!due) return;
+
+        // 到期但没有未保存改动：什么都不用做（Advance 已经把空闲清零了）
+        if (!_editor.Beatmap.IsDirty) return;
+
+        if (AutoSave())
+        {
+            _autoSaveCount++;
+            OnPropertyChanged(nameof(AutoSaveHintText));
+        }
+    }
+
+    /// <summary>
+    /// 静默保存（自动保存走它）：不弹窗、不打断操作。
+    /// </summary>
+    public bool AutoSave()
+    {
+        if (_editor is null || !_editor.Beatmap.IsDirty) return false;
+        return SaveChart(silent: true, out _);
+    }
+
+    /// <summary>
+    /// 真要退出了：还有没保存的改动就问一句（外壳通过 <see cref="YuLiangToolkit.Core.Tools.ICloseConfirmer"/> 调）。
+    ///
+    /// <para>三个选项：**保存**（写盘后继续退出）/ **不保存**（直接退）/ **取消**（中止退出）。
+    /// 保存失败时返回 false，让用户回去处理（不然等于悄悄丢数据）。</para>
+    /// </summary>
+    public bool ConfirmClose()
+    {
+        // 先停播放，免得确认框背后还在响（取消时再恢复）
+        var wasPlaying = IsPlaying;
+        if (wasPlaying)
+        {
+            _audio.Pause();
+            IsPlaying = false;
+            _timer.Stop();
+        }
+
+        var dirty = _editor is not null && _editor.Beatmap.IsDirty;
+        if (!dirty)
+        {
+            if (wasPlaying) TogglePlay();
+            return true;
+        }
+
+        var name = Path.GetFileName(_editor!.Beatmap.FilePath);
+        var result = System.Windows.MessageBox.Show(
+            $"「{name}」还有没保存的改动。\n\n退出前要保存吗？",
+            "osu!mania 谱面编辑器",
+            System.Windows.MessageBoxButton.YesNoCancel,
+            System.Windows.MessageBoxImage.Warning);
+
+        switch (result)
+        {
+            case System.Windows.MessageBoxResult.Yes:
+                if (SaveChart(silent: false, out var error)) return true;
+                System.Windows.MessageBox.Show(
+                    $"保存失败，已取消退出：\n{error}", "保存失败",
+                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                if (wasPlaying) TogglePlay();
+                return false;
+
+            case System.Windows.MessageBoxResult.No:
+                Log("退出时选择了「不保存」，改动已丢弃");
+                return true;
+
+            default:
+                if (wasPlaying) TogglePlay();
+                return false;
+        }
+    }
+
 
     /// <summary>切换播放 / 暂停。</summary>
     public void TogglePlay()
@@ -660,7 +896,6 @@ public sealed class OsuManiaEditorViewModel : ToolViewModelBase
 
         BuildAndPublishState();
     }
-
     // ---------------------------------------------------------------- 编辑
 
     /// <summary>撤销。</summary>
@@ -932,6 +1167,11 @@ public sealed class OsuManiaEditorViewModel : ToolViewModelBase
 
     protected override void OnClosed()
     {
+        // 退出 / 视图被丢弃前先落盘一次：自动保存可能还没到点，OnClosed 之后就没机会了。
+        // （外壳切走工具页时**不会**调这里，所以视图侧还要在 Unloaded 里保底保存一次。）
+        if (_editor is not null && _editor.Beatmap.IsDirty) AutoSave();
+
+        StopAutoSaveTimer();
         _timer.Stop();
         _audio.Dispose();
     }
@@ -962,9 +1202,13 @@ public sealed class TimingPointRow
     public double Sv => Point.SvMultiplier;
 
     /// <summary>列表里显示的主文字。</summary>
+    /// <summary>
+    /// 列表里显示的主文字。**不带 emoji**（🔴 / 🟢 在等宽字体下没有字形，会渲染成豆腐块或空白），
+    /// 红线 / 绿线靠视图里的色块区分。
+    /// </summary>
     public string Text => IsRed
-        ? $"🔴 {Point.Time:0}ms · {Bpm:0.##} BPM"
-        : $"🟢 {Point.Time:0}ms · SV {Sv:0.##}x";
+        ? $"{Point.Time:0}ms · {Bpm:0.##} BPM"
+        : $"{Point.Time:0}ms · SV {Sv:0.##}x";
 
     /// <summary>时间文字（编辑框用）。</summary>
     public string TimeText => Point.Time.ToString("0");

@@ -195,6 +195,25 @@
                             <TextBlock Grid.Column="2" Text="ms" VerticalAlignment="Center" Margin="6,0,0,0" FontSize="11"
                                        Foreground="{DynamicResource FaintTextBrush}" />
                         </Grid>
+
+                        <!-- 自动保存：无操作 N 秒后静默写盘 -->
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <CheckBox Content="自动保存" Style="{StaticResource CheckBoxStyle}" VerticalAlignment="Center"
+                                      IsChecked="{Binding AutoSaveEnabled}" />
+                            <TextBox Grid.Column="1" Margin="8,0,0,0" Style="{StaticResource TextBoxStyle}"
+                                     Text="{Binding AutoSaveIdleSeconds, UpdateSourceTrigger=LostFocus}"
+                                     IsEnabled="{Binding AutoSaveEnabled}"
+                                     ToolTip="无操作多少秒后自动保存（2~600）。摆放 / 拖动 / 删除 note、滚时间轴、移动鼠标都算操作" />
+                            <TextBlock Grid.Column="2" Text="秒" VerticalAlignment="Center" Margin="6,0,0,0" FontSize="11"
+                                       Foreground="{DynamicResource FaintTextBrush}" />
+                        </Grid>
+                        <TextBlock Text="{Binding AutoSaveHintText}" FontSize="10.5" Margin="0,4,0,0"
+                                   TextWrapping="Wrap" Foreground="{DynamicResource FaintTextBrush}" />
                     </StackPanel>
 
                     <ListBox x:Name="TimingList" Grid.Row="2" Margin="4,10,4,0"
@@ -207,8 +226,30 @@
                         </ListBox.Style>
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding Text}" FontFamily="Consolas" FontSize="12"
-                                           TextTrimming="CharacterEllipsis" />
+                                <!-- ⚠ 不要在这里用 emoji（🔴 / 🟢）：TextBlock 指定 FontFamily="Consolas" 时
+                                     emoji 没有对应字形，整行会渲染成空白（截图里踩过）。
+                                     用一个小色块 + 等宽文字区分红线 / 绿线。 -->
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Width="8" Height="8" CornerRadius="2" VerticalAlignment="Center"
+                                            Margin="0,0,7,0">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="{DynamicResource SuccessBrush}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsRed}" Value="True">
+                                                        <Setter Property="Background" Value="{DynamicResource DangerBrush}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                    </Border>
+                                    <TextBlock Grid.Column="1" Text="{Binding Text}" FontFamily="Consolas" FontSize="12"
+                                               TextTrimming="CharacterEllipsis" />
+                                </Grid>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
