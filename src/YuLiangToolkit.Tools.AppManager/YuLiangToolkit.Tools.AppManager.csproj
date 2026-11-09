@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「应用管理器」：仿 Windows「设置 → 应用 → 安装的应用」。
+       数据全部来自注册表的卸载项（ARP）三处，**只读**；卸载 / 修改是把注册表里的
+       UninstallString / ModifyPath 交给 Windows 启动，不静默卸载、不删文件、不写注册表。
+       图标用 shell32 的 SHGetFileInfo（和资源管理器一致），不引任何第三方 NuGet 包。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.AppManager</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.AppManager</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

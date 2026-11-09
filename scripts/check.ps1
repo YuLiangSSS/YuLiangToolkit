@@ -156,6 +156,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/LauncherChecks.cs'       @('launcher') 'L3' 'launcher import / invalid detection / icon path / config assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/MemeBoardChecks.cs'      @('meme-board') 'L3' 'meme board rules / target matcher / timing / config assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/TaskManagerChecks.cs'    @('task-manager') 'L3' 'task manager formatting / kill plan / startup / process row assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/AppManagerChecks.cs'     @('app-manager') 'L3' 'app manager include rules / date / size / command line / sort assertions (real scan is read-only)')
 
     # ---------- tests: anything else in the self-check project is unknown wiring ----------
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/*.cs' @('ALL') 'L4' 'unmapped self-check source' -Fallback)
@@ -201,6 +202,7 @@ $mapping = @(
     (New-Rule 'src/YuLiangToolkit.Tools.Launcher/*'           @('launcher') 'L2' 'software launcher tool')
     (New-Rule 'src/YuLiangToolkit.Tools.MemeBoard/*'          @('meme-board') 'L2' 'meme favorite board / QQ paste tool')
     (New-Rule 'src/YuLiangToolkit.Tools.TaskManager/*'        @('task-manager') 'L2' 'task manager: process / port / gpu / startup monitor')
+    (New-Rule 'src/YuLiangToolkit.Tools.AppManager/*'         @('app-manager') 'L2' 'app manager: installed apps / uninstall / modify')
     (New-Rule 'src/YuLiangToolkit.Tools.Sample/*'          @() 'L1' 'framework template, no dedicated group: build + manual smoke')
     (New-Rule 'src/*'                                      @('ALL') 'L4' 'unmapped src project' -Fallback)
 

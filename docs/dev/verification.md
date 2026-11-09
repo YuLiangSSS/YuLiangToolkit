@@ -44,7 +44,7 @@
 ```powershell
 .\scripts\check.ps1              # 日常唯一需要的命令：自动选组 + build + 定向自检
 .\scripts\check.ps1 -DryRun      # 只看这次会跑什么，不动手（改前规划 / 解释给用户）
-.\scripts\check.ps1 -List        # 看 37 个组 + 完整「路径 → 组」映射表
+.\scripts\check.ps1 -List        # 看 38 个组 + 完整「路径 → 组」映射表
 .\scripts\check.ps1 -SelfTest    # 单独校验映射/接线/工程/文档是否漂移（退出码 2 = 漂移）
 .\scripts\check.ps1 -Files a.cs,b.md   # 假装这些文件改了（提交后复查 / 指定影响面）
 .\scripts\check.ps1 -Groups theme      # 强制指定组（少数场景；优先让脚本自动选）
@@ -134,6 +134,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `src/YuLiangToolkit.Tools.Mail/**` | `mail` | L2 |
 | `src/YuLiangToolkit.Tools.Launcher/**` | `launcher` | L2 |
 | `src/YuLiangToolkit.Tools.TaskManager/**` | `task-manager` | L2 |
+| `src/YuLiangToolkit.Tools.AppManager/**` | `app-manager` | L2 |
 | `src/YuLiangToolkit.Tools.MemeBoard/**` | `meme-board` | L2 |
 | `src/YuLiangToolkit.Tools.ScreenSticker/**` | `screen-sticker` | L2 |
 | `tests/.../SoftwareUpdaterChecks.cs` | `software-updater`（winget 表格解析 / 包 Id 白名单 / 命令拼装 / 批量勾选规则） | L3 |
@@ -143,6 +144,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `tests/.../LauncherChecks.cs` | `launcher`（导入校验 / 默认显示名 / 路径去重 / 图标缓存路径 / 失效判定 / 清空无效项 / 配置往返） | L3 |
 | `tests/.../MemeBoardChecks.cs` | `meme-board`（会话名匹配 / 目标窗口解析 / 延迟随机与夹取 / 图片扩展名 / 配置往返） | L3 |
 | `tests/.../TaskManagerChecks.cs` | `task-manager`（数字格式化 / 结束任务三级方案 / 开机启动解析与启停标记 / 保护名单 / 进程行 / 真实只读采样） | L3 |
+| `tests/.../AppManagerChecks.cs` | `app-manager`（注册表过滤与去重 / 安装日期 / 大小与盘符 / 卸载命令行拆分 / 排序 / 配置；真实扫描只读，不启动任何卸载程序） | L3 |
 | `tests/.../ScreenStickerChecks.cs` | `screen-sticker`（贴纸几何 / 层级顺序 / 最近使用 / 配置默认值） | L3 |
 | `tests/.../ScreenRecorderChecks.cs` | `screen-recorder`（区域换算 / FFmpeg 参数 / 文件名 / 配置默认值） | L3 |
 | `tests/.../MediaEditorChecks.cs` | `media-editor`（ffprobe 解析 / 片段数学 / 裁剪拼接滤镜 / GIF 参数） | L3 |
@@ -204,7 +206,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 - 跨组共享文件映射是否符合期望（`MiniPlayerPanel`→`shell`+`media-player`、`ShellConfig`→`shell`+`theme`、
   `ShellCategories`→`shell`+`board-games`、`App.xaml`→`theme`+`shell` 等）；
 - 每个 `Tools.*` 工程是否同时被主 csproj、`YuLiangToolkit.sln`、自检 csproj（Sample 白名单）引用；
-- 无组项目是否仍显式标为 build-only；`docs/dev/verification.md` 是否提到全部 37 个组 id。
+- 无组项目是否仍显式标为 build-only；`docs/dev/verification.md` 是否提到全部 38 个组 id。
 
 新增功能 / 组的步骤：
 

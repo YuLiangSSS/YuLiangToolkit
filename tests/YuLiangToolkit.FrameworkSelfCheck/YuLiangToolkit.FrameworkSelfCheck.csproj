@@ -115,6 +115,10 @@
          StartupApproved 启停标记 / 系统关键进程名单 / 进程行合并与筛选 / 配置默认值；
          少量真实只读采样（本机自己的进程、端口表、整机内存），**不结束任何进程、不写注册表**。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.TaskManager\YuLiangToolkit.Tools.TaskManager.csproj" />
+    <!-- 「应用管理器」：注册表卸载项过滤与同名去重 / 安装日期解析 / 大小与盘符格式化 /
+         卸载命令行拆分 / 排序比较（含未知值沉底）/ 配置默认值与往返；
+         另做一次真实只读扫描（只 Read，不写注册表、**绝不启动任何卸载程序**）。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.AppManager\YuLiangToolkit.Tools.AppManager.csproj" />
   </ItemGroup>
 
 </Project>

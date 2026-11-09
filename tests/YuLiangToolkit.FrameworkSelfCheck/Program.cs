@@ -62,6 +62,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("launcher", "软件启动器：导入校验 / 默认显示名 / 失效判定 / 清空无效项 / 配置往返（纯逻辑）"),
     ("meme-board", "表情包收藏夹：会话名归一 / 目标窗口解析 / 随机延迟夹取 / 图片扩展名 / 配置往返（纯逻辑，不碰 QQ）"),
     ("task-manager", "任务管理器：数字格式化 / 结束任务三级方案 / 开机启动解析与启停标记 / 保护名单 / 进程行 / 真实只读采样"),
+    ("app-manager", "应用管理器：注册表过滤与去重 / 安装日期 / 大小与盘符 / 卸载命令行拆分 / 排序 / 配置（真实只读扫描）"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1261,6 +1262,13 @@ RunGroupModule("meme-board", "表情包收藏夹", MemeBoardChecks.Run);
 // ProcessProtection（关键进程 / 桌面外壳）、ProcessInfo（原地合并 / 搜索命中 / 显示文本）、配置默认值与 JSON 往返；
 // 另外真的只读采样本机（自己的进程 / 端口表 / 整机内存），**不结束任何进程、不写注册表**。
 RunGroupModule("task-manager", "任务管理器", TaskManagerChecks.Run);
+
+// 「应用管理器」：注册表卸载项过滤（系统组件 / 补丁 / 子项 / 空名）与同名去重优先级 /
+// 安装日期解析（20260626 · 2026-06-26 · 越界 · 空）/ 大小与盘符格式化 / 驱动器标签 /
+// 卸载命令行拆分（引号 / 无引号含空格 / msiexec）/ 排序比较（未知值沉底 · 正逆序 · 同值稳定）/
+// 配置默认值与 JSON 往返 / 工具元数据；最后真的**只读**扫一遍本机注册表做自洽断言。
+// ⚠ 全程不写注册表、不删文件、**绝不启动任何卸载 / 修改程序**（启动链路只测命令拆分，不真跑）。
+RunGroupModule("app-manager", "应用管理器", AppManagerChecks.Run);
 
 EnterGroup("shell");
 
