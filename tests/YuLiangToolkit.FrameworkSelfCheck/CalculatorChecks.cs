@@ -36,6 +36,7 @@ internal static class CalculatorChecks
         CheckCalculatorSymbols(fn);
         CheckEngineWrapper(fn);
         CheckFormatting(fn);
+        CheckExactBigNumbers(fn);
         CheckInput(fn);
         CheckHistory(fn);
         CheckConfig(fn);
@@ -304,6 +305,73 @@ internal static class CalculatorChecks
             MathFormat.FormatFixed(1.0 / 3.0, 2) == "0.33"
             && MathFormat.FormatFixed(2.0, 3) == "2",
             $"{MathFormat.FormatFixed(1.0 / 3.0, 2)} / {MathFormat.FormatFixed(2.0, 3)}");
+    }
+
+    // ---------------------------------------------------------------- 任意精度大数（精确优先）
+
+    /// <summary>
+    /// v1.16 起的「精确优先」：整数 / 有限小数走 BigInteger 十进制引擎，超大结果不再丢位或变 ∞；
+    /// 函数 / 常量 / 除不尽照旧回退 double。这里断言两条路径的分工，防止以后有人把精确路径删掉。
+    /// </summary>
+    private static void CheckExactBigNumbers(CheckFn check)
+    {
+        var bigFactorial = Eval("100!");
+        check("[计算器] 精确路径：100! 出完整 158 位整数（不再变 ∞）",
+            bigFactorial.Success && bigFactorial.IsExact && bigFactorial.Text.Length == 158
+            && bigFactorial.Text.StartsWith("93326215443944152681699238856266700490715968264381621468592963895217599993229915608941463976156518286253697920827223758251185210916864000000000000000000000000",
+                StringComparison.Ordinal),
+            $"len={bigFactorial.Text.Length}");
+
+        var power = Eval("2^1000");
+        check("[计算器] 精确路径：2^1000 出完整 302 位整数，首尾数字都对",
+            power.IsExact && power.Text.Length == 302
+            && power.Text.StartsWith("10715086071862673209", StringComparison.Ordinal)
+            && power.Text.EndsWith("205668069376", StringComparison.Ordinal),
+            $"len={power.Text.Length} head={power.Text[..20]} tail={power.Text[^12..]}");
+
+        var bigSum = Eval("12345678901234567890+1");
+        check("[计算器] 精确路径：20 位大整数相加不丢位（12345678901234567890 + 1）",
+            bigSum.IsExact && bigSum.Text == "12345678901234567891", bigSum.Text);
+
+        check("[计算器] 精确路径：0.1+0.2 显示 0.3（不是 0.30000000000000004）",
+            Eval("0.1+0.2").Text == "0.3", Eval("0.1+0.2").Text);
+
+        check("[计算器] 精确路径：6/4 显示 1.5、1/8 显示 0.125（除得尽就走精确路径）",
+            Eval("6/4") is { IsExact: true, Text: "1.5" } && Eval("1/8") is { IsExact: true, Text: "0.125" },
+            $"{Eval("6/4").Text} / {Eval("1/8").Text}");
+
+        check("[计算器] 精确路径：超大精确结果不会改成科学计数法",
+            Eval("10^30").Text == "1" + new string('0', 30) && Eval("10^30").Text.Length == 31,
+            Eval("10^30").Text);
+
+        check("[计算器] 回退路径：1/3 仍按有效位数显示 0.333333333333（除不尽不接管）",
+            !Eval("1/3").IsExact && Eval("1/3").Text == "0.333333333333", Eval("1/3").Text);
+
+        check("[计算器] 回退路径：sin(90) 角度制仍是 1、π 仍是 12 位小数（函数 / 常量不接管）",
+            !Eval("sin(90)", AngleUnit.Degrees).IsExact && Eval("sin(90)", AngleUnit.Degrees).Text == "1"
+            && !Eval("π").IsExact && Eval("π").Text == "3.14159265359",
+            $"{Eval("sin(90)", AngleUnit.Degrees).Text} / {Eval("π").Text}");
+
+        check("[计算器] 回退路径：2^-1 与 2^0.5 交给 double（0.5 / √2 ≈ 1.41421356237）",
+            !Eval("2^-1").IsExact && Near(Value("2^-1"), 0.5)
+            && !Eval("2^0.5").IsExact && Near(Value("2^0.5"), Math.Sqrt(2), 1e-9),
+            $"{Eval("2^-1").Text} / {Eval("2^0.5").Text}");
+
+        check("[计算器] 回退路径：结果位数失控时回退成 double 的 +∞，不卡死",
+            Eval("9^1000000").Text == "+∞", Eval("9^1000000").Text);
+
+        check("[计算器] 精确路径：5! 与 20!/18! 仍按整数给出（阶乘 / 大整数除法）",
+            Eval("20!/18!") is { IsExact: true, Text: "380" }, Eval("20!/18!").Text);
+
+        check("[计算器] 精确路径：mod 取模结果精确（7 mod 3 = 1、10.5 mod 1 = 0.5）",
+            Eval("7 mod 3") is { IsExact: true, Text: "1" } && Eval("10.5 mod 1").Text == "0.5",
+            $"{Eval("7 mod 3").Text} / {Eval("10.5 mod 1").Text}");
+
+        var exactAns = Eval("2^200");
+        check("[计算器] Ans：精确大数的 Ans 文本就是完整数字（不塞回 double 丢精度）",
+            exactAns.IsExact && CalculatorEngine.GetAnsText(exactAns) == exactAns.Text
+            && exactAns.Text.Length == 61,
+            $"len={CalculatorEngine.GetAnsText(exactAns).Length}");
     }
 
     // ---------------------------------------------------------------- 输入构造

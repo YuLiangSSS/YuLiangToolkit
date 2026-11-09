@@ -15,7 +15,8 @@ public sealed class CalculatorTool : ITool
 
     public string Description =>
         "普通计算 + 科学计算：直接输表达式（2+3*4、sin(30)、log(2,8)、5!），边打边看结果；"
-        + "三角函数可切角度制 / 弧度制，结果精度可调，历史记录一键回填。";
+        + "大整数 / 阶乘 / 高次幂用任意精度精确计算（100! 也不丢位），三角函数可切角度制 / 弧度制，"
+        + "结果精度可调，历史记录一键回填。";
 
     public string EmojiIcon => "🧮";
 

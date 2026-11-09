@@ -40,7 +40,8 @@
 | 🚀 软件启动器 | 把常用的 exe / 快捷方式收进图标墙，双击启动；右侧看软件全名 / 目标路径 / 版本 / 大小，可重命名、换图标、删除，一键清空失效快捷方式与已卸载的软件 | [tools/launcher.md](tools/launcher.md) |
 | 🖥️ 任务管理器 | 系统 CPU / 内存 / GPU / 逐块物理硬盘读写实时监测 + 进程列表（PID / CPU / 内存 / GPU / 占用端口）+ 进程详情与结束任务（Process.Kill → taskkill → wmic 三级后备）+ 开机启动项查看 / 启用禁用 / 删除；需要管理员权限时按需弹 UAC 重启提权 | [tools/task-manager.md](tools/task-manager.md) |
 | 😆 表情包收藏夹 | 收藏图片，单击即复制并粘贴到 QQ 聊天框；自动检测 / 校验目标会话、可选自动发送（随机 0.5~1.5 秒延迟），也能切换成只复制到剪贴板 | [tools/meme-board.md](tools/meme-board.md) |
-| 🧮 计算器 | 科学计算器：表达式直接输入、边打边出结果；三角函数 / 反三角 / 双曲 / 对数 / 阶乘 / 常量，角度制与弧度制切换，结果有效位数可调；历史记录点选回填并自动保存；Ans、复制结果 | [tools/calculator.md](tools/calculator.md) |
+| 🧮 计算器 | 科学计算器：表达式直接输入、边打边出结果；整数 / 有限小数走任意精度精确计算（100!、2^1000、超大整数四则都不丢位），三角函数 / 反三角 / 双曲 / 对数 / 阶乘 / 常量，角度制与弧度制切换，结果有效位数可调；历史记录点选回填并自动保存；Ans、复制结果 | [tools/calculator.md](tools/calculator.md) |
+| 🎲 随机数生成器 | 可调下限 / 上限 / 精确度生成随机数，数值用任意精度十进制精确表示（超大整数与超细步长都不丢位、不出浮点尾巴）；可调个数、去重、排序、分隔符，一键复制 | [tools/random-number.md](tools/random-number.md) |
 | 📈 函数绘图 | 同时画多条函数曲线：每条可单独设定义域 / 颜色 / 显示开关；拖动平移、滚轮缩放、双击复位，网格与坐标轴可隐藏；自动求点——光标处实时读数、输入 x 求所有函数值、按范围自动生成点值表 | [tools/function-plot.md](tools/function-plot.md) |
 | 🧪 框架示例 | 开发用模板（Data/Config 轮子演示，可整目录删除） | [tools/sample-framework.md](tools/sample-framework.md) |
 

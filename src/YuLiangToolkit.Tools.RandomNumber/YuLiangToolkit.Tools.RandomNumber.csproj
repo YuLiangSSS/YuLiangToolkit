@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「随机数生成器」：下限 / 上限 / 精确度（步长）可任意大 / 任意细，数值用 Core/Numbers/ExactDecimal
+       （BigInteger 尾数）精确表示，不引第三方 NuGet 包。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.RandomNumber</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.RandomNumber</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

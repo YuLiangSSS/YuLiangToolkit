@@ -3,7 +3,6 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Input;
 using YuLiangToolkit.Core.Configuration;
-using YuLiangToolkit.Core.Expressions;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Tools.Calculator.Core;
 
@@ -24,8 +23,8 @@ namespace YuLiangToolkit.Tools.Calculator.ViewModels;
 /// </summary>
 public sealed class CalculatorViewModel : ToolViewModelBase
 {
-    /// <summary>上一次的有限结果（「无定义」/ ∞ 不更新它）。</summary>
-    private double _lastValue = double.NaN;
+    /// <summary>上一次结果的文本（精确大数也用文本，绝不塞回 double 丢精度）。「无定义」/ ∞ 不更新它。</summary>
+    private string _lastValueText = "";
 
     /// <summary>有没有可用的 Ans。</summary>
     private bool _hasAns;
@@ -216,9 +215,9 @@ public sealed class CalculatorViewModel : ToolViewModelBase
         ResultText = result.Text;
         ErrorText = "";
 
-        if (result.IsFinite)
+        if (result.CanBeAns)
         {
-            _lastValue = result.Value;
+            _lastValueText = CalculatorEngine.GetAnsText(result);
             _hasAns = true;
             UpdateAnsText();
         }
@@ -268,13 +267,14 @@ public sealed class CalculatorViewModel : ToolViewModelBase
             return;
         }
 
-        var text = MathFormat.Format(_lastValue, Cfg.SafeSignificantDigits);
+        var text = _lastValueText;
+        if (string.IsNullOrEmpty(text)) text = "0";
         Expression = CalculatorInput.InsertNumber(Expression, text);
         StatusText = $"已插入上次结果：{text}";
     }
 
     private void UpdateAnsText()
-        => AnsText = _hasAns ? $"Ans = {MathFormat.Format(_lastValue, Cfg.SafeSignificantDigits)}" : "Ans = —";
+        => AnsText = _hasAns ? $"Ans = {_lastValueText}" : "Ans = —";
 
     // ---------- 历史记录 ----------
 
@@ -359,7 +359,7 @@ public sealed class CalculatorViewModel : ToolViewModelBase
                 RefreshPreview();
                 break;
             case nameof(CalculatorConfig.SignificantDigits):
-                UpdateAnsText();
+                // 精度只影响 double 回退结果的显示；Ans 若是精确结果就保持原文本
                 RefreshPreview();
                 break;
             case nameof(CalculatorConfig.HistoryLimit):

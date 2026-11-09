@@ -57,6 +57,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("media-editor", "剪辑工具：ffprobe 解析 / 片段数学 / 裁剪拼接滤镜 / GIF 参数"),
     ("software-updater", "软件升级器：winget 表格解析 / 包 Id 安全 / 命令拼装 / 批量勾选规则（不启动 winget）"),
     ("calculator", "计算器：表达式求值 / 优先级 / 省略乘号 / 阶乘 / 角度制 / 结果格式化 / 历史与配置"),
+    ("random-number", "随机数生成器：十进制步长网格 / 对齐 / 无偏抽样 / 去重与排序 / 精确数轮子 / 配置默认值"),
     ("function-plot", "函数绘图：视口换算 / 缩放平移 / 好看刻度 / 自动 Y 范围 / 配置 / 采样集成"),
     ("mail", "邮箱代收：IMAP 预设 / 地址与 HTML 处理 / DPAPI 授权码加密 / 配置往返（纯逻辑，不联网）"),
     ("launcher", "软件启动器：导入校验 / 默认显示名 / 失效判定 / 清空无效项 / 配置往返（纯逻辑）"),
@@ -1236,6 +1237,11 @@ RunGroupModule("software-updater", "软件升级器", SoftwareUpdaterChecks.Run)
 // 计算器的输入构造与历史记录（去重 / 上限裁剪 / 清空）、配置默认值与夹取。
 // 纯逻辑，不创建窗口、不碰剪贴板。
 RunGroupModule("calculator", "计算器", CalculatorChecks.Run);
+
+// 「随机数生成器」：十进制步长网格（任意大下限 / 任意细步长 / 上限对齐 / 除不尽与非法输入）、
+// 无偏抽样（注入确定性随机源断言边界与去重）、排序与分隔符、精确数轮子（ExactDecimal 解析 / 四则 / 除尽判定）、
+// 配置默认值与夹取。纯逻辑，不创建窗口、不碰剪贴板。
+RunGroupModule("random-number", "随机数生成器", RandomNumberChecks.Run);
 
 // 「函数绘图」：视口换算（世界 ↔ 屏幕往返 / 以光标为中心缩放 / 平移）、好看刻度（1·2·5×10^n）、
 // 自动 Y 范围（空集合 / NaN / 上下界写反）、每条函数的配置校验，以及与 FunctionSampler 的采样集成

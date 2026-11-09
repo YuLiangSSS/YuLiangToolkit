@@ -98,6 +98,9 @@
     <!-- 「计算器」：共享表达式引擎（解析 / 优先级 / 省略乘号 / 阶乘 / 角度制 / 格式化）+
          计算器输入构造与历史记录纯逻辑；全部无头跑，不创建窗口。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Calculator\YuLiangToolkit.Tools.Calculator.csproj" />
+    <!-- 「随机数生成器」：十进制步长网格 / 无偏抽样 / 排序 / 拼接纯逻辑，
+         数值走 Core/Numbers/ExactDecimal（BigInteger 尾数）；不创建窗口、不碰剪贴板。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.RandomNumber\YuLiangToolkit.Tools.RandomNumber.csproj" />
     <!-- 「函数绘图」：视口换算（世界↔屏幕 / 缩放 / 平移）/ 好看刻度 / 自动 Y 范围 /
          配置默认值 + 与 FunctionSampler 的采样集成；全部纯逻辑，不创建窗口、不渲染。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.FunctionPlot\YuLiangToolkit.Tools.FunctionPlot.csproj" />
