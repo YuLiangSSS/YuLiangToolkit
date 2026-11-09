@@ -136,6 +136,13 @@ public sealed class Live2DSession
     private bool _observationDemoApplied;
     private TimeSpan _lastTailWagAt = TimeSpan.MinValue;
     private bool _tailWagDemoApplied;
+    private bool _pokeDemoApplied;
+    private TimeSpan _pokeReactionAt = TimeSpan.MinValue;
+    private bool _pokeReactionTriggered;
+    private bool _pokeReactionVisualApplied;
+    private bool _pokeReactionSpeechDone;
+    private ExpressionEntry? _temporaryInteractionExpression;
+    private TimeSpan _temporaryInteractionExpressionClearAt = TimeSpan.MinValue;
     private string? _lastInteractionVoiceLine;
     private string? _lastInteractionVoiceEvent;
 
@@ -1317,6 +1324,58 @@ public sealed class Live2DSession
         }
     }
 
+    // ---------- 戳脸彩蛋截图验收：YLT_LIVE2D_POKE_DEMO=1（+ _SHOT=<png>） ----------
+
+    private void TryBeginPokeDemo()
+    {
+        if (_pokeDemoApplied) return;
+        var raw = Environment.GetEnvironmentVariable("YLT_LIVE2D_POKE_DEMO")?.Trim();
+        if (string.IsNullOrEmpty(raw)) return;
+        if (_viewModel is null) return;
+        _pokeDemoApplied = true;
+        _ = RunPokeDemoAsync(raw);
+    }
+
+    private async Task RunPokeDemoAsync(string raw)
+    {
+        var viewModel = _viewModel;
+        if (viewModel is null) return;
+        try
+        {
+            var wait = Stopwatch.StartNew();
+            while (wait.ElapsedMilliseconds < 20_000 && _runtime is not { IsLoaded: true }) await Task.Delay(100);
+            var runtime = _runtime;
+            if (runtime is not { IsLoaded: true })
+            {
+                viewModel.Log("戳脸彩蛋演示：模型没加载出来");
+                return;
+            }
+
+            var shotPath = Environment.GetEnvironmentVariable("YLT_LIVE2D_POKE_SHOT")?.Trim() ?? "";
+            if (shotPath.Length > 0)
+            {
+                try { if (!IsPetVisible) ShowPet(); } catch { /* 忽略 */ }
+                await Task.Delay(600);
+                UpdateAiChatWindowPosition();
+            }
+
+            ApplyTemporaryInteractionExpression(PokeReaction.ExpressionName, 8);
+            runtime.StartPokeReaction(8);
+            await Task.Delay(800);
+            if (shotPath.Length > 0)
+            {
+                await CaptureInteractionShotAsync(shotPath, viewModel);
+                viewModel.Log($"戳脸彩蛋演示截图已保存：{shotPath}");
+                await Task.Delay(250);
+                Application.Current?.Shutdown();
+            }
+        }
+        catch (Exception ex)
+        {
+            viewModel.Log("戳脸彩蛋演示失败：" + ex.Message);
+        }
+    }
+
     // ===================== 页面生命周期 =====================
 
     /// <summary>取（或创建）工具页 ViewModel（整个进程只建一次，页面重开复用）。</summary>
@@ -1797,6 +1856,7 @@ public sealed class Live2DSession
         TryBeginTtsAudition();
         TryBeginObservationDemo();
         TryBeginTailWagDemo();
+        TryBeginPokeDemo();
         if (IsLoaded)
         {
             try { _runtime!.Tick(TimeSpan.FromMilliseconds(16)); } catch { /* 忽略 */ }
@@ -1919,6 +1979,8 @@ public sealed class Live2DSession
 
         // AI 临时表情 / 鼓嘴到期收回
         UpdateAiMoodEffectsExpiry();
+        // 戳脸彩蛋「＞＜」到期只撤掉这一个表情
+        UpdateInteractionExpressionExpiry();
 
         // 空闲自言自语：每约 2 秒检查一次（内部还有 60~120 秒的随机间隔）
         if (_frameIndex % 60 == 0) TryIdleChatter();
@@ -4143,6 +4205,9 @@ public sealed class Live2DSession
         // 高好感触摸：任意部位 / 任意互动都有概率摇尾巴（尾巴没被装饰开关藏起来才摇）
         MaybeStartTailWag();
 
+        // 中 / 高好感戳脸彩蛋：小概率做「＞＜」表情 + 说「有点痒痒的」，抢在观察 / 逗你前面
+        if (TryPokeReaction(voiceEvent, speak: false)) return;
+
         // 点额头 / 戳脸：随机触发「观察你 / 逗你」（和自然待机同两类动作）
         if (string.Equals(voiceEvent, "face_cycle", StringComparison.OrdinalIgnoreCase))
         {
@@ -4222,6 +4287,82 @@ public sealed class Live2DSession
         var amplitude = 6.0 + (Random.Shared.NextDouble() * 4.0); // 根部 6~10°，尾尖约 2 倍
         runtime.StartTailWag(seconds, amplitude);
         viewModel.Log($"高好感触摸：摇尾巴（{seconds:0.0}s，幅度 {amplitude:0.0}°）");
+    }
+
+    // ===================== 戳脸彩蛋：＞＜ + 「有点痒痒的」 =====================
+
+    /// <summary>
+    /// 中 / 高好感戳脸彩蛋：35% 概率做「＞＜」表情并说「有点痒痒的」。
+    /// 视觉与语音是两次回调，用同一次「决定」复用结果（避免表情触发了但台词没对上）。
+    /// </summary>
+    private bool TryPokeReaction(string? voiceEvent, bool speak)
+    {
+        if (!string.Equals(voiceEvent, "face_cycle", StringComparison.OrdinalIgnoreCase)) return false;
+
+        var viewModel = _viewModel;
+        var runtime = _runtime;
+        if (viewModel is null || runtime is null || runtime.IsLoaded != true) return false;
+
+        var affection = _aiChat?.Affection.Value ?? 50.0;
+        var now = _clock.Elapsed;
+        // 同一次戳脸：视觉回调（InteractionTriggered）先做决定，语音回调（InteractionHappened）复用
+        if (_pokeReactionAt == TimeSpan.MinValue || now - _pokeReactionAt > TimeSpan.FromMilliseconds(900))
+        {
+            _pokeReactionAt = now;
+            _pokeReactionTriggered = PokeReaction.ShouldTrigger(affection, Random.Shared.Next(100));
+            _pokeReactionVisualApplied = false;
+            _pokeReactionSpeechDone = false;
+        }
+
+        if (!_pokeReactionTriggered) return false;
+
+        if (speak)
+        {
+            if (_pokeReactionSpeechDone) return true;
+            _pokeReactionSpeechDone = true;
+            try { EnsureAiChat().AppendLocalPetMessage(PokeReaction.Line); } catch { /* 聊天服务没准备好就只说话 */ }
+            viewModel.Log($"戳脸彩蛋：好感 {affection:0} → {PokeReaction.Line}");
+            SpeakText(PokeReaction.Line, SpeechToneCatalog.Shy, allowAutoGesture: false);
+            return true;
+        }
+
+        if (_pokeReactionVisualApplied) return true;
+        _pokeReactionVisualApplied = true;
+        ApplyTemporaryInteractionExpression(PokeReaction.ExpressionName, PokeReaction.ExpressionSeconds);
+        // ＞＜ 同时做「微微笑嘴形 + 左右晃一下脸」（和表情同长，到点一起回正）
+        runtime.StartPokeReaction(PokeReaction.ExpressionSeconds);
+        viewModel.Log($"戳脸彩蛋：好感 {affection:0} → 表情 {PokeReaction.ExpressionName} + 晃脸微微笑");
+        return true;
+    }
+
+    /// <summary>施加一个临时互动表情（到点只撤掉这一个，不影响用户自己开的表情 / 装饰）。</summary>
+    private void ApplyTemporaryInteractionExpression(string expressionName, double seconds)
+    {
+        var runtime = _runtime;
+        if (runtime is null || !runtime.IsLoaded) return;
+        var expression = runtime.Expressions.FirstOrDefault(entry =>
+            string.Equals(entry.Name, expressionName, StringComparison.OrdinalIgnoreCase));
+        if (expression is null) return;
+
+        ApplyExpression(expression, 0.25);
+        _temporaryInteractionExpression = expression;
+        _temporaryInteractionExpressionClearAt = _clock.Elapsed + TimeSpan.FromSeconds(Math.Clamp(seconds, 0.5, 30));
+    }
+
+    /// <summary>帧循环里到期撤掉临时互动表情（只 RemoveExpression 这一个）。</summary>
+    private void UpdateInteractionExpressionExpiry()
+    {
+        if (_temporaryInteractionExpressionClearAt == TimeSpan.MinValue ||
+            _clock.Elapsed < _temporaryInteractionExpressionClearAt)
+        {
+            return;
+        }
+
+        _temporaryInteractionExpressionClearAt = TimeSpan.MinValue;
+        var expression = _temporaryInteractionExpression;
+        _temporaryInteractionExpression = null;
+        if (expression is null) return;
+        try { _runtime?.RemoveExpression(expression, 0.5); } catch { /* 忽略 */ }
     }
 
     // ===================== 观察用户 / 逗你（场景 1 / 2） =====================
@@ -4350,6 +4491,12 @@ public sealed class Live2DSession
         }
 
         var affection = _aiChat?.Affection.Value ?? 50.0;
+        if (TryPokeReaction(voiceEvent, speak: true))
+        {
+            _lastInteractionVoiceAt = now;
+            return;
+        }
+
         if (string.Equals(voiceEvent, "face_cycle", StringComparison.OrdinalIgnoreCase) ||
             (string.Equals(voiceEvent, "pinch", StringComparison.OrdinalIgnoreCase) && Random.Shared.Next(2) == 0))
         {

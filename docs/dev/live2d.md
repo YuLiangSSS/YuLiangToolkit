@@ -1247,6 +1247,7 @@ InteractionController._raiseInteraction(voiceEvent, displayName)
 | `YLT_LIVE2D_CHAT_DEMO_AFFECTION=<0~100>` | 配合 `YLT_LIVE2D_SHOT_CHAT`：截图里把好感度改成指定值（默认 78），用来看满格爱心试管 / 心动档配色 |
 | `YLT_LIVE2D_OBSERVE_DEMO=<observe\|tease>`（+ `_AFFECTION` / `_FACE` / `_SHOT`） | **观察用户 / 逗你** 动作截图验收：按好感度触发观察或逗你，可强制 `_FACE=单眼瞪大/双眼微眯/微眯偏睁/单眼闭眨/白眼/不满/好奇`，`_SHOT=<png>` 把桌宠窗口离屏渲染后退出；`_AFFECTION` 默认 80 |
 | `YLT_LIVE2D_TAIL_WAG_DEMO=1`（+ `_SHOT` / `_TRACE`） | **摇尾巴**验收：模型加载后 `StartTailWag(5,12)`；`_SHOT=<png>` 1 秒后离屏截图退出，`_TRACE=<path>` 写 `tailVisible/wagging/tailAngles` 文本 |
+| `YLT_LIVE2D_POKE_DEMO=1`（+ `YLT_LIVE2D_POKE_SHOT=<png>`） | **戳脸彩蛋**验收：强制「＞＜ + 左右晃脸 + 微微笑」并在 0.8 秒后离屏截图退出 |
 | `YLT_LIVE2D_PETCARD_SCROLL=<bottom/数字>` | 打开页面后把「桌面宠物」卡内部滚到指定位置（截图设置项用） |
 | `YLT_SELFCHECK_TRACE=1` | 自检排错：打印「进入 / 完成哪个分组」（查「全 PASS 但进程不退出」卡在哪一步） |
 
@@ -1761,6 +1762,27 @@ InteractionController._raiseInteraction(voiceEvent, displayName)
   （本轮实测：`tailVisible=True wagging=True tailAngles=6.8,3.6,-1.4,-7.1,-11.7,-13.3`）；
 - 自检：`TailWag.ShouldWag` 门槛 / 概率边界、`Envelope` 两端、`AmplitudeScale` 尾尖更大、
   `Offset` 动作外 / 幅度 0 为 0。截图 `shots/tail-wag.png` 只拍到一帧，实际摆动要看运行时。
+
+## 24. 戳脸彩蛋：＞＜ + 「有点痒痒的」（v1.22.0）
+
+- 策略在 `Play/PokeReaction.cs`：中 / 高好感门槛 **≥30**、概率 **35%**、表情 `＞＜`、台词「有点痒痒的」、
+  表情保持 2.5 秒（常量集中，改数值只改这里）；
+- `Live2DSession.TryPokeReaction(voiceEvent, speak)`：
+  - 只对 `face_cycle`（戳脸 / 点额头）生效；视觉回调（`InteractionTriggered`）先做一次「是否触发」决定，
+    语音回调（`InteractionHappened`）在 900ms 内复用同一次决定 → 不会出现「表情触发了但台词没对上」；
+  - 触发时视觉：施加 `＞＜`（0.25s 淡入）并记录到 `_temporaryInteractionExpression`，2.5 秒后
+    **只 `RemoveExpression` 这一个表情**（不影响用户自己开的表情 / 装饰）；
+  - 同时 `ModelRuntime.StartPokeReaction(2.5)`：`ParamAngleX` 以 0.9Hz、±7° 左右晃（首尾各 0.25s 淡入淡出），
+    嘴形 `ParamMouthForm` → +0.55、`MouthSmile_L/R` → +0.45（微微笑），到点和表情一起回正；
+    期间 `IsPokeReacting` 会触发「动作时暂停鼠标跟随」，避免鼠标把头带偏；动捕有脸时让位；
+  - 触发时语音：`SpeakText("有点痒痒的", SpeechToneCatalog.Shy, allowAutoGesture:false)`，并写进聊天记录；
+  - 触发时**抢先于**观察 / 逗你动作：`ApplyInteractionScenarioVisuals` 里在 `face_cycle` 分支之前 return，
+    没触发才按原来的 50% 观察 / 逗你走；
+  - 视觉与语音分离：互动语音关了也照样做表情（只是不说话）；
+- 帧循环里 `UpdateInteractionExpressionExpiry()` 到期撤掉临时表情（只撤这一个，不 `ClearExpressions`）；
+- 自检：`PokeReaction.ShouldTrigger` 门槛 / 概率边界、表情名 / 台词常量；
+- 调试钩子：`YLT_LIVE2D_POKE_DEMO=1`（+ `YLT_LIVE2D_POKE_SHOT=<png>`）强制做一次「＞＜ + 晃脸微微笑」并截图退出。
+
 
 
 

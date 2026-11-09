@@ -282,6 +282,15 @@ public sealed class ModelRuntime : IDisposable
     private double _tailWagElapsedSeconds;
     private double _tailWagAmplitudeDegrees;
 
+    // ---------- 戳脸彩蛋：＞＜ + 微微笑 + 左右晃脸 ----------
+    private CubismParameter? _pokeAngleX;
+    private CubismParameter? _pokeMouthForm;
+    private CubismParameter? _pokeMouthSmileL;
+    private CubismParameter? _pokeMouthSmileR;
+    private double _pokeReactionRemainingSeconds;
+    private double _pokeReactionDurationSeconds;
+    private double _pokeReactionElapsedSeconds;
+
     /// <summary>互动语音事件（参数 = 语音事件 key：pat_head / face_cycle / pinch / tickle / protect / hand）。</summary>
     public event EventHandler<string>? InteractionHappened;
 
@@ -515,8 +524,8 @@ public sealed class ModelRuntime : IDisposable
 
     /// <summary>暂停策略（纯函数，自检用）：总开关开 + 任一动作模块激活 → 暂停鼠标跟随。</summary>
     public static bool ShouldPauseEyeTracking(bool pauseOnAction, bool observing, bool gestureActive,
-        bool performanceActive, bool danceActive, bool interacting)
-        => pauseOnAction && (observing || gestureActive || performanceActive || danceActive || interacting);
+        bool performanceActive, bool danceActive, bool interacting, bool pokeReacting = false)
+        => pauseOnAction && (observing || gestureActive || performanceActive || danceActive || interacting || pokeReacting);
 
     /// <summary>最近一帧鼠标跟随是否因动作模块被暂停（调试 / 自检观察用）。</summary>
     public bool EyeTrackingPaused { get; private set; }
@@ -622,6 +631,74 @@ public sealed class ModelRuntime : IDisposable
         {
             if (parameter is not null) parameter.Value = parameter.DefaultValue;
         }
+    }
+
+    // ---------- 戳脸彩蛋：微微笑 + 左右晃脸 ----------
+
+    /// <summary>是不是正在做戳脸彩蛋（＞＜ + 微微笑 + 左右晃脸）。</summary>
+    public bool IsPokeReacting => _pokeReactionRemainingSeconds > 0;
+
+    /// <summary>
+    /// 戳脸彩蛋的「微微笑 + 左右晃一下脸」：
+    /// 嘴形 <c>ParamMouthForm</c> 向 +0.55 抬、<c>MouthSmile_L/R</c> 向 +0.45 抬；
+    /// 头 <c>ParamAngleX</c> 以 0.9Hz、±7° 左右晃，首尾 0.25s 淡入淡出，默认 2.5 秒后回正。
+    /// </summary>
+    public void StartPokeReaction(double seconds = 2.5)
+    {
+        _pokeReactionDurationSeconds = Math.Clamp(seconds, 0.8, 6.0);
+        _pokeReactionRemainingSeconds = _pokeReactionDurationSeconds;
+        _pokeReactionElapsedSeconds = 0;
+    }
+
+    /// <summary>立刻结束戳脸彩蛋并回正嘴形 / 头角度。</summary>
+    public void StopPokeReaction()
+    {
+        if (_pokeReactionRemainingSeconds <= 0 && _pokeAngleX is null) return;
+        _pokeReactionRemainingSeconds = 0;
+        WritePokeReactionDefault();
+    }
+
+    /// <summary>推进戳脸彩蛋：表情（＞＜）之后叠加嘴形笑 + 头左右晃（动捕有脸时让位）。</summary>
+    private void ApplyPokeReaction(double deltaSeconds, bool mocapFace)
+    {
+        if (_pokeReactionRemainingSeconds <= 0) return;
+        if (mocapFace)
+        {
+            _pokeReactionRemainingSeconds -= deltaSeconds;
+            if (_pokeReactionRemainingSeconds <= 0) WritePokeReactionDefault();
+            return;
+        }
+
+        _pokeReactionElapsedSeconds += deltaSeconds;
+        _pokeReactionRemainingSeconds -= deltaSeconds;
+        var progress = _pokeReactionDurationSeconds <= 0
+            ? 1.0
+            : Math.Clamp(_pokeReactionElapsedSeconds / _pokeReactionDurationSeconds, 0.0, 1.0);
+        var weight = (float)Math.Min(1.0, Math.Min(progress / 0.1, (1.0 - progress) / 0.1));
+        if (weight < 0) weight = 0;
+
+        var sway = (float)(Math.Sin(2 * Math.PI * 0.9 * _pokeReactionElapsedSeconds) * 7.0) * weight;
+        if (_pokeAngleX is not null) _pokeAngleX.Value = _pokeAngleX.DefaultValue + sway;
+
+        WritePokeMouth(_pokeMouthForm, 0.55f, weight);
+        WritePokeMouth(_pokeMouthSmileL, 0.45f, weight);
+        WritePokeMouth(_pokeMouthSmileR, 0.45f, weight);
+
+        if (_pokeReactionRemainingSeconds <= 0) WritePokeReactionDefault();
+    }
+
+    private static void WritePokeMouth(CubismParameter? parameter, float target, float weight)
+    {
+        if (parameter is null) return;
+        parameter.Value = parameter.DefaultValue + ((target - parameter.DefaultValue) * weight);
+    }
+
+    private void WritePokeReactionDefault()
+    {
+        WritePokeMouth(_pokeMouthForm, _pokeMouthForm?.DefaultValue ?? 0f, 1f);
+        WritePokeMouth(_pokeMouthSmileL, _pokeMouthSmileL?.DefaultValue ?? 0f, 1f);
+        WritePokeMouth(_pokeMouthSmileR, _pokeMouthSmileR?.DefaultValue ?? 0f, 1f);
+        if (_pokeAngleX is not null) _pokeAngleX.Value = _pokeAngleX.DefaultValue;
     }
 
     /// <summary>推进摇尾巴：在物理求值之后给尾巴 6 段角度参数叠加偏移。</summary>
@@ -1755,6 +1832,10 @@ public sealed class ModelRuntime : IDisposable
             _tailRotationParams[i] = model.FindParameter("Param_Angle_Rotation" + (84 + i));
         }
         _tailSwitch = model.FindParameter("Clothes5");
+        _pokeAngleX = model.FindParameter("ParamAngleX") ?? model.FindParameter("AngleX");
+        _pokeMouthForm = model.FindParameter("ParamMouthForm");
+        _pokeMouthSmileL = model.FindParameter("MouthSmile_L");
+        _pokeMouthSmileR = model.FindParameter("MouthSmile_R");
     }
 
     /// <summary>解析投喂 / 吃饭要写的参数（模型没有的就跳过）。</summary>
@@ -2241,7 +2322,7 @@ public sealed class ModelRuntime : IDisposable
                 EyeTrackingPaused = ShouldPauseEyeTracking(
                     EyeTrackingPauseOnAction, IsObserving,
                     _gesture?.HasActive == true, _performance?.HasActive == true, _dance?.HasActive == true,
-                    _interaction?.IsInteracting == true);
+                    _interaction?.IsInteracting == true, IsPokeReacting);
                 if (!EyeTrackingPaused && (idleEnabled || EyeTrackingEnabled))
                 {
                     eye.Update(deltaSeconds, EyeTrackingEnabled,
@@ -2288,6 +2369,9 @@ public sealed class ModelRuntime : IDisposable
         _petIdleActions?.Update(deltaSeconds, IsPetIdleBlocked(mocapFace));
 
         _expressionManager.Update(model, deltaSeconds);
+
+        // 5.55) 戳脸彩蛋：＞＜ 表情之上叠「微微笑嘴形 + 左右晃脸」（动捕有脸时让位）
+        ApplyPokeReaction(deltaSeconds, mocapFace);
 
         // 5.56) 高好感互动的害羞扭动：写在表情之后、投喂 / 物理之前，身体与头部错开一点点
         ApplyShyWiggle(deltaSeconds);

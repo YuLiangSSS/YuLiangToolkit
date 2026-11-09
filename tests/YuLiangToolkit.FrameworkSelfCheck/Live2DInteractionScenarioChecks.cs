@@ -249,9 +249,10 @@ internal static class Live2DInteractionScenarioChecks
             ModelRuntime.ShouldPauseEyeTracking(true, false, false, false, false, interacting: true),
             "");
 
-        C("鼠标跟随：空闲不暂停；关掉「动作时暂停」后完全不暂停",
+        C("鼠标跟随：戳脸彩蛋（晃脸）也暂停；空闲不暂停；关掉「动作时暂停」后完全不暂停",
+            ModelRuntime.ShouldPauseEyeTracking(true, false, false, false, false, false, pokeReacting: true) &&
             !ModelRuntime.ShouldPauseEyeTracking(true, false, false, false, false, false) &&
-            !ModelRuntime.ShouldPauseEyeTracking(false, true, true, true, true, true),
+            !ModelRuntime.ShouldPauseEyeTracking(false, true, true, true, true, true, pokeReacting: true),
             "");
 
         C("鼠标跟随：配置默认开启「动作时暂停」（EyeTrackingPauseOnAction）",
@@ -286,5 +287,20 @@ internal static class Live2DInteractionScenarioChecks
             TailWag.Offset(3, 3, 10, 0) == 0 &&
             TailWag.Offset(1.5, 3, 0, 0) == 0,
             $"{TailWag.AmplitudeScale(0):0.00}/{TailWag.AmplitudeScale(5):0.00}");
+
+        // ==================================================================
+        // 九、戳脸彩蛋：中/高好感 35% → ＞＜ + 「有点痒痒的」
+        // ==================================================================
+        C("戳脸彩蛋：中好感（≥30）35% 内触发，低好感 / 概率外不触发",
+            PokeReaction.ShouldTrigger(30, 0) &&
+            PokeReaction.ShouldTrigger(72, 34) &&
+            !PokeReaction.ShouldTrigger(29.9, 0) &&
+            !PokeReaction.ShouldTrigger(72, 35) &&
+            !PokeReaction.ShouldTrigger(72, -1),
+            "");
+
+        C("戳脸彩蛋：表情名是「＞＜」、台词是「有点痒痒的」",
+            PokeReaction.ExpressionName == "＞＜" && PokeReaction.Line == "有点痒痒的",
+            $"{PokeReaction.ExpressionName} / {PokeReaction.Line}");
     }
 }
