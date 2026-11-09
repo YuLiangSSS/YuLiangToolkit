@@ -1245,7 +1245,8 @@ InteractionController._raiseInteraction(voiceEvent, displayName)
 | `YLT_LIVE2D_TTS_AUDITION=<folder\|1>`（+ `_EXIT=1`） | **语音试听对比**：用真实合成链路导出「4 音色 × 6 条台词」的 WAV + `index.md` + `audition.m3u`（指定目录或默认 `Data\live2d\voice-auditions`），给调语气用；不写聊天记录 |
 | `YLT_LIVE2D_CHAT_POS=<left,top>` | 打开聊天窗后把它摆成「用户手动位置」（等价于拖走标题条：关闭跟随、保存坐标），验收「拖走后不会被每帧拽回桌宠旁边」 |
 | `YLT_LIVE2D_CHAT_DEMO_AFFECTION=<0~100>` | 配合 `YLT_LIVE2D_SHOT_CHAT`：截图里把好感度改成指定值（默认 78），用来看满格爱心试管 / 心动档配色 |
-| `YLT_LIVE2D_OBSERVE_DEMO=<observe\|tease>`（+ `_AFFECTION` / `_FACE` / `_SHOT`） | **观察用户 / 逗你** 动作截图验收：按好感度触发观察或逗你，可强制 `_FACE=单眼瞪大/双眼微眯/微眯偏睁/白眼/不满/好奇`，`_SHOT=<png>` 把桌宠窗口离屏渲染后退出；`_AFFECTION` 默认 80 |
+| `YLT_LIVE2D_OBSERVE_DEMO=<observe\|tease>`（+ `_AFFECTION` / `_FACE` / `_SHOT`） | **观察用户 / 逗你** 动作截图验收：按好感度触发观察或逗你，可强制 `_FACE=单眼瞪大/双眼微眯/微眯偏睁/单眼闭眨/白眼/不满/好奇`，`_SHOT=<png>` 把桌宠窗口离屏渲染后退出；`_AFFECTION` 默认 80 |
+| `YLT_LIVE2D_TAIL_WAG_DEMO=1`（+ `_SHOT` / `_TRACE`） | **摇尾巴**验收：模型加载后 `StartTailWag(5,12)`；`_SHOT=<png>` 1 秒后离屏截图退出，`_TRACE=<path>` 写 `tailVisible/wagging/tailAngles` 文本 |
 | `YLT_LIVE2D_PETCARD_SCROLL=<bottom/数字>` | 打开页面后把「桌面宠物」卡内部滚到指定位置（截图设置项用） |
 | `YLT_SELFCHECK_TRACE=1` | 自检排错：打印「进入 / 完成哪个分组」（查「全 PASS 但进程不退出」卡在哪一步） |
 
@@ -1718,5 +1719,48 @@ InteractionController._raiseInteraction(voiceEvent, displayName)
 目录完整性（脸预设名合法 / 阈值唯一 / 台词非空 / `{user}` 占位）、PickLine 去重、
 `UserGaze` 右 / 左 / 中 / 下 / 夹取、`ShouldPauseEyeTracking` 真值表、配置默认值、
 `ObservationBlinkPlan` 短 / 长动作组数、次数 1~3、组间间隔、眨眼脉冲窗口。
+
+## 23. 摇尾巴（高好感触摸随机触发，v1.15.0）
+
+> 尾巴本身是物理驱动的：PhysicsSetting130 以 `ParamBodyAngleX/Z`、`LeanInput`、`ParamBreath`、`Clothes2`
+> 为输入，输出 6 段 `Param_Angle_Rotation84~89`（Scale 15/20/30/30/30/30）和 `Param52`。
+> 所以不能「直接给尾巴写死角度」，否则会被物理每帧覆盖；正确做法是**在物理求值之后叠加偏移**。
+
+### 23.1 纯函数：`Play/TailWag.cs`
+
+- `ShouldWag(affection, tailVisible, rollPercent)`：好感 ≥85 + 尾巴露着 + 随机 <35%；
+- `Envelope(elapsed, duration)`：首尾各 0.3s 淡入淡出，中间 1，动作外 0；
+- `AmplitudeScale(segment)`：根部 0.55 → 尾尖约 1.10（越靠尾尖摆得越大）；
+- `Offset(elapsed, duration, amplitude, segment)` = `sin(2π·1.35·t − segment×0.55) × amplitude × scale × envelope`
+  —— 逐节相位滞后 0.55 弧度，看起来一节带一节甩；
+- `TailWagMatrix` 不新增文件，全部参数（频率 / 淡入 / 段数 / 相位 / 概率 / 门槛）都是常量，改手感只改这里。
+
+### 23.2 运行时：`ModelRuntime`
+
+- 新增字段：`_tailRotationParams[6]`（`Param_Angle_Rotation84~89`）、`_tailSwitch`（`Clothes5`）、
+  `StartTailWag(seconds, amplitude)` / `StopTailWag()` / `IsTailWagging` / `IsTailVisible` / `TailWagDebugText`；
+- `IsTailVisible`：`Clothes5` 当前值 ≈ 默认值 → 正常露尾；被「尾巴开关」装饰改掉（默认值 -1）→ 藏起来，不摇；
+- Tick 顺序：**物理 `Evaluate` → `ApplyTailWag` → `model.Update()`**；
+  - 物理开着：`parameter.Value += offset`（物理每帧重算基础值，不会累积）；
+  - 物理关着：`parameter.Value = DefaultValue + offset`，结束后写回默认值（避免每帧累加）；
+- 尾巴被藏起来时 `ApplyTailWag` 直接停掉计时。
+
+### 23.3 触发：`Live2DSession.MaybeStartTailWag()`
+
+- 在 `ApplyInteractionScenarioVisuals` 最前面调用（`InteractionTriggered` 每次互动都会走这里，
+  所以**所有部位 / 所有互动台词**都有概率；脸、捏脸、观察等提前 return 的分支也会先经过它）；
+- 条件：好感 ≥85 + 尾巴可见 + 1.2 秒节流 + 35% 随机；
+- 随机时长 2.2~3.2 秒、根部幅度 6~10°；不额外说话 / 不额外表情，只摇尾巴；
+- AI 主动聊天 / 说话不算「触摸」，不会触发（只挂互动事件）。
+
+### 23.4 验收 / 调试
+
+- `YLT_LIVE2D_TAIL_WAG_DEMO=1`：等待模型加载 → 显示桌宠 → `StartTailWag(5,12)`；
+- `YLT_LIVE2D_TAIL_WAG_SHOT=<png>`：1 秒后把桌宠窗口离屏渲染成 PNG 再退出（不抓桌面）；
+- `YLT_LIVE2D_TAIL_WAG_TRACE=<path>`：写 `tailVisible=… wagging=… tailAngles=84..89` 文本，验收尾巴参数是否被写入
+  （本轮实测：`tailVisible=True wagging=True tailAngles=6.8,3.6,-1.4,-7.1,-11.7,-13.3`）；
+- 自检：`TailWag.ShouldWag` 门槛 / 概率边界、`Envelope` 两端、`AmplitudeScale` 尾尖更大、
+  `Offset` 动作外 / 幅度 0 为 0。截图 `shots/tail-wag.png` 只拍到一帧，实际摆动要看运行时。
+
 
 

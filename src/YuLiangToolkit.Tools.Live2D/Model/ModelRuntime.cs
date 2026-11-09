@@ -274,6 +274,14 @@ public sealed class ModelRuntime : IDisposable
     private float _obsEyeBallYTarget;
     private IReadOnlyList<ObservationBlinkPlan.Burst>? _obsBlinkBursts;
 
+    // ---------- 摇尾巴（高好感触摸随机触发；物理求值之后叠加） ----------
+    private CubismParameter?[] _tailRotationParams = Array.Empty<CubismParameter?>();
+    private CubismParameter? _tailSwitch;
+    private double _tailWagRemainingSeconds;
+    private double _tailWagDurationSeconds;
+    private double _tailWagElapsedSeconds;
+    private double _tailWagAmplitudeDegrees;
+
     /// <summary>互动语音事件（参数 = 语音事件 key：pat_head / face_cycle / pinch / tickle / protect / hand）。</summary>
     public event EventHandler<string>? InteractionHappened;
 
@@ -574,6 +582,77 @@ public sealed class ModelRuntime : IDisposable
         _wiggleRemainingSeconds = 0;
         WriteWiggleParameter(_wiggleBodyAngleZ, 0);
         WriteWiggleParameter(_wiggleHeadAngleZ, 0);
+    }
+
+    // ---------- 摇尾巴 ----------
+
+    /// <summary>是不是正在摇尾巴（UI / 自检观察用）。</summary>
+    public bool IsTailWagging => _tailWagRemainingSeconds > 0;
+
+    /// <summary>调试 / 验收用：6 段尾巴当前角度（物理+摇尾巴叠加后的值，逗号分隔）。</summary>
+    public string TailWagDebugText => string.Join(",",
+        _tailRotationParams.Select(p => p is null ? "-" : p.Value.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)));
+
+    /// <summary>
+    /// 尾巴当前是否露着（没被「尾巴开关」装饰藏起来）。
+    /// 读 <c>Clothes5</c>：等于默认值 = 正常露尾；被装饰开关改掉（默认值 - 1）= 藏起来，不摇。
+    /// </summary>
+    public bool IsTailVisible
+        => _tailSwitch is null || Math.Abs(_tailSwitch.Value - _tailSwitch.DefaultValue) < 0.2f;
+
+    /// <summary>
+    /// 摇一段尾巴：在物理求值之后给 6 段尾巴叠加正弦摆动（根部小、尾尖大、逐节延迟）。
+    /// </summary>
+    /// <param name="seconds">持续秒数（0.5~6，默认 2.6）。</param>
+    /// <param name="amplitudeDegrees">根部幅度（度，3~16，默认 8；尾尖约 2 倍）。</param>
+    public void StartTailWag(double seconds = 2.6, double amplitudeDegrees = 8)
+    {
+        _tailWagDurationSeconds = Math.Clamp(seconds, 0.5, 6.0);
+        _tailWagRemainingSeconds = _tailWagDurationSeconds;
+        _tailWagElapsedSeconds = 0;
+        _tailWagAmplitudeDegrees = Math.Clamp(amplitudeDegrees, 3, 16);
+    }
+
+    /// <summary>停止摇尾巴（物理下一帧会自己回正；物理关着时这里写回默认）。</summary>
+    public void StopTailWag()
+    {
+        _tailWagRemainingSeconds = 0;
+        if (PhysicsEnabled) return;
+        foreach (var parameter in _tailRotationParams)
+        {
+            if (parameter is not null) parameter.Value = parameter.DefaultValue;
+        }
+    }
+
+    /// <summary>推进摇尾巴：在物理求值之后给尾巴 6 段角度参数叠加偏移。</summary>
+    private void ApplyTailWag(double deltaSeconds)
+    {
+        if (_tailWagRemainingSeconds <= 0) return;
+        if (!IsTailVisible)
+        {
+            // 尾巴被装饰藏起来了：不摇（留着计时也没意义，直接停）
+            _tailWagRemainingSeconds = 0;
+            return;
+        }
+
+        _tailWagElapsedSeconds += deltaSeconds;
+        _tailWagRemainingSeconds -= deltaSeconds;
+        for (var i = 0; i < _tailRotationParams.Length; i++)
+        {
+            var parameter = _tailRotationParams[i];
+            if (parameter is null) continue;
+            var baseValue = PhysicsEnabled ? parameter.Value : parameter.DefaultValue;
+            parameter.Value = baseValue + (float)TailWag.Offset(
+                _tailWagElapsedSeconds, _tailWagDurationSeconds, _tailWagAmplitudeDegrees, i);
+        }
+
+        if (_tailWagRemainingSeconds <= 0 && !PhysicsEnabled)
+        {
+            foreach (var parameter in _tailRotationParams)
+            {
+                if (parameter is not null) parameter.Value = parameter.DefaultValue;
+            }
+        }
     }
 
     /// <summary>推进害羞扭动：身体 1.1Hz 左右扭、头部滞后 0.45 弧度，幅度两端淡入淡出。</summary>
@@ -1670,6 +1749,12 @@ public sealed class ModelRuntime : IDisposable
         _obsBrowLAngle = model.FindParameter("ParamBrowLAngle");
         _obsBrowRAngle = model.FindParameter("ParamBrowRAngle");
         _obsMouthForm = model.FindParameter("ParamMouthForm");
+        _tailRotationParams = new CubismParameter?[TailWag.SegmentCount];
+        for (var i = 0; i < TailWag.SegmentCount; i++)
+        {
+            _tailRotationParams[i] = model.FindParameter("Param_Angle_Rotation" + (84 + i));
+        }
+        _tailSwitch = model.FindParameter("Clothes5");
     }
 
     /// <summary>解析投喂 / 吃饭要写的参数（模型没有的就跳过）。</summary>
@@ -2222,6 +2307,9 @@ public sealed class ModelRuntime : IDisposable
         {
             _physics.Evaluate(deltaSeconds, (float)Math.Clamp(PhysicsStrength, 0.0, 1.0));
         }
+
+        // 摇尾巴：物理把尾巴角度算完后，再叠加一段带相位延迟的摆动（物理关着也能摇）
+        ApplyTailWag(deltaSeconds);
 
         model.Update();
         // 顶点已更新：互动热区几何缓存失效，下一次 HitTest 用本帧蒙皮重新算

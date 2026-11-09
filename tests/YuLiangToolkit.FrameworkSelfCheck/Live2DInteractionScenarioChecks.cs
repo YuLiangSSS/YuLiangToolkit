@@ -257,5 +257,34 @@ internal static class Live2DInteractionScenarioChecks
         C("鼠标跟随：配置默认开启「动作时暂停」（EyeTrackingPauseOnAction）",
             new Live2DConfig().EyeTrackingPauseOnAction,
             "");
+
+        // ==================================================================
+        // 八、高好感触摸摇尾巴
+        // ==================================================================
+        C("摇尾巴：只在「高好感 ≥85 + 尾巴露着 + 35% 概率内」触发",
+            TailWag.ShouldWag(85, true, 0) &&
+            TailWag.ShouldWag(100, true, 34) &&
+            !TailWag.ShouldWag(84.9, true, 0) &&
+            !TailWag.ShouldWag(85, false, 0) &&
+            !TailWag.ShouldWag(85, true, 35) &&
+            !TailWag.ShouldWag(85, true, -1),
+            "");
+
+        C("摇尾巴：包络两端淡入淡出（0 → 1 → 0），动作外为 0",
+            TailWag.Envelope(0, 3) == 0 &&
+            Math.Abs(TailWag.Envelope(0.15, 3) - 0.5) < 0.01 &&
+            TailWag.Envelope(1.5, 3) == 1 &&
+            TailWag.Envelope(3, 3) == 0 &&
+            TailWag.Envelope(5, 3) == 0,
+            $"{TailWag.Envelope(0.15, 3):0.00}/{TailWag.Envelope(1.5, 3):0.00}");
+
+        C("摇尾巴：尾尖幅度大于根部，偏移不超过设定值太多，动作外 / 幅度 0 时为 0",
+            TailWag.AmplitudeScale(5) > TailWag.AmplitudeScale(0) &&
+            TailWag.AmplitudeScale(5) > TailWag.AmplitudeScale(2) &&
+            Math.Abs(TailWag.Offset(1.5, 3, 10, 5)) <= 12 &&
+            TailWag.Offset(0, 3, 10, 0) == 0 &&
+            TailWag.Offset(3, 3, 10, 0) == 0 &&
+            TailWag.Offset(1.5, 3, 0, 0) == 0,
+            $"{TailWag.AmplitudeScale(0):0.00}/{TailWag.AmplitudeScale(5):0.00}");
     }
 }

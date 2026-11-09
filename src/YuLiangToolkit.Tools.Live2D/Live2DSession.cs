@@ -134,6 +134,8 @@ public sealed class Live2DSession
     private TimeSpan _lastObservationAt = TimeSpan.MinValue;
     private string? _lastObservationLine;
     private bool _observationDemoApplied;
+    private TimeSpan _lastTailWagAt = TimeSpan.MinValue;
+    private bool _tailWagDemoApplied;
     private string? _lastInteractionVoiceLine;
     private string? _lastInteractionVoiceEvent;
 
@@ -1247,6 +1249,74 @@ public sealed class Live2DSession
         }
     }
 
+    // ---------- 摇尾巴截图验收：YLT_LIVE2D_TAIL_WAG_DEMO=1（+ _SHOT=<png>） ----------
+
+    private void TryBeginTailWagDemo()
+    {
+        if (_tailWagDemoApplied) return;
+        var raw = Environment.GetEnvironmentVariable("YLT_LIVE2D_TAIL_WAG_DEMO")?.Trim();
+        if (string.IsNullOrEmpty(raw)) return;
+        if (_viewModel is null) return;
+        _tailWagDemoApplied = true;
+        _ = RunTailWagDemoAsync(raw);
+    }
+
+    private async Task RunTailWagDemoAsync(string raw)
+    {
+        var viewModel = _viewModel;
+        if (viewModel is null) return;
+        try
+        {
+            var wait = Stopwatch.StartNew();
+            while (wait.ElapsedMilliseconds < 20_000 && _runtime is not { IsLoaded: true }) await Task.Delay(100);
+            var runtime = _runtime;
+            if (runtime is not { IsLoaded: true })
+            {
+                viewModel.Log("摇尾巴演示：模型没加载出来");
+                return;
+            }
+
+            var shotPath = Environment.GetEnvironmentVariable("YLT_LIVE2D_TAIL_WAG_SHOT")?.Trim() ?? "";
+            if (shotPath.Length > 0)
+            {
+                try { if (!IsPetVisible) ShowPet(); } catch { /* 忽略 */ }
+                await Task.Delay(600);
+                UpdateAiChatWindowPosition();
+            }
+
+            runtime.StartTailWag(5.0, 12.0);
+            await Task.Delay(900);
+            var tracePath = Environment.GetEnvironmentVariable("YLT_LIVE2D_TAIL_WAG_TRACE")?.Trim() ?? "";
+            if (tracePath.Length > 0)
+            {
+                try
+                {
+                    var text = "tailVisible=" + runtime.IsTailVisible +
+                               " wagging=" + runtime.IsTailWagging +
+                               " tailAngles=" + runtime.TailWagDebugText;
+                    await File.WriteAllTextAsync(tracePath, text);
+                    viewModel.Log("摇尾巴演示 trace：" + text);
+                }
+                catch (Exception ex)
+                {
+                    viewModel.Log("摇尾巴 trace 写入失败：" + ex.Message);
+                }
+            }
+
+            if (shotPath.Length > 0)
+            {
+                await CaptureInteractionShotAsync(shotPath, viewModel);
+                viewModel.Log($"摇尾巴演示截图已保存：{shotPath}");
+                await Task.Delay(250);
+                Application.Current?.Shutdown();
+            }
+        }
+        catch (Exception ex)
+        {
+            viewModel.Log("摇尾巴演示失败：" + ex.Message);
+        }
+    }
+
     // ===================== 页面生命周期 =====================
 
     /// <summary>取（或创建）工具页 ViewModel（整个进程只建一次，页面重开复用）。</summary>
@@ -1726,6 +1796,7 @@ public sealed class Live2DSession
         TryBeginFeedShot();
         TryBeginTtsAudition();
         TryBeginObservationDemo();
+        TryBeginTailWagDemo();
         if (IsLoaded)
         {
             try { _runtime!.Tick(TimeSpan.FromMilliseconds(16)); } catch { /* 忽略 */ }
@@ -4069,6 +4140,9 @@ public sealed class Live2DSession
         if (viewModel is null || runtime is null || runtime.IsLoaded != true) return;
         if (string.IsNullOrWhiteSpace(voiceEvent)) return;
 
+        // 高好感触摸：任意部位 / 任意互动都有概率摇尾巴（尾巴没被装饰开关藏起来才摇）
+        MaybeStartTailWag();
+
         // 点额头 / 戳脸：随机触发「观察你 / 逗你」（和自然待机同两类动作）
         if (string.Equals(voiceEvent, "face_cycle", StringComparison.OrdinalIgnoreCase))
         {
@@ -4118,6 +4192,36 @@ public sealed class Live2DSession
             $"互动预设[{scenario.Id}]：好感 {affection:0} · 表情 {string.Join("+", scenario.Expressions)}" +
             (scenario.LeanForward ? " · 前倾" : "") +
             (scenario.WiggleSeconds > 0 ? $" · 扭动 {scenario.WiggleSeconds:0.0}s" : ""));
+    }
+
+    // ===================== 高好感触摸摇尾巴 =====================
+
+    /// <summary>
+    /// 高好感触摸随机摇尾巴：任意部位 / 任意互动触发，但要求好感 ≥85 且尾巴没被装饰开关藏起来。
+    /// 1.2 秒节流 + 35% 概率，避免连续摸时尾巴一直甩。
+    /// </summary>
+    private void MaybeStartTailWag()
+    {
+        var viewModel = _viewModel;
+        var runtime = _runtime;
+        if (viewModel is null || runtime is null || runtime.IsLoaded != true) return;
+        if (runtime.IsTailWagging) return;
+
+        var now = _clock.Elapsed;
+        if (_lastTailWagAt != TimeSpan.MinValue &&
+            now - _lastTailWagAt < TimeSpan.FromMilliseconds(1200))
+        {
+            return;
+        }
+
+        var affection = _aiChat?.Affection.Value ?? 50.0;
+        if (!TailWag.ShouldWag(affection, runtime.IsTailVisible, Random.Shared.Next(100))) return;
+
+        _lastTailWagAt = now;
+        var seconds = 2.2 + (Random.Shared.NextDouble() * 1.0);   // 2.2~3.2 秒
+        var amplitude = 6.0 + (Random.Shared.NextDouble() * 4.0); // 根部 6~10°，尾尖约 2 倍
+        runtime.StartTailWag(seconds, amplitude);
+        viewModel.Log($"高好感触摸：摇尾巴（{seconds:0.0}s，幅度 {amplitude:0.0}°）");
     }
 
     // ===================== 观察用户 / 逗你（场景 1 / 2） =====================
