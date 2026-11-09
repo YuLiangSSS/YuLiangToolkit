@@ -136,6 +136,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `src/YuLiangToolkit.Tools.Launcher/**` | `launcher` | L2 |
 | `src/YuLiangToolkit.Tools.TaskManager/**` | `task-manager` | L2 |
 | `src/YuLiangToolkit.Tools.AppManager/**` | `app-manager` | L2 |
+| `src/YuLiangToolkit.Tools.Games/**` | `tetris`（「游戏」类别：俄罗斯方块） | L2 |
 | `src/YuLiangToolkit.Tools.MemeBoard/**` | `meme-board` | L2 |
 | `src/YuLiangToolkit.Tools.ScreenSticker/**` | `screen-sticker` | L2 |
 | `tests/.../SoftwareUpdaterChecks.cs` | `software-updater`（winget 表格解析 / 包 Id 白名单 / 命令拼装 / 批量勾选规则） | L3 |
@@ -147,6 +148,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `tests/.../MemeBoardChecks.cs` | `meme-board`（会话名匹配 / 目标窗口解析 / 延迟随机与夹取 / 图片扩展名 / 配置往返） | L3 |
 | `tests/.../TaskManagerChecks.cs` | `task-manager`（数字格式化 / 结束任务三级方案 / 开机启动解析与启停标记 / 保护名单 / 进程行 / 真实只读采样） | L3 |
 | `tests/.../AppManagerChecks.cs` | `app-manager`（注册表过滤与去重 / 安装日期 / 大小与盘符 / 卸载命令行拆分 / 排序 / 配置；真实扫描只读，不启动任何卸载程序） | L3 |
+| `tests/.../TetrisChecks.cs` | `tetris`（7 种方块 × 4 朝向 / SRS 墙踢 / 碰撞边界 / 7-bag / 消行计分升级 / 暂存 / 幽灵 / 配置） | L3 |
 | `tests/.../ScreenStickerChecks.cs` | `screen-sticker`（贴纸几何 / 层级顺序 / 最近使用 / 配置默认值） | L3 |
 | `tests/.../ScreenRecorderChecks.cs` | `screen-recorder`（区域换算 / FFmpeg 参数 / 文件名 / 配置默认值） | L3 |
 | `tests/.../MediaEditorChecks.cs` | `media-editor`（ffprobe 解析 / 片段数学 / 裁剪拼接滤镜 / GIF 参数） | L3 |

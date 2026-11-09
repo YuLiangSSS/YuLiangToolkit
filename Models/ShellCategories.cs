@@ -17,6 +17,9 @@ public static class ShellCategories
     /// <summary>「棋牌」类别名（联机五子棋 / 联机象棋归这一类）。</summary>
     public const string BoardGames = "棋牌";
 
+    /// <summary>「游戏」类别名（俄罗斯方块等单机小游戏归这一类）。</summary>
+    public const string Games = "游戏";
+
     /// <summary>全部已登记的类别元数据。</summary>
     public static IReadOnlyList<ToolCategoryInfo> All { get; } = new[]
     {
@@ -33,6 +36,13 @@ public static class ShellCategories
             EmojiIcon = "🎲",
             Description = "联机五子棋 / 联机象棋：开一个房间就能和朋友对弈",
             Order = 20,
+        },
+        new ToolCategoryInfo
+        {
+            Path = new[] { Games },
+            EmojiIcon = "🎮",
+            Description = "单机小游戏：俄罗斯方块…（打开就能玩，不需要联网）",
+            Order = 30,
         },
     };
 }

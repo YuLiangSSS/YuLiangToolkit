@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「游戏」类别：目前只有俄罗斯方块，以后再加小游戏直接在本工程里建子目录
+       （一个类别一个工程，和 Tools.BoardGames 装五子棋 / 象棋是同一个思路）。
+       分层：纯逻辑引擎（Tetris/ 下的 Engine / Pieces）→ ViewModel → 自绘 View，见 docs/dev/pitfalls.md。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.Games</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.Games</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

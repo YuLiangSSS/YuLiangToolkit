@@ -122,6 +122,9 @@
          卸载命令行拆分 / 排序比较（含未知值沉底）/ 配置默认值与往返；
          另做一次真实只读扫描（只 Read，不写注册表、**绝不启动任何卸载程序**）。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.AppManager\YuLiangToolkit.Tools.AppManager.csproj" />
+    <!-- 「游戏 → 俄罗斯方块」：7-bag 出块 / 碰撞 / SRS 旋转与墙踢 / 消行 / 计分升级 / 暂存 /
+         幽灵落点 / 配置默认值；全部纯逻辑，不创建窗口、不渲染、不碰真 Data。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Games\YuLiangToolkit.Tools.Games.csproj" />
   </ItemGroup>
 
 </Project>

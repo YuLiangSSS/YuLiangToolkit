@@ -1,6 +1,6 @@
 ﻿# YuLiangToolkit（凉雨工具集）
 
-> **一个 Windows 上的自用小工具集：35 个常用工具装进同一个窗口。**
+> **一个 Windows 上的自用小工具集：39 个常用工具装进同一个窗口。**
 >
 > 99.99% AI Coding · .NET 9 + WPF · 绿色免安装 · Unlicense
 
@@ -14,6 +14,7 @@
 | 📖 阅读 | 条漫图片连续阅读器、PDF / Word / Excel / PPT 阅读器 |
 | 🎮 音游 | osu! 下图 / Key 转换 / LN 转换 / 等级计算、KPS 按键统计 |
 | 🕹️ 联机 | 聊天室（文字 / 语音 / 视频 / 文件）、五子棋、象棋 |
+| 🧱 游戏 | 俄罗斯方块（单机小游戏，打开就能玩） |
 | 🛠️ 系统 | 批量重命名、压缩包、打开方式、右键菜单管理、应用管理器、软件升级器、软件启动器、任务管理器 |
 | ✨ 其它 | 网页浏览器、邮箱代收、文本编辑器、Live2D 桌宠、屏幕贴纸、计算器、函数绘图、Flash 下载器 |
 
@@ -79,8 +80,10 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 | [**🎲 随机数生成器**](docs/tools/random-number.md) | 按可调下限 / 上限 / 精确度（`0.1`、`0.01`…）生成随机数；数值用任意精度十进制精确表示，超大整数与超细步长都不丢位，可调个数 / 去重 / 排序 / 分隔符 |
 | [**📈 函数绘图**](docs/tools/function-plot.md) | 同时画多条函数曲线，每条可单独设定义域 / 颜色 / 显示开关；拖动平移、滚轮缩放、自动求点 / 点值表 |
 | [**🧪 框架示例**](docs/tools/sample-framework.md) | 开发用模板（Data / Config 轮子演示，可整目录删除） |
+| [**🧱 俄罗斯方块**](docs/tools/tetris.md) | 经典 10×20 俄罗斯方块：7-bag 出块（不会连着出同一块）、SRS 旋转 + 墙踢、幽灵方块落点预览、暂存 Hold（一手一次）、接下来 3 块；消 1/2/3/4 行得 100/300/500/800 × 等级分，每 10 行升 1 级、等级越高落得越快；最高分自动记住，键盘（←→↓ ↑/X/Z 空格 C Esc R）或页面按钮都能玩 |
 
-> 🎵 五个 osu! 工具和「KPS 按键统计」收在「音游工具」分类；🎲 联机五子棋 / 象棋在「棋牌」分类；🐟 Live2D 桌宠在「桌面」分类 —— 主页点类别卡片进类别页即可。
+> 🎵 五个 osu! 工具和「KPS 按键统计」收在「音游工具」分类；🎲 联机五子棋 / 象棋在「棋牌」分类；
+> 🧱 俄罗斯方块在「游戏」分类；🐟 Live2D 桌宠在「桌面」分类 —— 主页点类别卡片进类别页即可。
 
 ## 界面与体验
 
@@ -112,7 +115,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（用法 / 设置项 / 数据位置 / 注意事项），跟着代码一起走；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；踩坑细节按需查 [docs/dev/pitfalls.md](docs/dev/pitfalls.md)；
-- ✅ **自检**：5226 项行为逐条真跑（退出码 0 = 全通过）。按改动影响面只跑相关组，不每轮全量：
+- ✅ **自检**：5509 项行为逐条真跑（退出码 0 = 全通过）。按改动影响面只跑相关组，不每轮全量：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -127,7 +130,7 @@ build.ps1 / publish.ps1                  # 一键构建 / 一键发布（发布�
 scripts/check.ps1                        # 按改动自动选组的自检触发器
 src/YuLiangToolkit.Core/                 # 核心库：工具契约 / MVVM / 存储 / 配置 / 维护 / 特效 / 联机底座
 src/YuLiangToolkit.Tools.*/              # 各工具，一个功能一个项目（新功能复制 Tools.Sample）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 自检控制台：5226 项行为逐条真跑
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 自检控制台：5509 项行为逐条真跑
 docs/                                    # 每个工具一页详细说明（索引 docs/README.md）
 AGENTS.md                                # 开发入口地图：流程 / 硬性规则 / 找东西
 ```

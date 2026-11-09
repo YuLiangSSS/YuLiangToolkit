@@ -65,6 +65,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("meme-board", "表情包收藏夹：会话名归一 / 目标窗口解析 / 随机延迟夹取 / 图片扩展名 / 配置往返（纯逻辑，不碰 QQ）"),
     ("task-manager", "任务管理器：数字格式化 / 结束任务三级方案 / 开机启动解析与启停标记 / 保护名单 / 进程行 / 真实只读采样"),
     ("app-manager", "应用管理器：注册表过滤与去重 / 安装日期 / 大小与盘符 / 卸载命令行拆分 / 排序 / 配置（真实只读扫描）"),
+    ("tetris", "游戏：俄罗斯方块（7-bag 出块 / SRS 旋转与墙踢 / 消行计分升级 / 暂存 / 幽灵 / 配置）"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1279,6 +1280,11 @@ RunGroupModule("task-manager", "任务管理器", TaskManagerChecks.Run);
 // 配置默认值与 JSON 往返 / 工具元数据；最后真的**只读**扫一遍本机注册表做自洽断言。
 // ⚠ 全程不写注册表、不删文件、**绝不启动任何卸载 / 修改程序**（启动链路只测命令拆分，不真跑）。
 RunGroupModule("app-manager", "应用管理器", AppManagerChecks.Run);
+
+// 「游戏 → 俄罗斯方块」：工具 / 「游戏」类别注册、7 种方块 × 4 朝向的形状、SRS 墙踢表、
+// 碰撞与边界、7-bag 出块、移动·软降·硬降、消行·计分·升级、暂存、幽灵落点、顶死判负、配置默认值与夹取。
+// 纯逻辑，不创建窗口、不渲染、不碰真实 Data/Config。
+RunGroupModule("tetris", "俄罗斯方块", TetrisChecks.Run);
 
 EnterGroup("shell");
 
