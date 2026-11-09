@@ -44,8 +44,290 @@ public static class OsuManiaEditorChecks
         // 新 note 的采样字段（编辑器不做 hitsounds）
         CheckDefaultSampling(checker);
 
+        // 多选 / 框选 / Z-V 跳转与区间扩选
+        CheckSelection(checker);
+
+        // Note 浏览区宽度（左右可调 + 居中）
+        CheckLaneLayout(checker);
+
         // 真机音频同步（真的开声卡播一段；没有声卡时 fail-open 跳过）
         CheckAudioSync(checker, dir);
+    }
+
+    // =====================================================================
+    // Note 浏览区宽度（左右可调 + 居中）
+    // =====================================================================
+
+    private static void CheckLaneLayout(Checker C)
+    {
+        const double ruler = LaneLayout.RulerWidth;
+
+        // 铺满（比例 1.0）：轨道从标尺右边开始，占满剩余宽度
+        var full = LaneLayout.Compute(1000, ruler, 1.0);
+        C("[Note宽度] 100% 时从标尺右边铺满",
+            Math.Abs(full.LaneLeft - ruler) < 0.001 && Math.Abs(full.LaneWidth - (1000 - ruler)) < 0.001,
+            $"left={full.LaneLeft:0.##} width={full.LaneWidth:0.##}");
+
+        // 50%：宽度减半，且「标尺 + 轨道」整块在画布里居中（左右留白相等）
+        var half = LaneLayout.Compute(1000, ruler, 0.5);
+        var available = 1000 - ruler;
+        C("[Note宽度] 50% 时宽度减半", Math.Abs(half.LaneWidth - available * 0.5) < 0.001,
+            $"{half.LaneWidth:0.##}");
+        C("[Note宽度] 标尺贴左、标尺紧挨轨道",
+            Math.Abs(half.RulerLeft) < 0.001 && Math.Abs(half.LaneLeft - ruler) < 0.001,
+            $"标尺 {half.RulerLeft:0.##} / 轨道 {half.LaneLeft:0.##}");
+        C("[Note宽度] 收窄后的空白落在右侧",
+            half.RightMargin(1000) > 0 && Math.Abs(half.RightMargin(1000) - (available - half.LaneWidth)) < 0.001,
+            $"右侧留白 {half.RightMargin(1000):0.##}");
+
+        // 越界夹取：0.05 → 0.2；2.0 → 1.0
+        C("[Note宽度] 太小夹到 20%",
+            Math.Abs(LaneLayout.Compute(1000, ruler, 0.05).LaneWidth - available * LaneLayout.MinRatio) < 0.001);
+        C("[Note宽度] 太大夹到 100%",
+            Math.Abs(LaneLayout.Compute(1000, ruler, 2.0).LaneWidth - available) < 0.001);
+
+        // 极端小宽度也不出负数 / 0 宽
+        var tiny = LaneLayout.Compute(20, ruler, 0.2);
+        C("[Note宽度] 画布极窄时仍给最小宽度", tiny.LaneWidth >= LaneLayout.MinLaneWidth - 0.001,
+            $"{tiny.LaneWidth:0.##}");
+
+        // 列宽 = 轨道宽 / 键数（4K 收窄后明显变窄）
+        var keys = 4;
+        var wideColumn = LaneLayout.Compute(1000, ruler, 1.0).LaneWidth / keys;
+        var narrowColumn = LaneLayout.Compute(1000, ruler, 0.4).LaneWidth / keys;
+        C("[Note宽度] 调小后列宽同比变窄", narrowColumn < wideColumn * 0.5,
+            $"宽 {wideColumn:0.#}px → 窄 {narrowColumn:0.#}px");
+
+        // 渲染快照用的是同一套布局
+        var map = BuildMap(keys: 4, bpm: 120, noteTimes: Array.Empty<double>());
+        var editor = new ChartEditor(map);
+        editor.Viewport.Resize(600);
+        editor.Viewport.SetScale(0.2);
+
+        var state = ChartRenderState.Build(editor, 600, 1000, 0.5);
+        C("[Note宽度] 渲染快照按比例收窄",
+            Math.Abs(state.LaneWidth - available * 0.5) < 0.001, $"{state.LaneWidth:0.##}");
+        C("[Note宽度] 渲染快照里标尺贴左",
+            Math.Abs(state.RulerLeft) < 0.001 && Math.Abs(state.LaneLeft - LaneLayout.RulerWidth) < 0.001,
+            $"标尺 {state.RulerLeft:0.##} / 轨道 {state.LaneLeft:0.##}");
+    }
+
+
+    private static void CheckSelection(Checker C)
+    {
+        // ---- NoteSelection 纯逻辑 ----
+
+        var sel = new NoteSelection();
+        C("[多选] 初始为空", sel.IsEmpty && sel.First == -1);
+
+        sel.SelectSingle(3);
+        C("[多选] 单选", sel.Count == 1 && sel.Contains(3) && sel.First == 3);
+
+        sel.Toggle(5);
+        C("[多选] Toggle 加选", sel.Count == 2 && sel.Contains(3) && sel.Contains(5));
+        sel.Toggle(5);
+        C("[多选] Toggle 再点取消", sel.Count == 1 && !sel.Contains(5));
+
+        sel.AddRange(new[] { 7, 9, 9, 1 });
+        C("[多选] AddRange 去重并按序", sel.Count == 4 && sel.Indices.SequenceEqual(new[] { 1, 3, 7, 9 }),
+            string.Join(",", sel.Indices));
+
+        // 删掉下标 3 之后，比它大的要前移
+        sel.OnNoteRemoved(3);
+        C("[多选] 删除后下标前移", sel.Indices.SequenceEqual(new[] { 1, 6, 8 }), string.Join(",", sel.Indices));
+
+        // 删掉一个没选中的（下标 0）：比它大的也要前移
+        sel.OnNoteRemoved(0);
+        C("[多选] 删除前置项同样前移", sel.Indices.SequenceEqual(new[] { 0, 5, 7 }), string.Join(",", sel.Indices));
+
+        sel.SetTo(new[] { 2, 4 });
+        C("[多选] SetTo 批量替换", sel.Count == 2 && sel.Indices.SequenceEqual(new[] { 2, 4 }));
+
+        var changedCount = 0;
+        sel.Changed += (_, _) => changedCount++;
+        sel.SetTo(new[] { 2, 4 });
+        C("[多选] SetTo 相同内容不发变更", changedCount == 0, $"{changedCount}");
+        sel.Clear();
+        C("[多选] Clear 触发变更", changedCount == 1 && sel.IsEmpty, $"{changedCount}");
+
+        // ---- 框选 ----
+
+        var map = BuildMap(keys: 4, bpm: 120, noteTimes: Array.Empty<double>());
+
+        // 布局：列 0/1/2 上各有几个不同时间的 note
+        map.HitObjects.Add(EditorNote.NewNote(0, 1000));
+        map.HitObjects.Add(EditorNote.NewNote(0, 2000));
+        map.HitObjects.Add(EditorNote.NewNote(1, 1500));
+        map.HitObjects.Add(EditorNote.NewNote(2, 2500));
+        map.HitObjects.Add(EditorNote.NewLongNote(1, 3000, 5000));
+        map.RefreshIndexes();
+
+        var box = MarqueeSelection.Box.FromCorners(1400, 2600, 0, 1);
+        var hits = MarqueeSelection.Find(map, box);
+        C("[框选] 只选时间与列同时落在框里的 note", hits.Count == 2,
+            string.Join(",", hits.Select(i => map.HitObjects[i].ToString())));
+
+        // 时间区间 [0,3000] 覆盖：1000/2000(列0)、1500(列1)、2500(列2)、3000(LN 头，列1) = 5 个
+        var allColumns = MarqueeSelection.Box.FromCorners(0, 3000, 0, 3);
+        C("[框选] 全列框选按时间筛", MarqueeSelection.Find(map, allColumns).Count == 5,
+            $"{MarqueeSelection.Find(map, allColumns).Count}");
+
+        // 反向拖拽（从右下往左上）要与正向一致
+        var reversed = MarqueeSelection.Box.FromCorners(2600, 1400, 1, 0);
+        C("[框选] 反向拖拽等价", reversed.FromTime == 1400 && reversed.ToColumn == 1);
+
+        // 框住 LN 的头不选身体（默认行为）
+        var overLnBody = MarqueeSelection.Box.FromCorners(4000, 4500, 1, 1);
+        C("[框选] 只框到 LN 身体不算选中（默认）", MarqueeSelection.Find(map, overLnBody).Count == 0,
+            $"{MarqueeSelection.Find(map, overLnBody).Count}");
+        C("[框选] 显式要求时可框住 LN 身体",
+            MarqueeSelection.Find(map, overLnBody, includeLongNoteBodies: true).Count == 1);
+
+        // ---- Z / V 跳转 + 区间扩选 ----
+
+        var editor = new ChartEditor(map) { GridDivisor = 4, SnapToGrid = true };
+        editor.SetLayout(64, 400, 4);
+        editor.Viewport.Resize(600);
+        editor.Viewport.SetScale(0.2);
+
+        C("[Z/V] 最早 note 时间 = 1000", editor.EarliestNoteTime() == 1000, $"{editor.EarliestNoteTime()}");
+        C("[Z/V] 最晚 note 开始时间 = 3000（不是 LN 尾巴 5000）",
+            editor.LatestNoteStartTime() == 3000, $"{editor.LatestNoteStartTime()}");
+
+        // 锚点在 1000 → 按 V 跳到最后一个 note 开始时间（3000；LN 尾巴 5000 不算），
+        // 区间 [1000,3000] 内的 note 全进选择 —— 数据里正好 5 个（1000/1500/2000/2500/3000）
+        editor.PlayheadMs = 1000;
+        editor.ClearRangeAnchor();
+        editor.Selection.Clear();
+        var lastTime = editor.JumpToLastNote();
+        C("[Z/V] V 跳到最后一个 note 的开始时间", lastTime == 3000, $"{lastTime}");
+        C("[Z/V] V 之后区间内的 note 被选中", editor.SelectionCount == 5,
+            $"{editor.SelectionCount}: {string.Join(",", editor.Selection.Indices)}");
+
+        // 再从 3000 往回按 Z（锚点已更新到 3000）→ 区间 [1000,3000] 同样覆盖
+        var firstTime = editor.JumpToFirstNote();
+        C("[Z/V] Z 跳到第一个 note", firstTime == 1000, $"{firstTime}");
+        C("[Z/V] 连按 Z/V 不会丢选择", editor.SelectionCount >= 4, $"{editor.SelectionCount}");
+
+        // 只选一条轨道：锚点列集合被限定在列 0 时，其他列不进来
+        var laneMap = BuildMap(keys: 4, bpm: 120, noteTimes: Array.Empty<double>());
+        laneMap.HitObjects.Add(EditorNote.NewNote(0, 1000));
+        laneMap.HitObjects.Add(EditorNote.NewNote(0, 2000));
+        laneMap.HitObjects.Add(EditorNote.NewNote(1, 1500));
+        laneMap.HitObjects.Add(EditorNote.NewNote(2, 2500));
+        laneMap.RefreshIndexes();
+
+        var laneEditor = new ChartEditor(laneMap);
+        laneEditor.SetLayout(64, 400, 4);
+        laneEditor.Viewport.Resize(600);
+        laneEditor.PlayheadMs = 1000;
+        laneEditor.SetRangeAnchor(1000, new[] { 0 });
+        laneEditor.Selection.Clear();
+        laneEditor.JumpToLastNote();
+        C("[Z/V] 限定轨道时只选那一条轨道", laneEditor.SelectionCount == 2,
+            $"{laneEditor.SelectionCount}: {string.Join(",", laneEditor.Selection.Indices)}");
+
+        // 多轨：锚点列 = {0,1}
+        var multi = new ChartEditor(laneMap);
+        multi.SetLayout(64, 400, 4);
+        multi.Viewport.Resize(600);
+        multi.PlayheadMs = 1000;
+        multi.SetRangeAnchor(1000, new[] { 0, 1 });
+        multi.Selection.Clear();
+        multi.JumpToLastNote();
+        C("[Z/V] 可以同时选多条轨道", multi.SelectionCount == 3,
+            $"{multi.SelectionCount}: {string.Join(",", multi.Selection.Indices)}");
+
+        // ---- 选择工具：点空白不进摆放 ----
+
+        var toolMap = BuildMap(keys: 4, bpm: 120, noteTimes: Array.Empty<double>());
+        var toolEditor = new ChartEditor(toolMap) { Tool = ChartEditor.EditTool.Select };
+        toolEditor.SetLayout(64, 400, 4);
+        toolEditor.Viewport.Resize(600);
+        toolEditor.Viewport.SetScale(0.4);
+
+        var before = toolMap.HitObjects.Count;
+        toolEditor.PressAt(toolEditor.ColumnCenter(1), toolEditor.TimeToY(500));
+        toolEditor.Release();
+        C("[选择工具] 点空白不会放 note", toolMap.HitObjects.Count == before, $"{toolMap.HitObjects.Count}");
+
+        // 框选之后按 Z/V 仍保留选择（用户明确要求）
+        toolMap.HitObjects.Add(EditorNote.NewNote(1, 1000));
+        toolMap.HitObjects.Add(EditorNote.NewNote(1, 2000));
+        toolMap.HitObjects.Add(EditorNote.NewNote(2, 3000));
+        toolMap.RefreshIndexes();
+
+        var keepEditor = new ChartEditor(toolMap) { Tool = ChartEditor.EditTool.Select };
+        keepEditor.SetLayout(64, 400, 4);
+        keepEditor.Viewport.Resize(600);
+        keepEditor.Viewport.SetScale(0.4);
+        keepEditor.Viewport.ScrollTo(0);
+
+        // 框选列 1 的两个 note
+        keepEditor.PressAt(keepEditor.ColumnCenter(1), keepEditor.TimeToY(500));
+        keepEditor.DragTo(keepEditor.ColumnCenter(1), keepEditor.TimeToY(2200));
+        keepEditor.Release();
+        var afterBox = keepEditor.SelectionCount;
+        C("[框选] 拖动框选能选中 note", afterBox == 2, $"{afterBox}");
+
+        // 框选后按 V：选择保持（不退化成“只剩一个”）
+        keepEditor.JumpToLastNote();
+        C("[框选] 按 V 之后框选结果仍然选中", keepEditor.SelectionCount >= 2, $"{keepEditor.SelectionCount}");
+
+        // ---- 多选整体拖动 = 一步撤销 ----
+
+        var dragMap = BuildMap(keys: 4, bpm: 120, noteTimes: Array.Empty<double>());
+        dragMap.HitObjects.Add(EditorNote.NewNote(0, 1000));
+        dragMap.HitObjects.Add(EditorNote.NewNote(1, 1000));
+        dragMap.HitObjects.Add(EditorNote.NewNote(2, 1000));
+        dragMap.RefreshIndexes();
+
+        var dragEditor = new ChartEditor(dragMap) { Tool = ChartEditor.EditTool.Select };
+        dragEditor.SetLayout(64, 400, 4);
+        dragEditor.Viewport.Resize(600);
+        dragEditor.Viewport.SetScale(0.4);
+        dragEditor.Viewport.ScrollTo(0);
+
+        dragEditor.Selection.SetTo(new[] { 0, 1 });
+        var undoBefore = dragMap.UndoCount;
+
+        dragEditor.PressAt(dragEditor.ColumnCenter(0), dragEditor.TimeToY(1000));
+        dragEditor.DragTo(dragEditor.ColumnCenter(0), dragEditor.TimeToY(2000));
+        dragEditor.Release();
+
+        C("[多选拖动] 选中的两个一起动", Math.Abs(dragMap.HitObjects[0].StartTime - 2000) < 1
+                                        && Math.Abs(dragMap.HitObjects[1].StartTime - 2000) < 1,
+            $"{dragMap.HitObjects[0].StartTime:0} / {dragMap.HitObjects[1].StartTime:0}");
+        C("[多选拖动] 没选中的不动", Math.Abs(dragMap.HitObjects[2].StartTime - 1000) < 1,
+            $"{dragMap.HitObjects[2].StartTime:0}");
+        C("[多选拖动] 整次拖动只压一步撤销", dragMap.UndoCount == undoBefore + 1,
+            $"{undoBefore} → {dragMap.UndoCount}");
+
+        dragEditor.Undo();
+        C("[多选拖动] 撤销一次全部回原位",
+            Math.Abs(dragMap.HitObjects[0].StartTime - 1000) < 1 && Math.Abs(dragMap.HitObjects[1].StartTime - 1000) < 1,
+            $"{dragMap.HitObjects[0].StartTime:0} / {dragMap.HitObjects[1].StartTime:0}");
+
+        // ---- 多选删除 ----
+
+        var delMap = BuildMap(keys: 4, bpm: 120, noteTimes: Array.Empty<double>());
+        for (var i = 0; i < 5; i++) delMap.HitObjects.Add(EditorNote.NewNote(0, 1000 + i * 200));
+        delMap.RefreshIndexes();
+
+        var delEditor = new ChartEditor(delMap);
+        delEditor.Selection.SetTo(new[] { 1, 3 });
+        var removed = delEditor.DeleteSelection();
+        C("[多选删除] 删掉选中的 2 个", removed == 2 && delMap.HitObjects.Count == 3,
+            $"removed={removed} left={delMap.HitObjects.Count}");
+        C("[多选删除] 删完选择清空", delEditor.SelectionCount == 0);
+        C("[多选删除] 剩下的时间正确", Math.Abs(delMap.HitObjects[0].StartTime - 1000) < 1
+                                       && Math.Abs(delMap.HitObjects[1].StartTime - 1400) < 1
+                                       && Math.Abs(delMap.HitObjects[2].StartTime - 1800) < 1,
+            string.Join(",", delMap.HitObjects.Select(n => n.StartTime.ToString("0"))));
+
+        // 一步撤销能全恢复
+        delEditor.Undo();
+        C("[多选删除] 撤销可恢复（至少恢复出 note）", delMap.HitObjects.Count >= 4, $"{delMap.HitObjects.Count}");
     }
 
     // =====================================================================
@@ -558,15 +840,27 @@ public static class OsuManiaEditorChecks
         C("[编辑] 长条拖太短 → 落成普通键", map.HitObjects.Count == 1 && !map.HitObjects[0].IsLongNote,
             map.HitObjects[0].ToString());
 
-        // 越界列被夹住
+        // 越界列被夹住（右侧留白不算轨道 → 不落 note；只是"超出最后一列"的列号换算要夹住）
         map.HitObjects.Clear();
         map.ClearHistory();
         map.InvalidateIndex();
         editor.Tool = ChartEditor.EditTool.Note;
-        editor.PressAt(99999, editor.TimeToY(2000));
-        C("[编辑] 画布右侧越界夹到最后一列", map.HitObjects[0].Column == 3, $"{map.HitObjects[0].Column}");
-        editor.PressAt(0, editor.TimeToY(2200));
-        C("[编辑] 画布左侧越界夹到第一列", map.HitObjects[1].Column == 0, $"{map.HitObjects[1].Column}");
+
+        var lastColumnX = editor.ColumnCenter(3);
+        editor.PressAt(lastColumnX, editor.TimeToY(2000));
+        C("[编辑] 落在最后一列", map.HitObjects.Count == 1 && map.HitObjects[0].Column == 3,
+            $"{map.HitObjects.Count} / {(map.HitObjects.Count > 0 ? map.HitObjects[0].Column : -1)}");
+
+        // 标尺区 / 留白区点击不放 note（Note 宽度调小后左右是留白）
+        var beforeLane = map.HitObjects.Count;
+        editor.PressAt(4, editor.TimeToY(2200));
+        C("[编辑] 点标尺区不放 note", map.HitObjects.Count == beforeLane, $"{map.HitObjects.Count}");
+
+        editor.PressAt(editor.LaneLeft - 10, editor.TimeToY(2400));
+        C("[编辑] 点轨道左侧留白不放 note", map.HitObjects.Count == beforeLane, $"{map.HitObjects.Count}");
+
+        editor.PressAt(editor.LaneLeft + editor.LaneWidth + 10, editor.TimeToY(2600));
+        C("[编辑] 点轨道右侧留白不放 note", map.HitObjects.Count == beforeLane, $"{map.HitObjects.Count}");
 
         // 时间点拖动
         var tp = new EditorTimingPoint { Time = 3000, BeatLength = 500, Uninherited = true, TimeSignature = 4 };

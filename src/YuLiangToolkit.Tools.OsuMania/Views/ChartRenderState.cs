@@ -33,8 +33,11 @@ public sealed class ChartRenderState
     /// <summary>每毫秒像素。</summary>
     public double PxPerMs { get; init; } = ChartViewport.DefaultPxPerMs;
 
-    /// <summary>轨道区左边距。</summary>
+    /// <summary>轨道区左边距（轨道区左边界）。</summary>
     public double LaneLeft { get; init; }
+
+    /// <summary>标尺左边界（「标尺 + 轨道」整块居中时它会大于 0）。</summary>
+    public double RulerLeft { get; init; }
 
     /// <summary>轨道区宽度。</summary>
     public double LaneWidth { get; init; }
@@ -51,8 +54,19 @@ public sealed class ChartRenderState
     /// <summary>正在创建的长条预览（松手前）。</summary>
     public (bool HasValue, int Column, double StartTime, double EndTime) CreatePreview { get; init; }
 
-    /// <summary>当前选中的 note 下标在 <see cref="Notes"/> 里的位置（-1 = 没选 / 不在视野内）。</summary>
-    public int SelectedSlot { get; init; } = -1;
+    /// <summary>
+    /// 标尺左边的留白。「标尺 + 轨道」作为一整块居中，所以它 = 整块左边距。
+    /// </summary>
+    public double BlockLeftMargin => LaneLeft - LaneLayout.RulerWidth;
+
+    /// <summary>当前选中的 note 下标集合（多选；渲染时要一起高亮）。</summary>
+    public IReadOnlySet<int> SelectedIndices { get; init; } = new HashSet<int>();
+
+    /// <summary>框选矩形（没在框选时 <c>HasValue=false</c>）。</summary>
+    public (bool HasValue, MarqueeSelection.Box Box) Marquee { get; init; }
+
+    /// <summary>当前选中的 note 数（画布上显示 / 状态栏）。</summary>
+    public int SelectionCount { get; init; }
 
     /// <summary>正在拖动的 note 在 <see cref="Notes"/> 里的位置（-1 = 没在拖）。</summary>
     public int DraggingSlot { get; init; } = -1;
@@ -72,14 +86,19 @@ public sealed class ChartRenderState
     /// </summary>
     /// <param name="editor">编辑器状态。</param>
     /// <param name="contentHeight">画布内容区高度（不含标尺）。</param>
-    /// <param name="laneLeft">轨道区左边距。</param>
-    /// <param name="laneWidth">轨道区宽度。</param>
+    /// <param name="canvasWidth">画布总宽度（像素）。</param>
+    /// <param name="noteAreaRatio">Note 浏览区占可用宽度的比例（0.2~1.0，见 <see cref="LaneLayout"/>）。</param>
     /// <param name="maxNotes">可见 note 的安全上限（超过就按时间抽稀，防止极端缩放下爆量）。</param>
     public static ChartRenderState Build(
-        ChartEditor editor, double contentHeight, double laneLeft, double laneWidth, int maxNotes = 12000)
+        ChartEditor editor, double contentHeight, double canvasWidth, double noteAreaRatio, int maxNotes = 12000)
     {
         var beatmap = editor.Beatmap;
         var viewport = editor.Viewport;
+
+        // 横向布局：标尺 + 居中的轨道区（宽度按用户比例）
+        var layout = LaneLayout.Compute(canvasWidth, LaneLayout.RulerWidth, noteAreaRatio);
+        var laneLeft = layout.LaneLeft;
+        var laneWidth = layout.LaneWidth;
 
         var from = viewport.StartTime;
         var to = viewport.StartTime + viewport.VisibleMs;
@@ -88,15 +107,14 @@ public sealed class ChartRenderState
         var index = beatmap.Index;
         var (start, end) = index.RangeFor(from, to);
 
-        var selected = editor.SelectedIndex;
+        // 多选：把选中下标复制成快照（渲染时按 Index 判断，不依赖槽位）
+        var selection = editor.Selection;
+        var selectedIndices = selection.Count > 0 ? new HashSet<int>(selection.Indices) : new HashSet<int>();
         var dragging = editor.DraggingIndex;
-        var selectedSlot = -1;
-        var draggingSlot = -1;
 
         // 可见 note 上限：超了就在时间上均匀抽稀（宁可少画几个也不能卡死 UI）
         var windowCount = Math.Max(0, end - start);
         var stride = windowCount > maxNotes ? windowCount / maxNotes + 1 : 1;
-        var slot = 0;
 
         for (var i = start; i < end; i += stride)
         {
@@ -109,11 +127,7 @@ public sealed class ChartRenderState
             var noteEnd = note.IsLongNote ? Math.Max(note.EndTime, note.StartTime) : note.StartTime;
             if (noteEnd < from || note.StartTime > to) continue;
 
-            if (noteIndex == selected) selectedSlot = slot;
-            if (noteIndex == dragging) draggingSlot = slot;
-
             notes.Add(new VisibleNote(note, noteIndex));
-            slot++;
         }
 
         // 网格线（内部已抽稀）
@@ -139,12 +153,14 @@ public sealed class ChartRenderState
             PxPerMs = viewport.PxPerMs,
             LaneLeft = laneLeft,
             LaneWidth = laneWidth,
+            RulerLeft = layout.RulerLeft,
             KeyCount = beatmap.KeyCount,
             PlayheadMs = editor.PlayheadMs,
             ShowPlayhead = true,
             CreatePreview = editor.CreatePreview,
-            SelectedSlot = selectedSlot,
-            DraggingSlot = draggingSlot,
+            SelectedIndices = selectedIndices,
+            Marquee = editor.Marquee,
+            SelectionCount = selection.Count,
             TotalNoteCount = beatmap.HitObjects.Count,
             IsDragging = editor.IsDragging,
         };

@@ -34,8 +34,8 @@ namespace YuLiangToolkit.Tools.OsuMania.Views;
 /// </summary>
 public sealed class ChartCanvas : FrameworkElement
 {
-    /// <summary>左侧时间点标尺宽度（像素）。</summary>
-    public const double RulerWidth = 64;
+    /// <summary>左侧时间点标尺宽度（像素）。单一来源在 <see cref="LaneLayout.RulerWidth"/>。</summary>
+    public const double RulerWidth = LaneLayout.RulerWidth;
 
     /// <summary>note 最小高度（像素）。实际高度随列宽缩放，见 <see cref="NoteHeightFor"/>。</summary>
     public const double MinNoteHeight = 6;
@@ -176,6 +176,28 @@ public sealed class ChartCanvas : FrameworkElement
     /// <summary>内容区的栏位信息（View 后置代码把鼠标坐标转成编辑器坐标时用）。</summary>
     public double LaneWidth => Math.Max(1, ActualWidth - RulerWidth);
 
+    /// <summary>
+    /// 柱状区（轨道）在画布里的左边界：按当前快照的居中布局算；
+    /// 没有快照时退回「标尺右边」。
+    /// </summary>
+    public double LaneLeft => State?.LaneLeft ?? RulerWidth;
+
+    /// <summary>标尺在本画布里的左边界（「标尺 + 轨道」整块居中时它不是 0）。</summary>
+    public double RulerLeft => State?.RulerLeft ?? 0;
+
+    /// <summary>当前轨道区实际宽度（没有快照时按铺满算）。</summary>
+    public double LaneActualWidth => State?.LaneWidth ?? LaneWidth;
+
+    /// <summary>
+    /// 把当前的横向布局同步给编辑器（命中测试 / 列号换算都靠它）。
+    /// 直接用快照里的值，不做二次推算 —— 免得两处算法走偏。
+    /// </summary>
+    public void ApplyLayoutTo(Core.Editor.ChartEditor editor)
+    {
+        if (editor is null) return;
+        editor.SetLayout(LaneLeft, LaneActualWidth, editor.Beatmap.KeyCount);
+    }
+
     // ---------------------------------------------------------------- 鼠标事件（交给 View 转给 ViewModel）
 
     /// <summary>左键按下：内容区坐标。</summary>
@@ -285,18 +307,23 @@ public sealed class ChartCanvas : FrameworkElement
         var height = ActualHeight;
         if (width <= 0 || height <= 0) return;
 
-        // 底色（用背景色填充，避免残留上一帧）
-        dc.DrawRectangle(LaneBrush ?? Brushes.Transparent, null, new Rect(0, 0, width, height));
-
         var state = State;
         if (state is null)
         {
+            dc.DrawRectangle(LaneBrush ?? Brushes.Transparent, null, new Rect(0, 0, width, height));
             DrawEmptyHint(dc, width, height);
             return;
         }
-        var laneLeft = RulerWidth;
-        var laneWidth = Math.Max(1, width - RulerWidth);
+
+        // 轨道区用快照里的居中布局（宽度可由用户调）；标尺固定贴左边。
+        // 轨道区以外的部分画成更暗的底色，让「Note 浏览区」的边界一眼可见。
+        var laneLeft = state.LaneLeft;
+        var laneWidth = Math.Max(1, state.LaneWidth);
         var columnWidth = laneWidth / Math.Max(1, state.KeyCount);
+
+        dc.DrawRectangle(GetBrushFor("outside", LaneBrush, 0.35) ?? LaneBrush ?? Brushes.Transparent,
+            null, new Rect(0, 0, width, height));
+        dc.DrawRectangle(LaneBrush ?? Brushes.Transparent, null, new Rect(laneLeft, 0, laneWidth, height));
 
         DrawLaneBackground(dc, state, laneLeft, laneWidth, columnWidth, height);
         DrawGrid(dc, state, laneLeft, laneWidth, height);
@@ -304,6 +331,7 @@ public sealed class ChartCanvas : FrameworkElement
         DrawLongNotes(dc, state, laneLeft, columnWidth);
         DrawNotes(dc, state, laneLeft, columnWidth);
         DrawCreatePreview(dc, state, laneLeft, columnWidth);
+        DrawMarquee(dc, state, laneLeft, columnWidth);
         DrawTimingPoints(dc, state, laneLeft, laneWidth, height);
         DrawPlayhead(dc, state, laneLeft, width);
         DrawRuler(dc, state, height);
@@ -406,7 +434,7 @@ public sealed class ChartCanvas : FrameworkElement
             var bodyTop = Math.Max(-2, top - half);
             var bodyBottom = Math.Min(height + 2, bottom + half);
 
-            var useBrush = slot == state.SelectedSlot || slot == state.DraggingSlot
+            var useBrush = state.SelectedIndices.Contains(state.Notes[slot].Index)
                 ? selectedBrush ?? brush
                 : brush;
 
@@ -433,7 +461,7 @@ public sealed class ChartCanvas : FrameworkElement
             var y = (note.StartTime - state.StartTime) * state.PxPerMs;
             if (y < -noteHeight * 2 || y > height + noteHeight * 2) continue;
 
-            var useBrush = slot == state.SelectedSlot || slot == state.DraggingSlot
+            var useBrush = state.SelectedIndices.Contains(state.Notes[slot].Index)
                 ? selectedBrush ?? brush
                 : (note.IsLongNote ? LongNoteBrush ?? brush : brush);
 
@@ -474,6 +502,28 @@ public sealed class ChartCanvas : FrameworkElement
         var h = Math.Max(NoteHeightFor(columnWidth), Math.Abs(y2 - y1));
 
         dc.DrawRectangle(brush, null, new Rect(x, top, bodyWidth, h));
+    }
+
+    /// <summary>框选矩形（半透明填充 + 亮边；和 osu! 编辑器的选择框一个意思）。</summary>
+    private void DrawMarquee(DrawingContext dc, ChartRenderState state, double laneLeft, double columnWidth)
+    {
+        if (!state.Marquee.HasValue) return;
+
+        var box = state.Marquee.Box;
+
+        var x1 = laneLeft + box.FromColumn * columnWidth;
+        var x2 = laneLeft + (box.ToColumn + 1) * columnWidth;
+        var y1 = (box.FromTime - state.StartTime) * state.PxPerMs;
+        var y2 = (box.ToTime - state.StartTime) * state.PxPerMs;
+
+        var rect = new Rect(Math.Min(x1, x2), Math.Min(y1, y2), Math.Abs(x2 - x1), Math.Abs(y2 - y1));
+        if (rect.Width <= 0 || rect.Height <= 0) return;
+
+        var fill = GetBrushFor("marquee-fill", SelectionBrush, 0.16);
+        var pen = GetPen("marquee-edge", SelectionBrush, 1.2);
+        if (fill is null || pen is null) return;
+
+        dc.DrawRectangle(fill, pen, rect);
     }
 
     /// <summary>红线 / 绿线（画在左标尺里 + 贯穿轨道区的细线）。</summary>
@@ -519,12 +569,15 @@ public sealed class ChartCanvas : FrameworkElement
         dc.DrawLine(pen, new Point(laneLeft, y), new Point(width, y));
     }
 
-    /// <summary>左标尺：小节号 / 时间刻度。</summary>
+    /// <summary>左标尺：小节号 / 时间刻度（跟着「标尺 + 轨道」整块一起居中）。</summary>
     private void DrawRuler(DrawingContext dc, ChartRenderState state, double height)
     {
+        var rulerLeft = state.RulerLeft;
+        var rulerRight = rulerLeft + RulerWidth;
+
         if (RulerBackgroundBrush is not null)
         {
-            dc.DrawRectangle(RulerBackgroundBrush, null, new Rect(0, 0, RulerWidth, height));
+            dc.DrawRectangle(RulerBackgroundBrush, null, new Rect(rulerLeft, 0, RulerWidth, height));
         }
 
         var pen = GetPen("ruler-tick", LaneLineBrush, 1.0);
@@ -549,15 +602,15 @@ public sealed class ChartCanvas : FrameworkElement
                         label = MakeText(key, 10, RulerTextBrush);
                         _barText[key] = label;
                     }
-                    dc.DrawText(label, new Point(RulerWidth - label.Width - 6, y - label.Height / 2));
+                    dc.DrawText(label, new Point(rulerRight - label.Width - 6, y - label.Height / 2));
                     lastLabelY = y;
                 }
 
-                if (pen is not null) dc.DrawLine(pen, new Point(RulerWidth - 8, y), new Point(RulerWidth, y));
+                if (pen is not null) dc.DrawLine(pen, new Point(rulerRight - 8, y), new Point(rulerRight, y));
             }
             else if (line.Kind == BeatGrid.GridLineKind.Beat && pen is not null)
             {
-                dc.DrawLine(pen, new Point(RulerWidth - 4, y), new Point(RulerWidth, y));
+                dc.DrawLine(pen, new Point(rulerRight - 4, y), new Point(rulerRight, y));
             }
         }
 
@@ -575,11 +628,14 @@ public sealed class ChartCanvas : FrameworkElement
                 text = MakeText((t / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + "s", 9.5, RulerTextBrush);
                 _timeText[key] = text;
             }
-            dc.DrawText(text, new Point(4, y + 1));
+            dc.DrawText(text, new Point(rulerLeft + 4, y + 1));
         }
 
         // 标尺右边一条分隔线
-        if (pen is not null) dc.DrawLine(pen, new Point(RulerWidth - 0.5, 0), new Point(RulerWidth - 0.5, height));
+        if (pen is not null)
+        {
+            dc.DrawLine(pen, new Point(rulerRight - 0.5, 0), new Point(rulerRight - 0.5, height));
+        }
     }
 
     /// <summary>按当前缩放挑「时间标签」的间隔，保证相邻标签至少 34 像素。</summary>

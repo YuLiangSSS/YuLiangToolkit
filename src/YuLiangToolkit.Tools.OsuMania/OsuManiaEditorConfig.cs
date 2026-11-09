@@ -27,7 +27,10 @@ public sealed class OsuManiaEditorConfig : ToolConfig
     /// <summary>播放时是否自动跟随播放头滚动时间轴。</summary>
     public bool FollowPlayhead { get; set; } = true;
 
-    /// <summary>左键工具：true = 长条，false = 普通键。</summary>
+    /// <summary>上次用的编辑工具（0 = 选择 / 1 = 单点 / 2 = 长条）。</summary>
+    public int Tool { get; set; } = 1;
+
+    /// <summary>旧字段：只表示「是不是长条工具」。保留是为了老配置还能读。</summary>
     public bool LongNoteTool { get; set; }
 
     /// <summary>时间轴默认缩放（每毫秒像素）。</summary>
@@ -43,6 +46,14 @@ public sealed class OsuManiaEditorConfig : ToolConfig
 
     /// <summary>是否开启自动保存（默认开）。</summary>
     public bool AutoSaveEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Note 浏览区（轨道）宽度占可用宽度的比例（0.2~1.0，默认 1.0 = 铺满）。
+    ///
+    /// <para>4K 谱面铺满宽屏时每列能有 280+ 像素，note 看起来又扁又宽；调小这个值能把轨道
+    /// 收窄并居中，更像 osu! 编辑器的样子。窗口内与全屏各自按自己的可用宽度算。</para>
+    /// </summary>
+    public double NoteAreaRatio { get; set; } = 1.0;
 
     /// <summary>
     /// 无操作多少秒后自动保存（默认 10 秒，范围 2~600）。

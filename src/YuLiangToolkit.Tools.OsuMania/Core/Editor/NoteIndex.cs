@@ -91,6 +91,10 @@ public sealed class NoteIndex
     ///
     /// <para>下界按 <see cref="MaxDuration"/> 放宽（LN 头可能在视野之上）；上界按开始时间。
     /// 调用方拿到区间后自己再按「实际矩形是否相交」精确裁剪。</para>
+    ///
+    /// <para>⚠ <paramref name="toTime"/> 是**闭区间上界**：恰好落在上界的 note 必须包含进来，
+    /// 所以用 <c>UpperBound</c> 而不是 <c>LowerBound</c>（后者会漏掉边界上的 note ——
+    /// 表现为框选时框到 LN 的头却选不中，自检抓到过）。</para>
     /// </summary>
     public (int Start, int End) RangeFor(double fromTime, double toTime)
     {
@@ -98,9 +102,22 @@ public sealed class NoteIndex
 
         var looseFrom = fromTime - MaxDuration;
         var start = LowerBound(looseFrom);
-        var end = LowerBound(toTime);
+        var end = UpperBound(toTime);
         if (end < start) end = start;
         return (start, end);
+    }
+
+    /// <summary>第一个开始时间严格大于 <paramref name="time"/> 的位置（闭区间上界用）。</summary>
+    private int UpperBound(double time)
+    {
+        int lo = 0, hi = _starts.Length;
+        while (lo < hi)
+        {
+            var mid = lo + ((hi - lo) >> 1);
+            if (_starts[mid] <= time) lo = mid + 1;
+            else hi = mid;
+        }
+        return lo;
     }
 
     /// <summary>时间 <= <paramref name="time"/> 的最后一个 note 的位置（命中测试 / 导航用）。</summary>

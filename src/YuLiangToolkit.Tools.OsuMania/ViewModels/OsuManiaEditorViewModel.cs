@@ -70,7 +70,17 @@ public sealed class OsuManiaEditorViewModel : ToolViewModelBase, YuLiangToolkit.
         StopCommand = new RelayCommand(_ => StopPlayback(), _ => _editor is not null);
         UndoCommand = new RelayCommand(_ => DoUndo(), _ => _editor?.Beatmap.UndoCount > 0);
         RedoCommand = new RelayCommand(_ => DoRedo(), _ => _editor?.Beatmap.RedoCount > 0);
-        DeleteSelectedCommand = new RelayCommand(_ => DeleteSelected(), _ => _editor?.SelectedIndex >= 0);
+        DeleteSelectedCommand = new RelayCommand(_ => DeleteSelected(), _ => (_editor?.SelectionCount ?? 0) > 0);
+        SelectAllCommand = new RelayCommand(_ => SelectAllNotes(), _ => _editor?.Beatmap.HitObjects.Count > 0);
+        ClearSelectionCommand = new RelayCommand(_ => ClearSelection(), _ => (_editor?.SelectionCount ?? 0) > 0);
+        JumpToFirstNoteCommand = new RelayCommand(_ => JumpToFirstNote(true), _ => _editor is not null);
+        JumpToLastNoteCommand = new RelayCommand(_ => JumpToLastNote(true), _ => _editor is not null);
+        ToggleFullscreenCommand = new RelayCommand(_ => ToggleFullscreen());
+        SetToolCommand = new RelayCommand(param =>
+        {
+            if (param is ChartEditor.EditTool tool) Tool = tool;
+            else if (param is string text && Enum.TryParse<ChartEditor.EditTool>(text, out var parsed)) Tool = parsed;
+        });
         AddRedLineCommand = new RelayCommand(_ => AddTimingPoint(isRed: true), _ => _editor is not null);
         AddGreenLineCommand = new RelayCommand(_ => AddTimingPoint(isRed: false), _ => _editor is not null);
         DeleteTimingPointCommand = new RelayCommand(_ => DeleteSelectedTimingPoint(), _ => SelectedTimingPoint is not null);
@@ -261,19 +271,134 @@ public sealed class OsuManiaEditorViewModel : ToolViewModelBase, YuLiangToolkit.
         }
     }
 
-    /// <summary>左键工具：true = 长条。</summary>
-    public bool LongNoteTool
+    /// <summary>
+    /// 当前编辑工具（模拟 osu! 编辑器左侧 TOOLS：选择 / 单点 / 长条）。
+    /// </summary>
+    public ChartEditor.EditTool Tool
     {
-        get => Cfg.LongNoteTool;
+        get => _tool;
         set
         {
-            if (Cfg.LongNoteTool == value) return;
-            Cfg.LongNoteTool = value;
-            if (_editor is not null)
-            {
-                _editor.Tool = value ? ChartEditor.EditTool.LongNote : ChartEditor.EditTool.Note;
-            }
+            if (_tool == value) return;
+            _tool = value;
+            if (_editor is not null) _editor.Tool = value;
+            Cfg.Tool = (int)value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(IsSelectTool));
+            OnPropertyChanged(nameof(IsNoteTool));
+            OnPropertyChanged(nameof(IsLongNoteTool));
+        }
+    }
+
+    private ChartEditor.EditTool _tool = ChartEditor.EditTool.Note;
+
+    /// <summary>是不是选择工具（界面里单选按钮绑定它）。</summary>
+    public bool IsSelectTool
+    {
+        get => Tool == ChartEditor.EditTool.Select;
+        set { if (value) Tool = ChartEditor.EditTool.Select; }
+    }
+
+    /// <summary>是不是单点（普通键）工具。</summary>
+    public bool IsNoteTool
+    {
+        get => Tool == ChartEditor.EditTool.Note;
+        set { if (value) Tool = ChartEditor.EditTool.Note; }
+    }
+
+    /// <summary>是不是长条工具。</summary>
+    public bool IsLongNoteTool
+    {
+        get => Tool == ChartEditor.EditTool.LongNote;
+        set { if (value) Tool = ChartEditor.EditTool.LongNote; }
+    }
+
+    /// <summary>兼容旧绑定的「长条开关」（LongNoteTool = 切到长条 / 切回单点）。</summary>
+    public bool LongNoteTool
+    {
+        get => Tool == ChartEditor.EditTool.LongNote;
+        set
+        {
+            var target = value ? ChartEditor.EditTool.LongNote : ChartEditor.EditTool.Note;
+            if (Tool == target) return;
+            Tool = target;
+        }
+    }
+
+    /// <summary>选中了几个 note。</summary>
+    public int SelectionCount => _editor?.SelectionCount ?? 0;
+
+    /// <summary>选择状态的文字（状态栏 / 检查器）。</summary>
+    public string SelectionText => SelectionCount switch
+    {
+        0 => "未选择",
+        1 => "已选 1 个 note",
+        _ => $"已选 {SelectionCount} 个 note",
+    };
+
+    /// <summary>缩放文字（全屏左栏显示）。</summary>
+    public string ZoomText => _editor is null ? "—" : $"{_editor.Viewport.ZoomRatio:0.##}×";
+
+    /// <summary>当前播放头处的 BPM（全屏底部显示）。</summary>
+    public string BpmText
+    {
+        get
+        {
+            if (_editor is null) return "";
+            var bpm = _editor.Beatmap.BpmAt(PlayheadMs);
+            return bpm > 0 ? $"{bpm:0.##} BPM" : "";
+        }
+    }
+
+    /// <summary>右侧检查器标题（选中内容摘要）。</summary>
+    public string InspectorTitle
+    {
+        get
+        {
+            if (_editor is null) return "没有打开谱面";
+            if (SelectionCount == 0) return "No selection";
+
+            if (SelectionCount > 1)
+            {
+                return $"{SelectionCount} notes";
+            }
+
+            var note = _editor.SelectedNote;
+            var kind = note.IsLongNote ? "Long note" : "Note";
+            var length = note.IsLongNote ? $" · {note.Duration:0}ms" : "";
+            return $"{kind} · 列 {note.Column + 1}{length}";
+        }
+    }
+
+    /// <summary>右侧检查器详情（时间 / 长度）。</summary>
+    public string InspectorDetail
+    {
+        get
+        {
+            if (_editor is null) return "打开一个 .osu 谱面开始编辑";
+            if (SelectionCount == 0) return "左键点 note 选中；选择工具可拖动框选，Ctrl 可多选";
+
+            if (SelectionCount > 1)
+            {
+                var first = double.MaxValue;
+                var last = double.MinValue;
+                var longNotes = 0;
+                foreach (var index in _editor.Selection.Indices)
+                {
+                    if (index < 0 || index >= _editor.Beatmap.HitObjects.Count) continue;
+                    var item = _editor.Beatmap.HitObjects[index];
+                    if (item.StartTime < first) first = item.StartTime;
+                    if (item.StartTime > last) last = item.StartTime;
+                    if (item.IsLongNote) longNotes++;
+                }
+
+                if (first > last) return "";
+                return $"{FormatTime(first)} → {FormatTime(last)}\nLN {longNotes} 个";
+            }
+
+            var note = _editor.SelectedNote;
+            var text = $"开始 {FormatTime(note.StartTime)}\n结束 {FormatTime(note.EndTime)}";
+            return note.IsLongNote ? text + $"\n长度 {note.Duration:0}ms" : text;
         }
     }
 
@@ -385,6 +510,12 @@ public sealed class OsuManiaEditorViewModel : ToolViewModelBase, YuLiangToolkit.
     public RelayCommand UndoCommand { get; }
     public RelayCommand RedoCommand { get; }
     public RelayCommand DeleteSelectedCommand { get; }
+    public RelayCommand SelectAllCommand { get; }
+    public RelayCommand ClearSelectionCommand { get; }
+    public RelayCommand JumpToFirstNoteCommand { get; }
+    public RelayCommand JumpToLastNoteCommand { get; }
+    public RelayCommand ToggleFullscreenCommand { get; }
+    public RelayCommand SetToolCommand { get; }
     public RelayCommand AddRedLineCommand { get; }
     public RelayCommand AddGreenLineCommand { get; }
     public RelayCommand DeleteTimingPointCommand { get; }
@@ -443,9 +574,10 @@ public sealed class OsuManiaEditorViewModel : ToolViewModelBase, YuLiangToolkit.
             {
                 GridDivisor = Cfg.GridDivisor,
                 SnapToGrid = Cfg.SnapToGrid,
-                Tool = Cfg.LongNoteTool ? ChartEditor.EditTool.LongNote : ChartEditor.EditTool.Note,
+                Tool = _tool,
             };
             _editor.Changed += (_, _) => OnEditorChanged();
+            _editor.Selection.Changed += (_, _) => RaiseSelectionChanged();
 
             beatmap.RefreshIndexes();
 
@@ -467,6 +599,12 @@ public sealed class OsuManiaEditorViewModel : ToolViewModelBase, YuLiangToolkit.
             RefreshTimingPoints();
             RefreshSummary();
             BuildAndPublishState();
+
+            // 主动推一次选择 / 检查器状态：打开谱面时选择是空的，Selection.Changed 不会触发，
+            // 而全屏覆盖层的绑定可能是刚创建的（首次进入全屏）—— 不推就停在初始文字上（截图里踩过）。
+            RaiseSelectionChanged();
+            OnPropertyChanged(nameof(BpmText));
+            OnPropertyChanged(nameof(ZoomText));
 
             StatusDetail = $"已打开 {Path.GetFileName(path)}（{beatmap.HitObjects.Count:N0} note）";
             Log($"打开 {path}");
@@ -913,7 +1051,168 @@ public sealed class OsuManiaEditorViewModel : ToolViewModelBase, YuLiangToolkit.
     /// <summary>删除选中的 note。</summary>
     private void DeleteSelected()
     {
-        if (_editor?.DeleteSelected() == true) RefreshAfterEdit("已删除选中的 note");
+        if (_editor is null) return;
+
+        var removed = _editor.DeleteSelection();
+        if (removed <= 0) return;
+
+        RefreshAfterEdit(removed == 1 ? "已删除选中的 note" : $"已删除 {removed} 个 note");
+    }
+
+    /// <summary>全选。</summary>
+    private void SelectAllNotes()
+    {
+        if (_editor is null) return;
+
+        var all = new List<int>(_editor.Beatmap.HitObjects.Count);
+        for (var i = 0; i < _editor.Beatmap.HitObjects.Count; i++) all.Add(i);
+        _editor.Selection.SetTo(all);
+
+        BuildAndPublishState();
+        RaiseSelectionChanged();
+    }
+
+    /// <summary>清空选择。</summary>
+    private void ClearSelection()
+    {
+        if (_editor is null) return;
+
+        _editor.Selection.Clear();
+        _editor.ClearRangeAnchor();
+        BuildAndPublishState();
+        RaiseSelectionChanged();
+    }
+
+    // ---------------------------------------------------------------- Z / V 跳转
+
+    /// <summary>
+    /// 跳到第一个 note 的开始时间（Z 键）。
+    /// </summary>
+    /// <param name="alsoExtendSelection">
+    /// true = 同时把「锚点 → 第一个 note」之间、锚点那些列上的 note 加进选择（osu! 编辑器的行为）。
+    /// false = 只跳转不改选择。
+    /// </param>
+    public void JumpToFirstNote(bool alsoExtendSelection = true)
+    {
+        if (_editor is null) return;
+
+        double? target;
+        if (alsoExtendSelection)
+        {
+            target = _editor.JumpToFirstNote();
+        }
+        else
+        {
+            target = _editor.EarliestNoteTime();
+        }
+
+        if (target is null)
+        {
+            StatusDetail = "谱面里还没有 note";
+            return;
+        }
+
+        ApplyJump(target.Value, "已跳到第一个 note");
+    }
+
+    /// <summary>跳到最后一个 note 的开始时间（V 键）。</summary>
+    public void JumpToLastNote(bool alsoExtendSelection = true)
+    {
+        if (_editor is null) return;
+
+        double? target;
+        if (alsoExtendSelection)
+        {
+            target = _editor.JumpToLastNote();
+        }
+        else
+        {
+            target = _editor.LatestNoteStartTime();
+        }
+
+        if (target is null)
+        {
+            StatusDetail = "谱面里还没有 note";
+            return;
+        }
+
+        ApplyJump(target.Value, "已跳到最后一个 note");
+    }
+
+    /// <summary>
+    /// 跳转落地：把播放头移过去、滚进视野、刷新选择状态。
+    /// </summary>
+    private void ApplyJump(double targetTime, string message)
+    {
+        if (_editor is null) return;
+
+        SeekTo(targetTime);
+
+        // 目标放到视口偏上一点，方便看它下面的内容
+        _editor.CenterOnTime(targetTime, ratio: 0.35);
+
+        BuildAndPublishState();
+        RaiseSelectionChanged();
+
+        var extra = SelectionCount > 0 ? $"（已选 {SelectionCount} 个）" : "";
+        StatusDetail = $"{message}：{FormatTime(targetTime)}{extra}";
+    }
+
+    /// <summary>把 Z/V 的区间锚点定在当前位置（例如用户刚框选完）。</summary>
+    public void SetRangeAnchorHere()
+    {
+        if (_editor is null) return;
+        _editor.SetRangeAnchor(PlayheadMs);
+    }
+
+    // ---------------------------------------------------------------- 全屏
+
+    private bool _isFullscreen;
+
+    /// <summary>是不是在全屏编辑覆盖层里。</summary>
+    public bool IsFullscreen
+    {
+        get => _isFullscreen;
+        private set
+        {
+            if (!Set(ref _isFullscreen, value)) return;
+            OnPropertyChanged(nameof(FullscreenGlyph));
+            OnPropertyChanged(nameof(FullscreenHint));
+        }
+    }
+
+    /// <summary>全屏按钮的字形。</summary>
+    public string FullscreenGlyph => IsFullscreen ? "⤡" : "⤢";
+
+    /// <summary>全屏按钮的提示。</summary>
+    public string FullscreenHint => IsFullscreen ? "退出全屏（F11）" : "全屏编辑（F11）";
+
+    /// <summary>请求切换全屏（View 去做真正的窗口操作）。</summary>
+    public event EventHandler<bool>? FullscreenRequested;
+
+    /// <summary>切换全屏（F11 / 按钮 / 双击画布空白）。</summary>
+    public void ToggleFullscreen() => SetFullscreen(!IsFullscreen);
+
+    /// <summary>设置全屏状态（View 在真正进出全屏后回调这里同步状态）。</summary>
+    public void SetFullscreen(bool on)
+    {
+        if (IsFullscreen == on) return;
+        IsFullscreen = on;
+        FullscreenRequested?.Invoke(this, on);
+    }
+
+    /// <summary>View 完成窗口操作后同步状态（避免两边状态不一致）。</summary>
+    public void SyncFullscreenState(bool on) => IsFullscreen = on;
+
+    /// <summary>选择状态变了（界面刷新检查器 / 按钮可用性）。</summary>
+    private void RaiseSelectionChanged()
+    {
+        OnPropertyChanged(nameof(SelectionCount));
+        OnPropertyChanged(nameof(SelectionText));
+        OnPropertyChanged(nameof(InspectorTitle));
+        OnPropertyChanged(nameof(InspectorDetail));
+        OnPropertyChanged(nameof(ZoomText));
+        CommandManager.InvalidateRequerySuggested();
     }
 
     /// <summary>在当前播放头处加一条红线（BPM 沿用当前生效的）。</summary>
@@ -1019,7 +1318,7 @@ public sealed class OsuManiaEditorViewModel : ToolViewModelBase, YuLiangToolkit.
         IsDirty = _editor?.Beatmap.IsDirty ?? false;
         RefreshSummary();
         RequestRedraw();
-        CommandManager.InvalidateRequerySuggested();
+        RaiseSelectionChanged();
     }
 
     private void RefreshAfterEdit(string message)
@@ -1048,17 +1347,49 @@ public sealed class OsuManiaEditorViewModel : ToolViewModelBase, YuLiangToolkit.
 
         var height = contentHeight > 0 ? contentHeight : _editor.Viewport.Height;
         _editor.Viewport.Resize(height);
-        _editor.SetLayout(ChartCanvasLaneLeft, ChartCanvasLaneWidth, _editor.Beatmap.KeyCount);
 
-        RenderState = ChartRenderState.Build(_editor, height, ChartCanvasLaneLeft, ChartCanvasLaneWidth);
+        // 横向布局：标尺 + 按用户比例居中的轨道区（窗口内与全屏共用同一套算法）
+        var layout = LaneLayout.Compute(ChartCanvasWidth, ChartCanvas.RulerWidth, NoteAreaRatio);
+        _editor.SetLayout(layout.LaneLeft, layout.LaneWidth, _editor.Beatmap.KeyCount);
+
+        RenderState = ChartRenderState.Build(_editor, height, ChartCanvasWidth, NoteAreaRatio);
         RequestRedraw();
     }
 
-    /// <summary>轨道区左边距（与 <c>ChartCanvas.RulerWidth</c> 一致）。</summary>
-    public const double ChartCanvasLaneLeft = 64;
+    /// <summary>画布总宽度（由 View 在尺寸变化时告诉 VM）。</summary>
+    public double ChartCanvasWidth { get; set; } = 400;
 
     /// <summary>轨道区宽度（由 View 在尺寸变化时告诉 VM）。</summary>
-    public double ChartCanvasLaneWidth { get; set; } = 200;
+    /// <summary>
+    /// Note 浏览区（轨道）宽度占可用宽度的比例（0.2~1.0）。界面滑块绑定它。
+    ///
+    /// <para>调到 1.0 = 铺满；调小会把轨道收窄并居中（4K 谱面铺满时每列太宽、note 显得扁）。</para>
+    /// </summary>
+    public double NoteAreaRatio
+    {
+        get => Math.Clamp(Cfg.NoteAreaRatio, LaneLayout.MinRatio, LaneLayout.MaxRatio);
+        set
+        {
+            var clamped = Math.Clamp(value, LaneLayout.MinRatio, LaneLayout.MaxRatio);
+            if (Math.Abs(Cfg.NoteAreaRatio - clamped) < 1e-6) return;
+
+            Cfg.NoteAreaRatio = clamped;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(NoteAreaPercent));
+            OnPropertyChanged(nameof(NoteAreaPercentText));
+            BuildAndPublishState();
+        }
+    }
+
+    /// <summary>宽度比例的百分比文字（滑块旁显示）。</summary>
+    public string NoteAreaPercentText => $"{NoteAreaRatio * 100:0}%";
+
+    /// <summary>滑块用的百分比值（20~100）。</summary>
+    public double NoteAreaPercent
+    {
+        get => NoteAreaRatio * 100;
+        set => NoteAreaRatio = value / 100.0;
+    }
 
     private void RequestRedraw() => RedrawRequested?.Invoke(this, EventArgs.Empty);
 
@@ -1148,12 +1479,25 @@ public sealed class OsuManiaEditorViewModel : ToolViewModelBase, YuLiangToolkit.
         _audio.Volume = Cfg.Volume;
         _audio.UserOffsetMs = Cfg.AudioOffsetMs;
         _followPlayhead = Cfg.FollowPlayhead;
+
+        // 上次用的工具：老配置里只有 longNoteTool，没有 tool 就按它推
+        var saved = Cfg.Tool is >= 0 and <= 2 ? (ChartEditor.EditTool)Cfg.Tool : ChartEditor.EditTool.Note;
+        if (Cfg.Tool is 0 && Cfg.LongNoteTool) saved = ChartEditor.EditTool.LongNote;   // 老配置转换
+        _tool = saved;
+        if (_editor is not null) _editor.Tool = saved;
+
         OnPropertyChanged(nameof(FollowPlayhead));
         OnPropertyChanged(nameof(GridDivisor));
         OnPropertyChanged(nameof(SnapToGrid));
+        OnPropertyChanged(nameof(Tool));
+        OnPropertyChanged(nameof(IsSelectTool));
+        OnPropertyChanged(nameof(IsNoteTool));
+        OnPropertyChanged(nameof(IsLongNoteTool));
         OnPropertyChanged(nameof(LongNoteTool));
         OnPropertyChanged(nameof(PxPerMs));
         OnPropertyChanged(nameof(AudioOffsetMs));
+        OnPropertyChanged(nameof(SelectionCount));
+        OnPropertyChanged(nameof(SelectionText));
     }
 
     /// <summary>保存音频音量（滑块变化时调）。</summary>

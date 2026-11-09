@@ -8,15 +8,20 @@
 
     <!-- 「osu!mania 谱面编辑器」。布局约定见 docs/dev/layout.md：
          ① 顶部信息条（标题 / 统计 / 打开保存） | ② 播放条 | ③ 主编辑区（时间轴画布）
-         ④ 右侧时间点面板 —— ③ ↔ ④ 之间有竖缝可拖；高度全部交给 * 行，不写死。 -->
+         ④ 右侧时间点面板 —— ③ ↔ ④ 之间有竖缝可拖；高度全部交给 * 行，不写死。
 
-    <Grid Margin="28,20,28,24">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />                                  <!-- ① 标题 + 操作 -->
-            <RowDefinition Height="Auto" />                                  <!-- ② 播放条 -->
-            <RowDefinition Height="*" MinHeight="320" />                     <!-- ③ 编辑区 + ④ 时间点 -->
-            <RowDefinition Height="Auto" />                                  <!-- ⑤ 状态条 -->
-        </Grid.RowDefinitions>
+         全屏编辑是**覆盖层**（FullscreenOverlay，模拟 osu! 编辑器：左侧 TOOLS / 中间轨道 / 右侧 INSPECTOR），
+         盖住整个页面 + 让外壳藏掉标题栏 / 侧边栏（IFullscreenHost）。 -->
+
+    <Grid>
+        <!-- ===== 普通（窗口内）布局 ===== -->
+        <Grid x:Name="NormalLayout" Margin="28,20,28,24">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />                                  <!-- ① 标题 + 操作 -->
+                <RowDefinition Height="Auto" />                                  <!-- ② 播放条 -->
+                <RowDefinition Height="*" MinHeight="320" />                     <!-- ③ 编辑区 + ④ 时间点 -->
+                <RowDefinition Height="Auto" />                                  <!-- ⑤ 状态条 -->
+            </Grid.RowDefinitions>
 
         <!-- ===== ① 标题 / 统计 / 打开保存 ===== -->
         <Grid Grid.Row="0">
@@ -75,14 +80,17 @@
                                Foreground="{DynamicResource TextSecondaryBrush}" Text="{Binding DurationText}" />
                 </StackPanel>
 
-                <!-- 编辑工具 -->
+                <!-- 编辑工具（选择 / 单点 / 长条） -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="24,0,0,0">
-                    <RadioButton Content="普通键" Style="{StaticResource RadioButtonStyle}"
-                                 IsChecked="{Binding LongNoteTool, Converter={StaticResource InverseBoolConverter}}"
-                                 ToolTip="左键点击放普通键（1）" />
-                    <RadioButton Content="长条" Style="{StaticResource RadioButtonStyle}" Margin="14,0,0,0"
-                                 IsChecked="{Binding LongNoteTool}"
-                                 ToolTip="按住左键往下拖放长条（2）" />
+                    <RadioButton Content="选择" Style="{StaticResource RadioButtonStyle}"
+                                 IsChecked="{Binding IsSelectTool}"
+                                 ToolTip="选择工具：点选 / Ctrl 多选 / 拖动框选（1）" />
+                    <RadioButton Content="单点" Style="{StaticResource RadioButtonStyle}" Margin="12,0,0,0"
+                                 IsChecked="{Binding IsNoteTool}"
+                                 ToolTip="左键点击放普通键（2）" />
+                    <RadioButton Content="长条" Style="{StaticResource RadioButtonStyle}" Margin="12,0,0,0"
+                                 IsChecked="{Binding IsLongNoteTool}"
+                                 ToolTip="按住左键往下拖放长条（3）" />
 
                     <TextBlock Text="细分" VerticalAlignment="Center" Margin="22,0,6,0"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -97,14 +105,25 @@
                               IsChecked="{Binding FollowPlayhead}" ToolTip="播放时自动滚动时间轴" />
                 </StackPanel>
 
-                <!-- 撤销 / 重做 / 删除 -->
+                <!-- Z/V 跳转 / 撤销重做 / 删除 / 全屏 -->
                 <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="⟲ 首 note" Style="{StaticResource SecondaryButtonStyle}"
+                            Command="{Binding JumpToFirstNoteCommand}"
+                            ToolTip="跳到第一个 note，并把区间内的同轨 note 加进选择（Z）" />
+                    <Button Content="末 note ⟳" Style="{StaticResource SecondaryButtonStyle}" Margin="6,0,0,0"
+                            Command="{Binding JumpToLastNoteCommand}"
+                            ToolTip="跳到最后一个 note，并把区间内的同轨 note 加进选择（V）" />
+                    <Border Width="1" Background="{DynamicResource BorderBrush}" Margin="10,4" />
                     <Button Content="撤销" Style="{StaticResource SecondaryButtonStyle}"
                             Command="{Binding UndoCommand}" ToolTip="Ctrl+Z" />
                     <Button Content="重做" Style="{StaticResource SecondaryButtonStyle}" Margin="6,0,0,0"
                             Command="{Binding RedoCommand}" ToolTip="Ctrl+Y" />
                     <Button Content="删除选中" Style="{StaticResource SecondaryButtonStyle}" Margin="6,0,0,0"
-                            Command="{Binding DeleteSelectedCommand}" ToolTip="Delete" />
+                            Command="{Binding DeleteSelectedCommand}" ToolTip="Delete（多选时一次删光）" />
+                    <Button Content="{Binding FullscreenGlyph}" Style="{StaticResource SecondaryButtonStyle}"
+                            Margin="10,0,0,0" MinWidth="40" FontSize="15"
+                            Command="{Binding ToggleFullscreenCommand}"
+                            ToolTip="{Binding FullscreenHint}" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -168,6 +187,25 @@
                         <TextBlock Text="时间点（红线 = BPM，绿线 = SV）" FontSize="13" FontWeight="SemiBold" />
                         <TextBlock Text="双击列表项可跳到该时间点；绿线 SV 只做数据，不影响播放" FontSize="10.5"
                                    Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" TextWrapping="Wrap" />
+
+                        <!-- Note 浏览区宽度：调小 = 轨道收窄并居中（4K 铺满宽屏时每列太宽） -->
+                        <Grid Margin="0,12,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Note 宽度" VerticalAlignment="Center" FontSize="11.5"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Slider Grid.Column="1" Minimum="20" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True"
+                                    Margin="10,0,0,0" VerticalAlignment="Center" Style="{StaticResource SliderStyle}"
+                                    Value="{Binding NoteAreaPercent}"
+                                    ToolTip="Note 浏览区占可用宽度的百分比；调小会让轨道收窄并居中" />
+                            <TextBlock Grid.Column="2" Text="{Binding NoteAreaPercentText}" MinWidth="38"
+                                       TextAlignment="Right" VerticalAlignment="Center" Margin="8,0,0,0"
+                                       FontSize="11" FontFamily="Consolas"
+                                       Foreground="{DynamicResource AccentBrush}" />
+                        </Grid>
                     </StackPanel>
 
                     <StackPanel Grid.Row="1" Margin="0,10,0,0">
@@ -304,11 +342,326 @@
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Text="{Binding StatusDetail}" FontSize="11.5" TextTrimming="CharacterEllipsis"
                        VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
-            <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontSize="11.5" VerticalAlignment="Center"
+            <TextBlock Grid.Column="1" Text="{Binding SelectionText}" FontSize="11.5" VerticalAlignment="Center"
+                       Margin="0,0,14,0" Foreground="{DynamicResource AccentBrush}" />
+            <TextBlock Grid.Column="2" Text="{Binding StatusText}" FontSize="11.5" VerticalAlignment="Center"
                        Foreground="{DynamicResource FaintTextBrush}" />
         </Grid>
+        </Grid>
+        <!-- ===== NormalLayout 结束 ===== -->
+
+        <!-- ===== 全屏编辑覆盖层（模拟 osu! 编辑器：左 TOOLS / 中轨道 / 右 INSPECTOR） ===== -->
+        <Grid x:Name="FullscreenOverlay" Visibility="Collapsed" Background="{DynamicResource WindowBackgroundBrush}"
+              AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />                                  <!-- 顶栏 -->
+                <RowDefinition Height="*" />                                     <!-- 主体：左 / 中 / 右 -->
+                <RowDefinition Height="Auto" />                                  <!-- 底部时间条 -->
+            </Grid.RowDefinitions>
+
+            <!-- ===== 顶栏 ===== -->
+            <Border Grid.Row="0" Background="{DynamicResource HeaderBackgroundBrush}" Padding="18,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="🎼 osu!mania 谱面编辑器" FontSize="15" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding TitleText}" FontSize="12" Margin="14,0,0,0"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="420"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Text="{Binding ChartSummary}" FontSize="11" Margin="14,0,0,0"
+                                   VerticalAlignment="Center" Foreground="{DynamicResource FaintTextBrush}" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding SelectionText}" VerticalAlignment="Center" Margin="0,0,14,0"
+                                   FontSize="11.5" Foreground="{DynamicResource AccentBrush}" />
+                        <Button Content="打开" Style="{StaticResource SecondaryButtonStyle}"
+                                Command="{Binding OpenChartCommand}" />
+                        <Button Content="{Binding SaveButtonHint}" Style="{StaticResource PrimaryButtonStyle}"
+                                Margin="6,0,0,0" Command="{Binding SaveChartCommand}" />
+                        <Button Content="撤销" Style="{StaticResource SecondaryButtonStyle}" Margin="10,0,0,0"
+                                Command="{Binding UndoCommand}" ToolTip="Ctrl+Z" />
+                        <Button Content="重做" Style="{StaticResource SecondaryButtonStyle}" Margin="6,0,0,0"
+                                Command="{Binding RedoCommand}" ToolTip="Ctrl+Y" />
+                        <Button Content="{Binding FullscreenGlyph}" Style="{StaticResource SecondaryButtonStyle}"
+                                Margin="10,0,0,0" MinWidth="40" FontSize="15"
+                                Command="{Binding ToggleFullscreenCommand}"
+                                ToolTip="{Binding FullscreenHint}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ===== 主体：左侧工具栏 | 中间轨道画布 | 右侧检查器 ===== -->
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="176" MinWidth="150" />               <!-- TOOLS -->
+                    <ColumnDefinition Width="*" MinWidth="320" />                 <!-- 轨道 -->
+                    <ColumnDefinition Width="248" MinWidth="200" />               <!-- INSPECTOR -->
+                </Grid.ColumnDefinitions>
+
+                <!-- 左栏（模拟 osu! 编辑器 TOOLS）：一个 RadioButton 一行，内容用文字标（不用 emoji / 生僻字形，
+                     某些字体下会渲染成空白或豆腐块） -->
+                <Border Grid.Column="0" Background="{DynamicResource CardBackgroundBrush}" Padding="12,14">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                  core:ScrollChaining.Enabled="True">
+                        <StackPanel>
+                            <TextBlock Text="TOOLS" FontSize="11" FontWeight="SemiBold" Margin="2,0,0,8"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                            <RadioButton Content="选择  (1)" Style="{StaticResource RadioButtonStyle}"
+                                         IsChecked="{Binding IsSelectTool}" Margin="0,0,0,6"
+                                         ToolTip="选择 / 多选 / 框选 / 拖动" />
+                            <RadioButton Content="单点  (2)" Style="{StaticResource RadioButtonStyle}"
+                                         IsChecked="{Binding IsNoteTool}" Margin="0,0,0,6"
+                                         ToolTip="左键放普通键" />
+                            <RadioButton Content="长条  (3)" Style="{StaticResource RadioButtonStyle}"
+                                         IsChecked="{Binding IsLongNoteTool}"
+                                         ToolTip="按住左键往下拖放长条" />
+
+                            <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,12" />
+
+                            <TextBlock Text="TOGGLES" FontSize="11" FontWeight="SemiBold" Margin="2,0,0,8"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <CheckBox Content="吸附节拍  (Q)" Style="{StaticResource CheckBoxStyle}" Margin="0,0,0,6"
+                                      IsChecked="{Binding SnapToGrid}" />
+                            <CheckBox Content="跟随播放头" Style="{StaticResource CheckBoxStyle}"
+                                      IsChecked="{Binding FollowPlayhead}" />
+
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <TextBlock Text="细分" VerticalAlignment="Center" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <ComboBox Style="{StaticResource ComboBoxStyle}" MinWidth="76" Margin="8,0,0,0"
+                                          ItemsSource="{Binding DivisorOptions}" SelectedItem="{Binding GridDivisor}" />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <TextBlock Text="缩放" VerticalAlignment="Center" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding ZoomText}" VerticalAlignment="Center" Margin="8,0,0,0"
+                                           FontSize="11" FontFamily="Consolas"
+                                           Foreground="{DynamicResource AccentBrush}" />
+                            </StackPanel>
+
+                            <!-- Note 浏览区宽度（左右宽度可调；调小 = 轨道收窄并居中） -->
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Note 宽度" VerticalAlignment="Center" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <Slider Grid.Column="1" Minimum="20" Maximum="100" TickFrequency="5"
+                                        IsSnapToTickEnabled="True" Margin="8,0,0,0"
+                                        Style="{StaticResource SliderStyle}"
+                                        Value="{Binding NoteAreaPercent}"
+                                        ToolTip="Note 浏览区占可用宽度的百分比；调小会让轨道收窄并居中" />
+                                <TextBlock Grid.Column="2" Text="{Binding NoteAreaPercentText}" MinWidth="38"
+                                           TextAlignment="Right" VerticalAlignment="Center" Margin="6,0,0,0"
+                                           FontSize="10.5" FontFamily="Consolas"
+                                           Foreground="{DynamicResource AccentBrush}" />
+                            </Grid>
+
+                            <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,12" />
+
+                            <TextBlock Text="JUMP" FontSize="11" FontWeight="SemiBold" Margin="2,0,0,8"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Button Content="第一个 note  (Z)" Style="{StaticResource SecondaryButtonStyle}"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                    Command="{Binding JumpToFirstNoteCommand}" />
+                            <Button Content="末个 note  (V)" Style="{StaticResource SecondaryButtonStyle}" Margin="0,6,0,0"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                    Command="{Binding JumpToLastNoteCommand}" />
+
+                            <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,12" />
+
+                            <Button Content="全选  (Ctrl+A)" Style="{StaticResource SecondaryButtonStyle}"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                    Command="{Binding SelectAllCommand}" />
+                            <Button Content="取消选择" Style="{StaticResource SecondaryButtonStyle}" Margin="0,6,0,0"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                    Command="{Binding ClearSelectionCommand}" />
+                            <Button Content="删除选中  (Del)" Style="{StaticResource SecondaryButtonStyle}" Margin="0,6,0,0"
+                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                    Command="{Binding DeleteSelectedCommand}" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+
+                <!-- ===== 中间：轨道（全屏专用画布） ===== -->
+                <Grid Grid.Column="1" Background="{DynamicResource InputBackgroundBrush}">
+                    <views:ChartCanvas x:Name="FullscreenCanvas"
+                                       LaneBrush="{DynamicResource InputBackgroundBrush}"
+                                       LaneLineBrush="{DynamicResource BorderBrush}"
+                                       BarLineBrush="{DynamicResource BorderBrush}"
+                                       BeatLineBrush="{DynamicResource SeparatorBrush}"
+                                       GridLineBrush="{DynamicResource SeparatorBrush}"
+                                       NoteBrush="{DynamicResource AccentBrush}"
+                                       LongNoteBrush="{DynamicResource AccentHoverBrush}"
+                                       SelectionBrush="{DynamicResource SuccessBrush}"
+                                       PlayheadBrush="{DynamicResource DangerBrush}"
+                                       RedLineBrush="{DynamicResource DangerBrush}"
+                                       GreenLineBrush="{DynamicResource SuccessBrush}"
+                                       RulerTextBrush="{DynamicResource FaintTextBrush}"
+                                       RulerBackgroundBrush="{DynamicResource HeaderBackgroundBrush}" />
+
+                    <!-- 左上角提示（不挡鼠标） -->
+                    <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12,10,0,0"
+                            Background="{DynamicResource CardBackgroundBrush}" CornerRadius="6" Padding="10,6"
+                            IsHitTestVisible="False" Opacity="0.9">
+                        <StackPanel>
+                            <TextBlock Text="{Binding AudioStatus}" FontSize="10.5"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" MaxWidth="360"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock FontSize="10" Margin="0,2,0,0" Foreground="{DynamicResource FaintTextBrush}"
+                                       Text="左键放键 · 选择工具拖动框选 · Ctrl 多选 · 右键删 · 滚轮缩放" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- ===== 右侧 INSPECTOR ===== -->
+                <Border Grid.Column="2" Background="{DynamicResource CardBackgroundBrush}" Padding="12,14">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                  core:ScrollChaining.Enabled="True">
+                        <StackPanel>
+                            <TextBlock Text="INSPECTOR" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBlock Text="{Binding InspectorTitle}" FontSize="13" Margin="0,8,0,0"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding InspectorDetail}" FontSize="11" Margin="0,4,0,0"
+                                       TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                            <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,12" />
+
+                            <TextBlock Text="时间点（红线 BPM / 绿线 SV）" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button Content="+红线" Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding AddRedLineCommand}" />
+                                <Button Content="+绿线" Style="{StaticResource SecondaryButtonStyle}" Margin="6,0,0,0"
+                                        Command="{Binding AddGreenLineCommand}" />
+                                <Button Content="删" Style="{StaticResource SecondaryButtonStyle}" Margin="6,0,0,0"
+                                        Command="{Binding DeleteTimingPointCommand}" />
+                            </StackPanel>
+
+                            <ListBox x:Name="FullscreenTimingList" Margin="0,8,0,0" MaxHeight="200"
+                                     ItemsSource="{Binding TimingPoints}"
+                                     SelectedItem="{Binding SelectedTimingPoint}"
+                                     MouseDoubleClick="OnTimingListDoubleClick"
+                                     core:ScrollChaining.Enabled="True">
+                                <ListBox.Style>
+                                    <Style TargetType="ListBox" BasedOn="{StaticResource FileListStyle}" />
+                                </ListBox.Style>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Border Width="8" Height="8" CornerRadius="2" VerticalAlignment="Center"
+                                                    Margin="0,0,7,0">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="{DynamicResource SuccessBrush}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsRed}" Value="True">
+                                                                <Setter Property="Background" Value="{DynamicResource DangerBrush}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                            </Border>
+                                            <TextBlock Grid.Column="1" Text="{Binding Text}" FontFamily="Consolas"
+                                                       FontSize="11.5" TextTrimming="CharacterEllipsis" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,12" />
+
+                            <TextBlock Text="音频偏移 / 自动保存" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="偏移" VerticalAlignment="Center" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBox Grid.Column="1" Margin="8,0,0,0" Style="{StaticResource TextBoxStyle}"
+                                         Text="{Binding AudioOffsetMs, UpdateSourceTrigger=LostFocus}" />
+                                <TextBlock Grid.Column="2" Text="ms" VerticalAlignment="Center" Margin="6,0,0,0"
+                                           FontSize="10" Foreground="{DynamicResource FaintTextBrush}" />
+                            </Grid>
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <CheckBox Content="自动保存" Style="{StaticResource CheckBoxStyle}"
+                                          VerticalAlignment="Center" IsChecked="{Binding AutoSaveEnabled}" />
+                                <TextBox Grid.Column="1" Margin="8,0,0,0" Style="{StaticResource TextBoxStyle}"
+                                         Text="{Binding AutoSaveIdleSeconds, UpdateSourceTrigger=LostFocus}"
+                                         IsEnabled="{Binding AutoSaveEnabled}" />
+                                <TextBlock Grid.Column="2" Text="秒" VerticalAlignment="Center" Margin="6,0,0,0"
+                                           FontSize="10" Foreground="{DynamicResource FaintTextBrush}" />
+                            </Grid>
+                            <TextBlock Text="{Binding AutoSaveHintText}" FontSize="10" Margin="0,6,0,0"
+                                       TextWrapping="Wrap" Foreground="{DynamicResource FaintTextBrush}" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+
+            <!-- ===== 底部：播放 / 时间条（模拟 osu! 编辑器底部时间轴） ===== -->
+            <Border Grid.Row="2" Background="{DynamicResource HeaderBackgroundBrush}" Padding="16,9">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="{Binding PlayPauseGlyph}" Style="{StaticResource SecondaryButtonStyle}"
+                                MinWidth="42" FontSize="14" Command="{Binding PlayPauseCommand}"
+                                ToolTip="播放 / 暂停（空格）" />
+                        <Button Content="⏹" Style="{StaticResource SecondaryButtonStyle}" Margin="6,0,0,0" MinWidth="42"
+                                Command="{Binding StopCommand}" ToolTip="停止（Esc）" />
+                        <TextBlock Margin="14,0,0,0" VerticalAlignment="Center" FontFamily="Consolas" FontSize="15"
+                                   Text="{Binding CurrentTimeText}" Foreground="{DynamicResource AccentBrush}" />
+                        <TextBlock Margin="6,0" VerticalAlignment="Center" Foreground="{DynamicResource FaintTextBrush}"
+                                   Text="/" />
+                        <TextBlock VerticalAlignment="Center" FontFamily="Consolas" FontSize="11.5"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" Text="{Binding DurationText}" />
+                    </StackPanel>
+
+                    <TextBlock Grid.Column="1" Text="{Binding StatusDetail}" FontSize="11.5" Margin="20,0"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding BpmText}" FontSize="11.5" FontFamily="Consolas"
+                                   VerticalAlignment="Center" Margin="0,0,14,0"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <Button Content="保存" Style="{StaticResource PrimaryButtonStyle}"
+                                Command="{Binding SaveChartCommand}" ToolTip="Ctrl+S" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+        <!-- ===== 全屏覆盖层结束 ===== -->
     </Grid>
 </UserControl>

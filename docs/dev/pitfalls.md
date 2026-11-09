@@ -229,6 +229,24 @@
 - ⚠ **`hitSample` 别多写一个冒号**：普通键是 `x,y,time,type,hitSound,hitSample`，
   `hitSample` 自己就是 `a:b:c:d:filename`（末尾那个 `:` 后面是可为空的文件名）。
   再补一个 `":"` 会写出 `0:0:0:0::`（多一个空段）—— osu! 能容忍但文件里留了假空文件名（自检抓到过）。
+- **多选 / 框选**（`NoteSelection` / `MarqueeSelection`，都是纯逻辑）：选中项存的是
+  `HitObjects` 的**下标**，所以**每次删 note 之后必须调 `OnNoteRemoved`**（否则选择会错位到别的 note 上）；
+  批量删就从大到小删再 `Clear`。多选整体拖动要「先回滚成原值、再 `CommitBatch`」，
+  这样撤销栈里只有一步（拖动过程中直接改内存做预览）。
+- ⚠ **`NoteIndex.RangeFor` 的上界是闭区间**：内部要用 `UpperBound` 而不是 `LowerBound`，
+  否则恰好落在上界的 note 会被漏掉 —— 表现为「框选框到 LN 的头却选不中」（自检抓到过）。
+- **Z/V（osu! 编辑器习惯）**：跳转 + 「锚点 → 目标」之间同轨 note 的**区间扩选**。
+  锚点存在 `ChartEditor` 里，框选结束后会把锚点定在框的中心 + 记录框到的列，
+  所以「框选 → 按 V」是在原选择上继续扩，不会把选择清掉（用户明确要求）。
+- **全屏编辑**：`IFullscreenHost` + 覆盖层（同邮件 / PDF 的做法）。⚠ 覆盖层里的画布是**另一个**
+  `ChartCanvas` 实例，两个画布连同一个 `ChartEditor`；所以鼠标事件处理全提到 `Handle*` 方法里两边转发，
+  坐标换算前要先 `canvas.ApplyLayoutTo(editor)`（轨道可能被调窄，不同步就会「点左边选中右边那列」）。
+  ⚠ 视图 `Unloaded` 时要主动退出全屏，否则切走后外壳的标题栏 / 侧边栏还是藏着的。
+- ⚠ **Note 浏览区调窄后，标尺的 X 不再是 0**：命中测试 / 「点标尺拖播放头」/ 光标形状都要按
+  `LaneLeft`（快照里的值）判断，别再写 `RulerWidth`。留白区点击**不能**被夹到第 0 / 最后一列
+  去放 note（`ChartEditor.IsInsideLane` 挡掉）。
+  布局算法在 `LaneLayout.Compute`（纯函数，自检覆盖）；调窄时**空白留在右侧**，
+  标尺始终紧贴轨道左边 —— 左右对半分会让标尺孤零零飘在中间（截图里踩过）。
 
 ### 棋牌（五子棋 / 象棋）
 - 主机是唯一权威：客户端只从 `state` 重建，任意时刻状态都能整体重建房间与棋局。
