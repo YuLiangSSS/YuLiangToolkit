@@ -66,6 +66,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("task-manager", "任务管理器：数字格式化 / 结束任务三级方案 / 开机启动解析与启停标记 / 保护名单 / 进程行 / 真实只读采样"),
     ("app-manager", "应用管理器：注册表过滤与去重 / 安装日期 / 大小与盘符 / 卸载命令行拆分 / 排序 / 配置（真实只读扫描）"),
     ("tetris", "游戏：俄罗斯方块（7-bag 出块 / SRS 旋转与墙踢 / 消行计分升级 / 暂存 / 幽灵 / 配置）"),
+    ("board-new-games", "棋牌新游戏：斗地主（牌型 / 比大小 / 发牌 / 叫牌 / 结算）+ 军棋（布阵 / 走法 / 裁判 / 暗棋 / 胜负）"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1285,6 +1286,11 @@ RunGroupModule("app-manager", "应用管理器", AppManagerChecks.Run);
 // 碰撞与边界、7-bag 出块、移动·软降·硬降、消行·计分·升级、暂存、幽灵落点、顶死判负、配置默认值与夹取。
 // 纯逻辑，不创建窗口、不渲染、不碰真实 Data/Config。
 RunGroupModule("tetris", "俄罗斯方块", TetrisChecks.Run);
+
+// 「斗地主 / 军棋」的规则层：牌型识别与比大小、发牌、叫牌与结算；
+// 军棋棋盘布局、走法（铁路 / 工兵拐弯 / 行营）、裁判（大吃小 / 炸弹 / 工兵排雷 / 夺旗）、布阵与胜负、暗棋过滤。
+// 纯逻辑，不建窗口、不联网。
+RunGroupModule("board-new-games", "斗地主/军棋", BoardGamesNewGameChecks.Run);
 
 EnterGroup("shell");
 

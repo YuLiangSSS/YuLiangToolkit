@@ -160,6 +160,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/TaskManagerChecks.cs'    @('task-manager') 'L3' 'task manager formatting / kill plan / startup / process row assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/AppManagerChecks.cs'     @('app-manager') 'L3' 'app manager include rules / date / size / command line / sort assertions (real scan is read-only)')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/TetrisChecks.cs'         @('tetris') 'L3' 'tetris pieces / SRS kicks / line clears / score / hold / config assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/BoardGamesNewGameChecks.cs' @('board-new-games') 'L3' 'doudizhu patterns / junqi rules assertions')
 
     # ---------- tests: anything else in the self-check project is unknown wiring ----------
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/*.cs' @('ALL') 'L4' 'unmapped self-check source' -Fallback)
