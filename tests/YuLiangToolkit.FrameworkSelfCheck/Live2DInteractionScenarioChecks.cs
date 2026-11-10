@@ -302,5 +302,23 @@ internal static class Live2DInteractionScenarioChecks
         C("戳脸彩蛋：表情名是「＞＜」、台词是「有点痒痒的」",
             PokeReaction.ExpressionName == "＞＜" && PokeReaction.Line == "有点痒痒的",
             $"{PokeReaction.ExpressionName} / {PokeReaction.Line}");
+
+        // ==================================================================
+        // 十、摸胸反应：抱胸动作 + 三档表情 / 台词
+        // ==================================================================
+        C("摸胸：好感分档（低 / 中 / 高）与指定台词",
+            ChestReaction.Resolve(10) is { } lowChest && lowChest.Lines.Contains("手拿开！") &&
+            lowChest.Expressions.Contains("黑脸") && lowChest.MouthFormTarget < 0 &&
+            ChestReaction.Resolve(50) is { } midChest && midChest.Lines.Contains("你在摸哪里！") &&
+            midChest.Expressions.Contains("脸红") && midChest.Expressions.Contains("＞＜") &&
+            ChestReaction.Resolve(90) is { } highChest &&
+            highChest.Lines.Contains("想摸摸吗？") && highChest.Lines.Contains("这个手感，你喜欢吗？") &&
+            highChest.Expressions.Contains("脸红") && highChest.Expressions.Contains("爱心眼") &&
+            highChest.MouthFormTarget > 0 && highChest.MouthSmileTarget > 0,
+            "");
+
+        C("摸胸：动作是「抱胸致意」、保持 2.8 秒，到点还原",
+            ChestReaction.GestureId == "抱胸致意" && Math.Abs(ChestReaction.DurationSeconds - 2.8) < 0.01,
+            $"{ChestReaction.GestureId} / {ChestReaction.DurationSeconds}s");
     }
 }

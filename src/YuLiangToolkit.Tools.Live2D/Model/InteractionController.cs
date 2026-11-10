@@ -732,7 +732,8 @@ internal sealed class InteractionController
     {
         StartReaction(ReactionKind.Protect, ProtectDuration);
         _playGesture("抱胸致意");
-        ApplyReactionExpression(_age % 2 < 1 ? "黑脸" : "屑屑眼");
+        // 表情交给会话按好感度选（高好感脸红+爱心眼、中好感脸红+＞＜、低好感黑脸），
+        // 这里不再固定黑脸 / 屑屑眼，避免高好感时黑脸和爱心眼叠在一起。
         _raiseInteraction("protect", "护住");
     }
 

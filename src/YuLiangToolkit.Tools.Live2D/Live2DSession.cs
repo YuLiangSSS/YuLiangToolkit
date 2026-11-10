@@ -141,8 +141,11 @@ public sealed class Live2DSession
     private bool _pokeReactionTriggered;
     private bool _pokeReactionVisualApplied;
     private bool _pokeReactionSpeechDone;
-    private ExpressionEntry? _temporaryInteractionExpression;
+    private readonly List<ExpressionEntry> _temporaryInteractionExpressions = new();
     private TimeSpan _temporaryInteractionExpressionClearAt = TimeSpan.MinValue;
+    private int _temporaryGestureGeneration;
+    private string? _lastChestLine;
+    private TimeSpan _lastChestReactionAt = TimeSpan.MinValue;
     private string? _lastInteractionVoiceLine;
     private string? _lastInteractionVoiceEvent;
 
@@ -3010,6 +3013,39 @@ public sealed class Live2DSession
         }
     }
 
+    /// <summary>停止当前手势（播作者退出动作回正）。</summary>
+    public void StopGesture()
+    {
+        try { _runtime?.StopGesture(); }
+        catch (Exception ex) { _viewModel?.Log("停止手势失败：" + ex.Message); }
+    }
+
+    /// <summary>
+    /// 播放一个手势并在 <paramref name="seconds"/> 秒后自动播退出动作还原（表情区的手势按钮 / 摸胸动作共用）。
+    /// 期间如果换了别的手势，定时器不会再动新动作。
+    /// </summary>
+    public void PlayGestureTemporarily(string id, double seconds = 3.0)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return;
+        PlayGesture(id);
+        var generation = ++_temporaryGestureGeneration;
+        var delay = TimeSpan.FromSeconds(Math.Clamp(seconds, 0.5, 15.0));
+        _ = Task.Delay(delay).ContinueWith(_ =>
+        {
+            try
+            {
+                _viewModel?.Ui(() =>
+                {
+                    if (generation != _temporaryGestureGeneration) return;
+                    var runtime = _runtime;
+                    if (runtime is not null && string.Equals(runtime.ActiveGesture, id.Trim(), StringComparison.Ordinal))
+                        StopGesture();
+                });
+            }
+            catch { /* 忽略 */ }
+        });
+    }
+
     /// <summary>播放一个表演。</summary>
     public void PlayPerformance(string id)
     {
@@ -3232,6 +3268,9 @@ public sealed class Live2DSession
         }
 
         ApplySpeechSettings();
+        var runtimeBeforeSpeech = _runtime;
+        var gestureBeforeSpeech = runtimeBeforeSpeech?.ActiveGesture;
+        string? startedGesture = null;
         try
         {
             // 关键：onPlaybackStarted 在「音频真正开始播放」的一瞬间回调，
@@ -3242,6 +3281,20 @@ public sealed class Live2DSession
                 // AI 回复自带动作标签时优先摆那个手势；否则按配置随机配一个小动作
                 if (!string.IsNullOrWhiteSpace(gestureId)) PlayGesture(gestureId);
                 else if (allowAutoGesture && _viewModel?.Cfg.SpeechAutoGesture == true) PlayRandomGesture();
+
+                // 记录这次说话新摆出来的手势（含随机小动作）：说完要播退出动作回正，
+                // 不能只处理显式 gestureId，否则「自动聊天随机到竖食指」会一直卡着。
+                try
+                {
+                    var active = _runtime?.ActiveGesture;
+                    if (!string.IsNullOrEmpty(active) &&
+                        !string.Equals(active, gestureBeforeSpeech, StringComparison.Ordinal))
+                    {
+                        startedGesture = active;
+                    }
+                }
+                catch { /* 忽略 */ }
+
                 RaiseSpeechStateChanged();
             });
             if (!ok)
@@ -3260,13 +3313,13 @@ public sealed class Live2DSession
         }
         finally
         {
-            // AI 回复自带的手势：说完话播「退出动作」回正，不要在结束位置突然定住 / 闪回。
-            if (!string.IsNullOrWhiteSpace(gestureId))
+            // 说话时新摆出来的手势（显式或随机）：说完播「退出动作」回正，避免竖食指 / 举手一直卡住。
+            if (startedGesture is not null)
             {
                 try
                 {
                     var runtime = _runtime;
-                    if (runtime is not null && string.Equals(runtime.ActiveGesture, gestureId, StringComparison.Ordinal))
+                    if (runtime is not null && string.Equals(runtime.ActiveGesture, startedGesture, StringComparison.Ordinal))
                         runtime.StopGesture();
                 }
                 catch { /* 手势退出失败不影响说话 */ }
@@ -4208,6 +4261,9 @@ public sealed class Live2DSession
         // 中 / 高好感戳脸彩蛋：小概率做「＞＜」表情 + 说「有点痒痒的」，抢在观察 / 逗你前面
         if (TryPokeReaction(voiceEvent, speak: false)) return;
 
+        // 摸胸（protect 热区）：抱胸动作 + 按好感分档的表情 / 台词，动作和表情到点还原
+        if (TryChestReaction(voiceEvent, speak: false)) return;
+
         // 点额头 / 戳脸：随机触发「观察你 / 逗你」（和自然待机同两类动作）
         if (string.Equals(voiceEvent, "face_cycle", StringComparison.OrdinalIgnoreCase))
         {
@@ -4289,6 +4345,61 @@ public sealed class Live2DSession
         viewModel.Log($"高好感触摸：摇尾巴（{seconds:0.0}s，幅度 {amplitude:0.0}°）");
     }
 
+    // ===================== 摸胸反应：抱胸动作 + 好感分档表情 / 台词 =====================
+
+    /// <summary>
+    /// 点击胸部（protect 热区）：播「抱胸致意」把手搭到胸口，按好感度换表情 / 台词，2.8 秒后
+    /// 手势播退出动作 + 临时表情自动撤掉（不会一直卡着）。
+    /// </summary>
+    private bool TryChestReaction(string? voiceEvent, bool speak)
+    {
+        if (!string.Equals(voiceEvent, "protect", StringComparison.OrdinalIgnoreCase)) return false;
+
+        var viewModel = _viewModel;
+        var runtime = _runtime;
+        if (viewModel is null || runtime is null || runtime.IsLoaded != true) return false;
+
+        var affection = _aiChat?.Affection.Value ?? 50.0;
+        var tier = ChestReaction.Resolve(affection);
+
+        if (speak)
+        {
+            var line = ChestReaction.PickLine(tier, _lastChestLine, Random.Shared);
+            if (string.IsNullOrEmpty(line)) return false;
+            _lastChestLine = line;
+            try { EnsureAiChat().AppendLocalPetMessage(line); } catch { /* 聊天服务没准备好就只说话 */ }
+            var tone = tier.MinAffection >= 85
+                ? SpeechToneCatalog.Affectionate
+                : tier.MinAffection >= 30
+                    ? SpeechToneCatalog.Shy
+                    : SpeechToneCatalog.Angry;
+            viewModel.Log($"摸胸台词（好感 {affection:0}）：{line}");
+            SpeakText(line, tone, allowAutoGesture: false);
+            return true;
+        }
+
+        var now = _clock.Elapsed;
+        if (_lastChestReactionAt != TimeSpan.MinValue &&
+            now - _lastChestReactionAt < TimeSpan.FromMilliseconds(800))
+        {
+            return true;
+        }
+
+        _lastChestReactionAt = now;
+        foreach (var expressionName in tier.Expressions)
+        {
+            ApplyTemporaryInteractionExpression(expressionName, ChestReaction.DurationSeconds);
+        }
+
+        // 嘴形：高好感微笑、中 / 低好感嘴角下沉；不晃脸（抱胸动作本身已经有手势）
+        runtime.StartPokeReaction(ChestReaction.DurationSeconds, swayDegrees: 0,
+            tier.MouthFormTarget, tier.MouthSmileTarget);
+        // 抱胸致意 = 作者原生「默认手切举手」进入 / 「举手切默认手」退出，到点自动还原
+        PlayGestureTemporarily(ChestReaction.GestureId, ChestReaction.DurationSeconds);
+        viewModel.Log($"摸胸反应：好感 {affection:0} → 表情 {string.Join("+", tier.Expressions)} + 抱胸动作");
+        return true;
+    }
+
     // ===================== 戳脸彩蛋：＞＜ + 「有点痒痒的」 =====================
 
     /// <summary>
@@ -4335,7 +4446,7 @@ public sealed class Live2DSession
         return true;
     }
 
-    /// <summary>施加一个临时互动表情（到点只撤掉这一个，不影响用户自己开的表情 / 装饰）。</summary>
+    /// <summary>施加一个临时互动表情（到点只撤掉这些，不影响用户自己开的表情 / 装饰）。</summary>
     private void ApplyTemporaryInteractionExpression(string expressionName, double seconds)
     {
         var runtime = _runtime;
@@ -4345,11 +4456,16 @@ public sealed class Live2DSession
         if (expression is null) return;
 
         ApplyExpression(expression, 0.25);
-        _temporaryInteractionExpression = expression;
-        _temporaryInteractionExpressionClearAt = _clock.Elapsed + TimeSpan.FromSeconds(Math.Clamp(seconds, 0.5, 30));
+        if (!_temporaryInteractionExpressions.Any(e =>
+                string.Equals(e.FilePath, expression.FilePath, StringComparison.OrdinalIgnoreCase)))
+        {
+            _temporaryInteractionExpressions.Add(expression);
+        }
+        var until = _clock.Elapsed + TimeSpan.FromSeconds(Math.Clamp(seconds, 0.5, 30));
+        if (until > _temporaryInteractionExpressionClearAt) _temporaryInteractionExpressionClearAt = until;
     }
 
-    /// <summary>帧循环里到期撤掉临时互动表情（只 RemoveExpression 这一个）。</summary>
+    /// <summary>帧循环里到期撤掉临时互动表情（只 RemoveExpression 这些）。</summary>
     private void UpdateInteractionExpressionExpiry()
     {
         if (_temporaryInteractionExpressionClearAt == TimeSpan.MinValue ||
@@ -4359,10 +4475,13 @@ public sealed class Live2DSession
         }
 
         _temporaryInteractionExpressionClearAt = TimeSpan.MinValue;
-        var expression = _temporaryInteractionExpression;
-        _temporaryInteractionExpression = null;
-        if (expression is null) return;
-        try { _runtime?.RemoveExpression(expression, 0.5); } catch { /* 忽略 */ }
+        if (_temporaryInteractionExpressions.Count == 0) return;
+        var expressions = _temporaryInteractionExpressions.ToArray();
+        _temporaryInteractionExpressions.Clear();
+        foreach (var expression in expressions)
+        {
+            try { _runtime?.RemoveExpression(expression, 0.5); } catch { /* 忽略 */ }
+        }
     }
 
     // ===================== 观察用户 / 逗你（场景 1 / 2） =====================
@@ -4492,6 +4611,11 @@ public sealed class Live2DSession
 
         var affection = _aiChat?.Affection.Value ?? 50.0;
         if (TryPokeReaction(voiceEvent, speak: true))
+        {
+            _lastInteractionVoiceAt = now;
+            return;
+        }
+        if (TryChestReaction(voiceEvent, speak: true))
         {
             _lastInteractionVoiceAt = now;
             return;

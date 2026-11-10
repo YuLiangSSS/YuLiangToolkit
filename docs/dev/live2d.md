@@ -1783,6 +1783,35 @@ InteractionController._raiseInteraction(voiceEvent, displayName)
 - 自检：`PokeReaction.ShouldTrigger` 门槛 / 概率边界、表情名 / 台词常量；
 - 调试钩子：`YLT_LIVE2D_POKE_DEMO=1`（+ `YLT_LIVE2D_POKE_SHOT=<png>`）强制做一次「＞＜ + 晃脸微微笑」并截图退出。
 
+## 25. 摸胸反应 + 手势还原修复（v1.23.0）
+
+### 25.1 摸胸（protect 热区）
+
+- 数据在 `Play/ChestReaction.cs`：三档（≥85 高 / ≥30 中 / 其余低），每档 `Expressions[]`、嘴形目标
+  (`MouthFormTarget` / `MouthSmileTarget`)、台词池；动作统一 **抱胸致意**（作者原生 enter/exit 动作），保持 **2.8 秒**；
+- `Live2DSession.TryChestReaction(voiceEvent, speak)`：
+  - 只对 `protect` 生效，抢在旧的 `InteractionScenarios` / 观察路径之前 return；
+  - 视觉：按档位 `ApplyTemporaryInteractionExpression` 叠表情（高：脸红+爱心眼；中：脸红+＞＜；低：黑脸），
+    再 `StartPokeReaction(2.8, sway:0, 档位嘴形目标)`（高微笑、低/中嘴角下沉），再
+    `PlayGestureTemporarily("抱胸致意", 2.8)`；
+  - 动作 / 表情都是临时的：到点临时表情只 `RemoveExpression`、手势播退出动作（`举手切默认手`）；
+  - 语音：按档位选台词 + 语气（高 Affectionate / 中 Shy / 低 Angry），写聊天记录；
+- `InteractionController.StartProtect` 不再固定黑脸 / 屑屑眼（交给会话按好感选），避免高好感黑脸压爱心眼。
+
+### 25.2 手势还原修复
+
+- **根因 1**：`SpeakAsyncCore` 之前只在「显式 gestureId」时停手势；自动聊天「随机小动作」抽到竖食指 / 举手后没人停，
+  原生手势 Hold 阶段会一直保持 → 卡住。现在在 `onPlaybackStarted` 里记录「这次说话**新摆出来**的手势」
+  （对比说话前 `ActiveGesture`），说完话统一 `StopGesture()`（播退出动作）；
+- **根因 2**：表情区的「竖食指开 / 关」以前直接改 `Movement` 参数，没有退出动作。现在特判成手势：
+  开 = `PlayGestureTemporarily("竖起食指", 3)`（3 秒后自动退出），关 = `StopGesture()`；
+- **根因 3**：组合预设 / 表情切换不会停手势；新增 `Session.PlayGestureTemporarily()`（记录 generation，
+  3 秒后若还是这个手势才停），换别的手势不会误停；
+- 表情区「✋ 手势」新增按钮：举手（打招呼）/ 举手（搭胸）/ 竖起食指 / 狗尾草；点一下播放、3 秒后自动还原，
+  再点一次立即还原（VM `GestureChips` + `ToggleGestureChipCommand`，XAML 用 `ExpressionChipButtonStyle`）；
+- 自检：`ChestReaction` 三档 / 指定台词 / 动作与时长常量；手势还原靠上面的行为修复（无头自检不跑窗口动画）。
+
+
 
 
 

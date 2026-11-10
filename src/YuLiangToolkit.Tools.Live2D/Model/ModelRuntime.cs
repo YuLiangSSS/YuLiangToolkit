@@ -290,6 +290,9 @@ public sealed class ModelRuntime : IDisposable
     private double _pokeReactionRemainingSeconds;
     private double _pokeReactionDurationSeconds;
     private double _pokeReactionElapsedSeconds;
+    private double _pokeSwayDegrees = 7;
+    private float _pokeMouthFormTarget = 0.55f;
+    private float _pokeMouthSmileTarget = 0.45f;
 
     /// <summary>互动语音事件（参数 = 语音事件 key：pat_head / face_cycle / pinch / tickle / protect / hand）。</summary>
     public event EventHandler<string>? InteractionHappened;
@@ -639,15 +642,23 @@ public sealed class ModelRuntime : IDisposable
     public bool IsPokeReacting => _pokeReactionRemainingSeconds > 0;
 
     /// <summary>
-    /// 戳脸彩蛋的「微微笑 + 左右晃一下脸」：
-    /// 嘴形 <c>ParamMouthForm</c> 向 +0.55 抬、<c>MouthSmile_L/R</c> 向 +0.45 抬；
-    /// 头 <c>ParamAngleX</c> 以 0.9Hz、±7° 左右晃，首尾 0.25s 淡入淡出，默认 2.5 秒后回正。
+    /// 临时「嘴形 + 晃脸」反应（戳脸彩蛋 / 摸胸反应共用）：
+    /// 嘴形 <c>ParamMouthForm</c> → <paramref name="mouthFormTarget"/>、<c>MouthSmile_L/R</c> → <paramref name="mouthSmileTarget"/>；
+    /// 头 <c>ParamAngleX</c> 以 0.9Hz、±<paramref name="swayDegrees"/> 左右晃（传 0 = 不晃），首尾 0.25s 淡入淡出。
     /// </summary>
-    public void StartPokeReaction(double seconds = 2.5)
+    /// <param name="seconds">持续秒数（0.8~6，默认 2.5）。</param>
+    /// <param name="swayDegrees">左右晃脸角度（0 = 只改嘴形；默认 7）。</param>
+    /// <param name="mouthFormTarget">嘴形目标（笑 +0.55 / 生气 -0.45 / 黑脸 -0.7）。</param>
+    /// <param name="mouthSmileTarget">嘴角上扬目标（笑 +0.45 / 生气 -0.2 / 无 0）。</param>
+    public void StartPokeReaction(double seconds = 2.5, double swayDegrees = 7,
+        float mouthFormTarget = 0.55f, float mouthSmileTarget = 0.45f)
     {
         _pokeReactionDurationSeconds = Math.Clamp(seconds, 0.8, 6.0);
         _pokeReactionRemainingSeconds = _pokeReactionDurationSeconds;
         _pokeReactionElapsedSeconds = 0;
+        _pokeSwayDegrees = Math.Clamp(swayDegrees, 0, 20);
+        _pokeMouthFormTarget = mouthFormTarget;
+        _pokeMouthSmileTarget = mouthSmileTarget;
     }
 
     /// <summary>立刻结束戳脸彩蛋并回正嘴形 / 头角度。</summary>
@@ -677,12 +688,12 @@ public sealed class ModelRuntime : IDisposable
         var weight = (float)Math.Min(1.0, Math.Min(progress / 0.1, (1.0 - progress) / 0.1));
         if (weight < 0) weight = 0;
 
-        var sway = (float)(Math.Sin(2 * Math.PI * 0.9 * _pokeReactionElapsedSeconds) * 7.0) * weight;
+        var sway = (float)(Math.Sin(2 * Math.PI * 0.9 * _pokeReactionElapsedSeconds) * _pokeSwayDegrees) * weight;
         if (_pokeAngleX is not null) _pokeAngleX.Value = _pokeAngleX.DefaultValue + sway;
 
-        WritePokeMouth(_pokeMouthForm, 0.55f, weight);
-        WritePokeMouth(_pokeMouthSmileL, 0.45f, weight);
-        WritePokeMouth(_pokeMouthSmileR, 0.45f, weight);
+        WritePokeMouth(_pokeMouthForm, _pokeMouthFormTarget, weight);
+        WritePokeMouth(_pokeMouthSmileL, _pokeMouthSmileTarget, weight);
+        WritePokeMouth(_pokeMouthSmileR, _pokeMouthSmileTarget, weight);
 
         if (_pokeReactionRemainingSeconds <= 0) WritePokeReactionDefault();
     }

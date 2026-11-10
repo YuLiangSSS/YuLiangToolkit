@@ -739,6 +739,28 @@
                                     </ItemsControl.ItemsPanel>
                                 </ItemsControl>
 
+                                <!-- 手势（举手 / 竖食指 / 狗尾草）：点一下播放，再点一次或约 3 秒后自动播退出动作还原 -->
+                                <TextBlock Style="{StaticResource ExpressionGroupHeaderStyle}"
+                                           Text="✋ 手势（点一下播放，自动还原）"
+                                           ToolTip="举手（打招呼 / 搭胸）、竖起食指、拿起狗尾草；点一下播放，再点一次立刻还原（约 3 秒后也会自动还原）" />
+                                <ItemsControl ItemsSource="{Binding GestureChips}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Style="{StaticResource ExpressionChipButtonStyle}"
+                                                    Content="{Binding Label}"
+                                                    Margin="0,0,6,6"
+                                                    Command="{Binding DataContext.ToggleGestureChipCommand, RelativeSource={RelativeSource AncestorType={x:Type ItemsControl}}}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip="播放后约 3 秒自动还原；再点一下立刻还原" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
                                 <TextBlock Style="{StaticResource ExpressionGroupHeaderStyle}"
                                            Text="{Binding DecorationRows.Count, StringFormat='🎀 装饰（{0}）'}"
                                            ToolTip="穿戴 / 摆件 / 体型这类偏装饰的东西：和表情一样可以多个同时叠加" />

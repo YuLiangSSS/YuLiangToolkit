@@ -139,6 +139,7 @@ public sealed class Live2DViewModel : ToolViewModelBase
         ClearExpressionsCommand = new RelayCommand(_ => ClearAllExpressions());
         ApplyExpressionPresetCommand = new RelayCommand(parameter => ApplyExpressionPreset(parameter as ExpressionPresetItem));
         BuildExpressionPresets();
+        ToggleGestureChipCommand = new RelayCommand(parameter => ToggleGestureChip(parameter as ActionChipViewModel));
         TogglePetCommand = new RelayCommand(_ => Session.TogglePet());
         CenterPetCommand = new RelayCommand(_ => Session.CenterPet());
         ResetPetPositionCommand = new RelayCommand(_ => Session.ResetPetPosition());
@@ -400,6 +401,21 @@ public sealed class Live2DViewModel : ToolViewModelBase
     /// 组合预设（一键套用：先全部清除，再逐个叠加）。按钮由界面按这个集合生成，加预设只改这里。
     /// </summary>
     public ObservableCollection<ExpressionPresetItem> ExpressionPresets { get; } = new();
+
+    /// <summary>
+    /// 「表情 / 姿势」分组里的手势按钮：举手（打招呼）/ 举手（搭胸）/ 竖起食指 / 狗尾草。
+    /// 点一下播放，约 3 秒后自动播退出动作还原（也可以再点一次立刻还原）。
+    /// </summary>
+    public IReadOnlyList<ActionChipViewModel> GestureChips { get; } = new[]
+    {
+        new ActionChipViewModel("举手打招呼", "举手（打招呼）"),
+        new ActionChipViewModel("抱胸致意", "举手（搭胸）"),
+        new ActionChipViewModel("竖起食指", "竖起食指"),
+        new ActionChipViewModel("拿起狗尾草", "狗尾草"),
+    };
+
+    /// <summary>表情区手势按钮：播放 / 再点还原。</summary>
+    public RelayCommand ToggleGestureChipCommand { get; }
 
     /// <summary>表情统计文本（「N 个表情 · 已激活 M 个」）。</summary>
     public string ExpressionSummaryText
@@ -4368,6 +4384,34 @@ public sealed class Live2DViewModel : ToolViewModelBase
         var runtime = Runtime;
         if (runtime is null || !runtime.IsLoaded) return;
 
+        // 「竖食指开 / 关」以前是直接改参数，手势会一直卡在竖起状态；
+        // 改成走手势播放 / 停止（作者原生 enter/exit 动画），点开自动播、到点 / 再点会播退出动作还原。
+        if (string.Equals(row.Name, "竖食指开", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(row.Name, "竖食指关", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                if (string.Equals(row.Name, "竖食指开", StringComparison.OrdinalIgnoreCase))
+                {
+                    Session.PlayGestureTemporarily("竖起食指", 3.0);
+                    Log("手势：竖起食指（3 秒后自动还原）");
+                    StatusText = "竖起食指…";
+                }
+                else
+                {
+                    Session.StopGesture();
+                    Log("手势：竖起食指 → 还原");
+                    StatusText = "放下手";
+                }
+                RefreshExpressionStates(runtime);
+            }
+            catch (Exception ex)
+            {
+                Log("切换竖食指失败：" + ex.Message);
+            }
+            return;
+        }
+
         try
         {
             var fade = Math.Clamp(Cfg.ExpressionFadeSeconds, 0, 2);
@@ -4391,6 +4435,33 @@ public sealed class Live2DViewModel : ToolViewModelBase
         catch (Exception ex)
         {
             Log("切换表情失败：" + ex.Message);
+        }
+    }
+
+    /// <summary>表情区「举手 / 竖食指 / 狗尾草」按钮：点一下播放，再点 / 3 秒后自动还原。</summary>
+    private void ToggleGestureChip(ActionChipViewModel? chip)
+    {
+        if (chip is null) return;
+        var runtime = Runtime;
+        if (runtime is null || !runtime.IsLoaded) return;
+        try
+        {
+            if (string.Equals(runtime.ActiveGesture, chip.Id, StringComparison.Ordinal))
+            {
+                Session.StopGesture();
+                Log($"手势还原：{chip.Label}");
+                StatusText = $"已还原：{chip.Label}";
+            }
+            else
+            {
+                Session.PlayGestureTemporarily(chip.Id, 3.0);
+                Log($"手势：{chip.Label}（3 秒后自动还原）");
+                StatusText = chip.Label;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log("手势切换失败：" + ex.Message);
         }
     }
 
