@@ -92,7 +92,7 @@ public sealed record CheckersSeatItem(string PointKey, string PointName, string 
 /// <summary>
 /// 「跳棋」界面 VM：选角坐下（第一个人定规则组合）、让棋、走棋、AI、联机。
 /// </summary>
-public sealed class CheckersViewModel : ToolViewModelBase
+public sealed partial class CheckersViewModel : ToolViewModelBase
 {
     private readonly List<CheckersPlayer> _seatPlayers = new();
     private CheckersGame _game;
@@ -140,6 +140,7 @@ public sealed class CheckersViewModel : ToolViewModelBase
         RemoveCommand = new RelayCommand(_ => RemoveSelected(), _ => CanRemove);
         ClearCommand = new RelayCommand(_ => ClearBoard());
 
+        InitializeNetCommands();
         RefreshAll();
     }
 
@@ -356,6 +357,15 @@ public sealed class CheckersViewModel : ToolViewModelBase
     /// <summary>点某个角。</summary>
     private void ClickSeat(CheckersPoint point)
     {
+        // 联机：客户端只上报，由房主决定
+        if (_isOnline && !_isHostOnline)
+        {
+            var mine = _seatPlayers.FirstOrDefault(p => p.Home == point);
+            if (mine is not null && mine.Id == _myId) _ = _session?.SendLeaveSeatAsync();
+            else _ = _session?.SendSitAsync(point);
+            return;
+        }
+
         var existing = _seatPlayers.FirstOrDefault(p => p.Home == point);
 
         // 点自己的角 → 退出
@@ -444,6 +454,7 @@ public sealed class CheckersViewModel : ToolViewModelBase
         StatusText = $"{_playerCount} 人局开局：{string.Join("、", _seatPlayers.Select(p => $"{p.Name}（{CheckersBoard.DisplayName(p.Home)}）"))}";
         RefreshBoard();
         TryAiTurn();
+        BroadcastState();
     }
 
     /// <summary>点棋盘上的格子（选中 / 走棋）。</summary>
@@ -454,6 +465,15 @@ public sealed class CheckersViewModel : ToolViewModelBase
         // 已经有选中 → 试着走到这里
         if (_selected is { } from)
         {
+            // 联机客户端：上报给房主
+            if (_isOnline && !_isHostOnline)
+            {
+                _ = _session?.SendMoveAsync(from.X, from.Y, x, y);
+                _selected = null;
+                RefreshBoard();
+                return;
+            }
+
             var error = _game.Move(_game.CurrentPlayerId, from.X, from.Y, x, y);
             if (error.Length == 0)
             {
@@ -462,6 +482,7 @@ public sealed class CheckersViewModel : ToolViewModelBase
                 RefreshBoard();
                 CheckOver();
                 TryAiTurn();
+                BroadcastState();
                 return;
             }
 

@@ -66,6 +66,48 @@
                 <StackPanel>
                     <Border Style="{StaticResource CardStyle}" Padding="14,12">
                         <StackPanel>
+                            <Grid>
+                                <TextBlock Text="联机（局域网）" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding NetBadgeText}" HorizontalAlignment="Right" FontSize="11"
+                                           VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Grid>
+
+                            <StackPanel Visibility="{Binding CanJoinNet, Converter={StaticResource BoolToVis}}">
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="玩家名" FontSize="11.5" VerticalAlignment="Center" Margin="0,0,8,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBox Grid.Column="1" Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding Cfg.PlayerName, UpdateSourceTrigger=PropertyChanged}" />
+                                </Grid>
+                                <Button Content="开房间（当房主）" Style="{StaticResource PrimaryButtonStyle}" Margin="0,8,0,0"
+                                        HorizontalAlignment="Stretch" Command="{Binding StartHostCommand}" />
+                                <TextBox Style="{StaticResource TextBoxStyle}" Margin="0,8,0,0"
+                                         Text="{Binding Cfg.LastJoinAddress, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="对方发来的地址，例如 192.168.1.5:5310" />
+                                <Button Content="加入房间" Style="{StaticResource PrimaryButtonStyle}" Margin="0,6,0,0"
+                                        HorizontalAlignment="Stretch" Command="{Binding JoinRoomCommand}" />
+                            </StackPanel>
+
+                            <StackPanel Margin="0,8,0,0"
+                                        Visibility="{Binding CanLeaveNet, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="{Binding HostAddress}" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap"
+                                           Visibility="{Binding HostAddress, Converter={StaticResource EmptyToVisInverse}}" />
+                                <Button Content="离开房间" Style="{StaticResource SecondaryButtonStyle}" Margin="0,6,0,0"
+                                        HorizontalAlignment="Stretch" Command="{Binding LeaveRoomCommand}" />
+                            </StackPanel>
+
+                            <TextBlock Text="{Binding NetNotice}" FontSize="10.5" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}" Padding="14,12" Margin="0,12,0,0">
+                        <StackPanel>
                             <TextBlock Text="人数（2 / 3 / 4 / 6，5 人没有合法排布）" FontSize="13" FontWeight="SemiBold" />
                             <ComboBox ItemsSource="{Binding PlayerCountOptions}" DisplayMemberPath="Label"
                                       SelectedItem="{Binding SelectedPlayerCount}" Style="{StaticResource ComboBoxStyle}"

@@ -166,6 +166,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/SnakeChecks.cs' @('snake') 'L3' 'snake engine / modes / edge / respawn / scoring / nine ai levels assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/LudoChecks.cs' @('ludo') 'L3' 'ludo board / takeoff / exact finish / capture / flight line / turns assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/CheckersChecks.cs' @('checkers') 'L3' 'checkers geometry / seat rules / jumps / win / handicap / ai assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/CheckersNetChecks.cs' @('checkers-net') 'L3' 'checkers net loopback assertions')
 
     # ---------- tests: anything else in the self-check project is unknown wiring ----------
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/*.cs' @('ALL') 'L4' 'unmapped self-check source' -Fallback)
