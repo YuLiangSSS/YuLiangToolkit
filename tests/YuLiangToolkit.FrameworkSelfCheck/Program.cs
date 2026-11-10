@@ -71,6 +71,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("go", "围棋：落子 / 提子 / 禁自杀 / 打劫 / 停一手 / 数子计分 / 悔棋认输 / 快照 / AI"),
     ("snake", "贪吃蛇：引擎（吃果 / 边缘 / 碰撞 / 重生 / 两种玩法）/ 评分权重 / 九档 AI"),
     ("ludo", "飞行棋：棋盘路线 / 起飞规则 / 精确到终点 / 踩子 / 飞行线踢子 / 回合 / 胜负"),
+    ("checkers", "跳棋：六芒星棋盘 121 格 / 2·3·4·6 人座位规则 / 跳与走一格 / 占满对面角 / 让棋 / AI"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1311,6 +1312,10 @@ RunGroupModule("snake", "贪吃蛇", SnakeChecks.Run);
 // 飞行棋：15×15 十字棋盘、52 格外圈、四色、起飞规则（含 5 点后门）、精确到终点回退、
 // 踩子与中间飞行线踢子、掷 6 再掷、胜负。纯逻辑，不建窗口、不联网。
 RunGroupModule("ludo", "飞行棋", LudoChecks.Run);
+
+// 跳棋：六芒星 121 格几何、2/3/4/6 人座位组合（第一个选位的人定规则）、
+// 跳与连跳、可选走一格、占满对面角才胜、防卡出生点、让棋、AI。纯逻辑，不联网。
+RunGroupModule("checkers", "跳棋", CheckersChecks.Run);
 
 EnterGroup("shell");
 
