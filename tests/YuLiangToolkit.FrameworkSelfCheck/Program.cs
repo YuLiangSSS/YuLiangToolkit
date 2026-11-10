@@ -68,6 +68,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("tetris", "游戏：俄罗斯方块（7-bag 出块 / SRS 旋转与墙踢 / 消行计分升级 / 暂存 / 幽灵 / 配置）"),
     ("board-new-games", "棋牌新游戏：斗地主（牌型 / 比大小 / 发牌 / 叫牌 / 结算）+ 军棋（布阵 / 走法 / 裁判 / 暗棋 / 胜负）"),
     ("ai-games", "电脑对手：五子棋 / 象棋 / 斗地主 / 军棋 / 俄罗斯方块的 AI 与四档难度 + 四国军棋规则"),
+    ("go", "围棋：落子 / 提子 / 禁自杀 / 打劫 / 停一手 / 数子计分 / 悔棋认输 / 快照 / AI"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1296,6 +1297,10 @@ RunGroupModule("board-new-games", "斗地主/军棋", BoardGamesNewGameChecks.Ru
 // 五个游戏的电脑对手（AI）+ 四档难度（入门 / 普通 / 困难 / 大师），以及四国军棋的棋盘与规则。
 // 纯逻辑：AI 只算不渲染，四国军棋只跑规则，不建窗口、不联网。
 RunGroupModule("ai-games", "电脑对手/四国军棋", AiAndFourJunqiChecks.Run);
+
+// 围棋：规则（提子 / 禁自杀 / 打劫 / 停一手 / 中国规则数子）+ AI（四档难度）。
+// 纯逻辑，不建窗口、不联网。
+RunGroupModule("go", "围棋", GoChecks.Run);
 
 EnterGroup("shell");
 

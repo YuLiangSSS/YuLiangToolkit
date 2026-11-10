@@ -162,6 +162,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/TetrisChecks.cs'         @('tetris') 'L3' 'tetris pieces / SRS kicks / line clears / score / hold / config assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/BoardGamesNewGameChecks.cs' @('board-new-games') 'L3' 'doudizhu patterns / junqi rules assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/AiAndFourJunqiChecks.cs' @('ai-games') 'L3' 'ai difficulty / gomoku / xiangqi / doudizhu / junqi / tetris ai / four-kingdoms junqi assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/GoChecks.cs' @('go') 'L3' 'go rules / capture / suicide / ko / scoring / snapshot / ai assertions')
 
     # ---------- tests: anything else in the self-check project is unknown wiring ----------
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/*.cs' @('ALL') 'L4' 'unmapped self-check source' -Fallback)
