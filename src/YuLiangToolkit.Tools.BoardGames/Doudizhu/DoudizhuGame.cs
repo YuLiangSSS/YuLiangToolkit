@@ -98,14 +98,13 @@ public sealed class DoudizhuGame
     private readonly List<Card> _played = new();
     private readonly Random _random;
 
-    /// <summary>创建一局（还没发牌）。</summary>
+    /// <summary>创建一局（还没发牌，<see cref="Phase"/> = Waiting）。</summary>
     /// <param name="mode">发牌模式。</param>
     /// <param name="random">随机源（传固定种子可复现，自检用）。</param>
     public DoudizhuGame(DoudizhuMode mode = DoudizhuMode.Classic, Random? random = null)
     {
         Mode = mode;
         _random = random ?? new Random();
-        Reset();
     }
 
     // ---------------------------------------------------------------- 状态
@@ -173,8 +172,8 @@ public sealed class DoudizhuGame
 
     // ---------------------------------------------------------------- 发牌
 
-    /// <summary>重新发牌（回到叫牌阶段）。</summary>
-    public void Reset()
+    /// <summary>把桌面 / 记录 / 手牌都清空（<see cref="Reset"/> 与 <see cref="ResetToLobby"/> 共用）。</summary>
+    private void ClearTable()
     {
         for (var i = 0; i < _hands.Length; i++) _hands[i].Clear();
         _bottom.Clear();
@@ -183,12 +182,28 @@ public sealed class DoudizhuGame
         _history.Clear();
         Array.Clear(_playCounts);
 
-        Phase = DoudizhuPhase.Waiting;
         LandlordSeat = -1;
         BidScore = 0;
+        CurrentSeat = 0;
         TableSeat = -1;
         TablePattern = null;
         PassCount = 0;
+        BombCount = 0;
+    }
+
+    /// <summary>回到「还没发牌」的初始状态（进工具页时用，不自动发牌）。</summary>
+    public void ResetToLobby()
+    {
+        ClearTable();
+        Phase = DoudizhuPhase.Waiting;
+        Result = null;
+    }
+
+    /// <summary>重新发牌（回到叫牌阶段）。</summary>
+    public void Reset()
+    {
+        ClearTable();
+        Phase = DoudizhuPhase.Waiting;
         Result = null;
 
         var decks = Mode == DoudizhuMode.DoubleDeck ? 2 : 1;
@@ -427,6 +442,37 @@ public sealed class DoudizhuGame
         _hands[seat].Clear();
         if (cards is not null) _hands[seat].AddRange(cards);
         SortHand(_hands[seat]);
+    }
+
+    /// <summary>
+    /// 客户端专用：用房主发来的快照覆盖本端状态（本端不跑规则，只按快照渲染）。
+    /// <para>手牌用快照里的那一份（只含自己），别人的张数、桌面、结算都照搬。</para>
+    /// </summary>
+    public void ApplySnapshot(DoudizhuSnapshot snapshot)
+    {
+        if (snapshot is null) return;
+
+        Phase = snapshot.Phase;
+        LandlordSeat = snapshot.LandlordSeat;
+        BidScore = snapshot.BidScore;
+        CurrentSeat = snapshot.CurrentSeat;
+        BombCount = snapshot.BombCount;
+        Result = snapshot.Result;
+
+        if (snapshot.Seat >= 0 && snapshot.Seat < DoudizhuSeats.Count)
+        {
+            _hands[snapshot.Seat].Clear();
+            _hands[snapshot.Seat].AddRange(snapshot.Hand);
+        }
+
+        _tableCards.Clear();
+        _tableCards.AddRange(snapshot.TableCards);
+        TablePattern = snapshot.Pattern;
+        TableSeat = snapshot.TableSeat;
+        PassCount = 0;
+
+        _bottom.Clear();
+        _bottom.AddRange(snapshot.Bottom);
     }
 
     /// <summary>本局打出的炸弹 / 王炸总数（结算翻倍用）。</summary>

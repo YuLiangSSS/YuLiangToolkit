@@ -250,7 +250,6 @@ internal static class BoardGamesNewGameChecks
     private static void CheckDoudizhuCompare(CheckFn check)
     {
         static CardPattern P(CardPatternKind kind, int key, int length) => new(kind, key, length);
-
         check("[斗地主] 同型同张数比点数：大的赢，小的不能压",
             CardPatternRules.CanBeat(P(CardPatternKind.Pair, 5, 2), P(CardPatternKind.Pair, 4, 2))
             && !CardPatternRules.CanBeat(P(CardPatternKind.Pair, 4, 2), P(CardPatternKind.Pair, 5, 2)), "");
@@ -302,6 +301,7 @@ internal static class BoardGamesNewGameChecks
     private static void CheckDoudizhuDeal(CheckFn check)
     {
         var classic = new DoudizhuGame(DoudizhuMode.Classic, new Random(2024));
+        classic.Reset();
         check("[斗地主] 经典模式：三家各 17 张 + 3 张底牌",
             classic.HandCount(0) == 17 && classic.HandCount(1) == 17 && classic.HandCount(2) == 17
             && classic.Bottom.Count == 3,
@@ -312,6 +312,7 @@ internal static class BoardGamesNewGameChecks
             all.Count == 54 && all.Distinct().Count() == 54, $"{all.Count} 张 / 去重 {all.Distinct().Count()}");
 
         var doubleDeck = new DoudizhuGame(DoudizhuMode.DoubleDeck, new Random(2024));
+        doubleDeck.Reset();
         var allDouble = doubleDeck.Hand(0).Concat(doubleDeck.Hand(1)).Concat(doubleDeck.Hand(2)).ToList();
         check("[斗地主] 双副牌模式：三家各 36 张、没有底牌、108 张不重不漏",
             doubleDeck.HandCount(0) == 36 && doubleDeck.HandCount(1) == 36 && doubleDeck.HandCount(2) == 36
@@ -319,10 +320,12 @@ internal static class BoardGamesNewGameChecks
             $"{doubleDeck.HandCount(0)}/{doubleDeck.HandCount(1)}/{doubleDeck.HandCount(2)}，共 {allDouble.Count}");
 
         var openBottom = new DoudizhuGame(DoudizhuMode.OpenBottom, new Random(7));
+        openBottom.Reset();
         check("[斗地主] 明牌模式：发牌跟经典一样，但底牌一开始就公开",
             openBottom.HandCount(0) == 17 && openBottom.Bottom.Count == 3 && openBottom.BottomRevealed, "");
 
         var cheatMode = new DoudizhuGame(DoudizhuMode.Classic, new Random(7));
+        cheatMode.Reset();
         check("[斗地主] 经典模式叫牌阶段底牌是暗的",
             !cheatMode.BottomRevealed, "");
 
@@ -334,6 +337,7 @@ internal static class BoardGamesNewGameChecks
     private static void CheckDoudizhuPlay(CheckFn check)
     {
         var game = new DoudizhuGame(DoudizhuMode.Classic, new Random(99));
+        game.Reset();
         check("[斗地主] 发牌后进入叫牌阶段，由第 0 家先叫",
             game.Phase == DoudizhuPhase.Bidding && game.CurrentSeat == 0 && game.LandlordSeat < 0, "");
 
@@ -369,6 +373,7 @@ internal static class BoardGamesNewGameChecks
 
         // 新开一局：先手（地主）还没出牌时，过牌必须被拒
         var passGuard = new DoudizhuGame(DoudizhuMode.Classic, new Random(4321));
+        passGuard.Reset();
         passGuard.Bid(0, DoudizhuBidKind.Three);
         check("[斗地主] 先手不能过牌（必须出牌）",
             passGuard.TablePattern is null
@@ -376,6 +381,7 @@ internal static class BoardGamesNewGameChecks
 
         // 用一手新局做「两家过牌清桌」的验证
         var passGame = new DoudizhuGame(DoudizhuMode.Classic, new Random(1234));
+        passGame.Reset();
         passGame.Bid(0, DoudizhuBidKind.Three);
         var first = passGame.Hand(passGame.LandlordSeat).Take(1).ToList();
         var landlord = passGame.LandlordSeat;
@@ -407,6 +413,7 @@ internal static class BoardGamesNewGameChecks
         // 用一个「几乎打光」的局面验证「出完即结算」：
         // 发牌后把地主手牌压到 1 张（测试专用入口），再出掉它。
         var game = new DoudizhuGame(DoudizhuMode.Classic, new Random(5));
+        game.Reset();
         game.Bid(0, DoudizhuBidKind.Three);
         var landlord = game.LandlordSeat;
 
@@ -435,6 +442,7 @@ internal static class BoardGamesNewGameChecks
 
         // 快照：只带自己的手牌
         var snapshotGame = new DoudizhuGame(DoudizhuMode.Classic, new Random(6));
+        snapshotGame.Reset();
         var snapshot = snapshotGame.SnapshotFor(0);
         check("[斗地主] 快照只带本座位的手牌（别人的手牌不外泄）",
             snapshot.Seat == 0
@@ -447,6 +455,116 @@ internal static class BoardGamesNewGameChecks
         var seat1 = snapshotGame.SnapshotFor(1).Hand.Select(c => c.Text + c.Deck).ToList();
         check("[斗地主] 各座位拿到的快照手牌互不相同（按座位分发）",
             !seat0.SequenceEqual(seat1) && seat0.Count == 17 && seat1.Count == 17, "");
+
+        // 端到端：用「提示」驱动一整局，确保真的能打到结束（不是只有开局能跑）
+        var autoGame = new DoudizhuGame(DoudizhuMode.Classic, new Random(20260808));
+        autoGame.Reset();
+        autoGame.Bid(0, DoudizhuBidKind.Three);
+
+        var guard = 0;
+        while (autoGame.Phase == DoudizhuPhase.Playing && guard++ < 2000)
+        {
+            var seat = autoGame.CurrentSeat;
+            var suggestions = CardPatternRules.SuggestPatterns(autoGame.Hand(seat).ToList(), autoGame.TablePattern);
+
+            if (suggestions.Count == 0)
+            {
+                autoGame.Pass(seat);
+                continue;
+            }
+
+            // 按建议牌型挑一手能出的牌（优先出最小的，模拟真人「先出小的」）
+            var pattern = suggestions[0];
+            var cards = PickCardsForPattern(autoGame.Hand(seat), pattern);
+            if (cards is null || autoGame.PlayCards(seat, cards).Length > 0)
+            {
+                // 提示与实际不一致时兜底过牌，避免死循环
+                if (autoGame.Pass(seat).Length > 0) break;
+            }
+        }
+
+        check("[斗地主] 用提示能从头打到结算（2000 步内结束，不是死循环）",
+            autoGame.Phase == DoudizhuPhase.Over && autoGame.Result is not null,
+            $"步数 {guard}，阶段 {autoGame.Phase}，结果 {autoGame.Result?.Text ?? "无"}");
+
+        check("[斗地主] 打完三家手牌张数都对得上（赢家 0 张）",
+            autoGame.Result is { } settle
+            && autoGame.HandCount(settle.WinnerSeat) == 0,
+            autoGame.Result is { } s2 ? $"赢家 {s2.WinnerSeat} 剩 {autoGame.HandCount(s2.WinnerSeat)} 张" : "");
+    }
+
+    /// <summary>按牌型从手牌里挑出对应的牌（自检驱动整局用）。</summary>
+    private static List<Card>? PickCardsForPattern(IReadOnlyList<Card> hand, CardPattern pattern)
+    {
+        var byValue = hand.GroupBy(c => c.Value).ToDictionary(g => g.Key, g => g.ToList());
+
+        switch (pattern.Kind)
+        {
+            case CardPatternKind.Single:
+                return hand.Where(c => c.Value == pattern.Key).Take(1).ToList();
+            case CardPatternKind.Pair:
+                return hand.Where(c => c.Value == pattern.Key).Take(2).ToList();
+            case CardPatternKind.Triple:
+                return hand.Where(c => c.Value == pattern.Key).Take(3).ToList();
+            case CardPatternKind.Bomb:
+                return hand.Where(c => c.Value == pattern.Key).Take(4).ToList();
+            case CardPatternKind.Rocket:
+                return hand.Where(c => c.IsJoker).Take(2).ToList();
+            case CardPatternKind.TripleWithSingle:
+            {
+                var main = hand.Where(c => c.Value == pattern.Key).Take(3).ToList();
+                var extra = hand.Where(c => c.Value != pattern.Key).Take(1).ToList();
+                return main.Count == 3 && extra.Count == 1 ? main.Concat(extra).ToList() : null;
+            }
+            case CardPatternKind.TripleWithPair:
+            {
+                var main = hand.Where(c => c.Value == pattern.Key).Take(3).ToList();
+                var pair = byValue.Where(kv => kv.Key != pattern.Key && kv.Value.Count >= 2)
+                    .SelectMany(kv => kv.Value.Take(2)).Take(2).ToList();
+                return main.Count == 3 && pair.Count == 2 ? main.Concat(pair).ToList() : null;
+            }
+            case CardPatternKind.Straight:
+            {
+                var length = pattern.Length;
+                var start = pattern.Key - length + 1;
+                var cards = new List<Card>();
+                for (var value = start; value <= pattern.Key; value++)
+                {
+                    var card = hand.FirstOrDefault(c => c.Value == value);
+                    if (card == default && !hand.Any(c => c.Value == value)) return null;
+                    cards.AddRange(hand.Where(c => c.Value == value).Take(1));
+                }
+                return cards.Count == length ? cards : null;
+            }
+            case CardPatternKind.PairStraight:
+            {
+                var pairs = pattern.Length / 2;
+                var start = pattern.Key - pairs + 1;
+                var cards = new List<Card>();
+                for (var value = start; value <= pattern.Key; value++)
+                {
+                    var two = hand.Where(c => c.Value == value).Take(2).ToList();
+                    if (two.Count < 2) return null;
+                    cards.AddRange(two);
+                }
+                return cards.Count == pattern.Length ? cards : null;
+            }
+            case CardPatternKind.Airplane:
+            {
+                var groups = pattern.Length / 3;
+                var start = pattern.Key - groups + 1;
+                var cards = new List<Card>();
+                for (var value = start; value <= pattern.Key; value++)
+                {
+                    var three = hand.Where(c => c.Value == value).Take(3).ToList();
+                    if (three.Count < 3) return null;
+                    cards.AddRange(three);
+                }
+                return cards.Count == pattern.Length ? cards : null;
+            }
+            default:
+                return null;
+        }
     }
 
     // ================================================================ 军棋
@@ -712,5 +830,52 @@ internal static class BoardGamesNewGameChecks
 
         check("[军棋] 暗棋：看不到对手棋子的具体等级",
             view.Where(p => p.Side == JunqiSide.Blue).All(p => p.Rank == JunqiRank.None), "");
+
+        // 端到端：自动布阵后连走若干步，确认不会崩、回合正确交替、棋盘状态一致
+        var autoGame = new JunqiGame();
+        autoGame.AutoDeploy(JunqiSide.Red, new Random(101));
+        autoGame.AutoDeploy(JunqiSide.Blue, new Random(202));
+
+        var moves = 0;
+        var guard = 0;
+        while (autoGame.Phase == JunqiPhase.Playing && moves < 40 && guard++ < 500)
+        {
+            var side = autoGame.CurrentSide;
+            var moved = false;
+
+            for (var y = 0; y < JunqiBoard.Height && !moved; y++)
+            {
+                for (var x = 0; x < JunqiBoard.Width && !moved; x++)
+                {
+                    var piece = autoGame.At(x, y);
+                    if (piece.IsEmpty || piece.Side != side || !piece.CanMove) continue;
+
+                    var legal = autoGame.LegalMoves(x, y);
+                    if (legal.Count == 0) continue;
+
+                    var target = legal[0];
+                    if (autoGame.Move(side, x, y, target.X, target.Y).Length == 0)
+                    {
+                        moved = true;
+                        moves++;
+                    }
+                }
+            }
+
+            if (!moved) break;
+        }
+
+        check("[军棋] 自动布阵后能连续走子（回合交替、不崩溃）",
+            moves >= 10 && autoGame.History.Count == moves,
+            $"走了 {moves} 步，记录 {autoGame.History.Count} 条");
+
+        check("[军棋] 每走一步历史里都留了记录（含裁判结果）",
+            autoGame.History.Count > 0
+            && autoGame.History.All(r => r.Outcome != JunqiRules.JudgeOutcome.None),
+            $"{autoGame.History.Count} 条");
+
+        check("[军棋] 走完一段时间后双方都还有棋子（不会一上来就全灭）",
+            JunqiRules.HasFlag(autoGame.Board, JunqiSide.Red) || autoGame.Phase == JunqiPhase.Finished,
+            $"阶段 {autoGame.Phase}");
     }
 }

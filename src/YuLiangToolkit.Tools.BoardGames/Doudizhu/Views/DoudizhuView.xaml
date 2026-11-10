@@ -1,0 +1,312 @@
+<UserControl x:Class="YuLiangToolkit.Tools.BoardGames.Doudizhu.Views.DoudizhuView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             Background="Transparent">
+
+    <!-- 斗地主：左「牌桌」/ 右「房间 + 设置」；牌桌内部「三家信息 / 桌面 / 我的手牌」上下可拖。 -->
+
+    <Grid Margin="28,22,28,26">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="360" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="🃏" FontSize="24" VerticalAlignment="Center" />
+                <TextBlock Text="斗地主" FontSize="20" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding StatusText}" FontSize="12" Margin="16,0,0,0" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+            <TextBlock FontSize="11.5" TextWrapping="Wrap" Margin="0,6,0,0" Foreground="{DynamicResource TextSecondaryBrush}"
+                       Text="{Binding ModeDescriptionText}" />
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="0,14,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="520" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="360" MinWidth="300" />
+            </Grid.ColumnDefinitions>
+
+            <!-- ===== 牌桌 ===== -->
+            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="120" />
+                        <RowDefinition Height="14" />
+                        <RowDefinition Height="230" MinHeight="150" />
+                    </Grid.RowDefinitions>
+
+                    <!-- 三家信息 -->
+                    <ItemsControl Grid.Row="0" ItemsSource="{Binding SeatTexts}" Margin="16,12,16,4">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" FontSize="12" Margin="0,2"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- 桌面：底牌 + 打出的牌 -->
+                    <Border Grid.Row="1" Background="{DynamicResource InputBackgroundBrush}" Margin="16,4,16,0"
+                            CornerRadius="8" ClipToBounds="True">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="12,10,12,0"
+                                        Visibility="{Binding ShowBottom, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="底牌" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <ItemsControl ItemsSource="{Binding BottomCards}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="{DynamicResource CardBackgroundBrush}" CornerRadius="4"
+                                                    Padding="6,3" Margin="0,0,4,0">
+                                                <TextBlock Text="{Binding Text}" FontSize="12" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                          core:ScrollChaining.Enabled="True" Padding="12">
+                                <ItemsControl ItemsSource="{Binding TableCards}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="{DynamicResource CardBackgroundBrush}" CornerRadius="4"
+                                                    Padding="7,4" Margin="0,0,5,5">
+                                                <TextBlock Text="{Binding Text}" FontSize="14" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+
+                    <core:PaneSplitter Grid.Row="2" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                                       Key="doudizhu.桌面与手牌" />
+
+                    <!-- 我的手牌 -->
+                    <Border Grid.Row="3" Style="{StaticResource CardStyle}" Padding="12,10" ClipToBounds="True">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" MinHeight="80" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0">
+                                <TextBlock Text="我的手牌（点牌选中 / 取消）" FontSize="12" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding SelectedHint}" HorizontalAlignment="Right" FontSize="11.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                            </Grid>
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                          core:ScrollChaining.Enabled="True" Margin="0,8,0,0">
+                                <ItemsControl ItemsSource="{Binding Hand}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Command="{Binding DataContext.ToggleCardCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                    CommandParameter="{Binding}" Margin="0,0,5,5" Padding="0" BorderThickness="0"
+                                                    Background="Transparent" Cursor="Hand">
+                                                <Border CornerRadius="4" Padding="9,6" MinWidth="40"
+                                                        Background="{DynamicResource InputBackgroundBrush}">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <TextBlock Text="{Binding Text}" FontSize="15" TextAlignment="Center">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsRed}" Value="True">
+                                                                        <Setter Property="Foreground" Value="#E5534B" />
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                        <Setter Property="Foreground" Value="White" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </Border>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+
+                            <WrapPanel Grid.Row="2" Margin="0,8,0,0">
+                                <Button Content="开始一局" Style="{StaticResource PrimaryButtonStyle}" MinWidth="88"
+                                        Command="{Binding StartGameCommand}" />
+                                <Button Content="出牌" Style="{StaticResource PrimaryButtonStyle}" MinWidth="70" Margin="8,0,0,0"
+                                        Command="{Binding PlayCommand}" IsEnabled="{Binding CanPlaySelected}" />
+                                <Button Content="不要" Style="{StaticResource SecondaryButtonStyle}" MinWidth="66" Margin="8,0,0,0"
+                                        Command="{Binding PassCommand}" IsEnabled="{Binding CanPass}" />
+                                <Button Content="提示" Style="{StaticResource SecondaryButtonStyle}" MinWidth="66" Margin="8,0,0,0"
+                                        Command="{Binding HintCommand}" />
+                                <Button Content="不叫" Style="{StaticResource SecondaryButtonStyle}" MinWidth="66" Margin="8,0,0,0"
+                                        Command="{Binding BidCommand}" CommandParameter="0"
+                                        IsEnabled="{Binding CanBid}" />
+                                <Button Content="叫 1 分" Style="{StaticResource SecondaryButtonStyle}" MinWidth="72" Margin="8,0,0,0"
+                                        Command="{Binding BidCommand}" CommandParameter="1" IsEnabled="{Binding CanBid}" />
+                                <Button Content="叫 2 分" Style="{StaticResource SecondaryButtonStyle}" MinWidth="72" Margin="8,0,0,0"
+                                        Command="{Binding BidCommand}" CommandParameter="2" IsEnabled="{Binding CanBid}" />
+                                <Button Content="叫 3 分" Style="{StaticResource SecondaryButtonStyle}" MinWidth="72" Margin="8,0,0,0"
+                                        Command="{Binding BidCommand}" CommandParameter="3" IsEnabled="{Binding CanBid}" />
+                            </WrapPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                               Key="doudizhu.牌桌与侧栏" />
+
+            <!-- ===== 右栏：房间 + 设置 ===== -->
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          core:ScrollChaining.Enabled="True">
+                <StackPanel>
+                    <!-- 房间 -->
+                    <Border Style="{StaticResource CardStyle}" Padding="14,12">
+                        <StackPanel>
+                            <Grid>
+                                <TextBlock Text="房间（3 人 + 排队）" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding ModeBadgeText}" HorizontalAlignment="Right" FontSize="11.5"
+                                           VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ModeBadgeBrushKey}" Value="SuccessBrush">
+                                                    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+
+                            <StackPanel Visibility="{Binding CanJoin, Converter={StaticResource BoolToVis}}">
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="玩家名" VerticalAlignment="Center" FontSize="11.5" Margin="0,0,8,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBox Grid.Column="1" Text="{Binding PlayerName, UpdateSourceTrigger=PropertyChanged}"
+                                             Style="{StaticResource TextBoxStyle}" />
+                                </Grid>
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="端口" VerticalAlignment="Center" FontSize="11.5" Margin="0,0,8,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBox Grid.Column="1" Text="{Binding ListenPortText, UpdateSourceTrigger=PropertyChanged}"
+                                             Style="{StaticResource TextBoxStyle}" />
+                                    <TextBlock Grid.Column="2" Text="0 = 自动挑" VerticalAlignment="Center" FontSize="10"
+                                               Margin="8,0,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                </Grid>
+                                <Button Content="开房间" Style="{StaticResource PrimaryButtonStyle}" Margin="0,8,0,0"
+                                        HorizontalAlignment="Stretch" Command="{Binding StartHostCommand}" />
+                                <TextBox Text="{Binding JoinAddress, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource TextBoxStyle}" Margin="0,8,0,0"
+                                         ToolTip="对方发来的地址，例如 192.168.1.5:5310" />
+                                <Button Content="加入房间" Style="{StaticResource PrimaryButtonStyle}" Margin="0,6,0,0"
+                                        HorizontalAlignment="Stretch" Command="{Binding JoinRoomCommand}" />
+                            </StackPanel>
+
+                            <StackPanel Margin="0,8,0,0" Visibility="{Binding CanLeave, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="{Binding SeatSummaryText}" FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                                <ItemsControl ItemsSource="{Binding ShareAddresses}" Margin="0,6,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,2">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding}" FontSize="11.5" VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <Button Grid.Column="1" Content="复制" Style="{StaticResource SecondaryButtonStyle}"
+                                                        FontSize="11" Padding="8,2"
+                                                        Command="{Binding DataContext.CopyTextCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Button Content="离开房间" Style="{StaticResource SecondaryButtonStyle}" Margin="0,8,0,0"
+                                        HorizontalAlignment="Stretch" Command="{Binding LeaveRoomCommand}" />
+                            </StackPanel>
+
+                            <TextBlock Text="{Binding NoticeText}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 换人设置 -->
+                    <Border Style="{StaticResource CardStyle}" Padding="14,12" Margin="0,12,0,0"
+                            Visibility="{Binding IsHost, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <TextBlock Text="换人方式（房主设置）" FontSize="13" FontWeight="SemiBold" />
+                            <ComboBox ItemsSource="{Binding AutoRotateOptions}" DisplayMemberPath="Label"
+                                      SelectedItem="{Binding SelectedAutoRotate}" Style="{StaticResource ComboBoxStyle}"
+                                      Margin="0,8,0,0" />
+                            <TextBlock Text="{Binding AutoRotateHintText}" FontSize="10.5" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <ComboBox ItemsSource="{Binding AutoPickOptions}" DisplayMemberPath="Label"
+                                      SelectedItem="{Binding SelectedAutoPick}" Style="{StaticResource ComboBoxStyle}"
+                                      Margin="0,8,0,0" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 模式 -->
+                    <Border Style="{StaticResource CardStyle}" Padding="14,12" Margin="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="发牌模式" FontSize="13" FontWeight="SemiBold" />
+                            <ComboBox ItemsSource="{Binding ModeOptions}" DisplayMemberPath="Label"
+                                      SelectedItem="{Binding SelectedMode}" Style="{StaticResource ComboBoxStyle}"
+                                      Margin="0,8,0,0" IsEnabled="{Binding CanJoin}" />
+                            <TextBlock Text="{Binding ModeDescriptionText}" FontSize="10.5" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBlock Text="{Binding ResultText}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"
+                                       Margin="0,8,0,0" Foreground="{DynamicResource SuccessBrush}"
+                                       Visibility="{Binding ResultText, Converter={StaticResource EmptyToVisInverse}}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</UserControl>

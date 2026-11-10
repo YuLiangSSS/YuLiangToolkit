@@ -34,7 +34,7 @@ public static class ShellCategories
         {
             Path = new[] { BoardGames },
             EmojiIcon = "🎲",
-            Description = "联机五子棋 / 联机象棋：开一个房间就能和朋友对弈",
+            Description = "联机五子棋 / 联机象棋 / 斗地主 / 军棋：开一个房间就能和朋友对弈",
             Order = 20,
         },
         new ToolCategoryInfo
