@@ -1,0 +1,180 @@
+<UserControl x:Class="YuLiangToolkit.Tools.BoardGames.Ludo.Views.LudoView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:YuLiangToolkit.Tools.BoardGames.Ludo.Views"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             Background="Transparent">
+
+    <!-- 飞行棋：左「棋盘」/ 右「座位 + 掷骰 + 规则 + 联机」。
+         座位是「谁进来谁点颜色坐下」，点自己的位子就是退出（空出来给别人）。 -->
+
+    <Grid Margin="28,22,28,26">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="320" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="✈️" FontSize="24" VerticalAlignment="Center" />
+                <TextBlock Text="飞行棋" FontSize="20" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding StatusText}" FontSize="12" Margin="16,0,0,0" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                <TextBlock Text="{Binding TurnText}" FontSize="11.5" Foreground="{DynamicResource AccentBrush}" />
+                <TextBlock Text="{Binding LastMoveText}" FontSize="11.5" Margin="14,0,0,0"
+                           Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="0,14,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="380" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="360" MinWidth="300" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 棋盘 -->
+            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="8" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" MinHeight="240" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Viewbox Grid.Row="0" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <views:LudoBoardView x:Name="Board" Width="620" Height="620" Pieces="{Binding Pieces}" />
+                    </Viewbox>
+
+                    <WrapPanel Grid.Row="1" Orientation="Horizontal" Margin="6,8,6,4">
+                        <Button Style="{StaticResource PrimaryButtonStyle}" MinWidth="88"
+                                Command="{Binding RollCommand}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="掷骰子 " />
+                                <TextBlock Text="{Binding DiceText}" FontWeight="Bold" />
+                            </StackPanel>
+                        </Button>
+                        <Button Content="自动走一步" Style="{StaticResource SecondaryButtonStyle}" MinWidth="96" Margin="8,0,0,0"
+                                Command="{Binding AutoMoveCommand}" />
+                        <Button Content="开新局" Style="{StaticResource SecondaryButtonStyle}" MinWidth="74" Margin="8,0,0,0"
+                                Command="{Binding NewGameCommand}" />
+                        <TextBlock Text="{Binding NoticeText}" FontSize="11" VerticalAlignment="Center" Margin="12,0,0,0"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                    </WrapPanel>
+                </Grid>
+            </Border>
+
+            <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                               Key="ludo.棋盘与侧栏" />
+
+            <!-- 侧栏 -->
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          core:ScrollChaining.Enabled="True">
+                <StackPanel>
+                    <!-- 座位 -->
+                    <Border Style="{StaticResource CardStyle}" Padding="14,12">
+                        <StackPanel>
+                            <TextBlock Text="座位（点颜色坐下 / 点自己的退出）" FontSize="13" FontWeight="SemiBold" />
+
+                            <ItemsControl ItemsSource="{Binding Seats}" Margin="0,8,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,3">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding DisplayText}" FontSize="12" />
+                                            <TextBlock Grid.Column="1" Text="{Binding MyMark}" FontSize="10.5"
+                                                       Foreground="{DynamicResource AccentBrush}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <WrapPanel Margin="0,8,0,0">
+                                <Button Content="红位" Style="{StaticResource SecondaryButtonStyle}" MinWidth="62" Margin="0,0,6,6"
+                                        Command="{Binding SeatRedCommand}" />
+                                <Button Content="黄位" Style="{StaticResource SecondaryButtonStyle}" MinWidth="62" Margin="0,0,6,6"
+                                        Command="{Binding SeatYellowCommand}" />
+                                <Button Content="蓝位" Style="{StaticResource SecondaryButtonStyle}" MinWidth="62" Margin="0,0,6,6"
+                                        Command="{Binding SeatBlueCommand}" />
+                                <Button Content="绿位" Style="{StaticResource SecondaryButtonStyle}" MinWidth="62" Margin="0,0,6,6"
+                                        Command="{Binding SeatGreenCommand}" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 规则 -->
+                    <Border Style="{StaticResource CardStyle}" Padding="14,12" Margin="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="规则（房主可改）" FontSize="13" FontWeight="SemiBold" />
+
+                            <CheckBox Content="掷 6 才能起飞" Margin="0,10,0,0" Style="{StaticResource CheckBoxStyle}"
+                                      IsChecked="{Binding NeedSixToTakeOff}" />
+                            <CheckBox Content="额外规则：掷 5 也能起飞（后门）" Margin="0,7,0,0" Style="{StaticResource CheckBoxStyle}"
+                                      IsChecked="{Binding FiveAlsoTakesOff}" />
+                            <CheckBox Content="掷 6 可以再掷一次" Margin="0,7,0,0" Style="{StaticResource CheckBoxStyle}"
+                                      IsChecked="{Binding ExtraRollOnSix}" />
+                            <CheckBox Content="临近终点必须掷到刚好点数（掷多了往回走）" Margin="0,7,0,0"
+                                      Style="{StaticResource CheckBoxStyle}" IsChecked="{Binding ExactToFinish}" />
+                            <CheckBox Content="踩到别人棋子，让对方的棋子回家" Margin="0,7,0,0"
+                                      Style="{StaticResource CheckBoxStyle}" IsChecked="{Binding CaptureOnLand}" />
+                            <CheckBox Content="经过中间横向飞行线，也能把线上棋子打回家" Margin="0,7,0,0"
+                                      Style="{StaticResource CheckBoxStyle}" IsChecked="{Binding CaptureOnFlightLine}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 联机 -->
+                    <Border Style="{StaticResource CardStyle}" Padding="14,12" Margin="0,12,0,0">
+                        <StackPanel>
+                            <Grid>
+                                <TextBlock Text="联机（局域网）" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding NetBadgeText}" HorizontalAlignment="Right" FontSize="11"
+                                           VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Grid>
+
+                            <StackPanel Visibility="{Binding CanJoinNet, Converter={StaticResource BoolToVis}}">
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="玩家名" FontSize="11.5" VerticalAlignment="Center" Margin="0,0,8,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBox Grid.Column="1" Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding Cfg.PlayerName, UpdateSourceTrigger=PropertyChanged}" />
+                                </Grid>
+                                <Button Content="开房间（当房主）" Style="{StaticResource PrimaryButtonStyle}" Margin="0,8,0,0"
+                                        HorizontalAlignment="Stretch" Command="{Binding StartHostCommand}" />
+                                <TextBox Style="{StaticResource TextBoxStyle}" Margin="0,8,0,0"
+                                         Text="{Binding Cfg.LastJoinAddress, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="对方发来的地址，例如 192.168.1.5:5310" />
+                                <Button Content="加入房间" Style="{StaticResource PrimaryButtonStyle}" Margin="0,6,0,0"
+                                        HorizontalAlignment="Stretch" Command="{Binding JoinRoomCommand}" />
+                            </StackPanel>
+
+                            <Button Content="离开房间" Style="{StaticResource SecondaryButtonStyle}" Margin="0,8,0,0"
+                                    HorizontalAlignment="Stretch" Command="{Binding LeaveRoomCommand}"
+                                    Visibility="{Binding CanLeaveNet, Converter={StaticResource BoolToVis}}" />
+
+                            <TextBlock Text="{Binding ResultText}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"
+                                       Margin="0,8,0,0" Foreground="{DynamicResource SuccessBrush}"
+                                       Visibility="{Binding HasResult, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}" Padding="14,12" Margin="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="玩法速查" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock FontSize="10.5" TextWrapping="Wrap" LineHeight="17" Margin="0,6,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Text="掷骰 → 选一枚能走的棋子（点棋盘上的金圈棋子，或点「自动走一步」）。踩到别人棋子会把对方打回大本营；走过中央黄色飞行线时，线上的对方棋子也会被打回家。临近终点必须掷到刚好点数，掷多了往回退。" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</UserControl>

@@ -70,6 +70,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("ai-games", "电脑对手：五子棋 / 象棋 / 斗地主 / 军棋 / 俄罗斯方块的 AI 与四档难度 + 四国军棋规则"),
     ("go", "围棋：落子 / 提子 / 禁自杀 / 打劫 / 停一手 / 数子计分 / 悔棋认输 / 快照 / AI"),
     ("snake", "贪吃蛇：引擎（吃果 / 边缘 / 碰撞 / 重生 / 两种玩法）/ 评分权重 / 九档 AI"),
+    ("ludo", "飞行棋：棋盘路线 / 起飞规则 / 精确到终点 / 踩子 / 飞行线踢子 / 回合 / 胜负"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1306,6 +1307,10 @@ RunGroupModule("go", "围棋", GoChecks.Run);
 // 贪吃蛇：两种对战玩法（共享果 / 大混战）、边缘规则、碰撞、重生虚化、评分权重、九档 AI。
 // 纯逻辑，不建窗口、不联网。
 RunGroupModule("snake", "贪吃蛇", SnakeChecks.Run);
+
+// 飞行棋：15×15 十字棋盘、52 格外圈、四色、起飞规则（含 5 点后门）、精确到终点回退、
+// 踩子与中间飞行线踢子、掷 6 再掷、胜负。纯逻辑，不建窗口、不联网。
+RunGroupModule("ludo", "飞行棋", LudoChecks.Run);
 
 EnterGroup("shell");
 

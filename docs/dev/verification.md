@@ -111,7 +111,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `src/YuLiangToolkit.Tools.MapDownloader/**` | `map-downloader` | L2 |
 | `src/YuLiangToolkit.Tools.MediaPlayer/**` | `media-player` | L2 |
 | `src/YuLiangToolkit.Tools.OsuMania/**` | `osu-mania`（含星数）+ `osu-mania-editor`（同一个工程里还有谱面编辑器） | L3 |
-| `src/YuLiangToolkit.Tools.BoardGames/**` | `board-games` + `board-net` + `board-room` + `board-new-games` + `ai-games` + `go` | L3 |
+| `src/YuLiangToolkit.Tools.BoardGames/**` | `board-games` + `board-net` + `board-room` + `board-new-games` + `ai-games` + `go` + `ludo` | L3 |
 | `src/YuLiangToolkit.Tools.Games/**`（AI） | `tetris` + `ai-games` + `snake` | L3 |
 | `src/YuLiangToolkit.Tools.PictureViewer/**` | `picture-viewer` | L2 |
 | `src/YuLiangToolkit.Tools.PdfReader/**` | `pdf-reader` | L2 |
@@ -154,6 +154,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `tests/.../AiAndFourJunqiChecks.cs` | `ai-games`（五子棋 / 象棋 / 斗地主 / 军棋 / 俄罗斯方块 AI + 四档难度 + 四国军棋规则） | L3 |
 | `tests/.../GoChecks.cs` | `go`（落子 / 提子 / 禁自杀 / 打劫 / 停一手 / 数子 / 悔棋认输 / 快照 / AI） | L3 |
 | `tests/.../SnakeChecks.cs` | `snake`（引擎 / 两种玩法 / 边缘 / 碰撞 / 重生 / 评分权重 / 九档 AI） | L3 |
+| `tests/.../LudoChecks.cs` | `ludo`（棋盘 / 起飞 / 精确到终点 / 踩子 / 飞行线踢子 / 回合 / 胜负） | L3 |
 | `tests/.../ScreenStickerChecks.cs` | `screen-sticker`（贴纸几何 / 层级顺序 / 最近使用 / 配置默认值） | L3 |
 | `tests/.../ScreenRecorderChecks.cs` | `screen-recorder`（区域换算 / FFmpeg 参数 / 文件名 / 配置默认值） | L3 |
 | `tests/.../MediaEditorChecks.cs` | `media-editor`（ffprobe 解析 / 片段数学 / 裁剪拼接滤镜 / GIF 参数） | L3 |
