@@ -990,7 +990,8 @@
                             </Grid>
 
                             <CheckBox Content="置顶显示" Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0"
-                                      IsChecked="{Binding Cfg.PetTopMost, Mode=TwoWay}" />
+                                      IsChecked="{Binding PetTopMost, Mode=TwoWay}"
+                                      ToolTip="勾选后桌宠总在最上层；取消后桌宠按普通窗口层级，会被其他窗口盖住（改完立刻生效）" />
                             <CheckBox Content="透明区域点击穿透" Style="{StaticResource CheckBoxStyle}" Margin="0,4,0,0"
                                       IsChecked="{Binding Cfg.PetClickThrough, Mode=TwoWay}"
                                       ToolTip="鼠标在模型透明区域时直接穿透到下面的窗口" />

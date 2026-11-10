@@ -875,6 +875,23 @@ public sealed class Live2DViewModel : ToolViewModelBase
         }
     }
 
+    /// <summary>
+    /// 桌宠是否置顶显示（默认开）。关掉后桌宠落在普通窗口层级，不会盖在其他窗口上方。
+    /// 改完立刻套到桌宠窗口（不用重开桌宠）。
+    /// </summary>
+    public bool PetTopMost
+    {
+        get => Cfg.PetTopMost;
+        set
+        {
+            if (Cfg.PetTopMost == value) return;
+            Cfg.PetTopMost = value;
+            OnPropertyChanged();
+            Session.ApplyPetConfig();
+            Log(value ? "桌宠：置顶显示（会盖在窗口上方）" : "桌宠：取消置顶（可被其他窗口盖住）");
+        }
+    }
+
     // ===================== 桌宠鼠标互动玩法 / 待机灵动（设置推给运行时） =====================
 
     /// <summary>鼠标互动玩法（点击 / 摸头 / 捏脸 / 换表情等热区互动）。</summary>
