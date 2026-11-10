@@ -69,6 +69,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("board-new-games", "棋牌新游戏：斗地主（牌型 / 比大小 / 发牌 / 叫牌 / 结算）+ 军棋（布阵 / 走法 / 裁判 / 暗棋 / 胜负）"),
     ("ai-games", "电脑对手：五子棋 / 象棋 / 斗地主 / 军棋 / 俄罗斯方块的 AI 与四档难度 + 四国军棋规则"),
     ("go", "围棋：落子 / 提子 / 禁自杀 / 打劫 / 停一手 / 数子计分 / 悔棋认输 / 快照 / AI"),
+    ("snake", "贪吃蛇：引擎（吃果 / 边缘 / 碰撞 / 重生 / 两种玩法）/ 评分权重 / 九档 AI"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1301,6 +1302,10 @@ RunGroupModule("ai-games", "电脑对手/四国军棋", AiAndFourJunqiChecks.Run
 // 围棋：规则（提子 / 禁自杀 / 打劫 / 停一手 / 中国规则数子）+ AI（四档难度）。
 // 纯逻辑，不建窗口、不联网。
 RunGroupModule("go", "围棋", GoChecks.Run);
+
+// 贪吃蛇：两种对战玩法（共享果 / 大混战）、边缘规则、碰撞、重生虚化、评分权重、九档 AI。
+// 纯逻辑，不建窗口、不联网。
+RunGroupModule("snake", "贪吃蛇", SnakeChecks.Run);
 
 EnterGroup("shell");
 
