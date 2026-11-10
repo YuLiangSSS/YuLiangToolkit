@@ -33,6 +33,12 @@ public sealed class XiangqiConfig : ToolConfig, IBoardGameRoomConfig
     /// <summary>房主开房时默认坐哪边（"red" = 先手位 / "black" = 后手位）；只影响下次开房。</summary>
     public string HostSide { get; set; } = "red";
 
+    /// <summary>同机模式下开电脑对手（开 = 1 人 vs 电脑，关 = 同机双人）。</summary>
+    public bool AiEnabled { get; set; }
+
+    /// <summary>电脑对手难度：<c>beginner</c> / <c>normal</c> / <c>hard</c> / <c>master</c>。</summary>
+    public string AiDifficulty { get; set; } = "normal";
+
     /// <summary>选中棋子时高亮可走点。</summary>
     public bool ShowLegalMoves { get; set; } = true;
 

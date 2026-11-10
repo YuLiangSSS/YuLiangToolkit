@@ -57,6 +57,12 @@ public sealed class GomokuConfig : ToolConfig, IBoardGameRoomConfig
     /// <summary>右侧「棋谱」卡片要不要显示（关掉只影响显示，棋谱本身照常记）。</summary>
     public bool ShowMoveList { get; set; } = true;
 
+    /// <summary>同机模式下开电脑对手（开 = 1 人 vs 电脑，关 = 同机双人）。</summary>
+    public bool AiEnabled { get; set; }
+
+    /// <summary>电脑对手难度：<c>beginner</c> / <c>normal</c> / <c>hard</c> / <c>master</c>。</summary>
+    public string AiDifficulty { get; set; } = "normal";
+
     // ---------------------------------------------------------------- 计算属性
 
     /// <summary>规整后的棋盘路数：只认 15 / 19，其它值一律按 15。</summary>

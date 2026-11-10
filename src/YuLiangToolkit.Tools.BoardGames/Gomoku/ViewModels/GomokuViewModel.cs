@@ -1,6 +1,8 @@
+using System.Windows.Threading;
 using System.Collections.ObjectModel;
 using System.Text.Json;
 using System.Windows;
+using YuLiangToolkit.Core.Games;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Core.Net;
 using YuLiangToolkit.Tools.BoardGames.Gomoku.Views;
@@ -24,7 +26,7 @@ namespace YuLiangToolkit.Tools.BoardGames.Gomoku.ViewModels;
 /// <para><b>线程</b>：基类钩子（<c>Apply*</c> / <c>OnHostAction</c> 等）都在 UI 线程被调用；
 /// 只有禁手点是 <c>Task.Run</c> 算完再 <c>Ui(...)</c> 回来。</para>
 /// </summary>
-public sealed class GomokuViewModel : BoardGameRoomViewModelBase
+public sealed partial class GomokuViewModel : BoardGameRoomViewModelBase
 {
     private GomokuGame _game = new();                 // 基类在构造里可能问状态，先给一局空的占位
     private GomokuBoardViewState _boardState = new();
@@ -63,6 +65,12 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
         // 房间状态（IsOnline / IsSeatedPlayer / IsGamePaused / IsReconnecting）一变，本类的派生状态也跟着刷新，
         // 不然「能不能落子 / 按钮禁用 / 提示文案」会慢半拍。
         PropertyChanged += OnRoomStatePropertyChanged;
+
+        // 电脑对手：定时器 + 从配置恢复（见 GomokuViewModel.Ai.cs）
+        _aiTimer = new DispatcherTimer();
+        _aiTimer.Tick += OnAiTimerTick;
+        _aiDifficulty = AiDifficulties.Parse(Cfg.AiDifficulty);
+        _aiEnabled = Cfg.AiEnabled;
 
         RefreshAll();
         LoadDemoIfRequested();
@@ -503,6 +511,13 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
     /// <summary>同机双人 / 离线练习：本地落子，不广播。</summary>
     private void PlayLocally(GomokuCell side, GomokuPoint point)
     {
+        // 电脑对手：它那一手不许人替它走
+        if (_aiEnabled && side == AiSide)
+        {
+            SetNotice("轮到电脑走棋，稍等", "TextSecondaryBrush");
+            return;
+        }
+
         var error = _game.Play(side, point.X, point.Y);
         if (error is not null)
         {
@@ -512,6 +527,7 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
 
         RefreshAll();
         AnnounceAfterPlay(side, point);
+        TryStartAiTurn();
     }
 
     /// <summary>主机：本端落子后广播快照。</summary>
@@ -527,6 +543,7 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
         RefreshAll();
         if (!_game.IsOver) BroadcastSnapshot();    // 结束的那一手由基类处理时统一广播
         AnnounceAfterPlay(side, point);
+        TryStartAiTurn();
     }
 
     private void AnnounceAfterPlay(GomokuCell side, GomokuPoint point)
@@ -1029,7 +1046,8 @@ public sealed class GomokuViewModel : BoardGameRoomViewModelBase
         _game = new GomokuGame(Cfg.EffectiveBoardSize, Cfg.ForbiddenEnabled) { Started = true };
         _clientMovePending = false;
         RefreshAll();
-        AppendSystemChat("同机双人：黑棋先手，轮流点棋盘落子");
+        AppendSystemChat(_aiEnabled ? "同机对战电脑：你执黑先手，电脑执白" : "同机双人：黑棋先手，轮流点棋盘落子");
+        TryStartAiTurn();
     }
 
     /// <inheritdoc />

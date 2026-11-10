@@ -206,6 +206,48 @@ public sealed class XiangqiGame
     /// <summary>某方是否被将军（摆棋校验 / 界面提示用）。</summary>
     public bool IsInCheckFor(XiangqiSide side) => XiangqiRules.IsInCheck(_board, side);
 
+    // ---------------------------------------------------------------- AI 搜索专用
+
+    /// <summary>
+    /// AI 搜索用：把一步棋<b>不经过规则校验</b>直接落到棋盘上，并返回可撤销的凭据。
+    /// <para>⚠ 仅供 <see cref="XiangqiAi"/> 在自己的搜索循环里成对调用 <see cref="UndoMoveForAi"/>；
+    /// 正式走棋请用 <see cref="Play"/>（它会做完整校验并记谱）。</para>
+    /// </summary>
+    public AiMoveUndo ApplyMoveForAi(XiangqiMove move)
+    {
+        var moved = _board.Get(move.FromX, move.FromY);
+        var captured = _board.Get(move.ToX, move.ToY);
+        var turnBefore = _turn;
+
+        _board.Set(move.ToX, move.ToY, moved);
+        _board.Set(move.FromX, move.FromY, XiangqiPiece.Empty);
+        _turn = Other(turnBefore);
+
+        return new AiMoveUndo(move.FromX, move.FromY, moved, move.ToX, move.ToY, captured, turnBefore);
+    }
+
+    /// <summary>AI 搜索用：撤销 <see cref="ApplyMoveForAi"/> 走的那一步。</summary>
+    public void UndoMoveForAi(AiMoveUndo undo)
+    {
+        _board.Set(undo.FromX, undo.FromY, undo.Moved);
+        _board.Set(undo.ToX, undo.ToY, undo.Captured);
+        _turn = undo.TurnBefore;
+    }
+
+    /// <summary>AI 搜索用的撤销凭据（纯数据）。</summary>
+    /// <param name="FromX">起点 X。</param>
+    /// <param name="FromY">起点 Y。</param>
+    /// <param name="Moved">被移动的棋子。</param>
+    /// <param name="ToX">终点 X。</param>
+    /// <param name="ToY">终点 Y。</param>
+    /// <param name="Captured">被吃掉的棋子（空 = 没吃）。</param>
+    /// <param name="TurnBefore">走之前的行棋方。</param>
+    public readonly record struct AiMoveUndo(
+        int FromX, int FromY, XiangqiPiece Moved, int ToX, int ToY, XiangqiPiece Captured, XiangqiSide TurnBefore);
+
+    private static XiangqiSide Other(XiangqiSide side)
+        => side == XiangqiSide.Red ? XiangqiSide.Black : XiangqiSide.Red;
+
     /// <summary>
     /// 走一步棋。<b>成功返回 null</b>，失败返回中文原因（不抛异常，界面直接显示）。
     /// </summary>

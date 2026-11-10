@@ -235,9 +235,26 @@ public static class XiangqiRules
         return legal;
     }
 
-    /// <summary>这步棋对 side 来说是否合法（真合法：走法 + 不送将 / 不照面）。</summary>
-    public static bool IsLegalMove(XiangqiBoard board, XiangqiSide side, XiangqiMove move)
+    /// <summary>
+    /// 某一方<b>所有</b>棋子的真合法着法（AI 搜索 / 无子可走判负用）。
+    /// </summary>
+    public static IReadOnlyList<XiangqiMove> GenerateAllLegalMoves(XiangqiBoard board, XiangqiSide side)
     {
+        var all = new List<XiangqiMove>(64);
+        for (var y = 0; y < XiangqiBoard.Height; y++)
+        {
+            for (var x = 0; x < XiangqiBoard.Width; x++)
+            {
+                var piece = board.Get(x, y);
+                if (piece.IsEmpty || piece.Side != side) continue;
+                all.AddRange(GenerateLegalMoves(board, side, x, y));
+            }
+        }
+        return all;
+    }
+
+    /// <summary>这步棋对 side 来说是否合法（真合法：走法 + 不送将 / 不照面）。</summary>
+    public static bool IsLegalMove(XiangqiBoard board, XiangqiSide side, XiangqiMove move)    {
         if (board is null || move.IsNone) return false;
         var piece = board.Get(move.FromX, move.FromY);
         if (piece.IsEmpty || piece.Side != side) return false;

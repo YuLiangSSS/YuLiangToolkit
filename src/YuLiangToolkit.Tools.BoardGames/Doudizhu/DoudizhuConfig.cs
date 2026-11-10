@@ -60,6 +60,24 @@ public sealed class DoudizhuConfig : ToolConfig, YuLiangToolkit.Tools.BoardGames
         set => Set(ref _autoPickMode, string.IsNullOrWhiteSpace(value) ? "rotation" : value.Trim());
     }
 
+    private bool _aiEnabled = true;
+
+    /// <summary>单机时另外两家是否由电脑接管（默认开）。</summary>
+    public bool AiEnabled
+    {
+        get => _aiEnabled;
+        set => Set(ref _aiEnabled, value);
+    }
+
+    private string _aiDifficulty = "normal";
+
+    /// <summary>电脑难度：beginner / normal / hard / master。</summary>
+    public string AiDifficulty
+    {
+        get => _aiDifficulty;
+        set => Set(ref _aiDifficulty, string.IsNullOrWhiteSpace(value) ? "normal" : value.Trim());
+    }
+
     private string _mode = "classic";
 
     /// <summary>发牌模式：<c>classic</c>（经典）/ <c>doubleDeck</c>（双副牌 · 炸弹多）/ <c>openBottom</c>（底牌明牌）。</summary>

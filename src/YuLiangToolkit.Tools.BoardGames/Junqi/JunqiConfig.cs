@@ -67,6 +67,24 @@ public sealed class JunqiConfig : ToolConfig, IBoardGameRoomConfig
         set => Set(ref _autoPickMode, string.IsNullOrWhiteSpace(value) ? "rotation" : value.Trim());
     }
 
+    private bool _aiEnabled = true;
+
+    /// <summary>单机时对面是否由电脑接管（默认开）。</summary>
+    public bool AiEnabled
+    {
+        get => _aiEnabled;
+        set => Set(ref _aiEnabled, value);
+    }
+
+    private string _aiDifficulty = "normal";
+
+    /// <summary>电脑难度：beginner / normal / hard / master。</summary>
+    public string AiDifficulty
+    {
+        get => _aiDifficulty;
+        set => Set(ref _aiDifficulty, string.IsNullOrWhiteSpace(value) ? "normal" : value.Trim());
+    }
+
     private string _variant = "duel";
 
     /// <summary>玩法：<c>duel</c>（二人军棋）/ <c>fourKingdoms</c>（四国军棋）。</summary>

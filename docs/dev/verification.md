@@ -111,7 +111,8 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `src/YuLiangToolkit.Tools.MapDownloader/**` | `map-downloader` | L2 |
 | `src/YuLiangToolkit.Tools.MediaPlayer/**` | `media-player` | L2 |
 | `src/YuLiangToolkit.Tools.OsuMania/**` | `osu-mania`（含星数）+ `osu-mania-editor`（同一个工程里还有谱面编辑器） | L3 |
-| `src/YuLiangToolkit.Tools.BoardGames/**` | `board-games` + `board-net` + `board-room` + `board-new-games` | L3 |
+| `src/YuLiangToolkit.Tools.BoardGames/**` | `board-games` + `board-net` + `board-room` + `board-new-games` + `ai-games` | L3 |
+| `src/YuLiangToolkit.Tools.Games/**`（AI） | `tetris` + `ai-games` | L3 |
 | `src/YuLiangToolkit.Tools.PictureViewer/**` | `picture-viewer` | L2 |
 | `src/YuLiangToolkit.Tools.PdfReader/**` | `pdf-reader` | L2 |
 | `src/YuLiangToolkit.Tools.Kps/**` | `kps` | L2 |
@@ -150,6 +151,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `tests/.../AppManagerChecks.cs` | `app-manager`（注册表过滤与去重 / 安装日期 / 大小与盘符 / 卸载命令行拆分 / 排序 / 配置；真实扫描只读，不启动任何卸载程序） | L3 |
 | `tests/.../TetrisChecks.cs` | `tetris`（7 种方块 × 4 朝向 / SRS 墙踢 / 碰撞边界 / 7-bag / 消行计分升级 / 暂存 / 幽灵 / 配置） | L3 |
 | `tests/.../BoardGamesNewGameChecks.cs` | `board-new-games`（斗地主牌型 / 比大小 / 发牌 / 叫牌 / 结算 / 快照；军棋布阵 / 走法 / 裁判 / 暗棋 / 胜负） | L3 |
+| `tests/.../AiAndFourJunqiChecks.cs` | `ai-games`（五子棋 / 象棋 / 斗地主 / 军棋 / 俄罗斯方块 AI + 四档难度 + 四国军棋规则） | L3 |
 | `tests/.../ScreenStickerChecks.cs` | `screen-sticker`（贴纸几何 / 层级顺序 / 最近使用 / 配置默认值） | L3 |
 | `tests/.../ScreenRecorderChecks.cs` | `screen-recorder`（区域换算 / FFmpeg 参数 / 文件名 / 配置默认值） | L3 |
 | `tests/.../MediaEditorChecks.cs` | `media-editor`（ffprobe 解析 / 片段数学 / 裁剪拼接滤镜 / GIF 参数） | L3 |

@@ -1,5 +1,7 @@
+using System.Windows.Threading;
 using System.Collections.ObjectModel;
 using System.Text.Json;
+using YuLiangToolkit.Core.Games;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Tools.BoardGames.Junqi;
 using YuLiangToolkit.Tools.BoardGames.Shared.ViewModels;
@@ -90,7 +92,7 @@ public sealed class JunqiCellItem : ObservableObject
 /// <summary>
 /// 军棋 VM：布阵（自动 + 手动拖动）、走棋、暗棋裁判显示、联机房间。
 /// </summary>
-public sealed class JunqiViewModel : MultiSeatRoomViewModelBase
+public sealed partial class JunqiViewModel : MultiSeatRoomViewModelBase
 {
     private readonly JunqiGame _game = new();
     private JunqiSide _mySide = JunqiSide.Red;
@@ -123,6 +125,7 @@ public sealed class JunqiViewModel : MultiSeatRoomViewModelBase
             ("duel", "二人军棋（陆战棋）"),
             ("fourKingdoms", "四国军棋（4 人两队）"));
 
+        InitializeAi();
         RefreshAll();
 
         // 演示 / 截图：YLT_JUNQI_DEMO=1 时自动布阵，截图里能看到棋子
@@ -216,6 +219,7 @@ public sealed class JunqiViewModel : MultiSeatRoomViewModelBase
         _gameStart();
         RefreshAll();
         BroadcastStateFromRoom();
+        TryStartAiTurn();
     }
 
     private void _gameStart()
@@ -236,6 +240,7 @@ public sealed class JunqiViewModel : MultiSeatRoomViewModelBase
         StatusText = IsMyTurn ? "轮到你走" : "等待对方走棋";
         RefreshAll();
         BroadcastStateFromRoom();
+        TryStartAiTurn();
     }
 
     private void Resign()
@@ -332,6 +337,7 @@ public sealed class JunqiViewModel : MultiSeatRoomViewModelBase
             StatusText = IsMyTurn ? "轮到你走" : "等待对方走棋";
         }
         BroadcastStateFromRoom();
+        TryStartAiTurn();
     }
 
     private JunqiCellItem? CellAt(int x, int y)

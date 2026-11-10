@@ -1,6 +1,8 @@
+using System.Windows.Threading;
 using System.Collections.ObjectModel;
 using System.Text.Json;
 using System.Windows.Input;
+using YuLiangToolkit.Core.Games;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Core.Net;
 using YuLiangToolkit.Tools.BoardGames.Shared;
@@ -23,7 +25,7 @@ namespace YuLiangToolkit.Tools.BoardGames.Xiangqi.ViewModels;
 /// <para><b>席位</b>：基类维护两个上场席位（先手位 = 红方、后手位 = 黑方），本端执哪边只看基类
 /// <see cref="BoardGameRoomViewModelBase.LocalSide"/>；观战 / 同机双人 / 离线都为空字符串（只读）。</para>
 /// </summary>
-public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
+public sealed partial class XiangqiViewModel : BoardGameRoomViewModelBase
 {
     /// <summary>让先最多几步（界面滑块上限）。</summary>
     public const int MaxOpeningFreeMoves = 5;
@@ -55,6 +57,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         _setupBoard = XiangqiBoard.CreateInitial();
         _game = CreateGameFromSetup(started: false);
         PaletteItems = BuildPaletteItems();
+        InitializeAi();          // 电脑对手（见 XiangqiViewModel.Ai.cs）
 
         // ------- 命令（XAML 直接绑）-------
         BoardPointCommand = new RelayCommand(parameter =>
@@ -716,6 +719,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         if (Mode == BoardPlayMode.Host) BroadcastSnapshot();
         RefreshAll();
         AnnounceAfterMove(captured);
+        TryStartAiTurn();
     }
 
     /// <summary>走完 / 收到对方走法后给一句人话提示。</summary>
@@ -1207,6 +1211,7 @@ public sealed class XiangqiViewModel : BoardGameRoomViewModelBase
         ClearSelection();
         RefreshFlip();
         RefreshAll();
+        TryStartAiTurn();
     }
 
     /// <summary>玩法切换：清临时状态、按新玩法刷新翻转与可操作性。</summary>

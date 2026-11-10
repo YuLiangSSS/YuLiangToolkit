@@ -113,6 +113,24 @@ public sealed class TetrisConfig : ToolConfig
         set => Set(ref _listenPort, value is >= 0 and <= 65535 ? value : 0);
     }
 
+    private bool _aiEnabled;
+
+    /// <summary>联机模式里用电脑对手代替真人（房主开着就等于是「我 vs 电脑」）。</summary>
+    public bool AiEnabled
+    {
+        get => _aiEnabled;
+        set => Set(ref _aiEnabled, value);
+    }
+
+    private string _aiDifficulty = "normal";
+
+    /// <summary>电脑难度：beginner / normal / hard / master。</summary>
+    public string AiDifficulty
+    {
+        get => _aiDifficulty;
+        set => Set(ref _aiDifficulty, string.IsNullOrWhiteSpace(value) ? "normal" : value.Trim());
+    }
+
     private string _lastNetMode = "garbage";
 
     /// <summary>上次联机选的模式（<c>garbage</c> / <c>score</c>）。</summary>

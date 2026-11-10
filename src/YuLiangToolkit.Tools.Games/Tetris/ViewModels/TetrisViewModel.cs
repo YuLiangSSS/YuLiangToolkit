@@ -53,6 +53,7 @@ public sealed partial class TetrisViewModel : ToolViewModelBase
         HoldCommand = new RelayCommand(_ => Hold());
         StartOrResumeCommand = new RelayCommand(_ => StartOrResume());
         InitializeNetCommands();
+        InitializeAi();          // 电脑对手（见 TetrisViewModel.Ai.cs）
 
         Cfg.PropertyChanged += (_, e) =>
         {
@@ -339,6 +340,7 @@ public sealed partial class TetrisViewModel : ToolViewModelBase
         OnPropertyChanged(nameof(ComboText));
         StatusText = "进行中";
         RestartFallTimer();
+        StartAiLoop();          // 联机模式下电脑对手开始自动落子（单人模式里是空操作）
     }
 
     /// <summary>按键类操作的前置检查：遮罩没关就先开局，暂停中不动。</summary>

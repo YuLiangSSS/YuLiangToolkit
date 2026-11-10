@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
+using YuLiangToolkit.Core.Games;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Tools.BoardGames.Doudizhu;
 using YuLiangToolkit.Tools.BoardGames.Shared.ViewModels;
@@ -74,6 +75,7 @@ public sealed class DoudizhuViewModel : MultiSeatRoomViewModelBase
             ("openBottom", "底牌明牌"));
 
         // 进页面不自动发牌：手牌在「开始一局」之后才有
+        InitializeAi();          // 单机电脑对手
         _game.ResetToLobby();
         RefreshAll();
         StatusText = "点「开始一局」发牌（联机时房主点）";
@@ -186,6 +188,7 @@ public sealed class DoudizhuViewModel : MultiSeatRoomViewModelBase
         StatusText = "发牌完成，叫地主（1 / 2 / 3 分或不叫）";
         RefreshAll();
         BroadcastStateFromRoom();
+        TryRunAiTurn(allowBid: true);
     }
 
     private void Bid(object? parameter)
@@ -209,6 +212,7 @@ public sealed class DoudizhuViewModel : MultiSeatRoomViewModelBase
         ShowBottom = _game.BottomRevealed;
         RefreshAll();
         BroadcastStateFromRoom();
+        TryRunAiTurn(allowBid: true);
     }
 
     private void PlaySelected()
@@ -225,6 +229,7 @@ public sealed class DoudizhuViewModel : MultiSeatRoomViewModelBase
 
         SelectedHint = "";
         AfterGameStep();
+        TryRunAiTurn(allowBid: false);
     }
 
     private void PassTurn()
@@ -237,6 +242,7 @@ public sealed class DoudizhuViewModel : MultiSeatRoomViewModelBase
         if (error.Length > 0) { SelectedHint = error; return; }
         SelectedHint = "";
         AfterGameStep();
+        TryRunAiTurn(allowBid: false);
     }
 
     private void AfterGameStep()
@@ -458,4 +464,133 @@ public sealed class DoudizhuViewModel : MultiSeatRoomViewModelBase
 
     /// <summary>客户端：过牌。</summary>
     private void SendPass() => _ = Session?.SendActionAsync("pass");
+
+    // ---------------------------------------------------------------- 电脑对手（单机）
+
+    private AiDifficulty _aiDifficulty = AiDifficulty.Normal;
+    private bool _aiEnabled = true;
+    private bool _aiBusy;
+
+    /// <summary>难度选项。</summary>
+    public IReadOnlyList<OptionItem<string>> AiDifficultyOptions { get; } = OptionItem.From(
+        AiDifficulties.All.Select(d => (AiDifficulties.ToKey(d), AiDifficulties.DisplayName(d))).ToArray());
+
+    /// <summary>当前难度。</summary>
+    public AiDifficulty AiDifficulty
+    {
+        get => _aiDifficulty;
+        set
+        {
+            if (!Set(ref _aiDifficulty, value)) return;
+            OnPropertyChanged(nameof(SelectedAiDifficulty));
+            OnPropertyChanged(nameof(AiDifficultyHint));
+            Cfg.AiDifficulty = AiDifficulties.ToKey(value);
+        }
+    }
+
+    /// <summary>难度下拉选中项。</summary>
+    public OptionItem<string> SelectedAiDifficulty
+    {
+        get => OptionItem<string>.Find(AiDifficultyOptions, AiDifficulties.ToKey(_aiDifficulty)) ?? AiDifficultyOptions[1];
+        set
+        {
+            if (value is null) return;
+            AiDifficulty = AiDifficulties.Parse(value.Value);
+        }
+    }
+
+    /// <summary>难度说明。</summary>
+    public string AiDifficultyHint => AiDifficulties.Description(_aiDifficulty);
+
+    /// <summary>单机时另外两家由电脑接管。</summary>
+    public bool AiEnabled
+    {
+        get => _aiEnabled;
+        set
+        {
+            if (!Set(ref _aiEnabled, value)) return;
+            Cfg.AiEnabled = value;
+            OnPropertyChanged(nameof(AiOpponentText));
+        }
+    }
+
+    /// <summary>状态文案。</summary>
+    public string AiOpponentText => _aiEnabled
+        ? $"单机：你 vs 两个电脑（{AiDifficulties.DisplayName(_aiDifficulty)}）"
+        : "单机：三家轮流用这台电脑操作";
+
+    /// <summary>电脑是否正在思考。</summary>
+    public bool AiThinking => _aiBusy;
+
+    /// <summary>初始化（主构造函数里调用）。</summary>
+    private void InitializeAi()
+    {
+        _aiDifficulty = AiDifficulties.Parse(Cfg.AiDifficulty);
+        _aiEnabled = Cfg.AiEnabled;
+    }
+
+    /// <summary>
+    /// 单机时如果轮到的不是本端座位，就让电脑接管这一手。
+    /// <paramref name="allowBid"/> = 现在是叫牌阶段。
+    /// </summary>
+    private void TryRunAiTurn(bool allowBid)
+    {
+        if (!_aiEnabled || IsOnline) return;               // 联机时不接管
+        if (_aiBusy) return;
+        if (_game.Phase is DoudizhuPhase.Over or DoudizhuPhase.Waiting) return;
+        if (_game.CurrentSeat == _mySeat) return;          // 轮到自己
+
+        var seat = _game.CurrentSeat;
+        _aiBusy = true;
+        OnPropertyChanged(nameof(AiThinking));
+
+        var delay = AiDifficulties.ThinkingDelayMs(_aiDifficulty);
+        _ = Task.Delay(delay).ContinueWith(_ => Ui(() => RunAiAction(seat, allowBid)));
+    }
+
+    private void RunAiAction(int seat, bool allowBid)
+    {
+        try
+        {
+            if (_game.Phase == DoudizhuPhase.Bidding && allowBid)
+            {
+                var bid = DoudizhuAi.DecideBid(_game.Hand(seat).ToList(), _game.BidScore, _aiDifficulty);
+                _game.Bid(seat, bid);
+            }
+            else if (_game.Phase == DoudizhuPhase.Playing)
+            {
+                var cards = DoudizhuAi.DecidePlay(
+                    _game.Hand(seat).ToList(), _game.TablePattern, _game.TableCards, _aiDifficulty);
+
+                if (cards.Count == 0 || _game.PlayCards(seat, cards).Length > 0)
+                {
+                    // 出不了 / 出失败：过牌（先手时不能过，那就随便出一张）
+                    if (_game.Pass(seat).Length > 0 && _game.Hand(seat).Count > 0)
+                        _game.PlayCards(seat, new[] { _game.Hand(seat)[0] });
+                }
+            }
+
+            if (_game.Phase == DoudizhuPhase.Over && _game.Result is { } result)
+            {
+                ResultText = result.Text + $"（倍数 ×{result.Multiplier}）";
+                StatusText = result.Text;
+            }
+            else
+            {
+                StatusText = _game.CurrentSeat == _mySeat
+                    ? (_game.Phase == DoudizhuPhase.Bidding ? "轮到你叫地主" : "轮到你出牌")
+                    : "电脑思考中…";
+            }
+
+            RefreshAll();
+        }
+        finally
+        {
+            _aiBusy = false;
+            OnPropertyChanged(nameof(AiThinking));
+        }
+
+        // 可能又轮到下一家电脑
+        TryRunAiTurn(allowBid);
+    }
 }
