@@ -66,7 +66,13 @@ public sealed partial class TetrisViewModel : ToolViewModelBase
         StartNewGame(autoStart: false);
         StatusText = "按「开始游戏」或任意移动键开始";
 
+        // 演示棋盘要在「初始化联机演示」之前铺：
+        // 联机演示（YLT_TETRIS_NET）内部会自己重开一局并铺自己的棋盘，
+        // 顺序反了会把它铺好的局面又冲掉（表现为分数 / 棋盘全是初始值）。
         if (IsDemoMode) SeedDemoBoard();
+
+        // 联机演示必须放在这之后（它会自己 Reset 引擎、铺对抗局面）
+        ApplyDemoNetMode();
     }
 
     // ---------------------------------------------------------------- 配置 / 命令
@@ -266,6 +272,10 @@ public sealed partial class TetrisViewModel : ToolViewModelBase
     private bool ReportToHost(string action)
     {
         if (!IsNetMode) return false;
+
+        // 观战者只能看，任何操作都吞掉（服务端也会忽略）
+        if (IsSpectating) return true;
+
         var session = _session;
         if (session is null || session.IsHost) return false;
         if (_netPhase != TetrisNetPhase.Playing) return true;      // 还没开始：吞掉按键，本地不动

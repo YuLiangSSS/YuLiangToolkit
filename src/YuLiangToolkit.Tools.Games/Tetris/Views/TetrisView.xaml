@@ -125,12 +125,12 @@
                  单人不占地方。 -->
             <Grid Grid.Column="2">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="*" MinHeight="200" />
+                    <RowDefinition Height="*" MinHeight="180" />
                     <RowDefinition Height="12" />
-                    <RowDefinition Height="{Binding RoomPanelVisible, Converter={StaticResource BoolToPaneLength}, ConverterParameter=300}"
+                    <RowDefinition Height="{Binding RoomPanelVisible, Converter={StaticResource BoolToPaneLength}, ConverterParameter=286}"
                                    MinHeight="{Binding RoomPanelVisible, Converter={StaticResource BoolToPaneLength}, ConverterParameter=196}" />
                     <RowDefinition Height="{Binding RoomPanelVisible, Converter={StaticResource BoolToPaneLength}, ConverterParameter=12}" />
-                    <RowDefinition Height="206" MinHeight="150" />
+                    <RowDefinition Height="188" MinHeight="140" />
                 </Grid.RowDefinitions>
 
                 <!-- ===== 分数 / 预览 =====
@@ -152,50 +152,54 @@
                                     <TextBlock Text="分数" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
                                     <TextBlock Text="{Binding ScoreText}" FontSize="24" FontWeight="SemiBold" Margin="0,2,0,0" />
                                 </StackPanel>
-                                <StackPanel Grid.Column="1">
+                                <StackPanel Grid.Column="1"
+                                            Visibility="{Binding IsNetMode, Converter={StaticResource InverseBoolToVis}}">
                                     <TextBlock Text="最高分" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
                                     <TextBlock Text="{Binding HighScoreText}" FontSize="14" Margin="0,6,0,0"
                                                Foreground="{DynamicResource AccentBrush}" TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
                             </Grid>
 
-                            <!-- 等级 / 消行 -->
+                            <!-- 等级 / 消行（和分数并成一行，窄一点也放得下） -->
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <TextBlock Text="等级 " FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding LevelText}" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Text="  ·  已消 " FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding LinesText}" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                            </StackPanel>
+
+                            <!-- 暂存 + 接下来：横向并排，省一半高度（联机时右边那块本来就很挤） -->
                             <Grid Margin="0,10,0,0">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="72" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="等级" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                    <TextBlock Text="{Binding LevelText}" FontSize="16" FontWeight="SemiBold" Margin="0,2,0,0" />
+
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="暂存 C" FontSize="10.5" Margin="0,0,0,4"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <views:TetrominoPoolView Height="40"
+                                                             Orientation="Horizontal"
+                                                             Placeholder="空"
+                                                             Items="{Binding HeldPieces}"
+                                                             HintBrush="{DynamicResource FaintTextBrush}"
+                                                             SlotBrush="{DynamicResource InputBackgroundBrush}" />
                                 </StackPanel>
-                                <StackPanel Grid.Column="1">
-                                    <TextBlock Text="已消行" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                    <TextBlock Text="{Binding LinesText}" FontSize="16" FontWeight="SemiBold" Margin="0,2,0,0" />
+
+                                <StackPanel Grid.Column="1" Margin="10,0,0,0"
+                                            Visibility="{Binding Cfg.ShowNext, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="接下来" FontSize="10.5" Margin="0,0,0,4"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <views:TetrominoPoolView Height="40"
+                                                             Orientation="Horizontal"
+                                                             Placeholder="—"
+                                                             Items="{Binding NextPieces}"
+                                                             HintBrush="{DynamicResource FaintTextBrush}"
+                                                             SlotBrush="{DynamicResource InputBackgroundBrush}" />
                                 </StackPanel>
                             </Grid>
-
-                            <!-- 暂存（固定高度，宁可少给也别裁半截） -->
-                            <TextBlock Text="暂存（C）" FontSize="11.5" Margin="0,12,0,5"
-                                       Foreground="{DynamicResource TextSecondaryBrush}" />
-                            <views:TetrominoPoolView Height="46"
-                                                     Orientation="Horizontal"
-                                                     Placeholder="按 C 暂存"
-                                                     Items="{Binding HeldPieces}"
-                                                     HintBrush="{DynamicResource FaintTextBrush}"
-                                                     SlotBrush="{DynamicResource InputBackgroundBrush}" />
-
-                            <!-- 接下来 3 块（横向一排更省高度，窗口矮的时候也看得全） -->
-                            <TextBlock Text="接下来" FontSize="11.5" Margin="0,10,0,5"
-                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                       Visibility="{Binding Cfg.ShowNext, Converter={StaticResource BoolToVis}}" />
-                            <views:TetrominoPoolView Height="56"
-                                                     Orientation="Horizontal"
-                                                     Placeholder="—"
-                                                     Items="{Binding NextPieces}"
-                                                     HintBrush="{DynamicResource FaintTextBrush}"
-                                                     SlotBrush="{DynamicResource InputBackgroundBrush}"
-                                                     Visibility="{Binding Cfg.ShowNext, Converter={StaticResource BoolToVis}}" />
 
                             <!-- 联机：垃圾行提示（只在互攻模式出现） -->
                             <TextBlock Text="{Binding MyGarbageText}" FontSize="10.5" TextWrapping="Wrap" Margin="0,8,0,0"
@@ -272,10 +276,17 @@
                                 <Button Content="加入房间" Style="{StaticResource PrimaryButtonStyle}" Margin="0,8,0,0"
                                         HorizontalAlignment="Stretch" Command="{Binding JoinRoomCommand}"
                                         IsEnabled="{Binding CanJoinNet}" />
+                                <Button Content="只观战（对战位满了也能看）" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="0,6,0,0" HorizontalAlignment="Stretch"
+                                        Command="{Binding JoinSpectatorCommand}" IsEnabled="{Binding CanJoinNet}"
+                                        ToolTip="以观战身份进入房间：能看两边棋盘，不能操作" />
                             </StackPanel>
 
-                            <!-- 联机中：分享地址（房主）/ 离开 -->
+                            <!-- 联机中：身份 / 分享地址（房主）/ 观战名单 / 离开 -->
                             <StackPanel Margin="0,8,0,0" Visibility="{Binding CanLeaveNet, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="{Binding NetRoleText}" FontSize="11.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource AccentBrush}"
+                                           Visibility="{Binding NetRoleText, Converter={StaticResource EmptyToVisInverse}}" />
                                 <StackPanel Visibility="{Binding HasShareAddresses, Converter={StaticResource BoolToVis}}">
                                     <TextBlock Text="把地址复制发给好友" FontSize="11"
                                                Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -304,6 +315,10 @@
                                     </ItemsControl>
                                 </StackPanel>
 
+                                <!-- 观战者名单（房主与观战者都看得到） -->
+                                <TextBlock Text="{Binding SpectatorCountText}" FontSize="10.5" TextWrapping="Wrap"
+                                           Margin="0,8,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
+
                                 <Button Content="{Binding LeaveNetText}" Style="{StaticResource SecondaryButtonStyle}"
                                         Margin="0,8,0,0" HorizontalAlignment="Stretch"
                                         Command="{Binding LeaveRoomCommand}" IsEnabled="{Binding CanLeaveNet}" />
@@ -329,7 +344,7 @@
                             <!-- 对手：分数 + 垃圾行 + 棋盘缩略图 -->
                             <StackPanel Margin="0,10,0,0"
                                         Visibility="{Binding OpponentPanelVisible, Converter={StaticResource BoolToVis}}">
-                                <TextBlock Text="对手" FontSize="11.5" FontWeight="SemiBold"
+                                <TextBlock Text="{Binding OpponentTitleText}" FontSize="11.5" FontWeight="SemiBold"
                                            Foreground="{DynamicResource TextSecondaryBrush}" />
                                 <TextBlock Text="{Binding GuestScoreText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,4,0,0"
                                            Foreground="{DynamicResource TextPrimaryBrush}" />

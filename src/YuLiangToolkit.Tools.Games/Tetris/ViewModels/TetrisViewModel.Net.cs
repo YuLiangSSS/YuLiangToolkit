@@ -63,6 +63,23 @@ public sealed partial class TetrisViewModel
     /// <summary>截图 / 演示用：设了 <c>YLT_TETRIS_NET=room</c> 时假装房间已开（不联网、不影响真实逻辑）。</summary>
     private bool _demoRoom;
 
+    /// <summary>本端连进房间后的身份（房主 / 对战 / 观战）。</summary>
+    private TetrisMemberRole _netRole = TetrisMemberRole.Host;
+
+    /// <summary>观战者名单（房主与观战者都显示）。</summary>
+    public ObservableCollection<string> SpectatorNames { get; } = new();
+
+    /// <summary>本端是不是观战者（观战时不能操作棋盘）。</summary>
+    public bool IsSpectating => IsNetMode && _netRole == TetrisMemberRole.Spectator;
+
+    /// <summary>观战者人数文案。</summary>
+    public string SpectatorCountText => SpectatorNames.Count == 0
+        ? "暂无观战者"
+        : $"{SpectatorNames.Count} 人观战：{string.Join("、", SpectatorNames)}";
+
+    /// <summary>观战者名单有没有内容。</summary>
+    public bool HasSpectators => SpectatorNames.Count > 0;
+
     // ---------------------------------------------------------------- 界面状态（模式）
 
     /// <summary>当前玩法。</summary>
@@ -265,6 +282,7 @@ public sealed partial class TetrisViewModel
 
     public AsyncRelayCommand StartHostCommand { get; private set; } = null!;
     public AsyncRelayCommand JoinRoomCommand { get; private set; } = null!;
+    public AsyncRelayCommand JoinSpectatorCommand { get; private set; } = null!;
     public AsyncRelayCommand LeaveRoomCommand { get; private set; } = null!;
     public RelayCommand CopyTextCommand { get; private set; } = null!;
 
@@ -273,6 +291,7 @@ public sealed partial class TetrisViewModel
     {
         StartHostCommand = new AsyncRelayCommand(_ => StartHostAsync(), _ => CanJoinNet);
         JoinRoomCommand = new AsyncRelayCommand(_ => JoinRoomAsync(), _ => CanJoinNet);
+        JoinSpectatorCommand = new AsyncRelayCommand(_ => JoinAsSpectatorAsync(), _ => CanJoinNet);
         LeaveRoomCommand = new AsyncRelayCommand(_ => LeaveRoomAsync(), _ => CanLeaveNet);
         CopyTextCommand = new RelayCommand(parameter =>
         {
@@ -289,13 +308,74 @@ public sealed partial class TetrisViewModel
         });
 
         _netMode = TetrisNetProtocol.ParseMode(Cfg.LastNetMode);
+    }
 
-        // 调试 / 截图：YLT_TETRIS_NET=1 直接切到联机互攻；=room 再假装有个对手（不联网）
+    /// <summary>
+    /// 构造末尾调用（<b>必须在 <c>StartNewGame</c> 之后</b>）：按环境变量把联机演示摆出来。
+    /// <para>⚠ 放在 <c>InitializeNetCommands</c> 里会被随后的 <c>StartNewGame</c> 冲掉
+    /// （表现为演示分数 / 棋盘全是初始值），所以单独一步、且调用点要在最后。</para>
+    /// </summary>
+    private void ApplyDemoNetMode()
+    {
         var demo = (Environment.GetEnvironmentVariable("YLT_TETRIS_NET") ?? "").Trim().ToLowerInvariant();
-        if (demo.Length > 0)
+        if (demo.Length == 0) return;
+
+        SwitchMode(demo.StartsWith("score", StringComparison.Ordinal) ? TetrisPlayMode.NetScore : TetrisPlayMode.NetGarbage);
+        if (demo is "room" or "score-room") SeedDemoRoom();
+        if (demo is "spectate") SeedDemoSpectator();
+    }
+
+    /// <summary>
+    /// 截图 / 演示：假装自己是观战者，正在看房主与另一位玩家对战（<b>不联网</b>）。
+    /// </summary>
+    private void SeedDemoSpectator()
+    {
+        _demoRoom = true;
+        _netRole = TetrisMemberRole.Spectator;
+        _guestPresent = true;
+        _netPhase = TetrisNetPhase.Playing;
+        _started = true;
+        IsPaused = false;
+
+        // 大棋盘 = 「房主」的棋盘（观战时左下棋盘显示房主）
+        SeedDemoBoardFor(_engine, 3);
+        RefreshBoard();
+        RefreshScore();
+
+        // 对手区 = 另一位对战玩家
+        _remoteEngine = new TetrisEngine();
+        SeedDemoBoardFor(_remoteEngine, 5);
+        _guestName = "好友";
+        SyncOpponentFromDemoEngine();
+
+        SpectatorNames.Clear();
+        SpectatorNames.Add("小明");
+        SpectatorNames.Add("小红");
+        OnPropertyChanged(nameof(SpectatorCountText));
+        OnPropertyChanged(nameof(HasSpectators));
+
+        SetNetNotice("（演示）观战视角：正在看 房主 vs 好友", "SuccessBrush");
+        StatusText = "观战中（演示）";
+        NotifyOverlay();
+        NotifyNetState();
+    }
+
+    /// <summary>
+    /// 给演示用的引擎铺一个「玩到一半」的棋盘：只动棋盘格子（<see cref="TetrisEngine.SetCell"/>），
+    /// <b>不推进游戏状态</b>（不落地、不判输），所以永远不会出现「游戏结束」。
+    /// </summary>
+    private static void SeedDemoBoardFor(TetrisEngine engine, int seed)
+    {
+        engine.Reset(1, seed);
+
+        // 底部两行铺一段（看起来像刚消过几行），留几个缺口
+        for (var y = TetrisEngine.Height - 2; y < TetrisEngine.Height; y++)
         {
-            SwitchMode(demo == "score" ? TetrisPlayMode.NetScore : TetrisPlayMode.NetGarbage);
-            if (demo is "room" or "score-room") SeedDemoRoom();
+            for (var x = 0; x < TetrisEngine.Width; x++)
+            {
+                if ((x + y + seed) % 4 == 0) continue;
+                engine.SetCell(x, y, TetrisPieces.All[(x + y + seed) % 7]);
+            }
         }
     }
 
@@ -429,10 +509,60 @@ public sealed partial class TetrisViewModel
             }
 
             _session = session;
+            _netRole = session.LocalRole;
             Cfg.LastJoinAddress = address;
-            SetNetNotice($"已连上房主 {session.HostName}，等对方开始对局", "SuccessBrush");
-            Log($"已加入房间：{address}");
-            _netPhase = TetrisNetPhase.Ready;
+
+            if (_netRole == TetrisMemberRole.Spectator)
+            {
+                SetNetNotice($"已连上房主 {session.HostName}，对战位已经有人了：你现在是**观战**身份", "SuccessBrush", log: true);
+                _netPhase = TetrisNetPhase.Playing;
+            }
+            else
+            {
+                SetNetNotice($"已连上房主 {session.HostName}，等对方开始对局", "SuccessBrush");
+                _netPhase = TetrisNetPhase.Ready;
+            }
+
+            Log($"已加入房间：{address}（{TetrisNetProtocol.RoleDisplayName(_netRole)}）");
+            NotifyNetState();
+        }
+        finally
+        {
+            _netBusy = false;
+            NotifyNetState();
+        }
+    }
+
+    /// <summary>以观战身份加入（对战位有人时也能看）。</summary>
+    private async Task JoinAsSpectatorAsync()
+    {
+        var address = (JoinAddress ?? "").Trim();
+        if (address.Length == 0)
+        {
+            SetNetNotice("请先填对方发来的地址（例如 192.168.1.5:5310）", "DangerBrush");
+            return;
+        }
+
+        _netBusy = true;
+        NotifyNetState();
+        try
+        {
+            var session = new TetrisNetSession(Cfg.EffectivePlayerName);
+            WireSession(session);
+            var error = await session.ConnectAsync(address, TetrisNetProtocol.ModeToString(_netMode), asSpectator: true);
+            if (error.Length > 0)
+            {
+                await session.DisposeAsync();
+                SetNetNotice(error, "DangerBrush");
+                return;
+            }
+
+            _session = session;
+            _netRole = TetrisMemberRole.Spectator;
+            Cfg.LastJoinAddress = address;
+            _netPhase = TetrisNetPhase.Playing;
+            SetNetNotice($"已以观战身份连上房主 {session.HostName}", "SuccessBrush", log: true);
+            Log($"加入观战：{address}");
             NotifyNetState();
         }
         finally
@@ -469,10 +599,30 @@ public sealed partial class TetrisViewModel
         session.StateChanged += () => Ui(NotifyNetState);
         session.GuestJoined += guest => Ui(() => OnGuestJoined(guest));
         session.GuestLeft += (guest, reason) => Ui(() => OnGuestLeft(guest, reason));
+        session.SpectatorJoined += spectator => Ui(() => OnSpectatorJoined(spectator));
+        session.SpectatorLeft += (spectator, reason) => Ui(() => OnSpectatorLeft(spectator, reason));
         session.ActionReceived += action => Ui(() => OnRemoteAction(action));
         session.StateReceived += state => Ui(() => OnRemoteState(state));
         session.NoticeReceived += text => Ui(() => SetNetNotice(text, "TextSecondaryBrush", log: true));
         session.Disconnected += reason => Ui(() => OnDisconnected(reason));
+    }
+
+    private void OnSpectatorJoined(TetrisNetSpectator spectator)
+    {
+        if (!SpectatorNames.Contains(spectator.Name)) SpectatorNames.Add(spectator.Name);
+        OnPropertyChanged(nameof(SpectatorCountText));
+        OnPropertyChanged(nameof(HasSpectators));
+        SetNetNotice($"{spectator.Name} 进来观战了", "TextSecondaryBrush", log: true);
+        PublishNetState();
+    }
+
+    private void OnSpectatorLeft(TetrisNetSpectator spectator, string reason)
+    {
+        _ = reason;
+        SpectatorNames.Remove(spectator.Name);
+        OnPropertyChanged(nameof(SpectatorCountText));
+        OnPropertyChanged(nameof(HasSpectators));
+        PublishNetState();
     }
 
     private void OnGuestJoined(TetrisNetPlayer guest)
@@ -487,36 +637,75 @@ public sealed partial class TetrisViewModel
         NotifyNetState();
     }
 
+    /// <summary>
+    /// 房主：对战玩家离开 / 掉线。
+    /// <para><b>规则</b>：对局中掉线 = 判负（本端赢）；没在对局中就是普通离开。</para>
+    /// </summary>
     private void OnGuestLeft(TetrisNetPlayer guest, string reason)
     {
+        var wasPlaying = _netPhase == TetrisNetPhase.Playing;
+
         _guestPresent = false;
         _guestName = "";
         ResetOpponent();
 
-        if (IsNetMode)
+        if (!IsNetMode) { NotifyNetState(); return; }
+
+        if (wasPlaying)
         {
-            var wasPlaying = _netPhase == TetrisNetPhase.Playing;
+            // 掉线判负：对面判负、本端判胜（对手的棋盘已经没了，界面上只留结果文字）
+            _netPhase = TetrisNetPhase.Over;
+            _started = false;
+            UpdateTimer();
+            _opponentDead = true;
+            _guestName = guest.Name;
+            _resultSide = "host";
+            ResultText = $"{guest.Name} 掉线了，本局判对方负：{Cfg.EffectivePlayerName} 赢了！";
+            StatusText = ResultText;
+            SetNetNotice(ResultText, "SuccessBrush", log: true);
+            Log($"对手掉线（{reason}），本局判胜");
+            RefreshBoard();
+            RefreshScore();
+            NotifyOverlay();
+            PublishNetState();
+        }
+        else
+        {
             _netPhase = TetrisNetPhase.Waiting;
             _started = false;
             UpdateTimer();
             ResultText = "";
-            SetNetNotice(wasPlaying
-                    ? $"{guest.Name} 离开了，本局结束（{reason}）；等对方重新加入可以再来一局"
-                    : $"{guest.Name} 离开了房间（{reason}）",
-                "DangerBrush", log: true);
+            SetNetNotice($"{guest.Name} 离开了房间（{reason}）", "DangerBrush", log: true);
         }
+
         NotifyNetState();
     }
 
     private void OnDisconnected(string reason)
     {
+        // 客户端：连接断了 = 本端掉线判负（对局中）；没在对局中就是普通断开
+        var wasPlaying = _netPhase == TetrisNetPhase.Playing && !IsSpectating;
+
         ResetOpponent();
         _session = null;
         ShareAddresses.Clear();
         _netPhase = TetrisNetPhase.Waiting;
         _started = false;
         UpdateTimer();
-        SetNetNotice($"与房主的连接断开了：{reason}", "DangerBrush", log: true);
+
+        if (wasPlaying)
+        {
+            _resultSide = "host";
+            ResultText = $"与房主的连接断开了（{reason}），本局判你负";
+            StatusText = ResultText;
+            SetNetNotice(ResultText, "DangerBrush", log: true);
+            NotifyOverlay();
+        }
+        else
+        {
+            SetNetNotice($"与房主的连接断开了：{reason}", "DangerBrush", log: true);
+        }
+
         NotifyNetState();
     }
 
@@ -603,24 +792,59 @@ public sealed partial class TetrisViewModel
         _netMode = TetrisNetProtocol.ParseMode(state.Mode);
 
         // 客户端角色下：状态里的 Guest 就是本端，Host 是对手
-        if (state.Guest?.Board is { } myBoard)
+        // 观战者：自己没有引擎角色，两边的棋盘都按快照画
+        if (IsSpectating)
         {
-            _engine.ApplySnapshot(myBoard);
-            RefreshBoard();
-            RefreshScore();
+            if (state.Host?.Board is { } hostBoard)
+            {
+                _engine.ApplySnapshot(hostBoard);        // 房主棋盘 → 左下大棋盘
+                RefreshBoard();
+                RefreshScore();
+            }
+            if (state.Guest is { } guestPlayer)
+            {
+                _guestName = guestPlayer.Name;
+                _opponentScore = guestPlayer.Score;
+                _opponentLines = guestPlayer.Lines;
+                _opponentLevel = guestPlayer.Level;
+                _opponentPendingGarbage = guestPlayer.PendingGarbage;
+                _opponentDead = guestPlayer.IsDead;
+                GuestBoardState = guestPlayer.Board is { } gb
+                    ? TetrisBoardViewState.FromSnapshot(gb)
+                    : TetrisBoardViewState.Empty;
+                _guestPresent = true;
+            }
+        }
+        else
+        {
+            if (state.Guest?.Board is { } myBoard)
+            {
+                _engine.ApplySnapshot(myBoard);
+                RefreshBoard();
+                RefreshScore();
+            }
+
+            if (state.Host is { } host)
+            {
+                _guestName = host.Name.Length > 0 ? host.Name : _guestName;
+                _opponentScore = host.Score;
+                _opponentLines = host.Lines;
+                _opponentLevel = host.Level;
+                _opponentPendingGarbage = host.PendingGarbage;
+                _opponentDead = host.IsDead;
+                GuestBoardState = host.Board is { } board ? TetrisBoardViewState.FromSnapshot(board) : TetrisBoardViewState.Empty;
+                if (_guestName.Length > 0) _guestPresent = true;
+            }
         }
 
-        if (state.Host is { } host)
+        // 观战者名单（房主也会广播，观战者据此看到「还有谁在看」）
+        SpectatorNames.Clear();
+        foreach (var spectator in state.Spectators)
         {
-            _guestName = host.Name.Length > 0 ? host.Name : _guestName;
-            _opponentScore = host.Score;
-            _opponentLines = host.Lines;
-            _opponentLevel = host.Level;
-            _opponentPendingGarbage = host.PendingGarbage;
-            _opponentDead = host.IsDead;
-            GuestBoardState = host.Board is { } board ? TetrisBoardViewState.FromSnapshot(board) : TetrisBoardViewState.Empty;
-            if (_guestName.Length > 0) _guestPresent = true;
+            if (!string.IsNullOrWhiteSpace(spectator.Name)) SpectatorNames.Add(spectator.Name);
         }
+        OnPropertyChanged(nameof(SpectatorCountText));
+        OnPropertyChanged(nameof(HasSpectators));
 
         ResultText = state.ResultText;
         OnPropertyChanged(nameof(GuestScoreText));
@@ -736,6 +960,7 @@ public sealed partial class TetrisViewModel
                 Board = remote.Snapshot(),
             }
             : null,
+        Spectators = _session?.Spectators.Select(s => s.Clone()).ToList() ?? new List<TetrisNetSpectator>(),
         ResultText = ResultText,
         ResultSide = _resultSide,
     };
@@ -793,6 +1018,9 @@ public sealed partial class TetrisViewModel
         OnPropertyChanged(nameof(LeaveNetText));
         OnPropertyChanged(nameof(OpponentPanelVisible));
         OnPropertyChanged(nameof(IsWaitingForOpponent));
+        OnPropertyChanged(nameof(IsSpectating));
+        OnPropertyChanged(nameof(SpectatorCountText));
+        OnPropertyChanged(nameof(HasSpectators));
         OnPropertyChanged(nameof(GuestScoreText));
         OnPropertyChanged(nameof(OpponentGarbageText));
         OnPropertyChanged(nameof(MyGarbageText));
@@ -801,7 +1029,21 @@ public sealed partial class TetrisViewModel
         OnPropertyChanged(nameof(OverlayVisible));
         OnPropertyChanged(nameof(OverlayTitle));
         OnPropertyChanged(nameof(OverlayHint));
+        OnPropertyChanged(nameof(NetRoleText));
+        OnPropertyChanged(nameof(OpponentTitleText));
     }
+
+    /// <summary>本端在房间里的身份文案。</summary>
+    public string NetRoleText => !IsNetMode ? ""
+        : _netRole switch
+        {
+            TetrisMemberRole.Spectator => "观战中（只能看，不能操作）",
+            TetrisMemberRole.Host => "房主（对战）",
+            _ => "对战",
+        };
+
+    /// <summary>对手区标题（观战时是「对战玩家」，对战时是「对手」）。</summary>
+    public string OpponentTitleText => IsSpectating ? "对战玩家" : "对手";
 
     /// <summary>联机对局里不能「重新开始」（要两个人同时开始，由房主决定）。</summary>
     public bool CanRestartGame => !IsNetMode || _session is { IsHost: true } && _guestPresent;

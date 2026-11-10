@@ -612,13 +612,14 @@ internal static class TetrisChecks
         var netText = netSection is null
             ? ""
             : string.Join("\n", netSection.Items.Select(i => i.Keys + " | " + i.Action + " | " + i.Tip));
-        check("[俄罗斯方块] 说明里写了联机对战（开房 / 加入 / 两种模式 / 离开）",
+        check("[俄罗斯方块] 说明里写了联机对战（开房 / 加入 / 两种模式 / 观战 / 掉线判负）",
             netSection is not null
             && netText.Contains("开房间")
             && netText.Contains("加入房间")
             && netText.Contains("垃圾行互攻")
             && netText.Contains("各自计分")
-            && netText.Contains("离开房间"),
+            && netText.Contains("观战")
+            && netText.Contains("判负"),
             netSection is null ? "（没有联机小节）" : $"{netSection.Items.Count} 条");
 
         // 关键细节：C 一手只能换一次、空格是硬降、Z 是逆时针、↑ 与 X 都是顺时针
@@ -827,6 +828,26 @@ internal static class TetrisChecks
 
         check("[俄罗斯方块] 读到坏状态返回 null（一个坏包不能把界面搞崩）",
             TetrisNetProtocol.ReadState(default) is null, "");
+
+        // ---- 身份（对战 / 观战） ----
+        check("[俄罗斯方块·联机] 身份字符串：player / spectator，认不出按对战处理",
+            TetrisNetProtocol.RoleToString(TetrisMemberRole.Player) == "player"
+            && TetrisNetProtocol.RoleToString(TetrisMemberRole.Spectator) == "spectator"
+            && TetrisNetProtocol.ParseRole("spectator") == TetrisMemberRole.Spectator
+            && TetrisNetProtocol.ParseRole("SPECTATOR") == TetrisMemberRole.Spectator
+            && TetrisNetProtocol.ParseRole("") == TetrisMemberRole.Player
+            && TetrisNetProtocol.ParseRole(null) == TetrisMemberRole.Player,
+            TetrisNetProtocol.RoleToString(TetrisMemberRole.Spectator));
+
+        check("[俄罗斯方块·联机] 握手包缺 role 字段时按对战玩家处理（老版本兼容）",
+            new TetrisHelloInfo().ParsedRole == TetrisMemberRole.Player
+            && new TetrisHelloInfo { Role = "spectator" }.ParsedRole == TetrisMemberRole.Spectator,
+            "");
+
+        check("[俄罗斯方块·联机] 观战上限 8 人，房间总连接 10 个（房主 + 1 对战 + 8 观战）",
+            TetrisNetProtocol.MaxSpectators == 8
+            && TetrisNetProtocol.MaxConnections == TetrisNetProtocol.MaxPlayers + TetrisNetProtocol.MaxSpectators,
+            $"{TetrisNetProtocol.MaxSpectators} / {TetrisNetProtocol.MaxConnections}");
     }
 
     /// <summary>把快照序列化成 JSON 再读回来（验证联机真正走的那条路）。</summary>
@@ -900,11 +921,53 @@ internal static class TetrisChecks
                 && gotState.Task.Result.Host is { Score: 300, Board: not null },
                 gotState.Task.IsCompleted ? $"seq={gotState.Task.Result.Seq}" : "（没收到）");
 
-            // 房间满了：1 对 1，第三个连接应当被拒
+            // 房间满了：1 对 1，第三个以「对战玩家」身份进来的会被降级成观战
             var third = new TetrisNetSession("插队的");
             var thirdError = third.ConnectAsync($"127.0.0.1:{host.ListenPort}", "garbage").GetAwaiter().GetResult();
-            check("[俄罗斯方块·联机] 第 3 个人连不进来（1 对 1，房间已满）",
-                thirdError.Length > 0, thirdError.Length > 0 ? thirdError : "居然连上了");
+            check("[俄罗斯方块·联机] 对战位已满时，第 3 个人会被降级成观战（不是拒连）",
+                thirdError.Length == 0 && third.IsSpectator,
+                thirdError.Length > 0 ? thirdError : $"身份={third.LocalRole}");
+
+            check("[俄罗斯方块·联机] 房主看得到观战人数",
+                host.SpectatorCount == 1 && host.Spectators.Count == 1
+                && host.Spectators[0].Name == "插队的",
+                $"观战 {host.SpectatorCount} 人");
+
+            // 观战者收得到状态广播
+            var spectatorState = new TaskCompletionSource<TetrisNetState>(TaskCreationOptions.RunContinuationsAsynchronously);
+            third.StateReceived += state => spectatorState.TrySetResult(state);
+            var spectatorBroadcast = new TetrisNetState
+            {
+                Seq = 11,
+                Phase = TetrisNetPhase.Playing,
+                Mode = "garbage",
+                Host = new TetrisNetPlayer { MemberId = "host", Name = "房主", Score = 500, Board = engine.Snapshot() },
+            };
+            host.BroadcastStateAsync(spectatorBroadcast).GetAwaiter().GetResult();
+            check("[俄罗斯方块·联机] 观战者能收到房主广播的棋盘状态",
+                spectatorState.Task.Wait(TimeSpan.FromSeconds(5))
+                && spectatorState.Task.Result is { Seq: 11, Phase: TetrisNetPhase.Playing }
+                && spectatorState.Task.Result.Host is { Score: 500 },
+                spectatorState.Task.IsCompleted ? $"seq={spectatorState.Task.Result.Seq}" : "（没收到）");
+
+            // 观战者发动作：房主不应收到（观战只能看）
+            var actionFromSpectator = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            host.ActionReceived += action => actionFromSpectator.TrySetResult(action);
+            third.SendActionAsync(TetrisNetProtocol.Actions.HardDrop).GetAwaiter().GetResult();
+            check("[俄罗斯方块·联机] 观战者发不了操作（房主不会收到动作）",
+                !actionFromSpectator.Task.Wait(TimeSpan.FromSeconds(2)),
+                "观战动作被忽略");
+
+            // 状态里会带观战名单（客户端据此显示「还有谁在看」）
+            var spectatorNames = host.Spectators.Select(s => s.Name).ToList();
+            var rosterState = new TetrisNetState { Seq = 12, Spectators = host.Spectators.Select(s => s.Clone()).ToList() };
+            var rosterBack = TetrisNetProtocol.ReadState(TetrisNetProtocol.WrapState(rosterState));
+            check("[俄罗斯方块·联机] 观战名单能进状态并 JSON 往返",
+                spectatorNames.SequenceEqual(new[] { "插队的" })
+                && rosterBack?.Spectators.Count == 1
+                && rosterBack.Spectators[0].Name == "插队的",
+                $"{spectatorNames.Count} 人");
+
             third.DisposeAsync().AsTask().GetAwaiter().GetResult();
         }
         finally

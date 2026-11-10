@@ -261,7 +261,7 @@
 - ⚠ `stateFactory` 在网络线程调：只读加锁模型 + `_lastGameSnapshot`，别碰游戏 VM / UI。
 - ⚠ 发完 bye 等 80ms 再关连接，否则 TCP RST 可能被主机判成网络断开。
 
-### 俄罗斯方块联机（1 对 1）
+### 俄罗斯方块联机（1 对 1 + 观战）
 - **不复用 `BoardRoomSession`**：那套深度绑定「两席位 + 观战 + 自动轮换 + 胜负方」，
   俄罗斯方块是「双方各一块棋盘互塞垃圾行」，用不上；复用 `Core/Net` 的
   `RoomHost` / `RoomClient` / `RoomLink` / `RoomProtocol` 就够，会话自己写在
@@ -272,8 +272,17 @@
   否则玩家刚消掉的行会被自己吃进来的垃圾行立刻抵掉（表现为「消了行却没变矮」）。
 - ⚠ 客户端发完 bye 同样要等 `ClientByeDrainMs`（80ms）再关连接，理由同棋牌：
   接收缓冲区非空时 close 会发 RST，房主可能把主动离开误判成掉线。
-- `YLT_TETRIS_NET=1|score|room` 是截图 / 演示开关：`room` 会假装房间里有个对手
-  （`_demoRoom`），**不联网**；它只用于截图，真实玩法不走这条路。
+- **观战**是「对战位满了不拒连、降级成 spectator」：`hello.Role` 缺省按 player（老版本兼容）；
+  观战者不进 `_guestLink`，单独放 `_spectators` 字典，`BroadcastStateAsync` / `SendNoticeAsync`
+  要把两边都遍历一遍——只发给 `_guestLink` 会导致「观战者一直停在第一帧」。
+- 观战者上报动作在**服务端**也要挡（`OnHostFrameReceived` 只认 `_guestLink` 的对端），
+  不能只靠客户端界面禁用——否则改个客户端就能代打。
+- **掉线判负**：对局中 `GuestLeft` / `Disconnected` 直接置 `Phase=Over` 并写结果文案，
+  不再是「作废本局」。
+- `YLT_TETRIS_NET=1|score|room|spectate` 是截图 / 演示开关（`room` / `spectate` 会假装有对手，
+  **不联网**）；⚠ 它必须在页面构造的 `StartNewGame` **之后**执行，
+  否则演示局面会被随后的重开冲掉（踩过：演示分数恒为 0）。
+  演示铺盘只用 `SetCell` 改格子、**不要真的 HardDrop**，否则一叠就判输、棋盘显示「游戏结束」。
 
 ### 图片连续阅读器
 - ⚠ 阅读偏移自己记（`_readingOffset`），别每帧反读 `ScrollViewer`：`ScrollToXxx` 排队到布局阶段才生效。

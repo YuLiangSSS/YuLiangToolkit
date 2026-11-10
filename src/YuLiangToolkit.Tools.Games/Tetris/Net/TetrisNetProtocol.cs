@@ -13,6 +13,19 @@ public enum TetrisNetMode
     Score = 1,
 }
 
+/// <summary>连接进房间的身份：房主 / 对战玩家 / 观战者。</summary>
+public enum TetrisMemberRole
+{
+    /// <summary>房主（本身也是对战玩家）。</summary>
+    Host = 0,
+
+    /// <summary>客户端里的对战玩家（1 对 1 的那个「1」）。</summary>
+    Player = 1,
+
+    /// <summary>观战者：只能看两个玩家的棋盘，不能操作。</summary>
+    Spectator = 2,
+}
+
 /// <summary>一局联机对战的阶段。</summary>
 public enum TetrisNetPhase
 {
@@ -48,6 +61,12 @@ public static class TetrisNetProtocol
 
     /// <summary>房间人数上限（含房主）：1 对 1，所以是 2。</summary>
     public const int MaxPlayers = 2;
+
+    /// <summary>观战者上限（不含两名玩家）。</summary>
+    public const int MaxSpectators = 8;
+
+    /// <summary>房间总连接上限（房主 + 1 个对战玩家 + 8 个观战）。</summary>
+    public const int MaxConnections = MaxPlayers + MaxSpectators;
 
     /// <summary>房主在会话里的固定成员 id（客户端由房主分配 <c>m1</c>）。</summary>
     public const string HostMemberId = "host";
@@ -136,9 +155,27 @@ public static class TetrisNetProtocol
 
     /// <summary>协议摘要（排错 / 界面提示用）。</summary>
     public static string Describe()
-        => $"YuLiangToolkit 俄罗斯方块联机协议 v{Version}（magic={Magic}，最多 {MaxPlayers} 人）"
+        => $"YuLiangToolkit 俄罗斯方块联机协议 v{Version}（magic={Magic}，最多 {MaxPlayers} 人 + {MaxSpectators} 观战）"
            + "；包类型：" + string.Join(" / ", new[] { Kinds.Hello, Kinds.Welcome, Kinds.State, Kinds.Action, Kinds.Notice, Kinds.Bye })
            + "；动作：" + string.Join(" / ", Actions.All);
+
+    /// <summary>身份 → 线上字符串。</summary>
+    public static string RoleToString(TetrisMemberRole role)
+        => role == TetrisMemberRole.Spectator ? "spectator" : "player";
+
+    /// <summary>线上字符串 → 身份（缺省 = 对战玩家，老版本不发这个字段）。</summary>
+    public static TetrisMemberRole ParseRole(string? text)
+        => string.Equals((text ?? "").Trim(), "spectator", StringComparison.OrdinalIgnoreCase)
+            ? TetrisMemberRole.Spectator
+            : TetrisMemberRole.Player;
+
+    /// <summary>身份的中文名（界面 / 提示用）。</summary>
+    public static string RoleDisplayName(TetrisMemberRole role) => role switch
+    {
+        TetrisMemberRole.Host => "房主",
+        TetrisMemberRole.Spectator => "观战",
+        _ => "对战",
+    };
 }
 
 /// <summary>客户端 → 房主的「报家门」。</summary>
@@ -153,6 +190,18 @@ public sealed class TetrisHelloInfo
 
     /// <summary>上次连接时房主分配的成员 id（首次进房为空；重连带回来可以复用身份）。</summary>
     public string MemberId { get; set; } = "";
+
+    /// <summary>
+    /// 想以什么身份进来：<c>player</c>（默认，抢那个对战位）或 <c>spectator</c>（只观战）。
+    /// 老版本不发这个字段 → 按对战玩家处理（行为不变）。
+    /// </summary>
+    public string Role { get; set; } = "";
+
+    /// <summary>解析出来的身份（缺省 = 对战玩家）。</summary>
+    public TetrisMemberRole ParsedRole
+        => string.Equals((Role ?? "").Trim(), "spectator", StringComparison.OrdinalIgnoreCase)
+            ? TetrisMemberRole.Spectator
+            : TetrisMemberRole.Player;
 }
 
 /// <summary>房主 → 客户端的握手回执。</summary>
@@ -165,6 +214,9 @@ public sealed class TetrisWelcomeInfo
 
     /// <summary>房主实际使用的模式（客户端据此决定界面文案）。</summary>
     public string Mode { get; set; } = "";
+
+    /// <summary>房主给的身份：<c>player</c> / <c>spectator</c>（座位被别人占了时会被降级成观战）。</summary>
+    public string Role { get; set; } = "";
 
     /// <summary>当前完整状态（可能为空 = 还没开对局）。</summary>
     public JsonElement? State { get; set; }
@@ -228,7 +280,7 @@ public sealed class TetrisNetPlayer
 }
 
 /// <summary>
-/// 联机对战的完整状态（房主权威，客户端只读）。
+/// 联机对战的完整状态（房主权威，客户端与观战者只读）。
 /// <para><see cref="Seq"/> 只增不减，客户端据此忽略乱序的旧包。</para>
 /// </summary>
 public sealed class TetrisNetState
@@ -251,14 +303,27 @@ public sealed class TetrisNetState
     /// <summary>房主自己的数据。</summary>
     public TetrisNetPlayer? Host { get; set; }
 
-    /// <summary>客户端的数据（没人进来时为 null）。</summary>
+    /// <summary>对战玩家（客户端）的数据（没人进来时为 null）。</summary>
     public TetrisNetPlayer? Guest { get; set; }
+
+    /// <summary>观战者名单（只有名字，观战者自己也用它在界面上看「还有谁在看」）。</summary>
+    public List<TetrisNetSpectator> Spectators { get; set; } = new();
 
     /// <summary>结果文案（<see cref="TetrisNetPhase.Over"/> 时才有内容）。</summary>
     public string ResultText { get; set; } = "";
 
     /// <summary>结果站在谁那边：<c>host</c> / <c>guest</c> / <c>draw</c> / 空 = 没结果。</summary>
     public string ResultSide { get; set; } = "";
+}
+
+/// <summary>一个观战者（只用于界面显示）。</summary>
+public sealed class TetrisNetSpectator
+{
+    public string MemberId { get; set; } = "";
+    public string Name { get; set; } = "";
+
+    /// <summary>复制一份（事件里传副本，避免拿到会被后续改动的同一个对象）。</summary>
+    public TetrisNetSpectator Clone() => new() { MemberId = MemberId, Name = Name };
 }
 
 /// <summary>
