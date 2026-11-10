@@ -13,8 +13,12 @@ public partial class JunqiView : UserControl
     {
         InitializeComponent();
         BoardArea.CellClicked += OnCellClicked;
+        FourBoardArea.CellClicked += OnFourCellClicked;
     }
 
     private void OnCellClicked(JunqiCellItem cell)
         => (DataContext as JunqiViewModel)?.ClickCellCommand.Execute(cell);
+
+    private void OnFourCellClicked(JunqiCellItem cell)
+        => (DataContext as JunqiViewModel)?.FourCellCommand.Execute(cell);
 }

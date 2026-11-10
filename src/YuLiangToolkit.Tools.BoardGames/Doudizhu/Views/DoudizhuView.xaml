@@ -305,6 +305,25 @@
                                        Visibility="{Binding ResultText, Converter={StaticResource EmptyToVisInverse}}" />
                         </StackPanel>
                     </Border>
+
+                    <!-- 电脑对手（单机） -->
+                    <Border Style="{StaticResource CardStyle}" Padding="14,12" Margin="0,12,0,0">
+                        <StackPanel>
+                            <Grid>
+                                <TextBlock Text="电脑对手" FontSize="13" FontWeight="SemiBold" />
+                                <CheckBox Content="单机时由电脑接管另外两家" HorizontalAlignment="Right"
+                                          VerticalAlignment="Center" FontSize="11"
+                                          IsChecked="{Binding AiEnabled}" />
+                            </Grid>
+                            <ComboBox ItemsSource="{Binding AiDifficultyOptions}" DisplayMemberPath="Label"
+                                      SelectedItem="{Binding SelectedAiDifficulty}" Style="{StaticResource ComboBoxStyle}"
+                                      Margin="0,8,0,0" IsEnabled="{Binding AiEnabled}" />
+                            <TextBlock Text="{Binding AiDifficultyHint}" FontSize="10.5" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBlock Text="{Binding AiOpponentText}" FontSize="10.5" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Foreground="{DynamicResource AccentBrush}" />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </ScrollViewer>
         </Grid>

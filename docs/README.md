@@ -30,10 +30,10 @@
 | 🎹 KPS 按键统计 | 实时 KPS / 每键计数器 / 键位可视化 + 透明置顶 Overlay（支持强制置顶）；4K~8K 预设、改键、单键图片、音符效果、键音、全局热键（功能灵感来源 DmNote，独立重写） | [tools/kps.md](tools/kps.md) |
 | 🐟 Live2D 桌宠 | 内置 Live2D 模型测试台 + 桌面宠物：参数 / 部件 / 动作 / 表情 / 物理逐项调试，透明置顶、可拖动、眼睛跟随鼠标、点击穿透 | [tools/live2d.md](tools/live2d.md) |
 | 📌 屏幕贴纸 | 把任意图片贴到桌面上：每张一个独立透明窗口，多选 / 拖入 / 剪贴板贴图，按图片原始尺寸出现；GIF / APNG / 动图 WebP 完整动画并可调播放速度（按真实内容识别格式）；自由拖动 / 四边四角自由拉伸（Shift 等比）/ 滚轮缩放 / 调层级 / 单独强制置顶，支持单张 / 批量恢复默认，带最近使用与贴纸管理 | [tools/screen-sticker.md](tools/screen-sticker.md) |
-| ⚫ 联机五子棋 | 开 TCP 房间和朋友下五子棋：可选禁手（三三 / 四四 / 长连）、悔棋、聊天 | [tools/gomoku.md](tools/gomoku.md) |
-| 🀄 联机象棋 | 开 TCP 房间下中国象棋：自由摆棋 + 一键默认开局、让子 / 让先、中文记谱 | [tools/xiangqi.md](tools/xiangqi.md) |
-| 🃏 斗地主 | 经典斗地主：叫地主 / 出牌 / 炸弹翻倍；三种发牌模式（经典 / 双副牌炸弹多 / 底牌明牌）；局域网 3 人联机 + 排队换人（手动 / 输的下场 / 全场换人） | [tools/doudizhu.md](tools/doudizhu.md) |
-| 🎖️ 军棋 | 陆战棋：司令到工兵 + 地雷 / 炸弹 / 军旗，暗棋自动裁判、铁路走子、工兵拐弯、行营安全；二人军棋与四国军棋；局域网联机 + 排队换人 | [tools/junqi.md](tools/junqi.md) |
+| ⚫ 联机五子棋 | 开 TCP 房间和朋友下五子棋：可选禁手（三三 / 四四 / 长连）、悔棋、聊天；**电脑对手（四档难度）** | [tools/gomoku.md](tools/gomoku.md) |
+| 🀄 联机象棋 | 开 TCP 房间下中国象棋：自由摆棋 + 一键默认开局、让子 / 让先、中文记谱；**电脑对手（四档难度）** | [tools/xiangqi.md](tools/xiangqi.md) |
+| 🃏 斗地主 | 经典斗地主：叫地主 / 出牌 / 炸弹翻倍；三种发牌模式（经典 / 双副牌炸弹多 / 底牌明牌）；局域网 3 人联机 + 排队换人；**电脑对手（四档难度）** | [tools/doudizhu.md](tools/doudizhu.md) |
+| 🎖️ 军棋 | 陆战棋：司令到工兵 + 地雷 / 炸弹 / 军旗，暗棋自动裁判、铁路走子、工兵拐弯、行营安全；**二人军棋与四国军棋**（四国：13×13 十字棋盘、对家同盟、夺两面军旗）；局域网联机 + 排队换人；**电脑对手（四档难度）** | [tools/junqi.md](tools/junqi.md) |
 | 📨 Spug 验证码测试 | 联调 Spug 推送助手（push.spug.cc）的短信 / 邮箱验证码模板：发验证码、本地比对验证；推送 URL 是调用凭证，别外传 | [tools/spug-captcha.md](tools/spug-captcha.md) |
 | 🖱️ 右键菜单管理 | 列出资源管理器右键菜单里的项目（所有文件 / 文件夹 / 文件夹空白处 / 驱动器 / 桌面背景），搜索 + 位置 / 类型筛选后一键隐藏、随时恢复；还能**删除残留菜单（删前自动备份 .reg，HKLM 弹 UAC）**与**添加「用 XX 打开」**（指定后缀 / 文件夹 / 所有文件）；隐藏 / 添加只写当前用户注册表（HKCU）、不需要管理员权限，系统关键项不可隐藏 / 删除 | [tools/context-menu-manager.md](tools/context-menu-manager.md) |
 | 📦 压缩包工具 | 拖入即用：解压 RAR（RAR4/RAR5）/ ZIP / 7Z / TAR / TAR.GZ / TAR.BZ2 / TAR.XZ / TAR.ZST / GZ / BZ2 / XZ / ZST（支持密码、旧版 GBK 文件名、批量、进度、取消、路径穿越防护）；压缩成 ZIP / 7Z。**RAR 因版权原因只能解、不能压** | [tools/archive.md](tools/archive.md) |

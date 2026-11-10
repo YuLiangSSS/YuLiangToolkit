@@ -96,7 +96,8 @@ public sealed class JunqiFourGame
         }
 
         foreach (var (point, rank) in deploy)
-            _board[point.Y * JunqiFourBoard.Size + point.X] = new JunqiPiece(rank, JunqiSide.Red, false) with { };
+            _board[point.Y * JunqiFourBoard.Size + point.X] =
+                new JunqiPiece(rank, SideOf(nation), false);
 
         // 记录阵营（JunqiPiece 只有 Red/Blue 两方，四国用「格子归属」推阵营）
         _deployed.Add(nation);
@@ -301,6 +302,14 @@ public sealed class JunqiFourGame
         Finish(winner, $"{JunqiFourBoard.DisplayName(nation)}认输，{JunqiFourBoard.DisplayName(winner)}那队获胜");
     }
 
+    /// <summary>
+    /// 阵营 → 棋子的 <see cref="JunqiSide"/>：只有红方算 Red，其它三个阵营都算 Blue。
+    /// <para>四色由界面按格子归属（<see cref="JunqiFourBoard.NationAt"/>）着色，
+    /// 这里只用来做「是不是红方」的粗判断。</para>
+    /// </summary>
+    public static JunqiSide SideOf(JunqiNation nation)
+        => nation == JunqiNation.Red ? JunqiSide.Red : JunqiSide.Blue;
+
     /// <summary>下一个该走的阵营（跳过已经出局的队）。</summary>
     private JunqiNation NextTurn(JunqiNation from)
     {
@@ -397,6 +406,9 @@ public sealed class JunqiFourGame
 
     /// <summary>
     /// 给某个阵营看的棋盘：自己的全可见、同盟全可见（同盟是队友），其余对手只有已知的可见。
+    /// <para><b>颜色</b>：<see cref="JunqiPiece"/> 只有红 / 蓝两个 <c>Side</c> 值，四国靠「格子归属」推阵营。
+    /// 这里把蓝 / 绿 / 黄都映射成 <see cref="JunqiSide.Blue"/>（非红），
+    /// 界面上真正区分阵营用 <see cref="JunqiCellItem.NationKey"/> —— 不要指望 <c>Side</c> 能分出四色。</para>
     /// </summary>
     public IReadOnlyList<JunqiPiece> VisibleBoardFor(JunqiNation viewer)
     {

@@ -403,6 +403,29 @@
                             <TextBlock FontSize="10.5" TextWrapping="Wrap" LineHeight="17" Margin="0,10,0,0"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        Text="键盘：← → 移动 · ↓ 软降 · ↑ / X 顺时针旋转 · Z 逆时针旋转 · 空格 硬降 · C 暂存 · Esc / P 暂停 · R 重开" />
+
+                            <!-- 电脑对手（联机模式下代替真人） -->
+                            <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="6"
+                                    Padding="10,8" Margin="0,10,0,0"
+                                    Visibility="{Binding AiPanelVisible, Converter={StaticResource BoolToVis}}">
+                                <StackPanel>
+                                    <Grid>
+                                        <TextBlock Text="电脑对手" FontSize="12" FontWeight="SemiBold" />
+                                        <CheckBox Content="开" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                  IsChecked="{Binding AiEnabled}"
+                                                  ToolTip="开：联机模式下由电脑操作对手那份棋盘（等于「你 vs 电脑」）" />
+                                    </Grid>
+                                    <ComboBox Height="30" Margin="0,8,0,0" Style="{StaticResource ComboBoxStyle}"
+                                              DisplayMemberPath="Label"
+                                              ItemsSource="{Binding AiDifficultyOptions}"
+                                              SelectedItem="{Binding SelectedAiDifficulty}"
+                                              IsEnabled="{Binding AiEnabled}" />
+                                    <TextBlock Text="{Binding AiDifficultyHint}" FontSize="10.5" TextWrapping="Wrap"
+                                               Margin="0,6,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBlock Text="{Binding AiOpponentText}" FontSize="10.5" TextWrapping="Wrap"
+                                               Margin="0,4,0,0" Foreground="{DynamicResource AccentBrush}" />
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </ScrollViewer>
                 </Border>

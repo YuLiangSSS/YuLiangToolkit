@@ -255,6 +255,28 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- 电脑对手 -->
+                    <Border Style="{StaticResource CardStyle}" Margin="0,12,0,0">
+                        <StackPanel>
+                            <Grid>
+                                <TextBlock Text="电脑对手" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <CheckBox Content="开" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          IsChecked="{Binding AiEnabled}"
+                                          ToolTip="开：同机模式下你执黑与电脑下（电脑执白）；关：同机双人轮流下" />
+                            </Grid>
+                            <ComboBox Height="32" Margin="0,10,0,0" Style="{StaticResource ComboBoxStyle}"
+                                      DisplayMemberPath="Label"
+                                      ItemsSource="{Binding AiDifficultyOptions}"
+                                      SelectedItem="{Binding SelectedAiDifficulty}"
+                                      IsEnabled="{Binding AiEnabled}" />
+                            <TextBlock Text="{Binding AiDifficultyHint}" FontSize="11" TextWrapping="Wrap"
+                                       Margin="0,6,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBlock Text="{Binding AiOpponentText}" FontSize="11" TextWrapping="Wrap"
+                                       Margin="0,4,0,0" Foreground="{DynamicResource AccentBrush}" />
+                        </StackPanel>
+                    </Border>
+
                     </StackPanel>
                     </ScrollViewer>
 

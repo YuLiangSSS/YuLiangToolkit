@@ -14,6 +14,7 @@ public sealed class JunqiCellItem : ObservableObject
     private JunqiPiece _piece;
     private bool _isSelected;
     private bool _isTarget;
+    private string _nationKey = "";
 
     /// <summary>创建格子。</summary>
     /// <param name="x">列。</param>
@@ -34,6 +35,16 @@ public sealed class JunqiCellItem : ObservableObject
 
     /// <summary>格子类型。</summary>
     public JunqiCellKind Kind { get; }
+
+    /// <summary>
+    /// 四国军棋用：这个格子属于哪个阵营（<c>red</c> / <c>blue</c> / <c>green</c> / <c>yellow</c>）。
+    /// 空字符串 = 二人军棋 / 公共区。
+    /// </summary>
+    public string NationKey
+    {
+        get => _nationKey;
+        set => Set(ref _nationKey, value ?? "");
+    }
 
     /// <summary>棋子。</summary>
     public JunqiPiece Piece
@@ -78,6 +89,14 @@ public sealed class JunqiCellItem : ObservableObject
 
     /// <summary>是不是蓝方棋子。</summary>
     public bool IsBlueSide => !Piece.IsEmpty && Piece.Side == JunqiSide.Blue;
+
+    /// <summary>
+    /// 棋子颜色的键：四国军棋按阵营（红 / 蓝 / 绿 / 黄），二人军棋按红 / 蓝。
+    /// 棋盘控件据此选填充色。
+    /// </summary>
+    public string SideColorKey => !Piece.IsEmpty && NationKey.Length > 0
+        ? NationKey
+        : Piece.Side == JunqiSide.Red ? "red" : "blue";
 
     /// <summary>格子类型说明（界面提示）。</summary>
     public string KindText => Kind switch
@@ -126,7 +145,10 @@ public sealed partial class JunqiViewModel : MultiSeatRoomViewModelBase
             ("fourKingdoms", "四国军棋（4 人两队）"));
 
         InitializeAi();
+        InitializeFourBoard();
         RefreshAll();
+
+        LoadFourDemoIfRequested();
 
         // 演示 / 截图：YLT_JUNQI_DEMO=1 时自动布阵，截图里能看到棋子
         if (Environment.GetEnvironmentVariable("YLT_JUNQI_DEMO") == "1")
@@ -159,6 +181,10 @@ public sealed partial class JunqiViewModel : MultiSeatRoomViewModelBase
             OnPropertyChanged();
             OnPropertyChanged(nameof(VariantDescriptionText));
             OnPropertyChanged(nameof(IsFourKingdoms));
+            OnPropertyChanged(nameof(IsFourBoardVisible));
+            OnPropertyChanged(nameof(MyNationText));
+            OnPropertyChanged(nameof(FourStatusText));
+            if (IsFourKingdoms) RefreshFourBoard();
         }
     }
 

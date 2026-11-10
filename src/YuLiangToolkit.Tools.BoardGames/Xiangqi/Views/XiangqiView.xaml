@@ -470,6 +470,29 @@
                             <TextBlock FontSize="10.5" TextWrapping="Wrap" Margin="0,8,0,0"
                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                        Text="棋子朝向会跟随你所执的一方（执红红在下、执黑黑在下）；观战可在棋盘下方切换红 / 黑视角，同机双人与离线可手动翻转。" />
+
+                            <!-- 电脑对手 -->
+                            <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="6"
+                                    Padding="10,8" Margin="0,10,0,0">
+                                <StackPanel>
+                                    <Grid>
+                                        <TextBlock Text="电脑对手" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                                        <CheckBox Content="开" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                  IsChecked="{Binding AiEnabled}"
+                                                  ToolTip="开：同机模式下你执红与电脑下（电脑执黑）；关：同机双人轮流走" />
+                                    </Grid>
+                                    <ComboBox Height="30" Margin="0,8,0,0" Style="{StaticResource ComboBoxStyle}"
+                                              DisplayMemberPath="Label"
+                                              ItemsSource="{Binding AiDifficultyOptions}"
+                                              SelectedItem="{Binding SelectedAiDifficulty}"
+                                              IsEnabled="{Binding AiEnabled}" />
+                                    <TextBlock Text="{Binding AiDifficultyHint}" FontSize="10.5" TextWrapping="Wrap"
+                                               Margin="0,6,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBlock Text="{Binding AiOpponentText}" FontSize="10.5" TextWrapping="Wrap"
+                                               Margin="0,4,0,0" Foreground="{DynamicResource AccentBrush}" />
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </Border>
                     </Grid>

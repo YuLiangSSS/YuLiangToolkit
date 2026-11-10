@@ -148,7 +148,12 @@ public sealed class JunqiBoardView : FrameworkElement
         dc.DrawLine(pen, Center(origin, cell, x1, y1), Center(origin, cell, x2, y2));
     }
 
-    /// <summary>画一个棋子：圆底 + 单字（红方红字、蓝方蓝字；暗棋画成灰色背面）。</summary>
+    /// <summary>四国模式：只画真实存在的格子（四个阵营区 + 中央十字），不画整张方阵。</summary>
+    private static bool FourCellExists(int x, int y)
+        => JunqiFourBoard.InBounds(x, y)
+           && (JunqiFourBoard.NationAt(x, y) is not null || x == 6 || y == 6);
+
+    /// <summary>画一个棋子：圆底 + 单字（按阵营上色；暗棋画成灰色背面）。</summary>
     private void DrawPiece(DrawingContext dc, Point center, double cell, JunqiCellItem item)
     {
         var radius = cell * 0.38;
@@ -162,9 +167,14 @@ public sealed class JunqiBoardView : FrameworkElement
         }
         else
         {
-            fill = item.IsRedSide
-                ? new SolidColorBrush(Color.FromRgb(0xC8, 0x3A, 0x3A))
-                : new SolidColorBrush(Color.FromRgb(0x2F, 0x6F, 0xC0));
+            // 四国军棋按阵营上色（红 / 蓝 / 绿 / 黄），二人军棋只有红蓝
+            fill = item.SideColorKey switch
+            {
+                "blue" => new SolidColorBrush(Color.FromRgb(0x2F, 0x6F, 0xC0)),
+                "green" => new SolidColorBrush(Color.FromRgb(0x2E, 0x8B, 0x57)),
+                "yellow" => new SolidColorBrush(Color.FromRgb(0xB8, 0x86, 0x1A)),
+                _ => new SolidColorBrush(Color.FromRgb(0xC8, 0x3A, 0x3A)),
+            };
             text = Brushes.White;
         }
         fill.Freeze();
