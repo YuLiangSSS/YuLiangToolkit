@@ -1,0 +1,148 @@
+<UserControl x:Class="YuLiangToolkit.Tools.BoardGames.Checkers.Views.CheckersView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:YuLiangToolkit.Tools.BoardGames.Checkers.Views"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             Background="Transparent">
+
+    <!-- 跳棋：左「六芒星棋盘」/ 右「人数 + 选角 + 规则 + AI」。 -->
+
+    <Grid Margin="28,22,28,26">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="320" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="⭐" FontSize="24" VerticalAlignment="Center" />
+                <TextBlock Text="跳棋" FontSize="20" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding TurnText}" FontSize="12" Margin="16,0,0,0" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+            </StackPanel>
+            <TextBlock Text="{Binding StatusText}" FontSize="11.5" Margin="0,6,0,0" TextWrapping="Wrap"
+                       Foreground="{DynamicResource TextSecondaryBrush}" />
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="0,14,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="380" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="360" MinWidth="300" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="8" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" MinHeight="240" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <Viewbox Grid.Row="0" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <views:CheckersBoardView x:Name="Board" Width="620" Height="620"
+                                                 Pieces="{Binding Pieces}" MyHome="{Binding MyHomeKey}" />
+                    </Viewbox>
+
+                    <WrapPanel Grid.Row="1" Orientation="Horizontal" Margin="6,8,6,4">
+                        <Button Content="开局" Style="{StaticResource PrimaryButtonStyle}" MinWidth="74"
+                                Command="{Binding StartCommand}" />
+                        <Button Content="AI 走一步" Style="{StaticResource SecondaryButtonStyle}" MinWidth="90" Margin="8,0,0,0"
+                                Command="{Binding AutoMoveCommand}" />
+                        <Button Content="让掉选中棋子" Style="{StaticResource SecondaryButtonStyle}" MinWidth="100" Margin="8,0,0,0"
+                                Command="{Binding RemoveCommand}" />
+                        <Button Content="清空" Style="{StaticResource SecondaryButtonStyle}" MinWidth="66" Margin="8,0,0,0"
+                                Command="{Binding ClearCommand}" />
+                        <TextBlock Text="{Binding LastText}" FontSize="11" VerticalAlignment="Center" Margin="12,0,0,0"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                    </WrapPanel>
+                </Grid>
+            </Border>
+
+            <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                               Key="checkers.棋盘与侧栏" />
+
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                          core:ScrollChaining.Enabled="True">
+                <StackPanel>
+                    <Border Style="{StaticResource CardStyle}" Padding="14,12">
+                        <StackPanel>
+                            <TextBlock Text="人数（2 / 3 / 4 / 6，5 人没有合法排布）" FontSize="13" FontWeight="SemiBold" />
+                            <ComboBox ItemsSource="{Binding PlayerCountOptions}" DisplayMemberPath="Label"
+                                      SelectedItem="{Binding SelectedPlayerCount}" Style="{StaticResource ComboBoxStyle}"
+                                      Margin="0,8,0,0" />
+                            <TextBlock Text="{Binding AllowedHint}" FontSize="10.5" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Foreground="{DynamicResource AccentBrush}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}" Padding="14,12" Margin="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="选位置（第一个选的人决定本局组合）" FontSize="13" FontWeight="SemiBold" />
+                            <ItemsControl ItemsSource="{Binding Seats}" Margin="0,8,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DisplayText}" FontSize="12" Margin="0,2" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <WrapPanel Margin="0,8,0,0">
+                                <Button Content="上" Style="{StaticResource SecondaryButtonStyle}" MinWidth="54" Margin="0,0,6,6"
+                                        Command="{Binding SeatNCommand}" />
+                                <Button Content="右上" Style="{StaticResource SecondaryButtonStyle}" MinWidth="54" Margin="0,0,6,6"
+                                        Command="{Binding SeatNeCommand}" />
+                                <Button Content="右下" Style="{StaticResource SecondaryButtonStyle}" MinWidth="54" Margin="0,0,6,6"
+                                        Command="{Binding SeatSeCommand}" />
+                                <Button Content="下" Style="{StaticResource SecondaryButtonStyle}" MinWidth="54" Margin="0,0,6,6"
+                                        Command="{Binding SeatSCommand}" />
+                                <Button Content="左下" Style="{StaticResource SecondaryButtonStyle}" MinWidth="54" Margin="0,0,6,6"
+                                        Command="{Binding SeatSwCommand}" />
+                                <Button Content="左上" Style="{StaticResource SecondaryButtonStyle}" MinWidth="54" Margin="0,0,6,6"
+                                        Command="{Binding SeatNwCommand}" />
+                            </WrapPanel>
+                            <TextBlock Text="{Binding NoticeText}" FontSize="10.5" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBlock Text="{Binding ResultText}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"
+                                       Margin="0,6,0,0" Foreground="{DynamicResource SuccessBrush}"
+                                       Visibility="{Binding HasResult, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}" Padding="14,12" Margin="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="规则" FontSize="13" FontWeight="SemiBold" />
+                            <CheckBox Content="允许走一格到相邻空位（关掉则只能跳）" Margin="0,10,0,0"
+                                      Style="{StaticResource CheckBoxStyle}" IsChecked="{Binding AllowSingleStep}" />
+                            <CheckBox Content="自己初始区域还有棋子时，只能先动那里的棋子" Margin="0,7,0,0"
+                                      Style="{StaticResource CheckBoxStyle}" IsChecked="{Binding MustClearHomeFirst}" />
+                            <TextBlock Text="让棋上限（自己区域可删的棋子数）" FontSize="10.5" Margin="0,10,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Style="{StaticResource TextBoxStyle}" Margin="0,4,0,0"
+                                     Text="{Binding Cfg.HandicapLimit, UpdateSourceTrigger=LostFocus}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}" Padding="14,12" Margin="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="电脑对手" FontSize="13" FontWeight="SemiBold" />
+                            <ComboBox ItemsSource="{Binding AiLevelOptions}" DisplayMemberPath="Label"
+                                      SelectedItem="{Binding SelectedAiLevel}" Style="{StaticResource ComboBoxStyle}"
+                                      Margin="0,8,0,0" />
+                            <TextBlock Text="{Binding AiHint}" FontSize="10.5" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}" Padding="14,12" Margin="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="玩法" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock FontSize="10.5" TextWrapping="Wrap" LineHeight="17" Margin="0,6,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Text="点自己的棋选中（金圈），再点落点走过去。可以跨过相邻的一枚棋子（自己的也行）落到它后面的空位，能连跳。把对面角 10 个点全部占满就赢。" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</UserControl>
