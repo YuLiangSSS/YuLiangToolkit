@@ -235,14 +235,16 @@
                         Command="{Binding MoveRightCommand}" ToolTip="右移（→）" />
                 <Button Content="↓ 软降" Style="{StaticResource SecondaryButtonStyle}" MinWidth="76" Margin="8,0,0,0"
                         Command="{Binding SoftDropCommand}" ToolTip="软降一格（↓）" />
-                <Button Content="↻" Style="{StaticResource SecondaryButtonStyle}" Width="52" Margin="8,0,0,0"
+                <Button Content="↻ 顺时针" Style="{StaticResource SecondaryButtonStyle}" MinWidth="86" Margin="8,0,0,0"
                         Command="{Binding RotateClockwiseCommand}" ToolTip="顺时针旋转（↑ / X）" />
-                <Button Content="↺" Style="{StaticResource SecondaryButtonStyle}" Width="52" Margin="8,0,0,0"
+                <Button Content="↺ 逆时针" Style="{StaticResource SecondaryButtonStyle}" MinWidth="86" Margin="8,0,0,0"
                         Command="{Binding RotateCounterClockwiseCommand}" ToolTip="逆时针旋转（Z）" />
                 <Button Content="硬降" Style="{StaticResource PrimaryButtonStyle}" MinWidth="76" Margin="8,0,0,0"
                         Command="{Binding HardDropCommand}" ToolTip="直接落到底（空格）" />
                 <Button Content="暂存" Style="{StaticResource SecondaryButtonStyle}" MinWidth="66" Margin="8,0,0,0"
                         Command="{Binding HoldCommand}" ToolTip="暂存当前方块（C，一手只能换一次）" />
+                <Button Content="？ 游玩说明" Style="{StaticResource SecondaryButtonStyle}" MinWidth="112" Margin="20,0,0,0"
+                        Click="OnHelpClick" ToolTip="怎么玩、每个键干什么（也可以按 F1）" />
             </WrapPanel>
 
             <TextBlock Grid.Column="1" Text="{Binding StoragePathText}" FontSize="10.5" VerticalAlignment="Center"

@@ -10,7 +10,8 @@ namespace YuLiangToolkit.Tools.Games.Tetris.Views;
 /// <see cref="TetrisEngine"/>）：
 /// <list type="number">
 ///   <item>整页拦键盘（←→ 移动 / ↓ 软降 / ↑ 或 X 顺时针 / Z 逆时针 / 空格硬降 / C 暂存 /
-///         Esc·P 暂停 / R 重开 / Enter 开始）；</item>
+///         Esc·P 暂停 / R 重开 / Enter 开始 / F1 打开游玩说明）；</item>
+///   <item>「游玩说明」按钮 / F1 打开说明窗口（打开前自动暂停，免得边读边掉块）；</item>
 ///   <item>页面 <c>Loaded</c> / <c>Unloaded</c> 时通知 ViewModel（外壳会缓存工具页，切走必须暂停）；</item>
 ///   <item>窗口失去 / 重新获得焦点（设置里可关的自动暂停）。</item>
 /// </list>
@@ -19,6 +20,7 @@ public partial class TetrisView : UserControl
 {
     private Window? _host;
     private TetrisViewModel? _viewModel;
+    private TetrisHelpWindow? _helpWindow;
 
     public TetrisView()
     {
@@ -55,6 +57,10 @@ public partial class TetrisView : UserControl
         // 整页收键盘：焦点落在页面上，方向键 / 空格才会走本页的 PreviewKeyDown
         Focusable = true;
         Keyboard.Focus(this);
+
+        // 调试 / 截图用：YLT_TETRIS_HELP=1 时打开页面就把说明窗口弹出来（不影响正常使用）
+        if (Environment.GetEnvironmentVariable("YLT_TETRIS_HELP") == "1" && _helpWindow is null)
+            Dispatcher.BeginInvoke(new Action(ShowHelp), System.Windows.Threading.DispatcherPriority.Background);
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -121,10 +127,50 @@ public partial class TetrisView : UserControl
             case Key.Enter:
                 vm.StartOrResume();
                 break;
+            case Key.F1:
+                ShowHelp();
+                break;
             default:
                 return;
         }
 
         e.Handled = true;
+    }
+
+    /// <summary>点「游玩说明」按钮。</summary>
+    private void OnHelpClick(object sender, RoutedEventArgs e) => ShowHelp();
+
+    /// <summary>
+    /// 打开游玩说明窗口。<b>打开前先暂停</b>：说明是要读的，别让人一边读一边掉块。
+    /// 同一个窗口只开一份（重复点按钮 / 连按 F1 不会叠出一堆窗口）。
+    /// </summary>
+    private void ShowHelp()
+    {
+        if (_helpWindow is not null)
+        {
+            _helpWindow.Activate();
+            return;
+        }
+
+        var wasRunning = _viewModel is { OverlayVisible: false };
+        if (wasRunning) _viewModel!.TogglePause();
+
+        var window = new TetrisHelpWindow();
+        _helpWindow = window;
+        try
+        {
+            window.Owner ??= Window.GetWindow(this);
+            window.ShowDialog();
+        }
+        finally
+        {
+            _helpWindow = null;
+        }
+
+        // 关掉说明后接着玩（读之前本来就在跑才恢复；原本暂停着就保持暂停）
+        if (wasRunning && _viewModel is { IsGameOver: false, IsPaused: true }) _viewModel.TogglePause();
+
+        // 模态窗口关掉后键盘焦点会回到宿主窗口，但工具页可能已经丢了焦点，重新收一次
+        Keyboard.Focus(this);
     }
 }

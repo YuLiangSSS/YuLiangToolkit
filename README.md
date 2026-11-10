@@ -80,7 +80,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 | [**🎲 随机数生成器**](docs/tools/random-number.md) | 按可调下限 / 上限 / 精确度（`0.1`、`0.01`…）生成随机数；数值用任意精度十进制精确表示，超大整数与超细步长都不丢位，可调个数 / 去重 / 排序 / 分隔符 |
 | [**📈 函数绘图**](docs/tools/function-plot.md) | 同时画多条函数曲线，每条可单独设定义域 / 颜色 / 显示开关；拖动平移、滚轮缩放、自动求点 / 点值表 |
 | [**🧪 框架示例**](docs/tools/sample-framework.md) | 开发用模板（Data / Config 轮子演示，可整目录删除） |
-| [**🧱 俄罗斯方块**](docs/tools/tetris.md) | 经典 10×20 俄罗斯方块：7-bag 出块（不会连着出同一块）、SRS 旋转 + 墙踢、幽灵方块落点预览、暂存 Hold（一手一次）、接下来 3 块；消 1/2/3/4 行得 100/300/500/800 × 等级分，每 10 行升 1 级、等级越高落得越快；最高分自动记住，键盘（←→↓ ↑/X/Z 空格 C Esc R）或页面按钮都能玩 |
+| [**🧱 俄罗斯方块**](docs/tools/tetris.md) | 经典 10×20 俄罗斯方块：7-bag 出块（不会连着出同一块）、SRS 旋转 + 墙踢、幽灵方块落点预览、暂存 Hold（一手一次）、接下来 3 块；消 1/2/3/4 行得 100/300/500/800 × 等级分，每 10 行升 1 级、等级越高落得越快；最高分自动记住；**内置游玩说明窗口**（F1 / 页面上「？ 游玩说明」按钮，打开时自动暂停），键盘（←→↓ ↑/X/Z 空格 C Esc R）或页面按钮都能玩 |
 
 > 🎵 五个 osu! 工具和「KPS 按键统计」收在「音游工具」分类；🎲 联机五子棋 / 象棋在「棋牌」分类；
 > 🧱 俄罗斯方块在「游戏」分类；🐟 Live2D 桌宠在「桌面」分类 —— 主页点类别卡片进类别页即可。
@@ -115,7 +115,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 
 - 📘 **[docs/](docs/README.md)** —— 每个工具一页的详细说明（用法 / 设置项 / 数据位置 / 注意事项），跟着代码一起走；
 - 🧰 **[AGENTS.md](AGENTS.md)** —— 改代码前先看：**精简的开发入口地图**（流程 / 硬性规则 / 找东西）；踩坑细节按需查 [docs/dev/pitfalls.md](docs/dev/pitfalls.md)；
-- ✅ **自检**：5516 项行为逐条真跑（退出码 0 = 全通过）。按改动影响面只跑相关组，不每轮全量：
+- ✅ **自检**：5529 项行为逐条真跑（退出码 0 = 全通过）。按改动影响面只跑相关组，不每轮全量：
 
   ```powershell
   .\scripts\check.ps1          # 自动读 git 改动 → 选组 → build → 只跑这些组
@@ -130,7 +130,7 @@ build.ps1 / publish.ps1                  # 一键构建 / 一键发布（发布�
 scripts/check.ps1                        # 按改动自动选组的自检触发器
 src/YuLiangToolkit.Core/                 # 核心库：工具契约 / MVVM / 存储 / 配置 / 维护 / 特效 / 联机底座
 src/YuLiangToolkit.Tools.*/              # 各工具，一个功能一个项目（新功能复制 Tools.Sample）
-tests/YuLiangToolkit.FrameworkSelfCheck/ # 自检控制台：5516 项行为逐条真跑
+tests/YuLiangToolkit.FrameworkSelfCheck/ # 自检控制台：5529 项行为逐条真跑
 docs/                                    # 每个工具一页详细说明（索引 docs/README.md）
 AGENTS.md                                # 开发入口地图：流程 / 硬性规则 / 找东西
 ```

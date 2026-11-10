@@ -32,6 +32,7 @@ internal static class TetrisChecks
         CheckClearAndScore(fn);
         CheckHold(fn);
         CheckGhostAndGameOver(fn);
+        CheckHelpContent(fn);
         CheckConfig(fn);
     }
 
@@ -565,6 +566,82 @@ internal static class TetrisChecks
         {
             for (var x = 0; x < TetrisEngine.Width - 1; x++) engine.SetCell(x, y, TetrominoKind.Z);
         }
+    }
+
+    // ---------------------------------------------------------------- 游玩说明内容
+
+    private static void CheckHelpContent(CheckFn check)
+    {
+        check("[俄罗斯方块] 说明有标题与总览", TetrisHelpContent.Title.Length > 0
+            && TetrisHelpContent.Summary.Contains("10 × 20") && TetrisHelpContent.Summary.Contains("游戏结束"),
+            $"{TetrisHelpContent.Title} / {TetrisHelpContent.Summary.Length} 字");
+
+        check("[俄罗斯方块] 说明分成 5 个分区（移动旋转 / 落底 / 暂存预览 / 暂停重开 / 鼠标）",
+            TetrisHelpContent.Sections.Count == 5,
+            string.Join(" / ", TetrisHelpContent.Sections.Select(s => s.Title)));
+
+        // 每个分区都得有内容，条目上的按键与作用都不能空
+        var sectionsWellFormed = TetrisHelpContent.Sections.All(s =>
+            s.Title.Length > 0
+            && s.Items.Count > 0
+            && s.Items.All(i => i.Keys.Length > 0 && i.Action.Length > 0));
+        check("[俄罗斯方块] 每个分区都写了「按键 → 作用」（没有空条目）", sectionsWellFormed,
+            string.Join(" / ", TetrisHelpContent.Sections.Select(s => $"{s.Title}:{s.Items.Count}")));
+
+        // 说明必须覆盖页面上能用的每一个键（加键忘了补说明会红）
+        var allText = string.Join("\n", TetrisHelpContent.Sections
+            .SelectMany(s => s.Items.Select(i => i.Keys + " | " + i.Action + " | " + i.Tip)));
+
+        var missing = new List<string>();
+        foreach (var key in new[] { "←", "→", "↓", "↑", "X", "Z", "空格", "C", "Esc", "P", "R", "Enter" })
+        {
+            if (!allText.Contains(key)) missing.Add(key);
+        }
+        check("[俄罗斯方块] 页面能用的键都写进说明了（← → ↓ ↑ X Z 空格 C Esc P R Enter）",
+            missing.Count == 0, missing.Count == 0 ? "全覆盖" : "漏了 " + string.Join(",", missing));
+
+        check("[俄罗斯方块] 说明里点明了 F1 也能打开说明窗口",
+            allText.Contains("F1") && TetrisHelpContent.AllKeys.Contains("F1"), "F1");
+
+        // 关键细节：C 一手只能换一次、空格是硬降、Z 是逆时针、↑ 与 X 都是顺时针
+        check("[俄罗斯方块] 说明写清了 C 的「一手只能换一次」与互换语义",
+            allText.Contains("只能换一次") && allText.Contains("互换"), "");
+        check("[俄罗斯方块] 说明写清了空格 = 硬降、Z = 逆时针、↑ / X = 顺时针",
+            allText.Contains("硬降") && allText.Contains("逆时针") && allText.Contains("顺时针"), "");
+        check("[俄罗斯方块] 说明提到墙踢（贴墙 / 贴地会自动挪开）",
+            allText.Contains("踢"), "");
+        check("[俄罗斯方块] 说明提到打开说明会自动暂停",
+            allText.Contains("暂停"), "");
+
+        // 计分规则与小技巧
+        check("[俄罗斯方块] 计分规则写明 1/2/3/4 行 = 100/300/500/800 × 等级",
+            TetrisHelpContent.ScoreRules.Any(r => r.Contains("100") && r.Contains("等级"))
+            && TetrisHelpContent.ScoreRules.Any(r => r.Contains("300"))
+            && TetrisHelpContent.ScoreRules.Any(r => r.Contains("500"))
+            && TetrisHelpContent.ScoreRules.Any(r => r.Contains("800")),
+            string.Join(" / ", TetrisHelpContent.ScoreRules.Take(4)));
+
+        check("[俄罗斯方块] 计分规则写明软降 / 硬降的加分与升级节奏",
+            TetrisHelpContent.ScoreRules.Any(r => r.Contains("软降") && r.Contains("+1"))
+            && TetrisHelpContent.ScoreRules.Any(r => r.Contains("硬降") && r.Contains("+2"))
+            && TetrisHelpContent.ScoreRules.Any(r => r.Contains("10 行")),
+            "");
+
+        // 说明里写的分数倍率必须和引擎一致（防止改了计分表忘了改说明）
+        var expectedTetrisScore = 800 * 3;
+        var scoreEngine = new TetrisEngine(new Random(101));
+        scoreEngine.Reset(startLevel: 3);
+        FillFourRowsExceptFirstColumn(scoreEngine, TetrominoKind.O);
+        scoreEngine.PlacePiece(new TetrisPiece(TetrominoKind.I, -2, TetrisEngine.Height - 4, 1));
+        var tetrisResult = scoreEngine.Lock();
+        check("[俄罗斯方块] 说明里的计分数字与引擎实际算出来的一致（3 级消 4 行 = 2400）",
+            tetrisResult.ScoreGained == expectedTetrisScore
+            && TetrisHelpContent.ScoreRules.Any(r => r.Contains("800")),
+            $"{tetrisResult.ScoreGained} / 期望 {expectedTetrisScore}");
+
+        check("[俄罗斯方块] 小技巧至少 3 条且都不为空",
+            TetrisHelpContent.Tips.Count >= 3 && TetrisHelpContent.Tips.All(t => t.Trim().Length > 0),
+            $"{TetrisHelpContent.Tips.Count} 条");
     }
 
     // ---------------------------------------------------------------- 配置
