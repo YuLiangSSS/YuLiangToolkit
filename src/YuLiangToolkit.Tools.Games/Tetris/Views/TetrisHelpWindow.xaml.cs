@@ -127,9 +127,9 @@ public partial class TetrisHelpWindow : Window
         RightColumn.Children.Clear();
 
         // 左栏：前三个分区（移动旋转 / 快速落底 / 暂存与预览）——「怎么操作方块」
-        // 右栏：其余分区（暂停重开 / 鼠标）+ 计分规则 + 小技巧 ——「什么时候按、怎么得分」
+        // 右栏：其余分区（暂停重开 / 鼠标 / 联机）+ 计分规则 + 小技巧 ——「什么时候按、怎么得分、怎么联机」
         // 这样两栏高度接近，窗口按 SizeToContent 一次就能把绝大部分内容摆出来。
-        var split = Math.Min(3, TetrisHelpContent.Sections.Count);
+        var split = Math.Min(TetrisHelpContent.LeftColumnSectionCount, TetrisHelpContent.Sections.Count);
         AddSections(LeftColumn, 0, split);
         AddSections(RightColumn, split, TetrisHelpContent.Sections.Count);
 

@@ -37,6 +37,15 @@ public static class TetrisHelpContent
         "←", "→", "↓", "↑", "X", "Z", "空格", "C", "Esc", "P", "R", "Enter", "F1",
     };
 
+    /// <summary>
+    /// 说明窗口的栏数（左右两栏）：左栏放「怎么操作方块」，右栏放「什么时候按、怎么得分、联机」。
+    /// 自检拿它核对「分区切分合理」。
+    /// </summary>
+    public const int LeftColumnSectionCount = 3;
+
+    /// <summary>说明里和联机相关的小节标题（自检核对它确实写了联机）。</summary>
+    public const string NetSectionTitle = "联机对战（1 对 1）";
+
     /// <summary>说明分区。</summary>
     public static IReadOnlyList<TetrisHelpSection> Sections { get; } = new[]
     {
@@ -73,6 +82,16 @@ public static class TetrisHelpContent
             new TetrisHelpItem("← → ↓ 软降", "左移 / 右移 / 下落一格", ""),
             new TetrisHelpItem("↻ 顺时针 / ↺ 逆时针", "旋转当前方块", ""),
             new TetrisHelpItem("硬降 / 暂存", "直接落底 / 暂存当前方块", ""),
+        }),
+
+        new TetrisHelpSection("联机对战（1 对 1）", "页面顶部有三个选项：单人 / 联机 · 垃圾行互攻 / 联机 · 各自计分。", new[]
+        {
+            new TetrisHelpItem("开房间", "你当房主，等好友连进来", "填个玩家名（对方看到的名字），端口留 0 让系统自动挑；开好后把「把地址复制发给好友」里的地址发给对方"),
+            new TetrisHelpItem("加入房间", "填对方发来的地址连过去", "形如 192.168.1.5:5310；同一局域网直接用内网地址就行"),
+            new TetrisHelpItem("⚔ 垃圾行互攻", "自己消行就给对手塞垃圾行", "一次消 2/3/4 行分别送 1/2/4 行；谁先被顶死谁输。塞来的垃圾行每行会留一个缺口"),
+            new TetrisHelpItem("🏁 各自计分", "双方互不干扰，比谁分高", "两边出块序列完全一样（同一个随机种子），所以比的是操作；谁先顶死谁输，都顶死时比分数"),
+            new TetrisHelpItem("对手区", "右侧显示对手分数 / 行数 / 等级", "垃圾行互攻时还会显示对方即将被塞多少行，以及对手棋盘的缩略图"),
+            new TetrisHelpItem("离开房间", "点「离开房间」/「关闭房间」", "房主关掉房间时对方会立刻看到提示；对局中有人离开，本局就结束"),
         }),
     };
 

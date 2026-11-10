@@ -83,4 +83,49 @@ public sealed class TetrisConfig : ToolConfig
         HighScore = score;
         return true;
     }
+
+    // ---------------------------------------------------------------- 联机（1 对 1）
+
+    private string _playerName = "";
+
+    /// <summary>玩家名（联机时对方看到的名字）；空 = 用系统用户名。</summary>
+    public string PlayerName
+    {
+        get => _playerName;
+        set => Set(ref _playerName, (value ?? "").Trim());
+    }
+
+    private string _lastJoinAddress = "";
+
+    /// <summary>上次加入过的主机地址（下次打开自动带出来）。</summary>
+    public string LastJoinAddress
+    {
+        get => _lastJoinAddress;
+        set => Set(ref _lastJoinAddress, (value ?? "").Trim());
+    }
+
+    private int _listenPort;
+
+    /// <summary>开房时监听的端口（0 = 让系统挑）。</summary>
+    public int ListenPort
+    {
+        get => _listenPort;
+        set => Set(ref _listenPort, value is >= 0 and <= 65535 ? value : 0);
+    }
+
+    private string _lastNetMode = "garbage";
+
+    /// <summary>上次联机选的模式（<c>garbage</c> / <c>score</c>）。</summary>
+    public string LastNetMode
+    {
+        get => _lastNetMode;
+        set => Set(ref _lastNetMode, string.Equals(value, "score", StringComparison.OrdinalIgnoreCase) ? "score" : "garbage");
+    }
+
+    /// <summary>玩家名的实际显示值（没填就用系统用户名 / 「玩家」）。</summary>
+    [JsonIgnore]
+    public string EffectivePlayerName
+        => PlayerName.Length > 0 ? PlayerName
+            : Environment.UserName is { Length: > 0 } name ? name
+            : "玩家";
 }

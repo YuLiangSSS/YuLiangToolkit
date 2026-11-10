@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Threading;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Tools.Games.Tetris;
+using YuLiangToolkit.Tools.Games.Tetris.Net;
 
 namespace YuLiangToolkit.Tools.Games.Tetris.ViewModels;
 
@@ -16,7 +17,7 @@ namespace YuLiangToolkit.Tools.Games.Tetris.ViewModels;
 /// 间隔由 <see cref="TetrisEngine.FallIntervalMs"/> 按等级算；暂停 / 游戏结束 / 页面切走时一律停表，
 /// 否则外壳把页面缓存起来之后方还会继续往下掉（切回来已经堆满）。</para>
 /// </summary>
-public sealed class TetrisViewModel : ToolViewModelBase
+public sealed partial class TetrisViewModel : ToolViewModelBase
 {
     /// <summary>棋盘渲染快照的宽度 / 高度（引擎的常量，界面排版也按它算）。</summary>
     public const int BoardWidth = TetrisEngine.Width;
@@ -51,6 +52,7 @@ public sealed class TetrisViewModel : ToolViewModelBase
         RotateCounterClockwiseCommand = new RelayCommand(_ => Rotate(clockwise: false));
         HoldCommand = new RelayCommand(_ => Hold());
         StartOrResumeCommand = new RelayCommand(_ => StartOrResume());
+        InitializeNetCommands();
 
         Cfg.PropertyChanged += (_, e) =>
         {
@@ -196,6 +198,7 @@ public sealed class TetrisViewModel : ToolViewModelBase
     public void MoveLeft()
     {
         if (!EnsureRunning()) return;
+        if (ReportToHost(TetrisNetProtocol.Actions.Left)) return;
         if (!_engine.MoveLeft()) return;
         RefreshBoard();
     }
@@ -204,6 +207,7 @@ public sealed class TetrisViewModel : ToolViewModelBase
     public void MoveRight()
     {
         if (!EnsureRunning()) return;
+        if (ReportToHost(TetrisNetProtocol.Actions.Right)) return;
         if (!_engine.MoveRight()) return;
         RefreshBoard();
     }
@@ -212,6 +216,7 @@ public sealed class TetrisViewModel : ToolViewModelBase
     public void SoftDrop()
     {
         if (!EnsureRunning()) return;
+        if (ReportToHost(TetrisNetProtocol.Actions.SoftDrop)) return;
         if (_engine.SoftDrop())
         {
             RestartFallTimer();
@@ -228,6 +233,7 @@ public sealed class TetrisViewModel : ToolViewModelBase
     public void HardDrop()
     {
         if (!EnsureRunning()) return;
+        if (ReportToHost(TetrisNetProtocol.Actions.HardDrop)) return;
         var result = _engine.HardDrop();
         AfterLock(result);
     }
@@ -236,6 +242,7 @@ public sealed class TetrisViewModel : ToolViewModelBase
     public void Rotate(bool clockwise)
     {
         if (!EnsureRunning()) return;
+        if (ReportToHost(clockwise ? TetrisNetProtocol.Actions.RotateCw : TetrisNetProtocol.Actions.RotateCcw)) return;
         if (!_engine.Rotate(clockwise).Success) return;
         RefreshBoard();
     }
@@ -244,10 +251,26 @@ public sealed class TetrisViewModel : ToolViewModelBase
     public void Hold()
     {
         if (!EnsureRunning()) return;
+        if (ReportToHost(TetrisNetProtocol.Actions.Hold)) return;
         if (!_engine.Hold()) return;
         RefreshBoard();
         OnPropertyChanged(nameof(HeldPieces));
         OnPropertyChanged(nameof(NextPieces));
+    }
+
+    /// <summary>
+    /// 联机客户端：把按键上报给房主，由房主在权威引擎上执行（本端不跑规则）。
+    /// 返回 true = 已经交给网络处理，调用方不要再改本地引擎。
+    /// <para>房主与单人玩法返回 false，照旧在本地执行。</para>
+    /// </summary>
+    private bool ReportToHost(string action)
+    {
+        if (!IsNetMode) return false;
+        var session = _session;
+        if (session is null || session.IsHost) return false;
+        if (_netPhase != TetrisNetPhase.Playing) return true;      // 还没开始：吞掉按键，本地不动
+        _ = session.SendActionAsync(action);
+        return true;
     }
 
     /// <summary>
@@ -347,9 +370,17 @@ public sealed class TetrisViewModel : ToolViewModelBase
     {
         _comboText = result.ComboText;
 
+        // 联机互攻模式下，落地要额外负责「送垃圾行 / 判定胜负并广播」
+        if (IsNetMode && _session is not null && _session.IsHost)
+        {
+            AfterLockForNet(result);
+            return;
+        }
+
         if (_engine.IsGameOver)
         {
-            EndGame();
+            if (IsNetMode) FinishNetGame();
+            else EndGame();
             return;
         }
 
@@ -359,6 +390,8 @@ public sealed class TetrisViewModel : ToolViewModelBase
         RestartFallTimer();
 
         if (_comboText.Length > 0) Log($"消除 {result.LinesCleared} 行 +{result.ScoreGained}（等级 {result.Level}）");
+
+        if (IsNetMode) PublishNetState();
     }
 
     private void EndGame()
@@ -496,6 +529,26 @@ public sealed class TetrisBoardViewState
             ShowGrid = showGrid,
         };
     }
+
+    /// <summary>从联机快照生成渲染状态（客户端画对手 / 自己的棋盘用；不画幽灵，按格子还原）。</summary>
+    public static TetrisBoardViewState FromSnapshot(TetrisEngineSnapshot snapshot)
+        => new()
+        {
+            Cells = snapshot.Cells,
+            Piece = snapshot.Current,
+            Ghost = null,
+            ShowGrid = true,
+        };
+
+    /// <summary>反向：把渲染状态还原成快照（房主广播对手棋盘缩略图时用）。</summary>
+    public TetrisEngineSnapshot ToSnapshot() => new()
+    {
+        Cells = Cells.ToArray(),
+        Current = Piece,
+        Level = 1,
+        IsGameOver = false,
+        Next = Array.Empty<TetrominoKind>(),
+    };
 
     /// <summary>取某一格（越界 / 数据不完整返回 null）。</summary>
     public TetrominoKind? CellAt(int x, int y)

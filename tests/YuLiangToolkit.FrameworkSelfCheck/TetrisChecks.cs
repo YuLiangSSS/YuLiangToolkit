@@ -1,6 +1,8 @@
 using YuLiangToolkit.App.Models;
+using YuLiangToolkit.Core.Net;
 using YuLiangToolkit.Core.Tools;
 using YuLiangToolkit.Tools.Games.Tetris;
+using YuLiangToolkit.Tools.Games.Tetris.Net;
 
 namespace YuLiangToolkit.FrameworkSelfCheck;
 
@@ -33,6 +35,8 @@ internal static class TetrisChecks
         CheckHold(fn);
         CheckGhostAndGameOver(fn);
         CheckHelpContent(fn);
+        CheckNetRules(fn);
+        CheckNetLoopback(check);
         CheckConfig(fn);
     }
 
@@ -576,8 +580,8 @@ internal static class TetrisChecks
             && TetrisHelpContent.Summary.Contains("10 × 20") && TetrisHelpContent.Summary.Contains("游戏结束"),
             $"{TetrisHelpContent.Title} / {TetrisHelpContent.Summary.Length} 字");
 
-        check("[俄罗斯方块] 说明分成 5 个分区（移动旋转 / 落底 / 暂存预览 / 暂停重开 / 鼠标）",
-            TetrisHelpContent.Sections.Count == 5,
+        check("[俄罗斯方块] 说明分成 6 个分区（移动旋转 / 落底 / 暂存预览 / 暂停重开 / 鼠标 / 联机）",
+            TetrisHelpContent.Sections.Count == 6,
             string.Join(" / ", TetrisHelpContent.Sections.Select(s => s.Title)));
 
         // 每个分区都得有内容，条目上的按键与作用都不能空
@@ -602,6 +606,20 @@ internal static class TetrisChecks
 
         check("[俄罗斯方块] 说明里点明了 F1 也能打开说明窗口",
             allText.Contains("F1") && TetrisHelpContent.AllKeys.Contains("F1"), "F1");
+
+        // ---- 联机说明 ----
+        var netSection = TetrisHelpContent.Sections.FirstOrDefault(s => s.Title == TetrisHelpContent.NetSectionTitle);
+        var netText = netSection is null
+            ? ""
+            : string.Join("\n", netSection.Items.Select(i => i.Keys + " | " + i.Action + " | " + i.Tip));
+        check("[俄罗斯方块] 说明里写了联机对战（开房 / 加入 / 两种模式 / 离开）",
+            netSection is not null
+            && netText.Contains("开房间")
+            && netText.Contains("加入房间")
+            && netText.Contains("垃圾行互攻")
+            && netText.Contains("各自计分")
+            && netText.Contains("离开房间"),
+            netSection is null ? "（没有联机小节）" : $"{netSection.Items.Count} 条");
 
         // 关键细节：C 一手只能换一次、空格是硬降、Z 是逆时针、↑ 与 X 都是顺时针
         check("[俄罗斯方块] 说明写清了 C 的「一手只能换一次」与互换语义",
@@ -642,6 +660,258 @@ internal static class TetrisChecks
         check("[俄罗斯方块] 小技巧至少 3 条且都不为空",
             TetrisHelpContent.Tips.Count >= 3 && TetrisHelpContent.Tips.All(t => t.Trim().Length > 0),
             $"{TetrisHelpContent.Tips.Count} 条");
+    }
+
+    // ---------------------------------------------------------------- 联机规则（纯逻辑）
+
+    private static void CheckNetRules(CheckFn check)
+    {
+        // ---- 垃圾行换算 ----
+        check("[俄罗斯方块] 垃圾行换算：消 1 行不送、2→1、3→2、4→4",
+            TetrisEngine.GarbageRowsFor(1) == 0 && TetrisEngine.GarbageRowsFor(2) == 1
+            && TetrisEngine.GarbageRowsFor(3) == 2 && TetrisEngine.GarbageRowsFor(4) == 4
+            && TetrisEngine.GarbageRowsFor(0) == 0,
+            $"{TetrisEngine.GarbageRowsFor(1)}/{TetrisEngine.GarbageRowsFor(2)}/{TetrisEngine.GarbageRowsFor(3)}/{TetrisEngine.GarbageRowsFor(4)}");
+
+        // ---- 垃圾行插进棋盘 ----
+        var engine = new TetrisEngine(new Random(151));
+        engine.EnqueueGarbage(3);
+        check("[俄罗斯方块] 待发垃圾行会记账（不立刻插进棋盘）",
+            engine.PendingGarbage == 3 && engine.CellAt(0, TetrisEngine.Height - 1) is null,
+            $"{engine.PendingGarbage}");
+
+        // 落地（这一手没消行）→ 垃圾行插到底部
+        engine.PlacePiece(new TetrisPiece(TetrominoKind.O, 0, 0, 0));
+        engine.Lock();
+
+        var bottomRows = 0;
+        for (var y = TetrisEngine.Height - 3; y < TetrisEngine.Height; y++)
+        {
+            var filled = 0;
+            for (var x = 0; x < TetrisEngine.Width; x++)
+            {
+                if (engine.CellAt(x, y) == TetrominoKind.Garbage) filled++;
+            }
+            if (filled == TetrisEngine.Width - 1) bottomRows++;   // 每行留 1 格缺口
+        }
+        check("[俄罗斯方块] 落地时把垃圾行插到底部，每行留 1 格缺口",
+            engine.PendingGarbage == 0 && engine.GarbageTaken == 3 && bottomRows == 3,
+            $"待发={engine.PendingGarbage} 已吃={engine.GarbageTaken} 底部完整垃圾行={bottomRows}");
+
+        // 自己消行的那一手不吃垃圾行（否则会被立刻抵掉）
+        var eatEngine = new TetrisEngine(new Random(157));
+        eatEngine.EnqueueGarbage(2);
+        for (var x = 2; x < TetrisEngine.Width; x++) eatEngine.SetCell(x, TetrisEngine.Height - 1, TetrominoKind.T);
+        eatEngine.PlacePiece(new TetrisPiece(TetrominoKind.O, 0, TetrisEngine.Height - 2, 0));
+        var clearResult = eatEngine.Lock();
+        check("[俄罗斯方块] 自己消行的那一手不插垃圾行（留给下一手）",
+            clearResult.LinesCleared == 1 && eatEngine.PendingGarbage == 2 && eatEngine.GarbageTaken == 0,
+            $"消行={clearResult.LinesCleared} 待发={eatEngine.PendingGarbage}");
+
+        // ---- 送给对手的垃圾行 ----
+        var sender = new TetrisEngine(new Random(163));
+        sender.QueueGarbageForOpponent(TetrisEngine.GarbageRowsFor(4));
+        check("[俄罗斯方块] 消 4 行记下 4 行要送给对手，取走后清零",
+            sender.OpponentGarbageToSend == 4 && sender.GarbageSent == 4
+            && sender.TakeOpponentGarbage() == 4 && sender.OpponentGarbageToSend == 0,
+            $"{sender.GarbageSent}");
+
+        // ---- 快照往返 ----
+        var source = new TetrisEngine(new Random(167));
+        source.SetCell(0, TetrisEngine.Height - 1, TetrominoKind.I);
+        source.SetCell(1, TetrisEngine.Height - 1, TetrominoKind.Garbage);
+        source.PlacePiece(new TetrisPiece(TetrominoKind.T, 4, 5, 2));
+        var snapshot = source.Snapshot();
+
+        var restored = new TetrisEngine(new Random(999));
+        restored.ApplySnapshot(snapshot);
+
+        check("[俄罗斯方块] 快照能完整还原棋盘 / 当前块 / 分数 / 待发垃圾",
+            restored.CellAt(0, TetrisEngine.Height - 1) == TetrominoKind.I
+            && restored.CellAt(1, TetrisEngine.Height - 1) == TetrominoKind.Garbage
+            && restored.Current is { } restoredPiece && source.Current is { } sourcePiece
+            && restoredPiece == sourcePiece
+            && restored.Level == source.Level
+            && restored.NextPieces.SequenceEqual(source.NextPieces),
+            $"{restored.Current} / {restored.Level}");
+
+        var roundTripped = RoundTripSnapshot(snapshot);
+        check("[俄罗斯方块] 快照走 JSON 往返后仍然一致（联机就是靠它传输的）",
+            roundTripped is { Cells.Length: TetrisEngine.Width * TetrisEngine.Height } json
+            && json.Cells[(TetrisEngine.Height - 1) * TetrisEngine.Width] == TetrominoKind.I
+            && json.Current is not null && snapshot.Current is not null && json.Current == snapshot.Current
+            && json.Level == source.Level,
+            $"{roundTripped?.Cells.Length} 格");
+
+        // ---- 同一个种子 → 同一套出块（「各自计分」模式两边才公平） ----
+        var a = new TetrisEngine();
+        var b = new TetrisEngine();
+        a.Reset(1, seed: 42);
+        b.Reset(1, seed: 42);
+        var sameSequence = true;
+        for (var i = 0; i < 14; i++)
+        {
+            if (a.Current?.Kind != b.Current?.Kind) { sameSequence = false; break; }
+            a.HardDrop();
+            b.HardDrop();
+        }
+        check("[俄罗斯方块] 同一个种子出块序列完全一致（联机各自计分靠它保证公平）",
+            sameSequence, "");
+
+        var c = new TetrisEngine();
+        c.Reset(1, seed: 7);
+        var d = new TetrisEngine();
+        d.Reset(1, seed: 8);
+        var anyDifferent = false;
+        for (var i = 0; i < 14; i++)
+        {
+            if (c.Current?.Kind != d.Current?.Kind) { anyDifferent = true; break; }
+            c.HardDrop();
+            d.HardDrop();
+        }
+        check("[俄罗斯方块] 不同种子出块序列不同", anyDifferent, "");
+
+        // ---- 胜负判定 ----
+        check("[俄罗斯方块] 胜负：谁先顶死谁输",
+            TetrisNetJudge.Decide(hostDead: true, guestDead: false, 100, 200) == "guest"
+            && TetrisNetJudge.Decide(hostDead: false, guestDead: true, 100, 200) == "host");
+        check("[俄罗斯方块] 胜负：都没死 = 还没结果",
+            TetrisNetJudge.Decide(false, false, 100, 200) == "");
+        check("[俄罗斯方块] 胜负：双方都顶死时比分数，同分算平局",
+            TetrisNetJudge.Decide(true, true, 300, 200) == "host"
+            && TetrisNetJudge.Decide(true, true, 100, 200) == "guest"
+            && TetrisNetJudge.Decide(true, true, 150, 150) == "draw");
+        check("[俄罗斯方块] 结果文案带玩家名",
+            TetrisNetJudge.Describe("host", "小红", "小明").Contains("小红")
+            && TetrisNetJudge.Describe("draw", "小红", "小明").Contains("平局"),
+            TetrisNetJudge.Describe("host", "小红", "小明"));
+
+        // ---- 协议 ----
+        check("[俄罗斯方块] 协议标识 / 版本 / 人数上限（1 对 1 = 2 人）",
+            TetrisNetProtocol.Magic == "YLTTETRIS1" && TetrisNetProtocol.Version == 1
+            && TetrisNetProtocol.MaxPlayers == 2,
+            $"{TetrisNetProtocol.Magic} v{TetrisNetProtocol.Version} / {TetrisNetProtocol.MaxPlayers}");
+
+        check("[俄罗斯方块] 动作白名单认得全部 7 个动作、拒绝别的字符串",
+            TetrisNetProtocol.Actions.All.Count == 7
+            && TetrisNetProtocol.Actions.All.All(TetrisNetProtocol.Actions.IsKnown)
+            && !TetrisNetProtocol.Actions.IsKnown("cheat") && !TetrisNetProtocol.Actions.IsKnown(""),
+            string.Join(",", TetrisNetProtocol.Actions.All));
+
+        check("[俄罗斯方块] 模式在线上用字符串存（garbage / score），认不出回退到互攻",
+            TetrisNetProtocol.ModeToString(TetrisNetMode.Garbage) == "garbage"
+            && TetrisNetProtocol.ModeToString(TetrisNetMode.Score) == "score"
+            && TetrisNetProtocol.ParseMode("score") == TetrisNetMode.Score
+            && TetrisNetProtocol.ParseMode("SCORE") == TetrisNetMode.Score
+            && TetrisNetProtocol.ParseMode("乱七八糟") == TetrisNetMode.Garbage
+            && TetrisNetProtocol.ParseMode(null) == TetrisNetMode.Garbage,
+            TetrisNetProtocol.ModeToString(TetrisNetMode.Score));
+
+        var netState = new TetrisNetState
+        {
+            Seq = 7,
+            Phase = TetrisNetPhase.Playing,
+            Mode = "score",
+            Host = new TetrisNetPlayer { MemberId = "host", Name = "小红", Score = 1200, Board = snapshot },
+            Guest = new TetrisNetPlayer { MemberId = "m1", Name = "小明", Score = 900 },
+        };
+        var wrapped = TetrisNetProtocol.WrapState(netState);
+        var readBack = TetrisNetProtocol.ReadState(wrapped);
+        check("[俄罗斯方块] 联机状态能 JSON 往返（含嵌套的棋盘快照）",
+            readBack is { Seq: 7, Phase: TetrisNetPhase.Playing, Mode: "score" }
+            && readBack.Host is { Name: "小红", Score: 1200 }
+            && readBack.Host.Board is { } board
+            && board.Cells[(TetrisEngine.Height - 1) * TetrisEngine.Width] == TetrominoKind.I
+            && readBack.Guest is { Name: "小明", Score: 900 },
+            $"seq={readBack?.Seq} host={readBack?.Host?.Score}");
+
+        check("[俄罗斯方块] 读到坏状态返回 null（一个坏包不能把界面搞崩）",
+            TetrisNetProtocol.ReadState(default) is null, "");
+    }
+
+    /// <summary>把快照序列化成 JSON 再读回来（验证联机真正走的那条路）。</summary>
+    private static TetrisEngineSnapshot? RoundTripSnapshot(TetrisEngineSnapshot snapshot)
+    {
+        try
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(snapshot, RoomProtocol.JsonOptions);
+            return System.Text.Json.JsonSerializer.Deserialize<TetrisEngineSnapshot>(json, RoomProtocol.JsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 真回环的 1 对 1 联机：房主 + 客户端各建一个会话，在本机 127.0.0.1 上真开一次房间、
+    /// 真握手、真发动作与状态。<b>只绑本机，不联外网。</b>
+    /// </summary>
+    private static void CheckNetLoopback(Action<string, bool, string> check)
+    {
+        var host = new TetrisNetSession("房主");
+        var guest = new TetrisNetSession("好友");
+
+        try
+        {
+            var hostError = host.StartHostAsync(0).GetAwaiter().GetResult();
+            check("[俄罗斯方块·联机] 房主能在本机开房间（端口 0 = 系统自动挑）",
+                hostError.Length == 0 && host.ListenPort > 0, hostError.Length > 0 ? hostError : $"端口 {host.ListenPort}");
+            if (hostError.Length > 0) return;
+
+            var guestJoined = new TaskCompletionSource<TetrisNetPlayer>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var gotAction = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var gotState = new TaskCompletionSource<TetrisNetState>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            host.GuestJoined += player => guestJoined.TrySetResult(player);
+            host.ActionReceived += action => gotAction.TrySetResult(action);
+            guest.StateReceived += state => gotState.TrySetResult(state);
+
+            var joinError = guest.ConnectAsync($"127.0.0.1:{host.ListenPort}", "garbage").GetAwaiter().GetResult();
+            check("[俄罗斯方块·联机] 客户端能连上房主并握手成功",
+                joinError.Length == 0 && guest.IsGuestConnected, joinError.Length > 0 ? joinError : "已连上");
+            if (joinError.Length > 0) return;
+
+            check("[俄罗斯方块·联机] 房主收到「有人加入」，名字对得上",
+                guestJoined.Task.Wait(TimeSpan.FromSeconds(5))
+                && guestJoined.Task.Result.Name == "好友",
+                guestJoined.Task.IsCompleted ? guestJoined.Task.Result.Name : "（没收到）");
+
+            // 客户端上报一个动作 → 房主应当收到
+            guest.SendActionAsync(TetrisNetProtocol.Actions.RotateCw).GetAwaiter().GetResult();
+            check("[俄罗斯方块·联机] 客户端上报的按键动作能到达房主",
+                gotAction.Task.Wait(TimeSpan.FromSeconds(5))
+                && gotAction.Task.Result == TetrisNetProtocol.Actions.RotateCw,
+                gotAction.Task.IsCompleted ? gotAction.Task.Result : "（没收到）");
+
+            // 房主广播状态 → 客户端应当收到，且内容完整
+            var engine = new TetrisEngine();
+            var state = new TetrisNetState
+            {
+                Seq = 5,
+                Phase = TetrisNetPhase.Playing,
+                Mode = "garbage",
+                Host = new TetrisNetPlayer { MemberId = "host", Name = "房主", Score = 300, Board = engine.Snapshot() },
+            };
+            host.BroadcastStateAsync(state).GetAwaiter().GetResult();
+            check("[俄罗斯方块·联机] 房主广播的状态（含棋盘快照）能到达客户端",
+                gotState.Task.Wait(TimeSpan.FromSeconds(5))
+                && gotState.Task.Result is { Seq: 5, Phase: TetrisNetPhase.Playing }
+                && gotState.Task.Result.Host is { Score: 300, Board: not null },
+                gotState.Task.IsCompleted ? $"seq={gotState.Task.Result.Seq}" : "（没收到）");
+
+            // 房间满了：1 对 1，第三个连接应当被拒
+            var third = new TetrisNetSession("插队的");
+            var thirdError = third.ConnectAsync($"127.0.0.1:{host.ListenPort}", "garbage").GetAwaiter().GetResult();
+            check("[俄罗斯方块·联机] 第 3 个人连不进来（1 对 1，房间已满）",
+                thirdError.Length > 0, thirdError.Length > 0 ? thirdError : "居然连上了");
+            third.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+        finally
+        {
+            try { guest.DisposeAsync().AsTask().GetAwaiter().GetResult(); } catch { /* 忽略 */ }
+            try { host.DisposeAsync().AsTask().GetAwaiter().GetResult(); } catch { /* 忽略 */ }
+        }
     }
 
     // ---------------------------------------------------------------- 配置

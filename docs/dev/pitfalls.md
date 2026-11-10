@@ -261,6 +261,20 @@
 - ⚠ `stateFactory` 在网络线程调：只读加锁模型 + `_lastGameSnapshot`，别碰游戏 VM / UI。
 - ⚠ 发完 bye 等 80ms 再关连接，否则 TCP RST 可能被主机判成网络断开。
 
+### 俄罗斯方块联机（1 对 1）
+- **不复用 `BoardRoomSession`**：那套深度绑定「两席位 + 观战 + 自动轮换 + 胜负方」，
+  俄罗斯方块是「双方各一块棋盘互塞垃圾行」，用不上；复用 `Core/Net` 的
+  `RoomHost` / `RoomClient` / `RoomLink` / `RoomProtocol` 就够，会话自己写在
+  `Tetris/Net/TetrisNetSession.cs`。
+- ⚠ **房主要跑两份引擎**（本端 + 客户端那份）：客户端只上报按键、不跑规则，
+  所以客户端的动作必须由房主代跑。漏了这一层会表现成「客户端能操作但画面永远不动」。
+- ⚠ **垃圾行必须在「自己没消行」的那一手才插**：落地时先结算消行再处理垃圾行，
+  否则玩家刚消掉的行会被自己吃进来的垃圾行立刻抵掉（表现为「消了行却没变矮」）。
+- ⚠ 客户端发完 bye 同样要等 `ClientByeDrainMs`（80ms）再关连接，理由同棋牌：
+  接收缓冲区非空时 close 会发 RST，房主可能把主动离开误判成掉线。
+- `YLT_TETRIS_NET=1|score|room` 是截图 / 演示开关：`room` 会假装房间里有个对手
+  （`_demoRoom`），**不联网**；它只用于截图，真实玩法不走这条路。
+
 ### 图片连续阅读器
 - ⚠ 阅读偏移自己记（`_readingOffset`），别每帧反读 `ScrollViewer`：`ScrollToXxx` 排队到布局阶段才生效。
 - 横向右→左：图片物理倒序、阅读偏移 = `ScrollableWidth − HorizontalOffset`（与物理偏移互为反数）；别用 `FlowDirection`。

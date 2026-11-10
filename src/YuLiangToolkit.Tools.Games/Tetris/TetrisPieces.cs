@@ -25,6 +25,9 @@ public enum TetrominoKind
 
     /// <summary>Z 形。</summary>
     Z,
+
+    /// <summary>垃圾行（联机互攻时对手送来的行；画成灰色，没有对应方块形状）。</summary>
+    Garbage,
 }
 
 /// <summary>
@@ -147,7 +150,11 @@ public static class TetrisPieces
 
     /// <summary>某个方块某个朝向的四个格子（包围盒内相对坐标，Y 向下为正）。</summary>
     public static IReadOnlyList<(int X, int Y)> CellsOf(TetrominoKind kind, int rotation)
-        => Shapes[((int)kind % TetrominoKindCount) * RotationCount + NormalizeRotation(rotation)];
+    {
+        // 垃圾行不是可操作的方块：真被传进来（数据错乱）就给 I 的形状，别抛异常把游戏搞崩
+        var index = kind == TetrominoKind.Garbage ? 0 : (int)kind % TetrominoKindCount;
+        return Shapes[index * RotationCount + NormalizeRotation(rotation)];
+    }
 
     /// <summary>包围盒边长：I = 4、O = 2、其余 3。</summary>
     public static int BoxSize(TetrominoKind kind) => kind switch
@@ -179,6 +186,9 @@ public static class TetrisPieces
         return kind == TetrominoKind.O ? NoKick : table[index];
     }
 
+    /// <summary>每种方块的中文名 / 字母代号里，垃圾行单独处理（它不是可操作方块）。</summary>
+    public static bool IsPlayable(TetrominoKind kind) => kind != TetrominoKind.Garbage;
+
     /// <summary>方块的中文名（界面 / 说明文字用）。</summary>
     public static string DisplayName(TetrominoKind kind) => kind switch
     {
@@ -188,6 +198,7 @@ public static class TetrisPieces
         TetrominoKind.O => "O 方块",
         TetrominoKind.S => "S 形",
         TetrominoKind.T => "T 形",
+        TetrominoKind.Garbage => "垃圾行",
         _ => "Z 形",
     };
 
@@ -200,6 +211,7 @@ public static class TetrisPieces
         TetrominoKind.O => "O",
         TetrominoKind.S => "S",
         TetrominoKind.T => "T",
+        TetrominoKind.Garbage => "G",
         _ => "Z",
     };
 }
@@ -212,7 +224,7 @@ public static class TetrominoPalette
 {
     private static readonly Dictionary<TetrominoKind, SolidColorBrush> Cache = new();
 
-    /// <summary>某个方块的颜色（<c>#RRGGBB</c>）。</summary>
+    /// <summary>某个方块的颜色（<c>#RRGGBB</c>）。垃圾行是灰色的，一眼能和自己的方块区分开。</summary>
     public static string HexOf(TetrominoKind kind) => kind switch
     {
         TetrominoKind.I => "#38D6E0",
@@ -221,6 +233,7 @@ public static class TetrominoPalette
         TetrominoKind.O => "#F2C94C",
         TetrominoKind.S => "#3FB950",
         TetrominoKind.T => "#B47CFF",
+        TetrominoKind.Garbage => "#6B7280",
         _ => "#E5534B",
     };
 

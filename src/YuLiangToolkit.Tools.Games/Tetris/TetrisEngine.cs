@@ -64,10 +64,11 @@ public sealed class TetrisEngine
     /// <summary>等级上限（再快也按这个来，避免锁到 1 格 / 帧那种不可玩的速度）。</summary>
     public const int MaxLevel = 20;
 
-    private readonly Random _random;
     private readonly Queue<TetrominoKind> _preview = new();
     private readonly List<TetrominoKind> _bag = new();
     private readonly TetrominoKind?[] _board = new TetrominoKind?[Width * Height];
+
+    private Random _random = new(1);
 
     /// <summary>起始等级（消行升级时从它往上加）。</summary>
     private int _startLevel = 1;
@@ -78,6 +79,7 @@ public sealed class TetrisEngine
         _random = random ?? new Random();
         Reset();
     }
+
     // ---------------------------------------------------------------- 状态
 
     /// <summary>当前正在下落的方块（游戏没开始时为 null）。</summary>
@@ -100,6 +102,18 @@ public sealed class TetrisEngine
 
     /// <summary>这一手（同一次落地）已经消掉多少行（界面用来放「+分数」飘字）。</summary>
     public int LastClearedLines { get; private set; }
+
+    /// <summary>
+    /// 还欠着、没插进棋盘的垃圾行数（联机互攻模式）：<b>下一次锁定结算时</b>一次性插到底部。
+    /// 单人玩法恒为 0。
+    /// </summary>
+    public int PendingGarbage { get; private set; }
+
+    /// <summary>这一局送出去多少垃圾行（对手欠下的）。</summary>
+    public int GarbageSent { get; private set; }
+
+    /// <summary>这一局收到并已经插进棋盘的垃圾行数。</summary>
+    public int GarbageTaken { get; private set; }
 
     /// <summary>是否已经结束（方块出生位置被占住）。</summary>
     public bool IsGameOver { get; private set; }
@@ -139,7 +153,11 @@ public sealed class TetrisEngine
 
     /// <summary>重新开始：清空棋盘、重置分数等级与暂存，并立刻出第一块。</summary>
     /// <param name="startLevel">起始等级（1 ~ <see cref="MaxLevel"/>）；等级按「起始等级 + 每 10 行升 1 级」走。</param>
-    public void Reset(int startLevel = 1)
+    /// <param name="seed">
+    /// 随机种子。<c>null</c> = 每次都不一样（单人玩法）；
+    /// 联机「各自计分」模式两边传同一个种子，出块序列才完全一致，比分数才公平。
+    /// </param>
+    public void Reset(int startLevel = 1, int? seed = null)
     {
         Array.Clear(_board);
         _preview.Clear();
@@ -153,9 +171,22 @@ public sealed class TetrisEngine
         Level = _startLevel;
         LastClearedLines = 0;
         IsGameOver = false;
+        PendingGarbage = 0;
+        GarbageSent = 0;
+        GarbageTaken = 0;
+
+        if (seed is { } fixedSeed) Reseed(fixedSeed);
 
         EnsurePreview();
         SpawnNext();
+    }
+
+    /// <summary>换一个随机源（同一个种子 → 同一套 7-bag 顺序）。联机开新局时用。</summary>
+    public void Reseed(int seed)
+    {
+        _random = new Random(seed);
+        _preview.Clear();
+        _bag.Clear();
     }
 
     // ---------------------------------------------------------------- 移动 / 旋转 / 落地
@@ -256,6 +287,18 @@ public sealed class TetrisEngine
         var newLevel = Math.Clamp(_startLevel + Lines / 10, 1, MaxLevel);
         Level = newLevel;
 
+        // 联机互攻：这一手消得够多，就给对手送垃圾行（消 1 行不送）。
+        // SetSinglePlayerGarbage(true) 时也让自己吃一份（自检 / 单人体验用），默认关着。
+        if (cleared >= 2)
+        {
+            var rows = GarbageRowsFor(cleared);
+            GarbageSent += rows;
+            if (_allowSelfGarbage) EnqueueGarbage(rows);
+        }
+
+        // 欠着的垃圾行在「自己没消行」的落地时才插进来，否则会被自己这一手的消行立刻抵掉
+        if (cleared == 0 && PendingGarbage > 0) ApplyGarbage(PendingGarbage);
+
         Current = null;
         HasHeldThisTurn = false;
         EnsurePreview();
@@ -297,6 +340,145 @@ public sealed class TetrisEngine
         var ghost = piece;
         while (Fits(ghost.Moved(0, 1))) ghost = ghost.Moved(0, 1);
         return ghost;
+    }
+
+    // ---------------------------------------------------------------- 联机：垃圾行 / 快照
+
+    /// <summary>
+    /// 一次消掉 <paramref name="cleared"/> 行要送给对手多少垃圾行。
+    /// 现代俄罗斯方块的标准值：消 2 行送 1、消 3 行送 2、消 4 行送 4，消 1 行不送。
+    /// </summary>
+    public static int GarbageRowsFor(int cleared) => Math.Clamp(cleared, 0, 4) switch
+    {
+        2 => 1,
+        3 => 2,
+        4 => 4,
+        _ => 0,
+    };
+
+    /// <summary>对手送来的垃圾行先记在这儿，下一次「自己没消行」的落地时插进棋盘。</summary>
+    public void EnqueueGarbage(int rows)
+    {
+        if (rows <= 0 || IsGameOver) return;
+        PendingGarbage = Math.Min(PendingGarbage + rows, Height - 1);
+    }
+
+    /// <summary>
+    /// 联机互攻：把「该送给对手」的垃圾行记进 <see cref="OpponentGarbageToSend"/>，
+    /// 由 ViewModel 在广播前取走转给对方。单人玩法不会调用它，行为完全不变。
+    /// </summary>
+    public void QueueGarbageForOpponent(int rows)
+    {
+        if (rows <= 0) return;
+        OpponentGarbageToSend += rows;
+        GarbageSent += rows;
+    }
+
+    /// <summary>还没转给对手的垃圾行（ViewModel 取走后清零）。</summary>
+    public int OpponentGarbageToSend { get; private set; }
+
+    /// <summary>取走待转给对手的垃圾行数并清零。</summary>
+    public int TakeOpponentGarbage()
+    {
+        var rows = OpponentGarbageToSend;
+        OpponentGarbageToSend = 0;
+        return rows;
+    }
+
+    /// <summary>
+    /// 单人玩法是否也启用垃圾行（默认关）。联机模式由 ViewModel 关掉这个开关，
+    /// 因为垃圾行该由「对手那边」送过来，而不是自己送给自己。
+    /// </summary>
+    public void SetSinglePlayerGarbage(bool enabled) => _allowSelfGarbage = enabled;
+
+    private bool _allowSelfGarbage;
+
+    /// <summary>
+    /// 把棋盘整体上移 <paramref name="rows"/> 行，底部补上垃圾行（每行留 1 格随机缺口）。
+    /// 顶出去的行直接丢掉；新插入的行把方块往上顶，顶到出生位置就判负。
+    /// </summary>
+    private void ApplyGarbage(int rows)
+    {
+        var take = Math.Min(Math.Max(rows, 0), Height - 1);
+        if (take == 0) return;
+
+        PendingGarbage = 0;
+        GarbageTaken += take;
+
+        // 整体上移
+        if (take < Height)
+        {
+            Array.Copy(_board, take * Width, _board, 0, (Height - take) * Width);
+        }
+
+        // 底部补垃圾行：缺口列随机；相邻两行缺口尽量错开（看起来才像真的垃圾行）
+        var previousGap = -1;
+        for (var y = Height - take; y < Height; y++)
+        {
+            var gap = _random.Next(Width);
+            if (gap == previousGap) gap = (gap + 1 + _random.Next(Width - 1)) % Width;
+            previousGap = gap;
+
+            for (var x = 0; x < Width; x++)
+            {
+                _board[y * Width + x] = x == gap ? null : TetrominoKind.Garbage;
+            }
+        }
+
+        // 方块被顶上去：原位放不下就往上挪，挪到顶都放不下 = 顶死
+        if (Current is { } piece)
+        {
+            var moved = piece;
+            var guard = 0;
+            while (!Fits(moved) && guard++ < Height)
+            {
+                moved = moved.Moved(0, -1);
+            }
+            Current = Fits(moved) ? moved : piece;
+            if (!Fits(moved)) IsGameOver = true;
+        }
+    }
+
+    /// <summary>这一局的对局快照（联机时房主广播给客户端渲染用）。</summary>
+    public TetrisEngineSnapshot Snapshot() => new()
+    {
+        Cells = (TetrominoKind?[])_board.Clone(),
+        Current = Current,
+        Held = Held,
+        Score = Score,
+        Lines = Lines,
+        Level = Level,
+        PendingGarbage = PendingGarbage,
+        GarbageSent = GarbageSent,
+        GarbageTaken = GarbageTaken,
+        IsGameOver = IsGameOver,
+        Next = _preview.ToArray(),
+    };
+
+    /// <summary>
+    /// 用快照覆盖本端状态（客户端渲染房主权威的棋盘）。
+    /// <b>不改动随机源</b>：客户端不负责出块，块由快照里的 <c>Current</c> / <c>Next</c> 决定。
+    /// </summary>
+    public void ApplySnapshot(TetrisEngineSnapshot snapshot)
+    {
+        if (snapshot is null) return;
+
+        for (var i = 0; i < _board.Length; i++)
+            _board[i] = i < snapshot.Cells.Length ? snapshot.Cells[i] : null;
+
+        Current = snapshot.Current;
+        Held = snapshot.Held;
+        Score = snapshot.Score;
+        Lines = snapshot.Lines;
+        Level = Math.Clamp(snapshot.Level, 1, MaxLevel);
+        PendingGarbage = snapshot.PendingGarbage;
+        GarbageSent = snapshot.GarbageSent;
+        GarbageTaken = snapshot.GarbageTaken;
+        IsGameOver = snapshot.IsGameOver;
+
+        _preview.Clear();
+        foreach (var kind in snapshot.Next) _preview.Enqueue(kind);
+        EnsurePreview();
     }
 
     /// <summary>把当前方块搬到<paramref name="target"/>（自检 / 调试用，正式玩不会用到）。</summary>

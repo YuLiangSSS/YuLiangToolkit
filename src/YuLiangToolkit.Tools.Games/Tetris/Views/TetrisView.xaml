@@ -26,8 +26,24 @@
         <!-- ===== 页头 ===== -->
         <StackPanel Grid.Row="0">
             <TextBlock Text="🧱 俄罗斯方块" FontSize="21" FontWeight="SemiBold" />
-            <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
-                       Text="经典 10×20 俄罗斯方块：7-bag 出块、SRS 旋转与墙踢、幽灵方块落点预览、暂存（Hold）、接下来 3 块；消行得分升级、等级越高落得越快，最高分自动记住。" />
+
+            <!-- 玩法切换：单人 / 联机互攻 / 联机比分数（联机时才出现房间卡） -->
+            <WrapPanel Orientation="Horizontal" Margin="0,8,0,0">
+                <RadioButton Content="单人" Style="{StaticResource RadioButtonStyle}"
+                             IsChecked="{Binding SoloModeIsChecked}" GroupName="tetris-mode"
+                             VerticalAlignment="Center" />
+                <RadioButton Content="联机 · 垃圾行互攻" Style="{StaticResource RadioButtonStyle}" Margin="18,0,0,0"
+                             IsChecked="{Binding GarbageModeIsChecked}" GroupName="tetris-mode"
+                             VerticalAlignment="Center"
+                             ToolTip="1 对 1：自己消 2/3/4 行，就给对手底部塞 1/2/4 行垃圾行；谁先被顶死谁输" />
+                <RadioButton Content="联机 · 各自计分" Style="{StaticResource RadioButtonStyle}" Margin="18,0,0,0"
+                             IsChecked="{Binding ScoreModeIsChecked}" GroupName="tetris-mode"
+                             VerticalAlignment="Center"
+                             ToolTip="1 对 1：双方各一块棋盘、互不干扰（出块序列一样），比谁分高" />
+            </WrapPanel>
+
+            <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,6,0,0"
+                       Text="{Binding ModeHintText}" />
         </StackPanel>
 
         <!-- ===== 主体：左棋盘 / 右信息栏（左右可拖） ===== -->
@@ -65,7 +81,8 @@
                                     ToolTip="暂停 / 继续（Esc 或 P）" />
                             <Button Content="重新开始" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
                                     Command="{Binding NewGameCommand}"
-                                    ToolTip="开一局新的（R）" />
+                                    IsEnabled="{Binding CanRestartGame}"
+                                    ToolTip="开一局新的（R）；联机时要房主才能重开" />
                         </StackPanel>
                     </Grid>
 
@@ -103,11 +120,16 @@
             <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
                                Key="tetris.棋盘与信息栏" />
 
-            <!-- ===== 右列：分数 + 预览 / 设置 ===== -->
+            <!-- ===== 右列：本局 / 联机房间（仅联机时）/ 设置 =====
+                 联机房间行用 BoolToPaneLength 跟着「是不是联机」收放（行高 + 分隔条一起隐藏），
+                 单人不占地方。 -->
             <Grid Grid.Column="2">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="*" MinHeight="240" />
+                    <RowDefinition Height="*" MinHeight="200" />
                     <RowDefinition Height="12" />
+                    <RowDefinition Height="{Binding RoomPanelVisible, Converter={StaticResource BoolToPaneLength}, ConverterParameter=300}"
+                                   MinHeight="{Binding RoomPanelVisible, Converter={StaticResource BoolToPaneLength}, ConverterParameter=196}" />
+                    <RowDefinition Height="{Binding RoomPanelVisible, Converter={StaticResource BoolToPaneLength}, ConverterParameter=12}" />
                     <RowDefinition Height="206" MinHeight="150" />
                 </Grid.RowDefinitions>
 
@@ -174,16 +196,167 @@
                                                      HintBrush="{DynamicResource FaintTextBrush}"
                                                      SlotBrush="{DynamicResource InputBackgroundBrush}"
                                                      Visibility="{Binding Cfg.ShowNext, Converter={StaticResource BoolToVis}}" />
+
+                            <!-- 联机：垃圾行提示（只在互攻模式出现） -->
+                            <TextBlock Text="{Binding MyGarbageText}" FontSize="10.5" TextWrapping="Wrap" Margin="0,8,0,0"
+                                       Foreground="{DynamicResource DangerBrush}"
+                                       Visibility="{Binding MyGarbageText, Converter={StaticResource EmptyToVisInverse}}" />
                         </StackPanel>
                     </ScrollViewer>
                 </Border>
 
-                <!-- 横分隔条：分数 / 预览 ↔ 设置 -->
+                <!-- 横分隔条：本局信息 ↔ 联机房间（单人时整块收起） -->
                 <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
-                                   Key="tetris.信息与设置" />
+                                   Key="tetris.信息与房间"
+                                   Visibility="{Binding RoomPanelVisible, Converter={StaticResource BoolToVis}}" />
+
+                <!-- ===== 联机房间（1 对 1）：开房 / 加入 / 分享地址 / 对手棋盘 ===== -->
+                <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True"
+                        Visibility="{Binding RoomPanelVisible, Converter={StaticResource BoolToVis}}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                  core:ScrollChaining.Enabled="True">
+                        <StackPanel Margin="16,12,16,14">
+                            <Grid>
+                                <TextBlock Text="联机房间（1 对 1）" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding NetBadgeText}" HorizontalAlignment="Right" FontSize="11.5"
+                                           FontWeight="SemiBold" VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding NetBadgeBrushKey}" Value="SuccessBrush">
+                                                    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+
+                            <!-- 还没联机：玩家名 / 端口 / 开房 / 加入 -->
+                            <StackPanel Visibility="{Binding CanJoinNet, Converter={StaticResource BoolToVis}}">
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="玩家名" VerticalAlignment="Center" FontSize="11.5"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,8,0" />
+                                    <TextBox Grid.Column="1" Text="{Binding PlayerName, UpdateSourceTrigger=PropertyChanged}"
+                                             Style="{StaticResource TextBoxStyle}" ToolTip="对方看到的名字（留空 = 系统用户名）" />
+                                </Grid>
+
+                                <Grid Margin="0,6,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="端口" VerticalAlignment="Center" FontSize="11.5"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,8,0" />
+                                    <TextBox Grid.Column="1" Text="{Binding ListenPortText, UpdateSourceTrigger=PropertyChanged}"
+                                             Style="{StaticResource TextBoxStyle}" ToolTip="0 = 让系统自动挑一个空闲端口" />
+                                    <TextBlock Grid.Column="2" Text="0 = 自动挑" VerticalAlignment="Center" FontSize="10"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,0" />
+                                </Grid>
+
+                                <Button Content="开房间（等好友连进来）" Style="{StaticResource PrimaryButtonStyle}"
+                                        Margin="0,8,0,0" HorizontalAlignment="Stretch"
+                                        Command="{Binding StartHostCommand}" IsEnabled="{Binding CanJoinNet}" />
+
+                                <TextBlock Text="加入房间（填对方发来的地址）" FontSize="11" Margin="0,10,0,0"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBox Text="{Binding JoinAddress, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource TextBoxStyle}" Margin="0,4,0,0"
+                                         ToolTip="例如 192.168.1.5:5310、[::1]:5310、穿透域名:端口" />
+                                <Button Content="加入房间" Style="{StaticResource PrimaryButtonStyle}" Margin="0,8,0,0"
+                                        HorizontalAlignment="Stretch" Command="{Binding JoinRoomCommand}"
+                                        IsEnabled="{Binding CanJoinNet}" />
+                            </StackPanel>
+
+                            <!-- 联机中：分享地址（房主）/ 离开 -->
+                            <StackPanel Margin="0,8,0,0" Visibility="{Binding CanLeaveNet, Converter={StaticResource BoolToVis}}">
+                                <StackPanel Visibility="{Binding HasShareAddresses, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="把地址复制发给好友" FontSize="11"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <ItemsControl ItemsSource="{Binding ShareAddresses}" Margin="0,4,0,0">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,3,0,0">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding AddressText}" FontSize="12"
+                                                                   Foreground="{DynamicResource TextPrimaryBrush}"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{Binding DetailText}" FontSize="10"
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    </StackPanel>
+                                                    <Button Grid.Column="1" Content="复制" Style="{StaticResource SecondaryButtonStyle}"
+                                                            FontSize="11" Padding="8,2" VerticalAlignment="Center"
+                                                            Command="{Binding DataContext.CopyTextCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding AddressText}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+
+                                <Button Content="{Binding LeaveNetText}" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="0,8,0,0" HorizontalAlignment="Stretch"
+                                        Command="{Binding LeaveRoomCommand}" IsEnabled="{Binding CanLeaveNet}" />
+                            </StackPanel>
+
+                            <!-- 状态一句话 -->
+                            <TextBlock Text="{Binding NetNoticeText}" FontSize="11" TextWrapping="Wrap" Margin="0,8,0,0">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding NetNoticeBrushKey}" Value="SuccessBrush">
+                                                <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding NetNoticeBrushKey}" Value="DangerBrush">
+                                                <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+
+                            <!-- 对手：分数 + 垃圾行 + 棋盘缩略图 -->
+                            <StackPanel Margin="0,10,0,0"
+                                        Visibility="{Binding OpponentPanelVisible, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="对手" FontSize="11.5" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding GuestScoreText}" FontSize="11.5" TextWrapping="Wrap" Margin="0,4,0,0"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Text="{Binding OpponentGarbageText}" FontSize="10.5" TextWrapping="Wrap" Margin="0,2,0,0"
+                                           Foreground="{DynamicResource DangerBrush}"
+                                           Visibility="{Binding OpponentGarbageText, Converter={StaticResource EmptyToVisInverse}}" />
+
+                                <!-- 对手棋盘缩略图：同一个自绘控件，按比例缩小（200 高左右，不占太多地方） -->
+                                <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="6"
+                                        Height="150" Margin="0,6,0,0" ClipToBounds="True">
+                                    <views:TetrisBoardView State="{Binding GuestBoardState}"
+                                                           BoardBrush="{DynamicResource InputBackgroundBrush}"
+                                                           GridBrush="{DynamicResource BorderBrush}"
+                                                           BorderBrush="{DynamicResource BorderBrush}" />
+                                </Border>
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+
+                <!-- 横分隔条：联机房间 ↔ 设置（单人时跟着房间一起收起） -->
+                <core:PaneSplitter Grid.Row="3" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                                   Key="tetris.房间与设置"
+                                   Visibility="{Binding RoomPanelVisible, Converter={StaticResource BoolToVis}}" />
 
                 <!-- ===== 设置 ===== -->
-                <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                <Border Grid.Row="4" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                                   core:ScrollChaining.Enabled="True">
                         <StackPanel Margin="16,12,16,14">
