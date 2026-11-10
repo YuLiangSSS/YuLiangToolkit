@@ -719,6 +719,7 @@ public sealed class SnakeGame
     private void Finish(string reason)
     {
         IsOver = true;
+        if (_players.Count == 0) { ResultText = reason; return; }
         var maxFruits = _players.Max(p => p.Stats.Fruits);
         var maxSteps = _players.Max(p => p.Stats.AliveSteps);
         var maxCombo = _players.Max(p => p.Stats.BestCombo);
@@ -776,6 +777,9 @@ public sealed class SnakeGame
     /// <summary>结算排名（中途查看用）。</summary>
     public IReadOnlyList<(SnakePlayer Player, double Score)> ComputeRanking()
     {
+        // 空局（刚进页面、还没开局）直接返回空表 —— Max 对空集合会抛异常（踩过）
+        if (_players.Count == 0) return Array.Empty<(SnakePlayer, double)>();
+
         var maxFruits = _players.Max(p => p.Stats.Fruits);
         var maxSteps = _players.Max(p => p.Stats.AliveSteps);
         var maxCombo = _players.Max(p => p.Stats.BestCombo);
