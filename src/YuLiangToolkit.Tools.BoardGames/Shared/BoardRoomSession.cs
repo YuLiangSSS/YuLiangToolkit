@@ -805,6 +805,41 @@ public sealed class BoardRoomSession : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// 主机：给<b>每个成员发各自不同</b>的状态（斗地主 / 军棋的暗棋：每个人只能看到自己的手牌 / 自己该看的棋盘）。
+    /// <para><paramref name="envelopeFactory"/> 会在<b>网络线程逐个成员</b>调用，参数是成员 id，
+    /// 返回给这个成员的状态包装（返回 <c>default</c> / 空 = 跳过这个人）。</para>
+    /// <para>⚠ 实现方式：把成员 id 一起交给 <see cref="BoardProtocol.WrapStateFor"/> 的调用方（各游戏 VM），
+    /// 由 VM 在 <b>UI 线程</b>预先算好「成员 id → 包装状态」的字典再传进来 ——
+    /// 这个重载只负责按 id 发送，不在网络线程碰游戏对象。</para>
+    /// </summary>
+    public async Task SendStatePerMemberAsync(
+        IReadOnlyDictionary<string, JsonElement> envelopes, CancellationToken ct = default)
+    {
+        var host = _host;
+        if (host is null || envelopes is null || envelopes.Count == 0) return;
+
+        var targets = new List<(string MemberId, RoomLink Link)>();
+        lock (_gate)
+        {
+            foreach (var (memberId, link) in _links)
+            {
+                if (link.IsOpen && envelopes.ContainsKey(memberId)) targets.Add((memberId, link));
+            }
+        }
+
+        foreach (var (memberId, link) in targets)
+        {
+            try
+            {
+                var frame = RoomFrame.New(BoardProtocol.Kinds.State, HostMemberId,
+                    new StateInfo { State = envelopes[memberId] });
+                await host.SendAsync(link, frame, ct).ConfigureAwait(false);
+            }
+            catch { /* 单个客户端发失败不影响其它人 */ }
+        }
+    }
+
     /// <summary>主机：把一条聊天/系统提示广播给所有客户端（主机本地由基类自己加，不会回环给自己）。</summary>
     public async Task BroadcastChatAsync(string name, string text, bool isSystem = false)
     {

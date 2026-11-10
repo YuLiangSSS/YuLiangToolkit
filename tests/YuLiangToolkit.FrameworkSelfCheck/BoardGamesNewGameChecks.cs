@@ -1,5 +1,6 @@
 using YuLiangToolkit.Tools.BoardGames.Doudizhu;
 using YuLiangToolkit.Tools.BoardGames.Junqi;
+using YuLiangToolkit.Tools.BoardGames.Shared.ViewModels;
 
 namespace YuLiangToolkit.FrameworkSelfCheck;
 
@@ -36,6 +37,112 @@ internal static class BoardGamesNewGameChecks
         CheckJunqiMoves(fn);
         CheckJunqiDeploy(fn);
         CheckJunqiWin(fn);
+        CheckMultiSeatRotation(fn);
+    }
+
+    // ================================================================ 多席位换人（3~4 人）
+
+    private static void CheckMultiSeatRotation(CheckFn check)
+    {
+        static BoardMultiSeatRotation.SeatOutcome Seat(string id, bool winner = false)
+            => new(id, winner);
+
+        static List<BoardRotationCandidate> Members(params (string Id, int Games, int Join)[] list)
+            => list.Select(x => new BoardRotationCandidate(x.Id, x.Id.ToUpperInvariant(), true, x.Games, x.Join)).ToList();
+
+        // 三个席位（斗地主）
+        var seats3 = new[] { Seat("m1", true), Seat("m2"), Seat("m3") };
+        var members = Members(("m1", 1, 1), ("m2", 1, 2), ("m3", 1, 3), ("m4", 0, 4), ("m5", 0, 5));
+
+        var manual = BoardMultiSeatRotation.Plan(
+            BoardAutoRotateMode.Manual, BoardAutoPickMode.Rotation, seats3, members);
+        check("[多人换人] 手动模式：席位原样不动",
+            manual.Seats.SequenceEqual(new[] { "m1", "m2", "m3" }) && !manual.Changed,
+            string.Join(",", manual.Seats));
+
+        var loserOut = BoardMultiSeatRotation.Plan(
+            BoardAutoRotateMode.LoserOut, BoardAutoPickMode.Rotation, seats3, members);
+        check("[多人换人] 输的下场：赢家留场，输的两个位置由排队的人补（没上过场的优先）",
+            loserOut.Seats[0] == "m1"
+            && loserOut.Seats.Contains("m4") && loserOut.Seats.Contains("m5")
+            && !loserOut.Seats.Contains("m2") && !loserOut.Seats.Contains("m3")
+            && loserOut.Changed,
+            string.Join(",", loserOut.Seats) + " · " + loserOut.Reason);
+
+        var bothOut = BoardMultiSeatRotation.Plan(
+            BoardAutoRotateMode.BothOut, BoardAutoPickMode.Rotation, seats3, members);
+        var reserveCount = members.Count(m => m.MemberId is not ("m1" or "m2" or "m3"));
+        check("[多人换人] 全场换人：替补够时全部换人，替补不够时维持原上场（不乱排）",
+            reserveCount < 3
+                ? !bothOut.Changed && bothOut.Seats.SequenceEqual(new[] { "m1", "m2", "m3" })
+                : bothOut.Changed && bothOut.Seats.Count == 3,
+            string.Join(",", bothOut.Seats) + " · " + bothOut.Reason);
+
+        // 替补充足时：三个位置全换成排队的人
+        var manyMembers = Members(("m1", 1, 1), ("m2", 1, 2), ("m3", 1, 3),
+            ("m4", 0, 4), ("m5", 0, 5), ("m6", 0, 6));
+        var bothOutEnough = BoardMultiSeatRotation.Plan(
+            BoardAutoRotateMode.BothOut, BoardAutoPickMode.Rotation, seats3, manyMembers);
+        check("[多人换人] 全场换人：替补够 3 个时三个位置全换掉",
+            bothOutEnough.Changed
+            && bothOutEnough.Seats.Count == 3
+            && bothOutEnough.Seats.SequenceEqual(new[] { "m4", "m5", "m6" }),
+            string.Join(",", bothOutEnough.Seats) + " · " + bothOutEnough.Reason);
+
+        // 排队人不够：保持原样，不乱排
+        var fewMembers = Members(("m1", 1, 1), ("m2", 1, 2), ("m3", 1, 3), ("m4", 0, 4));
+        var notEnough = BoardMultiSeatRotation.Plan(
+            BoardAutoRotateMode.BothOut, BoardAutoPickMode.Rotation,
+            new[] { Seat("m1", true), Seat("m2"), Seat("m3") }, fewMembers);
+        check("[多人换人] 排队的人不够时不强行换人（维持原上场）",
+            notEnough.Seats.SequenceEqual(new[] { "m1", "m2", "m3" }) && !notEnough.Changed,
+            notEnough.Reason);
+
+        // 四人席位（四国军棋）：赢家留、其余换
+        var seats4 = new[] { Seat("m1", true), Seat("m2"), Seat("m3"), Seat("m4") };
+        var members4 = Members(("m1", 2, 1), ("m2", 2, 2), ("m3", 2, 3), ("m4", 2, 4), ("m5", 1, 5), ("m6", 0, 6), ("m7", 0, 7));
+        var four = BoardMultiSeatRotation.Plan(
+            BoardAutoRotateMode.LoserOut, BoardAutoPickMode.Rotation, seats4, members4);
+        check("[多人换人] 四席也支持：输的三个下场、赢的留下",
+            four.Seats.Count == 4 && four.Seats[0] == "m1" && four.Changed,
+            string.Join(",", four.Seats));
+
+        // 轮流上场优先没上过场的
+        var rotationOrder = BoardMultiSeatRotation.Plan(
+            BoardAutoRotateMode.BothOut, BoardAutoPickMode.Rotation,
+            new[] { Seat("m1"), Seat("m2"), Seat("m3") },
+            Members(("m1", 5, 1), ("m2", 5, 2), ("m3", 5, 3), ("m8", 3, 4), ("m9", 0, 5), ("m10", 0, 6)));
+        check("[多人换人] 轮流上场：场次少的优先（0 场的排在 3 场的前面）",
+            rotationOrder.Seats.Contains("m9") && rotationOrder.Seats.Contains("m10"),
+            string.Join(",", rotationOrder.Seats));
+
+        // 随机模式：同样的人里随机，但要能复现
+        var r1 = BoardMultiSeatRotation.Plan(
+            BoardAutoRotateMode.BothOut, BoardAutoPickMode.Random,
+            new[] { Seat("m1"), Seat("m2"), Seat("m3") },
+            Members(("m1", 1, 1), ("m2", 1, 2), ("m3", 1, 3), ("m4", 0, 4), ("m5", 0, 5), ("m6", 0, 6)),
+            new Random(2024));
+        var r2 = BoardMultiSeatRotation.Plan(
+            BoardAutoRotateMode.BothOut, BoardAutoPickMode.Random,
+            new[] { Seat("m1"), Seat("m2"), Seat("m3") },
+            Members(("m1", 1, 1), ("m2", 1, 2), ("m3", 1, 3), ("m4", 0, 4), ("m5", 0, 5), ("m6", 0, 6)),
+            new Random(2024));
+        check("[多人换人] 随机上场：同一随机种子结果可复现",
+            r1.Seats.SequenceEqual(r2.Seats), string.Join(",", r1.Seats));
+
+        // 离线的人不参与补位
+        var offlineMembers = new List<BoardRotationCandidate>
+        {
+            new("m1", "M1", true, 3, 1),
+            new("m2", "M2", true, 3, 2),
+            new("m3", "M3", true, 3, 3),
+            new("m4", "M4", false, 0, 4),     // 离线
+        };
+        var offline = BoardMultiSeatRotation.Plan(
+            BoardAutoRotateMode.BothOut, BoardAutoPickMode.Rotation,
+            new[] { Seat("m1"), Seat("m2"), Seat("m3") }, offlineMembers);
+        check("[多人换人] 离线的人不会被排上场",
+            !offline.Seats.Contains("m4") && !offline.Changed, offline.Reason);
     }
 
     // ================================================================ 斗地主
