@@ -119,11 +119,46 @@ public sealed class HudCanvas : Canvas
         var x = (position.X - _dragOffset.X) / ActualWidth;
         var y = (position.Y - _dragOffset.Y) / ActualHeight;
 
+        // 吸附：靠近边缘 / 中线时自动贴齐（拖动更好对齐）
+        (x, y) = Snap(x, y, _dragging.ActualWidth, _dragging.ActualHeight);
+
         var layout = Layout ?? HudLayout.CreateDefault();
         layout.Set(GetPart(_dragging), x, y);
         Layout = layout;
 
         InvalidateArrange();
+    }
+
+    /// <summary>吸附阈值（相对容器尺寸）。</summary>
+    private const double SnapThreshold = 0.018;
+
+    /// <summary>
+    /// 把位置吸到「贴边 / 居中」的几条线上：
+    /// 左贴边、右贴边、水平居中、上贴边、下贴边、垂直居中。
+    /// </summary>
+    private (double X, double Y) Snap(double x, double y, double elementWidth, double elementHeight)
+    {
+        if (ActualWidth <= 0 || ActualHeight <= 0) return (x, y);
+
+        var maxX = Math.Max(0, 1 - elementWidth / ActualWidth);
+        var maxY = Math.Max(0, 1 - elementHeight / ActualHeight);
+
+        var centerX = Math.Max(0, (1 - elementWidth / ActualWidth) / 2);
+        var centerY = Math.Max(0, (1 - elementHeight / ActualHeight) / 2);
+
+        var xLines = new[] { 0.0, maxX, centerX };
+        var yLines = new[] { 0.0, maxY, centerY };
+
+        foreach (var line in xLines)
+        {
+            if (Math.Abs(x - line) <= SnapThreshold) { x = line; break; }
+        }
+        foreach (var line in yLines)
+        {
+            if (Math.Abs(y - line) <= SnapThreshold) { y = line; break; }
+        }
+
+        return (x, y);
     }
 
     /// <inheritdoc />
