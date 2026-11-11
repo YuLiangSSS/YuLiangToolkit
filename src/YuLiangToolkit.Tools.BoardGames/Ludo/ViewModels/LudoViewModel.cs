@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
+using YuLiangToolkit.Core.Games;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Core.Net;
 
@@ -41,6 +42,12 @@ public sealed class LudoViewModel : ToolViewModelBase
     private string _resultText = "";
     private int _lastDice;
     private LudoColor? _selectedPieceColor;
+
+    /// <summary>哪些颜色是电脑（单机时用）。</summary>
+    private readonly HashSet<LudoColor> _aiColors = new();
+
+    private AiDifficulty _aiDifficulty = AiDifficulty.Normal;
+    private bool _aiThinking;
 
     // 联机
     private LudoNetSession? _session;
@@ -319,6 +326,7 @@ public sealed class LudoViewModel : ToolViewModelBase
         NotifyActions();
         RefreshBoard();
         BroadcastIfHost();
+        TryAiTurn();
     }
 
     /// <summary>掷完之后自动走一步（AI 选择：优先能踢人的）。</summary>
@@ -359,6 +367,7 @@ public sealed class LudoViewModel : ToolViewModelBase
         RefreshBoard();
         NotifyActions();
         BroadcastIfHost();
+        TryAiTurn();
     }
 
     /// <summary>点某枚棋子走棋。</summary>
@@ -421,6 +430,142 @@ public sealed class LudoViewModel : ToolViewModelBase
         RefreshSeats();
         RefreshBoard();
         NotifyActions();
+    }
+
+    // ---------------------------------------------------------------- 电脑玩家
+
+    /// <summary>AI 难度选项。</summary>
+    public IReadOnlyList<OptionItem<string>> AiDifficultyOptions { get; } = OptionItem.From(
+        AiDifficulties.All.Select(d => (AiDifficulties.ToKey(d), AiDifficulties.DisplayName(d))).ToArray());
+
+    /// <summary>当前 AI 难度。</summary>
+    public AiDifficulty AiDifficulty
+    {
+        get => _aiDifficulty;
+        set
+        {
+            if (!Set(ref _aiDifficulty, value)) return;
+            OnPropertyChanged(nameof(SelectedAiDifficulty));
+            OnPropertyChanged(nameof(AiDifficultyHint));
+        }
+    }
+
+    /// <summary>难度下拉。</summary>
+    public OptionItem<string> SelectedAiDifficulty
+    {
+        get => OptionItem<string>.Find(AiDifficultyOptions, AiDifficulties.ToKey(_aiDifficulty)) ?? AiDifficultyOptions[1];
+        set { if (value is not null) AiDifficulty = AiDifficulties.Parse(value.Value); }
+    }
+
+    /// <summary>难度说明。</summary>
+    public string AiDifficultyHint => AiDifficulties.Description(_aiDifficulty);
+
+    /// <summary>把某个颜色设为电脑（单机玩用）。</summary>
+    public void SetAiColor(LudoColor color, bool isAi)
+    {
+        if (isAi) _aiColors.Add(color);
+        else _aiColors.Remove(color);
+        RefreshSeats();
+        OnPropertyChanged(nameof(AiColorsText));
+        TryAiTurn();
+    }
+
+    /// <summary>切换红色是否为电脑。</summary>
+    public RelayCommand ToggleAiRedCommand => GetAiCommand(LudoColor.Red);
+
+    /// <summary>切换黄色是否为电脑。</summary>
+    public RelayCommand ToggleAiYellowCommand => GetAiCommand(LudoColor.Yellow);
+
+    /// <summary>切换蓝色是否为电脑。</summary>
+    public RelayCommand ToggleAiBlueCommand => GetAiCommand(LudoColor.Blue);
+
+    /// <summary>切换绿色是否为电脑。</summary>
+    public RelayCommand ToggleAiGreenCommand => GetAiCommand(LudoColor.Green);
+
+    private readonly Dictionary<LudoColor, RelayCommand> _aiCommands = new();
+
+    private RelayCommand GetAiCommand(LudoColor color)
+    {
+        if (_aiCommands.TryGetValue(color, out var command)) return command;
+
+        command = new RelayCommand(_ => SetAiColor(color, !IsAiColor(color)));
+        _aiCommands[color] = command;
+        return command;
+    }
+
+    /// <summary>某个颜色是不是电脑。</summary>
+    public bool IsAiColor(LudoColor color) => _aiColors.Contains(color);
+
+    /// <summary>电脑颜色列表文字。</summary>
+    public string AiColorsText => _aiColors.Count == 0
+        ? "没有电脑玩家"
+        : $"电脑：{string.Join("、", _aiColors.Select(LudoColors.DisplayName))}";
+
+    /// <summary>电脑是不是正在思考。</summary>
+    public bool AiThinking => _aiThinking;
+
+    /// <summary>
+    /// 轮到电脑就自动「掷骰 → 选子走」（单机时；联机时房主也可以开电脑补齐人数）。
+    /// </summary>
+    private void TryAiTurn()
+    {
+        if (_session is not null && !_isHost) return;      // 联机客户端只等房主广播
+        if (_game.IsOver || _aiThinking) return;
+        if (!_aiColors.Contains(_game.Turn)) return;
+
+        _aiThinking = true;
+        OnPropertyChanged(nameof(AiThinking));
+
+        var turn = _game.Turn;
+        var delay = AiDifficulties.ThinkingDelayMs(_aiDifficulty);
+
+        _ = Task.Delay(delay).ContinueWith(_ => Ui(() =>
+        {
+            try
+            {
+                if (_game.IsOver || _game.Turn != turn) return;
+
+                // 还没掷就掷
+                if (_lastDice <= 0)
+                {
+                    var dice = _game.Roll(turn);
+                    if (dice <= 0) return;
+                    _lastDice = dice;
+                    LastMoveText = $"{LudoColors.DisplayName(turn)} 掷出 {dice}";
+                }
+
+                var index = LudoAi.ChoosePiece(_game, turn, _lastDice, _aiDifficulty);
+                if (index < 0)
+                {
+                    _lastDice = 0;
+                    RefreshBoard();
+                    NotifyActions();
+                    return;
+                }
+
+                var result = _game.Move(turn, index, _lastDice);
+                LastMoveText = result.Text;
+                _lastDice = 0;
+
+                if (_game.IsOver)
+                {
+                    ResultText = _game.ResultText;
+                    StatusText = _game.ResultText;
+                }
+
+                RefreshBoard();
+                NotifyActions();
+                BroadcastIfHost();
+            }
+            finally
+            {
+                _aiThinking = false;
+                OnPropertyChanged(nameof(AiThinking));
+            }
+
+            // 如果下一个还是电脑，继续
+            TryAiTurn();
+        }));
     }
 
     private void SetNotice(string text, string brush)

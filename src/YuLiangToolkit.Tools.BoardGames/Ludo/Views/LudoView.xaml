@@ -106,6 +106,30 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- 电脑玩家（单机玩） -->
+                    <Border Style="{StaticResource CardStyle}" Padding="14,12" Margin="0,12,0,0">
+                        <StackPanel>
+                            <TextBlock Text="电脑玩家（单机 / 补人数）" FontSize="13" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding AiColorsText}" FontSize="10.5" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <WrapPanel Margin="0,8,0,0">
+                                <Button Content="红" Style="{StaticResource SecondaryButtonStyle}" MinWidth="46" Margin="0,0,6,6"
+                                        Command="{Binding ToggleAiRedCommand}" />
+                                <Button Content="黄" Style="{StaticResource SecondaryButtonStyle}" MinWidth="46" Margin="0,0,6,6"
+                                        Command="{Binding ToggleAiYellowCommand}" />
+                                <Button Content="蓝" Style="{StaticResource SecondaryButtonStyle}" MinWidth="46" Margin="0,0,6,6"
+                                        Command="{Binding ToggleAiBlueCommand}" />
+                                <Button Content="绿" Style="{StaticResource SecondaryButtonStyle}" MinWidth="46" Margin="0,0,6,6"
+                                        Command="{Binding ToggleAiGreenCommand}" />
+                            </WrapPanel>
+                            <ComboBox Style="{StaticResource ComboBoxStyle}" Margin="0,4,0,0"
+                                      DisplayMemberPath="Label" ItemsSource="{Binding AiDifficultyOptions}"
+                                      SelectedItem="{Binding SelectedAiDifficulty}" />
+                            <TextBlock Text="{Binding AiDifficultyHint}" FontSize="9.5" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                    </Border>
+
                     <!-- 规则 -->
                     <Border Style="{StaticResource CardStyle}" Padding="14,12" Margin="0,12,0,0">
                         <StackPanel>

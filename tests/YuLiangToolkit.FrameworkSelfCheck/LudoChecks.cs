@@ -28,6 +28,7 @@ internal static class LudoChecks
         CheckFlightLineCapture(fn);
         CheckTurnAndExtraRoll(fn);
         CheckGameOver(fn);
+        CheckAi(fn);
     }
 
     // ================================================================ 棋盘
@@ -374,6 +375,65 @@ internal static class LudoChecks
     }
 
     // ================================================================ 工具
+
+    // ================================================================ AI
+
+    private static void CheckAi(CheckFn check)
+    {
+        // 四档都能选出合法的棋子
+        var ok = true;
+        var detail = "";
+
+        foreach (var difficulty in YuLiangToolkit.Core.Games.AiDifficulties.All)
+        {
+            var game = new LudoGame(new LudoRules { NeedSixToTakeOff = false }, new Random(21));
+            game.Setup(new[] { LudoColor.Red, LudoColor.Blue });
+
+            var piece = game.PiecesOf(LudoColor.Red)[0];
+            piece.State = LudoPieceState.Track;
+            piece.TrackSteps = 3;
+
+            var index = LudoAi.ChoosePiece(game, LudoColor.Red, 4, difficulty, new Random(2));
+            if (index < 0)
+            {
+                ok = false;
+                detail = $"{difficulty} 没选出棋子";
+                break;
+            }
+        }
+
+        check("[飞行棋 AI] 四档难度都能选出合法的棋子", ok, detail);
+
+        // 能进终点时优先进终点
+        var finishGame = new LudoGame(
+            new LudoRules { NeedSixToTakeOff = false, ExactToFinish = true, CaptureOnLand = false },
+            new Random(22));
+        finishGame.Setup(new[] { LudoColor.Red, LudoColor.Blue });
+
+        var total = LudoBoard.TrackLength + LudoBoard.HomeStretch;
+        var nearEnd = finishGame.PiecesOf(LudoColor.Red)[0];
+        nearEnd.State = LudoPieceState.Track;
+        nearEnd.TrackSteps = total - 3;
+
+        var far = finishGame.PiecesOf(LudoColor.Red)[1];
+        far.State = LudoPieceState.Track;
+        far.TrackSteps = 2;
+
+        var chosen = LudoAi.ChoosePiece(
+            finishGame, LudoColor.Red, 3,
+            YuLiangToolkit.Core.Games.AiDifficulty.Master, new Random(3));
+
+        check("[飞行棋 AI] 能进终点时优先走那枚（大师）",
+            chosen == nearEnd.Index,
+            $"选了第 {chosen} 枚（终点候选是第 {nearEnd.Index} 枚）");
+
+        // 没棋子能走时返回 -1
+        var emptyGame = new LudoGame(new LudoRules { NeedSixToTakeOff = true }, new Random(23));
+        emptyGame.Setup(new[] { LudoColor.Red, LudoColor.Blue });
+        check("[飞行棋 AI] 掷 1 且全部在大本营时没有可走的（返回 -1）",
+            LudoAi.ChoosePiece(emptyGame, LudoColor.Red, 1,
+                YuLiangToolkit.Core.Games.AiDifficulty.Normal) < 0, "");
+    }
 
     /// <summary>找某个颜色的路线上第一次经过飞行线的步数。</summary>
     private static int FindFlightLineStep(LudoColor color)
