@@ -867,12 +867,7 @@ internal static class TetrisChecks
             YuLiangToolkit.Tools.Games.Tetris.HudLayout.Deserialize("坏数据").Items.Count == 5,
             "回落默认");
 
-        // ---- 预览位置 / 换人设置（本轮新增） ----
-        check("[俄罗斯方块] 预览位置默认右上，四角都能选",
-            new YuLiangToolkit.Tools.Games.Tetris.TetrisConfig().PreviewCorner == "tr"
-            && new[] { "tl", "tr", "bl", "br" }.Contains(new YuLiangToolkit.Tools.Games.Tetris.TetrisConfig().PreviewCorner),
-            new YuLiangToolkit.Tools.Games.Tetris.TetrisConfig().PreviewCorner);
-
+        // ---- 换人设置 ----
         check("[俄罗斯方块·换人] 三档换人方式与补位方式都有键与中文名",
             YuLiangToolkit.Core.Games.MatchModes.ToKey(YuLiangToolkit.Core.Games.MatchRotateMode.Manual) == "manual"
             && YuLiangToolkit.Core.Games.MatchModes.ToKey(YuLiangToolkit.Core.Games.MatchRotateMode.LoserOut) == "loserOut"

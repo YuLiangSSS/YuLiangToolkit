@@ -58,11 +58,6 @@ public sealed class TetrisConfig : ToolConfig
         set => Set(ref _showGrid, value);
     }
 
-    /// <summary>
-    /// 预览（暂存 + 接下来）放在棋盘的哪个角：<c>tl</c> 左上 / <c>tr</c> 右上 / <c>bl</c> 左下 / <c>br</c> 右下。
-    /// </summary>
-    public string PreviewCorner { get; set; } = "tr";
-
     private int _previewSlots = 3;
 
     /// <summary>预览块数（1~8）。</summary>

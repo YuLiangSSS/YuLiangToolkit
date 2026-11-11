@@ -10,34 +10,6 @@ namespace YuLiangToolkit.Tools.Games.Tetris.ViewModels;
 /// </summary>
 public sealed partial class TetrisViewModel
 {
-    // ---------------------------------------------------------------- 预览位置
-
-    /// <summary>预览位置选项（左上 / 右上 / 左下 / 右下）。</summary>
-    public IReadOnlyList<OptionItem<string>> PreviewCornerOptions { get; } = OptionItem.From(
-        ("tl", "左上"), ("tr", "右上"), ("bl", "左下"), ("br", "右下"));
-
-    /// <summary>当前预览位置（下拉绑定）。</summary>
-    public OptionItem<string> SelectedPreviewCorner
-    {
-        get => OptionItem<string>.Find(PreviewCornerOptions, Cfg.PreviewCorner) ?? PreviewCornerOptions[1];
-        set
-        {
-            if (value is null) return;
-            Cfg.PreviewCorner = value.Value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(PreviewAtTop));
-            OnPropertyChanged(nameof(PreviewAtLeft));
-        }
-    }
-
-    /// <summary>预览在上方（左上 / 右上）。</summary>
-    public bool PreviewAtTop => !string.Equals(Cfg.PreviewCorner, "bl", StringComparison.OrdinalIgnoreCase)
-                                && !string.Equals(Cfg.PreviewCorner, "br", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>预览在左边（左上 / 左下）。</summary>
-    public bool PreviewAtLeft => !string.Equals(Cfg.PreviewCorner, "tr", StringComparison.OrdinalIgnoreCase)
-                                 && !string.Equals(Cfg.PreviewCorner, "br", StringComparison.OrdinalIgnoreCase);
-
     // ---------------------------------------------------------------- 中间对战区
 
     /// <summary>中间是否显示「对战区」（联机时才有对手可看）。</summary>
@@ -122,7 +94,6 @@ public sealed partial class TetrisViewModel
         OnPropertyChanged(nameof(DuelBoardHasOpponent));
         OnPropertyChanged(nameof(SpectatorLine));
         OnPropertyChanged(nameof(CanSwitchView));
-        OnPropertyChanged(nameof(PreviewAtTop));
-        OnPropertyChanged(nameof(PreviewAtLeft));
+
     }
 }
