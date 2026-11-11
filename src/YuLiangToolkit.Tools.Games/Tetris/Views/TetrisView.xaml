@@ -486,6 +486,17 @@
 
                             <CheckBox Content="显示幽灵方块（落点预览）" Margin="0,10,0,0"
                                       IsChecked="{Binding Cfg.ShowGhost}" Style="{StaticResource CheckBoxStyle}" />
+                            <CheckBox Content="单人模式：和电脑对战" Margin="0,7,0,0"
+                                      IsChecked="{Binding SoloAiEnabled}" Style="{StaticResource CheckBoxStyle}"
+                                      ToolTip="勾上后开局会另起一条电脑蛇（电脑用当前难度），右侧显示它的棋盘" />
+
+                            <TextBlock Text="电脑难度" FontSize="11" Margin="0,8,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <ComboBox Style="{StaticResource ComboBoxStyle}" Margin="0,4,0,0"
+                                      DisplayMemberPath="Label"
+                                      ItemsSource="{Binding AiDifficultyOptions}"
+                                      SelectedItem="{Binding SelectedAiDifficulty}" />
+
                             <TextBlock Text="预览块数 / 暂存格数" FontSize="11" Margin="0,10,0,0"
                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                             <Grid Margin="0,4,0,0">

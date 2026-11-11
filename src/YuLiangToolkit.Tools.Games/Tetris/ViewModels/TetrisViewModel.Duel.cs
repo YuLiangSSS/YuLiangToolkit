@@ -13,19 +13,19 @@ public sealed partial class TetrisViewModel
     // ---------------------------------------------------------------- 中间对战区
 
     /// <summary>中间是否显示「对战区」（联机时才有对手可看）。</summary>
-    public bool DuelPanelVisible => IsNetMode;
+    public bool DuelPanelVisible => IsNetMode || SoloDuelVisible;
 
     /// <summary>左侧大棋盘的标题：普通玩家 = 我；观战者 = 我正在看的那个人。</summary>
     public string LeftBoardTitle => IsSpectating ? $"观战：{_viewingName}" : "我的棋盘";
 
     /// <summary>右侧棋盘标题。</summary>
-    public string RightBoardTitle => IsSpectating ? "另一位玩家" : "对手";
+    public string RightBoardTitle => IsSpectating ? "另一位玩家" : ("对手（电脑）");
 
     /// <summary>右侧棋盘状态（对手的，或观战时另一位的）。</summary>
     public TetrisBoardViewState DuelBoardState => GuestBoardState;
 
     /// <summary>右侧有没有人在下（没人在时显示占位）。</summary>
-    public bool DuelBoardHasOpponent => _session?.IsHost == true ? _guestPresent : true;
+    public bool DuelBoardHasOpponent => IsNetMode ? (_session?.IsHost == true ? _guestPresent : true) : SoloAiRunning;
 
     // ---------------------------------------------------------------- 观战视角
 

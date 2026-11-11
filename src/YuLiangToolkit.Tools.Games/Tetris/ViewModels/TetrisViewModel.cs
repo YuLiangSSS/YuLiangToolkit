@@ -56,6 +56,7 @@ public sealed partial class TetrisViewModel : ToolViewModelBase
         InitializeAi();          // 电脑对手（见 TetrisViewModel.Ai.cs）
         InitializeDuelCommands();   // 预览位置 / 观战视角（见 TetrisViewModel.Duel.cs）
         InitializeHud();         // HUD 自由布局 / 预览与暂存数量（见 TetrisViewModel.Hud.cs）
+        InitializeSoloAi();      // 单人 vs 电脑（见 TetrisViewModel.SoloAi.cs）
 
         Cfg.PropertyChanged += (_, e) =>
         {
@@ -343,6 +344,7 @@ public sealed partial class TetrisViewModel : ToolViewModelBase
         StatusText = "进行中";
         RestartFallTimer();
         StartAiLoop();          // 联机模式下电脑对手开始自动落子（单人模式里是空操作）
+        StartSoloAiIfRunning(); // 单人 vs 电脑：另起一个引擎由 AI 操控
     }
 
     /// <summary>按键类操作的前置检查：遮罩没关就先开局，暂停中不动。</summary>

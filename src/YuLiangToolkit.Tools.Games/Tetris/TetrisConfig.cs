@@ -58,6 +58,15 @@ public sealed class TetrisConfig : ToolConfig
         set => Set(ref _showGrid, value);
     }
 
+    private bool _soloAiEnabled;
+
+    /// <summary>单人模式是否开电脑对手（人机对战）。</summary>
+    public bool SoloAiEnabled
+    {
+        get => _soloAiEnabled;
+        set => Set(ref _soloAiEnabled, value);
+    }
+
     private int _previewSlots = 3;
 
     /// <summary>预览块数（1~8）。</summary>

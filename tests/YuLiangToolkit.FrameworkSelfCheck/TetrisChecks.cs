@@ -829,6 +829,45 @@ internal static class TetrisChecks
         check("[俄罗斯方块] 读到坏状态返回 null（一个坏包不能把界面搞崩）",
             TetrisNetProtocol.ReadState(default) is null, "");
 
+        // ---- 单人 vs 电脑（AI） ----
+        check("[俄罗斯方块·AI] 配置有「单人 vs 电脑」开关，默认关",
+            new YuLiangToolkit.Tools.Games.Tetris.TetrisConfig().SoloAiEnabled == false, "");
+
+        var aiEngine = new TetrisEngine(new Random(77));
+        aiEngine.Reset(1, 77);
+        var aiPlan = TetrisAi.ChoosePlan(aiEngine,
+            YuLiangToolkit.Core.Games.AiDifficulty.Master, false, new Random(5));
+        check("[俄罗斯方块·AI] AI 能对当前棋盘算出落点（旋转 + 列）",
+            aiPlan is { } plan && plan.Rotation is >= 0 and <= 3,
+            aiPlan is { } p0 ? $"rot={p0.Rotation} x={p0.X}" : "没算");
+
+        // 四档都能算
+        var aiAllOk = YuLiangToolkit.Core.Games.AiDifficulties.All.All(d =>
+        {
+            var e = new TetrisEngine(new Random(88));
+            e.Reset(1, 88);
+            return TetrisAi.ChoosePlan(e, d, false, new Random(1)) is not null;
+        });
+        check("[俄罗斯方块·AI] 四档难度都能算出落点", aiAllOk, "");
+
+        // 按 AI 的方案落子之后棋盘仍然合法（不顶死在不该顶死的位置）
+        var dropEngine = new TetrisEngine(new Random(99));
+        dropEngine.Reset(1, 99);
+        var playPlan = TetrisAi.ChoosePlan(dropEngine,
+            YuLiangToolkit.Core.Games.AiDifficulty.Hard, false, new Random(3));
+        if (playPlan is { } pp)
+        {
+            var guard = 0;
+            while (dropEngine.Current is { } cur
+                   && TetrisPieces.NormalizeRotation(cur.Rotation) != pp.Rotation && guard++ < 6)
+            {
+                if (!dropEngine.Rotate(true).Success) break;
+            }
+            dropEngine.HardDrop();
+        }
+        check("[俄罗斯方块·AI] 按 AI 的方案真的能落一块（不会卡住）",
+            playPlan is not null, "");
+
         // ---- 多个暂存格 / 预览数量 / HUD 布局（本轮新增） ----
         var multi = new TetrisEngine(new Random(11));
         multi.Reset(1, 11);

@@ -62,7 +62,7 @@ public static class GoAi
             var result = game.Play(player, point.X, point.Y);
             if (result != GoPlayResult.Ok) continue;
 
-            var score = EvaluateAfterMove(game, player, opponent, point, rng);
+            var score = EvaluateAfterMove(game, player, opponent, point);
             scored.Add((point, score));
 
             game.Undo();
@@ -110,9 +110,8 @@ public static class GoAi
     /// <summary>
     /// 下完这一手之后的启发式评分（局面越好分越高，站在 <paramref name="player"/> 角度）。
     /// </summary>
-    private static double EvaluateAfterMove(GoGame game, GoCell player, GoCell opponent, GoPoint point, Random rng)
+    private static double EvaluateAfterMove(GoGame game, GoCell player, GoCell opponent, GoPoint point)
     {
-        _ = rng;
         var score = 0.0;
         var size = game.Size;
 
@@ -125,7 +124,7 @@ public static class GoAi
             score += CountLiberties(game, point.X, point.Y) * 1.2;
 
             // ② 打吃：让对手的棋块只剩 1 口气
-            score += CountAtariAgainst(game, player, point) * 6;
+            score += CountAtariAgainst(game, point) * 6;
         }
 
         // ③ 连接 / 分断：这一手旁边有多少自己的棋子 / 对方棋子
@@ -162,9 +161,8 @@ public static class GoAi
     }
 
     /// <summary>这一手让多少个对方棋块变成「叫吃」状态。</summary>
-    private static int CountAtariAgainst(GoGame game, GoCell player, GoPoint point)
+    private static int CountAtariAgainst(GoGame game, GoPoint point)
     {
-        _ = player;
         var size = game.Size;
         var opponent = game.Turn;      // 这一手之后轮到对方
         var checkedGroups = new HashSet<int>();

@@ -163,13 +163,13 @@ public static class GomokuAi
                 break;
             }
 
-            total += ScoreShape(count, openEnds, blockedEnds);
+            total += ScoreShape(count, openEnds);
         }
         return total;
     }
 
     /// <summary>连续子数 + 两端开放情况 → 棋型分值。</summary>
-    private static int ScoreShape(int count, int openEnds, int blockedEnds)
+    private static int ScoreShape(int count, int openEnds)
     {
         if (count >= 5) return ScoreFive;
         if (openEnds == 0) return 0;               // 两头都被堵死，没价值
@@ -182,8 +182,6 @@ public static class GomokuAi
             1 => openEnds >= 2 ? 12 : 6,
             _ => 0,
         };
-
-        _ = blockedEnds;
     }
 
     private static readonly (int Dx, int Dy)[] Directions =
