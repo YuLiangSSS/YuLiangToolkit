@@ -137,8 +137,13 @@ public static class JunqiAi
         if (from.Rank == JunqiRank.Engineer && JunqiBoard.IsRailway(move.ToX, move.ToY)) score += 4;
 
         // ⑥ 困难以上：一步前瞻（看对手最凶的一手能赚多少）
+        //    ⚠ 这里是「在已有得分基础上扣风险」，不是「只看风险」——
+        //    自己这一步的收益（吃子 / 逼旗）在前面已经算进 score 了。
         if (difficulty is AiDifficulty.Hard or AiDifficulty.Master)
-            score -= LookAheadRisk(game, side, move) / 2;
+        {
+            var risk = LookAheadRisk(game, side, move);
+            score -= difficulty == AiDifficulty.Master ? risk : risk / 2;
+        }
 
         return score;
     }
