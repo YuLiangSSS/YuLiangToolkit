@@ -1,0 +1,496 @@
+<UserControl x:Class="YuLiangToolkit.Tools.MailSender.Views.MailSenderView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core">
+
+    <!-- 「邮件推送」工具页。
+         布局（docs/dev/layout.md）：整页 = 标题 / 「① 收发信息 + ② 正文」两栏 / 「③ 附件与发送 + ④ 预览」两栏 / ⑤ 记录日志，
+         两行两栏各自可左右拖，行与行之间可上下拖（每处一条 core:PaneSplitter，键名 mail-sender.*）。
+         样式全部来自 App.xaml；颜色一律 DynamicResource，换主题自动跟随（编辑区白底是刻意的，跟真实邮件一样）。
+         工具条按钮统一用 MailToolButtonStyle（本文件资源里的紧凑按钮）。 -->
+
+    <UserControl.Resources>
+        <!-- 富文本工具条上的小按钮：默认 SecondaryButtonStyle 太大（14,7 内边距），这里压成 30×28 的方块 -->
+        <Style x:Key="MailToolButtonStyle" TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinWidth" Value="30" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontWeight" Value="Normal" />
+        </Style>
+
+        <!-- 编辑区里「点一下切换加粗」的按钮：IsChecked 表示当前选区带这个格式 -->
+        <Style x:Key="MailToggleButtonStyle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="30" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Bd" Background="{DynamicResource SecondaryButtonBackgroundBrush}"
+                                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                CornerRadius="{DynamicResource ControlCornerRadius}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ControlBorderHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 字段标签 -->
+        <Style x:Key="MailFieldLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- API Key 的密码框：外观与 TextBoxStyle 对齐（PasswordBox 不能套 TextBox 的样式，TargetType 不匹配） -->
+        <Style x:Key="MailPasswordBoxStyle" TargetType="PasswordBox">
+            <Setter Property="Background" Value="{DynamicResource InputBackgroundBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="CaretBrush" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="SelectionBrush" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource ControlBorderHoverBrush}" />
+                </Trigger>
+                <Trigger Property="IsKeyboardFocused" Value="True">
+                    <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Grid Margin="28,22,28,26">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />                  <!-- 标题 -->
+                <RowDefinition Height="452" MinHeight="300" />   <!-- ①② 收发信息 / 正文 -->
+                <RowDefinition Height="12" />                    <!-- 分隔条 -->
+                <RowDefinition Height="286" MinHeight="200" />   <!-- ③④ 附件与发送 / 预览 -->
+                <RowDefinition Height="12" />                    <!-- 分隔条 -->
+                <RowDefinition Height="252" MinHeight="160" />   <!-- ⑤ 发送记录 -->
+            </Grid.RowDefinitions>
+
+            <!-- ===== 标题 ===== -->
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="📮 邮件推送" FontSize="21" FontWeight="SemiBold" />
+                    <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,30,0"
+                               Text="写一封带格式的邮件（富文本 / HTML 源码 / 附件 / 抄送密送），点「发送」交给邮件推送 API（Resend POST /emails）。API Key 用 Windows DPAPI 加密保存在本机，日志里只显示打码后的样子。" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                    <Button x:Name="QueryButton" Content="查询投递状态" Style="{StaticResource SecondaryButtonStyle}"
+                            Command="{Binding QueryLastCommand}" Margin="0,0,8,0"
+                            ToolTip="按上一封返回的邮件 id 调 GET /emails/{id}，看服务端记录的投递状态" />
+                    <Button x:Name="SendButton" Content="📤 发送" Style="{StaticResource PrimaryButtonStyle}"
+                            Command="{Binding SendCommand}" MinWidth="96" />
+                </StackPanel>
+            </Grid>
+
+            <!-- ===== ① 收发信息（左） + ② 正文（右）= room 1 ===== -->
+            <Grid Grid.Row="1" Margin="0,16,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="392" MinWidth="300" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="*" MinWidth="360" />
+                </Grid.ColumnDefinitions>
+
+                <!-- ① 收发信息：内容比区块高时自己滚动，滚到头交给整页 -->
+                <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              core:ScrollChaining.Enabled="True">
+                    <Border Style="{StaticResource CardStyle}" ClipToBounds="True">
+                        <StackPanel>
+                            <TextBlock Text="① 收发信息" FontSize="14" FontWeight="SemiBold" />
+
+                            <!-- API Key -->
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="70" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="API Key" Style="{StaticResource MailFieldLabelStyle}" />
+                                <Grid Grid.Column="1">
+                                    <!-- 默认用 PasswordBox 遮住明文；点 👁 切到下面那个 TextBox 看原文。
+                                         两个控件都由代码后置同步到 VM.ApiKey（PasswordBox.Password 不支持绑定）。 -->
+                                    <PasswordBox x:Name="ApiKeyPassword" Style="{StaticResource MailPasswordBoxStyle}"
+                                                 PasswordChanged="OnApiKeyPasswordChanged"
+                                                 ToolTip="推送服务控制台创建的 API Key（以 re_ 开头）" />
+                                    <TextBox x:Name="ApiKeyPlain" Style="{StaticResource TextBoxStyle}" Visibility="Collapsed"
+                                             Text="{Binding ApiKey, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="推送服务控制台创建的 API Key（以 re_ 开头）" />
+                                </Grid>
+                                <Button Grid.Column="2" Content="👁" Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding PickApiKeyCommand}" Margin="8,0,0,0" Padding="10,6"
+                                        ToolTip="显示 / 隐藏 API Key 明文" />
+                            </Grid>
+                            <TextBlock Text="{Binding ApiKeyHint}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap" Margin="70,5,0,0" />
+
+                            <!-- 发件人 -->
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="70" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="发件人" Style="{StaticResource MailFieldLabelStyle}" />
+                                <Grid Grid.Column="1">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="110" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="FromNameBox" Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding Cfg.FromName, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="发件人显示名（可空），例如：凉雨" />
+                                    <TextBox x:Name="FromAddressBox" Grid.Column="1" Style="{StaticResource TextBoxStyle}" Margin="8,0,0,0"
+                                             Text="{Binding Cfg.FromAddress, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="发件人邮箱：域名必须已在推送服务里验证通过，例如 test@contact.example.com" />
+                                </Grid>
+                            </Grid>
+                            <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="70,5,0,0"
+                                       Text="写法：显示名 + 地址（显示名可空）。发件域名必须已在推送服务里验证通过，否则会返回 403。" />
+
+                            <!-- 收件人 -->
+                            <TextBlock Text="收件人" Style="{StaticResource MailFieldLabelStyle}" Margin="0,12,0,6" />
+                            <TextBox x:Name="ToBox" Style="{StaticResource TextBoxStyle}" MinHeight="62"
+                                     Text="{Binding Cfg.To, UpdateSourceTrigger=PropertyChanged}"
+                                     AcceptsReturn="True" TextWrapping="Wrap" VerticalContentAlignment="Top" Padding="10,7"
+                                     ToolTip="一行一个，也可以用逗号 / 分号分隔；最多 50 个（含抄送 / 密送）" />
+
+                            <!-- 抄送 / 密送 -->
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="70" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="48" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="抄送" Style="{StaticResource MailFieldLabelStyle}" />
+                                <TextBox x:Name="CcBox" Grid.Column="1" Style="{StaticResource TextBoxStyle}"
+                                         Text="{Binding Cfg.Cc, UpdateSourceTrigger=PropertyChanged}" ToolTip="可空" />
+                                <TextBlock Grid.Column="2" Text="密送" Style="{StaticResource MailFieldLabelStyle}"
+                                           HorizontalAlignment="Center" />
+                                <TextBox x:Name="BccBox" Grid.Column="3" Style="{StaticResource TextBoxStyle}"
+                                         Text="{Binding Cfg.Bcc, UpdateSourceTrigger=PropertyChanged}" ToolTip="可空" />
+                            </Grid>
+
+                            <!-- 回复地址 -->
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="70" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="回复地址" Style="{StaticResource MailFieldLabelStyle}" />
+                                <TextBox x:Name="ReplyToBox" Grid.Column="1" Style="{StaticResource TextBoxStyle}"
+                                         Text="{Binding Cfg.ReplyTo, UpdateSourceTrigger=PropertyChanged}"
+                                         ToolTip="可空；留空时回复会发到发件人地址" />
+                            </Grid>
+
+                            <!-- 主题 -->
+                            <TextBlock Text="主题" Style="{StaticResource MailFieldLabelStyle}" Margin="0,12,0,6" />
+                            <TextBox x:Name="SubjectBox" Style="{StaticResource TextBoxStyle}"
+                                     Text="{Binding Cfg.Subject, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="邮件主题" />
+
+                            <!-- 推送地址（高级） -->
+                            <Expander Margin="0,14,0,0" Foreground="{DynamicResource TextSecondaryBrush}">
+                                <Expander.Header>
+                                    <TextBlock Text="推送地址（高级）" FontSize="11.5" />
+                                </Expander.Header>
+                                <StackPanel Margin="0,8,0,0">
+                                    <TextBox x:Name="EndpointBox" Style="{StaticResource TextBoxStyle}"
+                                             Text="{Binding Cfg.Endpoint, UpdateSourceTrigger=PropertyChanged}"
+                                             ToolTip="默认 https://api.resend.com/emails；换成中转 / 兼容服务时改这里" />
+                                    <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                                               Text="默认是 Resend 官方发送接口。改这里可以指向自建 / 中转的兼容服务。" />
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
+                    </Border>
+                </ScrollViewer>
+
+                <!-- 左右分隔条：改「收发信息」与「正文」的宽度 -->
+                <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                   Key="mail-sender.收发信息与正文" />
+
+                <!-- ② 正文 -->
+                <Border Grid.Column="2" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />   <!-- 标题 + 标签页切换 -->
+                            <RowDefinition Height="Auto" />   <!-- 富文本工具条 -->
+                            <RowDefinition Height="*" MinHeight="120" /> <!-- 编辑区 -->
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="② 正文" FontSize="14" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding BodySummary}" FontSize="10.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" />
+                            </StackPanel>
+                            <!-- 富文本 / HTML 源码 切换（截图与界面上都是同一套按钮） -->
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <RadioButton x:Name="RichModeRadio" Content="富文本" Style="{StaticResource RadioButtonStyle}"
+                                             IsChecked="True" Margin="0,0,10,0" Checked="OnEditorModeChanged" />
+                                <RadioButton x:Name="SourceModeRadio" Content="HTML 源码" Style="{StaticResource RadioButtonStyle}"
+                                             Checked="OnEditorModeChanged" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- 富文本工具条：只放最常用的格式，剩下的用快捷键（Ctrl+B / I / U） -->
+                        <WrapPanel x:Name="RichToolbar" Grid.Row="1" Margin="0,12,0,10">
+                            <ToggleButton x:Name="BoldToggle" Content="B" FontWeight="Bold" Style="{StaticResource MailToggleButtonStyle}"
+                                          ToolTip="加粗（Ctrl+B）" Click="OnBoldClick" />
+                            <ToggleButton x:Name="ItalicToggle" Content="I" FontStyle="Italic" Style="{StaticResource MailToggleButtonStyle}"
+                                          ToolTip="斜体（Ctrl+I）" Click="OnItalicClick" />
+                            <ToggleButton x:Name="UnderlineToggle" Content="U" Style="{StaticResource MailToggleButtonStyle}"
+                                          ToolTip="下划线（Ctrl+U）" Click="OnUnderlineClick" />
+                            <ToggleButton x:Name="StrikeToggle" Content="S" Style="{StaticResource MailToggleButtonStyle}"
+                                          ToolTip="删除线" Click="OnStrikeClick" />
+                            <Border Width="1" Background="{DynamicResource SeparatorBrush}" Margin="4,3,8,3" />
+                            <ComboBox x:Name="FormatBlockCombo" Style="{StaticResource ComboBoxStyle}" Width="96" Height="28"
+                                      Margin="0,0,6,0" SelectionChanged="OnFormatBlockChanged"
+                                      ToolTip="段落样式：正文 / 标题">
+                                <ComboBoxItem Content="正文" Tag="p" IsSelected="True" />
+                                <ComboBoxItem Content="大标题" Tag="h1" />
+                                <ComboBoxItem Content="中标题" Tag="h2" />
+                                <ComboBoxItem Content="小标题" Tag="h3" />
+                            </ComboBox>
+                            <Button Content="🎨" Style="{StaticResource MailToolButtonStyle}" Click="OnForegroundColorClick"
+                                    ToolTip="文字颜色" />
+                            <Button Content="🖍" Style="{StaticResource MailToolButtonStyle}" Click="OnBackgroundColorClick"
+                                    ToolTip="文字背景色（高亮）" />
+                            <Button Content="A＋" Style="{StaticResource MailToolButtonStyle}" Click="OnGrowFontClick"
+                                    ToolTip="把选中文字放大一号" />
+                            <Button Content="A－" Style="{StaticResource MailToolButtonStyle}" Click="OnShrinkFontClick"
+                                    ToolTip="把选中文字缩小一号" />
+                            <Border Width="1" Background="{DynamicResource SeparatorBrush}" Margin="4,3,8,3" />
+                            <Button Content="≡左" Style="{StaticResource MailToolButtonStyle}" Click="OnAlignLeftClick" ToolTip="左对齐" />
+                            <Button Content="≡中" Style="{StaticResource MailToolButtonStyle}" Click="OnAlignCenterClick" ToolTip="居中" />
+                            <Button Content="≡右" Style="{StaticResource MailToolButtonStyle}" Click="OnAlignRightClick" ToolTip="右对齐" />
+                            <Border Width="1" Background="{DynamicResource SeparatorBrush}" Margin="4,3,8,3" />
+                            <Button Content="•" Style="{StaticResource MailToolButtonStyle}" FontSize="16" Click="OnBulletsClick"
+                                    ToolTip="无序列表" />
+                            <Button Content="1." Style="{StaticResource MailToolButtonStyle}" Click="OnNumberingClick"
+                                    ToolTip="有序列表" />
+                            <Button Content="⇤" Style="{StaticResource MailToolButtonStyle}" Click="OnIndentDecreaseClick"
+                                    ToolTip="减少缩进" />
+                            <Button Content="⇥" Style="{StaticResource MailToolButtonStyle}" Click="OnIndentIncreaseClick"
+                                    ToolTip="增加缩进" />
+                            <Border Width="1" Background="{DynamicResource SeparatorBrush}" Margin="4,3,8,3" />
+                            <Button Content="🔗" Style="{StaticResource MailToolButtonStyle}" Click="OnInsertLinkClick"
+                                    ToolTip="插入超链接" />
+                            <Button Content="🖼" Style="{StaticResource MailToolButtonStyle}" Click="OnInsertImageClick"
+                                    ToolTip="插入图片（作为行内图片随邮件一起发送）" />
+                            <Button Content="表格" Style="{StaticResource MailToolButtonStyle}" Click="OnInsertTableClick"
+                                    ToolTip="插入 3×3 表格" />
+                            <Button Content="⎯" Style="{StaticResource MailToolButtonStyle}" Click="OnInsertRuleClick"
+                                    ToolTip="插入分隔线" />
+                            <Button Content="🧹" Style="{StaticResource MailToolButtonStyle}" Click="OnClearFormatClick"
+                                    ToolTip="清除选中文字的格式" />
+                        </WrapPanel>
+
+                        <!-- 编辑区：白底黑字（邮件正文就是这个样子），滚动条走全局样式 -->
+                        <Grid Grid.Row="2">
+                            <RichTextBox x:Name="Editor" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                         Background="#FFFFFF" Foreground="#1F2733" BorderBrush="{DynamicResource BorderBrush}"
+                                         BorderThickness="1" Padding="16,12" FontSize="14"
+                                         FontFamily="Segoe UI, Microsoft YaHei UI" AcceptsTab="True"
+                                         SpellCheck.IsEnabled="False" SelectionChanged="OnEditorSelectionChanged"
+                                         PreviewKeyDown="OnEditorPreviewKeyDown" PreviewDragOver="OnEditorDragOver"
+                                         PreviewDrop="OnEditorDrop" />
+                            <TextBox x:Name="SourceBox" Visibility="Collapsed" Style="{StaticResource LogTextBoxStyle}"
+                                     FontSize="12" IsReadOnly="False" TextWrapping="Wrap" AcceptsReturn="True"
+                                     Background="#FFFFFF" Foreground="#1F2733" Padding="14,10"
+                                     TextChanged="OnSourceBoxTextChanged" />
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- 上下分隔条：改「①②」与「③④」的高度 -->
+            <core:PaneSplitter Grid.Row="2" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="mail-sender.正文与附件" />
+
+            <!-- ===== ③ 附件 / 发送（左） + ④ 预览（右）= room 2 ===== -->
+            <Grid Grid.Row="3">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="320" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="480" MinWidth="320" />
+                </Grid.ColumnDefinitions>
+
+                <!-- ③ 附件与发送 -->
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" MinHeight="60" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid Grid.Row="0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="③ 附件与发送" FontSize="14" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding AttachmentSummary}" FontSize="10.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Content="＋ 添加附件" Style="{StaticResource SecondaryButtonStyle}"
+                                        Command="{Binding AddAttachmentCommand}" ToolTip="也可以把文件直接拖进这个列表" />
+                                <Button Content="移除选中" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                        Command="{Binding RemoveAttachmentCommand}" />
+                                <Button Content="清空" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
+                                        Command="{Binding ClearAttachmentsCommand}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- 附件列表：空状态提示 + 列表（AllowDrop，从资源管理器拖进来即可） -->
+                        <Grid Grid.Row="1" Margin="0,10,0,0">
+                            <ListBox x:Name="AttachmentList" ItemsSource="{Binding Attachments}"
+                                     SelectedItem="{Binding SelectedAttachment}"
+                                     Style="{StaticResource FileListStyle}" AllowDrop="True"
+                                     PreviewDragOver="OnAttachmentDragOver" PreviewDrop="OnAttachmentDrop"
+                                     core:ScrollChaining.Enabled="True">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,1">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding FileName}" FontSize="12.5" TextTrimming="CharacterEllipsis"
+                                                           ToolTip="{Binding FilePath}" />
+                                                <TextBlock Text="{Binding DetailText}" FontSize="10.5"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1" Text="{Binding ContentType}" FontSize="10"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center"
+                                                       Margin="10,0,0,0" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <TextBlock Text="把文件拖到这里，或点右上角「＋ 添加附件」&#10;（附件会转成 base64 随邮件一起上传，整封上限 40 MB）"
+                                       FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" TextAlignment="Center"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"
+                                       Visibility="{Binding HasAttachments, Converter={StaticResource InverseBoolToVis}}" />
+                        </Grid>
+
+                        <!-- 状态行：成功绿 / 失败红 -->
+                        <Border Grid.Row="2" Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="12,9" Margin="0,10,0,0">
+                            <StackPanel>
+                                <TextBlock Text="{Binding StatusText}" FontSize="12" TextWrapping="Wrap">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding LastSendSucceeded}" Value="True">
+                                                    <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding LastSendFailed}" Value="True">
+                                                    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <TextBlock Text="{Binding LastQueryText}" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
+                                           Visibility="{Binding LastQueryText, Converter={StaticResource EmptyToVisInverse}}" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- 左右分隔条：改「附件与发送」与「预览」的宽度 -->
+                <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                   Key="mail-sender.附件与预览" />
+
+                <!-- ④ 预览：WebView2 渲染真实 HTML（脚本关闭）；没有运行时时退回纯文本 -->
+                <Border Grid.Column="2" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" MinHeight="80" />
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0" Margin="0,0,0,10">
+                            <TextBlock Text="④ 预览" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <TextBlock Text="点「刷新预览」重新渲染当前正文" FontSize="10.5" VerticalAlignment="Center"
+                                       HorizontalAlignment="Right" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </Grid>
+                        <Grid Grid.Row="1">
+                            <Border Background="#FFFFFF" CornerRadius="6" BorderBrush="{DynamicResource BorderBrush}"
+                                    BorderThickness="1" ClipToBounds="True">
+                                <Grid>
+                                    <Grid x:Name="PreviewHost" />
+                                </Grid>
+                            </Border>
+                            <TextBlock x:Name="PreviewFallback" Visibility="Collapsed" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="12" />
+                        </Grid>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- 上下分隔条：改「③④」与「⑤ 日志」的高度 -->
+            <core:PaneSplitter Grid.Row="4" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="mail-sender.附件与日志" />
+
+            <!-- ===== ⑤ 发送记录 / 日志 ===== -->
+            <Border Grid.Row="5" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="60" />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0">
+                        <TextBlock Text="⑤ 发送记录" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="刷新预览" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,0"
+                                    Click="OnRefreshPreviewClick" ToolTip="按当前正文重新渲染右侧预览" />
+                            <Button Content="清空日志" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding ClearLogCommand}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock Grid.Row="1" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0"
+                               Text="每次发送的时间、收件人、主题、HTTP 状态、返回的邮件 id 与错误原文都在这里；API Key 只显示打码后的样子。" />
+                    <TextBox x:Name="LogBox" Grid.Row="2" Text="{Binding LogText, Mode=OneWay}" Style="{StaticResource LogTextBoxStyle}"
+                             Margin="0,10,0,0" MinHeight="60" core:ScrollChaining.Enabled="True" />
+                </Grid>
+            </Border>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

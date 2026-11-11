@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「邮件推送」功能：富文本写好一封邮件 → 调 Resend 的 POST /emails 发出去。
+       为什么引 NuGet 包：
+         · System.Security.Cryptography.ProtectedData：API Key 用 Windows DPAPI（当前用户）加密后
+           才落盘，配置文件里不出现明文；
+         · Microsoft.Web.WebView2：发送前预览 HTML 正文（和「网页浏览器」「邮箱代收」共用 Chromium 内核；
+           运行时是系统组件，不随本项目分发）。
+       两者都只引用、不修改源码；许可与用途登记在仓库根 THIRD-PARTY-NOTICES.md。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.MailSender</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.MailSender</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Windows DPAPI：API Key 落盘前加密（CurrentUser 范围） -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.4" />
+    <!-- HTML 正文预览（WebView2 运行时是系统组件，和「网页浏览器」共用） -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+  </ItemGroup>
+
+</Project>

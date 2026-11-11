@@ -1,0 +1,58 @@
+<Window x:Class="YuLiangToolkit.Tools.MailSender.Views.ColorPickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="选择颜色" Width="360" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False"
+        Background="{DynamicResource CardBackgroundBrush}">
+    <!-- 取色窗：一排常用色 + 自定义色值。正文颜色 / 高亮共用（标题由调用方切换）。 -->
+    <StackPanel Margin="18,16,18,16">
+        <TextBlock x:Name="TitleText" Text="文字颜色" FontSize="14" FontWeight="SemiBold" />
+        <TextBlock Text="点一个颜色直接用，或在下面填 #RRGGBB / 颜色名。" FontSize="11"
+                   Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,12" />
+
+        <ItemsControl x:Name="SwatchList">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <WrapPanel />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Button Width="34" Height="30" Margin="0,0,6,6" Click="OnSwatchClick" Tag="{Binding Hex}"
+                            ToolTip="{Binding Label}" Cursor="Hand">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="Bd" Background="{Binding Hex}" CornerRadius="6"
+                                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" />
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                                        <Setter TargetName="Bd" Property="BorderThickness" Value="2" />
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Grid Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="自定义" FontSize="12" VerticalAlignment="Center"
+                       Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,10,0" />
+            <TextBox x:Name="HexBox" Grid.Column="1" Style="{StaticResource TextBoxStyle}" Text="#1F2733"
+                     ToolTip="例如 #4C8DFF、#D0453E；也可以用 red / navy 这类颜色名" />
+            <Button Grid.Column="2" Content="确定" Style="{StaticResource PrimaryButtonStyle}" Margin="10,0,0,0"
+                    Click="OnConfirmClick" IsDefault="True" />
+        </Grid>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="取消" Style="{StaticResource SecondaryButtonStyle}" IsCancel="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>

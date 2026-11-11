@@ -61,6 +61,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("random-number", "随机数生成器：十进制步长网格 / 对齐 / 无偏抽样 / 去重与排序 / 精确数轮子 / 配置默认值"),
     ("function-plot", "函数绘图：视口换算 / 缩放平移 / 好看刻度 / 自动 Y 范围 / 配置 / 采样集成"),
     ("mail", "邮箱代收：IMAP 预设 / 地址与 HTML 处理 / DPAPI 授权码加密 / 配置往返（纯逻辑，不联网）"),
+    ("mail-sender", "邮件推送：富文本⇄HTML / 地址与附件校验 / 请求组装与请求头 / 错误翻译 / DPAPI Key（纯逻辑，不联网）"),
     ("launcher", "软件启动器：导入校验 / 默认显示名 / 失效判定 / 清空无效项 / 配置往返（纯逻辑）"),
     ("meme-board", "表情包收藏夹：会话名归一 / 目标窗口解析 / 随机延迟夹取 / 图片扩展名 / 配置往返（纯逻辑，不碰 QQ）"),
     ("task-manager", "任务管理器：数字格式化 / 结束任务三级方案 / 开机启动解析与启停标记 / 保护名单 / 进程行 / 真实只读采样"),
@@ -1263,6 +1264,11 @@ RunGroupModule("function-plot", "函数绘图", FunctionPlotChecks.Run);
 // 「邮箱代收」：服务商预设匹配 / 地址打码 / HTML→纯文本 / 附件名清洗 / 配置 JSON 往返 /
 // DPAPI 授权码加解密 / 错误翻译。纯逻辑，**不联网**；真实 Gmail / QQ IMAP 登录由界面人工冒烟。
 RunGroupModule("mail", "邮箱代收", MailChecks.Run);
+
+// 「邮件推送」：富文本 ⇄ HTML（STA）/ HTML→纯文本 / 地址拆分与上限 / 附件 base64 体积与危险后缀 /
+// 请求组装与校验 / 假 HttpMessageHandler 断言请求头（UA 必须带）与 JSON 字段 / 错误翻译 /
+// DPAPI API Key / 配置往返 / 投递状态解析。纯逻辑，**不联网、不发任何真实邮件**。
+RunGroupModule("mail-sender", "邮件推送", MailSenderChecks.Run);
 
 // 「软件启动器」：导入校验（.exe / .lnk）/ 默认显示名（lnk 用快捷方式名、exe 优先文件说明）/
 // 路径规范化与导入去重 / 自定义图标缓存路径安全 / 失效判定（文件丢失·快捷方式损坏·目标已卸载）/

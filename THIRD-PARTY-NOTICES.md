@@ -80,7 +80,8 @@
 ## System.Security.Cryptography.ProtectedData 9.0.4（NuGet 依赖）
 
 - 用途：「邮箱代收」用 Windows DPAPI 加密保存 QQ 授权码 / Gmail 应用专用密码
-  （`src/YuLiangToolkit.Tools.Mail/SecureStore.cs`）；「Live2D 桌宠」的 **DeepSeek API Key** 同样用它加密
+  （`src/YuLiangToolkit.Tools.Mail/SecureStore.cs`）；「邮件推送」用同一套 DPAPI 加密推送 API Key
+  （`src/YuLiangToolkit.Tools.MailSender/ApiKeyStore.cs`）；「Live2D 桌宠」的 **DeepSeek API Key** 同样用它加密
   （`src/YuLiangToolkit.Tools.Live2D/Ai/AiSecretStore.cs`，配置里只存 `dpapi:` 密文）
 - 项目主页：<https://dot.net/>
 - 许可：MIT License
@@ -91,7 +92,8 @@
 ## Microsoft.Web.WebView2 1.0.4314.35（NuGet 依赖）
 
 - 用途：「网页浏览器」（`src/YuLiangToolkit.Tools.Browser/`）承载 Chromium 内核（和 Edge 同源）的 WPF 控件；
-  「邮箱代收」（`src/YuLiangToolkit.Tools.Mail/`）用它渲染 HTML 邮件的富文本正文（只读预览，脚本已关闭）
+  「邮箱代收」（`src/YuLiangToolkit.Tools.Mail/`）用它渲染 HTML 邮件的富文本正文（只读预览，脚本已关闭）；
+  「邮件推送」（`src/YuLiangToolkit.Tools.MailSender/`）用它渲染待发邮件的 HTML 预览（发送前看真实排版，脚本已关闭）
 - 项目主页：<https://aka.ms/webview>
 - 许可：BSD-3-Clause（随包 `LICENSE.txt`，Copyright (C) Microsoft Corporation. All rights reserved.）
 - 说明：本项目只引用微软官方发布的 SDK 包（托管程序集 + `WebView2Loader.dll`），**不修改**它；
@@ -181,6 +183,17 @@
   - API Key 落盘用 **Windows DPAPI** 加密（见上面 `ProtectedData` 条目），不写日志；
   - 使用 DeepSeek 服务需遵守其服务条款与内容政策，与本项目 Unlicense 无关；不填 Key 时 AI 聊天
     只走本地离线关键词兜底、完全不联网。
+
+## Resend API（在线服务，无第三方库）
+
+- 位置：`src/YuLiangToolkit.Tools.MailSender/ResendClient.cs`（调用处）
+- 用途：「邮件推送」把用户写好的邮件交给 **Resend**（`https://api.resend.com/emails`）发出去
+- 说明：
+  - API Key 由**用户自己**在 Resend 控制台申请，费用与配额由用户自己的账号承担；本项目作者不提供 Key、不代付、不收集 Key；
+  - **没有引入任何第三方 SDK**：HTTP 请求、JSON 组装与解析、错误翻译都是手写 C#；
+  - API Key 落盘前用 **Windows DPAPI** 加密（见上面 `ProtectedData` 条目），日志里只显示打码值；
+  - 只把「发件人 / 收件人 / 主题 / 正文 / 附件」发给 Resend，不发送本机路径等其它信息；
+  - 不填 Key 时工具**完全不联网**（预览在本机 WebView2 里渲染）。
 
 ## AvalonEdit 6.3.1.120（NuGet 依赖）
 

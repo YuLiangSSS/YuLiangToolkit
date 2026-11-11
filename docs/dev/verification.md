@@ -134,6 +134,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `src/YuLiangToolkit.Tools.RandomNumber/**` | `random-number`（精确数轮子在 `Core/Numbers/`，改那边走 ALL） | L2 |
 | `src/YuLiangToolkit.Tools.FunctionPlot/**` | `function-plot` | L2 |
 | `src/YuLiangToolkit.Tools.Mail/**` | `mail` | L2 |
+| `src/YuLiangToolkit.Tools.MailSender/**` | `mail-sender` | L2 |
 | `src/YuLiangToolkit.Tools.Launcher/**` | `launcher` | L2 |
 | `src/YuLiangToolkit.Tools.TaskManager/**` | `task-manager` | L2 |
 | `src/YuLiangToolkit.Tools.AppManager/**` | `app-manager` | L2 |
@@ -145,6 +146,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `tests/.../RandomNumberChecks.cs` | `random-number`（步长网格 / 上限对齐 / 无偏抽样 / 去重排序 / 精确数轮子 / 配置） | L3 |
 | `tests/.../FunctionPlotChecks.cs` | `function-plot`（视口换算 / 以光标缩放 / 平移 / 好看刻度 / 自动 Y 范围 / 采样集成 / 配置） | L3 |
 | `tests/.../MailChecks.cs` | `mail`（服务商预设 / 地址打码 / HTML→纯文本 / 附件名清洗 / DPAPI 授权码 / 配置往返） | L3 |
+| `tests/.../MailSenderChecks.cs` | `mail-sender`（富文本⇄HTML / 地址拆分与上限 / 附件 base64 体积与危险后缀 / 请求组装与请求头（UA）/ 错误翻译 / DPAPI Key / 配置往返 / 投递状态解析） | L3 |
 | `tests/.../LauncherChecks.cs` | `launcher`（导入校验 / 默认显示名 / 路径去重 / 图标缓存路径 / 失效判定 / 清空无效项 / 配置往返） | L3 |
 | `tests/.../MemeBoardChecks.cs` | `meme-board`（会话名匹配 / 目标窗口解析 / 延迟随机与夹取 / 图片扩展名 / 配置往返） | L3 |
 | `tests/.../TaskManagerChecks.cs` | `task-manager`（数字格式化 / 结束任务三级方案 / 开机启动解析与启停标记 / 保护名单 / 进程行 / 真实只读采样） | L3 |

@@ -1,0 +1,24 @@
+<Window x:Class="YuLiangToolkit.Tools.MailSender.Views.InsertLinkWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="插入超链接" Width="460" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False"
+        Background="{DynamicResource CardBackgroundBrush}">
+    <StackPanel Margin="18,16,18,16">
+        <TextBlock Text="插入超链接" FontSize="14" FontWeight="SemiBold" />
+        <TextBlock Text="链接地址要以 http:// 或 https:// 开头；显示文字可以跟地址不一样。" FontSize="11"
+                   Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,14" />
+
+        <TextBlock Text="显示文字" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,0,0,6" />
+        <TextBox x:Name="LinkTextBox" Style="{StaticResource TextBoxStyle}" />
+
+        <TextBlock Text="链接地址" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,12,0,6" />
+        <TextBox x:Name="UrlInput" Style="{StaticResource TextBoxStyle}" Text="https://" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="取消" Style="{StaticResource SecondaryButtonStyle}" IsCancel="True" />
+            <Button Content="插入" Style="{StaticResource PrimaryButtonStyle}" Margin="8,0,0,0"
+                    Click="OnInsertClick" IsDefault="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>

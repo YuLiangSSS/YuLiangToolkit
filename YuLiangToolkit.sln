@@ -71,6 +71,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.PptVie
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.Mail", "src\YuLiangToolkit.Tools.Mail\YuLiangToolkit.Tools.Mail.csproj", "{E802AD87-79A1-4C00-99D2-37A1C68368D0}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.MailSender", "src\YuLiangToolkit.Tools.MailSender\YuLiangToolkit.Tools.MailSender.csproj", "{D3A5E1B7-62C4-4F8A-9C1E-5B7D2F0A4E88}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.Launcher", "src\YuLiangToolkit.Tools.Launcher\YuLiangToolkit.Tools.Launcher.csproj", "{6D3F1A22-9C4B-4E6D-9F21-8A7C5B2E1D90}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.MemeBoard", "src\YuLiangToolkit.Tools.MemeBoard\YuLiangToolkit.Tools.MemeBoard.csproj", "{5A0CD9D4-3434-4B73-BEE3-1015A3E6E185}"
@@ -477,6 +479,18 @@ Global
 		{E802AD87-79A1-4C00-99D2-37A1C68368D0}.Release|x64.Build.0 = Release|Any CPU
 		{E802AD87-79A1-4C00-99D2-37A1C68368D0}.Release|x86.ActiveCfg = Release|Any CPU
 		{E802AD87-79A1-4C00-99D2-37A1C68368D0}.Release|x86.Build.0 = Release|Any CPU
+		{D3A5E1B7-62C4-4F8A-9C1E-5B7D2F0A4E88}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D3A5E1B7-62C4-4F8A-9C1E-5B7D2F0A4E88}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D3A5E1B7-62C4-4F8A-9C1E-5B7D2F0A4E88}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D3A5E1B7-62C4-4F8A-9C1E-5B7D2F0A4E88}.Debug|x64.Build.0 = Debug|Any CPU
+		{D3A5E1B7-62C4-4F8A-9C1E-5B7D2F0A4E88}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D3A5E1B7-62C4-4F8A-9C1E-5B7D2F0A4E88}.Debug|x86.Build.0 = Debug|Any CPU
+		{D3A5E1B7-62C4-4F8A-9C1E-5B7D2F0A4E88}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D3A5E1B7-62C4-4F8A-9C1E-5B7D2F0A4E88}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D3A5E1B7-62C4-4F8A-9C1E-5B7D2F0A4E88}.Release|x64.ActiveCfg = Release|Any CPU
+		{D3A5E1B7-62C4-4F8A-9C1E-5B7D2F0A4E88}.Release|x64.Build.0 = Release|Any CPU
+		{D3A5E1B7-62C4-4F8A-9C1E-5B7D2F0A4E88}.Release|x86.ActiveCfg = Release|Any CPU
+		{D3A5E1B7-62C4-4F8A-9C1E-5B7D2F0A4E88}.Release|x86.Build.0 = Release|Any CPU
 		{6D3F1A22-9C4B-4E6D-9F21-8A7C5B2E1D90}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{6D3F1A22-9C4B-4E6D-9F21-8A7C5B2E1D90}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6D3F1A22-9C4B-4E6D-9F21-8A7C5B2E1D90}.Debug|x64.ActiveCfg = Debug|Any CPU
