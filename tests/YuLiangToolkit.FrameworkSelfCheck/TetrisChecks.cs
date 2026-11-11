@@ -829,6 +829,21 @@ internal static class TetrisChecks
         check("[俄罗斯方块] 读到坏状态返回 null（一个坏包不能把界面搞崩）",
             TetrisNetProtocol.ReadState(default) is null, "");
 
+        // ---- 预览位置 / 换人设置（本轮新增） ----
+        check("[俄罗斯方块] 预览位置默认右上，四角都能选",
+            new YuLiangToolkit.Tools.Games.Tetris.TetrisConfig().PreviewCorner == "tr"
+            && new[] { "tl", "tr", "bl", "br" }.Contains(new YuLiangToolkit.Tools.Games.Tetris.TetrisConfig().PreviewCorner),
+            new YuLiangToolkit.Tools.Games.Tetris.TetrisConfig().PreviewCorner);
+
+        check("[俄罗斯方块·换人] 三档换人方式与补位方式都有键与中文名",
+            YuLiangToolkit.Core.Games.MatchModes.ToKey(YuLiangToolkit.Core.Games.MatchRotateMode.Manual) == "manual"
+            && YuLiangToolkit.Core.Games.MatchModes.ToKey(YuLiangToolkit.Core.Games.MatchRotateMode.LoserOut) == "loserOut"
+            && YuLiangToolkit.Core.Games.MatchModes.ToKey(YuLiangToolkit.Core.Games.MatchRotateMode.BothOut) == "bothOut"
+            && YuLiangToolkit.Core.Games.MatchModes.ParseRotate("loserOut") == YuLiangToolkit.Core.Games.MatchRotateMode.LoserOut
+            && YuLiangToolkit.Core.Games.MatchModes.ParsePick("random") == YuLiangToolkit.Core.Games.MatchPickMode.Random
+            && YuLiangToolkit.Core.Games.MatchModes.Describe(YuLiangToolkit.Core.Games.MatchRotateMode.BothOut).Length > 0,
+            "手动 / 输的下场 / 全场换人");
+
         // ---- 身份（对战 / 观战） ----
         check("[俄罗斯方块·联机] 身份字符串：player / spectator，认不出按对战处理",
             TetrisNetProtocol.RoleToString(TetrisMemberRole.Player) == "player"

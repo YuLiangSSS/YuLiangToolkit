@@ -54,6 +54,7 @@ public sealed partial class TetrisViewModel : ToolViewModelBase
         StartOrResumeCommand = new RelayCommand(_ => StartOrResume());
         InitializeNetCommands();
         InitializeAi();          // 电脑对手（见 TetrisViewModel.Ai.cs）
+        InitializeDuelCommands();   // 预览位置 / 观战视角（见 TetrisViewModel.Duel.cs）
 
         Cfg.PropertyChanged += (_, e) =>
         {

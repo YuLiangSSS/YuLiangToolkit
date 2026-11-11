@@ -58,6 +58,29 @@ public sealed class TetrisConfig : ToolConfig
         set => Set(ref _showGrid, value);
     }
 
+    /// <summary>
+    /// 预览（暂存 + 接下来）放在棋盘的哪个角：<c>tl</c> 左上 / <c>tr</c> 右上 / <c>bl</c> 左下 / <c>br</c> 右下。
+    /// </summary>
+    public string PreviewCorner { get; set; } = "tr";
+
+    private string _autoRotateMode = "manual";
+
+    /// <summary>一局结束后怎么换人：manual / loserOut / bothOut（跟棋牌同一套）。</summary>
+    public string AutoRotateMode
+    {
+        get => _autoRotateMode;
+        set => Set(ref _autoRotateMode, string.IsNullOrWhiteSpace(value) ? "manual" : value.Trim());
+    }
+
+    private string _autoPickMode = "rotation";
+
+    /// <summary>补位方式：rotation / random。</summary>
+    public string AutoPickMode
+    {
+        get => _autoPickMode;
+        set => Set(ref _autoPickMode, string.IsNullOrWhiteSpace(value) ? "rotation" : value.Trim());
+    }
+
     private bool _showNext = true;
 
     /// <summary>显示「接下来 3 块」预览。</summary>

@@ -1010,6 +1010,7 @@ public sealed partial class TetrisViewModel
     /// <summary>状态变了：把徽标 / 按钮 / 对手区一次性通知到位。</summary>
     private void NotifyNetState()
     {
+        NotifyDuelState();
         OnPropertyChanged(nameof(NetBadgeText));
         OnPropertyChanged(nameof(NetBadgeBrushKey));
         OnPropertyChanged(nameof(NetBusy));

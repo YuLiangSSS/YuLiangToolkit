@@ -86,14 +86,111 @@
                         </StackPanel>
                     </Grid>
 
-                    <!-- 棋盘本体 + 遮罩层 -->
+                    <!-- 棋盘本体 + 遮罩层 +（联机）右侧对手棋盘 -->
                     <Border Grid.Row="1" Background="{DynamicResource InputBackgroundBrush}" ClipToBounds="True">
                         <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" MinWidth="200" />
+                                <!-- 联机时的对手实时棋盘（需求里的「粉色方框」）；单人不占位 -->
+                                <ColumnDefinition Width="{Binding DuelPanelVisible, Converter={StaticResource BoolToPaneLength}, ConverterParameter=12}" />
+                                <ColumnDefinition Width="{Binding DuelPanelVisible, Converter={StaticResource BoolToPaneLength}, ConverterParameter=262}" />
+                            </Grid.ColumnDefinitions>
+
+                            <Grid Grid.Column="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
                             <views:TetrisBoardView x:Name="BoardArea"
+                                                   VerticalAlignment="Stretch"
                                                    State="{Binding BoardState}"
                                                    BoardBrush="{DynamicResource InputBackgroundBrush}"
                                                    GridBrush="{DynamicResource BorderBrush}"
                                                    BorderBrush="{DynamicResource BorderBrush}" />
+
+                            <!-- 预览（暂存 + 接下来）：浮在棋盘内的四角之一，位置可设 -->
+                            <Border Margin="10" Background="{DynamicResource CardBackgroundBrush}" Opacity="0.92"
+                                    CornerRadius="8" Padding="8,6" MinWidth="150" MaxWidth="150" ClipToBounds="True">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="HorizontalAlignment" Value="Right" />
+                                        <Setter Property="VerticalAlignment" Value="Top" />
+                                        <Style.Triggers>
+                                            <!-- 左上 -->
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding PreviewAtLeft}" Value="True" />
+                                                    <Condition Binding="{Binding PreviewAtTop}" Value="True" />
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="HorizontalAlignment" Value="Left" />
+                                                <Setter Property="VerticalAlignment" Value="Top" />
+                                            </MultiDataTrigger>
+                                            <!-- 左下 -->
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding PreviewAtLeft}" Value="True" />
+                                                    <Condition Binding="{Binding PreviewAtTop}" Value="False" />
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="HorizontalAlignment" Value="Left" />
+                                                <Setter Property="VerticalAlignment" Value="Bottom" />
+                                            </MultiDataTrigger>
+                                            <!-- 右下 -->
+                                            <MultiDataTrigger>
+                                                <MultiDataTrigger.Conditions>
+                                                    <Condition Binding="{Binding PreviewAtLeft}" Value="False" />
+                                                    <Condition Binding="{Binding PreviewAtTop}" Value="False" />
+                                                </MultiDataTrigger.Conditions>
+                                                <Setter Property="HorizontalAlignment" Value="Right" />
+                                                <Setter Property="VerticalAlignment" Value="Bottom" />
+                                            </MultiDataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel>
+                                    <TextBlock Text="暂存 C" FontSize="9.5" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <views:TetrominoPoolView Height="26" Orientation="Horizontal" Placeholder="空"
+                                                             Items="{Binding HeldPieces}"
+                                                             HintBrush="{DynamicResource FaintTextBrush}"
+                                                             SlotBrush="{DynamicResource InputBackgroundBrush}" />
+                                    <TextBlock Text="接下来" FontSize="9.5" Margin="0,4,0,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Visibility="{Binding Cfg.ShowNext, Converter={StaticResource BoolToVis}}" />
+                                    <views:TetrominoPoolView Height="26" Orientation="Horizontal" Placeholder="—"
+                                                             Items="{Binding NextPieces}"
+                                                             HintBrush="{DynamicResource FaintTextBrush}"
+                                                             SlotBrush="{DynamicResource InputBackgroundBrush}"
+                                                             Visibility="{Binding Cfg.ShowNext, Converter={StaticResource BoolToVis}}" />
+                                </StackPanel>
+                            </Border>
+                            </Grid>
+
+                            <!-- 对手实时棋盘（联机时显示；观战者靠「切换视角」换看谁） -->
+                            <Border Grid.Column="2" Margin="0,8,8,8"
+                                    Visibility="{Binding DuelPanelVisible, Converter={StaticResource BoolToVis}}"
+                                    Background="{DynamicResource CardBackgroundBrush}" CornerRadius="8"
+                                    Padding="8,6" ClipToBounds="True">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" MinHeight="80" />
+                                    </Grid.RowDefinitions>
+
+                                    <Grid Grid.Row="0">
+                                        <TextBlock Text="{Binding RightBoardTitle}" FontSize="10.5" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <Button Content="切换视角" Style="{StaticResource SecondaryButtonStyle}"
+                                                HorizontalAlignment="Right" FontSize="9.5" Padding="6,1"
+                                                Command="{Binding SwitchViewCommand}"
+                                                Visibility="{Binding CanSwitchView, Converter={StaticResource BoolToVis}}" />
+                                    </Grid>
+
+                                    <views:TetrisBoardView Grid.Row="1" State="{Binding DuelBoardState}"
+                                                           BoardBrush="{DynamicResource InputBackgroundBrush}"
+                                                           GridBrush="{DynamicResource BorderBrush}"
+                                                           BorderBrush="{DynamicResource BorderBrush}"
+                                                           Margin="0,6,0,0" />
+
+                                    <TextBlock Grid.Row="1" Text="等对手加入…" FontSize="10" HorizontalAlignment="Center"
+                                               VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Visibility="{Binding DuelBoardHasOpponent, Converter={StaticResource InverseBoolToVis}}" />
+                                </Grid>
+                            </Border>
 
                             <!-- 遮罩：还没开始 / 暂停 / 结束 -->
                             <Border Background="{DynamicResource CardBackgroundBrush}" Opacity="0.94"
@@ -170,36 +267,6 @@
                                            Foreground="{DynamicResource TextPrimaryBrush}" />
                             </StackPanel>
 
-                            <!-- 暂存 + 接下来：横向并排，省一半高度（联机时右边那块本来就很挤） -->
-                            <Grid Margin="0,10,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="72" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-
-                                <StackPanel Grid.Column="0">
-                                    <TextBlock Text="暂存 C" FontSize="10.5" Margin="0,0,0,4"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" />
-                                    <views:TetrominoPoolView Height="40"
-                                                             Orientation="Horizontal"
-                                                             Placeholder="空"
-                                                             Items="{Binding HeldPieces}"
-                                                             HintBrush="{DynamicResource FaintTextBrush}"
-                                                             SlotBrush="{DynamicResource InputBackgroundBrush}" />
-                                </StackPanel>
-
-                                <StackPanel Grid.Column="1" Margin="10,0,0,0"
-                                            Visibility="{Binding Cfg.ShowNext, Converter={StaticResource BoolToVis}}">
-                                    <TextBlock Text="接下来" FontSize="10.5" Margin="0,0,0,4"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" />
-                                    <views:TetrominoPoolView Height="40"
-                                                             Orientation="Horizontal"
-                                                             Placeholder="—"
-                                                             Items="{Binding NextPieces}"
-                                                             HintBrush="{DynamicResource FaintTextBrush}"
-                                                             SlotBrush="{DynamicResource InputBackgroundBrush}" />
-                                </StackPanel>
-                            </Grid>
 
                             <!-- 联机：垃圾行提示（只在互攻模式出现） -->
                             <TextBlock Text="{Binding MyGarbageText}" FontSize="10.5" TextWrapping="Wrap" Margin="0,8,0,0"
@@ -319,6 +386,29 @@
                                 <TextBlock Text="{Binding SpectatorCountText}" FontSize="10.5" TextWrapping="Wrap"
                                            Margin="0,8,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
 
+                                <!-- 观战视角切换（只有观战者看得到） -->
+                                <Button Content="切换观看的玩家" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="0,6,0,0" HorizontalAlignment="Stretch" FontSize="11"
+                                        Command="{Binding SwitchViewCommand}"
+                                        Visibility="{Binding CanSwitchView, Converter={StaticResource BoolToVis}}" />
+
+                                <!-- 换人设置（房主）：跟象棋 / 五子棋同一套三档 -->
+                                <StackPanel Margin="0,10,0,0"
+                                            Visibility="{Binding CanEditSwapSettings, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="一局结束后怎么换人" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    <ComboBox Style="{StaticResource ComboBoxStyle}" Margin="0,5,0,0"
+                                              DisplayMemberPath="Label"
+                                              ItemsSource="{Binding AutoRotateOptions}"
+                                              SelectedItem="{Binding SelectedAutoRotate}" />
+                                    <TextBlock Text="{Binding AutoRotateHintText}" FontSize="10" TextWrapping="Wrap"
+                                               Margin="0,4,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <ComboBox Style="{StaticResource ComboBoxStyle}" Margin="0,6,0,0"
+                                              DisplayMemberPath="Label"
+                                              ItemsSource="{Binding AutoPickOptions}"
+                                              SelectedItem="{Binding SelectedAutoPick}" />
+                                </StackPanel>
+
                                 <Button Content="{Binding LeaveNetText}" Style="{StaticResource SecondaryButtonStyle}"
                                         Margin="0,8,0,0" HorizontalAlignment="Stretch"
                                         Command="{Binding LeaveRoomCommand}" IsEnabled="{Binding CanLeaveNet}" />
@@ -385,6 +475,13 @@
                                       IsChecked="{Binding Cfg.ShowGrid}" Style="{StaticResource CheckBoxStyle}" />
                             <CheckBox Content="显示接下来 3 块" Margin="0,7,0,0"
                                       IsChecked="{Binding Cfg.ShowNext}" Style="{StaticResource CheckBoxStyle}" />
+
+                            <TextBlock Text="预览放在棋盘哪个角" FontSize="11" Margin="0,10,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <ComboBox Style="{StaticResource ComboBoxStyle}" Margin="0,4,0,0"
+                                      DisplayMemberPath="Label"
+                                      ItemsSource="{Binding PreviewCornerOptions}"
+                                      SelectedItem="{Binding SelectedPreviewCorner}" />
                             <CheckBox Content="切走窗口时自动暂停" Margin="0,7,0,0"
                                       IsChecked="{Binding Cfg.PauseOnLostFocus}" Style="{StaticResource CheckBoxStyle}"
                                       ToolTip="关掉后切走程序窗口也继续下落（危险，建议开着）" />
