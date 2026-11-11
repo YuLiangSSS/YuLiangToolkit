@@ -44,22 +44,23 @@ public static class CheckersAi
             .OrderByDescending(x => x.Score)
             .ToList();
 
-        // 困难 / 大师：一步前瞻（看对手会不会反超）
+        // 困难 / 大师：一步前瞻 = 自己走这步的分 - 对手最好回应能拿的分
         if (difficulty is AiDifficulty.Hard or AiDifficulty.Master)
         {
-            var top = scored.Take(4).ToList();
+            var top = scored.Take(difficulty == AiDifficulty.Master ? 6 : 4).ToList();
             var best = top[0].Move;
-            var bestScore = double.MinValue;
+            var bestValue = double.MinValue;
 
-            foreach (var (move, _) in top)
+            foreach (var (move, ownScore) in top)
             {
-                // 试走
+                // 试走 → 让对手挑最好的一手
                 var undo = game.ApplyForSimulation(playerId, move);
                 var risk = EstimateOpponentGain(game, playerId);
                 game.UndoForSimulation(playerId, undo);
 
-                var value = -risk;
-                if (value > bestScore) { bestScore = value; best = move; }
+                // ⚠ 必须带上自己的得分：只算 -risk 会挑「自己最烂、对手也赚不到」的棋（踩过）
+                var value = ownScore - risk * (difficulty == AiDifficulty.Master ? 1.0 : 0.7);
+                if (value > bestValue) { bestValue = value; best = move; }
             }
             return best;
         }
