@@ -55,6 +55,9 @@ public sealed class TetrisEngine
     /// <summary>预览区最多显示几块（界面按这个数画）。</summary>
     public const int PreviewCount = 3;
 
+    /// <summary>预览块数（由设置决定，1~8）。</summary>
+    public int PreviewSlots { get; set; } = PreviewCount;
+
     /// <summary>出生行的上边界（方块顶格在 y = 0，允许先占住第 0 行）。</summary>
     public const int SpawnY = 0;
 
@@ -85,8 +88,21 @@ public sealed class TetrisEngine
     /// <summary>当前正在下落的方块（游戏没开始时为 null）。</summary>
     public TetrisPiece? Current { get; private set; }
 
-    /// <summary>暂存的方块（按过一次 Hold 之后才有；<see cref="CanHold"/> 为 false 时不能再换）。</summary>
-    public TetrominoKind? Held { get; private set; }
+    /// <summary>
+    /// 暂存格（<b>可以有多个</b>，按插入顺序排列；按 C 时轮流取）。
+    /// <para>第一次 Hold 把当前块放进第 1 格；第 2 格起靠「再次 Hold」依次填满，
+    /// 之后每次按 C 都从最前面取一块换出来，被换进去的那块排到队尾。</para>
+    /// </summary>
+    private readonly List<TetrominoKind> _heldSlots = new();
+
+    /// <summary>暂存格数量上限（由设置决定，1~5）。</summary>
+    public int HoldSlots { get; set; } = 1;
+
+    /// <summary>暂存格里的方块（按顺序，只读快照）。</summary>
+    public IReadOnlyList<TetrominoKind> HeldSlots => _heldSlots;
+
+    /// <summary>第一格（兼容旧接口 / 自检）。</summary>
+    public TetrominoKind? Held => _heldSlots.Count > 0 ? _heldSlots[0] : null;
 
     /// <summary>这一手之前是否已经 Hold 过（落地后才会恢复成可以再 Hold）。</summary>
     public bool HasHeldThisTurn { get; private set; }
@@ -163,7 +179,7 @@ public sealed class TetrisEngine
         _preview.Clear();
         _bag.Clear();
         Current = null;
-        Held = null;
+        _heldSlots.Clear();
         HasHeldThisTurn = false;
         _startLevel = Math.Clamp(startLevel, 1, MaxLevel);
         Score = 0;
@@ -325,11 +341,24 @@ public sealed class TetrisEngine
         if (!CanHold || Current is not { } piece) return false;
 
         var currentKind = piece.Kind;
-        var swapIn = Held;
+        var slots = Math.Max(1, Math.Min(5, HoldSlots));
 
-        Held = currentKind;
+        // 还没填满：把当前块塞进下一个空位，手上换成预览的下一块
+        if (_heldSlots.Count < slots)
+        {
+            _heldSlots.Add(currentKind);
+            HasHeldThisTurn = true;
+            Spawn(TakeFromPreview());
+            return true;
+        }
+
+        // 已填满：拿第 1 格换出来，当前块排到队尾（轮流）
+        var swapIn = _heldSlots[0];
+        _heldSlots.RemoveAt(0);
+        _heldSlots.Add(currentKind);
+
         HasHeldThisTurn = true;
-        Spawn(swapIn ?? TakeFromPreview());
+        Spawn(swapIn);
         return true;
     }
 
@@ -467,7 +496,9 @@ public sealed class TetrisEngine
             _board[i] = i < snapshot.Cells.Length ? snapshot.Cells[i] : null;
 
         Current = snapshot.Current;
-        Held = snapshot.Held;
+        _heldSlots.Clear();
+        if (snapshot.HeldSlots is { Count: > 0 } slots) _heldSlots.AddRange(slots.Where(k => k != TetrominoKind.Garbage));
+        else if (snapshot.Held is { } single) _heldSlots.Add(single);
         Score = snapshot.Score;
         Lines = snapshot.Lines;
         Level = Math.Clamp(snapshot.Level, 1, MaxLevel);
@@ -565,7 +596,7 @@ public sealed class TetrisEngine
 
     private void EnsurePreview()
     {
-        while (_preview.Count < PreviewCount) _preview.Enqueue(TakeFromBag());
+        while (_preview.Count < Math.Max(1, Math.Min(8, PreviewSlots))) _preview.Enqueue(TakeFromBag());
     }
 
     private TetrominoKind TakeFromPreview()

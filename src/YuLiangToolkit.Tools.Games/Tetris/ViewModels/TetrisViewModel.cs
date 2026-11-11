@@ -55,6 +55,7 @@ public sealed partial class TetrisViewModel : ToolViewModelBase
         InitializeNetCommands();
         InitializeAi();          // 电脑对手（见 TetrisViewModel.Ai.cs）
         InitializeDuelCommands();   // 预览位置 / 观战视角（见 TetrisViewModel.Duel.cs）
+        InitializeHud();         // HUD 自由布局 / 预览与暂存数量（见 TetrisViewModel.Hud.cs）
 
         Cfg.PropertyChanged += (_, e) =>
         {
@@ -107,7 +108,7 @@ public sealed partial class TetrisViewModel : ToolViewModelBase
 
     /// <summary>暂存的方块（没有时为空列表，预览控件据此画空格）。</summary>
     public IReadOnlyList<TetrominoKind> HeldPieces
-        => _engine.Held is { } held ? new[] { held } : Array.Empty<TetrominoKind>();
+        => _engine.HeldSlots.Count > 0 ? _engine.HeldSlots.ToArray() : Array.Empty<TetrominoKind>();
 
     /// <summary>分数文本。</summary>
     public string ScoreText => _engine.Score.ToString();

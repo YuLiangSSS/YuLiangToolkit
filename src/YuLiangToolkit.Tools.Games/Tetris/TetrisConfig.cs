@@ -63,6 +63,33 @@ public sealed class TetrisConfig : ToolConfig
     /// </summary>
     public string PreviewCorner { get; set; } = "tr";
 
+    private int _previewSlots = 3;
+
+    /// <summary>预览块数（1~8）。</summary>
+    public int PreviewSlots
+    {
+        get => _previewSlots;
+        set => Set(ref _previewSlots, Math.Clamp(value, 1, 8));
+    }
+
+    private int _holdSlots = 1;
+
+    /// <summary>暂存格数量（1~5；多个时按 C 轮流换出）。</summary>
+    public int HoldSlots
+    {
+        get => _holdSlots;
+        set => Set(ref _holdSlots, Math.Clamp(value, 1, 5));
+    }
+
+    private string _hudLayout = "";
+
+    /// <summary>HUD 自由布局（各组件的位置，序列化字符串；空 = 默认布局）。</summary>
+    public string HudLayout
+    {
+        get => _hudLayout;
+        set => Set(ref _hudLayout, value ?? "");
+    }
+
     private string _autoRotateMode = "manual";
 
     /// <summary>一局结束后怎么换人：manual / loserOut / bothOut（跟棋牌同一套）。</summary>

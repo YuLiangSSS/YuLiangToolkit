@@ -96,68 +96,83 @@
                                 <ColumnDefinition Width="{Binding DuelPanelVisible, Converter={StaticResource BoolToPaneLength}, ConverterParameter=262}" />
                             </Grid.ColumnDefinitions>
 
-                            <Grid Grid.Column="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-                            <views:TetrisBoardView x:Name="BoardArea"
-                                                   VerticalAlignment="Stretch"
-                                                   State="{Binding BoardState}"
-                                                   BoardBrush="{DynamicResource InputBackgroundBrush}"
-                                                   GridBrush="{DynamicResource BorderBrush}"
-                                                   BorderBrush="{DynamicResource BorderBrush}" />
+                            <!-- 游玩区域：棋盘居中 + 各 HUD 组件浮在上面（编辑模式下可拖动） -->
+                            <Grid Grid.Column="0" ClipToBounds="True">
+                                <!-- 棋盘：按 10:20 比例居中，HUD 贴着它四周 -->
+                                <Border x:Name="BoardHost" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        Margin="6" Background="{DynamicResource InputBackgroundBrush}">
+                                    <views:TetrisBoardView x:Name="BoardArea"
+                                                           State="{Binding BoardState}"
+                                                           BoardBrush="{DynamicResource InputBackgroundBrush}"
+                                                           GridBrush="{DynamicResource BorderBrush}"
+                                                           BorderBrush="{DynamicResource BorderBrush}" />
+                                </Border>
 
-                            <!-- 预览（暂存 + 接下来）：浮在棋盘内的四角之一，位置可设 -->
-                            <Border Margin="10" Background="{DynamicResource CardBackgroundBrush}" Opacity="0.92"
-                                    CornerRadius="8" Padding="8,6" MinWidth="150" MaxWidth="150" ClipToBounds="True">
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Setter Property="HorizontalAlignment" Value="Right" />
-                                        <Setter Property="VerticalAlignment" Value="Top" />
-                                        <Style.Triggers>
-                                            <!-- 左上 -->
-                                            <MultiDataTrigger>
-                                                <MultiDataTrigger.Conditions>
-                                                    <Condition Binding="{Binding PreviewAtLeft}" Value="True" />
-                                                    <Condition Binding="{Binding PreviewAtTop}" Value="True" />
-                                                </MultiDataTrigger.Conditions>
-                                                <Setter Property="HorizontalAlignment" Value="Left" />
-                                                <Setter Property="VerticalAlignment" Value="Top" />
-                                            </MultiDataTrigger>
-                                            <!-- 左下 -->
-                                            <MultiDataTrigger>
-                                                <MultiDataTrigger.Conditions>
-                                                    <Condition Binding="{Binding PreviewAtLeft}" Value="True" />
-                                                    <Condition Binding="{Binding PreviewAtTop}" Value="False" />
-                                                </MultiDataTrigger.Conditions>
-                                                <Setter Property="HorizontalAlignment" Value="Left" />
-                                                <Setter Property="VerticalAlignment" Value="Bottom" />
-                                            </MultiDataTrigger>
-                                            <!-- 右下 -->
-                                            <MultiDataTrigger>
-                                                <MultiDataTrigger.Conditions>
-                                                    <Condition Binding="{Binding PreviewAtLeft}" Value="False" />
-                                                    <Condition Binding="{Binding PreviewAtTop}" Value="False" />
-                                                </MultiDataTrigger.Conditions>
-                                                <Setter Property="HorizontalAlignment" Value="Right" />
-                                                <Setter Property="VerticalAlignment" Value="Bottom" />
-                                            </MultiDataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Border.Style>
-                                <StackPanel>
-                                    <TextBlock Text="暂存 C" FontSize="9.5" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                    <views:TetrominoPoolView Height="26" Orientation="Horizontal" Placeholder="空"
-                                                             Items="{Binding HeldPieces}"
-                                                             HintBrush="{DynamicResource FaintTextBrush}"
-                                                             SlotBrush="{DynamicResource InputBackgroundBrush}" />
-                                    <TextBlock Text="接下来" FontSize="9.5" Margin="0,4,0,0"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               Visibility="{Binding Cfg.ShowNext, Converter={StaticResource BoolToVis}}" />
-                                    <views:TetrominoPoolView Height="26" Orientation="Horizontal" Placeholder="—"
-                                                             Items="{Binding NextPieces}"
-                                                             HintBrush="{DynamicResource FaintTextBrush}"
-                                                             SlotBrush="{DynamicResource InputBackgroundBrush}"
-                                                             Visibility="{Binding Cfg.ShowNext, Converter={StaticResource BoolToVis}}" />
-                                </StackPanel>
-                            </Border>
+                                <!-- HUD 自由布局层（与棋盘同一块区域，编辑模式可拖动） -->
+                                <views:HudCanvas x:Name="HudLayer" Layout="{Binding HudLayout}"
+                                                 EditMode="{Binding HudEditMode}"
+                                                 HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                                    <Border views:HudCanvas.Part="Hold" Width="96" Padding="6,4" CornerRadius="6"
+                                            Background="{DynamicResource CardBackgroundBrush}" Opacity="0.92">
+                                        <StackPanel>
+                                            <TextBlock Text="暂存 C" FontSize="9.5" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <views:TetrominoPoolView Height="26" Orientation="Horizontal" Placeholder="空"
+                                                                     Items="{Binding HeldPieces}"
+                                                                     HintBrush="{DynamicResource FaintTextBrush}"
+                                                                     SlotBrush="{DynamicResource InputBackgroundBrush}" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border views:HudCanvas.Part="Next" Width="64" Padding="6,4" CornerRadius="6"
+                                            Background="{DynamicResource CardBackgroundBrush}" Opacity="0.92"
+                                            Visibility="{Binding Cfg.ShowNext, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel>
+                                            <TextBlock Text="接下来" FontSize="9.5" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <views:TetrominoPoolView x:Name="NextPool" Orientation="Vertical" Placeholder="—"
+                                                                     Items="{Binding NextPieces}"
+                                                                     HintBrush="{DynamicResource FaintTextBrush}"
+                                                                     SlotBrush="{DynamicResource InputBackgroundBrush}" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border views:HudCanvas.Part="Score" Padding="8,4" CornerRadius="6"
+                                            Background="{DynamicResource CardBackgroundBrush}" Opacity="0.92">
+                                        <StackPanel>
+                                            <TextBlock Text="分数" FontSize="9.5" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding ScoreText}" FontSize="20" FontWeight="Bold"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                                            <TextBlock Text="{Binding HighScoreText}" FontSize="9.5"
+                                                       Foreground="{DynamicResource AccentBrush}"
+                                                       Visibility="{Binding IsNetMode, Converter={StaticResource InverseBoolToVis}}" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border views:HudCanvas.Part="Stats" Padding="8,4" CornerRadius="6"
+                                            Background="{DynamicResource CardBackgroundBrush}" Opacity="0.92">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="等级 " FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding LevelText}" FontSize="11" FontWeight="SemiBold" />
+                                            <TextBlock Text="  ·  已消 " FontSize="10" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding LinesText}" FontSize="11" FontWeight="SemiBold" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border views:HudCanvas.Part="Status" Padding="8,4" CornerRadius="6"
+                                            Background="{DynamicResource CardBackgroundBrush}" Opacity="0.92"
+                                            Visibility="{Binding MyGarbageText, Converter={StaticResource EmptyToVisInverse}}">
+                                        <TextBlock Text="{Binding MyGarbageText}" FontSize="10" TextWrapping="Wrap" MaxWidth="150"
+                                                   Foreground="{DynamicResource DangerBrush}" />
+                                    </Border>
+                                </views:HudCanvas>
+
+                                <!-- 编辑模式的提示条 -->
+                                <Border VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,8"
+                                        Background="{DynamicResource AccentBrush}" CornerRadius="6" Padding="10,4"
+                                        Visibility="{Binding HudEditMode, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="拖动组件摆放位置 · 点「完成编辑」退出" FontSize="10" Foreground="White" />
+                                </Border>
                             </Grid>
 
                             <!-- 对手实时棋盘（联机时显示；观战者靠「切换视角」换看谁） -->
@@ -471,17 +486,41 @@
 
                             <CheckBox Content="显示幽灵方块（落点预览）" Margin="0,10,0,0"
                                       IsChecked="{Binding Cfg.ShowGhost}" Style="{StaticResource CheckBoxStyle}" />
+                            <TextBlock Text="预览块数 / 暂存格数" FontSize="11" Margin="0,10,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Grid Margin="0,4,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="8" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="接下来（1~8）" FontSize="9.5" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBox Style="{StaticResource TextBoxStyle}" Margin="0,3,0,0"
+                                             Text="{Binding PreviewSlots, UpdateSourceTrigger=LostFocus}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="暂存（1~5）" FontSize="9.5" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBox Style="{StaticResource TextBoxStyle}" Margin="0,3,0,0"
+                                             Text="{Binding HoldSlotCount, UpdateSourceTrigger=LostFocus}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <Button Content="{Binding HudEditButtonText}" Style="{StaticResource SecondaryButtonStyle}"
+                                    Margin="0,10,0,0" HorizontalAlignment="Stretch"
+                                    Command="{Binding ToggleHudEditCommand}" />
+                            <Button Content="恢复默认 HUD 布局" Style="{StaticResource SecondaryButtonStyle}"
+                                    Margin="0,6,0,0" HorizontalAlignment="Stretch"
+                                    Command="{Binding ResetHudLayoutCommand}" />
+                            <TextBlock Text="{Binding HudEditHint}" FontSize="9.5" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+
                             <CheckBox Content="显示网格线" Margin="0,7,0,0"
                                       IsChecked="{Binding Cfg.ShowGrid}" Style="{StaticResource CheckBoxStyle}" />
                             <CheckBox Content="显示接下来 3 块" Margin="0,7,0,0"
                                       IsChecked="{Binding Cfg.ShowNext}" Style="{StaticResource CheckBoxStyle}" />
 
-                            <TextBlock Text="预览放在棋盘哪个角" FontSize="11" Margin="0,10,0,0"
-                                       Foreground="{DynamicResource TextSecondaryBrush}" />
-                            <ComboBox Style="{StaticResource ComboBoxStyle}" Margin="0,4,0,0"
-                                      DisplayMemberPath="Label"
-                                      ItemsSource="{Binding PreviewCornerOptions}"
-                                      SelectedItem="{Binding SelectedPreviewCorner}" />
+
                             <CheckBox Content="切走窗口时自动暂停" Margin="0,7,0,0"
                                       IsChecked="{Binding Cfg.PauseOnLostFocus}" Style="{StaticResource CheckBoxStyle}"
                                       ToolTip="关掉后切走程序窗口也继续下落（危险，建议开着）" />

@@ -86,13 +86,17 @@ public sealed class TetrisBoardView : FrameworkElement
     /// <summary>按棋盘比例给一个合理的期望尺寸（放进 Grid 里不会被压成 0）。</summary>
     protected override Size MeasureOverride(Size availableSize)
     {
-        var width = double.IsInfinity(availableSize.Width)
-            ? TetrisEngine.Width * DefaultCellSize
-            : availableSize.Width;
-        var height = double.IsInfinity(availableSize.Height)
-            ? TetrisEngine.Height * DefaultCellSize
-            : availableSize.Height;
-        return new Size(width, height);
+        // 按 10:20 的比例算出「刚好放得下」的尺寸：
+        // 这样外层随便怎么约束，棋盘始终保持比例，HUD 也能贴着棋盘的边放。
+        var maxWidth = double.IsInfinity(availableSize.Width) ? TetrisEngine.Width * DefaultCellSize : availableSize.Width;
+        var maxHeight = double.IsInfinity(availableSize.Height) ? TetrisEngine.Height * DefaultCellSize : availableSize.Height;
+
+        // 只占可用宽度的 62%：两侧留给 HOLD / NEXT / 分数这些 HUD
+        var byHeight = maxHeight / TetrisEngine.Height * TetrisEngine.Width;
+        var width = Math.Min(maxWidth * 0.62, byHeight);
+        var height = width / TetrisEngine.Width * TetrisEngine.Height;
+
+        return new Size(Math.Max(1, width), Math.Max(1, height));
     }
 
     // ---------------------------------------------------------------- 绘制

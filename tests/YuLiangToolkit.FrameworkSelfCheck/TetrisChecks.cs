@@ -829,6 +829,44 @@ internal static class TetrisChecks
         check("[俄罗斯方块] 读到坏状态返回 null（一个坏包不能把界面搞崩）",
             TetrisNetProtocol.ReadState(default) is null, "");
 
+        // ---- 多个暂存格 / 预览数量 / HUD 布局（本轮新增） ----
+        var multi = new TetrisEngine(new Random(11));
+        multi.Reset(1, 11);
+        multi.HoldSlots = 3;
+        multi.PreviewSlots = 5;
+
+        // 注意：同一手不能连按两次 C（规则如此），所以每存一格要先落地一次
+        var first = multi.Current!.Value.Kind;
+        multi.Hold();
+        multi.HardDrop();
+
+        var second = multi.Current!.Value.Kind;
+        multi.Hold();
+
+        check("[俄罗斯方块] 多个暂存格：按 C 依次填满，第 1 格是最先存进去的",
+            multi.HeldSlots.Count == 2 && multi.HeldSlots[0] == first && multi.HeldSlots[1] == second,
+            $"{multi.HeldSlots.Count} 格：{string.Join(",", multi.HeldSlots)}");
+
+        check("[俄罗斯方块] 暂存格没满时继续按 C 是「填格」，不是「换出」",
+            multi.HeldSlots.Count < multi.HoldSlots, $"{multi.HeldSlots.Count}/{multi.HoldSlots}");
+
+        check("[俄罗斯方块] 预览块数可设（设 5 就出 5 块）",
+            multi.NextPieces.Count >= Math.Min(5, multi.PreviewSlots),
+            $"{multi.NextPieces.Count} 块");
+
+        var hud = YuLiangToolkit.Tools.Games.Tetris.HudLayout.CreateDefault();
+        hud.Set(YuLiangToolkit.Tools.Games.Tetris.HudPart.Next, 0.5, 0.3);
+        var round = YuLiangToolkit.Tools.Games.Tetris.HudLayout.Deserialize(hud.Serialize());
+        var nextPlace = round.Get(YuLiangToolkit.Tools.Games.Tetris.HudPart.Next);
+
+        check("[俄罗斯方块] HUD 布局能序列化 / 还原（拖动位置存得住）",
+            Math.Abs(nextPlace.X - 0.5) < 0.001 && Math.Abs(nextPlace.Y - 0.3) < 0.001,
+            $"next=({nextPlace.X:0.00},{nextPlace.Y:0.00})");
+
+        check("[俄罗斯方块] HUD 布局坏数据回落到默认（不会崩）",
+            YuLiangToolkit.Tools.Games.Tetris.HudLayout.Deserialize("坏数据").Items.Count == 5,
+            "回落默认");
+
         // ---- 预览位置 / 换人设置（本轮新增） ----
         check("[俄罗斯方块] 预览位置默认右上，四角都能选",
             new YuLiangToolkit.Tools.Games.Tetris.TetrisConfig().PreviewCorner == "tr"

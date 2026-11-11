@@ -19,6 +19,9 @@ public sealed class TetrisEngineSnapshot
     /// <summary>暂存的方块。</summary>
     public TetrominoKind? Held { get; set; }
 
+    /// <summary>多个暂存格（新版本；旧的 Held 字段保留兼容）。</summary>
+    public List<TetrominoKind>? HeldSlots { get; set; }
+
     /// <summary>分数。</summary>
     public int Score { get; set; }
 

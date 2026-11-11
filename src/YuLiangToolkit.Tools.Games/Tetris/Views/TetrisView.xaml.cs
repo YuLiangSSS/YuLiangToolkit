@@ -28,9 +28,39 @@ public partial class TetrisView : UserControl
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         DataContextChanged += OnDataContextChanged;
+
+        // 预览块数变了 → 按数量给「接下来」列一个合适高度（竖排每块 34 像素）
+        DataContextChanged += (_, _) => HookNextPoolSize();
+
+        // HUD 拖动松手 → 存进配置（见 TetrisViewModel.Hud.cs）
+        HudLayer.Moved += (part, x, y) =>
+        {
+            (DataContext as TetrisViewModel)?.OnHudMovedExternal(part, x, y);
+        };
     }
 
     private TetrisViewModel? ViewModel => DataContext as TetrisViewModel;
+
+    /// <summary>按「预览块数」设置「接下来」列的高度（竖排一列）。</summary>
+    private void HookNextPoolSize()
+    {
+        if (ViewModel is not { } vm) return;
+        vm.PropertyChanged -= OnViewModelPropertyChanged;
+        vm.PropertyChanged += OnViewModelPropertyChanged;
+        ApplyNextPoolHeight();
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(TetrisViewModel.PreviewSlots) or nameof(TetrisViewModel.NextPieces))
+            ApplyNextPoolHeight();
+    }
+
+    private void ApplyNextPoolHeight()
+    {
+        var count = Math.Clamp(ViewModel?.PreviewSlots ?? 3, 1, 8);
+        NextPool.Height = count * 34;
+    }
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
         => _viewModel = e.NewValue as TetrisViewModel;
