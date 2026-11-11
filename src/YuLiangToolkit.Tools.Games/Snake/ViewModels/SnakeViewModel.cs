@@ -44,8 +44,10 @@ public sealed class SnakeViewModel : ToolViewModelBase
 
         ModeOptions = OptionItem.From(("battle", "大混战（多蛇多果）"), ("shared", "共享果（分区域抢果）"));
         EdgeOptions = OptionItem.From(("die", "撞墙即死"), ("stop", "停住不动"), ("wrap", "穿墙"));
-        AiLevelOptions = OptionItem.From(Enumerable.Range(1, 9)
+        AiLevelOptions = OptionItem.From(Enumerable.Range(1, 10)
             .Select(i => ((double)i, SnakeAi.LevelName(i))).ToArray());
+
+        RefreshAiAlgorithmSlots();
 
         StartCommand = new RelayCommand(_ => StartLocal(), _ => !_running);
         StopCommand = new RelayCommand(_ => StopLoop(), _ => _running);
@@ -76,6 +78,29 @@ public sealed class SnakeViewModel : ToolViewModelBase
     public RelayCommand StopCommand { get; }
     public RelayCommand BoostStartCommand { get; }
     public RelayCommand BoostEndCommand { get; }
+
+    /// <summary>每个 AI 的算法选择（数量跟随「AI 数量」）。</summary>
+    public ObservableCollection<AiAlgorithmSlot> AiSlots { get; } = new();
+
+    /// <summary>按 AI 数量重建算法下拉。</summary>
+    private void RefreshAiAlgorithmSlots()
+    {
+        var target = Math.Clamp(_settings.AiCount, 0, 7);
+
+        while (AiSlots.Count > target) AiSlots.RemoveAt(AiSlots.Count - 1);
+        while (AiSlots.Count < target)
+        {
+            var index = AiSlots.Count;
+            var level = Math.Clamp(Cfg.AiAlgorithmOf(index), 1, 10);
+            AiSlots.Add(new AiAlgorithmSlot(index, level));
+        }
+
+        OnPropertyChanged(nameof(AiSlots));
+    }
+
+    /// <summary>某个 AI 用的算法等级（1~10）。</summary>
+    private int AiLevelOf(int index)
+        => index >= 0 && index < AiSlots.Count ? AiSlots[index].Level : _settings.AiLevel;
 
     /// <summary>玩家行（排行榜）。</summary>
     public ObservableCollection<SnakePlayerRow> Players { get; } = new();
@@ -248,9 +273,11 @@ public sealed class SnakeViewModel : ToolViewModelBase
         get => Cfg.TimeLimitSeconds;
         set
         {
-            Cfg.TimeLimitSeconds = Math.Max(0, value);
-            _settings = Cfg.Settings;
-            _settings.Normalize();
+            // ⚠ 不要在这里重建 _settings：Cfg.Settings 每次都会 new 一个，
+            // 那样界面上的改动全被冲掉（之前「设置改了一个都不生效」就是它）。
+            var seconds = Math.Max(0, value);
+            Cfg.TimeLimitSeconds = seconds;
+            _settings.TimeLimitSteps = (int)Math.Round(seconds * Math.Max(1, _settings.Speed));
             OnPropertyChanged();
         }
     }
@@ -266,7 +293,13 @@ public sealed class SnakeViewModel : ToolViewModelBase
     public int AiCount
     {
         get => _settings.AiCount;
-        set { _settings.AiCount = value; _settings.Normalize(); OnPropertyChanged(); }
+        set
+        {
+            _settings.AiCount = value;
+            _settings.Normalize();
+            OnPropertyChanged();
+            RefreshAiAlgorithmSlots();
+        }
     }
 
     /// <summary>开加速。</summary>
@@ -290,7 +323,14 @@ public sealed class SnakeViewModel : ToolViewModelBase
         set { _settings.RespawnKeepsLength = value; OnPropertyChanged(); }
     }
 
-    /// <summary>出生点爆炸。</summary>
+    /// <summary>重生无敌秒数。</summary>
+    public double RespawnInvincibleSeconds
+    {
+        get => _settings.RespawnInvincibleSeconds;
+        set { _settings.RespawnInvincibleSeconds = Math.Clamp(value, 0, 10); OnPropertyChanged(); }
+    }
+
+    /// <summary>出生光爆。</summary>
     public bool SpawnBombEnabled
     {
         get => _settings.SpawnBombEnabled;
@@ -312,7 +352,7 @@ public sealed class SnakeViewModel : ToolViewModelBase
         if (_running) return;
         if (_session is not null) { SetNotice("联机时由房主开局", "DangerBrush"); return; }
 
-        _settings = Cfg.Settings;
+        // 直接用界面上正在用的 _settings（不要从 Cfg 重建，否则改动会被旧配置覆盖）
         _settings.Normalize();
         Cfg.Apply(_settings);
 
@@ -329,12 +369,15 @@ public sealed class SnakeViewModel : ToolViewModelBase
                 Id = $"ai{i + 1}",
                 Name = $"电脑 {i + 1}",
                 IsAi = true,
-                AiAlgorithm = _settings.AiLevel,
+                AiAlgorithm = AiLevelOf(i),      // 每个 AI 用自己的算法
             });
         }
 
         var error = _game.Start();
         if (error.Length > 0) { SetNotice(error, "DangerBrush"); return; }
+
+        // 把每个 AI 的算法存回配置
+        Cfg.SetAiAlgorithms(AiSlots.Select(s => s.Level));
 
         ResultText = "";
         StartLoop();
@@ -414,7 +457,7 @@ public sealed class SnakeViewModel : ToolViewModelBase
 
     private void SyncCountdown()
     {
-        CountdownLeft = _game.CountdownRemaining;
+        CountdownLeft = _game.CountdownSecondsLeft;
         if (CountdownLeft > 0) StatusText = $"开局倒计时 {CountdownLeft} 秒…";
         else if (!_game.IsOver) StatusText = _isBoostKeyDown ? "加速中！" : "对局进行中";
     }

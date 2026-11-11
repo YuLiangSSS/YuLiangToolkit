@@ -70,6 +70,12 @@ public sealed class SnakePlayer
     /// <summary>重生倒计时（步数；&gt; 0 时还没复活）。</summary>
     public int RespawnIn { get; set; }
 
+    /// <summary>固定出生点（开局分配，重生时回到这里）。</summary>
+    public SnakePoint? SpawnPoint { get; set; }
+
+    /// <summary>重生后的无敌剩余时间（秒，渲染 / 提示用）。</summary>
+    public double InvincibleSeconds { get; set; }
+
     /// <summary>现在能不能操作（活着且不在重生）。</summary>
     public bool CanAct => Snake.IsAlive && RespawnIn <= 0;
 }
@@ -156,8 +162,19 @@ public sealed class SnakeGame
     public IReadOnlyList<(SnakePlayer Player, double Score)> Ranking { get; private set; } =
         Array.Empty<(SnakePlayer, double)>();
 
-    /// <summary>开局倒计时（步数；&gt; 0 时不能动）。</summary>
-    public int CountdownRemaining { get; private set; }
+    /// <summary>
+    /// 开局倒计时的剩余时间（<b>真实时间</b>）。
+    /// <para>⚠ 之前这里存的是「步数」，但一步只有 1/Speed 秒，3 秒被当成 3 步 → 实际 0.3 秒（踩过）。
+    /// 现在改成基于 <see cref="Tick"/> 的调用时刻累计真实经过的时间。</para>
+    /// </summary>
+    public TimeSpan CountdownRemaining { get; private set; }
+
+    /// <summary>计时用的「上次 Tick 时刻」（单调时钟）。</summary>
+    private long _lastTickTimestamp;
+
+    /// <summary>倒计时还剩几秒（界面显示用，向上取整）。</summary>
+    public int CountdownSecondsLeft
+        => CountdownRemaining <= TimeSpan.Zero ? 0 : (int)Math.Ceiling(CountdownRemaining.TotalSeconds);
 
     // ---------------------------------------------------------------- 开局
 
@@ -217,7 +234,8 @@ public sealed class SnakeGame
         // 果子
         RefillFruits();
 
-        CountdownRemaining = Settings.CountdownSeconds;
+        CountdownRemaining = TimeSpan.FromSeconds(Math.Max(0, Settings.CountdownSeconds));
+        _lastTickTimestamp = 0;
         Started = true;
         return "";
     }
@@ -231,6 +249,7 @@ public sealed class SnakeGame
             var player = _players[i];
             var startX = i * regionWidth + regionWidth / 2;
             var startY = Height / 2;
+            player.SpawnPoint = new SnakePoint(startX, startY);
             FillSnake(player, startX, startY, SnakeDirection.Right, Settings.InitialLength);
         }
     }
@@ -246,9 +265,9 @@ public sealed class SnakeGame
             var direction = (SnakeDirection)_random.Next(4);
             FillSnake(player, spawn.X, spawn.Y, direction, Settings.InitialLength);
 
-            // 出生点周围 3×3 埋雷（防止堵出生点）
-            // ⚠ 只封锁「别人」的出生区：自己出生时站在自己的爆炸区里，不能把自己炸死。
-            if (Settings.SpawnBombEnabled) MarkSpawnBlast(spawn, player);
+            // 记录固定出生点（重生时回到这里）；光爆只在「出生那一刻」生效，不留常驻障碍
+            player.SpawnPoint = spawn;
+            if (Settings.SpawnBombEnabled) SpawnBurst(spawn, player);
 
             occupied.AddRange(player.Snake.Body);
             occupied.Add(spawn);
@@ -364,10 +383,17 @@ public sealed class SnakeGame
     {
         if (!Started || IsOver) return;
 
-        // 倒计时阶段：只减计数，不动蛇
-        if (CountdownRemaining > 0)
+        // 倒计时阶段：按<b>真实经过的时间</b>扣（不是按帧扣 —— 按帧扣会快上好几倍）
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        var elapsed = _lastTickTimestamp == 0
+            ? TimeSpan.Zero
+            : TimeSpan.FromSeconds((now - _lastTickTimestamp) / (double)System.Diagnostics.Stopwatch.Frequency);
+        _lastTickTimestamp = now;
+
+        if (CountdownRemaining > TimeSpan.Zero)
         {
-            CountdownRemaining--;
+            CountdownRemaining -= elapsed;
+            if (CountdownRemaining < TimeSpan.Zero) CountdownRemaining = TimeSpan.Zero;
             return;
         }
 
@@ -488,13 +514,6 @@ public sealed class SnakeGame
                     if (!player.Snake.IsAlive) continue;
                 }
 
-                // 埋雷（出生点爆炸区）：撞上也算死，但自己出生区里免疫（否则一出生就被自己炸死）
-                if (_blockedSpawns.Contains(next) && Settings.SpawnBombEnabled
-                    && !IsInOwnBlastZone(player, next))
-                {
-                    Kill(player, "撞到出生点爆炸区");
-                    continue;
-                }
             }
 
             MoveSnake(player, next, eatenThisTick.Contains(next));
@@ -555,6 +574,7 @@ public sealed class SnakeGame
         player.Snake.IsAlive = false;
         player.Stats.Deaths++;
         player.Stats.Combo = 0;
+        _lastLength[player.Id] = Math.Max(_lastLength.GetValueOrDefault(player.Id, 0), player.Snake.Body.Count);
 
         // 死亡残影（80% 透明）
         foreach (var segment in player.Snake.Body) _deathMarks.Add(segment);
@@ -572,44 +592,116 @@ public sealed class SnakeGame
         _ = reason;
     }
 
-    /// <summary>重生：在原区域（共享果）或随机空位（大混战）出现，带虚化保护。</summary>
+    /// <summary>
+    /// 重生：<b>回到自己的固定出生点</b>，朝<b>空场方向</b>出去；出生瞬间原地「光爆」一下 ——
+    /// 炸死出生点范围内的其它蛇（自己免疫），然后光爆消失、该点恢复成可通行的空地。
+    /// </summary>
     private void Respawn(SnakePlayer player)
     {
         if (player.Lives <= 0) return;
 
-        var spawn = Settings.Mode == SnakeMode.SharedFruit
-            ? FindSharedFruitSpawn(player)
-            : FindBattleRespawn(player);
+        // ① 固定出生点（开局时分配的），找不到才退回随机
+        var spawn = player.SpawnPoint ?? new SnakePoint(Width / 2, Height / 2);
+        if (!InBounds(spawn) || IsOccupiedByOther(player, spawn))
+            spawn = FindSpawnForRespawn(player);
 
-        var direction = Settings.Mode == SnakeMode.SharedFruit ? SnakeDirection.Right : (SnakeDirection)_random.Next(4);
-        FillSnake(player, spawn.X, spawn.Y, direction, Settings.InitialLength);
+        // ② 朝「空场方向」出去：选一个前方是空地的方向
+        var direction = ChooseOpenDirection(spawn, player);
 
-        // 重生点周围 3×3 也算「自己的爆炸区」（自己免疫），否则一复活就被炸死
-        _ownBlastZones.Remove(player.Id);
-        if (Settings.SpawnBombEnabled)
-        {
-            var zone = new HashSet<SnakePoint>();
-            for (var dy = -1; dy <= 1; dy++)
-            {
-                for (var dx = -1; dx <= 1; dx++)
-                {
-                    var point = new SnakePoint(spawn.X + dx, spawn.Y + dy);
-                    if (InBounds(point)) zone.Add(point);
-                }
-            }
-            _ownBlastZones[player.Id] = zone;
-        }
+        // ③ 出生光爆（可选）：临时标记，炸完立刻消失，不是常驻障碍
+        if (Settings.SpawnBombEnabled) SpawnBurst(spawn, player);
 
-        // 虚化保护 + 保留原长度（需求里「保留原蛇身长度」）
-        // ⚠ FillSnake 会把 GhostSteps 清零，所以「设置虚化」必须放在它<b>之后</b>。
-        if (Settings.RespawnKeepsLength && player.Snake.Body.Count < Settings.InitialLength)
-        {
-            // 补到原长度（往尾巴方向延伸，越界就停）
-            FillSnake(player, spawn.X, spawn.Y, direction, Math.Max(Settings.InitialLength, player.Snake.Body.Count));
-        }
+        var keepLength = Settings.RespawnKeepsLength ? Math.Max(Settings.InitialLength, _lastLength[player.Id]) : Settings.InitialLength;
+        FillSnake(player, spawn.X, spawn.Y, direction, keepLength);
 
         player.Snake.IsAlive = true;
-        player.Snake.GhostSteps = GhostProtectionSteps;
+        player.Snake.GhostSteps = GhostStepsFor(Settings.RespawnInvincibleSeconds);
+        player.RespawnIn = 0;
+
+        // 提示文字由界面 / VM 组装（引擎只管状态）
+    }
+
+    /// <summary>无敌秒数 → 步数。</summary>
+    private static int GhostStepsFor(double seconds)
+        => Math.Max(0, (int)Math.Round(seconds * 8));      // 8 格/秒为基准
+
+    /// <summary>这条蛇上次的长度（重生时保留长度用）。</summary>
+    private readonly Dictionary<string, int> _lastLength = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// 出生光爆：炸掉出生点周围 3×3 里<b>其它</b>的活蛇（自己免疫），
+    /// 然后立刻清掉标记 —— <b>不留下常驻障碍</b>，之后就能穿过。
+    /// </summary>
+    private void SpawnBurst(SnakePoint center, SnakePlayer owner)
+    {
+        var zone = new List<SnakePoint>();
+        for (var dy = -1; dy <= 1; dy++)
+        {
+            for (var dx = -1; dx <= 1; dx++)
+            {
+                var point = new SnakePoint(center.X + dx, center.Y + dy);
+                if (InBounds(point)) zone.Add(point);
+            }
+        }
+
+        // 一秒的视觉残留（只用于渲染，不参与碰撞）
+        _burstMarks[owner.Id] = (zone, Environment.TickCount64 + 600);
+
+        foreach (var other in _players)
+        {
+            if (ReferenceEquals(other, owner) || !other.Snake.IsAlive) continue;
+            if (!zone.Any(p => other.Snake.Occupies(p))) continue;
+
+            Kill(other, "被出生光爆命中");
+        }
+
+        // 光爆不写进 _blockedSpawns，也不进 _deathMarks 的碰撞判定 → 之后可以穿过
+    }
+
+    /// <summary>光爆的视觉标记（玩家 id → 格子 + 到期时刻）。</summary>
+    private readonly Dictionary<string, (List<SnakePoint> Zone, long ExpireAt)> _burstMarks = new(StringComparer.Ordinal);
+
+    /// <summary>当前还没消失的光爆格子（渲染用）。</summary>
+    public IReadOnlyList<SnakePoint> ActiveBursts()
+    {
+        var now = Environment.TickCount64;
+        var result = new List<SnakePoint>();
+        foreach (var (_, (zone, expireAt)) in _burstMarks)
+        {
+            if (now > expireAt) continue;
+            result.AddRange(zone);
+        }
+        return result;
+    }
+
+    /// <summary>这一点是不是被别的蛇占着。</summary>
+    private bool IsOccupiedByOther(SnakePlayer owner, SnakePoint point)
+        => _players.Any(p => !ReferenceEquals(p, owner) && p.Snake.IsAlive && p.Snake.Occupies(point));
+
+    /// <summary>选一个「前方是空地」的方向，让蛇能从出生点出去。</summary>
+    private SnakeDirection ChooseOpenDirection(SnakePoint spawn, SnakePlayer player)
+    {
+        var order = new[] { SnakeDirection.Up, SnakeDirection.Right, SnakeDirection.Down, SnakeDirection.Left };
+
+        foreach (var direction in order)
+        {
+            var next = spawn + SnakeDirections.ToVector(direction);
+            if (!InBounds(next)) continue;
+            if (IsOccupiedByOther(player, next)) continue;
+            return direction;
+        }
+        return SnakeDirection.Right;
+    }
+
+    /// <summary>重生时找不到固定点时，找一个附近的空格。</summary>
+    private SnakePoint FindSpawnForRespawn(SnakePlayer player)
+    {
+        for (var attempt = 0; attempt < 400; attempt++)
+        {
+            var point = new SnakePoint(_random.Next(Width), _random.Next(Height));
+            if (IsFree(point) && !IsOccupiedByOther(player, point)) return point;
+        }
+        return new SnakePoint(Width / 2, Height / 2);
     }
 
     /// <summary>共享果：在自己区域里找一个空位重生。</summary>
@@ -703,15 +795,16 @@ public sealed class SnakeGame
             return;
         }
 
-        // 玩法二：时间到、或只剩一个还有命的
+        // 玩法二：时间到、或<b>所有蛇都用完命</b>才结束
+        // （不能「只剩一条蛇就停」—— 玩家要求打完，最后一条自己活到最后）
         if (Settings.TimeLimitSteps > 0 && Step >= Settings.TimeLimitSteps)
         {
             Finish("时间到");
             return;
         }
-        if (_players.Count(p => p.Lives > 0) <= 1)
+        if (_players.Count > 0 && _players.All(p => p.Lives <= 0))
         {
-            Finish("只剩一条蛇");
+            Finish("所有蛇都阵亡了");
         }
     }
 

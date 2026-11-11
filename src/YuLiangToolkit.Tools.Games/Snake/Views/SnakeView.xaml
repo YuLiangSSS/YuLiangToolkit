@@ -261,7 +261,11 @@
 
                             <CheckBox Content="重生保留原蛇身长度" Margin="0,10,0,0" Style="{StaticResource CheckBoxStyle}"
                                       IsChecked="{Binding RespawnKeepsLength}" />
-                            <CheckBox Content="出生点 3×3 爆炸（防堵点）" Margin="0,7,0,0" Style="{StaticResource CheckBoxStyle}"
+                            <TextBlock Text="重生无敌时间（秒）" FontSize="10.5" Margin="0,8,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Style="{StaticResource TextBoxStyle}" Margin="0,4,0,0"
+                                     Text="{Binding RespawnInvincibleSeconds, UpdateSourceTrigger=LostFocus}" />
+                            <CheckBox Content="出生光爆（重生瞬间炸开 3×3，之后可穿过）" Margin="0,7,0,0" Style="{StaticResource CheckBoxStyle}"
                                       IsChecked="{Binding SpawnBombEnabled}" />
                             <CheckBox Content="共享果：没吃到就断 combo" Margin="0,7,0,0" Style="{StaticResource CheckBoxStyle}"
                                       IsChecked="{Binding ComboBreaksOnMiss}" />
@@ -278,13 +282,22 @@
                             <TextBox Style="{StaticResource TextBoxStyle}" Margin="0,4,0,0"
                                      Text="{Binding AiCount, UpdateSourceTrigger=LostFocus}" IsEnabled="{Binding CanJoin}" />
 
-                            <TextBlock Text="AI 算法（九条蛇，越高越聪明）" FontSize="10.5" Margin="0,8,0,0"
+                            <TextBlock Text="每个电脑的算法（1~10，越高越聪明）" FontSize="10.5" Margin="0,8,0,0"
                                        Foreground="{DynamicResource TextSecondaryBrush}" />
-                            <ComboBox ItemsSource="{Binding AiLevelOptions}" DisplayMemberPath="Label"
-                                      SelectedItem="{Binding SelectedAiLevel}" Style="{StaticResource ComboBoxStyle}"
-                                      Margin="0,4,0,0" IsEnabled="{Binding CanJoin}" />
-                            <TextBlock Text="{Binding AiLevelDescription}" FontSize="10.5" TextWrapping="Wrap"
-                                       Margin="0,6,0,0" Foreground="{DynamicResource AccentBrush}" />
+                            <ItemsControl ItemsSource="{Binding AiSlots}" Margin="0,4,0,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="0,0,0,6">
+                                            <TextBlock Text="{Binding Label}" FontSize="10.5" FontWeight="SemiBold" />
+                                            <ComboBox ItemsSource="{Binding LevelOptions}" DisplayMemberPath="Label"
+                                                      SelectedItem="{Binding SelectedLevel}"
+                                                      Style="{StaticResource ComboBoxStyle}" Margin="0,3,0,0" />
+                                            <TextBlock Text="{Binding Description}" FontSize="9.5" TextWrapping="Wrap"
+                                                       Margin="0,2,0,0" Foreground="{DynamicResource AccentBrush}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
                     </Border>
                 </StackPanel>

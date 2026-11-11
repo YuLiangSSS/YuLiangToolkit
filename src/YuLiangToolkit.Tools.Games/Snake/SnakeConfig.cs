@@ -89,8 +89,24 @@ public sealed class SnakeConfig : ToolConfig
     /// <summary>AI 数量。</summary>
     public int AiCount { get; set; } = 1;
 
-    /// <summary>AI 等级（1~9）。</summary>
+    /// <summary>AI 等级（1~10）。</summary>
     public int AiLevel { get; set; } = 3;
+
+    /// <summary>每个 AI 的算法（英文逗号分隔，如 <c>3,7,10</c>）。</summary>
+    public string AiAlgorithms { get; set; } = "";
+
+    /// <summary>取第 index 个 AI 的算法（没配就用统一等级）。</summary>
+    public int AiAlgorithmOf(int index)
+    {
+        var parts = (AiAlgorithms ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries);
+        return index >= 0 && index < parts.Length && int.TryParse(parts[index].Trim(), out var level)
+            ? Math.Clamp(level, 1, 10)
+            : Math.Clamp(AiLevel, 1, 10);
+    }
+
+    /// <summary>写回每个 AI 的算法。</summary>
+    public void SetAiAlgorithms(IEnumerable<int> levels)
+        => AiAlgorithms = string.Join(",", levels.Select(l => Math.Clamp(l, 1, 10)));
 
     /// <summary>爬行速度（格/秒）。</summary>
     public double Speed { get; set; } = 8;

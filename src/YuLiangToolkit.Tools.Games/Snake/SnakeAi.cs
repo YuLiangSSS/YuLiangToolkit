@@ -42,7 +42,7 @@ public static class SnakeAi
         if (candidates.Count == 0) return null;
         if (candidates.Count == 1) return candidates[0];
 
-        var algorithm = Math.Clamp(level, 1, 9);
+        var algorithm = Math.Clamp(level, 1, 10);
 
         return algorithm switch
         {
@@ -471,6 +471,107 @@ public static class SnakeAi
         return count;
     }
 
+    // ---------------------------------------------------------------- 10 主动躲避
+
+    /// <summary>
+    /// 10 主动躲避（最聪明）：<b>看到别的蛇在前面就立刻掉头跑开</b>。
+    /// <para>在前 9 个算法的评分基础上，额外做两件事：</para>
+    /// <list type="bullet">
+    ///   <item><b>威胁检测</b>：预测每条别的蛇 1~2 步后可能到达的格子（按它们的朝向），
+    ///         我的候选落点如果在那片区域里就大幅扣分；</item>
+    ///   <item><b>逃跑</b>：如果所有方向都危险，就选「离所有敌蛇最远」的方向，宁可绕路也不撞。</item>
+    /// </list>
+    /// </summary>
+    private static SnakeDirection EvadePlayers(
+        SnakeGame game, SnakePlayer player, List<SnakeDirection> candidates, Random rng)
+    {
+        var head = player.Snake.Head;
+
+        // ① 先算每个候选点的基础分（用加权 Cell 的思路，保证它也会吃果子）
+        var scored = new List<(SnakeDirection Direction, double Score)>();
+        foreach (var direction in candidates)
+        {
+            var next = head + SnakeDirections.ToVector(direction);
+            var score = -ShortestPathDistance(game, player, next) * 1.5;
+
+            var space = ReachableSpace(game, player, next);
+            if (space < player.Snake.Length + 2) score -= 70;
+            else score += Math.Min(space, 80) * 0.5;
+
+            // ② 威胁检测：这个点会不会被别的蛇撞上
+            score -= ThreatLevel(game, player, next) * 40;
+
+            scored.Add((direction, score));
+        }
+
+        scored.Sort((a, b) => b.Score.CompareTo(a.Score));
+
+        // ③ 全都危险 → 逃到「离敌蛇最远」的方向
+        if (scored[0].Score < -20)
+        {
+            return candidates
+                .OrderByDescending(d => DistanceToNearestEnemy(game, player, head + SnakeDirections.ToVector(d)))
+                .First();
+        }
+
+        var best = scored[0].Score;
+        var ties = scored.Where(s => Math.Abs(s.Score - best) < 0.01).ToList();
+        return ties[rng.Next(ties.Count)].Direction;
+    }
+
+    /// <summary>
+    /// 某个落点有多危险（0 = 安全，1~3 = 有蛇可能 1~3 步内到这里）。
+    /// </summary>
+    private static int ThreatLevel(SnakeGame game, SnakePlayer me, SnakePoint point)
+    {
+        var level = 0;
+
+        foreach (var other in game.Players)
+        {
+            if (ReferenceEquals(other, me) || !other.Snake.IsAlive) continue;
+
+            // 用对方蛇头 + 朝向预测 1~3 步
+            var head = other.Snake.Head;
+            var dir = SnakeDirections.ToVector(other.Snake.Direction);
+
+            for (var step = 1; step <= 3; step++)
+            {
+                var predicted = new SnakePoint(head.X + dir.X * step, head.Y + dir.Y * step);
+                if (!game.InBounds(predicted)) break;
+
+                // 我的落点跟预测点很近（曼哈顿 1 格内）→ 视为威胁
+                if (Math.Abs(predicted.X - point.X) + Math.Abs(predicted.Y - point.Y) <= 1)
+                {
+                    level = Math.Max(level, 4 - step);
+                    break;
+                }
+            }
+
+            // 对方身体本身就是障碍：贴着就扣分
+            if (DistanceToNearestEnemy(game, me, point) <= 1) level = Math.Max(level, 2);
+        }
+
+        return level;
+    }
+
+    /// <summary>到最近敌蛇（身体任一点）的距离。</summary>
+    private static int DistanceToNearestEnemy(SnakeGame game, SnakePlayer me, SnakePoint point)
+    {
+        var best = int.MaxValue;
+
+        foreach (var other in game.Players)
+        {
+            if (ReferenceEquals(other, me) || !other.Snake.IsAlive) continue;
+            foreach (var segment in other.Snake.Body)
+            {
+                var distance = Math.Abs(segment.X - point.X) + Math.Abs(segment.Y - point.Y);
+                if (distance < best) best = distance;
+            }
+        }
+
+        return best == int.MaxValue ? 99 : best;
+    }
+
     // ---------------------------------------------------------------- 工具
 
     /// <summary>到最近果子的距离（BFS，被挡住算不可达 → 大数）。</summary>
@@ -527,7 +628,7 @@ public static class SnakeAi
     }
 
     /// <summary>AI 等级的显示名（对应九条蛇）。</summary>
-    public static string LevelName(int level) => Math.Clamp(level, 1, 9) switch
+    public static string LevelName(int level) => Math.Clamp(level, 1, 10) switch
     {
         1 => "01 莽夫",
         2 => "02 谨慎",
@@ -537,11 +638,12 @@ public static class SnakeAi
         6 => "06 步步为营",
         7 => "07 动态回路",
         8 => "08 可达保护",
-        _ => "09 加权 Cell",
+        9 => "09 加权 Cell",
+        _ => "10 主动躲避",
     };
 
     /// <summary>AI 等级的说明（对战适配的那一句话）。</summary>
-    public static string LevelDescription(int level) => Math.Clamp(level, 1, 9) switch
+    public static string LevelDescription(int level) => Math.Clamp(level, 1, 10) switch
     {
         1 => "只认最短路，别的蛇挡路也照冲（最蠢）",
         2 => "吃之前先试吃，回得到尾巴才吃，会绕开别的蛇",
@@ -551,6 +653,7 @@ public static class SnakeAi
         6 => "吃之前先画好退路，会算别的蛇的走位",
         7 => "动态换环线接口，优先往果子方向",
         8 => "吃完前多查一遍会不会被隔开",
-        _ => "2×2 连树 + 最短路 + 可达保护（最聪明）",
+        9 => "2×2 连树 + 最短路 + 可达保护",
+        _ => "看到别的蛇在前面就立刻掉头跑开（最聪明）",
     };
 }

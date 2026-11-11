@@ -111,6 +111,16 @@ public sealed class SnakeBoardView : FrameworkElement
             dc.DrawRectangle(blastBrush, null, CellRect(origin, cell, point[0], point[1]));
         }
 
+        // ②½ 出生光爆（亮一下，然后消失；不是障碍物）
+        var burstBrush = new SolidColorBrush(Color.FromArgb(0xAA, 0xFF, 0xE0, 0x66));
+        burstBrush.Freeze();
+        foreach (var point in frame.Bursts)
+        {
+            if (point.Length < 2) continue;
+            var center = CellCenter(origin, cell, point[0], point[1]);
+            dc.DrawEllipse(burstBrush, null, center, cell * 0.45, cell * 0.45);
+        }
+
         // ③ 死亡残影（80% 透明）
         var markBrush = new SolidColorBrush(Color.FromArgb(0x33, 0x88, 0x88, 0x88));
         markBrush.Freeze();

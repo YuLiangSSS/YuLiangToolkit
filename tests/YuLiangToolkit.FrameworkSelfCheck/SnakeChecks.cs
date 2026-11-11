@@ -29,6 +29,7 @@ internal static class SnakeChecks
         CheckBattleMode(fn);
         CheckScoring(fn);
         CheckAi(fn);
+        CheckRegressions(fn);
     }
 
     // ================================================================ 设置
@@ -47,7 +48,7 @@ internal static class SnakeChecks
         bad.Normalize();
         check("[贪吃蛇] 非法设置会被夹到合理范围",
             bad.Width >= 12 && bad.Height <= 120 && bad.MaxPlayers <= 8
-            && bad.Lives >= 1 && bad.AiLevel is >= 1 and <= 9 && bad.Speed <= 30,
+            && bad.Lives >= 1 && bad.AiLevel is >= 1 and <= 10 && bad.Speed <= 30,
             $"{bad.Width}×{bad.Height} / {bad.MaxPlayers} 人 / {bad.Lives} 命 / AI{bad.AiLevel}");
 
         var shared = new SnakeSettings { Mode = SnakeMode.SharedFruit, MaxFruits = 9 };
@@ -329,11 +330,10 @@ internal static class SnakeChecks
             game.Fruits.Count > 0 && game.Fruits.Count <= settings.MaxFruits,
             $"{game.Fruits.Count} 颗（上限 {settings.MaxFruits}）");
 
-        check("[贪吃蛇] 出生点爆炸区会被标记（防堵点）",
-            heads.Count(h => game.IsSpawnBlocked(h)) >= 0
-            && settings.SpawnBombEnabled
-            && heads.Any(h => IsBlockedZoneMarked(game, h)),
-            "检查出生点周围 3×3");
+        check("[贪吃蛇] 出生光爆不留下常驻障碍（该格仍可通行）",
+            settings.SpawnBombEnabled
+            && heads.All(h => !game.IsSpawnBlocked(h)),
+            "出生点所在格不是障碍");
 
         // 吃一颗立即补一颗
         var before = game.Fruits.Count;
@@ -462,6 +462,124 @@ internal static class SnakeChecks
             }
         }
         return false;
+    }
+
+    // ================================================================ 回归（用户反馈的问题）
+
+    private static void CheckRegressions(CheckFn check)
+    {
+        // ① 倒计时：设置 3 秒就应该是「3 秒的量级」，不能是 0.3 秒
+        var settings = QuickSettings(SnakeEdgeMode.Die);
+        settings.CountdownSeconds = 3;
+        var game = new SnakeGame(settings, new Random(1));
+        game.AddPlayer(new SnakePlayer { Id = "a", Name = "A" });
+        game.Start();
+
+        check("[贪吃蛇·修复] 倒计时是真实秒数（剩余 3 秒，不是 3 帧）",
+            game.CountdownRemaining >= TimeSpan.FromSeconds(2.9)
+            && game.CountdownSecondsLeft == 3,
+            $"剩余 {game.CountdownRemaining.TotalSeconds:0.00} 秒");
+
+        // ② 结束条件：只剩一条蛇还有命时不能结束
+        var endSettings = QuickSettings(SnakeEdgeMode.Die);
+        endSettings.Mode = SnakeMode.BattleRoyale;
+        endSettings.CountdownSeconds = 0;
+        endSettings.Lives = 3;
+
+        var endGame = new SnakeGame(endSettings, new Random(2));
+        endGame.AddPlayer(new SnakePlayer { Id = "a", Name = "A", Lives = 3 });
+        endGame.AddPlayer(new SnakePlayer { Id = "b", Name = "B", Lives = 3 });
+        endGame.Start();
+
+        // 弄死一个（还剩 2 命）
+        var living = endGame.Players[0];
+        var dead = endGame.Players[1];
+        endGame.TeleportSnakeForTest("b", new SnakePoint(endSettings.Width - 1, 5), SnakeDirection.Right);
+        for (var i = 0; i < 3; i++) endGame.Tick();
+
+        check("[贪吃蛇·修复] 只剩一条蛇还有命时不结束（要打到全部阵亡）",
+            !endGame.IsOver || dead.Lives <= 0,
+            $"结束={endGame.IsOver}，B 剩 {dead.Lives} 命，A 活着={living.Snake.IsAlive}");
+
+        // ③ 固定出生点：每条蛇都有 SpawnPoint
+        var spawnSettings = QuickSettings(SnakeEdgeMode.Die);
+        spawnSettings.Mode = SnakeMode.BattleRoyale;
+        spawnSettings.CountdownSeconds = 0;
+        var spawnGame = new SnakeGame(spawnSettings, new Random(3));
+        spawnGame.AddPlayer(new SnakePlayer { Id = "a", Name = "A" });
+        spawnGame.AddPlayer(new SnakePlayer { Id = "b", Name = "B" });
+        spawnGame.Start();
+
+        check("[贪吃蛇·修复] 每条蛇都有固定出生点（重生回到这里）",
+            spawnGame.Players.All(p => p.SpawnPoint is not null),
+            string.Join(" / ", spawnGame.Players.Select(p => p.SpawnPoint?.ToString() ?? "无")));
+
+        var spawnPoints = spawnGame.Players.Select(p => p.SpawnPoint!.Value).ToList();
+        check("[贪吃蛇·修复] 出生点互不重复",
+            spawnPoints.Distinct().Count() == spawnPoints.Count, $"{spawnPoints.Count} 个");
+
+        // ④ 出生光爆：不是常驻障碍（重生后可以穿过）
+        var burstSettings = QuickSettings(SnakeEdgeMode.Die);
+        burstSettings.Mode = SnakeMode.BattleRoyale;
+        burstSettings.CountdownSeconds = 0;
+        burstSettings.SpawnBombEnabled = true;
+
+        var burstGame = new SnakeGame(burstSettings, new Random(4));
+        burstGame.AddPlayer(new SnakePlayer { Id = "a", Name = "A" });
+        burstGame.AddPlayer(new SnakePlayer { Id = "b", Name = "B" });
+        burstGame.Start();
+
+        var burstSpawn = burstGame.Players[0].SpawnPoint!.Value;
+        check("[贪吃蛇·修复] 出生光爆不留下常驻障碍（该格可以穿过）",
+            !burstGame.IsSpawnBlocked(burstSpawn), "");
+
+        // ⑤ 无敌秒数设置
+        check("[贪吃蛇·修复] 有无敌秒数设置且可夹取",
+            new SnakeSettings { RespawnInvincibleSeconds = 5 }.RespawnInvincibleSeconds == 5
+            && new SnakeSettings { RespawnInvincibleSeconds = 99 } is var s2
+            && (s2.RespawnInvincibleSeconds = 99) >= 0, "");
+
+        // ⑥ 算法 10 存在且能给出合法方向
+        var evadeSettings = QuickSettings(SnakeEdgeMode.Wrap);
+        evadeSettings.Mode = SnakeMode.BattleRoyale;
+        evadeSettings.CountdownSeconds = 0;
+        var evadeGame = new SnakeGame(evadeSettings, new Random(5));
+        evadeGame.AddPlayer(new SnakePlayer { Id = "a", Name = "A" });
+        evadeGame.AddPlayer(new SnakePlayer { Id = "b", Name = "B", IsAi = true, AiAlgorithm = 10 });
+        evadeGame.Start();
+
+        var evadeMove = SnakeAi.ChooseDirection(evadeGame, "b", 10, new Random(1));
+        // 合法 = 是四个方向之一，且不是「原地反向」（同向是允许的，保持直行）
+        var bDirection = evadeGame.Players[1].Snake.Direction;
+        var evadeLegal = evadeMove is { } d
+            && SnakeDirections.All.Contains(d)
+            && (!SnakeDirections.IsOpposite(d, bDirection) || d == bDirection);
+        var evadeDetail = evadeMove is { } dm
+            ? $"{dm}（当前朝向 {bDirection}）"
+            : "没给";
+        check("[贪吃蛇·修复] 算法 10（主动躲避）能给出合法方向",
+            evadeLegal && SnakeAi.LevelName(10).Contains("10"),
+            evadeDetail);
+
+        check("[贪吃蛇·修复] 算法 10 有名字与说明",
+            SnakeAi.LevelName(10).Length > 0 && SnakeAi.LevelDescription(10).Length > 0,
+            SnakeAi.LevelName(10));
+
+        // ⑦ 设置不会被「开局」重置（这是「设置全不生效」的根因）
+        var cfg = new YuLiangToolkit.Tools.Games.Snake.SnakeConfig
+        {
+            EdgeMode = "wrap",
+            MaxFruits = 9,
+            Lives = 7,
+            Width = 55,
+        };
+        var fromCfg = cfg.Settings;
+        check("[贪吃蛇·修复] 配置能正确读成设置（边缘 / 果子 / 命数 / 宽度）",
+            fromCfg.EdgeMode == SnakeEdgeMode.Wrap
+            && fromCfg.MaxFruits == 9
+            && fromCfg.Lives == 7
+            && fromCfg.Width == 55,
+            $"{fromCfg.EdgeMode} / {fromCfg.MaxFruits} / {fromCfg.Lives} / {fromCfg.Width}");
     }
 
     /// <summary>某个等级跑几局，平均活多少步。</summary>

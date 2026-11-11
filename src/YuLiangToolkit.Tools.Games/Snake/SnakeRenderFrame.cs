@@ -21,8 +21,11 @@ public sealed class SnakeRenderFrame
     /// <summary>死亡残影。</summary>
     public List<int[]> DeathMarks { get; set; } = new();
 
-    /// <summary>出生点爆炸区。</summary>
+    /// <summary>出生点爆炸区（保留字段：旧版本用过，现在光爆走 <see cref="Bursts"/>）。</summary>
     public List<int[]> BlastZones { get; set; } = new();
+
+    /// <summary>正在闪烁的出生光爆格子（渲染用，不参与碰撞）。</summary>
+    public List<int[]> Bursts { get; set; } = new();
 
     /// <summary>每条蛇。</summary>
     public List<SnakeFrameSnake> Snakes { get; set; } = new();
@@ -45,7 +48,8 @@ public sealed class SnakeRenderFrame
             Height = game.Height,
             Fruits = game.Fruits.Select(p => new[] { p.X, p.Y }).ToList(),
             DeathMarks = game.DeathMarks.Select(p => new[] { p.X, p.Y }).ToList(),
-            Countdown = game.CountdownRemaining,
+            Countdown = game.CountdownSecondsLeft,
+            Bursts = game.ActiveBursts().Select(p => new[] { p.X, p.Y }).ToList(),
             ResultText = game.IsOver ? game.ResultText : "",
         };
 

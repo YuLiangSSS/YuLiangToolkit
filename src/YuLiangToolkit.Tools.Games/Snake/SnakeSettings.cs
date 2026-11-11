@@ -52,6 +52,9 @@ public sealed class SnakeSettings
     /// <summary>重生是否保留原蛇身长度。</summary>
     public bool RespawnKeepsLength { get; set; } = true;
 
+    /// <summary>重生后的无敌时间（秒）。</summary>
+    public double RespawnInvincibleSeconds { get; set; } = 2.0;
+
     /// <summary>出生点是否产生 3×3 爆炸（防堵点）。</summary>
     public bool SpawnBombEnabled { get; set; } = true;
 
@@ -90,6 +93,7 @@ public sealed class SnakeSettings
         EdgeMode = EdgeMode,
         ComboBreaksOnMiss = ComboBreaksOnMiss,
         RespawnKeepsLength = RespawnKeepsLength,
+        RespawnInvincibleSeconds = RespawnInvincibleSeconds,
         SpawnBombEnabled = SpawnBombEnabled,
         SpeedBoostEnabled = SpeedBoostEnabled,
         SpeedBoostMultiplier = SpeedBoostMultiplier,
@@ -112,7 +116,8 @@ public sealed class SnakeSettings
         InitialLength = Math.Clamp(InitialLength, 2, 12);
         SpeedBoostMultiplier = Math.Clamp(SpeedBoostMultiplier, 1.2, 4.0);
         AiCount = Math.Clamp(AiCount, 0, 7);
-        AiLevel = Math.Clamp(AiLevel, 1, 9);
+        AiLevel = Math.Clamp(AiLevel, 1, 10);
+        RespawnInvincibleSeconds = Math.Clamp(RespawnInvincibleSeconds, 0, 10);
         Speed = Math.Clamp(Speed, 1, 30);
 
         if (Mode == SnakeMode.SharedFruit) MaxFruits = 1;
