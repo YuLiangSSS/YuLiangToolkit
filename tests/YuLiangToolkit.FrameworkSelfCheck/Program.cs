@@ -75,6 +75,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("ludo", "飞行棋：棋盘路线 / 起飞规则 / 精确到终点 / 踩子 / 飞行线踢子 / 回合 / 胜负"),
     ("checkers", "跳棋：六芒星棋盘 121 格 / 2·3·4·6 人座位规则 / 跳与走一格 / 占满对面角 / 让棋 / AI"),
     ("checkers-net", "跳棋·联机：127.0.0.1 真回环（选座 / 走棋 / 状态广播 / 退出座位）"),
+    ("world-clock", "全球时钟：时区换算 / 跨日 / 时差文案 / 时段 / 城市库搜索 / 重排与撤销 / 配置"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1341,6 +1342,10 @@ RunGroupModule("checkers", "跳棋", CheckersChecks.Run);
 // 跳棋联机：本机 127.0.0.1 真回环（开房 / 连上 / 选座 / 走棋 / 状态广播 / 退出座位）+ 状态包往返。
 // 只绑本机，不联外网。
 RunGroupModule("checkers-net", "跳棋·联机", CheckersNetChecks.Run);
+
+// 全球时钟：时区解析（真查系统时区库）/ 时间与日期格式化 / 跨日与时差文案 /
+// 时段分档 / 城市库搜索 / 拖动重排下标与锁定规则 / 配置往返。全部纯逻辑，不创建窗口。
+RunGroupModule("world-clock", "全球时钟", WorldClockChecks.Run);
 
 EnterGroup("shell");
 

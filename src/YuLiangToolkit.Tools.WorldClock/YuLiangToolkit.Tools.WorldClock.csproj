@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「全球时钟」：多个城市的当前时间（表盘 / 列表两种视图）+ 与本地时差 / 跨日 / 昼夜。
+       时区换算直接用系统时区库（TimeZoneInfo，夏令时由系统负责），不引第三方 NuGet 包。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.WorldClock</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.WorldClock</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

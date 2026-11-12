@@ -141,6 +141,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `src/YuLiangToolkit.Tools.AppManager/**` | `app-manager` | L2 |
 | `src/YuLiangToolkit.Tools.Games/**` | `tetris`（「游戏」类别：俄罗斯方块） | L2 |
 | `src/YuLiangToolkit.Tools.MemeBoard/**` | `meme-board` | L2 |
+| `src/YuLiangToolkit.Tools.WorldClock/**` | `world-clock`（时区换算在工具工程里，不改 Core） | L2 |
 | `src/YuLiangToolkit.Tools.ScreenSticker/**` | `screen-sticker` | L2 |
 | `tests/.../SoftwareUpdaterChecks.cs` | `software-updater`（winget 表格解析 / 包 Id 白名单 / 命令拼装 / 批量勾选规则） | L3 |
 | `tests/.../CalculatorChecks.cs` | `calculator`（表达式解析与求值 / 优先级 / 省略乘号 / 阶乘 / 角度制 / 格式化 / 输入构造 / 历史） | L3 |
@@ -162,6 +163,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `tests/.../LudoChecks.cs` | `ludo`（棋盘 / 起飞 / 精确到终点 / 踩子 / 飞行线踢子 / 回合 / 胜负） | L3 |
 | `tests/.../CheckersChecks.cs` | `checkers`（几何 / 座位规则 / 跳 / 胜负 / 让棋 / AI） | L3 |
 | `tests/.../CheckersNetChecks.cs` | `checkers-net`（127.0.0.1 回环：选座 / 走棋 / 广播 / 退座） | L3 |
+| `tests/.../WorldClockChecks.cs` | `world-clock`（时区解析 / 夏令时 / 时间日期格式 / 跨日与时差文案 / 时段 / 城市库搜索 / 重排下标 / 配置往返） | L3 |
 | `tests/.../ScreenStickerChecks.cs` | `screen-sticker`（贴纸几何 / 层级顺序 / 最近使用 / 配置默认值） | L3 |
 | `tests/.../ScreenRecorderChecks.cs` | `screen-recorder`（区域换算 / FFmpeg 参数 / 文件名 / 配置默认值） | L3 |
 | `tests/.../MediaEditorChecks.cs` | `media-editor`（ffprobe 解析 / 片段数学 / 裁剪拼接滤镜 / GIF 参数） | L3 |

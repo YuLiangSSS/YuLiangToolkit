@@ -171,6 +171,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/LudoChecks.cs' @('ludo') 'L3' 'ludo board / takeoff / exact finish / capture / flight line / turns assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/CheckersChecks.cs' @('checkers') 'L3' 'checkers geometry / seat rules / jumps / win / handicap / ai assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/CheckersNetChecks.cs' @('checkers-net') 'L3' 'checkers net loopback assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/WorldClockChecks.cs' @('world-clock') 'L3' 'world clock time zone / format / reorder / config assertions')
 
     # ---------- tests: anything else in the self-check project is unknown wiring ----------
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/*.cs' @('ALL') 'L4' 'unmapped self-check source' -Fallback)
@@ -221,6 +222,7 @@ $mapping = @(
     (New-Rule 'src/YuLiangToolkit.Tools.TaskManager/*'        @('task-manager') 'L2' 'task manager: process / port / gpu / startup monitor')
     (New-Rule 'src/YuLiangToolkit.Tools.AppManager/*'         @('app-manager') 'L2' 'app manager: installed apps / uninstall / modify')
     (New-Rule 'src/YuLiangToolkit.Tools.Games/*'             @('tetris') 'L2' 'games: tetris (one project per game category)')
+    (New-Rule 'src/YuLiangToolkit.Tools.WorldClock/*'        @('world-clock') 'L2' 'world clock tool (time zone math / catalog / reorder)')
     (New-Rule 'src/YuLiangToolkit.Tools.Sample/*'          @() 'L1' 'framework template, no dedicated group: build + manual smoke')
     (New-Rule 'src/*'                                      @('ALL') 'L4' 'unmapped src project' -Fallback)
 

@@ -133,6 +133,8 @@
     <!-- 「游戏 → 俄罗斯方块」：7-bag 出块 / 碰撞 / SRS 旋转与墙踢 / 消行 / 计分升级 / 暂存 /
          幽灵落点 / 配置默认值；全部纯逻辑，不创建窗口、不渲染、不碰真 Data。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Games\YuLiangToolkit.Tools.Games.csproj" />
+    <!-- 「全球时钟」：时区换算 / 时差文案 / 跨日 / 时段分档 / 城市库搜索 / 重排与撤销（纯逻辑）+ 配置往返。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.WorldClock\YuLiangToolkit.Tools.WorldClock.csproj" />
   </ItemGroup>
 
 </Project>
