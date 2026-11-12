@@ -56,7 +56,7 @@ public static class WorldClockTimeZones
 }
 
 /// <summary>
-/// 内置城市库（约 90 个常用城市）。**时区 Id 全部是本机真实存在的 Windows Id**，
+/// 内置城市库（122 座常用城市）。**时区 Id 全部是本机真实存在的 Windows Id**，
 /// 启动时不做探测；某个版本的系统缺了哪个，<see cref="ClockMath.Resolve"/> 会退化成 UTC 并在卡片上标出来，
 /// 不会崩、也不会静默显示错时间。
 ///
