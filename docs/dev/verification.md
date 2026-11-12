@@ -143,6 +143,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `src/YuLiangToolkit.Tools.ScreenSticker/**` | `screen-sticker` | L2 |
 | `tests/.../SoftwareUpdaterChecks.cs` | `software-updater`（winget 表格解析 / 包 Id 白名单 / 命令拼装 / 批量勾选规则） | L3 |
 | `tests/.../CalculatorChecks.cs` | `calculator`（表达式解析与求值 / 优先级 / 省略乘号 / 阶乘 / 角度制 / 格式化 / 输入构造 / 历史） | L3 |
+| `tests/.../KinCalculatorChecks.cs` | `calculator`（辈分计算：关系链规范化 / 南北称谓 / 长幼 / 反向称谓 / 兜底 / 配置；由 `CalculatorChecks.Run` 调用） | L3 |
 | `tests/.../RandomNumberChecks.cs` | `random-number`（步长网格 / 上限对齐 / 无偏抽样 / 去重排序 / 精确数轮子 / 配置） | L3 |
 | `tests/.../FunctionPlotChecks.cs` | `function-plot`（视口换算 / 以光标缩放 / 平移 / 好看刻度 / 自动 Y 范围 / 采样集成 / 配置） | L3 |
 | `tests/.../MailChecks.cs` | `mail`（服务商预设 / 地址打码 / HTML→纯文本 / 附件名清洗 / DPAPI 授权码 / 配置往返） | L3 |

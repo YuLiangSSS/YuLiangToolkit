@@ -30,10 +30,14 @@ public partial class CalculatorView : UserControl
         FocusExpressionBox();
     }
 
-    /// <summary>Enter = 求值并记入历史；Esc = 清空输入（在预览阶段拦下来，按钮 / 列表有焦点时也生效）。</summary>
+    /// <summary>
+    /// Enter = 求值并记入历史；Esc = 清空输入（在预览阶段拦下来，按钮 / 列表有焦点时也生效）。
+    /// <para>⚠ 只在「标准计算」模式拦：辈分计算模式里不能把 Enter 当成求值，否则在搜索框里
+    /// 敲回车会顺手清掉 / 算一遍表达式。</para>
+    /// </summary>
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (ViewModel is not { } vm) return;
+        if (ViewModel is not { } vm || vm.IsKinMode) return;
 
         switch (e.Key)
         {

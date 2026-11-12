@@ -2,6 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             xmlns:views="clr-namespace:YuLiangToolkit.Tools.Calculator.Views"
              PreviewKeyDown="OnPreviewKeyDown">
 
     <!-- 计算器（calculator）。
@@ -55,13 +56,30 @@
             </Grid.RowDefinitions>
 
             <!-- ===================== 页头 ===================== -->
-            <StackPanel Grid.Row="0">
-                <TextBlock Text="🧮 计算器" FontSize="21" FontWeight="SemiBold" />
-                <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
-                           Text="直接输入表达式边打边看结果；整数 / 有限小数（含 100!、2^1000、超大整数四则）走任意精度精确计算，每一位都准；三角函数可切角度制 / 弧度制，回退结果精度 3-12 位可调，算过的从历史一键回填。Enter 求值并记入历史，Esc 清空输入。" />
-            </StackPanel>
+            <Grid Grid.Row="0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel>
+                    <TextBlock Text="🧮 计算器" FontSize="21" FontWeight="SemiBold" />
+                    <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                               Text="直接输入表达式边打边看结果；整数 / 有限小数（含 100!、2^1000、超大整数四则）走任意精度精确计算，每一位都准；三角函数可切角度制 / 弧度制，回退结果精度 3-12 位可调，算过的从历史一键回填。Enter 求值并记入历史，Esc 清空输入。" />
+                </StackPanel>
+                <!-- 模式切换：标准计算（表达式求值） / 辈分计算（亲戚称谓） -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
+                    <RadioButton Content="标准计算" GroupName="calc-mode" Style="{StaticResource RadioButtonStyle}"
+                                 IsChecked="{Binding IsStandardMode, Mode=TwoWay}"
+                                 ToolTip="表达式计算（原来的科学计算器）" />
+                    <RadioButton Content="辈分计算" GroupName="calc-mode" Style="{StaticResource RadioButtonStyle}"
+                                 Margin="18,0,0,0" IsChecked="{Binding IsKinMode, Mode=TwoWay}"
+                                 ToolTip="亲属辈分与称谓：按关系链算出该叫什么（南方 / 北方两套叫法）" />
+                </StackPanel>
+            </Grid>
 
-            <Grid Grid.Row="1" Margin="0,12,0,0">
+            <!-- ===================== 标准计算模式 ===================== -->
+            <Grid Grid.Row="1" Margin="0,12,0,0"
+                  Visibility="{Binding IsStandardMode, Converter={StaticResource BoolToVis}}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" MinWidth="340" />
                     <ColumnDefinition Width="12" />
@@ -335,6 +353,12 @@
                         </ScrollViewer>
                     </Border>
                 </Grid>
+            </Grid>
+
+            <!-- ===================== 辈分计算模式（关系链 → 称谓；南北两套叫法） ===================== -->
+            <Grid Grid.Row="1" Margin="0,12,0,0"
+                  Visibility="{Binding IsKinMode, Converter={StaticResource BoolToVis}}">
+                <views:KinCalculatorView DataContext="{Binding Kin}" />
             </Grid>
         </Grid>
     </ScrollViewer>

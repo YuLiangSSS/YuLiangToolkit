@@ -12,6 +12,9 @@ namespace YuLiangToolkit.FrameworkSelfCheck;
 /// 计算器自己的输入构造（数字 / 小数点去重 / 退格 / ± / Ans / x² / 1/x）、
 /// 历史记录规则（新的在前 / 相邻去重 / 上限裁剪 / 清空 / JSON 往返）与配置默认值 / 夹取。
 ///
+/// <para><b>辈分计算模式</b>的断言在 <see cref="KinCalculatorChecks"/>，由本类的
+/// <see cref="Run"/> 末尾调用（同属 <c>calculator</c> 组）。</para>
+///
 /// <para><b>全程纯逻辑</b>：不创建窗口、不碰剪贴板、不启动任何进程，也不写真实 Config
 /// （配置往返还只在内存里做 JSON 序列化 / 反序列化）。</para>
 /// </summary>
@@ -41,6 +44,9 @@ internal static class CalculatorChecks
         CheckHistory(fn);
         CheckConfig(fn);
         CheckKeypad(fn);
+
+        // 辈分计算模式（同一工具页的第二个模式）：断言放在单独的文件里，共用本组
+        KinCalculatorChecks.Run(check, report);
 
         report("[计算器] 表达式求值 / 优先级 / 省略乘号 / 阶乘 / 角度制 / 格式化 / 输入构造 / 历史与配置", true);
     }
@@ -75,14 +81,14 @@ internal static class CalculatorChecks
             && tool.Category == "数学" && tool.Order == 510,
             $"{tool.Id} / {tool.Name} / {tool.EmojiIcon} / {tool.Category} / {tool.Order}");
 
-        check("[计算器] 标签覆盖数学 / 计算器 / 科学计算器 / 表达式 / 三角函数",
+        check("[计算器] 标签覆盖数学 / 计算器 / 科学计算器 / 表达式 / 三角函数 / 辈分",
             tool.Tags.Contains("数学") && tool.Tags.Contains("计算器") && tool.Tags.Contains("科学计算器")
-            && tool.Tags.Contains("表达式") && tool.Tags.Contains("三角函数"),
+            && tool.Tags.Contains("表达式") && tool.Tags.Contains("三角函数") && tool.Tags.Contains("辈分"),
             string.Join(" / ", tool.Tags));
 
-        check("[计算器] 描述能说明「科学计算 + 表达式 + 历史」",
+        check("[计算器] 描述能说明「科学计算 + 表达式 + 历史 + 辈分计算」",
             tool.Description.Contains("科学") && tool.Description.Contains("表达式")
-            && tool.Description.Contains("历史"),
+            && tool.Description.Contains("历史") && tool.Description.Contains("辈分"),
             tool.Description);
 
         check("[计算器] 工具 Id 与 CalculatorConfig.ToolId 一致（Data / Config 目录名）",

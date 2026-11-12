@@ -34,6 +34,8 @@ public sealed class CalculatorViewModel : ToolViewModelBase
         Cfg = LoadConfig<CalculatorConfig>();
         NormalizeConfig();
 
+        Kin = new KinCalculatorViewModel(Cfg);
+
         KeyCommand = new RelayCommand(
             parameter => PressKey(parameter as CalculatorKey),
             parameter => parameter is CalculatorKey);
@@ -58,6 +60,30 @@ public sealed class CalculatorViewModel : ToolViewModelBase
 
     /// <summary>强类型配置（→ <c>Config\calculator\config.json</c>）。</summary>
     public CalculatorConfig Cfg { get; }
+
+    /// <summary>辈分计算模式的关系链 / 结果 / 对照表（与标准计算共用同一个工具页与同一份配置）。</summary>
+    public KinCalculatorViewModel Kin { get; }
+
+    /// <summary>当前是不是辈分计算模式（界面切显示哪个模式，代码后置判断要不要拦 Enter / Esc）。</summary>
+    public bool IsKinMode
+    {
+        get => Cfg.IsKinMode;
+        set
+        {
+            if (value == Cfg.IsKinMode) return;
+            Cfg.Mode = value ? CalculatorConfig.KinMode : CalculatorConfig.StandardMode;
+        }
+    }
+
+    /// <summary>模式切换：标准计算（与 <see cref="IsKinMode"/> 互斥，两个单选按钮各绑一个）。</summary>
+    public bool IsStandardMode
+    {
+        get => !Cfg.IsKinMode;
+        set { if (value) IsKinMode = false; }
+    }
+
+    /// <summary>模式徽章（页头小字，说明当前在哪个模式）。</summary>
+    public string ModeText => Cfg.IsKinMode ? "辈分计算模式" : "标准计算模式";
 
     /// <summary>角度单位下拉框选项（弧度 / 角度）。</summary>
     public IReadOnlyList<string> AngleUnitOptions => CalculatorConfig.AngleUnitOptions;
@@ -339,6 +365,9 @@ public sealed class CalculatorViewModel : ToolViewModelBase
     private void NormalizeConfig()
     {
         Cfg.AngleUnit = CalculatorConfig.NormalizeAngleUnit(Cfg.AngleUnit);
+        Cfg.Mode = CalculatorConfig.NormalizeMode(Cfg.Mode);
+        Cfg.KinRegion = CalculatorConfig.NormalizeRegion(Cfg.KinRegion);
+        Cfg.KinGender = CalculatorConfig.NormalizeGender(Cfg.KinGender);
 
         if (Cfg.SignificantDigits != Cfg.SafeSignificantDigits)
             Cfg.SignificantDigits = Cfg.SafeSignificantDigits;
@@ -368,6 +397,11 @@ public sealed class CalculatorViewModel : ToolViewModelBase
             case nameof(CalculatorConfig.EnableLivePreview):
                 if (Cfg.EnableLivePreview) RefreshPreview();
                 break;
+            case nameof(CalculatorConfig.Mode):
+                OnPropertyChanged(nameof(IsKinMode));
+                OnPropertyChanged(nameof(IsStandardMode));
+                OnPropertyChanged(nameof(ModeText));
+                break;
         }
     }
 
@@ -388,5 +422,9 @@ public sealed class CalculatorViewModel : ToolViewModelBase
     // ---------- 生命周期 ----------
 
     /// <summary>切走 / 关闭时摘掉配置事件（配置对象是缓存复用的，不摘会越挂越多）。</summary>
-    protected override void OnClosed() => Cfg.PropertyChanged -= OnConfigChanged;
+    protected override void OnClosed()
+    {
+        Cfg.PropertyChanged -= OnConfigChanged;
+        Kin.Detach();
+    }
 }

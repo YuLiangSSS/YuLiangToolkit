@@ -33,9 +33,39 @@ public sealed class CalculatorConfig : ToolConfig
     /// <summary>历史记录条数上限。</summary>
     public const int MaxHistoryLimit = 200;
 
+    /// <summary>标准计算模式。</summary>
+    public const string StandardMode = "标准计算";
+
+    /// <summary>辈分计算模式。</summary>
+    public const string KinMode = "辈分计算";
+
+    /// <summary>北方叫法。</summary>
+    public const string NorthRegion = "北方";
+
+    /// <summary>南方叫法。</summary>
+    public const string SouthRegion = "南方";
+
+    /// <summary>「我」是男性。</summary>
+    public const string MaleGender = "男";
+
+    /// <summary>「我」是女性。</summary>
+    public const string FemaleGender = "女";
+
     /// <summary>角度单位下拉框的选项（存进配置的就是这两个干净值）。</summary>
     [JsonIgnore]
     public static IReadOnlyList<string> AngleUnitOptions { get; } = new[] { RadiansUnit, DegreesUnit };
+
+    /// <summary>模式切换的选项：标准计算 / 辈分计算。</summary>
+    [JsonIgnore]
+    public static IReadOnlyList<string> ModeOptions { get; } = new[] { StandardMode, KinMode };
+
+    /// <summary>南北叫法的选项。</summary>
+    [JsonIgnore]
+    public static IReadOnlyList<string> RegionOptions { get; } = new[] { NorthRegion, SouthRegion };
+
+    /// <summary>「我」的性别选项（只影响对方怎么叫我，不影响正向称谓）。</summary>
+    [JsonIgnore]
+    public static IReadOnlyList<string> GenderOptions { get; } = new[] { MaleGender, FemaleGender };
 
     private string _angleUnit = RadiansUnit;
 
@@ -79,6 +109,45 @@ public sealed class CalculatorConfig : ToolConfig
     /// </summary>
     public List<string> History { get; set; } = new();
 
+    private string _mode = StandardMode;
+
+    /// <summary>当前模式：<see cref="StandardMode"/>（默认）/ <see cref="KinMode"/>。切走了下次打开还是它。</summary>
+    public string Mode
+    {
+        get => _mode;
+        set => Set(ref _mode, NormalizeMode(value));
+    }
+
+    private string _kinRegion = NorthRegion;
+
+    /// <summary>辈分计算的叫法地区：<see cref="NorthRegion"/>（默认）/ <see cref="SouthRegion"/>。</summary>
+    public string KinRegion
+    {
+        get => _kinRegion;
+        set => Set(ref _kinRegion, NormalizeRegion(value));
+    }
+
+    private string _kinGender = MaleGender;
+
+    /// <summary>辈分计算里「我」的性别（默认男）：只影响「对方叫我什么」。</summary>
+    public string KinGender
+    {
+        get => _kinGender;
+        set => Set(ref _kinGender, NormalizeGender(value));
+    }
+
+    private string _kinPath = "";
+
+    /// <summary>
+    /// 上次看着的关系链（紧凑写法，例如 <c>F+oB</c>），切走再回来还停在原处。
+    /// 不认识的段在读取时会被丢掉（见 <c>KinPath.ParseToken</c>）。
+    /// </summary>
+    public string KinPath
+    {
+        get => _kinPath;
+        set => Set(ref _kinPath, value ?? "");
+    }
+
     /// <summary>夹到合法区间的有效位数（配置被手改成 0 / 999 也能用）。</summary>
     [JsonIgnore]
     public int SafeSignificantDigits => Math.Clamp(SignificantDigits, MinSignificantDigits, MaxSignificantDigits);
@@ -91,7 +160,31 @@ public sealed class CalculatorConfig : ToolConfig
     [JsonIgnore]
     public Unit AngleUnitValue => AngleUnit == DegreesUnit ? Unit.Degrees : Unit.Radians;
 
+    /// <summary>当前是不是辈分计算模式。</summary>
+    [JsonIgnore]
+    public bool IsKinMode => Mode == KinMode;
+
+    /// <summary>叫法用北方还是南方。</summary>
+    [JsonIgnore]
+    public bool PreferNorth => KinRegion != SouthRegion;
+
+    /// <summary>「我」是不是男性。</summary>
+    [JsonIgnore]
+    public bool SelfIsMale => KinGender != FemaleGender;
+
     /// <summary>把配置里读到的任意文本规范成两个合法值之一（未知值按弧度处理）。</summary>
     public static string NormalizeAngleUnit(string? value)
         => string.Equals(value, DegreesUnit, StringComparison.Ordinal) ? DegreesUnit : RadiansUnit;
+
+    /// <summary>模式：未知值回到标准计算。</summary>
+    public static string NormalizeMode(string? value)
+        => string.Equals(value, KinMode, StringComparison.Ordinal) ? KinMode : StandardMode;
+
+    /// <summary>南北：未知值回到北方，并以「北方」为准（配置里写「北 / 北方地区」都算北方）。</summary>
+    public static string NormalizeRegion(string? value)
+        => value is not null && value.Contains("南", StringComparison.Ordinal) ? SouthRegion : NorthRegion;
+
+    /// <summary>性别：未知值回到男性。</summary>
+    public static string NormalizeGender(string? value)
+        => string.Equals(value, FemaleGender, StringComparison.Ordinal) ? FemaleGender : MaleGender;
 }

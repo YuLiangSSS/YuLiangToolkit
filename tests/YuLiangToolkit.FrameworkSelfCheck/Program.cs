@@ -1249,6 +1249,8 @@ RunGroupModule("software-updater", "软件升级器", SoftwareUpdaterChecks.Run)
 // 「计算器」：共享表达式引擎（解析 / 优先级 / 省略乘号 / 后缀阶乘 / 角度制 / 常量 / 结果格式化）、
 // 计算器的输入构造与历史记录（去重 / 上限裁剪 / 清空）、配置默认值与夹取。
 // 纯逻辑，不创建窗口、不碰剪贴板。
+// 辈分计算模式（关系链规范化 / 南北称谓 / 长幼 / 反向称谓 / 兜底 / 配置）由 KinCalculatorChecks.Run 断言，
+// 同样在本组内、由 CalculatorChecks.Run 末尾调用（不单列组，避免入口卡片变多）。
 RunGroupModule("calculator", "计算器", CalculatorChecks.Run);
 
 // 「随机数生成器」：十进制步长网格（任意大下限 / 任意细步长 / 上限对齐 / 除不尽与非法输入）、
