@@ -59,6 +59,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("software-updater", "软件升级器：winget 表格解析 / 包 Id 安全 / 命令拼装 / 批量勾选规则（不启动 winget）"),
     ("calculator", "计算器：表达式求值 / 优先级 / 省略乘号 / 阶乘 / 角度制 / 结果格式化 / 历史与配置"),
     ("random-number", "随机数生成器：十进制步长网格 / 对齐 / 无偏抽样 / 去重与排序 / 精确数轮子 / 配置默认值"),
+    ("number-converter", "数字转换器：中文大小写 / 人民币金额 / 英文念法·序数·年份·支票 / 罗马·进制·千分位·科学计数 / 反向解析"),
     ("function-plot", "函数绘图：视口换算 / 缩放平移 / 好看刻度 / 自动 Y 范围 / 配置 / 采样集成"),
     ("mail", "邮箱代收：IMAP 预设 / 地址与 HTML 处理 / DPAPI 授权码加密 / 配置往返（纯逻辑，不联网）"),
     ("mail-sender", "邮件推送：富文本⇄HTML / 地址与附件校验 / 请求组装与请求头 / 错误翻译 / DPAPI Key（纯逻辑，不联网）"),
@@ -1263,6 +1264,11 @@ RunGroupModule("calculator", "计算器", CalculatorChecks.Run);
 // 无偏抽样（注入确定性随机源断言边界与去重）、排序与分隔符、精确数轮子（ExactDecimal 解析 / 四则 / 除尽判定）、
 // 配置默认值与夹取。纯逻辑，不创建窗口、不碰剪贴板。
 RunGroupModule("random-number", "随机数生成器", RandomNumberChecks.Run);
+
+// 「数字转换器」：中文数字（小写 / 大写 / 逐位 / 序数 / 人民币金额大小写）、英文（基数词 / 序数 / 年份 /
+// 金额 / 支票 / 逐位）、罗马数字与反向解析、千分位 / 4 位分组 / 科学计数法 / 二·八·十六·三十六进制、
+// 反向解析中文金额、输入校验与越界提示、配置默认值与夹取。纯逻辑，不创建窗口、不碰剪贴板。
+RunGroupModule("number-converter", "数字转换器", NumberConverterChecks.Run);
 
 // 「函数绘图」：视口换算（世界 ↔ 屏幕往返 / 以光标为中心缩放 / 平移）、好看刻度（1·2·5×10^n）、
 // 自动 Y 范围（空集合 / NaN / 上下界写反）、每条函数的配置校验，以及与 FunctionSampler 的采样集成

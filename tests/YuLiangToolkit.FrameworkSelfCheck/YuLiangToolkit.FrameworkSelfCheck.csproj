@@ -101,6 +101,10 @@
     <!-- 「随机数生成器」：十进制步长网格 / 无偏抽样 / 排序 / 拼接纯逻辑，
          数值走 Core/Numbers/ExactDecimal（BigInteger 尾数）；不创建窗口、不碰剪贴板。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.RandomNumber\YuLiangToolkit.Tools.RandomNumber.csproj" />
+    <!-- 「数字转换器」：中文大小写 / 人民币金额（大小写）/ 英文基数词·序数词·年份·金额·支票 /
+         罗马数字 / 千分位 / 分位分组 / 科学计数法 / 二·八·十六·三十六进制 / 中文反向解析；
+         全部纯逻辑，不创建窗口、不碰剪贴板。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.NumberConverter\YuLiangToolkit.Tools.NumberConverter.csproj" />
     <!-- 「函数绘图」：视口换算（世界↔屏幕 / 缩放 / 平移）/ 好看刻度 / 自动 Y 范围 /
          配置默认值 + 与 FunctionSampler 的采样集成；全部纯逻辑，不创建窗口、不渲染。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.FunctionPlot\YuLiangToolkit.Tools.FunctionPlot.csproj" />

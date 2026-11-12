@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「数字转换器」：中文大小写 / 人民币金额大写与金额小写 / 英文基数词·序数词·逐位读 /
+       罗马数字 / 千分位 / 二·八·十六进制 / 科学计数法。全部是手写纯逻辑（数值解析复用
+       Core/Numbers/ExactDecimal，不引第三方 NuGet 包）。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.NumberConverter</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.NumberConverter</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>
