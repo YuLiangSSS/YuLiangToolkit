@@ -2005,6 +2005,72 @@ public class MainViewModel : ObservableObject
     private static string OpenWithMainExecutablePath()
         => OpenWithRegistration.ResolveCanonicalExecutablePath(Environment.ProcessPath);
 
+    // ---------- 开机自启（v0.99.0，主页设置里的开关） ----------
+
+    private string _startupStatusText = "";
+
+    /// <summary>
+    /// 主页设置 → 开机自启：开机后是否自动启动本程序。
+    /// <para>打开 = 立即写当前用户的开机启动项（<c>HKCU\…\Run</c>，不需要管理员）；
+    /// 关闭 = 立即删掉，并清掉任务管理器里那条「已禁用」记录。开关本身存
+    /// <see cref="ShellConfig.StartWithWindows"/>，由 <see cref="ToolConfigStore"/> 自动落盘。</para>
+    /// <para>写注册表失败时开关保持原样，只把原因写进 <see cref="StartupStatusText"/>，
+    /// 免得界面显示「已开启」而系统里其实没有。</para>
+    /// </summary>
+    public bool StartWithWindows
+    {
+        get => _shell.StartWithWindows;
+        set
+        {
+            if (StartWithWindows == value) return;
+
+            var result = value
+                ? StartupRegistration.Register(Environment.ProcessPath)
+                : StartupRegistration.Unregister();
+
+            StartupStatusText = result.Message;
+            if (!result.Success) return;   // 写失败：保持原开关（界面不会骗人）
+
+            _shell.StartWithWindows = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>开机自启开关操作的结果说明（设置页里显示，空 = 不显示）。</summary>
+    public string StartupStatusText
+    {
+        get => _startupStatusText;
+        set => Set(ref _startupStatusText, value);
+    }
+
+    /// <summary>
+    /// 启动时同步「开机自启」：以配置为准把注册表对齐 —— 开着就刷新成当前 exe 路径
+    /// （程序换过目录也能启动对的那个），关着但系统里还留着就清掉。
+    /// <para>由 <c>App.OnStartup</c> 在主窗口显示前调用；失败只写 Debug 输出，不影响启动。</para>
+    /// </summary>
+    public void SyncStartWithWindowsOnStartup()
+    {
+        try
+        {
+            if (_shell.StartWithWindows)
+            {
+                var result = StartupRegistration.EnsureUpToDate(Environment.ProcessPath);
+                if (!result.Success) System.Diagnostics.Debug.WriteLine($"[Startup] 刷新开机自启失败：{result.Message}");
+                return;
+            }
+
+            if (StartupRegistration.IsRegistered())
+            {
+                var result = StartupRegistration.Unregister();
+                if (!result.Success) System.Diagnostics.Debug.WriteLine($"[Startup] 清理开机自启失败：{result.Message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Startup] 启动同步失败：{ex.Message}");
+        }
+    }
+
     // ---------- 命令 ----------
 
     public RelayCommand GoHomeCommand { get; }
@@ -2695,6 +2761,7 @@ public class MainViewModel : ObservableObject
         SyncThemeBlurOptions();           // 三条模糊度滑块也回默认值
         SyncCloudOptions();               // 云间天上的速度 / 密度也回默认值
         ResetRenderGpu();                 // 渲染 GPU 回「自动」并清掉 Windows 图形首选项里的本程序项
+        SyncStartWithWindowsOnStartup();  // 开机自启回默认（关）→ 顺手清掉注册表里那条启动项
         ApplyPaneSplitterHintOpacity();   // 分隔条提示线也回默认（0.18）
 
         foreach (var card in _allCards) card.LastUsed = null;   // LastUsed 字典已被重置为空
@@ -2741,6 +2808,7 @@ public class MainViewModel : ObservableObject
         ApplyPaneSplitterHintOpacity();     // 分隔条提示线透明度
 
         OnPropertyChanged(nameof(RenderGpuRestartPending));   // 导入的渲染设置可能要重启才生效
+        SyncStartWithWindowsOnStartup();     // 导入的开机自启设置要落到注册表（不影响本次运行）
         OnPropertyChanged(string.Empty);     // 其余所有绑定（主题单选、粒子颜色、关闭行为、标签墙…）全部重读
         NotifyUiThemeChanged();
         RebuildNavItems();                   // 快捷栏开关 / 内容

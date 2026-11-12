@@ -177,6 +177,10 @@ public partial class App : Application
         // 就把 Windows 记住的旧登记清掉。只写 HKCU，失败不影响启动。
         vm.SyncOpenWithAssociationOnStartup();
 
+        // 「开机自启」（v0.99.0）：以设置里的开关为准把注册表那条 Run 项对齐 ——
+        // 开着就刷新成当前 exe 路径（程序换目录后也能启动对的那个），关着但还留着就清掉。
+        vm.SyncStartWithWindowsOnStartup();
+
         // 建主窗口之前先应用主题（风格 / 深浅 / 配色）：窗口 XAML 一解析就要用主题里的颜色，
         // 反过来的话第一帧会闪一下默认主题（见 Views/Themes/ThemeManager.cs）。
         vm.ApplyTheme(force: true);

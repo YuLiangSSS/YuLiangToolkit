@@ -91,7 +91,7 @@
                     </StackPanel>
                     <TextBlock FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,6,0,0"
                                TextWrapping="Wrap"
-                               Text="外壳自己的设置：外观模式（深色 / 浅色 / 跟随系统）、界面风格（默认 / 液态玻璃 / 毛玻璃 / 亚克力 / 道系 / 云间天上）与配色、渲染显卡（GPU，决定云朵 / 动画用哪块卡）、窗口背景图、主页显示、鼠标自动 / 点击特效（含数量 / 范围 / 半径滑块）、粒子颜色、窗口与托盘、打开方式关联；最下面是清理缓存与重建配置（恢复默认设置）。改一下立即生效并自动保存。" />
+                               Text="外壳自己的设置：外观模式（深色 / 浅色 / 跟随系统）、界面风格（默认 / 液态玻璃 / 毛玻璃 / 亚克力 / 道系 / 云间天上）与配色、渲染显卡（GPU，决定云朵 / 动画用哪块卡）、窗口背景图、主页显示、鼠标自动 / 点击特效（含数量 / 范围 / 半径滑块）、粒子颜色、窗口与托盘、开机自启、打开方式关联；最下面是清理缓存与重建配置（恢复默认设置）。改一下立即生效并自动保存。" />
                 </StackPanel>
                 <Button Grid.Column="1" Content="返回主页" Style="{StaticResource SecondaryButtonStyle}"
                         VerticalAlignment="Top" Command="{Binding GoHomeCommand}" ToolTip="回到主页（也可以点面包屑的「🏠 主页」或后退按钮）" />
@@ -738,6 +738,26 @@
                     <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                TextWrapping="Wrap" Margin="0,9,0,0"
                                Text="选「最小化到托盘」后，× 只把窗口藏到任务栏右侧的小图标里，应用继续在后台运行：单击 / 双击托盘图标恢复窗口，右键托盘图标可以「显示主窗口 / 主页设置 / 退出」。设置自动保存，重启后保持。" />
+                </StackPanel>
+            </Border>
+
+            <!-- ===== 开机自启（v0.99.0） ===== -->
+            <TextBlock Text="开机自启" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource AccentBrush}" Margin="0,22,0,0" />
+            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
+                <StackPanel>
+                    <CheckBox Content="开机后自动启动凉雨工具集"
+                              Style="{StaticResource CheckBoxStyle}"
+                              IsChecked="{Binding StartWithWindows}"
+                              ToolTip="写一条当前用户的开机启动项（HKCU\…\CurrentVersion\Run），不需要管理员权限；关掉就立刻删掉" />
+
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,9,0,0"
+                               Text="默认关闭。打开后会往注册表里登记一条指向当前程序的位置，开机登录 Windows 后自动启动；任务管理器 → 启动 里也能看到这一项（在那里禁用同样有效）。程序换过目录 / 重新编译过时，下次启动会自动把这条登记刷新成新的位置。关掉时会把那条登记删掉，并清掉任务管理器里「已禁用」的残留记录，下次再打开就能正常启动。" />
+
+                    <TextBlock Text="{Binding StartupStatusText}" FontSize="11.5"
+                               Foreground="{DynamicResource SuccessBrush}" TextWrapping="Wrap" Margin="0,9,0,0"
+                               Visibility="{Binding StartupStatusText, Converter={StaticResource EmptyToVisInverse}}" />
                 </StackPanel>
             </Border>
 

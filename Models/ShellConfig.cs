@@ -278,6 +278,16 @@ public sealed class ShellConfig : ToolConfig
     public ShellCloseAction CloseAction { get; set; } = ShellCloseAction.Exit;
 
     /// <summary>
+    /// 开机自启（主页设置 → 开机自启，v0.99.0，默认 <c>false</c> = 关）。
+    /// <para>打开 = 往当前用户注册表 <c>HKCU\…\CurrentVersion\Run</c> 写一条指向本程序 exe 的启动项
+    /// （见 <see cref="YuLiangToolkit.Core.Shell.StartupRegistration"/>）；关闭 = 清掉这条启动项。
+    /// 只写 HKCU，不需要管理员权限。</para>
+    /// <para>这里存的是**用户的意愿**，系统里的实际登记以注册表为准：启动 / 重建配置 / 导入配置后会按它
+    /// 把两边对齐（开着就刷新成当前 exe 路径，关着就清残留 —— 程序换目录后开机启动不会指向旧位置）。</para>
+    /// </summary>
+    public bool StartWithWindows { get; set; }
+
+    /// <summary>
     /// 工具页可拖拽分隔条「鼠标不在上面时」的提示线透明度（0~1，默认 0.18）。
     /// 0 = 平时完全看不见（只能靠光标变成 ↔ / ↕ 发现缝隙）；1 = 一直显示一条实心蓝线。
     /// 主页设置 → 界面布局里的滑块调整，改一下所有工具页立即生效（外壳写

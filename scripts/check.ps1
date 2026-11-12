@@ -114,6 +114,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/ParticleChecks.cs'        @('shell') 'L3' 'shell assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/ShellEffectsChecks.cs'    @('shell') 'L3' 'shell assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/GpuRenderChecks.cs'       @('shell') 'L3' 'render GPU assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/StartupChecks.cs'         @('shell') 'L3' 'start-with-windows assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/BoardGamesChecks.cs'      @('board-games','board-net','board-room') 'L3' 'board rules + net + room')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/ScrollChainingChecks.cs'  @('core') 'L3' 'core scroll chain')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/ChatRoomChecks.cs'        @('chat-room') 'L3' 'chat-room assertions')

@@ -648,6 +648,12 @@ Thread.Sleep(900);
 Check("重新显示侧边栏后落盘（showSidebar = true）",
     JsonFileStore.Read<ShellConfig>(shellStore.FilePath)?.ShowSidebar == true);
 
+// ---------- 17.2.3 开机自启（v0.99.0：主页设置 → 开机自启，写入 HKCU Run 键） ----------
+// 只测命令行拼装 / 路径还原 / 配置默认值与往返 + 只读的登记状态，**绝不写注册表**。
+StartupChecks.Run(
+    (name, ok, detail) => Check(name, ok, detail),
+    (name, ok) => Check(name, ok));
+
 // ---------- 17.3 最大化窗口拖标题栏 → 还原位置（纯逻辑，见 AGENTS.md） ----------
 // 场景：1920x1032 的工作区里，1280x820 的窗口最大化后（实际 1920 宽），按住标题栏某个点往外拖。
 var dragArea = new Rect(0, 0, 1920, 1032);
