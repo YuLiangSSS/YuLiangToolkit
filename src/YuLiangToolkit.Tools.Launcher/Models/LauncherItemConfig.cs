@@ -32,6 +32,13 @@ public sealed class LauncherItemConfig
     /// <summary>导入时间（详情页显示，也用于将来按导入顺序排序）。</summary>
     public DateTime AddedAt { get; set; } = DateTime.Now;
 
+    /// <summary>
+    /// 联动启动：勾上以后，**每次启动凉雨工具集时**自动把这个程序一起拉起来
+    /// （总开关 <see cref="LauncherConfig.StartLinkedOnToolkitStartup"/> 关着时全部不生效）。
+    /// <para>默认关闭：启动别人的程序是有感知的动作，不该在用户没要求时发生。</para>
+    /// </summary>
+    public bool StartWithToolkit { get; set; }
+
     /// <summary>是否是快捷方式（只读计算属性：不参与 JSON 落盘）。</summary>
     [JsonIgnore]
     public bool IsShortcut => LauncherRules.IsShortcutPath(Path);

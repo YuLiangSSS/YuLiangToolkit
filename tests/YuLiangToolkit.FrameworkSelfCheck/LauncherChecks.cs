@@ -3,6 +3,7 @@ using System.Text.Json;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Tools.Launcher;
 using YuLiangToolkit.Tools.Launcher.Models;
+using YuLiangToolkit.Tools.Launcher.Services;
 
 namespace YuLiangToolkit.FrameworkSelfCheck;
 
@@ -33,6 +34,9 @@ internal static class LauncherChecks
         CheckContainsPath(assert);
         CheckDescribeHealth(assert);
         CheckConfig(assert);
+        CheckLinkedStartupRules(assert);
+        CheckLinkedStartupSelection(assert);
+        CheckLinkedStartupStartMany(assert);
     }
 
     // ---------------------------------------------------------------- 工具元数据
@@ -404,10 +408,10 @@ internal static class LauncherChecks
     private static void CheckConfig(CheckFn check)
     {
         var config = new LauncherConfig();
-        check("[软件启动器] 配置默认值：启动项为空 / 自动刷新状态打开 / 没有选中项",
+        check("[软件启动器] 配置默认值：启动项为空 / 自动刷新状态打开 / 联动启动关闭 / 没有选中项",
             config.Items.Count == 0 && config.AutoRefreshStatus && config.LastSelectedId == ""
-            && config.ItemCount == 0,
-            $"autoRefresh={config.AutoRefreshStatus}");
+            && config.ItemCount == 0 && !config.StartLinkedOnToolkitStartup && config.LinkedItemCount == 0,
+            $"autoRefresh={config.AutoRefreshStatus} / 联动总开关={config.StartLinkedOnToolkitStartup}");
 
         var exe = new LauncherItemConfig
         {
@@ -430,19 +434,27 @@ internal static class LauncherChecks
         check("[软件启动器] 启动项计算属性：.lnk 的 IsShortcut 为 true、默认没有自定义图标",
             lnk.IsShortcut && lnk.FileName == "微信" && !lnk.HasCustomIcon);
 
+        check("[软件启动器] 启动项联动开关：默认关闭（不会在用户没要求时启动程序）",
+            !exe.StartWithToolkit && !lnk.StartWithToolkit);
+
         config.Items.Add(exe);
         config.Items.Add(lnk);
         config.AutoRefreshStatus = false;
+        config.StartLinkedOnToolkitStartup = true;
+        exe.StartWithToolkit = true;
         config.LastSelectedId = exe.Id;
 
         var json = JsonFileStore.Serialize(config);
         check("[软件启动器] 配置 JSON：只落盘可写字段，[JsonIgnore] 计算属性不出现",
             json.Contains("\"items\"") && json.Contains("\"autoRefreshStatus\"")
             && json.Contains("\"lastSelectedId\"")
+            && json.Contains("\"startLinkedOnToolkitStartup\"")
+            && json.Contains("\"startWithToolkit\"")
             && !json.Contains("isShortcut", StringComparison.OrdinalIgnoreCase)
             && !json.Contains("fileName", StringComparison.OrdinalIgnoreCase)
             && !json.Contains("hasCustomIcon", StringComparison.OrdinalIgnoreCase)
             && !json.Contains("itemCount", StringComparison.OrdinalIgnoreCase)
+            && !json.Contains("linkedItemCount", StringComparison.OrdinalIgnoreCase)
             && !json.Contains("filePath", StringComparison.OrdinalIgnoreCase),
             json.Contains("\"items\"") ? "items 已落盘" : "items 缺失");
 
@@ -466,10 +478,140 @@ internal static class LauncherChecks
             && restoredLnk.AddedAt == new DateTime(2025, 6, 7, 8, 9, 10),
             restored is null ? "反序列化为 null" : restored.LastSelectedId);
 
+        check("[软件启动器] 配置 JSON 往返：总开关与逐项「联动启动」勾选都保留",
+            restored is not null && restored.StartLinkedOnToolkitStartup
+            && restored.LinkedItemCount == 1
+            && restoredExe is not null && restoredExe.StartWithToolkit
+            && restoredLnk is not null && !restoredLnk.StartWithToolkit,
+            restored is null ? "反序列化为 null" : $"联动 {restored.LinkedItemCount} 项");
+
         check("[软件启动器] 配置 JSON 是 camelCase 且中文不转义（人眼可读、可手改）",
             json.Contains("\"autoRefreshStatus\"") && json.Contains("\"addedAt\"")
             && json.Contains("\"customIconPath\"") && json.Contains("微信"),
             "camelCase / 中文原样");
+    }
+
+    // ---------------------------------------------------------------- 联动启动
+
+    private static void CheckLinkedStartupRules(CheckFn check)
+    {
+        check("[软件启动器] 联动启动：工具实现了「启动后任务」契约（外壳在主窗口显示后调一次）",
+            new LauncherTool() is YuLiangToolkit.Core.Tools.IStartupTask,
+            "LauncherTool : ITool, IStartupTask");
+
+        check("[软件启动器] 联动启动：启动请求给 exe 带起始位置（它自己所在目录）",
+            LauncherStartService.BuildRequest(@"C:\Apps\WeChat.exe") is { } exeRequest
+            && exeRequest.FileName == @"C:\Apps\WeChat.exe"
+            && exeRequest.WorkingDirectory == @"C:\Apps",
+            LauncherStartService.BuildRequest(@"C:\Apps\WeChat.exe")?.WorkingDirectory ?? "(null)");
+
+        check("[软件启动器] 联动启动：快捷方式不带起始位置（参数 / 起始位置交给 Windows Shell）",
+            LauncherStartService.BuildRequest(@"C:\Users\Me\Desktop\微信.lnk") is { } lnkRequest
+            && lnkRequest.WorkingDirectory == ""
+            && lnkRequest.FileName.EndsWith("微信.lnk", StringComparison.Ordinal));
+
+        check("[软件启动器] 联动启动：空 / 非法路径不给启动请求（不会误启动别的东西）",
+            LauncherStartService.BuildRequest(null) is null
+            && LauncherStartService.BuildRequest("") is null
+            && LauncherStartService.BuildRequest("   ") is null);
+
+        check("[软件启动器] 联动启动：状态文案区分「没勾」「总开关关着」「正常」",
+            LauncherRules.DescribeLinkedStartup(false, 0).Contains("未勾选")
+            && LauncherRules.DescribeLinkedStartup(true, 0).Contains("未勾选")
+            && LauncherRules.DescribeLinkedStartup(false, 3).Contains("已关闭")
+            && LauncherRules.DescribeLinkedStartup(false, 3).Contains("3")
+            && LauncherRules.DescribeLinkedStartup(true, 3).Contains("3")
+            && !LauncherRules.DescribeLinkedStartup(true, 3).Contains("已关闭"),
+            LauncherRules.DescribeLinkedStartup(true, 3));
+    }
+
+    private static void CheckLinkedStartupSelection(CheckFn check)
+    {
+        var probe = new FakeLauncherProbe()
+            .AddFile(@"C:\LStart\a.exe")
+            .AddFile(@"C:\LStart\b.exe")
+            .AddFile(@"C:\LStart\c.exe");
+
+        var a = new LauncherItemConfig { Name = "A", Path = @"C:\LStart\a.exe", StartWithToolkit = true };
+        var b = new LauncherItemConfig { Name = "B", Path = @"C:\LStart\b.exe" };
+        var c = new LauncherItemConfig { Name = "C", Path = @"C:\LStart\c.exe", StartWithToolkit = true };
+        var gone = new LauncherItemConfig { Name = "没了", Path = @"C:\LStart\gone.exe", StartWithToolkit = true };
+
+        var config = new LauncherConfig();
+        config.Items.Add(a);
+        config.Items.Add(b);
+        config.Items.Add(c);
+        config.Items.Add(gone);
+        check("[软件启动器] 联动启动：LinkedItemCount 只数勾了的项（不管失效与否）",
+            config.LinkedItemCount == 3, config.LinkedItemCount.ToString());
+
+        var selected = LauncherStartService.SelectStartupItems(config.Items, probe);
+        check("[软件启动器] 联动启动：只挑勾了开关 + 当前可用的项，保持列表顺序",
+            selected.Count == 2 && ReferenceEquals(selected[0], a) && ReferenceEquals(selected[1], c),
+            string.Join(" / ", selected.Select(item => item.Name)));
+
+        check("[软件启动器] 联动启动：失效项跳过（开机时不弹「找不到程序」）",
+            !selected.Any(item => ReferenceEquals(item, gone)));
+
+        check("[软件启动器] 联动启动：列表 null / 空 / 含 null 元素都不炸",
+            LauncherStartService.SelectStartupItems(null, probe).Count == 0
+            && LauncherStartService.SelectStartupItems(Array.Empty<LauncherItemConfig>(), probe).Count == 0
+            && LauncherStartService.SelectStartupItems(
+                new LauncherItemConfig[] { null!, new() { Path = @"C:\LStart\a.exe", StartWithToolkit = true } },
+                probe).Count == 1);
+
+        var duplicated = LauncherStartService.SelectStartupItems(
+            new[]
+            {
+                new LauncherItemConfig { Path = @"C:\LStart\a.exe", StartWithToolkit = true },
+                new LauncherItemConfig { Path = @"c:\lstart\A.EXE", StartWithToolkit = true },
+            },
+            probe);
+        check("[软件启动器] 联动启动：同一路径只启动一次（大小写不敏感）",
+            duplicated.Count == 1, duplicated.Count.ToString());
+    }
+
+    private static void CheckLinkedStartupStartMany(CheckFn check)
+    {
+        var starter = new FakeStarter(failOn: @"C:\LStart\broken.exe");
+        var items = new[]
+        {
+            new LauncherItemConfig { Name = "A", Path = @"C:\LStart\a.exe" },
+            new LauncherItemConfig { Name = "坏", Path = @"C:\LStart\broken.exe" },
+            new LauncherItemConfig { Name = "B", Path = @"C:\LStart\b.exe" },
+            new LauncherItemConfig { Name = "空", Path = "" },
+        };
+
+        var reported = new List<string>();
+        var outcome = LauncherStartService.StartMany(items, starter,
+            (item, error) => reported.Add($"{item.Name}:{(error is null ? "ok" : "fail")}"));
+
+        check("[软件启动器] 联动启动：逐个启动，一项失败不影响后面的项",
+            outcome.Started == 2 && starter.Requests.Count == 2
+            && starter.Requests[0].FileName == @"C:\LStart\a.exe"
+            && starter.Requests[1].FileName == @"C:\LStart\b.exe",
+            $"启动 {outcome.Started} 项 / 请求 {starter.Requests.Count} 次");
+
+        check("[软件启动器] 联动启动：失败项（启动异常 / 路径为空）记进结果里，名字可读",
+            outcome.Failures.Count == 2 && !outcome.AllStarted
+            && outcome.Failures[0].StartsWith("坏", StringComparison.Ordinal)
+            && outcome.Failures[1].StartsWith("空", StringComparison.Ordinal),
+            string.Join(" | ", outcome.Failures));
+
+        check("[软件启动器] 联动启动：每项都给回调（成功 / 失败都报）",
+            reported.Count == 4 && reported[0] == "A:ok" && reported[1] == "坏:fail"
+            && reported[2] == "B:ok" && reported[3] == "空:fail",
+            string.Join(" / ", reported));
+
+        var allOk = LauncherStartService.StartMany(
+            new[] { new LauncherItemConfig { Name = "A", Path = @"C:\LStart\a.exe" } },
+            new FakeStarter(failOn: ""));
+        check("[软件启动器] 联动启动：全部成功时 AllStarted 为 true",
+            allOk.AllStarted && allOk.Started == 1);
+
+        check("[软件启动器] 联动启动：空列表 / null 不启动任何东西",
+            LauncherStartService.StartMany(null, new FakeStarter("")).Started == 0
+            && LauncherStartService.StartMany(Array.Empty<LauncherItemConfig>(), new FakeStarter("")).Started == 0);
     }
 
     // ---------------------------------------------------------------- 假探测
@@ -504,5 +646,26 @@ internal static class LauncherChecks
             => _shortcuts.TryGetValue(Key(shortcutPath), out var target) ? target : ShortcutTarget.Unresolved;
 
         private static string Key(string? path) => LauncherRules.NormalizePath(path);
+    }
+
+    /// <summary>
+    /// 假的启动实现：只记录「被要求启动什么」，绝不真的开进程；
+    /// <paramref name="failOn"/> 那个路径抛异常，用来验证「一项失败不影响后面」。
+    /// </summary>
+    private sealed class FakeStarter : ILauncherProcessStarter
+    {
+        private readonly string _failOn;
+
+        public FakeStarter(string failOn) => _failOn = LauncherRules.NormalizePath(failOn);
+
+        public List<LauncherStartRequest> Requests { get; } = new();
+
+        public void Start(LauncherStartRequest request)
+        {
+            if (_failOn.Length > 0 && LauncherRules.SamePath(request.FileName, _failOn))
+                throw new InvalidOperationException("找不到文件");
+
+            Requests.Add(request);
+        }
     }
 }

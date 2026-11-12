@@ -140,6 +140,24 @@ public sealed class LauncherItemViewModel : ObservableObject
         private set => Set(ref _hasCustomIcon, value);
     }
 
+    // ---------------------------------------------------------------- 联动启动
+
+    /// <summary>
+    /// 是否随工具集启动一起拉起（写回配置，自动保存）。
+    /// <para>只改开关不启动任何东西；真正执行在下次程序启动时。
+    /// 失效项也允许勾（用户可能只是暂时把程序卸掉 / 换了位置），执行时按健康状态跳过。</para>
+    /// </summary>
+    public bool StartWithToolkit
+    {
+        get => _config.StartWithToolkit;
+        set
+        {
+            if (_config.StartWithToolkit == value) return;
+            _config.StartWithToolkit = value;
+            OnPropertyChanged();
+        }
+    }
+
     // ---------------------------------------------------------------- 健康状态
 
     /// <summary>当前健康状态（打开页面 / 点「刷新状态」后更新）。</summary>

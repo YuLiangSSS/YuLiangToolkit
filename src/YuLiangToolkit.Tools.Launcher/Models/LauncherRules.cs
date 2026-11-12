@@ -234,6 +234,21 @@ public static class LauncherRules
         return false;
     }
 
+    // ---------------------------------------------------------------- 联动启动
+
+    /// <summary>
+    /// 联动启动的一句话统计（顶部统计条 / 页面说明用）。
+    /// <para>总开关关着时明确写「已关闭」，免得用户看到一堆勾却不知道为什么没启动。</para>
+    /// </summary>
+    /// <param name="enabled">总开关（<c>LauncherConfig.StartLinkedOnToolkitStartup</c>）。</param>
+    /// <param name="linkedCount">勾了联动启动的启动项数量。</param>
+    public static string DescribeLinkedStartup(bool enabled, int linkedCount)
+    {
+        if (linkedCount <= 0) return "联动启动：未勾选任何程序";
+        if (!enabled) return $"联动启动：已关闭（{linkedCount} 项已勾选，不会自动启动）";
+        return $"联动启动：启动工具集时自动启动 {linkedCount} 项";
+    }
+
     // ---------------------------------------------------------------- 内部工具
 
     /// <summary>去首尾空白 + 去掉控制字符（含换行 / Tab），不截断长度。</summary>

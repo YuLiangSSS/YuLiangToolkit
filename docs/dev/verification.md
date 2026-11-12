@@ -148,7 +148,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `tests/.../FunctionPlotChecks.cs` | `function-plot`（视口换算 / 以光标缩放 / 平移 / 好看刻度 / 自动 Y 范围 / 采样集成 / 配置） | L3 |
 | `tests/.../MailChecks.cs` | `mail`（服务商预设 / 地址打码 / HTML→纯文本 / 附件名清洗 / DPAPI 授权码 / 配置往返） | L3 |
 | `tests/.../MailSenderChecks.cs` | `mail-sender`（富文本⇄HTML / 地址拆分与上限 / 附件 base64 体积与危险后缀 / 请求组装与请求头（UA）/ 错误翻译 / DPAPI Key / 配置往返 / 投递状态解析） | L3 |
-| `tests/.../LauncherChecks.cs` | `launcher`（导入校验 / 默认显示名 / 路径去重 / 图标缓存路径 / 失效判定 / 清空无效项 / 配置往返） | L3 |
+| `tests/.../LauncherChecks.cs` | `launcher`（导入校验 / 默认显示名 / 路径去重 / 图标缓存路径 / 失效判定 / 清空无效项 / 联动启动 / 配置往返） | L3 |
 | `tests/.../MemeBoardChecks.cs` | `meme-board`（会话名匹配 / 目标窗口解析 / 延迟随机与夹取 / 图片扩展名 / 配置往返） | L3 |
 | `tests/.../TaskManagerChecks.cs` | `task-manager`（数字格式化 / 结束任务三级方案 / 开机启动解析与启停标记 / 保护名单 / 进程行 / 真实只读采样） | L3 |
 | `tests/.../AppManagerChecks.cs` | `app-manager`（注册表过滤与去重 / 安装日期 / 大小与盘符 / 卸载命令行拆分 / 排序 / 配置；真实扫描只读，不启动任何卸载程序） | L3 |

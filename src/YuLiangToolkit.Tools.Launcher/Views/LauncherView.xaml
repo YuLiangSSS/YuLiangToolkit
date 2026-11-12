@@ -95,6 +95,18 @@
                            Text="把常用的 exe / 快捷方式收进图标墙，双击就能启动；右侧看完整软件名与路径，可重命名、换图标、打开所在位置，还能一键清掉失效的快捷方式和已卸载的软件。" />
                 <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
                            Margin="0,8,0,0" Text="{Binding StatsText}" />
+
+                <!-- 联动启动总开关：在页面级放一个，勾选单项在右侧详情 / 右键菜单 -->
+                <WrapPanel Margin="0,8,0,0">
+                    <CheckBox Content="启动工具集时自动启动勾选的程序"
+                              IsChecked="{Binding StartLinkedOnToolkitStartup, Mode=TwoWay}"
+                              Style="{StaticResource CheckBoxStyle}"
+                              VerticalAlignment="Center"
+                              ToolTip="总开关。勾上后，勾了「联动启动」的程序会在每次启动凉雨工具集时被一起拉起来。" />
+                    <TextBlock Text="{Binding LinkedStartupText}" FontSize="10.5"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               VerticalAlignment="Center" Margin="12,0,0,0" TextWrapping="Wrap" />
+                </WrapPanel>
             </StackPanel>
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
@@ -183,6 +195,16 @@
                                                    TextTrimming="CharacterEllipsis" MaxHeight="32"
                                                    Margin="0,6,0,0" HorizontalAlignment="Stretch" />
 
+                                        <!-- 联动启动徽标：勾了这个程序就会随工具集一起启动 -->
+                                        <Border Background="{DynamicResource InputBackgroundBrush}"
+                                                CornerRadius="{DynamicResource ControlCornerRadius}"
+                                                Padding="5,0" HorizontalAlignment="Center" Margin="0,3,0,0"
+                                                Visibility="{Binding StartWithToolkit, Converter={StaticResource BoolToVis}}"
+                                                ToolTip="联动启动：启动凉雨工具集时自动启动这个程序">
+                                            <TextBlock Text="联动" FontSize="9.5"
+                                                       Foreground="{DynamicResource AccentBrush}" />
+                                        </Border>
+
                                         <!-- 失效提示：红色小字 + 图标 / 名字变暗 -->
                                         <TextBlock x:Name="InvalidText" Text="失效" FontSize="10.5"
                                                    Foreground="{DynamicResource DangerBrush}"
@@ -213,6 +235,9 @@
                                     </ContextMenu.Resources>
 
                                     <MenuItem Header="启动" Command="{Binding StartCommand}" InputGestureText="双击 / Enter" />
+                                    <MenuItem Header="随工具集启动" IsCheckable="True"
+                                              IsChecked="{Binding SelectedItem.StartWithToolkit, Mode=TwoWay}"
+                                              ToolTip="勾上后，每次启动凉雨工具集都会自动把这个程序也拉起来" />
                                     <MenuItem Header="打开所在位置" Command="{Binding OpenLocationCommand}" />
                                     <Separator />
                                     <MenuItem Header="重命名…" Command="{Binding BeginRenameCommand}" InputGestureText="F2" />
@@ -359,6 +384,12 @@
                                            FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                            TextWrapping="Wrap" Margin="0,0,0,4"
                                            Visibility="{Binding SelectedItem.HasCustomIcon, Converter={StaticResource BoolToVis}}" />
+
+                                <!-- 联动启动：单项开关（改一下自动保存，下一次启动工具集生效） -->
+                                <CheckBox Content="随工具集启动时自动启动这个程序"
+                                          IsChecked="{Binding SelectedItem.StartWithToolkit, Mode=TwoWay}"
+                                          Style="{StaticResource CheckBoxStyle}" Margin="0,10,0,0"
+                                          ToolTip="勾上后，每次启动凉雨工具集都会自动把它拉起来；失效的项会被跳过" />
 
                                 <!-- 详细信息 -->
                                 <TextBlock Text="详细信息" FontSize="12" FontWeight="SemiBold" Margin="0,16,0,0" />

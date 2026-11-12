@@ -158,7 +158,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/FunctionPlotChecks.cs'   @('function-plot') 'L3' 'function plot viewport / ticks / config assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/MailChecks.cs'           @('mail') 'L3' 'mail collector presets / html / dpapi / config assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/MailSenderChecks.cs'     @('mail-sender') 'L3' 'mail sender: richtext<->html / addresses / composer / request headers / dpapi / config assertions')
-    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/LauncherChecks.cs'       @('launcher') 'L3' 'launcher import / invalid detection / icon path / config assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/LauncherChecks.cs'       @('launcher') 'L3' 'launcher import / invalid detection / icon path / linked startup / config assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/MemeBoardChecks.cs'      @('meme-board') 'L3' 'meme board rules / target matcher / timing / config assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/TaskManagerChecks.cs'    @('task-manager') 'L3' 'task manager formatting / kill plan / startup / process row assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/AppManagerChecks.cs'     @('app-manager') 'L3' 'app manager include rules / date / size / command line / sort assertions (real scan is read-only)')

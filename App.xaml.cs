@@ -305,6 +305,38 @@ public partial class App : Application
         {
             // 正常启动：开管道服务端，之后每次双击图片 / 再启动一次都交给这个窗口处理
             _singleInstance?.StartServer(args => HandleSecondInstance(args, window, vm, tools));
+
+            // 联动启动（v1.41.0）：主窗口已经显示、托盘 / 管道都就绪之后，问一次各工具要不要在启动时干活
+            // （目前只有「软件启动器」：把勾了「联动启动」的程序一起拉起来）。
+            // ⚠ 截图模式（YLT_SHOT）不触发：自动化跑一遍不该顺手启动一堆外部程序。
+            // ⚠ 「重启本程序」也不触发（restartWaitPid > 0）：那是切渲染 GPU / 提权的重启，
+            //    程序本来就在运行中，再拉一遍联动程序就是重复启动。
+            if (restartWaitPid <= 0) RunStartupTasks(tools);
+        }
+    }
+
+    /// <summary>
+    /// 启动后任务（<see cref="IStartupTask"/>）：外壳统一入口，工具自己判断要不要跑。
+    ///
+    /// <para>放在窗口显示之后、单实例服务端开好之后：启动别人的程序是次要动作，
+    /// 先把用户能看到的东西摆好，实际拉起放到后台（工具实现里就该丢线程池）。</para>
+    /// <para>按项隔离异常：一个工具出错不能让后面的工具收不到这次机会，更不能影响启动。</para>
+    /// </summary>
+    private static void RunStartupTasks(IReadOnlyList<ITool> tools)
+    {
+        foreach (var tool in tools)
+        {
+            if (tool is not IStartupTask task) continue;
+
+            try
+            {
+                if (!task.ShouldRunOnStartup) continue;
+                task.RunOnStartup();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Startup] 「{tool.Name}」的启动任务失败：{ex}");
+            }
         }
     }
 

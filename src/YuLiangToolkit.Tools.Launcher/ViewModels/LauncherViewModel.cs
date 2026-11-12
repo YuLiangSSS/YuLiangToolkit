@@ -76,6 +76,8 @@ public sealed class LauncherViewModel : ToolViewModelBase
         Log($"数据目录：{Storage.Directory}（自定义图标在 {LauncherRules.IconFolder}\\ 下）");
         Log($"配置文件：{ConfigPathText}");
         if (IsFirstRun) Log("首次使用：导入第一个程序后会自动记住，下次打开还在。");
+        if (!string.IsNullOrWhiteSpace(LauncherTool.LastStartupSummary))
+            Log("上次启动：" + LauncherTool.LastStartupSummary);
     }
 
     // ---------------------------------------------------------------- 配置 / 列表
@@ -146,6 +148,29 @@ public sealed class LauncherViewModel : ToolViewModelBase
 
     /// <summary>空列表提示。</summary>
     public string EmptyHint => EmptyHintText;
+
+    // ---------------------------------------------------------------- 联动启动
+
+    /// <summary>
+    /// 联动启动总开关：启动凉雨工具集时，把勾了「联动启动」的程序一起拉起来。
+    /// <para>改一下立刻存进配置，下一次程序启动生效（这里不会去启动任何东西）。</para>
+    /// </summary>
+    public bool StartLinkedOnToolkitStartup
+    {
+        get => Cfg.StartLinkedOnToolkitStartup;
+        set
+        {
+            if (Cfg.StartLinkedOnToolkitStartup == value) return;
+            Cfg.StartLinkedOnToolkitStartup = value;
+            OnPropertyChanged();
+            UpdateSummary();
+            Log(value ? "联动启动：已开启总开关" : "联动启动：已关闭总开关（勾选的程序都不会自动启动）");
+        }
+    }
+
+    /// <summary>联动启动状态的一句话说明（总开关关着时明确写出来，免得勾了一堆却不知道为什么不启动）。</summary>
+    public string LinkedStartupText
+        => LauncherRules.DescribeLinkedStartup(Cfg.StartLinkedOnToolkitStartup, Cfg.LinkedItemCount);
 
     // ---------------------------------------------------------------- 内联重命名 / 日志面板
 
@@ -300,7 +325,7 @@ public sealed class LauncherViewModel : ToolViewModelBase
                             };
 
                             Cfg.Items.Add(config);
-                            var item = new LauncherItemViewModel(config);
+                            var item = CreateItem(config);
                             Items.Add(item);
 
                             var snapshot = await Task.Run(() => item.Probe(_probe, _iconLoader, includeHealth: true));
@@ -592,29 +617,33 @@ public sealed class LauncherViewModel : ToolViewModelBase
 
         try
         {
-            var path = LauncherRules.NormalizePath(item.Path);
-            var workingDirectory = "";
-            if (!LauncherRules.IsShortcutPath(path))
+            var request = LauncherStartService.BuildRequest(item.Path);
+            if (request is null)
             {
-                try { workingDirectory = Path.GetDirectoryName(path) ?? ""; }
-                catch { workingDirectory = ""; }
+                StatusText = $"「{item.Name}」的路径无效，无法启动";
+                Log($"✗ 无法启动「{item.Name}」：路径为空（{item.Path}）");
+                return;
             }
 
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = path,
-                UseShellExecute = true,
-                WorkingDirectory = workingDirectory,
-            });
+            SystemLauncherProcessStarter.Shared.Start(request.Value);
 
             StatusText = $"已启动「{item.Name}」";
-            Log($"启动：{item.Name}（{path}）");
+            Log($"启动：{item.Name}（{request.Value.FileName}）");
         }
         catch (Exception ex)
         {
             StatusText = "启动失败：" + ex.Message;
             Log($"✗ 启动「{item.Name}」失败：{ex}");
         }
+    }
+
+    /// <summary>联动启动相关的勾选变了：刷新统计文案和标题栏那句话（不重扫状态）。</summary>
+    private void OnStartupFlagsChanged()
+    {
+        OnPropertyChanged(nameof(LinkedStartupText));
+        OnPropertyChanged(nameof(StartLinkedOnToolkitStartup));
+        UpdateSummaryText();
+        CommandManager.InvalidateRequerySuggested();
     }
 
     /// <summary>在资源管理器中显示选中项（优先选中快捷方式指向的程序，程序不在了就显示快捷方式本身）。</summary>
@@ -747,8 +776,24 @@ public sealed class LauncherViewModel : ToolViewModelBase
         {
             if (config is null) continue;
             if (string.IsNullOrWhiteSpace(config.Id)) config.Id = Guid.NewGuid().ToString("N");
-            Items.Add(new LauncherItemViewModel(config));
+            Items.Add(CreateItem(config));
         }
+    }
+
+    /// <summary>
+    /// 建一个启动项界面对象并盯住它的「联动启动」开关：勾选框 / 右键菜单改完要立刻刷新统计文案。
+    /// <para>事件订阅不摘也没事：这些对象都由本 VM 直接持有，随 VM 一起被回收（不像缓存的外部对象）。</para>
+    /// </summary>
+    private LauncherItemViewModel CreateItem(LauncherItemConfig config)
+    {
+        var item = new LauncherItemViewModel(config);
+        item.PropertyChanged += OnItemPropertyChanged;
+        return item;
+    }
+
+    private void OnItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(LauncherItemViewModel.StartWithToolkit)) OnStartupFlagsChanged();
     }
 
     /// <summary>重算统计条 / 空状态 / 失效数量 / 按钮文字，并让命令重新查询可用性。</summary>
@@ -756,11 +801,18 @@ public sealed class LauncherViewModel : ToolViewModelBase
     {
         HasItems = Items.Count > 0;
         InvalidCount = Items.Count(item => !item.IsHealthy);
-        StatsText = Items.Count == 0
-            ? "还没有导入任何程序"
-            : $"共 {Items.Count} 项 · 失效 {InvalidCount} 项 · 双击图标启动";
+        UpdateSummaryText();
+        OnPropertyChanged(nameof(LinkedStartupText));
         ClearInvalidButtonText = $"清空无效项 ({InvalidCount})";
         OnPropertyChanged(nameof(CanResetIcon));
         CommandManager.InvalidateRequerySuggested();
+    }
+
+    /// <summary>只刷新顶部统计文案（联动启动勾选变化时不需要重算失效数量）。</summary>
+    private void UpdateSummaryText()
+    {
+        StatsText = Items.Count == 0
+            ? "还没有导入任何程序"
+            : $"共 {Items.Count} 项 · 失效 {InvalidCount} 项 · 联动 {Cfg.LinkedItemCount} 项 · 双击图标启动";
     }
 }
