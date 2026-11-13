@@ -501,6 +501,48 @@ public sealed class KpsSession
 
     // ===================== 热键 =====================
 
+    /// <summary>快捷键定义变了（主页设置刷新用；会话在宿主工具里转发）。</summary>
+    public event EventHandler? ShortcutsChanged;
+
+    /// <summary>让主页设置的快捷键汇总重新读一遍（改键 / 启停后调）。</summary>
+    public void NotifyShortcutsChanged() => ShortcutsChanged?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>
+    /// 会话里那份配置。
+    /// <para>⚠ 不能只靠「页面打开过」：主页设置 → 快捷键要在页面没打开时也能看到 / 修改这些热键，
+    /// 所以会话没激活时直接读一次配置（<see cref="ToolConfigStore"/> 会缓存同一实例，
+    /// 之后页面打开拿到的是同一个对象，两边改的是同一份）。</para>
+    /// </summary>
+    public KpsConfig? Config
+    {
+        get
+        {
+            if (_cfg is not null) return _cfg;
+
+            try
+            {
+                // 只读取，不注册热键 / 不启动监听（那些仍然要等页面激活）
+                _cfg = ToolConfigStore.For(KpsTool.ToolId).Load<KpsConfig>();
+            }
+            catch
+            {
+                return null;
+            }
+
+            return _cfg;
+        }
+    }
+
+    /// <summary>
+    /// 按当前配置重新注册，且不打扰用户（快捷键汇总页改键时调）：
+    /// 还没激活过就只写配置 —— 等页面打开 <see cref="Activate"/> 时会按最新配置注册。
+    /// </summary>
+    public void RefreshHotkeysQuietly()
+    {
+        if (_shutdown || _cfg is null) return;
+        try { RefreshHotkeys(); } catch { /* 改键流程里不能因为注册失败把界面卡住 */ }
+    }
+
     /// <summary>按当前配置重新注册全局热键（设置里改了热键字符串之后调用）。</summary>
     public void RefreshHotkeys()
     {
@@ -514,10 +556,18 @@ public sealed class KpsSession
         if (_hotkeys is null) _hotkeys = new GlobalHotkeyManager();
         _hotkeys.UnregisterAll();
 
-        TryRegisterHotkey(HotkeyToggleOverlay, _cfg.HotkeyToggleOverlay, ToggleOverlay, "显示/隐藏 Overlay");
-        TryRegisterHotkey(HotkeyToggleLock, _cfg.HotkeyToggleLock, ToggleOverlayLock, "锁定/解锁 Overlay");
-        TryRegisterHotkey(HotkeyResetStats, _cfg.HotkeyResetStats, ResetStats, "重置统计");
-        TryRegisterHotkey(HotkeyToggleListening, _cfg.HotkeyToggleListening, ToggleListening, "暂停/继续监听");
+        // 总开关关掉 = 一条都不注册（配置、单条启用位都保留）
+        if (_cfg.ShortcutsEnabled)
+        {
+            if (_cfg.HotkeyToggleOverlayEnabled)
+                TryRegisterHotkey(HotkeyToggleOverlay, _cfg.HotkeyToggleOverlay, ToggleOverlay, "显示/隐藏 Overlay");
+            if (_cfg.HotkeyToggleLockEnabled)
+                TryRegisterHotkey(HotkeyToggleLock, _cfg.HotkeyToggleLock, ToggleOverlayLock, "锁定/解锁 Overlay");
+            if (_cfg.HotkeyResetStatsEnabled)
+                TryRegisterHotkey(HotkeyResetStats, _cfg.HotkeyResetStats, ResetStats, "重置统计");
+            if (_cfg.HotkeyToggleListeningEnabled)
+                TryRegisterHotkey(HotkeyToggleListening, _cfg.HotkeyToggleListening, ToggleListening, "暂停/继续监听");
+        }
 
         UpdateRuntimeState();
     }

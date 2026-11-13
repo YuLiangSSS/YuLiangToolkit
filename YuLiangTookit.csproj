@@ -68,6 +68,7 @@
     <ProjectReference Include="src\YuLiangToolkit.Tools.AppManager\YuLiangToolkit.Tools.AppManager.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.Games\YuLiangToolkit.Tools.Games.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.WorldClock\YuLiangToolkit.Tools.WorldClock.csproj" />
+    <ProjectReference Include="src\YuLiangToolkit.Tools.Stopwatch\YuLiangToolkit.Tools.Stopwatch.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.Sample\YuLiangToolkit.Tools.Sample.csproj" />
   </ItemGroup>
 

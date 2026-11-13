@@ -1323,7 +1323,11 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
 
     // ================================================================== 快捷键
 
-    private void ApplyHotkeys()
+    /// <summary>
+    /// 按当前配置重新注册全局热键。
+    /// <para>public 是给 <see cref="ScreenRecorderTool"/> 用的：主页设置的快捷键汇总改完键要让它重注册。</para>
+    /// </summary>
+    public void ApplyHotkeys()
     {
         if (_shuttingDown) return;
 
@@ -1339,6 +1343,10 @@ public sealed class ScreenRecorderViewModel : ToolViewModelBase
         var startSpec = ParseHotkey(Cfg.StartStopHotkey);
         var screenshotSpec = ParseHotkey(Cfg.ScreenshotHotkey);
         var errors = new List<string>();
+
+        // 单条启用位（主页设置的快捷键汇总可以单独关掉某一条）
+        if (!Cfg.StartStopHotkeyEnabled) startSpec = null;
+        if (!Cfg.ScreenshotHotkeyEnabled) screenshotSpec = null;
 
         if (startSpec is not null)
         {

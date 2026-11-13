@@ -921,6 +921,18 @@
                 </StackPanel>
             </Border>
 
+            <!-- ===== 快捷键（全局热键汇总：分类 → 工具 → 快捷键，可改键 / 拆分合并 / 启停） ===== -->
+            <TextBlock Text="快捷键" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource AccentBrush}" Margin="0,22,0,0" />
+            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
+                <StackPanel>
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,0,0,10"
+                               Text="全程序的全局快捷键汇总（按分类 → 工具排列，点标题前面的 ▼ / ▶ 折叠）。点框就能改键：必须同时按住组合键，全部松开后才确定；想要「Ctrl+K 然后 Ctrl+C」这种分两步的，点「拆分」再录第二步，点「合并」并回一条。每条都能单独禁用，每个工具也能整体关掉 —— 快捷键多了之后只留自己想用的。改一下立即生效并自动保存。" />
+                    <views:ShortcutsSettingsView DataContext="{Binding ShortcutRegistry}" />
+                </StackPanel>
+            </Border>
+
             <!-- ===== 界面布局（v0.41.0：工具页可拖拽分隔条的尺寸记忆，一键恢复默认） ===== -->
             <TextBlock Text="界面布局" FontSize="13" FontWeight="SemiBold"
                        Foreground="{DynamicResource AccentBrush}" Margin="0,22,0,0" />

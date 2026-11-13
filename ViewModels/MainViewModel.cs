@@ -9,6 +9,7 @@ using YuLiangToolkit.App.Themes;
 using YuLiangToolkit.App.Views;
 using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Effects;
+using YuLiangToolkit.Core.Input;
 using YuLiangToolkit.Core.Maintenance;
 using YuLiangToolkit.Core.Mvvm;
 using YuLiangToolkit.Core.Services;
@@ -139,6 +140,13 @@ public class MainViewModel : ObservableObject
     /// 列表按「已发现工具」现算，所以以后新增的工具自动覆盖，不需要改设置页（详见 <see cref="MaintenanceViewModel"/>）。
     /// </summary>
     public MaintenanceViewModel Maintenance { get; }
+
+    /// <summary>
+    /// 全程序的全局快捷键汇总（主页设置 → 快捷键用）。
+    /// <para>数据来自各工具实现的 <see cref="IShortcutProvider"/>；外壳启动时把引擎与它接上
+    /// （见 <see cref="ShortcutHub"/>），工具增删快捷键后它会自己重扫。</para>
+    /// </summary>
+    public ShortcutRegistry ShortcutRegistry { get; } = new();
 
     public ObservableCollection<NavItem> NavItems { get; } = new();
 

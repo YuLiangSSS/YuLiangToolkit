@@ -332,6 +332,26 @@ public sealed class ScreenRecorderConfig : ToolConfig
         set => SetAndSave(ref _screenshotHotkey, value);
     }
 
+    // ---------- 单条启用位（主页设置 → 快捷键汇总用；总开关见 EnableGlobalHotkeys） ----------
+
+    private bool _startStopHotkeyEnabled = true;
+
+    /// <summary>「开始 / 停止录制」这一条启用。</summary>
+    public bool StartStopHotkeyEnabled
+    {
+        get => _startStopHotkeyEnabled;
+        set => SetAndSave(ref _startStopHotkeyEnabled, value);
+    }
+
+    private bool _screenshotHotkeyEnabled = true;
+
+    /// <summary>「截图」这一条启用。</summary>
+    public bool ScreenshotHotkeyEnabled
+    {
+        get => _screenshotHotkeyEnabled;
+        set => SetAndSave(ref _screenshotHotkeyEnabled, value);
+    }
+
     // ---------- 录制行为 ----------
 
     private bool _drawMouse = true;

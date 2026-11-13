@@ -290,6 +290,22 @@ public sealed class Live2DConfig : ToolConfig
     /// <summary>是否启用全局快捷键（Ctrl+Alt+L 切换鼠标穿透、Ctrl+Alt+0 退出程序）。</summary>
     public bool PetHotkeysEnabled { get; set; } = true;
 
+    /// <summary>
+    /// 桌宠「切换鼠标穿透」的快捷键文本（默认 <c>Ctrl+Alt+L</c>，和以前硬编码的一致）。
+    /// <para>新增可配置项：以前这两个键是写死的，主页设置的快捷键汇总里要能改就得先能存。
+    /// 旧配置没有这个字段时读出来就是默认值，老用户行为不变。</para>
+    /// </summary>
+    public string PetHotkeyClickThrough { get; set; } = "Ctrl+Alt+L";
+
+    /// <summary>桌宠「退出程序」的快捷键文本（默认 <c>Ctrl+Alt+0</c>；空 = 不注册）。</summary>
+    public string PetHotkeyExit { get; set; } = "Ctrl+Alt+0";
+
+    /// <summary>「切换鼠标穿透」这一条快捷键启用。</summary>
+    public bool PetHotkeyClickThroughEnabled { get; set; } = true;
+
+    /// <summary>「退出程序」这一条快捷键启用。</summary>
+    public bool PetHotkeyExitEnabled { get; set; } = true;
+
     // ==================== AI 聊天（DeepSeek API） ====================
     //
     // 说明：API Key 落盘前用 Windows DPAPI（当前用户）加密，`AiApiKeyProtected` 里存的是 `dpapi:...` 密文；

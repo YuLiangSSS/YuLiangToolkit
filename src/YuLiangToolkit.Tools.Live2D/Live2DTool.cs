@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Threading;
 using YuLiangToolkit.Core.Configuration;
+using YuLiangToolkit.Core.Input;
 using YuLiangToolkit.Core.Tools;
 using YuLiangToolkit.Tools.Live2D.ViewModels;
 using YuLiangToolkit.Tools.Live2D.Views;
@@ -18,13 +19,16 @@ namespace YuLiangToolkit.Tools.Live2D;
 /// 等 Dispatcher 空闲后再创建会话 / 加载模型 / 显示桌宠 —— 构造函数里不做任何耗时操作。
 /// 开发调试截图（环境变量 <c>YLT_LIVE2D_SHOT_PET</c>）也走同一条延迟回调，强制放出桌宠。</para>
 /// </summary>
-public sealed class Live2DTool : ITool
+public sealed class Live2DTool : ITool, IShortcutProvider
 {
     /// <summary>功能 Id（= Data / Config 下的小文件夹名，也是自检组名）。</summary>
     public const string ToolId = "live2d";
 
     public Live2DTool()
     {
+        _adapter = new ShortcutProviderAdapter(BuildSlots, ApplyShortcuts,
+            () => ShortcutsChanged?.Invoke(this, EventArgs.Empty));
+
         // ToolDiscovery 会在启动早期（MainWindow 还没建）new 出所有工具：这里绝不能同步加载模型 / Show 窗口。
         if (Application.Current is null) return;   // 自检 / 无 UI 进程：直接 no-op
 
@@ -93,5 +97,95 @@ public sealed class Live2DTool : ITool
         var viewModel = session.EnsureViewModel();
         session.Activate(viewModel);
         return new Live2DView { DataContext = viewModel };
+    }
+
+    // ================================================================== IShortcutProvider
+    //
+    // 桌宠的两条全局快捷键（鼠标穿透 / 退出程序）由 PetWindow 自己注册（它才持有 hwnd），
+    // 这里只把它们声明出来供主页设置 → 快捷键汇总展示 / 改键 / 启停。
+
+    /// <summary>快捷键 Id：切换鼠标穿透。</summary>
+    public const string ShortcutIdClickThrough = "pet-click-through";
+
+    /// <summary>快捷键 Id：退出程序。</summary>
+    public const string ShortcutIdExit = "pet-exit";
+
+    private readonly ShortcutProviderAdapter _adapter;
+
+    /// <inheritdoc />
+    public string ShortcutToolId => Id;
+
+    /// <inheritdoc />
+    public string ShortcutToolName => Name;
+
+    /// <inheritdoc />
+    public IReadOnlyList<string> ShortcutCategoryPath => CategoryPath;
+
+    /// <summary>整个工具的快捷键总开关（复用已有的「启用全局快捷键」）。</summary>
+    public bool ShortcutsEnabled
+    {
+        get => CurrentConfig?.PetHotkeysEnabled ?? true;
+        set
+        {
+            if (CurrentConfig is not { } config || config.PetHotkeysEnabled == value) return;
+            config.PetHotkeysEnabled = value;
+            ApplyShortcuts();
+        }
+    }
+
+    /// <inheritdoc />
+    public event EventHandler? ShortcutsChanged;
+
+    /// <inheritdoc />
+    public IReadOnlyList<ShortcutDefinition> GetShortcuts()
+        => CurrentConfig is null ? Array.Empty<ShortcutDefinition>() : _adapter.Build(Id);
+
+    /// <inheritdoc />
+    public void ApplyShortcuts()
+    {
+        // 桌宠窗口在跑就让它按新配置重注册；没开（页面没打开过）时配置已写好，下次开会读
+        Live2DSession.Current.RefreshPetHotkeysQuietly();
+        ShortcutsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// 汇总页 / 自检用的配置。
+    /// <para>⚠ 页面没打开过也要能读到，所以没 ViewModel 时直接读一次
+    /// （<see cref="ToolConfigStore"/> 缓存同一实例，页面打开后拿到的是同一份）。</para>
+    /// </summary>
+    private static Live2DConfig? CurrentConfig
+    {
+        get
+        {
+            if (Live2DSession.Current.ViewModel?.Cfg is { } live) return live;
+
+            try { return ToolConfigStore.For(ToolId).Load<Live2DConfig>(); }
+            catch { return null; }
+        }
+    }
+
+    private IReadOnlyList<ShortcutProviderAdapter.Slot> BuildSlots()
+    {
+        var config = CurrentConfig;
+        if (config is null) return Array.Empty<ShortcutProviderAdapter.Slot>();
+
+        return new[]
+        {
+            new ShortcutProviderAdapter.Slot(
+                ShortcutIdClickThrough, "切换鼠标穿透",
+                () => config.PetHotkeyClickThrough, value => config.PetHotkeyClickThrough = value,
+                ReadSecondary: null, WriteSecondary: null,
+                ReadEnabled: () => config.PetHotkeyClickThroughEnabled,
+                WriteEnabled: value => config.PetHotkeyClickThroughEnabled = value,
+                Description: "桌宠：让鼠标穿过桌宠（不挡住下面的窗口）"),
+
+            new ShortcutProviderAdapter.Slot(
+                ShortcutIdExit, "退出程序",
+                () => config.PetHotkeyExit, value => config.PetHotkeyExit = value,
+                ReadSecondary: null, WriteSecondary: null,
+                ReadEnabled: () => config.PetHotkeyExitEnabled,
+                WriteEnabled: value => config.PetHotkeyExitEnabled = value,
+                Description: "桌宠：直接退出整个工具集（用完记得能关）"),
+        };
     }
 }

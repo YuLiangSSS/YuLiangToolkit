@@ -4,6 +4,22 @@ using System.Windows.Threading;
 
 namespace YuLiangToolkit.Core.Services;
 
+/// <summary>托盘气泡的图标类型（系统只认这四种）。</summary>
+public enum TrayBalloonKind
+{
+    /// <summary>无图标。</summary>
+    None,
+
+    /// <summary>信息（蓝色 i）。</summary>
+    Info,
+
+    /// <summary>警告（黄色三角）。</summary>
+    Warning,
+
+    /// <summary>错误（红色叉）。</summary>
+    Error,
+}
+
 /// <summary>
 /// 托盘图标右键菜单里的一项。分隔线用 <see cref="Separator"/>；
 /// <see cref="IsDefault"/> 的那一项在菜单里加粗（回车默认项）。
@@ -62,10 +78,24 @@ public sealed class TrayIcon : IDisposable
     // ---------------- Win32 常量 ----------------
 
     private const uint NIM_ADD = 0x00000000;
+    private const uint NIM_MODIFY = 0x00000001;
     private const uint NIM_DELETE = 0x00000002;
     private const uint NIF_MESSAGE = 0x00000001;
     private const uint NIF_ICON = 0x00000002;
     private const uint NIF_TIP = 0x00000004;
+    private const uint NIF_INFO = 0x00000010;
+
+    /// <summary>气泡图标：无图标。</summary>
+    private const uint NIIF_NONE = 0x00000000;
+
+    /// <summary>气泡图标：信息。</summary>
+    private const uint NIIF_INFO = 0x00000001;
+
+    /// <summary>气泡图标：警告。</summary>
+    private const uint NIIF_WARNING = 0x00000002;
+
+    /// <summary>气泡图标：错误。</summary>
+    private const uint NIIF_ERROR = 0x00000003;
 
     /// <summary>托盘回调消息（WM_APP 起，避开系统消息）。</summary>
     private const int TrayCallbackMessage = 0x8000 + 0x51;
@@ -316,6 +346,57 @@ public sealed class TrayIcon : IDisposable
 
         // ③ 系统默认应用图标（共享句柄，不能 DestroyIcon）
         return (LoadIcon(IntPtr.Zero, new IntPtr(IDI_APPLICATION)), false);
+    }
+
+    // ================================================================== 通知气泡
+
+    /// <summary>
+    /// 弹一条 Windows 通知区气泡（Win10/11 会显示成右下角的系统通知并进通知中心）。
+    ///
+    /// <para>实现是 <c>NIM_MODIFY</c> + <c>NIF_INFO</c>：不新增图标、只改现有图标的气泡字段。
+    /// 图标没显示着（托盘建失败 / 被系统隐藏）时返回 false，调用方可以退回应用内通知。</para>
+    /// </summary>
+    /// <param name="title">标题（建议 60 字以内，超出会被系统截断）。</param>
+    /// <param name="text">正文。</param>
+    /// <param name="kind">类型（决定图标是感叹号 / 叉 / 问号 / 无）。</param>
+    public bool ShowBalloon(string title, string text, TrayBalloonKind kind = TrayBalloonKind.None)
+    {
+        if (_disposed || !_visible) return false;
+
+        try
+        {
+            var data = new NotifyIconData
+            {
+                cbSize = Marshal.SizeOf<NotifyIconData>(),
+                hWnd = _source.Handle,
+                uID = _iconId,
+                uFlags = NIF_INFO,
+                szInfo = Truncate(text, 255),
+                szInfoTitle = Truncate(title, 63),
+                dwInfoFlags = kind switch
+                {
+                    TrayBalloonKind.Warning => NIIF_WARNING,
+                    TrayBalloonKind.Error => NIIF_ERROR,
+                    TrayBalloonKind.Info => NIIF_INFO,
+                    _ => NIIF_NONE,
+                },
+                // 0 = 由系统决定显示时长（Win10/11 通常 5 秒左右，并进通知中心）
+                uTimeoutOrVersion = 0,
+            };
+
+            return Shell_NotifyIcon(NIM_MODIFY, ref data);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[TrayIcon] 弹气泡失败：{ex.Message}");
+            return false;
+        }
+    }
+
+    private static string Truncate(string? text, int max)
+    {
+        var value = text ?? "";
+        return value.Length <= max ? value : value[..max];
     }
 
     // ================================================================== 释放

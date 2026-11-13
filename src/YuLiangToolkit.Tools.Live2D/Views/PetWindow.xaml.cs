@@ -8,6 +8,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using YuLiangToolkit.Core.Input;
 using YuLiangToolkit.Tools.Live2D.Model;
 using YuLiangToolkit.Tools.Live2D.Play;
 using YuLiangToolkit.Tools.Live2D.Rendering;
@@ -85,13 +86,9 @@ public partial class PetWindow : Window
     private double _lastWindowMoveLeft;
     private double _lastWindowMoveTop;
 
-    // 全局快捷键（Ctrl+Alt+L 鼠标穿透 / Ctrl+Alt+0 退出）
+    // 全局快捷键（默认 Ctrl+Alt+L 鼠标穿透 / Ctrl+Alt+0 退出，可在配置 / 汇总页里改）
     private const int HotkeyToggleClickThrough = 0x4C01;
     private const int HotkeyExit = 0x4C02;
-    private const uint ModAlt = 0x0001;
-    private const uint ModControl = 0x0002;
-    private const uint VkL = 0x4C;
-    private const uint Vk0 = 0x30;
     private const int WmHotkey = 0x0312;
 
     private HwndSource? _hwndSource;
@@ -339,7 +336,12 @@ public partial class PetWindow : Window
 
     // ===================== 全局快捷键（RegisterHotKey） =====================
 
-    /// <summary>注册 / 注销全局快捷键（Ctrl+Alt+L 鼠标穿透、Ctrl+Alt+0 退出）；重复调用无副作用。</summary>
+    /// <summary>
+    /// 注册 / 注销全局快捷键（鼠标穿透、退出程序）；重复调用无副作用。
+    /// <para>组合文本来自配置（<see cref="Live2DConfig.PetHotkeyClickThrough"/> /
+    /// <see cref="Live2DConfig.PetHotkeyExit"/>），既可以在桌宠设置里改，也能在
+    /// 主页设置 → 快捷键汇总里改；单条启用位也在配置里。</para>
+    /// </summary>
     private void RegisterHotkeys(bool enabled)
     {
         if (_hwndSource is null) return;
@@ -350,14 +352,26 @@ public partial class PetWindow : Window
 
         if (enabled)
         {
-            var clickThroughOk = RegisterHotKey(hwnd, HotkeyToggleClickThrough, ModControl | ModAlt, VkL);
-            var exitOk = RegisterHotKey(hwnd, HotkeyExit, ModControl | ModAlt, Vk0);
+            var cfg = Config;
+            var clickThrough = ResolveHotkey(cfg?.PetHotkeyClickThrough, DefaultClickThroughHotkey,
+                cfg?.PetHotkeyClickThroughEnabled ?? true);
+            var exit = ResolveHotkey(cfg?.PetHotkeyExit, DefaultExitHotkey,
+                cfg?.PetHotkeyExitEnabled ?? true);
+
+            var clickThroughOk = clickThrough is { } ct
+                                 && RegisterHotKey(hwnd, HotkeyToggleClickThrough, ct.Modifiers, (uint)ct.VirtualKey);
+            var exitOk = exit is { } ex
+                         && RegisterHotKey(hwnd, HotkeyExit, ex.Modifiers, (uint)ex.VirtualKey);
+
             _hotkeysRegistered = clickThroughOk || exitOk;
             if (_hotkeysRegistered)
             {
-                _session.Log(clickThroughOk && exitOk
-                    ? "桌宠快捷键已注册：Ctrl+Alt+L 切换鼠标穿透 / Ctrl+Alt+0 退出程序"
-                    : $"桌宠快捷键部分注册失败（L={clickThroughOk}, 0={exitOk}；可能被其它程序占用）");
+                var text = string.Join(" / ", new[]
+                {
+                    clickThroughOk ? $"{clickThrough} 切换鼠标穿透" : "切换鼠标穿透（未启用）",
+                    exitOk ? $"{exit} 退出程序" : "退出程序（未启用）",
+                });
+                _session.Log("桌宠快捷键：" + text);
             }
         }
         else
@@ -366,6 +380,60 @@ public partial class PetWindow : Window
             UnregisterHotKey(hwnd, HotkeyExit);
             _hotkeysRegistered = false;
         }
+    }
+
+    /// <summary>默认「切换鼠标穿透」组合（老版本硬编码值，配置缺省时用）。</summary>
+    public const string DefaultClickThroughHotkey = "Ctrl+Alt+L";
+
+    /// <summary>默认「退出程序」组合（老版本硬编码值）。</summary>
+    public const string DefaultExitHotkey = "Ctrl+Alt+0";
+
+    /// <summary>解析一条配置里的热键；空 / 不合法 / 该条被禁用都返回 null。</summary>
+    private static (uint Modifiers, int VirtualKey)? ResolveHotkey(string? text, string fallback, bool enabled)
+    {
+        if (!enabled) return null;
+
+        var value = string.IsNullOrWhiteSpace(text) ? fallback : text;
+        if (!KeyCombo.TryParse(value, out var combo) || combo.IsEmpty) return null;
+        if (combo.Keys.Count != 1) return null;   // 桌宠这两个是单主键组合（RegisterHotKey 也要求如此）
+        if (!combo.IsRegisterHotKeyCompatible) return null;
+
+        uint modifiers = 0;
+        foreach (var modifier in combo.Modifiers)
+        {
+            modifiers |= KeyComboNames.NormalizeModifier(modifier) switch
+            {
+                0x12 => 0x0001,   // MOD_ALT
+                0x11 => 0x0002,   // MOD_CONTROL
+                0x10 => 0x0004,   // MOD_SHIFT
+                0x5B => 0x0008,   // MOD_WIN
+                _ => 0,
+            };
+        }
+
+        return (modifiers, combo.Keys[0]);
+    }
+
+    /// <summary>按当前配置重新注册快捷键（主页设置 → 快捷键汇总改完键 / 启停后调）。</summary>
+    public void ApplyHotkeys()
+    {
+        // RegisterHotkeys 里用「enabled == _hotkeysRegistered」做幂等，
+        // 换键时状态没变会直接返回，所以先强制注销再按新配置注册。
+        UnregisterHotkeys();
+        RegisterHotkeys(Config?.PetHotkeysEnabled == true);
+    }
+
+    /// <summary>注销两条全局快捷键并把状态复位。</summary>
+    private void UnregisterHotkeys()
+    {
+        var handle = _hwndSource?.Handle ?? IntPtr.Zero;
+        if (handle != IntPtr.Zero)
+        {
+            UnregisterHotKey(handle, HotkeyToggleClickThrough);
+            UnregisterHotKey(handle, HotkeyExit);
+        }
+
+        _hotkeysRegistered = false;
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)

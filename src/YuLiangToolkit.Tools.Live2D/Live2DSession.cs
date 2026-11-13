@@ -5268,6 +5268,15 @@ public sealed class Live2DSession
 
     // ===================== 桌宠窗口 =====================
 
+    /// <summary>
+    /// 桌宠还在的话，让它按最新配置重新注册快捷键（主页设置 → 快捷键汇总改完键后调）。
+    /// <para>桌宠没开就什么都不做：配置已经写好了，下次开桌宠会读。</para>
+    /// </summary>
+    public void RefreshPetHotkeysQuietly()
+    {
+        try { _pet?.ApplyHotkeys(); } catch { /* 改键流程里不能因为注册失败把界面卡住 */ }
+    }
+
     /// <summary>显示桌宠（模型没加载就开始加载；加载完成前窗口是透明的）。</summary>
     public void ShowPet()
     {
@@ -5292,8 +5301,7 @@ public sealed class Live2DSession
             pet.Closed += OnPetClosed;
             _pet = pet;
             pet.Show();
-            UpdateFrameLoop();
-            ApplyMocapSettings();   // 桌宠也算「有人看着」→ 动捕可以开始采集
+            UpdateFrameLoop();            ApplyMocapSettings();   // 桌宠也算「有人看着」→ 动捕可以开始采集
             ApplyMusicSettings();   // 音乐回环同理
             StateChanged?.Invoke(this, EventArgs.Empty);
             PetVisibilityChanged?.Invoke(this, EventArgs.Empty);

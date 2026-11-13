@@ -545,6 +545,56 @@ public sealed class KpsConfig : ToolConfig
         set => SetAndSave(ref _hotkeyToggleListening, value);
     }
 
+    // ===================== 快捷键启用位（主页设置 → 快捷键汇总用） =====================
+    //
+    // 热键文本还是上面那四个字段（Kps 页原有的改键 UI 继续用它们，两边共用同一份配置）；
+    // 这里只加「这一条要不要生效」与「整个工具要不要生效」，让快捷键越来越多时可以按需关掉。
+
+    private bool _shortcutsEnabled = true;
+
+    /// <summary>这个工具的快捷键总开关（关掉 = 四条都不注册，各自状态保留）。</summary>
+    public bool ShortcutsEnabled
+    {
+        get => _shortcutsEnabled;
+        set => SetAndSave(ref _shortcutsEnabled, value);
+    }
+
+    private bool _hotkeyToggleOverlayEnabled = true;
+
+    /// <summary>「显示 / 隐藏 Overlay」这一条启用。</summary>
+    public bool HotkeyToggleOverlayEnabled
+    {
+        get => _hotkeyToggleOverlayEnabled;
+        set => SetAndSave(ref _hotkeyToggleOverlayEnabled, value);
+    }
+
+    private bool _hotkeyToggleLockEnabled = true;
+
+    /// <summary>「锁定 / 解锁 Overlay」这一条启用。</summary>
+    public bool HotkeyToggleLockEnabled
+    {
+        get => _hotkeyToggleLockEnabled;
+        set => SetAndSave(ref _hotkeyToggleLockEnabled, value);
+    }
+
+    private bool _hotkeyResetStatsEnabled = true;
+
+    /// <summary>「重置统计」这一条启用。</summary>
+    public bool HotkeyResetStatsEnabled
+    {
+        get => _hotkeyResetStatsEnabled;
+        set => SetAndSave(ref _hotkeyResetStatsEnabled, value);
+    }
+
+    private bool _hotkeyToggleListeningEnabled = true;
+
+    /// <summary>「暂停 / 继续监听」这一条启用。</summary>
+    public bool HotkeyToggleListeningEnabled
+    {
+        get => _hotkeyToggleListeningEnabled;
+        set => SetAndSave(ref _hotkeyToggleListeningEnabled, value);
+    }
+
     // ===================== 键音 =====================
 
     private bool _keySoundEnabled;

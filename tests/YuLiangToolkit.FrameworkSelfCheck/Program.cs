@@ -76,6 +76,8 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("checkers", "跳棋：六芒星棋盘 121 格 / 2·3·4·6 人座位规则 / 跳与走一格 / 占满对面角 / 让棋 / AI"),
     ("checkers-net", "跳棋·联机：127.0.0.1 真回环（选座 / 走棋 / 状态广播 / 退出座位）"),
     ("world-clock", "全球时钟：时区换算 / 跨日 / 时差文案 / 时段 / 城市库搜索 / 重排与撤销 / 配置"),
+    ("hotkeys", "快捷键与通知：按键集合 / 合并 / 冲突 / 启停 / 分组树 / 通知设置与兜底"),
+    ("stopwatch", "秒表：计时状态机 / 时长格式 / 快捷键定义 / 声音选项 / 配置"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1346,6 +1348,17 @@ RunGroupModule("checkers-net", "跳棋·联机", CheckersNetChecks.Run);
 // 全球时钟：时区解析（真查系统时区库）/ 时间与日期格式化 / 跨日与时差文案 /
 // 时段分档 / 城市库搜索 / 拖动重排下标与锁定规则 / 配置往返。全部纯逻辑，不创建窗口。
 RunGroupModule("world-clock", "全球时钟", WorldClockChecks.Run);
+
+// 快捷键与通知体系：按键集合解析 / 文本往返 / 合并（分步 → 同时）/ 合法性 / 键数上限 /
+// 引擎通道选择（RegisterHotKey vs 键盘钩子）/ 分组树 / 冲突检测 / 单条与工具级启停正交 /
+// 拆分合并 / 通知设置默认值与四角 / 通知兜底链路。
+// 纯逻辑，**绝不调用 RegisterHotKey、不装键盘钩子、不创建窗口**（真实注册由人工冒烟验收）。
+RunGroupModule("hotkeys", "快捷键与通知", HotkeyChecks.Run);
+
+// 「秒表」：计时状态机（开始 / 暂停 / 继续 / 停止归零 / 计次切分 / 幂等）、时长格式化边界、
+// 快捷键定义（单步 / 分步 / 启停位 / 等待时长夹取）、声音选项解析、配置默认值与 JSON 往返。
+// 纯逻辑，时间由注入的时间戳控制（不用真等），不创建窗口、不播声音、不注册热键。
+RunGroupModule("stopwatch", "秒表", StopwatchChecks.Run);
 
 EnterGroup("shell");
 

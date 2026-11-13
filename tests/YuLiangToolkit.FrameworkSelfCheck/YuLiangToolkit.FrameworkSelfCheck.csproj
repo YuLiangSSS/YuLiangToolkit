@@ -135,6 +135,8 @@
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Games\YuLiangToolkit.Tools.Games.csproj" />
     <!-- 「全球时钟」：时区换算 / 时差文案 / 跨日 / 时段分档 / 城市库搜索 / 重排与撤销（纯逻辑）+ 配置往返。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.WorldClock\YuLiangToolkit.Tools.WorldClock.csproj" />
+    <!-- 「秒表」：计时状态机 / 时长格式化 / 快捷键定义 / 声音选项 / 配置往返（纯逻辑）。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Stopwatch\YuLiangToolkit.Tools.Stopwatch.csproj" />
   </ItemGroup>
 
 </Project>

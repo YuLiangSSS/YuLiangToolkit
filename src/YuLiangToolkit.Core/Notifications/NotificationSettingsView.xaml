@@ -1,0 +1,95 @@
+<UserControl x:Class="YuLiangToolkit.Core.Notifications.NotificationSettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="Transparent">
+
+    <!-- 可复用的「通知设置」块：任何工具在设置卡片里放一行就能有自己独立的一份通知偏好。
+         DataContext 就是那个工具的 NotificationSettings（不要另设 DataContext）。
+
+         这里的样式全部用「内联 + 主题 token」，不走外壳 App.xaml 的命名样式
+         —— 因为本文件属于 Core 程序集，工具页与设置页都可能用到，不能假定外壳的样式键存在。 -->
+
+    <UserControl.Resources>
+        <!-- 本文件属于 Core 程序集，不能假定外壳 App.xaml 的样式键一定存在，
+             所以需要的转换器自己也声明一份（键名加 Core 前缀，避免和外壳的撞名）。 -->
+        <BooleanToVisibilityConverter x:Key="CoreBoolToVis" />
+
+        <!-- 单选 / 复选：用系统默认模板 + 主题前景色，够用且不会在别的宿主里崩 -->
+        <Style x:Key="ChoiceStyle" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="0,0,18,0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="ToggleStyle" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="HintStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,4,0,0" />
+        </Style>
+    </UserControl.Resources>
+
+    <StackPanel>
+        <!-- 总开关 -->
+        <CheckBox Content="这个工具要弹通知" Style="{StaticResource ToggleStyle}"
+                  IsChecked="{Binding Enabled, Mode=TwoWay}" />
+
+        <!-- 通道 -->
+        <TextBlock Text="通道" FontSize="11.5" Margin="0,10,0,4"
+                   Foreground="{DynamicResource TextSecondaryBrush}" />
+        <WrapPanel>
+            <RadioButton Content="应用内小窗" Style="{StaticResource ChoiceStyle}"
+                         GroupName="NotifyMode"
+                         IsChecked="{Binding IsInApp, Mode=TwoWay}" />
+            <RadioButton Content="Windows 通知" Style="{StaticResource ChoiceStyle}"
+                         GroupName="NotifyMode"
+                         IsChecked="{Binding IsWindows, Mode=TwoWay}" />
+        </WrapPanel>
+        <TextBlock Style="{StaticResource HintStyle}"
+                   Text="应用内小窗：本程序自己画在屏幕角落，样式统一、不依赖系统通知设置；Windows 通知：托盘气泡，会进系统通知中心，位置由系统决定。" />
+
+        <!-- 方位（只对应用内有意义） -->
+        <StackPanel Visibility="{Binding IsInApp, Converter={StaticResource CoreBoolToVis}}">            <TextBlock Text="弹在屏幕哪个角" FontSize="11.5" Margin="0,10,0,4"
+                       Foreground="{DynamicResource TextSecondaryBrush}" />
+            <WrapPanel>
+                <RadioButton Content="左上" Style="{StaticResource ChoiceStyle}" GroupName="NotifyCorner"
+                             IsChecked="{Binding IsTopLeft, Mode=TwoWay}" />
+                <RadioButton Content="右上" Style="{StaticResource ChoiceStyle}" GroupName="NotifyCorner"
+                             IsChecked="{Binding IsTopRight, Mode=TwoWay}" />
+                <RadioButton Content="左下" Style="{StaticResource ChoiceStyle}" GroupName="NotifyCorner"
+                             IsChecked="{Binding IsBottomLeft, Mode=TwoWay}" />
+                <RadioButton Content="右下" Style="{StaticResource ChoiceStyle}" GroupName="NotifyCorner"
+                             IsChecked="{Binding IsBottomRight, Mode=TwoWay}" />
+            </WrapPanel>
+
+            <!-- 停留时长 -->
+            <Grid Margin="0,10,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="停留" FontSize="11.5" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                <Slider Grid.Column="1" Margin="10,0,0,0" Minimum="1000" Maximum="15000"
+                        SmallChange="500" LargeChange="2000"
+                        Value="{Binding DurationMs, Mode=TwoWay}" />
+                <TextBlock Grid.Column="2" MinWidth="52" TextAlignment="Right" FontSize="11.5"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           Text="{Binding DurationMs, StringFormat={}{0:0}ms}" />
+            </Grid>
+        </StackPanel>
+
+        <!-- 摘要 -->
+        <TextBlock Style="{StaticResource HintStyle}" Foreground="{DynamicResource AccentBrush}"
+                   Text="{Binding SummaryText}" />
+    </StackPanel>
+</UserControl>

@@ -7,6 +7,8 @@ using YuLiangToolkit.App.Themes;
 using YuLiangToolkit.App.ViewModels;
 using YuLiangToolkit.App.Views;
 using YuLiangToolkit.Core.Configuration;
+using YuLiangToolkit.Core.Input;
+using YuLiangToolkit.Core.Notifications;
 using YuLiangToolkit.Core.Services;
 using YuLiangToolkit.Core.Shell;
 using YuLiangToolkit.Core.Storage;
@@ -37,6 +39,23 @@ public partial class App : Application
     /// 的根因就是这条（v0.65.1 修）。</para>
     /// </summary>
     private static MainViewModel? _mainViewModel;
+
+    /// <summary>全局快捷键引擎（整个进程一个；退出时释放，注销所有热键并卸下键盘钩子）。</summary>
+    private static GlobalShortcutEngine? _shortcutEngine;
+
+    /// <summary>Windows 通知通道（托盘图标是后面才建的，所以这里用「现取」的委托）。</summary>
+    private static readonly TrayNotificationSink _trayNotificationSink = new(() => Tray);
+
+    /// <summary>
+    /// 外壳级别的通知偏好（只有「快捷键注册失败」这类没有归属工具的提醒用它）。
+    /// <para>各功能自己的通知偏好存在各自配置里（见 <see cref="NotificationSettings"/>），
+    /// 这里不集中配置，避免和「每个工具分开设」的设计打架。</para>
+    /// </summary>
+    private static readonly NotificationSettings DefaultNotificationSettings = new()
+    {
+        Mode = NotificationMode.InApp,
+        Corner = NotificationCorner.BottomRight,
+    };
 
     /// <summary>真正退出程序（托盘「退出」/ 截图模式 / 系统关机）。</summary>
     /// <remarks>
@@ -152,6 +171,7 @@ public partial class App : Application
             // 退出流程里会静默跳过 ShutdownTools（工具的 OnClosed / 落盘全丢）—— 用启动时存下的引用。
             try { _mainViewModel?.ShutdownTools(); } catch { /* 退出流程忽略 */ }
             ToolConfigStore.FlushAll();
+            try { ShortcutHub.Shutdown(); } catch { /* 退出流程忽略 */ }
             Tray?.Dispose();
             Tray = null;
             _singleInstance?.Dispose();
@@ -172,6 +192,22 @@ public partial class App : Application
 
         var vm = new MainViewModel(tools);
         _mainViewModel = vm;   // 退出流程用（见 _mainViewModel 注释：不能靠 Application.MainWindow）
+
+        // 全局快捷键体系（v1.44.0）：引擎 + 汇总注册表注入 Core 的静态入口，
+        // 再把实现了 IShortcutProvider 的工具登记进去（秒表 / Kps / 录屏 / Live2D）。
+        // ⚠ 必须在建主窗口之前：工具可能在窗口出现前就想注册热键。
+        _shortcutEngine = new GlobalShortcutEngine();
+        ShortcutHub.Initialize(_shortcutEngine, vm.ShortcutRegistry);
+        vm.ShortcutRegistry.ReportProblem = (title, body) =>
+            NotificationCenter.Show(DefaultNotificationSettings,
+                new NotificationRequest(title, body, NotificationKind.Warning, "shortcuts"));
+        foreach (var tool in tools.OfType<IShortcutProvider>()) ShortcutHub.AddProvider(tool);
+        ShortcutHub.ApplyAll();
+
+        // 通知通道（v1.44.0）：应用内自绘小窗 + 托盘气泡。托盘要到下面才建，
+        // 所以 Windows 通道用一个「现取」的委托，托盘没就绪时它自己报告不可用，
+        // NotificationCenter 会自动退回应用内通知。
+        NotificationCenter.SetSinks(new InAppNotificationSink(), _trayNotificationSink);
 
         // 「打开方式」同步（v0.79.0）：Release 版开关开着就登记 / 刷新入口副本；关着（或 Debug 构建）
         // 就把 Windows 记住的旧登记清掉。只写 HKCU，失败不影响启动。

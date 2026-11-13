@@ -1,0 +1,407 @@
+<UserControl x:Class="YuLiangToolkit.Tools.Stopwatch.Views.StopwatchView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             xmlns:controls="clr-namespace:YuLiangToolkit.Core.Controls;assembly=YuLiangToolkit.Core"
+             xmlns:notify="clr-namespace:YuLiangToolkit.Core.Notifications;assembly=YuLiangToolkit.Core"
+             Background="Transparent">
+
+    <!-- 秒表（stopwatch）。
+         布局按 docs/dev/layout.md：Grid 撑满、左右两栏之间 core:PaneSplitter（可拖、自动记住），
+         设置卡片内部自己滚并挂 core:ScrollChaining；颜色全部走主题 token。 -->
+
+    <UserControl.Resources>
+        <!-- 主题资源名 → 画刷（状态圆点用；换主题跟着变） -->
+        <notify:ThemeBrushNameConverter x:Key="StringToBrush" />
+
+        <!-- 改键框样式（显式写在这里，不依赖 Core 的 Generic.xaml 隐式默认样式：
+             跨程序集的默认样式要靠 ThemeInfo，偶发不生效时整个框会看不见） -->
+        <Style x:Key="HotkeyBoxLocalStyle" TargetType="controls:HotkeyBox">
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="Background" Value="{DynamicResource InputBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="controls:HotkeyBox">
+                        <Border x:Name="Box"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                MinHeight="28">
+                            <Grid>
+                                <TextBlock Text="{Binding DisplayText, RelativeSource={RelativeSource TemplatedParent}}"
+                                           Margin="10,0,24,0" VerticalAlignment="Center" FontSize="12.5"
+                                           FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI"
+                                           Foreground="{TemplateBinding Foreground}"
+                                           TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="✕" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                           Margin="0,0,9,0" FontSize="10.5"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           IsHitTestVisible="False" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsCapturing" Value="True">
+                                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 声音下拉项：只显示 Name（SoundChoice 是 record，不加模板会显示成 SoundChoice { Id = ... }） -->
+        <DataTemplate x:Key="SoundChoiceTemplate">
+            <TextBlock Text="{Binding Name}" FontSize="12" />
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid Margin="28,22,28,26">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="320" />
+        </Grid.RowDefinitions>
+
+        <!-- ===================== 页头 ===================== -->
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="⏱️ 秒表" FontSize="21" FontWeight="SemiBold" />
+            <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                       Margin="0,5,0,0"
+                       Text="开始 / 暂停 / 停止 / 计次。三条快捷键可以自己设，在任何程序前面都能按；软件在后台时按快捷键会在屏幕角落弹通知，开始 / 暂停 / 停止三段声音各自可设。改键在右侧，也可以在「主页设置 → 快捷键」里统一改。" />
+            <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                       Margin="0,8,0,0" Text="{Binding ShortcutSummary}" />
+        </StackPanel>
+
+        <!-- ===================== 主区域 ===================== -->
+        <Grid Grid.Row="1" Margin="0,16,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="340" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="400" MinWidth="320" />
+            </Grid.ColumnDefinitions>
+
+            <!-- ===== 左：计时区 ===== -->
+            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="120" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- 状态行 -->
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="22,18,22,0">
+                        <Ellipse Width="9" Height="9" VerticalAlignment="Center"
+                                 Fill="{Binding StateColorKey, Converter={StaticResource StringToBrush}}" />
+                        <TextBlock Text="{Binding StateText}" FontSize="12.5" Margin="8,0,0,0"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </StackPanel>
+
+                    <!-- 大号数字 -->
+                    <TextBlock Grid.Row="1" Text="{Binding ElapsedText}" HorizontalAlignment="Center"
+                               Margin="22,10,22,4"
+                               FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI"
+                               FontSize="64" FontWeight="SemiBold"
+                               TextOptions.TextFormattingMode="Display" />
+
+                    <StackPanel Grid.Row="2" VerticalAlignment="Top">
+                        <WrapPanel HorizontalAlignment="Center" Margin="0,10,0,0">
+                            <Button Content="开始" Style="{StaticResource PrimaryButtonStyle}"
+                                    MinWidth="96" Height="38" Margin="0,0,10,0"
+                                    Command="{Binding StartCommand}"
+                                    ToolTip="开始计时（已经在走时不会重置）" />
+                            <Button Content="暂停" Style="{StaticResource SecondaryButtonStyle}"
+                                    MinWidth="96" Height="38" Margin="0,0,10,0"
+                                    Command="{Binding PauseCommand}"
+                                    ToolTip="暂停（时间保留，点开始接着走）" />
+                            <Button Content="停止" Style="{StaticResource SecondaryButtonStyle}"
+                                    MinWidth="96" Height="38" Margin="0,0,10,0"
+                                    Command="{Binding StopCommand}"
+                                    ToolTip="停止并归零（同时清空计次）" />
+                            <Button Content="计次" Style="{StaticResource SecondaryButtonStyle}"
+                                    MinWidth="96" Height="38"
+                                    Command="{Binding LapCommand}"
+                                    ToolTip="记一次分段" />
+                        </WrapPanel>
+
+                        <!-- 计次列表 -->
+                        <Grid Margin="22,18,22,0"
+                              Visibility="{Binding Cfg.ShowLaps, Converter={StaticResource BoolToVis}}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <Grid Grid.Row="0" Margin="0,0,0,6">
+                                <TextBlock Text="计次" FontSize="12.5" FontWeight="SemiBold"
+                                           VerticalAlignment="Center" />
+                                <Button Content="清空" Style="{StaticResource SecondaryButtonStyle}"
+                                        HorizontalAlignment="Right" Padding="12,3" FontSize="11.5"
+                                        Command="{Binding ResetLapsCommand}" />
+                            </Grid>
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          core:ScrollChaining.Enabled="True" MaxHeight="260">
+                                <StackPanel>
+                                    <ItemsControl ItemsSource="{Binding Laps}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="{DynamicResource InputBackgroundBrush}"
+                                                        CornerRadius="{DynamicResource ControlCornerRadius}"
+                                                        Padding="12,7" Margin="0,0,0,5">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="56" />
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" Text="{Binding IndexText}"
+                                                                   FontSize="11.5"
+                                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding Total}"
+                                                                   FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI"
+                                                                   FontSize="13" />
+                                                        <TextBlock Grid.Column="2" Text="{Binding SplitText}"
+                                                                   FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI"
+                                                                   FontSize="11.5"
+                                                                   Foreground="{DynamicResource AccentBrush}" />
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <TextBlock Text="还没有计次。计时中随时点「计次」记一段。"
+                                               FontSize="11.5" Margin="2,6,0,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               Visibility="{Binding HasLaps, Converter={StaticResource InverseBoolToVis}}" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- 状态条 -->
+                    <TextBlock Grid.Row="3" Text="{Binding StatusText}" FontSize="11"
+                               Margin="22,0,22,14" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                </Grid>
+            </Border>
+
+            <!-- 分隔条 -->
+            <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                               Key="stopwatch.计时与设置" />
+
+            <!-- ===== 右：设置 ===== -->
+            <Border Grid.Column="2" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="120" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="设置" FontSize="14" FontWeight="SemiBold"
+                               Margin="18,16,18,10" />
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  core:ScrollChaining.Enabled="True">
+                        <StackPanel Margin="18,0,18,18">
+
+                            <!-- ① 快捷键 -->
+                            <TextBlock Text="快捷键" FontSize="12.5" FontWeight="SemiBold" Margin="0,0,0,4" />
+                            <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap" Margin="0,0,0,10"
+                                       Text="点一下框就能改（同时按住组合键，全部松开后确定；Esc 取消）。想要「Ctrl+K 然后 Ctrl+C」这种两步的，去「主页设置 → 快捷键」点「拆分」。" />
+
+                            <CheckBox Content="启用这个工具的快捷键" Style="{StaticResource CheckBoxStyle}"
+                                      IsChecked="{Binding Cfg.ShortcutsEnabled, Mode=TwoWay}"
+                                      ToolTip="关掉后三条都不生效（配置保留）" />
+
+                            <!-- 开始 -->
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="88" />
+                                    <ColumnDefinition Width="*" MinWidth="140" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="开始 / 继续" FontSize="12"
+                                           VerticalAlignment="Center" />
+                                <controls:HotkeyBox Style="{StaticResource HotkeyBoxLocalStyle}" Grid.Column="1" x:Name="StartBox" Height="28" VerticalAlignment="Center"
+                                                ComboText="{Binding Cfg.Start, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                IsCaptureEnabled="{Binding Cfg.ShortcutsEnabled}" />
+                                <CheckBox Grid.Column="2" Content="启用" Style="{StaticResource CheckBoxStyle}"
+                                          Margin="10,0,0,0" VerticalAlignment="Center"
+                                          IsChecked="{Binding Cfg.StartEnabled, Mode=TwoWay}" />
+                                <Button Grid.Column="3" Content="清空" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="8,0,0,0" Padding="10,3" FontSize="11.5"
+                                        Command="{Binding ClearShortcutCommand}" CommandParameter="start" />
+                            </Grid>
+
+                            <!-- 暂停 -->
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="88" />
+                                    <ColumnDefinition Width="*" MinWidth="140" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="暂停" FontSize="12" VerticalAlignment="Center" />
+                                <controls:HotkeyBox Style="{StaticResource HotkeyBoxLocalStyle}" Grid.Column="1" Height="28" VerticalAlignment="Center"
+                                                ComboText="{Binding Cfg.Pause, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                IsCaptureEnabled="{Binding Cfg.ShortcutsEnabled}" />
+                                <CheckBox Grid.Column="2" Content="启用" Style="{StaticResource CheckBoxStyle}"
+                                          Margin="10,0,0,0" VerticalAlignment="Center"
+                                          IsChecked="{Binding Cfg.PauseEnabled, Mode=TwoWay}" />
+                                <Button Grid.Column="3" Content="清空" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="8,0,0,0" Padding="10,3" FontSize="11.5"
+                                        Command="{Binding ClearShortcutCommand}" CommandParameter="pause" />
+                            </Grid>
+
+                            <!-- 停止 -->
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="88" />
+                                    <ColumnDefinition Width="*" MinWidth="140" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="停止并归零" FontSize="12" VerticalAlignment="Center" />
+                                <controls:HotkeyBox Style="{StaticResource HotkeyBoxLocalStyle}" Grid.Column="1" Height="28" VerticalAlignment="Center"
+                                                ComboText="{Binding Cfg.Stop, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                IsCaptureEnabled="{Binding Cfg.ShortcutsEnabled}" />
+                                <CheckBox Grid.Column="2" Content="启用" Style="{StaticResource CheckBoxStyle}"
+                                          Margin="10,0,0,0" VerticalAlignment="Center"
+                                          IsChecked="{Binding Cfg.StopEnabled, Mode=TwoWay}" />
+                                <Button Grid.Column="3" Content="清空" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="8,0,0,0" Padding="10,3" FontSize="11.5"
+                                        Command="{Binding ClearShortcutCommand}" CommandParameter="stop" />
+                            </Grid>
+
+                            <!-- 分步等待 -->
+                            <Grid Margin="0,14,0,0"
+                                  Visibility="{Binding Cfg.AnySequence, Converter={StaticResource BoolToVis}}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="分步等待" FontSize="11.5" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <Slider Grid.Column="1" Margin="10,0,0,0" Minimum="500" Maximum="5000"
+                                        SmallChange="100" LargeChange="500"
+                                        Value="{Binding Cfg.SequenceTimeoutMs, Mode=TwoWay}"
+                                        Style="{StaticResource SliderStyle}" />
+                                <TextBlock Grid.Column="2" FontSize="11.5" MinWidth="52" TextAlignment="Right"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           Text="{Binding Cfg.SequenceTimeoutMs, StringFormat={}{0}ms}" />
+                            </Grid>
+
+                            <!-- ② 声音 -->
+                            <TextBlock Text="提示音" FontSize="12.5" FontWeight="SemiBold" Margin="0,20,0,4" />
+                            <CheckBox Content="静音（保留选择，只是不播）" Style="{StaticResource CheckBoxStyle}"
+                                      IsChecked="{Binding Cfg.Muted, Mode=TwoWay}" />
+
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="70" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="开始" FontSize="12" VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1" Style="{StaticResource ComboBoxStyle}"
+                                          ItemsSource="{Binding SoundOptions}"
+                                          ItemTemplate="{StaticResource SoundChoiceTemplate}"
+                                          SelectedItem="{Binding SelectedStartSound, Mode=TwoWay}" />
+                                <Button Grid.Column="2" Content="试听" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="8,0,0,0" Padding="10,3" FontSize="11.5"
+                                        Command="{Binding PlaySoundTestCommand}" CommandParameter="start" />
+                                <Button Grid.Column="3" Content="…" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="6,0,0,0" Padding="10,3" FontSize="11.5"
+                                        Command="{Binding BrowseSoundCommand}" CommandParameter="start"
+                                        ToolTip="选一个 .wav 文件" />
+                            </Grid>
+
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="70" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="暂停" FontSize="12" VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1" Style="{StaticResource ComboBoxStyle}"
+                                          ItemsSource="{Binding SoundOptions}"
+                                          ItemTemplate="{StaticResource SoundChoiceTemplate}"
+                                          SelectedItem="{Binding SelectedPauseSound, Mode=TwoWay}" />
+                                <Button Grid.Column="2" Content="试听" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="8,0,0,0" Padding="10,3" FontSize="11.5"
+                                        Command="{Binding PlaySoundTestCommand}" CommandParameter="pause" />
+                                <Button Grid.Column="3" Content="…" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="6,0,0,0" Padding="10,3" FontSize="11.5"
+                                        Command="{Binding BrowseSoundCommand}" CommandParameter="pause"
+                                        ToolTip="选一个 .wav 文件" />
+                            </Grid>
+
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="70" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="停止" FontSize="12" VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1" Style="{StaticResource ComboBoxStyle}"
+                                          ItemsSource="{Binding SoundOptions}"
+                                          ItemTemplate="{StaticResource SoundChoiceTemplate}"
+                                          SelectedItem="{Binding SelectedStopSound, Mode=TwoWay}" />
+                                <Button Grid.Column="2" Content="试听" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="8,0,0,0" Padding="10,3" FontSize="11.5"
+                                        Command="{Binding PlaySoundTestCommand}" CommandParameter="stop" />
+                                <Button Grid.Column="3" Content="…" Style="{StaticResource SecondaryButtonStyle}"
+                                        Margin="6,0,0,0" Padding="10,3" FontSize="11.5"
+                                        Command="{Binding BrowseSoundCommand}" CommandParameter="stop"
+                                        ToolTip="选一个 .wav 文件" />
+                            </Grid>
+                            <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Text="自定义只支持 .wav（系统播放接口的限制）。点「…」选文件，选完会在下拉框里多出一项。" />
+
+                            <!-- ③ 显示 -->
+                            <TextBlock Text="显示" FontSize="12.5" FontWeight="SemiBold" Margin="0,20,0,4" />
+                            <CheckBox Content="显示百分秒（关掉 = 只到秒）" Style="{StaticResource CheckBoxStyle}"
+                                      IsChecked="{Binding Cfg.ShowMilliseconds, Mode=TwoWay}" />
+                            <CheckBox Content="显示计次列表" Style="{StaticResource CheckBoxStyle}"
+                                      Margin="0,8,0,0"
+                                      IsChecked="{Binding Cfg.ShowLaps, Mode=TwoWay}" />
+
+                            <!-- ④ 通知（这个工具自己的一份） -->
+                            <TextBlock Text="通知" FontSize="12.5" FontWeight="SemiBold" Margin="0,20,0,4" />
+                            <TextBlock FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap" Margin="0,0,0,8"
+                                       Text="只在「软件不在前台时按快捷键」才弹，正在看这个页面时不打扰。" />
+                            <notify:NotificationSettingsView DataContext="{Binding Cfg.Notification}" />
+
+                            <!-- ⑤ 日志 -->
+                            <TextBlock Text="运行日志" FontSize="12.5" FontWeight="SemiBold" Margin="0,20,0,4" />
+                            <TextBox Text="{Binding LogText, Mode=OneWay}"
+                                     Style="{StaticResource LogTextBoxStyle}" Height="110"
+                                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                     core:ScrollChaining.Enabled="True" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

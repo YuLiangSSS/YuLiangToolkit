@@ -1,4 +1,6 @@
+using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Threading;
 
 namespace YuLiangToolkit.App.Views;
@@ -27,12 +29,20 @@ public partial class ShellSettingsView : UserControl
 
         var tail = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("YLT_SETTINGS_TAIL"));
         var scrollText = Environment.GetEnvironmentVariable("YLT_SETTINGS_SCROLL");
-        if (!tail && string.IsNullOrWhiteSpace(scrollText)) return;
+        var anchor = Environment.GetEnvironmentVariable("YLT_SETTINGS_ANCHOR");
+        if (!tail && string.IsNullOrWhiteSpace(scrollText) && string.IsNullOrWhiteSpace(anchor)) return;
 
         Loaded += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
         {
             if (Content is not ScrollViewer scroller) return;
             scroller.UpdateLayout();
+
+            // YLT_SETTINGS_ANCHOR=快捷键：滚到含这块文字的区块顶部（截图验收按标题定位，比猜像素稳）
+            if (!string.IsNullOrWhiteSpace(anchor) && FindAnchorOffset(scroller, anchor) is { } anchorOffset)
+            {
+                scroller.ScrollToVerticalOffset(anchorOffset);
+                return;
+            }
 
             if (tail)
             {
@@ -49,5 +59,45 @@ public partial class ShellSettingsView : UserControl
                     : offset);
             }
         }));
+    }
+
+    /// <summary>
+    /// 找到含指定文字的区块在滚动内容里的纵向偏移（开发调试用，截图验收按标题定位）。
+    /// <para>找不到返回 null（调用方按原逻辑继续）。</para>
+    /// </summary>
+    private static double? FindAnchorOffset(ScrollViewer scroller, string text)
+    {
+        if (scroller.Content is not Visual content) return null;
+
+        var match = FindTextBlock(content, text);
+        if (match is null) return null;
+
+        try
+        {
+            var position = match.TransformToAncestor(content).Transform(new Point(0, 0));
+            return Math.Max(0, position.Y - 8);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>深度优先找第一个包含指定文字的 <see cref="TextBlock"/>。</summary>
+    private static TextBlock? FindTextBlock(DependencyObject root, string text)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is TextBlock block && block.Text?.Contains(text, StringComparison.Ordinal) == true)
+            {
+                return block;
+            }
+
+            if (FindTextBlock(child, text) is { } found) return found;
+        }
+
+        return null;
     }
 }

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「秒表」：开始 / 暂停 / 停止 / 计次 + 全局快捷键（可在主页设置里改键、拆分合并、禁用）
+       + 后台按快捷键时按各工具自己的通知设置弹提醒 + 三段独立提示音。
+       计时状态机是纯逻辑（StopwatchSession），自检可任意跳时间断言；不引第三方 NuGet 包。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.Stopwatch</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.Stopwatch</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>
