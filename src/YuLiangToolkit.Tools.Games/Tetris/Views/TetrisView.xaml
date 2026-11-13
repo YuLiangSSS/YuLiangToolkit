@@ -242,7 +242,7 @@
                     <RowDefinition Height="{Binding RoomPanelVisible, Converter={StaticResource BoolToPaneLength}, ConverterParameter=286}"
                                    MinHeight="{Binding RoomPanelVisible, Converter={StaticResource BoolToPaneLength}, ConverterParameter=196}" />
                     <RowDefinition Height="{Binding RoomPanelVisible, Converter={StaticResource BoolToPaneLength}, ConverterParameter=12}" />
-                    <RowDefinition Height="188" MinHeight="140" />
+                    <RowDefinition Height="250" MinHeight="140" />
                 </Grid.RowDefinitions>
 
                 <!-- ===== 分数 / 预览 =====
@@ -488,14 +488,32 @@
                                       IsChecked="{Binding Cfg.ShowGhost}" Style="{StaticResource CheckBoxStyle}" />
                             <CheckBox Content="单人模式：和电脑对战" Margin="0,7,0,0"
                                       IsChecked="{Binding SoloAiEnabled}" Style="{StaticResource CheckBoxStyle}"
-                                      ToolTip="勾上后开局会另起一条电脑蛇（电脑用当前难度），右侧显示它的棋盘" />
+                                      ToolTip="勾上后开局会另起一块电脑的棋盘（电脑用当前难度），右侧显示它的棋盘" />
+                            <CheckBox Content="单人 vs 电脑：垃圾行互攻" Margin="0,7,0,0"
+                                      IsChecked="{Binding SoloGarbageMode}" Style="{StaticResource CheckBoxStyle}"
+                                      ToolTip="双方消 2 / 3 / 4 行分别给对方塞 1 / 2 / 4 行垃圾行，谁先顶死谁输" />
+                            <TextBlock Text="{Binding SoloGarbageHint}" FontSize="10" TextWrapping="Wrap"
+                                       Margin="22,3,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
 
-                            <TextBlock Text="电脑难度" FontSize="11" Margin="0,8,0,0"
+                            <TextBlock Text="电脑难度（越高推算越多块）" FontSize="11" Margin="0,8,0,0"
                                        Foreground="{DynamicResource TextSecondaryBrush}" />
                             <ComboBox Style="{StaticResource ComboBoxStyle}" Margin="0,4,0,0"
                                       DisplayMemberPath="Label"
                                       ItemsSource="{Binding AiDifficultyOptions}"
                                       SelectedItem="{Binding SelectedAiDifficulty}" />
+                            <TextBlock Text="{Binding AiDifficultyHint}" FontSize="10" TextWrapping="Wrap"
+                                       Margin="0,4,0,0" Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                            <Grid Margin="0,10,0,0">
+                                <TextBlock Text="电脑出手间隔" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <TextBlock Text="{Binding AiSpeedText}" FontSize="11" HorizontalAlignment="Right"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Grid>
+                            <Slider Minimum="{Binding AiMoveIntervalMin}" Maximum="{Binding AiMoveIntervalMax}"
+                                    SmallChange="20" LargeChange="200" TickFrequency="10" IsSnapToTickEnabled="True"
+                                    Margin="0,6,0,0" Value="{Binding AiMoveIntervalMs}" Style="{StaticResource SliderStyle}"
+                                    ToolTip="电脑每落一块至少隔多久（30 ~ 2000 毫秒）；拖到最后也不会一块接一块刷屏" />
 
                             <TextBlock Text="预览块数 / 暂存格数" FontSize="11" Margin="0,10,0,0"
                                        Foreground="{DynamicResource TextSecondaryBrush}" />

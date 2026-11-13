@@ -116,8 +116,8 @@ public sealed partial class TetrisViewModel
     /// <summary>联机 · 各自计分。</summary>
     public bool IsScoreMode => _playMode == TetrisPlayMode.NetScore;
 
-    /// <summary>垃圾行相关文案只在互攻模式显示。</summary>
-    public bool GarbageScoreVisible => IsGarbageMode;
+    /// <summary>垃圾行相关文案只在互攻模式显示（联机互攻，或单人 vs 电脑勾了互攻）。</summary>
+    public bool GarbageScoreVisible => IsGarbageMode || SoloGarbageActive;
 
     // 三个单选框的桥接属性（XAML 直接绑 IsChecked，点一下就切模式）
     public bool SoloModeIsChecked
@@ -248,15 +248,17 @@ public sealed partial class TetrisViewModel
         }
     }
 
-    /// <summary>自己这边的垃圾行提示（只在互攻模式显示）。</summary>
+    /// <summary>自己这边的垃圾行提示（互攻模式 / 单人互攻时显示）。</summary>
     public string MyGarbageText
     {
         get
         {
-            if (!IsGarbageMode) return "";
+            if (!GarbageScoreVisible) return "";
             var parts = new List<string>();
             if (_engine.PendingGarbage > 0) parts.Add($"即将被塞 {_engine.PendingGarbage} 行垃圾");
             if (_engine.GarbageSent > 0) parts.Add($"已送出 {_engine.GarbageSent} 行");
+            if (SoloGarbageActive && _soloAiEngine is { PendingGarbage: > 0 } ai)
+                parts.Add($"电脑欠 {ai.PendingGarbage} 行");
             return string.Join(" · ", parts);
         }
     }

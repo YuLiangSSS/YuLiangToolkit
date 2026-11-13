@@ -67,6 +67,18 @@ public sealed class TetrisConfig : ToolConfig
         set => Set(ref _soloAiEnabled, value);
     }
 
+    private bool _soloGarbageMode;
+
+    /// <summary>
+    /// 单人 vs 电脑是否也打<b>垃圾行互攻</b>：双方消 2/3/4 行就给对方塞 1/2/4 行。
+    /// 默认关（和以前一样各玩各的），勾上之后才和电脑互相塞垃圾、谁先顶死谁输。
+    /// </summary>
+    public bool SoloGarbageMode
+    {
+        get => _soloGarbageMode;
+        set => Set(ref _soloGarbageMode, value);
+    }
+
     private int _previewSlots = 3;
 
     /// <summary>预览块数（1~8）。</summary>
@@ -178,11 +190,33 @@ public sealed class TetrisConfig : ToolConfig
 
     private string _aiDifficulty = "normal";
 
-    /// <summary>电脑难度：beginner / normal / hard / master。</summary>
+    /// <summary>电脑难度：beginner / normal / hard / master / grandmaster / legend（见 <see cref="TetrisAiLevels"/>）。</summary>
     public string AiDifficulty
     {
         get => _aiDifficulty;
         set => Set(ref _aiDifficulty, string.IsNullOrWhiteSpace(value) ? "normal" : value.Trim());
+    }
+
+    /// <summary>AI 落子间隔下限 / 上限（毫秒）。下限给「想快也快不了多少」，上限给「想看它慢慢想」。</summary>
+    public const int MinAiMoveIntervalMs = 30;
+
+    /// <summary>AI 落子间隔上限（毫秒）。</summary>
+    public const int MaxAiMoveIntervalMs = 2000;
+
+    /// <summary>AI 落子间隔的默认值（毫秒）：和普通难度打起来差不多的手感，不会一块接一块刷屏。</summary>
+    public const int DefaultAiMoveIntervalMs = 520;
+
+    private int _aiMoveIntervalMs = DefaultAiMoveIntervalMs;
+
+    /// <summary>
+    /// AI 每落一块之间至少隔多久（毫秒，30 ~ 2000）。
+    /// <para>以前 AI 的定时器根本没设间隔（<c>DispatcherTimer</c> 默认 0ms），一帧就能落一块，
+    /// 看起来像「CPU 多快它就多快」。现在固定按这个值限速，难度只管聪不聪明、不管快不快。</para>
+    /// </summary>
+    public int AiMoveIntervalMs
+    {
+        get => _aiMoveIntervalMs;
+        set => Set(ref _aiMoveIntervalMs, Math.Clamp(value, MinAiMoveIntervalMs, MaxAiMoveIntervalMs));
     }
 
     private string _lastNetMode = "garbage";

@@ -153,11 +153,12 @@ public sealed partial class TetrisViewModel : ToolViewModelBase
 
     /// <summary>遮罩上的提示行。</summary>
     public string OverlayHint => _engine.IsGameOver
-        ? $"得分 {_engine.Score} · 消行 {_engine.Lines} · 等级 {_engine.Level}；按 R 或点「重新开始」再来一局"
+        ? _soloOutcome.Length > 0
+            ? _soloOutcome + "；按 R 或点「重新开始」再来一局"
+            : $"得分 {_engine.Score} · 消行 {_engine.Lines} · 等级 {_engine.Level}；按 R 或点「重新开始」再来一局"
         : _isPaused
             ? "按 Esc / P 或点「继续」回到游戏"
             : "按任意方向键或点「开始游戏」（←→ 移动 · ↑ 旋转 · 空格 硬降）";
-
     /// <summary>暂停按钮上的字。</summary>
     public string PauseButtonText => _isPaused ? "继续" : "暂停";
 
@@ -203,7 +204,6 @@ public sealed partial class TetrisViewModel : ToolViewModelBase
         UpdateTimer();
         OnPropertyChanged(nameof(PauseButtonText));
     }
-
     /// <summary>左移。</summary>
     public void MoveLeft()
     {
@@ -329,7 +329,11 @@ public sealed partial class TetrisViewModel : ToolViewModelBase
         OnPropertyChanged(nameof(NextPieces));
         OnPropertyChanged(nameof(HeldPieces));
         OnPropertyChanged(nameof(ComboText));
+        OnPropertyChanged(nameof(MyGarbageText));
         NotifyOverlay();
+
+        // 电脑那份棋盘也跟着重开（勾着「单人 vs 电脑」时）
+        ResetSoloAiEngine();
 
         if (autoStart) BeginFalling();
         else UpdateTimer();
@@ -344,7 +348,7 @@ public sealed partial class TetrisViewModel : ToolViewModelBase
         StatusText = "进行中";
         RestartFallTimer();
         StartAiLoop();          // 联机模式下电脑对手开始自动落子（单人模式里是空操作）
-        StartSoloAiIfRunning(); // 单人 vs 电脑：另起一个引擎由 AI 操控
+        UpdateSoloAiTimer();    // 单人 vs 电脑：电脑那份棋盘接着跑
     }
 
     /// <summary>按键类操作的前置检查：遮罩没关就先开局，暂停中不动。</summary>
@@ -407,6 +411,9 @@ public sealed partial class TetrisViewModel : ToolViewModelBase
 
         if (_comboText.Length > 0) Log($"消除 {result.LinesCleared} 行 +{result.ScoreGained}（等级 {result.Level}）");
 
+        // 单人 vs 电脑：互攻模式下把垃圾行转给电脑，并刷新右侧棋盘
+        AfterLockForSoloAi(result);
+
         if (IsNetMode) PublishNetState();
     }
 
@@ -426,6 +433,9 @@ public sealed partial class TetrisViewModel : ToolViewModelBase
 
         StatusText = record ? $"游戏结束 · 新纪录 {_engine.Score} 分！" : $"游戏结束 · {_engine.Score} 分";
         Log($"游戏结束：{_engine.Score} 分 · 消行 {_engine.Lines} · 等级 {_engine.Level}{(record ? "（新纪录）" : "")}");
+
+        // 单人 vs 电脑：自己顶死了 = 这局输给电脑（对手那块棋盘跟着停，文案最后覆盖结果）
+        if (SoloAiActive) EndSoloAiMatch(playerWon: false);
     }
 
     private void RefreshBoard()
@@ -457,10 +467,16 @@ public sealed partial class TetrisViewModel : ToolViewModelBase
         {
             _fallTimer.Interval = FallInterval;
             if (!_fallTimer.IsEnabled) _fallTimer.Start();
-            return;
+        }
+        else if (_fallTimer.IsEnabled)
+        {
+            _fallTimer.Stop();
         }
 
-        if (_fallTimer.IsEnabled) _fallTimer.Stop();
+        // 电脑那边跟着一起停 / 起（不然暂停时它还在偷偷落子，切走回来看它堆满了）
+        UpdateSoloAiTimer();
+        if (shouldRun && _aiEnabled) StartAiLoop();
+        else StopAiLoop();
     }
 
     private void RestartFallTimer()
@@ -474,6 +490,19 @@ public sealed partial class TetrisViewModel : ToolViewModelBase
     {
         _fallTimer.Stop();
         _fallTimer.Tick -= OnFallTick;
+
+        if (_soloAiTimer is not null)
+        {
+            _soloAiTimer.Stop();
+            _soloAiTimer.Tick -= OnSoloAiTick;
+        }
+
+        if (_aiTimer is not null)
+        {
+            _aiTimer.Stop();
+            _aiTimer.Tick -= OnAiTick;
+        }
+
         base.OnClosed();
     }
 

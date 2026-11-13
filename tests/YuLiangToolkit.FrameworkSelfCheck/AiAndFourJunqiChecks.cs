@@ -363,33 +363,34 @@ internal static class AiAndFourJunqiChecks
 
     private static void CheckTetrisAi(CheckFn check)
     {
+        // 六档都能在当前棋盘上算出落点
         var ok = true;
         var detail = "";
-        foreach (var difficulty in AiDifficulties.All)
+        foreach (var level in TetrisAiLevels.All)
         {
             var engine = new TetrisEngine(new Random(9));
             engine.Reset(1, 9);
-            var plan = TetrisAi.ChoosePlan(engine, difficulty, false, new Random(2));
+            var plan = TetrisAi.ChoosePlan(engine, level, false, new Random(2));
             if (plan is null)
             {
                 ok = false;
-                detail = $"{difficulty} 没算出落点";
+                detail = $"{level} 没算出落点";
                 break;
             }
         }
-        check("[俄罗斯方块 AI] 四档难度都能算出落点", ok, detail);
+        check("[俄罗斯方块 AI] 六档难度都能算出落点", ok, detail);
 
         // 空棋盘：AI 应该把方块放到靠底的位置（不会悬空）
         var empty = new TetrisEngine(new Random(3));
         empty.Reset(1, 3);
-        var plan2 = TetrisAi.ChoosePlan(empty, AiDifficulty.Master, false, new Random(1));
+        var plan2 = TetrisAi.ChoosePlan(empty, TetrisAiLevel.Master, false, new Random(1));
         check("[俄罗斯方块 AI] 空棋盘上算出的落点可用（硬降后不顶死）",
             plan2 is not null, plan2 is not null ? $"rot={plan2.Value.Rotation} x={plan2.Value.X}" : "没算");
 
         // 互攻模式：优先消 4 行（评分里 4 行有额外加成）
         var garbage = new TetrisEngine(new Random(4));
         garbage.Reset(1, 4);
-        var garbagePlan = TetrisAi.ChoosePlan(garbage, AiDifficulty.Master, true, new Random(1));
+        var garbagePlan = TetrisAi.ChoosePlan(garbage, TetrisAiLevel.Master, true, new Random(1));
         check("[俄罗斯方块 AI] 互攻模式也算得出落点（优先消多行）",
             garbagePlan is not null, "");
 
@@ -401,7 +402,55 @@ internal static class AiAndFourJunqiChecks
             for (var x = 0; x < TetrisEngine.Width; x++) dead.SetCell(x, y, TetrominoKind.Garbage);
         }
         check("[俄罗斯方块 AI] 棋盘顶死时不硬算（返回 null）",
-            TetrisAi.ChoosePlan(dead, AiDifficulty.Normal, false) is null, "");
+            TetrisAi.ChoosePlan(dead, TetrisAiLevel.Normal, false) is null, "");
+
+        // 六档：名字 / 说明 / 键往返都不缺
+        check("[俄罗斯方块 AI] 六档难度齐全，名字与说明都有，键能往返",
+            TetrisAiLevels.All.Count == 6
+            && TetrisAiLevels.All.Select(TetrisAiLevels.DisplayName).Distinct().Count() == 6
+            && TetrisAiLevels.All.All(l => TetrisAiLevels.Description(l).Length > 0)
+            && TetrisAiLevels.All.All(l => TetrisAiLevels.Parse(TetrisAiLevels.ToKey(l)) == l)
+            && TetrisAiLevels.Parse("nonsense") == TetrisAiLevel.Normal,
+            string.Join(" / ", TetrisAiLevels.All.Select(TetrisAiLevels.DisplayName)));
+
+        // 档位越高推算越多块（这才是「加难度」的实际含义）；旧的四档键不能被认错
+        check("[俄罗斯方块 AI] 档位越高推算越多块（1 → 4）",
+            TetrisAiLevels.LookaheadPieces(TetrisAiLevel.Beginner) == 1
+            && TetrisAiLevels.LookaheadPieces(TetrisAiLevel.Hard) == 1
+            && TetrisAiLevels.LookaheadPieces(TetrisAiLevel.Master) == 2
+            && TetrisAiLevels.LookaheadPieces(TetrisAiLevel.Grandmaster) == 3
+            && TetrisAiLevels.LookaheadPieces(TetrisAiLevel.Legend) == 4,
+            string.Join(" / ", TetrisAiLevels.All.Select(l => TetrisAiLevels.LookaheadPieces(l))));
+
+        check("[俄罗斯方块 AI] 旧配置的四个难度键仍然认得出（升级后老用户设置不丢）",
+            TetrisAiLevels.Parse("beginner") == TetrisAiLevel.Beginner
+            && TetrisAiLevels.Parse("normal") == TetrisAiLevel.Normal
+            && TetrisAiLevels.Parse("hard") == TetrisAiLevel.Hard
+            && TetrisAiLevels.Parse("master") == TetrisAiLevel.Master, "");
+
+        // 按方案落子能走通（应用层抽出来之后两边共用这一份）
+        var runnable = new TetrisEngine(new Random(21));
+        runnable.Reset(1, 21);
+        var runPlan = TetrisAi.ChoosePlan(runnable, TetrisAiLevel.Legend, false, new Random(1));
+        var before = runnable.Current?.Kind;
+        var lockResult = runPlan is { } rp ? TetrisAi.ApplyPlan(runnable, rp) : default;
+        check("[俄罗斯方块 AI] 按方案真的能落一块，落完换下一块（不会卡住）",
+            runPlan is not null && before is not null && runnable.Current is not null
+            && !runnable.IsGameOver,
+            $"落完 {(lockResult.LinesCleared >= 0 ? "正常" : "异常")}，当前 {runnable.Current?.Kind}");
+
+        // 空棋盘上「传说」不该把自己玩死（多块推算不能把下一步算到顶死）
+        var survive = new TetrisEngine(new Random(33));
+        survive.Reset(1, 33);
+        for (var i = 0; i < 30; i++)
+        {
+            var step = TetrisAi.ChoosePlan(survive, TetrisAiLevel.Legend, false, new Random(i));
+            if (step is not { } chosenStep) break;
+            TetrisAi.ApplyPlan(survive, chosenStep);
+            if (survive.IsGameOver) break;
+        }
+        check("[俄罗斯方块 AI] 传说档连落 30 块不顶死（推算不会把自己坑死）",
+            !survive.IsGameOver, $"{(survive.IsGameOver ? "顶死了" : "活着")} · {survive.Lines} 行");
     }
 
     // ================================================================ 四国军棋
