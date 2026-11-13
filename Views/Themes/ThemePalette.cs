@@ -380,6 +380,8 @@ public static class ThemePaletteBuilder
             ["AccentBrush"] = Solid(accent),
             ["AccentHoverBrush"] = Solid(accentHover),
             ["AccentPressedBrush"] = Solid(accentPressed),
+            // 半透明强调色：日历「今天 / 选中」那格的淡底（实心强调色会压住第二行小字）
+            ["AccentSoftBrush"] = Solid(WithAlpha(accent, 0x38)),
             ["TextPrimaryBrush"] = Solid(glass ? Hex("#172033") : text),
             ["TextSecondaryBrush"] = Solid(glass ? Hex("#4E5B70") : secondary),
             ["FaintTextBrush"] = Solid(glass ? Hex("#7A8698") : faint),

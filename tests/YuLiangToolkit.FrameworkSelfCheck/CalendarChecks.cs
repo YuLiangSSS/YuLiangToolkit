@@ -22,6 +22,9 @@ internal static class CalendarChecks
         CheckMonthNavigation(assert);
         CheckKeyboardAndFormat(assert);
         CheckConfig(assert);
+        CheckLunar(assert);
+        CheckSolarTerms(assert);
+        CheckFestivals(assert);
     }
 
     private static void CheckToolMetadata(CheckFn check)
@@ -178,5 +181,118 @@ internal static class CalendarChecks
         config.MondayFirst = false;
         check("[日历] 关掉「周一起」后每周第一天变周日",
             config.FirstDayOfWeek == DayOfWeek.Sunday, config.FirstDayOfWeek.ToString());
+    }
+
+    // ---------------------------------------------------------------- 农历 / 节气 / 节日
+
+    private static void CheckLunar(CheckFn check)
+    {
+        // 已知锚点：2026-11-13 = 农历十月初五；2026-11-09 = 十月初一
+        var nov13 = LunarCalendar.FromSolar(new DateTime(2026, 11, 13));
+        check("[日历] 农历换算：2026-11-13 是农历十月初五",
+            nov13 is { Month: 10, Day: 5, IsLeapMonth: false } && nov13.Value.FullName == "十月初五",
+            nov13?.FullName ?? "null");
+
+        var nov09 = LunarCalendar.FromSolar(new DateTime(2026, 11, 9));
+        check("[日历] 农历换算：2026-11-09 是十月初一（格子里该显示月名「十月」）",
+            nov09 is { Month: 10, Day: 1 } && nov09.Value.ShortName == "十月",
+            nov09?.ShortName ?? "null");
+
+        var spring = LunarCalendar.FromSolar(new DateTime(2026, 2, 17));
+        check("[日历] 农历换算：2026 年春节（正月初一）是 2 月 17 日",
+            spring is { Month: 1, Day: 1 } && spring.Value.ShortName == "正月",
+            spring?.FullName ?? "null");
+
+        var mid = LunarCalendar.FromSolar(new DateTime(2026, 9, 25));
+        check("[日历] 农历换算：2026 年中秋（八月十五）是 9 月 25 日",
+            mid is { Month: 8, Day: 15 } && LunarCalendar.LunarFestival(new DateTime(2026, 9, 25)) == "中秋节",
+            mid?.FullName ?? "null");
+
+        var beforeRange = LunarCalendar.FromSolar(new DateTime(1899, 12, 31));
+        var afterRange = LunarCalendar.FromSolar(new DateTime(2101, 1, 1));
+        check("[日历] 超出 1900~2100 返回 null（不显示错农历）",
+            beforeRange is null && afterRange is null,
+            $"1899={beforeRange?.FullName ?? "null"} / 2101={afterRange?.FullName ?? "null"}");
+
+        // 一个月内农历日应该从十三递增（跨月时重置）
+        var days = Enumerable.Range(0, 30)
+            .Select(i => LunarCalendar.FromSolar(new DateTime(2026, 11, 1).AddDays(i)))
+            .Where(l => l is not null)
+            .Select(l => l!.Value.Day)
+            .ToList();
+        check("[日历] 连续 30 天都能算出农历日（不会出现空洞）",
+            days.Count == 30 && days.All(d => d is >= 1 and <= 30),
+            $"{days.Count} 天");
+    }
+
+    private static void CheckSolarTerms(CheckFn check)
+    {
+        // 2026 年 11 月：立冬 11/7、小雪 11/22（这两个是当年实际日期）
+        check("[日历] 节气：2026-11-07 是立冬",
+            LunarCalendar.SolarTerm(new DateTime(2026, 11, 7)) == "立冬",
+            LunarCalendar.SolarTerm(new DateTime(2026, 11, 7)));
+
+        check("[日历] 节气：2026-11-22 是小雪",
+            LunarCalendar.SolarTerm(new DateTime(2026, 11, 22)) == "小雪",
+            LunarCalendar.SolarTerm(new DateTime(2026, 11, 22)));
+
+        check("[日历] 节气：不是节气日的普通日期返回空（2026-11-13 不该有节气）",
+            LunarCalendar.SolarTerm(new DateTime(2026, 11, 13)) == "",
+            "[" + LunarCalendar.SolarTerm(new DateTime(2026, 11, 13)) + "]");
+
+        // 一年应该正好 24 个节气日
+        var year = 2026;
+        var count = 0;
+        for (var day = new DateTime(year, 1, 1); day.Year == year; day = day.AddDays(1))
+        {
+            if (LunarCalendar.SolarTerm(day).Length > 0) count++;
+        }
+
+        check("[日历] 一年正好 24 个节气日",
+            count == 24, count.ToString());
+
+        check("[日历] 每年都有春分 / 夏至 / 秋分 / 冬至（四个大节气不缺失）",
+            LunarCalendar.SolarTerm(new DateTime(2026, 3, 20)) == "春分"
+            && LunarCalendar.SolarTerm(new DateTime(2026, 6, 21)) == "夏至"
+            && LunarCalendar.SolarTerm(new DateTime(2026, 9, 23)) == "秋分"
+            && LunarCalendar.SolarTerm(new DateTime(2026, 12, 22)) == "冬至",
+            "春分 / 夏至 / 秋分 / 冬至");
+
+        check("[日历] 二十年前的年份也能算（2020 年立冬 11/7）",
+            LunarCalendar.SolarTerm(new DateTime(2020, 11, 7)) == "立冬",
+            LunarCalendar.SolarTerm(new DateTime(2020, 11, 7)));
+    }
+
+    private static void CheckFestivals(CheckFn check)
+    {
+        check("[日历] 公历节日：元旦 / 国庆 / 圣诞",
+            LunarCalendar.SolarFestival(new DateTime(2026, 1, 1)) == "元旦"
+            && LunarCalendar.SolarFestival(new DateTime(2026, 10, 1)) == "国庆节"
+            && LunarCalendar.SolarFestival(new DateTime(2026, 12, 25)) == "圣诞节",
+            "元旦 / 国庆节 / 圣诞节");
+
+        check("[日历] 农历节日：春节 / 端午 / 中秋",
+            LunarCalendar.LunarFestival(new DateTime(2026, 2, 17)) == "春节"
+            && LunarCalendar.LunarFestival(new DateTime(2026, 6, 19)) == "端午节"
+            && LunarCalendar.LunarFestival(new DateTime(2026, 9, 25)) == "中秋节",
+            "春节 / 端午节 / 中秋节");
+
+        check("[日历] 普通日子没有节日（返回空）",
+            LunarCalendar.SolarFestival(new DateTime(2026, 11, 13)) == ""
+            && LunarCalendar.LunarFestival(new DateTime(2026, 11, 13)) == "",
+            "空");
+
+        var festivalDay = LunarCalendar.DescribeShort(new DateTime(2026, 2, 17));
+        var termDay = LunarCalendar.DescribeShort(new DateTime(2026, 11, 7));
+        var plainDay = LunarCalendar.DescribeShort(new DateTime(2026, 11, 13));
+        check("[日历] 格子第二行优先显示节日 / 节气 / 农历",
+            festivalDay == "春节" && termDay == "立冬" && plainDay == "初五",
+            $"节日={festivalDay} 节气={termDay} 农历={plainDay}");
+
+        check("[日历] 悬停提示包含公历 / 农历 / 节气 / 节日",
+            LunarCalendar.DescribeFull(new DateTime(2026, 11, 7)).Contains("2026年11月7日")
+            && LunarCalendar.DescribeFull(new DateTime(2026, 11, 7)).Contains("农历")
+            && LunarCalendar.DescribeFull(new DateTime(2026, 11, 7)).Contains("立冬"),
+            LunarCalendar.DescribeFull(new DateTime(2026, 11, 7)));
     }
 }

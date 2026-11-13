@@ -60,6 +60,7 @@
 
     <SolidColorBrush x:Key="SeparatorBrush" Color="#4DFFFFFF" />
     <SolidColorBrush x:Key="AccentBrush" Color="#A08CFF" />
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="#38A08CFF" />
     <SolidColorBrush x:Key="AccentHoverBrush" Color="#BEAEFF" />
     <SolidColorBrush x:Key="AccentPressedBrush" Color="#7F6BEA" />
     <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F3F4FF" />

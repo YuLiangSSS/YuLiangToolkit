@@ -37,6 +37,15 @@ public sealed class CalendarConfig : ToolConfig
         set => Set(ref _showDaysOfOtherMonths, value);
     }
 
+    private bool _showLunar = true;
+
+    /// <summary>格子里第二行显示农历 / 节气 / 节日（关掉 = 只在节日、节气那天显示）。</summary>
+    public bool ShowLunar
+    {
+        get => _showLunar;
+        set => Set(ref _showLunar, value);
+    }
+
     /// <summary>当前每周第一天。</summary>
     [JsonIgnore]
     public DayOfWeek FirstDayOfWeek => MondayFirst ? DayOfWeek.Monday : DayOfWeek.Sunday;

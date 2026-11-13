@@ -67,61 +67,81 @@
                         </StackPanel>
                     </Grid>
 
-                    <!-- 表头 + 网格放在同一个容器里一起居中（否则表头顶在头部、网格沉在中间，看着脱节） -->
-                    <Grid Grid.Row="1" VerticalAlignment="Top" Margin="20,6,20,8">
-                        <StackPanel HorizontalAlignment="Center">
-                            <ItemsControl ItemsSource="{Binding WeekHeader}" HorizontalAlignment="Center"
-                                          Margin="0,0,0,4">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <UniformGrid Rows="1" />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding}" FontSize="11" Width="40" Margin="3,0"
-                                                   TextAlignment="Center"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                    <!-- 表头 + 网格：整块铺满可用区域（左右上下都撑开），格子按 7×6 均分，
+                         跟着窗口缩放自适应；不画灰底，只在悬停 / 选中 / 今天时给底色。 -->
+                    <Grid Grid.Row="1" Margin="16,4,16,6">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
 
-                            <ItemsControl ItemsSource="{Binding Cells}" HorizontalAlignment="Center">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <UniformGrid Columns="7" Rows="6" />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Button Click="OnDayClick" Focusable="False"
-                                                Width="40" Height="30" Padding="0" Margin="3,2"
-                                                Background="Transparent" BorderThickness="0"
-                                                HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                Cursor="Hand" ToolTip="{Binding ToolTip}"
-                                                Tag="{Binding Date}">
-                                            <Button.Template>
-                                                <ControlTemplate TargetType="Button">
-                                                    <Border x:Name="Cell"
-                                                            Background="{Binding BackgroundKey, Converter={StaticResource KeyToBrush}}"
-                                                            CornerRadius="4">
-                                                        <TextBlock Text="{Binding DayText}" FontSize="12.5"
-                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                        <!-- 星期表头：与下面 7 列严格对齐（同一个 * 均分方式） -->
+                        <ItemsControl Grid.Row="0" ItemsSource="{Binding WeekHeader}" Margin="0,0,0,2">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Rows="1" Columns="7" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontSize="11" Padding="0,2"
+                                               TextAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- 42 格：均分整块区域（Columns/Rows 都是 * 均分，格子随窗口变大变小） -->
+                        <ItemsControl Grid.Row="1" ItemsSource="{Binding Cells}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="7" Rows="6" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Click="OnDayClick" Focusable="False"
+                                            HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                            Padding="0" Margin="1"
+                                            Background="Transparent" BorderThickness="0"
+                                            Cursor="Hand" ToolTip="{Binding ToolTip}"
+                                            Tag="{Binding Date}">
+                                        <Button.Template>
+                                            <!-- 平常**没有任何底色**（透明），只有今天 / 选中 / 悬停才给颜色 -->
+                                            <ControlTemplate TargetType="Button">
+                                                <Border x:Name="Cell"
+                                                        Background="{Binding FillKey, Converter={StaticResource KeyToBrush}}"
+                                                        BorderBrush="{Binding BorderKey, Converter={StaticResource KeyToBrush}}"
+                                                        BorderThickness="{Binding BorderThickness}"
+                                                        CornerRadius="6" Margin="1"
+                                                        SnapsToDevicePixels="True">
+                                                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                        <TextBlock Text="{Binding DayText}"
+                                                                   FontSize="13"
+                                                                   HorizontalAlignment="Center"
                                                                    Foreground="{Binding ForegroundKey, Converter={StaticResource KeyToBrush}}" />
-                                                    </Border>
-                                                    <ControlTemplate.Triggers>
-                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                            <Setter TargetName="Cell" Property="Background"
-                                                                    Value="{DynamicResource CardHoverBackgroundBrush}" />
-                                                        </Trigger>
-                                                    </ControlTemplate.Triggers>
-                                                </ControlTemplate>
-                                            </Button.Template>
-                                        </Button>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </StackPanel>
+                                                        <!-- 第二行：节日 / 节气 / 农历 -->
+                                                        <TextBlock Text="{Binding SubText}"
+                                                                   FontSize="9.5"
+                                                                   Margin="0,1,0,0"
+                                                                   HorizontalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   Visibility="{Binding SubText, Converter={StaticResource EmptyToVisInverse}}"
+                                                                   Foreground="{Binding SubForegroundKey, Converter={StaticResource KeyToBrush}}" />
+                                                    </StackPanel>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Cell" Property="Background"
+                                                                Value="{DynamicResource CardHoverBackgroundBrush}" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </Grid>
 
                     <!-- 状态条 -->
@@ -164,6 +184,9 @@
                             <CheckBox Content="格子里显示上/下月的日期" Style="{StaticResource CheckBoxStyle}"
                                       Margin="0,10,0,0"
                                       IsChecked="{Binding Cfg.ShowDaysOfOtherMonths, Mode=TwoWay}" />
+                            <CheckBox Content="第二行显示农历 / 节气（关掉 = 只显示节日与节气）"
+                                      Style="{StaticResource CheckBoxStyle}" Margin="0,10,0,0"
+                                      IsChecked="{Binding Cfg.ShowLunar, Mode=TwoWay}" />
 
                             <!-- 键盘说明 -->
                             <TextBlock Text="键盘" FontSize="12.5" FontWeight="SemiBold" Margin="0,20,0,6" />

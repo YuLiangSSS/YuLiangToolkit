@@ -48,7 +48,7 @@ public static class ThemeManager
         // ---- 基础颜色 ----
         "WindowBackgroundBrush", "HeaderBackgroundBrush", "SidebarBackgroundBrush",
         "CardBackgroundBrush", "CardHoverBackgroundBrush", "BorderBrush", "SeparatorBrush",
-        "AccentBrush", "AccentHoverBrush", "AccentPressedBrush",
+        "AccentBrush", "AccentHoverBrush", "AccentPressedBrush", "AccentSoftBrush",
         "TextPrimaryBrush", "TextSecondaryBrush", "FaintTextBrush",
         "DangerBrush", "DangerPressedBrush", "SuccessBrush", "InputBackgroundBrush",
         // ---- 控件细节 ----
