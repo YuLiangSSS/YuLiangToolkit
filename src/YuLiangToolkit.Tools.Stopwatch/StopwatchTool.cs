@@ -72,8 +72,8 @@ public sealed class StopwatchTool : ITool, IShortcutProvider, IShortcutActionHos
     public string Name => "秒表";
 
     public string Description =>
-        "开始 / 暂停 / 停止 / 计次，大号数字好认；可设全局快捷键，在任何程序前面都能按，"
-        + "软件在后台时按快捷键会在屏幕角落弹通知；开始 / 暂停 / 停止三段声音各自可设。";
+        "开始 / 暂停 / 停止 / 计次，大号数字好认；可设全局快捷键（支持「Ctrl+K 然后 Ctrl+C」这种分步），"
+        + "在任何程序前面都能按，软件在后台时按快捷键会在屏幕角落弹通知；开始 / 暂停 / 停止三段声音各自可设。";
 
     public string EmojiIcon => "⏱️";
 
@@ -197,21 +197,6 @@ public sealed class StopwatchTool : ITool, IShortcutProvider, IShortcutActionHos
     }
 
     // ================================================================== IShortcutActionHost
-
-    /// <summary>分步快捷键两步之间等多久（用户可在秒表设置里调）。</summary>
-    public int SequenceTimeoutMs
-    {
-        get => Config.SequenceTimeoutMs;
-        set
-        {
-            if (Config.SequenceTimeoutMs == value) return;
-            Config.SequenceTimeoutMs = value;
-            if (!IsFullyConstructed) return;   // 构造期间只写配置，不回调
-            _viewModel.SyncShortcuts();
-            ShortcutHub.ApplyAll();
-            ShortcutsChanged?.Invoke(this, EventArgs.Empty);
-        }
-    }
 
     /// <summary>某条快捷键被按下（引擎在 UI 线程回调）。</summary>
     public void InvokeShortcut(string shortcutId)

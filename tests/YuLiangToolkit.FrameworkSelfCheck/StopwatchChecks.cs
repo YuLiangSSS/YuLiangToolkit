@@ -250,15 +250,11 @@ internal static class StopwatchChecks
         check("[秒表] 工具级总开关写回配置",
             !tool.Config.ShortcutsEnabled, tool.Config.ShortcutsEnabled.ToString());
 
-        // 序列超时
-        YuLiangToolkit.Core.Input.IShortcutActionHost host = tool;
-        host.SequenceTimeoutMs = 3500;
-        check("[秒表] 分步等待时长可调且写回配置",
-            tool.Config.SequenceTimeoutMs == 3500, tool.Config.SequenceTimeoutMs.ToString());
-
-        host.SequenceTimeoutMs = 99;
-        check("[秒表] 分步等待时长被夹到合法范围（500~5000）",
-            tool.Config.SequenceTimeoutMs == 500, tool.Config.SequenceTimeoutMs.ToString());
+        // 序列超时：v1.45.0 起改成全程序统一设置（存在 ShellConfig，不再是每个工具一份），
+        // 这里只验证「工具不再暴露 per-tool 超时」这件事本身，具体夹取/范围在 HotkeyChecks 里测。
+        check("[秒表] 分步等待时长不再是工具自己的设置（改由主页设置统一管）",
+            !(typeof(YuLiangToolkit.Core.Input.IShortcutActionHost).GetProperty("SequenceTimeoutMs") is not null),
+            "IShortcutActionHost 只有 InvokeShortcut");
 
         // AnySequence 计算属性
         check("[秒表] 有任一条是分步时 AnySequence 为真",
@@ -311,24 +307,16 @@ internal static class StopwatchChecks
     private static void CheckConfig(CheckFn check)
     {
         var config = new StopwatchConfig();
-        check("[秒表] 配置默认值：三条快捷键 / 三个声音 / 显示开关 / 通知 / 分步等待",
+        check("[秒表] 配置默认值：三条快捷键 / 三个声音 / 显示开关 / 通知",
             config.Start == "Ctrl+Alt+F9" && config.Pause == "F10" && config.Stop == "F11"
             && config.StartEnabled && config.PauseEnabled && config.StopEnabled && config.ShortcutsEnabled
             && !config.Muted && config.ShowMilliseconds && config.ShowLaps
-            && config.SequenceTimeoutMs == 2000
             && config.Notification is { Enabled: true, Mode: NotificationMode.InApp },
             $"{config.Start} / {config.Pause} / {config.Stop}");
 
         check("[秒表] 三个声音默认都设了（不是静音）",
             config.StartSound.Length > 0 && config.PauseSound.Length > 0 && config.StopSound.Length > 0,
             $"{config.StartSound} / {config.PauseSound} / {config.StopSound}");
-
-        config.SequenceTimeoutMs = 99999;
-        var clampedHigh = config.SequenceTimeoutMs;
-        config.SequenceTimeoutMs = 1;
-        check("[秒表] 分步等待时长夹在 500~5000（配置层也兜一次底）",
-            clampedHigh == 5000 && config.SequenceTimeoutMs == 500,
-            $"{clampedHigh} / {config.SequenceTimeoutMs}");
 
         // 配置往返（走临时数据根，不碰仓库 Config）
         var store = ToolConfigStore.For(StopwatchConfig.ToolId, "selfcheck.json");

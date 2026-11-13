@@ -64,9 +64,51 @@ public sealed class StopwatchViewModel : ToolViewModelBase
         RefreshSoundOptions();
         Refresh();
         SyncShortcuts();   // 把启用的快捷键注册上（程序启动时也走这里）
+        HookSequenceFeedback();   // 分步快捷键：第一步识别 / 按错 的提示
 
         Log("快捷键：" + string.Join(" · ", _tool.GetShortcuts().Select(s => $"{s.Name}={s.DisplayText}")));
         Log($"配置文件：{Cfg.FilePath}");
+    }
+
+    /// <summary>
+    /// 订阅引擎的分步反馈事件：按完第一步 → 弹「已识别第一步，等第二步」；
+    /// 第二步按错（那一下已被吞掉）→ 弹「未被识别的快捷键：…」。
+    ///
+    /// <para>为什么由工具来弹：提示的角落 / 通道属于「是哪个工具在等第二步」，
+    /// 应该用那个工具自己的通知设置。引擎只管识别。
+    /// 这里用 <see cref="NotificationKind.Info"/> / <see cref="NotificationKind.Warning"/> 两种类型区分。</para>
+    /// </summary>
+    private void HookSequenceFeedback()
+    {
+        var engine = ShortcutHub.Engine;
+        if (engine is null) return;   // 自检 / 没有外壳：不订阅
+
+        engine.SequenceStarted += OnSequenceStarted;
+        engine.SequenceRejected += OnSequenceRejected;
+    }
+
+    private void OnSequenceStarted(object? sender, KeyCombo combo)
+    {
+        if (_isForeground) return;   // 正在看秒表页：界面自己会变，不打扰
+
+        NotificationCenter.Show(Cfg.Notification, new NotificationRequest(
+            $"已识别 {combo}",
+            "请按第二步（再按一次第一步可取消）",
+            NotificationKind.Info,
+            StopwatchConfig.ToolId));
+    }
+
+    private void OnSequenceRejected(object? sender, SequenceRejectedEventArgs e)
+    {
+        // 「按错」必须提示：那一下已经被引擎吞掉了，不提示用户会以为键盘失灵。
+        // 不看 _isForeground —— 正在看秒表页也需要知道「刚才那下没被认出来」。
+        NotificationCenter.Show(Cfg.Notification, new NotificationRequest(
+            "未被识别的快捷键",
+            e.Describe(),
+            NotificationKind.Warning,
+            StopwatchConfig.ToolId));
+
+        StatusText = e.Describe();
     }
 
     /// <summary>强类型配置。</summary>
@@ -241,13 +283,8 @@ public sealed class StopwatchViewModel : ToolViewModelBase
         var engine = ShortcutHub.Engine;
 
         // ⚠ 工具构造期间 _viewModel 还没赋值、引擎也还没注入（自检 / 启动早期）：
-        // 这时只把配置读好就行，不注册、也不去碰工具上的 setter（那会绕回来再调一次本方法）。
-        if (engine is not null && _tool.IsFullyConstructed)
-        {
-            _tool.SequenceTimeoutMs = Cfg.SequenceTimeoutMs;
-        }
-
-        if (engine is null) return;   // 自检 / 没有外壳时：只保留配置，不注册
+        // 这时只把配置读好就行，不注册。
+        if (engine is null) return;
 
         // 三条各自注册（按启用状态与是否设了按键）
         // ⚠ 这里只读 Cfg（本对象自己的配置），**不能**碰 _tool.Config：工具构造期间

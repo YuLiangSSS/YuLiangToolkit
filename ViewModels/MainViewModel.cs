@@ -2051,6 +2051,49 @@ public class MainViewModel : ObservableObject
         set => Set(ref _startupStatusText, value);
     }
 
+    // ---------- 全局快捷键：分步等待时长（v1.45.0，主页设置 → 快捷键） ----------
+
+    /// <summary>
+    /// 分步快捷键两步之间等多久（毫秒；<b>0 = 不限时</b>）。
+    /// <para>全程序统一一份（<see cref="ShellConfig.ShortcutSequenceTimeoutMs"/>）；
+    /// 改一下立即写进引擎并对所有分步快捷键生效，不需要重启。</para>
+    /// </summary>
+    public int ShortcutSequenceTimeoutMs
+    {
+        get => _shell.ShortcutSequenceTimeoutMs;
+        set
+        {
+            var normalized = value <= 0
+                ? 0
+                : Math.Clamp(value, ShortcutTiming.MinSequenceTimeoutMs, ShortcutTiming.MaxSequenceTimeoutMs);
+            if (_shell.ShortcutSequenceTimeoutMs == normalized) return;
+
+            _shell.ShortcutSequenceTimeoutMs = normalized;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ShortcutSequenceTimeoutText));
+            OnPropertyChanged(nameof(SequenceTimeoutUnlimited));
+
+            ShortcutRegistry.SequenceTimeoutMs = normalized;
+            ShortcutHub.ApplyAll();
+        }
+    }
+
+    /// <summary>等待时长的可读文字（「5 秒」/「不限时」）。</summary>
+    public string ShortcutSequenceTimeoutText => ShortcutTiming.Describe(_shell.ShortcutSequenceTimeoutMs);
+
+    /// <summary>是否选了「不限时」（界面据此禁用滑块）。</summary>
+    public bool SequenceTimeoutUnlimited
+    {
+        get => _shell.ShortcutSequenceTimeoutMs <= 0;
+        set
+        {
+            if (SequenceTimeoutUnlimited == value) return;
+
+            // 勾上 = 0（不限时）；取消 = 回到默认 5 秒
+            ShortcutSequenceTimeoutMs = value ? 0 : ShortcutTiming.DefaultSequenceTimeoutMs;
+        }
+    }
+
     /// <summary>
     /// 启动时同步「开机自启」：以配置为准把注册表对齐 —— 开着就刷新成当前 exe 路径
     /// （程序换过目录也能启动对的那个），关着但系统里还留着就清掉。
@@ -2154,6 +2197,9 @@ public class MainViewModel : ObservableObject
     {
         _shellStore = ToolConfigStore.For(ShellToolId);
         _shell = _shellStore.Load<ShellConfig>();
+
+        // 分步快捷键的等待时长（全程序统一）：配置 → 注册表 → 引擎（App 启动时 ApplyAll 会用它）
+        ShortcutRegistry.SequenceTimeoutMs = _shell.ShortcutSequenceTimeoutMs;
         InitializeEffects();
         InitializeThemeBlurOptions();     // 三套半透明玻璃风格的「背景图模糊度」滑块（选中对应风格才显示）
         InitializeCloudOptions();          // 云间天上的云朵速度 / 密度滑块（选中云间天上才显示）

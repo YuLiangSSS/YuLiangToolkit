@@ -1,6 +1,7 @@
 using YuLiangToolkit.App.Themes;
 using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Effects;
+using YuLiangToolkit.Core.Input;
 using YuLiangToolkit.Core.Mvvm;
 
 namespace YuLiangToolkit.App.Models;
@@ -45,6 +46,23 @@ public sealed class ShellConfig : ToolConfig
 {
     /// <summary>主页排序方式。</summary>
     public ToolSortMode SortMode { get; set; } = ToolSortMode.Default;
+
+    // ---------- 全局快捷键：分步等待时长（v1.45.0，主页设置 → 快捷键） ----------
+    //
+    // 全程序统一一份，不放在各工具配置里：用户按第一步时不会去想「这是哪个工具的等待时长」。
+    // 存在外壳配置里，启动时写进 GlobalShortcutEngine.SequenceTimeout。
+
+    private int _shortcutSequenceTimeoutMs = ShortcutTiming.DefaultSequenceTimeoutMs;
+
+    /// <summary>
+    /// 分步快捷键两步之间等多久（毫秒）。<b>0 = 不限时</b>（按下第一步后一直等到按对或按错为止）。
+    /// <para>非 0 时夹到 500 ~ 30000ms。默认 5000（5 秒）。</para>
+    /// </summary>
+    public int ShortcutSequenceTimeoutMs
+    {
+        get => _shortcutSequenceTimeoutMs;
+        set => _shortcutSequenceTimeoutMs = value <= 0 ? 0 : Math.Clamp(value, 500, 30000);
+    }
 
     /// <summary>功能 Id → 上次打开时间（本地时间）。</summary>
     public Dictionary<string, DateTime> LastUsed { get; set; } = new();

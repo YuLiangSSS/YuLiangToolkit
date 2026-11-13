@@ -286,25 +286,11 @@
                                         Command="{Binding ClearShortcutCommand}" CommandParameter="stop" />
                             </Grid>
 
-                            <!-- 分步等待 -->
-                            <Grid Margin="0,14,0,0"
-                                  Visibility="{Binding Cfg.AnySequence, Converter={StaticResource BoolToVis}}">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="分步等待" FontSize="11.5" VerticalAlignment="Center"
-                                           Foreground="{DynamicResource TextSecondaryBrush}" />
-                                <Slider Grid.Column="1" Margin="10,0,0,0" Minimum="500" Maximum="5000"
-                                        SmallChange="100" LargeChange="500"
-                                        Value="{Binding Cfg.SequenceTimeoutMs, Mode=TwoWay}"
-                                        Style="{StaticResource SliderStyle}" />
-                                <TextBlock Grid.Column="2" FontSize="11.5" MinWidth="52" TextAlignment="Right"
-                                           VerticalAlignment="Center"
-                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                           Text="{Binding Cfg.SequenceTimeoutMs, StringFormat={}{0}ms}" />
-                            </Grid>
+                            <!-- 分步等待：全程序统一设置，这里只给个说明 + 跳转提示 -->
+                            <TextBlock FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap" Margin="0,10,0,0"
+                                       Visibility="{Binding Cfg.AnySequence, Converter={StaticResource BoolToVis}}"
+                                       Text="这两步之间等多久是全程序统一的设置，在「主页设置 → 快捷键」里调（也可以设成不限时）。" />
 
                             <!-- ② 声音 -->
                             <TextBlock Text="提示音" FontSize="12.5" FontWeight="SemiBold" Margin="0,20,0,4" />

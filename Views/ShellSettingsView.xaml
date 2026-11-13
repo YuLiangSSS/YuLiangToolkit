@@ -929,6 +929,42 @@
                     <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
                                TextWrapping="Wrap" Margin="0,0,0,10"
                                Text="全程序的全局快捷键汇总（按分类 → 工具排列，点标题前面的 ▼ / ▶ 折叠）。点框就能改键：必须同时按住组合键，全部松开后才确定；想要「Ctrl+K 然后 Ctrl+C」这种分两步的，点「拆分」再录第二步，点「合并」并回一条。每条都能单独禁用，每个工具也能整体关掉 —— 快捷键多了之后只留自己想用的。改一下立即生效并自动保存。" />
+
+                    <!-- 分步快捷键的等待时长（全程序统一） -->
+                    <Border Background="{DynamicResource InputBackgroundBrush}"
+                            CornerRadius="{DynamicResource ControlCornerRadius}"
+                            Padding="12,10" Margin="0,0,0,10">
+                        <StackPanel>
+                            <TextBlock Text="分步快捷键：两步之间等多久" FontSize="11.5" FontWeight="SemiBold" />
+
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Slider Grid.Column="0" Minimum="500" Maximum="30000"
+                                        SmallChange="500" LargeChange="2500"
+                                        IsSnapToTickEnabled="True" TickFrequency="500"
+                                        Value="{Binding ShortcutSequenceTimeoutMs, Mode=TwoWay}"
+                                        IsEnabled="{Binding SequenceTimeoutUnlimited, Converter={StaticResource InverseBoolConverter}}"
+                                        Style="{StaticResource SliderStyle}" />
+                                <TextBlock Grid.Column="1" MinWidth="62" TextAlignment="Right"
+                                           VerticalAlignment="Center" Margin="10,0,0,0"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource AccentBrush}"
+                                           Text="{Binding ShortcutSequenceTimeoutText}" />
+                            </Grid>
+
+                            <CheckBox Content="不限时（按下第一步后一直等，直到按对第二步或按错为止）"
+                                      Style="{StaticResource CheckBoxStyle}" Margin="0,8,0,0"
+                                      IsChecked="{Binding SequenceTimeoutUnlimited, Mode=TwoWay}" />
+
+                            <TextBlock FontSize="10.5" TextWrapping="Wrap" Margin="0,6,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                       Text="这一项是全程序统一的（不按工具分开）。等待期间按了不匹配的键会作废并提示「未被识别的快捷键」——那一下不会传给前台程序，避免在编辑器里多打一个字符。" />
+                        </StackPanel>
+                    </Border>
+
                     <views:ShortcutsSettingsView DataContext="{Binding ShortcutRegistry}" />
                 </StackPanel>
             </Border>

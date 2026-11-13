@@ -552,6 +552,12 @@ public sealed class ShortcutRegistry : ObservableObject
         }
     }
 
+    /// <summary>
+    /// 分步快捷键的等待时长（毫秒，全程序统一；0 = 不限时）。由外壳从 <c>ShellConfig</c> 设进来，
+    /// 之后每次 <see cref="ApplyTo"/> 都会带进引擎。
+    /// </summary>
+    public int SequenceTimeoutMs { get; set; } = ShortcutTiming.DefaultSequenceTimeoutMs;
+
     /// <summary>把每个 provider 当前启用的快捷键推给引擎（引擎由调用方持有，通常是 App）。</summary>
     /// <param name="engine">全局引擎。</param>
     public void ApplyTo(GlobalShortcutEngine engine)
@@ -560,6 +566,9 @@ public sealed class ShortcutRegistry : ObservableObject
 
         engine.UnregisterAll();
         _registrationSeed = 1;
+
+        // 分步等待时长（全程序统一的一项设置）
+        engine.SequenceTimeout = SequenceTimeoutMs;
 
         // 只清「上一次注册失败」的旧条目，冲突条目在 DetectConflicts 里已经算好
         var conflictKeys = _errors.Keys.ToHashSet();
@@ -578,13 +587,11 @@ public sealed class ShortcutRegistry : ObservableObject
                 if (GetError(definition.ToolId, definition.Id).Length > 0) continue;   // 冲突的先不注册
 
                 var id = _registrationSeed++;
-                var window = provider as IShortcutActionHost;
-                if (window is not null) window.SequenceTimeoutMs = Math.Clamp(window.SequenceTimeoutMs, 300, 10000);
-                engine.SequenceTimeout = window?.SequenceTimeoutMs ?? 2000;
+                var host = provider as IShortcutActionHost;
 
                 var shortcutId = definition.Id;
                 var ok = engine.Register(id, definition.Kind, definition.Primary, definition.Secondary,
-                    _ => window?.InvokeShortcut(shortcutId), out var error);
+                    _ => host?.InvokeShortcut(shortcutId), out var error);
 
                 if (!ok)
                 {
@@ -599,10 +606,6 @@ public sealed class ShortcutRegistry : ObservableObject
             ReportProblem?.Invoke("部分快捷键没能注册", string.Join(Environment.NewLine, failures));
         }
     }
-
-    /// <summary>各 provider 允许自己指定分步等待时长（没有就 2000ms）。</summary>
-    private static int SequenceTimeoutMsFor(IShortcutProvider provider)
-        => provider is IShortcutActionHost host ? host.SequenceTimeoutMs : 2000;
 
     /// <summary>树里所有行（统计 / 搜索用）。</summary>
     public IEnumerable<ShortcutRow> AllRows()
@@ -639,16 +642,17 @@ public sealed class ShortcutRegistry : ObservableObject
 }
 
 /// <summary>
-/// provider 的可选扩展：让工具自己决定「分步等待多久」以及「按了某条快捷键干什么」。
+/// provider 的可选扩展：告诉注册表「某条快捷键被按下时调谁」。
 ///
 /// <para>拆成可选接口而不是塞进 <see cref="IShortcutProvider"/>，是为了让只想暴露快捷键、
 /// 触发逻辑写在别处的工具也能用（它只要自己实现 <see cref="IShortcutProvider"/> 就行）。</para>
+///
+/// <para>⚠ 分步等待时长**不在这里**：它是全程序统一的一项设置（主页设置 → 快捷键），
+/// 存在 <c>ShellConfig</c> 里、写进引擎的 <see cref="GlobalShortcutEngine.SequenceTimeout"/>。
+/// 让每个工具各设一份没有意义 —— 用户按第一步时根本不会去想「这是哪个工具的等待时长」。</para>
 /// </summary>
 public interface IShortcutActionHost
 {
-    /// <summary>分步快捷键两步之间等多久（毫秒，默认 2000；注册表会夹到 300~10000）。</summary>
-    int SequenceTimeoutMs { get; set; }
-
     /// <summary>某条快捷键被按下（<paramref name="shortcutId"/> 是 <see cref="ShortcutDefinition.Id"/>）。</summary>
     void InvokeShortcut(string shortcutId);
 }

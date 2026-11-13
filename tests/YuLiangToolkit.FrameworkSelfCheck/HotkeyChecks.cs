@@ -467,10 +467,62 @@ internal static class HotkeyChecks
                 .DisplayText == "（无）",
             "（无）");
 
-        // 分步等待时长夹取（引擎侧）
-        var engineTimeoutIsClamped = typeof(GlobalShortcutEngine).GetProperty("SequenceTimeout") is not null;
-        check("[快捷键] 引擎暴露分步等待时长属性（供各工具各自设置）",
-            engineTimeoutIsClamped, "SequenceTimeout");
+        // 分步等待时长：v1.45.0 起全程序统一（不再按工具分开）
+        check("[快捷键] 分步等待默认 5 秒",
+            ShortcutTiming.DefaultSequenceTimeoutMs == 5000,
+            ShortcutTiming.DefaultSequenceTimeoutMs.ToString());
+
+        check("[快捷键] 等待时长夹到 500~30000ms",
+            ShortcutTiming.Normalize(100) == 500 && ShortcutTiming.Normalize(99999) == 30000
+            && ShortcutTiming.Normalize(5000) == 5000,
+            $"{ShortcutTiming.Normalize(100)} / {ShortcutTiming.Normalize(99999)} / {ShortcutTiming.Normalize(5000)}");
+
+        check("[快捷键] 0 表示不限时（不是被夹成 500）",
+            ShortcutTiming.Normalize(0) == 0 && ShortcutTiming.Normalize(-5) == 0,
+            $"{ShortcutTiming.Normalize(0)} / {ShortcutTiming.Normalize(-5)}");
+
+        check("[快捷键] 等待时长的可读写法（5 秒 / 不限时）",
+            ShortcutTiming.Describe(5000) == "5 秒" && ShortcutTiming.Describe(0) == "不限时"
+            && ShortcutTiming.Describe(2500) == "2.5 秒",
+            $"{ShortcutTiming.Describe(5000)} / {ShortcutTiming.Describe(0)} / {ShortcutTiming.Describe(2500)}");
+
+        check("[快捷键] 工具不再各自定义分步等待（全程序统一一项设置）",
+            !(typeof(IShortcutActionHost).GetProperty("SequenceTimeoutMs") is not null),
+            "IShortcutActionHost 只有 InvokeShortcut");
+
+        var engine = new GlobalShortcutEngine();
+        try
+        {
+            engine.SequenceTimeout = 0;
+            var unlimited = engine.IsSequenceTimeoutUnlimited;
+            engine.SequenceTimeout = 8000;
+            check("[快捷键] 引擎能表示「不限时」并能设回具体毫秒",
+                unlimited && !engine.IsSequenceTimeoutUnlimited && engine.SequenceTimeout == 8000,
+                $"unlimited={unlimited} / 8000={engine.SequenceTimeout}");
+        }
+        finally
+        {
+            engine.Dispose();
+        }
+
+        // 分步等待时长夹取（引擎侧，全程序统一）
+        check("[快捷键] 引擎暴露分步等待时长属性（全程序统一一项）",
+            typeof(GlobalShortcutEngine).GetProperty("SequenceTimeout") is not null, "SequenceTimeout");
+
+        // 被拒绝事件的描述文案（界面直接显示它，所以文案要对）
+        KeyCombo.TryParse("Ctrl+X", out var actual);
+        KeyCombo.TryParse("Ctrl+K", out var expected);
+
+        var rejected = new SequenceRejectedEventArgs(actual, expected);
+        check("[快捷键] 按错第二步时的提示文案含实际组合与应该按的组合",
+            rejected.Describe().Contains("Ctrl+X") && rejected.Describe().Contains("Ctrl+K")
+            && rejected.Describe().Contains("未被识别"),
+            rejected.Describe());
+
+        var rejectedNoExpected = new SequenceRejectedEventArgs(actual, null);
+        check("[快捷键] 没有第二步信息时文案也不崩（只报实际组合）",
+            rejectedNoExpected.Describe().Contains("Ctrl+X") && !rejectedNoExpected.Describe().Contains("应该按"),
+            rejectedNoExpected.Describe());
     }
 
     // ---------------------------------------------------------------- 通知设置

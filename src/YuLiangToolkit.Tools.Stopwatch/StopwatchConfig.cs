@@ -110,7 +110,12 @@ public sealed class StopwatchConfig : ToolConfig
 
     private int _sequenceTimeoutMs = 2000;
 
-    /// <summary>分步快捷键两步之间等多久（500~5000ms）。</summary>
+    /// <summary>
+    /// 分步快捷键两步之间等多久（500~5000ms）。
+    /// <para>⚠ v1.45.0 起**不再使用**：分步等待时长改成全程序统一设置（主页设置 → 快捷键），
+    /// 存 <c>ShellConfig.ShortcutSequenceTimeoutMs</c>。这里保留字段只是为了能读老配置、
+    /// 不破坏已有 JSON。</para>
+    /// </summary>
     public int SequenceTimeoutMs
     {
         get => _sequenceTimeoutMs;

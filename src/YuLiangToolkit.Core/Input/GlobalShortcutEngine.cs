@@ -47,6 +47,33 @@ public sealed class ShortcutBinding
                                || Primary.KeyCount > 4;
 }
 
+/// <summary>
+/// 快捷键体系里「全程序统一」的那几个数字，集中一处定义（设置页、配置类、引擎都引它，
+/// 避免三处各写一套默认值 / 范围）。
+/// </summary>
+public static class ShortcutTiming
+{
+    /// <summary>分步快捷键两步之间的默认等待（毫秒）。5 秒：够从容地按第二步，又不至于等太久。</summary>
+    public const int DefaultSequenceTimeoutMs = 5000;
+
+    /// <summary>可调范围下限（毫秒）。</summary>
+    public const int MinSequenceTimeoutMs = 500;
+
+    /// <summary>可调范围上限（毫秒）。</summary>
+    public const int MaxSequenceTimeoutMs = 30000;
+
+    /// <summary>0 是否表示「不限时」。</summary>
+    public const bool UnlimitedIsZero = true;
+
+    /// <summary>把「用户选择的值」规范成内部值：0（或负数）= 不限时，其余夹到范围内。</summary>
+    public static int Normalize(int value)
+        => value <= 0 ? 0 : Math.Clamp(value, MinSequenceTimeoutMs, MaxSequenceTimeoutMs);
+
+    /// <summary>给人看的写法：「5.0 秒」/「不限时」。</summary>
+    public static string Describe(int value)
+        => value <= 0 ? "不限时" : $"{value / 1000.0:0.#} 秒";
+}
+
 /// <summary>快捷键形态。</summary>
 public enum ShortcutKind
 {
@@ -55,6 +82,29 @@ public enum ShortcutKind
 
     /// <summary>分两步按（先 <c>Ctrl+U</c>、再 <c>Ctrl+K</c>）。</summary>
     Sequence,
+}
+
+/// <summary>
+/// 「分步快捷键等第二步时按错了键」的信息：实际按的组合 + 本来该按的组合。
+///
+/// <para>界面用它在屏幕角落提示「未被识别：…」—— 那一下已经被吞掉了，
+/// 不给提示的话用户会以为键盘失灵。</para>
+/// </summary>
+/// <param name="actual">实际按下的组合（含修饰键）。</param>
+/// <param name="expected">本来该按的第二步。</param>
+public sealed class SequenceRejectedEventArgs(KeyCombo actual, KeyCombo? expected) : EventArgs
+{
+    /// <summary>实际按下的组合。</summary>
+    public KeyCombo Actual { get; } = actual;
+
+    /// <summary>本来该按的第二步。</summary>
+    public KeyCombo? Expected { get; } = expected;
+
+    /// <summary>给界面直接显示的一句话。</summary>
+    public string Describe()
+        => Expected is { IsEmpty: false } expected
+            ? $"未被识别的快捷键：{Actual}（这里应该按 {expected}）"
+            : $"未被识别的快捷键：{Actual}";
 }
 
 /// <summary>
@@ -69,9 +119,10 @@ public enum ShortcutKind
 ///         但<b>前台是管理员权限窗口时收不到</b>（Windows 的 UIPI 限制，任何非驱动级钩子都一样）。</item>
 /// </list>
 ///
-/// <para><b>分步的吞键规则</b>：第一步被完整按下后<b>吞掉主键</b>（不然在编辑器里会既触发快捷键又打出一个字符），
-/// 然后进入「等第二步」状态；等待期间按了别的非修饰键或超时 → 本次作废、回到待命。
-/// 这个行为和 Visual Studio 的 <c>Ctrl+K</c> chord 一致。</para>
+/// <para><b>分步的吞键规则</b>：第一步被完整按下后<b>吞掉</b>（不然在编辑器里会既触发快捷键又打出一个字符）；
+/// 等第二步时按对了 → 触发并吞掉；按了别的非修饰键 → <b>也吞掉</b>并抛
+/// <c>SequenceRejected</c>（让界面提示「没认出来」，免得用户觉得键盘坏了）；超时 → 作废并抛
+/// <c>SequenceCancelled</c>。等待时长见 <see cref="SequenceTimeout"/>（可设成不限时）。</para>
 ///
 /// <para><b>线程</b>：所有公开方法都要在 UI 线程调用（<c>RegisterHotKey</c> 必须与消息窗同线程）；
 /// 从后台线程调用会自动转回 UI 线程。回调也在 UI 线程。</para>
@@ -93,8 +144,8 @@ public sealed class GlobalShortcutEngine : IDisposable
     private const int WmSysKeyDown = 0x0104;
     private const int WmSysKeyUp = 0x0105;
 
-    // 低级钩子不能无限期挂着（会拖慢全系统键盘），超时后自己回待命
-    private const int SequenceTimeoutMs = 2000;
+    // 分步快捷键两步之间的默认等待（毫秒）；真正生效的值由外壳写进 SequenceTimeout
+    private const int DefaultSequenceTimeoutMs = ShortcutTiming.DefaultSequenceTimeoutMs;
 
     private readonly object _gate = new();
 
@@ -128,17 +179,35 @@ public sealed class GlobalShortcutEngine : IDisposable
     /// </summary>
     public event EventHandler<KeyCombo>? SequenceStarted;
 
-    /// <summary>分步快捷键作废（超时 / 按了不匹配的键）时触发，界面可以收起那条提示。</summary>
+    /// <summary>分步快捷键作废（超时）时触发，界面可以收起那条「等第二步」的提示。</summary>
     public event EventHandler? SequenceCancelled;
 
-    /// <summary>分步等待时长（毫秒）。默认 2000；改一下对下一次分步立即生效。</summary>
+    /// <summary>
+    /// 分步快捷键**等第二步时按错了键**：这次作废，界面据此提示「没认出来」。
+    /// <para>那一下的按键已经被吞掉（不会漏给前台程序），所以一定要让用户知道发生了什么。</para>
+    /// </summary>
+    public event EventHandler<SequenceRejectedEventArgs>? SequenceRejected;
+
+    /// <summary>
+    /// 分步快捷键两步之间的等待时长（毫秒）。**这是全程序统一的一项设置**（主页设置 → 快捷键里调），
+    /// 不是每个工具各自的：改了之后对所有分步快捷键立即生效。
+    ///
+    /// <para><b>0 = 不限时</b>：按下第一步后一直等，直到按对第二步、或按了不匹配的键才结束
+    /// （代价：键盘钩子会一直挂着，且第一步的输入已经被吞掉，忘了自己在等第二步时会觉得键盘不对劲，
+    /// 所以界面上会明确提示「正在等第二步」）。</para>
+    ///
+    /// <para>非 0 时夹到 500~30000ms。</para>
+    /// </summary>
     public int SequenceTimeout
     {
         get => _sequenceTimeoutMs;
-        set => _sequenceTimeoutMs = Math.Clamp(value, 300, 10000);
+        set => _sequenceTimeoutMs = ShortcutTiming.Normalize(value);
     }
 
-    private int _sequenceTimeoutMs = SequenceTimeoutMs;
+    /// <summary>现在是不是「不限时等待」模式。</summary>
+    public bool IsSequenceTimeoutUnlimited => _sequenceTimeoutMs <= 0;
+
+    private int _sequenceTimeoutMs = ShortcutTiming.DefaultSequenceTimeoutMs;
 
     // ================================================================== 注册 / 注销
 
@@ -434,10 +503,18 @@ public sealed class GlobalShortcutEngine : IDisposable
                 return true;   // 第二步也吞掉（与第一步一致，避免前台多打一个字符）
             }
 
-            // 按了别的非修饰键 → 本次分步作废（不吞这一下，让前台照常收到）
+            // 按了不匹配的主键 → 本次分步作废。
+            // ⚠ 这一下**也吞掉**（按需求）：既然用户已经在「等第二步」的状态里，
+            // 漏给前台就会在编辑器里多打一个字符；宁可吞掉并弹一条「未被识别」的提示。
             if (!KeyComboNames.IsModifier(key))
             {
-                CancelSequence();
+                var expected = pending.Secondary;
+                var actual = KeyCombo.FromKeys(_pressed);   // _pressed 里已经包含刚按下的这个键
+
+                ClearPendingSequence();   // 只清状态，不抛「超时作废」事件
+                try { SequenceRejected?.Invoke(this, new SequenceRejectedEventArgs(actual, expected)); }
+                catch { /* 提示失败不影响吞键 */ }
+                return true;
             }
             return false;
         }
@@ -453,9 +530,14 @@ public sealed class GlobalShortcutEngine : IDisposable
         if (sequenceMatch is not null)
         {
             _pendingSequence = sequenceMatch;
-            _sequenceTimer!.Interval = TimeSpan.FromMilliseconds(SequenceTimeout);
-            _sequenceTimer.Stop();
-            _sequenceTimer.Start();
+
+            // 不限时模式下不启动计时器：一直等到用户按对第二步、或按了不匹配的键
+            if (!IsSequenceTimeoutUnlimited)
+            {
+                _sequenceTimer!.Interval = TimeSpan.FromMilliseconds(SequenceTimeout);
+                _sequenceTimer.Stop();
+                _sequenceTimer.Start();
+            }
 
             try { SequenceStarted?.Invoke(this, sequenceMatch.Primary); } catch { /* 通知失败不影响识别 */ }
             return true;
@@ -516,6 +598,17 @@ public sealed class GlobalShortcutEngine : IDisposable
             try { SequenceCancelled?.Invoke(this, EventArgs.Empty); } catch { /* 忽略 */ }
         }
 
+        try { _sequenceTimer?.Stop(); } catch { /* 忽略 */ }
+    }
+
+    /// <summary>
+    /// 只清掉「正在等第二步」的状态，**不**抛 <see cref="SequenceCancelled"/>。
+    /// <para>用于「按了不匹配的键」：那条路径要抛的是 <see cref="SequenceRejected"/>，
+    /// 界面据此换一条「没认出来」的提示，而不是静默收起。</para>
+    /// </summary>
+    private void ClearPendingSequence()
+    {
+        _pendingSequence = null;
         try { _sequenceTimer?.Stop(); } catch { /* 忽略 */ }
     }
 
