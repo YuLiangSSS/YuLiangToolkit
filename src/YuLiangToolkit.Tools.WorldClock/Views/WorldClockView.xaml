@@ -134,6 +134,9 @@
                 <Style TargetType="{x:Type MenuItem}" BasedOn="{StaticResource DarkMenuLeafItemStyle}" />
                 <Style TargetType="{x:Type Separator}" BasedOn="{StaticResource DarkMenuSeparatorStyle}" />
             </ContextMenu.Resources>
+            <MenuItem Header="让标题栏显示这一只" Command="{Binding UseForTitleBarCommand}"
+                      CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+            <Separator />
             <MenuItem Header="复制这一只的时间" Command="{Binding CopyTimeCommand}"
                       CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
             <Separator />
@@ -187,6 +190,10 @@
                                        TextTrimming="CharacterEllipsis" MaxWidth="150" VerticalAlignment="Center" />
                             <TextBlock Text="{Binding PhaseEmoji}" FontSize="11" Margin="5,1,0,0"
                                        VerticalAlignment="Center" ToolTip="{Binding PhaseText}" />
+                            <!-- 标题栏正在跟随这一只（右键菜单里可以改） -->
+                            <TextBlock Text="🕐" FontSize="9.5" Margin="4,0,0,0" VerticalAlignment="Center"
+                                       ToolTip="标题栏正在显示这个城市的时间"
+                                       Visibility="{Binding IsTitleBarClock, Converter={StaticResource BoolToVis}}" />
                         </StackPanel>
 
                         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top">

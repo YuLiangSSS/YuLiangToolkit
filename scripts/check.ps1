@@ -174,6 +174,8 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/WorldClockChecks.cs' @('world-clock') 'L3' 'world clock time zone / format / reorder / config assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/HotkeyChecks.cs' @('hotkeys') 'L3' 'shortcut combo / registry / notification assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/StopwatchChecks.cs' @('stopwatch') 'L3' 'stopwatch session / format / config assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/CalendarChecks.cs' @('calendar') 'L3' 'calendar month cells / keyboard / config assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/NotificationLogChecks.cs' @('notification-log') 'L3' 'notification history / persistence assertions')
 
     # ---------- tests: anything else in the self-check project is unknown wiring ----------
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/*.cs' @('ALL') 'L4' 'unmapped self-check source' -Fallback)
@@ -226,9 +228,12 @@ $mapping = @(
     (New-Rule 'src/YuLiangToolkit.Tools.Games/*'             @('tetris') 'L2' 'games: tetris (one project per game category)')
     (New-Rule 'src/YuLiangToolkit.Tools.WorldClock/*'        @('world-clock') 'L2' 'world clock tool (time zone math / catalog / reorder)')
     (New-Rule 'src/YuLiangToolkit.Tools.Stopwatch/*'         @('stopwatch') 'L2' 'stopwatch tool (session state machine / formatting / config)')
+    (New-Rule 'src/YuLiangToolkit.Tools.Calendar/*'          @('calendar') 'L2' 'calendar tool (month cells / navigation / config)')
+    (New-Rule 'src/YuLiangToolkit.Tools.NotificationLog/*'   @('notification-log') 'L2' 'notification history tool (storage / filtering / config)')
+    (New-Rule 'src/YuLiangToolkit.Core/Shell/ClockBarSource.cs' @('calendar') 'L3' 'title bar clock source (timezone + formatting)')
     # Core 的快捷键与通知是公共轮子：改它们直接跑 hotkeys 组（比 ALL 便宜，且这两处改动最容易踩回归）
     (New-Rule 'src/YuLiangToolkit.Core/Input/*'              @('hotkeys') 'L3' 'shortcut engine / registry / adapter')
-    (New-Rule 'src/YuLiangToolkit.Core/Notifications/*'      @('hotkeys') 'L3' 'notification center / sinks / settings view')
+    (New-Rule 'src/YuLiangToolkit.Core/Notifications/*'      @('hotkeys','notification-log') 'L3' 'notification center / sinks / settings view / history')
     (New-Rule 'src/YuLiangToolkit.Core/Controls/HotkeyBox.cs' @('hotkeys') 'L3' 'hotkey capture control')
     (New-Rule 'src/YuLiangToolkit.Core/Media/SoundPlayer.cs' @('stopwatch') 'L3' 'sound player used by stopwatch')
     (New-Rule 'src/YuLiangToolkit.Tools.Sample/*'          @() 'L1' 'framework template, no dedicated group: build + manual smoke')

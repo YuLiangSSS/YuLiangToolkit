@@ -47,6 +47,26 @@ public sealed class ShellConfig : ToolConfig
     /// <summary>主页排序方式。</summary>
     public ToolSortMode SortMode { get; set; } = ToolSortMode.Default;
 
+    // ---------- 标题栏日期时间（v1.46.0，主页设置 → 日期时间显示） ----------
+
+    private bool _showTitleBarDate = true;
+
+    /// <summary>标题栏右上角是否显示**日期**（默认开）。</summary>
+    public bool ShowTitleBarDate
+    {
+        get => _showTitleBarDate;
+        set => _showTitleBarDate = value;
+    }
+
+    private bool _showTitleBarTime = true;
+
+    /// <summary>标题栏右上角是否显示**时间**（默认开）。两个都关 = 整块隐藏。</summary>
+    public bool ShowTitleBarTime
+    {
+        get => _showTitleBarTime;
+        set => _showTitleBarTime = value;
+    }
+
     // ---------- 全局快捷键：分步等待时长（v1.45.0，主页设置 → 快捷键） ----------
     //
     // 全程序统一一份，不放在各工具配置里：用户按第一步时不会去想「这是哪个工具的等待时长」。

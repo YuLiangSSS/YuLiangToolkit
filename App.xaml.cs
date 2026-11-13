@@ -13,6 +13,7 @@ using YuLiangToolkit.Core.Services;
 using YuLiangToolkit.Core.Shell;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Core.Tools;
+using YuLiangToolkit.Tools.NotificationLog;
 using YuLiangToolkit.Tools.TaskManager;
 
 namespace YuLiangToolkit.App;
@@ -45,6 +46,34 @@ public partial class App : Application
 
     /// <summary>Windows 通知通道（托盘图标是后面才建的，所以这里用「现取」的委托）。</summary>
     private static readonly TrayNotificationSink _trayNotificationSink = new(() => Tray);
+
+    /// <summary>通知历史（所有工具的通知都记一份；由「通知管理」工具展示）。</summary>
+    private static NotificationHistory? _notificationHistory;
+
+    /// <summary>历史有变化、等退出时统一写盘。</summary>
+    private static bool _notificationHistoryDirty;
+
+    /// <summary>
+    /// 退出时把通知历史写盘（只在「记住历史」开着且有变化时写）。
+    /// <para>由「通知管理」工具的配置决定记不记；这里读它的配置，避免把「关掉记住」的用户又写一份。</para>
+    /// </summary>
+    private static void SaveNotificationHistory()
+    {
+        var history = _notificationHistory;
+        if (history is null || !_notificationHistoryDirty) return;
+
+        try
+        {
+            var config = ToolConfigStore.For(NotificationLogConfig.ToolId, "config.json")
+                .Load<NotificationLogConfig>();
+
+            NotificationLogStore.Save(history.Items, config.RememberHistory);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[NotificationHistory] 退出时写历史失败：{ex.Message}");
+        }
+    }
 
     /// <summary>
     /// 外壳级别的通知偏好（只有「快捷键注册失败」这类没有归属工具的提醒用它）。
@@ -171,6 +200,7 @@ public partial class App : Application
             // 退出流程里会静默跳过 ShutdownTools（工具的 OnClosed / 落盘全丢）—— 用启动时存下的引用。
             try { _mainViewModel?.ShutdownTools(); } catch { /* 退出流程忽略 */ }
             ToolConfigStore.FlushAll();
+            SaveNotificationHistory();
             try { ShortcutHub.Shutdown(); } catch { /* 退出流程忽略 */ }
             Tray?.Dispose();
             Tray = null;
@@ -204,10 +234,29 @@ public partial class App : Application
         foreach (var tool in tools.OfType<IShortcutProvider>()) ShortcutHub.AddProvider(tool);
         ShortcutHub.ApplyAll();
 
-        // 通知通道（v1.44.0）：应用内自绘小窗 + 托盘气泡。托盘要到下面才建，
-        // 所以 Windows 通道用一个「现取」的委托，托盘没就绪时它自己报告不可用，
-        // NotificationCenter 会自动退回应用内通知。
+        // 通知通道（v1.44.0）：应用内自绘小窗 + 托盘气泡。
         NotificationCenter.SetSinks(new InAppNotificationSink(), _trayNotificationSink);
+
+        // 通知历史（v1.46.0）：所有工具发出的通知都自动记一条，供「通知管理」工具查看 / 删除。
+        // 历史由通知管理工具的配置决定是否落盘（那边页面打开时会读盘并接管），这里先给一份内存实例，
+        // 保证「程序刚启动、还没打开过通知管理」期间的通知也不会丢。
+        _notificationHistory = new NotificationHistory();
+        NotificationCenter.History = _notificationHistory;
+        NotificationCenter.RegisterSource("shell", "外壳");
+
+        // 来源显示名：工具自己声明的名字，历史列表里显示成人话（以后新工具自动生效）
+        foreach (var tool in tools)
+        {
+            if (!string.IsNullOrWhiteSpace(tool.Id)) NotificationCenter.RegisterSource(tool.Id, tool.Name);
+        }
+
+        // 通知历史落盘：挂在外壳上（不等通知管理页被打开），退出时再写一次
+        _notificationHistoryDirty = false;
+        _notificationHistory.Changed += (_, _) =>
+        {
+            _notificationHistoryDirty = true;
+        };
+
 
         // 「打开方式」同步（v0.79.0）：Release 版开关开着就登记 / 刷新入口副本；关着（或 Debug 构建）
         // 就把 Windows 记住的旧登记清掉。只写 HKCU，失败不影响启动。

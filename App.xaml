@@ -152,6 +152,40 @@
             </Style>
 
             <!-- ================= 窗口控制按钮（自定义标题栏） ================= -->
+            <!-- ================= 标题栏日期时间按钮（v1.46.0） =================
+                 右上角那块「2026年11月13日 周五  14:05:09 ▾」，点一下弹小日历。
+                 显不显示由主页设置的两个开关决定（隐藏时整块折叠，不占位置）。 -->
+            <Style x:Key="TitleBarDateStyle" TargetType="Button">
+                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Padding" Value="10,0" />
+                <Setter Property="Height" Value="28" />
+                <Setter Property="Margin" Value="0,0,10,0" />
+                <Setter Property="Cursor" Value="Hand" />
+                <Setter Property="Focusable" Value="False" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                    CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                  TextElement.Foreground="{TemplateBinding Foreground}" />
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="Background"
+                                            Value="{DynamicResource WindowButtonHoverBackgroundBrush}" />
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Bd" Property="Background"
+                                            Value="{DynamicResource WindowButtonPressedBackgroundBrush}" />
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <Style x:Key="WindowButtonStyle" TargetType="Button">
                 <Setter Property="Width" Value="46" />
                 <Setter Property="Height" Value="40" />

@@ -137,6 +137,10 @@
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.WorldClock\YuLiangToolkit.Tools.WorldClock.csproj" />
     <!-- 「秒表」：计时状态机 / 时长格式化 / 快捷键定义 / 声音选项 / 配置往返（纯逻辑）。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Stopwatch\YuLiangToolkit.Tools.Stopwatch.csproj" />
+    <!-- 「日历」：月视图格子计算 / 跳月 / 键盘移动 / 配置。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Calendar\YuLiangToolkit.Tools.Calendar.csproj" />
+    <!-- 「通知管理」：历史入库 / 删除 / 清空 / 上限裁剪 / 来源归纳 / 持久化往返。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.NotificationLog\YuLiangToolkit.Tools.NotificationLog.csproj" />
   </ItemGroup>
 
 </Project>

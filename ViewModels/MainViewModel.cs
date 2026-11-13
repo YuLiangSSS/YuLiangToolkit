@@ -812,6 +812,9 @@ public class MainViewModel : ObservableObject
     /// <summary>「跟随系统」时定时看 Windows 应用模式有没有变（2 秒一次，只在 System 模式跑）。</summary>
     private readonly DispatcherTimer _systemThemeTimer;
 
+    /// <summary>标题栏日期时间的刷新计时器（每秒一次；窗口关掉时停）。</summary>
+    private readonly DispatcherTimer _titleBarClockTimer;
+
     private bool _syncingPalette;
 
     /// <summary>
@@ -2051,7 +2054,92 @@ public class MainViewModel : ObservableObject
         set => Set(ref _startupStatusText, value);
     }
 
-    // ---------- 全局快捷键：分步等待时长（v1.45.0，主页设置 → 快捷键） ----------
+    // ---------- 标题栏日期时间（v1.46.0） ----------
+
+    /// <summary>标题栏是否显示**日期**（默认开）。</summary>
+    public bool ShowTitleBarDate
+    {
+        get => _shell.ShowTitleBarDate;
+        set
+        {
+            if (_shell.ShowTitleBarDate == value) return;
+            _shell.ShowTitleBarDate = value;
+            OnPropertyChanged();
+            RefreshTitleBarClock();
+        }
+    }
+
+    /// <summary>标题栏是否显示**时间**（默认开）。</summary>
+    public bool ShowTitleBarTime
+    {
+        get => _shell.ShowTitleBarTime;
+        set
+        {
+            if (_shell.ShowTitleBarTime == value) return;
+            _shell.ShowTitleBarTime = value;
+            OnPropertyChanged();
+            RefreshTitleBarClock();
+        }
+    }
+
+    private string _titleBarClockText = "";
+
+    /// <summary>标题栏上那行日期时间文字（由计时器每秒刷新）。</summary>
+    public string TitleBarClockText
+    {
+        get => _titleBarClockText;
+        private set => Set(ref _titleBarClockText, value);
+    }
+
+    private bool _titleBarDateVisible = true;
+
+    /// <summary>标题栏那整块要不要显示（两个开关都关掉 = 隐藏）。</summary>
+    public bool TitleBarDateVisible
+    {
+        get => _titleBarDateVisible;
+        private set => Set(ref _titleBarDateVisible, value);
+    }
+
+    /// <summary>标题栏当前跟随的是哪个时区（设置页里给用户一句说明）。</summary>
+    public string TitleBarClockSourceText
+    {
+        get
+        {
+            var source = ClockBarSource.Current();
+            if (source is { } s)
+            {
+                var (_, offset, _, _, isFallback) = ClockBarSource.Resolve(DateTime.UtcNow);
+                var offsetText = offset == TimeSpan.Zero ? "UTC" : $"UTC{(offset < TimeSpan.Zero ? "-" : "+")}{offset.Duration():hh\\:mm}";
+                return isFallback ? $"标题栏时间：{s.Name}（{offsetText}）" : $"标题栏时间跟随：{s.Name}（{offsetText}）";
+            }
+
+            return "标题栏时间跟随：本机时区（时钟工具里还没有城市）";
+        }
+    }
+
+    /// <summary>
+    /// 刷新标题栏上那行日期时间。
+    /// <para>时区来自 <see cref="ClockBarSource"/>（全球时钟工具选定的那只钟）；
+    /// 显示哪几段由两个开关决定。</para>
+    /// </summary>
+    public void RefreshTitleBarClock()
+    {
+        var showDate = _shell.ShowTitleBarDate;
+        var showTime = _shell.ShowTitleBarTime;
+        var visible = showDate || showTime;
+
+        TitleBarDateVisible = visible;
+        if (!visible)
+        {
+            TitleBarClockText = "";
+            return;
+        }
+
+        var (wallClock, _, _, _, _) = ClockBarSource.Resolve(DateTime.UtcNow);
+        TitleBarClockText = ClockBarSource.FormatBar(wallClock, showDate, showTime);
+
+        OnPropertyChanged(nameof(TitleBarClockSourceText));
+    }
 
     /// <summary>
     /// 分步快捷键两步之间等多久（毫秒；<b>0 = 不限时</b>）。
@@ -2222,6 +2310,16 @@ public class MainViewModel : ObservableObject
         };
         _systemThemeTimer.Tick += OnSystemThemeTimerTick;
         EnsureSystemThemeTimer();
+
+        // 标题栏日期时间（v1.46.0）：对齐到整秒刷新；时区来源变了（时钟工具改跟随）立即重算
+        RefreshTitleBarClock();
+        _titleBarClockTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromSeconds(1),
+        };
+        _titleBarClockTimer.Tick += (_, _) => RefreshTitleBarClock();
+        _titleBarClockTimer.Start();
+        ClockBarSource.Changed += (_, _) => RefreshTitleBarClock();
 
         // 背景图（v0.43.0）：启动时按配置解码一次；文件不在 / 损坏就当作没有背景图
         ReloadBackgroundImage();
@@ -2952,6 +3050,7 @@ public class MainViewModel : ObservableObject
     public void ShutdownTools()
     {
         _systemThemeTimer.Stop();
+        _titleBarClockTimer.Stop();
 
         if (CurrentView is FrameworkElement current) DisposeToolView(current);
         CurrentView = null;

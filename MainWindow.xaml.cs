@@ -136,6 +136,15 @@ public partial class MainWindow : Window, IFullscreenHost
         DataContextChanged += OnDataContextChanged;
         Loaded += (_, _) => ApplySidebarVisibility();
 
+        // 截图 / 调试：把标题栏小日历自动弹出来（验证浮窗位置与观感）
+        if (IsMiniCalendarDebugRequested())
+        {
+            Loaded += (_, _) => Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+            {
+                OnTitleBarDateClick(TitleBarDateButton, new RoutedEventArgs());
+            }));
+        }
+
         // 开在「工作区」正中间：CenterScreen 会把任务栏那 48px 也算进屏幕高度，窗口看着偏低（v0.9.6）。
         // SystemParameters.WorkArea 已经是扣掉任务栏的 DIP 矩形，窗口 Width/Height 也是 DIP，直接算即可。
         var area = SystemParameters.WorkArea;
@@ -448,6 +457,123 @@ public partial class MainWindow : Window, IFullscreenHost
     private void OnCloseClick(object sender, RoutedEventArgs e)
         => Close();
 
+    // ---------- 标题栏「日期时间」→ 弹出小日历（v1.46.0） ----------
+
+    /// <summary>小日历浮窗（复用同一个实例，关闭后只隐藏）。</summary>
+    private Window? _miniCalendarWindow;
+
+    /// <summary>截图 / 调试：<c>YLT_MINICAL=1</c> 启动后自动把标题栏小日历弹出来。</summary>
+    private static bool IsMiniCalendarDebugRequested()
+        => Environment.GetEnvironmentVariable("YLT_MINICAL") is "1" or "on" or "true";
+
+    /// <summary>
+    /// 点标题栏右上角的日期 → 在它正下方弹出小日历。
+    /// <para>浮窗不抢焦点、不进任务栏；点窗口外 / 按 Esc 就关。
+    /// 已经在显示时再点一次 = 收起（和 Windows 那个行为一致）。</para>
+    /// </summary>
+    private void OnTitleBarDateClick(object sender, RoutedEventArgs e)
+    {
+        if (_miniCalendarWindow is { IsVisible: true })
+        {
+            _miniCalendarWindow.Hide();
+            return;
+        }
+
+        _miniCalendarWindow ??= CreateMiniCalendarWindow();
+        PositionMiniCalendar();
+
+        _miniCalendarWindow.Show();
+        _miniCalendarWindow.Activate();
+    }
+
+    /// <summary>创建（或复用）小日历浮窗。</summary>
+    private Window CreateMiniCalendarWindow()
+    {
+        var window = new Window
+        {
+            Owner = this,
+            WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize,
+            ShowInTaskbar = false,
+            AllowsTransparency = true,
+            Background = Brushes.Transparent,
+            SizeToContent = SizeToContent.WidthAndHeight,
+            WindowStartupLocation = WindowStartupLocation.Manual,
+            Topmost = true,
+            Content = new MiniCalendarPanel(),
+        };
+
+        // 失去焦点就收起（点别处 = 关掉），但不影响「再点一次收起」
+        window.Deactivated += (_, _) => window.Hide();
+
+        // 布局完成后把位置算准（SizeToContent 在 Show 之前 ActualWidth 还是 0）
+        window.Loaded += OnMiniCalendarLoaded;
+
+        // Esc 关闭
+        window.PreviewKeyDown += (_, args) =>
+        {
+            if (args.Key != Key.Escape) return;
+            window.Hide();
+            args.Handled = true;
+        };
+
+        return window;
+    }
+
+    /// <summary>把浮窗贴到标题栏按钮的正下方（右侧对齐，别超出屏幕）。</summary>
+    private void PositionMiniCalendar()
+    {
+        if (_miniCalendarWindow is not { } window) return;
+
+        var anchor = TitleBarDateButton;
+        if (!anchor.IsVisible) return;
+
+        window.UpdateLayout();
+
+        var origin = anchor.PointToScreen(new Point(0, 0));
+        var dpi = VisualTreeHelper.GetDpi(this);
+
+        // 右对齐：浮窗右边缘 = 按钮右边缘
+        var anchorWidth = anchor.ActualWidth * dpi.DpiScaleX;
+        var width = window.ActualWidth > 0 ? window.ActualWidth * dpi.DpiScaleX : 272 * dpi.DpiScaleX;
+
+        var left = origin.X + anchorWidth - width;
+        var top = origin.Y + anchor.ActualHeight * dpi.DpiScaleY + 6 * dpi.DpiScaleY;
+
+        // 别超出屏幕
+        var workArea = SystemParameters.WorkArea;
+        var maxLeft = workArea.Right - width - 8;
+        var minLeft = workArea.Left + 8;
+        left = Math.Clamp(left, minLeft, Math.Max(minLeft, maxLeft));
+
+        window.Left = left / dpi.DpiScaleX;
+        window.Top = top / dpi.DpiScaleY;
+    }
+
+    /// <summary>程序退出前把浮窗关掉（否则「关闭=最小化到托盘」时会留一个孤儿窗口）。</summary>
+    private void CloseMiniCalendar()
+    {
+        if (_miniCalendarWindow is null) return;
+
+        try
+        {
+            _miniCalendarWindow.Close();
+        }
+        catch
+        {
+            // 退出流程忽略
+        }
+
+        _miniCalendarWindow = null;
+    }
+
+    /// <summary>浮窗显示出来之后把位置算准（SizeToContent 要等布局完成才知道实际尺寸）。</summary>
+    private void OnMiniCalendarLoaded(object sender, RoutedEventArgs e)
+    {
+        if (_miniCalendarWindow is not { IsLoaded: true } window) return;
+        PositionMiniCalendar();
+    }
+
     // ---------- 关闭按钮行为：关闭应用 / 最小化到托盘（主页设置里选） ----------
 
     /// <summary>
@@ -467,6 +593,7 @@ public partial class MainWindow : Window, IFullscreenHost
             return;
         }
 
+        CloseMiniCalendar();
         base.OnClosing(e);
     }
 

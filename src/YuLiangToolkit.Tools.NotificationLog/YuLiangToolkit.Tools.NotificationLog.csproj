@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「通知管理」：记录所有工具发过的通知（快捷键操作 / 秒表 / 以后新加的工具都自动进来），
+       可按来源与类型筛选、逐条删除、清空。历史本身在 Core（NotificationHistory），
+       以后新工具只要调 NotificationCenter.Show 就自动进历史，不需要改本工具。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.NotificationLog</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.NotificationLog</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,4 +1,6 @@
 using System.Windows;
+using YuLiangToolkit.Core.Configuration;
+using YuLiangToolkit.Core.Shell;
 using YuLiangToolkit.Core.Tools;
 using YuLiangToolkit.Tools.WorldClock.ViewModels;
 using YuLiangToolkit.Tools.WorldClock.Views;
@@ -34,9 +36,42 @@ public sealed class WorldClockTool : ITool
         "时钟", "世界时间", "时区", "时差", "UTC", "世界时钟", "城市时间",
     };
 
-    /// <summary>主页卡片排序：排在「桌面」分类里 Live2D 桌宠 (160) / 屏幕贴纸 (162) 之后。</summary>
+    /// <summary>主页卡片排序：排在 Live2D 桌宠 (160) / 屏幕贴纸 (162) 之后。</summary>
     public int Order => 165;
 
     public FrameworkElement CreateView()
         => new WorldClockView { DataContext = new WorldClockViewModel() };
+
+    /// <summary>
+    /// 构造时就把「标题栏跟随哪个时区」注册好（不等页面被打开）。
+    /// <para>标题栏的日期时间要用这个时区，而用户可能从没点开过时钟页 ——
+    /// 所以这里直接读一次配置（<see cref="ToolConfigStore"/> 缓存同一实例，页面打开后拿到的是同一份）。</para>
+    /// </summary>
+    public WorldClockTool()
+    {
+        try
+        {
+            var config = ToolConfigStore.For(WorldClockConfig.ToolId).Load<WorldClockConfig>();
+
+            ClockBarSource.Provider = () =>
+            {
+                var clock = config.PrimaryClock;
+                if (clock is null) return null;
+
+                return (clock.CityName, clock.TimeZoneId, clock.CustomOffsetMinutes);
+            };
+
+            // 页面里改「跟随哪只钟」/ 加减城市后，标题栏要立刻跟着变
+            config.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName is nameof(WorldClockConfig.PrimaryClockId)) ClockBarSource.NotifyChanged();
+            };
+            config.Clocks.CollectionChanged += (_, _) => ClockBarSource.NotifyChanged();
+        }
+        catch (Exception ex)
+        {
+            // 读配置失败不能让工具加载不了：标题栏退回本机时区
+            System.Diagnostics.Debug.WriteLine($"[WorldClock] 注册标题栏时区失败：{ex.Message}");
+        }
+    }
 }

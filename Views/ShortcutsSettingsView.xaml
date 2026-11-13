@@ -54,8 +54,11 @@
             </Setter>
         </Style>
 
-        <!-- 折叠标题（分类 / 工具共用）：自绘箭头，不用默认 Expander 的浅色三角 -->
+        <!-- 折叠标题（分类 / 工具共用）：自绘箭头，不用默认 Expander 的浅色三角。
+             ⚠ 必须显式给 Foreground：ToggleButton 默认模板用的是系统控件前景（浅色主题下是黑），
+             深色背景下会变成"看不见的黑字"（踩过）。 -->
         <Style x:Key="GroupToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Focusable" Value="False" />
@@ -63,7 +66,10 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ToggleButton">
                         <Border x:Name="Bd" Background="Transparent" CornerRadius="6" Padding="8,7">
-                            <ContentPresenter />
+                            <!-- ⚠ ContentPresenter 要显式继承 Foreground：模板里不给的话，
+                                 ToggleButton 的默认前景（系统近黑色）会一路继承到里面的文字，
+                                 深色背景上就成了看不见的黑字。 -->
+                            <ContentPresenter TextElement.Foreground="{TemplateBinding Foreground}" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -139,7 +145,8 @@
                                            VerticalAlignment="Center" Width="14"
                                            Foreground="{DynamicResource AccentBrush}" />
                                 <TextBlock Grid.Column="1" Text="{Binding CategoryName}" FontSize="12.5"
-                                           FontWeight="SemiBold" VerticalAlignment="Center" />
+                                           FontWeight="SemiBold" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
                                 <TextBlock Grid.Column="2" FontSize="11" Margin="10,0,0,0"
                                            VerticalAlignment="Center"
                                            Foreground="{DynamicResource TextSecondaryBrush}"
@@ -173,7 +180,8 @@
                                                                FontSize="9" VerticalAlignment="Center" Width="14"
                                                                Foreground="{DynamicResource TextSecondaryBrush}" />
                                                     <TextBlock Grid.Column="1" Text="{Binding ToolName}"
-                                                               FontSize="12" VerticalAlignment="Center" />
+                                                               FontSize="12" VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource TextPrimaryBrush}" />
                                                     <TextBlock Grid.Column="2" Text="{Binding CountText}"
                                                                FontSize="10.5" Margin="10,0,0,0"
                                                                VerticalAlignment="Center"

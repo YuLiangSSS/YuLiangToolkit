@@ -78,6 +78,8 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("world-clock", "全球时钟：时区换算 / 跨日 / 时差文案 / 时段 / 城市库搜索 / 重排与撤销 / 配置"),
     ("hotkeys", "快捷键与通知：按键集合 / 合并 / 冲突 / 启停 / 分组树 / 通知设置与兜底"),
     ("stopwatch", "秒表：计时状态机 / 时长格式 / 快捷键定义 / 声音选项 / 配置"),
+    ("calendar", "日历：月视图格子 / 跳月 / 键盘移动 / 标题栏日期时间"),
+    ("notification-log", "通知管理：历史入库 / 删除清空 / 上限裁剪 / 来源归纳 / 持久化"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1359,6 +1361,14 @@ RunGroupModule("hotkeys", "快捷键与通知", HotkeyChecks.Run);
 // 快捷键定义（单步 / 分步 / 启停位 / 等待时长夹取）、声音选项解析、配置默认值与 JSON 往返。
 // 纯逻辑，时间由注入的时间戳控制（不用真等），不创建窗口、不播声音、不注册热键。
 RunGroupModule("stopwatch", "秒表", StopwatchChecks.Run);
+
+// 「日历」：42 格排布（闰年 / 跨年 / 1 号是每周第一天）、跳月、键盘移动、星期名、配置默认值。
+// 纯逻辑，不创建窗口、不读系统时钟。
+RunGroupModule("calendar", "日历", CalendarChecks.Run);
+
+// 「通知管理」：历史入库 / 删单条 / 清空 / 上限裁剪（保最新）/ 来源归纳 / 时间显示 /
+// 「发通知自动进历史」这条扩展性链路 / 持久化往返 / 关掉记住历史时删文件。
+RunGroupModule("notification-log", "通知管理", NotificationLogChecks.Run);
 
 EnterGroup("shell");
 

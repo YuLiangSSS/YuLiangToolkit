@@ -265,6 +265,21 @@ public sealed class WorldClockItem : ObservableObject
         private set => Set(ref _dimAtNight, value);
     }
 
+    private bool _isTitleBarClock;
+
+    /// <summary>这只是不是标题栏正在跟随的那只（界面上显示一个小小的钟形标记）。</summary>
+    [JsonIgnore]
+    public bool IsTitleBarClock
+    {
+        get => _isTitleBarClock;
+        private set => Set(ref _isTitleBarClock, value);
+    }
+
+    /// <summary>
+    /// 刷新「标题栏跟随」标记（由 ViewModel 统一判定后推下来，钟自己不判断谁该被跟随）。
+    /// </summary>
+    public void RefreshTitleBarFlag(bool isTitleBarClock) => IsTitleBarClock = isTitleBarClock;
+
     /// <summary>现在是不是白天。</summary>
     [JsonIgnore]
     public bool IsDay => Phase is DayPhase.Day;

@@ -78,12 +78,33 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
                         <TextBlock Text="🧰" FontSize="18" VerticalAlignment="Center" />
                         <TextBlock Text="YuLiang 工具集" FontSize="14" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center" />
                     </StackPanel>
-                    <StackPanel x:Name="WindowButtonsPanel" Grid.Column="1" Orientation="Horizontal">
+                    <!-- 标题栏右上角：日期时间显示区（v1.46.0）。
+                         显示哪个时区由全球时钟工具决定（ClockBarSource），显不显示日期 / 时间是主页设置里的两开关。
+                         单击 → 弹出小日历浮窗（和 Windows 右下角那个一样）。 -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="TitleBarDateButton"
+                                Style="{StaticResource TitleBarDateStyle}"
+                                Click="OnTitleBarDateClick"
+                                ToolTip="点击查看日历"
+                                Visibility="{Binding TitleBarDateVisible, Converter={StaticResource BoolToVis}}">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock x:Name="TitleBarDateText" FontSize="12"
+                                           Text="{Binding TitleBarClockText}"
+                                           Foreground="{DynamicResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Text=" ▾" FontSize="9" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <StackPanel x:Name="WindowButtonsPanel" Grid.Column="2" Orientation="Horizontal">
                         <Button x:Name="MinimizeButton" Style="{StaticResource WindowButtonStyle}"
                                 Content="&#xE921;" Click="OnMinimizeClick" ToolTip="最小化" />
                         <Button x:Name="MaximizeButton" Style="{StaticResource WindowButtonStyle}"

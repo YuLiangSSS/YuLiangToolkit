@@ -969,6 +969,31 @@
                 </StackPanel>
             </Border>
 
+            <!-- ===== 日期时间显示（v1.46.0：标题栏右上角的日期 / 时间 + 点击弹日历） ===== -->
+            <TextBlock Text="日期时间显示" FontSize="13" FontWeight="SemiBold"
+                       Foreground="{DynamicResource AccentBrush}" Margin="0,22,0,0" />
+            <Border Style="{StaticResource CardStyle}" Margin="0,10,0,0" Padding="16,14">
+                <StackPanel>
+                    <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                               TextWrapping="Wrap" Margin="0,0,0,10"
+                               Text="窗口右上角显示日期和时间，点一下能弹出一个小日历。显示哪个时区由「全球时钟」工具决定（在那边右键某只钟选「让标题栏显示这一只」）。" />
+
+                    <CheckBox Content="显示日期（2026年11月13日 周五）" Style="{StaticResource CheckBoxStyle}"
+                              IsChecked="{Binding ShowTitleBarDate, Mode=TwoWay}" />
+                    <CheckBox Content="显示时间（14:05:09）" Style="{StaticResource CheckBoxStyle}"
+                              Margin="0,8,0,0"
+                              IsChecked="{Binding ShowTitleBarTime, Mode=TwoWay}" />
+
+                    <TextBlock FontSize="11" Margin="0,10,0,0" TextWrapping="Wrap"
+                               Foreground="{DynamicResource AccentBrush}"
+                               Text="{Binding TitleBarClockSourceText}" />
+
+                    <TextBlock FontSize="10.5" Margin="0,6,0,0" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Text="两个都关掉，右上角就整块隐藏。改一下立即生效并自动保存。" />
+                </StackPanel>
+            </Border>
+
             <!-- ===== 界面布局（v0.41.0：工具页可拖拽分隔条的尺寸记忆，一键恢复默认） ===== -->
             <TextBlock Text="界面布局" FontSize="13" FontWeight="SemiBold"
                        Foreground="{DynamicResource AccentBrush}" Margin="0,22,0,0" />

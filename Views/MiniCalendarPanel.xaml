@@ -1,0 +1,95 @@
+<UserControl x:Class="YuLiangToolkit.App.Views.MiniCalendarPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="Transparent">
+
+    <!-- 标题栏点开的「小日历」浮窗内容（对标 Windows 任务栏右下角那个）：
+         ┌ 2026年11月 ────────── ‹ › ┐
+         │ 一 二 三 四 五 六 日      │
+         │  1  2  3  4  5  6  7      │
+         │ ...（6 行 42 格）          │
+         └ ──────────────  今天      ┘
+         点外部 / Esc 关闭（由宿主窗口处理）。 -->
+
+    <UserControl.Resources>
+        <!-- 星期标题 -->
+        <Style x:Key="WeekdayHeaderStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        </Style>
+
+        <!-- 上/下月小按钮 -->
+        <Style x:Key="NavButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background"
+                                        Value="{DynamicResource CardHoverBackgroundBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Border Background="{DynamicResource CardBackgroundBrush}"
+            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+            CornerRadius="10" Padding="12,10">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.4" Color="Black" />
+        </Border.Effect>
+
+        <StackPanel Width="248">
+            <!-- 标题行：年 + 月 + 上/下月 -->
+            <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" x:Name="MonthTitle" FontSize="12.5" FontWeight="SemiBold"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                <Button Grid.Column="1" Style="{StaticResource NavButtonStyle}" Content="‹"
+                        FontSize="14" Click="OnPrevMonthClick" ToolTip="上一个月" />
+                <Button Grid.Column="2" Style="{StaticResource NavButtonStyle}" Content="›"
+                        FontSize="14" Click="OnNextMonthClick" ToolTip="下一个月" />
+            </Grid>
+
+            <!-- 星期表头 -->
+            <UniformGrid x:Name="WeekdayHeader" Columns="7" Margin="0,0,0,2" />
+
+            <!-- 42 个日期格 -->
+            <UniformGrid x:Name="DayGrid" Columns="7" Rows="6" />
+
+            <!-- 底部 -->
+            <Grid Margin="0,8,0,0">
+                <TextBlock x:Name="TodayText" FontSize="10.5" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                <Button Content="今天" HorizontalAlignment="Right" Padding="12,3" FontSize="11"
+                        Cursor="Hand" Focusable="False"
+                        Foreground="{DynamicResource AccentBrush}"
+                        Background="Transparent" BorderThickness="0"
+                        Click="OnTodayClick" ToolTip="回到当月并选中今天" />
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>

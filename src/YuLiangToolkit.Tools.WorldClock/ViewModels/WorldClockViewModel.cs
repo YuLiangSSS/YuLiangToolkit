@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Windows.Threading;
 using YuLiangToolkit.Core.Mvvm;
+using YuLiangToolkit.Core.Shell;
 using YuLiangToolkit.Tools.WorldClock.Models;
 using YuLiangToolkit.Tools.WorldClock.Services;
 
@@ -48,6 +49,7 @@ public sealed class WorldClockViewModel : ToolViewModelBase
         LockAllCommand = new RelayCommand(_ => SetAllLocked(true));
         UnlockAllCommand = new RelayCommand(_ => SetAllLocked(false));
         AddStarterCitiesCommand = new RelayCommand(_ => AddStarterCities());
+        UseForTitleBarCommand = new RelayCommand(p => UseForTitleBar(p as WorldClockItem), p => p is WorldClockItem);
 
         _timer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(1) };
         _timer.Tick += (_, _) => OnTimerTick();
@@ -55,8 +57,16 @@ public sealed class WorldClockViewModel : ToolViewModelBase
         _undoTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(UndoSeconds) };
         _undoTimer.Tick += (_, _) => ClearUndo();
 
-        // 列表本身的变化（加 / 删 / 拖排序）也要刷新统计文字
-        Cfg.Clocks.CollectionChanged += (_, _) => Ui(RefreshSummary);
+        // 列表本身的变化（加 / 删 / 拖排序）也要刷新统计文字与「标题栏跟随」标记
+        Cfg.Clocks.CollectionChanged += (_, _) =>
+        {
+            Ui(() =>
+            {
+                RefreshSummary();
+                RefreshBarClockFlags();
+            });
+            PublishBarClock();
+        };
 
         // 设置在右侧卡片里改（或从配置里手改）时，界面要立刻跟着变：
         // 换视图 / 关掉秒针都要重排计时器节奏。
@@ -65,7 +75,33 @@ public sealed class WorldClockViewModel : ToolViewModelBase
         RefreshNow();
         RefreshSummary();
         Log($"配置文件：{Cfg.FilePath}");
-        Log($"本机时区：{WorldClockTimeZones.LocalDisplayName}（{WorldClockTimeZones.LocalOffsetText(DateTime.UtcNow)}）");        if (IsFirstRun) Log("首次运行：已放入北京 / 东京 / 伦敦 / 纽约，可以随时删掉换成自己的城市");
+        Log($"本机时区：{WorldClockTimeZones.LocalDisplayName}（{WorldClockTimeZones.LocalOffsetText(DateTime.UtcNow)}）");
+        if (IsFirstRun) Log("首次运行：已放入北京 / 东京 / 伦敦 / 纽约，可以随时删掉换成自己的城市");
+
+        // 标题栏的日期时间跟随这个工具选定的那只钟（见 ClockBarSource）
+        PublishBarClock();
+        Cfg.Clocks.CollectionChanged += (_, _) => PublishBarClock();
+        Cfg.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(WorldClockConfig.PrimaryClockId)) PublishBarClock();
+        };
+    }
+
+    /// <summary>
+    /// 把「当前跟随的那只钟」告诉外壳（标题栏用它显示日期时间）。
+    /// 列表为空时传 null → 标题栏退回本机时区。
+    /// </summary>
+    private void PublishBarClock()
+    {
+        ClockBarSource.Provider = () =>
+        {
+            var clock = Cfg.PrimaryClock;
+            if (clock is null) return null;
+
+            return (clock.CityName, clock.TimeZoneId, clock.CustomOffsetMinutes);
+        };
+
+        ClockBarSource.NotifyChanged();
     }
 
     // ---------- 配置与列表 ----------
@@ -93,6 +129,9 @@ public sealed class WorldClockViewModel : ToolViewModelBase
     public RelayCommand LockAllCommand { get; }
     public RelayCommand UnlockAllCommand { get; }
     public RelayCommand AddStarterCitiesCommand { get; }
+
+    /// <summary>「让标题栏显示这一只钟的时间」。</summary>
+    public RelayCommand UseForTitleBarCommand { get; }
 
     // ---------- 界面状态 ----------
 
@@ -429,8 +468,38 @@ public sealed class WorldClockViewModel : ToolViewModelBase
         OnPropertyChanged(nameof(HasUndo));
     }
 
-    // ---------- 锁定 ----------
+    /// <summary>
+    /// 让标题栏显示这只钟的时间（同一时刻只有一只；再点一次取消回第一只）。
+    /// </summary>
+    public void UseForTitleBar(WorldClockItem? clock)
+    {
+        if (clock is null) return;
 
+        var already = string.Equals(Cfg.PrimaryClockId, clock.CityName, StringComparison.Ordinal);
+        Cfg.PrimaryClockId = already ? "" : clock.CityName;
+
+        StatusText = already
+            ? "标题栏改回跟随第一只钟"
+            : $"标题栏现在显示「{clock.CityName}」的时间";
+
+        RefreshBarClockFlags();
+        PublishBarClock();
+    }
+
+    /// <summary>某只钟是不是「标题栏跟随」的那只（界面右上角显示小标记）。</summary>
+    public bool IsTitleBarClock(WorldClockItem? clock)
+        => clock is not null && ReferenceEquals(Cfg.PrimaryClock, clock);
+
+    /// <summary>刷新每只钟的「标题栏跟随」标记。</summary>
+    private void RefreshBarClockFlags()
+    {
+        foreach (var clock in Clocks) clock.RefreshTitleBarFlag(IsTitleBarClock(clock));
+    }
+
+    /// <summary>把标记同步到新加 / 恢复的钟（列表变化后调）。</summary>
+    public void RefreshTitleBarFlags() => RefreshBarClockFlags();
+
+    // ---------- 锁定 ----------
     /// <summary>切换锁定（防手滑：锁上之后 ✕ 不显示、≡ 不能拖）。</summary>
     public void ToggleLock(WorldClockItem? clock)
     {

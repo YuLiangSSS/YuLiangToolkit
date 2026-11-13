@@ -122,6 +122,40 @@ public sealed class WorldClockConfig : ToolConfig
         set => Set(ref _showDialTicks, value);
     }
 
+    // ===================== 标题栏跟随 =====================
+
+    private string _primaryClockId = "";
+
+    /// <summary>
+    /// 哪一只钟用来在**标题栏**显示日期时间（<see cref="WorldClockItem.CityName"/> 作为标识）。
+    /// 空 = 用列表里的第一只钟；列表也空时用本机时区。
+    ///
+    /// <para>为什么放这里而不是主页设置：用户在这里挑「看哪座城市的时间」最自然，
+    /// 主页设置只负责「显不显示日期 / 时间」。</para>
+    /// </summary>
+    public string PrimaryClockId
+    {
+        get => _primaryClockId;
+        set => Set(ref _primaryClockId, value ?? "");
+    }
+
+    /// <summary>
+    /// 按 <see cref="PrimaryClockId"/> 找那只钟；找不到就用第一只；一只都没有返回 null
+    /// （调用方自己退回本机时区）。
+    /// </summary>
+    [JsonIgnore]
+    public WorldClockItem? PrimaryClock
+    {
+        get
+        {
+            if (Clocks.Count == 0) return null;
+            if (string.IsNullOrWhiteSpace(_primaryClockId)) return Clocks[0];
+
+            return Clocks.FirstOrDefault(c => string.Equals(c.CityName, _primaryClockId, StringComparison.Ordinal))
+                   ?? Clocks[0];
+        }
+    }
+
     // ===================== 计算属性（不写进 JSON） =====================
 
     /// <summary>当前是不是表盘视图（界面用它切模板 / 停秒针动画）。</summary>

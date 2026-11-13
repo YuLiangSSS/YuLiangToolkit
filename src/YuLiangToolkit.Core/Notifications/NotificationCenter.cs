@@ -239,6 +239,30 @@ public static class NotificationCenter
     /// <summary>实际发出了通知（调试 / 自检 / 日志用）。</summary>
     public static event EventHandler<NotificationRequest>? Shown;
 
+    /// <summary>
+    /// 通知历史（所有工具发出的通知都自动记一条）。
+    /// <para>外壳启动时注入一份；为 null 时不记录（自检 / 无 UI 场景）。</para>
+    /// </summary>
+    public static NotificationHistory? History { get; set; }
+
+    /// <summary>
+    /// 来源 Id → 显示名（「秒表」「快捷键」…）。外壳启动时用工具清单填一遍；
+    /// 没登记的来源直接用 Id 当名字。以后新增工具只要发通知，历史里自动多一个来源。
+    /// </summary>
+    private static readonly Dictionary<string, string> SourceNames = new(StringComparer.Ordinal);
+
+    /// <summary>登记一个来源显示名（工具启动时调；重复登记覆盖）。</summary>
+    public static void RegisterSource(string sourceId, string displayName)
+    {
+        if (string.IsNullOrWhiteSpace(sourceId)) return;
+        SourceNames[sourceId] = string.IsNullOrWhiteSpace(displayName) ? sourceId : displayName;
+    }
+
+    /// <summary>查来源显示名（没登记就返回 Id 本身）。</summary>
+    public static string DescribeSource(string sourceId)
+        => string.IsNullOrWhiteSpace(sourceId) ? "其它"
+            : SourceNames.TryGetValue(sourceId, out var name) ? name : sourceId;
+
     /// <summary>外壳启动时注入两条通道（任一可为 null）。</summary>
     public static void SetSinks(INotificationSink? inApp, INotificationSink? windows)
     {
@@ -255,16 +279,19 @@ public static class NotificationCenter
         var sink = Resolve(settings.Mode);
         if (sink is not null && sink.Send(request, settings))
         {
+            Record(request, settings.Mode, wasFallback: false);
             Raise(request);
             return true;
         }
 
         // 首选通道不可用 → 换另一条
-        var fallback = Resolve(settings.Mode == NotificationMode.InApp
+        var fallbackMode = settings.Mode == NotificationMode.InApp
             ? NotificationMode.Windows
-            : NotificationMode.InApp);
+            : NotificationMode.InApp;
+        var fallback = Resolve(fallbackMode);
         if (fallback is not null && fallback.Send(request, settings))
         {
+            Record(request, fallbackMode, wasFallback: true);
             Raise(request);
             return true;
         }
@@ -278,8 +305,36 @@ public static class NotificationCenter
     {
         var sink = Resolve(mode);
         if (sink is null || !sink.Send(request, settings)) return false;
+
+        Record(request, mode, wasFallback: false);
         Raise(request);
         return true;
+    }
+
+    /// <summary>写一条历史（历史关着 / 没注入时什么都不做）。</summary>
+    private static void Record(NotificationRequest request, NotificationMode via, bool wasFallback)
+    {
+        var history = History;
+        if (history is null || !history.Enabled) return;
+
+        try
+        {
+            history.Add(new NotificationRecord(
+                Guid.NewGuid(),
+                DateTime.UtcNow,
+                request.Title ?? "",
+                request.Body ?? "",
+                request.Kind,
+                request.SourceId ?? "",
+                DescribeSource(request.SourceId ?? ""),
+                via,
+                wasFallback));
+        }
+        catch (Exception ex)
+        {
+            // 记历史失败绝不能影响通知本身
+            System.Diagnostics.Debug.WriteLine($"[Notification] 写历史失败：{ex.Message}");
+        }
     }
 
     private static INotificationSink? Resolve(NotificationMode mode)
