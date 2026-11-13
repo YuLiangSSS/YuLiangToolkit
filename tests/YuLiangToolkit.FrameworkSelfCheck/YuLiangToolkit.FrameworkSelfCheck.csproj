@@ -141,6 +141,10 @@
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Calendar\YuLiangToolkit.Tools.Calendar.csproj" />
     <!-- 「通知管理」：历史入库 / 删除 / 清空 / 上限裁剪 / 来源归纳 / 持久化往返。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.NotificationLog\YuLiangToolkit.Tools.NotificationLog.csproj" />
+    <!-- 「倒计时」：状态机 / 时长解析与格式化 / 快捷键定义 / 配置。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Countdown\YuLiangToolkit.Tools.Countdown.csproj" />
+    <!-- 「闹钟」：重复天 / 下次响铃时刻 / 贪睡 / 条目规范化 / 配置。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Alarm\YuLiangToolkit.Tools.Alarm.csproj" />
   </ItemGroup>
 
 </Project>

@@ -71,6 +71,8 @@
     <ProjectReference Include="src\YuLiangToolkit.Tools.Stopwatch\YuLiangToolkit.Tools.Stopwatch.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.Calendar\YuLiangToolkit.Tools.Calendar.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.NotificationLog\YuLiangToolkit.Tools.NotificationLog.csproj" />
+    <ProjectReference Include="src\YuLiangToolkit.Tools.Countdown\YuLiangToolkit.Tools.Countdown.csproj" />
+    <ProjectReference Include="src\YuLiangToolkit.Tools.Alarm\YuLiangToolkit.Tools.Alarm.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.Sample\YuLiangToolkit.Tools.Sample.csproj" />
   </ItemGroup>
 

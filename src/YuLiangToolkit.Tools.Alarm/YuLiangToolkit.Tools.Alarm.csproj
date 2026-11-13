@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「闹钟」：多个闹钟、按星期重复、贪睡；到点弹通知 + 响铃。
+       下一个响铃时刻的计算是纯逻辑（AlarmSchedule），可注入"现在"，自检能断言跨天 / 跨周 / 贪睡。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.Alarm</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.Alarm</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

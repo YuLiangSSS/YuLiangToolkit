@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「倒计时」：任意时长倒计时，支持快捷预设、暂停 / 继续 / 重置、+1 分钟，
+       到点弹通知 + 响铃；开始 / 暂停 / 重置 / 加时都可有全局快捷键。
+       计时逻辑是纯逻辑（CountdownEngine），可注入时钟，自检能任意跳时间断言。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.Countdown</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.Countdown</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -150,6 +150,8 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `src/YuLiangToolkit.Tools.Calendar/**` | `calendar`（月视图格子 / 跳月 / 键盘） | L2 |
 | `src/YuLiangToolkit.Tools.NotificationLog/**` | `notification-log`（历史存储 / 筛选 / 配置） | L2 |
 | `src/YuLiangToolkit.Core/Shell/ClockBarSource.cs` | `calendar`（标题栏时区来源与格式化） | L3 |
+| `src/YuLiangToolkit.Tools.Countdown/**` | `countdown`（倒计时状态机 / 解析 / 格式化） | L2 |
+| `src/YuLiangToolkit.Tools.Alarm/**` | `alarm`（重复天 / 下次响铃 / 贪睡） | L2 |
 | `src/YuLiangToolkit.Tools.ScreenSticker/**` | `screen-sticker` | L2 |
 | `tests/.../SoftwareUpdaterChecks.cs` | `software-updater`（winget 表格解析 / 包 Id 白名单 / 命令拼装 / 批量勾选规则） | L3 |
 | `tests/.../CalculatorChecks.cs` | `calculator`（表达式解析与求值 / 优先级 / 省略乘号 / 阶乘 / 角度制 / 格式化 / 输入构造 / 历史） | L3 |
@@ -176,6 +178,8 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `tests/.../StopwatchChecks.cs` | `stopwatch`（计时状态机 / 时长格式边界 / 快捷键定义与启停 / 声音选项 / 配置往返） | L3 |
 | `tests/.../CalendarChecks.cs` | `calendar`（42 格排布 / 闰年 / 跨年 / 跳月 / 键盘移动 / 星期名 / 配置） | L3 |
 | `tests/.../NotificationLogChecks.cs` | `notification-log`（入库 / 删除 / 清空 / 上限裁剪 / 来源归纳 / 时间显示 / 持久化往返） | L3 |
+| `tests/.../CountdownChecks.cs` | `countdown`（状态机 / 时长解析 / 格式化 / 快捷键 / 配置） | L3 |
+| `tests/.../AlarmChecks.cs` | `alarm`（重复天 / 下次响铃时刻 / 贪睡 / 条目规范化 / 配置） | L3 |
 | `tests/.../ScreenStickerChecks.cs` | `screen-sticker`（贴纸几何 / 层级顺序 / 最近使用 / 配置默认值） | L3 |
 | `tests/.../ScreenRecorderChecks.cs` | `screen-recorder`（区域换算 / FFmpeg 参数 / 文件名 / 配置默认值） | L3 |
 | `tests/.../MediaEditorChecks.cs` | `media-editor`（ffprobe 解析 / 片段数学 / 裁剪拼接滤镜 / GIF 参数） | L3 |

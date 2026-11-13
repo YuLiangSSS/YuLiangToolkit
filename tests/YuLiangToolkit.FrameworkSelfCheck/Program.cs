@@ -80,6 +80,8 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("stopwatch", "秒表：计时状态机 / 时长格式 / 快捷键定义 / 声音选项 / 配置"),
     ("calendar", "日历：月视图格子 / 跳月 / 键盘移动 / 标题栏日期时间"),
     ("notification-log", "通知管理：历史入库 / 删除清空 / 上限裁剪 / 来源归纳 / 持久化"),
+    ("countdown", "倒计时：状态机 / 时长解析 / 格式化 / 快捷键 / 配置"),
+    ("alarm", "闹钟：重复天 / 下次响铃时刻 / 贪睡 / 条目规范化 / 配置"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1369,6 +1371,14 @@ RunGroupModule("calendar", "日历", CalendarChecks.Run);
 // 「通知管理」：历史入库 / 删单条 / 清空 / 上限裁剪（保最新）/ 来源归纳 / 时间显示 /
 // 「发通知自动进历史」这条扩展性链路 / 持久化往返 / 关掉记住历史时删文件。
 RunGroupModule("notification-log", "通知管理", NotificationLogChecks.Run);
+
+// 「倒计时」：状态机（开始 / 暂停 / 继续 / 重置 / 加时 / 到点）、时长解析（秒 / 分:秒 / 时:分:秒 / 1h30m）、
+// 显示格式化（向上取整 / 跨小时）、快捷键定义与启停、配置往返。纯逻辑，时间由注入的时间戳控制。
+RunGroupModule("countdown", "倒计时", CountdownChecks.Run);
+
+// 「闹钟」：重复天解析与存储、下一次响铃时刻（跨天 / 跨周 / 只响一次 / 今天已过）、贪睡、
+// 条目规范化、配置往返。纯逻辑，「现在」全部显式传。
+RunGroupModule("alarm", "闹钟", AlarmChecks.Run);
 
 EnterGroup("shell");
 
