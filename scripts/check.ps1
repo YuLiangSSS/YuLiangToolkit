@@ -178,6 +178,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/NotificationLogChecks.cs' @('notification-log') 'L3' 'notification history / persistence assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/CountdownChecks.cs' @('countdown') 'L3' 'countdown engine / parsing assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/AlarmChecks.cs' @('alarm') 'L3' 'alarm schedule / snooze assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/TextConverterChecks.cs' @('text-converter') 'L3' 'text transform / shortcut model assertions')
 
     # ---------- tests: anything else in the self-check project is unknown wiring ----------
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/*.cs' @('ALL') 'L4' 'unmapped self-check source' -Fallback)
@@ -234,9 +235,10 @@ $mapping = @(
     (New-Rule 'src/YuLiangToolkit.Tools.NotificationLog/*'   @('notification-log') 'L2' 'notification history tool (storage / filtering / config)')
     (New-Rule 'src/YuLiangToolkit.Tools.Countdown/*'         @('countdown') 'L2' 'countdown tool (engine / parsing / formatting / config)')
     (New-Rule 'src/YuLiangToolkit.Tools.Alarm/*'             @('alarm') 'L2' 'alarm tool (schedule / snooze / config)')
+    (New-Rule 'src/YuLiangToolkit.Tools.TextConverter/*'     @('text-converter') 'L2' 'text converter (transformers / shortcuts / config)')
     (New-Rule 'src/YuLiangToolkit.Core/Shell/ClockBarSource.cs' @('calendar') 'L3' 'title bar clock source (timezone + formatting)')
     # Core 的快捷键与通知是公共轮子：改它们直接跑 hotkeys 组（比 ALL 便宜，且这两处改动最容易踩回归）
-    (New-Rule 'src/YuLiangToolkit.Core/Input/*'              @('hotkeys') 'L3' 'shortcut engine / registry / adapter')
+    (New-Rule 'src/YuLiangToolkit.Core/Input/*'              @('hotkeys','text-converter') 'L3' 'shortcut engine / registry / adapter / key sender')
     (New-Rule 'src/YuLiangToolkit.Core/Notifications/*'      @('hotkeys','notification-log') 'L3' 'notification center / sinks / settings view / history')
     (New-Rule 'src/YuLiangToolkit.Core/Controls/HotkeyBox.cs' @('hotkeys') 'L3' 'hotkey capture control')
     (New-Rule 'src/YuLiangToolkit.Core/Media/SoundPlayer.cs' @('stopwatch') 'L3' 'sound player used by stopwatch')

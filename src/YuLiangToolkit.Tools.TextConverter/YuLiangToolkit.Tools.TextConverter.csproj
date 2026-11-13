@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「文本转换器」：大小写 / 繁简 / 火星文 / 花体 / 全角 / 倒置 / Emoji / 同音字 /
+       Base64 / URL / 摩斯 / 各种清理。转换是纯函数（TextTransformer），自检可逐条断言。
+       另支持自定义快捷键：选中任意程序里的文字按一下就就地转换（复制 → 转换 → 粘贴 → 还原剪贴板）。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.TextConverter</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.TextConverter</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

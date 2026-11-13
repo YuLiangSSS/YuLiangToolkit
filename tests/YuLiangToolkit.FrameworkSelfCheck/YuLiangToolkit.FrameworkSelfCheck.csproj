@@ -145,6 +145,8 @@
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Countdown\YuLiangToolkit.Tools.Countdown.csproj" />
     <!-- 「闹钟」：重复天 / 下次响铃时刻 / 贪睡 / 条目规范化 / 配置。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Alarm\YuLiangToolkit.Tools.Alarm.csproj" />
+    <!-- 「文本转换器」：每种转换的效果 / 可逆性 / 编码往返 / 快捷键数据模型 / 配置。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.TextConverter\YuLiangToolkit.Tools.TextConverter.csproj" />
   </ItemGroup>
 
 </Project>

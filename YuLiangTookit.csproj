@@ -73,6 +73,7 @@
     <ProjectReference Include="src\YuLiangToolkit.Tools.NotificationLog\YuLiangToolkit.Tools.NotificationLog.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.Countdown\YuLiangToolkit.Tools.Countdown.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.Alarm\YuLiangToolkit.Tools.Alarm.csproj" />
+    <ProjectReference Include="src\YuLiangToolkit.Tools.TextConverter\YuLiangToolkit.Tools.TextConverter.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.Sample\YuLiangToolkit.Tools.Sample.csproj" />
   </ItemGroup>
 

@@ -82,6 +82,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("notification-log", "通知管理：历史入库 / 删除清空 / 上限裁剪 / 来源归纳 / 持久化"),
     ("countdown", "倒计时：状态机 / 时长解析 / 格式化 / 快捷键 / 配置"),
     ("alarm", "闹钟：重复天 / 下次响铃时刻 / 贪睡 / 条目规范化 / 配置"),
+    ("text-converter", "文本转换器：各类转换 / 可逆性 / 编码往返 / 快捷键 / 配置"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1379,6 +1380,11 @@ RunGroupModule("countdown", "倒计时", CountdownChecks.Run);
 // 「闹钟」：重复天解析与存储、下一次响铃时刻（跨天 / 跨周 / 只响一次 / 今天已过）、贪睡、
 // 条目规范化、配置往返。纯逻辑，「现在」全部显式传。
 RunGroupModule("alarm", "闹钟", AlarmChecks.Run);
+
+// 「文本转换器」：每种转换的实际效果、可逆性（转两次回得来）、非法输入的错误处理、
+// 转换注册表、自定义快捷键的数据模型与配置往返。
+// 纯逻辑：**不碰剪贴板、不模拟按键**（「选中 → 转换 → 粘贴」靠人工冒烟验收）。
+RunGroupModule("text-converter", "文本转换器", TextConverterChecks.Run);
 
 EnterGroup("shell");
 
