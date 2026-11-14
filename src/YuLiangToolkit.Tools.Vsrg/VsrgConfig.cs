@@ -104,6 +104,18 @@ public sealed class VsrgConfig : ToolConfig
         set => Set(ref _pauseOnLostFocus, value);
     }
 
+    private bool _quitToResult;
+
+    /// <summary>
+    /// 游玩中「退出当前歌曲」后去哪：<c>true</c> = 进结算（按已打的部分算成绩），
+    /// <c>false</c> = 直接回选歌页（默认，退出就当没打这一局）。
+    /// </summary>
+    public bool QuitToResult
+    {
+        get => _quitToResult;
+        set => Set(ref _quitToResult, value);
+    }
+
     // ---------------------------------------------------------------- 键位（1~10 轨）
 
     private string _keys1 = DefaultKeys[0];

@@ -644,6 +644,8 @@ internal static class VsrgChecks
         var config = new VsrgConfig();
 
         check("[VSRG] 配置：默认不全屏", !config.PlayFullscreen, config.PlayFullscreen.ToString());
+        check("[VSRG] 配置：默认「退出后直接回选歌」（不进结算）",
+            !config.QuitToResult, config.QuitToResult.ToString());
         check("[VSRG] 配置：默认音频偏移 0ms", config.AudioOffsetMs == 0, config.AudioOffsetMs.ToString());
         check("[VSRG] 配置：默认滚动速度 7.0", Math.Abs(config.ScrollSpeed - 7.0) < 0.001,
             config.ScrollSpeed.ToString());
@@ -701,6 +703,12 @@ internal static class VsrgChecks
         check("[VSRG] 配置能拍成游玩用的判定快照",
             profile.Tiers.Count == 4 && profile.TailJudgementEnabled && profile.MissTierIndex == 3,
             $"{profile.Tiers.Count} / miss@{profile.MissTierIndex}");
+
+        // 「退出进结算」开关能存能读（JSON 往返：ToolConfig 的落盘与重建都靠可写属性）
+        config.QuitToResult = true;
+        check("[VSRG] 「退出进结算」开关可写，且能从配置读回",
+            config.QuitToResult && new VsrgConfig().QuitToResult == false,
+            $"{config.QuitToResult} / 默认 {new VsrgConfig().QuitToResult}");
 
         // 支持键数列表
         check("[VSRG] 支持 1K~10K", VsrgConfig.SupportedKeyCounts.SequenceEqual(Enumerable.Range(1, 10)),

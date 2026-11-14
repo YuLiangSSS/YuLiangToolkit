@@ -58,7 +58,7 @@
                             ToolTip="暂停 / 继续（Esc 或 P）" />
                     <Button Content="退出" Style="{StaticResource SecondaryButtonStyle}" Margin="8,0,0,0"
                             Command="{Binding QuitPlayCommand}" MinWidth="66"
-                            ToolTip="退出当前歌曲，回选歌页" />
+                            ToolTip="退出当前歌曲（去向看设置：回选歌 / 进结算）" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -93,7 +93,7 @@
                             <Button Content="退出到选歌" Style="{StaticResource SecondaryButtonStyle}"
                                     Margin="12,0,0,0" MinWidth="130"
                                     Command="{Binding QuitPlayCommand}"
-                                    ToolTip="结束本局，回选歌页重新选歌" />
+                                    ToolTip="退出当前歌曲（去向看设置：回选歌 / 进结算）" />
                         </StackPanel>
                     </StackPanel>
                 </Grid>

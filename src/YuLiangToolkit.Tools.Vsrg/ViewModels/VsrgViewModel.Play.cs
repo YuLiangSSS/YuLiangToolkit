@@ -168,6 +168,9 @@ public sealed partial class VsrgViewModel
     /// <summary>结算：一句话说明。</summary>
     public string ResultTitleText { get; private set; } = "本局完成";
 
+    /// <summary>结算：这一局是中途退出的（用来在界面上提示成绩只按已打的部分算）。</summary>
+    public bool ResultWasAborted { get; private set; }
+
     // ---------------------------------------------------------------- 命令
 
     /// <summary>暂停 / 继续。</summary>
@@ -190,9 +193,9 @@ public sealed partial class VsrgViewModel
 
         TogglePauseCommand = new RelayCommand(_ => TogglePause(), _ => IsPlayRunning);
 
-        // 「退出当前歌曲」= 直接回选歌页（按需求：暂停就能退出去换歌），不进结算。
-        // 进结算只发生在「真的打完了」那一次（见 OnPlayTick 的 IsFinished）。
-        QuitPlayCommand = new RelayCommand(_ => AbandonPlayback(exitFullscreen: true), _ => IsPlayRunning || IsPaused);
+        // 「退出当前歌曲」的去向由设置决定（Cfg.QuitToResult）：
+        // 默认直接回选歌页；勾上就按已打的部分进结算页。
+        QuitPlayCommand = new RelayCommand(_ => QuitPlay(exitFullscreen: true), _ => IsPlayRunning || IsPaused);
 
         ReplayCommand = new RelayCommand(_ => ReplaySameChart());
         ResultBackCommand = new RelayCommand(_ =>
@@ -200,6 +203,20 @@ public sealed partial class VsrgViewModel
             Page = VsrgPage.SongSelect;
             StatusText = Songs.Count == 0 ? "把 .osz 拖进窗口就能导入。" : $"共 {Songs.Count} 张谱面集。";
         });
+    }
+
+    /// <summary>
+    /// 游玩中退出当前歌曲：按设置决定进结算还是直接回选歌。
+    /// </summary>
+    public void QuitPlay(bool exitFullscreen)
+    {
+        if (IsPlayRunning && Cfg.QuitToResult && _engine is not null && _playingChart is not null)
+        {
+            FinishPlay(aborted: true);
+            return;
+        }
+
+        AbandonPlayback(exitFullscreen);
     }
 
     /// <summary>
@@ -464,12 +481,12 @@ public sealed partial class VsrgViewModel
 
     // ---------------------------------------------------------------- 结束 / 退出
 
-    /// <summary>打完一首：退全屏 → 进结算页。</summary>
-    private void FinishPlay()
+    /// <summary>打完一首（或按设置退出进结算）：退全屏 → 进结算页。</summary>
+    private void FinishPlay(bool aborted = false)
     {
         if (_engine is null || _playingChart is null) return;
 
-        CollectResult();
+        CollectResult(aborted);
 
         _playTimer?.Stop();
         _audio.Stop();
@@ -483,20 +500,23 @@ public sealed partial class VsrgViewModel
         if (Cfg.PlayFullscreen) RequestFullscreen(false);
 
         Page = VsrgPage.Result;
-        StatusText = "本局完成。";
+        StatusText = aborted ? "已退出本局（成绩按已打的部分算）。" : "本局完成。";
     }
 
     /// <summary>把这一局的成绩拍进结算页的状态。</summary>
-    private void CollectResult()
+    private void CollectResult(bool aborted)
     {
         var engine = _engine!;
         var chart = _playingChart!;
 
-        ResultAccuracyText = engine.Accuracy.ToString("0.00") + "%";
+        ResultAccuracyText = engine.JudgedUnits == 0
+            ? "—"
+            : engine.Accuracy.ToString("0.00") + "%";
         ResultMaxComboText = engine.MaxCombo.ToString();
         ResultChartTitle = chart.TitleLine;
         ResultChartSubtitle = chart.DifficultyLine;
-        ResultTitleText = "本局完成";
+        ResultWasAborted = aborted;
+        ResultTitleText = aborted ? "中途退出" : "本局完成";
 
         ResultTierCounts.Clear();
         for (var i = 0; i < engine.Profile.Tiers.Count; i++)
@@ -509,11 +529,13 @@ public sealed partial class VsrgViewModel
         OnPropertyChanged(nameof(ResultMaxComboText));
         OnPropertyChanged(nameof(ResultChartTitle));
         OnPropertyChanged(nameof(ResultChartSubtitle));
+        OnPropertyChanged(nameof(ResultWasAborted));
         OnPropertyChanged(nameof(ResultTitleText));
     }
 
     /// <summary>
-    /// 把播放 / 判定全部停掉、退回选歌页（不再产生结算 —— 结算只在真的打完时出现）。
+    /// 把播放 / 判定全部停掉、退回选歌页（不产生结算）。
+    /// <para>只有「设置里选了直接回选歌」时才走到这里；勾了「退出进结算」走 <see cref="FinishPlay"/>（aborted）。</para>
     /// </summary>
     public void AbandonPlayback(bool exitFullscreen)
     {

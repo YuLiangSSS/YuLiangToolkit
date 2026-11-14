@@ -43,12 +43,21 @@
                 <TextBlock Text="游玩" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,10" />
 
                 <WrapPanel Orientation="Horizontal">
-                    <CheckBox Content="开始游玩时进入全屏（打完自动退出全屏并进结算）"
-                              Style="{StaticResource CheckBoxStyle}"
-                              IsChecked="{Binding Cfg.PlayFullscreen}" />
+                    <CheckBox Content="开始游玩时进入全屏" Style="{StaticResource CheckBoxStyle}"
+                              IsChecked="{Binding Cfg.PlayFullscreen}"
+                              ToolTip="点「开始游玩」立刻进全屏；打完（或按设置退出去结算）时自动退出全屏" />
                     <CheckBox Content="切走窗口时自动暂停" Style="{StaticResource CheckBoxStyle}" Margin="24,0,0,0"
                               IsChecked="{Binding Cfg.PauseOnLostFocus}" />
                 </WrapPanel>
+
+                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                    <CheckBox Content="退出当前歌曲时进结算页" Style="{StaticResource CheckBoxStyle}"
+                              IsChecked="{Binding Cfg.QuitToResult}"
+                              ToolTip="勾上：暂停 / 退出按已打的部分算一局成绩进结算；不勾：直接回选歌页（默认）" />
+                    <TextBlock Text="（不勾 = 退出直接回选歌，成绩不算）" FontSize="11.5" Margin="10,1,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
 
                 <Grid Margin="0,16,0,0">
                     <Grid.ColumnDefinitions>

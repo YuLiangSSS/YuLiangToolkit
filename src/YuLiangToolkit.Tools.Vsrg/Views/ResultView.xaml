@@ -18,6 +18,9 @@
                        Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" />
             <TextBlock Text="{Binding ResultChartSubtitle}" FontSize="12" Margin="0,3,0,0"
                        Foreground="{DynamicResource TextSecondaryBrush}" />
+            <TextBlock Text="中途退出：成绩只按已经打到的部分算。" FontSize="11.5" Margin="0,6,0,0"
+                       Foreground="{DynamicResource DangerBrush}"
+                       Visibility="{Binding ResultWasAborted, Converter={StaticResource BoolToVis}}" />
         </StackPanel>
 
         <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,16,0,0">

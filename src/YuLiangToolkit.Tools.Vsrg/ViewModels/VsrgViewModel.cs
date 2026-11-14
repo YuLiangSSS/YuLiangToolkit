@@ -418,8 +418,8 @@ public sealed partial class VsrgViewModel : ToolViewModelBase
     }
 
     /// <summary>
-    /// 截图 / 调试验收：<c>YLT_VSRG_PAGE=settings|play|pause|result</c> 时打开工具后直接切到那个页面
-    /// （<c>play</c> / <c>pause</c> 会真的开始游玩当前选中的难度 —— 需要临时数据根里已经有谱面集）。
+    /// 截图 / 调试验收：<c>YLT_VSRG_PAGE=settings|play|pause|quit|result</c> 时打开工具后直接切到那个页面
+    /// （<c>play</c> / <c>pause</c> / <c>quit</c> 会真的开始游玩当前选中的难度 —— 需要临时数据根里已经有谱面集）。
     /// 只认一次；正常使用不设这个环境变量。
     /// </summary>
     private bool _debugPageApplied;
@@ -446,6 +446,13 @@ public sealed partial class VsrgViewModel : ToolViewModelBase
                 // 开始游玩后立刻暂停（截图验收暂停遮罩用）
                 StartPlay();
                 SetPaused(true);
+                break;
+            case "quit":
+            case "quit-result":
+                // 开始游玩后立刻「退出」：验证按设置进结算 / 回选歌（截图验收用）
+                StartPlay();
+                SetPaused(true);
+                QuitPlay(exitFullscreen: true);
                 break;
             case "play":
             case "game":
