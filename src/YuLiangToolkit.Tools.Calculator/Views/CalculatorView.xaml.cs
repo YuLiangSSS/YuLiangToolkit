@@ -32,12 +32,12 @@ public partial class CalculatorView : UserControl
 
     /// <summary>
     /// Enter = 求值并记入历史；Esc = 清空输入（在预览阶段拦下来，按钮 / 列表有焦点时也生效）。
-    /// <para>⚠ 只在「标准计算」模式拦：辈分计算模式里不能把 Enter 当成求值，否则在搜索框里
-    /// 敲回车会顺手清掉 / 算一遍表达式。</para>
+    /// <para>⚠ 只在「标准计算」模式拦：辈分 / 日期计算模式里不能把 Enter 当成求值，
+    /// 否则在日期框里敲回车会顺手清掉或算一遍表达式。</para>
     /// </summary>
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (ViewModel is not { } vm || vm.IsKinMode) return;
+        if (ViewModel is not { } vm || !vm.IsStandardMode) return;
 
         switch (e.Key)
         {

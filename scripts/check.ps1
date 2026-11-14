@@ -154,6 +154,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/SoftwareUpdaterChecks.cs' @('software-updater') 'L3' 'software-updater assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/CalculatorChecks.cs'     @('calculator') 'L3' 'calculator + shared expression engine assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/KinCalculatorChecks.cs'  @('calculator') 'L3' 'calculator kin (kinship) mode assertions (called from CalculatorChecks.Run)')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/DateCalculatorChecks.cs' @('calculator') 'L3' 'calculator date mode assertions (called from CalculatorChecks.Run)')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/RandomNumberChecks.cs'   @('random-number') 'L3' 'random number grid / sampling / exact decimal assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/NumberConverterChecks.cs' @('number-converter') 'L3' 'number converter: chinese / money / english / roman / radix / scientific assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/FunctionPlotChecks.cs'   @('function-plot') 'L3' 'function plot viewport / ticks / config assertions')

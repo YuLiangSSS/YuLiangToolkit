@@ -35,6 +35,7 @@ public sealed class CalculatorViewModel : ToolViewModelBase
         NormalizeConfig();
 
         Kin = new KinCalculatorViewModel(Cfg);
+        Dates = new DateCalculatorViewModel(Cfg);
 
         KeyCommand = new RelayCommand(
             parameter => PressKey(parameter as CalculatorKey),
@@ -64,26 +65,46 @@ public sealed class CalculatorViewModel : ToolViewModelBase
     /// <summary>辈分计算模式的关系链 / 结果 / 对照表（与标准计算共用同一个工具页与同一份配置）。</summary>
     public KinCalculatorViewModel Kin { get; }
 
+    /// <summary>日期计算模式的输入 / 结果（同样共用一份配置）。</summary>
+    public DateCalculatorViewModel Dates { get; }
+
     /// <summary>当前是不是辈分计算模式（界面切显示哪个模式，代码后置判断要不要拦 Enter / Esc）。</summary>
     public bool IsKinMode
     {
         get => Cfg.IsKinMode;
         set
         {
-            if (value == Cfg.IsKinMode) return;
-            Cfg.Mode = value ? CalculatorConfig.KinMode : CalculatorConfig.StandardMode;
+            if (value) Cfg.Mode = CalculatorConfig.KinMode;
         }
     }
 
-    /// <summary>模式切换：标准计算（与 <see cref="IsKinMode"/> 互斥，两个单选按钮各绑一个）。</summary>
+    /// <summary>当前是不是日期计算模式。</summary>
+    public bool IsDateMode
+    {
+        get => Cfg.IsDateMode;
+        set
+        {
+            if (value) Cfg.Mode = CalculatorConfig.DateMode;
+        }
+    }
+
+    /// <summary>模式切换：标准计算（与其余两个模式互斥，三个单选按钮各绑一个布尔属性）。</summary>
     public bool IsStandardMode
     {
-        get => !Cfg.IsKinMode;
-        set { if (value) IsKinMode = false; }
+        get => Cfg.IsStandardMode;
+        set
+        {
+            if (value) Cfg.Mode = CalculatorConfig.StandardMode;
+        }
     }
 
     /// <summary>模式徽章（页头小字，说明当前在哪个模式）。</summary>
-    public string ModeText => Cfg.IsKinMode ? "辈分计算模式" : "标准计算模式";
+    public string ModeText => Cfg.Mode switch
+    {
+        CalculatorConfig.KinMode => "辈分计算模式",
+        CalculatorConfig.DateMode => "日期计算模式",
+        _ => "标准计算模式",
+    };
 
     /// <summary>角度单位下拉框选项（弧度 / 角度）。</summary>
     public IReadOnlyList<string> AngleUnitOptions => CalculatorConfig.AngleUnitOptions;
@@ -399,6 +420,7 @@ public sealed class CalculatorViewModel : ToolViewModelBase
                 break;
             case nameof(CalculatorConfig.Mode):
                 OnPropertyChanged(nameof(IsKinMode));
+                OnPropertyChanged(nameof(IsDateMode));
                 OnPropertyChanged(nameof(IsStandardMode));
                 OnPropertyChanged(nameof(ModeText));
                 break;
@@ -426,5 +448,6 @@ public sealed class CalculatorViewModel : ToolViewModelBase
     {
         Cfg.PropertyChanged -= OnConfigChanged;
         Kin.Detach();
+        Dates.Detach();
     }
 }

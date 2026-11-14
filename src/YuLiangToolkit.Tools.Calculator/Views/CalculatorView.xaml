@@ -64,9 +64,9 @@
                 <StackPanel>
                     <TextBlock Text="🧮 计算器" FontSize="21" FontWeight="SemiBold" />
                     <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
-                               Text="直接输入表达式边打边看结果；整数 / 有限小数（含 100!、2^1000、超大整数四则）走任意精度精确计算，每一位都准；三角函数可切角度制 / 弧度制，回退结果精度 3-12 位可调，算过的从历史一键回填。Enter 求值并记入历史，Esc 清空输入。" />
+                               Text="直接输入表达式边打边看结果；整数 / 有限小数（含 100!、2^1000、超大整数四则）走任意精度精确计算，每一位都准；三角函数可切角度制 / 弧度制，回退结果精度 3-12 位可调，算过的从历史一键回填。Enter 求值并记入历史，Esc 清空输入。另有辈分计算（亲戚称谓，南北叫法）与日期计算（相差天数 / 加减天数 / 拆开算）。" />
                 </StackPanel>
-                <!-- 模式切换：标准计算（表达式求值） / 辈分计算（亲戚称谓） -->
+                <!-- 模式切换：标准计算（表达式求值） / 辈分计算（亲戚称谓） / 日期计算（相差天数、加减天数） -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="16,0,0,0">
                     <RadioButton Content="标准计算" GroupName="calc-mode" Style="{StaticResource RadioButtonStyle}"
                                  IsChecked="{Binding IsStandardMode, Mode=TwoWay}"
@@ -74,6 +74,9 @@
                     <RadioButton Content="辈分计算" GroupName="calc-mode" Style="{StaticResource RadioButtonStyle}"
                                  Margin="18,0,0,0" IsChecked="{Binding IsKinMode, Mode=TwoWay}"
                                  ToolTip="亲属辈分与称谓：按关系链算出该叫什么（南方 / 北方两套叫法）" />
+                    <RadioButton Content="日期计算" GroupName="calc-mode" Style="{StaticResource RadioButtonStyle}"
+                                 Margin="18,0,0,0" IsChecked="{Binding IsDateMode, Mode=TwoWay}"
+                                 ToolTip="日期计算：两个日期相差多少天、某天加 / 减 N 天是哪天、拆成几年几个月几天" />
                 </StackPanel>
             </Grid>
 
@@ -359,6 +362,12 @@
             <Grid Grid.Row="1" Margin="0,12,0,0"
                   Visibility="{Binding IsKinMode, Converter={StaticResource BoolToVis}}">
                 <views:KinCalculatorView DataContext="{Binding Kin}" />
+            </Grid>
+
+            <!-- ===================== 日期计算模式（相差天数 / 加减天数 / 拆开算） ===================== -->
+            <Grid Grid.Row="1" Margin="0,12,0,0"
+                  Visibility="{Binding IsDateMode, Converter={StaticResource BoolToVis}}">
+                <views:DateCalculatorView DataContext="{Binding Dates}" />
             </Grid>
         </Grid>
     </ScrollViewer>

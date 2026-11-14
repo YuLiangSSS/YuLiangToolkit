@@ -39,6 +39,9 @@ public sealed class CalculatorConfig : ToolConfig
     /// <summary>辈分计算模式。</summary>
     public const string KinMode = "辈分计算";
 
+    /// <summary>日期计算模式。</summary>
+    public const string DateMode = "日期计算";
+
     /// <summary>北方叫法。</summary>
     public const string NorthRegion = "北方";
 
@@ -55,9 +58,9 @@ public sealed class CalculatorConfig : ToolConfig
     [JsonIgnore]
     public static IReadOnlyList<string> AngleUnitOptions { get; } = new[] { RadiansUnit, DegreesUnit };
 
-    /// <summary>模式切换的选项：标准计算 / 辈分计算。</summary>
+    /// <summary>模式切换的选项：标准计算 / 辈分计算 / 日期计算。</summary>
     [JsonIgnore]
-    public static IReadOnlyList<string> ModeOptions { get; } = new[] { StandardMode, KinMode };
+    public static IReadOnlyList<string> ModeOptions { get; } = new[] { StandardMode, KinMode, DateMode };
 
     /// <summary>南北叫法的选项。</summary>
     [JsonIgnore]
@@ -148,6 +151,42 @@ public sealed class CalculatorConfig : ToolConfig
         set => Set(ref _kinPath, value ?? "");
     }
 
+    private string _dateCalcKind = "Difference";
+
+    /// <summary>日期计算的算法：<c>Difference</c>（相差天数，默认）/ <c>Offset</c>（加减天数）/ <c>Breakdown</c>（拆开算）。</summary>
+    public string DateCalcKind
+    {
+        get => _dateCalcKind;
+        set => Set(ref _dateCalcKind, value ?? "");
+    }
+
+    private string _dateStart = "";
+
+    /// <summary>日期计算里填的开始日期原文（原样保存，重开还是你上次写的样子）。</summary>
+    public string DateStart
+    {
+        get => _dateStart;
+        set => Set(ref _dateStart, value ?? "");
+    }
+
+    private string _dateEnd = "";
+
+    /// <summary>日期计算里填的结束日期原文。</summary>
+    public string DateEnd
+    {
+        get => _dateEnd;
+        set => Set(ref _dateEnd, value ?? "");
+    }
+
+    private string _dateOffset = "0";
+
+    /// <summary>日期计算里填的「加 / 减多少天」原文（可为负）。</summary>
+    public string DateOffset
+    {
+        get => _dateOffset;
+        set => Set(ref _dateOffset, value ?? "");
+    }
+
     /// <summary>夹到合法区间的有效位数（配置被手改成 0 / 999 也能用）。</summary>
     [JsonIgnore]
     public int SafeSignificantDigits => Math.Clamp(SignificantDigits, MinSignificantDigits, MaxSignificantDigits);
@@ -164,6 +203,14 @@ public sealed class CalculatorConfig : ToolConfig
     [JsonIgnore]
     public bool IsKinMode => Mode == KinMode;
 
+    /// <summary>当前是不是日期计算模式。</summary>
+    [JsonIgnore]
+    public bool IsDateMode => Mode == DateMode;
+
+    /// <summary>当前是不是标准计算模式。</summary>
+    [JsonIgnore]
+    public bool IsStandardMode => Mode == StandardMode;
+
     /// <summary>叫法用北方还是南方。</summary>
     [JsonIgnore]
     public bool PreferNorth => KinRegion != SouthRegion;
@@ -176,9 +223,13 @@ public sealed class CalculatorConfig : ToolConfig
     public static string NormalizeAngleUnit(string? value)
         => string.Equals(value, DegreesUnit, StringComparison.Ordinal) ? DegreesUnit : RadiansUnit;
 
-    /// <summary>模式：未知值回到标准计算。</summary>
-    public static string NormalizeMode(string? value)
-        => string.Equals(value, KinMode, StringComparison.Ordinal) ? KinMode : StandardMode;
+    /// <summary>模式：未知值回到标准计算（三个合法值按顺序判断）。</summary>
+    public static string NormalizeMode(string? value) => value switch
+    {
+        KinMode => KinMode,
+        DateMode => DateMode,
+        _ => StandardMode,
+    };
 
     /// <summary>南北：未知值回到北方，并以「北方」为准（配置里写「北 / 北方地区」都算北方）。</summary>
     public static string NormalizeRegion(string? value)

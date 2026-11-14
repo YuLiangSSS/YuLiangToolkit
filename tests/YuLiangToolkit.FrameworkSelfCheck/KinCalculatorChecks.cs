@@ -448,11 +448,11 @@ internal static class KinCalculatorChecks
         check("[辈分] 配置默认：标准计算模式 / 北方 / 男 / 空关系链",
             config.Mode == "标准计算" && config.KinRegion == "北方"
             && config.KinGender == "男" && config.KinPath == ""
-            && !config.IsKinMode && config.PreferNorth && config.SelfIsMale,
+            && !config.IsKinMode && !config.IsDateMode && config.PreferNorth && config.SelfIsMale,
             config.ToJson());
 
-        check("[辈分] 配置选项：模式 / 南北 / 性别各两个选项，顺序固定",
-            CalculatorConfig.ModeOptions.SequenceEqual(new[] { "标准计算", "辈分计算" })
+        check("[辈分] 配置选项：模式含标准 / 辈分 / 日期，南北与性别各两个选项",
+            CalculatorConfig.ModeOptions.SequenceEqual(new[] { "标准计算", "辈分计算", "日期计算" })
             && CalculatorConfig.RegionOptions.SequenceEqual(new[] { "北方", "南方" })
             && CalculatorConfig.GenderOptions.SequenceEqual(new[] { "男", "女" }),
             string.Join(" / ", CalculatorConfig.ModeOptions));

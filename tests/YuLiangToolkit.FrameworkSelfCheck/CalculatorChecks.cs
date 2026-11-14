@@ -48,6 +48,9 @@ internal static class CalculatorChecks
         // 辈分计算模式（同一工具页的第二个模式）：断言放在单独的文件里，共用本组
         KinCalculatorChecks.Run(check, report);
 
+        // 日期计算模式（第三个模式）：同上
+        DateCalculatorChecks.Run(check, report);
+
         report("[计算器] 表达式求值 / 优先级 / 省略乘号 / 阶乘 / 角度制 / 格式化 / 输入构造 / 历史与配置", true);
     }
 
@@ -81,14 +84,16 @@ internal static class CalculatorChecks
             && tool.Category == "数学" && tool.Order == 510,
             $"{tool.Id} / {tool.Name} / {tool.EmojiIcon} / {tool.Category} / {tool.Order}");
 
-        check("[计算器] 标签覆盖数学 / 计算器 / 科学计算器 / 表达式 / 三角函数 / 辈分",
+        check("[计算器] 标签覆盖数学 / 计算器 / 科学计算器 / 表达式 / 三角函数 / 辈分 / 日期",
             tool.Tags.Contains("数学") && tool.Tags.Contains("计算器") && tool.Tags.Contains("科学计算器")
-            && tool.Tags.Contains("表达式") && tool.Tags.Contains("三角函数") && tool.Tags.Contains("辈分"),
+            && tool.Tags.Contains("表达式") && tool.Tags.Contains("三角函数") && tool.Tags.Contains("辈分")
+            && tool.Tags.Contains("日期"),
             string.Join(" / ", tool.Tags));
 
-        check("[计算器] 描述能说明「科学计算 + 表达式 + 历史 + 辈分计算」",
+        check("[计算器] 描述能说明「科学计算 + 表达式 + 历史 + 辈分 + 日期」",
             tool.Description.Contains("科学") && tool.Description.Contains("表达式")
-            && tool.Description.Contains("历史") && tool.Description.Contains("辈分"),
+            && tool.Description.Contains("历史") && tool.Description.Contains("辈分")
+            && tool.Description.Contains("日期"),
             tool.Description);
 
         check("[计算器] 工具 Id 与 CalculatorConfig.ToolId 一致（Data / Config 目录名）",
