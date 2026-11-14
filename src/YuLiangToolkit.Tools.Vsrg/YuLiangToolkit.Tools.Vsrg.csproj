@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「游戏 → VSRG」竖直下落式音游：读 osu!mania 谱面（只认 mode 3）、拖 .osz 导入成 Mapset 谱面集、
+       1K~10K 游玩、可改键位 / 判定档 / 滚动速度 / 音频偏移。
+       分层和 Tools.Games 同一个思路：纯逻辑（Core/：解析 / 导入 / 判定 / 时钟）→ ViewModel → 自绘 View。
+       ⚠ 独立工程而不是塞进 Tools.Games：依赖面（OsuParsers / NAudio）和自检组都完全不同，
+          塞进去会让 Games 工程的自检映射变得含糊。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.Vsrg</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.Vsrg</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 游玩音频：waveOut 的设备字节位置当播放时钟（WPF MediaElement 的 Position 精度不够，
+         几十毫秒的偏差在音游里就是「note 和音乐明显错开」）；NAudio.Vorbis 补 OGG 解码
+         （大量 osu! 谱面用 .ogg）。两者都是 MIT，见 THIRD-PARTY-NOTICES.md。
+         ⚠ 谱面解析不用 OsuParsers：它的解码器是静态状态、非线程安全，而扫描谱面库要并行解析，
+           所以那边是手写的只读解析器（Core/OsuChartReader.cs），本工程没有这个依赖。 -->
+    <PackageReference Include="NAudio" Version="3.3.0" />
+    <PackageReference Include="NAudio.Vorbis" Version="3.0.0" />
+  </ItemGroup>
+
+</Project>

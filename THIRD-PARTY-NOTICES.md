@@ -26,13 +26,16 @@
 
 ## OsuParsers 1.7.2（NuGet 依赖）
 
-- 用途：osu!mania 三件套（Key 转换 / LN 转换 / 等级计算）读写 `.osu` 谱面文件
+- 用途：osu!mania 三件套（Key 转换 / LN 转换 / 等级计算）读写 `.osu` 谱面文件；
+  「下图器」以外的 osu!mania 相关解析也走它
 - 项目主页：<https://github.com/mrflashstudio/OsuParsers>
 - 许可：MIT License
 - 版权：Copyright (c) 2021 mrflashstudio
 - 说明：「osu!mania 谱面编辑器」（`src/YuLiangToolkit.Tools.OsuMania/Core/Editor/`）**不使用**它读写：
   实测该库解码 → 保存会丢掉不认识的键与注释，而编辑器是改用户原谱，因此那边改用手写的
-  按行编辑读写器（`OsuFileDocument.cs`）。
+  按行编辑读写器（`OsuFileDocument.cs`）。「VSRG 音游」（`src/YuLiangToolkit.Tools.Vsrg/`）也**不使用**它：
+  那边要并行扫描整个谱面库，而该库的解码器是静态状态、非线程安全，因此改成手写的只读解析器
+  （`Core/OsuChartReader.cs`）。
 
 ## NAudio 3.3.0 + NAudio.Vorbis 3.0.0 + NVorbis 0.10.5（NuGet 依赖）
 

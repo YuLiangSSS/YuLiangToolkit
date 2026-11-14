@@ -1,0 +1,34 @@
+<UserControl x:Class="YuLiangToolkit.Tools.Vsrg.Views.VsrgView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="clr-namespace:YuLiangToolkit.Tools.Vsrg.Views"
+             Background="Transparent"
+             Focusable="True"
+             PreviewKeyDown="OnPreviewKeyDown"
+             PreviewKeyUp="OnPreviewKeyUp"
+             AllowDrop="True"
+             DragOver="OnDragOver"
+             Drop="OnDrop">
+
+    <!-- 「VSRG」工具页：四个页面（选歌 / 设置 / 游玩 / 结算）在同一个 Grid 里互斥显示。
+         页面级区块的布局约定见 docs/dev/layout.md（选歌页左右两栏之间有 core:PaneSplitter）。
+         游玩页要整块屏幕铺满，所以它**不进 ScrollViewer**；选歌 / 设置页各自带滚动。 -->
+
+    <Grid Margin="0">
+        <!-- ===== 选歌页 ===== -->
+        <views:SongSelectView x:Name="SongSelectPage" DataContext="{Binding}"
+                              Visibility="{Binding IsSongSelectPage, Converter={StaticResource BoolToVis}}" />
+
+        <!-- ===== 设置页 ===== -->
+        <views:SettingsView x:Name="SettingsPage" DataContext="{Binding}"
+                            Visibility="{Binding IsSettingsPage, Converter={StaticResource BoolToVis}}" />
+
+        <!-- ===== 游玩页 ===== -->
+        <views:PlayView x:Name="PlayPage" DataContext="{Binding}"
+                        Visibility="{Binding IsPlayPage, Converter={StaticResource BoolToVis}}" />
+
+        <!-- ===== 结算页 ===== -->
+        <views:ResultView x:Name="ResultPage" DataContext="{Binding}"
+                          Visibility="{Binding IsResultPage, Converter={StaticResource BoolToVis}}" />
+    </Grid>
+</UserControl>

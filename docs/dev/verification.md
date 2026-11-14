@@ -140,6 +140,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `src/YuLiangToolkit.Tools.TaskManager/**` | `task-manager` | L2 |
 | `src/YuLiangToolkit.Tools.AppManager/**` | `app-manager` | L2 |
 | `src/YuLiangToolkit.Tools.Games/**` | `tetris`（「游戏」类别：俄罗斯方块） | L2 |
+| `src/YuLiangToolkit.Tools.Vsrg/**` | `vsrg`（「游戏」类别：VSRG 音游 —— osu!mania 解析 / .osz 导入 / 判定引擎） | L2 |
 | `src/YuLiangToolkit.Tools.MemeBoard/**` | `meme-board` | L2 |
 | `src/YuLiangToolkit.Tools.WorldClock/**` | `world-clock`（时区换算在工具工程里，不改 Core） | L2 |
 | `src/YuLiangToolkit.Tools.Stopwatch/**` | `stopwatch`（计时状态机 / 格式化 / 配置） | L2 |
@@ -168,6 +169,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `tests/.../TaskManagerChecks.cs` | `task-manager`（数字格式化 / 结束任务三级方案 / 开机启动解析与启停标记 / 保护名单 / 进程行 / 真实只读采样） | L3 |
 | `tests/.../AppManagerChecks.cs` | `app-manager`（注册表过滤与去重 / 安装日期 / 大小与盘符 / 卸载命令行拆分 / 排序 / 配置；真实扫描只读，不启动任何卸载程序） | L3 |
 | `tests/.../TetrisChecks.cs` | `tetris`（7 种方块 × 4 朝向 / SRS 墙踢 / 碰撞边界 / 7-bag / 消行计分升级 / 暂存 / 幽灵 / 配置） | L3 |
+| `tests/.../VsrgChecks.cs` | `vsrg`（.osu 只读解析 / .osz 导入与路径穿越 / Mapset 扫描 / 判定档与准确率 / 面条头尾判定 / 键位 / 配置） | L3 |
 | `tests/.../BoardGamesNewGameChecks.cs` | `board-new-games`（斗地主牌型 / 比大小 / 发牌 / 叫牌 / 结算 / 快照；军棋布阵 / 走法 / 裁判 / 暗棋 / 胜负） | L3 |
 | `tests/.../AiAndFourJunqiChecks.cs` | `ai-games`（五子棋 / 象棋 / 斗地主 / 军棋 / 俄罗斯方块 AI + 四档难度 + 四国军棋规则） | L3 |
 | `tests/.../GoChecks.cs` | `go`（落子 / 提子 / 禁自杀 / 打劫 / 停一手 / 数子 / 悔棋认输 / 快照 / AI） | L3 |

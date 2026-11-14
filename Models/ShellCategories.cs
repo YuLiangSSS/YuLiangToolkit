@@ -41,7 +41,7 @@ public static class ShellCategories
         {
             Path = new[] { Games },
             EmojiIcon = "🎮",
-            Description = "单机小游戏：俄罗斯方块…（打开就能玩，不需要联网）",
+            Description = "单机小游戏：俄罗斯方块、VSRG 音游…（打开就能玩，不需要联网）",
             Order = 30,
         },
     };

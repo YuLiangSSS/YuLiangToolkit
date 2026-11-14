@@ -67,6 +67,7 @@
     <ProjectReference Include="src\YuLiangToolkit.Tools.TaskManager\YuLiangToolkit.Tools.TaskManager.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.AppManager\YuLiangToolkit.Tools.AppManager.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.Games\YuLiangToolkit.Tools.Games.csproj" />
+    <ProjectReference Include="src\YuLiangToolkit.Tools.Vsrg\YuLiangToolkit.Tools.Vsrg.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.WorldClock\YuLiangToolkit.Tools.WorldClock.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.Stopwatch\YuLiangToolkit.Tools.Stopwatch.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.Calendar\YuLiangToolkit.Tools.Calendar.csproj" />
