@@ -8,6 +8,7 @@
 | 工具 | 一句话 | 详细说明 |
 | --- | --- | --- |
 | 🎵 音频工具 | 视频转音频（MP3 / FLAC / 原样提取）+ 分段视频合成（m3u8 / ts → mp4/mkv） | [tools/audio-tools.md](tools/audio-tools.md) |
+| 🖼️ 视频转 GIF | 把视频文件截取一段转成 GIF 动图：可设起始时间 / 时长 / 帧率 / 宽度 / 颜色数 / 抖动，FFmpeg 两遍调色板编码，颜色准、体积小 | [tools/video-to-gif.md](tools/video-to-gif.md) |
 | 🎥 录屏 / GIF | 用 FFmpeg 的 gdigrab 录屏：全屏 / 框选区域 / 指定窗口 → GIF 或 MP4 / MKV / MOV / AVI / WebM（H.264 / H.265 / AV1 / VP9 / MPEG-4 / MJPEG 编码器可选，画质或码率可调）；支持麦克风 + 系统声音、摄像头预览与屏幕叠加、可自定义全局快捷键，也能截 PNG | [tools/screen-recorder.md](tools/screen-recorder.md) |
 | ✂️ 剪辑工具 | 简易视频 / GIF 剪辑：时间轴缩略图定位、起止裁剪、多片段按顺序拼接，导出 MP4 / MKV / MOV / AVI / WebM 或 GIF，可生成低清预览片段确认效果 | [tools/media-editor.md](tools/media-editor.md) |
 | 🎬 视频 / 音乐播放器 | 本地播放器：播放列表、循环随机、可调步长的快进快退 | [tools/media-player.md](tools/media-player.md) |

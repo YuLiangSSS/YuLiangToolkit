@@ -1,4 +1,4 @@
-﻿# YuLiangToolkit（凉雨工具集）
+# YuLiangToolkit（凉雨工具集）
 
 > **一个 Windows 上的自用小工具集：39 个常用工具装进同一个窗口。**
 >
@@ -30,7 +30,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 
 需要 **Windows 10 2004（build 19041）及以上** + **.NET 9 SDK**（`global.json` 锁定 9.0.317）。
 
-- **FFmpeg**（音频工具 / 录屏 / 剪辑）：自动找 `PATH` 里的 `ffmpeg.exe`，也可以在工具里手动指定；
+- **FFmpeg**（音频工具 / 视频转 GIF / 录屏 / 剪辑）：自动找 `PATH` 里的 `ffmpeg.exe`，也可以在工具里手动指定；
 - **WebView2 Runtime**（网页浏览器）：Win10 2004+ 一般随 Edge 自带，缺失时工具会提示安装，不随本项目打包；
 - **Word / Excel / PPT 阅读器**不需要安装 Office / WPS，**Live2D 桌宠**也不需要额外组件（仅 Windows x64）；
   Live2D 的「AI 聊天」要自己填 DeepSeek API Key（按 token 计费，可全程不用——不填就只走离线兜底）；
@@ -43,6 +43,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 | 工具 | 能干什么 |
 | --- | --- |
 | [**🎵 音频工具**](docs/tools/audio-tools.md) | 视频转音频（MP3 / FLAC / 原样提取）+ 分段视频合成（m3u8 / ts → mp4/mkv），批量 + 进度 + 取消 |
+| [**🖼️ 视频转 GIF**](docs/tools/video-to-gif.md) | 把视频文件截取一段转成 GIF 动图：起始时间 / 时长 / 帧率 / 宽度 / 颜色 / 抖动可调，FFmpeg 两遍调色板编码，进度 + 取消 |
 | [**🎥 录屏 / GIF**](docs/tools/screen-recorder.md) | 全屏 / 框选区域 / 指定窗口录屏 → GIF 或 MP4 / MKV / MOV / AVI / WebM（多编码器可选）；麦克风 + 系统声音、摄像头、全局快捷键、PNG 截图 |
 | [**✂️ 剪辑工具**](docs/tools/media-editor.md) | 视频 / GIF 按时间轴缩略图裁剪、多片段排序拼接，导出 MP4 / MKV / MOV / AVI / WebM 或 GIF（可先出低清预览）；文件拖进页面即载入 |
 | [**🎬 视频 / 音乐播放器**](docs/tools/media-player.md) | 本地播放列表、单曲 / 随机、沉浸式全屏、后台播放 + 迷你条、按文件夹 / 全局记忆播放进度 |

@@ -121,6 +121,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `src/YuLiangToolkit.Tools.Browser/**` | `browser` | L2 |
 | `src/YuLiangToolkit.Tools.TextEditor/**` | `text-editor` | L2 |
 | `src/YuLiangToolkit.Tools.AudioTools/**` | `audio-tools` | L2 |
+| `src/YuLiangToolkit.Tools.VideoToGif/**` | `video-to-gif` | L2 |
 | `src/YuLiangToolkit.Tools.WordViewer/**` | `word-viewer` | L2 |
 | `src/YuLiangToolkit.Tools.ExcelViewer/**` | `excel-viewer` | L2 |
 | `src/YuLiangToolkit.Tools.PptViewer/**` | `ppt-viewer` | L2 |
@@ -196,6 +197,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `tests/.../BrowserChecks.cs` | `browser` | L3 |
 | `tests/.../TextEditorChecks.cs` | `text-editor` | L3 |
 | `tests/.../AudioToolsChecks.cs` | `audio-tools`（分段合成纯逻辑） | L3 |
+| `tests/.../VideoToGifChecks.cs` | `video-to-gif`（时间解析 / 参数归一化 / 调色板参数） | L3 |
 | `tests/.../WordViewerChecks.cs` | `word-viewer`（docx 解析纯逻辑） | L3 |
 | `tests/.../ExcelViewerChecks.cs` | `excel-viewer`（xlsx 解析纯逻辑） | L3 |
 | `tests/.../PptViewerChecks.cs` | `ppt-viewer`（pptx 解析 / 查找 / 缩放纯逻辑） | L3 |

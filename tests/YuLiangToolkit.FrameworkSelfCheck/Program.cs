@@ -48,6 +48,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("browser", "网页浏览器：地址栏解析 / 主机识别 / 搜索模板 / 标签栏规则与会话恢复 / 配置默认值"),
     ("text-editor", "文本编辑器：编码探测 / 换行风格 / 查找替换 / 标签规则 / 高亮调色 / 配置默认值"),
     ("audio-tools", "音频工具：视频转音频 / 分段合成（自然排序 / concat 清单 / FFmpeg 参数）"),
+    ("video-to-gif", "视频转 GIF：时间解析 / 参数归一化 / 两遍调色板参数 / 输出命名 / 进度解析"),
     ("word-viewer", "Word 阅读器：docx 解析（段落 / 格式 / 表格 / 图片 / 大纲）/ 查找 / 最近列表"),
     ("excel-viewer", "Excel 阅读器：xlsx 解析（共享字符串 / 样式 / 合并 / 列宽 / 截断）/ 数字格式 / 最近列表"),
     ("ppt-viewer", "PPT 阅读器：pptx 解析（幻灯片顺序 / 版式继承 / 形状 / 文字 / 图片 / 表格 / 备注）/ 查找 / 缩放 / 放映"),
@@ -1218,6 +1219,10 @@ RunGroupModule("text-editor", "文本编辑器", TextEditorChecks.Run);
 // 「音频工具」：分段视频合成的纯逻辑（分段识别 / 自然排序 / concat 清单 / FFmpeg 参数 / 输出命名 /
 // 进度解析 / 配置包装）；**不启动 FFmpeg、不联网**（真合成由人工用本地 m3u8 / 分段文件夹验收）。
 RunGroupModule("audio-tools", "音频工具", AudioToolsChecks.Run);
+
+// 「视频转 GIF」：时间解析 / 参数归一化 / FFmpeg 两遍调色板参数 / 输出命名 / 进度解析 / 工具元数据；
+// 纯逻辑，**不启动 FFmpeg、不碰真实文件**（真实转换由人工用本地视频验收）。
+RunGroupModule("video-to-gif", "视频转GIF", VideoToGifChecks.Run);
 
 // 「Word 阅读器」：手写 docx 解析（段落 / 字符格式 / 表格 / 图片 / 大纲）/ 纯逻辑查找 /
 // 配置与最近列表；**无头跑，不弹窗、不碰真 Data**（界面渲染由截图冒烟验收）。

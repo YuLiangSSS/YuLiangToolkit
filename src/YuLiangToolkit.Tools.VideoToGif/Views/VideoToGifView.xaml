@@ -1,0 +1,220 @@
+<UserControl x:Class="YuLiangToolkit.Tools.VideoToGif.Views.VideoToGifView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <!-- 布局（区块各自可拖）：「源文件与输出 | GIF 参数」左右可拖，
+             「设置行 / 进度与日志」上下可拖；拖动调大小（蓝线 + ↔ / ↕ 光标），松手自动记住（Config\layout.json），
+             双击分隔线只恢复这一处；全部恢复默认：主页设置 →「界面布局 → 恢复默认布局」。约定见 docs/dev/layout.md。 -->
+        <Grid Margin="28,22,28,26">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />                <!-- 标题 -->
+                <RowDefinition Height="Auto" />                <!-- FFmpeg 状态（纯信息条，不参与拖拽） -->
+                <RowDefinition Height="Auto" />                <!-- 源文件与输出 / GIF 参数（内部左右可拖） -->
+                <RowDefinition Height="12" />                  <!-- 设置 / 进度日志 分隔条 -->
+                <RowDefinition Height="260" MinHeight="160" /> <!-- 进度与日志（可上下拖） -->
+                <RowDefinition Height="Auto" />                <!-- 操作按钮 -->
+            </Grid.RowDefinitions>
+
+            <!-- 标题 -->
+            <StackPanel Grid.Row="0">
+                <TextBlock Text="🖼️ 视频转 GIF" FontSize="21" FontWeight="SemiBold" />
+                <TextBlock Text="把视频文件截取一段转成 GIF 动图：可设起始时间 / 时长 / 帧率 / 宽度 / 颜色 / 抖动。FFmpeg 两遍调色板编码，颜色准、体积小"
+                           FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                           TextWrapping="Wrap" Margin="0,5,0,0" />
+            </StackPanel>
+
+            <!-- FFmpeg 状态 -->
+            <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,16,0,0" Padding="16,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding FFmpegStatusText}" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" FontSize="12" />
+                    <Button Grid.Column="1" Content="选择 FFmpeg…" Style="{StaticResource SecondaryButtonStyle}"
+                            Command="{Binding BrowseFFmpegCommand}" Margin="10,0,0,0" />
+                    <Button Grid.Column="2" Content="下载 FFmpeg" Style="{StaticResource SecondaryButtonStyle}"
+                            Command="{Binding OpenFfmpegDownloadCommand}" Margin="8,0,0,0" />
+                </Grid>
+            </Border>
+
+            <!-- ================= 源文件与输出 | GIF 参数（左右可拖） ================= -->
+            <Grid Grid.Row="2" Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" MinWidth="360" />
+                    <ColumnDefinition Width="12" />
+                    <ColumnDefinition Width="520" MinWidth="400" />
+                </Grid.ColumnDefinitions>
+
+                <!-- 源文件与输出 -->
+                <Border Grid.Column="0" Style="{StaticResource CardStyle}" VerticalAlignment="Top" ClipToBounds="True">
+                    <StackPanel>
+                        <TextBlock Text="源文件与输出" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,12" />
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="76" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="源视频" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Grid.Column="1" Text="{Binding Cfg.InputFile, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource TextBoxStyle}" />
+                            <Button Grid.Column="2" Content="浏览…" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding BrowseInputCommand}" Margin="8,0,0,0" />
+                        </Grid>
+
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="76" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="输出目录" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <Grid Grid.Column="1">
+                                <TextBox Text="{Binding Cfg.OutputFolder, UpdateSourceTrigger=PropertyChanged}"
+                                         Style="{StaticResource TextBoxStyle}" />
+                                <TextBlock Text="（与源文件相同）" Foreground="{DynamicResource TextSecondaryBrush}"
+                                           IsHitTestVisible="False" VerticalAlignment="Center" Margin="12,0,0,0"
+                                           Visibility="{Binding Cfg.OutputFolder, Converter={StaticResource EmptyToVis}}" />
+                            </Grid>
+                            <Button Grid.Column="2" Content="浏览…" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding BrowseOutputCommand}" Margin="8,0,0,0" />
+                        </Grid>
+
+                        <!-- 起始 / 时长 -->
+                        <Grid Margin="0,16,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="76" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="起始时间" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Grid.Column="1" Text="{Binding Cfg.StartSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource TextBoxStyle}"
+                                     ToolTip="秒，或 hh:mm:ss。例如 83.5 或 01:23.5" />
+                            <TextBlock Grid.Column="1" Text="秒" VerticalAlignment="Center" HorizontalAlignment="Right"
+                                       Margin="0,0,10,0" Foreground="{DynamicResource TextSecondaryBrush}" IsHitTestVisible="False" />
+                            <TextBlock Grid.Column="2" Text="" Width="0" />
+                        </Grid>
+
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="76" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="截取时长" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            <TextBox Grid.Column="1" Text="{Binding Cfg.DurationSeconds, UpdateSourceTrigger=PropertyChanged}"
+                                     Style="{StaticResource TextBoxStyle}"
+                                     ToolTip="秒。0 = 一直截到视频结尾（GIF 会很大，不建议）" />
+                            <TextBlock Grid.Column="1" Text="秒" VerticalAlignment="Center" HorizontalAlignment="Right"
+                                       Margin="0,0,10,0" Foreground="{DynamicResource TextSecondaryBrush}" IsHitTestVisible="False" />
+                            <TextBlock Grid.Column="2" Text="" Width="0" />
+                        </Grid>
+
+                        <TextBlock Text="提示：GIF 体积与「时长 × 帧率 × 分辨率」成正比。截短一点、降帧率或缩小宽度能显著减小体积。"
+                                   FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap" Margin="0,14,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 左右分隔条 -->
+                <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                                   Key="video-to-gif.源文件与参数" />
+
+                <!-- GIF 参数 -->
+                <Border Grid.Column="2" Style="{StaticResource CardStyle}" VerticalAlignment="Top" ClipToBounds="True">
+                    <StackPanel>
+                        <TextBlock Text="GIF 参数" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,12" />
+
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="帧率" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Width="76" />
+                            <ComboBox ItemsSource="{Binding FpsOptions}" SelectedItem="{Binding Cfg.Fps, UpdateSourceTrigger=PropertyChanged}"
+                                      Style="{StaticResource ComboBoxStyle}" MinWidth="90"
+                                      ToolTip="每秒帧数。15 是 GIF 的常用平衡点；越高越流畅但体积越大" />
+                            <TextBlock Text="FPS" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <TextBlock Text="宽度" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Width="76" />
+                            <ComboBox ItemsSource="{Binding WidthOptions}" SelectedItem="{Binding SelectedWidth, Mode=TwoWay}"
+                                      Style="{StaticResource ComboBoxStyle}" MinWidth="120"
+                                      ToolTip="输出宽度（高度按比例自适应）。「原宽」= 不缩放；不会放大超过源视频" />
+                            <TextBlock Text="px" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="8,0,0,0" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <TextBlock Text="颜色数" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Width="76" />
+                            <ComboBox ItemsSource="{Binding ColorOptions}" SelectedItem="{Binding SelectedColors}"
+                                      DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}" MinWidth="130"
+                                      ToolTip="GIF 调色板颜色数，最大 256。越少体积越小、色带越明显" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <TextBlock Text="抖动" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Width="76" />
+                            <ComboBox ItemsSource="{Binding DitherOptions}" SelectedItem="{Binding SelectedDither}"
+                                      DisplayMemberPath="Label" Style="{StaticResource ComboBoxStyle}" MinWidth="180"
+                                      ToolTip="抖动算法：Floyd–Steinberg 最细腻；Bayer 有规则纹理；不抖动体积最小但有色带" />
+                        </StackPanel>
+
+                        <CheckBox Content="无限循环播放" IsChecked="{Binding Cfg.Loop}"
+                                  Style="{StaticResource CheckBoxStyle}" Margin="0,14,0,0" />
+
+                        <Border Background="{DynamicResource InputBackgroundBrush}" CornerRadius="8" Padding="14,10" Margin="0,16,0,0">
+                            <TextBlock Text="{Binding SummaryText}" FontSize="12" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- 上下分隔条 -->
+            <core:PaneSplitter Grid.Row="3" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="video-to-gif.设置与日志" />
+
+            <!-- 进度与日志（可上下拖） -->
+            <Border Grid.Row="4" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="80" />
+                    </Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <ProgressBar Minimum="0" Maximum="1" Value="{Binding Progress}"
+                                     Style="{StaticResource ProgressBarStyle}" Height="8" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1" Text="{Binding ProgressText}" Margin="12,0,0,0"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" MinWidth="70" TextAlignment="Right" />
+                    </Grid>
+                    <TextBlock Grid.Row="1" Text="{Binding StatusText}" Margin="0,9,0,0" TextWrapping="Wrap" FontSize="12" />
+                    <TextBox Grid.Row="2" Text="{Binding LogText, Mode=OneWay}" IsReadOnly="True" Style="{StaticResource LogTextBoxStyle}"
+                             Margin="0,10,0,0" />
+                </Grid>
+            </Border>
+
+            <!-- 操作按钮 -->
+            <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                <Button Content="打开输出目录" Style="{StaticResource SecondaryButtonStyle}"
+                        Command="{Binding OpenOutputFolderCommand}" />
+                <Button Content="取消" Style="{StaticResource SecondaryButtonStyle}"
+                        Command="{Binding CancelCommand}" Margin="8,0,0,0"
+                        IsEnabled="{Binding IsBusy}" />
+                <Button Content="开始转换" Style="{StaticResource PrimaryButtonStyle}"
+                        Command="{Binding ConvertCommand}" Margin="8,0,0,0"
+                        IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBoolConverter}}" />
+            </StackPanel>
+        </Grid>
+    </ScrollViewer>
+</UserControl>

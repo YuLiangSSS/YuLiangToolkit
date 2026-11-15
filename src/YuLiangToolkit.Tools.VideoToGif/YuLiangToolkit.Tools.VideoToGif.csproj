@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「视频转 GIF」：把一个（或一批）视频文件截取一段转成 GIF 动图。
+       GIF 用 FFmpeg 两遍编码（palettegen 生成调色板 → paletteuse 套用），比直接录成 GIF 颜色准得多。
+       唯一的第三方依赖是系统里的 FFmpeg（不随程序打包，由用户指定 / PATH 查找）。
+       纯逻辑（取值归一化 / FFmpeg 参数 / 时间解析）放在 GifConverter.cs，自检 video-to-gif 组直接断言。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.VideoToGif</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.VideoToGif</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>
