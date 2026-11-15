@@ -53,6 +53,7 @@ git add -A; git commit -m "<中文提交信息>"   # ③ 提交：每轮改动�
 | 验证纪律（本轮该跑哪些组 / 全量例外 / 预算） | [`docs/dev/verification.md`](docs/dev/verification.md) |
 | 轮子（工具契约 / MVVM / 存储 / 配置 / 粒子 / TCP 房间）、目录与新功能 | `src/YuLiangToolkit.Core/` 源码注释；新功能复制 `src/YuLiangToolkit.Tools.Sample/` 模板 |
 | 工具页区块可拖拽 / 布局记忆 / 恢复默认 | [`docs/dev/layout.md`](docs/dev/layout.md) |
+| 给新工具接**全局快捷键**（在别的窗口也能触发） | [`docs/dev/shortcuts.md`](docs/dev/shortcuts.md) 的「一·补：完整接线清单」（实现 `IShortcutProvider` + `IShortcutActionHost`、常驻 VM、`ShortcutHub.ApplyAll`、`NotifyOpened`、自检） |
 | 某个功能的实现细节 / 踩过的坑 | 对应源码 + [`docs/dev/pitfalls.md`](docs/dev/pitfalls.md) |
 | Windows「打开方式」/ 文件关联 / 入口副本 | [`docs/tools/open-with.md`](docs/tools/open-with.md) + `Core/Shell/OpenWith*.cs` |
 | Live2D 桌宠（Cubism Core / 自写软件渲染器 / 桌宠窗口 / 模型格式） | [`docs/dev/live2d.md`](docs/dev/live2d.md) |

@@ -36,6 +36,7 @@ internal static class MediaPlayerChecks
         CheckMiniPanelMarquee(assert);
         CheckFolderResume(assert);
         CheckRestartPersistence(assert);
+        CheckShortcuts(assert);
     }
 
     // ---------------------------------------------------------------- 迷你条标题（来回滚）
@@ -1424,6 +1425,102 @@ internal static class MediaPlayerChecks
         var path = Path.Combine(folder, name);
         File.WriteAllText(path, "self-check placeholder");
         return path;
+    }
+
+    // ---------------------------------------------------------------- 全局快捷键
+
+    /// <summary>
+    /// 播放器的全局快捷键（上一首 / 下一首 / 播放暂停）：工具实现了
+    /// <see cref="YuLiangToolkit.Core.Input.IShortcutProvider"/> + <see cref="YuLiangToolkit.Core.Input.IShortcutActionHost"/>，
+    /// 三条定义齐全、默认组合正确、改键回写配置、按下能驱动同一个常驻 ViewModel 播放。
+    /// </summary>
+    private static void CheckShortcuts(CheckFn check)
+    {
+        var tool = new MediaPlayerTool();
+
+        check("快捷键：工具同时实现 IShortcutProvider 与 IShortcutActionHost",
+            tool is YuLiangToolkit.Core.Input.IShortcutProvider
+            && tool is YuLiangToolkit.Core.Input.IShortcutActionHost
+            && tool.ShortcutToolId == "media-player" && tool.ShortcutToolName == "视频 / 音乐播放器",
+            tool.ShortcutToolId);
+
+        var defs = tool.GetShortcuts();
+        check("快捷键：三条（上一首 / 下一首 / 播放暂停）且 Id 齐全",
+            defs.Count == 3
+            && defs.Select(d => d.Id).SequenceEqual(new[] { "previous", "next", "play-pause" })
+            && defs.All(d => d.Enabled && d.CanSplit && d.Primary.IsEmpty == false),
+            string.Join(",", defs.Select(d => d.Id)));
+
+        check("快捷键：默认组合是 Ctrl+Alt+左/右/空格",
+            defs[0].Primary.ToString() == "Ctrl+Alt+Left"
+            && defs[1].Primary.ToString() == "Ctrl+Alt+Right"
+            && defs[2].Primary.ToString() == "Ctrl+Alt+Space",
+            defs[0].Primary.ToString() + " / " + defs[1].Primary.ToString() + " / " + defs[2].Primary.ToString());
+
+        // 改键：把「下一首」改成 Ctrl+Alt+N，回写到配置（快照重新读就是新键）
+        defs[1].SetCombo(new KeyComboBuilder("Ctrl+Alt+N").Build(), null);
+        check("快捷键：改键回写配置，重新取快照就是新组合",
+            tool.ViewModel.Cfg.ShortcutNext == "Ctrl+Alt+N"
+            && tool.GetShortcuts()[1].Primary.ToString() == "Ctrl+Alt+N",
+            tool.ViewModel.Cfg.ShortcutNext);
+
+        // 启用位：禁用「上一首」
+        defs[0].SetEnabled(false);
+        check("快捷键：禁用一条 → 快照里该条 Enabled=false，其它不受影响",
+            !tool.GetShortcuts()[0].Enabled && tool.GetShortcuts()[1].Enabled,
+            tool.GetShortcuts()[0].Enabled.ToString());
+
+        // 按下能驱动同一个常驻 ViewModel：上一首 / 下一首 / 播放暂停
+        var vm = tool.ViewModel;
+        var fake = new FakeMediaPlayback();
+        vm.AttachPlayer(fake);
+
+        var root = Path.Combine(Path.GetTempPath(), "ylt-player-sc-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(root);
+            var a = Path.Combine(root, "a.mp3");
+            var b = Path.Combine(root, "b.mp3");
+            File.WriteAllText(a, "x");
+            File.WriteAllText(b, "x");
+            vm.AddFilesAsync(new[] { a, b }).GetAwaiter().GetResult();
+
+            vm.SelectedItem = vm.Items[0];
+            vm.PlaySelectedCommand.Execute(null);
+            var playingFirst = fake.LoadedPath == vm.Items[0].FullPath && vm.IsPlaying;
+
+            tool.InvokeShortcut("next");
+            var movedToSecond = vm.CurrentItem == vm.Items[1] && fake.LoadedPath == vm.Items[1].FullPath;
+
+            tool.InvokeShortcut("play-pause");
+            var paused = !vm.IsPlaying && !fake.IsPlaying;
+
+            tool.InvokeShortcut("previous");
+            var backToFirst = vm.CurrentItem == vm.Items[0];
+
+            check("快捷键：按下 next/play-pause/previous 能驱动同一个常驻 ViewModel",
+                playingFirst && movedToSecond && paused && backToFirst,
+                $"play={playingFirst} next={movedToSecond} pause={paused} prev={backToFirst} "
+                + $"loaded={fake.LoadedPath} items={vm.Items.Count} status={vm.StatusText}");
+        }
+        finally
+        {
+            try { Directory.Delete(root, recursive: true); } catch { /* 临时目录清理失败忽略 */ }
+        }
+    }
+
+    /// <summary>
+    /// 造一条 <see cref="YuLiangToolkit.Core.Input.KeyCombo"/>：直接 new 不方便，
+    /// 借 <c>KeyCombo.TryParse</c> 把 "Ctrl+Alt+N" 这种文本解析成组合。
+    /// </summary>
+    private readonly struct KeyComboBuilder
+    {
+        private readonly string _text;
+        public KeyComboBuilder(string text) => _text = text;
+        public YuLiangToolkit.Core.Input.KeyCombo Build()
+            => YuLiangToolkit.Core.Input.KeyCombo.TryParse(_text, out var combo)
+                ? combo
+                : YuLiangToolkit.Core.Input.KeyCombo.Empty;
     }
 
     /// <summary>

@@ -74,6 +74,92 @@ public sealed class MediaPlayerConfig : ToolConfig
     /// </summary>
     public bool BackgroundPlayback { get; set; } = true;
 
+    // ---------- 全局快捷键（在别的窗口也能切歌 / 暂停） ----------
+    //
+    // 三条：上一首 / 下一首 / 播放暂停。每条存「组合文本 + 第二步文本 + 启用位」，
+    // 形态（单步 / 分步）由第二步是否为空决定；组合文本的格式见 Core/Input/KeyCombo.cs。
+    // 默认给「Ctrl+Alt+方向键 / 空格」，避开系统里常见的单键热键，用户可在主页设置 → 快捷键里改。
+
+    private string _shortcutPrevious = "Ctrl+Alt+Left";
+    /// <summary>上一首快捷键（单段组合，或分步的第一步）。</summary>
+    public string ShortcutPrevious
+    {
+        get => _shortcutPrevious;
+        set => Set(ref _shortcutPrevious, value ?? "");
+    }
+
+    private string _shortcutPreviousSecond = "";
+    /// <summary>分步时上一首快捷键的第二步（空 = 单步）。</summary>
+    public string ShortcutPreviousSecond
+    {
+        get => _shortcutPreviousSecond;
+        set => Set(ref _shortcutPreviousSecond, value ?? "");
+    }
+
+    private bool _shortcutPreviousEnabled = true;
+    /// <summary>「上一首」快捷键启用。</summary>
+    public bool ShortcutPreviousEnabled
+    {
+        get => _shortcutPreviousEnabled;
+        set => Set(ref _shortcutPreviousEnabled, value);
+    }
+
+    private string _shortcutNext = "Ctrl+Alt+Right";
+    /// <summary>下一首快捷键（单段组合，或分步的第一步）。</summary>
+    public string ShortcutNext
+    {
+        get => _shortcutNext;
+        set => Set(ref _shortcutNext, value ?? "");
+    }
+
+    private string _shortcutNextSecond = "";
+    /// <summary>分步时下一首快捷键的第二步（空 = 单步）。</summary>
+    public string ShortcutNextSecond
+    {
+        get => _shortcutNextSecond;
+        set => Set(ref _shortcutNextSecond, value ?? "");
+    }
+
+    private bool _shortcutNextEnabled = true;
+    /// <summary>「下一首」快捷键启用。</summary>
+    public bool ShortcutNextEnabled
+    {
+        get => _shortcutNextEnabled;
+        set => Set(ref _shortcutNextEnabled, value);
+    }
+
+    private string _shortcutPlayPause = "Ctrl+Alt+Space";
+    /// <summary>播放 / 暂停快捷键（单段组合，或分步的第一步）。</summary>
+    public string ShortcutPlayPause
+    {
+        get => _shortcutPlayPause;
+        set => Set(ref _shortcutPlayPause, value ?? "");
+    }
+
+    private string _shortcutPlayPauseSecond = "";
+    /// <summary>分步时播放 / 暂停快捷键的第二步（空 = 单步）。</summary>
+    public string ShortcutPlayPauseSecond
+    {
+        get => _shortcutPlayPauseSecond;
+        set => Set(ref _shortcutPlayPauseSecond, value ?? "");
+    }
+
+    private bool _shortcutPlayPauseEnabled = true;
+    /// <summary>「播放 / 暂停」快捷键启用。</summary>
+    public bool ShortcutPlayPauseEnabled
+    {
+        get => _shortcutPlayPauseEnabled;
+        set => Set(ref _shortcutPlayPauseEnabled, value);
+    }
+
+    private bool _shortcutsEnabled = true;
+    /// <summary>这个工具快捷键的总开关（关掉 = 三条全部不注册，各自状态保留）。</summary>
+    public bool ShortcutsEnabled
+    {
+        get => _shortcutsEnabled;
+        set => Set(ref _shortcutsEnabled, value);
+    }
+
     // ---------- 计算属性（只读 → 不会被写进 JSON） ----------
 
     /// <summary>实际生效的步长：规整到 0.1 秒精度并夹在允许范围内。</summary>

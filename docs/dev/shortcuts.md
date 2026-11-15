@@ -1,7 +1,10 @@
 # 全局快捷键与通知体系
 
 > 给「以后的工具」看的约定页：工具怎么声明自己的快捷键、怎么发通知。
-> 秒表是第一个用它的工具，Kps / 录屏 / Live2D 随后各接了一份。
+> 秒表是第一个用它的工具，Kps / 录屏 / Live2D / 播放器随后各接了一份。
+>
+> **要给新工具接快捷键？直接看「[一·补：给一个新工具接快捷键的完整接线清单](#一补给一个新工具接快捷键的完整接线清单)」**
+> —— 从配置字段到引擎注册到自检，照着一步步做就行（播放器 `MediaPlayerTool` 是按它做的样板）。
 
 [← 文档索引](../README.md)
 
@@ -93,6 +96,136 @@ public sealed class MyTool : ITool, IShortcutProvider
 | `SequenceStarted` | 第一步被识别，开始等第二步 | 「已识别 Ctrl+U，请按第二步」 |
 | `SequenceRejected` | 等第二步时按了不匹配的键（**那一下已被吞掉**） | 「未被识别的快捷键：Ctrl+X（这里应该按 Ctrl+K）」 |
 | `SequenceCancelled` | 超时作废 | 收起提示即可 |
+
+## 一·补：给一个新工具接快捷键的**完整接线清单**
+
+> 光看第 4 节还不够：从「工具有个功能」到「在别的窗口按一下就触发」，中间有几处必须都接上，
+> 少一处就是「设置页能看到快捷键、但按了没反应」。**照这份清单一步步做**（播放器 `MediaPlayerTool` 就是按它做的）。
+
+### 第 0 步：先想清楚「触发时谁干活」
+
+- 快捷键的回调是**在 UI 线程**由引擎调的，它只会调 **实现了 `IShortcutActionHost.InvokeShortcut(id)` 的那个对象**（见第 3 步）。
+- 播放器的做法：`MediaPlayerTool` 自己实现 `IShortcutActionHost`，`InvokeShortcut` 转发到它持有的**常驻 ViewModel**
+  （`_viewModel.TogglePlayPause()` / `_viewModel.MoveTrack(±1)`）。
+- ⚠ **页面是懒加载、还会被缓存淘汰**：如果触发逻辑写在页面 ViewModel 上、而 VM 又只在 `CreateView()` 里 `new`，
+  那么「工具页没打开」时根本按不动。所以**要么让工具持有常驻 ViewModel**（播放器/秒表这么做），
+  要么把触发逻辑写成工具的静态/无状态方法。**推荐前者**：见第 4 步的常驻 VM 坑。
+
+### 第 1 步：配置里加「组合文本 + 第二步 + 启用位」，外加一个总开关
+
+```csharp
+// MyConfig : ToolConfig
+private string _shortcutNext = "Ctrl+Alt+Right";
+public string ShortcutNext { get => _shortcutNext; set => Set(ref _shortcutNext, value ?? ""); }
+
+private string _shortcutNextSecond = "";       // 分步第二步，空 = 单步
+public string ShortcutNextSecond { get => _shortcutNextSecond; set => Set(ref _shortcutNextSecond, value ?? ""); }
+
+private bool _shortcutNextEnabled = true;       // 单条启用位
+public bool ShortcutNextEnabled { get => _shortcutNextEnabled; set => Set(ref _shortcutNextEnabled, value); }
+
+private bool _shortcutsEnabled = true;          // 整工具总开关
+public bool ShortcutsEnabled { get => _shortcutsEnabled; set => Set(ref _shortcutsEnabled, value); }
+```
+
+- 组合文本用 `KeyCombo` 的文本形式（`Ctrl+Alt+Right` / `Ctrl+Alt+Space`…），**别存成对象**——配置是给人看 / 手改的。
+- 默认值要给：找一个**避开系统常用单键**的组合（别默认 `F1`/`Alt+Tab`/`Ctrl+C` 这种）。
+
+### 第 2 步：工具实现 `IShortcutProvider`（声明 + 回写）
+
+最省事的是用 `ShortcutProviderAdapter`，把三条槽位的「读 / 写」委托给它，`GetShortcuts()` 里 `adapter.Build(Id)`：
+
+```csharp
+public class MyTool : ITool, IShortcutProvider, IShortcutActionHost
+{
+    private readonly MyViewModel _viewModel;                 // 常驻 VM（第 4 步）
+    private readonly ShortcutProviderAdapter _adapter;
+
+    public MyTool()
+    {
+        _viewModel = new MyViewModel();
+        _adapter = new ShortcutProviderAdapter(
+            slots: () => new[]
+            {
+                new ShortcutProviderAdapter.Slot(
+                    "next", "下一首",
+                    ReadPrimary: () => _viewModel.Cfg.ShortcutNext,
+                    WritePrimary: v => _viewModel.Cfg.ShortcutNext = v,
+                    ReadSecondary: () => _viewModel.Cfg.ShortcutNextSecond,
+                    WriteSecondary: v => _viewModel.Cfg.ShortcutNextSecond = v,
+                    ReadEnabled: () => _viewModel.Cfg.ShortcutNextEnabled,
+                    WriteEnabled: v => _viewModel.Cfg.ShortcutNextEnabled = v,
+                    CanSplit: true, Description: "播放器：下一首"),
+                // ……其余两条同构
+            },
+            apply: ApplyShortcuts,
+            notifyChanged: () => ShortcutsChanged?.Invoke(this, EventArgs.Empty));
+    }
+
+    public string ShortcutToolId => Id;
+    public string ShortcutToolName => Name;
+    public IReadOnlyList<string> ShortcutCategoryPath => new[] { "媒体" };
+    public bool ShortcutsEnabled { get => _viewModel.Cfg.ShortcutsEnabled; set { _viewModel.Cfg.ShortcutsEnabled = value; ApplyShortcuts(); } }
+    public event EventHandler? ShortcutsChanged;
+    public IReadOnlyList<ShortcutDefinition> GetShortcuts() => _adapter.Build(Id);
+    public void ApplyShortcuts() { ShortcutHub.ApplyAll(); ShortcutsChanged?.Invoke(this, EventArgs.Empty); }
+}
+```
+
+- **`ApplyShortcuts()` 里就是 `ShortcutHub.ApplyAll()`** —— 引擎由外壳持有，工具只能通过 Core 的静态入口 `ShortcutHub` 拿它。
+  不要自己去 `new GlobalShortcutEngine`。
+- 还必须在配置 `PropertyChanged` 里监听上面那几个字段，变了就 `ApplyShortcuts()`（**否则「改了键旧键还生效」极难查**）：
+  ```csharp
+  _viewModel.Cfg.PropertyChanged += (_, e) => { if (e.PropertyName is ... or nameof(MyConfig.ShortcutNext) or ...) ApplyShortcuts(); };
+  ```
+
+### 第 3 步：工具实现 `IShortcutActionHost`（按下时干活）
+
+```csharp
+public void InvokeShortcut(string shortcutId)
+{
+    switch (shortcutId)
+    {
+        case "next": _viewModel.MoveTrack(+1); break;
+        case "previous": _viewModel.MoveTrack(-1); break;
+        case "play-pause": _viewModel.TogglePlayPause(); break;
+    }
+}
+```
+
+- 引擎注册时（`ShortcutRegistry.ApplyTo`）就是 `engine.Register(id, kind, primary, secondary, _ => host.InvokeShortcut(shortcutId), out err)`，
+  所以**只要 provider 同时是 host，按键就能直接进到你的 `InvokeShortcut`**。
+- 分步反馈（第 7 节）由工具自己按需订阅引擎事件弹提示（播放器这几条是单步，可不订）。
+
+### 第 4 步（常驻 VM 工具的坑）：`CreateView` 复用同一个 ViewModel，并补 `NotifyOpened`
+
+- `CreateView()` 返回 `new MyView { DataContext = _viewModel }`（**不是 `new MyViewModel()`**），
+  这样页面开没开、视图被缓存淘汰重建，快捷键和界面操作的都是**同一份状态**。
+- 但外壳的缓存淘汰会 `DisposeToolView` → `vm.Dispose()`（= `NotifyClosed`，**停掉配置后台自动保存**）；
+  外壳只在「复用旧视图」时调 `NotifyOpened`，**新建的视图不会**。
+  → 所以在视图的 `Loaded` 里自己补一次 `vm.NotifyOpened();`，否则淘汰重建后**配置改动不落盘**。
+  （播放器 `MediaPlayerView.OnLoaded` 第一行就是这个。）
+- 常驻 VM 若也做后台任务（播放器的 `IBackgroundTool`），注意 `OnClosed` 里**别**无脑停掉正在后台播放的东西
+  （见 `IBackgroundTool` 文档：外壳保活时走的是 `StopBackgroundPlayback`，不是 `NotifyClosed`）。
+
+### 第 5 步：核对「外壳已经替你做了、你不用再做」
+
+- `App.OnStartup` 里已经：`new GlobalShortcutEngine()` → `ShortcutHub.Initialize(...)` →
+  `foreach (tool in tools.OfType<IShortcutProvider>()) ShortcutHub.AddProvider(tool)` → `ShortcutHub.ApplyAll()`。
+  **所以工具只要实现接口、构造函数里把常驻 VM / 配置建好，启动时就会自动注册**（不用改 `App.xaml.cs`）。
+- 工具**不要**自己注册、注销热键，也不要碰 `RegisterHotKey`／键盘钩子——都由 `GlobalShortcutEngine` 统一管。
+
+### 第 6 步：自检（`tests/.../XxxChecks.cs` 里加一段）
+
+无头就能测「接线对不对」（`media-player` 组的 `CheckShortcuts` 就是模板）：
+
+1. `new MyTool()` → 断言 `is IShortcutProvider` 且 `is IShortcutActionHost`；
+2. `GetShortcuts()` 条数 / Id / 默认组合文本；
+3. 拿一条 `ShortcutDefinition` 调 `SetCombo(...)` / `SetEnabled(false)`，断言配置被回写；
+4. 给常驻 VM 接一个**假播放器/假后端**，调 `tool.InvokeShortcut("next")` 等，断言状态真的变了。
+
+> 真按 `RegisterHotKey` 的那一下（系统级）由人工冒烟验收——无头环境注册不了真实热键。
+
 
 ## 二、通知
 

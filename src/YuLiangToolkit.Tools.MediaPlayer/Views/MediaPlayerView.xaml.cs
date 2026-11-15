@@ -117,6 +117,11 @@ public partial class MediaPlayerView : UserControl
     {
         if (Vm is not { } vm) return;
 
+        // ViewModel 是工具常驻的（见 MediaPlayerTool.ViewModel）：视图从缓存淘汰后重新建时，
+        // 外壳只会对「复用的视图」调 NotifyOpened，新建的视图不会 —— 这里补一次，
+        // 让后台自动保存重新挂上（否则淘汰重建后配置改动不落盘）。
+        vm.NotifyOpened();
+
         // 播放器只包一次（View 重新 Loaded 时沿用同一个 MediaElement）
         _playback ??= new MediaElementPlayback(Media);
         vm.AttachPlayer(_playback);
