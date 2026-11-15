@@ -45,6 +45,21 @@ git add -A; git commit -m "<中文提交信息>"   # ③ 提交：每轮改动�
 12. **有多个区块的工具页必须可拖拽，而且每个页面级区块的相邻边界都要有分隔条**（v0.41.0 起；v0.42.0 强化：别把两块合并进一个可拖块，要最高自由度）：用 `core:PaneSplitter` + `App.xaml` 的样式（悬停蓝线 / ↔ ↕ 光标 / 自动记住 / 双击复位 / 提示线透明度可在主页设置调），**别再把区块大小写死**；新页面照 `docs/dev/layout.md` 做，布局恢复默认在「主页设置 → 界面布局」。
 13. **右键菜单必须套 `App.xaml` 的 `DarkMenu` 样式**（`DarkContextMenuStyle` + `ContextMenu.Resources` 里隐式套 `DarkMenuLeafItemStyle` / `DarkMenuSeparatorStyle`，有子菜单的父项用 `DarkMenuParentItemStyle`），别只设 Background：WPF 默认模板在深色主题下左侧会留一条白色图标列（详见 `docs/dev/pitfalls.md`）。
 
+## 新功能要接的「主页设置」关联点（漏了功能就是残的）
+
+主页设置（⚙ 页面）集中管理跨工具的东西；工具**按需实现接口 / 加约定**，外壳自动收进去，**别去改设置页**：
+
+| 关联点 | 工具要做什么 | 底层 / 约定 |
+| --- | --- | --- |
+| **清理缓存** | 缓存写 `Cache\<工具Id>\` = 自动清；**混在 Config / 别处** 的（最近打开等）实现 `IToolCacheSource` 报告 `ToolCacheItem` | `Core/Maintenance/IToolCacheSource.cs`、`CacheCleaner` |
+| **重建配置 / 导入导出** | 配置走 `ToolConfig`（`Config\<工具Id>\config.json`）就自动出现、自动回默认、自动进 zip；**凭据类**（DPAPI 密钥 / 授权码 / token）登记进 `ConfigArchive.CredentialConfigToolIds`（整目录不导出）；随包要带的 `Data\` 文件加进 `ExportableDataPrefixes` | `Core/Maintenance/`（`ConfigResetter`·`ConfigArchive`） |
+| **打开方式关联**（Windows 右键） | 只写扩展名分流逻辑；开关统一在主页设置（`ShellConfig.OpenWithAssociationEnabled`），工具页只做状态 / 修复 | `Core/Shell/OpenWith*.cs`、`docs/tools/open-with.md` |
+| **开机自启 / 联动启动** | 实现 `IStartupTask`（在 **工具实例**上，非 VM；必须立刻返回、不抛异常、想清重启去重） | `Core/Tools/IStartupTask.cs` |
+| **后台保活**（切走还在跑，如播放器） | 实现 `IBackgroundTool`（`KeepAliveOnLeave` / `ShowMiniPanel` / `StopBackgroundPlayback`） | `Core/Tools/IBackgroundTool.cs` |
+
+> 快捷键、界面布局 / 分隔条、主题 token、全局通知的接法见硬性规则 6/12 与 [`docs/dev/shortcuts.md`](docs/dev/shortcuts.md)。
+> 原则：外壳**不认识具体工具**——工具实现 `Core` 里的接口、写自己的配置，设置页只负责渲染。
+
 ## 找东西
 
 | 我要… | 看 |
