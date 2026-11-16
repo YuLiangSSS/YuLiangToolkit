@@ -27,9 +27,9 @@ public sealed class WorldClockTool : ITool
 
     public string EmojiIcon => "🕐";
 
-    public string Category => "桌面";
+    public string Category => "系统";
 
-    public IReadOnlyList<string> CategoryPath => new[] { "桌面" };
+    public IReadOnlyList<string> CategoryPath => new[] { "系统" };
 
     public IReadOnlyList<string> Tags => new[]
     {
