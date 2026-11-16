@@ -3,29 +3,63 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Media3D;
+using YuLiangToolkit.Tools.TaskManager.ViewModels;
 
 namespace YuLiangToolkit.Tools.TaskManager.Views;
 
 /// <summary>
-/// 「任务管理器」界面代码后置：只有 <c>InitializeComponent()</c> 和「右键先选中该行」这一点纯界面逻辑，
-/// 业务（采样 / 结束任务 / 开机启动项）全部在 <c>TaskManagerViewModel</c> 里。
+/// 「任务管理器」界面代码后置：<c>InitializeComponent()</c>、「右键先选中该行」，
+/// 以及把 ViewModel 每轮采样后触发的 <see cref="TaskManagerViewModel.PerformanceRefreshed"/>
+/// 接到四张性能折线图上重绘（折线是自绘控件，不靠绑定刷新）。
 ///
-/// <para>表头与数据列的对齐全部在 XAML 里解决（表头写在 ListBox 的 ControlTemplate 内，与数据行同处一列，
-/// 末尾再占一列滚动条宽度）—— 这里不做任何布局同步。</para>
+/// <para>业务（采样 / 结束任务）全部在 <c>TaskManagerViewModel</c> 里。
+/// 进程列表改用 DataGrid 后，列宽拖动 / 列头排序由 DataGrid 原生处理，这里不碰。</para>
 /// </summary>
 public partial class TaskManagerView : UserControl
 {
+    private TaskManagerViewModel? _viewModel;
+
     public TaskManagerView()
     {
         InitializeComponent();
+        Loaded += OnLoaded;
+        Unloaded += OnUnloaded;
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is not TaskManagerViewModel vm || ReferenceEquals(_viewModel, vm)) return;
+        DetachPerformance();
+        _viewModel = vm;
+        vm.PerformanceRefreshed += OnPerformanceRefreshed;
+        RefreshGraphs();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e) => DetachPerformance();
+
+    private void DetachPerformance()
+    {
+        if (_viewModel is null) return;
+        _viewModel.PerformanceRefreshed -= OnPerformanceRefreshed;
+        _viewModel = null;
+    }
+
+    private void OnPerformanceRefreshed() => RefreshGraphs();
+
+    private void RefreshGraphs()
+    {
+        CpuGraph.Refresh();
+        MemoryGraph.Refresh();
+        GpuGraph.Refresh();
+        DiskGraph.Refresh();
     }
 
     /// <summary>进程列表右键：先把鼠标下那一行的进程选中，右键菜单里的命令才有作用对象。</summary>
-    private void OnProcessListPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    private void OnProcessGridPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (FindAncestor<ListBoxItem>(e.OriginalSource as DependencyObject) is not { } container) return;
-        container.IsSelected = true;
-        (sender as ListBox)?.Focus();
+        if (FindAncestor<DataGridRow>(e.OriginalSource as DependencyObject) is not { } row) return;
+        row.IsSelected = true;
+        (sender as DataGrid)?.Focus();
     }
 
     // ---------------------------------------------------------------- 工具

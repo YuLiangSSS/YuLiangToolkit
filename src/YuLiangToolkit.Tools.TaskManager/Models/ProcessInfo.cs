@@ -171,15 +171,34 @@ public sealed class ProcessInfo : ObservableObject
         OnPropertyChanged(nameof(IsCriticalProcess));
     }
 
-    /// <summary>搜索框是否命中这一行（进程名 / PID / 路径 / 端口都会被搜）。</summary>
+    /// <summary>
+    /// 搜索框是否命中这一行（进程名 / PID / 路径 / 端口都会被搜）。
+    /// <para><b>多关键词</b>：关键字按空格拆成多个词，<b>每个词都要命中</b>（AND 语义），
+    /// 于是可以「名字 + 端口」「PID + 名字」这样一起筛，例如 <c>chrome 443</c>、<c>39228 ylt</c>。</para>
+    /// </summary>
     public bool Matches(string keyword)
     {
         if (string.IsNullOrWhiteSpace(keyword)) return true;
-        keyword = keyword.Trim();
-        return _name.Contains(keyword, StringComparison.OrdinalIgnoreCase)
-            || _path.Contains(keyword, StringComparison.OrdinalIgnoreCase)
-            || _pid.ToString().Contains(keyword, StringComparison.Ordinal)
-            || PortsText.Contains(keyword, StringComparison.OrdinalIgnoreCase);
+
+        var tokens = keyword.Split(
+            new[] { ' ', '\t', '\r', '\n' },
+            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (tokens.Length == 0) return true;
+
+        foreach (var token in tokens)
+        {
+            if (!MatchesSingle(token)) return false;
+        }
+        return true;
+    }
+
+    /// <summary>单个关键词命中：名称 / 路径 / PID / 端口任意一处包含即算命中。</summary>
+    private bool MatchesSingle(string token)
+    {
+        return _name.Contains(token, StringComparison.OrdinalIgnoreCase)
+            || _path.Contains(token, StringComparison.OrdinalIgnoreCase)
+            || _pid.ToString().Contains(token, StringComparison.Ordinal)
+            || PortsText.Contains(token, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool SamePorts(IReadOnlyList<PortBinding> a, IReadOnlyList<PortBinding> b)

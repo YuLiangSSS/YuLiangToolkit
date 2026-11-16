@@ -1,0 +1,242 @@
+<UserControl x:Class="YuLiangToolkit.Tools.StartupManagerTool.Views.StartupManagerView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core">
+
+    <UserControl.Resources>
+        <!-- ===== DataGrid 深色样式（与任务管理器进程列表同一套 token） ===== -->
+        <Style x:Key="StartupCellStyle" TargetType="DataGridCell">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="DataGridCell">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                SnapsToDevicePixels="True"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter VerticalAlignment="Center" SnapsToDevicePixels="True" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="StartupRowStyle" TargetType="DataGridRow">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="Height" Value="30" />
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource ListRowHoverBackgroundBrush}" />
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource ListRowSelectedBackgroundBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="StartupColumnHeaderStyle" TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="{DynamicResource HeaderBackgroundBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="0,0,1,1" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Height" Value="30" />
+        </Style>
+
+        <Style x:Key="StartupDataGridStyle" TargetType="DataGrid">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="HorizontalGridLinesBrush" Value="Transparent" />
+            <Setter Property="VerticalGridLinesBrush" Value="Transparent" />
+            <Setter Property="RowBackground" Value="Transparent" />
+            <Setter Property="AlternatingRowBackground" Value="Transparent" />
+            <Setter Property="HeadersVisibility" Value="Column" />
+            <Setter Property="GridLinesVisibility" Value="None" />
+            <Setter Property="ColumnHeaderHeight" Value="30" />
+            <Setter Property="RowHeight" Value="30" />
+            <Setter Property="SelectionUnit" Value="FullRow" />
+            <Setter Property="SelectionMode" Value="Single" />
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="CanUserAddRows" Value="False" />
+            <Setter Property="CanUserDeleteRows" Value="False" />
+            <Setter Property="CanUserResizeRows" Value="False" />
+            <Setter Property="CanUserReorderColumns" Value="False" />
+            <Setter Property="CanUserResizeColumns" Value="True" />
+            <Setter Property="CanUserSortColumns" Value="True" />
+            <Setter Property="AutoGenerateColumns" Value="False" />
+            <Setter Property="EnableRowVirtualization" Value="True" />
+            <Setter Property="EnableColumnVirtualization" Value="True" />
+            <Setter Property="VirtualizingPanel.IsVirtualizing" Value="True" />
+            <Setter Property="VirtualizingPanel.VirtualizationMode" Value="Recycling" />
+            <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="CellStyle" Value="{StaticResource StartupCellStyle}" />
+            <Setter Property="RowStyle" Value="{StaticResource StartupRowStyle}" />
+            <Setter Property="ColumnHeaderStyle" Value="{StaticResource StartupColumnHeaderStyle}" />
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="28,22,28,26">
+
+            <!-- ===== 标题区 ===== -->
+            <StackPanel>
+                <TextBlock Text="🚀 开机启动管理" FontSize="21" FontWeight="SemiBold" />
+                <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,5,0,0"
+                           Text="管理随 Windows 启动的程序：扫描注册表 Run 与「启动」文件夹，逐个启用 / 禁用、删除、打开程序位置、复制启动命令。系统级（所有用户）项目需要管理员权限。" />
+            </StackPanel>
+
+            <!-- ===== 启动项列表卡片 ===== -->
+            <Border Style="{StaticResource CardStyle}" Height="640" Margin="0,16,0,0" ClipToBounds="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="200" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- 工具条 -->
+                    <Grid Grid.Row="0" Margin="18,14,18,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <WrapPanel Grid.Column="0">
+                            <TextBlock Text="启动项" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"
+                                       Margin="0,0,14,6" />
+                            <TextBox Width="300" Margin="0,0,10,6" VerticalAlignment="Center"
+                                     Style="{StaticResource TextBoxStyle}"
+                                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="搜索名称 / 命令 / 来源；多个关键词用空格分隔" />
+                            <Button Content="刷新" Margin="0,0,8,6" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding RefreshCommand}" ToolTip="重新扫描注册表 Run / 启动文件夹" />
+                            <Button Content="{Binding ToggleText}" Margin="0,0,8,6" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding ToggleCommand}" ToolTip="启用 / 禁用选中的启动项（系统级项目需要管理员）" />
+                            <Button Content="删除" Margin="0,0,8,6" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding DeleteCommand}" ToolTip="只删这一条启动记录 / 快捷方式，不会卸载程序" />
+                            <Button Content="打开位置" Margin="0,0,8,6" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding OpenLocationCommand}" ToolTip="在资源管理器里定位启动项对应的程序" />
+                            <Button Content="复制命令" Margin="0,0,8,6" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding CopyCommandCommand}" ToolTip="把完整的启动命令复制到剪贴板" />
+                            <Button Content="以管理员身份重启" Margin="0,0,0,6" Style="{StaticResource SecondaryButtonStyle}"
+                                    Command="{Binding RestartElevatedCommand}"
+                                    Visibility="{Binding IsElevated, Converter={StaticResource InverseBoolToVis}}"
+                                    ToolTip="修改 / 删除系统级启动项需要管理员权限；会弹 UAC，重启后自动回到本页" />
+                        </WrapPanel>
+                        <TextBlock Grid.Column="1" Text="{Binding SummaryText}" FontSize="11"
+                                   VerticalAlignment="Center" Margin="12,0,0,6"
+                                   TextTrimming="CharacterEllipsis" ToolTip="{Binding SummaryText}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </Grid>
+
+                    <!-- DataGrid 列表 -->
+                    <DataGrid x:Name="StartupDataGrid" Grid.Row="1" Margin="8,0"
+                              Style="{StaticResource StartupDataGridStyle}"
+                              ItemsSource="{Binding ItemsView}"
+                              SelectedItem="{Binding SelectedItem}"
+                              PreviewMouseRightButtonDown="OnGridPreviewMouseRightButtonDown"
+                              ToolTip="单击选中；右键可启用 / 禁用、删除、打开位置、复制命令；拖列头竖线改列宽">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="名称" Width="*" MinWidth="160"
+                                                Binding="{Binding Name}" SortMemberPath="Name">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="VerticalAlignment" Value="Center" />
+                                        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                        <Setter Property="FontSize" Value="12.5" />
+                                        <Setter Property="ToolTip" Value="{Binding Name}" />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <DataGridTextColumn Header="状态" Width="90" MinWidth="70"
+                                                Binding="{Binding StateText}" SortMemberPath="Enabled">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="VerticalAlignment" Value="Center" />
+                                        <Setter Property="FontSize" Value="12.5" />
+                                        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Enabled}" Value="True">
+                                                <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <DataGridTextColumn Header="来源" Width="180" MinWidth="120"
+                                                Binding="{Binding SourceText}" SortMemberPath="Kind">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="VerticalAlignment" Value="Center" />
+                                        <Setter Property="FontSize" Value="12.5" />
+                                        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                        <Setter Property="ToolTip" Value="{Binding Location}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+
+                            <DataGridTextColumn Header="命令 / 目标" Width="360" MinWidth="180"
+                                                Binding="{Binding CommandSummary}" SortMemberPath="Command">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="VerticalAlignment" Value="Center" />
+                                        <Setter Property="FontSize" Value="12.5" />
+                                        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                        <Setter Property="ToolTip" Value="{Binding Command}" />
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                        </DataGrid.Columns>
+
+                        <DataGrid.ContextMenu>
+                            <ContextMenu Style="{StaticResource DarkContextMenuStyle}"
+                                         DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                <ContextMenu.Resources>
+                                    <Style TargetType="{x:Type MenuItem}" BasedOn="{StaticResource DarkMenuLeafItemStyle}" />
+                                    <Style TargetType="{x:Type Separator}" BasedOn="{StaticResource DarkMenuSeparatorStyle}" />
+                                </ContextMenu.Resources>
+                                <MenuItem Header="启用 / 禁用" Command="{Binding ToggleCommand}" />
+                                <MenuItem Header="打开文件位置" Command="{Binding OpenLocationCommand}" />
+                                <MenuItem Header="复制命令" Command="{Binding CopyCommandCommand}" />
+                                <Separator />
+                                <MenuItem Header="删除" Command="{Binding DeleteCommand}" />
+                            </ContextMenu>
+                        </DataGrid.ContextMenu>
+                    </DataGrid>
+
+                    <!-- 空列表提示 -->
+                    <TextBlock Grid.Row="1" Text="没有开机启动项"
+                               Visibility="{Binding HasItems, ElementName=StartupDataGrid, Converter={StaticResource InverseBoolToVis}}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               IsHitTestVisible="False" />
+
+                    <!-- 底部状态 -->
+                    <StackPanel Grid.Row="2" Margin="18,8,18,12">
+                        <TextBlock Text="{Binding StatusText}" FontSize="11" TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding StatusText}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Text="{Binding ElevationText}" FontSize="10.5" Margin="0,5,0,0"
+                                   TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

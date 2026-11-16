@@ -139,6 +139,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `src/YuLiangToolkit.Tools.MailSender/**` | `mail-sender` | L2 |
 | `src/YuLiangToolkit.Tools.Launcher/**` | `launcher` | L2 |
 | `src/YuLiangToolkit.Tools.TaskManager/**` | `task-manager` | L2 |
+| `src/YuLiangToolkit.Tools.StartupManager/**` | `startup-manager`（复用任务管理器的 StartupManager 底层） | L2 |
 | `src/YuLiangToolkit.Tools.AppManager/**` | `app-manager` | L2 |
 | `src/YuLiangToolkit.Tools.Games/**` | `tetris`（「游戏」类别：俄罗斯方块） | L2 |
 | `src/YuLiangToolkit.Tools.Vsrg/**` | `vsrg`（「游戏」类别：VSRG 音游 —— osu!mania 解析 / .osz 导入 / 判定引擎） | L2 |
@@ -167,7 +168,8 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `tests/.../MailSenderChecks.cs` | `mail-sender`（富文本⇄HTML / 地址拆分与上限 / 附件 base64 体积与危险后缀 / 请求组装与请求头（UA）/ 错误翻译 / DPAPI Key / 配置往返 / 投递状态解析） | L3 |
 | `tests/.../LauncherChecks.cs` | `launcher`（导入校验 / 默认显示名 / 路径去重 / 图标缓存路径 / 失效判定 / 清空无效项 / 联动启动 / 配置往返） | L3 |
 | `tests/.../MemeBoardChecks.cs` | `meme-board`（会话名匹配 / 目标窗口解析 / 延迟随机与夹取 / 图片扩展名 / 配置往返） | L3 |
-| `tests/.../TaskManagerChecks.cs` | `task-manager`（数字格式化 / 结束任务三级方案 / 开机启动解析与启停标记 / 保护名单 / 进程行 / 真实只读采样） | L3 |
+| `tests/.../TaskManagerChecks.cs` | `task-manager`（数字格式化 / 结束任务三级方案 / 保护名单 / 进程行 / 真实只读采样） | L3 |
+| `tests/.../StartupManagerChecks.cs` | `startup-manager`（工具元数据 / 启动项显示 / 只读扫描） | L3 |
 | `tests/.../AppManagerChecks.cs` | `app-manager`（注册表过滤与去重 / 安装日期 / 大小与盘符 / 卸载命令行拆分 / 排序 / 配置；真实扫描只读，不启动任何卸载程序） | L3 |
 | `tests/.../TetrisChecks.cs` | `tetris`（7 种方块 × 4 朝向 / SRS 墙踢 / 碰撞边界 / 7-bag / 消行计分升级 / 暂存 / 幽灵 / 配置） | L3 |
 | `tests/.../VsrgChecks.cs` | `vsrg`（.osu 只读解析 / .osz 导入与路径穿越 / Mapset 扫描 / 判定档与准确率 / 面条头尾判定 / 键位 / 配置） | L3 |

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「开机启动管理」独立工具：扫描注册表 Run / 启动文件夹，启用 / 禁用 / 删除启动项。
+       原理与底层（StartupManager / StartupEntry / AppElevation）复用自「任务管理器」工程，
+       这里只做独立页面 + 独立入口（原来的任务管理器里的开机启动模块拆出来）。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.StartupManagerTool</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.StartupManager</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+    <ProjectReference Include="..\YuLiangToolkit.Tools.TaskManager\YuLiangToolkit.Tools.TaskManager.csproj" />
+  </ItemGroup>
+
+</Project>

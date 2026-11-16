@@ -23,7 +23,6 @@ namespace YuLiangToolkit.Tools.TaskManager.ViewModels;
 /// </summary>
 public sealed class TaskManagerViewModel : ToolViewModelBase
 {
-    private readonly StartupManager _startupManager = new();
     private readonly ProcessTerminator _terminator = new();
 
     /// <summary>PID → 行对象（同一个进程始终复用同一个 <see cref="ProcessInfo"/>）。</summary>
@@ -47,11 +46,9 @@ public sealed class TaskManagerViewModel : ToolViewModelBase
 
     private SystemSnapshot _overview = new();
     private ProcessInfo? _selectedProcess;
-    private StartupEntry? _selectedStartup;
     private string _monitorStateText = "";
     private string _lastUpdatedText = "等待第一次采样…";
     private string _processSummaryText = "";
-    private string _startupSummaryText = "";
     private string _selectedPortSummaryText = "选择一个进程查看它占用的端口";
     private string _selectedPathText = "";
     private string _selectedUserText = "";
@@ -108,17 +105,11 @@ public sealed class TaskManagerViewModel : ToolViewModelBase
         OpenProcessLocationCommand = new RelayCommand(_ => OpenProcessLocation(), _ => HasSelectedProcess);
         CopyPidCommand = new RelayCommand(_ => CopyToClipboard(SelectedProcess?.PidText ?? ""));
         CopyPathCommand = new RelayCommand(_ => CopyToClipboard(SelectedProcess?.Path ?? ""));
-        RefreshStartupCommand = new RelayCommand(_ => RefreshStartup());
-        ToggleStartupCommand = new AsyncRelayCommand(_ => ToggleStartupAsync(), _ => HasSelectedStartup && SelectedStartupItem!.CanModify);
-        DeleteStartupCommand = new AsyncRelayCommand(_ => DeleteStartupAsync(), _ => HasSelectedStartup && SelectedStartupItem!.CanModify);
-        OpenStartupLocationCommand = new RelayCommand(_ => OpenStartupLocation(), _ => HasSelectedStartup);
-        CopyStartupCommandCommand = new RelayCommand(_ => CopyToClipboard(SelectedStartupItem?.Command ?? ""), _ => HasSelectedStartup);
 
         Cfg.PropertyChanged += OnConfigChanged;
 
         IsElevated = AppElevation.IsCurrentProcessElevated;
         MonitorStateText = BuildMonitorStateText();
-        RefreshStartup();
 
         Log($"配置文件：{Cfg.FilePath}");
         Log($"刷新间隔：{Cfg.RefreshIntervalMs} ms；排序：{TaskManagerConfig.SortModeLabel(Cfg.SortMode)}");
@@ -307,32 +298,20 @@ public sealed class TaskManagerViewModel : ToolViewModelBase
     public string SelectedVirtualText { get => _selectedVirtualText; private set => Set(ref _selectedVirtualText, value); }
     public string SelectedDetailsError { get => _selectedDetailsError; private set => Set(ref _selectedDetailsError, value); }
 
-    // ---------------------------------------------------------------- 开机启动
+    // ---------------------------------------------------------------- 性能曲线（折线图）
 
-    public ObservableCollection<StartupEntry> StartupItems { get; } = new();
+    /// <summary>最近约 2 分钟的 CPU / 内存 / GPU / 磁盘占用历史（折线图数据源）。</summary>
+    public PerformanceHistory History { get; } = new();
 
-    public StartupEntry? SelectedStartupItem
-    {
-        get => _selectedStartup;
-        set
-        {
-            if (!Set(ref _selectedStartup, value)) return;
-            OnPropertyChanged(nameof(HasSelectedStartup));
-            OnPropertyChanged(nameof(StartupToggleText));
-        }
-    }
+    private string _perfCpuDetail = "";
+    private string _perfMemoryDetail = "";
+    private string _perfGpuDetail = "";
+    private string _perfDiskDetail = "";
 
-    public bool HasSelectedStartup => SelectedStartupItem is not null;
-
-    /// <summary>「启用 / 禁用」按钮的文案：当前已启用就显示「禁用」。</summary>
-    public string StartupToggleText
-        => SelectedStartupItem is null ? "启用 / 禁用" : (SelectedStartupItem.Enabled ? "禁用" : "启用");
-
-    public string StartupSummaryText
-    {
-        get => _startupSummaryText;
-        private set => Set(ref _startupSummaryText, value);
-    }
+    public string PerfCpuDetail { get => _perfCpuDetail; private set => Set(ref _perfCpuDetail, value); }
+    public string PerfMemoryDetail { get => _perfMemoryDetail; private set => Set(ref _perfMemoryDetail, value); }
+    public string PerfGpuDetail { get => _perfGpuDetail; private set => Set(ref _perfGpuDetail, value); }
+    public string PerfDiskDetail { get => _perfDiskDetail; private set => Set(ref _perfDiskDetail, value); }
 
     // ---------------------------------------------------------------- 命令
 
@@ -345,11 +324,6 @@ public sealed class TaskManagerViewModel : ToolViewModelBase
     public RelayCommand OpenProcessLocationCommand { get; }
     public RelayCommand CopyPidCommand { get; }
     public RelayCommand CopyPathCommand { get; }
-    public RelayCommand RefreshStartupCommand { get; }
-    public AsyncRelayCommand ToggleStartupCommand { get; }
-    public AsyncRelayCommand DeleteStartupCommand { get; }
-    public RelayCommand OpenStartupLocationCommand { get; }
-    public RelayCommand CopyStartupCommandCommand { get; }
 
     // ---------------------------------------------------------------- 采样循环
 
@@ -463,6 +437,8 @@ public sealed class TaskManagerViewModel : ToolViewModelBase
         ApplySelectedPorts(result);
         if (details is not null && details.Pid == _detailsPid) ApplyDetails(details);
 
+        PushPerformance(snapshot);
+
         LastUpdatedText = $"更新于 {snapshot.SampledAt:HH:mm:ss}";
         var suffix = result.PortsAvailable ? "" : " · 端口读取失败（可尝试以管理员身份运行）";
         var portCount = result.Ports.Count(p => p.Pid != 0);
@@ -525,6 +501,30 @@ public sealed class TaskManagerViewModel : ToolViewModelBase
     {
         if (_visible.Remove(row)) Processes.Remove(row);
     }
+
+    /// <summary>把这一轮整机数据压进性能曲线（CPU / 内存 / GPU / 磁盘各一条），并刷新卡片详情文本。</summary>
+    private void PushPerformance(SystemSnapshot snapshot)
+    {
+        // 磁盘没有天然的「占用率」，用「读写速度相对 100 MB/s」折算成 0~100 的曲线高度，
+        // 数值本身在详情里用真实读写速度显示（不是百分比，避免误解）。
+        var diskPercent = Math.Clamp(
+            (snapshot.DiskReadBytesPerSecond + snapshot.DiskWriteBytesPerSecond) / (100.0 * 1024 * 1024) * 100.0,
+            0, 100);
+
+        History.Push(snapshot.CpuPercent, snapshot.MemoryPercent, snapshot.GpuPercent, diskPercent);
+
+        PerfCpuDetail = snapshot.CpuText;
+        PerfMemoryDetail = snapshot.MemoryPercentText;
+        PerfGpuDetail = snapshot.GpuText;
+        PerfDiskDetail = snapshot.DiskAvailable
+            ? $"读 {snapshot.DiskReadText} · 写 {snapshot.DiskWriteText}"
+            : "磁盘计数器不可用";
+
+        PerformanceRefreshed?.Invoke();
+    }
+
+    /// <summary>每轮采样后触发，折线图控件据此重绘（XAML 里挂到 <see cref="PerformanceGraph.Refresh"/>）。</summary>
+    public event Action? PerformanceRefreshed;
 
     private void ApplySelectedPorts(ProcessSampleResult result)
     {
@@ -699,25 +699,6 @@ public sealed class TaskManagerViewModel : ToolViewModelBase
         AppElevation.RequestExit();
     }
 
-    /// <summary>
-    /// 操作因为权限失败时：普通权限下问一句「要以管理员身份重启吗？」；
-    /// 已经是管理员就只把失败原因告诉用户。
-    /// </summary>
-    private void OfferElevation(string problem)
-    {
-        if (IsElevated)
-        {
-            MessageBox.Show(problem, "需要管理员权限", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        var answer = MessageBox.Show(
-            problem + "\n\n要以管理员身份重新启动本程序吗？\n"
-            + "（会弹 UAC；重启后自动回到任务管理器，刚才的操作需要再做一次。）",
-            "需要管理员权限", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        if (answer == MessageBoxResult.Yes) RestartElevated(askConfirm: false);
-    }
-
     // ---------------------------------------------------------------- 结束任务
 
     private async Task KillSelectedAsync()
@@ -849,87 +830,6 @@ public sealed class TaskManagerViewModel : ToolViewModelBase
         {
             StatusText = "复制失败（剪贴板被其它程序占用）";
         }
-    }
-
-    // ---------------------------------------------------------------- 开机启动项
-
-    private void RefreshStartup()
-    {
-        try
-        {
-            var items = _startupManager.Scan();
-            StartupItems.Clear();
-            foreach (var item in items) StartupItems.Add(item);
-            var disabled = items.Count(i => !i.Enabled);
-            StartupSummaryText = $"共 {items.Count} 项 · 已禁用 {disabled} 项"
-                                 + (IsElevated ? "" : " · 系统级项目需要管理员权限才能修改");
-            if (SelectedStartupItem is not null && !StartupItems.Contains(SelectedStartupItem))
-            {
-                SelectedStartupItem = null;
-            }
-        }
-        catch (Exception ex)
-        {
-            StartupSummaryText = "读取开机启动项失败：" + ex.Message;
-            Log("扫描开机启动项失败：" + ex);
-        }
-    }
-
-    private async Task ToggleStartupAsync()
-    {
-        var item = SelectedStartupItem;
-        if (item is null) return;
-
-        var targetEnabled = !item.Enabled;
-        StatusText = $"正在{(targetEnabled ? "启用" : "禁用")}「{item.Name}」…";
-        var message = "";
-        var ok = await Task.Run(() => _startupManager.SetEnabled(item, targetEnabled, out message));
-        StatusText = ok
-            ? $"已{(targetEnabled ? "启用" : "禁用")}「{item.Name}」"
-            : $"修改「{item.Name}」失败：{message}";
-        if (!ok) OfferElevation($"修改开机启动项「{item.Name}」失败：{message}");
-        RefreshStartup();
-    }
-
-    private async Task DeleteStartupAsync()
-    {
-        var item = SelectedStartupItem;
-        if (item is null) return;
-
-        var confirm = MessageBox.Show(
-            $"确定删除开机启动项「{item.Name}」吗？\n\n来源：{item.SourceText}\n命令：{item.CommandSummary}\n\n"
-            + "只会删除这一条启动记录 / 启动文件夹里的快捷方式，不会卸载程序本身。",
-            "删除开机启动项", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-        if (confirm != MessageBoxResult.OK) return;
-
-        StatusText = $"正在删除「{item.Name}」…";
-        var message = "";
-        var ok = await Task.Run(() => _startupManager.Delete(item, out message));
-        StatusText = ok ? $"已删除「{item.Name}」" : $"删除「{item.Name}」失败：{message}";
-        if (!ok) OfferElevation($"删除开机启动项「{item.Name}」失败：{message}");
-        RefreshStartup();
-    }
-
-    private void OpenStartupLocation()
-    {
-        var item = SelectedStartupItem;
-        if (item is null) return;
-
-        if (item.Kind == StartupEntryKind.StartupFolder && !string.IsNullOrWhiteSpace(item.FolderPath))
-        {
-            RevealInExplorer(item.FolderPath);
-            return;
-        }
-
-        if (!string.IsNullOrWhiteSpace(item.FilePath) && (File.Exists(item.FilePath) || Directory.Exists(item.FilePath)))
-        {
-            RevealInExplorer(item.FilePath);
-            return;
-        }
-
-        // 注册表项找不到程序时：把命令复制出来，告诉用户去注册表看
-        CopyToClipboard(item.Command);
-        StatusText = "找不到启动程序的位置，已把启动命令复制到剪贴板";
     }
 
     // ---------------------------------------------------------------- 生命周期

@@ -48,15 +48,15 @@ internal static class TaskManagerChecks
             && tool.Category == "系统" && tool.Order == 46,
             $"{tool.Id} / {tool.Name} / {tool.Category} / {tool.Order}");
 
-        check("[任务管理器] 标签含「任务管理器」「进程」「端口」「开机启动」等主页筛选用词",
+        check("[任务管理器] 标签含「任务管理器」「进程」「端口」等主页筛选用词",
             tool.Tags.Contains("任务管理器") && tool.Tags.Contains("进程")
-            && tool.Tags.Contains("端口") && tool.Tags.Contains("开机启动")
+            && tool.Tags.Contains("端口") && tool.Tags.Contains("性能监测")
             && tool.Tags.Contains("GPU") && tool.Tags.Contains("PID"),
             string.Join(" / ", tool.Tags));
 
-        check("[任务管理器] 描述写明 CPU / 端口 / 结束任务 / 开机启动，且实现了 ITool",
+        check("[任务管理器] 描述写明 CPU / 端口 / 结束任务，且实现了 ITool",
             tool.Description.Contains("CPU") && tool.Description.Contains("端口")
-            && tool.Description.Contains("结束任务") && tool.Description.Contains("开机启动项")
+            && tool.Description.Contains("结束任务")
             && tool is YuLiangToolkit.Core.Tools.ITool && tool.EmojiIcon.Length > 0,
             tool.Description);
     }

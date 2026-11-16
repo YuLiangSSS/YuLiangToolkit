@@ -1,4 +1,4 @@
-
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -104,6 +104,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.Alarm", "src\YuLiangToolkit.Tools.Alarm\YuLiangToolkit.Tools.Alarm.csproj", "{F6CFF42A-15B5-4BCA-A1A1-F56FF4F22E93}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.TextConverter", "src\YuLiangToolkit.Tools.TextConverter\YuLiangToolkit.Tools.TextConverter.csproj", "{315A75EA-76B0-49AA-B49E-BEDC102D22E9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.StartupManager", "src\YuLiangToolkit.Tools.StartupManager\YuLiangToolkit.Tools.StartupManager.csproj", "{F3CD2E34-25AD-4CF6-96CE-713721BE70C9}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -703,6 +705,18 @@ Global
 		{315A75EA-76B0-49AA-B49E-BEDC102D22E9}.Release|x64.Build.0 = Release|Any CPU
 		{315A75EA-76B0-49AA-B49E-BEDC102D22E9}.Release|x86.ActiveCfg = Release|Any CPU
 		{315A75EA-76B0-49AA-B49E-BEDC102D22E9}.Release|x86.Build.0 = Release|Any CPU
+		{F3CD2E34-25AD-4CF6-96CE-713721BE70C9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F3CD2E34-25AD-4CF6-96CE-713721BE70C9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F3CD2E34-25AD-4CF6-96CE-713721BE70C9}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{F3CD2E34-25AD-4CF6-96CE-713721BE70C9}.Debug|x64.Build.0 = Debug|Any CPU
+		{F3CD2E34-25AD-4CF6-96CE-713721BE70C9}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{F3CD2E34-25AD-4CF6-96CE-713721BE70C9}.Debug|x86.Build.0 = Debug|Any CPU
+		{F3CD2E34-25AD-4CF6-96CE-713721BE70C9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F3CD2E34-25AD-4CF6-96CE-713721BE70C9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F3CD2E34-25AD-4CF6-96CE-713721BE70C9}.Release|x64.ActiveCfg = Release|Any CPU
+		{F3CD2E34-25AD-4CF6-96CE-713721BE70C9}.Release|x64.Build.0 = Release|Any CPU
+		{F3CD2E34-25AD-4CF6-96CE-713721BE70C9}.Release|x86.ActiveCfg = Release|Any CPU
+		{F3CD2E34-25AD-4CF6-96CE-713721BE70C9}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -755,5 +769,6 @@ Global
 		{7FE5DEA2-BD28-41B4-85F1-310DE041DE6D} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{F6CFF42A-15B5-4BCA-A1A1-F56FF4F22E93} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{315A75EA-76B0-49AA-B49E-BEDC102D22E9} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{F3CD2E34-25AD-4CF6-96CE-713721BE70C9} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

@@ -66,7 +66,8 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("mail-sender", "邮件推送：富文本⇄HTML / 地址与附件校验 / 请求组装与请求头 / 错误翻译 / DPAPI Key（纯逻辑，不联网）"),
     ("launcher", "软件启动器：导入校验 / 默认显示名 / 失效判定 / 清空无效项 / 联动启动 / 配置往返（纯逻辑）"),
     ("meme-board", "表情包收藏夹：会话名归一 / 目标窗口解析 / 随机延迟夹取 / 图片扩展名 / 配置往返（纯逻辑，不碰 QQ）"),
-    ("task-manager", "任务管理器：数字格式化 / 结束任务三级方案 / 开机启动解析与启停标记 / 保护名单 / 进程行 / 真实只读采样"),
+    ("task-manager", "任务管理器：数字格式化 / 结束任务三级方案 / 保护名单 / 进程行 / 性能曲线 / 真实只读采样"),
+    ("startup-manager", "开机启动管理：工具元数据 / 启动项显示文本 / 搜索过滤（纯逻辑，真实只读扫描）"),
     ("app-manager", "应用管理器：注册表过滤与去重 / 安装日期 / 大小与盘符 / 卸载命令行拆分 / 排序 / 配置（真实只读扫描）"),
     ("tetris", "游戏：俄罗斯方块（7-bag 出块 / SRS 旋转与墙踢 / 消行计分升级 / 暂存 / 幽灵 / 配置）"),
     ("vsrg", "游戏：VSRG 音游（osu!mania 解析 / .osz 导入 / Mapset 扫描 / 判定档与准确率 / 面条头尾判定 / 键位）"),
@@ -1315,6 +1316,9 @@ RunGroupModule("meme-board", "表情包收藏夹", MemeBoardChecks.Run);
 // ProcessProtection（关键进程 / 桌面外壳）、ProcessInfo（原地合并 / 搜索命中 / 显示文本）、配置默认值与 JSON 往返；
 // 另外真的只读采样本机（自己的进程 / 端口表 / 整机内存），**不结束任何进程、不写注册表**。
 RunGroupModule("task-manager", "任务管理器", TaskManagerChecks.Run);
+
+// 「开机启动管理」（从任务管理器拆出的独立工具）：工具元数据 / 启动项显示文本 / 只读扫描断言。
+RunGroupModule("startup-manager", "开机启动管理", StartupManagerChecks.Run);
 
 // 「应用管理器」：注册表卸载项过滤（系统组件 / 补丁 / 子项 / 空名）与同名去重优先级 /
 // 安装日期解析（20260626 · 2026-06-26 · 越界 · 空）/ 大小与盘符格式化 / 驱动器标签 /

@@ -46,7 +46,8 @@
 | ⬆️ 软件升级器 | 用系统自带的 winget 读出本机已安装应用与可用版本；逐个勾选 / Ctrl·Shift 多选行 / 全选 / 全不选 / 反选后一键批量升级，带搜索过滤、升级前确认、逐个进度与日志、可取消；包 Id 白名单校验、扫描只读、不需要管理员 | [tools/software-updater.md](tools/software-updater.md) |
 | 🧩 应用管理器 | 仿 Windows「设置 → 应用 → 安装的应用」：列出注册表里登记的桌面应用（名称 / 发布者 / 版本 / 占用大小 / 安装日期 / 所在盘），按驱动器筛选、按名称·安装日期·占用大小·发布者排序并切正逆序，每行右侧直接「卸载」「修改」（走应用自己登记的入口，确认后执行，完成自动重扫）；只读注册表 | [tools/app-manager.md](tools/app-manager.md) |
 | 🚀 软件启动器 | 把常用的 exe / 快捷方式收进图标墙，双击启动；右侧看软件全名 / 目标路径 / 版本 / 大小，可重命名、换图标、删除，一键清空失效快捷方式与已卸载的软件；勾选的程序还能随工具集一起启动 | [tools/launcher.md](tools/launcher.md) |
-| 🖥️ 任务管理器 | 系统 CPU / 内存 / GPU / 逐块物理硬盘读写实时监测 + 进程列表（PID / CPU / 内存 / GPU / 占用端口）+ 进程详情与结束任务（Process.Kill → taskkill → wmic 三级后备）+ 开机启动项查看 / 启用禁用 / 删除；需要管理员权限时按需弹 UAC 重启提权 | [tools/task-manager.md](tools/task-manager.md) |
+| 🖥️ 任务管理器 | 系统 CPU / 内存 / GPU / 逐块物理硬盘读写实时监测 + 底部 CPU / 内存 / GPU / 磁盘 实时折线走势 + 进程列表（可拖列宽、点列头排序，列头带整机总占用；搜索支持名称 / PID / 端口且空格分词）+ 进程详情与结束任务（Process.Kill → taskkill → wmic 三级后备）；需要管理员权限时按需弹 UAC 重启提权 | [tools/task-manager.md](tools/task-manager.md) |
+| 🚀 开机启动管理 | 管理随 Windows 启动的程序：扫描注册表 Run / RunOnce 与「启动」文件夹，可启用 / 禁用（写 StartupApproved）/ 删除 / 打开位置 / 复制命令；系统级项目需管理员权限，可一键 UAC 重启 | [tools/startup-manager.md](tools/startup-manager.md) |
 | 😆 表情包收藏夹 | 收藏图片，单击即复制并粘贴到 QQ 聊天框；自动检测 / 校验目标会话、可选自动发送（随机 0.5~1.5 秒延迟），也能切换成只复制到剪贴板 | [tools/meme-board.md](tools/meme-board.md) |
 | 🧮 计算器 | 科学计算器：表达式直接输入、边打边出结果；整数 / 有限小数走任意精度精确计算（100!、2^1000、超大整数四则都不丢位），三角函数 / 反三角 / 双曲 / 对数 / 阶乘 / 常量，角度制与弧度制切换，结果有效位数可调；历史记录点选回填并自动保存；Ans、复制结果。另有**辈分计算**（点关系链出亲属称谓，含对方怎么叫你，北方 / 南方两套叫法）与**日期计算**（两日期相差多少天 / 某天加·减 N 天是哪天 / 拆成几年几个月几天） | [tools/calculator.md](tools/calculator.md) |
 | 🎲 随机数生成器 | 可调下限 / 上限 / 精确度生成随机数，数值用任意精度十进制精确表示（超大整数与超细步长都不丢位、不出浮点尾巴）；可调个数、去重、排序、分隔符，一键复制 | [tools/random-number.md](tools/random-number.md) |

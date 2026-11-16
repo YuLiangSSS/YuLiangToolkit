@@ -182,6 +182,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/CountdownChecks.cs' @('countdown') 'L3' 'countdown engine / parsing assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/AlarmChecks.cs' @('alarm') 'L3' 'alarm schedule / snooze assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/TextConverterChecks.cs' @('text-converter') 'L3' 'text transform / shortcut model assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/StartupManagerChecks.cs' @('startup-manager') 'L3' 'startup manager tool metadata / filter assertions')
 
     # ---------- tests: anything else in the self-check project is unknown wiring ----------
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/*.cs' @('ALL') 'L4' 'unmapped self-check source' -Fallback)
@@ -230,7 +231,8 @@ $mapping = @(
     (New-Rule 'src/YuLiangToolkit.Tools.MailSender/*'         @('mail-sender') 'L2' 'mail sender tool (resend push)')
     (New-Rule 'src/YuLiangToolkit.Tools.Launcher/*'           @('launcher') 'L2' 'software launcher tool')
     (New-Rule 'src/YuLiangToolkit.Tools.MemeBoard/*'          @('meme-board') 'L2' 'meme favorite board / QQ paste tool')
-    (New-Rule 'src/YuLiangToolkit.Tools.TaskManager/*'        @('task-manager') 'L2' 'task manager: process / port / gpu / startup monitor')
+    (New-Rule 'src/YuLiangToolkit.Tools.TaskManager/*'        @('task-manager') 'L2' 'task manager: process / port / gpu / performance monitor')
+    (New-Rule 'src/YuLiangToolkit.Tools.StartupManager/*'     @('startup-manager') 'L2' 'startup manager: scan / enable-disable / delete startup entries')
     (New-Rule 'src/YuLiangToolkit.Tools.AppManager/*'         @('app-manager') 'L2' 'app manager: installed apps / uninstall / modify')
     (New-Rule 'src/YuLiangToolkit.Tools.Games/*'             @('tetris') 'L2' 'games: tetris (one project per game category)')
     (New-Rule 'src/YuLiangToolkit.Tools.Vsrg/*'              @('vsrg') 'L2' 'vsrg rhythm game (osu mania parsing / osz import / gameplay engine)')
