@@ -24,6 +24,7 @@
 | 📬 邮箱代收 | 用 IMAP 把 Gmail / QQ / 163 / 126 / Outlook 等多个邮箱的**收件箱 / 已发送 / 垃圾箱**收到一起看（只读，不改已读 / 不删邮件）：账号文件夹导航、合并列表、关键词搜索、HTML 富文本预览（图片 / 表格 / 边框，Ctrl+滚轮缩放，可切纯文本）、附件打开 / 保存 / 全部保存 / 拖到桌面、按日期 / 发件人 / 收件人 / 主题 / 账号 / 附件 / 优先级 / 未读 / 大小排序；账号 / 代理 / 日志都是弹窗，授权码 / 应用专用密码用 Windows DPAPI 加密保存；可自动跟随 Windows 系统代理 | [tools/mail.md](tools/mail.md) |
 | 🏷️ 批量重命名 | 规则清单 + 预览 + 两阶段改名 + 撤销 | [tools/batch-rename.md](tools/batch-rename.md) |
 | 📝 文本编辑器 | 多标签文本 / 代码编辑（AvalonEdit）：语法高亮、查找替换、编码与换行自动识别、界面缩放 | [tools/text-editor.md](tools/text-editor.md) |
+| 📔 日记本 | 写日记：富文本（加粗 / 颜色 / 标题 / 列表 / 图片）和普通文本两种写法，边写边自动保存；历史按日期排、可搜索、可记心情 | [tools/diary.md](tools/diary.md) |
 | 🎧 osu! 下图器 | 搜谱面集、批量下 `.osz` | [tools/map-downloader.md](tools/map-downloader.md) |
 | 🎼 osu!mania 谱面编辑器 | 边听边摆 note（普通键 / LN / 右键删），音频设备位置精确同步，大量 note 自绘不卡 | [tools/osu-mania-editor.md](tools/osu-mania-editor.md) |
 | 🎹 osu! Key 转换器 | 低键数 mania 谱面「复制列 / 插空白列」加成高键数（2~10 可选） | [tools/osu-key-converter.md](tools/osu-key-converter.md) |

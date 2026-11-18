@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「日记本」：按天写日记，支持富文本（跟邮箱编辑器一样的加粗 / 颜色 / 标题 / 列表 / 图片…）
+       和普通文本两种写法；左侧历史列表按日期分组、可搜索，右侧编辑区实时自动保存。
+       数据是一篇一篇的 JSON，放在 Data\diary\entries\ 下（用户数据，别跟 Cache 混）。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.Diary</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.Diary</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>

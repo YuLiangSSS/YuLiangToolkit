@@ -41,6 +41,7 @@
     <ProjectReference Include="src\YuLiangToolkit.Tools.PptViewer\YuLiangToolkit.Tools.PptViewer.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.BatchRename\YuLiangToolkit.Tools.BatchRename.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.TextEditor\YuLiangToolkit.Tools.TextEditor.csproj" />
+    <ProjectReference Include="src\YuLiangToolkit.Tools.Diary\YuLiangToolkit.Tools.Diary.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.Archive\YuLiangToolkit.Tools.Archive.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.FlashDownloader\YuLiangToolkit.Tools.FlashDownloader.csproj" />
     <ProjectReference Include="src\YuLiangToolkit.Tools.ChatRoom\YuLiangToolkit.Tools.ChatRoom.csproj" />

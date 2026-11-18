@@ -1,6 +1,6 @@
 # YuLiangToolkit（凉雨工具集）
 
-> **一个 Windows 上的自用小工具集：39 个常用工具装进同一个窗口。**
+> **一个 Windows 上的自用小工具集：40 个常用工具装进同一个窗口。**
 >
 > 99.99% AI Coding · .NET 9 + WPF · 绿色免安装 · Unlicense
 
@@ -16,7 +16,7 @@
 | 🕹️ 联机 | 聊天室（文字 / 语音 / 视频 / 文件）、五子棋、象棋、斗地主、军棋 |
 | 🧱 游戏 | 俄罗斯方块（单机 / 人机对战（六档 AI）/ 局域网 1 对 1 联机 / 观战）、VSRG 音游（读 osu!mania 谱面 / 拖 .osz 导入 / 1K~10K） |
 | 🛠️ 系统 | 批量重命名、压缩包、打开方式、右键菜单管理、应用管理器、软件升级器、软件启动器、任务管理器、开机启动管理 |
-| ✨ 其它 | 网页浏览器、邮箱代收、邮件推送、文本编辑器、Live2D 桌宠、屏幕贴纸、计算器、函数绘图、Flash 下载器 |
+| ✨ 其它 | 网页浏览器、邮箱代收、邮件推送、文本编辑器、日记本、Live2D 桌宠、屏幕贴纸、计算器、函数绘图、Flash 下载器 |
 
 完整清单见 [工具一览](#工具一览)，每个工具的详细说明见 [docs/](docs/README.md)。
 
@@ -59,6 +59,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 | [**📮 邮件推送**](docs/tools/mail-sender.md) | 写一封**带格式的邮件**再交给邮件推送 API（Resend `POST /emails`）：富文本编辑（粗斜下划线 / 颜色 / 字号 / 对齐 / 列表 / 缩进 / 链接 / 行内图片 / 表格）与 HTML 源码双向切换、附件拖入（40 MB 上限按 base64 后算）、抄送密送回复地址、发送前 WebView2 真实排版预览、请求摘要 / 返回 id / 错误原文一目了然、按 id 查投递状态；API Key 用 DPAPI 加密保存 |
 | [**🏷️ 批量重命名**](docs/tools/batch-rename.md) | 规则清单 + 实时预览 + 两阶段改名 + 可撤销 |
 | [**📝 文本编辑器**](docs/tools/text-editor.md) | AvalonEdit 多标签代码编辑：26 种语言高亮、打开文件夹、内置 CMD / PowerShell 控制台、Markdown 预览、查找替换、界面缩放 |
+| [**📔 日记本**](docs/tools/diary.md) | 给自己写日记：富文本（加粗 / 颜色 / 标题 / 列表 / 图片，像邮箱编辑器）与普通文本两种写法可随时切换、边写边自动保存；左侧历史日记按日期排、可搜索，每篇可记一个心情 emoji；一篇一个 JSON，全在本机不联网 |
 | [**🎧 osu! 下图器**](docs/tools/map-downloader.md) | 搜谱面集、批量下载 `.osz`（含视频 / 无视频可选） |
 | [**🎼 osu!mania 谱面编辑器**](docs/tools/osu-mania-editor.md) | 边听边摆 note：普通键 / 长条（LN）/ 右键删除 / 拖拽移动 / 撤销重做；音频用设备位置驱动时间轴精确同步，大量 note 零控件自绘不卡；可读写红线 BPM 与绿线 SV，直接改原 `.osu` |
 | [**🎹 osu! Key 转换器**](docs/tools/osu-key-converter.md) | 把低键数 mania 谱面「复制列 / 插空白列」加成高键数（2~10 可选），支持批量 |

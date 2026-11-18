@@ -86,6 +86,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("countdown", "倒计时：状态机 / 时长解析 / 格式化 / 快捷键 / 配置"),
     ("alarm", "闹钟：重复天 / 下次响铃时刻 / 贪睡 / 条目规范化 / 配置"),
     ("text-converter", "文本转换器：各类转换 / 可逆性 / 编码往返 / 快捷键 / 配置"),
+    ("diary", "日记本：每篇一个 JSON 的读写往返 / 字数与摘要 / 富文本⇄HTML / 搜索与排序 / 配置"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1403,6 +1404,10 @@ RunGroupModule("alarm", "闹钟", AlarmChecks.Run);
 // 转换注册表、自定义快捷键的数据模型与配置往返。
 // 纯逻辑：**不碰剪贴板、不模拟按键**（「选中 → 转换 → 粘贴」靠人工冒烟验收）。
 RunGroupModule("text-converter", "文本转换器", TextConverterChecks.Run);
+
+// 「日记本」：每篇一个 JSON 的读写往返 / 字数与摘要 / 富文本 ⇄ HTML（STA）/ 搜索与排序 / 配置。
+// 纯逻辑，不创建窗口、不碰真实 Data/Config（编辑体本身由截图冒烟验收）。
+RunGroupModule("diary", "日记本", DiaryChecks.Run);
 
 EnterGroup("shell");
 

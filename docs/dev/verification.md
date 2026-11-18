@@ -156,6 +156,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `src/YuLiangToolkit.Tools.Countdown/**` | `countdown`（倒计时状态机 / 解析 / 格式化） | L2 |
 | `src/YuLiangToolkit.Tools.Alarm/**` | `alarm`（重复天 / 下次响铃 / 贪睡） | L2 |
 | `src/YuLiangToolkit.Tools.TextConverter/**` | `text-converter`（各类转换 / 快捷键模型） | L2 |
+| `src/YuLiangToolkit.Tools.Diary/**` | `diary`（每篇一个 JSON / 富文本⇄HTML / 搜索与排序 / 配置） | L2 |
 |  | （各类转换 / 快捷键模型） | L2 |
 | `src/YuLiangToolkit.Tools.ScreenSticker/**` | `screen-sticker` | L2 |
 | `tests/.../SoftwareUpdaterChecks.cs` | `software-updater`（winget 表格解析 / 包 Id 白名单 / 命令拼装 / 批量勾选规则） | L3 |
@@ -188,6 +189,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `tests/.../CountdownChecks.cs` | `countdown`（状态机 / 时长解析 / 格式化 / 快捷键 / 配置） | L3 |
 | `tests/.../AlarmChecks.cs` | `alarm`（重复天 / 下次响铃时刻 / 贪睡 / 条目规范化 / 配置） | L3 |
 | `tests/.../TextConverterChecks.cs` | `text-converter`（每种转换效果 / 可逆性 / 编码往返 / 快捷键模型 / 配置） | L3 |
+| `tests/.../DiaryChecks.cs` | `diary`（每篇 JSON 往返 / 字数与摘要 / 富文本⇄HTML / 搜索排序 / 配置） | L3 |
 |  | （每种转换效果 / 可逆性 / 编码往返 / 快捷键模型 / 配置） | L3 |
 | `tests/.../ScreenStickerChecks.cs` | `screen-sticker`（贴纸几何 / 层级顺序 / 最近使用 / 配置默认值） | L3 |
 | `tests/.../ScreenRecorderChecks.cs` | `screen-recorder`（区域换算 / FFmpeg 参数 / 文件名 / 配置默认值） | L3 |

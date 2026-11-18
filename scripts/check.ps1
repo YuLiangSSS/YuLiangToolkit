@@ -179,6 +179,7 @@ $mapping = @(
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/StopwatchChecks.cs' @('stopwatch') 'L3' 'stopwatch session / format / config assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/CalendarChecks.cs' @('calendar') 'L3' 'calendar month cells / keyboard / config assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/NotificationLogChecks.cs' @('notification-log') 'L3' 'notification history / persistence assertions')
+    (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/DiaryChecks.cs'          @('diary') 'L3' 'diary entries / richtext<->html / search assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/CountdownChecks.cs' @('countdown') 'L3' 'countdown engine / parsing assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/AlarmChecks.cs' @('alarm') 'L3' 'alarm schedule / snooze assertions')
     (New-Rule 'tests/YuLiangToolkit.FrameworkSelfCheck/TextConverterChecks.cs' @('text-converter') 'L3' 'text transform / shortcut model assertions')
@@ -243,6 +244,7 @@ $mapping = @(
     (New-Rule 'src/YuLiangToolkit.Tools.Countdown/*'         @('countdown') 'L2' 'countdown tool (engine / parsing / formatting / config)')
     (New-Rule 'src/YuLiangToolkit.Tools.Alarm/*'             @('alarm') 'L2' 'alarm tool (schedule / snooze / config)')
     (New-Rule 'src/YuLiangToolkit.Tools.TextConverter/*'     @('text-converter') 'L2' 'text converter (transformers / shortcuts / config)')
+    (New-Rule 'src/YuLiangToolkit.Tools.Diary/*'            @('diary') 'L2' 'diary tool (rich/plain text entries, per-entry json)')
     (New-Rule 'src/YuLiangToolkit.Core/Shell/ClockBarSource.cs' @('calendar') 'L3' 'title bar clock source (timezone + formatting)')
     # Core 的快捷键与通知是公共轮子：改它们直接跑 hotkeys 组（比 ALL 便宜，且这两处改动最容易踩回归）
     (New-Rule 'src/YuLiangToolkit.Core/Input/*'              @('hotkeys','text-converter') 'L3' 'shortcut engine / registry / adapter / key sender')
