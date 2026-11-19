@@ -159,6 +159,9 @@
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.TextConverter\YuLiangToolkit.Tools.TextConverter.csproj" />
     <!-- 「日记本」：每篇一个 JSON 的读写往返 / 字数与摘要 / 富文本⇄HTML（STA）/ 配置；纯逻辑，无头跑。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Diary\YuLiangToolkit.Tools.Diary.csproj" />
+    <!-- 「天气预报」：WMO 天气代码表 / 风向方位 / 单位换算 / 接口 URL / 假 handler 请求层 /
+         逐小时切片与日期文案 / 展示模型组装 / 缓存兜底 / 配置往返；纯逻辑，不出网。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Weather\YuLiangToolkit.Tools.Weather.csproj" />
   </ItemGroup>
 
 </Project>

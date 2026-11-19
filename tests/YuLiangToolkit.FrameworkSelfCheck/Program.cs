@@ -87,6 +87,7 @@ var selfCheckGroups = new (string Id, string Label)[]
     ("alarm", "闹钟：重复天 / 下次响铃时刻 / 贪睡 / 条目规范化 / 配置"),
     ("text-converter", "文本转换器：各类转换 / 可逆性 / 编码往返 / 快捷键 / 配置"),
     ("diary", "日记本：每篇一个 JSON 的读写往返 / 字数与摘要 / 富文本⇄HTML / 搜索与排序 / 配置"),
+    ("weather", "天气预报：WMO 代码表 / 风向 / 单位 / 接口 URL / 假 handler 请求层 / 切片文案 / 展示模型 / 缓存与配置（纯逻辑，不出网）"),
 };
 var requestedGroups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 var runAllGroups = true;
@@ -1408,6 +1409,12 @@ RunGroupModule("text-converter", "文本转换器", TextConverterChecks.Run);
 // 「日记本」：每篇一个 JSON 的读写往返 / 字数与摘要 / 富文本 ⇄ HTML（STA）/ 搜索与排序 / 配置。
 // 纯逻辑，不创建窗口、不碰真实 Data/Config（编辑体本身由截图冒烟验收）。
 RunGroupModule("diary", "日记本", DiaryChecks.Run);
+
+// 「天气预报」：WMO 天气代码表（含未知回退 / 夜间图标）/ 风向方位 / 单位换算 /
+// 接口 URL 组装 / 假 HttpMessageHandler 走请求层（geocoding + forecast + error 翻译）/ 
+// 逐小时切片与「今天明天」文案 / 展示模型组装（缺数显示「—」）/ 缓存文件往返 / 配置往返。
+// 纯逻辑 + 假 handler，**不出网**（真实拉取由人工冒烟验收）。
+RunGroupModule("weather", "天气预报", WeatherChecks.Run);
 
 EnterGroup("shell");
 

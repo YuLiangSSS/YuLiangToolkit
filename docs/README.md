@@ -25,6 +25,7 @@
 | 🏷️ 批量重命名 | 规则清单 + 预览 + 两阶段改名 + 撤销 | [tools/batch-rename.md](tools/batch-rename.md) |
 | 📝 文本编辑器 | 多标签文本 / 代码编辑（AvalonEdit）：语法高亮、查找替换、编码与换行自动识别、界面缩放 | [tools/text-editor.md](tools/text-editor.md) |
 | 📔 日记本 | 写日记：富文本（加粗 / 颜色 / 标题 / 列表 / 图片）和普通文本两种写法，边写边自动保存；历史按日期排、可搜索、可记心情 | [tools/diary.md](tools/diary.md) |
+| ⛅ 天气预报 | 查城市的实时天气与未来预报：当前温度 / 体感 / 湿度 / 风向风力 / 气压 / 云量，未来 7 天与逐小时趋势、日出日落；收藏多城市一键切换，断网自动显示上次缓存；数据来自 Open-Meteo 免费接口，无需 API Key，中文城市搜索 | [tools/weather.md](tools/weather.md) |
 | 🎧 osu! 下图器 | 搜谱面集、批量下 `.osz` | [tools/map-downloader.md](tools/map-downloader.md) |
 | 🎼 osu!mania 谱面编辑器 | 边听边摆 note（普通键 / LN / 右键删），音频设备位置精确同步，大量 note 自绘不卡 | [tools/osu-mania-editor.md](tools/osu-mania-editor.md) |
 | 🎹 osu! Key 转换器 | 低键数 mania 谱面「复制列 / 插空白列」加成高键数（2~10 可选） | [tools/osu-key-converter.md](tools/osu-key-converter.md) |

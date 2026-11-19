@@ -157,6 +157,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `src/YuLiangToolkit.Tools.Alarm/**` | `alarm`（重复天 / 下次响铃 / 贪睡） | L2 |
 | `src/YuLiangToolkit.Tools.TextConverter/**` | `text-converter`（各类转换 / 快捷键模型） | L2 |
 | `src/YuLiangToolkit.Tools.Diary/**` | `diary`（每篇一个 JSON / 富文本⇄HTML / 搜索与排序 / 配置） | L2 |
+| `src/YuLiangToolkit.Tools.Weather/**` | `weather`（Open-Meteo 拉取 / 地理编码 / 缓存兜底 / 展示模型） | L2 |
 |  | （各类转换 / 快捷键模型） | L2 |
 | `src/YuLiangToolkit.Tools.ScreenSticker/**` | `screen-sticker` | L2 |
 | `tests/.../SoftwareUpdaterChecks.cs` | `software-updater`（winget 表格解析 / 包 Id 白名单 / 命令拼装 / 批量勾选规则） | L3 |
@@ -190,6 +191,7 @@ Remove-Item Env:YLT_SHOT_TOOL, Env:YLT_SHOT
 | `tests/.../AlarmChecks.cs` | `alarm`（重复天 / 下次响铃时刻 / 贪睡 / 条目规范化 / 配置） | L3 |
 | `tests/.../TextConverterChecks.cs` | `text-converter`（每种转换效果 / 可逆性 / 编码往返 / 快捷键模型 / 配置） | L3 |
 | `tests/.../DiaryChecks.cs` | `diary`（每篇 JSON 往返 / 字数与摘要 / 富文本⇄HTML / 搜索排序 / 配置） | L3 |
+| `tests/.../WeatherChecks.cs` | `weather`（WMO 代码表 / 风向方位 / 单位换算 / 接口 URL / 假 handler 请求层 / 逐小时切片 / 展示模型 / 缓存与配置往返） | L3 |
 |  | （每种转换效果 / 可逆性 / 编码往返 / 快捷键模型 / 配置） | L3 |
 | `tests/.../ScreenStickerChecks.cs` | `screen-sticker`（贴纸几何 / 层级顺序 / 最近使用 / 配置默认值） | L3 |
 | `tests/.../ScreenRecorderChecks.cs` | `screen-recorder`（区域换算 / FFmpeg 参数 / 文件名 / 配置默认值） | L3 |

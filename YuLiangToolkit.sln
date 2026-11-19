@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -108,6 +108,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.StartupManager", "src\YuLiangToolkit.Tools.StartupManager\YuLiangToolkit.Tools.StartupManager.csproj", "{F3CD2E34-25AD-4CF6-96CE-713721BE70C9}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.Diary", "src\YuLiangToolkit.Tools.Diary\YuLiangToolkit.Tools.Diary.csproj", "{ED8A9A1F-A492-4B29-8FDB-666FB88DB7F8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "YuLiangToolkit.Tools.Weather", "src\YuLiangToolkit.Tools.Weather\YuLiangToolkit.Tools.Weather.csproj", "{F3B9C2D4-8E56-4A17-9C30-2D6E8F51A7B4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -731,6 +733,18 @@ Global
 		{ED8A9A1F-A492-4B29-8FDB-666FB88DB7F8}.Release|x64.Build.0 = Release|Any CPU
 		{ED8A9A1F-A492-4B29-8FDB-666FB88DB7F8}.Release|x86.ActiveCfg = Release|Any CPU
 		{ED8A9A1F-A492-4B29-8FDB-666FB88DB7F8}.Release|x86.Build.0 = Release|Any CPU
+		{F3B9C2D4-8E56-4A17-9C30-2D6E8F51A7B4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F3B9C2D4-8E56-4A17-9C30-2D6E8F51A7B4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F3B9C2D4-8E56-4A17-9C30-2D6E8F51A7B4}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{F3B9C2D4-8E56-4A17-9C30-2D6E8F51A7B4}.Debug|x64.Build.0 = Debug|Any CPU
+		{F3B9C2D4-8E56-4A17-9C30-2D6E8F51A7B4}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{F3B9C2D4-8E56-4A17-9C30-2D6E8F51A7B4}.Debug|x86.Build.0 = Debug|Any CPU
+		{F3B9C2D4-8E56-4A17-9C30-2D6E8F51A7B4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F3B9C2D4-8E56-4A17-9C30-2D6E8F51A7B4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F3B9C2D4-8E56-4A17-9C30-2D6E8F51A7B4}.Release|x64.ActiveCfg = Release|Any CPU
+		{F3B9C2D4-8E56-4A17-9C30-2D6E8F51A7B4}.Release|x64.Build.0 = Release|Any CPU
+		{F3B9C2D4-8E56-4A17-9C30-2D6E8F51A7B4}.Release|x86.ActiveCfg = Release|Any CPU
+		{F3B9C2D4-8E56-4A17-9C30-2D6E8F51A7B4}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -785,5 +799,6 @@ Global
 		{315A75EA-76B0-49AA-B49E-BEDC102D22E9} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{F3CD2E34-25AD-4CF6-96CE-713721BE70C9} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{ED8A9A1F-A492-4B29-8FDB-666FB88DB7F8} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{F3B9C2D4-8E56-4A17-9C30-2D6E8F51A7B4} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

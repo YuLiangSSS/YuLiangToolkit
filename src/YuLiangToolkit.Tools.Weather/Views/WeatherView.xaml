@@ -1,0 +1,435 @@
+<UserControl x:Class="YuLiangToolkit.Tools.Weather.Views.WeatherView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             Background="Transparent">
+
+    <!-- 天气预报（weather）。
+         布局约定见 docs/dev/layout.md：
+           · 整页不套外层 ScrollViewer，用 Grid 行 / 列撑满；
+           · 左列上下三块（当前天气 250 / 逐小时 190 / 7 天 *），每两块之间各一条横向 PaneSplitter；
+           · 右侧设置卡片（380，Min 320）与左列之间一条竖向 PaneSplitter；设置卡片内部自己滚并挂 ScrollChaining；
+           · 颜色一律 DynamicResource token，样式全部来自 App.xaml。 -->
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+        <!-- 设置卡片里的小节标题 -->
+        <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,18,0,8" />
+        </Style>
+
+        <!-- 说明 / 提示小字 -->
+        <Style x:Key="HintTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,6,0,0" />
+        </Style>
+
+        <!-- 详情格：上面小标签、下面数值 -->
+        <Style x:Key="DetailLabelStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        </Style>
+        <Style x:Key="DetailValueStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+        </Style>
+
+        <!-- 城市搜索结果行 / 收藏城市行（整行可点） -->
+        <Style x:Key="RowPickButtonStyle" TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+
+        <!-- 行尾小图标按钮（删除）：无底、悬停浮出底色，悬停变红 -->
+        <Style x:Key="RowDeleteButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource CardHoverBackgroundBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 卡片右上角的刷新按钮：拉取期间禁用 -->
+        <Style x:Key="RefreshButtonStyle" TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsBusy}" Value="True">
+                    <Setter Property="IsEnabled" Value="False" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" MinWidth="420" />
+            <ColumnDefinition Width="12" />
+            <ColumnDefinition Width="380" MinWidth="320" />
+        </Grid.ColumnDefinitions>
+
+        <!-- ================= 左列：当前天气 / 逐小时 / 7 天 ================= -->
+        <Grid Grid.Column="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="250" MinHeight="210" />
+                <RowDefinition Height="12" />
+                <RowDefinition Height="230" MinHeight="190" />
+                <RowDefinition Height="12" />
+                <RowDefinition Height="*" MinHeight="160" />
+            </Grid.RowDefinitions>
+
+            <!-- 当前天气 -->
+            <Border Grid.Row="0" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                <Grid Margin="16,12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- 顶条：城市名 + 更新时间 + 刷新 -->
+                    <Grid Grid.Row="0">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Now.PlaceName}" FontSize="16" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding Now.UpdatedText}" Margin="10,2,0,0"
+                                       FontSize="10.5" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                        <Button Grid.Row="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                Style="{StaticResource RefreshButtonStyle}"
+                                Command="{Binding RefreshCommand}" Content="↻ 刷新" />
+                    </Grid>
+
+                    <!-- 大温度 + 天气现象 -->
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,4">
+                        <TextBlock Text="{Binding Now.TemperatureText}" FontSize="52" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Now.Icon}" FontSize="38" Margin="14,0,0,0" VerticalAlignment="Center" />
+                        <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Now.ConditionText}" FontSize="14.5" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding Now.FeelsText, StringFormat=体感 {0}}"
+                                       FontSize="11" Margin="0,4,0,0"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- 详情格：湿度 / 风 / 风向 / 气压 / 云量 / 降水 / 日出 / 日落 -->
+                    <UniformGrid Grid.Row="2" Columns="4" Rows="2" Margin="0,6,0,0">
+                        <StackPanel Margin="0,0,8,4">
+                            <TextBlock Style="{StaticResource DetailLabelStyle}" Text="湿度" />
+                            <TextBlock Style="{StaticResource DetailValueStyle}" Text="{Binding Now.HumidityText}" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,8,4">
+                            <TextBlock Style="{StaticResource DetailLabelStyle}" Text="风" />
+                            <TextBlock Style="{StaticResource DetailValueStyle}" Text="{Binding Now.WindText}" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,8,4">
+                            <TextBlock Style="{StaticResource DetailLabelStyle}" Text="风向" />
+                            <TextBlock Style="{StaticResource DetailValueStyle}" Text="{Binding Now.WindDirText}" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,8,4">
+                            <TextBlock Style="{StaticResource DetailLabelStyle}" Text="气压" />
+                            <TextBlock Style="{StaticResource DetailValueStyle}" Text="{Binding Now.PressureText}" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,8,0">
+                            <TextBlock Style="{StaticResource DetailLabelStyle}" Text="云量" />
+                            <TextBlock Style="{StaticResource DetailValueStyle}" Text="{Binding Now.CloudText}" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,8,0">
+                            <TextBlock Style="{StaticResource DetailLabelStyle}" Text="当前降水" />
+                            <TextBlock Style="{StaticResource DetailValueStyle}" Text="{Binding Now.PrecipText}" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,8,0">
+                            <TextBlock Style="{StaticResource DetailLabelStyle}" Text="日出" />
+                            <TextBlock Style="{StaticResource DetailValueStyle}" Text="{Binding Now.SunriseText}" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,8,0">
+                            <TextBlock Style="{StaticResource DetailLabelStyle}" Text="日落" />
+                            <TextBlock Style="{StaticResource DetailValueStyle}" Text="{Binding Now.SunsetText}" />
+                        </StackPanel>
+                    </UniformGrid>
+
+                    <!-- 空状态提示（还没有数据时盖在上面） -->
+                    <TextBlock Grid.Row="0" Grid.RowSpan="3" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               MaxWidth="280" TextAlignment="Center"
+                               Text="还没有数据。点右上角「刷新」拉取当前城市的天气；城市在右侧搜索添加。">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource HintTextStyle}">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Now}" Value="{x:Null}">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Grid>
+            </Border>
+
+            <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="weather.当前天气与逐小时" />
+
+            <!-- 逐小时预报（横向滚动） -->
+            <Border Grid.Row="2" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                <Grid Margin="16,10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="未来逐小时" FontSize="12.5" FontWeight="SemiBold" />
+                    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                                  Margin="0,8,0,2">
+                        <ItemsControl ItemsSource="{Binding Hours}" VerticalAlignment="Top">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Width="62" Margin="0,0,8,0" Padding="0,6" VerticalAlignment="Top"
+                                            Background="{DynamicResource InputBackgroundBrush}"
+                                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                                            CornerRadius="{DynamicResource CardCornerRadius}"
+                                            HorizontalAlignment="Left">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <TextBlock Text="{Binding TimeText}" FontSize="10.5" HorizontalAlignment="Center"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding Icon}" FontSize="19" HorizontalAlignment="Center" Margin="0,4" />
+                                            <TextBlock Text="{Binding TempText}" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                            <TextBlock Text="{Binding PrecipText}" FontSize="10" HorizontalAlignment="Center" Margin="0,3,0,0"
+                                                       Foreground="{DynamicResource AccentBrush}" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <core:PaneSplitter Grid.Row="3" Style="{StaticResource PaneSplitterHorizontalStyle}"
+                               Key="weather.逐小时与七天" />
+
+            <!-- 7 天预报（竖向滚动） -->
+            <Border Grid.Row="4" Style="{StaticResource CardStyle}" ClipToBounds="True">
+                <Grid Margin="16,10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="未来 7 天" FontSize="12.5" FontWeight="SemiBold" />
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,8,0,0"
+                                  core:ScrollChaining.Enabled="True">
+                        <ItemsControl ItemsSource="{Binding Days}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="66" />
+                                            <ColumnDefinition Width="150" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="52" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding DayText}" FontSize="12.5" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding DateText}" FontSize="10.5" Margin="0,1,0,0"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Icon}" FontSize="17" />
+                                            <TextBlock Text="{Binding CondText}" FontSize="11.5" Margin="6,0,0,0" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"
+                                                    HorizontalAlignment="Right">
+                                            <TextBlock Text="{Binding MinText}" FontSize="12.5"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="~" FontSize="12.5" Margin="4,0"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding MaxText}" FontSize="12.5" FontWeight="SemiBold" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="3" Text="{Binding PrecipText}" FontSize="10.5"
+                                                   VerticalAlignment="Center" HorizontalAlignment="Right"
+                                                   Foreground="{DynamicResource AccentBrush}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- 分隔条：左主区 ↔ 右设置 -->
+        <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                           Key="weather.主区与设置" />
+
+        <!-- ================= 右列：设置卡片 ================= -->
+        <Border Grid.Column="2" Style="{StaticResource CardStyle}" ClipToBounds="True">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" core:ScrollChaining.Enabled="True">
+                <Grid Margin="16,12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- 城市搜索 -->
+                    <StackPanel Grid.Row="0">
+                        <TextBlock Text="添加城市" Style="{StaticResource SectionTitleStyle}" Margin="0,4,0,8" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0" Style="{StaticResource TextBoxStyle}"
+                                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="回车或点「搜索」，中文 / 拼音 / 英文名都可以">
+                                <TextBox.InputBindings>
+                                    <KeyBinding Command="{Binding SearchCommand}" Key="Return" />
+                                </TextBox.InputBindings>
+                            </TextBox>
+                            <Button Grid.Column="1" Style="{StaticResource PrimaryButtonStyle}" Margin="8,0,0,0"
+                                    Command="{Binding SearchCommand}" Content="搜索" />
+                        </Grid>
+                        <TextBlock Text="搜索结果（点一条加入收藏）" FontSize="10.5" Margin="0,8,0,4"
+                                   Visibility="{Binding HasSearchResults, Converter={StaticResource BoolToVis}}"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <ItemsControl ItemsSource="{Binding SearchResults}"
+                                      Visibility="{Binding HasSearchResults, Converter={StaticResource BoolToVis}}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource RowPickButtonStyle}"
+                                            Command="{Binding DataContext.AddPlaceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            ToolTip="{Binding Timezone}">
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Name}" FontSize="12.5" FontWeight="SemiBold" />
+                                            <TextBlock FontSize="10.5" Margin="0,1,0,0"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}">
+                                                <Run Text="{Binding Country, Mode=OneWay}" />
+                                                <Run Text="{Binding Admin1, Mode=OneWay}" />
+                                                <Run Text="{Binding Admin2, Mode=OneWay}" />
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- 收藏城市 -->
+                    <StackPanel Grid.Row="1">
+                        <TextBlock Text="收藏的城市（点一下切换并刷新）" Style="{StaticResource SectionTitleStyle}" Margin="0,16,0,8" />
+                        <ItemsControl ItemsSource="{Binding Cfg.Places}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,0,0,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Button Style="{StaticResource RowPickButtonStyle}" Margin="0"
+                                                Command="{Binding DataContext.SelectPlaceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Name}" FontSize="12.5" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding SubName}" FontSize="10.5" Margin="0,1,0,0"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Grid.Column="1" Style="{StaticResource RowDeleteButtonStyle}" Content="✕"
+                                                VerticalAlignment="Stretch" Margin="4,0,0,0"
+                                                Command="{Binding DataContext.RemovePlaceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip="从收藏里移除" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- 显示选项 -->
+                    <StackPanel Grid.Row="2">
+                        <TextBlock Text="显示选项" Style="{StaticResource SectionTitleStyle}" Margin="0,16,0,8" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="96" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.Resources>
+                                <Style x:Key="OptionRowSpacing" TargetType="FrameworkElement">
+                                    <Setter Property="Margin" Value="0,0,0,8" />
+                                </Style>
+                            </Grid.Resources>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="自动刷新" VerticalAlignment="Center" FontSize="12" />
+                            <ComboBox Grid.Row="0" Grid.Column="1" Style="{StaticResource ComboBoxStyle}"
+                                      ItemsSource="{Binding RefreshChoices}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                      SelectedValue="{Binding Cfg.AutoRefreshMinutes}" />
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="温度单位" VerticalAlignment="Center" FontSize="12" />
+                            <ComboBox Grid.Row="1" Grid.Column="1" Style="{StaticResource ComboBoxStyle}"
+                                      ItemsSource="{Binding TempUnitChoices}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                      SelectedValue="{Binding Cfg.TemperatureUnit}" />
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="风速单位" VerticalAlignment="Center" FontSize="12" />
+                            <ComboBox Grid.Row="2" Grid.Column="1" Style="{StaticResource ComboBoxStyle}"
+                                      ItemsSource="{Binding WindUnitChoices}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                      SelectedValue="{Binding Cfg.WindSpeedUnit}" />
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="逐小时条数" VerticalAlignment="Center" FontSize="12" />
+                            <ComboBox Grid.Row="3" Grid.Column="1" Style="{StaticResource ComboBoxStyle}"
+                                      ItemsSource="{Binding HourChoices}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                      SelectedValue="{Binding Cfg.HourCount}" />
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- 数据说明 + 缓存 -->
+                    <StackPanel Grid.Row="3">
+                        <TextBlock Text="数据说明" Style="{StaticResource SectionTitleStyle}" Margin="0,16,0,8" />
+                        <TextBlock Style="{StaticResource HintTextStyle}" Margin="0"
+                                   Text="数据来自 Open-Meteo 免费接口（无需 API Key，中文城市搜索可用）。每次拉取成功都会在 Cache\weather\ 留一份快照，断网时自动显示快照并在状态栏注明。" />
+                        <Button Style="{StaticResource SecondaryButtonStyle}" Margin="0,8,0,0" HorizontalAlignment="Left"
+                                Command="{Binding OpenCacheFolderCommand}" Content="打开缓存文件夹" />
+                    </StackPanel>
+
+                    <!-- 运行日志 -->
+                    <StackPanel Grid.Row="4">
+                        <TextBlock Text="运行日志" Style="{StaticResource SectionTitleStyle}" Margin="0,16,0,8" />
+                        <TextBox Style="{StaticResource LogTextBoxStyle}" Height="110"
+                                 Text="{Binding LogText, Mode=OneWay}" />
+                    </StackPanel>
+                </Grid>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「天气预报」工具：城市搜索（Open-Meteo Geocoding）+ 实时天气 + 逐小时 / 7 天预报。
+       数据接口完全免费、无需 API Key（见 docs/tools/weather.md）；HTTP 轮子用内置 HttpClient，
+       不引第三方包。缓存（断网兜底）写 Cache\weather\，走 ToolCache 自动进「清理缓存」。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.Weather</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.Weather</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>
