@@ -93,6 +93,15 @@ public sealed class PictureViewerConfig : ToolConfig
     /// <summary>上次打开的文件夹（只用来当文件对话框的起始目录，不会自动打开）。</summary>
     public string LastFolder { get; set; } = "";
 
+    /// <summary>
+    /// 页清单排序（工具条下拉框）：页序（默认，文件名自然序）/ 按名称 / 按修改日期 / 按大小。
+    /// 长带顺序与「一键转 PDF」的页序共用这一个设置，切换后立即重排。
+    /// </summary>
+    public PictureSortMode SortMode { get; set; } = PictureSortMode.PageOrder;
+
+    /// <summary>排序方向：false = 正序（默认），true = 逆序（工具条上的 ↑/↓ 按钮切换）。</summary>
+    public bool SortDescending { get; set; }
+
     /// <summary>「最近浏览」默认记多少条。</summary>
     public const int DefaultRecentLimit = 50;
 
@@ -213,6 +222,8 @@ public sealed class PictureViewerConfig : ToolConfig
         SingleInstanceEnabled = true;
 
         LastFolder = "";
+        SortMode = PictureSortMode.PageOrder;
+        SortDescending = false;
         RecentLimit = DefaultRecentLimit;
         TrimRecentToLimit();   // 只按新上限裁剪，不主动清掉用户的最近浏览记录
     }
@@ -254,4 +265,8 @@ public sealed class PictureViewerConfig : ToolConfig
     /// <summary>生效的图片边框样式（坏值已夹取 / 颜色已规范化）。</summary>
     [JsonIgnore]
     public PictureBorderStyle BorderStyle => PictureBorderStyle.FromConfig(this);
+
+    /// <summary>生效的排序方式（手改坏配置时退回页序）。</summary>
+    [JsonIgnore]
+    public PictureSortMode SortModeEffective => PictureSortModes.Normalize(SortMode);
 }

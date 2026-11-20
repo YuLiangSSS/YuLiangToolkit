@@ -203,6 +203,7 @@ public partial class PictureViewerView : UserControl
         }
 
         vm.FolderPicker = PickFolder;
+        vm.PdfSavePicker = PickPdfSavePath;
         vm.PagesChanged -= OnPagesChanged;
         vm.PagesChanged += OnPagesChanged;
         vm.ModeChanged -= OnModeChanged;
@@ -371,6 +372,21 @@ public partial class PictureViewerView : UserControl
         var last = Vm?.Cfg.LastFolder;
         if (!string.IsNullOrWhiteSpace(last) && Directory.Exists(last)) dialog.InitialDirectory = last;
         return dialog.ShowDialog() == true ? dialog.FolderName : null;
+    }
+
+    /// <summary>「转 PDF」的保存对话框：默认文件名 = 文件夹名.pdf，起始目录 = 当前文件夹。</summary>
+    private string? PickPdfSavePath(string suggestedName)
+    {
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "把图片转成 PDF",
+            Filter = "PDF 文件 (*.pdf)|*.pdf",
+            FileName = string.IsNullOrWhiteSpace(suggestedName) ? "图片.pdf" : suggestedName + ".pdf",
+            DefaultExt = ".pdf",
+        };
+        var last = Vm?.Cfg.LastFolder;
+        if (!string.IsNullOrWhiteSpace(last) && Directory.Exists(last)) dialog.InitialDirectory = last;
+        return dialog.ShowDialog() == true ? dialog.FileName : null;
     }
 
     // ---------------------------------------------------------------- 拖放：拖入图片 / 文件夹

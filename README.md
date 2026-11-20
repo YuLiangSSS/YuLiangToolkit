@@ -47,7 +47,7 @@ dotnet run --project YuLiangTookit.csproj    # 运行；也可以直接用 Rider
 | [**🎥 录屏 / GIF**](docs/tools/screen-recorder.md) | 全屏 / 框选区域 / 指定窗口录屏 → GIF 或 MP4 / MKV / MOV / AVI / WebM（多编码器可选）；麦克风 + 系统声音、摄像头、全局快捷键、PNG 截图 |
 | [**✂️ 剪辑工具**](docs/tools/media-editor.md) | 视频 / GIF 按时间轴缩略图裁剪、多片段排序拼接，导出 MP4 / MKV / MOV / AVI / WebM 或 GIF（可先出低清预览）；文件拖进页面即载入 |
 | [**🎬 视频 / 音乐播放器**](docs/tools/media-player.md) | 本地播放列表、单曲 / 随机、沉浸式全屏、后台播放 + 迷你条、按文件夹 / 全局记忆播放进度 |
-| [**🖼️ 图片连续阅读器**](docs/tools/picture-viewer.md) | 一个文件夹的图片首尾相接成无缝长带，连续看条漫 / 长图；缩放 / 拖拽 / 惯性 / 双页翻页 / 文件关联 / 最近浏览；拖入图片直接定位到这一张 |
+| [**🖼️ 图片连续阅读器**](docs/tools/picture-viewer.md) | 一个文件夹的图片首尾相接成无缝长带，连续看条漫 / 长图；**排序（页序 / 名称 / 修改日期 / 大小 + 正逆序）**与**📄 一键转 PDF**（一张一页，按排序拼接，JPEG 无损嵌入 / 透明合成白底）；缩放 / 拖拽 / 惯性 / 双页翻页 / 文件关联 / 最近浏览；拖入图片直接定位到这一张 |
 | [**📄 PDF 阅读器**](docs/tools/pdf-reader.md) | 连续滚动 + 双页并排、25% ~ 800% 缩放、Ctrl+F 搜索、书签目录、记忆阅读位置；只读不改原文件；`.pdf` 拖进页面即打开 |
 | [**📘 Word 阅读器**](docs/tools/word-viewer.md) | 只读 `.docx`：标题大纲、表格、图片、页眉页脚、脚注尾注、批注、修订视图、查找、打印、导出 HTML / 纯文本 |
 | [**📊 Excel 阅读器**](docs/tools/excel-viewer.md) | 只读 `.xlsx`：工作表页签、数字格式、合并单元格、冻结窗格、自动行高、显示公式、超链接、Ctrl+F 查找 |

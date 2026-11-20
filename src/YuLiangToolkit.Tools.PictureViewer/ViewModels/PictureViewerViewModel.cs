@@ -68,6 +68,16 @@ public sealed class PictureViewerViewModel : ToolViewModelBase, IFileLaunchTarge
         ResetSettingsCommand = new RelayCommand(_ => ResetSettings());
         ToggleFullscreenCommand = new RelayCommand(_ => ToggleFullscreen());
 
+        // 排序（长带顺序 / 转 PDF 页序共用）：切方式或切方向都立即重排并通知界面
+        ToggleSortDirectionCommand = new RelayCommand(_ => SortDescending = !SortDescending);
+        ExportPdfCommand = new AsyncRelayCommand(_ => ExportPdfAsync(), _ => CanExportPdf);
+
+        // IsBusy 变化要刷新「转 PDF」按钮的可用状态（正在导出 / 扫描时不允许再点）
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(IsBusy)) OnPropertyChanged(nameof(CanExportPdf));
+        };
+
         // 双击图片启动（文件关联 / 命令行）时，主程序把图片路径放在这里；只生效一次。
         _launchImagePath = PictureFilePathLaunch.PendingImagePath;
         PictureFilePathLaunch.PendingImagePath = null;
@@ -98,6 +108,7 @@ public sealed class PictureViewerViewModel : ToolViewModelBase, IFileLaunchTarge
             OnPropertyChanged(nameof(ModeHint));
             OnPropertyChanged(nameof(CurrentModeText));
             OnPropertyChanged(nameof(IsPagedMode));
+            OnPropertyChanged(nameof(CanExportPdf));   // 「转 PDF」只在纵向可用，切方式要刷新按钮
             ModeChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -231,6 +242,148 @@ public sealed class PictureViewerViewModel : ToolViewModelBase, IFileLaunchTarge
     public string ImageCountText => _pages.Count == 0
         ? "图片连续阅读器"
         : $"{_pages.Count} 张图片 · {FolderName}";
+
+    // ---------------------------------------------------------------- 排序（长带 / 转 PDF 顺序共用）
+
+    /// <summary>排序方式的选项（下拉框；切换后长带立即重排，转 PDF 也按这个顺序）。</summary>
+    public IReadOnlyList<OptionItem<PictureSortMode>> SortOptions { get; } = OptionItem.From(
+        (PictureSortMode.PageOrder, PictureSortModes.Describe(PictureSortMode.PageOrder)),
+        (PictureSortMode.Name, PictureSortModes.Describe(PictureSortMode.Name)),
+        (PictureSortMode.ModifiedTime, PictureSortModes.Describe(PictureSortMode.ModifiedTime)),
+        (PictureSortMode.FileSize, PictureSortModes.Describe(PictureSortMode.FileSize)));
+
+    /// <summary>当前排序方式（存配置；改动立即重排页清单）。</summary>
+    public OptionItem<PictureSortMode> SelectedSortMode
+    {
+        get => OptionItem<PictureSortMode>.Find(SortOptions, Cfg.SortModeEffective) ?? SortOptions[0];
+        set
+        {
+            if (value is null || value.Value == Cfg.SortModeEffective) return;
+            Cfg.SortMode = value.Value;
+            OnPropertyChanged();
+            ApplySort();
+        }
+    }
+
+    /// <summary>排序方向：false = 正序（默认），true = 逆序。改动立即重排页清单。</summary>
+    public bool SortDescending
+    {
+        get => Cfg.SortDescending;
+        set
+        {
+            if (Cfg.SortDescending == value) return;
+            Cfg.SortDescending = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(SortDirectionGlyph));
+            OnPropertyChanged(nameof(SortDirectionTooltip));
+            ApplySort();
+        }
+    }
+
+    /// <summary>方向按钮的箭头（↓ = 正序，↑ = 逆序）。</summary>
+    public string SortDirectionGlyph => Cfg.SortDescending ? "↑" : "↓";
+
+    /// <summary>方向按钮的说明。</summary>
+    public string SortDirectionTooltip => Cfg.SortDescending
+        ? "当前逆序（新→旧 / 大→小 / Z→A），点一下切回正序"
+        : "当前正序（旧→新 / 小→大 / A→Z），点一下变成逆序";
+
+    public RelayCommand ToggleSortDirectionCommand { get; }
+
+    /// <summary>按当前排序配置重排页清单并通知界面重建长带（顺序 = 转出 PDF 的页序）。</summary>
+    private void ApplySort()
+    {
+        if (_pages.Count == 0) return;
+        Pages = SortPages(_pages);
+        PagesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>按配置排序一份页清单（文件信息一次批量读取：修改时间 / 大小）。</summary>
+    private List<PicturePage> SortPages(IReadOnlyList<PicturePage> pages)
+        => PictureSorter.Sort(pages, Cfg.SortModeEffective, Cfg.SortDescending, ReadSortInfo);
+
+    /// <summary>读一个文件的排序信息（修改时间 + 大小）；读不到返回 null（该页永远排最后）。</summary>
+    private static PictureSortInfo? ReadSortInfo(string path)
+    {
+        try
+        {
+            var info = new FileInfo(path);
+            return info.Exists ? new PictureSortInfo(info.LastWriteTimeUtc, info.Length) : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    // ---------------------------------------------------------------- 一键转 PDF
+
+    /// <summary>
+    /// 保存 PDF 的对话框。由界面在 Loaded 时注入（真实实现是 <c>SaveFileDialog</c>，参数 = 建议文件名）；
+    /// 无头自检可以换成「直接返回一个临时路径」，不弹窗。
+    /// </summary>
+    public Func<string, string?>? PdfSavePicker { get; set; }
+
+    /// <summary>「转 PDF」命令（工具条按钮）。</summary>
+    public AsyncRelayCommand ExportPdfCommand { get; }
+
+    /// <summary>能不能转 PDF：有图、当前是「纵向 上→下」阅读方式、且没在忙别的。</summary>
+    public bool CanExportPdf
+        => HasPages && Cfg.ScrollModeEffective == PictureScrollMode.Vertical && !IsBusy;
+
+    /// <summary>按当前排序把图片逐张导出成一个 PDF（一张一页，页面尺寸 = 图片像素）。</summary>
+    private async Task ExportPdfAsync()
+    {
+        var pages = _pages;
+        if (pages.Count == 0)
+        {
+            StatusText = "先打开一个图片文件夹再转 PDF";
+            return;
+        }
+
+        var path = PdfSavePicker?.Invoke(FolderName);
+        if (string.IsNullOrWhiteSpace(path)) return;   // 用户取消了对话框
+
+        IsBusy = true;
+        Progress = 0;
+        ProgressText = "";
+        StatusText = $"正在生成 PDF（{pages.Count} 页）…";
+        Log($"开始转 PDF：{pages.Count} 张图片 → {path}");
+
+        try
+        {
+            await Task.Run(() => PicturePdfExport.Build(pages, path, (done, total) =>
+            {
+                Ui(() =>
+                {
+                    Progress = total > 0 ? (double)done / total : 0;
+                    ProgressText = $"正在写入 PDF {done} / {total}";
+                });
+            }));
+
+            Log($"PDF 导出完成（{pages.Count} 页）");
+            StatusText = $"已导出 PDF（{pages.Count} 页）· {path}";
+
+            // 导出完顺手在资源管理器里打开所在文件夹（自检把 FolderOpener 换掉，不会真弹）
+            var folder = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(folder))
+            {
+                try { _ = FolderOpener?.Invoke(folder) ?? LaunchExplorer(folder); }
+                catch { /* 打不开文件夹不影响导出结果 */ }
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"导出 PDF 失败：{ex.Message}";
+            Log($"[PDF 导出失败] {ex.Message}");
+        }
+        finally
+        {
+            IsBusy = false;
+            Progress = 1;
+            ProgressText = "";
+        }
+    }
 
     // ---------------------------------------------------------------- 界面状态
 
@@ -473,7 +626,7 @@ public sealed class PictureViewerViewModel : ToolViewModelBase, IFileLaunchTarge
                 });
             }));
 
-            Pages = pages;
+            Pages = SortPages(pages);
             FolderPath = pages.Count > 0 ? full : "";
             if (pages.Count > 0 && Cfg.LastFolder != full) Cfg.LastFolder = full;
             if (pages.Count > 0)

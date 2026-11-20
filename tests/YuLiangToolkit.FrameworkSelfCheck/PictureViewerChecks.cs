@@ -6,6 +6,7 @@ using System.Windows.Media.Imaging;
 using YuLiangToolkit.Core.Configuration;
 using YuLiangToolkit.Core.Storage;
 using YuLiangToolkit.Core.Tools;
+using YuLiangToolkit.Tools.PdfReader.Rendering;
 using YuLiangToolkit.Tools.PictureViewer;
 using YuLiangToolkit.Tools.PictureViewer.ViewModels;
 
@@ -840,6 +841,176 @@ internal static class PictureViewerChecks
         Check("[图片] 空文件夹：没有页、给出人话提示",
             !vm.HasPages && vm.StatusText.Contains("没有找到图片"), vm.StatusText);
 
+        // ---------------------------------------------------------------- 11b. 排序（长带顺序 / 转 PDF 页序共用）
+        Check("[图片] 排序方式：坏枚举值归一化成页序、四种方式都有名字",
+            PictureSortModes.Normalize((PictureSortMode)99) == PictureSortMode.PageOrder
+            && Enum.GetValues<PictureSortMode>().Select(PictureSortModes.Describe).Distinct().Count() == 4);
+
+        // 三张图给三种不同的修改时间：1.png(2020) / 2.png(2021) / 10.png(2019)；大小 2x3 < 4x5 < 6x7
+        File.SetLastWriteTimeUtc(Path.Combine(folder, "1.png"), new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        File.SetLastWriteTimeUtc(Path.Combine(folder, "2.png"), new DateTime(2021, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        File.SetLastWriteTimeUtc(Path.Combine(folder, "10.png"), new DateTime(2019, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        var sortPages = new List<PicturePage>
+        {
+            new(Path.Combine(folder, "1.png"), 2, 3),
+            new(Path.Combine(folder, "2.png"), 4, 5),
+            new(Path.Combine(folder, "10.png"), 6, 7),
+        };
+        PictureSortInfo? Probe(string path)
+        {
+            try
+            {
+                var info = new FileInfo(path);
+                return info.Exists ? new PictureSortInfo(info.LastWriteTimeUtc, info.Length) : null;
+            }
+            catch { return null; }
+        }
+        static string[] Names(IReadOnlyList<PicturePage> list) => list.Select(p => p.FileName).ToArray();
+
+        Check("[图片] 排序 · 页序：保持传入顺序，逆序 = 整体反转",
+            Names(PictureSorter.Sort(sortPages, PictureSortMode.PageOrder, false))
+                .SequenceEqual(new[] { "1.png", "2.png", "10.png" })
+            && Names(PictureSorter.Sort(sortPages, PictureSortMode.PageOrder, true))
+                .SequenceEqual(new[] { "10.png", "2.png", "1.png" }));
+        Check("[图片] 排序 · 名称：自然序正逆序（2 在 10 前面）",
+            Names(PictureSorter.Sort(sortPages, PictureSortMode.Name, false, Probe))
+                .SequenceEqual(new[] { "1.png", "2.png", "10.png" })
+            && Names(PictureSorter.Sort(sortPages, PictureSortMode.Name, true, Probe))
+                .SequenceEqual(new[] { "10.png", "2.png", "1.png" }));
+        Check("[图片] 排序 · 修改日期：旧→新（10.png 2019 最旧），逆序翻过来",
+            Names(PictureSorter.Sort(sortPages, PictureSortMode.ModifiedTime, false, Probe))
+                .SequenceEqual(new[] { "10.png", "1.png", "2.png" })
+            && Names(PictureSorter.Sort(sortPages, PictureSortMode.ModifiedTime, true, Probe))
+                .SequenceEqual(new[] { "2.png", "1.png", "10.png" }));
+        // 大小排序用注入探针钉死（PNG 有固定开销，小图的真实字节数与像素数不成正比，不能拿真实文件当基准）
+        PictureSortInfo? SizeProbe(string path)
+            => new(new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                path.Contains("1.png") ? 10 : path.Contains("2.png") ? 20 : 30);
+        Check("[图片] 排序 · 大小：字节多 → 排后面，逆序翻过来",
+            Names(PictureSorter.Sort(sortPages, PictureSortMode.FileSize, false, SizeProbe))
+                .SequenceEqual(new[] { "1.png", "2.png", "10.png" })
+            && Names(PictureSorter.Sort(sortPages, PictureSortMode.FileSize, true, SizeProbe))
+                .SequenceEqual(new[] { "10.png", "2.png", "1.png" }));
+
+        // 信息读不到（文件被删）的页永远沉底，正逆序都是最后
+        var missingPages = new List<PicturePage> { new(Path.Combine(folder, "1.png"), 2, 3), new(Path.Combine(folder, "没了.png"), 9, 9) };
+        Check("[图片] 排序 · 信息读不到的页永远沉底（正逆序都不翻到最前）",
+            Names(PictureSorter.Sort(missingPages, PictureSortMode.ModifiedTime, false, Probe))
+                .SequenceEqual(new[] { "1.png", "没了.png" })
+            && Names(PictureSorter.Sort(missingPages, PictureSortMode.ModifiedTime, true, Probe))
+                .SequenceEqual(new[] { "1.png", "没了.png" }));
+
+        // 同值 tie-break：两张图同时间同大小 → 按文件名自然序固定
+        var tiePages = new List<PicturePage> { new("b.png", 1, 1), new("a.png", 1, 1) };
+        PictureSortInfo? TieProbe(string path) => new(new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc), 10);
+        Check("[图片] 排序 · 键值相同时按文件名自然序兜底（不随逆序翻转）",
+            Names(PictureSorter.Sort(tiePages, PictureSortMode.FileSize, false, TieProbe))
+                .SequenceEqual(new[] { "a.png", "b.png" })
+            && Names(PictureSorter.Sort(tiePages, PictureSortMode.FileSize, true, TieProbe))
+                .SequenceEqual(new[] { "a.png", "b.png" }));
+
+        // VM 联动：切排序 / 切方向立即重排 + PagesChanged 通知界面重建
+        vm.SortDescending = false;
+        vm.SelectedSortMode = vm.SortOptions.First(o => o.Value == PictureSortMode.PageOrder);
+        vm.LoadFolderAsync(folder).GetAwaiter().GetResult();
+        var sortChanged = 0;
+        vm.PagesChanged += (_, _) => sortChanged++;
+        vm.SelectedSortMode = vm.SortOptions.First(o => o.Value == PictureSortMode.Name);
+        Check("[图片] VM · 切成按名称：立即重排 + 通知界面（正序 1/2/10）",
+            Names(vm.Pages).SequenceEqual(new[] { "1.png", "2.png", "10.png" }) && sortChanged == 1,
+            string.Join(",", Names(vm.Pages)));
+        vm.ToggleSortDirectionCommand.Execute(null);
+        Check("[图片] VM · 逆序按钮：翻成 10/2/1、图标与提示都更新",
+            Names(vm.Pages).SequenceEqual(new[] { "10.png", "2.png", "1.png" })
+            && vm.SortDescending && vm.SortDirectionGlyph == "↑"
+            && vm.SortDirectionTooltip.Contains("逆序") && sortChanged == 2,
+            string.Join(",", Names(vm.Pages)));
+        vm.SelectedSortMode = vm.SortOptions.First(o => o.Value == PictureSortMode.ModifiedTime);
+        Check("[图片] VM · 按修改日期（逆序 = 新→旧）：2(2021) / 1(2020) / 10(2019)",
+            Names(vm.Pages).SequenceEqual(new[] { "2.png", "1.png", "10.png" }),
+            string.Join(",", Names(vm.Pages)));
+        vm.ToggleSortDirectionCommand.Execute(null);
+        Check("[图片] VM · 切回正序 = 旧→新：10(2019) / 1(2020) / 2(2021)",
+            Names(vm.Pages).SequenceEqual(new[] { "10.png", "1.png", "2.png" })
+            && vm.SortDirectionGlyph == "↓",
+            string.Join(",", Names(vm.Pages)));
+        vm.SelectedSortMode = vm.SortOptions.First(o => o.Value == PictureSortMode.FileSize);
+        var actualSizes = vm.Pages.Select(p => new FileInfo(p.FilePath).Length).ToArray();
+        Check("[图片] VM · 按大小（小→大）：页清单顺序与文件的真实字节大小一致",
+            actualSizes.SequenceEqual(actualSizes.OrderBy(x => x)),
+            string.Join(",", actualSizes));
+        vm.SelectedSortMode = vm.SortOptions.First(o => o.Value == PictureSortMode.PageOrder);
+        Check("[图片] VM · 排序方式与方向都落进配置",
+            vm.Cfg.SortModeEffective == PictureSortMode.PageOrder && !vm.Cfg.SortDescending);
+
+        // ---------------------------------------------------------------- 11c. 一键转 PDF（纵向拼接：一张一页）
+        Check("[图片] PDF · 页尺寸：像素 1:1，超过 14400pt 时等比缩到上限内",
+            PicturePdfExport.FitPage(800, 600) == (800.0, 600.0)
+            && PicturePdfExport.FitPage(20000, 10000) == (14400.0, 7200.0)
+            && PicturePdfExport.FitPage(100, 20000) == (72.0, 14400.0)
+            && PicturePdfExport.FitPage(0, 0) == (1.0, 1.0),
+            $"{PicturePdfExport.FitPage(20000, 10000)} / {PicturePdfExport.FitPage(100, 20000)}");
+        Check("[图片] PDF · 透明像素合成白底：不透明原样 / 半透明按 alpha 混白 / 全透明变白",
+            FlattenCheck());
+
+        // 造一张真 JPEG（PNG 之外最常见的源），验证「JPEG 不重编码直接嵌」
+        WriteJpeg(Path.Combine(folder, "3.jpg"), 3, 4);
+        vm.LoadFolderAsync(folder).GetAwaiter().GetResult();
+        Check("[图片] PDF · fixture 现在 4 张图（1/2/3.jpg/10），纵向模式允许导出",
+            vm.Pages.Count == 4 && vm.CanExportPdf
+            && Names(vm.Pages).SequenceEqual(new[] { "1.png", "2.png", "3.jpg", "10.png" }),
+            string.Join(",", Names(vm.Pages)));
+
+        // 非纵向阅读方式时按钮必须禁用（拼接种类只认从上到下的长带顺序）
+        vm.SelectedMode = vm.ModeOptions.First(o => o.Value == PictureScrollMode.SinglePage);
+        Check("[图片] PDF · 非「纵向 上→下」阅读方式时不可导出（CanExportPdf = false）",
+            !vm.CanExportPdf);
+        vm.SelectedMode = vm.ModeOptions.First(o => o.Value == PictureScrollMode.Vertical);
+        Check("[图片] PDF · 切回纵向后恢复可导出", vm.CanExportPdf);
+
+        // 端到端：导出 → 文件头断言 → 用 Windows.Data.Pdf 真打开并渲染回来
+        var pdfPath = Path.Combine(AppPaths.Root, "picture-viewer-export.pdf");
+        string? pickedName = null;
+        string? openedExportFolder = null;
+        vm.PdfSavePicker = name => { pickedName = name; return pdfPath; };
+        vm.FolderOpener = path => { openedExportFolder = path; return true; };
+        vm.ExportPdfCommand.Execute(null);
+        WaitUntil(() => !vm.IsBusy, 30000);
+
+        Check("[图片] PDF · 对话框拿到建议文件名（= 文件夹名），导出完成不忙、状态栏报页数",
+            pickedName == "picture-viewer-fixture" && !vm.IsBusy
+            && vm.StatusText.Contains("4 页") && vm.StatusText.Contains(".pdf"),
+            $"{pickedName} / {vm.StatusText}");
+        Check("[图片] PDF · 导出后顺手打开输出文件夹（FolderOpener 被调一次）",
+            openedExportFolder == AppPaths.Root, openedExportFolder ?? "(null)");
+
+        var pdfHead = File.Exists(pdfPath) ? File.ReadAllText(pdfPath).Substring(0, 8) : "";
+        Check("[图片] PDF · 生成的文件存在、头是 %PDF-1.4", pdfHead == "%PDF-1.4", pdfHead.Replace("\n", "␊"));
+
+        PdfDocumentSession? pdfSession = null;
+        var pdfOpenError = CatchPdf(() => pdfSession = PdfDocumentSession.OpenAsync(pdfPath).GetAwaiter().GetResult());
+        Check("[图片] PDF · Windows.Data.Pdf 能打开导出的文件（4 页 = 4 张图）",
+            pdfOpenError is null && pdfSession is not null && pdfSession.Pages.Count == 4,
+            pdfOpenError ?? $"{pdfSession?.Pages.Count} 页");
+        if (pdfSession is not null)
+        {
+            var rendered = pdfSession.RenderPageAsync(0, 128).GetAwaiter().GetResult();
+            Check("[图片] PDF · 第一页真的渲染出了位图（PNG 源走白底 JPEG 路径仍能显示）",
+                rendered is not null && rendered.PixelWidth > 0 && rendered.PixelHeight > 0,
+                rendered is null ? "null" : $"{rendered.PixelWidth}x{rendered.PixelHeight}");
+            Check("[图片] PDF · 渲染出的第 1 页颜色 = fixture 第 1 张的填充色（红>绿>蓝）",
+                FirstPageColorMatches(rendered!),
+                "中心采样");
+            pdfSession.Dispose();
+        }
+
+        // 空清单给一条人话错误，而不是写出一个空 PDF
+        var emptyPdfError = CatchPdf(() => PicturePdfExport.Build([], Path.Combine(AppPaths.Root, "empty.pdf"), null, CancellationToken.None));
+        Check("[图片] PDF · 空清单时报「没有可导出的图片」",
+            emptyPdfError!.Contains("没有可导出的图片", StringComparison.Ordinal), emptyPdfError);
+        try { if (File.Exists(pdfPath)) File.Delete(pdfPath); } catch { /* 临时文件清理失败忽略 */ }
+
         // ---------------------------------------------------------------- 12. 工具注册信息
         var tool = new PictureViewerTool();
         Check("[图片] 工具 Id / 名称 / 分类 / 排序",
@@ -1482,6 +1653,71 @@ internal static class PictureViewerChecks
         encoder.Frames.Add(BitmapFrame.Create(source));
         using var stream = File.Create(path);
         encoder.Save(stream);
+    }
+
+    /// <summary>造一张真 JPEG（宽高自定义），验证「转 PDF 时 JPEG 源直接嵌、不重编码」。</summary>
+    private static void WriteJpeg(string path, int width, int height)
+    {
+        var stride = width * 3;
+        var pixels = new byte[stride * height];
+        for (var i = 0; i < pixels.Length; i += 3)
+        {
+            pixels[i] = 0x40;      // B
+            pixels[i + 1] = 0x80;  // G
+            pixels[i + 2] = 0xF0;  // R
+        }
+
+        var source = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgr24, null, pixels, stride);
+        var encoder = new JpegBitmapEncoder { QualityLevel = 92 };
+        encoder.Frames.Add(BitmapFrame.Create(source));
+        using var stream = File.Create(path);
+        encoder.Save(stream);
+    }
+
+    /// <summary>白底合成（BGRA → BGR24）逐值断言：不透明原样 / 半透明按 alpha 混白 / 全透变白。</summary>
+    private static bool FlattenCheck()
+    {
+        var bgra = new byte[]
+        {
+            0x10, 0x20, 0x30, 0xFF,   // 不透明 → 原样
+            0x00, 0x00, 0x00, 0x80,   // 半透明黑 → 混白后 127
+            0x40, 0x80, 0xC0, 0x00,   // 全透明 → 白
+            0x00, 0x00, 0x00, 0x00,   // 全透 → 白
+        };
+        var output = PicturePdfExport.FlattenToWhiteBgr24(bgra, 4, 1);
+        return output.Length == 12
+            && output[0] == 0x10 && output[1] == 0x20 && output[2] == 0x30
+            && output[3] == 0x7F && output[4] == 0x7F && output[5] == 0x7F
+            && output[6] == 0xFF && output[7] == 0xFF && output[8] == 0xFF
+            && output[9] == 0xFF && output[10] == 0xFF && output[11] == 0xFF;
+    }
+
+    /// <summary>执行一段代码，异常时返回消息（没抛返回 null）。</summary>
+    private static string? CatchPdf(Action action)
+    {
+        try { action(); return null; }
+        catch (Exception ex) { return ex.Message; }
+    }
+
+    /// <summary>
+    /// 采样渲染位图中心像素，断言它接近 fixture 第 1 张的填充色 RGB(0xC0, 0x60, 0x30)
+    /// （红 > 绿 > 蓝；JPEG 有损但平坦区色序不变）。
+    /// </summary>
+    private static bool FirstPageColorMatches(BitmapSource bitmap)
+    {
+        try
+        {
+            var converted = new FormatConvertedBitmap(bitmap, PixelFormats.Bgra32, null, 0);
+            var stride = converted.PixelWidth * 4;
+            var pixels = new byte[stride * converted.PixelHeight];
+            converted.CopyPixels(pixels, stride, 0);
+            var i = converted.PixelHeight / 2 * stride + converted.PixelWidth / 2 * 4;
+            return pixels[i + 2] > pixels[i + 1] && pixels[i + 1] > pixels[i];
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static bool WaitUntil(Func<bool> condition, int timeoutMilliseconds)
