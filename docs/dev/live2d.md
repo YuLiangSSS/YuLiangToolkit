@@ -193,6 +193,9 @@ x64 only（官方 Core 只提供 x86_64；主程序 / 自检都编译成 x64 语
   多个表情同时施加时都会生效、单个表情时结果与官方一致。UI 单选所以表现为官方单激活；保留叠加能力是给
   将来「多表情叠加」留口子。自检覆盖「单选切换」与「API 连续施加两个都生效」两种路径；
 - 表达式的参数一般不在 moc 里（`key1`~`key13` 这类开关参数是模型作者加在 moc 里的，值变化会驱动对应网格显隐）。
+- **互动临时表情**：`ModelRuntime.ApplyExpressionTemporarily(entry, holdSeconds)` 在运行时内部记录到期时间
+  （`Tick` 里 `UpdateTemporaryExpressions` 处理），到期只 `RemoveExpression` 自己这一条；同一表情重复触发只续期，
+  用户手动开着的同一表情不会被互动计时误撤。点击 / 抚摸产生的「前倾、爱心眼、脸红、黑脸、＞＜」都走这里。
 
 ### 3.4 physics3.json（物理）
 
@@ -1031,7 +1034,7 @@ SpeechEnabled=false → 直接 ShowSilentBubble（不合成 / 不联网 / 不动
 | --- | --- |
 | `Model/InteractionController.cs` | 热区几何（部件名 → drawable 缓存、每帧包围盒）、`HitTest` / `GetRegionCenter`、指针状态机（`PointerDown/Move/Up`、`Press`、`TriggerInteraction`）、反应状态机（PatHead / Pinch / Tickle / Protect / Shy / 手势切换）、额头三态表情、拖拽物理、touched 复位；公开 `InteractionRegion`（12 区）/ `InteractionGesture`（Tap/Pet） |
 | `Model/PetIdleActions.cs` | 6 个待机小动作（换脚 / 东张西望 / 伸懒腰 / 挥挥手 / 戴铁盆 / 爱心眼脸红），程序化关键帧 + 表情挂载；间隔随机、互动冷却、被打断即撤；`ActionNames / ActiveName / TriggerCount / TryTrigger / NotifyInteraction` |
-| `ModelRuntime.cs` | 对外属性（`InteractionEnabled / InteractionVoiceEnabled / PetDragPhysicsEnabled / PetIdleActionsEnabled / PetIdleActionIntervalSeconds / PetIdleExpressionEnabled`）、包装方法、`InteractionHappened` 事件、`LastInteractionVoiceEvent / LastInteractionName`；Tick 里更新互动 / 待机并做门控 |
+| `ModelRuntime.cs` | 对外属性（`InteractionEnabled / InteractionVoiceEnabled / PetDragPhysicsEnabled / PetIdleActionsEnabled / PetIdleActionIntervalSeconds / PetIdleExpressionEnabled`）、包装方法、`InteractionHappened` 事件、`LastInteractionVoiceEvent / LastInteractionName`；`ApplyExpressionTemporarily` / 到期表情清理；Tick 里更新互动 / 待机并做门控 |
 | `Views/PetWindow.xaml(.cs)` | 桌宠窗口鼠标事件（命中才捕获、否则拖窗口）、`Ctrl+Alt+L` 穿透 / `Ctrl+Alt+0` 退出全局热键、右键菜单（含 ⚙ 设置 / ❌ 退出）；拖窗位移喂 `ApplyDragImpulse` |
 | `Live2DSession` / UI | 订阅 `InteractionHappened` → 台词（1.5s 节流）→ `SpeakText`（语音 + 气泡 + 口型同步）；互动语音开关 / 台词池 |
 
@@ -1077,16 +1080,24 @@ SpeechEnabled=false → 直接 ShowSilentBubble（不合成 / 不联网 / 不动
 | 反应 | 触发（tap / pet） | 时长 | 表现 |
 | --- | --- | --- | --- |
 | **摸头 PatHead** | 头 / 脸（tap 或 pet） | **0.8s** | 眯眼笑 / 歪头包络，语音事件 `pat_head` |
-| **额头表情循环** | 额头 tap | 持续 | 常态 → 爱心眼 → 单片眼镜 / 黑框眼镜（交替）→ 常态；事件 `face_cycle` |
+| **额头表情循环** | 额头 tap | 约 6s | 常态 → 爱心眼 → 单片眼镜 / 黑框眼镜（交替）→ 常态；6 秒不继续点自动回常态；事件 `face_cycle` |
 | **捏脸 Pinch** | 左 / 右脸按下并拖动 | 按住期间 | 对应半边鼓起（`CheeckPuff` / `CheeckPuff2` / `CheeckPuffL/R`，左右映射与热区相反：捏左脸鼓画面右半边）+ 撅嘴 / 嘴形 + 头跟随；松手 0.3s 内回落；事件 `pinch` |
 | **挠痒 Tickle** | 腰 / 腿 / 脚（tap 或 pet） | **1.2s** | 身体 / 耳朵快抖（AngleX/Z、LEar/REar 等）+ ＞＜ 表情；事件 `tickle` |
 | **护住 Protect** | 胸 / 裙摆（tap 或 pet） | **1.5s** | 播「抱胸致意」手势 + 黑脸 / 屑屑眼交替 + 前倾；事件 `protect` |
 | **害羞 Shy** | 手（pet）/ 尾巴 | 短 | ＞＜ + 脸红；事件 `hand` / `tickle` |
-| **手部手势切换** | 左手 / 右手 tap | 持续 | 播放「竖起食指」↔ 停止（放下手）；事件 `hand` |
+| **手部手势切换** | 左手 / 右手 tap | 持续 | 播放「竖起食指」↔ 停止（放下手）；事件 `hand`；手势自身 3 秒也会自动还原 |
 | **拖拽物理** | 拖窗位移 | 衰减 | `ApplyDragImpulse(dx,dy)` 写 `PositionX/Y`、`AngleX`、`AngleZ`，约 1s 衰减到 0 |
 | **待机小动作** | 空闲自动 | 3.5~8.2s | 见 16.5 |
 
 - 反应写出的参数全部记 touched，`ResetTouched` 在下一帧开头复位 → **松手 / 超时即回常态，不卡住**；
+- **互动表情统一走临时生命周期**：`ModelRuntime.ApplyExpressionTemporarily(entry, holdSeconds)` 由运行时在
+  `Tick` 里按自己的时间移除（0.5s 淡出），不再由会话维护一个全局 `ClearAt`；同一表情重复触发只续期，
+  用户自己手动开着的同一表情不会被互动计时误撤。摸头 / 摸腰 / 观察用户等场景里的 `前倾`、`爱心眼`、
+  `脸红`、`黑脸` 都会到点自动消失（普通互动保持 3s；胸口的 `ChestReaction.DurationSeconds` 为 2.8s）。
+- **InteractionController 的临时表情只撤自己挂的**：`ApplyReactionExpression` 记录 `ExpressionEntry` 列表，
+  `ClearReactionExpression` 逐个 `RemoveExpression`，不再 `ClearExpressions` 把用户手动开的表情一起清掉；
+  额头三态也改为只替换自己的那一个表情。
+- **手部「竖起食指」**：通过 `PlayInteractionGesture` 播放时带 3 秒自动还原，没再点一次也不会永远举着。
 - 反应结束（非立即取消）进入 **3 秒冷却**（`ReactionCooldownSeconds`），冷却期间待机小动作不恢复。
 
 ### 16.5 待机小动作（PetIdleActions）

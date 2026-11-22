@@ -129,6 +129,10 @@ public sealed class Live2DSession
     private string? _bubbleShotPath;
 
     // ===== 桌宠鼠标互动（热区事件 → 软妹台词语音，1.5 秒节流） =====
+
+    /// <summary>点击 / 抚摸产生的临时表情（前倾 / 爱心眼 / 脸红等）保持秒数。</summary>
+    private const double InteractionExpressionHoldSeconds = 3.0;
+
     private bool _interactionDemoApplied;
     private TimeSpan _lastInteractionVoiceAt = TimeSpan.MinValue;
     private TimeSpan _lastInteractionVisualAt = TimeSpan.MinValue;
@@ -142,8 +146,6 @@ public sealed class Live2DSession
     private bool _pokeReactionTriggered;
     private bool _pokeReactionVisualApplied;
     private bool _pokeReactionSpeechDone;
-    private readonly List<ExpressionEntry> _temporaryInteractionExpressions = new();
-    private TimeSpan _temporaryInteractionExpressionClearAt = TimeSpan.MinValue;
     private string? _lastChestLine;
     private TimeSpan _lastChestReactionAt = TimeSpan.MinValue;
     private string? _lastInteractionVoiceLine;
@@ -1984,9 +1986,6 @@ public sealed class Live2DSession
 
         // AI 临时表情 / 鼓嘴到期收回
         UpdateAiMoodEffectsExpiry();
-        // 戳脸彩蛋「＞＜」到期只撤掉这一个表情
-        UpdateInteractionExpressionExpiry();
-
         // 空闲自言自语：每约 2 秒检查一次（内部还有 60~120 秒的随机间隔）
         if (_frameIndex % 60 == 0) TryIdleChatter();
 
@@ -2096,6 +2095,13 @@ public sealed class Live2DSession
     {
         try { _runtime?.ApplyExpression(expression, Math.Max(0, fadeSeconds)); }
         catch (Exception ex) { _viewModel?.Log("施加表情失败：" + ex.Message); }
+    }
+
+    /// <summary>施加临时表情（到点自动移除；桌宠双击随机表情等彩蛋用）。</summary>
+    public void ApplyExpressionTemporarily(ExpressionEntry expression, double holdSeconds, double fadeSeconds = 0.25)
+    {
+        try { _runtime?.ApplyExpressionTemporarily(expression, holdSeconds, fadeSeconds); }
+        catch (Exception ex) { _viewModel?.Log("施加临时表情失败：" + ex.Message); }
     }
 
     /// <summary>清除全部表情（淡出时长取配置）。</summary>
@@ -4348,16 +4354,14 @@ public sealed class Live2DSession
         _lastInteractionVisualAt = now;
         foreach (var name in scenario.Expressions)
         {
-            var expression = runtime.Expressions.FirstOrDefault(e =>
-                string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase));
-            if (expression is not null) runtime.ApplyExpression(expression, 0.28);
+            ApplyTemporaryInteractionExpression(name, InteractionExpressionHoldSeconds);
         }
 
         if (scenario.LeanForward)
         {
-            var lean = runtime.Expressions.FirstOrDefault(e =>
-                string.Equals(e.Name, "前倾", StringComparison.OrdinalIgnoreCase));
-            if (lean is not null) runtime.ApplyExpression(lean, 0.6);
+            // 前倾是「表情」驱动的身体前倾，必须跟其它互动表情一样到点撤掉，
+            // 否则摸头 / 摸腰结束后会一直保持前倾姿势（本轮用户反馈）。
+            ApplyTemporaryInteractionExpression("前倾", InteractionExpressionHoldSeconds);
         }
 
         if (scenario.WiggleSeconds > 0) runtime.StartShyWiggle(scenario.WiggleSeconds);
@@ -4499,7 +4503,10 @@ public sealed class Live2DSession
         return true;
     }
 
-    /// <summary>施加一个临时互动表情（到点只撤掉这些，不影响用户自己开的表情 / 装饰）。</summary>
+    /// <summary>
+    /// 施加一个临时互动表情（到点由运行时只撤掉这一个；用户自己开着的同一表情不会被接管）。
+    /// 「前倾」「爱心眼」「脸红」「黑脸」等点击反馈都走这里，避免动作结束后残留。
+    /// </summary>
     private void ApplyTemporaryInteractionExpression(string expressionName, double seconds)
     {
         var runtime = _runtime;
@@ -4508,33 +4515,7 @@ public sealed class Live2DSession
             string.Equals(entry.Name, expressionName, StringComparison.OrdinalIgnoreCase));
         if (expression is null) return;
 
-        ApplyExpression(expression, 0.25);
-        if (!_temporaryInteractionExpressions.Any(e =>
-                string.Equals(e.FilePath, expression.FilePath, StringComparison.OrdinalIgnoreCase)))
-        {
-            _temporaryInteractionExpressions.Add(expression);
-        }
-        var until = _clock.Elapsed + TimeSpan.FromSeconds(Math.Clamp(seconds, 0.5, 30));
-        if (until > _temporaryInteractionExpressionClearAt) _temporaryInteractionExpressionClearAt = until;
-    }
-
-    /// <summary>帧循环里到期撤掉临时互动表情（只 RemoveExpression 这些）。</summary>
-    private void UpdateInteractionExpressionExpiry()
-    {
-        if (_temporaryInteractionExpressionClearAt == TimeSpan.MinValue ||
-            _clock.Elapsed < _temporaryInteractionExpressionClearAt)
-        {
-            return;
-        }
-
-        _temporaryInteractionExpressionClearAt = TimeSpan.MinValue;
-        if (_temporaryInteractionExpressions.Count == 0) return;
-        var expressions = _temporaryInteractionExpressions.ToArray();
-        _temporaryInteractionExpressions.Clear();
-        foreach (var expression in expressions)
-        {
-            try { _runtime?.RemoveExpression(expression, 0.5); } catch { /* 忽略 */ }
-        }
+        runtime.ApplyExpressionTemporarily(expression, seconds);
     }
 
     // ===================== 观察用户 / 逗你（场景 1 / 2） =====================
@@ -4558,25 +4539,20 @@ public sealed class Live2DSession
             now - _lastObservationAt >= TimeSpan.FromMilliseconds(1200))
         {
             _lastObservationAt = now;
+            var expressionHold = scenario.Seconds + 0.6;
             foreach (var name in scenario.Expressions)
             {
-                var expression = runtime.Expressions.FirstOrDefault(e =>
-                    string.Equals(e.Name, name, StringComparison.OrdinalIgnoreCase));
-                if (expression is not null) runtime.ApplyExpression(expression, 0.3);
+                ApplyTemporaryInteractionExpression(name, expressionHold);
             }
 
             if (scenario.LeanForward)
             {
-                var lean = runtime.Expressions.FirstOrDefault(e =>
-                    string.Equals(e.Name, "前倾", StringComparison.OrdinalIgnoreCase));
-                if (lean is not null) runtime.ApplyExpression(lean, 0.6);
+                ApplyTemporaryInteractionExpression("前倾", expressionHold);
             }
 
             if (scenario.RandomBlackFace && Random.Shared.Next(2) == 0)
             {
-                var blackFace = runtime.Expressions.FirstOrDefault(e =>
-                    string.Equals(e.Name, "黑脸", StringComparison.OrdinalIgnoreCase));
-                if (blackFace is not null) runtime.ApplyExpression(blackFace, 0.35);
+                ApplyTemporaryInteractionExpression("黑脸", expressionHold);
             }
 
             var facePose = !string.IsNullOrWhiteSpace(faceOverride)

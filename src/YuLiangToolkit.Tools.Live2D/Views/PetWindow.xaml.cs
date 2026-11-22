@@ -701,13 +701,14 @@ public partial class PetWindow : Window
                 var expression = runtime.Expressions[Random.Shared.Next(runtime.Expressions.Count)];
                 if (viewModel is not null)
                 {
-                    // 官方语义：同一时间只有一个表情 —— 走 ViewModel 的「切换成这一个」逻辑，工具页高亮也跟着变
-                    viewModel.ActivateSingleExpression(expression, fade);
+                    // 官方语义：同一时间只有一个表情 —— 走 ViewModel 的「切换成这一个」逻辑，工具页高亮也跟着变；
+                    // 双击是临时彩蛋，4 秒后自动还原（随机到「前倾」也不会一直前倾）。
+                    viewModel.ActivateSingleExpression(expression, fade, holdSeconds: 4.0);
                 }
                 else
                 {
                     _session.ClearExpressions(fade);
-                    _session.ApplyExpression(expression, fade);
+                    _session.ApplyExpressionTemporarily(expression, 4.0, fade);
                 }
                 viewModel?.Log($"桌宠互动：随机表情「{expression.Name}」");
             }

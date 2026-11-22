@@ -126,6 +126,7 @@ internal sealed class InteractionController
     private const double ShyDuration = 1.0;
     private const double ReactionCooldownSeconds = 3.0;
     private const double ExpressionFadeSeconds = 0.25;
+    private const double FaceExpressionHoldSeconds = 6.0;
     private const double PinchMaxPullRatio = 0.07;   // 拖动画布宽度的 7% 算捏满
     private const double TapMaxMoveRatio = 0.02;     // 手抖范围内算点按
     private const double DragMinMoveRatio = 0.08;    // 超过画布宽度 8% 算拖动（和窗口拖动区分）
@@ -142,7 +143,7 @@ internal sealed class InteractionController
 
     private readonly Func<string, ExpressionEntry?> _findExpression;
     private readonly Action<ExpressionEntry, double> _applyExpression;
-    private readonly Action<double> _clearExpressions;
+    private readonly Action<ExpressionEntry, double> _removeExpression;
     private readonly Func<string, bool> _playGesture;
     private readonly Action _stopGesture;
     private readonly Func<string?> _activeGesture;
@@ -216,9 +217,11 @@ internal sealed class InteractionController
     private double _reactionElapsed;
     private double _reactionDuration;
     private bool _reactionExpressionActive;
+    private readonly List<ExpressionEntry> _reactionExpressions = new(2);
     private string? _faceExpressionName;
     private int _faceCycleStep;
     private int _faceCycleGlassesToggle;
+    private double _faceExpressionRemaining;
 
     // 捏脸（按住脸拖动）
     private bool _pinchActive;
@@ -236,7 +239,7 @@ internal sealed class InteractionController
         PartBinding[] partBindings,
         Func<string, ExpressionEntry?> findExpression,
         Action<ExpressionEntry, double> applyExpression,
-        Action<double> clearExpressions,
+        Action<ExpressionEntry, double> removeExpression,
         Func<string, bool> playGesture,
         Action stopGesture,
         Func<string?> activeGesture,
@@ -249,7 +252,7 @@ internal sealed class InteractionController
         _canvasHeight = Math.Max(1f, model.CanvasHeightPixels);
         _findExpression = findExpression;
         _applyExpression = applyExpression;
-        _clearExpressions = clearExpressions;
+        _removeExpression = removeExpression;
         _playGesture = playGesture;
         _stopGesture = stopGesture;
         _activeGesture = activeGesture;
@@ -537,14 +540,16 @@ internal sealed class InteractionController
 
         if (next is null)
         {
+            RemoveFaceCycleExpression(0.3);
             _faceExpressionName = null;
-            _clearExpressions(0.3);
+            _faceExpressionRemaining = 0;
         }
         else
         {
-            // 三态循环同一时间只显示一个表情：先把上一个表情淡出，再挂新的
+            // 三态循环只替换「额头表情」自己：先撤掉上一个，再挂新的，不碰用户手动开的表情。
+            RemoveFaceCycleExpression(0.15);
             _faceExpressionName = next;
-            _clearExpressions(0.15);
+            _faceExpressionRemaining = FaceExpressionHoldSeconds;
             ApplyExpressionByName(next, ExpressionFadeSeconds);
         }
 
@@ -588,6 +593,7 @@ internal sealed class InteractionController
         UpdateDragPhysics(deltaSeconds);
         UpdatePetSway(deltaSeconds);
         UpdateReaction(deltaSeconds);
+        UpdateFaceExpressionTimer(deltaSeconds);
     }
 
     /// <summary>立即停止所有互动状态（不触发语音事件，不停用户演示）。</summary>
@@ -614,6 +620,14 @@ internal sealed class InteractionController
         _reaction = ReactionKind.None;
         _reactionElapsed = 0;
         ClearReactionExpression();
+        // 一键重置 / 用户开始别的演示：额头三态也回到常态，别在下次互动时突然重新挂出来。
+        if (_faceExpressionName is not null)
+        {
+            RemoveFaceCycleExpression(ExpressionFadeSeconds);
+            _faceExpressionName = null;
+            _faceExpressionRemaining = 0;
+            _faceCycleStep = 0;
+        }
     }
 
     /// <summary>运行时下一帧开头复位「上一帧互动写过的参数」。</summary>
@@ -1071,6 +1085,7 @@ internal sealed class InteractionController
             var entry = _findExpression(name);
             if (entry is null) continue;
             _applyExpression(entry, ExpressionFadeSeconds);
+            _reactionExpressions.Add(entry);
             _reactionExpressionActive = true;
         }
     }
@@ -1079,7 +1094,13 @@ internal sealed class InteractionController
     {
         if (!_reactionExpressionActive) return;
         _reactionExpressionActive = false;
-        _clearExpressions(ExpressionFadeSeconds);
+        // 只撤掉这次互动自己挂的表情，不再 ClearAll 把用户手动开的爱心眼 / 脸红 / 前倾一起清掉。
+        foreach (var entry in _reactionExpressions)
+        {
+            try { _removeExpression(entry, ExpressionFadeSeconds); } catch { /* 忽略 */ }
+        }
+
+        _reactionExpressions.Clear();
         // 额头三态表情是长期状态，临时反应结束后重新挂回来
         if (_faceExpressionName is not null) ApplyExpressionByName(_faceExpressionName, ExpressionFadeSeconds);
     }
@@ -1090,6 +1111,27 @@ internal sealed class InteractionController
         if (entry is null) return false;
         _applyExpression(entry, fadeSeconds);
         return true;
+    }
+
+    /// <summary>只撤掉额头三态当前挂着的那一个表情（不影响其它表情 / 用户自己开的表情）。</summary>
+    private void RemoveFaceCycleExpression(double fadeSeconds)
+    {
+        if (_faceExpressionName is null) return;
+        var entry = _findExpression(_faceExpressionName);
+        if (entry is not null) _removeExpression(entry, fadeSeconds);
+    }
+
+    /// <summary>额头三态表情也会自动回「常态」：隔几秒不继续点，就把这次点出来的表情淡出。</summary>
+    private void UpdateFaceExpressionTimer(double deltaSeconds)
+    {
+        if (_faceExpressionRemaining <= 0 || _faceExpressionName is null) return;
+        _faceExpressionRemaining -= deltaSeconds;
+        if (_faceExpressionRemaining > 0) return;
+
+        RemoveFaceCycleExpression(0.35);
+        _faceExpressionName = null;
+        _faceExpressionRemaining = 0;
+        _faceCycleStep = 0;
     }
 
     private void MarkTouched(CubismParameter parameter)

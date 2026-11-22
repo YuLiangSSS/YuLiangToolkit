@@ -113,7 +113,7 @@ internal sealed class ExpressionManager
 
     public int ActiveCount => _instances.Count;
 
-    /// <summary>某个表情是否正在生效（UI 勾选状态用）。</summary>
+    /// <summary>某个表情是否正在生效（UI 勾选状态用；正在淡出的也算生效）。</summary>
     public bool IsActive(ExpressionEntry entry)
     {
         foreach (var instance in _instances)
@@ -121,6 +121,20 @@ internal sealed class ExpressionManager
             if (ReferenceEquals(instance.Entry, entry) ||
                 string.Equals(instance.Entry.FilePath, entry.FilePath, StringComparison.OrdinalIgnoreCase))
                 return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>某个表情是否只剩淡出尾巴（互动临时表情到点后 0.5s 内会处于这个状态）。</summary>
+    public bool IsFadingOut(ExpressionEntry entry)
+    {
+        foreach (var instance in _instances)
+        {
+            if (!ReferenceEquals(instance.Entry, entry) &&
+                !string.Equals(instance.Entry.FilePath, entry.FilePath, StringComparison.OrdinalIgnoreCase))
+                continue;
+            return instance.FadingOut;
         }
 
         return false;

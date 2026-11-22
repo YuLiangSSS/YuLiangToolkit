@@ -4511,10 +4511,11 @@ public sealed class Live2DViewModel : ToolViewModelBase
 
     /// <summary>
     /// 切换成「只激活这一个表情」（桌宠双击随机表情仍走这里）：先全部清除，再施加这一个。
+    /// <paramref name="holdSeconds"/> 大于 0 时自动还原（双击彩蛋传 4 秒），避免随机到「前倾」后一直不回正。
     /// <para>表情卡本身已改成多选叠加；这个方法是给「只想留一个」的调用方用的，不再维护单选高亮字段，
     /// 高亮由 <see cref="RefreshExpressionStates"/> 从运行时真实状态现算。</para>
     /// </summary>
-    public void ActivateSingleExpression(ExpressionEntry expression, double fadeSeconds)
+    public void ActivateSingleExpression(ExpressionEntry expression, double fadeSeconds, double holdSeconds = 0)
     {
         var runtime = Runtime;
         if (runtime is null || !runtime.IsLoaded) return;
@@ -4523,9 +4524,10 @@ public sealed class Live2DViewModel : ToolViewModelBase
         {
             var fade = Math.Clamp(fadeSeconds, 0, 2);
             Session.ClearExpressions(fade);
-            Session.ApplyExpression(expression, fade);
+            if (holdSeconds > 0) Session.ApplyExpressionTemporarily(expression, holdSeconds, fade);
+            else Session.ApplyExpression(expression, fade);
             RefreshExpressionStates(runtime);
-            Log($"切换表情：{expression.Name}");
+            Log($"切换表情：{expression.Name}" + (holdSeconds > 0 ? $"（{holdSeconds:0.#} 秒后自动还原）" : ""));
             StatusText = $"当前表情：{expression.Name}";
         }
         catch (Exception ex)

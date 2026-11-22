@@ -80,6 +80,8 @@ public sealed class ModelRuntime : IDisposable
     private DisplayInfo? _display;
     private MotionEntry[] _motions = Array.Empty<MotionEntry>();
     private ExpressionEntry[] _expressions = Array.Empty<ExpressionEntry>();
+    private readonly Dictionary<string, (ExpressionEntry Entry, double Until)> _temporaryExpressions =
+        new(StringComparer.OrdinalIgnoreCase);
     private ParameterBinding[] _parameterBindings = Array.Empty<ParameterBinding>();
     private PartBinding[] _partBindings = Array.Empty<PartBinding>();
     private string[] _eyeBlinkParameterIds = Array.Empty<string>();
@@ -1700,7 +1702,7 @@ public sealed class ModelRuntime : IDisposable
             _partBindings,
             FindExpressionByName,
             ApplyExpression,
-            ClearExpressions,
+            RemoveExpression,
             PlayInteractionGesture,
             StopInteractionGesture,
             GetActiveInteractionGesture,
@@ -1729,8 +1731,11 @@ public sealed class ModelRuntime : IDisposable
         return null;
     }
 
-    /// <summary>互动里播手势（不打断用户当前动作；互动开始已经处理过待机演示让位）。</summary>
-    private bool PlayInteractionGesture(string id) => _gesture?.Play(id, stopMotionFirst: false) ?? false;
+    /// <summary>
+    /// 互动里播手势（不打断用户当前动作；互动开始已经处理过待机演示让位）。
+    /// 最多保持 3 秒自动还原：点手切「竖起食指」这类操作即使没再点一次，也不会永远举着。
+    /// </summary>
+    private bool PlayInteractionGesture(string id) => _gesture?.Play(id, stopMotionFirst: false, 3.0) ?? false;
 
     private void StopInteractionGesture() => _gesture?.Stop();
 
@@ -2403,6 +2408,7 @@ public sealed class ModelRuntime : IDisposable
         _interaction?.Update(deltaSeconds, IsInteractionBlocked(), mocapFace, _speechActive);
         _petIdleActions?.Update(deltaSeconds, IsPetIdleBlocked(mocapFace));
 
+        UpdateTemporaryExpressions();
         _expressionManager.Update(model, deltaSeconds);
 
         // 5.55) 戳脸彩蛋：＞＜ 表情之上叠「微微笑嘴形 + 左右晃脸」（动捕有脸时让位）
@@ -2507,10 +2513,62 @@ public sealed class ModelRuntime : IDisposable
     /// <summary>停止当前动作（按 <paramref name="fadeSeconds"/> 淡出；≤0 = 立即）。</summary>
     public void StopMotion(double fadeSeconds = 0.25) => _motionPlayer.Stop(fadeSeconds);
 
-    /// <summary>施加表情（按 fadeSeconds 淡入；≤0 = 立即）。</summary>
+    /// <summary>
+    /// 施加表情（按 fadeSeconds 淡入；≤0 = 立即）。
+    /// 用户手动施加同一个表情时，会取消它之前由互动临时挂上的到期计时（用户选择优先，不被自动撤掉）。
+    /// </summary>
     public void ApplyExpression(ExpressionEntry expression, double fadeSeconds = 0.3)
     {
         ArgumentNullException.ThrowIfNull(expression);
+        CancelTemporaryExpression(expression);
+        ApplyExpressionCore(expression, fadeSeconds);
+    }
+
+    /// <summary>
+    /// 施加一个「互动临时表情」：fadeInSeconds 淡入，保持 holdSeconds 后自动 RemoveExpression（0.5s 淡出）。
+    /// 同一表情在临时期间再次触发只延长到期时间，不重复淡入；用户已经手动开着的同一表情不会被接管。
+    /// </summary>
+    public void ApplyExpressionTemporarily(ExpressionEntry expression, double holdSeconds,
+        double fadeInSeconds = 0.25)
+    {
+        ArgumentNullException.ThrowIfNull(expression);
+        if (!_expressionDataByPath.ContainsKey(expression.FilePath)) return;
+
+        var seconds = double.IsFinite(holdSeconds) ? Math.Clamp(holdSeconds, 0.5, 60.0) : 3.0;
+        if (_temporaryExpressions.TryGetValue(expression.FilePath, out var existing))
+        {
+            // 已经在临时表情里：只续期，避免抚摸时每帧重新淡入造成闪烁。
+            _temporaryExpressions[expression.FilePath] = (existing.Entry, _time + seconds);
+            return;
+        }
+
+        // 用户自己开着的表情（稳定生效，不是淡出尾巴）：不挂到期计时，避免互动结束后误撤用户的表情。
+        if (_expressionManager.IsActive(expression) && !_expressionManager.IsFadingOut(expression)) return;
+
+        ApplyExpressionCore(expression, fadeInSeconds);
+        _temporaryExpressions[expression.FilePath] = (expression, _time + seconds);
+    }
+
+    /// <summary>清除所有表情（按 fadeSeconds 淡出；同时清掉临时表情的到期计时）。</summary>
+    public void ClearExpressions(double fadeSeconds = 0.3)
+    {
+        _temporaryExpressions.Clear();
+        _expressionManager.Clear(fadeSeconds);
+    }
+
+    /// <summary>
+    /// 只移除一个表情（多选叠加时取消其中一项；其它表情继续）。
+    /// 表情卡改成多选开关后，UI 用这个接口逐项取消。
+    /// </summary>
+    public void RemoveExpression(ExpressionEntry expression, double fadeSeconds = 0.3)
+    {
+        ArgumentNullException.ThrowIfNull(expression);
+        CancelTemporaryExpression(expression);
+        _expressionManager.Remove(expression, fadeSeconds);
+    }
+
+    private void ApplyExpressionCore(ExpressionEntry expression, double fadeSeconds)
+    {
         if (!_expressionDataByPath.TryGetValue(expression.FilePath, out var data))
         {
             _options.Log?.Invoke($"表情没有解析数据，无法施加：{expression.Name}");
@@ -2520,17 +2578,29 @@ public sealed class ModelRuntime : IDisposable
         _expressionManager.Apply(expression, data, fadeSeconds);
     }
 
-    /// <summary>清除所有表情（按 fadeSeconds 淡出）。</summary>
-    public void ClearExpressions(double fadeSeconds = 0.3) => _expressionManager.Clear(fadeSeconds);
-
-    /// <summary>
-    /// 只移除一个表情（多选叠加时取消其中一项；其它表情继续）。
-    /// 表情卡改成多选开关后，UI 用这个接口逐项取消。
-    /// </summary>
-    public void RemoveExpression(ExpressionEntry expression, double fadeSeconds = 0.3)
+    private void CancelTemporaryExpression(ExpressionEntry expression)
     {
-        ArgumentNullException.ThrowIfNull(expression);
-        _expressionManager.Remove(expression, fadeSeconds);
+        if (expression is null) return;
+        _temporaryExpressions.Remove(expression.FilePath);
+    }
+
+    /// <summary>每帧清理到期的互动临时表情（在 ExpressionManager.Update 之前调用）。</summary>
+    private void UpdateTemporaryExpressions()
+    {
+        if (_temporaryExpressions.Count == 0) return;
+        List<string>? expired = null;
+        foreach (var pair in _temporaryExpressions)
+        {
+            if (_time < pair.Value.Until) continue;
+            (expired ??= new List<string>(2)).Add(pair.Key);
+        }
+
+        if (expired is null) return;
+        foreach (var path in expired)
+        {
+            if (!_temporaryExpressions.Remove(path, out var item)) continue;
+            _expressionManager.Remove(item.Entry, 0.5);
+        }
     }
 
     /// <summary>当前生效（含正在淡出）的表情个数。</summary>
@@ -2548,6 +2618,7 @@ public sealed class ModelRuntime : IDisposable
         model.ResetParametersToDefault();
         model.ResetPartOpacities();
         _motionPlayer.Clear();
+        _temporaryExpressions.Clear();
         _expressionManager.ClearImmediate();
         _physics?.Reset();
         _idle?.Reset(_time);
@@ -2633,6 +2704,7 @@ public sealed class ModelRuntime : IDisposable
         _mocapStatusText = MocapStatusNoData;
         _motionDataByPath.Clear();
         _expressionDataByPath.Clear();
+        _temporaryExpressions.Clear();
         _motionPlayer.Clear();
         _expressionManager.ClearImmediate();
         _gesture = null;

@@ -2717,6 +2717,28 @@ internal static class Live2DChecks
             runtime.ResetParameters();
             TickFrames(2);
 
+            // 互动临时表情：到点自动移除；用户自己开着的同一表情不被临时计时误撤
+            var leanForward = runtime.Expressions.FirstOrDefault(e => e.Name == "前倾");
+            if (leanForward is not null)
+            {
+                runtime.ResetParameters();
+                TickFrames(2);
+                runtime.ApplyExpressionTemporarily(leanForward, holdSeconds: 0.5, fadeInSeconds: 0.05);
+                TickFrames(20, 0.016);
+                C("互动临时表情：前倾施加后生效", runtime.IsExpressionActive(leanForward));
+                TickFrames(100, 0.016); // 1.6s：0.5s 保持 + 0.5s 淡出 + 余量
+                C("互动临时表情：前倾到点自动移除（不会一直前倾）", !runtime.IsExpressionActive(leanForward));
+
+                runtime.ApplyExpression(leanForward, 0.05);
+                TickFrames(20, 0.016);
+                runtime.ApplyExpressionTemporarily(leanForward, holdSeconds: 0.5, fadeInSeconds: 0.05);
+                TickFrames(100, 0.016);
+                C("互动临时表情：用户手动开着的表情不会被临时计时误撤",
+                    runtime.IsExpressionActive(leanForward));
+                runtime.ResetParameters();
+                TickFrames(2);
+            }
+
             // 待机随机手势：狗尾草必须「摆好后 2.5 秒自动收回去」，不能像旧版一样一直举着。
             // 放在待机随机基础用例之后，避免这次强制触发消耗随机数 / 计时器影响前面的断言。
             var idleTriggerMethod = typeof(ModelRuntime).GetMethod("TryTriggerIdleRandomGesture",
@@ -2920,6 +2942,19 @@ internal static class Live2DChecks
                     string.Join(" → ", cycle));
 
                 static bool IsGlasses(string name) => name is "单片眼镜" or "黑框眼镜";
+
+                // 额头表情也会自动回常态：6 秒不继续点就撤掉，之后再点仍从「爱心眼」开始
+                StopInteractionDemos();
+                TickFrames(2);
+                var faceCycleStart = runtime.CycleFaceExpression();
+                var heartEyesForCycle = runtime.Expressions.FirstOrDefault(e => e.Name == "爱心眼");
+                TickFrames(10, 0.016);
+                var faceCycleWasActive = heartEyesForCycle is not null && runtime.IsExpressionActive(heartEyesForCycle);
+                TickFrames(400, 0.016); // 6.4s > 6s 保持 + 0.35s 淡出余量
+                var faceCycleRestored = heartEyesForCycle is not null && !runtime.IsExpressionActive(heartEyesForCycle)
+                    && runtime.CycleFaceExpression() == "爱心眼";
+                C("互动反应：额头表情约 6 秒不继续点自动回常态", faceCycleStart == "爱心眼" && faceCycleWasActive && faceCycleRestored,
+                    $"start={faceCycleStart} active={faceCycleWasActive} restored={faceCycleRestored}");
             }
 
             // ---------- 捏脸（按住左脸拖动） ----------
