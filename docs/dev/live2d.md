@@ -1099,10 +1099,14 @@ SpeechEnabled=false → 直接 ShowSilentBubble（不合成 / 不联网 / 不动
 
 ### 16.3 指针状态机（点击 / 抚摸 / 拖动 / 捏脸）
 
-- **UI 层判定**（`PetWindow`，屏幕像素）：左键按下后 `<200ms` 且位移 `<6px` = **点击互动**，
-  `>6px` = **搬窗口**（移动窗口 + 按 dx/dy 喂 `ApplyDragImpulse` 甩头发 / 裙子）；右键 = 菜单；
+- **UI 层判定**（`PetWindow`，屏幕像素）：**按下只做命中测试记录、不进互动状态机**；松开时才判定 ——
+  窗口没被拖动过（位移 ≤6px）→ 交给 `InteractionController`（Down + Up 连发）走一次 **tap** 互动；
+  `>6px` = **搬窗口**（移动窗口 + 按 dx/dy 喂 `ApplyDragImpulse` 甩头发 / 裙子），**拖动全程不喂互动**
+  （不再有「拖动同时抚摸 / 捏脸」）；右键 = 菜单；
+  - ⚠ `InteractionController` 的抚摸 / 捏脸 / `PointerMove` 状态机本身**保留未删**（调试钩子
+    `YLT_LIVE2D_INTERACTION_DEMO`、自检仍用）；只是桌宠窗口不再实时喂 Move；
 - **控制器层判定**（画布像素，`InteractionController`）：
-  - `PointerDown(x,y)`：`HitTest` 命中热区才返回 true（UI 此时捕获指针、**不**拖窗口）；
+  - `PointerDown(x,y)`：`HitTest` 命中热区才返回 true；
   - `PointerMove`：累计位移；脸区域 → 更新捏脸 anchor（`PinchMaxPullRatio = 0.07` 画布宽，`pow 1.15` 前段更钝）；
     头 / 额头 → 抚摸摆头目标；每滑过画布宽 **3%** 记一步，**第一步**触发抚摸反应（`HandlePet`）；
   - `PointerUp`：若在捏脸 → `ReleasePinch`；否则若「没拖动 + 没抚摸步 + 位移 ≤ 画布宽 2% + 时长 ≤ 420ms」

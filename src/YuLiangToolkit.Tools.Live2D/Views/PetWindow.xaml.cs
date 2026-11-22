@@ -18,9 +18,9 @@ namespace YuLiangToolkit.Tools.Live2D.Views;
 /// <summary>
 /// 桌面宠物窗口：透明、无边框、置顶（可关）、不进任务栏；显示 Live2D 模型当前帧。
 ///
-/// <para><b>交互</b>：左键拖动移动、滚轮以鼠标为不动点缩放窗口（窗口跟模型一样大，没有矩形裁切，
-/// 窗口可以比屏幕高——超出部分拖动窗口查看）、右键菜单（置顶 / 点击穿透 / 缩放重置 / 居中 /
-/// 打开测试页 / 隐藏）、双击随机来个表情或动作。
+/// <para><b>交互</b>：左键拖动移动（拖动不触发互动）、松开时判定是否「摸了一下」（窗口没被拖动过才算）、
+/// 滚轮以鼠标为不动点缩放窗口（窗口跟模型一样大，没有矩形裁切，窗口可以比屏幕高——超出部分拖动窗口查看）、
+/// 右键菜单（置顶 / 点击穿透 / 缩放重置 / 居中 / 打开测试页 / 隐藏）、双击随机来个表情或动作。
 /// 位置 / 宽度 / 不透明度 / 置顶 / 穿透都写回 <see cref="Live2DConfig"/> 自动保存。</para>
 ///
 /// <para><b>透明区域点击穿透</b>：配置开启时用 40ms 的轮询（全局鼠标位置 → 窗口内 → 画布坐标 →
@@ -71,12 +71,11 @@ public partial class PetWindow : Window
     private double _dragStartTop;
     private Point _dragStartCursor;
 
-    // 互动 vs 拖动：<200ms 且位移 <6px 算点击互动，超过 6px 才开始搬窗口
+    // 互动 vs 拖动：按下只记命中热区；松开时窗口没被拖动过（位移 ≤ 6px）才算「摸了一下」
     private DateTime _pressStartedAt;
     private Point _pressStartCursorDip;
     private double _pressMovedPixels;
     private bool _windowDragStarted;
-    private bool _interactionPressed;
     private float _pressCanvasX;
     private float _pressCanvasY;
     private InteractionRegion _pressedRegion;
@@ -618,29 +617,17 @@ public partial class PetWindow : Window
         _pressStartCursorDip = cursor;
         _pressMovedPixels = 0;
         _pressedRegion = InteractionRegion.None;
-        _interactionPressed = false;
 
-        // 按下 → 命中热区并通知运行时：点一下 = 互动（摸头 / 换表情 / 捏脸…），按住移动 = 抚摸
+        // 按下只做命中测试记录，**不触发任何互动**：松开时才判定 —— 窗口没被拖动过才算「摸了一下」。
+        // 这样拖动桌宠（窗口位移）就永远不会误触发摸头 / 捏脸。
         var runtime = _session.Runtime;
         if (cfg?.PetInteractionEnabled == true && runtime?.IsLoaded == true &&
             ComputeCanvasPoint(cursor.X - Left, cursor.Y - Top, out var canvasX, out var canvasY))
         {
             _pressCanvasX = canvasX;
             _pressCanvasY = canvasY;
-            try
-            {
-                _pressedRegion = runtime.HitTest(canvasX, canvasY);
-                if (_pressedRegion != InteractionRegion.None)
-                {
-                    // 返回 true = 命中热区：走互动（阈值 / 点按 / 抚摸 / 拖动判定都在模型里），否则按普通窗口拖动
-                    _interactionPressed = runtime.InteractionPointerDown(canvasX, canvasY);
-                }
-            }
-            catch
-            {
-                _pressedRegion = InteractionRegion.None;
-                _interactionPressed = false;
-            }
+            try { _pressedRegion = runtime.HitTest(canvasX, canvasY); }
+            catch { _pressedRegion = InteractionRegion.None; }
         }
 
         CaptureMouse();
@@ -662,14 +649,7 @@ public partial class PetWindow : Window
 
         var runtime = _session.Runtime;
 
-        // 按住拖动 → 抚摸 / 捏脸跟随：把画布坐标持续喂给运行时状态机
-        if (_interactionPressed && runtime?.IsLoaded == true &&
-            ComputeCanvasPoint(cursor.X - Left, cursor.Y - Top, out var canvasX, out var canvasY))
-        {
-            try { _interactionPressed = runtime.InteractionPointerMove(canvasX, canvasY); } catch { /* 忽略 */ }
-        }
-
-        // 手抖（<6px）不搬窗口；超过阈值才真正开始拖窗口
+        // 手抖（<6px）不搬窗口；超过阈值才真正开始拖窗口（拖动期间不喂互动）
         if (!_windowDragStarted && _pressMovedPixels > 6) _windowDragStarted = true;
         if (!_windowDragStarted)
         {
@@ -699,28 +679,16 @@ public partial class PetWindow : Window
         if (!_dragging) return;
 
         var runtime = _session.Runtime;
-        var elapsed = (DateTime.UtcNow - _pressStartedAt).TotalMilliseconds;
-        var wasClick = !_windowDragStarted &&
-                       _pressMovedPixels <= 6 &&
-                       elapsed <= 200 &&
-                       _pressedRegion != InteractionRegion.None;
 
-        if (_interactionPressed)
+        // 松开时才判定触摸：窗口没被拖动过（位移 ≤ 6px）且按下时命中了热区 → 算「摸了一下」；
+        // 拖动过（窗口移动）就一定不算。互动状态机在松开这一刻才进入（Down + Up 连发），
+        // 点按 / 摸头 / 换表情等反应由此触发。
+        var touched = !_windowDragStarted &&
+                      _pressMovedPixels <= 6 &&
+                      _pressedRegion != InteractionRegion.None;
+
+        if (touched && cfgInteractionEnabled() && runtime?.IsLoaded == true)
         {
-            // 抬起前记下热区（ActiveInteractionRegion 在抬起后可能已清空，用于日志 / 截图验收）
-            var releasedRegion = _pressedRegion;
-            try
-            {
-                if (runtime is not null && runtime.ActiveInteractionRegion != InteractionRegion.None)
-                {
-                    releasedRegion = runtime.ActiveInteractionRegion;
-                }
-            }
-            catch
-            {
-                // 运行时还没实现 ActiveInteractionRegion：用按下时命中的
-            }
-
             var canvasX = _pressCanvasX;
             var canvasY = _pressCanvasY;
             if (TryGetCursorDip(out var cursor))
@@ -728,23 +696,21 @@ public partial class PetWindow : Window
                 ComputeCanvasPoint(cursor.X - Left, cursor.Y - Top, out canvasX, out canvasY);
             }
 
-            try { runtime?.InteractionPointerUp(canvasX, canvasY); } catch { /* 忽略 */ }
-            _interactionPressed = false;
-
-            if (wasClick)
+            var elapsed = (DateTime.UtcNow - _pressStartedAt).TotalMilliseconds;
+            try
             {
-                try
-                {
-                    var name = runtime?.LastInteractionName;
-                    var voice = runtime?.LastInteractionVoiceEvent;
-                    _session.Log($"桌宠互动：{(string.IsNullOrWhiteSpace(name) ? releasedRegion.ToString() : name)}" +
-                                 $"（点击 {elapsed:0}ms，位移 {_pressMovedPixels:0.0}px，" +
-                                 $"语音事件={(string.IsNullOrWhiteSpace(voice) ? "无" : voice)}）");
-                }
-                catch
-                {
-                    // 日志失败不影响互动
-                }
+                runtime.InteractionPointerDown(canvasX, canvasY);
+                runtime.InteractionPointerUp(canvasX, canvasY);
+
+                var name = runtime.LastInteractionName;
+                var voice = runtime.LastInteractionVoiceEvent;
+                _session.Log($"桌宠互动：{(string.IsNullOrWhiteSpace(name) ? _pressedRegion.ToString() : name)}" +
+                             $"（松开判定，按住 {elapsed:0}ms，位移 {_pressMovedPixels:0.0}px，" +
+                             $"语音事件={(string.IsNullOrWhiteSpace(voice) ? "无" : voice)}）");
+            }
+            catch
+            {
+                // 互动失败不影响桌宠
             }
         }
 
@@ -760,6 +726,9 @@ public partial class PetWindow : Window
         _pressedRegion = InteractionRegion.None;
         e.Handled = true;
     }
+
+    /// <summary>互动开关的实时读取（按下 / 松开之间用户可能去测试页改开关）。</summary>
+    private bool cfgInteractionEnabled() => Config?.PetInteractionEnabled == true;
 
     private void FinishDrag()
     {
