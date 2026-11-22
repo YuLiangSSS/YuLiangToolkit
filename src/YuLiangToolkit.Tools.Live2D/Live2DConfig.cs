@@ -29,8 +29,20 @@ public sealed class Live2DConfig : ToolConfig
     /// </summary>
     public double? PetTop { get; set; }
 
-    /// <summary>桌宠显示宽度（像素，高度按模型比例自动算；160 ~ 1000）。</summary>
+    /// <summary>桌宠窗口宽度（像素；160 ~ 1000，高度按模型比例算但不超过屏幕工作区）。</summary>
     public double PetWidth { get; set; } = 420;
+
+    /// <summary>
+    /// 桌宠模型缩放倍率（相对「整张画布适应窗口」的倍数，0.5 ~ 8）。窗口是取景框：
+    /// 放大后模型可以比窗口大，超出部分裁掉，滚轮以鼠标位置为不动点缩放。
+    /// </summary>
+    public double PetZoom { get; set; } = 1.0;
+
+    /// <summary>桌宠取景的水平平移量（归一化：1.0 = 平移一个窗口宽；滚轮缩放 / 中键拖动时更新）。</summary>
+    public double PetPanX { get; set; }
+
+    /// <summary>桌宠取景的垂直平移量（归一化：1.0 = 平移一个窗口高；向下为正）。</summary>
+    public double PetPanY { get; set; }
 
     /// <summary>桌宠不透明度（0.2 ~ 1.0）。</summary>
     public double PetOpacity { get; set; } = 1.0;

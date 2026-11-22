@@ -15,6 +15,8 @@
         SnapsToDevicePixels="True"
         MouseLeftButtonDown="OnPetMouseLeftButtonDown"
         MouseLeftButtonUp="OnPetMouseLeftButtonUp"
+        MouseDown="OnPetMouseDown"
+        MouseUp="OnPetMouseUp"
         MouseMove="OnPetMouseMove"
         MouseWheel="OnPetMouseWheel"
         MouseDoubleClick="OnPetMouseDoubleClick">
@@ -38,8 +40,11 @@
                       Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuClickThroughClick"
                       ToolTip="鼠标在模型透明区域时直接穿透到下面的窗口" />
             <Separator />
-            <MenuItem Header="缩放重置（420 像素宽）" Foreground="{DynamicResource TextPrimaryBrush}"
+            <MenuItem Header="缩放重置（420 像素宽 + 100%）" Foreground="{DynamicResource TextPrimaryBrush}"
                       Click="OnMenuResetSizeClick" />
+            <MenuItem Header="还原视图（100%，去掉平移）" Foreground="{DynamicResource TextPrimaryBrush}"
+                      Click="OnMenuResetViewClick"
+                      ToolTip="只重置模型缩放 / 平移，窗口大小和位置不动" />
             <MenuItem Header="居中" Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuCenterClick" />
             <Separator />
             <!-- 动捕 / 身体晃动：勾选状态跟配置，改完立即写回并让会话应用（关掉时摄像头立刻释放） -->

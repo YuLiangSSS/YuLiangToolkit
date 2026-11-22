@@ -13,6 +13,7 @@ using YuLiangToolkit.Tools.Live2D.Mocap;
 using YuLiangToolkit.Tools.Live2D.Model;
 using YuLiangToolkit.Tools.Live2D.Play;
 using YuLiangToolkit.Tools.Live2D.Rendering;
+using YuLiangToolkit.Tools.Live2D.Views;
 
 namespace YuLiangToolkit.Tools.Live2D.ViewModels;
 
@@ -856,6 +857,20 @@ public sealed class Live2DViewModel : ToolViewModelBase
             var clamped = Math.Clamp(value, 160, 1000);
             if (Math.Abs(Cfg.PetWidth - clamped) < 0.1) return;
             Cfg.PetWidth = clamped;
+            OnPropertyChanged();
+            Session.ApplyPetConfig();
+        }
+    }
+
+    /// <summary>桌宠模型缩放倍率（0.5 ~ 8；窗口是取景框，放大后模型可超出窗口并裁切）。</summary>
+    public double PetZoom
+    {
+        get => PetViewport.ClampZoom(Cfg.PetZoom);
+        set
+        {
+            var clamped = PetViewport.ClampZoom(value);
+            if (Math.Abs(Cfg.PetZoom - clamped) < 0.001) return;
+            Cfg.PetZoom = clamped;
             OnPropertyChanged();
             Session.ApplyPetConfig();
         }
