@@ -76,7 +76,7 @@ internal sealed class EyeTrackingController
     /// <summary>头部跟随强度（0~1.5；实际角度仍会被 ParamAngle* 的 ±30° 参数范围截断）。</summary>
     public double HeadStrength { get; set; } = 1.0;
 
-    /// <summary>眼珠跟随强度（0~1.5；ParamEyeBall* 本身是 -1~1）。</summary>
+    /// <summary>眼珠跟随强度（0~1.5；ParamEyeBallX 是 -1~1，ParamEyeBallY 运行时上限扩到 1.5）。</summary>
     public double EyeStrength { get; set; } = 1.0;
 
     /// <summary>身体跟随强度（0~1.5）。</summary>
@@ -168,7 +168,9 @@ internal sealed class EyeTrackingController
         var angleZ = (-_currentX * MaxHeadRoll * head) + swayAngleZ;
 
         var eyeBallX = Math.Clamp(_currentX * eye, -1.0f, 1.0f);
-        var eyeBallY = Math.Clamp(-_currentY * eye, -1.0f, 1.0f);
+        // Y 向上允许使用运行时扩展后的上限（内置模型 1.5），向下仍保持原来的 -1。
+        var eyeBallYMax = Math.Max(1.0f, _paramEyeBallY?.Maximum ?? 1.0f);
+        var eyeBallY = Math.Clamp(-_currentY * eye, -1.0f, eyeBallYMax);
 
         var bodyAngleX = angleX * body * BodyFollowRatio;
         var bodyAngleY = angleY * body * BodyFollowRatio;

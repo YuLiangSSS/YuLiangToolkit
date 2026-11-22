@@ -2390,6 +2390,20 @@ internal static class Live2DChecks
 
             // ---------------- L. 动作系统（手势 / 表演 / 舞蹈 / 待机随机）与语音口型优先级 ----------------
             Quiet();
+            TickFrames(2); // 先让 EyeTracking 开→关的受管组复位走完，再测上限扩展
+            // 眼珠 Y 运行时上限扩展：写入 2.4 后 Tick 仍应保留（Core 不能把值夹回 1.0）
+            var eyeYProbe = rt.Model.FindParameter("ParamEyeBallY");
+            var eyeYProbeMax = eyeYProbe?.Maximum ?? 1;
+            if (eyeYProbe is not null)
+            {
+                eyeYProbe.Value = 2.4f;
+                TickFrames(2);
+            }
+            C("眼珠 Y 运行时上限扩到 2.5（2.4 写入后仍保留）",
+                eyeYProbe is not null && Near(eyeYProbeMax, 2.5, 1e-6) && Param("ParamEyeBallY") > 1.0,
+                $"max={eyeYProbeMax:0.###} actual={Param("ParamEyeBallY"):0.###}");
+            runtime.ResetParameters();
+            TickFrames(2);
             runtime.MocapEnabled = false;
             runtime.Mocap = null;
             runtime.Music = null;

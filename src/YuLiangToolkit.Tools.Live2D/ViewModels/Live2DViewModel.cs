@@ -1604,9 +1604,10 @@ public sealed class Live2DViewModel : ToolViewModelBase
                 break;
 
             case "rolleyes":
-                Set("ParamEyeBallY", 1);
-                Set("ParamEyeLOpen", 0.5);
-                Set("ParamEyeROpen", 0.5);
+                // 眼珠 Y 运行时上限扩展后，2.4 才能明显把黑眼珠翻到上眼睑附近。
+                Set("ParamEyeBallY", 2.4);
+                Set("ParamEyeLOpen", 0.55);
+                Set("ParamEyeROpen", 0.55);
                 break;
 
             case "reset":

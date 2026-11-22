@@ -128,6 +128,10 @@ YuLiangTookit（主程序）
 ### 3.1 moc3 与 Cubism Core
 
 - `moc3` 是二进制模型数据（内置模型 16.5 MB，格式版本 **5** = Cubism 5；Core 的 `csmGetMocVersion` 报版本号）；
+- **内置模型眼珠 Y 上限扩展**：`CubismMoc.LoadWithParameterMaximum` 在 `csmReviveMocInPlace` 前只改**内存副本**的
+  `parameter.max_values`（SOT[51]，按 `ParamEyeBallY` Id 定位），把上限从 1 扩到 2.5；不改模型文件，Core
+  的 `csmUpdateModel` 才会接受 2.4 这类值（只改 C# wrapper 的 `Maximum` 会被 Core 夹回 1）。只对「大肥鱼」启用，
+  自定义模型保留作者自己的参数范围；
 - 流程：读成 byte[] → **64 字节对齐**的原生内存（`NativeMemory.AlignedAlloc`）→ `csmReviveMocInPlace`
   → `csmGetSizeofModel` → **16 字节对齐**的 model 缓冲区 → `csmInitializeModelInPlace`；
 - 之后每帧：写参数值 / 部件不透明度 → `csmUpdateModel`（Core 内部求值 + 变形）→ 从 Core 拿
@@ -319,12 +323,13 @@ Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实
   angleX   = clamp(curX, -1, 1) * 30 * clamp(HeadStrength, 0, 1.5)
   angleY   = clamp(-curY, -1, 1) * 30 * clamp(HeadStrength, 0, 1.5)
   eyeBallX = clamp(curX,  -1, 1) * clamp(EyeStrength, 0, 1.5) → 再夹到参数范围 -1~1
+  eyeBallY = clamp(-curY, -1, 1) * clamp(EyeStrength, 0, 1.5) → 向上夹到 2.5（moc 上限在加载时扩到 2.5）
 ```
 
 - **顺序坑**：`VerticalOffset` 是在乘上下增益**之前**加到归一化目标上的，所以偏移量本身也会被增益放大；
   正偏移 = 中性点下移（更容易出现「低头」侧）。
-- 强度 clamp 从 0~1 放宽到 **0~1.5**（和 UI 滑杆一致）；眼球参数本身范围 -1~1，强度 >1 时会先放大再被参数
-  范围夹住（视觉上更快到满，但不会越界）；头部最大 30° 同理；
+- 强度 clamp 从 0~1 放宽到 **0~1.5**（和 UI 滑杆一致）；眼球 X 参数范围 -1~1，**Y 向上范围在加载时扩到 2.5**
+  （见 `CubismMoc.LoadWithParameterMaximum`），所以翻白眼 / 向上看时黑眼珠能更接近上眼皮；向下仍夹 -1。头部最大 30° 同理；
 - 上下不对称修正就是 Up/DownGain 分开 + VerticalOffset：向下跟不到 → 大 DownGain / 正 VerticalOffset；
 - 平滑是「每帧向目标插值」的指数平滑，多次迭代后收敛到目标方向；`EyeTrackingSmoothing` 越大越柔和；
 - 这些值都来自 `Live2DConfig`，测试页里改（`ModelRuntime.EyeTracking*` 属性）桌宠共用。
@@ -1701,7 +1706,7 @@ InteractionController._raiseInteraction(voiceEvent, displayName)
   | 双眼微眯 | 0.55 / 0.55 | 0.35 | +0.15 / +0.05 | +0.15 | 普通观察 |
   | 微眯偏睁 | 0.72 / 0.72 | 0.18 | +0.28 / +0.05 | +0.20 | 高好感「好奇地观察」 |
   | 单眼闭眨 | 闭 0.05 / 睁 1.0（左右随机） | 0 | +0.15 / +0.05 | +0.15 | 一闭一睁 + 睁眼连眨 1~3 下（长动作两组） |
-  | 白眼 | 0.38 / 0.38 | 0.25 | +0.25 / +0.10 | -0.10 | 欠揍 / 逗你；眼球 Y=0.85 |
+  | 白眼 | 0.55 / 0.55 | 0.25 | +0.25 / +0.10 | -0.10 | 欠揍 / 逗你；眼球 Y=2.4（运行时上限 2.5） |
   | 不满 | 0.62 / 0.62 | 0.15 | -0.30 / -0.55 | -0.70 | 低好感嫌弃 |
   | 好奇 | 1.0 / 1.0 | 0 | +0.35 / +0.05 | +0.20 | 默认 |
 
@@ -1711,7 +1716,7 @@ InteractionController._raiseInteraction(voiceEvent, displayName)
 - 「单眼闭眨」的睁眼眨眼：`ObservationBlinkPlan.Build(duration, random)` 生成计划——短动作 1 组、长动作（≥3.5s）2 组，
   每组随机连眨 1~3 下（单次 0.34s + 间隔 0.34s，组间 0.85s，第一组 0.55s 后开始）；次数太多会压缩到动作结束前眨完；
   `BlinkPulse(elapsed, bursts)` 把每次眨眼展开成 0→1→0 的三角脉冲，睁眼开合 = `1 - pulse*0.95`；
-- 眼球：`ParamEyeBallX = gazeX*0.9`、`ParamEyeBallY = gazeY*0.8`（白眼预设用固定 0.85）；
+- 眼球：`ParamEyeBallX = gazeX*0.9`、`ParamEyeBallY = gazeY*0.8`（白眼预设用固定 2.4；眼珠 Y 运行时上限扩到 2.5）；
 - 与 `ShyWiggle` 的顺序：表情 → 扭动 → **观察** → 投喂；观察会覆盖头 / 眼，投喂靠近时仍抢头。
 
 ### 22.3 盯人方向（`Play/ObservationScenarios.UserGaze.Compute`）

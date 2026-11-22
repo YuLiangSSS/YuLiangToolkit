@@ -45,6 +45,81 @@ public sealed unsafe class CubismMoc : IDisposable
         return FromBytes(File.ReadAllBytes(mocPath));
     }
 
+    /// <summary>
+    /// 从 moc3 文件加载，并在 Core 复活前把指定参数的上限写大一点
+    /// （只改内存中的副本，不修改模型文件；用于内置模型的眼珠 Y 扩展）。
+    /// </summary>
+    public static CubismMoc LoadWithParameterMaximum(string mocPath, string parameterId, float maximum)
+    {
+        if (string.IsNullOrWhiteSpace(mocPath)) throw new ArgumentException("moc3 路径为空", nameof(mocPath));
+        if (!File.Exists(mocPath)) throw new FileNotFoundException("找不到 moc3 文件", mocPath);
+
+        var bytes = File.ReadAllBytes(mocPath);
+        TryExtendParameterMaximum(bytes, parameterId, maximum);
+        return FromBytes(bytes);
+    }
+
+    /// <summary>
+    /// 轻量修改 moc3 的参数 max_values 区（MOC3 SOT：参数 max_values 在 SOT[51]，
+    /// 参数 Id 在 SOT[50]，每个 Id 固定 64 字节；格式版本 1~5 都沿用这套布局）。
+    /// 解析失败时静默跳过，绝不因为扩展失败影响模型加载。
+    /// </summary>
+    private static void TryExtendParameterMaximum(byte[] bytes, string parameterId, float maximum)
+    {
+        try
+        {
+            const int headerSize = 64;
+            const int sotOffset = 0x40;
+            const int countInfoOffset = 0x7C0;
+            const int sotEntryCount = 160;
+            const int countInfoEntryCount = 23;
+            if (string.IsNullOrWhiteSpace(parameterId) || !float.IsFinite(maximum) ||
+                bytes.Length < headerSize || bytes.Length < countInfoOffset + (countInfoEntryCount * 4) ||
+                bytes.Length < sotOffset + (sotEntryCount * 4))
+            {
+                return;
+            }
+
+            if (bytes[0] != (byte)'M' || bytes[1] != (byte)'O' || bytes[2] != (byte)'C' || bytes[3] != (byte)'3')
+            {
+                return;
+            }
+
+            var parameterCount = BitConverter.ToInt32(bytes, countInfoOffset + (5 * 4));
+            var idsOffset = BitConverter.ToUInt32(bytes, sotOffset + (50 * 4));
+            var maximumsOffset = BitConverter.ToUInt32(bytes, sotOffset + (51 * 4));
+            if (parameterCount <= 0 || idsOffset <= 0 || maximumsOffset <= 0)
+            {
+                return;
+            }
+
+            for (var i = 0; i < parameterCount; i++)
+            {
+                var idOffset = checked((int)idsOffset + (i * 64));
+                var maxOffset = checked((int)maximumsOffset + (i * 4));
+                if (idOffset + 64 > bytes.Length || maxOffset + 4 > bytes.Length) return;
+
+                var length = 0;
+                while (length < 64 && bytes[idOffset + length] != 0) length++;
+                if (length == 0) continue;
+                var id = Encoding.UTF8.GetString(bytes, idOffset, length);
+                if (!string.Equals(id, parameterId, StringComparison.Ordinal)) continue;
+
+                var oldMaximum = BitConverter.ToSingle(bytes, maxOffset);
+                if (float.IsFinite(oldMaximum) && oldMaximum < maximum)
+                {
+                    BitConverter.GetBytes(maximum).CopyTo(bytes, maxOffset);
+                }
+
+                return;
+            }
+        }
+        catch
+        {
+            // 扩展是手感优化，不应影响模型加载。
+        }
+    }
+
     /// <summary>从内存字节加载（会复制进 64 字节对齐的原生缓冲区）。</summary>
     public static CubismMoc FromBytes(byte[] bytes)
     {

@@ -56,6 +56,13 @@ public sealed class ModelRuntime : IDisposable
     /// <summary>动捕时身体跟随头部的温和比例（Yaw × 该比例 → 身体左右）。</summary>
     private const float MocapBodyFollowRatio = 0.35f;
 
+    /// <summary>
+    /// 内置模型的眼珠 Y 参数在原 moc 里只到 1，实测白眼 / 向上看时黑眼珠
+    /// 还没贴到上眼皮。运行时把上限扩到 2.5，让「翻白眼」更像真的翻上去；
+    /// 超出部分由 Cubism Core 按参数值写网格，不改 moc / 纹理。
+    /// </summary>
+    private const float EyeBallYExtendedMaximum = 2.5f;
+
     /// <summary>动捕状态文案（不变时复用同一个字符串，避免每帧分配）。</summary>
     private const string MocapStatusNoData = "无数据";
     private const string MocapStatusTracking = "正在跟踪";
@@ -935,8 +942,8 @@ public sealed class ModelRuntime : IDisposable
             "双眼微眯" => new(0.55f, 0.55f, 0.35f, 0.35f, 0.15f, 0.05f, 0.15f, 0, false),
             // 高好感「好奇地观察」：微眯但比平时稍微睁大一点
             "微眯偏睁" => new(0.72f, 0.72f, 0.18f, 0.18f, 0.28f, 0.05f, 0.20f, 0, false),
-            // 白眼 / 欠揍：眼珠往上、上眼睑压一点
-            "白眼" => new(0.38f, 0.38f, 0.25f, 0.25f, 0.25f, 0.10f, -0.10f, 0.85f, true),
+            // 白眼 / 欠揍：眼珠翻到上眼睑附近（运行时 Y 上限 2.5），上眼睑压一点
+            "白眼" => new(0.55f, 0.55f, 0.25f, 0.25f, 0.25f, 0.10f, -0.10f, 2.4f, true),
             // 单眼闭上、一只眼睁开（开合由 ApplyObservation 里的眨眼脉冲单独写）
             "单眼闭眨" => new(1.0f, 1.0f, 0.0f, 0.0f, 0.15f, 0.05f, 0.15f, 0, false),
             // 不满 / 嫌弃：眉头压低、嘴形下撇
@@ -1298,13 +1305,18 @@ public sealed class ModelRuntime : IDisposable
         cancellationToken.ThrowIfCancellationRequested();
 
         // 1) moc3 → 模型
-        _moc = CubismMoc.Load(asset.MocPath);
+        // 只对内置「大肥鱼」应用眼珠 Y 扩展；自定义模型保留作者自己的参数范围，避免超出作者设计的变形范围。
+        var isBuiltInModel = string.Equals(Path.GetFileName(asset.MocPath), "大肥鱼.moc3", StringComparison.OrdinalIgnoreCase);
+        _moc = isBuiltInModel
+            ? CubismMoc.LoadWithParameterMaximum(asset.MocPath, "ParamEyeBallY", EyeBallYExtendedMaximum)
+            : CubismMoc.Load(asset.MocPath);
         log?.Invoke($"moc3 版本 {_moc.MocVersion}（{CubismMoc.DescribeMocVersion(_moc.MocVersion)}），" +
                     $"Core {CubismMoc.GetCoreVersionText()}，一致性 {( _moc.IsConsistent ? "通过" : "未通过")}");
         ReportProgress(0.08);
         cancellationToken.ThrowIfCancellationRequested();
 
         _model = CubismModel.Create(_moc);
+
         log?.Invoke($"画布 {_model.CanvasWidthPixels:0}×{_model.CanvasHeightPixels:0}，" +
                     $"参数 {_model.ParameterCount} / 部件 {_model.PartCount} / 网格 {_model.DrawableCount} / 纹理 {_model.TexturesUsed} 张");
         ReportProgress(0.14);
@@ -2272,7 +2284,8 @@ public sealed class ModelRuntime : IDisposable
 
         // 眼珠：由转头 / 点头方向近似，强度由 MocapEyeStrength 控制
         SetParameter(_mocapEyeBallX, Math.Clamp((float)result.PupilX * eyeStrength, -1.0f, 1.0f));
-        SetParameter(_mocapEyeBallY, Math.Clamp((float)result.PupilY * eyeStrength, -1.0f, 1.0f));
+        var eyeBallYMax = Math.Max(1.0f, _mocapEyeBallY?.Maximum ?? 1.0f);
+        SetParameter(_mocapEyeBallY, Math.Clamp((float)result.PupilY * eyeStrength, -1.0f, eyeBallYMax));
 
         if (MocapBlinkEnabled)
         {
