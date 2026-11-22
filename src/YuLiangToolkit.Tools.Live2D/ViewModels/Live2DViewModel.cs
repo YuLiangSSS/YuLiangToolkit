@@ -154,6 +154,12 @@ public sealed class Live2DViewModel : ToolViewModelBase
         ShakeSwayCommand = new RelayCommand(_ => ShakeSway());
         StopSwayCommand = new RelayCommand(_ => StopSway());
         ApplyFacePresetCommand = new RelayCommand(parameter => ApplyFacePreset(parameter as string ?? "tongue"));
+        SaveFacePresetCommand = new RelayCommand(_ => SaveModulePreset("face"));
+        ApplyFaceSavedPresetCommand = new RelayCommand(_ => ApplyModulePreset("face"));
+        SaveBodyPresetCommand = new RelayCommand(_ => SaveModulePreset("body"));
+        ApplyBodySavedPresetCommand = new RelayCommand(_ => ApplyModulePreset("body"));
+        SaveArmPresetCommand = new RelayCommand(_ => SaveModulePreset("arms"));
+        ApplyArmSavedPresetCommand = new RelayCommand(_ => ApplyModulePreset("arms"));
 
         // ===== 手臂 & 姿势 / 动作演示 =====
         PlayGestureCommand = new RelayCommand(parameter => PlayGesture(parameter as string));
@@ -1532,6 +1538,7 @@ public sealed class Live2DViewModel : ToolViewModelBase
                 }
 
                 var row = new FaceParameterRowViewModel(parameter, name);
+                SubscribeModuleRow("face", row);
                 target.Add(row);
                 _faceRows.Add(row);
             }
@@ -1612,6 +1619,7 @@ public sealed class Live2DViewModel : ToolViewModelBase
                 break;
 
             case "reset":
+                FaceOverrideEnabled = false;   // 恢复默认 = 解除锁定（清固定参数），参数交还给动作 / 待机系统
                 foreach (var row in _faceRows) row.SetValue((float)row.DefaultValue);
                 break;
 
@@ -1666,6 +1674,53 @@ public sealed class Live2DViewModel : ToolViewModelBase
         "reset" => "😐 重置面部",
         _ => "😛 吐舌头",
     };
+
+    // ---------- 锁定 / 预设（面部 / 身体 / 手臂三张卡共用一套机制） ----------
+
+    /// <summary>锁定「面部测试」卡调好的参数：每帧强制回填，待机 / 眨眼 / 动作 / 小动作都盖不动。</summary>
+    public bool FaceOverrideEnabled
+    {
+        get => Cfg.FaceOverrideEnabled;
+        set
+        {
+            if (Cfg.FaceOverrideEnabled == value) return;
+            Cfg.FaceOverrideEnabled = value;
+            OnPropertyChanged();
+            ApplyModuleOverrideState("face", value);
+            Log(value ? "面部测试：已锁定当前参数（动作 / 待机 / 小动作都改不动了；想固定成预设点「保存预设」）"
+                      : "面部测试：已解除锁定（参数交还给动作 / 待机系统）");
+        }
+    }
+
+    /// <summary>锁定「身体测试」手动身体参数：每帧强制回填固定姿势，晃动 / 动作 / 物理复位都改不动。</summary>
+    public bool BodyOverrideEnabled
+    {
+        get => Cfg.BodyOverrideEnabled;
+        set
+        {
+            if (Cfg.BodyOverrideEnabled == value) return;
+            Cfg.BodyOverrideEnabled = value;
+            OnPropertyChanged();
+            ApplyModuleOverrideState("body", value);
+            Log(value ? "身体测试：已锁定当前姿势（晃动 / 动作 / 物理都改不动了；锁定的身体角度照常带动物理）"
+                      : "身体测试：已解除锁定（姿势交还给晃动 / 动作系统）");
+        }
+    }
+
+    /// <summary>锁定「手臂 &amp; 姿势」卡调好的手臂 / 肩膀参数：每帧强制回填，动作 / 手势都盖不动。</summary>
+    public bool ArmOverrideEnabled
+    {
+        get => Cfg.ArmOverrideEnabled;
+        set
+        {
+            if (Cfg.ArmOverrideEnabled == value) return;
+            Cfg.ArmOverrideEnabled = value;
+            OnPropertyChanged();
+            ApplyModuleOverrideState("arms", value);
+            Log(value ? "手臂：已锁定当前手臂 / 肩膀参数（动作 / 手势都改不动了）"
+                      : "手臂：已解除锁定（参数交还给动作系统）");
+        }
+    }
 
     /// <summary>
     /// 给调试钩子 / 验收用：把面部测试卡里每个参数的实际值拼成多行文本
@@ -2129,6 +2184,7 @@ public sealed class Live2DViewModel : ToolViewModelBase
                 }
 
                 var row = new ArmParameterRowViewModel(parameter, name);
+                SubscribeModuleRow("arms", row);
                 target.Add(row);
                 _armRows.Add(row);
             }
@@ -2155,6 +2211,203 @@ public sealed class Live2DViewModel : ToolViewModelBase
     public void RefreshArmValues()
     {
         foreach (var row in _armRows) row.RefreshFromModel();
+        foreach (var row in _bodyRows) row.RefreshFromModel();
+    }
+
+    // ===================== 参数固定 / 预设（面部 / 身体 / 手臂通用） =====================
+
+    private readonly List<FaceParameterRowViewModel> _bodyRows = new();
+    private string _bodyTestSummaryText = "模型加载后显示可调参数";
+
+    /// <summary>身体测试卡参数行（身体主轴 / 位移 / 头部角度 / 腰 / 腿，来自晃动控制器的受管参数表）。</summary>
+    public ObservableCollection<FaceParameterRowViewModel> BodyTestParameters { get; } = new();
+
+    /// <summary>身体测试卡参数统计文本。</summary>
+    public string BodyTestSummaryText
+    {
+        get => _bodyTestSummaryText;
+        private set => Set(ref _bodyTestSummaryText, value);
+    }
+
+    private void BuildBodyTestParameters(ModelRuntime runtime)
+    {
+        ClearBodyTestParameters();
+        try
+        {
+            var model = runtime.Model;
+            var display = runtime.Display;
+
+            foreach (var id in BodySwayController.ManagedParameterIds)
+            {
+                var parameter = model.FindParameter(id);
+                if (parameter is null) continue;
+
+                string? name = null;
+                if (display is not null && display.ParameterNames.TryGetValue(id, out var foundName))
+                {
+                    name = foundName;
+                }
+
+                var row = new FaceParameterRowViewModel(parameter, name);
+                SubscribeModuleRow("body", row);
+                BodyTestParameters.Add(row);
+                _bodyRows.Add(row);
+            }
+
+            BodyTestSummaryText = $"{_bodyRows.Count} 个身体参数（身体主轴 / 位移 / 头部角度 / 腰 / 腿）";
+        }
+        catch (Exception ex)
+        {
+            BodyTestSummaryText = "身体参数读取失败：" + ex.Message;
+        }
+    }
+
+    private void ClearBodyTestParameters()
+    {
+        BodyTestParameters.Clear();
+        _bodyRows.Clear();
+        BodyTestSummaryText = "模型加载后显示可调参数";
+    }
+
+    /// <summary>锁定 / 预设的分组名（运行时固定参数按组解除）。</summary>
+    private string GroupOfRow(IParameterRowViewModel row)
+        => _faceRows.Contains(row as FaceParameterRowViewModel) ? "face"
+            : _bodyRows.Contains(row as FaceParameterRowViewModel) ? "body"
+            : _armRows.Contains(row as ArmParameterRowViewModel) ? "arms"
+            : "face";
+
+    /// <summary>行值变化：锁定开启时写进运行时固定参数层（每帧强制回填）。</summary>
+    private void OnModuleRowChanged(IParameterRowViewModel row, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(IParameterRowViewModel.Value)) return;
+        var group = GroupOfRow(row);
+        if (!IsGroupLocked(group)) return;
+        Runtime?.SetParameterOverride(group, row.Id, (float)row.Value);
+    }
+
+    /// <summary>按模块订阅行值变化（模型重建时旧行连同订阅一起被丢弃）。</summary>
+    private void SubscribeModuleRow(string group, ObservableObject row)
+    {
+        row.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(IParameterRowViewModel.Value)) return;
+            if (row is not IParameterRowViewModel parameterRow) return;
+            if (!IsGroupLocked(group)) return;
+            Runtime?.SetParameterOverride(group, parameterRow.Id, (float)parameterRow.Value);
+        };
+    }
+
+    private IEnumerable<IParameterRowViewModel> RowsFor(string group) => group switch
+    {
+        "face" => _faceRows,
+        "body" => _bodyRows,
+        "arms" => _armRows,
+        _ => Enumerable.Empty<IParameterRowViewModel>(),
+    };
+
+    private bool IsGroupLocked(string group) => group switch
+    {
+        "face" => Cfg.FaceOverrideEnabled,
+        "body" => Cfg.BodyOverrideEnabled,
+        "arms" => Cfg.ArmOverrideEnabled,
+        _ => false,
+    };
+
+    private void SetGroupLock(string group, bool enabled)
+    {
+        switch (group)
+        {
+            case "face": FaceOverrideEnabled = enabled; break;
+            case "body": BodyOverrideEnabled = enabled; break;
+            case "arms": ArmOverrideEnabled = enabled; break;
+        }
+    }
+
+    private static string ModuleDisplayName(string group) => group switch
+    {
+        "face" => "面部",
+        "body" => "身体",
+        "arms" => "手臂",
+        _ => group,
+    };
+
+    /// <summary>锁定开关变化：开 = 把该模块当前值全部钉进固定参数层；关 = 整组解除。</summary>
+    private void ApplyModuleOverrideState(string group, bool enabled)
+    {
+        var runtime = Runtime;
+        if (runtime is null) return;
+        if (!enabled)
+        {
+            runtime.ClearParameterOverrides(group);
+            return;
+        }
+
+        foreach (var row in RowsFor(group))
+        {
+            runtime.SetParameterOverride(group, row.Id, (float)row.Value);
+        }
+    }
+
+    /// <summary>保存当前值为一组预设（Data\live2d\parameter-presets.json，按模块分组）。</summary>
+    public void SaveModulePreset(string group)
+    {
+        var rows = RowsFor(group).ToList();
+        if (rows.Count == 0)
+        {
+            StatusText = "模型还没加载，没有可保存的参数";
+            return;
+        }
+
+        var title = $"{ModuleDisplayName(group)}预设 {DateTime.Now:MM-dd HH:mm}";
+        ParameterPresetStore.Save(Storage, group, title,
+            rows.Select(r => (r.Id, (float)r.Value)).ToList());
+        var message = $"已保存{ModuleDisplayName(group)}预设（{rows.Count} 个参数）——点「应用预设」随时固定还原到这组值";
+        Log(message);
+        StatusText = message;
+    }
+
+    /// <summary>应用已保存的预设：写回参数值并自动开启该模块的锁定（固定住不被动作 / 待机覆盖）。</summary>
+    public void ApplyModulePreset(string group)
+    {
+        var preset = ParameterPresetStore.Load(Storage, group);
+        if (preset is null || preset.Params.Count == 0)
+        {
+            StatusText = $"还没有保存过{ModuleDisplayName(group)}预设";
+            return;
+        }
+
+        // 先开锁定（写值时自动进入固定参数层），再按预设写值
+        SetGroupLock(group, true);
+        var applied = 0;
+        foreach (var row in RowsFor(group))
+        {
+            if (!preset.Params.TryGetValue(row.Id, out var value)) continue;
+            row.SetValue(value);
+            Runtime?.SetParameterOverride(group, row.Id, (float)row.Value);
+            applied++;
+        }
+
+        var message = $"已应用{ModuleDisplayName(group)}预设并锁定（{applied} 个参数，保存于 {preset.SavedAt}）";
+        Log(message);
+        StatusText = message;
+    }
+
+    /// <summary>模型加载 / 重载完成后：按锁定状态把保存的预设重新钉回去（重启后也能还原）。</summary>
+    private void RestoreModulePresetsAfterLoad()
+    {
+        foreach (var group in new[] { "face", "body", "arms" })
+        {
+            if (!IsGroupLocked(group)) continue;
+            var preset = ParameterPresetStore.Load(Storage, group);
+            if (preset is null) continue;
+
+            foreach (var row in RowsFor(group))
+            {
+                if (!preset.Params.TryGetValue(row.Id, out var value)) continue;
+                row.SetValue(value);
+                Runtime?.SetParameterOverride(group, row.Id, (float)value);
+            }
+        }
     }
 
     /// <summary>
@@ -3982,6 +4235,12 @@ public sealed class Live2DViewModel : ToolViewModelBase
     public RelayCommand ShakeSwayCommand { get; }
     public RelayCommand StopSwayCommand { get; }
     public RelayCommand ApplyFacePresetCommand { get; }
+    public RelayCommand SaveFacePresetCommand { get; }
+    public RelayCommand ApplyFaceSavedPresetCommand { get; }
+    public RelayCommand SaveBodyPresetCommand { get; }
+    public RelayCommand ApplyBodySavedPresetCommand { get; }
+    public RelayCommand SaveArmPresetCommand { get; }
+    public RelayCommand ApplyArmSavedPresetCommand { get; }
 
     // ===== 手臂 & 姿势 / 动作演示 =====
     public RelayCommand PlayGestureCommand { get; }
@@ -4079,6 +4338,7 @@ public sealed class Live2DViewModel : ToolViewModelBase
             PreviewStatsText = "—";
             ClearFaceParameters();
             ClearArmParameters();
+            ClearBodyTestParameters();
             RaiseAll();
             return;
         }
@@ -4101,6 +4361,8 @@ public sealed class Live2DViewModel : ToolViewModelBase
         BuildIdleMotionOptions(runtime);
         BuildFaceParameters(runtime);
         BuildArmParameters(runtime);
+        BuildBodyTestParameters(runtime);
+        RestoreModulePresetsAfterLoad();
         RefreshFrameState(runtime);
         RaiseAll();
     }

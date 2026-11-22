@@ -434,6 +434,26 @@ internal static class Live2DChecks
                 Near(defaults.PetWidth, 420, 1e-9) && Near(defaults.PetOpacity, 1.0, 1e-9)
                 && defaults.PetTopMost && defaults.PetClickThrough && !defaults.AutoStartPet && !defaults.PetEnabled
                 && defaults.PetLeft is null && defaults.PetTop is null);
+            C("配置默认值：参数固定默认全关（面部 / 身体 / 手臂）",
+                !defaults.FaceOverrideEnabled && !defaults.BodyOverrideEnabled && !defaults.ArmOverrideEnabled);
+
+            // 参数预设持久化（ParameterPresetStore：JSON 往返 + 坏 JSON 兜底）
+            var presetFile = new ParameterPresetStore.PresetFile();
+            presetFile.Groups["face"] = new ParameterPresetStore.PresetGroup
+            {
+                Title = "测试预设",
+                Params = { ["ParamEyeLOpen"] = 0.25f, ["TongueOut"] = 1f },
+            };
+            var presetJson = ParameterPresetStore.Serialize(presetFile);
+            var presetBack = ParameterPresetStore.Deserialize(presetJson);
+            C("参数预设：JSON 往返保留模块分组与参数值",
+                presetBack is not null
+                && presetBack.Groups["face"].Params["ParamEyeLOpen"] == 0.25f
+                && presetBack.Groups["face"].Params["TongueOut"] == 1f
+                && presetBack.Groups["face"].Title == "测试预设");
+            C("参数预设：坏 JSON 反序列化返回 null（不打断启动）",
+                ParameterPresetStore.Deserialize("not json") is null
+                && ParameterPresetStore.Deserialize("") is null);
             C("配置默认值：纹理 2048 / 30 帧 / 倍率 1.0 / 内置模型",
                 defaults.TextureMaxSize == 2048 && defaults.FpsLimit == 30
                 && Near(defaults.RenderScale, 1.0, 1e-9) && defaults.ModelFolder.Length == 0);
@@ -2773,6 +2793,47 @@ internal static class Live2DChecks
             runtime.IdleRandomGestureIntervalSeconds = 22.0;
             runtime.ResetParameters();
             TickFrames(2);
+
+            runtime.Music = null;
+            runtime.MusicEnabled = false;
+            runtime.ResetParameters();
+            TickFrames(2);
+
+            // 参数固定（Override）：面板「锁定」的参数在待机 + 自动眨眼运行时也保持不变；按组解除后恢复
+            try
+            {
+                runtime.IdleEnabled = true;
+                runtime.AutoBlink = true;   // 眨眼会周期性写 ParamEyeLOpen / ROpen（每帧复位 + 驱动）
+                runtime.SetParameterOverride("face", "ParamEyeLOpen", 0.05f);
+                TickFrames(150);            // 2.5 秒：跨多次眨眼周期
+                var pinnedEye = rt.Model.FindParameter("ParamEyeLOpen");
+                C("参数固定：锁定的 ParamEyeLOpen 在待机 + 眨眼运行时保持 0.05",
+                    pinnedEye is not null && Math.Abs(pinnedEye.Value - 0.05f) <= 0.001f
+                    && runtime.HasParameterOverrides("face"),
+                    pinnedEye?.Value.ToString("0.###") ?? "null");
+                var rOpen = rt.Model.FindParameter("ParamEyeROpen");
+                C("参数固定：同组之外的眼睛参数没有被误钉（ROpen 不等于锁定值）",
+                    rOpen is not null && Math.Abs(rOpen.Value - 0.05f) > 0.001f,
+                    rOpen?.Value.ToString("0.###"));
+
+                runtime.ClearParameterOverrides("face");
+                TickFrames(2);
+                C("参数固定：按组解除后 HasParameterOverrides(face)=false（眨眼恢复驱动）",
+                    !runtime.HasParameterOverrides("face"));
+
+                runtime.SetParameterOverride("body", "ParamBodyAngleZ", 6f);
+                C("参数固定：body 组独立存在（face 已清、body 在）",
+                    !runtime.HasParameterOverrides("face") && runtime.HasParameterOverrides("body"));
+                runtime.ClearAllParameterOverrides();
+                C("参数固定：ClearAllParameterOverrides 清空全部",
+                    !runtime.HasParameterOverrides());
+            }
+            catch (Exception ex)
+            {
+                C("参数固定断言运行期间抛出异常", false, $"{ex.GetType().Name}: {ex.Message}");
+            }
+            runtime.AutoBlink = false;
+            runtime.IdleEnabled = false;
 
             runtime.Music = null;
             runtime.MusicEnabled = false;

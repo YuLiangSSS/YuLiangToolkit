@@ -320,9 +320,72 @@ public sealed class ModelRuntime : IDisposable
 
     private double _time;
     private double _lastTickMilliseconds;
+
+    // ===================== 用户固定参数（Override：面板「锁定」的参数每帧强制回填） =====================
+
+    // 面部测试 / 身体测试 / 手臂卡「锁定」后，把用户调好的值存进这里；
+    // 每帧在所有子系统（待机 / 眨眼 / 动作 / 表情 / 晃动 / 互动）写完之后、物理求值之前强制回填——
+    // 锁定的身体角度会照常带动物理（头发 / 裙子跟着固定姿势摆），锁定的脸参数盖过动作 / 小动作。
+    private readonly List<(CubismParameter Parameter, float Value, string Group)> _parameterOverrides = new();
     private RenderStats _lastRenderStats = RenderStats.Empty;
 
     private ModelRuntime(RuntimeLoadOptions options) => _options = options;
+
+    // ===================== 用户固定参数（Override）对外 API =====================
+
+    /// <summary>
+    /// 固定某参数为指定值：每帧在所有子系统写完之后强制回填（盖过待机 / 眨眼 / 动作 / 表情 / 晃动 / 互动），
+    /// 且在物理求值之前——锁定的身体角度会照常带动物理（头发 / 裙子跟着固定姿势摆）。
+    /// <paramref name="groupId"/> 用于按模块批量解除（face / body / arms）。
+    /// </summary>
+    public void SetParameterOverride(string groupId, string parameterId, float value)
+    {
+        if (string.IsNullOrWhiteSpace(groupId) || _model is null) return;
+        var parameter = _model.FindParameter(parameterId);
+        if (parameter is null) return;
+        SetParameterOverride(groupId, parameter, value);
+    }
+
+    /// <summary>同 <see cref="SetParameterOverride(string,string,float)"/>，直接给参数对象（避免重复查找）。</summary>
+    public void SetParameterOverride(string groupId, CubismParameter parameter, float value)
+    {
+        if (string.IsNullOrWhiteSpace(groupId)) return;
+        var clamped = Math.Clamp(value, parameter.Minimum, parameter.Maximum);
+        for (var i = 0; i < _parameterOverrides.Count; i++)
+        {
+            if (ReferenceEquals(_parameterOverrides[i].Parameter, parameter))
+            {
+                _parameterOverrides[i] = (parameter, clamped, groupId);
+                return;
+            }
+        }
+
+        _parameterOverrides.Add((parameter, clamped, groupId));
+    }
+
+    /// <summary>解除某个模块（face / body / arms）的全部固定参数。</summary>
+    public void ClearParameterOverrides(string groupId)
+        => _parameterOverrides.RemoveAll(o => string.Equals(o.Group, groupId, StringComparison.Ordinal));
+
+    /// <summary>解除全部固定参数。</summary>
+    public void ClearAllParameterOverrides() => _parameterOverrides.Clear();
+
+    /// <summary>是否有固定参数（可按模块过滤）。</summary>
+    public bool HasParameterOverrides(string? groupId = null)
+        => groupId is null
+            ? _parameterOverrides.Count > 0
+            : _parameterOverrides.Any(o => string.Equals(o.Group, groupId, StringComparison.Ordinal));
+
+    /// <summary>把全部固定参数写回模型参数（Tick 里在物理求值之前调用；返回写入条数）。</summary>
+    public int ApplyParameterOverrides()
+    {
+        foreach (var (parameter, value, _) in _parameterOverrides)
+        {
+            parameter.Value = value;
+        }
+
+        return _parameterOverrides.Count;
+    }
 
     // ---------- 状态 / 数据 ----------
 
@@ -1316,6 +1379,7 @@ public sealed class ModelRuntime : IDisposable
         cancellationToken.ThrowIfCancellationRequested();
 
         _model = CubismModel.Create(_moc);
+        _parameterOverrides.Clear();   // 模型重建：旧参数对象全部失效，固定参数清空（UI 会按锁定状态重新套用）
 
         log?.Invoke($"画布 {_model.CanvasWidthPixels:0}×{_model.CanvasHeightPixels:0}，" +
                     $"参数 {_model.ParameterCount} / 部件 {_model.PartCount} / 网格 {_model.DrawableCount} / 纹理 {_model.TexturesUsed} 张");
@@ -2440,6 +2504,10 @@ public sealed class ModelRuntime : IDisposable
         // 5.6) 待机随机小动作：没有动捕 / 音乐 / 语音 / 舞蹈 / 表演 / 互动 / 用户动作时，按随机间隔播一个
         UpdateIdleRandomGesture(deltaSeconds, mocapFace);
 
+        // 5.7) 用户固定参数：面板「锁定」的参数在所有系统写完之后强制回填（盖过动作 / 待机 / 晃动），
+        //      且在物理求值之前——锁定的身体角度会正常带动物理（头发 / 裙子跟着固定姿势摆）。
+        if (_parameterOverrides.Count > 0) ApplyParameterOverrides();
+
         // 物理：在参数都算完之后、Core 求值之前跑（改的是参数值）
         if (PhysicsEnabled && _physics is not null)
         {
@@ -2675,6 +2743,7 @@ public sealed class ModelRuntime : IDisposable
         _disposed = true;
 
         FrameUpdated = null;
+        _parameterOverrides.Clear();
         _renderer?.Dispose();
         _renderer = null;
         _textures?.Dispose();

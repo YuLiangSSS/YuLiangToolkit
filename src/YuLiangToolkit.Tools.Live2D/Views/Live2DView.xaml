@@ -1247,7 +1247,8 @@
                     </Grid>
 
                     <ScrollViewer Grid.Row="1" Style="{StaticResource CardScrollerStyle}" Margin="0,10,0,0">
-                        <Grid Margin="18,0,18,14">
+                        <StackPanel>
+                        <Grid Margin="18,0,18,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="400" MinWidth="320" />
                                 <ColumnDefinition Width="18" />
@@ -1368,6 +1369,38 @@
                                            Text="参数值每 100ms 刷新一次；头发参数（FrontHairX1 等）数值本身只有零点几度，曲线里按自身幅度放大了。它们的摆动由物理计算、会比身体慢半拍 —— 这正是「身体晃 → 角度 → 物理带动头发」的证据。" />
                             </Grid>
                         </Grid>
+
+                            <!-- 手动身体参数（固定姿势）：身体主轴 / 位移 / 头部角度 / 腰 / 腿，调好锁定后固定着看 -->
+                            <Separator Margin="0,14,0,10" Background="{DynamicResource BorderBrush}" />
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="🧍 手动身体参数（固定姿势）" FontSize="11.5" FontWeight="SemiBold" />
+                                        <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,3,0,0"
+                                                   Text="{Binding BodyTestSummaryText}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                                        <CheckBox Content="🔒 锁定身体姿势" Style="{StaticResource CheckBoxStyle}" Margin="0,0,10,0"
+                                                  IsChecked="{Binding BodyOverrideEnabled, Mode=TwoWay}"
+                                                  ToolTip="勾选后这些身体参数每帧强制回填：晃动 / 动作 / 物理复位都改不动（锁定的身体角度照常带动物理，头发 / 裙子跟着固定姿势摆）" />
+                                        <Button Content="💾 保存预设" Style="{StaticResource CompactButtonStyle}" Margin="0,0,6,0"
+                                                Command="{Binding SaveBodyPresetCommand}"
+                                                ToolTip="把当前身体参数存成预设（Data\live2d\parameter-presets.json）" />
+                                        <Button Content="📥 应用预设" Style="{StaticResource CompactButtonStyle}"
+                                                Command="{Binding ApplyBodySavedPresetCommand}"
+                                                ToolTip="写回保存的身体参数并自动锁定" />
+                                    </StackPanel>
+                                </Grid>
+                                <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding BodyTestParameters}"
+                                              ItemTemplate="{StaticResource FaceParameterRowTemplate}" />
+                                <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,8,0,14"
+                                           Text="摆姿势流程：先关掉「开启身体晃动」→ 拖这里的滑杆把身体 / 腰 / 头扭到位 → 勾「锁定身体姿势」固定住 → 保存预设后随时一键还原。物理（头发 / 裙子）会跟着锁定的姿势摆。" />
+                            </StackPanel>
+                        </StackPanel>
                     </ScrollViewer>
                 </Grid>
             </Border>
@@ -1418,7 +1451,16 @@
                                 Command="{Binding ApplyFacePresetCommand}" CommandParameter="rolleyes" />
                         <Button Content="😐 重置面部" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
                                 Command="{Binding ApplyFacePresetCommand}" CommandParameter="reset"
-                                ToolTip="把这一卡里的面部参数都恢复默认值" />
+                                ToolTip="把这一卡里的面部参数都恢复默认值（并解除锁定）" />
+                        <CheckBox Content="🔒 锁定面部参数" Style="{StaticResource CheckBoxStyle}" Margin="12,2,10,6"
+                                  IsChecked="{Binding FaceOverrideEnabled, Mode=TwoWay}" VerticalAlignment="Center"
+                                  ToolTip="勾选后这一卡调好的参数每帧强制回填：待机 / 眨眼 / 动作 / 小动作都改不动（调一下就固定住，方便慢慢测）；取消勾选即恢复系统驱动" />
+                        <Button Content="💾 保存预设" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
+                                Command="{Binding SaveFacePresetCommand}"
+                                ToolTip="把当前面部参数存成预设（Data\live2d\parameter-presets.json）" />
+                        <Button Content="📥 应用预设" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
+                                Command="{Binding ApplyFaceSavedPresetCommand}"
+                                ToolTip="写回保存的面部参数并自动锁定（固定还原成预设的样子）" />
                     </WrapPanel>
 
                     <!-- 三列分组：眼睛 / 嘴 / 舌头（卡内整体滚动，不动整页高度；窄窗口靠列 MinWidth 兜住） -->
@@ -1739,7 +1781,16 @@
                                        Text="手臂参数可直接拖（范围取参数自身 Min/Max）；动作播放时会覆盖手动值 —— 想手动调先点「⏹ 停止所有演示」。手势 / 表演 / 舞蹈 / 待机随机小动作都走运行时动作系统，和呼吸、眨眼、物理叠加。桌宠玩法：拖住搬窗口（头发 / 裙子会甩）、摸头、点额头换表情、捏脸、摸腰脚痒痒、摸胸护住、点手竖食指；快捷键 Ctrl+Alt+L 鼠标穿透 / Ctrl+Alt+0 退出（开关在「桌面宠物」卡）。" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
-                            <Button Content="🎲 随机动作" Style="{StaticResource CompactButtonStyle}" Margin="0,0,6,0"
+                            <CheckBox Content="🔒 锁定手臂参数" Style="{StaticResource CheckBoxStyle}" Margin="0,0,10,0"
+                                      IsChecked="{Binding ArmOverrideEnabled, Mode=TwoWay}" VerticalAlignment="Center"
+                                      ToolTip="勾选后手臂 / 肩膀参数每帧强制回填：动作 / 手势 / 待机小动作都改不动（锁定状态下手势按钮的表情反应仍会触发，但手臂姿势保持你调的值）" />
+                            <Button Content="💾 保存预设" Style="{StaticResource CompactButtonStyle}" Margin="0,0,6,0"
+                                    Command="{Binding SaveArmPresetCommand}"
+                                    ToolTip="把当前手臂 / 肩膀参数存成预设" />
+                            <Button Content="📥 应用预设" Style="{StaticResource CompactButtonStyle}"
+                                    Command="{Binding ApplyArmSavedPresetCommand}"
+                                    ToolTip="写回保存的手臂参数并自动锁定" />
+                            <Button Content="🎲 随机动作" Style="{StaticResource CompactButtonStyle}" Margin="12,0,6,0"
                                     Command="{Binding RandomActionCommand}"
                                     ToolTip="随机播一个手势或表演" />
                             <Button Content="⏹ 停止所有演示" Style="{StaticResource CompactButtonStyle}"

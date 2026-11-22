@@ -364,6 +364,26 @@ Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实
 - 自检断言：关掉全部驱动后手动设 `ParamMouthOpenY=0.8 / TongueOut=1 / ParamEyeBallY=-1`，Tick 30 帧后仍保持；
   打开动捕（假 provider 有脸）后 `ParamMouthOpenY` 被每帧驱动覆盖；关掉音乐后手动嘴值 0.6 保留 20 帧。
 
+### 6.2 用户固定参数（Override 层）
+
+> 「面部 / 身体 / 手臂测试卡锁定 + 预设」的底层：用户调好的参数**每帧强制回填**，盖过所有子系统——
+> 解决「调好的脸被待机 / 眨眼 / 动作覆盖，调一下就变」的测试痛点。
+
+- **数据**：`ModelRuntime._parameterOverrides`（参数对象 → 值 → 分组 face / body / arms 的列表）；
+- **应用时机**：`Tick` 里在**所有子系统写完之后、物理求值之前**（表情 / 动作 / 晃动 / 互动之后）——
+  锁定的脸参数盖过动作 / 小动作；锁定的身体角度作为物理输入照常带动物理（头发 / 裙子跟着固定姿势摆）；
+- **API**：`SetParameterOverride(groupId, parameterId, value)`（自动夹 min/max）、
+  `ClearParameterOverrides(groupId)`、`ClearAllParameterOverrides()`、`HasParameterOverrides(groupId?)`、
+  `ApplyParameterOverrides()`；模型重建（`_model` 重建）与 `Dispose` 时清空（参数对象失效）；
+- **UI 接线**（`Live2DViewModel`）：三张卡的行（`IParameterRowViewModel`）值变化 → 锁定开启时写入
+  固定参数层；锁定开关（`faceOverrideEnabled` / `bodyOverrideEnabled` / `armOverrideEnabled`）切换时
+  整组钉上 / 解除；「保存 / 应用预设」走 `Model/ParameterPresetStore`（`Data\live2d\parameter-presets.json`，
+  按模块分组，坏 JSON 兜底为无预设）；模型加载完成后按锁定状态自动重新钉回（重启后还原）；
+- **注意**：锁定的参数是物理**输入**（身体角度）没问题；如果钉住物理**输出**参数（头发 / 裙子），
+  会被物理每帧盖掉——输出参数别钉；
+- 自检：钉住 `ParamEyeLOpen=0.05` 开待机 + 自动眨眼跑 2.5 秒仍保持 0.05、同组外 `ParamEyeROpen` 不受影响、
+  按组 / 全部解除；预设 JSON 往返 + 坏 JSON 返回 null。
+
 ## 7. 性能要点
 
 - **瓶颈一：Core Update**（每帧 `csmUpdateModel`）：与参数变化量有关，全量 715 网格约 1.8 ms（8 核机器），

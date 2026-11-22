@@ -100,6 +100,23 @@ public sealed class Live2DConfig : ToolConfig
     /// <summary>启用待机动画（呼吸 / 眨眼 / 轻微摇摆）。</summary>
     public bool IdleEnabled { get; set; } = true;
 
+    /// <summary>
+    /// 锁定「面部测试」卡调好的参数：每帧强制回填，不被待机 / 眨眼 / 动作 / 小动作覆盖
+    ///（勾选后测试卡滑杆调一下就固定住；预设保存在 Data\live2d\parameter-presets.json）。
+    /// </summary>
+    public bool FaceOverrideEnabled { get; set; }
+
+    /// <summary>
+    /// 锁定「身体测试」（身体晃动卡里的手动身体参数）调好的姿势：每帧强制回填，
+    /// 不被晃动 / 动作 / 物理复位覆盖（锁定的身体角度会照常带动物理）。
+    /// </summary>
+    public bool BodyOverrideEnabled { get; set; }
+
+    /// <summary>
+    /// 锁定「手臂 &amp; 姿势」卡调好的手臂 / 肩膀参数：每帧强制回填，不被动作 / 手势覆盖。
+    /// </summary>
+    public bool ArmOverrideEnabled { get; set; }
+
     /// <summary>待机动作名称（MotionEntry.Name；空 = 自动找 Animation 里的 IDLE）。</summary>
     public string IdleMotion { get; set; } = "";
 

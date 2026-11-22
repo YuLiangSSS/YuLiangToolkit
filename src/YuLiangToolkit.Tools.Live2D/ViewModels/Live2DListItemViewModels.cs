@@ -215,12 +215,38 @@ public sealed class ExpressionRowViewModel : ObservableObject
 }
 
 /// <summary>
+/// 参数行的统一形状（面部 / 身体 / 手臂卡共用）：Id + 当前值 + 范围 + 默认值 + 变更通知。
+/// <para>「锁定 / 预设」机制按这个接口工作：行值变化 → ViewModel 把它写进运行时的
+/// 固定参数层（锁定开启时），不被待机 / 动作 / 晃动覆盖。</para>
+/// </summary>
+public interface IParameterRowViewModel : System.ComponentModel.INotifyPropertyChanged
+{
+    /// <summary>参数 Id（模型原始名）。</summary>
+    string Id { get; }
+
+    /// <summary>当前值（滑杆双向绑定）。</summary>
+    double Value { get; set; }
+
+    /// <summary>参数最小值（滑杆用）。</summary>
+    double Minimum { get; }
+
+    /// <summary>参数最大值（滑杆用）。</summary>
+    double Maximum { get; }
+
+    /// <summary>参数默认值（恢复默认用）。</summary>
+    double DefaultValue { get; }
+
+    /// <summary>直接写参数值并刷新显示（预设 / 固定流程用）。</summary>
+    void SetValue(float value);
+}
+
+/// <summary>
 /// 「😛 面部测试」卡里的一行：直接代理一个 <see cref="CubismParameter"/>。
 /// <para>滑杆双向写参数值（CubismParameter 自己会夹到 min/max）；当前值文本也绑同一个
 /// <see cref="Value"/>，所以拖动时两边同步。外部（预设 / 动捕 / 眼控 / 表情）改了参数后，
 /// 页面 100ms 定时器调 <see cref="RefreshFromModel"/> 把显示刷新到真实值。</para>
 /// </summary>
-public sealed class FaceParameterRowViewModel : ObservableObject
+public sealed class FaceParameterRowViewModel : ObservableObject, IParameterRowViewModel
 {
     private readonly CubismParameter _parameter;
     private double _lastNotifiedValue;
@@ -282,7 +308,7 @@ public sealed class FaceParameterRowViewModel : ObservableObject
 /// 「🖐 手臂 &amp; 姿势」卡里的一行：直接代理一个手臂 / 肩膀参数（读写方式和面部参数一致）。
 /// <para>动作播放时这些参数会被动作覆盖，所以卡顶部提示「先停止演示再手调」。</para>
 /// </summary>
-public sealed class ArmParameterRowViewModel : ObservableObject
+public sealed class ArmParameterRowViewModel : ObservableObject, IParameterRowViewModel
 {
     private readonly CubismParameter _parameter;
     private double _lastNotifiedValue;
