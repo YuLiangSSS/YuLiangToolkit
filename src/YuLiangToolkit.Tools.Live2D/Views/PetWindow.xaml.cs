@@ -184,22 +184,53 @@ public partial class PetWindow : Window
 
     // ===================== 屏幕上的帧渲染（由会话帧循环调用） =====================
 
-    /// <summary>用运行时当前帧画桌宠画面（会话在 Tick 之后调用）。</summary>
+    /// <summary>
+    /// 用运行时当前帧画桌宠画面（会话在 Tick 之后调用）。
+    /// <para><b>可见区域裁切</b>：只渲染窗口与虚拟屏（多屏并集）相交的那一片——桌宠一大半挂在
+    /// 屏幕外时直接省掉屏幕外的像素，完全在屏幕外时整帧跳过（保留最后一帧画面）。
+    /// 渲染完的切片用 <c>PetImage.Margin</c> 摆回窗口对应位置（<c>Stretch=Fill</c> 铺满切片区域）。</para>
+    /// </summary>
     public void RenderFrame(ModelRuntime runtime)
     {
         if (_shutdown || !IsVisible) return;
 
-        var (width, height) = GetRenderTargetSize();
-        if (width < 2 || height < 2) return;
+        var windowWidth = ActualWidth;
+        var windowHeight = ActualHeight;
+        if (windowWidth < 2 || windowHeight < 2) return;
+
+        // 可见切片（窗口本地 DIP）= 窗口 ∩ 虚拟屏；宽高按 16px 向上取整量化，
+        // 避免贴着屏幕边缘拖动时每帧重建渲染位图（切片只会往屏幕外多画 ≤15px，无副作用）。
+        var vsLeft = SystemParameters.VirtualScreenLeft;
+        var vsTop = SystemParameters.VirtualScreenTop;
+        var x0 = Math.Clamp(vsLeft - Left, 0, windowWidth);
+        var x1 = Math.Clamp(vsLeft + SystemParameters.VirtualScreenWidth - Left, 0, windowWidth);
+        var y0 = Math.Clamp(vsTop - Top, 0, windowHeight);
+        var y1 = Math.Clamp(vsTop + SystemParameters.VirtualScreenHeight - Top, 0, windowHeight);
+        var sliceWidth = Math.Min(windowWidth - x0, Math.Ceiling((x1 - x0) / 16) * 16);
+        var sliceHeight = Math.Min(windowHeight - y0, Math.Ceiling((y1 - y0) / 16) * 16);
+        if (sliceWidth < 2 || sliceHeight < 2) return;   // 完全在屏幕外：跳过渲染
+
+        var renderScale = Math.Clamp(Config?.RenderScale ?? 1.0, 0.5, 1.5);
+        var model = runtime.Model;
+        var canvasWidth = Math.Max(1.0, model.CanvasWidthPixels);
+        var canvasHeight = Math.Max(1.0, model.CanvasHeightPixels);
+
+        // 窗口 = 模型本身（整张画布等比铺满窗口）；切片按同样的映射只画窗口本地 [x0,y0] 起的一片，
+        // 输出位图 = 切片 DIP × 渲染倍率，Offset 相应左移 / 上移。
+        var fit = Math.Min(windowWidth / canvasWidth, windowHeight / canvasHeight);
+        var fullOffsetX = (windowWidth - canvasWidth * fit) * 0.5;
+        var fullOffsetY = (windowHeight - canvasHeight * fit) * 0.5;
 
         // 桌宠用会话建的独立渲染器（共享只读纹理）；创建失败时退回运行时渲染器
         var renderer = _session.PetRenderer ?? runtime.Renderer;
 
-        // 窗口 = 模型本身（FitCanvas 等比铺满窗口）：没有取景框裁切，窗口可以比屏幕高。
         var options = _renderOptions;
-        options.Width = width;
-        options.Height = height;
-        options.FitCanvas = true;
+        options.Width = Math.Max(2, (int)Math.Round(sliceWidth * renderScale));
+        options.Height = Math.Max(2, (int)Math.Round(sliceHeight * renderScale));
+        options.FitCanvas = false;
+        options.Scale = fit * renderScale;
+        options.OffsetX = (fullOffsetX - x0) * renderScale;
+        options.OffsetY = (fullOffsetY - y0) * renderScale;
         options.TransparentBackground = true;
 
         renderer.Render(runtime.Model, options);
@@ -211,7 +242,10 @@ public partial class PetWindow : Window
             PetImage.Source = bitmap;
         }
 
-        // 全身轻晃：以脚为支点旋转模型位图（仅 RenderTransform；窗口尺寸 / 透明区域 / 点击穿透 / 拖动都不受影响）
+        // 把渲染好的切片摆回窗口对应位置（右 / 下边距可为负：量化多画的那部分在屏幕外，会被窗口裁掉）
+        PetImage.Margin = new Thickness(x0, y0, windowWidth - x0 - sliceWidth, windowHeight - y0 - sliceHeight);
+
+        // 全身轻晃：以窗口底边中点为支点旋转（仅 RenderTransform；窗口尺寸 / 透明区域 / 点击穿透 / 拖动都不受影响）
         double leanDegrees = 0;
         if (_session.ViewModel?.LeanOverrideDegrees is { } fixedLean)
         {
@@ -254,14 +288,6 @@ public partial class PetWindow : Window
     {
         if (!IsVisible || ActualWidth < 2 || ActualHeight < 2) return null;
         return new Rect(Left, Top, ActualWidth, ActualHeight);
-    }
-
-    /// <summary>渲染目标像素尺寸（窗口 DIP × 渲染倍率）。</summary>
-    private (int Width, int Height) GetRenderTargetSize()
-    {
-        var scale = Math.Clamp(Config?.RenderScale ?? 1.0, 0.5, 1.5);
-        return (Math.Max(2, (int)Math.Round(ActualWidth * scale)),
-            Math.Max(2, (int)Math.Round(ActualHeight * scale)));
     }
 
     // ===================== 生命周期 =====================

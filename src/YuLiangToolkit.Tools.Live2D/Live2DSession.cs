@@ -90,6 +90,9 @@ public sealed class Live2DSession
     private double _lastPetRenderMs;
     private bool _dualSlowLogged;
 
+    // 只有桌宠可见、渲染太吃力时自动降一半帧率（一次性日志说明，不重复刷）
+    private bool _petOnlySlowLogged;
+
     // ===== 摄像头面部动捕（数据源生命周期归会话管：页面 / 桌宠可见才开，隐私 + 省 CPU） =====
     private readonly SemaphoreSlim _mocapGate = new(1, 1);
     private MocapCameraSource? _mocap;
@@ -2007,7 +2010,23 @@ public sealed class Live2DSession
             int petSkip;
             if (!pageVisible)
             {
-                petSkip = 1;   // 只有桌宠：每帧都画（窗口小）
+                // 只有桌宠：默认每帧都画；但窗口很大 / 机器吃力（单帧渲染 >25ms，30fps 预算 33ms）
+                // 时自动降一半帧率，避免大桌宠把 CPU 顶满（一次性日志说明，不重复刷）。
+                var heavy = _lastPetRenderMs > 25;
+                if (heavy && !_petOnlySlowLogged)
+                {
+                    _petOnlySlowLogged = true;
+                    var message = $"桌宠渲染约 {_lastPetRenderMs:0} ms/帧，自动降到一半帧率省 CPU" +
+                                  "（想更快可以调低「窗口宽」或渲染倍率）";
+                    _viewModel?.Log(message);
+                    _viewModel?.SetStatus(message);
+                }
+                else if (!heavy)
+                {
+                    _petOnlySlowLogged = false;   // 负载下来了：下次再变吃力时重新提示一次
+                }
+
+                petSkip = heavy ? 2 : 1;
             }
             else
             {
@@ -2040,8 +2059,9 @@ public sealed class Live2DSession
             _lastPetRenderMs = 0;
         }
 
-        // 界面上的动作进度 / 参数状态不用每帧刷，每 6 帧刷一次就够（避免无谓的绑定开销）
-        if (_frameIndex % 6 == 0)
+        // 界面上的动作进度 / 参数状态不用每帧刷，每 6 帧刷一次就够（避免无谓的绑定开销）；
+        // 主窗口最小化 / 测试页不可见时这些绑定没人看，直接跳过（后台省 CPU）。
+        if (pageVisible && _frameIndex % 6 == 0)
         {
             try { _viewModel?.RefreshFrameState(runtime); } catch { /* 忽略 */ }
         }

@@ -409,13 +409,36 @@ Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实
   - 构造：`MaxWidth=2000 / MaxHeight=8000 / Min…`（WPF 属性路径的隐式约束）+ `ComputeWindowSize`；
   - `OnSourceInitialized`：`InstallSizeLimitSubclass` 装子类化；
   - `ApplySizeFromConfig`：尺寸变化保持**底边中点**不动（脚站在地上）；
-  - `RenderFrame`：`FitCanvas=true`（窗口 = 模型，无取景裁切）；`TryCanvasToScreen` / `ComputeCanvasPoint`
-    用同一套 fit 换算，热区不漂；
+  - `RenderFrame`：**可见区域裁切渲染**（见 7.2）+ `FitCanvas=false` 按切片映射出图；
+    `TryCanvasToScreen` / `ComputeCanvasPoint` 用全窗口 fit 换算，热区不漂；
   - 滚轮 = `cfg.PetWidth × 1.1`（缩放就是改窗口大小）+ `AnchoredZoom` 挪窗口位置，写回配置自动保存。
 - 性能：窗口越大越吃 CPU（像素按面积涨）；2000 宽 ≈ 2000×4104 位图，低配机器建议 420 默认宽 / 0.75 渲染倍率 / 15fps。
 - 自检：`Live2DChecks` 断言尺寸换算（1000→2053、上限 2000/8000）、`AnchoredZoom` 不动点；
   `YLT_LIVE2D_PET_SELFTEST` 的①断言 `ComputeWindowSize` 期望尺寸（1000 宽应得 2053 高——
   如果系统夹回 1032 说明子类化失效，直接 FAIL）。
+
+### 7.2 桌宠渲染省电（可见区域裁切 + 自动降频）
+
+> 窗口上限解除后（1000 宽 ≈ 2053 高），全帧渲染面积约是旧版 420 宽的 5.8 倍，直接全画会把 CPU 顶爆。
+> 三个措施都在「不改变画质」的前提下砍掉看不见的开销：
+
+- **可见区域裁切**（`PetWindow.RenderFrame`）：每帧算「窗口 ∩ 虚拟屏（多屏并集）」的交集
+  （窗口本地 DIP 的 `[x0,y0]-[x1,y1]`，宽高按 16px 向上取整量化减少位图重建频率）；
+  只渲染这一片：`RenderOptions.FitCanvas=false`，`Scale = fit × 渲染倍率`、
+  `Offset = 全图偏移 - 切片原点`，输出位图 = 切片 × 渲染倍率；
+  渲染完用 `PetImage.Margin` 把切片摆回窗口对应位置（右 / 下边距可为负——量化多画的部分在屏幕外，
+  被窗口裁掉无副作用）。**完全在屏幕外 → 整帧跳过**（保留最后一帧画面）；
+  - 倾斜变换（`PetLeanTransform`）因此从 `Image` 挪到 `Grid` 上（支点固定窗口底边中点，
+    不随切片位置漂移）；
+  - `TryCanvasToScreen` / `ComputeCanvasPoint`（互动 / 投喂 / 点击穿透）走**全窗口** fit 换算，
+    与切片无关，热区不漂；
+- **自动降频**（`Live2DSession` 帧循环）：
+  - 只有桌宠可见：单帧渲染 > 25ms → `petSkip=2`（自动降一半帧率），一次性日志提示，
+    负载恢复自动回到全帧率；
+  - 页面 + 桌宠同开：维持原有「桌宠降到约 10fps」逻辑；
+  - 主窗口最小化 / 测试页不可见：跳过 `RefreshFrameState` 界面绑定刷新（每 6 帧的那次）；
+- **为什么不上 GPU**：渲染器是零依赖手写软件光栅化（仓库约定不引新渲染库）；
+  换 SkiaSharp / D3D11 = 新增依赖 + 渲染层重写，投入产出不成比例，先靠上面两条 + 渲染倍率 / 帧率档位。
 
 ## 8. 构建 / 发布：模型与原生 DLL 怎么跟着 exe 走
 

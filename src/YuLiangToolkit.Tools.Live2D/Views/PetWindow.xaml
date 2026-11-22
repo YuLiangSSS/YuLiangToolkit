@@ -108,15 +108,14 @@
         </ContextMenu>
     </Window.ContextMenu>
 
-    <Grid x:Name="Root" Background="Transparent">
-        <!-- 只旋转模型位图（RenderTransform）：支点在底部中央，像不倒翁一样整身轻倾。
+    <Grid x:Name="Root" Background="Transparent" RenderTransformOrigin="0.5,1">
+        <!-- 只旋转整个画面（RenderTransform：支点在窗口底边中点，像不倒翁一样整身轻倾）。
+             画面可能是「可见切片」（带 Margin 定位），变换放 Grid 上保证支点固定在窗口底边中点；
              窗口大小 / 透明区域 / 点击穿透 / 拖动逻辑都不受影响。 -->
         <Image x:Name="PetImage" Stretch="Fill" IsHitTestVisible="False"
-               RenderTransformOrigin="0.5,1"
-               RenderOptions.BitmapScalingMode="HighQuality">
-            <Image.RenderTransform>
-                <RotateTransform x:Name="PetLeanTransform" Angle="0" />
-            </Image.RenderTransform>
-        </Image>
+               RenderOptions.BitmapScalingMode="HighQuality" />
+        <Grid.RenderTransform>
+            <RotateTransform x:Name="PetLeanTransform" Angle="0" />
+        </Grid.RenderTransform>
     </Grid>
 </Window>
