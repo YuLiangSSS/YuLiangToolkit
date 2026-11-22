@@ -434,9 +434,6 @@ internal static class Live2DChecks
                 Near(defaults.PetWidth, 420, 1e-9) && Near(defaults.PetOpacity, 1.0, 1e-9)
                 && defaults.PetTopMost && defaults.PetClickThrough && !defaults.AutoStartPet && !defaults.PetEnabled
                 && defaults.PetLeft is null && defaults.PetTop is null);
-            C("配置默认值：桌宠缩放 1.0× / 平移 0（默认整张画布适应窗口）",
-                Near(defaults.PetZoom, 1.0, 1e-9) && Near(defaults.PetPanX, 0.0, 1e-9)
-                && Near(defaults.PetPanY, 0.0, 1e-9));
             C("配置默认值：纹理 2048 / 30 帧 / 倍率 1.0 / 内置模型",
                 defaults.TextureMaxSize == 2048 && defaults.FpsLimit == 30
                 && Near(defaults.RenderScale, 1.0, 1e-9) && defaults.ModelFolder.Length == 0);
@@ -499,9 +496,6 @@ internal static class Live2DChecks
             cfg.FpsLimit = 60;
             cfg.TextureMaxSize = 4096;
             cfg.PetWidth = 520;
-            cfg.PetZoom = 3.5;
-            cfg.PetPanX = 0.25;
-            cfg.PetPanY = -0.12;
             cfg.EyeTracking = false;
             cfg.PhysicsStrength = 1.5;
             cfg.MocapEnabled = true;
@@ -544,11 +538,10 @@ internal static class Live2DChecks
             var badBackups = configDirectory is not null && Directory.Exists(configDirectory)
                 ? Directory.GetFiles(configDirectory, "config.bad-*.json").Length
                 : 0;
-            C("配置改动自动落盘并读回（帧率 / 纹理 / 桌宠宽 + 缩放平移 / 眼睛跟随 / 物理 / 动捕 / 身体晃动 / 跟随增益 / 音乐 / 语音 / 鼠标互动 6 项）",
+            C("配置改动自动落盘并读回（帧率 / 纹理 / 桌宠宽 / 眼睛跟随 / 物理 / 动捕 / 身体晃动 / 跟随增益 / 音乐 / 语音 / 鼠标互动 6 项）",
                 reloaded is
                 {
-                    FpsLimit: 60, TextureMaxSize: 4096, PetWidth: 520, PetZoom: 3.5, PetPanX: 0.25, PetPanY: -0.12,
-                    EyeTracking: false,
+                    FpsLimit: 60, TextureMaxSize: 4096, PetWidth: 520, EyeTracking: false,
                     MocapEnabled: true, MocapCameraId: "cam-自检", MocapCameraName: "自检摄像头", MocapFps: 24,
                     BodySwayEnabled: true, BodySwayMode: "椭圆", BodySwayAmplitude: 20,
                     EyeTrackingHorizontalGain: 2.2, EyeTrackingUpGain: 0.8,
@@ -571,8 +564,6 @@ internal static class Live2DChecks
                 File.ReadAllText(cfg.FilePath).Contains("\"fpsLimit\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"textureMaxSize\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"petWidth\"")
-                && File.ReadAllText(cfg.FilePath).Contains("\"petZoom\"")
-                && File.ReadAllText(cfg.FilePath).Contains("\"petPanX\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"mocapEnabled\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"bodySwayEnabled\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"eyeTrackingHorizontalGain\"")
@@ -647,69 +638,51 @@ internal static class Live2DChecks
         }
 
         // ================================================================
-        // 九·五、桌宠取景框（PetViewport：窗口夹取 + 以鼠标为不动点缩放 / 平移）
+        // 九·五、桌宠窗口尺寸（PetViewport：窗口 = 模型，可比屏幕高 + 滚轮锚定缩放）
         // ================================================================
         try
         {
-            C("桌宠视口：缩放夹取 0.5 ~ 8（NaN 回 1.0）",
-                Near(PetViewport.ClampZoom(-1), 0.5, 1e-9)
-                && Near(PetViewport.ClampZoom(99), 8.0, 1e-9)
-                && Near(PetViewport.ClampZoom(double.NaN), 1.0, 1e-9));
-
             const double aspect = 3749.0 / 7697.0;
-            var size420 = PetViewport.ComputeWindowSize(420, aspect, 1920, 1032);
-            var size1000 = PetViewport.ComputeWindowSize(1000, aspect, 1920, 1032);
-            var sizeHuge = PetViewport.ComputeWindowSize(5000, aspect, 1920, 1032);
-            var sizeTiny = PetViewport.ComputeWindowSize(100, aspect, 1920, 1032);
-            C("桌宠视口：420 宽窗口高 ≈ 862（按画布比例）",
+            var size420 = PetViewport.ComputeWindowSize(420, aspect);
+            var size1000 = PetViewport.ComputeWindowSize(1000, aspect);
+            var sizeHuge = PetViewport.ComputeWindowSize(5000, aspect);
+            var sizeTiny = PetViewport.ComputeWindowSize(100, aspect);
+            C("桌宠窗口：420 宽 → 高 ≈ 862（按画布比例）",
                 Near(size420.Width, 420, 1e-9) && Near(size420.Height, 420 / aspect, 1e-6),
                 $"{size420.Width:0.#}×{size420.Height:0.#}");
-            C("桌宠视口：1000 宽窗口高度被工作区夹到 1032（不再交给系统偷偷夹）",
-                Near(size1000.Width, 1000, 1e-9) && Near(size1000.Height, 1032, 1e-9),
+            C("桌宠窗口：1000 宽 → 高 ≈ 2053（不再被屏幕高度夹住，窗口可以比屏幕高）",
+                Near(size1000.Width, 1000, 1e-9) && Near(size1000.Height, 1000 / aspect, 1e-6),
                 $"{size1000.Width:0.#}×{size1000.Height:0.#}");
-            C("桌宠视口：窗口宽度上限 1000 / 下限 160",
-                Near(sizeHuge.Width, 1000, 1e-9) && Near(sizeTiny.Width, 160, 1e-9),
+            C("桌宠窗口：宽度上限 2000 / 下限 160（NaN 回 420 默认）",
+                Near(sizeHuge.Width, 2000, 1e-9) && Near(sizeTiny.Width, 160, 1e-9)
+                && Near(PetViewport.ComputeWindowSize(double.NaN, aspect).Width, PetViewport.DefaultWindowWidth, 1e-9),
                 $"{sizeHuge.Width:0.#} / {sizeTiny.Width:0.#}");
+            C("桌宠窗口：高度上限 8000（极端细长模型按渲染位图上限反夹）",
+                PetViewport.ComputeWindowSize(2000, 0.05).Height <= PetViewport.MaxWindowHeight
+                && PetViewport.ComputeWindowSize(2000, 0.05).Width > 0,
+                $"{PetViewport.ComputeWindowSize(2000, 0.05).Width:0.#}×{PetViewport.ComputeWindowSize(2000, 0.05).Height:0.#}");
 
-            var view1 = PetViewport.Calculate(420, 420 / aspect, 3749, 7697, 1.0, 0, 0);
-            var view2 = PetViewport.Calculate(420, 420 / aspect, 3749, 7697, 2.0, 0, 0);
-            C("桌宠视口：1× 整张画布刚好适应窗口（Scale = 420/3749，偏移≈0）",
-                Near(view1.Scale, 420.0 / 3749.0, 1e-6)
-                && Math.Abs(view1.OffsetX) < 0.01 && Math.Abs(view1.OffsetY) < 0.01,
-                $"scale={view1.Scale:0.000000} offset=({view1.OffsetX:0.00},{view1.OffsetY:0.00})");
-            C("桌宠视口：2× 时模型尺寸翻倍并居中裁切（左右偏移为负）",
-                Near(view2.Scale, view1.Scale * 2, 1e-6)
-                && view2.OffsetX < -100 && view2.OffsetY < -200,
-                $"scale={view2.Scale:0.000000} offset=({view2.OffsetX:0.0},{view2.OffsetY:0.0})");
-
-            // 以鼠标为不动点：缩放前后，光标下的画布点应该在窗口里的同一位置
-            const double cursorX = 300, cursorY = 200;
-            var oldView = PetViewport.Calculate(420, 420 / aspect, 3749, 7697, 1.0, 0, 0);
-            var oldCanvasX = (cursorX - oldView.OffsetX) / oldView.Scale;
-            var oldCanvasY = (cursorY - oldView.OffsetY) / oldView.Scale;
-            var zoomed = PetViewport.ZoomAt(420, 420 / aspect, 3749, 7697, 1.0, 0, 0, 2.0, cursorX, cursorY);
-            var newView = PetViewport.Calculate(420, 420 / aspect, 3749, 7697, zoomed.Zoom, zoomed.PanX, zoomed.PanY);
-            var newScreenX = oldCanvasX * newView.Scale + newView.OffsetX;
-            var newScreenY = oldCanvasY * newView.Scale + newView.OffsetY;
-            C("桌宠视口：滚轮缩放以鼠标为不动点（缩放前后光标下画布点不漂）",
-                Near(zoomed.Zoom, 2.0, 1e-9)
-                && Math.Abs(newScreenX - cursorX) < 1.0 && Math.Abs(newScreenY - cursorY) < 1.0,
-                $"Δ=({newScreenX - cursorX:0.00},{newScreenY - cursorY:0.00}) pan=({zoomed.PanX:0.000},{zoomed.PanY:0.000})");
-
-            var clampPan = PetViewport.ClampPan(420, 420 / aspect, 3749, 7697, 8.0, 999, -999);
-            var panView = PetViewport.Calculate(420, 420 / aspect, 3749, 7697, 8.0, clampPan.PanX, clampPan.PanY);
-            var leftEdge = panView.OffsetX;
-            var topEdge = panView.OffsetY;
-            var rightEdge = panView.OffsetX + 3749 * panView.Scale;
-            var bottomEdge = panView.OffsetY + 7697 * panView.Scale;
-            C("桌宠视口：平移夹取后模型仍覆盖窗口（不会拖丢）",
-                Math.Abs(clampPan.PanX) < 4.0 && Math.Abs(clampPan.PanY) < 4.0
-                && leftEdge <= 1 && rightEdge >= 419 && topEdge <= 1 && bottomEdge >= 861,
-                $"pan=({clampPan.PanX:0.000},{clampPan.PanY:0.000}) edges=({leftEdge:0},{topEdge:0},{rightEdge:0},{bottomEdge:0})");
+            // 滚轮锚定缩放：窗口 420×862 → 840×1724，光标下的画布点必须保持在屏幕同一位置
+            const double cursorLocalX = 300, cursorLocalY = 200;
+            const double oldLeft = 100, oldTop = 50;
+            var (newLeft, newTop) = PetViewport.AnchoredZoom(
+                oldLeft, oldTop, 420, 420 / aspect, 3749, 7697,
+                cursorLocalX, cursorLocalY, 840, 840 / aspect);
+            var oldFit = 420.0 / 3749.0;
+            var canvasX = (cursorLocalX - 0.0) / oldFit;   // 窗口与画布同比 → 居中偏移为 0
+            var canvasY = cursorLocalY / oldFit;
+            var newFit = 840.0 / 3749.0;
+            var screenBeforeX = oldLeft + cursorLocalX;
+            var screenBeforeY = oldTop + cursorLocalY;
+            var screenAfterX = newLeft + canvasX * newFit;
+            var screenAfterY = newTop + canvasY * newFit;
+            C("桌宠窗口：滚轮缩放以鼠标为不动点（缩放前后光标下模型点不漂）",
+                Math.Abs(screenAfterX - screenBeforeX) < 1.0 && Math.Abs(screenAfterY - screenBeforeY) < 1.0,
+                $"Δ=({screenAfterX - screenBeforeX:0.00},{screenAfterY - screenBeforeY:0.00}) newLeft={newLeft:0.0} newTop={newTop:0.0}");
         }
         catch (Exception ex)
         {
-            C("桌宠取景框断言运行期间抛出异常", false, $"{ex.GetType().Name}: {ex.Message}");
+            C("桌宠窗口尺寸断言运行期间抛出异常", false, $"{ex.GetType().Name}: {ex.Message}");
         }
 
         // ================================================================

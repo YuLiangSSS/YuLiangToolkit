@@ -848,29 +848,15 @@ public sealed class Live2DViewModel : ToolViewModelBase
     /// <summary>桌宠状态文本（显示中 / 未显示）。</summary>
     public string PetStateText => IsPetVisible ? "显示中" : "未显示";
 
-    /// <summary>桌宠宽度（160 ~ 1000；改一下立刻套到桌宠窗口）。</summary>
+    /// <summary>桌宠窗口宽度（160 ~ 2000，= 模型显示宽度；窗口可以比屏幕高，改一下立刻套到桌宠窗口）。</summary>
     public double PetWidth
     {
-        get => Math.Clamp(Cfg.PetWidth, 160, 1000);
+        get => Math.Clamp(Cfg.PetWidth, PetViewport.MinWindowWidth, PetViewport.MaxWindowWidth);
         set
         {
-            var clamped = Math.Clamp(value, 160, 1000);
+            var clamped = Math.Clamp(value, PetViewport.MinWindowWidth, PetViewport.MaxWindowWidth);
             if (Math.Abs(Cfg.PetWidth - clamped) < 0.1) return;
             Cfg.PetWidth = clamped;
-            OnPropertyChanged();
-            Session.ApplyPetConfig();
-        }
-    }
-
-    /// <summary>桌宠模型缩放倍率（0.5 ~ 8；窗口是取景框，放大后模型可超出窗口并裁切）。</summary>
-    public double PetZoom
-    {
-        get => PetViewport.ClampZoom(Cfg.PetZoom);
-        set
-        {
-            var clamped = PetViewport.ClampZoom(value);
-            if (Math.Abs(Cfg.PetZoom - clamped) < 0.001) return;
-            Cfg.PetZoom = clamped;
             OnPropertyChanged();
             Session.ApplyPetConfig();
         }

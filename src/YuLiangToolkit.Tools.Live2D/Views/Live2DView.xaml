@@ -951,7 +951,7 @@
                                            Foreground="{DynamicResource TextSecondaryBrush}" Text="{Binding PetStateText}" />
                             </Grid>
                             <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,4,0,0"
-                                       Text="透明置顶的小窗：拖动移动、滚轮以鼠标为中心缩放（0.5~8×）、中键 / Shift+左键平移取景、右键菜单、透明区域点击穿透、眼睛跟随全局鼠标。" />
+                                       Text="透明置顶的小窗：拖动移动、滚轮以鼠标为中心缩放（窗口跟模型一样大，可以比屏幕高）、右键菜单、透明区域点击穿透、眼睛跟随全局鼠标。" />
 
                             <WrapPanel Margin="0,10,0,0">
                                 <Button Content="{Binding PetButtonText}" Style="{StaticResource PrimaryButtonStyle}"
@@ -969,25 +969,11 @@
                                     <ColumnDefinition Width="42" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="窗口宽" Style="{StaticResource SettingLabelStyle}" />
-                                <Slider Grid.Column="1" Minimum="160" Maximum="1000" SmallChange="10"
+                                <Slider Grid.Column="1" Minimum="160" Maximum="2000" SmallChange="10"
                                         Value="{Binding PetWidth, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
                                         VerticalAlignment="Center"
-                                        ToolTip="桌宠窗口（取景框）宽度，160~1000。屏幕高度有限，整只角色在这里最多约 500 像素宽；想更大用下面的「缩放」或桌宠上滚轮。" />
+                                        ToolTip="桌宠窗口（= 模型显示宽度）160~2000。窗口可以比屏幕高，超出屏幕的部分拖动窗口查看；越大越吃 CPU。" />
                                 <TextBlock Grid.Column="2" Text="{Binding PetWidth, StringFormat={}{0:0}}"
-                                           Style="{StaticResource SettingValueStyle}" />
-                            </Grid>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="60" />
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="42" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="缩放" Style="{StaticResource SettingLabelStyle}" />
-                                <Slider Grid.Column="1" Minimum="0.5" Maximum="8" SmallChange="0.1"
-                                        Value="{Binding PetZoom, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
-                                        VerticalAlignment="Center"
-                                        ToolTip="模型相对「整张画布适应窗口」的放大倍数（0.5~8×）。放大后窗口是取景框，模型可以比窗口大；桌宠上滚轮以鼠标为中心缩放，中键 / Shift+左键拖动平移。" />
-                                <TextBlock Grid.Column="2" Text="{Binding PetZoom, StringFormat='{}{0:0.00}×'}"
                                            Style="{StaticResource SettingValueStyle}" />
                             </Grid>
                             <Grid>

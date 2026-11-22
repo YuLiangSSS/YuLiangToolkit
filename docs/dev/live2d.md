@@ -386,33 +386,36 @@ Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实
   不保存音频、播完立即释放流 / 播放器。
 - 调试视图（包围盒 / 蒙版缓冲）只在开启时画，别常开。
 
-### 7.1 桌宠取景框（PetViewport，别退回「窗口 = 模型」）
+### 7.1 桌宠窗口尺寸（PetViewport + 子类化解除系统上限，别退回取景框）
 
-> 背景：WPF 顶层透明窗口的程序尺寸会被系统按**最大跟踪尺寸**悄悄夹住（1080p 屏实测约 1100 高）。
-> 旧版按 `PetWidth / CanvasAspect` 直接把窗口 Height 设成 2053：系统只给 1100，`FitCanvas`
-> 就把模型缩在 1100 高的窗口里，滚轮再滚也只改名义尺寸 → 模型不再变大，而 Top 按名义高度算，
-> 看起来就是「桌宠一直往上跑」。**桌宠窗口必须是取景框，不是模型本身。**
+> 背景与结论：Windows 按 `WM_GETMINMAXINFO` 的**系统默认值**（实测 `3860×1100` ≈ 虚屏宽+20 × 屏高+20）
+> 夹**所有**顶层窗口的尺寸——`CreateWindowEx` 和每次 `SetWindowPos` 都会被夹（纯 Win32 窗口实测同样被夹，
+> 与 WPF 无关）。所以桌宠窗口高度默认最多约 1100，模型最大只有约 500 宽。
+> **已突破**：`PetWindow` 用 `SetWindowLongPtr(GWLP_WNDPROC)` 子类化窗口过程，在链路最前面拦截
+> `WM_GETMINMAXINFO`，把 `ptMaxTrackSize` 改写成 `PetViewport` 允许的尺寸（物理像素 = DIP × DPI），
+> 实测 1000 宽窗口建出 **2053 高**（100% DPI），纯 Win32 同样验证可到 3100。
+>
+> ⚠ **别用 `HwndSource.AddHook` 挂这个钩子**：WPF 会先消费 `WM_GETMINMAXINFO`（公开钩子一条都收不到，
+> 实测计数恒为 0），只有子类化（我们的 proc 排在链路最前面）才拦得到。子类化回调委托必须存**静态字段**
+> 防 GC（委托被回收 = 窗口过程野指针 = 进程崩）。
 
 - `Views/PetViewport.cs`（纯静态、自检可测）：
-  - `ComputeWindowSize(requestedWidth, canvasAspect, workAreaWidth, workAreaHeight)`：窗口宽度夹到
-    `160~1000` 且不超过工作区宽；高度 = 宽 / 画布比例，但**不超过工作区高**（本机 1920×1080 工作区高 1032）；
-  - `Calculate(...)`：`fit = min(窗口宽/画布宽, 窗口高/画布高)`，`scale = fit × PetZoom`，再叠加
-    `PetPanX/PetPanY`（归一化，1.0 = 平移到一整个窗口宽 / 高）；返回的 `Scale/OffsetX/OffsetY`
-    直接喂 `RenderOptions`（`FitCanvas=false`）；
-  - `ZoomAt(...)`：滚轮缩放以鼠标为不动点（和预览相机同一套「缩放前后光标下画布点不变」的反推），
-    所以鼠标指脸就在脸上放大，不会把角色整体往上推；
-  - `ClampPan(...)`：平移最多到模型边缘贴窗口边缘，防止拖丢。
+  - `ComputeWindowSize(requestedWidth, canvasAspect)`：窗口宽度夹 `160~2000`；高度 = 宽 / 画布比例，
+    **不按屏幕夹**（上限已解除，窗口允许比屏幕高，超出部分拖动窗口查看）；整体不超过渲染位图上限
+    `MaxWindowHeight = 8000`（渲染器位图上限 8192）；
+  - `AnchoredZoom(...)`：滚轮缩放以鼠标为不动点——窗口尺寸变化前后「光标下的画布点」保持在屏幕同一位置
+    （指脸就在脸上放大），返回新的窗口 Left/Top；
 - `PetWindow`：
-  - 构造 / `ApplySizeFromConfig` 全部走 `ComputeWindowSize`；尺寸变化保持**底边中点**不动（脚站在地上），
-    不再用「名义高度」算 Top；
-  - `RenderFrame` 用 `PetViewport.Calculate(输出像素宽, 输出像素高, ...)`，`FitCanvas=false`；
-  - `TryCanvasToScreen` / `ComputeCanvasPoint`（互动、投喂嘴部锚点、点击穿透）必须走同一个 `PetViewport.Calculate`，
-    否则缩放 / 平移后热区会漂；
-  - 滚轮 = `PetZoom`（0.5~8），中键 / Shift+左键 = `PetPanX/Y`；窗口自身尺寸只由「窗口宽」滑杆改。
-- 性能：放大只影响「可见像素数」——窗口大小不变时渲染耗时不变；窗口拉到 1000×1032 时按面积涨（约 3 倍像素），
-  再加 8× 缩放，三角形重叠变多，低配机器建议 0.75 渲染倍率 / 15fps。
-- 自检：`Live2DChecks` 断言窗口尺寸夹取、`ZoomAt` 不动点、`ClampPan` 边界；`YLT_LIVE2D_PET_SELFTEST`
-  的①也改成断言工作区夹取后的尺寸。
+  - 构造：`MaxWidth=2000 / MaxHeight=8000 / Min…`（WPF 属性路径的隐式约束）+ `ComputeWindowSize`；
+  - `OnSourceInitialized`：`InstallSizeLimitSubclass` 装子类化；
+  - `ApplySizeFromConfig`：尺寸变化保持**底边中点**不动（脚站在地上）；
+  - `RenderFrame`：`FitCanvas=true`（窗口 = 模型，无取景裁切）；`TryCanvasToScreen` / `ComputeCanvasPoint`
+    用同一套 fit 换算，热区不漂；
+  - 滚轮 = `cfg.PetWidth × 1.1`（缩放就是改窗口大小）+ `AnchoredZoom` 挪窗口位置，写回配置自动保存。
+- 性能：窗口越大越吃 CPU（像素按面积涨）；2000 宽 ≈ 2000×4104 位图，低配机器建议 420 默认宽 / 0.75 渲染倍率 / 15fps。
+- 自检：`Live2DChecks` 断言尺寸换算（1000→2053、上限 2000/8000）、`AnchoredZoom` 不动点；
+  `YLT_LIVE2D_PET_SELFTEST` 的①断言 `ComputeWindowSize` 期望尺寸（1000 宽应得 2053 高——
+  如果系统夹回 1032 说明子类化失效，直接 FAIL）。
 
 ## 8. 构建 / 发布：模型与原生 DLL 怎么跟着 exe 走
 

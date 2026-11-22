@@ -18,9 +18,10 @@ namespace YuLiangToolkit.Tools.Live2D.Views;
 /// <summary>
 /// 桌面宠物窗口：透明、无边框、置顶（可关）、不进任务栏；显示 Live2D 模型当前帧。
 ///
-/// <para><b>交互</b>：左键拖动移动、滚轮以鼠标为不动点缩放模型（0.5~8 倍，窗口是取景框，模型可超出窗口）、
-/// 中键 / Shift+左键拖动平移取景、右键菜单（置顶 / 点击穿透 / 缩放重置 / 还原视图 / 居中 / 打开测试页 / 隐藏）、
-/// 双击随机来个表情或动作。位置 / 窗口宽度 / 缩放 / 不透明度 / 置顶 / 穿透都写回 <see cref="Live2DConfig"/> 自动保存。</para>
+/// <para><b>交互</b>：左键拖动移动、滚轮以鼠标为不动点缩放窗口（窗口跟模型一样大，没有矩形裁切，
+/// 窗口可以比屏幕高——超出部分拖动窗口查看）、右键菜单（置顶 / 点击穿透 / 缩放重置 / 居中 /
+/// 打开测试页 / 隐藏）、双击随机来个表情或动作。
+/// 位置 / 宽度 / 不透明度 / 置顶 / 穿透都写回 <see cref="Live2DConfig"/> 自动保存。</para>
 ///
 /// <para><b>透明区域点击穿透</b>：配置开启时用 40ms 的轮询（全局鼠标位置 → 窗口内 → 画布坐标 →
 /// 可见网格包围盒）判断鼠标下是不是模型；不在模型上就动态给 HWND 加 <c>WS_EX_TRANSPARENT</c>
@@ -56,7 +57,7 @@ public partial class PetWindow : Window
     private const int PollIntervalMs = 40;
 
     private readonly Live2DSession _session;
-    private readonly Rendering.RenderOptions _renderOptions = new() { TransparentBackground = true, FitCanvas = false };
+    private readonly Rendering.RenderOptions _renderOptions = new() { TransparentBackground = true, FitCanvas = true };
     private readonly DispatcherTimer _pollTimer;
 
     private WriteableBitmap? _lastBitmap;
@@ -82,12 +83,6 @@ public partial class PetWindow : Window
     private double _lastWindowMoveLeft;
     private double _lastWindowMoveTop;
 
-    // 取景平移（中键 / Shift+左键拖动；只在放大后有意义）
-    private bool _panning;
-    private Point _panStartCursorDip;
-    private double _panStartX;
-    private double _panStartY;
-
     // 全局快捷键（默认 Ctrl+Alt+L 鼠标穿透 / Ctrl+Alt+0 退出，可在配置 / 汇总页里改）
     private const int HotkeyToggleClickThrough = 0x4C01;
     private const int HotkeyExit = 0x4C02;
@@ -107,10 +102,16 @@ public partial class PetWindow : Window
         _session = session;
         InitializeComponent();
 
+        // 窗口 = 模型本身，允许比屏幕高（上限被子类化放行，见 SubclassProcForSizeLimits）。
+        // MaxWidth / MaxHeight 让 WPF 属性路径不再受默认 2000/10000 隐式约束。
+        MaxWidth = PetViewport.MaxWindowWidth;
+        MaxHeight = PetViewport.MaxWindowHeight;
+        MinWidth = PetViewport.MinWindowWidth;
+        MinHeight = PetViewport.MinWindowHeight;
+
         var cfg = Config;
-        var area = SystemParameters.WorkArea;
         var (width, height) = PetViewport.ComputeWindowSize(
-            cfg?.PetWidth ?? 420, _session.CanvasAspect, area.Width, area.Height);
+            cfg?.PetWidth ?? PetViewport.DefaultWindowWidth, _session.CanvasAspect);
         Width = width;
         Height = height;
         if (cfg is not null && cfg.PetLeft is { } savedLeft && cfg.PetTop is { } savedTop)
@@ -120,6 +121,7 @@ public partial class PetWindow : Window
         }
         else
         {
+            var area = SystemParameters.WorkArea;
             Left = area.Right - Width - DefaultMargin;
             Top = area.Bottom - Height - DefaultMargin;
         }
@@ -154,16 +156,10 @@ public partial class PetWindow : Window
         SavePlacement();
     }
 
-    /// <summary>回到默认位置（主屏右下角）并恢复默认宽度 / 100% 缩放。</summary>
+    /// <summary>回到默认位置（主屏右下角）并恢复默认宽度。</summary>
     public void ResetPositionToDefault()
     {
-        if (Config is { } cfg)
-        {
-            cfg.PetWidth = 420;
-            cfg.PetZoom = 1.0;
-            cfg.PetPanX = 0;
-            cfg.PetPanY = 0;
-        }
+        if (Config is { } cfg) cfg.PetWidth = PetViewport.DefaultWindowWidth;
         ApplySizeFromConfig();
         var area = SystemParameters.WorkArea;
         Left = area.Right - Width - DefaultMargin;
@@ -200,25 +196,14 @@ public partial class PetWindow : Window
         // 桌宠用会话建的独立渲染器（共享只读纹理）；创建失败时退回运行时渲染器
         var renderer = _session.PetRenderer ?? runtime.Renderer;
 
-        // 窗口只是取景框：模型按「适应窗口 × 缩放」渲染，超出窗口的部分裁掉。
-        // 这样窗口尺寸永远不会超过系统允许的上限，放大也不会再带着窗口往上跳。
-        var cfg = Config;
-        var model = runtime.Model;
-        var view = PetViewport.Calculate(
-            width, height,
-            model.CanvasWidthPixels, model.CanvasHeightPixels,
-            cfg?.PetZoom ?? 1.0, cfg?.PetPanX ?? 0, cfg?.PetPanY ?? 0);
-
+        // 窗口 = 模型本身（FitCanvas 等比铺满窗口）：没有取景框裁切，窗口可以比屏幕高。
         var options = _renderOptions;
         options.Width = width;
         options.Height = height;
-        options.FitCanvas = false;
-        options.Scale = view.Scale;
-        options.OffsetX = view.OffsetX;
-        options.OffsetY = view.OffsetY;
+        options.FitCanvas = true;
         options.TransparentBackground = true;
 
-        renderer.Render(model, options);
+        renderer.Render(runtime.Model, options);
 
         var bitmap = renderer.Bitmap;
         if (!ReferenceEquals(_lastBitmap, bitmap))
@@ -243,8 +228,8 @@ public partial class PetWindow : Window
 
     /// <summary>
     /// 画布像素 → 屏幕 DIP（投喂 / 互动用：知道模型嘴巴在屏幕上的位置）。
-    /// <para>换算和渲染一致：整张画布先「适应窗口」，再乘桌宠缩放并加平移；输出位图 = 窗口 DIP × 渲染倍率，
-    /// 两边约掉后就是 <c>local = canvas × view.Scale + view.Offset</c>；再叠加窗口 Left/Top。</para>
+    /// <para>换算和渲染一致：FitCanvas 等比 + 居中，输出位图 = 窗口 DIP × 渲染倍率，
+    /// 两边约掉后就是 <c>local = canvas × fit + offset</c>；再叠加窗口 Left/Top。</para>
     /// 拿不到模型 / 窗口尺寸时返回 false。
     /// </summary>
     public bool TryCanvasToScreen(float canvasX, float canvasY, out Point screenPoint)
@@ -257,13 +242,11 @@ public partial class PetWindow : Window
         if (width < 2 || height < 2) return false;
         var canvasWidth = Math.Max(model.CanvasWidthPixels, 1f);
         var canvasHeight = Math.Max(model.CanvasHeightPixels, 1f);
-        var cfg = Config;
-        var view = PetViewport.Calculate(
-            width, height, canvasWidth, canvasHeight,
-            cfg?.PetZoom ?? 1.0, cfg?.PetPanX ?? 0, cfg?.PetPanY ?? 0);
-        if (view.Scale <= 0 || double.IsNaN(view.Scale) || double.IsInfinity(view.Scale)) return false;
-        screenPoint = new Point(Left + (canvasX * view.Scale) + view.OffsetX,
-            Top + (canvasY * view.Scale) + view.OffsetY);
+        var fit = Math.Min(width / canvasWidth, height / canvasHeight);
+        if (fit <= 0 || double.IsNaN(fit) || double.IsInfinity(fit)) return false;
+        var offsetX = (width - canvasWidth * fit) * 0.5;
+        var offsetY = (height - canvasHeight * fit) * 0.5;
+        screenPoint = new Point(Left + (canvasX * fit) + offsetX, Top + (canvasY * fit) + offsetY);
         return true;
     }
 
@@ -333,11 +316,102 @@ public partial class PetWindow : Window
         style |= WsExNoActivate | WsExToolWindow;
         SetExtendedStyle(hwnd, style);
 
+        // 解除「窗口不能比屏幕大」的系统上限：子类化窗口过程（插到 WPF 之前拦截消息）。
+        // 说明：HwndSource.AddHook 挂的钩子收不到 WM_GETMINMAXINFO（WPF 内部先消费），
+        // 必须 SetWindowLongPtr 子类化——我们的 proc 排在整条链路最前面，把
+        // ptMaxTrackSize 改写成 PetViewport 允许的尺寸再放行（实测纯 Win32 / WPF 窗口都能突破）。
+        InstallSizeLimitSubclass(hwnd);
+
         // 全局快捷键：Ctrl+Alt+L 切鼠标穿透 / Ctrl+Alt+0 退出（配置可关）
         _hwndSource = HwndSource.FromHwnd(hwnd);
         _hwndSource?.AddHook(WndProc);
         RegisterHotkeys(Config?.PetHotkeysEnabled == true);
     }
+
+    // ============== 解除「窗口不能比屏幕大」的系统上限（子类化窗口过程） ==============
+
+    private const int WmGetMinMaxInfo = 0x0024;
+
+    /// <summary>子类化回调委托：必须保存在静态字段里，防止 GC 回收后窗口过程指向野指针。</summary>
+    private static readonly NativeWndProc SizeLimitProc = SizeLimitWndProc;
+
+    /// <summary>子类化前的原窗口过程（WPF 的），全部消息都要链回去。</summary>
+    private static IntPtr _sizeLimitNextProc;
+
+    /// <summary>当前 DPI 缩放（OnSourceInitialized 时记录；MINMAXINFO 里的值是物理像素）。</summary>
+    private static double _sizeLimitDpi = 1.0;
+
+    private delegate IntPtr NativeWndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MinMaxPoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MinMaxInfo
+    {
+        public MinMaxPoint Reserved;
+        public MinMaxPoint MaxSize;
+        public MinMaxPoint MaxPosition;
+        public MinMaxPoint MinTrackSize;
+        public MinMaxPoint MaxTrackSize;
+    }
+
+    /// <summary>子类化桌宠窗口：把我们的 proc 插到 WPF 前面（只装一次）。</summary>
+    private void InstallSizeLimitSubclass(IntPtr hwnd)
+    {
+        if (_sizeLimitNextProc != IntPtr.Zero) return;
+        try { _sizeLimitDpi = VisualTreeHelper.GetDpi(this).DpiScaleX; } catch { _sizeLimitDpi = 1.0; }
+        if (_sizeLimitDpi <= 0.01 || !double.IsFinite(_sizeLimitDpi)) _sizeLimitDpi = 1.0;
+
+        _sizeLimitNextProc = GetWindowLongPtr(hwnd);
+        SetWindowLongPtr(hwnd, Marshal.GetFunctionPointerForDelegate(SizeLimitProc));
+    }
+
+    /// <summary>子类化窗口过程：改写 WM_GETMINMAXINFO 的最大跟踪尺寸后照常链回 WPF。</summary>
+    private static IntPtr SizeLimitWndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam)
+    {
+        if (msg == WmGetMinMaxInfo && _sizeLimitNextProc != IntPtr.Zero)
+        {
+            try
+            {
+                var info = (MinMaxInfo)Marshal.PtrToStructure(lParam, typeof(MinMaxInfo));
+                info.MaxTrackSize.X = (int)Math.Ceiling(PetViewport.MaxWindowWidth * _sizeLimitDpi);
+                info.MaxTrackSize.Y = (int)Math.Ceiling(PetViewport.MaxWindowHeight * _sizeLimitDpi);
+                Marshal.StructureToPtr(info, lParam, false);
+            }
+            catch { /* 改写失败就按系统默认上限走 */ }
+        }
+
+        return CallWindowProc(_sizeLimitNextProc, hwnd, msg, wParam, lParam);
+    }
+
+    private const int GwlWndProc = -4; // GWLP_WNDPROC（32/64 位同值）
+
+    private static IntPtr GetWindowLongPtr(IntPtr hwnd)
+        => IntPtr.Size == 8
+            ? GetWindowLongPtr64(hwnd, GwlWndProc)
+            : (IntPtr)GetWindowLong32(hwnd, GwlWndProc);
+
+    private static void SetWindowLongPtr(IntPtr hwnd, IntPtr value)
+    {
+        if (IntPtr.Size == 8) SetWindowLongPtrProc64(hwnd, GwlWndProc, value);
+        else SetWindowLongPtrProc32(hwnd, GwlWndProc, value);
+    }
+
+    // GetWindowLongPtr64 / SetWindowLongPtr64 复用下面 Win32 辅助区的声明
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+    private static extern IntPtr SetWindowLongPtrProc64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+    private static extern int SetWindowLongPtrProc32(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr CallWindowProc(IntPtr lpPrevWndFunc, IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
     // ===================== 配置套用 =====================
 
@@ -502,16 +576,14 @@ public partial class PetWindow : Window
 
     /// <summary>
     /// 按配置宽度 + 模型画布比例重算窗口尺寸（保持窗口「底边中点」不动，像人站在地上一样往两边长）。
-    /// 高度会按屏幕工作区夹取 —— 旧版把高度算到 2053 交给 WPF，系统只给 1100，模型看起来就不再变大了。
+    /// 窗口允许比屏幕高（WM_GETMINMAXINFO 子类化已解除系统上限），超出屏幕的部分拖动窗口查看。
     /// </summary>
     private void ApplySizeFromConfig()
     {
         var cfg = Config;
         if (cfg is null) return;
 
-        var area = SystemParameters.WorkArea;
-        var (width, height) = PetViewport.ComputeWindowSize(
-            cfg.PetWidth, _session.CanvasAspect, area.Width, area.Height);
+        var (width, height) = PetViewport.ComputeWindowSize(cfg.PetWidth, _session.CanvasAspect);
         if (Math.Abs(Width - width) < 0.5 && Math.Abs(Height - height) < 0.5) return;
 
         var centerX = Left + Width / 2;
@@ -534,16 +606,6 @@ public partial class PetWindow : Window
         if (!TryGetCursorDip(out var cursor)) return;
 
         var cfg = Config;
-
-        // Shift+左键 = 平移取景（和图片查看器一样）；没放大时仍按普通拖动窗口处理
-        if ((Keyboard.Modifiers & ModifierKeys.Shift) != 0
-            && cfg is not null
-            && PetViewport.ClampZoom(cfg.PetZoom) > 1.01)
-        {
-            StartPan(cursor);
-            e.Handled = true;
-            return;
-        }
 
         _dragging = true;
         _windowDragStarted = false;
@@ -585,71 +647,8 @@ public partial class PetWindow : Window
         e.Handled = true;
     }
 
-    /// <summary>中键按下 = 平移取景（左键仍负责搬窗口）。</summary>
-    private void OnPetMouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ChangedButton != MouseButton.Middle) return;
-        if (!TryGetCursorDip(out var cursor)) return;
-        StartPan(cursor);
-        e.Handled = true;
-    }
-
-    private void OnPetMouseUp(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ChangedButton != MouseButton.Middle || !_panning) return;
-        EndPan();
-        e.Handled = true;
-    }
-
-    private void StartPan(Point cursor)
-    {
-        var cfg = Config;
-        if (cfg is null) return;
-        _panning = true;
-        _panStartCursorDip = cursor;
-        _panStartX = cfg.PetPanX;
-        _panStartY = cfg.PetPanY;
-        CaptureMouse();
-    }
-
-    private void EndPan()
-    {
-        if (!_panning) return;
-        _panning = false;
-        if (IsMouseCaptured) ReleaseMouseCapture();
-        SavePlacement();
-    }
-
     private void OnPetMouseMove(object sender, MouseEventArgs e)
     {
-        if (_panning)
-        {
-            if (!TryGetCursorDip(out var panCursor))
-            {
-                EndPan();
-                return;
-            }
-
-            var cfg = Config;
-            if (cfg is null)
-            {
-                EndPan();
-                return;
-            }
-
-            var model = _session.Runtime?.Model;
-            var canvasWidth = Math.Max(1.0, model?.CanvasWidthPixels ?? 3749.0);
-            var canvasHeight = Math.Max(1.0, model?.CanvasHeightPixels ?? canvasWidth / Math.Max(0.05, _session.CanvasAspect));
-            var panX = _panStartX + (panCursor.X - _panStartCursorDip.X) / Math.Max(1.0, ActualWidth);
-            var panY = _panStartY + (panCursor.Y - _panStartCursorDip.Y) / Math.Max(1.0, ActualHeight);
-            var clamped = PetViewport.ClampPan(ActualWidth, ActualHeight, canvasWidth, canvasHeight,
-                cfg.PetZoom, panX, panY);
-            cfg.PetPanX = clamped.PanX;
-            cfg.PetPanY = clamped.PanY;
-            e.Handled = true;
-            return;
-        }
-
         if (!_dragging) return;
         if (!TryGetCursorDip(out var cursor))
         {
@@ -697,13 +696,6 @@ public partial class PetWindow : Window
 
     private void OnPetMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (_panning)
-        {
-            EndPan();
-            e.Handled = true;
-            return;
-        }
-
         if (!_dragging) return;
 
         var runtime = _session.Runtime;
@@ -789,24 +781,27 @@ public partial class PetWindow : Window
         var canvasWidth = Math.Max(1.0, model?.CanvasWidthPixels ?? 3749.0);
         var canvasHeight = Math.Max(1.0, model?.CanvasHeightPixels ?? canvasWidth / Math.Max(0.05, _session.CanvasAspect));
 
-        // 以鼠标当前位置为不动点缩放：鼠标指着脸，脸就留在鼠标下面变大，不会整只往上跑。
+        // 滚轮 = 窗口跟模型一起长大（没有矩形裁切），并且以鼠标位置为不动点：
+        // 鼠标指着脸放大，脸留在鼠标下面，不会整只往上跑。
         var cursor = e.GetPosition(this);
         var factor = e.Delta > 0 ? 1.1 : 1 / 1.1;
-        var (zoom, panX, panY) = PetViewport.ZoomAt(
-            ActualWidth, ActualHeight, canvasWidth, canvasHeight,
-            cfg.PetZoom, cfg.PetPanX, cfg.PetPanY,
-            factor, cursor.X, cursor.Y);
+        var newWidth = Math.Clamp(cfg.PetWidth * factor, PetViewport.MinWindowWidth, PetViewport.MaxWindowWidth);
+        if (Math.Abs(newWidth - cfg.PetWidth) < 0.1) return;
+        var (newW, newH) = PetViewport.ComputeWindowSize(newWidth, _session.CanvasAspect);
+        var (newLeft, newTop) = PetViewport.AnchoredZoom(
+            Left, Top, ActualWidth, ActualHeight,
+            canvasWidth, canvasHeight,
+            cursor.X, cursor.Y, newW, newH);
 
-        if (Math.Abs(zoom - PetViewport.ClampZoom(cfg.PetZoom)) < 0.0001
-            && Math.Abs(panX - cfg.PetPanX) < 0.0001
-            && Math.Abs(panY - cfg.PetPanY) < 0.0001)
+        cfg.PetWidth = newW;
+        Width = newW;
+        Height = newH;
+        if (double.IsFinite(newLeft) && double.IsFinite(newTop))
         {
-            return;
+            Left = newLeft;
+            Top = newTop;
         }
-
-        cfg.PetZoom = zoom;
-        cfg.PetPanX = panX;
-        cfg.PetPanY = panY;
+        ClampToVisibleArea();
         SavePlacement();
     }
 
@@ -936,7 +931,7 @@ public partial class PetWindow : Window
         }
     }
 
-    /// <summary>窗口内坐标（DIP）→ 模型画布像素坐标（桌宠固定「适应窗口」）。</summary>
+    /// <summary>窗口内坐标（DIP）→ 模型画布像素坐标（桌宠固定「适应窗口」= 窗口即模型）。</summary>
     private bool ComputeCanvasPoint(double localX, double localY, out float canvasX, out float canvasY)
     {
         canvasX = canvasY = 0;
@@ -950,14 +945,13 @@ public partial class PetWindow : Window
             var height = Math.Max(1.0, ActualHeight);
             var canvasWidth = Math.Max(1.0, model.CanvasWidthPixels);
             var canvasHeight = Math.Max(1.0, model.CanvasHeightPixels);
-            var cfg = Config;
-            var view = PetViewport.Calculate(
-                width, height, canvasWidth, canvasHeight,
-                cfg?.PetZoom ?? 1.0, cfg?.PetPanX ?? 0, cfg?.PetPanY ?? 0);
-            if (view.Scale <= 0.0001) return false;
+            var fit = Math.Min(width / canvasWidth, height / canvasHeight);
+            if (fit <= 0.0001) return false;
 
-            canvasX = (float)((localX - view.OffsetX) / view.Scale);
-            canvasY = (float)((localY - view.OffsetY) / view.Scale);
+            var offsetX = (width - canvasWidth * fit) / 2;
+            var offsetY = (height - canvasHeight * fit) / 2;
+            canvasX = (float)((localX - offsetX) / fit);
+            canvasY = (float)((localY - offsetY) / fit);
             return true;
         }
         catch
@@ -1224,22 +1218,8 @@ public partial class PetWindow : Window
     {
         var cfg = Config;
         if (cfg is null) return;
-        cfg.PetWidth = 420;
-        cfg.PetZoom = 1.0;
-        cfg.PetPanX = 0;
-        cfg.PetPanY = 0;
+        cfg.PetWidth = PetViewport.DefaultWindowWidth;
         ApplySizeFromConfig();
-        SavePlacement();
-    }
-
-    /// <summary>右键菜单：只还原模型缩放 / 平移（窗口大小与位置不动）。</summary>
-    private void OnMenuResetViewClick(object sender, RoutedEventArgs e)
-    {
-        var cfg = Config;
-        if (cfg is null) return;
-        cfg.PetZoom = 1.0;
-        cfg.PetPanX = 0;
-        cfg.PetPanY = 0;
         SavePlacement();
     }
 
@@ -1313,12 +1293,11 @@ public partial class PetWindow : Window
             Line($"OK 窗口 {Width:0}×{Height:0} @({Left:0},{Top:0})，Topmost={Topmost}，Opacity={Opacity:0.00}，" +
                  $"已渲染 {_renderedFrames} 帧，画布比例 {_session.CanvasAspect:0.0000}");
 
-            // ① 窗口尺寸按配置宽度 + 模型比例，并且高度不超过屏幕工作区（旧版会被系统悄悄夹到 1100 高）
-            var workArea = SystemParameters.WorkArea;
+            // ① 窗口尺寸按配置宽度 + 模型比例；窗口允许比屏幕高（子类化已解除系统上限）
             var (expectedWidth, expectedHeight) = PetViewport.ComputeWindowSize(
-                cfg?.PetWidth ?? 420, _session.CanvasAspect, workArea.Width, workArea.Height);
+                cfg?.PetWidth ?? PetViewport.DefaultWindowWidth, _session.CanvasAspect);
             Line(Math.Abs(Width - expectedWidth) < 1.5 && Math.Abs(Height - expectedHeight) < 1.5
-                ? $"OK 窗口尺寸：Width={Width:0} Height={Height:0}（期望 {expectedWidth:0.0}×{expectedHeight:0.0}，工作区高 {workArea.Height:0}）"
+                ? $"OK 窗口尺寸：Width={Width:0} Height={Height:0}（期望 {expectedWidth:0.0}×{expectedHeight:0.0}，屏幕工作区高 {SystemParameters.WorkArea.Height:0}）"
                 : $"FAIL 窗口尺寸：Width={Width:0} Height={Height:0}（期望 {expectedWidth:0.0}×{expectedHeight:0.0}）");
 
             // ② 拖动结束写回配置（模拟一次拖动 + 松手：窗口 +40,+30 → SavePlacement → 读回配置）
