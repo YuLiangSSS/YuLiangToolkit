@@ -713,9 +713,13 @@ public partial class PetWindow : Window
             }
             else if (runtime.Motions.Count > 0)
             {
-                var motion = runtime.Motions[Random.Shared.Next(runtime.Motions.Count)];
-                _session.PlayMotion(motion, motion.Loop, Config?.MotionFadeSeconds ?? 0.3);
-                viewModel?.Log($"桌宠互动：随机动作「{motion.Name}」");
+                // 双击彩蛋只挑「非待机动作」并强制单次播放：有些动作文件自带 Loop=true，
+                // 以前直接按 motion.Loop 播会一直循环，角色永远回不到待机。
+                var candidates = runtime.Motions.Where(m => !m.IsIdleCandidate).ToArray();
+                if (candidates.Length == 0) candidates = runtime.Motions.ToArray();
+                var motion = candidates[Random.Shared.Next(candidates.Length)];
+                _session.PlayMotion(motion, loop: false, Config?.MotionFadeSeconds ?? 0.3);
+                viewModel?.Log($"桌宠互动：随机动作「{motion.Name}」（单次播放）");
             }
         }
         catch { /* 互动失败不影响桌宠 */ }
@@ -934,6 +938,7 @@ public partial class PetWindow : Window
         MenuItemMocap.IsChecked = cfg.MocapEnabled;
         MenuItemSway.IsChecked = cfg.BodySwayEnabled;
         MenuItemMusic.IsChecked = cfg.MusicReactiveEnabled;
+        MenuItemSpeech.IsChecked = cfg.SpeechEnabled;
         MenuItemAiChat.IsChecked = _session.IsAiChatWindowVisible;
         MenuItemAiProactive.IsChecked = cfg.AiProactiveEnabled;
 
@@ -996,6 +1001,22 @@ public partial class PetWindow : Window
             : "桌宠菜单：已关闭音乐跟唱（音频采集已释放）");
     }
 
+    /// <summary>右键菜单：开 / 关语音朗读（关闭后点击互动仍弹气泡，但不出声）。</summary>
+    private void OnMenuSpeechClick(object sender, RoutedEventArgs e)
+    {
+        var cfg = Config;
+        if (cfg is null) return;
+
+        cfg.SpeechEnabled = !cfg.SpeechEnabled;
+        if (!cfg.SpeechEnabled) _session.StopSpeaking();
+        _session.ApplySpeechSettings();
+        _session.SaveConfigNow();
+        _session.ViewModel?.RefreshAllBindings();
+        _session.Log(cfg.SpeechEnabled
+            ? "桌宠菜单：已开启语音朗读"
+            : "桌宠菜单：已关闭语音朗读（说话只显示气泡，不出声、不联网）");
+    }
+
     /// <summary>右键菜单：开 / 关摄像头动捕（会请求摄像头权限；关掉立刻释放摄像头）。</summary>
     private void OnMenuMocapClick(object sender, RoutedEventArgs e)
     {
@@ -1018,10 +1039,10 @@ public partial class PetWindow : Window
         _session.SpeakRandomLine();
     }
 
-    /// <summary>右键菜单：随机换一个姿势（手势）。</summary>
+    /// <summary>右键菜单：随机换一个姿势（手势，约 2.5 秒后自动还原）。</summary>
     private void OnMenuRandomGestureClick(object sender, RoutedEventArgs e)
     {
-        _session.PlayRandomGesture();
+        _session.PlayRandomGesture(autoRestoreAfterHoldSeconds: 2.5);
     }
 
     /// <summary>右键菜单：随机跳一段舞（约 3 秒）。</summary>

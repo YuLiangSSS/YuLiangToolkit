@@ -468,8 +468,9 @@ internal static class Live2DChecks
                 && Near(defaults.MusicLipSyncStrength, 1.0, 1e-9)
                 && Near(defaults.MusicSwayStrength, 1.0, 1e-9)
                 && defaults.MusicSwayEnabled && defaults.MusicHeadBobEnabled);
-            C("配置默认值：语音（语音 id 空=自动在线软妹音 / 语速 0.95 / 音调 0 / 音量 0.9 / 气泡与自动小动作开 / 空闲自言自语关）",
-                defaults.SpeechVoiceId.Length == 0
+            C("配置默认值：语音（默认出声 / 语音 id 空=自动在线软妹音 / 语速 0.95 / 音调 0 / 音量 0.9 / 气泡与自动小动作开 / 空闲自言自语关）",
+                defaults.SpeechEnabled
+                && defaults.SpeechVoiceId.Length == 0
                 && Near(defaults.SpeechRate, 0.95, 1e-9)
                 && Near(defaults.SpeechPitchPercent, 0.0, 1e-9)
                 && Near(defaults.SpeechVolume, 0.9, 1e-9)
@@ -515,6 +516,7 @@ internal static class Live2DChecks
             cfg.MusicSwayStrength = 0.6;
             cfg.MusicSwayEnabled = false;
             cfg.MusicHeadBobEnabled = false;
+            cfg.SpeechEnabled = false;
             cfg.SpeechVoiceId = "voice-自检";
             cfg.SpeechRate = 1.3;
             cfg.SpeechPitchPercent = 20;
@@ -547,6 +549,7 @@ internal static class Live2DChecks
                     MusicReactiveEnabled: true, MusicReactiveMode: "强制跟唱", MusicReactiveSensitivity: 2.5,
                     MusicLipSyncStrength: 1.4, MusicSwayStrength: 0.6,
                     MusicSwayEnabled: false, MusicHeadBobEnabled: false,
+                    SpeechEnabled: false,
                     SpeechVoiceId: "voice-自检", SpeechRate: 1.3, SpeechPitchPercent: 20, SpeechVolume: 0.7,
                     SpeechBubbleEnabled: false, SpeechAutoGesture: false, SpeechIdleChatterEnabled: true,
                     IdleRandomGestureEnabled: false, IdleRandomGestureIntervalSeconds: 45,
@@ -568,6 +571,7 @@ internal static class Live2DChecks
                 && File.ReadAllText(cfg.FilePath).Contains("\"musicReactiveEnabled\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"musicReactiveSensitivity\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"musicLipSyncStrength\"")
+                && File.ReadAllText(cfg.FilePath).Contains("\"speechEnabled\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"speechVoiceId\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"speechPitchPercent\"")
                 && File.ReadAllText(cfg.FilePath).Contains("\"idleRandomGestureIntervalSeconds\"")
@@ -2712,6 +2716,24 @@ internal static class Live2DChecks
             runtime.MusicEnabled = false;
             runtime.ResetParameters();
             TickFrames(2);
+
+            // 待机随机手势：狗尾草必须「摆好后 2.5 秒自动收回去」，不能像旧版一样一直举着。
+            // 放在待机随机基础用例之后，避免这次强制触发消耗随机数 / 计时器影响前面的断言。
+            var idleTriggerMethod = typeof(ModelRuntime).GetMethod("TryTriggerIdleRandomGesture",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var idleGrassStarted = idleTriggerMethod?.Invoke(runtime, new object?[] { "拿起狗尾草" }) is true;
+            TickFrames(90); // 1.5s：enter 1.23s 已播完，进入 hold
+            C("待机随机手势：狗尾草已摆好（不是马上被停掉）",
+                idleGrassStarted && runtime.ActiveGesture == "拿起狗尾草",
+                $"started={idleGrassStarted} active={runtime.ActiveGesture ?? "null"}");
+            TickFrames(300); // 再 5s：2.5s hold + 1.13s exit + 余量
+            var idleGrassRestored = runtime.ActiveGesture is null
+                && Math.Abs(Param("Param39") - (rt.Model.FindParameter("Param39")?.DefaultValue ?? 0)) <= 0.02
+                && Math.Abs(Param("Param41") - (rt.Model.FindParameter("Param41")?.DefaultValue ?? 0)) <= 0.02
+                && Math.Abs(Param("Movement1") - (rt.Model.FindParameter("Movement1")?.DefaultValue ?? 0)) <= 0.02;
+            C("待机随机手势：狗尾草保持约 2.5 秒后自动播退出动作、参数回默认", idleGrassRestored,
+                $"active={runtime.ActiveGesture ?? "null"} Param39={Param("Param39"):0.###} " +
+                $"Param41={Param("Param41"):0.###} Movement1={Param("Movement1"):0.###}");
 
             // ---------------- M. 鼠标互动玩法（热区 / 反应 / 拖拽物理 / 待机小动作） ----------------
             // 互动被「用户动作淡出中」判为 blocked 时会直接取消反应，所以每次重置后要等动作完全淡出（0.2s+）

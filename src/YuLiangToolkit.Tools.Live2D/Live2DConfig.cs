@@ -241,6 +241,12 @@ public sealed class Live2DConfig : ToolConfig
 
     // ---------- 语音说话 / 聊天气泡（Windows 自带 TTS） ----------
 
+    /// <summary>
+    /// 是否真的出声（默认开）。关闭后所有「说话」只弹聊天气泡：不合成、不联网、不动嘴型，
+    /// 适合想安静挂着桌宠、但保留点击互动文字反馈的场景。
+    /// </summary>
+    public bool SpeechEnabled { get; set; } = true;
+
     /// <summary>语音 id（空 = 自动选第一个中文女声；可在「说话」卡里换）。</summary>
     public string SpeechVoiceId { get; set; } = "";
 

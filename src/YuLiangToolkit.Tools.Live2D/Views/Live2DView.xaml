@@ -1006,7 +1006,7 @@
                                           ToolTip="点 / 摸桌宠的身体不同部位会有反应：摸头、点额头换表情、捏脸、摸腰脚会痒、摸胸护住、点手竖食指" />
                                 <CheckBox Content="互动时说话" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6"
                                           IsChecked="{Binding PetInteractionVoiceEnabled, Mode=TwoWay}"
-                                          ToolTip="按热区随机说一句软妹台词（本地 TTS，同时出气泡 + 口型；1.5 秒内不重复）" />
+                                          ToolTip="按热区随机说一句台词（同时出气泡 + 口型；关闭「启用语音朗读」后只弹气泡、不出声；1.5 秒内不重复）" />
                                 <CheckBox Content="拖拽物理" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6"
                                           IsChecked="{Binding PetDragPhysicsEnabled, Mode=TwoWay}"
                                           ToolTip="拖动桌宠时给头发 / 裙子一个惯性，甩起来更生动" />
@@ -1975,6 +1975,9 @@
                                 </Grid>
 
                                 <WrapPanel Margin="0,6,0,0">
+                                    <CheckBox Content="启用语音朗读" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6"
+                                              IsChecked="{Binding SpeechEnabled, Mode=TwoWay}"
+                                              ToolTip="关闭后所有说话只显示聊天气泡：不合成、不联网、不动嘴型；点桌宠仍会有文字气泡" />
                                     <CheckBox Content="显示聊天气泡" Style="{StaticResource CheckBoxStyle}" Margin="0,0,16,6"
                                               IsChecked="{Binding SpeechBubbleEnabled, Mode=TwoWay}"
                                               ToolTip="说话时在桌宠头顶显示气泡（透明置顶不抢焦点、点击穿透）" />

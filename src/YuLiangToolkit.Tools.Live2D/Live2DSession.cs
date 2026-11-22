@@ -121,6 +121,7 @@ public sealed class Live2DSession
     private TtsService? _tts;    private SpeechBubbleWindow? _bubble;
     private CancellationTokenSource? _bubbleHideCts;
     private string? _lastLoggedSpeechError;
+    private string? _lastSilentBubbleText;
     private TimeSpan _idleChatterNextAt = TimeSpan.MinValue;
     private bool _speechSelfTestStarted;
     private bool _actionDemoApplied;
@@ -143,7 +144,6 @@ public sealed class Live2DSession
     private bool _pokeReactionSpeechDone;
     private readonly List<ExpressionEntry> _temporaryInteractionExpressions = new();
     private TimeSpan _temporaryInteractionExpressionClearAt = TimeSpan.MinValue;
-    private int _temporaryGestureGeneration;
     private string? _lastChestLine;
     private TimeSpan _lastChestReactionAt = TimeSpan.MinValue;
     private string? _lastInteractionVoiceLine;
@@ -301,8 +301,10 @@ public sealed class Live2DSession
     /// <summary>语音最近一次错误（空 = 没错误）。</summary>
     public string SpeechLastError => _tts?.LastError ?? "";
 
-    /// <summary>最近一次说的话（空 = 还没说过）。</summary>
-    public string LastSpokenText => _tts?.LastSpokenText ?? "";
+    /// <summary>最近一次说的话（含语音关闭时的纯气泡文字；空 = 还没说过）。</summary>
+    public string LastSpokenText => !string.IsNullOrWhiteSpace(_lastSilentBubbleText)
+        ? _lastSilentBubbleText
+        : _tts?.LastSpokenText ?? "";
 
     /// <summary>语音状态变化（开始 / 结束 / 出错；在 UI 线程触发）。</summary>
     public event EventHandler? SpeechStateChanged;
@@ -3021,29 +3023,31 @@ public sealed class Live2DSession
     }
 
     /// <summary>
-    /// 播放一个手势并在 <paramref name="seconds"/> 秒后自动播退出动作还原（表情区的手势按钮 / 摸胸动作共用）。
-    /// 期间如果换了别的手势，定时器不会再动新动作。
+    /// 播放一个手势，摆好姿势后保持 <paramref name="seconds"/> 秒，再自动播作者退出动作还原
+    /// （手势按钮 / 随机姿势 / 摸胸动作共用）。
+    /// <para>计时在运行时里跟帧走，且从 enter 播完 / 参数淡入完成之后才开始：
+    /// 不会把「抬手的过程」算进保持时间，也不会因为窗口卡顿 / 切页面产生一个迟到的后台计时器。</para>
     /// </summary>
     public void PlayGestureTemporarily(string id, double seconds = 3.0)
     {
         if (string.IsNullOrWhiteSpace(id)) return;
-        PlayGesture(id);
-        var generation = ++_temporaryGestureGeneration;
-        var delay = TimeSpan.FromSeconds(Math.Clamp(seconds, 0.5, 15.0));
-        _ = Task.Delay(delay).ContinueWith(_ =>
+        var runtime = _runtime;
+        if (runtime is null || !runtime.IsLoaded)
         {
-            try
-            {
-                _viewModel?.Ui(() =>
-                {
-                    if (generation != _temporaryGestureGeneration) return;
-                    var runtime = _runtime;
-                    if (runtime is not null && string.Equals(runtime.ActiveGesture, id.Trim(), StringComparison.Ordinal))
-                        StopGesture();
-                });
-            }
-            catch { /* 忽略 */ }
-        });
+            _viewModel?.Log("模型还没加载，无法播放手势：" + id);
+            return;
+        }
+
+        try
+        {
+            var holdSeconds = Math.Clamp(seconds, 0.5, 15.0);
+            runtime.PlayGesture(id.Trim(), holdSeconds);
+            _viewModel?.Log($"播放手势：{id.Trim()}（保持 {holdSeconds:0.#} 秒后自动还原）");
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("播放手势失败：" + ex.Message);
+        }
     }
 
     /// <summary>播放一个表演。</summary>
@@ -3113,15 +3117,19 @@ public sealed class Live2DSession
         }
     }
 
-    /// <summary>随机播一个手势或表演（「🎲 随机动作」/ 桌宠菜单）。</summary>
+    /// <summary>随机播一个手势或表演（「🎲 随机动作」/ 桌宠菜单；手势保持约 2.5 秒后自动还原）。</summary>
     public void RandomAction()
     {
-        if (Random.Shared.Next(2) == 0) PlayRandomGesture();
+        if (Random.Shared.Next(2) == 0) PlayRandomGesture(autoRestoreAfterHoldSeconds: 2.5);
         else PlayRandomPerformance();
     }
 
-    /// <summary>随机换一个姿势（手势）。</summary>
-    public void PlayRandomGesture()
+    /// <summary>
+    /// 随机换一个姿势（手势）。
+    /// <paramref name="autoRestoreAfterHoldSeconds"/> 大于 0 = 用户主动点的随机姿势，摆好后自动还原；
+    /// 语音自动配的小动作传 0，保持到这句话说完（由说话链路在 finally 里收手）。
+    /// </summary>
+    public void PlayRandomGesture(double autoRestoreAfterHoldSeconds = 0)
     {
         // 已经有手势在播时不要硬切：硬切会让手「闪一下掉下去再抬起来」（用户反馈的卡顿）。
         if (_runtime?.ActiveGesture is not null) return;
@@ -3129,8 +3137,11 @@ public sealed class Live2DSession
         var id = gestures is { Count: > 0 }
             ? gestures[Random.Shared.Next(gestures.Count)].Id
             : "比心";
-        PlayGesture(id);
-        _viewModel?.SetStatus("随机手势：" + id);
+        if (autoRestoreAfterHoldSeconds > 0) PlayGestureTemporarily(id, autoRestoreAfterHoldSeconds);
+        else PlayGesture(id);
+        _viewModel?.SetStatus(autoRestoreAfterHoldSeconds > 0
+            ? $"随机手势：{id}（{autoRestoreAfterHoldSeconds:0.#} 秒后还原）"
+            : "随机手势：" + id);
     }
 
     /// <summary>随机表演。</summary>
@@ -3227,6 +3238,10 @@ public sealed class Live2DSession
 
         try
         {
+            // 关掉语音立刻收声：Stop() 同时递增 generation，连「还在合成、尚未播放」的那句也会作废，
+            // 不会出现关了开关后过几秒突然念出来。
+            if (!cfg.SpeechEnabled) tts.Stop();
+
             tts.VoiceId = cfg.SpeechVoiceId ?? "";
             tts.Rate = Math.Clamp(cfg.SpeechRate, 0.6, 1.6);
             tts.PitchPercent = Math.Clamp(cfg.SpeechPitchPercent, -20, 40);
@@ -3260,6 +3275,14 @@ public sealed class Live2DSession
     private async Task SpeakAsyncCore(string text, string? gestureId = null, SpeechTone? tone = null,
         bool allowAutoGesture = true)
     {
+        // 语音总开关关闭：只走气泡，不初始化 TTS、不合成、不联网，也不驱动嘴型 / 手势。
+        if (_viewModel?.Cfg.SpeechEnabled == false)
+        {
+            ShowSilentBubble(text);
+            return;
+        }
+
+        _lastSilentBubbleText = null;
         var tts = EnsureSpeech();
         if (tts is null)
         {
@@ -3346,12 +3369,39 @@ public sealed class Live2DSession
         try { SpeechStateChanged?.Invoke(this, EventArgs.Empty); } catch { /* 订阅方异常不影响说话 */ }
     }
 
+    /// <summary>
+    /// 语音关闭时的「说话」：只弹气泡，不初始化 TTS、不合成、不联网、不动嘴型。
+    /// 气泡停留时间按文本长度估算（约 2.8~8 秒），比有声时更久，方便安静阅读。
+    /// </summary>
+    private void ShowSilentBubble(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        _lastSilentBubbleText = text;
+        _viewModel?.Log("语音已关闭，仅显示气泡：" + text);
+        try
+        {
+            ShowBubble(text);
+            var seconds = Math.Clamp(2.8 + (text.Length * 0.08), 2.8, 8.0);
+            HideBubbleAfter(TimeSpan.FromSeconds(seconds));
+        }
+        catch (Exception ex)
+        {
+            _viewModel?.Log("聊天气泡显示失败：" + ex.Message);
+        }
+
+        RaiseSpeechStateChanged();
+    }
+
     /// <summary>显示聊天气泡（只有桌宠可见时才显示；位置每帧跟随）。</summary>
     private void ShowBubble(string text)
     {
         var viewModel = _viewModel;
         if (viewModel?.Cfg.SpeechBubbleEnabled != true) return;
         if (_pet is not { IsVisible: true }) return;
+
+        // 新气泡出现时取消上一条的隐藏计时：否则「先弹纯文字气泡、马上又有声说话」时，
+        // 旧计时器会在新气泡中途把它关掉。
+        try { _bubbleHideCts?.Cancel(); } catch { /* 忽略 */ }
 
         try
         {
@@ -3390,7 +3440,10 @@ public sealed class Live2DSession
     }
 
     /// <summary>说话结束后约 1.5 秒隐藏气泡（中途又开始说就取消隐藏）。</summary>
-    private async void HideBubbleSoon()
+    private void HideBubbleSoon() => HideBubbleAfter(TimeSpan.FromSeconds(1.5));
+
+    /// <summary>延迟隐藏气泡；新的说话 / 新的气泡会取消上一次的隐藏计时。</summary>
+    private async void HideBubbleAfter(TimeSpan delay)
     {
         try
         {
@@ -3402,7 +3455,7 @@ public sealed class Live2DSession
         _bubbleHideCts = cts;
         try
         {
-            await Task.Delay(1500, cts.Token);
+            await Task.Delay(delay, cts.Token);
             if (!IsSpeaking) HideBubble();
         }
         catch (TaskCanceledException)

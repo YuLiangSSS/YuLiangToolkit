@@ -805,7 +805,7 @@ BPM 估计（原来只在有声 hop 估算，稀疏点击永远估不出——�
 | `Model/GesturePlayer.cs` | 8 个手势：3 个**作者原生手势**（enter/exit 动作 + hold 参数）+ 5 个**参数姿势**（直接给手臂目标值）；`Ids / ActiveId / HasActive / Play / Stop / StopImmediate / Update / ResetTouched` |
 | `Model/PerformancePlayer.cs` | 6 个**数据驱动时间线表演**（`BuildDefinitions()` 里定义 Id / Duration / Action 列表：Pose / Look / Nod / Talk / Gesture），按时间推进、触发嵌套手势；`Definitions / Ids / ActiveId / ActiveDuration / ElapsedSeconds / Play / Stop / Update / ResetTouched` |
 | `Model/DanceController.cs` | 4 个**程序化舞蹈模式**（`轻快摇摆 / 挥手舞 / 摇摆转圈 / 酷炫抖肩`）：相位驱动写手臂 / 肩 / 头 / 身体参数，权重 0.25s 淡入淡出；`Modes / ActiveMode / HasActive / Speed / Phase / Start / Stop / StopImmediate / Update / ResetTouched` |
-| `Model/ModelRuntime.cs` | 对外 API：`GestureIds / ActiveGesture / PlayGesture(id) / StopGesture()`、`PerformanceIds / ActivePerformance / PlayPerformance / StopPerformance`、`DanceModes / ActiveDance / DanceSpeed(0.5~2) / StartDance(mode, speed) / StopDance`、`StopAllDemos()`、`IdleRandomGestureEnabled / IdleRandomGestureIntervalSeconds`、内部 `TryTriggerIdleRandomGesture()`（自检 / 调试）；`UpdateActionPlayers` / `UpdateIdleRandomGesture` 在 Tick 里调用 |
+| `Model/ModelRuntime.cs` | 对外 API：`GestureIds / ActiveGesture / PlayGesture(id, autoRestoreAfterHoldSeconds = 0) / StopGesture()`、`PerformanceIds / ActivePerformance / PlayPerformance / StopPerformance`、`DanceModes / ActiveDance / DanceSpeed(0.5~2) / StartDance(mode, speed) / StopDance`、`StopAllDemos()`、`IdleRandomGestureEnabled / IdleRandomGestureIntervalSeconds`、内部 `TryTriggerIdleRandomGesture(forcedGestureId = null)`（自检 / 调试）；`UpdateActionPlayers` / `UpdateIdleRandomGesture` 在 Tick 里调用 |
 
 ### 14.2 手势：作者原生动作 + hold 参数
 
@@ -815,6 +815,10 @@ BPM 估计（原来只在有声 hop 估算，稀疏点击永远估不出——�
   3. enter 播完（`_phaseTimer >= data.Duration`）→ `GesturePhase.Hold`：每帧把 `BuildHoldFromMotion` 提取的
      **enter 曲线末值**直接写参数（`WriteHold`）——这样动作淡出前就「接住」手臂，不会掉回 IDLE；
   4. `StopGesture`：播作者 **exit 动作**（淡入 0.12s），播完释放（`GesturePhase.None`）。
+- **自动还原**（本轮修）：`Play(..., autoRestoreAfterHoldSeconds)` 设置保持秒数，`GesturePlayer.Update` 只在
+  `Hold / PoseHold` 阶段累计，到点自己调 `Stop()` 走作者退出动作 / 参数淡出。计时不含 enter / 淡入，
+  所以「拿出来 → 摆好 → 保持 N 秒 → 收回去」的节奏不会被抬手过程吃掉。待机随机手势固定用 2.5 秒；
+  UI 手势按钮 / 随机姿势也用同一机制（2.5 秒），不会再举着狗尾草 / 竖着食指定住。
 - **hold 参数提取语义**（和 `Motion3Data.CollectFinalParameterValues` 一致）：遍历 `Target=Parameter` 的曲线，
   取**最后一段的终点值**（`EndValue`；没有段取首值），同 Id 多条曲线时**后写覆盖前写**（字典）。
   注意 motion3 的贝塞尔段布局是 `[1, c1x, c1y, c2x, c2y, endX, endY]`——**末值是第 7 个数**，不是第 3 个；
@@ -856,7 +860,9 @@ BPM 估计（原来只在有声 hop 估算，稀疏点击永远估不出——�
   间隔 = `clamp(IntervalSeconds, 4, 600) × (0.55 + rand×1.05)`；到点调 `TryPlayRandomIdleDemo`：
   - 条件 `CanPlayIdleRandomDemo`：没有动捕脸 / 没在语音 / 没在放音乐 / 没有手势 / 表演 / 舞蹈在播 /
     当前动作要么没有、要么是 IDLE 候选（`IsIdleCandidate`）；条件不满足 → 3 秒后重试；
-  - 满足 → 随机手势或表演（`_idleRandomRng` 固定种子便于复现）；`IdleRandomTriggerCount` 内部计数（自检用）。
+  - 满足 → 随机手势或表演（`_idleRandomRng` 固定种子便于复现）；**随机到手势时传
+    `IdleRandomGestureHoldSeconds = 2.5`，摆好后自动播退出动作**，不会残留举狗尾草 / 竖食指的姿势；
+  - `IdleRandomTriggerCount` 内部计数（自检用）；`TryTriggerIdleRandomGesture(forcedGestureId)` 可强制指定手势做自检。
 - 配置：`IdleRandomGestureEnabled`（默认 true）/ `IdleRandomGestureIntervalSeconds`（默认 22）。
 - 自检（`Live2DChecks` L 段）：8/6/4 数量与中文名、未知 id 返回 false、3 原生手势 hold 参数 = enter 末值
   （±2e-2）且保持 1 秒、StopGesture 后回默认、5 参数姿势到位与保持、表演中段变化 + 自然结束回默认 + Stop 立即停、
@@ -875,6 +881,8 @@ BPM 估计（原来只在有声 hop 估算，稀疏点击永远估不出——�
 5. **舞蹈相位不要重置**：`Start` 不重置 `_phase`，所以连续切换模式相位连续；速度变化只改推进速率。
 6. **待机随机不能抢正在播的内容**：条件漏了任意一项（如没判断音乐 / 语音），就会出现「跟唱时突然抱胸」。
 7. **所有演示的写参数都要走 touched 表**：停止后下一帧开头复位，否则会残留姿势；手动值在不再写时保留。
+8. **自动还原的计时不能从按键那一刻算**：原生手势 enter 要 1.1~1.25 秒，按总时长停会出现「刚拿出来就被收回」；
+   实现只在 `Hold / PoseHold` 累计 `holdElapsed`。新增手势时别绕过 `GesturePlayer.Play` 自己起 `Task.Delay`。
 
 ## 15. 语音 TTS 管线（本地 + 在线软妹音 / 聊天气泡）
 
@@ -913,10 +921,15 @@ BPM 估计（原来只在有声 hop 估算，稀疏点击永远估不出——�
     `Windows.Media.Transcoding` 转成 WAV（实测 48k / 2ch / 16bit）→ 再走 `WaveAudio` 解析 / 包络；
   - 内置语音清单是写死的 ShortName（不联网列举；服务端可接受），失败一律回退本地。
 - **隐私**：在线只发送**文字**（不发送音频 / 文件 / 其它信息）；合成 WAV 只在内存里播放、播完释放，不写磁盘。
+- **语音总开关**（`SpeechEnabled`，默认开；说话卡「启用语音朗读」/ 桌宠右键「语音朗读：开 / 关」）：
+  关闭后 `SpeakAsyncCore` 在 `EnsureSpeech` 之前短路成 `ShowSilentBubble` —— 不初始化 TTS、不合成、不联网、
+  不驱动口型 / 说话手势，只按 2.8~8 秒（长度估算）显示聊天气泡；点桌宠摸头等互动仍会走同一路径弹文字气泡。
+  关闭时如果正在播放，`ApplySpeechSettings` 立刻 `tts.Stop()` 收声。`LastSpokenText` 会回退显示最后一条纯气泡文字。
 
 ### 15.3 合成 → 解析 → 口型 → 播放（同步链路）
 
 ```
+SpeechEnabled=false → 直接 ShowSilentBubble（不合成 / 不联网 / 不动嘴型）
 文本 →（在线 EdgeTtsClient / 本地 SpeechSynthesizer）→ WAV 字节（内存）
   → WaveAudio.TryParse（RIFF 块遍历：fmt / data，支持 fmt 18 / LIST 在前或在后）
   → ReadMonoSamples → BuildEnvelope（20ms 一帧、0~1）
@@ -945,7 +958,8 @@ BPM 估计（原来只在有声 hop 估算，稀疏点击永远估不出——�
   2. 左右夹取到屏幕工作区（各留 **4px** 边距；工作区比气泡还窄时贴左边）；
   3. 上方放不下 → **翻到桌宠脚下**（`petTop + petHeight + Gap`）；脚下也放不下 → 贴工作区顶部 4px；
   4. `bubbleW/H <= 1` 用默认 320×90，`workW/H <= 1` 用 1920×1080（防御）。
-- 说话结束约 1.5s 后淡出；桌宠拖动 / 缩放时跟随。
+- 说话结束约 1.5s 后淡出；语音关闭的纯气泡按文本长度停留约 2.8~8s；桌宠拖动 / 缩放时跟随。
+  任何新气泡都会先取消上一条的隐藏计时，不会出现「新气泡刚出来就被旧计时器关掉」。
 - **DPI**：`Calculate` 的入参必须同单位（调用方把工作区换算成 DIP）；多屏负坐标也要按**桌宠所在屏**的工作区传。
 
 ### 15.5 生命周期 / 线程
@@ -1805,9 +1819,9 @@ InteractionController._raiseInteraction(voiceEvent, displayName)
   （对比说话前 `ActiveGesture`），说完话统一 `StopGesture()`（播退出动作）；
 - **根因 2**：表情区的「竖食指开 / 关」以前直接改 `Movement` 参数，没有退出动作。现在特判成手势：
   开 = `PlayGestureTemporarily("竖起食指", 3)`（3 秒后自动退出），关 = `StopGesture()`；
-- **根因 3**：组合预设 / 表情切换不会停手势；新增 `Session.PlayGestureTemporarily()`（记录 generation，
-  3 秒后若还是这个手势才停），换别的手势不会误停；
-- 表情区「✋ 手势」新增按钮：举手（打招呼）/ 举手（搭胸）/ 竖起食指 / 狗尾草；点一下播放、3 秒后自动还原，
+- **根因 3**：组合预设 / 表情切换不会停手势；`Session.PlayGestureTemporarily()` 现在直接把「摆好后保持秒数」
+  传给 `GesturePlayer`，由帧循环计时并在到点走作者退出动作（不再用后台 `Task.Delay` / generation，切页面也可靠）；
+- 表情区「✋ 手势」新增按钮：举手（打招呼）/ 举手（搭胸）/ 竖起食指 / 狗尾草；点一下播放、保持约 3 秒后自动还原，
   再点一次立即还原（VM `GestureChips` + `ToggleGestureChipCommand`，XAML 用 `ExpressionChipButtonStyle`）；
 - 自检：`ChestReaction` 三档 / 指定台词 / 动作与时长常量；手势还原靠上面的行为修复（无头自检不跑窗口动画）。
 

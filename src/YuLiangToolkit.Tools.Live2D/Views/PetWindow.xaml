@@ -55,6 +55,9 @@
             <MenuItem x:Name="MenuItemMusic" Header="音乐跟唱：开 / 关" IsCheckable="True"
                       Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuMusicClick"
                       ToolTip="用 Windows 回环采集系统正在播放的声音驱动嘴型 / 摇晃（不申请麦克风、不录音、不保存）" />
+            <MenuItem x:Name="MenuItemSpeech" Header="语音朗读：开 / 关" IsCheckable="True"
+                      Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuSpeechClick"
+                      ToolTip="关闭后所有说话只弹聊天气泡，不出声、不联网、不动嘴型；点桌宠摸头仍有文字反馈" />
             <Separator />
             <!-- 动作 / 语音：随机说话、随机姿势、跳一段舞、停止演示 -->
             <MenuItem Header="说句话" Foreground="{DynamicResource TextPrimaryBrush}" Click="OnMenuSaySomethingClick"

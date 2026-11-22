@@ -2155,7 +2155,10 @@ public sealed class Live2DViewModel : ToolViewModelBase
         foreach (var row in _armRows) row.RefreshFromModel();
     }
 
-    /// <summary>播放手势（按钮 / 调试钩子 / 说话自动小动作共用）。</summary>
+    /// <summary>
+    /// 播放手势（「🖐 手臂 &amp; 姿势」卡的手势按钮）。
+    /// 统一保持约 2.5 秒后自动播退出动作还原 —— 否则狗尾草 / 竖食指 / 抬手会一直定在半空。
+    /// </summary>
     public void PlayGesture(string? id)
     {
         if (string.IsNullOrWhiteSpace(id)) return;
@@ -2168,10 +2171,10 @@ public sealed class Live2DViewModel : ToolViewModelBase
 
         try
         {
-            runtime.PlayGesture(id.Trim());
-            ActionStatusText = "手势：" + id.Trim();
+            Session.PlayGestureTemporarily(id.Trim(), 2.5);
+            ActionStatusText = $"手势：{id.Trim()}（2.5 秒后自动还原）";
             StatusText = "手势：" + id.Trim();
-            Log("播放手势：" + id.Trim());
+            Log($"播放手势：{id.Trim()}（2.5 秒后自动还原）");
         }
         catch (Exception ex)
         {
@@ -2355,6 +2358,24 @@ public sealed class Live2DViewModel : ToolViewModelBase
             Cfg.SpeechVolume = clamped;
             OnPropertyChanged();
             Session.ApplySpeechSettings();
+        }
+    }
+
+    /// <summary>
+    /// 是否真的出声（默认开）。关闭后「说话」只显示聊天气泡：不合成、不联网、不动嘴型；
+    /// 点桌宠摸头等互动仍会弹文字气泡。
+    /// </summary>
+    public bool SpeechEnabled
+    {
+        get => Cfg.SpeechEnabled;
+        set
+        {
+            if (Cfg.SpeechEnabled == value) return;
+            Cfg.SpeechEnabled = value;
+            OnPropertyChanged();
+            if (!value) Session.StopSpeaking();
+            Session.ApplySpeechSettings();
+            Log(value ? "语音朗读：开启" : "语音朗读：关闭（只显示气泡，不出声）");
         }
     }
 
@@ -2595,6 +2616,12 @@ public sealed class Live2DViewModel : ToolViewModelBase
         if (IsSpeaking)
         {
             SpeechStatusText = $"正在说话…（嘴型 {SpeechMouthOpen:0.00}）";
+        }
+        else if (!Cfg.SpeechEnabled)
+        {
+            SpeechStatusText = SpeechBubbleEnabled
+                ? "语音已关闭 · 说话只显示气泡（不出声、不联网）"
+                : "语音与气泡都已关闭";
         }
         else if (!string.IsNullOrWhiteSpace(session.SpeechLastError))
         {

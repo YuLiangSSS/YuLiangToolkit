@@ -217,6 +217,12 @@ public sealed class ModelRuntime : IDisposable
 
     private int _idleRandomGestureCount;
 
+    /// <summary>
+    /// 待机随机手势摆好后保持的秒数（不含抬手 / 淡入；到点自动播作者退出动作还原）。
+    /// 狗尾草这类「拿出来一直举着」的手势以前会卡住，现在 2.5 秒后自己收回去。
+    /// </summary>
+    internal const double IdleRandomGestureHoldSeconds = 2.5;
+
     /// <summary>待机随机小动作已触发次数（自检用）。</summary>
     internal int IdleRandomTriggerCount => _idleRandomGestureCount;
 
@@ -548,8 +554,11 @@ public sealed class ModelRuntime : IDisposable
     /// <summary>当前手势 id（没有为 null）。</summary>
     public string? ActiveGesture => _gesture?.ActiveId;
 
-    /// <summary>播一个手势（未知 id 返回 false；会先停动作 / 表演 / 舞蹈，避免抢手臂）。</summary>
-    public bool PlayGesture(string id)
+    /// <summary>
+    /// 播一个手势（未知 id 返回 false；会先停动作 / 表演 / 舞蹈，避免抢手臂）。
+    /// <paramref name="autoRestoreAfterHoldSeconds"/> 大于 0 时，摆好姿势后保持该秒数自动播退出动作还原。
+    /// </summary>
+    public bool PlayGesture(string id, double autoRestoreAfterHoldSeconds = 0)
     {
         if (_gesture is null) return false;
         if (!_gesture.IsKnownId(id)) return false;
@@ -557,7 +566,7 @@ public sealed class ModelRuntime : IDisposable
         _performance?.Stop();
         _dance?.StopImmediate();
         StopMotion(0.12);
-        var played = _gesture.Play(id, stopMotionFirst: false);
+        var played = _gesture.Play(id, stopMotionFirst: false, autoRestoreAfterHoldSeconds);
         if (played) _idleDemoActive = false;
         return played;
     }
@@ -1069,8 +1078,12 @@ public sealed class ModelRuntime : IDisposable
     /// <summary>待机随机小动作的基础间隔（秒，默认 22；实际每次在 0.55~1.6 倍之间随机）。</summary>
     public double IdleRandomGestureIntervalSeconds { get; set; } = 22.0;
 
-    /// <summary>强制触发一次待机随机小动作（跳过倒计时；供自检 / 调试；条件不满足时返回 false）。</summary>
-    internal bool TryTriggerIdleRandomGesture() => TryPlayRandomIdleDemo(mocapFace: false);
+    /// <summary>
+    /// 强制触发一次待机随机小动作（跳过倒计时；供自检 / 调试；条件不满足时返回 false）。
+    /// <paramref name="forcedGestureId"/> 非空时强制挑指定手势（自检用来精确覆盖狗尾草自动还原路径）。
+    /// </summary>
+    internal bool TryTriggerIdleRandomGesture(string? forcedGestureId = null)
+        => TryPlayRandomIdleDemo(mocapFace: false, forcedGestureId);
 
     /// <summary>把待机随机小动作倒计时清零（自检用，下一次 Tick 立刻进入判定）。</summary>
     internal void ResetIdleRandomGestureTimer() => _idleRandomGestureTimer = 0;
@@ -2072,7 +2085,7 @@ public sealed class ModelRuntime : IDisposable
         return true;
     }
 
-    private bool TryPlayRandomIdleDemo(bool mocapFace)
+    private bool TryPlayRandomIdleDemo(bool mocapFace, string? forcedGestureId = null)
     {
         if (!CanPlayIdleRandomDemo(mocapFace)) return false;
         var gestureIds = _gesture?.Ids;
@@ -2082,10 +2095,21 @@ public sealed class ModelRuntime : IDisposable
         var total = gestureCount + performanceCount;
         if (total == 0) return false;
 
-        var pick = _idleRandomRng.Next(total);
-        var played = pick < gestureCount
-            ? PlayGesture(gestureIds![pick])
-            : PlayPerformance(performanceIds![pick - gestureCount]);
+        bool played;
+        if (!string.IsNullOrWhiteSpace(forcedGestureId))
+        {
+            if (_gesture?.IsKnownId(forcedGestureId) != true) return false;
+            // 待机随机手势统一限时：姿势摆好后 2.5 秒自动播退出动作，狗尾草 / 竖食指不会一直举着。
+            played = PlayGesture(forcedGestureId.Trim(), IdleRandomGestureHoldSeconds);
+        }
+        else
+        {
+            var pick = _idleRandomRng.Next(total);
+            played = pick < gestureCount
+                ? PlayGesture(gestureIds![pick], IdleRandomGestureHoldSeconds)
+                : PlayPerformance(performanceIds![pick - gestureCount]);
+        }
+
         if (!played) return false;
         _idleRandomGestureCount++;
         _idleDemoActive = true;

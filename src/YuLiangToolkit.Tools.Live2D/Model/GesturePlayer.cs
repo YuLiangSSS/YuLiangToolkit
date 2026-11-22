@@ -202,6 +202,12 @@ internal sealed class GesturePlayer
     private double _phaseTimer;
     private double _phaseDuration;
 
+    /// <summary>摆好姿势后还要保持多少秒自动还原（&lt;= 0 = 一直保持，直到手动停止）。</summary>
+    private double _autoRestoreAfterHoldSeconds;
+
+    /// <summary>进入 Hold / PoseHold 后累计的保持时间（只在姿势真正摆好后计时，不含 enter / 淡入）。</summary>
+    private double _holdElapsedSeconds;
+
     private CubismParameter?[] _holdParameters = Array.Empty<CubismParameter?>();
     private float[] _holdValues = Array.Empty<float>();
 
@@ -255,6 +261,12 @@ internal sealed class GesturePlayer
     public bool HasActive => _activeId is not null || _phase is GesturePhase.Enter or GesturePhase.Hold or GesturePhase.Exit
         or GesturePhase.PoseIn or GesturePhase.PoseHold or GesturePhase.PoseOut;
 
+    /// <summary>姿势是否已经摆好（enter 播完 / 参数淡入完成），自动还原从这一刻开始计时。</summary>
+    public bool IsHolding => _phase is GesturePhase.Hold or GesturePhase.PoseHold;
+
+    /// <summary>当前手势是否配置了「保持若干秒后自动还原」（自检 / 调试观察用）。</summary>
+    public bool HasAutoRestore => _autoRestoreAfterHoldSeconds > 0;
+
     /// <summary>本帧写过的参数个数（运行时下一帧开头复位）。</summary>
     public int TouchedCount => _touchedCount;
 
@@ -263,16 +275,34 @@ internal sealed class GesturePlayer
     /// <summary>
     /// 播一个手势（id 用中文名或 jingyu 的英文名都行）。
     /// <paramref name="stopMotionFirst"/>：true = 先停当前动作（用户点手势时用；表演内部触发的 gesture 传 false）。
+    /// <paramref name="autoRestoreAfterHoldSeconds"/>：摆好姿势后保持多少秒自动播退出动作还原（&lt;= 0 = 手动停止）。
+    /// 计时从 enter 动作播完 / 参数姿势淡入完成之后开始，所以不会把「抬手的过程」算进保持时间。
     /// </summary>
-    public bool Play(string id, bool stopMotionFirst)
+    public bool Play(string id, bool stopMotionFirst, double autoRestoreAfterHoldSeconds = 0)
     {
         var normalized = NormalizeId(id);
         if (normalized is null) return false;
-        if (string.Equals(_activeId, normalized, StringComparison.Ordinal)) return true;
+
+        var autoRestore = double.IsFinite(autoRestoreAfterHoldSeconds)
+            ? Math.Clamp(autoRestoreAfterHoldSeconds, 0, 60)
+            : 0;
+        if (string.Equals(_activeId, normalized, StringComparison.Ordinal))
+        {
+            // 再点同一个手势：如果这次要求限时，就重置保持计时（便于「再点一下续 3 秒」）。
+            if (autoRestore > 0)
+            {
+                _autoRestoreAfterHoldSeconds = autoRestore;
+                _holdElapsedSeconds = 0;
+            }
+
+            return true;
+        }
 
         // 换手势：先把手势自身状态清掉（不播退出动作，直接切）
         ReleaseHold();
         _poseWeight = 0;
+        _autoRestoreAfterHoldSeconds = autoRestore;
+        _holdElapsedSeconds = 0;
 
         var native = FindNative(normalized);
         if (native is not null)
@@ -305,6 +335,8 @@ internal sealed class GesturePlayer
     /// <summary>停止手势：原生手势播退出动作；参数姿势 0.25 秒淡出回默认。</summary>
     public void Stop()
     {
+        _autoRestoreAfterHoldSeconds = 0;
+        _holdElapsedSeconds = 0;
         if (_activeId is null && _phase == GesturePhase.None) return;
         if (_phase == GesturePhase.Enter || _phase == GesturePhase.Hold)
         {
@@ -353,6 +385,8 @@ internal sealed class GesturePlayer
         _poseWeight = 0;
         _activeId = null;
         _phase = GesturePhase.None;
+        _autoRestoreAfterHoldSeconds = 0;
+        _holdElapsedSeconds = 0;
     }
 
     /// <summary>推进一帧：写保持姿势 / 参数姿势（在动作更新之后调用，覆盖 IDLE 的手臂曲线）。</summary>
@@ -369,10 +403,12 @@ internal sealed class GesturePlayer
                 if (_phaseTimer < _phaseDuration) return;
                 _phase = GesturePhase.Hold;
                 _phaseTimer = 0;
+                _holdElapsedSeconds = 0;
                 return;
 
             case GesturePhase.Hold:
                 WriteHold();
+                TickAutoRestore(deltaSeconds);
                 return;
 
             case GesturePhase.Exit:
@@ -386,6 +422,7 @@ internal sealed class GesturePlayer
                 {
                     _poseWeight = 1;
                     _phase = GesturePhase.PoseHold;
+                    _holdElapsedSeconds = 0;
                 }
 
                 WritePose(_poseWeight);
@@ -393,6 +430,7 @@ internal sealed class GesturePlayer
 
             case GesturePhase.PoseHold:
                 WritePose(1f);
+                TickAutoRestore(deltaSeconds);
                 return;
 
             case GesturePhase.PoseOut:
@@ -407,6 +445,18 @@ internal sealed class GesturePlayer
                 WritePose(_poseWeight);
                 return;
         }
+    }
+
+    /// <summary>
+    /// 姿势保持计时：只在 Hold / PoseHold 推进，到点调 <see cref="Stop"/> 播作者退出动作或淡出。
+    /// 自动还原本身也走正常退出过渡，所以狗尾草会「收回去」而不是瞬间消失。
+    /// </summary>
+    private void TickAutoRestore(double deltaSeconds)
+    {
+        if (_autoRestoreAfterHoldSeconds <= 0) return;
+        _holdElapsedSeconds += Math.Max(0, deltaSeconds);
+        if (_holdElapsedSeconds < _autoRestoreAfterHoldSeconds) return;
+        Stop();
     }
 
     /// <summary>运行时下一帧开头复位「上一帧手势写过的参数」。</summary>
