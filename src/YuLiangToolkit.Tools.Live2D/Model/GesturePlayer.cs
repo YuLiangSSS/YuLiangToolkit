@@ -252,6 +252,20 @@ internal sealed class GesturePlayer
     /// <summary>手势 id 是否存在（中文名 / jingyu 英文名都行）。</summary>
     public bool IsKnownId(string? id) => NormalizeId(id) is not null;
 
+    /// <summary>
+    /// 该手势是否正在播（Enter / Hold 阶段；退出动作播放期间不算——那时重新 Play 会重新抬手）。
+    /// 用于运行时判断「同一手势重复触发」：这种情况下不能停当前动作 / 重播 enter，
+    /// 否则正在抬手的 enter 动作会被杀掉，Hold 一到就瞬移到末帧姿势。
+    /// </summary>
+    public bool IsActive(string? id)
+    {
+        var normalized = NormalizeId(id);
+        if (normalized is null) return false;
+        return string.Equals(_activeId, normalized, StringComparison.Ordinal)
+            && _phase is GesturePhase.Enter or GesturePhase.Hold
+                or GesturePhase.PoseIn or GesturePhase.PoseHold;
+    }
+
     public IReadOnlyList<string> Ids => GestureIdList;
 
     /// <summary>当前手势 id（没有为 null；退出动作播放期间也算 null）。</summary>

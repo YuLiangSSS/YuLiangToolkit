@@ -627,13 +627,26 @@ public sealed class ModelRuntime : IDisposable
     public string? ActiveGesture => _gesture?.ActiveId;
 
     /// <summary>
-    /// 播一个手势（未知 id 返回 false；会先停动作 / 表演 / 舞蹈，避免抢手臂）。
+    /// 播一个手势（未知 id 返回 false）。
+    /// <para><b>同一手势重复触发（互动控制器 + 会话异步回调会各来一次）</b>：不停动作、不重播 enter，
+    /// 只让手势刷新保持计时——否则第二次的 StopMotion 会把刚开播的 enter 动作杀掉，
+    /// Hold 一到就把末帧姿势一帧写上去（手瞬移到胸口，没有过渡动画）。</para>
+    /// <para>不同手势 / 首次触发：先停其它演示 / 当前动作，避免抢手臂。</para>
     /// <paramref name="autoRestoreAfterHoldSeconds"/> 大于 0 时，摆好姿势后保持该秒数自动播退出动作还原。
     /// </summary>
     public bool PlayGesture(string id, double autoRestoreAfterHoldSeconds = 0)
     {
         if (_gesture is null) return false;
         if (!_gesture.IsKnownId(id)) return false;
+
+        // 同一手势已经在播（Enter / Hold 中）：只刷新保持计时，别碰正在播的 enter 动作
+        if (_gesture.IsActive(id))
+        {
+            var refreshed = _gesture.Play(id, stopMotionFirst: false, autoRestoreAfterHoldSeconds);
+            if (refreshed) _idleDemoActive = false;
+            return refreshed;
+        }
+
         // 先停其它演示 / 当前动作，再播手势：原生手势的 enter 动作不能被随后的 StopMotion 顶掉
         _performance?.Stop();
         _dance?.StopImmediate();

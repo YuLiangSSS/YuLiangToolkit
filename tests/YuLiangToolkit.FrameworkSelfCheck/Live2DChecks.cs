@@ -3158,14 +3158,22 @@ internal static class Live2DChecks
                 C("互动反应：摸胸 → 语音事件 protect、名称「护住」",
                     runtime.LastInteractionVoiceEvent == "protect" && runtime.LastInteractionName == "护住",
                     $"{runtime.LastInteractionVoiceEvent}/{runtime.LastInteractionName}");
+                // 模拟会话的异步二次触发（InteractionTriggered → PlayGestureTemporarily 会对同一手势再 Play 一次）：
+                // 重复 Play 同一手势不能停掉正在播的 enter 动作，否则手会瞬移到胸口（没有过渡动画）
+                runtime.PlayGesture("抱胸致意", 2.8);
+                TickFrames(50);
+                var handDefault = rt.Model.FindParameter("Param60")?.DefaultValue ?? 0f;
+                C("摸胸：重复触发同一手势不杀 enter 动作（0.9 秒时手在抬起途中，不在默认位）",
+                    Math.Abs(Param("Param60") - handDefault) > 0.02,
+                    $"Param60={Param("Param60"):0.###} default={handDefault:0.###}");
                 TickFrames(5);
                 C("互动反应：护住期间播「抱胸致意」手势", runtime.ActiveGesture == "抱胸致意",
                     $"ActiveGesture={runtime.ActiveGesture ?? "null"}");
-                TickFrames(115);
-                C("互动反应：护住 2 秒时手还搭在胸口（手势保持中，不会提前切回去）",
+                TickFrames(90);
+                C("互动反应：护住 2.5 秒时手还搭在胸口（手势保持中，不会提前切回去）",
                     runtime.ActiveGesture == "抱胸致意",
                     $"ActiveGesture={runtime.ActiveGesture ?? "null"}");
-                TickFrames(84);
+                TickFrames(45);
                 C("互动反应：护住约 2.8 秒后结束（手势停止、InteractionActive=false）",
                     !runtime.InteractionActive && runtime.ActiveGesture is null,
                     $"active={runtime.InteractionActive} gesture={runtime.ActiveGesture ?? "null"}");
