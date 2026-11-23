@@ -94,10 +94,19 @@ internal static class Live2DInteractionScenarioChecks
             "");
 
         C("预设：每个表情名都是模型内置表情（Exp3 清单里的），且至少有一条前倾预设",
-            new[] { "爱心眼", "脸红", "＞＜", "黑脸", "流冷汗", "流泪", "圈圈眼", "屑屑眼" }
+            new[] { "爱心眼", "脸红", "＞＜", "黑脸", "流冷汗", "流泪", "圈圈眼" }
                 .All(name => InteractionScenarios.All.SelectMany(s => s.Expressions).Contains(name)) &&
             InteractionScenarios.All.Any(s => s.LeanForward),
             "");
+
+        // 挠痒（摸腹部 / 摸腰）：屑屑眼和 ＞＜ 是两套眼睛表情，叠在一起会重影（用户反馈）——
+        // 挠痒预设只允许 ＞＜ 一套眼睛 + 脸红 / 流泪
+        var tickleScenario = InteractionScenarios.TryMatch("tickle", 90)!;
+        var tickleEyeExpressions = tickleScenario.Expressions.Count(name =>
+            name is "屑屑眼" or "＞＜" or "爱心眼" or "圈圈眼");
+        C("预设：挠痒不叠加两套眼睛表情（只有 ＞＜，没有屑屑眼）",
+            tickleEyeExpressions == 1 && !tickleScenario.Expressions.Contains("屑屑眼"),
+            string.Join("+", tickleScenario.Expressions));
 
         // ==================================================================
         // 四、台词去重
