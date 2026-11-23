@@ -3161,8 +3161,12 @@ internal static class Live2DChecks
                 TickFrames(5);
                 C("互动反应：护住期间播「抱胸致意」手势", runtime.ActiveGesture == "抱胸致意",
                     $"ActiveGesture={runtime.ActiveGesture ?? "null"}");
-                TickFrames(100);
-                C("互动反应：护住约 1.5 秒后结束（手势停止、InteractionActive=false）",
+                TickFrames(115);
+                C("互动反应：护住 2 秒时手还搭在胸口（手势保持中，不会提前切回去）",
+                    runtime.ActiveGesture == "抱胸致意",
+                    $"ActiveGesture={runtime.ActiveGesture ?? "null"}");
+                TickFrames(84);
+                C("互动反应：护住约 2.8 秒后结束（手势停止、InteractionActive=false）",
                     !runtime.InteractionActive && runtime.ActiveGesture is null,
                     $"active={runtime.InteractionActive} gesture={runtime.ActiveGesture ?? "null"}");
             }

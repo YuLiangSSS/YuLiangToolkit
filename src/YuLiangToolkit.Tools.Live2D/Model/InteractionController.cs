@@ -122,7 +122,12 @@ internal sealed class InteractionController
 
     private const double PatHeadDuration = 0.8;
     private const double TickleDuration = 1.2;
-    private const double ProtectDuration = 1.5;
+    /// <summary>
+    /// 护住（摸胸）反应窗口（秒）。必须 ≥ 抱胸手势的 enter 动作时长（「默认手切举手」1.133s），
+    /// 并与 <c>Play.ChestReaction.DurationSeconds</c>（2.8s）对齐：之前是 1.5s，手刚搭上去（1.133s）
+    /// 0.37s 就被 FinishReaction 切回去，看起来像「搭上去又立刻播了一次收回」。
+    /// </summary>
+    private const double ProtectDuration = 2.8;
     private const double ShyDuration = 1.0;
     private const double ReactionCooldownSeconds = 3.0;
     private const double ExpressionFadeSeconds = 0.25;
