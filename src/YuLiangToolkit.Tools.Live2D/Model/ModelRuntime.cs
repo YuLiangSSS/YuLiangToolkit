@@ -1765,8 +1765,7 @@ public sealed class ModelRuntime : IDisposable
     /// <summary>加载时创建三个演示播放器（手势 / 表演 / 舞蹈）；动作数据查找用运行时自己的解析表。</summary>
     private void CreateActionPlayers(CubismModel model)
     {
-        _gesture = new GesturePlayer(model, FindMotionEntryByName, FindMotionData, PlayActionMotion, StopActionMotion);
-        _performance = new PerformancePlayer(model, StartGestureForPerformance, StopGestureForPerformance);
+        _gesture = new GesturePlayer(model, FindMotionEntryByName, FindMotionData, PlayActionMotion, StopActionMotion);        _performance = new PerformancePlayer(model, StartGestureForPerformance, StopGestureForPerformance);
         _dance = new DanceController(model);
     }
 
@@ -1885,11 +1884,11 @@ public sealed class ModelRuntime : IDisposable
     private Motion3Data? FindMotionData(MotionEntry entry)
         => _motionDataByPath.TryGetValue(entry.FilePath, out var data) ? data : null;
 
-    private void PlayActionMotion(MotionEntry entry, Motion3Data data, double fadeSeconds)
+    private void PlayActionMotion(MotionEntry entry, Motion3Data data, double fadeSeconds, double fadeOutSeconds)
     {
         var model = _model;
         if (model is null) return;
-        _motionPlayer.Play(model, entry, data, loop: false, fadeSeconds);
+        _motionPlayer.Play(model, entry, data, loop: false, fadeSeconds, fadeOutSeconds);
     }
 
     private void StopActionMotion(double fadeSeconds) => _motionPlayer.Stop(fadeSeconds);
@@ -2464,8 +2463,10 @@ public sealed class ModelRuntime : IDisposable
         // 4.6) 整身以脚为支点的左右轻倾：常态 4s/±0.6°，音乐在播平滑加速到 2.6s/±1.0°×SwayStrength
         UpdateBodyLean(deltaSeconds);
 
-        // 5) 待机动作（IdleEnabled 且当前没有动作在播时循环播放）
+        // 5) 待机动作（IdleEnabled 且当前没有动作在播时循环播放）。
+        //    原生手势的 Enter / Hold 阶段不播待机：待机曲线会和保持姿势打架（手臂被拽回默认姿势）。
         if (idleEnabled && IdleMotion is { } idleMotion && !_motionPlayer.HasActive &&
+            _gesture?.SuppressIdleMotion != true &&
             _motionDataByPath.TryGetValue(idleMotion.FilePath, out var idleData))
         {
             _motionPlayer.Play(model, idleMotion, idleData, loop: true);

@@ -32,7 +32,9 @@ git add -A; git commit -m "<中文提交信息>"   # ③ 提交：每轮改动�
 ## 硬性规则（违反 = 破坏项目或删用户数据；更多细节见踩坑清单）
 
 1. **运行时数据在 exe 旁边**；仓库根 `Data/`、`Config/`、`Cache/` 只放说明。绝不用 `<None CopyToOutputDirectory>` 拷 Data/Config；`dotnet clean` / 删 `bin`、`dist` = 删用户数据。
-2. **可以引 NuGet 包，但要有理由**：优先微软官方 / 维护活跃 / 许可证清晰的包（当前：`OsuParsers`、`Microsoft.Web.WebView2`、`AvalonEdit`、`SharpCompress`、`SkiaSharp`）；新增包必须登记 `THIRD-PARTY-NOTICES.md` 并在功能文档里说明用途与运行时要求。能手写的小轮子仍优先手写进 `Core/`。
+2. **NuGet 包可自由引入**（项目所有者 2026-11-23 起解除「不引新包」限制）：引入第三方库时在
+   `THIRD-PARTY-NOTICES.md` 登记来源 / 许可证，并在功能文档里说明用途与运行时要求（追溯用，不是限制）。
+   小轮子要不要手写进 `Core/` 由当次实现自行权衡，不再作为硬性要求。
 3. **带 setter 的计算属性必须 `[JsonIgnore]`**；配置自动落盘（无保存按钮）；要「一敲键就刷新」用 `Set(ref 字段, 值)`。
 4. **后台线程改界面走 `Ui(...)` / `UiAsync(...)`**；切走时在 `NotifyClosed()` 里摘缓存对象上的事件；绕过 `ToolConfigStore` 的持久化入口自己接 `FlushAll`。
 5. **数据目录里的相对路径不能带 `..`、不能是绝对路径**（`ToolStorage` 故意抛异常防逃逸）。

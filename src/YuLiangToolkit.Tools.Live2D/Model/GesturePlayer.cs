@@ -187,7 +187,7 @@ internal sealed class GesturePlayer
     private readonly CubismModel _model;
     private readonly Func<string, MotionEntry?> _findMotionEntry;
     private readonly Func<MotionEntry, Motion3Data?> _findMotionData;
-    private readonly Action<MotionEntry, Motion3Data, double> _playMotion;
+    private readonly Action<MotionEntry, Motion3Data, double, double> _playMotion;
     private readonly Action<double> _stopMotion;
 
     /// <summary>参数姿势解析好的目标（加载时一次；参数不存在的目标直接丢掉）。</summary>
@@ -222,7 +222,7 @@ internal sealed class GesturePlayer
         CubismModel model,
         Func<string, MotionEntry?> findMotionEntry,
         Func<MotionEntry, Motion3Data?> findMotionData,
-        Action<MotionEntry, Motion3Data, double> playMotion,
+        Action<MotionEntry, Motion3Data, double, double> playMotion,
         Action<double> stopMotion)
     {
         _model = model;
@@ -263,6 +263,16 @@ internal sealed class GesturePlayer
 
     /// <summary>姿势是否已经摆好（enter 播完 / 参数淡入完成），自动还原从这一刻开始计时。</summary>
     public bool IsHolding => _phase is GesturePhase.Hold or GesturePhase.PoseHold;
+
+    /// <summary>
+    /// 原生手势的 Enter / Hold 阶段：enter 动作已播完、姿势由 WriteHold 每帧钉住时，
+    /// 待机动作**不应**接管 —— 待机的 21 条曲线会和保持姿势打架（手臂被拽回默认姿势，
+    /// 看起来像「狗尾草先收回一次再回到手上」）。退出阶段（Exit）正常播退动作，不受此开关影响。
+    /// </summary>
+    public bool SuppressIdleMotion
+        => _phase is GesturePhase.Enter or GesturePhase.Hold
+           && _activeId is not null
+           && FindNative(_activeId) is not null;
 
     /// <summary>当前手势是否配置了「保持若干秒后自动还原」（自检 / 调试观察用）。</summary>
     public bool HasAutoRestore => _autoRestoreAfterHoldSeconds > 0;
@@ -313,7 +323,9 @@ internal sealed class GesturePlayer
             {
                 if (stopMotionFirst) _stopMotion(EnterFadeSeconds);
                 BuildHoldFromMotion(data);
-                _playMotion(entry, data, EnterFadeSeconds);
+                // enter 动作末尾不做淡出削弱（fadeOut=0）：播完保持最后一帧原样，
+                // 由 Hold 姿势无缝接管 —— 否则最后 0.3 秒姿势往默认值回落，看起来像「先收回一次」。
+                _playMotion(entry, data, EnterFadeSeconds, 0);
                 _activeId = normalized;
                 _phase = GesturePhase.Enter;
                 _phaseTimer = 0;
@@ -348,7 +360,8 @@ internal sealed class GesturePlayer
                 if (entry is not null && data is not null)
                 {
                     ReleaseHold();
-                    _playMotion(entry, data, ExitFadeSeconds);
+                    // exit 动作末尾同样不淡出：收回动画完整播完，最后一帧就是默认手姿势
+                    _playMotion(entry, data, ExitFadeSeconds, 0);
                     _activeId = null;
                     _phase = GesturePhase.Exit;
                     _phaseTimer = 0;

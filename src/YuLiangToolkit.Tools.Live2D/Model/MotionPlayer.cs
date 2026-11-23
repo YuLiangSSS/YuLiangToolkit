@@ -99,9 +99,16 @@ internal sealed class MotionPlayer
     /// <param name="fadeSeconds">
     /// 淡入 / 交叉淡化秒数；&lt; 0 = 用动作自带的 Meta.FadeInTime（没有就 0.3 秒）；0 = 立即切换。
     /// </param>
-    public void Play(CubismModel model, MotionEntry entry, Motion3Data data, bool loop, double fadeSeconds = -1)
+    /// <param name="fadeOutOverride">
+    /// 动作末尾的淡出秒数；&lt; 0 = 自动（一次性动作取 min(0.3, 时长一半)）。
+    /// 手势的 enter / exit 动作传 0：末尾不做淡出削弱，播完保持最后一帧原样，
+    /// 由手势的 Hold 姿势无缝接管（否则最后 0.3 秒姿势往默认值回落，看起来像「先收回一次」）。
+    /// </param>
+    public void Play(CubismModel model, MotionEntry entry, Motion3Data data, bool loop, double fadeSeconds = -1,
+        double fadeOutOverride = -1)
     {
         var fadeIn = fadeSeconds >= 0 ? fadeSeconds : ResolveFadeIn(data);
+        var fadeOut = fadeOutOverride >= 0 ? fadeOutOverride : ResolveFadeOut(data, loop);
 
         // 旧动作：按新动作的淡入时间交叉淡出（已经更早结束的保持原样）
         foreach (var instance in _instances)
@@ -124,7 +131,7 @@ internal sealed class MotionPlayer
             StartTime = _userTime,
             FadeInStartTime = _userTime,
             FadeInSeconds = fadeIn,
-            FadeOutSeconds = ResolveFadeOut(data, loop),
+            FadeOutSeconds = fadeOut,
             EndTime = loop ? -1 : _userTime + data.Duration,
         });
 
