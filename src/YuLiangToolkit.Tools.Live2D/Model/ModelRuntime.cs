@@ -311,7 +311,8 @@ public sealed class ModelRuntime : IDisposable
     private double _pokeReactionRemainingSeconds;
     private double _pokeReactionDurationSeconds;
     private double _pokeReactionElapsedSeconds;
-    private double _pokeSwayDegrees = 7;
+    /// <summary>戳脸彩蛋（＞＜）的左右晃头角度：0.9Hz 摆头，太浅了看不出来（用户反馈），12° 左右刚好明显。</summary>
+    private double _pokeSwayDegrees = 12;
     private float _pokeMouthFormTarget = 0.55f;
     private float _pokeMouthSmileTarget = 0.45f;
 

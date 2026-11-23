@@ -82,6 +82,9 @@ public partial class PetWindow : Window
     private double _lastWindowMoveLeft;
     private double _lastWindowMoveTop;
 
+    /// <summary>按住脸部开始的捏脸互动还在进行（拖动期间 ＞＜ 保持，松手复位）。</summary>
+    private bool _facePinchStarted;
+
     // 全局快捷键（默认 Ctrl+Alt+L 鼠标穿透 / Ctrl+Alt+0 退出，可在配置 / 汇总页里改）
     private const int HotkeyToggleClickThrough = 0x4C01;
     private const int HotkeyExit = 0x4C02;
@@ -680,9 +683,12 @@ public partial class PetWindow : Window
         _pressStartCursorDip = cursor;
         _pressMovedPixels = 0;
         _pressedRegion = InteractionRegion.None;
+        _facePinchStarted = false;
 
         // 按下只做命中测试记录，**不触发任何互动**：松开时才判定 —— 窗口没被拖动过才算「摸了一下」。
         // 这样拖动桌宠（窗口位移）就永远不会误触发摸头 / 捏脸。
+        // 例外：**脸部热区**按下就立刻开始捏脸（＞＜ + 表情马上出现），窗口照常可拖，
+        // 拖动过程把窗口位移喂给捏脸锚点（脸被拽着走），松手复位（用户反馈）。
         var runtime = _session.Runtime;
         if (cfg?.PetInteractionEnabled == true && runtime?.IsLoaded == true &&
             ComputeCanvasPoint(cursor.X - Left, cursor.Y - Top, out var canvasX, out var canvasY))
@@ -691,6 +697,16 @@ public partial class PetWindow : Window
             _pressCanvasY = canvasY;
             try { _pressedRegion = runtime.HitTest(canvasX, canvasY); }
             catch { _pressedRegion = InteractionRegion.None; }
+
+            if (_pressedRegion is InteractionRegion.FaceLeft or InteractionRegion.FaceRight)
+            {
+                try { _facePinchStarted = runtime.InteractionPointerDown(canvasX, canvasY); }
+                catch { _facePinchStarted = false; }
+            }
+        }
+        else
+        {
+            _facePinchStarted = false;
         }
 
         CaptureMouse();
@@ -727,6 +743,18 @@ public partial class PetWindow : Window
         Left = newLeft;
         Top = newTop;
 
+        // 按住脸拖动：窗口位移喂给捏脸锚点，脸跟着拖动方向被拽（＞＜ 保持到松手）
+        if (_facePinchStarted)
+        {
+            try
+            {
+                runtime?.InteractionPointerMove(
+                    _pressCanvasX + (float)(Left - _dragStartLeft),
+                    _pressCanvasY + (float)(Top - _dragStartTop));
+            }
+            catch { /* 忽略 */ }
+        }
+
         // 拖窗口的同时给头发 / 裙子一个惯性（配置可关）
         if ((Math.Abs(windowDx) > 0.01 || Math.Abs(windowDy) > 0.01) && Config?.PetDragPhysicsEnabled == true)
         {
@@ -750,7 +778,19 @@ public partial class PetWindow : Window
                       _pressMovedPixels <= 6 &&
                       _pressedRegion != InteractionRegion.None;
 
-        if (touched && cfgInteractionEnabled() && runtime?.IsLoaded == true)
+        // 按住脸开始的捏脸：松手时收尾（＞＜ 撤掉、脸弹回），不再走下面的合成 tap 路径
+        if (_facePinchStarted)
+        {
+            try
+            {
+                runtime?.InteractionPointerUp(
+                    _pressCanvasX + (float)(Left - _dragStartLeft),
+                    _pressCanvasY + (float)(Top - _dragStartTop));
+            }
+            catch { /* 忽略 */ }
+            _facePinchStarted = false;
+        }
+        else if (touched && cfgInteractionEnabled() && runtime?.IsLoaded == true)
         {
             var canvasX = _pressCanvasX;
             var canvasY = _pressCanvasY;
