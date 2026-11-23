@@ -106,17 +106,21 @@ public sealed unsafe partial class CubismRenderer : ILive2DRenderSurface, IDispo
 
     /// <summary>用一套纹理图集创建渲染器（纹理只读，模型切换时复用）。
     /// <para>构造时先尝试建 D3D11 GPU 渲染层（<c>YLT_LIVE2D_RENDERER=cpu</c> 可强制软件光栅器）；
-    /// 建不出 GPU（无显卡 / 驱动太老 / 远程会话受限）就留在 CPU 路径，不影响功能。</para></summary>
+    /// 建不出 GPU（无显卡 / 驱动太老 / 远程会话受限）就留在 CPU 路径，不影响功能。</para>
+    /// <para><paramref name="useD3DImagePresentation"/>：D3DImage 零拷贝出图只适合<b>不透明窗口</b>——
+    /// WPF 的 <c>AllowsTransparency</c> 分层窗口（桌宠）内容走软件合成，D3DImage 在里面会闪，
+    /// 所以桌宠渲染器传 false，改走「GPU 渲染 → 读回 WriteableBitmap」出图（光栅化仍在显卡上）。</para></summary>
     /// <param name="textures">已加载的纹理图集（可被多个渲染器共享）。</param>
-    public CubismRenderer(TextureAtlasSet textures)
+    /// <param name="useD3DImagePresentation">true = D3DImage 零拷贝出图（不透明窗口用）；false = 读回出图（分层透明窗口用）。</param>
+    public CubismRenderer(TextureAtlasSet textures, bool useD3DImagePresentation = true)
     {
         _textures = textures ?? throw new ArgumentNullException(nameof(textures));
         Textures = _textures;
-        TryCreateGpu();
+        TryCreateGpu(useD3DImagePresentation);
     }
 
     /// <summary>尝试创建 GPU 渲染层（失败只记原因，不抛异常）。</summary>
-    private void TryCreateGpu()
+    private void TryCreateGpu(bool useD3DImagePresentation)
     {
         if (string.Equals(Environment.GetEnvironmentVariable("YLT_LIVE2D_RENDERER"), "cpu", StringComparison.OrdinalIgnoreCase))
         {
@@ -133,7 +137,7 @@ public sealed unsafe partial class CubismRenderer : ILive2DRenderSurface, IDispo
                 return;
             }
 
-            var presenter = Gpu.GpuPresenter.Create(device.Device);
+            var presenter = Gpu.GpuPresenter.Create(device.Device, useD3DImagePresentation);
             _gpu = new Gpu.CubismGpuRenderer(_textures, device, presenter);
             GpuError = null;
         }

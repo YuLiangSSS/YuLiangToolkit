@@ -1647,11 +1647,13 @@ public sealed class Live2DSession
         try { runtime.InteractionHappened += OnInteractionHappened; } catch { /* 运行时还没实现互动事件 */ }
         try { runtime.InteractionTriggered += OnInteractionTriggered; } catch { /* 旧运行时没有这个事件 */ }
 
-        // 桌宠用独立的渲染器（只共享只读纹理）：页面和桌宠同时显示时各画各的位图，互不覆盖
+        // 桌宠用独立的渲染器（只共享只读纹理）：页面和桌宠同时显示时各画各的位图，互不覆盖。
+        // 桌宠窗口是 AllowsTransparency 分层透明窗口（WPF 软件合成，D3DImage 在里面会闪），
+        // 所以出图走「GPU 渲染 → 读回 WriteableBitmap」通道（光栅化仍在显卡上，见 GpuPresenter 注释）。
         _petRenderer = null;
         try
         {
-            _petRenderer = new CubismRenderer(runtime.Renderer.Textures);
+            _petRenderer = new CubismRenderer(runtime.Renderer.Textures, useD3DImagePresentation: false);
         }
         catch (Exception ex)
         {

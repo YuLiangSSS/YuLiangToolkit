@@ -99,16 +99,21 @@ internal sealed unsafe class GpuPresenter : IDisposable
     public int Width => _width;
     public int Height => _height;
 
-    /// <summary>创建出图通道：优先 D3DImage（D3D9Ex 共享纹理），失败退回读回模式。</summary>
-    public static GpuPresenter Create(ID3D11Device device)
+    /// <summary>创建出图通道：<paramref name="useD3DImage"/> 且 D3D9Ex 共享纹理可用时走 D3DImage 零拷贝
+    /// （<b>只适合不透明窗口</b>——WPF 分层透明窗口软件合成 D3DImage 会闪）；否则读回模式。</summary>
+    public static GpuPresenter Create(ID3D11Device device, bool useD3DImage = true)
     {
-        var presenter = new GpuPresenter(device, Mode.D3DImage);
-        if (presenter.TryCreateD3D9Interop(device))
+        if (useD3DImage)
         {
-            return presenter;
+            var presenter = new GpuPresenter(device, Mode.D3DImage);
+            if (presenter.TryCreateD3D9Interop(device))
+            {
+                return presenter;
+            }
+
+            presenter.DisposeD3D9();
         }
 
-        presenter.DisposeD3D9();
         return new GpuPresenter(device, Mode.Readback);
     }
 

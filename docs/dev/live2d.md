@@ -264,12 +264,16 @@ x64 only（官方 Core 只提供 x86_64；主程序 / 自检都编译成 x64 语
    且 alpha 不动；
 5. **纹理**：图集按现有 mip 链原样上传（`B8G8R8A8_UNorm` + `Immutable`，内存序就是 0xAARRGGBB 直传），
    采样 `MinMagMipLinear + Wrap`，mip 层级由 GPU 按导数自动选（替代 CPU 版的每帧 SelectAtlasViews）；
-6. **出图**（`GpuPresenter`）：首选 **D3DImage 零拷贝**——D3D9Ex `CreateTexture(..., A8R8G8B8, Default,
-   ref sharedHandle)` 建共享纹理 → D3D11 `OpenSharedResource` 拿到同一块显存当渲染目标 → D3DImage
-   `SetBackBuffer(surface)` + `Lock/AddDirtyRect/Unlock` 上屏，中间**没有任何 CPU 拷贝**；
-   共享纹理建不出来（老驱动 / 远程会话限制）退回**读回模式**（`CopyResource → staging → Map →
-   WriteableBitmap`，GPU 光栅化仍在显卡上）；D3D9 适配器按 LUID 匹配 D3D11 设备的物理显卡（跨卡共享
-   句柄会失败）；
+6. **出图**（`GpuPresenter`）：**按窗口类型选通道**——
+   - **不透明窗口**（工具页预览）：**D3DImage 零拷贝**——D3D9Ex `CreateTexture(..., A8R8G8B8, Default,
+     ref sharedHandle)` 建共享纹理 → D3D11 `OpenSharedResource` 拿到同一块显存当渲染目标 → D3DImage
+     `SetBackBuffer(surface)` + `Lock/AddDirtyRect/Unlock` 上屏，中间**没有任何 CPU 拷贝**；
+   - **分层透明窗口**（桌宠 `AllowsTransparency`）：WPF 对分层窗口内容走**软件合成**，D3DImage 在里面
+     会被合成线程反复回读 → 部件闪烁（实测），所以桌宠渲染器传 `useD3DImagePresentation: false`，
+     走**读回模式**：GPU 光栅化 → `CopyResource → staging → Map → WriteableBitmap`（多一次 GPU→CPU
+     拷贝，呈现方式和旧 CPU 渲染时代一致、稳定）；
+   - 共享纹理建不出来（老驱动 / 远程会话限制）也会自动退到读回模式；D3D9 适配器按 LUID 匹配
+     D3D11 设备的物理显卡（跨卡共享句柄会失败）；
 7. **截图 / 逐像素断言**：`CubismRenderer.CaptureBitmap()` 读回 GPU 帧（两种出图模式都支持）；
    UI 每帧绑定的是 `CubismRenderer.Surface`（D3DImage / 读回位图 / CPU 位图统一为 `ImageSource`）；
 8. **回退**：D3D11 设备建不出 / 着色器编译失败 / 渲染抛异常（含设备丢失）→ 释放 GPU 层、记
