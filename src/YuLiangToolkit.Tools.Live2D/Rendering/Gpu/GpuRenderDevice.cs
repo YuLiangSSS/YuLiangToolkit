@@ -255,18 +255,23 @@ internal sealed unsafe class GpuRenderDevice : IDisposable
             var mipLevels = mips is { Length: > 0 } ? mips.Length : 1;
 
             var subresources = new SubresourceData[mipLevels];
+            var premultiplied = new uint[mipLevels][];
             var handles = new GCHandle[mipLevels];
             try
             {
                 for (var level = 0; level < mipLevels; level++)
                 {
                     var mip = mips is { Length: > 0 } ? mips[level] : new TextureMipLevel(atlas.Width, atlas.Height, atlas.Pixels);
-                    handles[level] = GCHandle.Alloc(mip.Pixels, GCHandleType.Pinned);
+                    // 预乘 alpha 上传：双线性滤波跨 UV 岛边缘时，透明邻 texel（RGB 任意）不再把颜色混进
+                    // 边缘像素（下巴 / 衣领轮廓外「多出来一点颜色」的渗色问题）；着色器解预乘还原直色。
+                    premultiplied[level] = new uint[mip.Pixels.Length];
+                    Premultiply(mip.Pixels, premultiplied[level]);
+                    handles[level] = GCHandle.Alloc(premultiplied[level], GCHandleType.Pinned);
                     subresources[level] = new SubresourceData
                     {
                         DataPointer = handles[level].AddrOfPinnedObject(),
                         RowPitch = (uint)(mip.Width * 4),
-                                            };
+                    };
                 }
 
                 var desc = new Texture2DDescription
@@ -275,7 +280,7 @@ internal sealed unsafe class GpuRenderDevice : IDisposable
                     Height = (uint)atlas.Height,
                     MipLevels = (uint)mipLevels,
                     ArraySize = 1,
-                    Format = Format.B8G8R8A8_UNorm, // 像素数组就是 B,G,R,A 小端序（0xAARRGGBB），直传
+                    Format = Format.B8G8R8A8_UNorm, // 像素数组是 B,G,R,A 小端序（0xAARRGGBB）；RGB 已按 alpha 预乘
                     SampleDescription = new SampleDescription(1, 0),
                     Usage = ResourceUsage.Immutable,
                     BindFlags = BindFlags.ShaderResource,
@@ -528,6 +533,32 @@ internal sealed unsafe class GpuRenderDevice : IDisposable
             RenderTargetWriteMask = ColorWriteEnable.All,
         };
         return device.CreateBlendState(desc);
+    }
+
+    /// <summary>把 0xAARRGGBB（直 alpha）像素预乘成 RGB×A（小端 BGRA 字节序不变，只改 RGB 三个低位字节）。</summary>
+    private static void Premultiply(uint[] source, uint[] destination)
+    {
+        for (var i = 0; i < source.Length; i++)
+        {
+            var pixel = source[i];
+            var a = pixel >> 24;
+            if (a == 255)
+            {
+                destination[i] = pixel;
+                continue;
+            }
+
+            if (a == 0)
+            {
+                destination[i] = 0;
+                continue;
+            }
+
+            var b = (pixel & 0xFF) * a / 255;
+            var g = (pixel >> 8 & 0xFF) * a / 255;
+            var r = (pixel >> 16 & 0xFF) * a / 255;
+            destination[i] = (a << 24) | (r << 16) | (g << 8) | b;
+        }
     }
 
     private static ID3D11ShaderResourceView CreateWhiteTexture(ID3D11Device device)

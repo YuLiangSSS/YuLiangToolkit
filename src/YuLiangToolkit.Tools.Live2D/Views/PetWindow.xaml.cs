@@ -231,8 +231,11 @@ public partial class PetWindow : Window
         double sliceHeight;
         if (gpuPath)
         {
-            // GPU：整幅渲染。目标尺寸 = 窗口 × 渲染倍率，钳到 D3D9 纹理上限 8192（超出按比例降倍率，只影响清晰度）
-            var effectiveScale = Math.Min(renderScale,
+            // GPU：整幅渲染。位图按「物理像素分辨率」出图（渲染倍率 × 系统 DPI 缩放），
+            // 上屏 1:1 不做显示插值——否则描线 / 轮廓的抗锯齿边缘会被放大插值成一圈彩边。
+            var dpiScale = Math.Max(VisualTreeHelper.GetDpi(this).DpiScaleX, VisualTreeHelper.GetDpi(this).DpiScaleY);
+            var physicalScale = renderScale * dpiScale;
+            var effectiveScale = Math.Min(physicalScale,
                 Math.Min(GpuMaxTextureSize / windowWidth, GpuMaxTextureSize / windowHeight));
             options.Width = Math.Max(2, (int)Math.Round(windowWidth * effectiveScale));
             options.Height = Math.Max(2, (int)Math.Round(windowHeight * effectiveScale));

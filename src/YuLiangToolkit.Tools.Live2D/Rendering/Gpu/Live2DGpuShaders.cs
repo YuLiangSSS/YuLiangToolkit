@@ -80,7 +80,12 @@ internal static class Live2DGpuShaders
         {
             float4 t = Tex.Sample(TexSampler, i.uv);
 
-            float3 rgb = t.rgb * MulColor.rgb;
+            // Texture uploaded with RGB premultiplied by alpha, so bilinear filtering across
+            // UV-island edges cannot tint edge pixels from transparent neighbours.
+            // Un-premultiply back to straight color before the official Cubism color math.
+            float3 straight = t.a > 0.003 ? t.rgb / t.a : float3(0.0, 0.0, 0.0);
+
+            float3 rgb = straight * MulColor.rgb;
             rgb = rgb + ScrColor.rgb - rgb * ScrColor.rgb;
 
             float alpha = t.a * Params.x;

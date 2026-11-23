@@ -1794,6 +1794,23 @@ internal static class Live2DChecks
                 C("渲染器：320×640 一帧画出角色（不透明像素 > 3000，不是黑块 / 空白）",
                     alpha.OpaquePixels > 3000,
                     $"不透明像素={alpha.OpaquePixels} 半透明={alpha.SemiPixels}");
+                // 防采样量纲回归：整帧不透明像素的平均亮度必须落在中间区间（CPU 采样量纲错了会整帧纯白 / 纯黑）
+                {
+                    var rgbPixels = ReadPixels(bitmap);
+                    long lumSum = 0;
+                    int lumCount = 0;
+                    for (var i = 0; i < rgbPixels.Length; i += 4)
+                    {
+                        if (rgbPixels[i + 3] < 128) continue;
+                        lumSum += (rgbPixels[i] * 299 + rgbPixels[i + 1] * 587 + rgbPixels[i + 2] * 114) / 1000;
+                        lumCount++;
+                    }
+
+                    var avgLum = lumCount > 0 ? lumSum / lumCount : 0;
+                    C("渲染器：不透明像素平均亮度在 10~245（采样量纲正确，不是整帧纯白 / 纯黑）",
+                        lumCount > 0 && avgLum is > 10 and < 245,
+                        $"平均亮度={avgLum} 不透明像素={lumCount}");
+                }
                 C("渲染器：透明背景四角 alpha = 0（桌面宠物不会有白底 / 黑底）",
                     alpha.CornerAlphas.All(a => a == 0),
                     string.Join(",", alpha.CornerAlphas));

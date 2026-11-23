@@ -744,16 +744,24 @@ public sealed unsafe partial class CubismRenderer
                                 var a11 = (int)(p11 >> 24);
                                 var alphaTop = a00 + (a01 - a00) * fx;
                                 var alphaBottom = a10 + (a11 - a10) * fx;
-                                alpha *= (alphaTop + (alphaBottom - alphaTop) * fy) * (1f / 255f);
+                                var texAlpha = (alphaTop + (alphaBottom - alphaTop) * fy) * (1f / 255f);
+                                alpha *= texAlpha;
 
-                                if (alpha > 0.0001f)
+                                if (alpha > 0.0001f && texAlpha > 0.0001f)
                                 {
-                                    texR = Interpolate((int)((p00 >> 16) & 0xFF), (int)((p01 >> 16) & 0xFF),
-                                        (int)((p10 >> 16) & 0xFF), (int)((p11 >> 16) & 0xFF), fx, fy) * (1f / 255f);
-                                    texG = Interpolate((int)((p00 >> 8) & 0xFF), (int)((p01 >> 8) & 0xFF),
-                                        (int)((p10 >> 8) & 0xFF), (int)((p11 >> 8) & 0xFF), fx, fy) * (1f / 255f);
-                                    texB = Interpolate((int)(p00 & 0xFF), (int)(p01 & 0xFF),
-                                        (int)(p10 & 0xFF), (int)(p11 & 0xFF), fx, fy) * (1f / 255f);
+                                    // 预乘插值 + 解预乘：透明邻 texel（图集里 RGB 任意）不会把颜色带进
+                                    // 轮廓边缘（与 GPU 管线的预乘上传 / 解预乘采样保持逐像素一致）。
+                                    // 量纲：premul ∈ 0..255，texAlpha ∈ 0..1 → 直色 = premul / (texAlpha × 255)
+                                    var premulR = Interpolate((int)((p00 >> 16) & 0xFF) * a00, (int)((p01 >> 16) & 0xFF) * a01,
+                                        (int)((p10 >> 16) & 0xFF) * a10, (int)((p11 >> 16) & 0xFF) * a11, fx, fy) * (1f / 255f);
+                                    var premulG = Interpolate((int)((p00 >> 8) & 0xFF) * a00, (int)((p01 >> 8) & 0xFF) * a01,
+                                        (int)((p10 >> 8) & 0xFF) * a10, (int)((p11 >> 8) & 0xFF) * a11, fx, fy) * (1f / 255f);
+                                    var premulB = Interpolate((int)(p00 & 0xFF) * a00, (int)(p01 & 0xFF) * a01,
+                                        (int)(p10 & 0xFF) * a10, (int)(p11 & 0xFF) * a11, fx, fy) * (1f / 255f);
+                                    var inverseTexAlpha = 1f / (texAlpha * 255f);
+                                    texR = premulR * inverseTexAlpha;
+                                    texG = premulG * inverseTexAlpha;
+                                    texB = premulB * inverseTexAlpha;
                                 }
                                 else
                                 {
