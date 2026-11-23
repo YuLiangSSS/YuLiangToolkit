@@ -44,6 +44,17 @@ public sealed unsafe partial class CubismRenderer : ILive2DRenderSurface, IDispo
     private int _height;
     private bool _disposed;
 
+    // ---------- GPU 渲染层（D3D11；创建失败 / 设备丢失时整体回退 CPU 软件光栅器） ----------
+
+    private Gpu.CubismGpuRenderer? _gpu;
+    private WriteableBitmap? _gpuCaptureBitmap;
+
+    /// <summary>GPU 层初始化 / 运行失败的原因（给设置页 / 日志展示用；null = GPU 正常工作）。</summary>
+    public string? GpuError { get; private set; }
+
+    /// <summary>当前是否在用 GPU（D3D11）渲染；false = CPU 软件光栅器。</summary>
+    public bool IsGpu => _gpu is not null;
+
     // ---------- 每帧复用缓冲（避免每帧大分配） ----------
 
     /// <summary>可见网格（已按渲染顺序排列）。</summary>
@@ -90,22 +101,73 @@ public sealed unsafe partial class CubismRenderer : ILive2DRenderSurface, IDispo
     private bool _debugSkipTextureSampling;
     private bool _debugSkipMask;
 
-    /// <summary>用一套纹理图集创建渲染器（纹理只读，模型切换时复用）。</summary>
+    /// <summary>用一套纹理图集创建渲染器（纹理只读，模型切换时复用）。
+    /// <para>构造时先尝试建 D3D11 GPU 渲染层（<c>YLT_LIVE2D_RENDERER=cpu</c> 可强制软件光栅器）；
+    /// 建不出 GPU（无显卡 / 驱动太老 / 远程会话受限）就留在 CPU 路径，不影响功能。</para></summary>
     /// <param name="textures">已加载的纹理图集（可被多个渲染器共享）。</param>
     public CubismRenderer(TextureAtlasSet textures)
     {
         _textures = textures ?? throw new ArgumentNullException(nameof(textures));
         Textures = _textures;
+        TryCreateGpu();
+    }
+
+    /// <summary>尝试创建 GPU 渲染层（失败只记原因，不抛异常）。</summary>
+    private void TryCreateGpu()
+    {
+        if (string.Equals(Environment.GetEnvironmentVariable("YLT_LIVE2D_RENDERER"), "cpu", StringComparison.OrdinalIgnoreCase))
+        {
+            GpuError = "已用环境变量 YLT_LIVE2D_RENDERER=cpu 强制软件渲染";
+            return;
+        }
+
+        try
+        {
+            var device = Gpu.GpuRenderDevice.TryCreate(out var deviceError);
+            if (device is null)
+            {
+                GpuError = $"D3D11 设备创建失败：{deviceError}";
+                return;
+            }
+
+            var presenter = Gpu.GpuPresenter.Create(device.Device);
+            _gpu = new Gpu.CubismGpuRenderer(_textures, device, presenter);
+            GpuError = null;
+        }
+        catch (Exception ex)
+        {
+            _gpu?.Dispose();
+            _gpu = null;
+            GpuError = $"GPU 渲染层初始化失败：{ex.Message}";
+        }
     }
 
     /// <summary>当前使用的纹理图集（只读）。</summary>
     public TextureAtlasSet Textures { get; }
 
-    /// <summary>当前输出位图（尺寸变化时重建；透明背景用 Pbgra32）。只在 UI 线程创建 / 重建。</summary>
-    public WriteableBitmap? Bitmap => _bitmap;
+    /// <summary>当前出图源（UI 绑定这个）：GPU 路径是 D3DImage（零拷贝）或读回位图；CPU 路径是 WriteableBitmap。</summary>
+    public ImageSource? Surface => _gpu is not null ? _gpu.Surface : _bitmap;
+
+    /// <summary>
+    /// 当前帧的位图快照（CPU 路径 = 渲染位图本体；GPU 路径 = 最近一次 <see cref="CaptureBitmap"/> 读回的快照）。
+    /// <para>GPU 路径下 <see cref="Bitmap"/> 不是每帧自动刷新的（零拷贝出图不过 CPU），截图 / 逐像素断言请调 <see cref="CaptureBitmap"/>。</para>
+    /// </summary>
+    public WriteableBitmap? Bitmap => _gpu is not null ? _gpuCaptureBitmap : _bitmap;
 
     /// <summary>最近一帧的渲染统计。</summary>
     public RenderStats LastStats { get; private set; } = RenderStats.Empty;
+
+    /// <summary>把当前 GPU 帧读回成 <see cref="WriteableBitmap"/>（截图 / 自检逐像素断言用；CPU 路径直接返回渲染位图）。</summary>
+    public WriteableBitmap? CaptureBitmap()
+    {
+        lock (_syncRoot)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_gpu is null) return _bitmap;
+            _gpuCaptureBitmap = _gpu.CaptureBitmap();
+            return _gpuCaptureBitmap;
+        }
+    }
 
     // ---------- 性能分析用（调试面板 / 沙盒实测用；不参与渲染语义） ----------
 
@@ -129,7 +191,10 @@ public sealed unsafe partial class CubismRenderer : ILive2DRenderSurface, IDispo
 
     /// <summary>
     /// 把模型当前帧画到位图上。<b>只读模型数据</b>（不调 <see cref="CubismModel.Update"/>、不改参数），
-    /// 每次调用都从透明 / 背景色完整重画。必须在 UI 线程调用（<see cref="Bitmap"/> 的创建要求）。
+    /// 每次调用都从透明 / 背景色完整重画。必须在 UI 线程调用。
+    /// <para>默认走 GPU（D3D11）：CPU 只做可见网格收集 + 顶点变换，光栅化 / 蒙版 / 混合全在显卡上；
+    /// 调试叠加（包围盒 / 蒙版缓冲可视化）只有 CPU 光栅器实现了，这些帧自动走 CPU 路径；
+    /// GPU 任何一环失败（目标创建失败 / 设备丢失 / 异常）就整体回退 CPU 软件光栅器并记 <see cref="GpuError"/>。</para>
     /// </summary>
     public void Render(CubismModel model, RenderOptions options)
     {
@@ -139,8 +204,42 @@ public sealed unsafe partial class CubismRenderer : ILive2DRenderSurface, IDispo
         lock (_syncRoot)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+
+            // 调试叠加 / 蒙版缓冲可视化只有 CPU 光栅器实现了：这些帧走 CPU 路径
+            var debugFrame = options.ShowDrawableBounds || options.ShowMaskRanges
+                || options.HighlightDrawableIndex >= 0 || options.ShowMaskBufferForDrawableIndex >= 0
+                || options.DebugSkipTextureSampling || options.DebugSkipMask;
+
+            if (_gpu is not null && !debugFrame)
+            {
+                try
+                {
+                    if (_gpu.Render(model, options))
+                    {
+                        LastStats = _gpu.LastStats;
+                        return;
+                    }
+
+                    GpuError = "GPU 渲染目标创建失败（尺寸不支持？），已回退 CPU 软件渲染";
+                }
+                catch (Exception ex)
+                {
+                    GpuError = $"GPU 渲染失败（{Gpu.CubismGpuRenderer.LastStage}/{Gpu.GpuRenderDevice.LastStage}），已回退 CPU 软件渲染：{ex.Message}";
+                }
+
+                DisposeGpu();
+            }
+
             RenderCore(model, options);
         }
+    }
+
+    /// <summary>释放 GPU 渲染层（回退 CPU 软件光栅器）。</summary>
+    private void DisposeGpu()
+    {
+        _gpu?.Dispose();
+        _gpu = null;
+        _gpuCaptureBitmap = null;
     }
 
     private void RenderCore(CubismModel model, RenderOptions options)
@@ -330,6 +429,7 @@ public sealed unsafe partial class CubismRenderer : ILive2DRenderSurface, IDispo
         {
             if (_disposed) return;
             _disposed = true;
+            DisposeGpu();
             _bitmap = null;
             _output = Array.Empty<uint>();
             _visible = new VisibleDrawable[0];

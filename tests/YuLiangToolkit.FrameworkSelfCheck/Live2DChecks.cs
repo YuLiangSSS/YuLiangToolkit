@@ -1770,7 +1770,7 @@ internal static class Live2DChecks
                 AllParamsFinite() && runtime.LastTickMilliseconds >= 0,
                 $"tickMs={runtime.LastTickMilliseconds:0.###}");
 
-            // ---------------- F. 软件渲染器 ----------------
+            // ---------------- F. 渲染器（GPU 优先，失败自动回退 CPU 软件光栅器；断言走读回快照） ----------------
             // 用「默认参数姿态」渲染：和上面理论包围盒（也是默认姿态）对得上
             Quiet();
             TickFrames(2);
@@ -1783,7 +1783,7 @@ internal static class Live2DChecks
                 TransparentBackground = true,
             };
             runtime.RenderFrame(renderOptions);
-            var bitmap = rt.Renderer.Bitmap;
+            var bitmap = rt.Renderer.CaptureBitmap();
             C("渲染器：输出位图尺寸跟随 RenderOptions（320×640）",
                 bitmap is not null && bitmap.PixelWidth == 320 && bitmap.PixelHeight == 640,
                 bitmap is null ? "(Bitmap 为 null)" : $"{bitmap.PixelWidth}×{bitmap.PixelHeight}");
@@ -1821,7 +1821,7 @@ internal static class Live2DChecks
                     // 放大一倍（640×1280）时角色包围盒也应约放大一倍（等比适配，不是被拉伸）
                     var bigOptions = new RenderOptions { Width = 640, Height = 1280, FitCanvas = true, TransparentBackground = true };
                     runtime.RenderFrame(bigOptions);
-                    var bigBitmap = rt.Renderer.Bitmap;
+                    var bigBitmap = rt.Renderer.CaptureBitmap();
                     if (bigBitmap is not null)
                     {
                         var bigBounds = OpaqueBounds(ReadPixels(bigBitmap), 640, 1280, alphaThreshold: 8);
@@ -1843,7 +1843,7 @@ internal static class Live2DChecks
                     BackgroundColor = 0xFF1B1E28,
                 };
                 runtime.RenderFrame(solidOptions);
-                var solidBitmap = rt.Renderer.Bitmap;
+                var solidBitmap = rt.Renderer.CaptureBitmap();
                 if (solidBitmap is not null)
                 {
                     var solidPixels = ReadPixels(solidBitmap);

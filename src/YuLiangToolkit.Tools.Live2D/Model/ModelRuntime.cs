@@ -1434,6 +1434,11 @@ public sealed class ModelRuntime : IDisposable
         ReportProgress(0.95);
         cancellationToken.ThrowIfCancellationRequested();
         _renderer = new CubismRenderer(_textures);
+        // 渲染后端日志：GPU（D3D11）优先，建不出来自动落回 CPU 软件光栅器（原因记 GpuError）
+        var isD3DImage = _renderer.Surface is System.Windows.Interop.D3DImage;
+        log?.Invoke(_renderer.IsGpu
+            ? $"渲染层：GPU（D3D11，D3DImage{(isD3DImage ? "零拷贝" : "读回")}出图）"
+            : $"渲染层：CPU 软件光栅器（{_renderer.GpuError}）");
 
         // 7) 待机 / 眼睛跟随 / 身体晃动控制器 + 动捕参数表 + 受管参数表
         _eyeBlinkParameterIds = ResolveEyeBlinkIds(asset);

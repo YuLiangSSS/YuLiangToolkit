@@ -75,13 +75,22 @@ public readonly record struct RenderStats(
 }
 
 /// <summary>
-/// 渲染器对外的最小契约：把模型当前帧画到自己的 <see cref="Bitmap"/> 上。
-/// 由渲染实现填充（见 <see cref="CubismRenderer"/>）。
+/// 渲染器对外的最小契约：把模型当前帧画到自己的出图源上。
+/// 由渲染实现填充（GPU 层见 <c>Rendering/Gpu/</c>；CPU 软件光栅器见 <see cref="CubismRenderer"/>）。
 /// </summary>
 public interface ILive2DRenderSurface
 {
-    /// <summary>当前位图（尺寸随 <see cref="RenderOptions"/> 变化时重建；UI 绑定这个）。</summary>
+    /// <summary>当前出图源（GPU = D3DImage / 读回位图；CPU = WriteableBitmap；UI 绑定这个）。</summary>
+    ImageSource? Surface { get; }
+
+    /// <summary>当前帧位图快照（GPU 路径 = 最近一次读回的快照；UI 每帧绑定请用 <see cref="Surface"/>）。</summary>
     WriteableBitmap? Bitmap { get; }
+
+    /// <summary>是否在用 GPU（D3D11）渲染。</summary>
+    bool IsGpu { get; }
+
+    /// <summary>把当前帧读回成位图（截图 / 逐像素断言用）。</summary>
+    WriteableBitmap? CaptureBitmap();
 
     /// <summary>最近一帧的统计。</summary>
     RenderStats LastStats { get; }

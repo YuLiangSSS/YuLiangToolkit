@@ -56,7 +56,7 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
     // FPS 统计
     private int _framesSinceFps;
     private double _fps;
-    private WriteableBitmap? _lastBitmap;
+    private ImageSource? _lastBitmap;
 
     // ===== 100ms 辅助刷新：动捕预览小窗 / 动捕状态行 / 身体晃动实时值与折线图 =====
     private const int SwaySampleCount = 50;      // 5 秒 @ 10Hz（100ms 采样一次）
@@ -567,11 +567,11 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
         // 开发调试：YLT_LIVE2D_PREVIEW_DEBUG=1 时把预览布局 / 位图尺寸写到临时文件（排查拉伸 / 模糊用）
         DumpPreviewDebugFrame(runtime);
 
-        var bitmap = runtime.Renderer.Bitmap;
-        if (!ReferenceEquals(_lastBitmap, bitmap))
+        var surface = runtime.Renderer.Surface;
+        if (!ReferenceEquals(_lastBitmap, surface))
         {
-            _lastBitmap = bitmap;
-            PreviewImage.Source = bitmap;
+            _lastBitmap = surface;
+            PreviewImage.Source = surface;
         }
 
         // 全身轻晃：以脚为支点旋转「模型位图」（只转 PreviewImage，棋盘背景 / 文字 / 布局都不动）；
@@ -623,12 +623,18 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
         _previewDebugFrames++;
         try
         {
-            var bitmap = runtime.Renderer.Bitmap;
+            var surface = runtime.Renderer.Surface;
+            var (pixelWidth, pixelHeight) = surface switch
+            {
+                WriteableBitmap wb => (wb.PixelWidth, wb.PixelHeight),
+                System.Windows.Interop.D3DImage di => (di.PixelWidth, di.PixelHeight),
+                _ => (0, 0),
+            };
             var line = $"manual={_manualCamera} host={PreviewHost.ActualWidth:0.#}x{PreviewHost.ActualHeight:0.#} " +
                        $"dpi={VisualTreeHelper.GetDpi(this).DpiScaleX:0.##} " +
                        $"image={PreviewImage.ActualWidth:0.#}x{PreviewImage.ActualHeight:0.#} " +
                        $"imageWH={PreviewImage.Width:0.#}x{PreviewImage.Height:0.#} " +
-                       $"bitmap={bitmap?.PixelWidth}x{bitmap?.PixelHeight} " +
+                       $"surface={pixelWidth}x{pixelHeight} gpu={runtime.Renderer.IsGpu} " +
                        $"renderScale={_viewModel?.RenderScale:0.##}";
             File.AppendAllText(Path.Combine(Path.GetTempPath(), "live2d-preview-debug.log"), line + Environment.NewLine);
         }

@@ -4994,7 +4994,7 @@ public sealed class Live2DViewModel : ToolViewModelBase
     {
         try
         {
-            var bitmap = Session.Runtime?.Renderer?.Bitmap;
+            var bitmap = Session.Runtime?.Renderer?.CaptureBitmap();
             if (bitmap is null)
             {
                 Log("还没有渲染出画面，无法截图（等模型加载完再试）");

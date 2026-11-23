@@ -219,6 +219,22 @@
   APNG（动图 PNG）由本项目手写的解析器解码，不依赖 Skia。
 - 首次从源码构建需要联网还原一次，之后走本机 NuGet 缓存。
 
+## Vortice.Direct3D11 3.8.3 / Vortice.D3DCompiler 3.8.3 / Vortice.Direct3D9 3.8.3（NuGet 依赖）
+
+- 用途：「Live2D 桌宠」（`src/YuLiangToolkit.Tools.Live2D/`）的 **GPU 渲染层**（`Rendering/Gpu/`）：
+  把原来的 CPU 软件光栅化整体搬到 Direct3D 11——顶点 / UV 上传 → 蒙版 pass（R8 渲染目标累积覆盖度）
+  → 主 pass（MultiplyColor / ScreenColor / 预乘 alpha / 三种混合状态，语义严格对照官方
+  CubismRenderer_D3D11）；出图走 **D3DImage 零拷贝**（`Vortice.Direct3D9` 的 D3D9Ex 建共享纹理给
+  WPF 的 D3DImage 当 back buffer，GPU 直接上屏不过 CPU），共享纹理建不出来时自动退回
+  GPU 渲染 + CPU 读回通道；D3D11 建不出来（无显卡 / 驱动太老）时回退原 CPU 软件光栅器。
+- 项目主页：<https://github.com/amerkoleci/Vortice.Windows>
+- 许可：MIT License（Copyright (c) 2019 Amer Koleci，详见包内 `LICENSE`）
+- 说明：只引用 NuGet 包（纯托管 P/Invoke 绑定，直接调用 Windows 自带的 d3d11 / d3dcompiler_47 /
+  d3d9 系统组件），**没有修改**其源码、不额外分发原生 DLL。HLSL 着色器（VS / 主 PS / 蒙版 PS）
+  是本项目手写的内置字符串，运行时用 D3DCompiler 编译。设置 `YLT_LIVE2D_RENDERER=cpu`
+  环境变量可强制回退 CPU 软件光栅器（对照 / 排障用）。
+- 首次从源码构建需要联网还原一次，之后走本机 NuGet 缓存。
+
 ## MIT License 全文
 
 ```

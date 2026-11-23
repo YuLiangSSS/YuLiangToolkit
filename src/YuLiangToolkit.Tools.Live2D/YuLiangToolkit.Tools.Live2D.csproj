@@ -29,6 +29,18 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- GPU 渲染层（Vortice.Windows 家族，MIT）：把 Live2D 的光栅化 / 蒙版 / 混合搬到 D3D11。
+         - Direct3D11：设备 / 着色器 / 混合状态 / 纹理与顶点上传；
+         - D3DCompiler：运行时编译内置 HLSL（不往仓库塞编译好的二进制）；
+         - Direct3D9（D3D9Ex）：创建 D3D9 共享纹理给 WPF 的 D3DImage 当 back buffer（零拷贝上屏，
+           D3DImage 只认 D3D9 表面，这是 WPF 透明窗口 + GPU 渲染的唯一官方通道）。
+         许可登记见 THIRD-PARTY-NOTICES.md（MIT）。CPU 软件光栅器保留为回退（无 GPU / 设备丢失时用）。 -->
+    <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
+    <PackageReference Include="Vortice.D3DCompiler" Version="3.8.3" />
+    <PackageReference Include="Vortice.Direct3D9" Version="3.8.3" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- 官方 Cubism Core 原生 DLL（Live2D Proprietary Software License；来源与许可见 ThirdParty\Live2DCubismCore\NOTICE.txt）。
          必须落在 exe 旁边：P/Invoke 用裸文件名加载。 -->
     <None Update="ThirdParty\Live2DCubismCore\Live2DCubismCore.dll"

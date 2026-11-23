@@ -60,7 +60,7 @@ public partial class PetWindow : Window
     private readonly Rendering.RenderOptions _renderOptions = new() { TransparentBackground = true, FitCanvas = true };
     private readonly DispatcherTimer _pollTimer;
 
-    private WriteableBitmap? _lastBitmap;
+    private ImageSource? _lastBitmap;
     private int _renderedFrames;
     private bool _shutdown;
     private bool _captureScheduled;
@@ -235,11 +235,12 @@ public partial class PetWindow : Window
 
         renderer.Render(runtime.Model, options);
 
-        var bitmap = renderer.Bitmap;
-        if (!ReferenceEquals(_lastBitmap, bitmap))
+        // GPU 路径 Surface 是 D3DImage（零拷贝）/ 读回位图；CPU 路径是 WriteableBitmap——同一绑定方式
+        var surface = renderer.Surface;
+        if (!ReferenceEquals(_lastBitmap, surface))
         {
-            _lastBitmap = bitmap;
-            PetImage.Source = bitmap;
+            _lastBitmap = surface;
+            PetImage.Source = surface;
         }
 
         // 把渲染好的切片摆回窗口对应位置（右 / 下边距可为负：量化多画的那部分在屏幕外，会被窗口裁掉）
@@ -1431,6 +1432,9 @@ public partial class PetWindow : Window
     /// <summary>
     /// 把窗口当前画面渲染成位图（含底部中央支点旋转后的模型；调试截图 / 气泡合成图用）。
     /// 透明底垫深色，方便一眼看出模型轮廓。
+    /// <para><b>为什么手工合成</b>：GPU 路径的画面源是 D3DImage（WPF 合成线程直接上屏），
+    /// <see cref="RenderTargetBitmap"/> 拍不到它的内容（会拍成空白）；所以统一改成
+    /// 「渲染器读回快照 + 按 PetImage 布局 / 轻倾变换重画」，CPU / GPU 两条路径行为一致。</para>
     /// </summary>
     public BitmapSource RenderWindowBitmap()
     {
@@ -1445,7 +1449,26 @@ public partial class PetWindow : Window
                 new Rect(0, 0, width, height));
         }
         bitmap.Render(background);
-        if (Content is Visual content) bitmap.Render(content);
+
+        var renderer = _session.PetRenderer ?? _session.Runtime?.Renderer;
+        var snapshot = renderer?.CaptureBitmap();
+        if (snapshot is not null)
+        {
+            // PetImage 的显示矩形 = Margin 撑出来的那块（Stretch=Fill），变换和 Root 的轻倾一致（支点底边中点）
+            var margin = PetImage.Margin;
+            var rect = new Rect(margin.Left, margin.Top,
+                Math.Max(1, width - margin.Left - margin.Right),
+                Math.Max(1, height - margin.Top - margin.Bottom));
+            var model = new DrawingVisual();
+            using (var drawing = model.RenderOpen())
+            {
+                drawing.PushTransform(new RotateTransform(PetLeanTransform.Angle, width / 2.0, height));
+                drawing.DrawImage(snapshot, rect);
+                drawing.Pop();
+            }
+            bitmap.Render(model);
+        }
+
         bitmap.Freeze();
         return bitmap;
     }

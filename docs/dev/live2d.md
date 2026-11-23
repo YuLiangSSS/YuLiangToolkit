@@ -10,9 +10,9 @@
 
 - 在工具集里内置「Live2D 桌宠」：**模型测试台**（参数 / 部件 / 动作 / 表情 / 物理 / 眼睛跟随逐项调）
   + **桌面宠物**（透明置顶、拖动、滚轮缩放、右键菜单、点击穿透、眼睛跟随鼠标、待机动画）；
-- **模型加载靠官方 Cubism Core 原生 DLL，渲染靠自己写的软件光栅器**（历史决定：当时不引新 NuGet 包；
-  2026-11-23 起该限制已由项目所有者解除，后续如需 SkiaSharp / D3D 加速可以引包，见 §7.2），
-  摄像头动捕靠 Windows 自带 MediaCapture / FaceAnalysis（OS 组件，零第三方库）；
+- **模型加载靠官方 Cubism Core 原生 DLL，渲染默认走 GPU（D3D11）**：光栅化 / 蒙版 / 混合在显卡上完成，
+  出图用 D3DImage 零拷贝（D3D9Ex 共享纹理）；无显卡 / 设备丢失时**自动回退**自写的 CPU 软件光栅器
+  （语义完全一致，见 §5）。摄像头动捕靠 Windows 自带 MediaCapture / FaceAnalysis（OS 组件，零第三方库）；
 - 可选**摄像头面部动捕**（转头 / 眨眼 / 张嘴，默认关）与**身体晃动测试**（看物理链）；
 - 本轮新增 **AI 聊天 / 好感度**（DeepSeek，用户自填 API Key，见 §19）：HTTP / JSON / 提示词 / 好感度全部手写，
   API Key 的 DPAPI 加密复用已有的 `System.Security.Cryptography.ProtectedData` 包（邮箱代收已引），**不新增依赖**；
@@ -74,8 +74,14 @@ YuLiangTookit（主程序）
       │   ├─ Controls/AffectionVial ── 粉色好感度试管（自绘 + LiquidRatio 纯函数）
       │   └─ Views/AiChatWindow / AiChatPlacement ── 聊天窗 UI 与贴桌宠的纯定位算法
       │
-      ├─ Rendering/CubismRenderer ──── 手写软件光栅器（三角形光栅化 / 蒙版 / 三种混合 / 调试叠加）
-      │   └─ Rendering/TextureAtlas ── 纹理 PNG 加载 → BGRA 像素（可选降到 2048）
+      ├─ Rendering/Gpu/ ─────────── GPU 渲染层（默认路径，Vortice.Direct3D11 / D3DCompiler / Direct3D9，MIT）：
+      │   ├─ GpuRenderDevice ──── D3D11 设备 / HLSL 着色器 / 混合状态 / 动态 VB·IB / 图集纹理 / 蒙版 R8 目标池
+      │   ├─ GpuPresenter ─────── 出图通道：D3DImage 零拷贝（D3D9Ex 共享纹理）→ 读回 WriteableBitmap 兜底
+      │   └─ CubismGpuRenderer ── 每帧 CPU 只做可见网格收集 + 顶点变换，逐 drawable 提交 GPU 绘制
+      │
+      ├─ Rendering/CubismRenderer ─ CPU 软件光栅器（回退路径；三角形光栅化 / 蒙版 / 三种混合 / 调试叠加，
+      │                              GPU 初始化失败或渲染调试叠加的帧走这里）
+      │   └─ Rendering/TextureAtlas ── 纹理 PNG 加载 → BGRA 像素（可选降到 2048，含 mip 链；GPU / CPU 共用）
       │
       └─ Interop/CubismMoc + CubismModel + CubismCore ── Cubism Core 的 P/Invoke 薄封装
                   │
@@ -114,12 +120,15 @@ YuLiangTookit（主程序）
 主动说话由会话的 **2 秒 `DispatcherTimer`** 调 `TickSchedule(now, userPresent)`，内部 `FireAndForget`
 不阻塞 Tick；落盘是同步小 JSON（≤200 条消息，`ToolStorage.WriteText` 原子写），失败只记日志、绝不打断聊天。
 
-**为什么不引 WebView2 / SkiaSharp / 官方 C# SDK**：
+**渲染库选型（2026-11-23 起 GPU 层已落地）**：
 
-- 引 WebView2 / SkiaSharp 都要多一份分发或兼容成本（「网页浏览器」工具已经用 WebView2 承载网页，但桌宠要求透明叠加 / 点击穿透 / 零额外运行时，继续自写更稳；这不是项目全局禁令，见 AGENTS.md 规则 2）；
-- 官方 Cubism Web SDK 是 JS，得套 WebView2（还要另外分发 WebView2 Runtime），且和 WPF 的透明叠加 / 点击穿透难配合；
-- 官方 Cubism Native SDK 是 C++，跨桥接引入的复杂度比自写一个「只需要画三角形」的光栅器还高；
-- 自写软件光栅器只有几千行，完全可控、零分发依赖，桌宠尺寸下性能足够（见 §7）。
+- GPU 渲染选 **Vortice.Windows 家族**（`Vortice.Direct3D11` + `Vortice.D3DCompiler` + `Vortice.Direct3D9`，
+  MIT）：Direct3D11 与官方 `CubismRenderer_D3D11` 的语义一一对应（三种混合状态 / 蒙版 RTT），
+  D3D9Ex 是 **WPF D3DImage 唯一接受的 back buffer**（零拷贝上屏的关键）；
+- 不选 SkiaSharp：Skia 的 GPU 后端在 WPF 里没有干净的透明上屏通道（WPF 版元素还是走 CPU 位图），
+  蒙版 / 混合语义要靠 runtime effect 拼装，和官方 D3D11 语义对不齐；
+- 不选 WebView2 / 官方 Web SDK（JS 套壳）/ 官方 Native SDK（C++ 桥接）——分发成本和透明叠加兼容都更差；
+- CPU 软件光栅器**保留为回退**（无显卡 / 设备丢失 / 调试叠加帧），代码不删（见 §5）。
 
 ## 3. 关键文件格式（实现语义的 source of truth）
 
@@ -233,9 +242,59 @@ x64 only（官方 Core 只提供 x86_64；主程序 / 自检都编译成 x64 语
   写像素时 `b = b*a`（0~255），否则透明边缘会发黑 / 发白；
 - 透明背景：整块先清 0（alpha = 0），只在有三角形覆盖的地方写像素。
 
-## 5. 自写软件光栅器（渲染管线）
+## 5. 渲染管线（GPU 默认 / CPU 回退，两条路径语义一致）
 
-按 `model.RenderOrderedDrawableIndices`（Core 给的 render order，升序）逐个 drawable：
+### 5.1 GPU 渲染层（默认路径，`Rendering/Gpu/`）
+
+按 `model.RenderOrderedDrawableIndices`（Core 给的 render order，升序）逐个 drawable。CPU 每帧只做
+轻量收集 + 顶点变换，其余全部在 D3D11 上完成：
+
+1. CPU：**收集可见网格**并变换顶点（模型单位 → 输出像素，公式见 §4）写进 float4 顶点数组
+   （屏幕像素 x,y + 图集 u,v），索引加顶点基址后合并进一个 `ushort[]`；
+2. **蒙版 pass**：每个「蒙版组合」（排序后的蒙版下标组相同即同一组合）一张 **R8_UNorm 渲染目标**
+   （不支持 R8 RT 的老硬件用 B8G8R8A8），清成 1 后逐蒙版网格画，蒙版 PS 只取**纹理 alpha**
+   （不乘蒙版网格自身的 `Opacity`），混合 `(ZERO, INV_SRC_ALPHA)` 实现 `out = dst × (1 - alpha)`
+   → R 通道累积 `Π(1 - a_i)`，与 CPU 覆盖缓冲完全一致；`IsInvertedMask` 在主 pass 里取 `1 - 覆盖度`；
+3. **主 pass**：目标 = 出图纹理，清成透明 / 背景色（预乘），逐 drawable 画：顶点 / UV 直传（VS 里做
+   像素 → NDC 与 uv.y 翻转，和官方 shader 一致），像素 PS = 官方 `CubismEffect.fx` 的 PixelNormal：
+   `tex.rgb *= MultiplyColor.rgb` → screen 融合 ScreenColor → `rgb *= alpha`（预乘）→
+   有蒙版时 alpha 再乘屏幕位置采样出的覆盖度；
+4. **混合状态**（预乘 alpha，对照官方 `CubismRenderState_D3D11.cpp`）：Normal = `(ONE, INV_SRC_ALPHA)`
+   （alpha 同样 src-over）、Additive = `(ONE, ONE)` 且 alpha 不动、Multiplicative = `(DEST_COLOR, INV_SRC_ALPHA)`
+   且 alpha 不动；
+5. **纹理**：图集按现有 mip 链原样上传（`B8G8R8A8_UNorm` + `Immutable`，内存序就是 0xAARRGGBB 直传），
+   采样 `MinMagMipLinear + Wrap`，mip 层级由 GPU 按导数自动选（替代 CPU 版的每帧 SelectAtlasViews）；
+6. **出图**（`GpuPresenter`）：首选 **D3DImage 零拷贝**——D3D9Ex `CreateTexture(..., A8R8G8B8, Default,
+   ref sharedHandle)` 建共享纹理 → D3D11 `OpenSharedResource` 拿到同一块显存当渲染目标 → D3DImage
+   `SetBackBuffer(surface)` + `Lock/AddDirtyRect/Unlock` 上屏，中间**没有任何 CPU 拷贝**；
+   共享纹理建不出来（老驱动 / 远程会话限制）退回**读回模式**（`CopyResource → staging → Map →
+   WriteableBitmap`，GPU 光栅化仍在显卡上）；D3D9 适配器按 LUID 匹配 D3D11 设备的物理显卡（跨卡共享
+   句柄会失败）；
+7. **截图 / 逐像素断言**：`CubismRenderer.CaptureBitmap()` 读回 GPU 帧（两种出图模式都支持）；
+   UI 每帧绑定的是 `CubismRenderer.Surface`（D3DImage / 读回位图 / CPU 位图统一为 `ImageSource`）；
+8. **回退**：D3D11 设备建不出 / 着色器编译失败 / 渲染抛异常（含设备丢失）→ 释放 GPU 层、记
+   `CubismRenderer.GpuError`、本渲染器此后走 CPU 光栅器；调试叠加帧（包围盒 / 蒙版缓冲可视化）
+   只有 CPU 路径实现了，自动走 CPU。`YLT_LIVE2D_RENDERER=cpu` 可强制软件渲染。
+
+**踩过的坑（改 GPU 层前先看）**：
+
+- **HLSL 源码注释必须全 ASCII**：D3DCompile 按 ANSI（本机 GBK）读无 BOM 源串，UTF-8 中文注释会把
+  后面的内容截断（实测 `X3000 unexpected end of file`）；
+- **`Compiler.Compile` 参数顺序**是（源码, 入口名, 源文件名, 目标模型）——把 target 传进 sourceName
+  会报 `unrecognized compiler target`；
+- **常量缓冲必须 `Dynamic + CpuAccessFlags.Write`**：`Default` 用途的资源 `Map(WriteDiscard)` 直接
+  `E_INVALIDARG`（这个失败会被回退逻辑吞掉、看起来像「GPU 建好了但没画面」，用
+  `CubismGpuRenderer.LastStage / GpuRenderDevice.LastStage` 阶段标记定位）；
+- **`RenderTargetBlendDescription` 的 alpha 操作字段叫 `BlendOperationAlpha`**（不是
+  `AlphaBlendOperation`），漏设默认值 0 是非法枚举 → `CreateBlendState` 抛 E_INVALIDARG；
+- **D3D9Ex 共享纹理走「D3D9 创建 + D3D11 `OpenSharedResource`」方向**（D3D9 侧 `CreateTexture`
+  传入初始化为 0 的 `ref IntPtr` 拿共享句柄）；D3D9 不理解 keyed mutex，别用
+  `ResourceOptionFlags.SharedKeyedMutex`。
+
+### 5.2 CPU 软件光栅器（回退路径，`Rendering/CubismRenderer*.cs`）
+
+语义与 GPU 路径一致（同一个 `CubismRenderer.Render` 门面路由），细节如下（历史实现，仍维护）。
+按 render order 逐个 drawable：
 
 1. **跳过** `!IsVisible` 或 `Opacity <= 0`；
 2. 把该网格的三角形从模型单位 → 画布像素 → 输出像素（缩放 + 偏移），对每个三角形做**扫描线光栅化**；
@@ -257,7 +316,7 @@ x64 only（官方 Core 只提供 x86_64；主程序 / 自检都编译成 x64 语
    只画与它相交的三角形，最后拼回输出数组）；蒙版覆盖缓冲按「蒙版组合」在整帧范围维护（只清上一帧的
    脏矩形）；桌宠窗口小、tile 少时并行度按逻辑核数自动定（`RenderOptions.MaxDegreeOfParallelism` 可覆盖）。
 
-**实测（分构建类型，重要）**：
+**实测（CPU 回退路径，分构建类型，重要；GPU 路径 CPU 侧只剩顶点收集 + 提交，基本 < 1 ms）**：
 
 | 场景 | 输出尺寸 | Release 渲染耗时 | Debug |
 | --- | --- | --- | --- |
@@ -389,7 +448,8 @@ Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实
 
 - **瓶颈一：Core Update**（每帧 `csmUpdateModel`）：与参数变化量有关，全量 715 网格约 1.8 ms（8 核机器），
   没有变化时省不了（Core 没有增量接口），所以帧率上限要可调（15/30/60）；
-- **瓶颈二：软件光栅化**：耗时 ≈ 窗口像素数 × 三角形重叠层数；桌宠窗口别开太大（默认 420 宽），
+- **瓶颈二（CPU 回退路径）：软件光栅化**：耗时 ≈ 窗口像素数 × 三角形重叠层数（GPU 路径下这段在显卡上跑，
+  CPU 几乎无感）；桌宠窗口别开太大（默认 420 宽），
   渲染倍率 0.5~1.5 是「按屏幕像素渲染的倍率」；
 - **纹理内存**：内置模型 5 张纹理的实际尺寸是 4096×8192 / 4096×8192 / 2048×2048 / 8192×8192 / 4096×4096，
   按「最长边 ≤ maxSize」降采样：2048 档合计约 50~60 MB，4096 档约 200 MB（原尺寸约 500 MB）——默认 2048；
@@ -458,9 +518,8 @@ Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实
     负载恢复自动回到全帧率；
   - 页面 + 桌宠同开：维持原有「桌宠降到约 10fps」逻辑；
   - 主窗口最小化 / 测试页不可见：跳过 `RefreshFrameState` 界面绑定刷新（每 6 帧的那次）；
-- **为什么不上 GPU**：渲染器是手写软件光栅化；换 SkiaSharp / D3D11 需要**引新渲染库 + 渲染层重写**
-  （「不引新 NuGet 包」的限制已于 2026-11-23 解除，想换的话可以引包，但重写工作量仍在），
-  先靠可见区域裁切 + 自动降频 + 渲染倍率 / 帧率档位顶住，等确认要换再做。
+- **GPU 已上**（2026-11-23）：光栅化 / 蒙版 / 混合在 D3D11 上完成，出图 D3DImage 零拷贝（见 §5.1）；
+  CPU 软件光栅器仅作为无显卡 / 设备丢失 / 调试叠加帧的回退。想要更省就组合：渲染倍率 0.75 + 帧率 15 + 窗口宽 420；
 
 ## 8. 构建 / 发布：模型与原生 DLL 怎么跟着 exe 走
 
