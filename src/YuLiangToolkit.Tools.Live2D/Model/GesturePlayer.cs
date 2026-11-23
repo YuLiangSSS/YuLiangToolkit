@@ -184,6 +184,15 @@ internal sealed class GesturePlayer
     private const double PoseFadeInSeconds = 0.35;
     private const double PoseFadeOutSeconds = 0.25;
 
+    /// <summary>Exit 动作开头把参数继续往「保持姿势」上拉的交接时长（拉力线性衰减到 0）。
+    /// 没有这段：受管复位会在 exit 动作写入前先把保持姿势抹成默认 → 手瞬跳回默认（闪一下）。</summary>
+    private const double ExitHandoverSeconds = 0.15;
+
+    /// <summary>Exit 动作结束前多久让待机动作交叉淡入接回（= 待机重启的淡入时长）。
+    /// 没有这一步：exit 动作播完瞬间受管复位会把 Param56（手部网格切换）从 1 砸到默认 0 → 网格硬切闪一下。
+    /// 作者的设计是让待机动作的 Param56 曲线在淡入过程中把它平滑 Blend 回去。</summary>
+    private const double IdleHandbackSeconds = 0.3;
+
     private readonly CubismModel _model;
     private readonly Func<string, MotionEntry?> _findMotionEntry;
     private readonly Func<MotionEntry, Motion3Data?> _findMotionData;
@@ -207,6 +216,12 @@ internal sealed class GesturePlayer
 
     /// <summary>进入 Hold / PoseHold 后累计的保持时间（只在姿势真正摆好后计时，不含 enter / 淡入）。</summary>
     private double _holdElapsedSeconds;
+
+    /// <summary>Exit 是否从 Hold 姿势发起（决定要不要做「往保持姿势拉」的交接；从 Enter 中途停的不拉）。</summary>
+    private bool _exitFromHold;
+
+    /// <summary>是否已经把「接回待机」的交叉淡化触发过了（只触发一次）。</summary>
+    private bool _handbackDone;
 
     private CubismParameter?[] _holdParameters = Array.Empty<CubismParameter?>();
     private float[] _holdValues = Array.Empty<float>();
@@ -279,6 +294,23 @@ internal sealed class GesturePlayer
     public bool IsHolding => _phase is GesturePhase.Hold or GesturePhase.PoseHold;
 
     /// <summary>
+    /// Exit 动作临近结束、应该让待机动作交叉淡入接回的瞬间（只触发一次）。
+    /// 运行时在这个时刻 Play 待机：MotionPlayer 的交叉淡化会让待机压着还在播的 exit 动作淡入，
+    /// Param56（手部网格切换）这类「曲线末值不是默认值」的参数由待机淡入平滑 Blend 回去——
+    /// 否则 exit 播完瞬间受管复位会把它们砸到默认值（网格硬切闪一下）。
+    /// </summary>
+    public bool ShouldHandBackToIdle
+    {
+        get
+        {
+            if (_phase != GesturePhase.Exit || _handbackDone) return false;
+            if (_phaseDuration - _phaseTimer > IdleHandbackSeconds) return false;
+            _handbackDone = true;
+            return true;
+        }
+    }
+
+    /// <summary>
     /// 原生手势的 Enter / Hold 阶段：enter 动作已播完、姿势由 WriteHold 每帧钉住时，
     /// 待机动作**不应**接管 —— 待机的 21 条曲线会和保持姿势打架（手臂被拽回默认姿势，
     /// 看起来像「狗尾草先收回一次再回到手上」）。退出阶段（Exit）正常播退动作，不受此开关影响。
@@ -327,6 +359,8 @@ internal sealed class GesturePlayer
         _poseWeight = 0;
         _autoRestoreAfterHoldSeconds = autoRestore;
         _holdElapsedSeconds = 0;
+        _exitFromHold = false;
+        _handbackDone = false;
 
         var native = FindNative(normalized);
         if (native is not null)
@@ -373,8 +407,11 @@ internal sealed class GesturePlayer
                 var data = entry is null ? null : _findMotionData(entry);
                 if (entry is not null && data is not null)
                 {
-                    ReleaseHold();
-                    // exit 动作末尾同样不淡出：收回动画完整播完，最后一帧就是默认手姿势
+                    // 不在这里 ReleaseHold：Exit 开头的交接期还要拿保持姿势做「往姿势拉」的衰减衔接
+                    // （受管复位会把姿势抹成默认，没有这段衔接手会瞬跳回默认）
+                    _exitFromHold = _phase == GesturePhase.Hold;
+                    _handbackDone = false;
+                    // exit 动作末尾同样不淡出：收回动画完整播完，最后由待机淡入接回
                     _playMotion(entry, data, ExitFadeSeconds, 0);
                     _activeId = null;
                     _phase = GesturePhase.Exit;
@@ -385,6 +422,9 @@ internal sealed class GesturePlayer
             }
 
             // 参数姿势 / 兜底：淡出
+            _exitFromHold = false;
+            _handbackDone = false;
+            ReleaseHold();
             _activeId = null;
             _phase = GesturePhase.PoseOut;
             return;
@@ -396,6 +436,8 @@ internal sealed class GesturePlayer
         // 参数姿势淡入中 / 淡出中：转到淡出
         if (_phase is GesturePhase.PoseIn or GesturePhase.PoseHold)
         {
+            _exitFromHold = false;
+            _handbackDone = false;
             _activeId = null;
             _phase = GesturePhase.PoseOut;
         }
@@ -414,6 +456,8 @@ internal sealed class GesturePlayer
         _phase = GesturePhase.None;
         _autoRestoreAfterHoldSeconds = 0;
         _holdElapsedSeconds = 0;
+        _exitFromHold = false;
+        _handbackDone = false;
     }
 
     /// <summary>推进一帧：写保持姿势 / 参数姿势（在动作更新之后调用，覆盖 IDLE 的手臂曲线）。</summary>
@@ -440,7 +484,36 @@ internal sealed class GesturePlayer
 
             case GesturePhase.Exit:
                 _phaseTimer += deltaSeconds;
-                if (_phaseTimer >= _phaseDuration + ExitFadeSeconds + 0.02) _phase = GesturePhase.None;
+
+                // 交接期：把参数继续往「保持姿势」上拉（拉力线性衰减到 0）。
+                // exit 曲线本身就是从保持姿势起笔的，这段只负责顶住受管复位、
+                // 让曲线无缝从保持姿势接管；拉力归零后释放保持数据。
+                if (_exitFromHold && _holdUsed > 0)
+                {
+                    if (_phaseTimer < ExitHandoverSeconds)
+                    {
+                        var pull = 1f - (float)(_phaseTimer / ExitHandoverSeconds);
+                        for (var i = 0; i < _holdUsed; i++)
+                        {
+                            var parameter = _holdParameters[i];
+                            if (parameter is null) continue;
+                            parameter.Value += (_holdValues[i] - parameter.Value) * pull;
+                            MarkTouched(parameter);
+                        }
+                    }
+                    else
+                    {
+                        ReleaseHold();
+                        _exitFromHold = false;
+                    }
+                }
+
+                if (_phaseTimer >= _phaseDuration + ExitFadeSeconds + 0.02)
+                {
+                    _phase = GesturePhase.None;
+                    ReleaseHold();
+                    _exitFromHold = false;
+                }
                 return;
 
             case GesturePhase.PoseIn:

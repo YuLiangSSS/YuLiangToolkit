@@ -232,6 +232,12 @@ public sealed class ModelRuntime : IDisposable
     /// </summary>
     internal const double IdleRandomGestureHoldSeconds = 2.5;
 
+    /// <summary>
+    /// 手势 Exit 结束前接回待机的交叉淡化时长（秒），与 GesturePlayer.IdleHandbackSeconds 对齐：
+    /// 待机在这个窗口里淡入，正好压着 exit 动作自然收尾，Param56 这类末值非默认的参数平滑 Blend 回去。
+    /// </summary>
+    internal const double GesturePlayerIdleHandbackFadeSeconds = 0.3;
+
     /// <summary>待机随机小动作已触发次数（自检用）。</summary>
     internal int IdleRandomTriggerCount => _idleRandomGestureCount;
 
@@ -2483,11 +2489,17 @@ public sealed class ModelRuntime : IDisposable
 
         // 5) 待机动作（IdleEnabled 且当前没有动作在播时循环播放）。
         //    原生手势的 Enter / Hold 阶段不播待机：待机曲线会和保持姿势打架（手臂被拽回默认姿势）。
-        if (idleEnabled && IdleMotion is { } idleMotion && !_motionPlayer.HasActive &&
-            _gesture?.SuppressIdleMotion != true &&
+        //    手势 Exit 临近结束（ShouldHandBackToIdle）时提前交叉淡入接回：待机压着还在播的 exit 动作淡入，
+        //    Param56（手部网格切换）这类「末值不是默认值」的参数由待机淡入平滑 Blend 回去——
+        //    否则 exit 播完瞬间受管复位会把它们砸到默认值（手部网格硬切闪一下）。
+        var handBackToIdle = _gesture?.ShouldHandBackToIdle == true;
+        if (idleEnabled && IdleMotion is { } idleMotion
+            && (!_motionPlayer.HasActive || handBackToIdle)
+            && _gesture?.SuppressIdleMotion != true &&
             _motionDataByPath.TryGetValue(idleMotion.FilePath, out var idleData))
         {
-            _motionPlayer.Play(model, idleMotion, idleData, loop: true);
+            _motionPlayer.Play(model, idleMotion, idleData, loop: true,
+                handBackToIdle ? GesturePlayerIdleHandbackFadeSeconds : -1);
         }
 
         _motionPlayer.Update(model, deltaSeconds, _eyeBlinkParameterIds, _lipSyncParameterIds);
