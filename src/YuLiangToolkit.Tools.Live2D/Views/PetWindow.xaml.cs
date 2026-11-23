@@ -184,11 +184,16 @@ public partial class PetWindow : Window
 
     // ===================== 屏幕上的帧渲染（由会话帧循环调用） =====================
 
+    /// <summary>D3D9Ex 纹理长边上限（确保 GPU 整幅渲染目标能建成共享纹理；超出按比例降渲染倍率）。</summary>
+    private const float GpuMaxTextureSize = 8192f;
+
     /// <summary>
     /// 用运行时当前帧画桌宠画面（会话在 Tick 之后调用）。
-    /// <para><b>可见区域裁切</b>：只渲染窗口与虚拟屏（多屏并集）相交的那一片——桌宠一大半挂在
-    /// 屏幕外时直接省掉屏幕外的像素，完全在屏幕外时整帧跳过（保留最后一帧画面）。
-    /// 渲染完的切片用 <c>PetImage.Margin</c> 摆回窗口对应位置（<c>Stretch=Fill</c> 铺满切片区域）。</para>
+    /// <para><b>GPU 路径整幅渲染</b>：光栅化在显卡上（整窗 1000×2053 也就 1~2ms），不做可见区域切片——
+    /// 切片原点随窗口位置逐像素变化会让渲染目标（D3D9 共享纹理 + D3DImage back buffer）在拖动时每帧重建，
+    /// 旧表面释放瞬间 D3DImage 还指着它 → 模型部件闪烁。整幅渲染下拖动只改窗口位置、目标尺寸不变，永不重建。
+    /// <para><b>CPU 回退路径保留切片</b>：只渲染窗口与虚拟屏相交的那一片省 CPU（原优化），完全在屏幕外时
+    /// 两条路径都整帧跳过（保留最后一帧画面）；渲染完的切片用 <c>PetImage.Margin</c> 摆回对应位置。</para></para>
     /// </summary>
     public void RenderFrame(ModelRuntime runtime)
     {
@@ -198,39 +203,59 @@ public partial class PetWindow : Window
         var windowHeight = ActualHeight;
         if (windowWidth < 2 || windowHeight < 2) return;
 
-        // 可见切片（窗口本地 DIP）= 窗口 ∩ 虚拟屏；宽高按 16px 向上取整量化，
-        // 避免贴着屏幕边缘拖动时每帧重建渲染位图（切片只会往屏幕外多画 ≤15px，无副作用）。
+        // 桌宠用会话建的独立渲染器（共享只读纹理）；创建失败时退回运行时渲染器
+        var renderer = _session.PetRenderer ?? runtime.Renderer;
+        var gpuPath = renderer.IsGpu;
+
+        // 可见区域（窗口本地 DIP）= 窗口 ∩ 虚拟屏；完全在屏幕外时跳过整帧（保留最后一帧画面）
         var vsLeft = SystemParameters.VirtualScreenLeft;
         var vsTop = SystemParameters.VirtualScreenTop;
         var x0 = Math.Clamp(vsLeft - Left, 0, windowWidth);
         var x1 = Math.Clamp(vsLeft + SystemParameters.VirtualScreenWidth - Left, 0, windowWidth);
         var y0 = Math.Clamp(vsTop - Top, 0, windowHeight);
         var y1 = Math.Clamp(vsTop + SystemParameters.VirtualScreenHeight - Top, 0, windowHeight);
-        var sliceWidth = Math.Min(windowWidth - x0, Math.Ceiling((x1 - x0) / 16) * 16);
-        var sliceHeight = Math.Min(windowHeight - y0, Math.Ceiling((y1 - y0) / 16) * 16);
-        if (sliceWidth < 2 || sliceHeight < 2) return;   // 完全在屏幕外：跳过渲染
+        if (x1 - x0 < 2 || y1 - y0 < 2) return;   // 完全在屏幕外：跳过渲染
 
         var renderScale = Math.Clamp(Config?.RenderScale ?? 1.0, 0.5, 1.5);
         var model = runtime.Model;
         var canvasWidth = Math.Max(1.0, model.CanvasWidthPixels);
         var canvasHeight = Math.Max(1.0, model.CanvasHeightPixels);
 
-        // 窗口 = 模型本身（整张画布等比铺满窗口）；切片按同样的映射只画窗口本地 [x0,y0] 起的一片，
-        // 输出位图 = 切片 DIP × 渲染倍率，Offset 相应左移 / 上移。
+        // 窗口 = 模型本身（整张画布等比铺满窗口）
         var fit = Math.Min(windowWidth / canvasWidth, windowHeight / canvasHeight);
         var fullOffsetX = (windowWidth - canvasWidth * fit) * 0.5;
         var fullOffsetY = (windowHeight - canvasHeight * fit) * 0.5;
 
-        // 桌宠用会话建的独立渲染器（共享只读纹理）；创建失败时退回运行时渲染器
-        var renderer = _session.PetRenderer ?? runtime.Renderer;
-
         var options = _renderOptions;
-        options.Width = Math.Max(2, (int)Math.Round(sliceWidth * renderScale));
-        options.Height = Math.Max(2, (int)Math.Round(sliceHeight * renderScale));
-        options.FitCanvas = false;
-        options.Scale = fit * renderScale;
-        options.OffsetX = (fullOffsetX - x0) * renderScale;
-        options.OffsetY = (fullOffsetY - y0) * renderScale;
+        double sliceWidth;
+        double sliceHeight;
+        if (gpuPath)
+        {
+            // GPU：整幅渲染。目标尺寸 = 窗口 × 渲染倍率，钳到 D3D9 纹理上限 8192（超出按比例降倍率，只影响清晰度）
+            var effectiveScale = Math.Min(renderScale,
+                Math.Min(GpuMaxTextureSize / windowWidth, GpuMaxTextureSize / windowHeight));
+            options.Width = Math.Max(2, (int)Math.Round(windowWidth * effectiveScale));
+            options.Height = Math.Max(2, (int)Math.Round(windowHeight * effectiveScale));
+            options.FitCanvas = false;
+            options.Scale = fit * effectiveScale;
+            options.OffsetX = fullOffsetX * effectiveScale;
+            options.OffsetY = fullOffsetY * effectiveScale;
+            sliceWidth = windowWidth;
+            sliceHeight = windowHeight;
+        }
+        else
+        {
+            // CPU：可见切片（宽高按 16px 向上取整量化，切片只往屏幕外多画 ≤15px，无副作用）
+            sliceWidth = Math.Min(windowWidth - x0, Math.Ceiling((x1 - x0) / 16) * 16);
+            sliceHeight = Math.Min(windowHeight - y0, Math.Ceiling((y1 - y0) / 16) * 16);
+            options.Width = Math.Max(2, (int)Math.Round(sliceWidth * renderScale));
+            options.Height = Math.Max(2, (int)Math.Round(sliceHeight * renderScale));
+            options.FitCanvas = false;
+            options.Scale = fit * renderScale;
+            options.OffsetX = (fullOffsetX - x0) * renderScale;
+            options.OffsetY = (fullOffsetY - y0) * renderScale;
+        }
+
         options.TransparentBackground = true;
 
         renderer.Render(runtime.Model, options);
@@ -243,8 +268,16 @@ public partial class PetWindow : Window
             PetImage.Source = surface;
         }
 
-        // 把渲染好的切片摆回窗口对应位置（右 / 下边距可为负：量化多画的那部分在屏幕外，会被窗口裁掉）
-        PetImage.Margin = new Thickness(x0, y0, windowWidth - x0 - sliceWidth, windowHeight - y0 - sliceHeight);
+        // 把渲染结果摆回窗口对应位置（GPU = 整幅铺满；CPU = 切片，右 / 下边距可为负：
+        // 量化多画的那部分在屏幕外，会被窗口裁掉）
+        if (gpuPath)
+        {
+            PetImage.Margin = new Thickness(0);
+        }
+        else
+        {
+            PetImage.Margin = new Thickness(x0, y0, windowWidth - x0 - sliceWidth, windowHeight - y0 - sliceHeight);
+        }
 
         // 全身轻晃：以窗口底边中点为支点旋转（仅 RenderTransform；窗口尺寸 / 透明区域 / 点击穿透 / 拖动都不受影响）
         double leanDegrees = 0;

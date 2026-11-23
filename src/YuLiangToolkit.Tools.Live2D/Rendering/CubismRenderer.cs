@@ -49,11 +49,14 @@ public sealed unsafe partial class CubismRenderer : ILive2DRenderSurface, IDispo
     private Gpu.CubismGpuRenderer? _gpu;
     private WriteableBitmap? _gpuCaptureBitmap;
 
+    /// <summary>目标创建连续失败的帧数（显存瞬时吃紧等瞬态失败：保留 GPU 走 CPU 出帧、冷却重试，别急着永久回退）。</summary>
+    private int _gpuTargetFailStreak;
+
     /// <summary>GPU 层初始化 / 运行失败的原因（给设置页 / 日志展示用；null = GPU 正常工作）。</summary>
     public string? GpuError { get; private set; }
 
-    /// <summary>当前是否在用 GPU（D3D11）渲染；false = CPU 软件光栅器。</summary>
-    public bool IsGpu => _gpu is not null;
+    /// <summary>当前是否在用 GPU（D3D11）渲染；false = CPU 软件光栅器（含瞬态失败冷却期间——UI 按此选择渲染几何）。</summary>
+    public bool IsGpu => _gpu is not null && _gpuTargetFailStreak == 0;
 
     // ---------- 每帧复用缓冲（避免每帧大分配） ----------
 
@@ -145,14 +148,15 @@ public sealed unsafe partial class CubismRenderer : ILive2DRenderSurface, IDispo
     /// <summary>当前使用的纹理图集（只读）。</summary>
     public TextureAtlasSet Textures { get; }
 
-    /// <summary>当前出图源（UI 绑定这个）：GPU 路径是 D3DImage（零拷贝）或读回位图；CPU 路径是 WriteableBitmap。</summary>
-    public ImageSource? Surface => _gpu is not null ? _gpu.Surface : _bitmap;
+    /// <summary>当前出图源（UI 绑定这个）：GPU 路径是 D3DImage（零拷贝）或读回位图；CPU 路径是 WriteableBitmap。
+    /// GPU 瞬态失败冷却期间出的是 CPU 帧，所以返回 CPU 位图（恢复后自动切回 D3DImage）。</summary>
+    public ImageSource? Surface => _gpu is not null && _gpuTargetFailStreak == 0 ? _gpu.Surface : _bitmap;
 
     /// <summary>
     /// 当前帧的位图快照（CPU 路径 = 渲染位图本体；GPU 路径 = 最近一次 <see cref="CaptureBitmap"/> 读回的快照）。
     /// <para>GPU 路径下 <see cref="Bitmap"/> 不是每帧自动刷新的（零拷贝出图不过 CPU），截图 / 逐像素断言请调 <see cref="CaptureBitmap"/>。</para>
     /// </summary>
-    public WriteableBitmap? Bitmap => _gpu is not null ? _gpuCaptureBitmap : _bitmap;
+    public WriteableBitmap? Bitmap => _gpu is not null && _gpuTargetFailStreak == 0 ? _gpuCaptureBitmap : _bitmap;
 
     /// <summary>最近一帧的渲染统计。</summary>
     public RenderStats LastStats { get; private set; } = RenderStats.Empty;
@@ -216,18 +220,39 @@ public sealed unsafe partial class CubismRenderer : ILive2DRenderSurface, IDispo
                 {
                     if (_gpu.Render(model, options))
                     {
+                        _gpuTargetFailStreak = 0;
                         LastStats = _gpu.LastStats;
                         return;
                     }
 
-                    GpuError = "GPU 渲染目标创建失败（尺寸不支持？），已回退 CPU 软件渲染";
+                    // 目标创建失败（显存瞬时吃紧等瞬态）：本帧走 CPU 出图，GPU 保留、下一帧重试；
+                    // 连续 ~10 秒（300 帧 @30fps）都失败才真正放弃 GPU，避免缩放 / 换纹理时一失败就永久回退。
+                    _gpuTargetFailStreak++;
+                    if (_gpuTargetFailStreak == 1)
+                    {
+                        GpuError = "GPU 渲染目标创建失败（本帧暂用 CPU 出图，稍后自动重试 GPU）";
+                    }
+                    else if (_gpuTargetFailStreak >= 300)
+                    {
+                        GpuError = "GPU 渲染目标连续创建失败，已回退 CPU 软件渲染";
+                        DisposeGpu();
+                    }
                 }
                 catch (Exception ex)
                 {
-                    GpuError = $"GPU 渲染失败（{Gpu.CubismGpuRenderer.LastStage}/{Gpu.GpuRenderDevice.LastStage}），已回退 CPU 软件渲染：{ex.Message}";
+                    GpuError = $"GPU 渲染异常（{Gpu.CubismGpuRenderer.LastStage}），已回退 CPU 软件渲染：{ex.Message}";
+                    DisposeGpu();
                 }
 
-                DisposeGpu();
+                if (_gpu is null)
+                {
+                    RenderCore(model, options);
+                    return;
+                }
+
+                // GPU 还在（瞬态失败）：这一帧用 CPU 光栅器临时出图，不污染 GPU 侧状态
+                RenderCore(model, options);
+                return;
             }
 
             RenderCore(model, options);

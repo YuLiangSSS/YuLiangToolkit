@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -29,7 +29,7 @@ internal sealed unsafe class CubismGpuRenderer : IDisposable
     private int _vertexFloatCount;
 
     /// <summary>索引缓冲数据（已加顶点基址偏移）。</summary>
-    private ushort[] _indices = new ushort[8192];
+    private uint[] _indices = new uint[8192];
 
     private int _indexCount;
 
@@ -249,7 +249,7 @@ internal sealed unsafe class CubismGpuRenderer : IDisposable
         var offset = _indexCount;
         for (var i = 0; i < indexCount; i++)
         {
-            _indices[offset + i] = (ushort)(indices[i] + vertexBase);
+            _indices[offset + i] = (uint)(indices[i] + vertexBase);
         }
 
         _indexCount = needed;

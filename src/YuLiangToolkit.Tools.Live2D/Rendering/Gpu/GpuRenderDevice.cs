@@ -298,7 +298,7 @@ internal sealed unsafe class GpuRenderDevice : IDisposable
 
     /// <summary>渲染一帧（蒙版 pass → 主 pass）。顶点为 float4（屏幕像素 x,y + 图集 u,v）。</summary>
     public void DrawFrame(ID3D11RenderTargetView rtv, int width, int height,
-        float[] vertices, int vertexFloatCount, ushort[] indices, int indexCount,
+        float[] vertices, int vertexFloatCount, uint[] indices, int indexCount,
         IReadOnlyList<GpuDrawCommand> commands, IReadOnlyList<GpuMaskPass> maskPasses,
         bool transparentBackground, uint backgroundColor)
     {
@@ -322,7 +322,7 @@ internal sealed unsafe class GpuRenderDevice : IDisposable
         mapped = _context.Map(_indexBuffer, 0, MapMode.WriteDiscard, Vortice.Direct3D11.MapFlags.None);
         try
         {
-            indices.AsSpan(0, indexCount).CopyTo(new Span<ushort>((ushort*)mapped.DataPointer, indexCount));
+            indices.AsSpan(0, indexCount).CopyTo(new Span<uint>((uint*)mapped.DataPointer, indexCount));
         }
         finally
         {
@@ -334,7 +334,7 @@ internal sealed unsafe class GpuRenderDevice : IDisposable
         _context.IASetInputLayout(_inputLayout);
         _context.IASetPrimitiveTopology(PrimitiveTopology.TriangleList);
         _context.IASetVertexBuffers(0, 1, new[] { _vertexBuffer }, stackalloc uint[] { 16 }, stackalloc uint[] { 0 });
-        _context.IASetIndexBuffer(_indexBuffer, Format.R16_UInt, 0);
+        _context.IASetIndexBuffer(_indexBuffer, Format.R32_UInt, 0);
         _context.RSSetViewport(0f, 0f, width, height, 0f, 1f);
         _context.RSSetState(_rasterizer);
         _context.VSSetShader(_vertexShader);
@@ -361,6 +361,10 @@ internal sealed unsafe class GpuRenderDevice : IDisposable
         EnsureMaskTargets(maskPasses.Count, width, height);
         if (maskPasses.Count > 0)
         {
+            // 防御：先占住 SRV 槽，清掉上一帧主 pass 对蒙版纹理的绑定
+            // （同一资源同时作为 RT 和 SRV 时 D3D11 行为未定义，写进蒙版目标的内容可能错乱 → 部件闪烁）
+            _context.PSSetShaderResources(0, new[] { _whiteSrv });
+            _context.PSSetShaderResources(1, new[] { _whiteSrv });
             _context.PSSetShader(_pixelShaderMask);
             _context.OMSetBlendState(_blendMask);
             for (var c = 0; c < maskPasses.Count; c++)
@@ -495,7 +499,7 @@ internal sealed unsafe class GpuRenderDevice : IDisposable
         _indexBuffer?.Dispose();
         _indexBuffer = _device.CreateBuffer(new BufferDescription
         {
-            ByteWidth = (uint)(newCapacity * sizeof(ushort)),
+            ByteWidth = (uint)(newCapacity * sizeof(uint)),
             Usage = ResourceUsage.Dynamic,
             BindFlags = BindFlags.IndexBuffer,
             CPUAccessFlags = CpuAccessFlags.Write,
