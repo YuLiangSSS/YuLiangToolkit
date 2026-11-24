@@ -1449,6 +1449,17 @@
                                 Command="{Binding ApplyFacePresetCommand}" CommandParameter="wink" />
                         <Button Content="🙄 翻白眼" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
                                 Command="{Binding ApplyFacePresetCommand}" CommandParameter="rolleyes" />
+                        <Button Content="🧭 抬头" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
+                                Command="{Binding ApplyFacePresetCommand}" CommandParameter="headup"
+                                ToolTip="头部上下角度拉到抬头（超出模型范围会自动夹到上限）" />
+                        <Button Content="🧭 低头" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
+                                Command="{Binding ApplyFacePresetCommand}" CommandParameter="headdown" />
+                        <Button Content="🧭 转头朝左" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
+                                Command="{Binding ApplyFacePresetCommand}" CommandParameter="headleft" />
+                        <Button Content="🧭 转头朝右" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
+                                Command="{Binding ApplyFacePresetCommand}" CommandParameter="headright" />
+                        <Button Content="🧭 歪头" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
+                                Command="{Binding ApplyFacePresetCommand}" CommandParameter="headtilt" />
                         <Button Content="😐 重置面部" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
                                 Command="{Binding ApplyFacePresetCommand}" CommandParameter="reset"
                                 ToolTip="把这一卡里的面部参数都恢复默认值（并解除锁定）" />
@@ -1463,10 +1474,12 @@
                                 ToolTip="写回保存的面部参数并自动锁定（固定还原成预设的样子）" />
                     </WrapPanel>
 
-                    <!-- 三列分组：眼睛 / 嘴 / 舌头（卡内整体滚动，不动整页高度；窄窗口靠列 MinWidth 兜住） -->
+                    <!-- 四列分组：头部转动 / 眼睛 / 嘴 / 舌头（卡内整体滚动，不动整页高度；窄窗口靠列 MinWidth 兜住） -->
                     <ScrollViewer Grid.Row="2" Style="{StaticResource CardScrollerStyle}" Margin="18,4,18,12">
                         <Grid>
                             <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" MinWidth="200" />
+                                <ColumnDefinition Width="16" />
                                 <ColumnDefinition Width="*" MinWidth="220" />
                                 <ColumnDefinition Width="16" />
                                 <ColumnDefinition Width="*" MinWidth="240" />
@@ -1475,18 +1488,26 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0">
+                                <TextBlock Text="🧭 头部转动" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                <ItemsControl ItemsSource="{Binding FaceHeadParameters}"
+                                              ItemTemplate="{StaticResource FaceParameterRowTemplate}" />
+                                <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,8,0,0"
+                                           Text="抬头 / 低头 / 左右转头 / 歪头。眼睛跟随开启时这些参数会被每帧接管——想手动摆姿势先关眼睛跟随，或用「面部锁定」把姿势钉住（锁定后眼控也盖不动）。" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2">
                                 <TextBlock Text="👁 眼睛" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,4" />
                                 <ItemsControl ItemsSource="{Binding FaceEyeParameters}"
                                               ItemTemplate="{StaticResource FaceParameterRowTemplate}" />
                             </StackPanel>
 
-                            <StackPanel Grid.Column="2">
+                            <StackPanel Grid.Column="4">
                                 <TextBlock Text="👄 嘴" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,4" />
                                 <ItemsControl ItemsSource="{Binding FaceMouthParameters}"
                                               ItemTemplate="{StaticResource FaceParameterRowTemplate}" />
                             </StackPanel>
 
-                            <StackPanel Grid.Column="4">
+                            <StackPanel Grid.Column="6">
                                 <TextBlock Text="👅 舌头（重点）" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,4" />
                                 <ItemsControl ItemsSource="{Binding FaceTongueParameters}"
                                               ItemTemplate="{StaticResource FaceParameterRowTemplate}" />

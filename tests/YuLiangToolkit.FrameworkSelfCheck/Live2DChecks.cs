@@ -3417,6 +3417,9 @@ internal static class Live2DChecks
         var tongueOut = model.FindParameter("TongueOut");
         var tongueUp = model.FindParameter("ParamTongueUpDown");
         var tongueWidth = model.FindParameter("ParamTongueWidth");
+        var headAngleX = model.FindParameter("ParamAngleX");
+        var headAngleY = model.FindParameter("ParamAngleY");
+        var headAngleZ = model.FindParameter("ParamAngleZ");
 
         C("面部测试：眼睛位置/开闭 4 个参数都能按 Id 找到（ParamEyeBallX/Y、ParamEyeLOpen/ROpen）",
             eyeBallX is not null && eyeBallY is not null && eyeLOpen is not null && eyeROpen is not null);
@@ -3425,6 +3428,11 @@ internal static class Live2DChecks
         C("面部测试：舌头三参数都能按 Id 找到（TongueOut / ParamTongueUpDown / ParamTongueWidth）",
             tongueOut is not null && tongueUp is not null && tongueWidth is not null,
             tongueOut is null ? "(TongueOut 不存在)" : $"TongueOut={tongueOut.Minimum}..{tongueOut.Maximum} 默认 {tongueOut.DefaultValue}");
+        C("面部测试：头部转动三参数都能按 Id 找到（ParamAngleX/Y/Z = 左右转 / 上下 / 歪头）",
+            headAngleX is not null && headAngleY is not null && headAngleZ is not null,
+            headAngleX is null ? "(ParamAngleX 不存在)" :
+                $"AngleX={headAngleX.Minimum}..{headAngleX.Maximum} AngleY={headAngleY?.Minimum}..{headAngleY?.Maximum} " +
+                $"AngleZ={headAngleZ?.Minimum}..{headAngleZ?.Maximum}");
 
         var faceRangesOk = eyeBallX is not null && eyeBallY is not null && eyeLOpen is not null && eyeROpen is not null
                            && mouthOpen is not null && mouthForm is not null
@@ -3449,6 +3457,20 @@ internal static class Live2DChecks
         }
 
         C("面部测试：写端点值（嘴 1 / 舌 1 / 眼球 -1）读回一致（滑块到端点不会漂）", writeOk);
+
+        // 头部转动三参数（抬头 / 低头 / 左右转 / 歪头）：写最大值读回一致（滑杆拖到端点和模型对上）
+        var headWriteOk = headAngleX is not null && headAngleY is not null && headAngleZ is not null;
+        if (headWriteOk)
+        {
+            headAngleX!.Value = headAngleX.Maximum;
+            headAngleY!.Value = headAngleY.Minimum;
+            headAngleZ!.Value = headAngleZ.Maximum;
+            headWriteOk = Near(headAngleX.Value, headAngleX.Maximum, 1e-6)
+                          && Near(headAngleY.Value, headAngleY.Minimum, 1e-6)
+                          && Near(headAngleZ.Value, headAngleZ.Maximum, 1e-6);
+        }
+
+        C("面部测试：头部转动写端点值（右转 / 低头 / 右倾）读回一致", headWriteOk);
 
         if (mouthOpen is not null && tongueOut is not null && tongueUp is not null && tongueWidth is not null)
         {

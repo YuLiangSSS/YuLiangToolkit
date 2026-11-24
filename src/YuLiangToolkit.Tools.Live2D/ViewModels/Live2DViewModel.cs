@@ -1499,6 +1499,20 @@ public sealed class Live2DViewModel : ToolViewModelBase
         "TongueOut", "ParamTongueUpDown", "ParamTongueWidth",
     };
 
+    /// <summary>头部转动组参数 Id（左右转头 / 上下点头抬头 / 歪头）。</summary>
+    private static readonly string[] FaceHeadIds =
+    {
+        "ParamAngleX", "ParamAngleY", "ParamAngleZ",
+    };
+
+    /// <summary>头部转动组的固定显示名（比 cdi3 的名字更直白：正负方向写清楚）。</summary>
+    private static readonly (string Id, string Name)[] FaceHeadNames =
+    {
+        ("ParamAngleX", "头部左右转（负=朝左 / 正=朝右）"),
+        ("ParamAngleY", "头部上下（负=低头 / 正=抬头）"),
+        ("ParamAngleZ", "头部歪斜（负=左倾 / 正=右倾）"),
+    };
+
     private readonly List<FaceParameterRowViewModel> _faceRows = new();
     private string _faceSummaryText = "模型加载后显示可调参数";
 
@@ -1510,6 +1524,9 @@ public sealed class Live2DViewModel : ToolViewModelBase
 
     /// <summary>舌头组参数行。</summary>
     public ObservableCollection<FaceParameterRowViewModel> FaceTongueParameters { get; } = new();
+
+    /// <summary>头部转动组参数行（左右转 / 上下 / 歪头）。</summary>
+    public ObservableCollection<FaceParameterRowViewModel> FaceHeadParameters { get; } = new();
 
     /// <summary>面部参数统计文本（眼睛 / 嘴 / 舌头各几个）。</summary>
     public string FaceSummaryText
@@ -1526,13 +1543,13 @@ public sealed class Live2DViewModel : ToolViewModelBase
             var model = runtime.Model;
             var display = runtime.Display;
 
-            void Add(ObservableCollection<FaceParameterRowViewModel> target, string id)
+            void Add(ObservableCollection<FaceParameterRowViewModel> target, string id, string? displayName = null)
             {
                 var parameter = model.FindParameter(id);
                 if (parameter is null) return;
 
-                string? name = null;
-                if (display is not null && display.ParameterNames.TryGetValue(id, out var foundName))
+                string? name = displayName;
+                if (name is null && display is not null && display.ParameterNames.TryGetValue(id, out var foundName))
                 {
                     name = foundName;
                 }
@@ -1546,9 +1563,10 @@ public sealed class Live2DViewModel : ToolViewModelBase
             foreach (var id in FaceEyeIds) Add(FaceEyeParameters, id);
             foreach (var id in FaceMouthIds) Add(FaceMouthParameters, id);
             foreach (var id in FaceTongueIds) Add(FaceTongueParameters, id);
+            foreach (var (id, name) in FaceHeadNames) Add(FaceHeadParameters, id, name);
 
-            FaceSummaryText = $"{_faceRows.Count} 个可调参数（眼睛 {FaceEyeParameters.Count} / " +
-                              $"嘴 {FaceMouthParameters.Count} / 舌头 {FaceTongueParameters.Count}）";
+            FaceSummaryText = $"{_faceRows.Count} 个可调参数（头部 {FaceHeadParameters.Count} / " +
+                              $"眼睛 {FaceEyeParameters.Count} / 嘴 {FaceMouthParameters.Count} / 舌头 {FaceTongueParameters.Count}）";
         }
         catch (Exception ex)
         {
@@ -1561,6 +1579,7 @@ public sealed class Live2DViewModel : ToolViewModelBase
         FaceEyeParameters.Clear();
         FaceMouthParameters.Clear();
         FaceTongueParameters.Clear();
+        FaceHeadParameters.Clear();
         _faceRows.Clear();
         FaceSummaryText = "模型加载后显示可调参数";
     }
@@ -1618,6 +1637,31 @@ public sealed class Live2DViewModel : ToolViewModelBase
                 Set("ParamEyeROpen", 0.55);
                 break;
 
+            // 头部转动预设（超出模型范围会自动夹到参数 min/max）：
+            case "headup":
+                Set("ParamAngleY", 30);
+                Set("ParamAngleX", 0);
+                break;
+
+            case "headdown":
+                Set("ParamAngleY", -30);
+                Set("ParamAngleX", 0);
+                break;
+
+            case "headleft":
+                Set("ParamAngleX", -30);
+                Set("ParamAngleY", 0);
+                break;
+
+            case "headright":
+                Set("ParamAngleX", 30);
+                Set("ParamAngleY", 0);
+                break;
+
+            case "headtilt":
+                Set("ParamAngleZ", 30);
+                break;
+
             case "reset":
                 FaceOverrideEnabled = false;   // 恢复默认 = 解除锁定（清固定参数），参数交还给动作 / 待机系统
                 foreach (var row in _faceRows) row.SetValue((float)row.DefaultValue);
@@ -1671,6 +1715,11 @@ public sealed class Live2DViewModel : ToolViewModelBase
         "smile" => "😊 微笑",
         "wink" => "😉 眨眼",
         "rolleyes" => "🙄 翻白眼",
+        "headup" => "🧭 抬头",
+        "headdown" => "🧭 低头",
+        "headleft" => "🧭 转头朝左",
+        "headright" => "🧭 转头朝右",
+        "headtilt" => "🧭 歪头",
         "reset" => "😐 重置面部",
         _ => "😛 吐舌头",
     };
