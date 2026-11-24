@@ -1492,7 +1492,7 @@
                                 <ItemsControl ItemsSource="{Binding FaceHeadParameters}"
                                               ItemTemplate="{StaticResource FaceParameterRowTemplate}" />
                                 <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,8,0,0"
-                                           Text="抬头 / 低头 / 左右转头 / 歪头。眼睛跟随开启时这些参数会被每帧接管——想手动摆姿势先关眼睛跟随，或用「面部锁定」把姿势钉住（锁定后眼控也盖不动）。" />
+                                           Text="抬头 / 低头 / 左右转头 / 歪头。拖动滑杆会自动钉住该角度（头部不再跟鼠标），双击滑杆回默认值即恢复跟随；也可以用「锁定」把整套脸 / 头姿势一起钉住。" />
                             </StackPanel>
 
                             <StackPanel Grid.Column="2">

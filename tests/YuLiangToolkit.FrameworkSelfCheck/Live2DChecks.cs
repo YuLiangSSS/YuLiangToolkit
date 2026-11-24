@@ -1770,6 +1770,20 @@ internal static class Live2DChecks
                 AllParamsFinite() && runtime.LastTickMilliseconds >= 0,
                 $"tickMs={runtime.LastTickMilliseconds:0.###}");
 
+            // 头部滑杆的「自动钉住」：固定层里的 ParamAngleX 要盖过眼睛跟随（面部测试卡拖动即固定）
+            runtime.SetParameterOverride("head", "ParamAngleX", 15f);
+            TickFrames(30);
+            var pinnedOk = Math.Abs(Param("ParamAngleX") - 15f) < 0.5f;
+            TickFrames(30);
+            pinnedOk = pinnedOk && Math.Abs(Param("ParamAngleX") - 15f) < 0.5f;
+            C("面部测试：头部滑杆自动钉住（固定层 ParamAngleX=15 盖过眼睛跟随，1 秒不漂）",
+                pinnedOk, $"ParamAngleX={Param("ParamAngleX"):0.###}");
+            runtime.ClearParameterOverride("head", "ParamAngleX");
+            TickFrames(60);
+            C("面部测试：解除单参数钉住后头部恢复眼睛跟随（ParamAngleX 不再钉在 15）",
+                Math.Abs(Param("ParamAngleX") - 15f) > 0.5f,
+                $"ParamAngleX={Param("ParamAngleX"):0.###}");
+
             // ---------------- F. 渲染器（GPU 优先，失败自动回退 CPU 软件光栅器；断言走读回快照） ----------------
             // 用「默认参数姿态」渲染：和上面理论包围盒（也是默认姿态）对得上
             Quiet();

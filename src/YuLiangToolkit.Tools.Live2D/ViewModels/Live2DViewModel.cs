@@ -2341,8 +2341,28 @@ public sealed class Live2DViewModel : ToolViewModelBase
         {
             if (e.PropertyName != nameof(IParameterRowViewModel.Value)) return;
             if (row is not IParameterRowViewModel parameterRow) return;
-            if (!IsGroupLocked(group)) return;
-            Runtime?.SetParameterOverride(group, parameterRow.Id, (float)parameterRow.Value);
+
+            if (IsGroupLocked(group))
+            {
+                Runtime?.SetParameterOverride(group, parameterRow.Id, (float)parameterRow.Value);
+                return;
+            }
+
+            // 头部转动滑杆（未锁定）：拖动即自动钉住该角度（眼控 / 待机都盖不动），
+            // 双击回默认值时自动解除、恢复眼睛跟随。其它面部参数维持原语义（不锁定就不钉）。
+            if (group == "face" && FaceHeadIds.Contains(parameterRow.Id))
+            {
+                var runtime = Runtime;
+                if (runtime is null) return;
+                if (Math.Abs(parameterRow.Value - parameterRow.DefaultValue) < 1e-4)
+                {
+                    runtime.ClearParameterOverride("head", parameterRow.Id);
+                }
+                else
+                {
+                    runtime.SetParameterOverride("head", parameterRow.Id, (float)parameterRow.Value);
+                }
+            }
         };
     }
 
@@ -2388,6 +2408,8 @@ public sealed class Live2DViewModel : ToolViewModelBase
         if (!enabled)
         {
             runtime.ClearParameterOverrides(group);
+            // 面部解锁时把头部滑杆的自动钉住也一起放开（重新拖滑杆会再次钉住）
+            if (group == "face") runtime.ClearParameterOverrides("head");
             return;
         }
 
@@ -2395,6 +2417,9 @@ public sealed class Live2DViewModel : ToolViewModelBase
         {
             runtime.SetParameterOverride(group, row.Id, (float)row.Value);
         }
+
+        // 面部上锁后头部参数归入锁定层统一管理，滑杆的自动钉住不再单独存在
+        if (group == "face") runtime.ClearParameterOverrides("head");
     }
 
     /// <summary>保存当前值为一组预设（Data\live2d\parameter-presets.json，按模块分组）。</summary>

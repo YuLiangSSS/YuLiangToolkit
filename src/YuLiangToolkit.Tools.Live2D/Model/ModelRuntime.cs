@@ -331,8 +331,10 @@ public sealed class ModelRuntime : IDisposable
     // ===================== 用户固定参数（Override：面板「锁定」的参数每帧强制回填） =====================
 
     // 面部测试 / 身体测试 / 手臂卡「锁定」后，把用户调好的值存进这里；
-    // 每帧在所有子系统（待机 / 眨眼 / 动作 / 表情 / 晃动 / 互动）写完之后、物理求值之前强制回填——
-    // 锁定的身体角度会照常带动物理（头发 / 裙子跟着固定姿势摆），锁定的脸参数盖过动作 / 小动作。
+    // 每帧在所有子系统（待机 / 眨眼 / 动作 / 表情 / 晃动 / 互动）写完之后、物理求值之前回填一次，
+    // 物理求值 + 摇尾巴之后、Core 求值之前再回填一次——
+    // 第二次是必须的：ParamAngleX 这类参数同时是物理输出（头部摆的钟摆写回），物理会把锁定值覆盖掉；
+    // 锁定的身体角度照常带动物理（头发 / 裙子跟着固定姿势摆），锁定的脸参数盖过动作 / 小动作 / 物理输出。
     private readonly List<(CubismParameter Parameter, float Value, string Group)> _parameterOverrides = new();
     private RenderStats _lastRenderStats = RenderStats.Empty;
 
@@ -373,6 +375,16 @@ public sealed class ModelRuntime : IDisposable
     /// <summary>解除某个模块（face / body / arms）的全部固定参数。</summary>
     public void ClearParameterOverrides(string groupId)
         => _parameterOverrides.RemoveAll(o => string.Equals(o.Group, groupId, StringComparison.Ordinal));
+
+    /// <summary>解除单个参数的固定（其余固定参数保留）。</summary>
+    public void ClearParameterOverride(string groupId, string parameterId)
+    {
+        if (_model is null) return;
+        var parameter = _model.FindParameter(parameterId);
+        if (parameter is null) return;
+        _parameterOverrides.RemoveAll(o =>
+            string.Equals(o.Group, groupId, StringComparison.Ordinal) && ReferenceEquals(o.Parameter, parameter));
+    }
 
     /// <summary>解除全部固定参数。</summary>
     public void ClearAllParameterOverrides() => _parameterOverrides.Clear();
@@ -2536,9 +2548,9 @@ public sealed class ModelRuntime : IDisposable
         // 5.6) 待机随机小动作：没有动捕 / 音乐 / 语音 / 舞蹈 / 表演 / 互动 / 用户动作时，按随机间隔播一个
         UpdateIdleRandomGesture(deltaSeconds, mocapFace);
 
-        // 5.7) 用户固定参数：面板「锁定」的参数在所有系统写完之后强制回填（盖过动作 / 待机 / 晃动），
-        //      且在物理求值之前——锁定的身体角度会正常带动物理（头发 / 裙子跟着固定姿势摆）。
-        if (_parameterOverrides.Count > 0) ApplyParameterOverrides();
+        // 5.7) 用户固定参数：面板「锁定」的参数在所有系统写完之后强制回填（盖过动作 / 待机 / 晃动）。
+        //      注意：ParamAngleX 这类参数同时是物理输出（头部摆的钟摆写回），物理还会再写一次——
+        //      所以物理之后（model.Update 之前）会再回填一次，保证锁定的值最终必胜（见 5.8）。
 
         // 物理：在参数都算完之后、Core 求值之前跑（改的是参数值）
         if (PhysicsEnabled && _physics is not null)
@@ -2548,6 +2560,10 @@ public sealed class ModelRuntime : IDisposable
 
         // 摇尾巴：物理把尾巴角度算完后，再叠加一段带相位延迟的摆动（物理关着也能摇）
         ApplyTailWag(deltaSeconds);
+
+        // 5.8) 固定参数最终回填：物理输出（头部摆写回 ParamAngleX 这类输入兼输出参数）
+        //      会覆盖前面的锁定值，物理算完之后再钉一次，锁定的姿势才能站得住。
+        if (_parameterOverrides.Count > 0) ApplyParameterOverrides();
 
         model.Update();
         // 顶点已更新：互动热区几何缓存失效，下一次 HitTest 用本帧蒙皮重新算
