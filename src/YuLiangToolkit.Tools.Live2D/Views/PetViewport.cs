@@ -14,9 +14,11 @@ namespace YuLiangToolkit.Tools.Live2D.Views;
 /// </summary>
 public static class PetViewport
 {
-    /// <summary>桌宠窗口宽度范围（DIP，= 模型显示宽度）。</summary>
+    /// <summary>桌宠窗口宽度范围（DIP，= 模型显示宽度）。
+    /// 上限 3840（4K 宽度档）：GPU 渲染按 D3D9 纹理上限 8192px 自动钳渲染倍率，
+    /// 宽 3840 时高 7883 &lt; 8000 上限，位图最大 3840×7883 在 GPU 纹理范围内。</summary>
     public const double MinWindowWidth = 160;
-    public const double MaxWindowWidth = 2000;
+    public const double MaxWindowWidth = 3840;
 
     /// <summary>窗口高度上限（DIP）：软件渲染器的位图上限是 8192 像素，留余量。</summary>
     public const double MaxWindowHeight = 8000;
@@ -28,7 +30,7 @@ public static class PetViewport
     public const double DefaultWindowWidth = 420;
 
     /// <summary>
-    /// 由「想要的模型显示宽度」算窗口尺寸：宽度夹到 160~2000，高度 = 宽 / 画布宽高比
+    /// 由「想要的模型显示宽度」算窗口尺寸：宽度夹到 160~3840，高度 = 宽 / 画布宽高比
     /// （不按屏幕夹！子类化已解除系统上限，窗口允许比屏幕高，超出部分拖动窗口查看），
     /// 整体不超过渲染位图上限。
     /// </summary>

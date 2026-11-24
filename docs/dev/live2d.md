@@ -485,20 +485,21 @@ Core `csmUpdateModel` 全量 715 网格约 **1.8 ms** / 帧。当前 Release 实
 > 防 GC（委托被回收 = 窗口过程野指针 = 进程崩）。
 
 - `Views/PetViewport.cs`（纯静态、自检可测）：
-  - `ComputeWindowSize(requestedWidth, canvasAspect)`：窗口宽度夹 `160~2000`；高度 = 宽 / 画布比例，
+  - `ComputeWindowSize(requestedWidth, canvasAspect)`：窗口宽度夹 `160~3840`；高度 = 宽 / 画布比例，
     **不按屏幕夹**（上限已解除，窗口允许比屏幕高，超出部分拖动窗口查看）；整体不超过渲染位图上限
-    `MaxWindowHeight = 8000`（渲染器位图上限 8192）；
+    `MaxWindowHeight = 8000`（GPU 位图按 D3D9 纹理上限 8192px 再钳渲染倍率）；
   - `AnchoredZoom(...)`：滚轮缩放以鼠标为不动点——窗口尺寸变化前后「光标下的画布点」保持在屏幕同一位置
     （指脸就在脸上放大），返回新的窗口 Left/Top；
 - `PetWindow`：
-  - 构造：`MaxWidth=2000 / MaxHeight=8000 / Min…`（WPF 属性路径的隐式约束）+ `ComputeWindowSize`；
+  - 构造：`MaxWidth=3840 / MaxHeight=8000 / Min…`（WPF 属性路径的隐式约束）+ `ComputeWindowSize`；
   - `OnSourceInitialized`：`InstallSizeLimitSubclass` 装子类化；
   - `ApplySizeFromConfig`：尺寸变化保持**底边中点**不动（脚站在地上）；
-  - `RenderFrame`：**可见区域裁切渲染**（见 7.2）+ `FitCanvas=false` 按切片映射出图；
+  - `RenderFrame`：GPU 整幅渲染（见 5.1）+ CPU 回退时可见区域裁切；
     `TryCanvasToScreen` / `ComputeCanvasPoint` 用全窗口 fit 换算，热区不漂；
   - 滚轮 = `cfg.PetWidth × 1.1`（缩放就是改窗口大小）+ `AnchoredZoom` 挪窗口位置，写回配置自动保存。
-- 性能：窗口越大越吃 CPU（像素按面积涨）；2000 宽 ≈ 2000×4104 位图，低配机器建议 420 默认宽 / 0.75 渲染倍率 / 15fps。
-- 自检：`Live2DChecks` 断言尺寸换算（1000→2053、上限 2000/8000）、`AnchoredZoom` 不动点；
+- 性能：窗口越大越吃显存（像素按面积涨）；3840 宽 ≈ 3840×7883 位图（GPU 上无压力），
+  低配机器建议 420 默认宽 / 0.75 渲染倍率 / 15fps；CPU 回退时大窗口会很慢。
+- 自检：`Live2DChecks` 断言尺寸换算（1000→2053、上限 3840/8000）、`AnchoredZoom` 不动点；
   `YLT_LIVE2D_PET_SELFTEST` 的①断言 `ComputeWindowSize` 期望尺寸（1000 宽应得 2053 高——
   如果系统夹回 1032 说明子类化失效，直接 FAIL）。
 

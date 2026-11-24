@@ -673,8 +673,8 @@ internal static class Live2DChecks
             C("桌宠窗口：1000 宽 → 高 ≈ 2053（不再被屏幕高度夹住，窗口可以比屏幕高）",
                 Near(size1000.Width, 1000, 1e-9) && Near(size1000.Height, 1000 / aspect, 1e-6),
                 $"{size1000.Width:0.#}×{size1000.Height:0.#}");
-            C("桌宠窗口：宽度上限 2000 / 下限 160（NaN 回 420 默认）",
-                Near(sizeHuge.Width, 2000, 1e-9) && Near(sizeTiny.Width, 160, 1e-9)
+            C("桌宠窗口：宽度上限 3840 / 下限 160（NaN 回 420 默认）",
+                Near(sizeHuge.Width, 3840, 1e-9) && Near(sizeTiny.Width, 160, 1e-9)
                 && Near(PetViewport.ComputeWindowSize(double.NaN, aspect).Width, PetViewport.DefaultWindowWidth, 1e-9),
                 $"{sizeHuge.Width:0.#} / {sizeTiny.Width:0.#}");
             C("桌宠窗口：高度上限 8000（极端细长模型按渲染位图上限反夹）",
