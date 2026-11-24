@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using YuLiangToolkit.Tools.Live2D.Interop;
 
 namespace YuLiangToolkit.Tools.Live2D.Model;
@@ -957,14 +957,9 @@ internal sealed class InteractionController
         Write("CheeksWiggleXL", wiggle * 0.6f);
         Write("Mouthpucker", magnitude * 0.35f);
 
-        var headTargetX = Math.Clamp(_pinchAnchorX / (_canvasWidth * (float)PinchMaxPullRatio), -1f, 1f) * 12f;
-        var headTargetZ = Math.Clamp(_pinchAnchorY / (_canvasWidth * (float)PinchMaxPullRatio), -1f, 1f) * 8f;
-        var headFollow = 1.0 - Math.Exp(-deltaSeconds * 8.0);
-        _pinchHeadX += (float)((headTargetX - _pinchHeadX) * headFollow);
-        _pinchHeadZ += (float)((headTargetZ - _pinchHeadZ) * headFollow);
-        AddFace("ParamAngleX", _pinchHeadX);
-        AddFace("ParamAngleZ", _pinchHeadZ);
-        AddFace("ParamMouthForm", (-0.4f * magnitude) + (headTargetZ * 0.01f));
+        // 不再做「头部跟随捏拽方向」的偏转（ParamAngleX/Z）：拖脸部移动桌宠时头会大幅偏转，
+        // 看起来像触发了摸头反应（用户反馈）。按住脸拖动 = 只有 ＞＜ 表情 + 脸部拉伸。
+        AddFace("ParamMouthForm", -0.4f * magnitude);
 
         var bodyWiggle = MathF.Sin(_pinchWigglePhase * 0.7f) * magnitude * 3.0f;
         Write("AngleZ", bodyWiggle);
