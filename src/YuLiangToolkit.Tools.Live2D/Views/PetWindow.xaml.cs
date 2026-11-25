@@ -1272,6 +1272,9 @@ public partial class PetWindow : Window
         if (cfg is null) return;
 
         cfg.BodySwayEnabled = !cfg.BodySwayEnabled;
+        // 开晃动时放开「拖动头部滑杆自动钉住」的那层固定参数：晃动要写 ParamAngleX/Y/Z（含前后摇点头），
+        // 不放开会被之前拖过的头部角度每帧盖掉（分组锁 faceHead 是用户明确勾的，不在这里动）
+        if (cfg.BodySwayEnabled) _session.Runtime?.ClearParameterOverrides("head");
         _session.ApplyRuntimeSettings();
         _session.SaveConfigNow();
         _session.ViewModel?.RefreshAllBindings();

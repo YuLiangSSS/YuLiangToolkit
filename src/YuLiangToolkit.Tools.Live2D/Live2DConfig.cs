@@ -101,10 +101,26 @@ public sealed class Live2DConfig : ToolConfig
     public bool IdleEnabled { get; set; } = true;
 
     /// <summary>
-    /// 锁定「面部测试」卡调好的参数：每帧强制回填，不被待机 / 眨眼 / 动作 / 小动作覆盖
-    ///（勾选后测试卡滑杆调一下就固定住；预设保存在 Data\live2d\parameter-presets.json）。
+    /// 旧版「锁定面部参数」整卡开关（已拆成 头部 / 眼睛 / 嘴 / 舌头 四个分组锁）。
+    /// 只作老配置迁移用：ViewModel 构造时读到 true 会一次性转成四个分组锁再归 false。
     /// </summary>
     public bool FaceOverrideEnabled { get; set; }
+
+    /// <summary>
+    /// 锁定「面部测试 · 头部转动」组（左右转 / 上下 / 歪头）：每帧强制回填，晃动 / 动捕 / 眼控都盖不动。
+    /// 注意：锁了这组，摇一摇 / 前后摇的点头就不会动头 —— 想让身体晃动带着头就别锁这组。
+    /// （预设保存在 Data\live2d\parameter-presets.json）
+    /// </summary>
+    public bool FaceHeadOverrideEnabled { get; set; }
+
+    /// <summary>锁定「面部测试 · 眼睛」组：每帧强制回填（眨眼 / 眼控 / 表情都盖不动）。</summary>
+    public bool FaceEyeOverrideEnabled { get; set; }
+
+    /// <summary>锁定「面部测试 · 嘴」组：每帧强制回填（跟唱 / 动捕张嘴 / 说话口型都盖不动）。</summary>
+    public bool FaceMouthOverrideEnabled { get; set; }
+
+    /// <summary>锁定「面部测试 · 舌头」组：每帧强制回填。</summary>
+    public bool FaceTongueOverrideEnabled { get; set; }
 
     /// <summary>
     /// 锁定「身体测试」（身体晃动卡里的手动身体参数）调好的姿势：每帧强制回填，

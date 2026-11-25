@@ -1068,16 +1068,13 @@
                                                     Command="{Binding ApplyFacePresetCommand}" CommandParameter="headtilt" />
                                             <Button Content="😐 重置面部" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
                                                     Command="{Binding ApplyFacePresetCommand}" CommandParameter="reset"
-                                                    ToolTip="把这一卡里的面部参数都恢复默认值（并解除锁定）" />
-                                            <CheckBox Content="🔒 锁定面部参数" Style="{StaticResource CheckBoxStyle}" Margin="12,2,10,6"
-                                                      IsChecked="{Binding FaceOverrideEnabled, Mode=TwoWay}" VerticalAlignment="Center"
-                                                      ToolTip="勾选后这一卡调好的参数每帧强制回填：待机 / 眨眼 / 动作 / 小动作都改不动（调一下就固定住，方便慢慢测）；取消勾选即恢复系统驱动" />
+                                                    ToolTip="把这一卡里的面部参数都恢复默认值（并解除 头部 / 眼睛 / 嘴 / 舌头 四组锁定）" />
                                             <Button Content="💾 保存预设" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
                                                     Command="{Binding SaveFacePresetCommand}"
                                                     ToolTip="把当前面部参数存成预设（Data\live2d\parameter-presets.json）" />
                                             <Button Content="📥 应用预设" Style="{StaticResource CompactButtonStyle}" Margin="0,0,8,6"
                                                     Command="{Binding ApplyFaceSavedPresetCommand}"
-                                                    ToolTip="写回保存的面部参数并自动锁定（固定还原成预设的样子）" />
+                                                    ToolTip="写回保存的面部参数并锁定全部四组（固定还原成预设的样子；想让头跟着晃动点头，回「头部转动」组取消锁定即可）" />
                                         </WrapPanel>
 
                                         <!-- 2×2 分组：左上 头部转动 / 右上 眼睛 / 左下 嘴 / 右下 舌头（卡内整体滚动；窄窗口靠列 MinWidth 兜住） -->
@@ -1094,27 +1091,51 @@
                                                 </Grid.RowDefinitions>
 
                                                 <StackPanel Grid.Row="0" Grid.Column="0">
-                                                    <TextBlock Text="🧭 头部转动" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                        <TextBlock Text="🧭 头部转动" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                        <CheckBox Content="🔒 锁定" Style="{StaticResource CheckBoxStyle}" FontSize="11"
+                                                                  Margin="8,0,0,0" VerticalAlignment="Center"
+                                                                  IsChecked="{Binding FaceHeadOverrideEnabled, Mode=TwoWay}"
+                                                                  ToolTip="锁定头部组（左右转 / 上下 / 歪头）：每帧强制回填，晃动 / 动捕 / 眼控都盖不动。注意：锁了头部，摇一摇 / 前后摇的点头就不会动头 —— 想让身体晃动带着头就别锁这组。" />
+                                                    </StackPanel>
                                                     <ItemsControl ItemsSource="{Binding FaceHeadParameters}"
                                                                   ItemTemplate="{StaticResource FaceParameterRowTemplate}" />
                                                     <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,8,0,0"
-                                                               Text="抬头 / 低头 / 左右转头 / 歪头。拖动滑杆会自动钉住该角度（头部不再跟鼠标），双击滑杆回默认值即恢复跟随；也可以用「锁定」把整套脸 / 头姿势一起钉住。" />
+                                                               Text="抬头 / 低头 / 左右转头 / 歪头。拖动滑杆会自动钉住该角度（头部不再跟鼠标），双击滑杆回默认值即恢复跟随；开摇一摇 / 身体晃动时会自动放开这层钉住让点头正常动头，也可以勾「🔒 锁定头部」整组钉住。" />
                                                 </StackPanel>
 
                                                 <StackPanel Grid.Row="0" Grid.Column="2">
-                                                    <TextBlock Text="👁 眼睛" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                        <TextBlock Text="👁 眼睛" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                        <CheckBox Content="🔒 锁定" Style="{StaticResource CheckBoxStyle}" FontSize="11"
+                                                                  Margin="8,0,0,0" VerticalAlignment="Center"
+                                                                  IsChecked="{Binding FaceEyeOverrideEnabled, Mode=TwoWay}"
+                                                                  ToolTip="锁定眼睛组：每帧强制回填，眨眼 / 眼控 / 表情都盖不动；头部（锁定与否）不受影响。" />
+                                                    </StackPanel>
                                                     <ItemsControl ItemsSource="{Binding FaceEyeParameters}"
                                                                   ItemTemplate="{StaticResource FaceParameterRowTemplate}" />
                                                 </StackPanel>
 
                                                 <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,12,0,0">
-                                                    <TextBlock Text="👄 嘴" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                        <TextBlock Text="👄 嘴" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                        <CheckBox Content="🔒 锁定" Style="{StaticResource CheckBoxStyle}" FontSize="11"
+                                                                  Margin="8,0,0,0" VerticalAlignment="Center"
+                                                                  IsChecked="{Binding FaceMouthOverrideEnabled, Mode=TwoWay}"
+                                                                  ToolTip="锁定嘴组：每帧强制回填，跟唱 / 动捕张嘴 / 说话口型都盖不动（说话气泡照常显示，只是嘴型固定）。" />
+                                                    </StackPanel>
                                                     <ItemsControl ItemsSource="{Binding FaceMouthParameters}"
                                                                   ItemTemplate="{StaticResource FaceParameterRowTemplate}" />
                                                 </StackPanel>
 
                                                 <StackPanel Grid.Row="1" Grid.Column="2" Margin="0,12,0,0">
-                                                    <TextBlock Text="👅 舌头（重点）" FontSize="11.5" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                        <TextBlock Text="👅 舌头（重点）" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                        <CheckBox Content="🔒 锁定" Style="{StaticResource CheckBoxStyle}" FontSize="11"
+                                                                  Margin="8,0,0,0" VerticalAlignment="Center"
+                                                                  IsChecked="{Binding FaceTongueOverrideEnabled, Mode=TwoWay}"
+                                                                  ToolTip="锁定舌头组：每帧强制回填。" />
+                                                    </StackPanel>
                                                     <ItemsControl ItemsSource="{Binding FaceTongueParameters}"
                                                                   ItemTemplate="{StaticResource FaceParameterRowTemplate}" />
                                                     <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,8,0,0"

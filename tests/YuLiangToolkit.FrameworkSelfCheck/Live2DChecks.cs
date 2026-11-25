@@ -434,8 +434,10 @@ internal static class Live2DChecks
                 Near(defaults.PetWidth, 420, 1e-9) && Near(defaults.PetOpacity, 1.0, 1e-9)
                 && defaults.PetTopMost && defaults.PetClickThrough && !defaults.AutoStartPet && !defaults.PetEnabled
                 && defaults.PetLeft is null && defaults.PetTop is null);
-            C("配置默认值：参数固定默认全关（面部 / 身体 / 手臂）",
-                !defaults.FaceOverrideEnabled && !defaults.BodyOverrideEnabled && !defaults.ArmOverrideEnabled);
+            C("配置默认值：参数固定默认全关（面部四分组 / 身体 / 手臂，旧整卡开关也默认关）",
+                !defaults.FaceOverrideEnabled && !defaults.BodyOverrideEnabled && !defaults.ArmOverrideEnabled
+                && !defaults.FaceHeadOverrideEnabled && !defaults.FaceEyeOverrideEnabled
+                && !defaults.FaceMouthOverrideEnabled && !defaults.FaceTongueOverrideEnabled);
 
             // 参数预设持久化（ParameterPresetStore：JSON 往返 + 坏 JSON 兜底）
             var presetFile = new ParameterPresetStore.PresetFile();

@@ -121,6 +121,18 @@ public sealed class Live2DViewModel : ToolViewModelBase
     {
         Cfg = LoadConfig<Live2DConfig>();
         Cfg.PropertyChanged += OnConfigChanged;
+
+        // 旧版「锁定面部参数」是整卡一把锁，会连头部一起冻结（摇一摇 / 前后摇的点头动不了）；
+        // 现在拆成 头部 / 眼睛 / 嘴 / 舌头 四个分组锁 —— 老配置读到 true 就一次性转过去再归 false。
+        if (Cfg.FaceOverrideEnabled)
+        {
+            Cfg.FaceHeadOverrideEnabled = true;
+            Cfg.FaceEyeOverrideEnabled = true;
+            Cfg.FaceMouthOverrideEnabled = true;
+            Cfg.FaceTongueOverrideEnabled = true;
+            Cfg.FaceOverrideEnabled = false;
+        }
+
         _selectedSwayMode = SwayModeOptions.FirstOrDefault(option =>
                                 string.Equals(option.Value, Cfg.BodySwayMode, StringComparison.Ordinal))
                             ?? SwayModeOptions[0];
@@ -1388,6 +1400,7 @@ public sealed class Live2DViewModel : ToolViewModelBase
             Cfg.BodySwayEnabled = value;
             OnPropertyChanged();
             Session.ApplyRuntimeSettings();
+            if (value) ReleaseHeadAutoPinForSway();
             StatusText = value ? "身体晃动已开启：模型会持续按设定模式摆动" : "身体晃动已关闭";
         }
     }
@@ -1480,8 +1493,22 @@ public sealed class Live2DViewModel : ToolViewModelBase
             Session.ApplyRuntimeSettings();
         }
 
+        ReleaseHeadAutoPinForSway();
         Session.StartSwayDemo(3.0);
         StatusText = "摇一摇：3 秒演示中";
+    }
+
+    /// <summary>
+    /// 开晃动前放开「拖动头部滑杆自动钉住」的那层固定参数（head 组）：前后摇 / 摇一摇会写
+    /// ParamAngleX/Y/Z（含点头），不放开的话之前拖过的头部角度会把晃动的点头每帧盖掉，
+    /// 表现就是「摇一摇头不动、前后摇没点头」。分组锁（faceHead）是用户明确勾的，不在这里动。
+    /// </summary>
+    private void ReleaseHeadAutoPinForSway()
+    {
+        var runtime = Runtime;
+        if (runtime is null || !runtime.HasParameterOverrides("head")) return;
+        runtime.ClearParameterOverrides("head");
+        Log("身体晃动：已放开头部自动钉住（晃动期间头部交给晃动驱动；重新拖头部滑杆会再次钉住）");
     }
 
     /// <summary>停：停掉演示并关闭身体晃动。</summary>
@@ -1681,7 +1708,10 @@ public sealed class Live2DViewModel : ToolViewModelBase
                 break;
 
             case "reset":
-                FaceOverrideEnabled = false;   // 恢复默认 = 解除锁定（清固定参数），参数交还给动作 / 待机系统
+                FaceHeadOverrideEnabled = false;
+                FaceEyeOverrideEnabled = false;
+                FaceMouthOverrideEnabled = false;
+                FaceTongueOverrideEnabled = false;   // 恢复默认 = 四个分组锁全部解除，参数交还给动作 / 待机系统
                 foreach (var row in _faceRows) row.SetValue((float)row.DefaultValue);
                 break;
 
@@ -1744,19 +1774,95 @@ public sealed class Live2DViewModel : ToolViewModelBase
 
     // ---------- 锁定 / 预设（面部 / 身体 / 手臂三张卡共用一套机制） ----------
 
-    /// <summary>锁定「面部测试」卡调好的参数：每帧强制回填，待机 / 眨眼 / 动作 / 小动作都盖不动。</summary>
-    public bool FaceOverrideEnabled
+    /// <summary>锁定「面部测试 · 头部转动」组（左右转 / 上下 / 歪头）：每帧强制回填。
+    /// 注意：锁了这组，摇一摇 / 前后摇的点头就动不了头 —— 想让身体晃动带着头就别锁这组。</summary>
+    public bool FaceHeadOverrideEnabled
     {
-        get => Cfg.FaceOverrideEnabled;
+        get => Cfg.FaceHeadOverrideEnabled;
         set
         {
-            if (Cfg.FaceOverrideEnabled == value) return;
-            Cfg.FaceOverrideEnabled = value;
+            if (Cfg.FaceHeadOverrideEnabled == value) return;
+            Cfg.FaceHeadOverrideEnabled = value;
             OnPropertyChanged();
-            ApplyModuleOverrideState("face", value);
-            Log(value ? "面部测试：已锁定当前参数（动作 / 待机 / 小动作都改不动了；想固定成预设点「保存预设」）"
-                      : "面部测试：已解除锁定（参数交还给动作 / 待机系统）");
+            ApplyFaceGroupLock("faceHead", value);
         }
+    }
+
+    /// <summary>锁定「面部测试 · 眼睛」组：每帧强制回填（眨眼 / 眼控 / 表情都盖不动）。</summary>
+    public bool FaceEyeOverrideEnabled
+    {
+        get => Cfg.FaceEyeOverrideEnabled;
+        set
+        {
+            if (Cfg.FaceEyeOverrideEnabled == value) return;
+            Cfg.FaceEyeOverrideEnabled = value;
+            OnPropertyChanged();
+            ApplyFaceGroupLock("faceEye", value);
+        }
+    }
+
+    /// <summary>锁定「面部测试 · 嘴」组：每帧强制回填（跟唱 / 动捕张嘴 / 说话口型都盖不动）。</summary>
+    public bool FaceMouthOverrideEnabled
+    {
+        get => Cfg.FaceMouthOverrideEnabled;
+        set
+        {
+            if (Cfg.FaceMouthOverrideEnabled == value) return;
+            Cfg.FaceMouthOverrideEnabled = value;
+            OnPropertyChanged();
+            ApplyFaceGroupLock("faceMouth", value);
+        }
+    }
+
+    /// <summary>锁定「面部测试 · 舌头」组：每帧强制回填。</summary>
+    public bool FaceTongueOverrideEnabled
+    {
+        get => Cfg.FaceTongueOverrideEnabled;
+        set
+        {
+            if (Cfg.FaceTongueOverrideEnabled == value) return;
+            Cfg.FaceTongueOverrideEnabled = value;
+            OnPropertyChanged();
+            ApplyFaceGroupLock("faceTongue", value);
+        }
+    }
+
+    /// <summary>
+    /// 面部分组锁定开关变化：开 = 把这一组当前值钉进固定参数层（每帧回填，盖过待机 / 眨眼 /
+    /// 动作 / 表情 / 晃动 / 互动）；关 = 解除这一组，参数交还给各驱动系统。
+    /// 头部组（faceHead）开锁时会把「拖动头部滑杆自动钉住」的那层（head）合并掉 —— 锁定层统一管理；
+    /// 解锁时两层都放开（重新拖滑杆会再次钉住）。
+    /// </summary>
+    private void ApplyFaceGroupLock(string runtimeGroup, bool enabled)
+    {
+        var runtime = Runtime;
+        if (!enabled)
+        {
+            runtime?.ClearParameterOverrides(runtimeGroup);
+            if (runtimeGroup == "faceHead") runtime?.ClearParameterOverrides("head");
+        }
+        else if (runtime is not null)
+        {
+            foreach (var row in RowsFor(runtimeGroup))
+            {
+                runtime.SetParameterOverride(runtimeGroup, row.Id, (float)row.Value);
+            }
+
+            if (runtimeGroup == "faceHead") runtime.ClearParameterOverrides("head");
+        }
+
+        var displayName = runtimeGroup switch
+        {
+            "faceHead" => "头部转动",
+            "faceEye" => "眼睛",
+            "faceMouth" => "嘴",
+            _ => "舌头",
+        };
+        var message = enabled
+            ? $"面部测试：已锁定{displayName}组（每帧固定；注意锁头部组会让摇一摇 / 前后摇的点头动不了头）"
+            : $"面部测试：已解除{displayName}组锁定（参数交还给动作 / 待机 / 晃动系统）";
+        Log(message);
+        StatusText = message;
     }
 
     /// <summary>锁定「身体测试」手动身体参数：每帧强制回填固定姿势，晃动 / 动作 / 物理复位都改不动。</summary>
@@ -2360,15 +2466,19 @@ public sealed class Live2DViewModel : ToolViewModelBase
             if (e.PropertyName != nameof(IParameterRowViewModel.Value)) return;
             if (row is not IParameterRowViewModel parameterRow) return;
 
-            if (IsGroupLocked(group))
+            // 面部行按 头部 / 眼睛 / 嘴 / 舌头 四个分组分别进各自的锁定层（每组独立可锁）
+            var runtimeGroup = group == "face" ? FaceRowRuntimeGroup((FaceParameterRowViewModel)row) : group;
+
+            if (IsGroupLocked(runtimeGroup))
             {
-                Runtime?.SetParameterOverride(group, parameterRow.Id, (float)parameterRow.Value);
+                Runtime?.SetParameterOverride(runtimeGroup, parameterRow.Id, (float)parameterRow.Value);
                 return;
             }
 
             // 头部转动滑杆（未锁定）：拖动即自动钉住该角度（眼控 / 待机都盖不动），
-            // 双击回默认值时自动解除、恢复眼睛跟随。其它面部参数维持原语义（不锁定就不钉）。
-            if (group == "face" && FaceHeadIds.Contains(parameterRow.Id))
+            // 双击回默认值时自动解除、恢复眼睛跟随；开摇一摇 / 身体晃动时会先放开这层钉住
+            //（见 ShakeSway / BodySwayEnabled），让晃动的点头能驱动头部。其它面部参数维持原语义（不锁定就不钉）。
+            if (runtimeGroup == "faceHead")
             {
                 var runtime = Runtime;
                 if (runtime is null) return;
@@ -2384,9 +2494,22 @@ public sealed class Live2DViewModel : ToolViewModelBase
         };
     }
 
+    /// <summary>面部行 → 运行时锁定层分组（头部 / 眼睛 / 嘴 / 舌头四组分别可锁）。</summary>
+    private static string FaceRowRuntimeGroup(FaceParameterRowViewModel row)
+    {
+        if (FaceHeadIds.Contains(row.Id)) return "faceHead";
+        if (FaceEyeIds.Contains(row.Id)) return "faceEye";
+        if (FaceMouthIds.Contains(row.Id)) return "faceMouth";
+        return "faceTongue";
+    }
+
     private IEnumerable<IParameterRowViewModel> RowsFor(string group) => group switch
     {
         "face" => _faceRows,
+        "faceHead" => FaceHeadParameters,
+        "faceEye" => FaceEyeParameters,
+        "faceMouth" => FaceMouthParameters,
+        "faceTongue" => FaceTongueParameters,
         "body" => _bodyRows,
         "arms" => _armRows,
         _ => Enumerable.Empty<IParameterRowViewModel>(),
@@ -2394,17 +2517,26 @@ public sealed class Live2DViewModel : ToolViewModelBase
 
     private bool IsGroupLocked(string group) => group switch
     {
-        "face" => Cfg.FaceOverrideEnabled,
+        "faceHead" => Cfg.FaceHeadOverrideEnabled,
+        "faceEye" => Cfg.FaceEyeOverrideEnabled,
+        "faceMouth" => Cfg.FaceMouthOverrideEnabled,
+        "faceTongue" => Cfg.FaceTongueOverrideEnabled,
         "body" => Cfg.BodyOverrideEnabled,
         "arms" => Cfg.ArmOverrideEnabled,
-        _ => false,
+        _ => false,   // 旧 "face" 整卡组已拆分，不再有锁定态
     };
 
     private void SetGroupLock(string group, bool enabled)
     {
         switch (group)
         {
-            case "face": FaceOverrideEnabled = enabled; break;
+            case "face":
+                // 「应用预设」= 整套面部固定还原：四个分组一起锁（头部组锁了会盖掉晃动点头，属预期）
+                FaceHeadOverrideEnabled = true;
+                FaceEyeOverrideEnabled = true;
+                FaceMouthOverrideEnabled = true;
+                FaceTongueOverrideEnabled = true;
+                break;
             case "body": BodyOverrideEnabled = enabled; break;
             case "arms": ArmOverrideEnabled = enabled; break;
         }
@@ -2418,7 +2550,8 @@ public sealed class Live2DViewModel : ToolViewModelBase
         _ => group,
     };
 
-    /// <summary>锁定开关变化：开 = 把该模块当前值全部钉进固定参数层；关 = 整组解除。</summary>
+    /// <summary>锁定开关变化：开 = 把该模块当前值全部钉进固定参数层；关 = 整组解除。
+    /// （面部卡已拆成四个分组锁，走 <see cref="ApplyFaceGroupLock"/>；这里只处理 身体 / 手臂。）</summary>
     private void ApplyModuleOverrideState(string group, bool enabled)
     {
         var runtime = Runtime;
@@ -2426,8 +2559,6 @@ public sealed class Live2DViewModel : ToolViewModelBase
         if (!enabled)
         {
             runtime.ClearParameterOverrides(group);
-            // 面部解锁时把头部滑杆的自动钉住也一起放开（重新拖滑杆会再次钉住）
-            if (group == "face") runtime.ClearParameterOverrides("head");
             return;
         }
 
@@ -2435,9 +2566,6 @@ public sealed class Live2DViewModel : ToolViewModelBase
         {
             runtime.SetParameterOverride(group, row.Id, (float)row.Value);
         }
-
-        // 面部上锁后头部参数归入锁定层统一管理，滑杆的自动钉住不再单独存在
-        if (group == "face") runtime.ClearParameterOverrides("head");
     }
 
     /// <summary>保存当前值为一组预设（Data\live2d\parameter-presets.json，按模块分组）。</summary>
@@ -2468,14 +2596,16 @@ public sealed class Live2DViewModel : ToolViewModelBase
             return;
         }
 
-        // 先开锁定（写值时自动进入固定参数层），再按预设写值
+        // 先开锁定（写值时自动进入固定参数层），再按预设写值；
+        // 面部行写回各自的分组锁定层（faceHead / faceEye / faceMouth / faceTongue）
         SetGroupLock(group, true);
         var applied = 0;
         foreach (var row in RowsFor(group))
         {
             if (!preset.Params.TryGetValue(row.Id, out var value)) continue;
             row.SetValue(value);
-            Runtime?.SetParameterOverride(group, row.Id, (float)row.Value);
+            var runtimeGroup = group == "face" ? FaceRowRuntimeGroup((FaceParameterRowViewModel)row) : group;
+            Runtime?.SetParameterOverride(runtimeGroup, row.Id, (float)row.Value);
             applied++;
         }
 
@@ -2484,13 +2614,15 @@ public sealed class Live2DViewModel : ToolViewModelBase
         StatusText = message;
     }
 
-    /// <summary>模型加载 / 重载完成后：按锁定状态把保存的预设重新钉回去（重启后也能还原）。</summary>
+    /// <summary>模型加载 / 重载完成后：按锁定状态把保存的预设重新钉回去（重启后也能还原）。
+    /// 面部按 头部 / 眼睛 / 嘴 / 舌头 四个分组分别还原，预设文件仍共用 face 一份。</summary>
     private void RestoreModulePresetsAfterLoad()
     {
-        foreach (var group in new[] { "face", "body", "arms" })
+        foreach (var group in new[] { "faceHead", "faceEye", "faceMouth", "faceTongue", "body", "arms" })
         {
             if (!IsGroupLocked(group)) continue;
-            var preset = ParameterPresetStore.Load(Storage, group);
+            var storeGroup = group.StartsWith("face", StringComparison.Ordinal) ? "face" : group;
+            var preset = ParameterPresetStore.Load(Storage, storeGroup);
             if (preset is null) continue;
 
             foreach (var row in RowsFor(group))
