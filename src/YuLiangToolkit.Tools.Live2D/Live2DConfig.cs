@@ -473,4 +473,12 @@ public sealed class Live2DConfig : ToolConfig
 
     /// <summary>饿的时候每隔多少分钟主动说一句（1 ~ 240，默认 8）。</summary>
     public double PetHungryReminderMinutes { get; set; } = 8;
+
+    // ---------- 工具页布局记忆（设置分页 / 预览栏开关） ----------
+
+    /// <summary>工具页右侧设置区停留的分页（0~5，见 <see cref="ViewModels.Live2DViewModel.SelectedTab"/>）。</summary>
+    public int SelectedTabIndex { get; set; }
+
+    /// <summary>工具页左侧预览栏是否显示（收起后设置区占满整页，预览暂停渲染省 CPU）。</summary>
+    public bool PreviewPaneVisible { get; set; } = true;
 }

@@ -222,6 +222,24 @@ public sealed class Live2DViewModel : ToolViewModelBase
     /// <summary>当前模型运行时（没加载为 null）。</summary>
     public ModelRuntime? Runtime => Session.Runtime;
 
+    // ===================== 分页导航（工具页右侧设置区） =====================
+
+    /// <summary>
+    /// 右侧设置区当前停留的分页（0 模型 / 1 动作表情 / 2 面部身体 / 3 驱动动捕 / 4 说话AI / 5 桌宠养成）。
+    /// 记在配置里：下次打开工具页停在同一页。
+    /// </summary>
+    public int SelectedTab
+    {
+        get => Math.Clamp(Cfg.SelectedTabIndex, 0, 5);
+        set
+        {
+            var clamped = Math.Clamp(value, 0, 5);
+            if (Cfg.SelectedTabIndex == clamped) return;
+            Cfg.SelectedTabIndex = clamped;
+            OnPropertyChanged();
+        }
+    }
+
     // ===================== 加载状态 =====================
 
     /// <summary>是否正在加载模型。</summary>

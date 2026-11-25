@@ -110,6 +110,10 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
         }
         _auxTimer.Start();
 
+        // 恢复上次停留的设置分页 + 预览栏开关状态（分隔条尺寸记忆由 PaneSplitter 自己套用）
+        ApplyPreviewPaneVisibility();
+        RestoreSavedTab();
+
         // 枚举摄像头（只枚举设备列表、不会打开摄像头）
         _ = viewModel.EnsureCamerasLoadedAsync();
     }
@@ -142,6 +146,70 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
     }
 
     private void OnWindowStateChanged(object? sender, EventArgs e) => _viewModel?.Session.RefreshFrameLoop();
+
+    // ===================== 分页导航（右侧设置区） + 预览栏开关 =====================
+    //
+    // 右侧是六个互斥分页（0 模型 / 1 动作表情 / 2 面部身体 / 3 驱动动捕 / 4 说话AI / 5 桌宠养成）：
+    // 页签是 RadioButton（Tag = 页号），选中 → ShowTab 显示对应面板并记住选择（下次打开停在同一页）。
+    // 分页内的分隔条在面板重新可见时由 PaneSplitter 自动套用记忆尺寸（IsVisibleChanged → ApplyLayout）。
+    // 「🖥 预览栏」开关：收起左侧常驻预览，让设置区占满整页（预览隐藏后 IsTargetVisible = false，
+    // 本页不再渲染，省 CPU；展开时恢复比例并重新渲染）；开关状态存配置。
+
+    private UIElement[]? _tabPanels;
+
+    /// <summary>六个分页面板（顺序与 RadioButton 的 Tag 对应；首次访问时按 XAML 名字取）。</summary>
+    private UIElement[] TabPanels => _tabPanels ??= new[] { TabModel, TabMotion, TabFace, TabDriver, TabChat, TabPet };
+
+    /// <summary>页签 Checked：切到这一页（InitializeComponent 期间面板可能还没建好，安全跳过，Loaded 会再套用）。</summary>
+    private void OnTabChecked(object sender, RoutedEventArgs e)
+    {
+        if (sender is RadioButton { Tag: string text } && int.TryParse(text, out var index))
+        {
+            ShowTab(index);
+        }
+    }
+
+    /// <summary>显示某一页（其余 Collapsed），并把选择写进 ViewModel（随配置自动保存）。</summary>
+    private void ShowTab(int index)
+    {
+        var panels = TabPanels;
+        index = Math.Clamp(index, 0, panels.Length - 1);
+        for (var i = 0; i < panels.Length; i++)
+        {
+            if (panels[i] is not null) panels[i].Visibility = i == index ? Visibility.Visible : Visibility.Collapsed;
+        }
+        if (_viewModel is not null && _viewModel.SelectedTab != index) _viewModel.SelectedTab = index;
+    }
+
+    /// <summary>页面加载完：按配置恢复上次停留的分页。</summary>
+    private void RestoreSavedTab()
+    {
+        var index = Math.Clamp(_viewModel?.SelectedTab ?? 0, 0, TabPanels.Length - 1);
+        foreach (var child in TabBar.Children)
+        {
+            if (child is RadioButton { Tag: string text } radio && int.TryParse(text, out var tag) && tag == index)
+            {
+                if (radio.IsChecked != true) radio.IsChecked = true;   // 触发 Checked → ShowTab
+                else ShowTab(index);
+                return;
+            }
+        }
+        ShowTab(index);
+    }
+
+    /// <summary>「🖥 预览栏」开关被点（Checked / Unchecked 都走这里）：套用配置里的显示状态。</summary>
+    private void OnPreviewPaneToggle(object sender, RoutedEventArgs e) => ApplyPreviewPaneVisibility();
+
+    /// <summary>把配置里的「预览栏显示」套到预览列 / 设置列上（InitializeComponent 期间安全跳过）。</summary>
+    private void ApplyPreviewPaneVisibility()
+    {
+        if (PreviewColumn is null || ContentColumn is null || PreviewSplitter is null) return;
+        var visible = _viewModel?.Cfg.PreviewPaneVisible ?? true;
+        PreviewColumn.Width = visible ? new GridLength(55, GridUnitType.Star) : new GridLength(0);
+        PreviewColumn.MinWidth = visible ? 300 : 0;
+        ContentColumn.Width = visible ? new GridLength(45, GridUnitType.Star) : new GridLength(1, GridUnitType.Star);
+        PreviewSplitter.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+    }
 
     // ===================== 辅助刷新：动捕预览 / 状态行 / 身体晃动 =====================
 
