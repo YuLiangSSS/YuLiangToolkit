@@ -8,7 +8,8 @@ namespace YuLiangToolkit.Tools.Live2D.Model;
 /// 基础六件套（换脚 / 东张西望 / 伸懒腰 / 挥挥手 / 戴铁盆 / 爱心眼脸红）+
 /// 一批表情彩蛋（圈圈眼 / ＞＜ / 屑屑眼 / 黑脸 / 加载 / 单片眼镜 / 黑框眼镜 等）+
 /// 一批肢体复合编舞（鞠躬 / 踢踢腿 / 侧腰伸展 / 张开翅膀 → 已删 / 害羞扭扭 / 探头偷看 等）+
-/// 三批综合编舞（封面wink吐舌 / 竖手指wink / 比心wink / 狗尾草哼歌 / 抚胸安心 / 打喷嚏 / 傲娇转身哼 等）。
+/// 三批综合编舞（封面wink吐舌 / 竖手指wink / 比心wink / 狗尾草哼歌 / 抚胸安心 / 打喷嚏 / 傲娇转身哼 等）+
+/// 四批体型切换（变小卖萌 / 变小转圈 / 变小打滚 / 变小蹦迪 / 变小好奇 / 变小蹦蹦跳跳 / 变小变回来）。
 /// <para>所有依赖的参数 / 表情都经过自检「彩蛋特效实拍验证」（逐像素渲染对比），
 /// 实拍无效的参数（蚊香眼 / SHOCK EYE / 冒汗 / 落泪 / 炸毛 / 翅膀 / 生气符号 / 爱心弹 / 小花 / 光点 /
 /// 元音口型 / 呆滞等 40+ 个）已全部移除，动作只保留真的会渲染的参数。</para>
@@ -787,6 +788,75 @@ internal sealed class PetIdleActions
             Track("RForearm", 0f, 0f, 0.25f, 0.7f, 0.8f, 0.7f, 1f, 0f),
             Track("ParamAngleY", 0f, 0f, 0.3f, -3f, 0.8f, -2f, 1f, 0f),
             Track("EyeSmile", 0f, 0f, 0.25f, 0.8f, 0.8f, 0.7f, 1f, 0f)));
+
+        // ---------------- 2026-11 四批：体型切换（变小做动作再变回来） ----------------
+        // 体型1 / 体型2 表情实拍生效（71421 / 70935 像素变化 = 整个模型重绘级别），
+        // Clothes2（大小变）参数也可以直接用关键帧做平滑过渡。
+        // 体型切换是长动作（7~10 秒），框架在结束时自动清除表情 → 变回默认体型。
+
+        // 变小卖萌：体型1 缩小 + 脸红 + 蹦跳 + 歪头卖萌
+        routines.Add(Routine("变小卖萌", 8.5, new[] { "体型1", "脸红" },
+            Track("PositionY", 0f, 0f, 0.2f, 2.5f, 0.32f, 0f, 0.44f, 2.5f, 0.56f, 0f, 0.68f, 2.5f, 0.8f, 0f, 1f, 0f),
+            Track("ParamAngleZ", 0f, 0f, 0.5f, 4f, 0.65f, -3f, 0.8f, 3.5f, 1f, 0f),
+            Track("EyeSmile", 0f, 0f, 0.35f, 0.7f, 0.7f, 0.6f, 1f, 0f),
+            Track("MouthSmile_L", 0f, 0f, 0.35f, 0.5f, 0.7f, 0.45f, 1f, 0f),
+            Track("MouthSmile_R", 0f, 0f, 0.35f, 0.5f, 0.7f, 0.45f, 1f, 0f),
+            Track("ParamEyeBallX", 0f, 0f, 0.4f, 0.3f, 0.7f, -0.3f, 1f, 0f)));
+
+        // 变小转圈：体型2 缩小 + 双手展开转一圈
+        routines.Add(Routine("变小转圈", 9.0, new[] { "体型2" },
+            Track("ParamBodyAngleZ", 0f, 0f, 0.3f, 8f, 0.5f, -8f, 0.7f, 8f, 1f, 0f),
+            Track("LArm", 0f, 0f, 0.25f, 1f, 0.8f, 1f, 1f, 0f),
+            Track("RArm", 0f, 0f, 0.25f, 1f, 0.8f, 1f, 1f, 0f),
+            Track("LForearm", 0f, 0f, 0.25f, 0.7f, 0.8f, 0.7f, 1f, 0f),
+            Track("RForearm", 0f, 0f, 0.25f, 0.7f, 0.8f, 0.7f, 1f, 0f),
+            Track("ParamAngleY", 0f, 0f, 0.3f, -3f, 0.8f, -2f, 1f, 0f),
+            Track("EyeSmile", 0f, 0f, 0.25f, 0.8f, 0.8f, 0.7f, 1f, 0f)));
+
+        // 变小打滚：体型1 缩小 + 身体左右打滚 + 腿踢
+        routines.Add(Routine("变小打滚", 7.5, new[] { "体型1" },
+            Track("ParamBodyAngleZ", 0f, 0f, 0.2f, 12f, 0.4f, -12f, 0.6f, 10f, 0.8f, -8f, 1f, 0f),
+            Track("LEGAngleZ2", 0f, 0f, 0.25f, 8f, 0.45f, -8f, 0.65f, 6f, 1f, 0f),
+            Track("LArm", 0f, 0f, 0.2f, 0.8f, 0.5f, -0.5f, 0.8f, 0.6f, 1f, 0f),
+            Track("RArm", 0f, 0f, 0.2f, -0.6f, 0.45f, 0.7f, 0.75f, -0.5f, 1f, 0f),
+            Track("ParamEyeLOpen", 1f, 1f, 0.3f, 0.3f, 0.7f, 0.35f, 1f, 1f),
+            Track("ParamEyeROpen", 1f, 1f, 0.3f, 0.3f, 0.7f, 0.35f, 1f, 1f)));
+
+        // 变小蹦迪：体型2 缩小 + 多拍舞步（蹦 + 摆手 + 点头）
+        routines.Add(Routine("变小蹦迪", 9.5, new[] { "体型2" },
+            Track("PositionY", 0f, 0f, 0.15f, 2f, 0.25f, 0f, 0.35f, 2f, 0.45f, 0f, 0.55f, 2f, 0.65f, 0f, 0.75f, 2f, 0.85f, 0f, 1f, 0f),
+            Track("LArm", 0f, 0f, 0.2f, 0.8f, 0.3f, 0.3f, 0.4f, 0.8f, 0.5f, 0.3f, 0.6f, 0.8f, 0.7f, 0.3f, 0.8f, 0.5f, 1f, 0f),
+            Track("RArm", 0f, 0f, 0.2f, 0.3f, 0.3f, 0.8f, 0.4f, 0.3f, 0.5f, 0.8f, 0.6f, 0.3f, 0.7f, 0.8f, 0.8f, 0.5f, 1f, 0f),
+            Track("ParamAngleY", 0f, 0f, 0.25f, 4f, 0.45f, -4f, 0.65f, 4f, 0.85f, -3f, 1f, 0f),
+            Track("ParamMouthOpenY", 0f, 0f, 0.2f, 0.4f, 0.3f, 0.15f, 0.4f, 0.4f, 0.5f, 0.15f, 0.6f, 0.4f, 0.7f, 0.15f, 0.8f, 0.4f, 1f, 0f)));
+
+        // 变小好奇：体型1 缩小 + 歪头四处张望 + 眼睛瞪大
+        routines.Add(Routine("变小好奇", 7.0, new[] { "体型1" },
+            Track("ParamAngleX", 0f, 0f, 0.25f, 8f, 0.45f, -8f, 0.65f, 7f, 1f, 0f),
+            Track("ParamAngleZ", 0f, 0f, 0.3f, 4f, 0.55f, -3f, 1f, 0f),
+            Track("ParamEyeBallX", 0f, 0f, 0.25f, 0.55f, 0.45f, -0.55f, 0.65f, 0.5f, 1f, 0f),
+            Track("ParamEyeLOpen", 1f, 1f, 0.25f, 1.2f, 0.85f, 1.15f, 1f, 1f),
+            Track("ParamEyeROpen", 1f, 1f, 0.25f, 1.2f, 0.85f, 1.15f, 1f, 1f),
+            Track("LArm", 0f, 0f, 0.3f, 0.4f, 0.7f, 0.35f, 1f, 0f),
+            Track("RArm", 0f, 0f, 0.3f, 0.4f, 0.7f, 0.35f, 1f, 0f)));
+
+        // 变小蹦蹦跳跳：体型2 缩小 + 连续蹦跳 + 左右移动 + 手臂摆
+        routines.Add(Routine("变小蹦蹦跳跳", 8.0, new[] { "体型2" },
+            Track("PositionY", 0f, 0f, 0.12f, 2.5f, 0.22f, 0f, 0.32f, 2.5f, 0.42f, 0f, 0.52f, 2.5f, 0.62f, 0f, 0.72f, 2.5f, 0.82f, 0f, 1f, 0f),
+            Track("PositionX", 0f, 0f, 0.22f, 3f, 0.42f, -3f, 0.62f, 3f, 0.82f, -2f, 1f, 0f),
+            Track("LArm", 0f, 0f, 0.15f, 0.9f, 0.25f, 0.2f, 0.35f, 0.9f, 0.45f, 0.2f, 0.55f, 0.9f, 0.65f, 0.2f, 0.75f, 0.8f, 0.85f, 0.3f, 1f, 0f),
+            Track("RArm", 0f, 0f, 0.15f, 0.2f, 0.25f, 0.9f, 0.35f, 0.2f, 0.45f, 0.9f, 0.55f, 0.2f, 0.65f, 0.9f, 0.75f, 0.3f, 0.85f, 0.6f, 1f, 0f),
+            Track("ParamAngleY", 0f, 0f, 0.22f, 3f, 0.42f, -3f, 0.62f, 3f, 0.82f, -2f, 1f, 0f)));
+
+        // 变小变回来：Clothes2 参数平滑缩小 → 蹦一下 → 平滑变回（不用表情，纯参数过渡）
+        routines.Add(Routine("变小变回来", 8.0, Array.Empty<string>(),
+            Track("Clothes2", 0f, 0f, 0.15f, 1f, 0.8f, 1f, 1f, 0f),
+            Track("Param34", 0f, 0f, 0.15f, 1f, 0.8f, 1f, 1f, 0f),
+            Track("PositionY", 0f, 0f, 0.35f, 2.5f, 0.45f, 0f, 0.55f, 2.5f, 0.65f, 0f, 1f, 0f),
+            Track("ParamAngleZ", 0f, 0f, 0.4f, 3f, 0.55f, -2.5f, 0.7f, 3f, 1f, 0f),
+            Track("EyeSmile", 0f, 0f, 0.3f, 0.7f, 0.75f, 0.6f, 1f, 0f),
+            Track("ParamEyeLOpen", 1f, 1f, 0.3f, 0.75f, 0.8f, 0.75f, 1f, 1f),
+            Track("ParamEyeROpen", 1f, 1f, 0.3f, 0.75f, 0.8f, 0.75f, 1f, 1f)));
 
         return routines.ToArray();
     }

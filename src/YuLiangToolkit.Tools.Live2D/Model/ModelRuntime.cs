@@ -1228,7 +1228,7 @@ public sealed class ModelRuntime : IDisposable
         set => DragPhysicsEnabled = value;
     }
 
-    /// <summary>待机小动作总开关（换脚 / 东张西望 / 圈圈眼 / 屑屑眼 / 封面wink / 比心 / 傲娇转身等 52 个）。</summary>
+    /// <summary>待机小动作总开关（换脚 / 东张西望 / 圈圈眼 / 屑屑眼 / 封面wink / 变小卖萌 / 变小蹦迪等 59 个）。</summary>
     public bool PetIdleActionsEnabled
     {
         get => _petIdleActionsEnabled;

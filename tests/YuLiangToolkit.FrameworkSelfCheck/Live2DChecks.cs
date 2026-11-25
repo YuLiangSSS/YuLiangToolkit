@@ -1955,6 +1955,7 @@ internal static class Live2DChecks
                     ("ParamA", 1f), ("ParamI", 1f), ("ParamU", 1f), ("ParamE", 1f), ("ParamO", 1f),
                     ("LHand", 1f), ("RHand", 1f), ("Press", 1f), ("MouthX", 1f),
                     ("BrowInnerUp", 1f), ("ParamEyeLOpen", 0f),
+                    ("Clothes2", 1f), ("Param34", 1f), ("Param", 1f),
                 };
 
                 var fxWorking = new List<string>();
@@ -1996,7 +1997,7 @@ internal static class Live2DChecks
 
                 // exp3 表情实拍：表达式也可能挂在上面那些「死参数」上（圈圈眼 / ＞＜ / 屑屑眼 就靠它们），
                 // 必须逐个实拍确认哪些表情真的会改变画面
-                var exprProbes = new[] { "圈圈眼", "屑屑眼", "＞＜", "兔牙", "加载", "单片眼镜", "黑框眼镜", "黑脸", "流冷汗", "流泪", "脸红", "前倾", "爱心眼", "钢盆" };
+                var exprProbes = new[] { "圈圈眼", "屑屑眼", "＞＜", "兔牙", "加载", "单片眼镜", "黑框眼镜", "黑脸", "流冷汗", "流泪", "脸红", "前倾", "爱心眼", "钢盆", "体型1", "体型2", "默认体型" };
                 var exprWorking = new List<string>();
                 var exprDead = new List<string>();
                 foreach (var exprName in exprProbes)
@@ -3398,9 +3399,9 @@ internal static class Live2DChecks
             runtime.PetIdleActionsEnabled = false;
             runtime.PetIdleActionIntervalSeconds = 12.0;
             var idleActionNames = runtime.PetIdleActionNames;
-            C("互动待机：默认间隔 12 秒、动作集合 52 个（全部实拍验证过）",
+            C("互动待机：默认间隔 12 秒、动作集合 59 个（全部实拍验证过，含体型切换 7 个）",
                 Near(runtime.PetIdleActionIntervalSeconds, 12.0, 1e-9)
-                && idleActionNames.Count == 52
+                && idleActionNames.Count == 59
                 && new[]
                 {
                     "换脚", "东张西望", "伸懒腰", "挥挥手", "戴铁盆", "爱心眼脸红",
@@ -3413,6 +3414,7 @@ internal static class Live2DChecks
                     "手搭凉棚", "生气跺脚", "鼓腮帮赌气", "看手腕唉", "爱心蹦蹦", "开心转圈",
                     "封面wink吐舌", "竖手指wink", "比心wink", "狗尾草哼歌", "抚胸安心",
                     "打喷嚏", "探头偷看", "傲娇转身哼",
+                    "变小卖萌", "变小转圈", "变小打滚", "变小蹦迪", "变小好奇", "变小蹦蹦跳跳", "变小变回来",
                 }.All(idleActionNames.Contains),
                 $"间隔={runtime.PetIdleActionIntervalSeconds:0.###} 动作数={idleActionNames.Count}");
 
