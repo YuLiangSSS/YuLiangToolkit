@@ -218,6 +218,9 @@ public sealed class ExpressionRowViewModel : ObservableObject
 /// 参数行的统一形状（面部 / 身体 / 手臂卡共用）：Id + 当前值 + 范围 + 默认值 + 变更通知。
 /// <para>「锁定 / 预设」机制按这个接口工作：行值变化 → ViewModel 把它写进运行时的
 /// 固定参数层（锁定开启时），不被待机 / 动作 / 晃动覆盖。</para>
+/// <para><see cref="IsApplyingExternalValue"/> 区分「用户拖滑杆写的值」和「模型 / 晃动 / 动捕 /
+/// 眼控驱动后由 100ms 刷新回读的值」—— <b>外部驱动的值绝不能触发自动钉住</b>，否则
+/// 摇一摇 / 前后摇的点头会在约 100ms 内被钉死（头部参数永远到不了渲染层）。</para>
 /// </summary>
 public interface IParameterRowViewModel : System.ComponentModel.INotifyPropertyChanged
 {
@@ -238,6 +241,12 @@ public interface IParameterRowViewModel : System.ComponentModel.INotifyPropertyC
 
     /// <summary>直接写参数值并刷新显示（预设 / 固定流程用）。</summary>
     void SetValue(float value);
+
+    /// <summary>
+    /// 当前这次 <c>Value</c> 变化通知是否来自「外部驱动回读」（模型真实值的定时刷新）。
+    /// true = 不是用户拖滑杆：锁定 / 自动钉住逻辑必须跳过这一次。
+    /// </summary>
+    bool IsApplyingExternalValue { get; }
 }
 
 /// <summary>
@@ -292,8 +301,13 @@ public sealed class FaceParameterRowViewModel : ObservableObject, IParameterRowV
         var current = _parameter.Value;
         if (Math.Abs(current - _lastNotifiedValue) < 0.0005) return;
         _lastNotifiedValue = current;
-        OnPropertyChanged(nameof(Value));
+        IsApplyingExternalValue = true;   // 模型 / 晃动 / 动捕 / 眼控驱动的变化：锁定 / 自动钉住必须跳过（见接口说明）
+        try { OnPropertyChanged(nameof(Value)); }
+        finally { IsApplyingExternalValue = false; }
     }
+
+    /// <inheritdoc />
+    public bool IsApplyingExternalValue { get; private set; }
 
     /// <summary>直接写参数值（预设按钮用；写后立刻刷新显示）。</summary>
     public void SetValue(float value)
@@ -354,8 +368,13 @@ public sealed class ArmParameterRowViewModel : ObservableObject, IParameterRowVi
         var current = _parameter.Value;
         if (Math.Abs(current - _lastNotifiedValue) < 0.0005) return;
         _lastNotifiedValue = current;
-        OnPropertyChanged(nameof(Value));
+        IsApplyingExternalValue = true;   // 动作 / 待机驱动的变化：锁定逻辑必须跳过（见接口说明）
+        try { OnPropertyChanged(nameof(Value)); }
+        finally { IsApplyingExternalValue = false; }
     }
+
+    /// <inheritdoc />
+    public bool IsApplyingExternalValue { get; private set; }
 
     /// <summary>直接写参数值并刷新显示。</summary>
     public void SetValue(float value)

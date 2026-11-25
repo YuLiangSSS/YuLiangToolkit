@@ -2442,22 +2442,6 @@ public sealed class Live2DViewModel : ToolViewModelBase
         BodyTestSummaryText = "模型加载后显示可调参数";
     }
 
-    /// <summary>锁定 / 预设的分组名（运行时固定参数按组解除）。</summary>
-    private string GroupOfRow(IParameterRowViewModel row)
-        => _faceRows.Contains(row as FaceParameterRowViewModel) ? "face"
-            : _bodyRows.Contains(row as FaceParameterRowViewModel) ? "body"
-            : _armRows.Contains(row as ArmParameterRowViewModel) ? "arms"
-            : "face";
-
-    /// <summary>行值变化：锁定开启时写进运行时固定参数层（每帧强制回填）。</summary>
-    private void OnModuleRowChanged(IParameterRowViewModel row, System.ComponentModel.PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName != nameof(IParameterRowViewModel.Value)) return;
-        var group = GroupOfRow(row);
-        if (!IsGroupLocked(group)) return;
-        Runtime?.SetParameterOverride(group, row.Id, (float)row.Value);
-    }
-
     /// <summary>按模块订阅行值变化（模型重建时旧行连同订阅一起被丢弃）。</summary>
     private void SubscribeModuleRow(string group, ObservableObject row)
     {
@@ -2465,6 +2449,12 @@ public sealed class Live2DViewModel : ToolViewModelBase
         {
             if (e.PropertyName != nameof(IParameterRowViewModel.Value)) return;
             if (row is not IParameterRowViewModel parameterRow) return;
+
+            // ⚠ 外部驱动的值变化（RefreshFromModel 的模型回读：晃动点头 / 动捕 / 眼控 / 待机写完参数后
+            //    100ms 刷新到滑杆上）绝不能进下面的锁定 / 自动钉住逻辑 —— 否则晃动每写一次头部参数，
+            //    100ms 内就会被当成「用户拖了滑杆」钉回固定参数层，渲染层永远拿到钉死的旧值
+            //   （用户实测：摇一摇 / 前后摇头不动，反复点锁才能看到参数跳变）。
+            if (parameterRow.IsApplyingExternalValue) return;
 
             // 面部行按 头部 / 眼睛 / 嘴 / 舌头 四个分组分别进各自的锁定层（每组独立可锁）
             var runtimeGroup = group == "face" ? FaceRowRuntimeGroup((FaceParameterRowViewModel)row) : group;
@@ -2475,7 +2465,7 @@ public sealed class Live2DViewModel : ToolViewModelBase
                 return;
             }
 
-            // 头部转动滑杆（未锁定）：拖动即自动钉住该角度（眼控 / 待机都盖不动），
+            // 头部转动滑杆（未锁定）：**用户拖动 / 预设写入**即自动钉住该角度（眼控 / 待机都盖不动），
             // 双击回默认值时自动解除、恢复眼睛跟随；开摇一摇 / 身体晃动时会先放开这层钉住
             //（见 ShakeSway / BodySwayEnabled），让晃动的点头能驱动头部。其它面部参数维持原语义（不锁定就不钉）。
             if (runtimeGroup == "faceHead")
