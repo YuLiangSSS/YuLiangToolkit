@@ -2514,6 +2514,11 @@ internal static class Live2DChecks
             runtime.Music = null;
             runtime.MusicEnabled = false;
             runtime.SwayEnabled = false;
+            // 本段的「表演 / 舞蹈结束后参数回默认值」断言对时间敏感：待机小动作 / 随机手势是合法的
+            // 背景行为，但会在采样帧上写参数（动作池扩到 26 个后更容易撞上）——这一段先关掉，
+            // 待机随机手势在本段后面的子段里单独测，互动待机单独在 M 段测。
+            runtime.PetIdleActionsEnabled = false;
+            runtime.IdleRandomGestureEnabled = false;
             StopInteractionDemos();
             runtime.ResetParameters();
             TickFrames(2);
@@ -3267,11 +3272,18 @@ internal static class Live2DChecks
             runtime.PetIdleActionsEnabled = false;
             runtime.PetIdleActionIntervalSeconds = 12.0;
             var idleActionNames = runtime.PetIdleActionNames;
-            C("互动待机：默认间隔 12 秒、动作集合 6 个（换脚 / 东张西望 / 伸懒腰 / 挥挥手 / 戴铁盆 / 爱心眼脸红）",
+            C("互动待机：默认间隔 12 秒、动作集合 26 个（基础六件套 + 圈圈眼 / ＞＜ / 屑屑眼等扩充动作）",
                 Near(runtime.PetIdleActionIntervalSeconds, 12.0, 1e-9)
-                && idleActionNames.Count == 6
-                && new[] { "换脚", "东张西望", "伸懒腰", "挥挥手", "戴铁盆", "爱心眼脸红" }.All(idleActionNames.Contains),
-                $"间隔={runtime.PetIdleActionIntervalSeconds:0.###} 动作={string.Join("/", idleActionNames)}");
+                && idleActionNames.Count == 26
+                && new[]
+                {
+                    "换脚", "东张西望", "伸懒腰", "挥挥手", "戴铁盆", "爱心眼脸红",
+                    "圈圈眼发呆", "慌张摇头", "屑屑眼无语", "黑脸嫌弃", "流冷汗尴尬", "假哭流泪",
+                    "眼冒金星", "吓一跳", "兔牙笑", "单片眼镜", "黑框眼镜看书", "前倾盯人",
+                    "加载转圈", "尾巴波浪", "耸肩卖萌", "打哈欠", "吐舌头舔嘴唇", "摇头拒绝",
+                    "点头答应", "哼歌摇摆",
+                }.All(idleActionNames.Contains),
+                $"间隔={runtime.PetIdleActionIntervalSeconds:0.###} 动作数={idleActionNames.Count}");
 
             runtime.PetIdleActionIntervalSeconds = 20;
             var intervalRoundtrip = Near(runtime.PetIdleActionIntervalSeconds, 20.0, 1e-9);
