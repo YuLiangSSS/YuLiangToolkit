@@ -251,13 +251,16 @@ internal sealed class PetIdleActions
         }
     }
 
+    /// <summary>动作结束时不清 touched 列表 —— 下一帧 ResetTouched 会把参数平滑归零，
+    /// 不然参数会僵在上一个动作的值上（ touchedCount=0 导致没人复位）。</summary>
     private void FinishActive()
     {
         var routine = _active;
         _active = null;
         _elapsed = 0;
         if (routine is not null && routine.Expressions.Length > 0) ClearAppliedExpressions();
-        _touchedCount = 0;
+        // 不清 _touchedCount：下一帧 ModelRuntime.ResetTouched 会按这个列表把参数归回默认值，
+        // 形成平滑过渡；如果在这里清零，参数会僵在最后的写入值（修复收回时抽搐 / 卡住）。
         _timer = NextInterval();
     }
 

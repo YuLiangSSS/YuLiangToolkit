@@ -1956,6 +1956,12 @@ internal static class Live2DChecks
                     ("LHand", 1f), ("RHand", 1f), ("Press", 1f), ("MouthX", 1f),
                     ("BrowInnerUp", 1f), ("ParamEyeLOpen", 0f),
                     ("Clothes2", 1f), ("Param34", 1f), ("Param", 1f),
+                    ("ParamBodyAngleX", 15f), ("ParamBodyAngleY", 10f), ("ParamBodyAngleZ", 10f),
+                    ("LArm", 1f), ("RArm", 1f), ("LForearm", 1f), ("RForearm", 1f),
+                    ("LWrist", 1f), ("RWrist", 1f), ("LHand", -1f), ("RHand", -1f),
+                    ("LEGAngleZ2", 15f), ("HipAngleX", 8f), ("HipAngleZ", 8f),
+                    ("PositionX", 5f), ("PositionY", 5f), ("PositionZ", 5f),
+                    ("ShoulderY", 12f), ("ParamAngleZ", 15f),
                 };
 
                 var fxWorking = new List<string>();
