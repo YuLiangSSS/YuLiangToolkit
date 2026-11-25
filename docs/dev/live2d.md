@@ -1178,7 +1178,7 @@ SpeechEnabled=false → 直接 ShowSilentBubble（不合成 / 不联网 / 不动
 | 文件 | 职责 |
 | --- | --- |
 | `Model/InteractionController.cs` | 热区几何（部件名 → drawable 缓存、每帧包围盒）、`HitTest` / `GetRegionCenter`、指针状态机（`PointerDown/Move/Up`、`Press`、`TriggerInteraction`）、反应状态机（PatHead / Pinch / Tickle / Protect / Shy / 手势切换）、额头三态表情、拖拽物理、touched 复位；公开 `InteractionRegion`（12 区）/ `InteractionGesture`（Tap/Pet） |
-| `Model/PetIdleActions.cs` | 47 个待机小动作（基础六件套 + 表情彩蛋一批 + 肢体复合编舞一批），程序化关键帧 + 表情挂载；间隔随机、互动冷却、被打断即撤；`ActionNames / ActiveName / TriggerCount / TryTrigger / NotifyInteraction` |
+| `Model/PetIdleActions.cs` | 52 个待机小动作（全部经过自检「彩蛋特效实拍验证」：逐像素渲染对比，死参数已移除），程序化关键帧 + 表情挂载；间隔随机、互动冷却、被打断即撤；`ActionNames / ActiveName / TriggerCount / TryTrigger / NotifyInteraction` |
 | `ModelRuntime.cs` | 对外属性（`InteractionEnabled / InteractionVoiceEnabled / PetDragPhysicsEnabled / PetIdleActionsEnabled / PetIdleActionIntervalSeconds / PetIdleExpressionEnabled`）、包装方法、`InteractionHappened` 事件、`LastInteractionVoiceEvent / LastInteractionName`；`ApplyExpressionTemporarily` / 到期表情清理；Tick 里更新互动 / 待机并做门控 |
 | `Views/PetWindow.xaml(.cs)` | 桌宠窗口鼠标事件（命中才捕获、否则拖窗口）、`Ctrl+Alt+L` 穿透 / `Ctrl+Alt+0` 退出全局热键、右键菜单（含 ⚙ 设置 / ❌ 退出）；拖窗位移喂 `ApplyDragImpulse` |
 | `Live2DSession` / UI | 订阅 `InteractionHappened` → 台词（1.5s 节流）→ `SpeakText`（语音 + 气泡 + 口型同步）；互动语音开关 / 台词池 |

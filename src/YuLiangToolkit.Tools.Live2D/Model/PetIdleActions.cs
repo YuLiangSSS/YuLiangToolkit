@@ -4,14 +4,14 @@ namespace YuLiangToolkit.Tools.Live2D.Model;
 
 /// <summary>
 /// 桌宠待机小动作（参考 FULASKA/-live2d- 的 idle-motions / idle-faces）：
-/// 不互动时每隔 8~18 秒随机做一个「活着」的小动作。内置 47 个：
-/// 换脚、东张西望、伸懒腰、挥挥手、戴铁盆、爱心眼脸红（基础六个）+
-/// 圈圈眼发呆、慌张摇头（＞＜）、屑屑眼无语、黑脸嫌弃、流冷汗尴尬、假哭流泪、眼冒金星、
-/// 吓一跳、兔牙笑、单片眼镜、黑框眼镜看书、前倾盯人、加载转圈、尾巴波浪、耸肩卖萌、
-/// 打哈欠、吐舌头舔嘴唇、摇头拒绝、点头答应、哼歌摇摆（2026-11 扩充）+
-/// 左右摇摆卖萌、打瞌睡猛醒、拍拍手、扭腰小舞步、叉腰挺胸、揉眼睛困困、鞠躬、踢踢腿、
-/// 侧腰伸展、害羞扭扭、踮脚张望、抖肩膀、手搭凉棚、张开翅膀、炸毛受惊、生气跺脚、
-/// AIUEO唱歌、鼓腮帮赌气、看手腕唉、爱心蹦蹦、撒花转圈（2026-11 二批：肢体复合编舞）。
+/// 不互动时每隔 8~18 秒随机做一个「活着」的小动作。内置 52 个：
+/// 基础六件套（换脚 / 东张西望 / 伸懒腰 / 挥挥手 / 戴铁盆 / 爱心眼脸红）+
+/// 一批表情彩蛋（圈圈眼 / ＞＜ / 屑屑眼 / 黑脸 / 加载 / 单片眼镜 / 黑框眼镜 等）+
+/// 一批肢体复合编舞（鞠躬 / 踢踢腿 / 侧腰伸展 / 张开翅膀 → 已删 / 害羞扭扭 / 探头偷看 等）+
+/// 三批综合编舞（封面wink吐舌 / 竖手指wink / 比心wink / 狗尾草哼歌 / 抚胸安心 / 打喷嚏 / 傲娇转身哼 等）。
+/// <para>所有依赖的参数 / 表情都经过自检「彩蛋特效实拍验证」（逐像素渲染对比），
+/// 实拍无效的参数（蚊香眼 / SHOCK EYE / 冒汗 / 落泪 / 炸毛 / 翅膀 / 生气符号 / 爱心弹 / 小花 / 光点 /
+/// 元音口型 / 呆滞等 40+ 个）已全部移除，动作只保留真的会渲染的参数。</para>
 ///
 /// <para><b>和现有随机手势的关系</b>：<see cref="ModelRuntime"/> 里原有的
 /// 「随机手势 / 表演」（<c>IdleRandomGestureEnabled</c> / <c>IdleRandomGestureIntervalSeconds</c>）保留；
@@ -390,66 +390,58 @@ internal sealed class PetIdleActions
 
         // ---------------- 2026-11 扩充（用户点名：圈圈眼 / ＞＜ / 屑屑眼 + 能想到的都加） ----------------
 
-        // 圈圈眼发呆：蚊香眼参数直接转 + 圈圈眼表情 + 歪头眼神漂移
+        // 圈圈眼发呆：圈圈眼表情（实拍生效）+ 歪头 + 眼神漂移
         routines.Add(Routine("圈圈眼发呆", 4.6, new[] { "圈圈眼" },
-            Track("AniEyerolling", 0f, 0f, 0.3f, 1f, 0.85f, 1f, 1f, 0f),
             Track("ParamAngleZ", 0f, 0f, 0.3f, 4.5f, 0.7f, 3f, 1f, 0f),
             Track("ParamAngleY", 0f, 0f, 0.35f, 2.5f, 0.7f, 1.5f, 1f, 0f),
             Track("ParamEyeBallX", 0f, 0f, 0.4f, -0.4f, 0.8f, 0.35f, 1f, 0f)));
 
-        // 慌张摇头：＞＜ 表情 + 冒汗 + 快速小幅摇头 + 耸肩
+        // 慌张摇头：＞＜ 表情（实拍生效）+ 快速小幅摇头 + 耸肩
         routines.Add(Routine("慌张摇头", 3.2, new[] { "＞＜" },
             Track("ParamAngleX", 0f, 0f, 0.16f, 5f, 0.3f, -5f, 0.45f, 5f, 0.6f, -5f, 0.75f, 3f, 1f, 0f),
-            Track("SweatBurst1", 0f, 0f, 0.2f, 1f, 0.7f, 1f, 1f, 0f),
-            Track("SweatBurst2", 0f, 0f, 0.2f, 1f, 0.7f, 1f, 1f, 0f),
             Track("ShoulderY", 0f, 0f, 0.25f, 2.5f, 0.7f, 1.5f, 1f, 0f)));
 
-        // 屑屑眼无语：屑屑眼表情 + 呆滞 + 低头 + 眉毛耷拉
+        // 屑屑眼无语：屑屑眼表情（实拍生效）+ 低头 + 眉毛耷拉
         routines.Add(Routine("屑屑眼无语", 4.4, new[] { "屑屑眼" },
-            Track("Param11", 0f, 0f, 0.3f, 0.7f, 0.8f, 0.6f, 1f, 0f),
             Track("ParamAngleY", 0f, 0f, 0.35f, 4f, 0.75f, 3f, 1f, 0f),
             Track("ParamBrowLY", 0f, 0f, 0.35f, -1.2f, 0.75f, -0.8f, 1f, 0f),
             Track("ParamBrowRY", 0f, 0f, 0.35f, -1.2f, 0.75f, -0.8f, 1f, 0f)));
 
-        // 黑脸嫌弃：黑脸表情 + 歪头 + 身体后仰 + 眼神瞟开
+        // 黑脸嫌弃：黑脸表情（实拍生效）+ 歪头 + 身体后仰 + 眼神瞟开
         routines.Add(Routine("黑脸嫌弃", 3.6, new[] { "黑脸" },
             Track("ParamAngleZ", 0f, 0f, 0.3f, -4.5f, 0.7f, -3f, 1f, 0f),
             Track("ParamBodyAngleX", 0f, 0f, 0.35f, -3f, 0.7f, -2f, 1f, 0f),
             Track("ParamEyeBallX", 0f, 0f, 0.3f, -0.5f, 0.7f, -0.4f, 1f, 0f)));
 
-        // 流冷汗尴尬：流冷汗表情 + 转头回避 + 耸肩 + 眉毛挑起 + 流汗
-        routines.Add(Routine("流冷汗尴尬", 4.4, new[] { "流冷汗" },
+        // 流冷汗尴尬：转头回避 + 耸肩 + 眉毛挑起（流冷汗表情实拍无效，纯肢体版）
+        routines.Add(Routine("流冷汗尴尬", 4.4, Array.Empty<string>(),
             Track("ParamAngleX", 0f, 0f, 0.3f, 8f, 0.7f, 7f, 1f, 0f),
             Track("ParamAngleY", 0f, 0f, 0.3f, 3f, 0.7f, 2f, 1f, 0f),
             Track("ShoulderY", 0f, 0f, 0.3f, 3f, 0.65f, 2.2f, 1f, 0f),
             Track("ParamBrowLY", 0f, 0f, 0.3f, 1.2f, 0.7f, 0.8f, 1f, 0f),
             Track("ParamBrowRY", 0f, 0f, 0.3f, 1.2f, 0.7f, 0.8f, 1f, 0f),
-            Track("Sweat1", 0f, 0f, 0.25f, 1f, 0.8f, 1f, 1f, 0f)));
+            Track("ParamEyeLOpen", 1f, 1f, 0.3f, 0.35f, 0.8f, 0.35f, 1f, 1f),
+            Track("ParamEyeROpen", 1f, 1f, 0.3f, 0.35f, 0.8f, 0.35f, 1f, 1f)));
 
-        // 假哭流泪：流泪表情 + 双眼泪滴开关 + 泪花闪烁 + 低头
-        routines.Add(Routine("假哭流泪", 4.8, new[] { "流泪" },
-            Track("RCryKey", 0f, 0f, 0.2f, 1f, 0.85f, 1f, 1f, 0f),
-            Track("LCryKey", 0f, 0f, 0.2f, 1f, 0.85f, 1f, 1f, 0f),
-            Track("Param31", 0f, 0f, 0.3f, 1f, 0.8f, 0.8f, 1f, 0f),
-            Track("ParamAngleY", 0f, 0f, 0.35f, 4.5f, 0.75f, 3.5f, 1f, 0f),
-            Track("ParamAngleZ", 0f, 0f, 0.35f, 2f, 0.75f, -2f, 1f, 0f)));
+        // 假哭抽泣：流泪表情（实拍接近阈值，泪滴有出现）+ 低头抽泣两下
+        routines.Add(Routine("假哭抽泣", 4.8, new[] { "流泪" },
+            Track("ParamAngleY", 0f, 0f, 0.3f, 4.5f, 0.45f, 3.5f, 0.6f, 4.5f, 0.75f, 3.5f, 1f, 0f),
+            Track("ParamAngleZ", 0f, 0f, 0.35f, 2f, 0.75f, -2f, 1f, 0f),
+            Track("ParamEyeLOpen", 1f, 1f, 0.3f, 0.25f, 0.8f, 0.25f, 1f, 1f),
+            Track("ParamEyeROpen", 1f, 1f, 0.3f, 0.25f, 0.8f, 0.25f, 1f, 1f)));
 
-        // 眼冒金星：星星闪烁 + 晕乎乎摇摆 + 屑屑眼
+        // 眼冒金星：屑屑眼表情（实拍生效）+ 晕乎乎摇摆
         routines.Add(Routine("眼冒金星", 4.6, new[] { "屑屑眼" },
-            Track("Startwinkle", 0f, 0f, 0.2f, 1f, 0.85f, 1f, 1f, 0f),
-            Track("Startwinkle2", 0f, 0f, 0.2f, 1f, 0.85f, 1f, 1f, 0f),
             Track("ParamAngleZ", 0f, 0f, 0.25f, 3.5f, 0.5f, -3.5f, 0.75f, 3f, 1f, 0f),
             Track("ParamAngleX", 0f, 0f, 0.3f, 2.5f, 0.55f, -2.5f, 0.8f, 1.5f, 1f, 0f)));
 
-        // 吓一跳：SHOCK EYE + Shock 耳尾炸毛 + 后仰 + 瞪大眼（纯参数，不带表情）
+        // 吓一跳：后仰 + 双眼瞪大（纯参数；SHOCKEYE / Shock 参数实拍无效已移除）
         routines.Add(Routine("吓一跳", 2.8, Array.Empty<string>(),
-            Track("SHOCKEYE", 0f, 0f, 0.12f, 1f, 0.8f, 1f, 1f, 0f),
-            Track("ShockR", 0f, 0f, 0.12f, 1f, 0.8f, 1f, 1f, 0f),
-            Track("ShockL", 0f, 0f, 0.12f, 1f, 0.8f, 1f, 1f, 0f),
             Track("ParamAngleY", 0f, 0f, 0.14f, -6f, 0.5f, -4f, 1f, 0f),
             Track("ParamBodyAngleY", 0f, 0f, 0.14f, -5f, 0.55f, -3f, 1f, 0f),
             Track("ParamEyeLOpen", 1f, 1f, 0.12f, 1.4f, 0.85f, 1.3f, 1f, 1f),
-            Track("ParamEyeROpen", 1f, 1f, 0.12f, 1.4f, 0.85f, 1.3f, 1f, 1f)));
+            Track("ParamEyeROpen", 1f, 1f, 0.12f, 1.4f, 0.85f, 1.3f, 1f, 1f),
+            Track("ParamEyeBallY", 0f, 0f, 0.12f, -0.5f, 0.6f, -0.4f, 1f, 0f)));
 
         // 兔牙笑：兔牙表情 + 歪头 + 眯眼笑 + 身体轻晃
         routines.Add(Routine("兔牙笑", 3.6, new[] { "兔牙" },
@@ -665,32 +657,8 @@ internal sealed class PetIdleActions
             Track("ParamEyeLOpen", 1f, 1f, 0.3f, 0.75f, 1f, 1f),
             Track("ParamEyeROpen", 1f, 1f, 0.3f, 0.75f, 1f, 1f)));
 
-        // 张开翅膀：背后翅膀展开 + 扇一下 + 眯眼抬头
-        routines.Add(Routine("张开翅膀", 5.5, Array.Empty<string>(),
-            Track("WingOpenClose", 0f, 0f, 0.25f, 1f, 0.8f, 1f, 1f, 0f),
-            Track("WingOpenClose2", 0f, 0f, 0.25f, 1f, 0.8f, 1f, 1f, 0f),
-            Track("WingSpread", 0f, 0f, 0.3f, 1f, 0.8f, 1f, 1f, 0f),
-            Track("WingSpread2", 0f, 0f, 0.3f, 1f, 0.8f, 1f, 1f, 0f),
-            Track("WingRotation", 0f, 0f, 0.35f, 0.35f, 0.5f, -0.35f, 0.65f, 0.35f, 0.8f, 0f, 1f, 0f),
-            Track("WingRotation2", 0f, 0f, 0.35f, 0.35f, 0.5f, -0.35f, 0.65f, 0.35f, 0.8f, 0f, 1f, 0f),
-            Track("EyeSmile", 0f, 0f, 0.3f, 0.7f, 0.8f, 0.6f, 1f, 0f),
-            Track("ParamAngleY", 0f, 0f, 0.25f, -3f, 0.8f, -2f, 1f, 0f)));
-
-        // 炸毛受惊：全身炸毛 + 身体抖两下 + SHOCK EYE（纯参数）
-        routines.Add(Routine("炸毛受惊", 3.0, Array.Empty<string>(),
-            Track("Param137", 0f, 0f, 0.12f, 1f, 0.85f, 1f, 1f, 0f),
-            Track("Param138", 0f, 0f, 0.15f, 1f, 0.35f, 0.2f, 0.5f, 1f, 0.65f, 0.2f, 0.8f, 0f, 1f, 0f),
-            Track("SHOCKEYE", 0f, 0f, 0.12f, 1f, 0.7f, 1f, 1f, 0f),
-            Track("ShockR", 0f, 0f, 0.12f, 1f, 0.8f, 1f, 1f, 0f),
-            Track("ShockL", 0f, 0f, 0.12f, 1f, 0.8f, 1f, 1f, 0f),
-            Track("ParamAngleY", 0f, 0f, 0.12f, -5f, 0.45f, -3f, 1f, 0f),
-            Track("ParamEyeLOpen", 1f, 1f, 0.12f, 1.35f, 0.8f, 1.2f, 1f, 1f),
-            Track("ParamEyeROpen", 1f, 1f, 0.12f, 1.35f, 0.8f, 1.2f, 1f, 1f)));
-
-        // 生气跺脚：生气符号 + 皱眉撇嘴 + 跺脚三下
+        // 生气跺脚：皱眉撇嘴 + 跺脚三下 + 身体抖（Angry 生气符号实拍无效已移除）
         routines.Add(Routine("生气跺脚", 4.0, Array.Empty<string>(),
-            Track("Angry", 0f, 0f, 0.15f, 1f, 0.85f, 1f, 1f, 0f),
-            Track("AngryMove3", 0f, 0f, 0.15f, 1f, 0.85f, 1f, 1f, 0f),
             Track("ParamBrowRAngle", 0f, 0f, 0.15f, -0.6f, 0.85f, -0.5f, 1f, 0f),
             Track("ParamBrowLAngle", 0f, 0f, 0.15f, -0.6f, 0.85f, -0.5f, 1f, 0f),
             Track("ParamMouthForm", 0f, 0f, 0.15f, -0.6f, 0.85f, -0.5f, 1f, 0f),
@@ -698,18 +666,92 @@ internal sealed class PetIdleActions
             Track("LEGAngleZ2", 0f, 0f, 0.2f, 3f, 0.28f, -3f, 0.36f, 3f, 0.44f, -3f, 0.52f, 3f, 0.6f, -3f, 1f, 0f),
             Track("ParamBodyAngleZ", 0f, 0f, 0.2f, 2f, 0.3f, -2f, 0.4f, 2f, 0.5f, -2f, 1f, 0f)));
 
-        // AIUEO 唱歌：五个元音口型逐个唱 + 打拍摇摆
-        routines.Add(Routine("AIUEO唱歌", 6.0, Array.Empty<string>(),
-            Track("ParamA", 0f, 0f, 0.12f, 0.9f, 0.22f, 0f, 1f, 0f),
-            Track("ParamI", 0f, 0f, 0.3f, 0.9f, 0.4f, 0f, 1f, 0f),
-            Track("ParamU", 0f, 0f, 0.48f, 0.9f, 0.58f, 0f, 1f, 0f),
-            Track("ParamE", 0f, 0f, 0.66f, 0.9f, 0.76f, 0f, 1f, 0f),
-            Track("ParamO", 0f, 0f, 0.84f, 0.9f, 0.94f, 0f, 1f, 0f),
-            Track("ParamBodyAngleX", 0f, 0f, 0.2f, 3f, 0.4f, -3f, 0.6f, 3f, 0.8f, -2f, 1f, 0f),
-            Track("ParamAngleZ", 0f, 0f, 0.2f, 2.5f, 0.4f, -2.5f, 0.6f, 2.5f, 0.8f, -1.5f, 1f, 0f),
-            Track("EyeSmile", 0f, 0f, 0.15f, 0.6f, 0.9f, 0.5f, 1f, 0f)));
+        // ---------------- 2026-11 三批：表情 + 头 + 肢体综合编舞（全部用实拍验证过的参数） ----------------
 
-        // 鼓腮帮赌气：左右腮帮轮流鼓 + 撅嘴闭眼转头
+        // 封面 wink 吐舌：歪头 + 微微抬头 + 单眼闭 + 闭嘴吐舌 + 身体扭向一边（还原官方封面 pose）
+        routines.Add(Routine("封面wink吐舌", 5.0, Array.Empty<string>(),
+            Track("ParamAngleZ", 0f, 0f, 0.3f, 8f, 0.85f, 7f, 1f, 0f),
+            Track("ParamAngleY", 0f, 0f, 0.3f, 4f, 0.85f, 3f, 1f, 0f),
+            Track("ParamBodyAngleZ", 0f, 0f, 0.3f, 5f, 0.85f, 4f, 1f, 0f),
+            Track("ParamBodyAngleX", 0f, 0f, 0.3f, 2f, 0.85f, 1.5f, 1f, 0f),
+            Track("ParamEyeROpen", 1f, 1f, 0.3f, 0.05f, 0.85f, 0.05f, 1f, 1f),
+            Track("ParamEyeLOpen", 1f, 1f, 0.3f, 1.05f, 0.85f, 1.05f, 1f, 1f),
+            Track("TongueOut", 0f, 0f, 0.35f, 1f, 0.85f, 1f, 1f, 0f),
+            Track("ParamEyeBallX", 0f, 0f, 0.3f, 0.25f, 0.85f, 0.2f, 1f, 0f)));
+
+        // 竖手指 wink：竖起食指（Movement3 实拍生效）+ 身体晃一下 + 单眼眨一下
+        routines.Add(Routine("竖手指wink", 5.5, Array.Empty<string>(),
+            Track("Movement3", 0f, 0f, 0.15f, 1f, 0.9f, 1f, 1f, 0f),
+            Track("ParamBodyAngleX", 0f, 0f, 0.3f, 3f, 0.5f, -3f, 0.7f, 2f, 1f, 0f),
+            Track("ParamAngleZ", 0f, 0f, 0.25f, 4f, 0.75f, 3f, 1f, 0f),
+            Track("ParamEyeROpen", 1f, 1f, 0.42f, 1f, 0.46f, 0.08f, 0.52f, 1f, 0.82f, 0.08f, 0.88f, 1f, 1f, 1f),
+            Track("ParamEyeBallX", 0f, 0f, 0.3f, 0.3f, 1f, 0f),
+            Track("MouthSmile_L", 0f, 0f, 0.25f, 0.45f, 0.85f, 0.4f, 1f, 0f),
+            Track("MouthSmile_R", 0f, 0f, 0.25f, 0.45f, 0.85f, 0.4f, 1f, 0f)));
+
+        // 比心 wink：双手比心（LHand / RHand 实拍生效）+ 脸红表情 + 单眼 wink + 歪头
+        routines.Add(Routine("比心wink", 4.8, new[] { "脸红" },
+            Track("LArm", 0f, 0f, 0.25f, 0.45f, 0.8f, 0.45f, 1f, 0f),
+            Track("RArm", 0f, 0f, 0.25f, 0.45f, 0.8f, 0.45f, 1f, 0f),
+            Track("LForearm", 0f, 0f, 0.3f, 1f, 0.8f, 1f, 1f, 0f),
+            Track("RForearm", 0f, 0f, 0.3f, 1f, 0.8f, 1f, 1f, 0f),
+            Track("LWrist", 0f, 0f, 0.35f, -0.8f, 0.8f, -0.8f, 1f, 0f),
+            Track("RWrist", 0f, 0f, 0.35f, 0.8f, 0.8f, 0.8f, 1f, 0f),
+            Track("LHand", 0f, 0f, 0.35f, 0.5f, 0.8f, 0.5f, 1f, 0f),
+            Track("RHand", 0f, 0f, 0.35f, 0.5f, 0.8f, 0.5f, 1f, 0f),
+            Track("ParamAngleZ", 0f, 0f, 0.3f, -4f, 0.8f, -3f, 1f, 0f),
+            Track("ParamEyeROpen", 1f, 1f, 0.4f, 0.15f, 0.8f, 0.15f, 1f, 1f),
+            Track("ParamEyeLOpen", 1f, 1f, 0.4f, 0.8f, 0.8f, 0.8f, 1f, 1f),
+            Track("ParamAngleY", 0f, 0f, 0.3f, 2f, 1f, 0f)));
+
+        // 狗尾草哼歌：叼狗尾草（Movement1 实拍生效）+ 摇头晃脑 + 哼哼开合嘴
+        routines.Add(Routine("狗尾草哼歌", 6.0, Array.Empty<string>(),
+            Track("Movement1", 0f, 0f, 0.12f, 1f, 0.92f, 1f, 1f, 0f),
+            Track("ParamAngleX", 0f, 0f, 0.25f, 5f, 0.45f, -5f, 0.65f, 4f, 1f, 0f),
+            Track("ParamAngleZ", 0f, 0f, 0.3f, 3f, 0.55f, -3f, 1f, 0f),
+            Track("ParamMouthOpenY", 0f, 0f, 0.2f, 0.35f, 0.35f, 0.15f, 0.5f, 0.35f, 0.65f, 0.15f, 0.8f, 0.3f, 1f, 0f),
+            Track("ParamBodyAngleX", 0f, 0f, 0.3f, 2.5f, 0.6f, -2.5f, 1f, 0f),
+            Track("ParamEyeLOpen", 1f, 1f, 0.25f, 0.65f, 0.85f, 0.65f, 1f, 1f),
+            Track("ParamEyeROpen", 1f, 1f, 0.25f, 0.65f, 0.85f, 0.65f, 1f, 1f)));
+
+        // 抚胸安心：手放胸口（Movement2 实拍生效）+ 闭眼深呼吸起伏 + 放心笑
+        routines.Add(Routine("抚胸安心", 4.6, Array.Empty<string>(),
+            Track("Movement2", 0f, 0f, 0.15f, 1f, 0.9f, 1f, 1f, 0f),
+            Track("ParamAngleY", 0f, 0f, 0.3f, -4f, 0.75f, -3f, 1f, 0f),
+            Track("ParamEyeLOpen", 1f, 1f, 0.35f, 0.3f, 0.7f, 0.35f, 1f, 1f),
+            Track("ParamEyeROpen", 1f, 1f, 0.35f, 0.3f, 0.7f, 0.35f, 1f, 1f),
+            Track("ParamBodyAngleY", 0f, 0f, 0.3f, 2.5f, 0.5f, 3.5f, 0.75f, 2f, 1f, 0f),
+            Track("EyeSmile", 0f, 0f, 0.5f, 0.4f, 0.85f, 0.35f, 1f, 0f)));
+
+        // 打喷嚏：仰头蓄力 → 前冲闭眼张嘴打出来 → 回正
+        routines.Add(Routine("打喷嚏", 3.4, Array.Empty<string>(),
+            Track("ParamAngleY", 0f, 0f, 0.25f, -8f, 0.35f, -8f, 0.42f, 10f, 0.5f, 10f, 0.6f, -2f, 1f, 0f),
+            Track("ParamEyeLOpen", 1f, 1f, 0.3f, 0.6f, 0.42f, 0.05f, 0.55f, 0.1f, 1f, 1f),
+            Track("ParamEyeROpen", 1f, 1f, 0.3f, 0.6f, 0.42f, 0.05f, 0.55f, 0.1f, 1f, 1f),
+            Track("JawOpen", 0f, 0f, 0.42f, 0.95f, 0.55f, 0.4f, 1f, 0f),
+            Track("ParamMouthOpenY", 0f, 0f, 0.42f, 0.9f, 0.55f, 0.5f, 1f, 0f),
+            Track("PositionZ", 0f, 0f, 0.42f, 2f, 0.55f, 1f, 1f, 0f)));
+
+        // 探头偷看：从边上探进来 + 瞪大眼扫一眼 + 缩回去
+        routines.Add(Routine("探头偷看", 4.6, Array.Empty<string>(),
+            Track("PositionX", 0f, 0f, 0.25f, 7f, 0.7f, 7f, 0.85f, 3f, 1f, 0f),
+            Track("ParamAngleX", 0f, 0f, 0.25f, 10f, 0.7f, 9f, 1f, 0f),
+            Track("ParamEyeBallX", 0f, 0f, 0.3f, 0.6f, 0.8f, 0.55f, 1f, 0f),
+            Track("ParamEyeLOpen", 1f, 1f, 0.3f, 1.25f, 0.8f, 1.2f, 1f, 1f),
+            Track("ParamEyeROpen", 1f, 1f, 0.3f, 1.25f, 0.8f, 1.2f, 1f, 1f),
+            Track("ParamBodyAngleZ", 0f, 0f, 0.25f, 3f, 0.8f, 2.5f, 1f, 0f)));
+
+        // 傲娇转身哼：扭头转身 + 闭眼撇嘴 → 结尾偷偷瞄一眼
+        routines.Add(Routine("傲娇转身哼", 5.2, Array.Empty<string>(),
+            Track("ParamBodyAngleZ", 0f, 0f, 0.25f, -10f, 0.75f, -9f, 1f, 0f),
+            Track("PositionX", 0f, 0f, 0.25f, -4f, 0.75f, -3.5f, 1f, 0f),
+            Track("ParamEyeLOpen", 1f, 1f, 0.3f, 0.12f, 0.72f, 0.12f, 0.85f, 0.5f, 1f, 1f),
+            Track("ParamEyeROpen", 1f, 1f, 0.3f, 0.12f, 0.72f, 0.12f, 0.85f, 0.5f, 1f, 1f),
+            Track("Mouthpucker", 0f, 0f, 0.3f, 0.7f, 0.8f, 0.6f, 1f, 0f),
+            Track("ParamAngleZ", 0f, 0f, 0.3f, -3f, 1f, 0f),
+            Track("ParamEyeBallX", 0f, 0f, 0.82f, 0.5f, 0.92f, 0.55f, 1f, 0f)));
+
+        // 鼓腮帮赌气：左右腮帮轮流鼓（CheeckPuff 系实拍生效）+ 撅嘴闭眼转头
         routines.Add(Routine("鼓腮帮赌气", 4.4, Array.Empty<string>(),
             Track("CheeckPuff", 0f, 0f, 0.25f, 1f, 0.8f, 1f, 1f, 0f),
             Track("CheeckPuffR", 0f, 0f, 0.3f, 0.7f, 0.5f, 0.2f, 0.65f, 0.7f, 0.85f, 0.5f, 1f, 0f),
@@ -730,22 +772,14 @@ internal sealed class PetIdleActions
             Track("ParamBrowLY", 0f, 0f, 0.45f, -0.8f, 0.8f, -0.7f, 1f, 0f),
             Track("ParamBrowRY", 0f, 0f, 0.45f, -0.8f, 0.8f, -0.7f, 1f, 0f)));
 
-        // 爱心蹦蹦：爱心眼 + 爱心弹跳特效 + 原地蹦两下
+        // 爱心蹦蹦：爱心眼表情（实拍生效）+ 原地蹦两下
         routines.Add(Routine("爱心蹦蹦", 4.6, new[] { "爱心眼" },
-            Track("Param135", 0f, 0f, 0.2f, 1f, 0.85f, 1f, 1f, 0f),
-            Track("Param6", 0f, 0f, 0.25f, 1f, 0.45f, 0f, 0.65f, 1f, 1f, 0f),
-            Track("Param7", 0f, 0f, 0.35f, 1f, 0.55f, 0f, 0.8f, 1f, 1f, 0f),
             Track("PositionY", 0f, 0f, 0.22f, 2f, 0.4f, 0f, 0.58f, 2f, 0.75f, 0f, 1f, 0f),
-            Track("ParamBodyAngleX", 0f, 0f, 0.3f, 2.5f, 0.6f, -2.5f, 1f, 0f)));
+            Track("ParamBodyAngleX", 0f, 0f, 0.3f, 2.5f, 0.6f, -2.5f, 1f, 0f),
+            Track("ParamEyeBallY", 0f, 0f, 0.3f, 0.25f, 0.7f, 0.15f, 1f, 0f)));
 
-        // 撒花转圈：小花飘落特效 + 双手展开转一圈
-        routines.Add(Routine("撒花转圈", 6.0, Array.Empty<string>(),
-            Track("F1Anikey", 0f, 0f, 0.15f, 1f, 0.9f, 1f, 1f, 0f),
-            Track("F2Anikey", 0f, 0f, 0.15f, 1f, 0.9f, 1f, 1f, 0f),
-            Track("F3Anikey", 0f, 0f, 0.15f, 1f, 0.9f, 1f, 1f, 0f),
-            Track("LittleFlower2", 0f, 0f, 0.15f, 1f, 0.9f, 1f, 1f, 0f),
-            Track("LittleFlower4", 0f, 0f, 0.15f, 1f, 0.9f, 1f, 1f, 0f),
-            Track("LittleFlower6", 0f, 0f, 0.15f, 1f, 0.9f, 1f, 1f, 0f),
+        // 开心转圈：双手展开 + 身体左右转一圈（原撒花特效实拍无效已改名）
+        routines.Add(Routine("开心转圈", 6.0, Array.Empty<string>(),
             Track("ParamBodyAngleZ", 0f, 0f, 0.3f, 8f, 0.5f, -8f, 0.7f, 8f, 1f, 0f),
             Track("LArm", 0f, 0f, 0.25f, 1f, 0.8f, 1f, 1f, 0f),
             Track("RArm", 0f, 0f, 0.25f, 1f, 0.8f, 1f, 1f, 0f),

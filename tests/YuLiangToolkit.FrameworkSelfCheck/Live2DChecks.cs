@@ -1907,6 +1907,132 @@ internal static class Live2DChecks
                 best < 200,
                 $"{best:0.###}ms / 帧（Core update 另算）");
 
+            // ---------------- F2. 彩蛋特效参数实拍验证（逐像素对比：真的驱动画面的才值得待机小动作依赖） ----------------
+            {
+                static int CountChangedPixels(byte[] a, byte[] b)
+                {
+                    var count = 0;
+                    if (a.Length != b.Length) return int.MaxValue;
+                    for (var i = 0; i < a.Length; i += 4)
+                    {
+                        if (Math.Abs(a[i] - b[i]) > 8 || Math.Abs(a[i + 1] - b[i + 1]) > 8 || Math.Abs(a[i + 2] - b[i + 2]) > 8) count++;
+                    }
+
+                    return count;
+                }
+
+                Quiet();
+                runtime.AutoBlink = false;
+                runtime.IdleEnabled = false;
+                runtime.PhysicsEnabled = false;
+                runtime.Music = null;
+                runtime.MusicEnabled = false;
+                runtime.SwayEnabled = false;
+                runtime.PetIdleActionsEnabled = false;
+                runtime.IdleRandomGestureEnabled = false;
+                runtime.ResetParameters();
+                TickFrames(4);
+                runtime.RenderFrame(warmOptions);
+                var fxBasePixels = ReadPixels(rt.Renderer.CaptureBitmap());
+
+                // (Id, 探测值)：覆盖待机小动作依赖的全部彩蛋参数 + 已知有效的眼珠 Y=2.4 作阳性对照
+                var fxProbes = new (string Id, float Value)[]
+                {
+                    ("ParamEyeBallY", 2.4f),
+                    ("AniEyerolling", 1f), ("SHOCKEYE", 1f), ("Param11", 1f),
+                    ("SweatBurst1", 1f), ("SweatBurst2", 1f), ("Sweat1", 1f),
+                    ("RCryKey", 1f), ("LCryKey", 1f), ("Param31", 1f),
+                    ("Startwinkle", 1f), ("Startwinkle2", 1f),
+                    ("Angry", 1f), ("AngryMove3", 1f),
+                    ("Param137", 1f), ("Param138", 1f), ("Param139", 1f),
+                    ("WingOpenClose", 1f), ("WingSpread", 1f), ("WingRotation", 0.5f),
+                    ("WingOpenClose2", 1f), ("WingSpread2", 1f), ("WingRotation2", 0.5f),
+                    ("Param135", 1f), ("Param6", 1f), ("Param7", 1f),
+                    ("F1Anikey", 1f), ("LittleFlower2", 1f),
+                    ("Param55", 1f), ("Param56", 1f), ("Param57", 1f), ("Param58", 1f),
+                    ("Movement1", 1f), ("Movement2", 1f), ("Movement3", 1f), ("Param43", 1f),
+                    ("CheeckPuff", 1f), ("CheeckPuffR", 1f), ("CheeckPuffL", 1f),
+                    ("ParamA", 1f), ("ParamI", 1f), ("ParamU", 1f), ("ParamE", 1f), ("ParamO", 1f),
+                    ("LHand", 1f), ("RHand", 1f), ("Press", 1f), ("MouthX", 1f),
+                    ("BrowInnerUp", 1f), ("ParamEyeLOpen", 0f),
+                };
+
+                var fxWorking = new List<string>();
+                var fxDead = new List<string>();
+                foreach (var (id, value) in fxProbes)
+                {
+                    runtime.ResetParameters();
+                    TickFrames(2);
+                    var fxParameter = rt.Model.FindParameter(id);
+                    if (fxParameter is null)
+                    {
+                        fxDead.Add($"{id}(参数不存在)");
+                        continue;
+                    }
+
+                    fxParameter.Value = value;
+                    TickFrames(3);
+                    runtime.RenderFrame(warmOptions);
+                    var fxPixels = ReadPixels(rt.Renderer.CaptureBitmap());
+                    var fxChanged = CountChangedPixels(fxBasePixels, fxPixels);
+                    (fxChanged > 20 ? fxWorking : fxDead).Add($"{id}:{fxChanged}");
+                }
+
+                var workingText = string.Join(", ", fxWorking);
+                var deadText = string.Join(", ", fxDead);
+                C("彩蛋特效：阳性对照生效（眼珠 Y=2.4 确实改变画面，探针方法可信）",
+                    fxWorking.Any(item => item.StartsWith("ParamEyeBallY", StringComparison.Ordinal)),
+                    workingText);
+                // 实拍结果（模型特性，不是 bug）：Movement1/2/3（狗尾草 / 抚胸 / 竖食指）、CheeckPuff 系（鼓腮）、
+                // LHand / RHand（手指）、ParamEyeBallY / ParamEyeLOpen 真的驱动画面；
+                // 蚊香眼 / SHOCK EYE / 冒汗 / 落泪 / 星星 / 生气符号 / 炸毛 / 翅膀 / 爱心弹 / 小花 / 光点 /
+                // 元音口型 / 呆滞等 40+ 个写了渲染不变（给官方播放器用的动画开关，本渲染器没有对应特效层）。
+                C("彩蛋特效：Movement1/2/3 真的驱动画面（待机动作可以依赖）",
+                    fxWorking.Any(item => item.StartsWith("Movement1", StringComparison.Ordinal))
+                    && fxWorking.Any(item => item.StartsWith("Movement3", StringComparison.Ordinal)),
+                    workingText);
+                C("彩蛋特效：以下参数确认驱动画面（实拍记录）", fxWorking.Count > 1, workingText);
+                C("彩蛋特效：以下参数写了渲染不变（实拍记录，动作不依赖这些）", true, deadText);
+
+                // exp3 表情实拍：表达式也可能挂在上面那些「死参数」上（圈圈眼 / ＞＜ / 屑屑眼 就靠它们），
+                // 必须逐个实拍确认哪些表情真的会改变画面
+                var exprProbes = new[] { "圈圈眼", "屑屑眼", "＞＜", "兔牙", "加载", "单片眼镜", "黑框眼镜", "黑脸", "流冷汗", "流泪", "脸红", "前倾", "爱心眼", "钢盆" };
+                var exprWorking = new List<string>();
+                var exprDead = new List<string>();
+                foreach (var exprName in exprProbes)
+                {
+                    runtime.ResetParameters();
+                    TickFrames(2);
+                    var exprEntry = runtime.Expressions.FirstOrDefault(item => item.Name == exprName);
+                    if (exprEntry is null)
+                    {
+                        exprDead.Add($"{exprName}(无表情)");
+                        continue;
+                    }
+
+                    runtime.ApplyExpression(exprEntry, 0);
+                    TickFrames(25);
+                    runtime.RenderFrame(warmOptions);
+                    var exprDiff = CountChangedPixels(fxBasePixels, ReadPixels(rt.Renderer.CaptureBitmap()));
+                    (exprDiff > 20 ? exprWorking : exprDead).Add($"{exprName}:{exprDiff}");
+                    runtime.ClearExpressions(0);
+                }
+
+                var exprWorkingText = string.Join(", ", exprWorking);
+                var exprDeadText = string.Join(", ", exprDead);
+                // 实拍结果：圈圈眼 / 屑屑眼 / ＞＜ / 加载 / 单片眼镜 / 黑框眼镜 / 黑脸 / 脸红 / 钢盆 真的驱动画面；
+                // 兔牙 / 流冷汗 / 前倾 渲染不变；流泪 / 爱心眼 有小幅变化（小面积泪滴 / 爱心瞳孔）。
+                C("表情实拍：圈圈眼 / 屑屑眼 / ＞＜ 真的驱动画面（待机动作可以挂）",
+                    exprWorking.Any(item => item.StartsWith("圈圈眼", StringComparison.Ordinal))
+                    && exprWorking.Any(item => item.StartsWith("屑屑眼", StringComparison.Ordinal))
+                    && exprWorking.Any(item => item.StartsWith("＞＜", StringComparison.Ordinal)),
+                    exprWorkingText);
+                C("表情实拍：以下 exp3 表情确认驱动画面（实拍记录）", exprWorking.Count > 0, exprWorkingText);
+                C("表情实拍：以下 exp3 表情写了渲染不变（实拍记录，待机动作不能只靠这些）", true, exprDeadText);
+                runtime.ResetParameters();
+                TickFrames(4);
+            }
+
             // ---------------- G. 摄像头动捕集成（自写假数据源，绝不打开摄像头） ----------------
             Quiet();
             runtime.PhysicsEnabled = false;   // 只看动捕写了什么，不让物理再改同一批参数
@@ -3272,20 +3398,21 @@ internal static class Live2DChecks
             runtime.PetIdleActionsEnabled = false;
             runtime.PetIdleActionIntervalSeconds = 12.0;
             var idleActionNames = runtime.PetIdleActionNames;
-            C("互动待机：默认间隔 12 秒、动作集合 47 个（基础 + 一批表情彩蛋 + 二批肢体编舞）",
+            C("互动待机：默认间隔 12 秒、动作集合 52 个（全部实拍验证过）",
                 Near(runtime.PetIdleActionIntervalSeconds, 12.0, 1e-9)
-                && idleActionNames.Count == 47
+                && idleActionNames.Count == 52
                 && new[]
                 {
                     "换脚", "东张西望", "伸懒腰", "挥挥手", "戴铁盆", "爱心眼脸红",
-                    "圈圈眼发呆", "慌张摇头", "屑屑眼无语", "黑脸嫌弃", "流冷汗尴尬", "假哭流泪",
+                    "圈圈眼发呆", "慌张摇头", "屑屑眼无语", "黑脸嫌弃", "流冷汗尴尬", "假哭抽泣",
                     "眼冒金星", "吓一跳", "兔牙笑", "单片眼镜", "黑框眼镜看书", "前倾盯人",
                     "加载转圈", "尾巴波浪", "耸肩卖萌", "打哈欠", "吐舌头舔嘴唇", "摇头拒绝",
                     "点头答应", "哼歌摇摆",
                     "左右摇摆卖萌", "打瞌睡猛醒", "拍拍手", "扭腰小舞步", "叉腰挺胸", "揉眼睛困困",
                     "鞠躬", "踢踢腿", "侧腰伸展", "害羞扭扭", "踮脚张望", "抖肩膀",
-                    "手搭凉棚", "张开翅膀", "炸毛受惊", "生气跺脚", "AIUEO唱歌", "鼓腮帮赌气",
-                    "看手腕唉", "爱心蹦蹦", "撒花转圈",
+                    "手搭凉棚", "生气跺脚", "鼓腮帮赌气", "看手腕唉", "爱心蹦蹦", "开心转圈",
+                    "封面wink吐舌", "竖手指wink", "比心wink", "狗尾草哼歌", "抚胸安心",
+                    "打喷嚏", "探头偷看", "傲娇转身哼",
                 }.All(idleActionNames.Contains),
                 $"间隔={runtime.PetIdleActionIntervalSeconds:0.###} 动作数={idleActionNames.Count}");
 

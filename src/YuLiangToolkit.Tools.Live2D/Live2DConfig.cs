@@ -320,7 +320,7 @@ public sealed class Live2DConfig : ToolConfig
     /// <summary>拖动桌宠时是否带「拖拽物理」（头发 / 裙子会甩）。</summary>
     public bool PetDragPhysicsEnabled { get; set; } = true;
 
-    /// <summary>待机随机小动作（换脚 / 圈圈眼 / 屑屑眼 / 鞠躬 / 张开翅膀 / AIUEO 唱歌等 47 个）间隔（秒，8 ~ 30）。</summary>
+    /// <summary>待机随机小动作（换脚 / 圈圈眼 / 屑屑眼 / 鞠躬 / 封面wink / 竖手指wink / 比心等 52 个）间隔（秒，8 ~ 30）。</summary>
     public double PetIdleActionIntervalSeconds { get; set; } = 12;
 
     /// <summary>待机时是否随机换表情（爱心眼 / 脸红 / 屑屑眼等，轻轻增加生动度）。</summary>
