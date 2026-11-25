@@ -17,9 +17,11 @@ namespace YuLiangToolkit.Tools.Live2D.Views;
 
 /// <summary>
 /// 桌面宠物窗口：透明、无边框、置顶（可关）、不进任务栏；显示 Live2D 模型当前帧。
+/// 窗口比模型宽一圈（左右各 7.5% 透明摆动余量，见 <see cref="PetViewport.SwayMarginScale"/>）：
+/// 尾巴 / 头发甩出画布、整身轻倾旋转时不会被窗口边裁掉；透明区域点击照常穿透。
 ///
 /// <para><b>交互</b>：左键拖动移动（拖动不触发互动）、松开时判定是否「摸了一下」（窗口没被拖动过才算）、
-/// 滚轮以鼠标为不动点缩放窗口（窗口跟模型一样大，没有矩形裁切，窗口可以比屏幕高——超出部分拖动窗口查看）、
+/// 滚轮以鼠标为不动点缩放窗口（窗口跟模型一起大，没有矩形裁切，窗口可以比屏幕高——超出部分拖动窗口查看）、
 /// 右键菜单（置顶 / 点击穿透 / 缩放重置 / 居中 / 打开测试页 / 隐藏）、双击随机来个表情或动作。
 /// 位置 / 宽度 / 不透明度 / 置顶 / 穿透都写回 <see cref="Live2DConfig"/> 自动保存。</para>
 ///
@@ -104,7 +106,8 @@ public partial class PetWindow : Window
         _session = session;
         InitializeComponent();
 
-        // 窗口 = 模型本身，允许比屏幕高（上限被子类化放行，见 SubclassProcForSizeLimits）。
+        // 窗口 = 模型 + 左右摆动余量（ComputeWindowSize：画布等比居中，模型大小由 PetWidth 决定），
+        // 允许比屏幕高（上限被子类化放行，见 SubclassProcForSizeLimits）。
         // MaxWidth / MaxHeight 让 WPF 属性路径不再受默认 2000/10000 隐式约束。
         MaxWidth = PetViewport.MaxWindowWidth;
         MaxHeight = PetViewport.MaxWindowHeight;
@@ -118,7 +121,9 @@ public partial class PetWindow : Window
         Height = height;
         if (cfg is not null && cfg.PetLeft is { } savedLeft && cfg.PetTop is { } savedTop)
         {
-            Left = savedLeft;
+            // 旧版窗口宽 = PetWidth；现在窗口宽 = PetWidth × 1.15（左右摆动余量）——
+            // Left 向左挪半个余量差，让模型停在用户上次摆的屏幕位置上（不发生一次性右移）
+            Left = savedLeft - (width - cfg.PetWidth) / 2;
             Top = savedTop;
         }
         else
@@ -224,7 +229,8 @@ public partial class PetWindow : Window
         var canvasWidth = Math.Max(1.0, model.CanvasWidthPixels);
         var canvasHeight = Math.Max(1.0, model.CanvasHeightPixels);
 
-        // 窗口 = 模型本身（整张画布等比铺满窗口）
+        // 窗口比画布宽一圈摆动余量：fit 取宽高比里较小的（一般是高度），画布等比居中，
+        // 模型显示大小只由 PetWidth 决定，两侧余量留给尾巴 / 头发甩出画布的画
         var fit = Math.Min(windowWidth / canvasWidth, windowHeight / canvasHeight);
         var fullOffsetX = (windowWidth - canvasWidth * fit) * 0.5;
         var fullOffsetY = (windowHeight - canvasHeight * fit) * 0.5;
@@ -1003,7 +1009,7 @@ public partial class PetWindow : Window
         }
     }
 
-    /// <summary>窗口内坐标（DIP）→ 模型画布像素坐标（桌宠固定「适应窗口」= 窗口即模型）。</summary>
+    /// <summary>窗口内坐标（DIP）→ 模型画布像素坐标（桌宠固定「适应窗口」：画布等比居中进窗口，两侧余量透明）。</summary>
     private bool ComputeCanvasPoint(double localX, double localY, out float canvasX, out float canvasY)
     {
         canvasX = canvasY = 0;

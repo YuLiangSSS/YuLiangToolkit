@@ -2540,11 +2540,11 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="42" />
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Text="窗口宽" Style="{StaticResource SettingLabelStyle}" />
+                                                <TextBlock Text="模型宽度" Style="{StaticResource SettingLabelStyle}" />
                                                 <Slider Grid.Column="1" Minimum="160" Maximum="2000" SmallChange="10"
                                                         Value="{Binding PetWidth, Mode=TwoWay}" Style="{StaticResource SliderStyle}"
                                                         VerticalAlignment="Center"
-                                                        ToolTip="桌宠窗口（= 模型显示宽度）160~2000。窗口可以比屏幕高，超出屏幕的部分拖动窗口查看；越大越吃 CPU。" />
+                                                        ToolTip="模型显示宽度 160~2000（模型大小由它决定）。窗口会比模型宽一圈（左右各 7.5% 的透明摆动余量）：尾巴 / 头发甩出画布、整身轻倾时不会被窗口边裁掉；窗口可以比屏幕高，超出屏幕的部分拖动窗口查看；越大越吃 CPU。" />
                                                 <TextBlock Grid.Column="2" Text="{Binding PetWidth, StringFormat={}{0:0}}"
                                                            Style="{StaticResource SettingValueStyle}" />
                                             </Grid>

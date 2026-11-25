@@ -613,10 +613,11 @@ public partial class Live2DView : UserControl, ILive2DFrameTarget
         }
         else
         {
-            // 适应窗口：只渲染模型在预览区里实际占的那一块（不渲染上下 / 左右的空白），再等比放大显示。
-            // 例如预览 855×430、模型竖长只占 210×430 时，以前每帧光栅化 36 万像素，现在只要 9 万（省 ~75%）。
+            // 适应窗口：只渲染「模型画布在预览区里实际占的那块 + 左右摆动余量」（画布等比居中，模型大小
+            // 不变；尾巴 / 头发被物理甩出画布、整身轻倾旋转时有地方去，和桌宠窗口同一套余量系数），
+            // 再等比放大显示。例如预览 855×430、模型竖长只占 210×430 时，以前每帧光栅化 36 万像素，现在只要 9 万（省 ~75%）。
             var fit = Math.Min(hostWidth / canvasWidth, hostHeight / canvasHeight);
-            var contentWidth = Math.Max(1.0, canvasWidth * fit);
+            var contentWidth = Math.Max(1.0, canvasWidth * fit * PetViewport.SwayMarginScale);
             var contentHeight = Math.Max(1.0, canvasHeight * fit);
             options.Width = Math.Max(2, (int)Math.Ceiling(contentWidth * renderScale));
             options.Height = Math.Max(2, (int)Math.Ceiling(contentHeight * renderScale));

@@ -658,7 +658,7 @@ internal static class Live2DChecks
         }
 
         // ================================================================
-        // 九·五、桌宠窗口尺寸（PetViewport：窗口 = 模型，可比屏幕高 + 滚轮锚定缩放）
+        // 九·五、桌宠窗口尺寸（PetViewport：窗口 = 模型 + 左右摆动余量，可比屏幕高 + 滚轮锚定缩放）
         // ================================================================
         try
         {
@@ -667,20 +667,24 @@ internal static class Live2DChecks
             var size1000 = PetViewport.ComputeWindowSize(1000, aspect);
             var sizeHuge = PetViewport.ComputeWindowSize(5000, aspect);
             var sizeTiny = PetViewport.ComputeWindowSize(100, aspect);
-            C("桌宠窗口：420 宽 → 高 ≈ 862（按画布比例）",
-                Near(size420.Width, 420, 1e-9) && Near(size420.Height, 420 / aspect, 1e-6),
+            C("桌宠窗口：420 宽模型 → 窗口 483×862（宽 ×1.15 摆动余量，高 = 模型高）",
+                Near(size420.Width, 420 * PetViewport.SwayMarginScale, 1e-9) && Near(size420.Height, 420 / aspect, 1e-6),
                 $"{size420.Width:0.#}×{size420.Height:0.#}");
-            C("桌宠窗口：1000 宽 → 高 ≈ 2053（不再被屏幕高度夹住，窗口可以比屏幕高）",
-                Near(size1000.Width, 1000, 1e-9) && Near(size1000.Height, 1000 / aspect, 1e-6),
+            C("桌宠窗口：1000 宽模型 → 窗口 1150×2053（不再被屏幕高度夹住，窗口可以比屏幕高）",
+                Near(size1000.Width, 1000 * PetViewport.SwayMarginScale, 1e-9) && Near(size1000.Height, 1000 / aspect, 1e-6),
                 $"{size1000.Width:0.#}×{size1000.Height:0.#}");
-            C("桌宠窗口：宽度上限 3840 / 下限 160（NaN 回 420 默认）",
-                Near(sizeHuge.Width, 3840, 1e-9) && Near(sizeTiny.Width, 160, 1e-9)
-                && Near(PetViewport.ComputeWindowSize(double.NaN, aspect).Width, PetViewport.DefaultWindowWidth, 1e-9),
+            C("桌宠窗口：模型宽上限 3840 / 下限 160（NaN 回 420 默认；窗口宽被 3840 夹住）",
+                Near(sizeHuge.Width, 3840, 1e-9) && Near(sizeTiny.Width, 160 * PetViewport.SwayMarginScale, 1e-9)
+                && Near(PetViewport.ComputeWindowSize(double.NaN, aspect).Width, PetViewport.DefaultWindowWidth * PetViewport.SwayMarginScale, 1e-9),
                 $"{sizeHuge.Width:0.#} / {sizeTiny.Width:0.#}");
             C("桌宠窗口：高度上限 8000（极端细长模型按渲染位图上限反夹）",
                 PetViewport.ComputeWindowSize(2000, 0.05).Height <= PetViewport.MaxWindowHeight
                 && PetViewport.ComputeWindowSize(2000, 0.05).Width > 0,
                 $"{PetViewport.ComputeWindowSize(2000, 0.05).Width:0.#}×{PetViewport.ComputeWindowSize(2000, 0.05).Height:0.#}");
+            C("桌宠窗口：窗口加宽不放大模型（fit 取宽高比里较小的，画布仍等比居中）",
+                Math.Min(size420.Width / 3749.0, size420.Height / 7697.0) < 420.0 / 3749.0 + 1e-9
+                && Math.Abs(Math.Min(size420.Width / 3749.0, size420.Height / 7697.0) - 420.0 / 3749.0) < 1e-9,
+                $"fit={Math.Min(size420.Width / 3749.0, size420.Height / 7697.0):0.000000}");
 
             // 滚轮锚定缩放：窗口 420×862 → 840×1724，光标下的画布点必须保持在屏幕同一位置
             const double cursorLocalX = 300, cursorLocalY = 200;
