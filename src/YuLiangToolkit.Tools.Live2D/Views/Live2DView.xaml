@@ -615,15 +615,15 @@
                         <ScrollViewer Style="{StaticResource CardScrollerStyle}">
                             <Grid>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="300" MinHeight="200" />
-                                    <RowDefinition Height="12" />
                                     <RowDefinition Height="330" MinHeight="220" />
+                                    <RowDefinition Height="12" />
+                                    <RowDefinition Height="300" MinHeight="200" />
                                     <RowDefinition Height="12" />
                                     <RowDefinition Height="400" MinHeight="280" />
                                 </Grid.RowDefinitions>
 
-                                <!-- ① 动作卡：行内播放键 + 名字 + 时长 + 循环勾选 -->
-                                <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                                <!-- ② 动作卡：行内播放键 + 名字 + 时长 + 循环勾选（放表情下面） -->
+                                <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
@@ -715,12 +715,12 @@
                                     </Grid>
                                 </Border>
 
-                                <!-- 上下分隔条：动作 / 表情 -->
+                                <!-- 上下分隔条：表情 / 动作 -->
                                 <core:PaneSplitter Grid.Row="1" Style="{StaticResource PaneSplitterHorizontalStyle}"
-                                                   Key="live2d.动作卡与表情卡" />
+                                                   Key="live2d.表情卡与动作卡" />
 
-                                <!-- ② 表情卡：多选开关（可叠加） + 「表情 / 姿势」与「装饰」两个小分组 + 组合预设 + 淡入淡出 + 全部清除 -->
-                                <Border Grid.Row="2" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
+                                <!-- ① 表情卡：多选开关（可叠加） + 「表情 / 姿势」与「装饰」两个小分组 + 组合预设 + 淡入淡出 + 全部清除（放上面） -->
+                                <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
@@ -836,9 +836,9 @@
                                     </Grid>
                                 </Border>
 
-                                <!-- 上下分隔条：表情 / 手臂演示 -->
+                                <!-- 上下分隔条：动作 / 手臂演示 -->
                                 <core:PaneSplitter Grid.Row="3" Style="{StaticResource PaneSplitterHorizontalStyle}"
-                                                   Key="live2d.表情卡与演示卡" />
+                                                   Key="live2d.动作卡与演示卡" />
 
                                 <!-- ③ 手臂 & 姿势（动作演示）：左臂 / 右臂 / 肩膀参数 + 手势 / 表演 / 舞蹈 / 待机灵动 -->
                                 <Border Grid.Row="4" Style="{StaticResource CardStyle}" Padding="0" ClipToBounds="True">
@@ -848,39 +848,35 @@
                                             <RowDefinition Height="*" MinHeight="200" />
                                         </Grid.RowDefinitions>
 
-                                        <Grid Grid.Row="0" Margin="18,14,18,0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel>
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="🖐 手臂 &amp; 姿势（动作演示）" Style="{StaticResource CardHeaderStyle}" />
-                                                    <TextBlock Text="{Binding ActionStatusText}" FontSize="10.5" Margin="10,0,0,0"
-                                                               VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"
-                                                               TextTrimming="CharacterEllipsis" MaxWidth="300" />
-                                                </StackPanel>
-                                                <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,4,0,0"
-                                                           Text="手臂参数可直接拖（范围取参数自身 Min/Max）；动作播放时会覆盖手动值 —— 想手动调先点「⏹ 停止所有演示」。手势 / 表演 / 舞蹈 / 待机随机小动作都走运行时动作系统，和呼吸、眨眼、物理叠加。桌宠玩法：拖住搬窗口（头发 / 裙子会甩）、摸头、点额头换表情、捏脸、摸腰脚痒痒、摸胸护住、点手竖食指；快捷键 Ctrl+Alt+L 鼠标穿透 / Ctrl+Alt+0 退出（开关在「🐟 桌宠与养成」页的「桌面宠物」卡）。" />
-                                            </StackPanel>
-                                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
-                                                <CheckBox Content="🔒 锁定手臂参数" Style="{StaticResource CheckBoxStyle}" Margin="0,0,10,0"
+                                        <StackPanel Grid.Row="0" Margin="18,14,18,0">
+                                            <!-- 标题 / 状态 / 按钮 / 描述纵向排：按钮多，放横向 Grid 的 Auto 列会把左侧
+                                                 描述挤成一字一行（用户实测 bug），所以按钮单独一行自动换行 -->
+                                            <Grid>
+                                                <TextBlock Text="🖐 手臂 &amp; 姿势（动作演示）" Style="{StaticResource CardHeaderStyle}" />
+                                                <TextBlock Text="{Binding ActionStatusText}" FontSize="10.5" HorizontalAlignment="Right"
+                                                           VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"
+                                                           TextTrimming="CharacterEllipsis" Margin="12,0,0,0" />
+                                            </Grid>
+                                            <WrapPanel Margin="0,8,0,0">
+                                                <CheckBox Content="🔒 锁定手臂参数" Style="{StaticResource CheckBoxStyle}" Margin="0,0,10,6"
                                                           IsChecked="{Binding ArmOverrideEnabled, Mode=TwoWay}" VerticalAlignment="Center"
                                                           ToolTip="勾选后手臂 / 肩膀参数每帧强制回填：动作 / 手势 / 待机小动作都改不动（锁定状态下手势按钮的表情反应仍会触发，但手臂姿势保持你调的值）" />
-                                                <Button Content="💾 保存预设" Style="{StaticResource CompactButtonStyle}" Margin="0,0,6,0"
+                                                <Button Content="💾 保存预设" Style="{StaticResource CompactButtonStyle}" Margin="0,0,6,6"
                                                         Command="{Binding SaveArmPresetCommand}"
                                                         ToolTip="把当前手臂 / 肩膀参数存成预设" />
-                                                <Button Content="📥 应用预设" Style="{StaticResource CompactButtonStyle}"
+                                                <Button Content="📥 应用预设" Style="{StaticResource CompactButtonStyle}" Margin="0,0,6,6"
                                                         Command="{Binding ApplyArmSavedPresetCommand}"
                                                         ToolTip="写回保存的手臂参数并自动锁定" />
-                                                <Button Content="🎲 随机动作" Style="{StaticResource CompactButtonStyle}" Margin="12,0,6,0"
+                                                <Button Content="🎲 随机动作" Style="{StaticResource CompactButtonStyle}" Margin="12,0,6,6"
                                                         Command="{Binding RandomActionCommand}"
                                                         ToolTip="随机播一个手势或表演" />
-                                                <Button Content="⏹ 停止所有演示" Style="{StaticResource CompactButtonStyle}"
+                                                <Button Content="⏹ 停止所有演示" Style="{StaticResource CompactButtonStyle}" Margin="0,0,0,6"
                                                         Command="{Binding StopAllDemosCommand}"
                                                         ToolTip="停止手势 / 表演 / 舞蹈 / 摇晃演示，把身体交还手动参数与物理" />
-                                            </StackPanel>
-                                        </Grid>
+                                            </WrapPanel>
+                                            <TextBlock Style="{StaticResource CardSubTextStyle}" Margin="0,2,0,0"
+                                                       Text="手臂参数可直接拖（范围取参数自身 Min/Max）；动作播放时会覆盖手动值 —— 想手动调先点「⏹ 停止所有演示」。手势 / 表演 / 舞蹈 / 待机随机小动作都走运行时动作系统，和呼吸、眨眼、物理叠加。桌宠玩法：拖住搬窗口（头发 / 裙子会甩）、摸头、点额头换表情、捏脸、摸腰脚痒痒、摸胸护住、点手竖食指；快捷键 Ctrl+Alt+L 鼠标穿透 / Ctrl+Alt+0 退出（开关在「🐟 桌宠与养成」页的「桌面宠物」卡）。" />
+                                        </StackPanel>
 
                                         <ScrollViewer Grid.Row="1" Style="{StaticResource CardScrollerStyle}" Margin="0,10,0,0">
                                             <Grid Margin="18,0,18,14">

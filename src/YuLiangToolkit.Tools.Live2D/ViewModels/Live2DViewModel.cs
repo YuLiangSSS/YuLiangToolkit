@@ -1524,10 +1524,15 @@ public sealed class Live2DViewModel : ToolViewModelBase
 
     // ===================== 面部测试（眼睛 / 嘴 / 舌头） =====================
 
-    /// <summary>眼睛组参数 Id（顺序即界面顺序）。</summary>
+    /// <summary>
+    /// 眼睛组参数 Id（顺序即界面顺序）。
+    /// 注意：眼珠 X / Y 在这个模型里是<b>左右眼共用</b>的一个参数（美术没绑左右独立的眼珠轴），
+    /// 想左右眼分开调只能调「开闭 / 眯眼」这两个每组各一个的参数。
+    /// </summary>
     private static readonly string[] FaceEyeIds =
     {
-        "ParamEyeBallX", "ParamEyeBallY", "ParamEyeLOpen", "ParamEyeROpen", "EyeSmile",
+        "ParamEyeBallX", "ParamEyeBallY", "ParamEyeLOpen", "ParamEyeROpen",
+        "LEyeSquint", "REyeSquint", "EyeSmile",
     };
 
     /// <summary>嘴组参数 Id。</summary>

@@ -91,7 +91,7 @@ Windows 自带摄像头与 FaceAnalysis API（不录像、不存画面）。联�
 > | 页签 | 里面有什么 |
 > | --- | --- |
 > | 🔍 模型与参数 | 模型信息卡 · 参数区 · 部件区 |
-> | 🎬 动作与表情 | 动作区 · 表情区 · 🖐 手臂 & 姿势（动作演示） |
+> | 🎬 动作与表情 | 表情区 · 动作区 · 🖐 手臂 & 姿势（动作演示） |
 > | 😛 面部与身体 | 😛 面部测试 · 🌊 身体晃动测试（含手动身体参数） |
 > | 📷 驱动与动捕 | 物理与眼睛跟随 · 📷 摄像头面部动捕 · 🎵 音乐跟唱 · 律动 |
 > | 💬 说话与 AI | 💬 说话 / 轻对话 · 🤖 AI 聊天 · 好感度（DeepSeek） |
@@ -195,8 +195,11 @@ Windows 自带摄像头与 FaceAnalysis API（不录像、不存画面）。联�
 - **🧭 头部转动（3 个）**：`ParamAngleX`（头部左右转，负=朝左 / 正=朝右）、
   `ParamAngleY`（头部上下，负=低头 / 正=抬头）、`ParamAngleZ`（头部歪斜，负=左倾 / 正=右倾）——
   抬头 / 低头 / 转头 / 歪头都能手动摆；眼睛跟随开启时会被每帧接管，**勾「🔒 锁定头部」后眼控也盖不动**；
-- **👁 眼睛（5 个）**：`ParamEyeBallX / ParamEyeBallY`（眼球左右 / 上下；Y 的运行时上限扩展到 **2.5**，
-  向上可以翻得更高）、`ParamEyeLOpen / ParamEyeROpen`（左右眼开闭，默认 1 = 睁开，0 = 闭眼）、`EyeSmile`（眯眼笑）；
+- **👁 眼睛（7 个）**：`ParamEyeBallX / ParamEyeBallY`（眼球左右 / 上下；Y 的运行时上限扩展到 **2.5**，
+  向上可以翻得更高）、`ParamEyeLOpen / ParamEyeROpen`（左右眼开闭，默认 1 = 睁开，0 = 闭眼）、
+  `LEyeSquint / REyeSquint`（左右眼眯眼，单独可调）、`EyeSmile`（眯眼笑）。
+  ⚠ **眼珠 X / Y 是模型里左右眼共用的一根参数**（美术没绑左右独立的眼珠轴），没法左右眼分别看不同方向；
+  左右眼能分开调的只有「开闭 / 眯眼」。
 - **👄 嘴（13 个）**：`ParamMouthOpenY`（张嘴 0~1）、`ParamMouthForm`（嘴形 -1~1）、`JawOpen`（下巴张开）、
   `Mouthpucker` / `MouthFunnel` / `MouthPuckerWiden`（撅嘴 / 漏斗嘴 / 嘴宽窄）、
   `MouthPressLipOpen` / `MouthRollUpper` / `MouthRollLower`（压唇 / 上唇卷 / 下唇卷）、
