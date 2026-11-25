@@ -863,15 +863,19 @@ public partial class PetWindow : Window
         // 鼠标指着脸放大，脸留在鼠标下面，不会整只往上跑。
         var cursor = e.GetPosition(this);
         var factor = e.Delta > 0 ? 1.1 : 1 / 1.1;
-        var newWidth = Math.Clamp(cfg.PetWidth * factor, PetViewport.MinWindowWidth, PetViewport.MaxWindowWidth);
-        if (Math.Abs(newWidth - cfg.PetWidth) < 0.1) return;
-        var (newW, newH) = PetViewport.ComputeWindowSize(newWidth, _session.CanvasAspect);
+        // 滚轮缩放的是「模型显示宽度」（cfg.PetWidth 的语义）；窗口宽 = 它 × 1.15 摆动余量，
+        // 由 ComputeWindowSize 统一算。⚠ 写回必须用 targetModelWidth（模型宽），不能用 newW（窗口宽）：
+        // 写错会把余量滚进模型宽，每格实际 ×1.265、缩小反而变大，40ms 轮询还会按写错的值把窗口
+        // 再撑一圈 —— 表现就是「很快顶到上限没法缩放、一动就往上飞」（2026-11 用户反馈的滚轮 bug）。
+        var targetModelWidth = Math.Clamp(cfg.PetWidth * factor, PetViewport.MinWindowWidth, PetViewport.MaxWindowWidth);
+        if (Math.Abs(targetModelWidth - cfg.PetWidth) < 0.1) return;
+        var (newW, newH) = PetViewport.ComputeWindowSize(targetModelWidth, _session.CanvasAspect);
         var (newLeft, newTop) = PetViewport.AnchoredZoom(
             Left, Top, ActualWidth, ActualHeight,
             canvasWidth, canvasHeight,
             cursor.X, cursor.Y, newW, newH);
 
-        cfg.PetWidth = newW;
+        cfg.PetWidth = targetModelWidth;
         Width = newW;
         Height = newH;
         if (double.IsFinite(newLeft) && double.IsFinite(newTop))
