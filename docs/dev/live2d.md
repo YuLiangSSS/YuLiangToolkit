@@ -1178,7 +1178,7 @@ SpeechEnabled=false → 直接 ShowSilentBubble（不合成 / 不联网 / 不动
 | 文件 | 职责 |
 | --- | --- |
 | `Model/InteractionController.cs` | 热区几何（部件名 → drawable 缓存、每帧包围盒）、`HitTest` / `GetRegionCenter`、指针状态机（`PointerDown/Move/Up`、`Press`、`TriggerInteraction`）、反应状态机（PatHead / Pinch / Tickle / Protect / Shy / 手势切换）、额头三态表情、拖拽物理、touched 复位；公开 `InteractionRegion`（12 区）/ `InteractionGesture`（Tap/Pet） |
-| `Model/PetIdleActions.cs` | 26 个待机小动作（基础六件套 + 圈圈眼 / ＞＜ / 屑屑眼 / 假哭 / 尾巴波浪等扩充），程序化关键帧 + 表情挂载；间隔随机、互动冷却、被打断即撤；`ActionNames / ActiveName / TriggerCount / TryTrigger / NotifyInteraction` |
+| `Model/PetIdleActions.cs` | 47 个待机小动作（基础六件套 + 表情彩蛋一批 + 肢体复合编舞一批），程序化关键帧 + 表情挂载；间隔随机、互动冷却、被打断即撤；`ActionNames / ActiveName / TriggerCount / TryTrigger / NotifyInteraction` |
 | `ModelRuntime.cs` | 对外属性（`InteractionEnabled / InteractionVoiceEnabled / PetDragPhysicsEnabled / PetIdleActionsEnabled / PetIdleActionIntervalSeconds / PetIdleExpressionEnabled`）、包装方法、`InteractionHappened` 事件、`LastInteractionVoiceEvent / LastInteractionName`；`ApplyExpressionTemporarily` / 到期表情清理；Tick 里更新互动 / 待机并做门控 |
 | `Views/PetWindow.xaml(.cs)` | 桌宠窗口鼠标事件（命中才捕获、否则拖窗口）、`Ctrl+Alt+L` 穿透 / `Ctrl+Alt+0` 退出全局热键、右键菜单（含 ⚙ 设置 / ❌ 退出）；拖窗位移喂 `ApplyDragImpulse` |
 | `Live2DSession` / UI | 订阅 `InteractionHappened` → 台词（1.5s 节流）→ `SpeakText`（语音 + 气泡 + 口型同步）；互动语音开关 / 台词池 |
@@ -1251,13 +1251,21 @@ SpeechEnabled=false → 直接 ShowSilentBubble（不合成 / 不联网 / 不动
 
 ### 16.5 待机小动作（PetIdleActions）
 
-- **26 个**程序化动作（关键帧 + 可选表情），基础六个：`换脚`（5.2s）/ `东张西望`（5.6s）/ `伸懒腰`（4.2s）/
+- **47 个**程序化动作（关键帧 + 可选表情），基础六个：`换脚`（5.2s）/ `东张西望`（5.6s）/ `伸懒腰`（4.2s）/
   `挥挥手`（8.2s）/ `戴铁盆`（5.4s，表情「钢盆」）/ `爱心眼脸红`（3.5s，表情「爱心眼」+「脸红」）；
-  2026-11 扩充 20 个：`圈圈眼发呆`（表情「圈圈眼」+ AniEyerolling 蚊香眼直接动画）/ `慌张摇头`（表情「＞＜」+ 冒汗）/
+  2026-11 一批 20 个：`圈圈眼发呆`（表情「圈圈眼」+ AniEyerolling 蚊香眼直接动画）/ `慌张摇头`（表情「＞＜」+ 冒汗）/
   `屑屑眼无语`（表情「屑屑眼」+ Param11 呆滞）/ `黑脸嫌弃` / `流冷汗尴尬` / `假哭流泪`（落泪开关 + 泪花闪烁）/
   `眼冒金星`（Startwinkle + 屑屑眼）/ `吓一跳`（SHOCKEYE + ShockR/L 纯参数）/ `兔牙笑` / `单片眼镜` / `黑框眼镜看书` /
   `前倾盯人` / `加载转圈` / `尾巴波浪`（Param_Angle_Rotation84~88 分节摆）/ `耸肩卖萌` / `打哈欠` / `吐舌头舔嘴唇` /
   `摇头拒绝` / `点头答应` / `哼歌摇摆`；
+  2026-11 二批 21 个（肢体复合编舞）：`左右摇摆卖萌`（身体 / 盆骨 / 位移晃两轮 → 歪脸眯眼）/ `打瞌睡猛醒`（垂头闭眼 → SHOCK EYE 惊醒）/
+  `拍拍手`（双臂抬起手腕拍三下 + 爱心眼）/ `扭腰小舞步`（盆骨 + 胸腔反向扭四拍）/ `叉腰挺胸`（叉腰姿势保持）/
+  `揉眼睛困困`（双手到脸 + 闭眼揉三下 + Param11 呆滞）/ `鞠躬`（胸腔前倾 + 低头 + 起身）/ `踢踢腿`（LEGAngleZ2 交替摆 + 反向平衡）/
+  `侧腰伸展`（身体侧弯 + 对侧手臂上举，左右各一次）/ `害羞扭扭`（脸红 + 双手胸前小扭 + 眼神躲）/ `踮脚张望`（PositionY 踮起 + 扫视）/
+  `抖肩膀`（ShoulderX 快速抖）/ `手搭凉棚`（手搭额头 + 眼珠上翻 1.8）/ `张开翅膀`（WingOpenClose / WingSpread / WingRotation）/
+  `炸毛受惊`（Param137 炸毛 + Param138 身体抖动 + SHOCKEYE）/ `生气跺脚`（Angry 生气符号 + PositionY 跺三下）/
+  `AIUEO唱歌`（ParamA/I/U/E/O 元音口型逐个唱）/ `鼓腮帮赌气`（CheeckPuff 左右轮流鼓）/ `看手腕唉`（抬手偏头皱眉）/
+  `爱心蹦蹦`（Param135/6/7 爱心弹 + PositionY 蹦）/ `撒花转圈`（LittleFlower 花特效 + 双手展开转身）；
 - 间隔：`NextInterval = clamp(IntervalSeconds, 6, 60) × (0.66 + rand×0.84)` → 默认 12s 时约 **8~18s**
   （配置 UI 夹取 8~30）；
 - **门控**（`IsPetIdleBlocked`）：动捕有脸 / 语音说话 / 音乐在播 / 手势 / 表演 / 舞蹈 / 用户动作

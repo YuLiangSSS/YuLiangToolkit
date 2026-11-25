@@ -3272,9 +3272,9 @@ internal static class Live2DChecks
             runtime.PetIdleActionsEnabled = false;
             runtime.PetIdleActionIntervalSeconds = 12.0;
             var idleActionNames = runtime.PetIdleActionNames;
-            C("互动待机：默认间隔 12 秒、动作集合 26 个（基础六件套 + 圈圈眼 / ＞＜ / 屑屑眼等扩充动作）",
+            C("互动待机：默认间隔 12 秒、动作集合 47 个（基础 + 一批表情彩蛋 + 二批肢体编舞）",
                 Near(runtime.PetIdleActionIntervalSeconds, 12.0, 1e-9)
-                && idleActionNames.Count == 26
+                && idleActionNames.Count == 47
                 && new[]
                 {
                     "换脚", "东张西望", "伸懒腰", "挥挥手", "戴铁盆", "爱心眼脸红",
@@ -3282,6 +3282,10 @@ internal static class Live2DChecks
                     "眼冒金星", "吓一跳", "兔牙笑", "单片眼镜", "黑框眼镜看书", "前倾盯人",
                     "加载转圈", "尾巴波浪", "耸肩卖萌", "打哈欠", "吐舌头舔嘴唇", "摇头拒绝",
                     "点头答应", "哼歌摇摆",
+                    "左右摇摆卖萌", "打瞌睡猛醒", "拍拍手", "扭腰小舞步", "叉腰挺胸", "揉眼睛困困",
+                    "鞠躬", "踢踢腿", "侧腰伸展", "害羞扭扭", "踮脚张望", "抖肩膀",
+                    "手搭凉棚", "张开翅膀", "炸毛受惊", "生气跺脚", "AIUEO唱歌", "鼓腮帮赌气",
+                    "看手腕唉", "爱心蹦蹦", "撒花转圈",
                 }.All(idleActionNames.Contains),
                 $"间隔={runtime.PetIdleActionIntervalSeconds:0.###} 动作数={idleActionNames.Count}");
 
