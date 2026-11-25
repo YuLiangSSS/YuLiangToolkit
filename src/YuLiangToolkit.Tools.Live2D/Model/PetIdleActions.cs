@@ -356,15 +356,14 @@ internal sealed class PetIdleActions
         routines.Add(Routine("换脚", 5.2, Array.Empty<string>(),
             Track("AngleX", 0f, 0f, 0.28f, 5.5f, 0.62f, 4.2f, 1f, 0f),
             Track("AngleZ", 0f, 0f, 0.3f, -2.6f, 0.65f, -1.8f, 1f, 0f),
-            Track("PositionX", 0f, 0f, 0.3f, 2.6f, 0.65f, 2.0f, 1f, 0f),
+            Track("ParamBodyAngleX", 0f, 0f, 0.3f, 5f, 0.65f, 3.5f, 1f, 0f),
             Track("ShoulderY", 0f, 0f, 0.3f, 2.2f, 0.7f, 1.6f, 1f, 0f),
             Track("ParamAngleZ", 0f, 0f, 0.3f, 1.8f, 0.7f, 1.2f, 1f, 0f)));
         routines.Add(Routine("东张西望", 5.6, Array.Empty<string>(),
             Track("ParamAngleX", 0f, 0f, 0.22f, 9f, 0.46f, 8f, 0.72f, -7f, 1f, 0f),
             Track("ParamAngleY", 0f, 0f, 0.3f, 2.5f, 0.7f, -1.5f, 1f, 0f),
             Track("ParamAngleZ", 0f, 0f, 0.25f, -2.5f, 0.7f, 2f, 1f, 0f),
-            Track("ParamEyeBallX", 0f, 0f, 0.22f, 0.6f, 0.6f, -0.55f, 1f, 0f),
-            Track("PositionX", 0f, 0f, 0.3f, 1.6f, 0.75f, -1.3f, 1f, 0f)));
+            Track("ParamEyeBallX", 0f, 0f, 0.22f, 0.6f, 0.6f, -0.55f, 1f, 0f)));
         routines.Add(Routine("伸懒腰", 4.2, Array.Empty<string>(),
             Track("ParamAngleY", 0f, 0f, 0.3f, 7f, 0.55f, 8f, 0.8f, 2f, 1f, 0f),
             Track("AngleY", 0f, 0f, 0.3f, 4f, 0.6f, 4.5f, 1f, 0f),
