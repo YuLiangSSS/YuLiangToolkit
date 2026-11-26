@@ -106,6 +106,9 @@ internal sealed class CubismPhysicsEvaluator
     /// <summary>物理输出配置（模型核心内部用：收集受管参数）。</summary>
     public PhysicsOutput[] Outputs => _rig.Outputs;
 
+    /// <summary>物理全部输入参数（含多级链的中间参数；探测参数有效性时这些按「先验有效」处理）。</summary>
+    public PhysicsInput[] Inputs => _rig.Inputs;
+
     /// <summary>物理帧率（physics3.json 的 Meta.Fps；0 = 按真实帧时间积分）。</summary>
     public float Fps => _rig.Fps;
 

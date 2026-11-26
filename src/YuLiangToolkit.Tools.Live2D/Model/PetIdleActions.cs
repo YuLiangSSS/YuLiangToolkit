@@ -56,9 +56,6 @@ internal sealed class PetIdleActions
 
     private readonly Stack<string> _appliedExpressions = new(2);
 
-    private int[] _touchedIndices = new int[48];
-    private int _touchedCount;
-
     private IdleRoutine? _active;
     private double _elapsed;
     private double _timer;
@@ -117,15 +114,9 @@ internal sealed class PetIdleActions
     /// <summary>全部待机小动作名。</summary>
     public IReadOnlyList<string> ActionNames => _names;
 
-    /// <summary>本帧写过的参数个数（运行时下一帧开头复位）。</summary>
-    public int TouchedCount => _touchedCount;
-
-    public int GetTouchedIndex(int index) => _touchedIndices[index];
-
     /// <summary>推进一帧；<paramref name="blocked"/> = 说话 / 音乐 / 动捕 / 用户动作 / 演示 / 互动中。</summary>
     public void Update(double deltaSeconds, bool blocked)
     {
-        _touchedCount = 0;
         if (!Enabled)
         {
             if (_active is not null) StopImmediate();
@@ -188,7 +179,6 @@ internal sealed class PetIdleActions
         _elapsed = 0;
         _phase = 0;
         _expressionApplied = false;
-        _touchedCount = 0;
         _triggerCount++;
 
         if (routine.Expressions.Length > 0 && ExpressionEnabled && (CanApplyExpression?.Invoke() ?? true))
@@ -200,13 +190,15 @@ internal sealed class PetIdleActions
         return true;
     }
 
-    /// <summary>立即停止当前待机小动作并复位（参数下一帧由运行时复位）。</summary>
+    /// <summary>
+    /// 立即停止当前待机小动作（撤掉它挂的表情）。参数不用管：本层下一帧起没有输出，
+    /// 位姿合成器会拿它最后一帧的姿势按层的淡出时间交回待机——被打断也是平滑收掉，不是一帧跳回。
+    /// </summary>
     public void StopImmediate()
     {
         _active = null;
         _elapsed = 0;
         _cooldownRemaining = 0;
-        _touchedCount = 0;
         ClearAppliedExpressions();
     }
 
@@ -215,18 +207,6 @@ internal sealed class PetIdleActions
     {
         StopImmediate();
         _cooldownRemaining = 3.0;
-    }
-
-    /// <summary>运行时下一帧开头复位「上一帧待机小动作写过的参数」。</summary>
-    public void ResetTouched(CubismParameter[] parameters)
-    {
-        for (var i = 0; i < _touchedCount; i++)
-        {
-            var parameter = parameters[_touchedIndices[i]];
-            parameter.Value = parameter.DefaultValue;
-        }
-
-        _touchedCount = 0;
     }
 
     private void WriteActive(float progress)
@@ -247,20 +227,16 @@ internal sealed class PetIdleActions
             if (parameter is null) continue;
             var target = SampleTrack(track.Keys, progress);
             parameter.Value = DemoMath.BlendFromDefault(parameter, target, envelope);
-            MarkTouched(parameter);
         }
     }
 
-    /// <summary>动作结束时不清 touched 列表 —— 下一帧 ResetTouched 会把参数平滑归零，
-    /// 不然参数会僵在上一个动作的值上（ touchedCount=0 导致没人复位）。</summary>
+    /// <summary>动作自然播完：钟形包络末尾已经回到默认值，本层下一帧起不再输出。</summary>
     private void FinishActive()
     {
         var routine = _active;
         _active = null;
         _elapsed = 0;
         if (routine is not null && routine.Expressions.Length > 0) ClearAppliedExpressions();
-        // 不清 _touchedCount：下一帧 ModelRuntime.ResetTouched 会按这个列表把参数归回默认值，
-        // 形成平滑过渡；如果在这里清零，参数会僵在最后的写入值（修复收回时抽搐 / 卡住）。
         _timer = NextInterval();
     }
 
@@ -318,16 +294,6 @@ internal sealed class PetIdleActions
         return baseInterval * factor;
     }
 
-    private void MarkTouched(CubismParameter parameter)
-    {
-        if (_touchedCount >= _touchedIndices.Length)
-        {
-            Array.Resize(ref _touchedIndices, _touchedIndices.Length * 2);
-        }
-
-        _touchedIndices[_touchedCount++] = parameter.Index;
-    }
-
     /// <summary>归一化关键帧求值（段内 smoothstep 缓动）。</summary>
     private static float SampleTrack(float[] keys, float progress)
     {
@@ -378,9 +344,7 @@ internal sealed class PetIdleActions
             Track("ShoulderY", 0f, 0f, 0.2f, 2.4f, 0.7f, 1.6f, 1f, 0f),
             Track("ParamAngleZ", 0f, 0f, 0.3f, -3f, 0.7f, 3f, 1f, 0f),
             Track("ParamAngleX", 0f, 0f, 0.3f, 4f, 0.75f, 5f, 1f, 0f),
-            Track("ParamEyeBallX", 0f, 0f, 0.3f, 0.15f, 0.8f, 0.2f, 1f, 0f),
-            Track("MouthSmile_L", 0f, 0f, 0.2f, 0.45f, 0.8f, 0.4f, 1f, 0f),
-            Track("MouthSmile_R", 0f, 0f, 0.2f, 0.45f, 0.8f, 0.4f, 1f, 0f)));
+            Track("ParamEyeBallX", 0f, 0f, 0.3f, 0.15f, 0.8f, 0.2f, 1f, 0f)));
         routines.Add(Routine("戴铁盆", 5.4, new[] { "钢盆" },
             Track("ParamAngleZ", 0f, 0f, 0.12f, -7f, 0.28f, 7f, 0.44f, -6f, 0.6f, 6f, 0.76f, -4f, 0.9f, 3f, 1f, 0f),
             Track("ParamAngleX", 0f, 0f, 0.18f, 4f, 0.5f, -4f, 0.82f, 3f, 1f, 0f),
@@ -486,14 +450,12 @@ internal sealed class PetIdleActions
             Track("Param_Angle_Rotation87", 0f, 0f, 0.35f, 8f, 0.6f, 6f, 0.85f, -5f, 1f, 0f),
             Track("Param_Angle_Rotation88", 0f, 0f, 0.4f, 7f, 0.65f, 5f, 0.9f, -4f, 1f, 0f)));
 
-        // 耸肩卖萌：双肩一耸 + 眯眼笑 + 歪头
+        // 耸肩卖萌：双肩一耸 + 眯眼笑 + 歪头（ShoulderYy / MouthSmile_L/R 实测无效已移除）
         routines.Add(Routine("耸肩卖萌", 3.4, Array.Empty<string>(),
             Track("ShoulderY", 0f, 0f, 0.25f, 3.2f, 0.5f, 2.4f, 0.75f, 3f, 1f, 0f),
-            Track("ShoulderYy", 0f, 0f, 0.25f, 2f, 0.55f, 1.5f, 1f, 0f),
             Track("EyeSmile", 0f, 0f, 0.25f, 0.75f, 0.8f, 0.55f, 1f, 0f),
             Track("ParamAngleZ", 0f, 0f, 0.3f, 3f, 0.7f, -2.5f, 1f, 0f),
-            Track("MouthSmile_L", 0f, 0f, 0.25f, 0.5f, 0.8f, 0.45f, 1f, 0f),
-            Track("MouthSmile_R", 0f, 0f, 0.25f, 0.5f, 0.8f, 0.45f, 1f, 0f)));
+            Track("ParamMouthForm", 0f, 0f, 0.25f, 0.5f, 0.8f, 0.45f, 1f, 0f)));
 
         // 打哈欠：下巴张大 + 眼睛眯闭 + 头后仰 + 肩膀微抬
         routines.Add(Routine("打哈欠", 4.6, Array.Empty<string>(),
@@ -539,17 +501,15 @@ internal sealed class PetIdleActions
             Track("PositionX", 0f, 0f, 0.22f, 3f, 0.36f, -3f, 0.5f, 3f, 0.62f, -3f, 0.76f, 0f, 1f, 0f),
             Track("ParamAngleZ", 0f, 0f, 0.76f, 0f, 0.88f, 5f, 1f, 0f),
             Track("EyeSmile", 0f, 0f, 0.78f, 0f, 0.86f, 0.8f, 0.95f, 0.8f, 1f, 0f),
-            Track("MouthSmile_L", 0f, 0f, 0.78f, 0f, 0.86f, 0.55f, 0.95f, 0.55f, 1f, 0f),
-            Track("MouthSmile_R", 0f, 0f, 0.78f, 0f, 0.86f, 0.55f, 0.95f, 0.55f, 1f, 0f),
+            Track("ParamMouthForm", 0f, 0f, 0.78f, 0f, 0.86f, 0.5f, 0.95f, 0.5f, 1f, 0f),
             Track("ParamEyeBallX", 0f, 0f, 0.76f, 0f, 0.86f, 0.3f, 1f, 0f)));
 
-        // 打瞌睡猛醒：头慢慢垂下眼闭上 → SHOCK EYE 猛然惊醒 → 再垂一次 → 回正
+        // 打瞌睡猛醒：头慢慢垂下眼闭上 → 猛然睁大惊醒（眼睛过冲 1.3）→ 再垂一次 → 回正
+        // （Param11 / SHOCKEYE 实测无效已移除——「猛醒」由眼开合参数本身表现）
         routines.Add(Routine("打瞌睡猛醒", 6.8, Array.Empty<string>(),
             Track("ParamAngleY", 0f, 0f, 0.3f, 6f, 0.5f, 7f, 0.62f, 7f, 0.68f, 2f, 0.74f, -3f, 0.8f, 6f, 1f, 0f),
             Track("ParamEyeLOpen", 1f, 1f, 0.3f, 0.5f, 0.5f, 0.15f, 0.62f, 0.15f, 0.68f, 1.3f, 0.72f, 0.3f, 0.9f, 0.3f, 1f, 1f),
             Track("ParamEyeROpen", 1f, 1f, 0.3f, 0.5f, 0.5f, 0.15f, 0.62f, 0.15f, 0.68f, 1.3f, 0.72f, 0.3f, 0.9f, 0.3f, 1f, 1f),
-            Track("Param11", 0f, 0f, 0.45f, 0.6f, 0.62f, 0.7f, 0.7f, 0f, 1f, 0f),
-            Track("SHOCKEYE", 0f, 0f, 0.66f, 0.8f, 0.74f, 0f, 1f, 0f),
             Track("ShoulderY", 0f, 0f, 0.4f, 2f, 0.62f, 2f, 0.7f, 0f, 1f, 0f)));
 
         // 拍拍手：双臂抬起小臂拍三下 + 爱心眼
@@ -589,8 +549,7 @@ internal sealed class PetIdleActions
             Track("RForearm", 0f, 0f, 0.3f, 0.4f, 0.7f, 0.4f, 1f, 0f),
             Track("ParamEyeLOpen", 1f, 1f, 0.35f, 0.1f, 0.45f, 0.5f, 0.55f, 0.1f, 0.65f, 0.5f, 0.75f, 0.1f, 1f, 1f),
             Track("ParamEyeROpen", 1f, 1f, 0.35f, 0.1f, 0.45f, 0.5f, 0.55f, 0.1f, 0.65f, 0.5f, 0.75f, 0.1f, 1f, 1f),
-            Track("ParamAngleY", 0f, 0f, 0.3f, 5f, 0.8f, 4f, 1f, 0f),
-            Track("Param11", 0f, 0f, 0.6f, 0.5f, 1f, 0f)));
+            Track("ParamAngleY", 0f, 0f, 0.3f, 5f, 0.8f, 4f, 1f, 0f)));
 
         // 鞠躬：胸腔前倾 + 低头 + 双手身前 + 起身
         routines.Add(Routine("鞠躬", 4.5, Array.Empty<string>(),
@@ -641,12 +600,10 @@ internal sealed class PetIdleActions
             Track("ParamEyeBallX", 0f, 0f, 0.25f, 0.6f, 0.45f, -0.6f, 0.65f, 0.6f, 0.85f, -0.5f, 1f, 0f),
             Track("ParamAngleZ", 0f, 0f, 0.3f, 2.5f, 0.6f, -2.5f, 1f, 0f)));
 
-        // 抖肩膀：肩膀快速左右抖 + 眯眼笑
+        // 抖肩膀：肩膀快速左右抖 + 眯眼笑（ShoulderX 实测无效——肩只跟 ShoulderY/Z；MouthSmile 同理已移除）
         routines.Add(Routine("抖肩膀", 3.0, Array.Empty<string>(),
-            Track("ShoulderX", 0f, 0f, 0.1f, 1.5f, 0.18f, -1.5f, 0.26f, 1.5f, 0.34f, -1.5f, 0.42f, 1.5f, 0.5f, -1.5f, 0.58f, 1.5f, 0.66f, -1.5f, 0.74f, 1f, 0.82f, -0.8f, 0.9f, 0f, 1f, 0f),
-            Track("ShoulderY", 0f, 0f, 0.2f, 1.5f, 0.7f, 1.5f, 1f, 0f),
-            Track("MouthSmile_L", 0f, 0f, 0.15f, 0.5f, 0.85f, 0.45f, 1f, 0f),
-            Track("MouthSmile_R", 0f, 0f, 0.15f, 0.5f, 0.85f, 0.45f, 1f, 0f),
+            Track("ShoulderY", 0f, 0f, 0.1f, 1.5f, 0.18f, -1.5f, 0.26f, 1.5f, 0.34f, -1.5f, 0.42f, 1.5f, 0.5f, -1.5f, 0.58f, 1.5f, 0.66f, -1.5f, 0.74f, 1f, 0.82f, -0.8f, 0.9f, 0f, 1f, 0f),
+            Track("ShoulderZ", 0f, 0f, 0.15f, 1f, 0.3f, -1f, 0.45f, 1f, 0.6f, -1f, 0.75f, 1f, 0.9f, 0f, 1f, 0f),
             Track("ParamEyeLOpen", 1f, 1f, 0.15f, 0.55f, 0.85f, 0.55f, 1f, 1f),
             Track("ParamEyeROpen", 1f, 1f, 0.15f, 0.55f, 0.85f, 0.55f, 1f, 1f)));
 
@@ -689,8 +646,7 @@ internal sealed class PetIdleActions
             Track("ParamAngleZ", 0f, 0f, 0.25f, 4f, 0.75f, 3f, 1f, 0f),
             Track("ParamEyeROpen", 1f, 1f, 0.42f, 1f, 0.46f, 0.08f, 0.52f, 1f, 0.82f, 0.08f, 0.88f, 1f, 1f, 1f),
             Track("ParamEyeBallX", 0f, 0f, 0.3f, 0.3f, 1f, 0f),
-            Track("MouthSmile_L", 0f, 0f, 0.25f, 0.45f, 0.85f, 0.4f, 1f, 0f),
-            Track("MouthSmile_R", 0f, 0f, 0.25f, 0.45f, 0.85f, 0.4f, 1f, 0f)));
+            Track("ParamMouthForm", 0f, 0f, 0.25f, 0.4f, 0.85f, 0.35f, 1f, 0f)));
 
         // 比心 wink：双手比心（LHand / RHand 实拍生效）+ 脸红表情 + 单眼 wink + 歪头
         routines.Add(Routine("比心wink", 4.8, new[] { "脸红" },
@@ -801,8 +757,7 @@ internal sealed class PetIdleActions
             Track("PositionY", 0f, 0f, 0.2f, 2.5f, 0.32f, 0f, 0.44f, 2.5f, 0.56f, 0f, 0.68f, 2.5f, 0.8f, 0f, 1f, 0f),
             Track("ParamAngleZ", 0f, 0f, 0.5f, 4f, 0.65f, -3f, 0.8f, 3.5f, 1f, 0f),
             Track("EyeSmile", 0f, 0f, 0.35f, 0.7f, 0.7f, 0.6f, 1f, 0f),
-            Track("MouthSmile_L", 0f, 0f, 0.35f, 0.5f, 0.7f, 0.45f, 1f, 0f),
-            Track("MouthSmile_R", 0f, 0f, 0.35f, 0.5f, 0.7f, 0.45f, 1f, 0f),
+            Track("ParamMouthForm", 0f, 0f, 0.35f, 0.5f, 0.7f, 0.45f, 1f, 0f),
             Track("ParamEyeBallX", 0f, 0f, 0.4f, 0.3f, 0.7f, -0.3f, 1f, 0f)));
 
         // 变小转圈：体型2 缩小 + 双手展开转一圈

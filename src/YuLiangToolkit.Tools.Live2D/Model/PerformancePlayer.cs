@@ -101,9 +101,6 @@ internal sealed class PerformancePlayer
     private readonly CubismParameter? _mouthForm;
     private readonly CubismParameter? _jawOpen;
 
-    private int[] _touchedIndices = new int[64];
-    private int _touchedCount;
-
     private PerformanceDefinition? _active;
     private double _elapsed;
     private bool _gestureStarted;
@@ -138,11 +135,6 @@ internal sealed class PerformancePlayer
     /// <summary>当前表演已播放时间（秒）。</summary>
     public double ElapsedSeconds => _elapsed;
 
-    /// <summary>本帧写过的参数个数（运行时下一帧开头复位）。</summary>
-    public int TouchedCount => _touchedCount;
-
-    public int GetTouchedIndex(int index) => _touchedIndices[index];
-
     /// <summary>播一个表演（未知名返回 false；会先把上一个表演复位到时间 0）。</summary>
     public bool Play(string id)
     {
@@ -163,10 +155,9 @@ internal sealed class PerformancePlayer
         _elapsed = 0;
     }
 
-    /// <summary>推进一帧（在动作更新之后、表情 / 物理之前调用）。</summary>
+    /// <summary>推进一帧（在位姿合成期、本层的捕获里调用；动作各段自带首尾淡入淡出）。</summary>
     public void Update(double deltaSeconds, bool allowTalk)
     {
-        _touchedCount = 0;
         var definition = _active;
         if (definition is null) return;
 
@@ -225,18 +216,6 @@ internal sealed class PerformancePlayer
                     break;
             }
         }
-    }
-
-    /// <summary>运行时下一帧开头复位「上一帧表演写过的参数」。</summary>
-    public void ResetTouched(CubismParameter[] parameters)
-    {
-        for (var i = 0; i < _touchedCount; i++)
-        {
-            var parameter = parameters[_touchedIndices[i]];
-            parameter.Value = parameter.DefaultValue;
-        }
-
-        _touchedCount = 0;
     }
 
     // ---------------- 各类动作的采样 ----------------
@@ -326,10 +305,9 @@ internal sealed class PerformancePlayer
         if (weight <= 0) return;
         var smooth = DemoMath.SmoothStep(weight);
         var strength = action.Strength;
+        // MouthSmile_L/R 实测无效已移除（嘴角上扬靠 ParamMouthForm 表现，眯眼笑靠 EyeSmile）
         Write("EyeSmile", 0.85f * strength * smooth);
-        Write("MouthSmile_L", 0.85f * strength * smooth);
-        Write("MouthSmile_R", 0.85f * strength * smooth);
-        Write("ParamMouthForm", 0.45f * strength * smooth);
+        Write("ParamMouthForm", 0.55f * strength * smooth);
     }
 
     private void ApplyBlink(PerformanceAction action, float local)
@@ -392,10 +370,7 @@ internal sealed class PerformancePlayer
 
     /// <summary>pose 写入：参数值 = 默认值 + (目标值 - 默认值) × 权重（平滑回正）。</summary>
     private void WriteBlended(CubismParameter parameter, float target, float weight)
-    {
-        parameter.Value = DemoMath.BlendFromDefault(parameter, target, weight);
-        MarkTouched(parameter);
-    }
+        => parameter.Value = DemoMath.BlendFromDefault(parameter, target, weight);
 
     private void Write(string id, float value) => Write(_model.FindParameter(id), value);
 
@@ -403,17 +378,6 @@ internal sealed class PerformancePlayer
     {
         if (parameter is null) return;
         parameter.Value = (float)value;
-        MarkTouched(parameter);
-    }
-
-    private void MarkTouched(CubismParameter parameter)
-    {
-        if (_touchedCount >= _touchedIndices.Length)
-        {
-            Array.Resize(ref _touchedIndices, _touchedIndices.Length * 2);
-        }
-
-        _touchedIndices[_touchedCount++] = parameter.Index;
     }
 
     private PerformanceDefinition? Find(string id)
@@ -462,7 +426,7 @@ internal sealed class PerformancePlayer
                 A(PerformanceActionKind.Pose, 0.3f, 3.6f, values: new[]
                 {
                     new PoseValue("ParamBrowLY", 0.55f), new PoseValue("ParamBrowRY", -0.15f),
-                    new PoseValue("BrowInnerUp", 0.40f), new PoseValue("ParamMouthForm", -0.20f),
+                    new PoseValue("ParamMouthForm", -0.20f),
                 }),
                 A(PerformanceActionKind.Look, 3.6f, 2.4f, strength: 0.55f, direction: 2),
                 A(PerformanceActionKind.Pose, 5.0f, 3.0f, values: new[]
@@ -544,7 +508,7 @@ internal sealed class PerformancePlayer
                 A(PerformanceActionKind.Pose, 0.4f, 5.0f, values: new[]
                 {
                     new PoseValue("ParamBrowLY", -0.25f), new PoseValue("ParamBrowRY", -0.25f),
-                    new PoseValue("BrowInnerUp", 0.45f), new PoseValue("ParamMouthForm", -0.30f),
+                    new PoseValue("ParamMouthForm", -0.30f),
                 }),
                 A(PerformanceActionKind.Smile, 0.8f, 4.4f, strength: 0.3f),
                 A(PerformanceActionKind.Blink, 1.6f, 0.8f, side: 0),

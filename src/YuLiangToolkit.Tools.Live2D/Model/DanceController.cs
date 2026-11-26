@@ -1,4 +1,4 @@
-﻿using YuLiangToolkit.Tools.Live2D.Interop;
+using YuLiangToolkit.Tools.Live2D.Interop;
 
 namespace YuLiangToolkit.Tools.Live2D.Model;
 
@@ -27,10 +27,8 @@ internal sealed class DanceController
     private readonly CubismParameter? _rWrist;
     private readonly CubismParameter? _rHand;
     private readonly CubismParameter? _rHand2;
-    private readonly CubismParameter? _shoulderX;
     private readonly CubismParameter? _shoulderY;
     private readonly CubismParameter? _shoulderZ;
-    private readonly CubismParameter? _shoulderYy;
     private readonly CubismParameter? _angleX;
     private readonly CubismParameter? _angleY;
     private readonly CubismParameter? _angleZ;
@@ -41,9 +39,6 @@ internal sealed class DanceController
     private readonly CubismParameter? _paramAngleX;
     private readonly CubismParameter? _paramAngleY;
     private readonly CubismParameter? _paramAngleZ;
-
-    private int[] _touchedIndices = new int[40];
-    private int _touchedCount;
 
     private string? _mode;
     private double _speed = 1.0;
@@ -64,10 +59,8 @@ internal sealed class DanceController
         _rWrist = model.FindParameter("RWrist");
         _rHand = model.FindParameter("RHand");
         _rHand2 = model.FindParameter("RHand2");
-        _shoulderX = model.FindParameter("ShoulderX");
         _shoulderY = model.FindParameter("ShoulderY");
         _shoulderZ = model.FindParameter("ShoulderZ");
-        _shoulderYy = model.FindParameter("ShoulderYy");
         _angleX = model.FindParameter("AngleX");
         _angleY = model.FindParameter("AngleY");
         _angleZ = model.FindParameter("AngleZ");
@@ -98,11 +91,6 @@ internal sealed class DanceController
     /// <summary>当前相位（弧度，自检 / UI 可视化用；速度 2x 时推进约 2 倍）。</summary>
     public double Phase => _phase;
 
-    /// <summary>本帧写过的参数个数（运行时下一帧开头复位）。</summary>
-    public int TouchedCount => _touchedCount;
-
-    public int GetTouchedIndex(int index) => _touchedIndices[index];
-
     /// <summary>开始跳舞（未知名返回 false）。</summary>
     public bool Start(string mode, double speed = 1.0)
     {
@@ -125,13 +113,11 @@ internal sealed class DanceController
         _mode = null;
         _stopping = false;
         _weight = 0;
-        _touchedCount = 0;
     }
 
-    /// <summary>推进一帧（在动作更新之后调用，覆盖 IDLE 的手臂曲线；物理求值之前）。</summary>
+    /// <summary>推进一帧（在位姿合成期、本层的捕获里调用；物理求值之前）。</summary>
     public void Update(double deltaSeconds)
     {
-        _touchedCount = 0;
         if (_mode is null) return;
 
         var targetWeight = _stopping ? 0f : 1f;
@@ -176,18 +162,6 @@ internal sealed class DanceController
         }
     }
 
-    /// <summary>运行时下一帧开头复位「上一帧舞蹈写过的参数」。</summary>
-    public void ResetTouched(CubismParameter[] parameters)
-    {
-        for (var i = 0; i < _touchedCount; i++)
-        {
-            var parameter = parameters[_touchedIndices[i]];
-            parameter.Value = parameter.DefaultValue;
-        }
-
-        _touchedCount = 0;
-    }
-
     private static double BaseFrequency(string mode) => mode switch
     {
         ModeSway => 0.85,
@@ -211,7 +185,6 @@ internal sealed class DanceController
         Write(_rWrist, -0.16f * second * w);
         Write(_rHand, -0.10f * second * w);
         Write(_shoulderY, (float)(2.6 * kick) * w);
-        Write(_shoulderX, (float)(1.2 * Math.Sin(p * 2.0 + 0.6)) * w);
         Write(_angleX, (float)(1.8 * Math.Sin(p * 0.5)) * w);
         Write(_angleZ, (float)(2.2 * kick) * w);
         Write(_positionX, (float)(1.8 * kick) * w);
@@ -250,7 +223,6 @@ internal sealed class DanceController
         Write(_rArm, (float)(0.42 * swing) * w);
         Write(_rForearm, (float)(-0.30 * Math.Sin(p + 0.5)) * w);
         Write(_rWrist, (float)(-0.18 * swing2) * w);
-        Write(_shoulderX, (float)(2.0 * swing2) * w);
         Write(_shoulderY, (float)(2.0 * swing) * w);
         Write(_angleZ, (float)(5.0 * swing) * w);
         Write(_angleY, (float)(2.0 * swing2) * w);
@@ -265,10 +237,9 @@ internal sealed class DanceController
         var p = _phase;
         var fast = Math.Sin(p * 2.0);
         var shoulder = Math.Sin(p);
-        Write(_shoulderX, (float)(3.2 * shoulder) * w);
+        // ShoulderX / ShoulderYy 实测无效已移除（肩只跟 ShoulderY / Z）
         Write(_shoulderY, (float)(2.4 * fast) * w);
         Write(_shoulderZ, (float)(1.6 * Math.Sin(p + 1.0)) * w);
-        Write(_shoulderYy, (float)(2.2 * Math.Sin(p + 0.7)) * w);
         Write(_lArm, (float)(0.16 * fast) * w);
         Write(_rArm, (float)(-0.16 * fast) * w);
         Write(_lForearm, (float)(0.10 * Math.Sin(p + 0.3)) * w);
@@ -283,12 +254,6 @@ internal sealed class DanceController
     {
         if (parameter is null) return;
         parameter.Value = (float)value;
-        if (_touchedCount >= _touchedIndices.Length)
-        {
-            Array.Resize(ref _touchedIndices, _touchedIndices.Length * 2);
-        }
-
-        _touchedIndices[_touchedCount++] = parameter.Index;
     }
 
     private static bool IsKnownMode(string? mode)

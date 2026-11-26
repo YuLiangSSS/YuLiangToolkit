@@ -2,54 +2,30 @@ using System.Diagnostics;
 using YuLiangToolkit.Tools.Live2D.Audio;
 using YuLiangToolkit.Tools.Live2D.Interop;
 using YuLiangToolkit.Tools.Live2D.Mocap;
+using YuLiangToolkit.Tools.Live2D.Model.Control;
 using YuLiangToolkit.Tools.Live2D.Play;
 using YuLiangToolkit.Tools.Live2D.Rendering;
 
 namespace YuLiangToolkit.Tools.Live2D.Model;
 
 /// <summary>
-/// 模型运行时（工具页与桌宠共用）：加载资源 → 每帧 <see cref="Tick"/>（动捕 / 身体晃动 / 动作 / 表情 / 眼睛跟随 / 物理）
-/// → <see cref="RenderFrame"/> 出图。
+/// 模型运行时（工具页与桌宠共用）：加载资源 → 每帧 <see cref="Tick"/>（位姿合成 + 物理）→ <see cref="RenderFrame"/> 出图。
 ///
 /// <para><b>加载顺序</b>（耗时大头是 5 张纹理）：moc3 → 模型 → cdi3 → 动作 / 表情解析 → 物理 → 纹理 → 渲染器。
 /// 可以在后台线程调用 <see cref="Load"/>，加载完后再在 UI 线程 <see cref="Tick"/> / <see cref="RenderFrame"/>。</para>
 ///
-/// <para><b>每帧顺序</b>（和官方 Cubism 更新管线一致）：
-/// 受管参数恢复默认 → 待机行为（眨眼 / 呼吸）→ 摄像头动捕（有脸时）→ 眼睛跟随鼠标（动捕有脸时跳过）
-/// → 语音口型（<see cref="SpeechActive"/>，动捕有脸时让位）→ 身体晃动测试（<see cref="BodySway"/>）
-/// → 音乐跟唱 / 律动（<see cref="Music"/>，语音口型优先、音乐嘴型不出）
-/// → 整身轻倾（<see cref="BodyLeanDegrees"/>，以脚为支点，渲染层旋转画布）
-/// → 动作混合 → <b>手势 / 表演 / 舞蹈</b>（<see cref="GestureIds"/>，写在动作之后覆盖 IDLE 手臂曲线）
-/// → <b>鼠标互动反应 / 待机小动作</b>（<see cref="InteractionRegion"/>，物理之前）
-/// → 表情叠加 → 物理 → Core <c>Update()</c> → 触发 <see cref="FrameUpdated"/>。
-/// 「受管参数」= 会被动作 / 表情 / 物理 / 待机 / 眼睛跟随 / 动捕 / 身体晃动 / 音乐 / 手势表演舞蹈 / 语音 /
-/// 互动 / 待机小动作写到的参数；其余参数（大部分纯调试参数）不会被每帧重置，所以工具页手动拖滑块在那些参数上是有效的。</para>
+/// <para><b>操控层 = 位姿合成器</b>（<see cref="PoseCompositor"/>）：每个会写参数的子系统是一个「层」，
+/// 按登记顺序（= 优先级）逐层求值、按权重混进合成结果，最后一次性写回模型：
+/// 手动值 → 待机呼吸 / 眨眼 → 鼠标眼控 / 摄像头动捕 → 身体晃动测试 → 音乐 / 语音口型 / 情绪鼓嘴 →
+/// 待机动作 → 用户动作 → 舞蹈 → 表演 → 手势 → 待机小动作 → 鼠标互动 → 表情 →
+/// 戳脸 / 害羞扭动 / 观察 → 投喂 →（写回 Core）→ 物理 → 摇尾巴 → 固定参数 → Core <c>Update()</c>。
+/// 层与层的交接只有「权重」一种机制：任何动作收尾都拿它最后一帧的姿势交叉淡化回下一层，
+/// 没有「帧首复位成默认值」这个中间状态（旧实现收回动作抽搐的根源）。</para>
 ///
 /// <para>加载完成前 <see cref="Model"/> / <see cref="Renderer"/> 会抛 <see cref="InvalidOperationException"/>；先判 <see cref="IsLoaded"/>。</para>
 /// </summary>
 public sealed class ModelRuntime : IDisposable
 {
-    /// <summary>输入 / 输出权重常量，眼控参数名集中放这里（见 <see cref="EyeTrackingController"/> 的注释）。</summary>
-    private static readonly string[] EyeTrackingParameterIds =
-    {
-        "ParamAngleX", "ParamAngleY", "ParamAngleZ",
-        "AngleX", "AngleY", "AngleZ",
-        "ParamEyeBallX", "ParamEyeBallY",
-        "ParamBodyAngleX", "ParamBodyAngleY", "ParamBodyAngleZ",
-        "PositionX", "PositionY", "PositionZ",
-    };
-
-    /// <summary>摄像头动捕会写的参数（受管参数用；眨眼 / 眼珠另行叠加）。</summary>
-    private static readonly string[] MocapParameterIds =
-    {
-        "ParamAngleX", "ParamAngleY", "ParamAngleZ",
-        "AngleX", "AngleY", "AngleZ",
-        "ParamEyeBallX", "ParamEyeBallY",
-        "ParamEyeLOpen", "ParamEyeROpen",
-        "ParamMouthOpenY",
-        "ParamBodyAngleX", "PositionX",
-    };
-
     /// <summary>动捕有脸的有效期（毫秒）：超过这个时间没新结果就当没脸，恢复鼠标 / 待机。</summary>
     private const double MocapFaceTimeoutMs = 600.0;
 
@@ -68,8 +44,39 @@ public sealed class ModelRuntime : IDisposable
     private const string MocapStatusTracking = "正在跟踪";
     private const string MocapStatusNoFace = "未检测到人脸";
 
+    // ---------- 位姿合成（操控层） ----------
+    //
+    // 两个动作混合器：_idleMotionPlayer 只循环播待机动作（一直在最底下垫着），_motionPlayer 播用户点播的动作。
+    // 旧实现把两者塞进同一个混合器、靠「没动作在播时才启动待机」切换，手势 enter / exit 期间还得特判压制待机；
+    // 现在待机动作是一个常驻层，手势 / 用户动作是它上面的层，收尾时自然露出下面的待机。
     private readonly MotionPlayer _motionPlayer = new();
+    private readonly MotionPlayer _idleMotionPlayer = new();
     private readonly ExpressionManager _expressionManager = new();
+    private PoseCompositor? _pose;
+
+    // 位姿层（登记顺序 = 优先级，见类注释）
+    private PoseStage? _idleAutoStage;
+    private PoseStage? _eyeStage;
+    private PoseStage? _mocapStage;
+    private PoseStage? _swayStage;
+    private PoseStage? _musicStage;
+    private PoseStage? _speechStage;
+    private PoseStage? _moodStage;
+    private PoseStage? _idleMotionStage;
+    private PoseStage? _userMotionStage;
+    private PoseStage? _danceStage;
+    private PoseStage? _performanceStage;
+    private PoseStage? _gestureStage;
+    private PoseStage? _petIdleStage;
+    private PoseStage? _interactionStage;
+    private PoseStage? _expressionStage;
+    private PoseStage? _pokeStage;
+    private PoseStage? _shyStage;
+    private PoseStage? _observationStage;
+    private PoseStage? _feedingStage;
+
+    /// <summary>实测无效的参数下标（改了画面一点不变；各层对它们的写入丢弃，UI 打「无效」标记）。</summary>
+    private HashSet<int> _deadParameterIndices = new();
     private readonly Dictionary<string, Motion3Data> _motionDataByPath = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Expression3Data> _expressionDataByPath = new(StringComparer.OrdinalIgnoreCase);
     private readonly RuntimeLoadOptions _options;
@@ -93,27 +100,6 @@ public sealed class ModelRuntime : IDisposable
     private PartBinding[] _partBindings = Array.Empty<PartBinding>();
     private string[] _eyeBlinkParameterIds = Array.Empty<string>();
     private string[] _lipSyncParameterIds = Array.Empty<string>();
-
-    // 受管参数分组（预计算下标，每帧按开关决定哪些组要「恢复默认」；不再每帧重建数组）
-    // 动作曲线不在这里：它只在「上一帧实际被动作写过」的参数上复位（见 ResetMotionTouchedParameters），
-    // 这样待机动作只覆盖它自己那 21 个参数，用户手动调的脸 / 嘴参数不会被动作列表里别的文件拖累。
-    private int[] _expressionManaged = Array.Empty<int>();
-    private int[] _physicsManaged = Array.Empty<int>();
-    private int[] _idleManaged = Array.Empty<int>();
-    private int[] _blinkManaged = Array.Empty<int>();
-    private int[] _eyeManaged = Array.Empty<int>();
-    private int[] _mocapManaged = Array.Empty<int>();
-    private int[] _swayManaged = Array.Empty<int>();
-
-    // 子系统开关的上一帧状态（true → false 的那一帧把该组参数恢复默认，之后不再动它们，让手动值保留）
-    private bool _managedGroupsInitialized;
-    private bool _prevPhysicsEnabled;
-    private bool _prevIdleEnabled;
-    private bool _prevBlinkActive;
-    private bool _prevEyeTrackingEnabled;
-    private bool _prevMocapEnabled;
-    private bool _prevSwayActive;
-    private bool _prevExpressionActive;
 
     private bool _disposed;
 
@@ -147,10 +133,6 @@ public sealed class ModelRuntime : IDisposable
     private CubismParameter? _musicMouthForm;
     private CubismParameter? _musicJawOpen;
     private CubismParameter? _musicParamAngleY;
-
-    // 本帧音乐写过的参数（下一帧先复位这些；只有真正在写的那一帧才管理这些参数）
-    private int[] _musicTouchedIndices = new int[16];
-    private int _musicTouchedCount;
 
     private MusicContentKind _musicKind = MusicContentKind.Silent;
     private int _musicStatusKind = -1;
@@ -188,8 +170,6 @@ public sealed class ModelRuntime : IDisposable
     private CubismParameter? _speechMouthOpenY;
     private CubismParameter? _speechMouthForm;
     private CubismParameter? _speechJawOpen;
-    private int[] _speechTouchedIndices = new int[8];
-    private int _speechTouchedCount;
     private bool _speechActive;
     private float _speechMouthOpen;
 
@@ -199,7 +179,6 @@ public sealed class ModelRuntime : IDisposable
     private CubismParameter? _moodCheekPuffL;
     private CubismParameter? _moodCheekPuffR;
     private CubismParameter? _moodPucker;
-    private bool _moodPuffWrote;
     private float _moodPuffTarget;
     private float _moodPuffCurrent;
 
@@ -214,9 +193,6 @@ public sealed class ModelRuntime : IDisposable
     private CubismParameter? _feedMouthOpenY;
     private CubismParameter? _feedMouthForm;
     private CubismParameter? _feedJawOpen;
-    private int[] _feedTouchedIndices = new int[8];
-    private int _feedTouchedCount;
-    private bool _feedHadOutput;
 
     /// <summary>待机随机小动作的倒计时（秒；到 0 且条件允许时播一个随机手势 / 表演）。</summary>
     private double _idleRandomGestureTimer;
@@ -231,12 +207,6 @@ public sealed class ModelRuntime : IDisposable
     /// 狗尾草这类「拿出来一直举着」的手势以前会卡住，现在 2.5 秒后自己收回去。
     /// </summary>
     internal const double IdleRandomGestureHoldSeconds = 2.5;
-
-    /// <summary>
-    /// 手势 Exit 结束前接回待机的交叉淡化时长（秒），与 GesturePlayer.IdleHandbackSeconds 对齐：
-    /// 待机在这个窗口里淡入，正好压着 exit 动作自然收尾，Param56 这类末值非默认的参数平滑 Blend 回去。
-    /// </summary>
-    internal const double GesturePlayerIdleHandbackFadeSeconds = 0.3;
 
     /// <summary>待机随机小动作已触发次数（自检用）。</summary>
     internal int IdleRandomTriggerCount => _idleRandomGestureCount;
@@ -444,14 +414,64 @@ public sealed class ModelRuntime : IDisposable
     /// <summary>最近一帧渲染统计。</summary>
     public RenderStats LastRenderStats => _lastRenderStats;
 
-    /// <summary>当前动作（没在播为 null）。</summary>
-    public MotionEntry? CurrentMotion => _motionPlayer.Current?.Entry;
+    /// <summary>
+    /// 当前动作（界面「动作区」显示的那一个）：用户点播的动作优先，没有就报正在循环的待机动作；都没有为 null。
+    /// </summary>
+    public MotionEntry? CurrentMotion => _motionPlayer.Current?.Entry ?? _idleMotionPlayer.Current?.Entry;
 
     /// <summary>当前动作已播放时间（秒）。</summary>
-    public double CurrentMotionTime => _motionPlayer.CurrentTime;
+    public double CurrentMotionTime => _motionPlayer.HasActive ? _motionPlayer.CurrentTime : _idleMotionPlayer.CurrentTime;
 
     /// <summary>当前动作是否在循环。</summary>
-    public bool CurrentMotionLoop => _motionPlayer.CurrentLoop;
+    public bool CurrentMotionLoop => (_motionPlayer.Current ?? _idleMotionPlayer.Current)?.Loop ?? false;
+
+    /// <summary>当前层状态快照（自检 / 调试：层名、是否活动、权重、本帧写了几个参数）。</summary>
+    internal IReadOnlyList<PoseStage> PoseStages => _pose?.Stages ?? Array.Empty<PoseStage>();
+
+    /// <summary>
+    /// 参数是否实测有效（改它的值画面会变）。无效 = 作者只留了个开关、模型里没有任何网格 / 变形器绑它
+    /// （例如「翅膀」系列）；各层对它们的写入一律丢弃，面板里也会打「无效」标记。
+    /// </summary>
+    public bool IsParameterLive(string parameterId)
+        => _model?.FindParameter(parameterId) is not { } parameter || !_deadParameterIndices.Contains(parameter.Index);
+
+    /// <summary>实测无效的参数 Id 列表（自检 / UI 用）。</summary>
+    public IReadOnlyList<string> DeadParameterIds => _parameterEffect?.DeadParameterIds ?? Array.Empty<string>();
+
+    /// <summary>最近一次参数有效性探测的完整结果（有效 / 无效参数、环境复测、耗时；自检 / UI 用）。</summary>
+    public ParameterEffectResult? ParameterEffect => _parameterEffect;
+
+    private ParameterEffectResult? _parameterEffect;
+
+    /// <summary>
+    /// 各层对无效参数的写入累计被丢弃了多少次（自检用）：内置动作表全部跑一遍后这个数必须是 0——
+    /// 动作里只要写了实测无效的参数（比如翅膀），这里就会露出来。
+    /// </summary>
+    public long DroppedLayerWrites => _pose?.DroppedWrites ?? 0;
+
+    /// <summary>按参数统计的丢弃写入报告（参数 id × 次数，按次数降序取前 12 个；诊断手写动作表残留用）。</summary>
+    public string DeadWriteReport()
+    {
+        var pose = _pose;
+        if (pose is null || pose.DroppedByParameter.Count == 0) return "（无丢弃）";
+        var parameters = _model!.Parameters;
+        return string.Join(", ", pose.DroppedByParameter
+            .OrderByDescending(pair => pair.Value)
+            .Take(12)
+            .Select(pair => $"{(pair.Key < parameters.Length ? parameters[pair.Key].Id : pair.Key.ToString())}×{pair.Value}"));
+    }
+
+    /// <summary>立刻播一个待机小动作（不传名字随机；自检逐个验收动作表用）。</summary>
+    public bool TryPlayPetIdleAction(string? name = null) => _petIdleActions?.TryTrigger(name) ?? false;
+
+    /// <summary>一张层状态快照（层名 / 权重 / 本帧是否活动 / 本帧写了几个有效参数；自检 / 调试用）。</summary>
+    public readonly record struct PoseStageInfo(string Name, float Weight, bool Wrote, int WrittenCount);
+
+    /// <summary>当前所有位姿层的状态（顺序 = 优先级）。</summary>
+    public IReadOnlyList<PoseStageInfo> GetPoseStageSnapshot()
+        => _pose is null
+            ? Array.Empty<PoseStageInfo>()
+            : _pose.Stages.Select(stage => new PoseStageInfo(stage.Name, stage.Weight, stage.Wrote, stage.WrittenCount)).ToArray();
 
     /// <summary>有没有加载物理（physics3.json 解析成功）。</summary>
     public bool HasPhysics => _physics is not null;
@@ -647,10 +667,9 @@ public sealed class ModelRuntime : IDisposable
 
     /// <summary>
     /// 播一个手势（未知 id 返回 false）。
-    /// <para><b>同一手势重复触发（互动控制器 + 会话异步回调会各来一次）</b>：不停动作、不重播 enter，
-    /// 只让手势刷新保持计时——否则第二次的 StopMotion 会把刚开播的 enter 动作杀掉，
-    /// Hold 一到就把末帧姿势一帧写上去（手瞬移到胸口，没有过渡动画）。</para>
-    /// <para>不同手势 / 首次触发：先停其它演示 / 当前动作，避免抢手臂。</para>
+    /// <para><b>同一手势重复触发</b>（互动控制器 + 会话异步回调会各来一次）：只刷新保持计时，不重播 enter。</para>
+    /// <para>不同手势 / 首次触发：手势是比用户动作 / 表演 / 舞蹈更高的层，旧的演示直接停掉
+    /// （各自按层的淡出时间交回，不会一帧跳回），避免多层同时抢手臂。</para>
     /// <paramref name="autoRestoreAfterHoldSeconds"/> 大于 0 时，摆好姿势后保持该秒数自动播退出动作还原。
     /// </summary>
     public bool PlayGesture(string id, double autoRestoreAfterHoldSeconds = 0)
@@ -658,24 +677,19 @@ public sealed class ModelRuntime : IDisposable
         if (_gesture is null) return false;
         if (!_gesture.IsKnownId(id)) return false;
 
-        // 同一手势已经在播（Enter / Hold 中）：只刷新保持计时，别碰正在播的 enter 动作
-        if (_gesture.IsActive(id))
-        {
-            var refreshed = _gesture.Play(id, stopMotionFirst: false, autoRestoreAfterHoldSeconds);
-            if (refreshed) _idleDemoActive = false;
-            return refreshed;
-        }
+        // 同一手势已经在播：只刷新保持计时（手势播放器内部处理），别打断正在播的 enter 动作
+        if (_gesture.IsActive(id)) return _gesture.Play(id, autoRestoreAfterHoldSeconds);
 
-        // 先停其它演示 / 当前动作，再播手势：原生手势的 enter 动作不能被随后的 StopMotion 顶掉
+        // 换手势：表演 / 舞蹈 / 用户动作让位（各层按自己的淡出时间交回）
         _performance?.Stop();
         _dance?.StopImmediate();
         StopMotion(0.12);
-        var played = _gesture.Play(id, stopMotionFirst: false, autoRestoreAfterHoldSeconds);
+        var played = _gesture.Play(id, autoRestoreAfterHoldSeconds);
         if (played) _idleDemoActive = false;
         return played;
     }
 
-    /// <summary>停止手势（原生手势播作者退出动作；参数姿势平滑淡出）。</summary>
+    /// <summary>停止手势（原生手势从当前保持姿势播作者退出动作；参数姿势平滑淡出）。</summary>
     public void StopGesture()
     {
         _gesture?.Stop();
@@ -700,14 +714,8 @@ public sealed class ModelRuntime : IDisposable
         _wiggleElapsedSeconds = 0;
     }
 
-    /// <summary>立刻停止扭动并回正。</summary>
-    public void StopShyWiggle()
-    {
-        if (_wiggleRemainingSeconds <= 0) return;
-        _wiggleRemainingSeconds = 0;
-        WriteWiggleParameter(_wiggleBodyAngleZ, 0);
-        WriteWiggleParameter(_wiggleHeadAngleZ, 0);
-    }
+    /// <summary>立刻停止扭动（本层拿最后一帧姿势 0.15 秒淡出回正）。</summary>
+    public void StopShyWiggle() => _wiggleRemainingSeconds = 0;
 
     // ---------- 摇尾巴 ----------
 
@@ -742,11 +750,15 @@ public sealed class ModelRuntime : IDisposable
     public void StopTailWag()
     {
         _tailWagRemainingSeconds = 0;
-        if (PhysicsEnabled) return;
-        foreach (var parameter in _tailRotationParams)
+        if (_pose is null || PhysicsEnabled) return;
+        // 尾巴角度是物理输出 + 摇尾巴直通叠加的：物理关着时摇尾巴直接写 Core，这里也要直通写回默认
+        _pose.RunBypass(() =>
         {
-            if (parameter is not null) parameter.Value = parameter.DefaultValue;
-        }
+            foreach (var parameter in _tailRotationParams)
+            {
+                if (parameter is not null) parameter.Value = parameter.DefaultValue;
+            }
+        });
     }
 
     // ---------- 戳脸彩蛋：微微笑 + 左右晃脸 ----------
@@ -774,27 +786,14 @@ public sealed class ModelRuntime : IDisposable
         _pokeMouthSmileTarget = mouthSmileTarget;
     }
 
-    /// <summary>立刻结束戳脸彩蛋并回正嘴形 / 头角度。</summary>
-    public void StopPokeReaction()
-    {
-        if (_pokeReactionRemainingSeconds <= 0 && _pokeAngleX is null) return;
-        _pokeReactionRemainingSeconds = 0;
-        WritePokeReactionDefault();
-    }
+    /// <summary>立刻结束戳脸彩蛋（本层拿最后一帧姿势 0.15 秒淡出回正）。</summary>
+    public void StopPokeReaction() => _pokeReactionRemainingSeconds = 0;
 
-    /// <summary>推进戳脸彩蛋：表情（＞＜）之后叠加嘴形笑 + 头左右晃（动捕有脸时让位）。</summary>
-    private void ApplyPokeReaction(double deltaSeconds, bool mocapFace)
+    /// <summary>写戳脸彩蛋这一帧的输出：嘴形笑 + 头左右晃（在表情层之后；动捕有脸时不写，让位给真人脸）。</summary>
+    private void WritePokeReaction()
     {
         if (_pokeReactionRemainingSeconds <= 0) return;
-        if (mocapFace)
-        {
-            _pokeReactionRemainingSeconds -= deltaSeconds;
-            if (_pokeReactionRemainingSeconds <= 0) WritePokeReactionDefault();
-            return;
-        }
 
-        _pokeReactionElapsedSeconds += deltaSeconds;
-        _pokeReactionRemainingSeconds -= deltaSeconds;
         var progress = _pokeReactionDurationSeconds <= 0
             ? 1.0
             : Math.Clamp(_pokeReactionElapsedSeconds / _pokeReactionDurationSeconds, 0.0, 1.0);
@@ -805,10 +804,7 @@ public sealed class ModelRuntime : IDisposable
         if (_pokeAngleX is not null) _pokeAngleX.Value = _pokeAngleX.DefaultValue + sway;
 
         WritePokeMouth(_pokeMouthForm, _pokeMouthFormTarget, weight);
-        WritePokeMouth(_pokeMouthSmileL, _pokeMouthSmileTarget, weight);
-        WritePokeMouth(_pokeMouthSmileR, _pokeMouthSmileTarget, weight);
-
-        if (_pokeReactionRemainingSeconds <= 0) WritePokeReactionDefault();
+        // MouthSmile_L/R 实测无效已移除：微微笑靠 ParamMouthForm 表现
     }
 
     private static void WritePokeMouth(CubismParameter? parameter, float target, float weight)
@@ -817,12 +813,36 @@ public sealed class ModelRuntime : IDisposable
         parameter.Value = parameter.DefaultValue + ((target - parameter.DefaultValue) * weight);
     }
 
-    private void WritePokeReactionDefault()
+    /// <summary>
+    /// 推进限时反应的计时（戳脸 / 害羞扭动 / 观察）：不管这一帧层有没有在写都要走，
+    /// 例如动捕有脸时戳脸彩蛋不写参数，但计时照样往下走。
+    /// </summary>
+    private void TickReactionTimers(double deltaSeconds)
     {
-        WritePokeMouth(_pokeMouthForm, _pokeMouthForm?.DefaultValue ?? 0f, 1f);
-        WritePokeMouth(_pokeMouthSmileL, _pokeMouthSmileL?.DefaultValue ?? 0f, 1f);
-        WritePokeMouth(_pokeMouthSmileR, _pokeMouthSmileR?.DefaultValue ?? 0f, 1f);
-        if (_pokeAngleX is not null) _pokeAngleX.Value = _pokeAngleX.DefaultValue;
+        if (_pokeReactionRemainingSeconds > 0)
+        {
+            _pokeReactionElapsedSeconds += deltaSeconds;
+            _pokeReactionRemainingSeconds -= deltaSeconds;
+            if (_pokeReactionRemainingSeconds < 0) _pokeReactionRemainingSeconds = 0;
+        }
+
+        if (_wiggleRemainingSeconds > 0)
+        {
+            _wiggleElapsedSeconds += deltaSeconds;
+            _wiggleRemainingSeconds -= deltaSeconds;
+            if (_wiggleRemainingSeconds < 0) _wiggleRemainingSeconds = 0;
+        }
+
+        if (_obsRemainingSeconds > 0)
+        {
+            _obsElapsedSeconds += deltaSeconds;
+            _obsRemainingSeconds -= deltaSeconds;
+            if (_obsRemainingSeconds < 0)
+            {
+                _obsRemainingSeconds = 0;
+                _obsFacePose = null;
+            }
+        }
     }
 
     /// <summary>推进摇尾巴：在物理求值之后给尾巴 6 段角度参数叠加偏移。</summary>
@@ -856,13 +876,11 @@ public sealed class ModelRuntime : IDisposable
         }
     }
 
-    /// <summary>推进害羞扭动：身体 1.1Hz 左右扭、头部滞后 0.45 弧度，幅度两端淡入淡出。</summary>
-    private void ApplyShyWiggle(double deltaSeconds)
+    /// <summary>写害羞扭动这一帧的输出：身体 1.1Hz 左右扭、头部滞后 0.45 弧度，幅度两端淡入淡出。</summary>
+    private void WriteShyWiggle()
     {
         if (_wiggleRemainingSeconds <= 0) return;
 
-        _wiggleElapsedSeconds += deltaSeconds;
-        _wiggleRemainingSeconds -= deltaSeconds;
         var progress = _wiggleDurationSeconds <= 0
             ? 1.0
             : Math.Clamp(_wiggleElapsedSeconds / _wiggleDurationSeconds, 0.0, 1.0);
@@ -874,12 +892,6 @@ public sealed class ModelRuntime : IDisposable
 
         WriteWiggleParameter(_wiggleBodyAngleZ, (float)body);
         WriteWiggleParameter(_wiggleHeadAngleZ, (float)head);
-
-        if (_wiggleRemainingSeconds <= 0)
-        {
-            WriteWiggleParameter(_wiggleBodyAngleZ, 0);
-            WriteWiggleParameter(_wiggleHeadAngleZ, 0);
-        }
     }
 
     private static void WriteWiggleParameter(CubismParameter? parameter, float offset)
@@ -931,21 +943,18 @@ public sealed class ModelRuntime : IDisposable
         _obsEyeBallYTarget = targets.EyeBallY;
     }
 
-    /// <summary>立刻停止观察并回正。</summary>
+    /// <summary>立刻停止观察（本层拿最后一帧姿势 0.15 秒淡出回正）。</summary>
     public void StopObservation()
     {
-        if (_obsRemainingSeconds <= 0 && _obsFacePose is null) return;
         _obsRemainingSeconds = 0;
         _obsFacePose = null;
-        WriteObservationDefault();
     }
 
-    private void ApplyObservation(double deltaSeconds)
+    /// <summary>写「观察用户」这一帧的输出：表情 + 歪头 + 身体微扭（计时由 <see cref="TickReactionTimers"/> 推进）。</summary>
+    private void WriteObservation()
     {
         if (_obsRemainingSeconds <= 0) return;
 
-        _obsElapsedSeconds += deltaSeconds;
-        _obsRemainingSeconds -= deltaSeconds;
         var progress = _obsDurationSeconds <= 0
             ? 1.0
             : Math.Clamp(_obsElapsedSeconds / _obsDurationSeconds, 0.0, 1.0);
@@ -991,29 +1000,6 @@ public sealed class ModelRuntime : IDisposable
             _obsAngleZ.Value = _obsAngleZ.DefaultValue + (float)(_obsTiltDirection * _obsTiltDegrees) * weight;
         if (_obsBodyAngleZ is not null)
             _obsBodyAngleZ.Value = _obsBodyAngleZ.DefaultValue + (float)(_obsTiltDirection * _obsBodyTwistDegrees) * weight;
-
-        if (_obsRemainingSeconds <= 0)
-        {
-            WriteObservationDefault();
-            _obsFacePose = null;
-        }
-    }
-
-    private void WriteObservationDefault()
-    {
-        WriteObservationParameter(_obsEyeL, _obsEyeL?.DefaultValue ?? 1f, 1f);
-        WriteObservationParameter(_obsEyeR, _obsEyeR?.DefaultValue ?? 1f, 1f);
-        WriteObservationParameter(_obsSquintL, 0, 1f);
-        WriteObservationParameter(_obsSquintR, 0, 1f);
-        WriteObservationParameter(_obsBrowLY, 0, 1f);
-        WriteObservationParameter(_obsBrowRY, 0, 1f);
-        WriteObservationParameter(_obsBrowLAngle, 0, 1f);
-        WriteObservationParameter(_obsBrowRAngle, 0, 1f);
-        WriteObservationParameter(_obsMouthForm, 0, 1f);
-        WriteObservationParameter(_obsEyeBallX, 0, 1f);
-        WriteObservationParameter(_obsEyeBallY, 0, 1f);
-        if (_obsAngleZ is not null) _obsAngleZ.Value = _obsAngleZ.DefaultValue;
-        if (_obsBodyAngleZ is not null) _obsBodyAngleZ.Value = _obsBodyAngleZ.DefaultValue;
     }
 
     private static void WriteObservationParameter(CubismParameter? parameter, float target, float weight)
@@ -1481,9 +1467,10 @@ public sealed class ModelRuntime : IDisposable
         ResolveMocapParameters(_model);
         ResolveMusicParameters(_model);
         ResolveSpeechParameters(_model);
+        CreatePoseStages(_model);     // 先于各播放器：手势播放器要拿合成器开临时捕获
+        RunParameterAudit(_model, log);   // 实测哪些参数改了值画面不变（各层对它们的写入丢弃）
         CreateActionPlayers(_model);
         CreateInteractionPlayers(_model);
-        BuildManagedParameterGroups();
 
         // 8) 默认待机动作
         IdleMotion = ResolveIdleMotion(options.IdleMotionName);
@@ -1570,131 +1557,69 @@ public sealed class ModelRuntime : IDisposable
         return ids.ToArray();
     }
 
-    /// <summary>
-    /// 预计算「受管参数」分组（加载时一次）：每个子系统只在它开启时才每帧把这些参数恢复默认，
-    /// 关掉后就不再复位，用户在「参数 / 面部测试」里手动拖的值才能保留。
-    /// </summary>
-    private void BuildManagedParameterGroups()
-    {
-        var model = _model!;
-
-        var expression = new HashSet<int>();
-        var physics = new HashSet<int>();
-        var idle = new HashSet<int>();
-        var blink = new HashSet<int>();
-        var eye = new HashSet<int>();
-        var mocap = new HashSet<int>();
-        var sway = new HashSet<int>();
-
-        void Add(HashSet<int> group, string id)
-        {
-            var parameter = model.FindParameter(id);
-            if (parameter is not null) group.Add(parameter.Index);
-        }
-
-        // 表情参数：只有表情正在生效时才复位（没有表情时用户手调表情开关参数也能保留）
-        foreach (var data in _expressionDataByPath.Values)
-        {
-            foreach (var parameter in data.Parameters) Add(expression, parameter.Id);
-        }
-
-        // 物理输出：只在 PhysicsEnabled 时接管
-        if (_physics is not null)
-        {
-            foreach (var output in _physics.Outputs) Add(physics, output.DestinationId);
-        }
-
-        // 待机：呼吸（IdleEnabled）、眨眼（AutoBlink 且没被动捕接管时）
-        Add(idle, "ParamBreath");
-        foreach (var id in _eyeBlinkParameterIds) Add(blink, id);
-
-        // 鼠标眼控：只在 EyeTrackingEnabled 时接管
-        foreach (var id in EyeTrackingParameterIds) Add(eye, id);
-
-        // 摄像头动捕：只在 MocapEnabled 时接管
-        foreach (var id in MocapParameterIds) Add(mocap, id);
-
-        // 身体晃动：只在 SwayEnabled / 演示计时中接管
-        foreach (var id in BodySwayController.ManagedParameterIds) Add(sway, id);
-
-        _expressionManaged = ToSortedArray(expression);
-        _physicsManaged = ToSortedArray(physics);
-        _idleManaged = ToSortedArray(idle);
-        _blinkManaged = ToSortedArray(blink);
-        _eyeManaged = ToSortedArray(eye);
-        _mocapManaged = ToSortedArray(mocap);
-        _swayManaged = ToSortedArray(sway);
-    }
-
-    /// <summary>HashSet → 排序后的下标数组（只在加载时调用）。</summary>
-    private static int[] ToSortedArray(HashSet<int> set)
-    {
-        var indices = new int[set.Count];
-        set.CopyTo(indices);
-        Array.Sort(indices);
-        return indices;
-    }
-
-    /// <summary>把一组参数恢复默认（0 分配；顺序按下标，和 Core 里参数数组无关）。</summary>
-    private static void ResetParametersToDefault(CubismParameter[] parameters, int[] indices)
-    {
-        for (var i = 0; i < indices.Length; i++)
-        {
-            var parameter = parameters[indices[i]];
-            parameter.Value = parameter.DefaultValue;
-        }
-    }
+    // ===================== 位姿合成：层登记（顺序 = 优先级） =====================
 
     /// <summary>
-    /// 复位「上一帧动作写过的参数」（各个正在播的动作曲线的并集）。
-    /// 这样待机 IDLE 只会复位它自己那 21 个参数，用户手调嘴 / 脸等其它参数不会被动作列表里别的文件拖累。
+    /// 建位姿合成器并登记全部层。<b>登记顺序就是优先级</b>：先登记的先合成、会被后登记的盖住——
+    /// 这是全工具唯一一处定义「谁盖过谁」的地方。各层只管把自己的输出写进捕获缓冲，交接全靠权重。
     /// </summary>
-    private void ResetMotionTouchedParameters(CubismParameter[] parameters)
+    private void CreatePoseStages(CubismModel model)
     {
-        var player = _motionPlayer;
-        var count = player.TouchedParameterCount;
-        for (var i = 0; i < count; i++)
-        {
-            var parameter = parameters[player.GetTouchedParameterIndex(i)];
-            parameter.Value = parameter.DefaultValue;
-        }
-    }
+        var pose = new PoseCompositor(model);
+        _pose = pose;
 
-    /// <summary>
-    /// 子系统开关从「开 → 关」的那一帧，把对应参数组恢复默认一次，避免模型停在奇怪的姿势里；
-    /// 之后不再复位这些参数，用户手动拖的值就能保留（这是「面部测试」能用的关键）。
-    /// </summary>
-    private void HandleManagedGroupTransitions(bool blinkActive, bool swayActive, bool expressionActive)
-    {
-        var parameters = _model!.Parameters;
-        var physicsEnabled = PhysicsEnabled;
-        var idleEnabled = IdleEnabled;
-        var eyeTrackingEnabled = EyeTrackingEnabled;
-        var mocapEnabled = MocapEnabled;
+        // 常驻驱动层（显式 Active：开关 / 有没有数据决定这一帧求不求值）。
+        // 鼠标眼控 / 摄像头动捕「接管」和「让位」都是立刻生效：这两层是互斥的头部驱动，中间态没有意义。
+        // 下面这些层都是我们手写的驱动（区别于作者的 motion / exp3 文件）：统一打上手写表标记，
+        // 对实测无效参数的写入丢弃并计数（自检「动作表体检」用）。
+        _idleAutoStage = pose.AddStage("待机呼吸 / 眨眼", fadeInSeconds: 0, fadeOutSeconds: 0.2);
+        _idleAutoStage.DropsDeadWrites = true;
+        _eyeStage = pose.AddStage("鼠标眼控", fadeInSeconds: 0, fadeOutSeconds: 0);
+        _eyeStage.DropsDeadWrites = true;
+        _mocapStage = pose.AddStage("摄像头动捕", fadeInSeconds: 0, fadeOutSeconds: 0);
+        _mocapStage.DropsDeadWrites = true;
+        _swayStage = pose.AddStage("身体晃动测试", fadeInSeconds: 0, fadeOutSeconds: 0);
+        _swayStage.DropsDeadWrites = true;
 
-        if (!_managedGroupsInitialized)
-        {
-            // 第一帧只记录状态，不做任何复位（避免加载完立刻把手动 / 配置状态冲掉）
-            _managedGroupsInitialized = true;
-        }
-        else
-        {
-            if (_prevPhysicsEnabled && !physicsEnabled) ResetParametersToDefault(parameters, _physicsManaged);
-            if (_prevIdleEnabled && !idleEnabled) ResetParametersToDefault(parameters, _idleManaged);
-            if (_prevBlinkActive && !blinkActive) ResetParametersToDefault(parameters, _blinkManaged);
-            if (_prevEyeTrackingEnabled && !eyeTrackingEnabled) ResetParametersToDefault(parameters, _eyeManaged);
-            if (_prevMocapEnabled && !mocapEnabled) ResetParametersToDefault(parameters, _mocapManaged);
-            if (_prevSwayActive && !swayActive) ResetParametersToDefault(parameters, _swayManaged);
-            if (_prevExpressionActive && !expressionActive) ResetParametersToDefault(parameters, _expressionManaged);
-        }
+        // 音乐层每帧都求值：状态文案 / 整身轻倾要用它算出来的「在不在播」，有没有输出另算
+        _musicStage = pose.AddStage("音乐跟唱", fadeInSeconds: 0, fadeOutSeconds: 0, alwaysEvaluate: true);
+        _musicStage.DropsDeadWrites = true;
+        _speechStage = pose.AddStage("语音口型", fadeInSeconds: 0, fadeOutSeconds: 0);
+        _speechStage.DropsDeadWrites = true;
+        _moodStage = pose.AddStage("情绪鼓嘴", fadeInSeconds: 0, fadeOutSeconds: 0);
+        _moodStage.DropsDeadWrites = true;
 
-        _prevPhysicsEnabled = physicsEnabled;
-        _prevIdleEnabled = idleEnabled;
-        _prevBlinkActive = blinkActive;
-        _prevEyeTrackingEnabled = eyeTrackingEnabled;
-        _prevMocapEnabled = mocapEnabled;
-        _prevSwayActive = swayActive;
-        _prevExpressionActive = expressionActive;
+        // 动作层：待机动作一直垫在最底下；用户动作 / 手势 / 表演 / 舞蹈是它上面的层，收尾时自然露出待机。
+        // 两个动作混合器自带逐实例交叉淡化，所以这两层不再叠一层淡出（0）。
+        _idleMotionStage = pose.AddStage("待机动作", fadeInSeconds: 0, fadeOutSeconds: 0.3);
+        _userMotionStage = pose.AddStage("用户动作", fadeInSeconds: 0, fadeOutSeconds: 0);
+
+        // 动作层（每帧求值，活动与否看本帧有没有写参数）；收尾统一拿最后一帧姿势淡出（安全网）。
+        // 舞蹈 / 表演 / 手势 / 待机小动作 / 鼠标互动是我们手写的动作表：对实测无效参数的写入丢弃并计数
+        // （自检「动作表体检」用），作者的 motion 文件不受此约束。
+        _danceStage = pose.AddStage("舞蹈", fadeInSeconds: 0, fadeOutSeconds: 0.25, alwaysEvaluate: true);
+        _danceStage.DropsDeadWrites = true;
+        _performanceStage = pose.AddStage("表演", fadeInSeconds: 0, fadeOutSeconds: 0.25, alwaysEvaluate: true);
+        _performanceStage.DropsDeadWrites = true;
+        _gestureStage = pose.AddStage("手势", fadeInSeconds: 0, fadeOutSeconds: 0.3, alwaysEvaluate: true);
+        _gestureStage.DropsDeadWrites = true;
+        _petIdleStage = pose.AddStage("待机小动作", fadeInSeconds: 0, fadeOutSeconds: 0.25, alwaysEvaluate: true);
+        _petIdleStage.DropsDeadWrites = true;
+        _interactionStage = pose.AddStage("鼠标互动", fadeInSeconds: 0, fadeOutSeconds: 0.2, alwaysEvaluate: true);
+        _interactionStage.DropsDeadWrites = true;
+
+        // 表情自己管淡入淡出（Add / Multiply / Overwrite 都基于「当前值」），层权重不参与
+        _expressionStage = pose.AddStage("表情", fadeInSeconds: 0, fadeOutSeconds: 0);
+
+        // 限时反应（首尾自带包络；被 Stop 打断时拿最后一帧 0.15 秒淡出）
+        _pokeStage = pose.AddStage("戳脸彩蛋", fadeInSeconds: 0, fadeOutSeconds: 0.15);
+        _pokeStage.DropsDeadWrites = true;
+        _shyStage = pose.AddStage("害羞扭动", fadeInSeconds: 0, fadeOutSeconds: 0.15);
+        _shyStage.DropsDeadWrites = true;
+        _observationStage = pose.AddStage("观察用户", fadeInSeconds: 0, fadeOutSeconds: 0.15);
+        _observationStage.DropsDeadWrites = true;
+        _feedingStage = pose.AddStage("投喂", fadeInSeconds: 0, fadeOutSeconds: 0.2);
+        _feedingStage.DropsDeadWrites = true;
     }
 
     /// <summary>解析音乐响应要写的参数（有就缓存引用，没有就跳过）。</summary>
@@ -1709,13 +1634,11 @@ public sealed class ModelRuntime : IDisposable
     /// <summary>
     /// 音乐响应：有正在播放的数据且开启时，写跟唱嘴型 + 可选轻微点头。
     /// <para>「身体律动」不再写模型参数（不扭身体），而是驱动 <see cref="BodyLeanDegrees"/> 的加速 / 加大幅度，由渲染层整身轻倾。</para>
-    /// <para>嘴型优先级：动捕有脸 &gt; 音乐（动捕在驱动嘴时音乐不抢）。</para>
-    /// <para>参数只在「这一帧真的写」的时候才记录到 touched 列表，下一帧开头复位；不写时完全不动，手动值保留。</para>
+    /// <para>嘴型优先级：动捕有脸 &gt; 语音 &gt; 音乐（动捕在驱动嘴时音乐不抢）。这一帧没东西可写 = 音乐层没有输出，
+    /// 嘴型立刻交回下面各层（手动值 / 表情）。</para>
     /// </summary>
     private void ApplyMusicResponse(bool mocapFace)
     {
-        _musicTouchedCount = 0;
-
         var provider = _music;
         var snapshot = provider?.Latest;
         var age = snapshot is null ? double.MaxValue : Environment.TickCount64 - snapshot.TimestampMs;
@@ -1799,10 +1722,108 @@ public sealed class ModelRuntime : IDisposable
 
     // ---------- 动作系统：手势 / 表演 / 舞蹈 / 语音口型 / 待机随机小动作 ----------
 
+    /// <summary>
+    /// 登记实测无效的参数（改了它们画面一点不变）：合成器丢弃各层对它们的写入，面板里打「无效」标记。
+    /// 换模型 / 重新探测后整体替换。
+    /// </summary>
+    private void ApplyDeadParameters(ParameterEffectResult result)
+    {
+        _parameterEffect = result;
+        var dead = new HashSet<int>();
+        foreach (var id in result.DeadParameterIds)
+        {
+            var parameter = _model?.FindParameter(id);
+            if (parameter is not null) dead.Add(parameter.Index);
+        }
+
+        _deadParameterIndices = dead;
+        _pose?.IgnoreLayerWritesTo(dead.Count > 0 ? dead : null);
+    }
+
+    /// <summary>
+    /// 参数有效性探测：默认姿势下逐个拉参数看画面变不变；无效的再放进「开关环境」复测。
+    /// 环境两组：cdi3 里「开关」分组的参数各一个（换装 / 体型 / 手部切换这类开关）+ 每个表情文件的参数组合。
+    /// 物理输入 / 输出参数按「先验有效」处理（它们不直接绑变形器、只在物理求值时影响画面，逐像素测不出来）。
+    /// </summary>
+    private void RunParameterAudit(CubismModel model, Action<string>? log)
+    {
+        try
+        {
+            // 先验有效：物理 rig 的全部输入（含多级链的中间参数）+ 输出
+            var alwaysLive = new HashSet<int>();
+            if (_physics is not null)
+            {
+                foreach (var input in _physics.Inputs)
+                {
+                    if (input.SourceParameterIndex >= 0) alwaysLive.Add(input.SourceParameterIndex);
+                }
+
+                foreach (var output in _physics.Outputs)
+                {
+                    if (output.DestinationParameterIndex >= 0) alwaysLive.Add(output.DestinationParameterIndex);
+                }
+            }
+
+            var contexts = new List<IReadOnlyList<(string Id, float Value)>>(32);
+
+            var switchIds = new List<string>();
+            if (_display is not null)
+            {
+                foreach (var group in _display.ParameterGroups)
+                {
+                    if (!string.Equals(group.Name, "开关", StringComparison.Ordinal)) continue;
+                    switchIds.AddRange(group.ParameterIds);
+                }
+            }
+
+            if (switchIds.Count == 0)
+            {
+                // 没有 cdi3（自定义模型）：用通用开关名兜底
+                switchIds.AddRange(Enumerable.Range(1, 13).Select(i => "key" + i));
+                switchIds.AddRange(Enumerable.Range(1, 5).Select(i => "Clothes" + i));
+                switchIds.AddRange(Enumerable.Range(1, 3).Select(i => "Movement" + i));
+            }
+
+            foreach (var id in switchIds)
+            {
+                var parameter = model.FindParameter(id);
+                if (parameter is null) continue;
+                var value = parameter.Maximum != parameter.DefaultValue ? parameter.Maximum : parameter.Minimum;
+                if (value == parameter.DefaultValue) continue;
+                contexts.Add(new[] { (id, value) });
+            }
+
+            foreach (var data in _expressionDataByPath.Values)
+            {
+                var context = new List<(string Id, float Value)>();
+                foreach (var expressionParameter in data.Parameters)
+                {
+                    var parameter = model.FindParameter(expressionParameter.Id);
+                    if (parameter is null) continue;
+                    var value = Math.Clamp(expressionParameter.Value, parameter.Minimum, parameter.Maximum);
+                    if (value == parameter.DefaultValue) continue;
+                    context.Add((expressionParameter.Id, value));
+                }
+
+                if (context.Count > 0) contexts.Add(context);
+            }
+
+            ApplyDeadParameters(ParameterEffectAudit.Run(model, contexts, log, alwaysLive));
+        }
+        catch (Exception exception)
+        {
+            // 探测只是锦上添花：失败就当「全部有效」，不影响加载
+            log?.Invoke($"参数有效性探测失败（按全部有效处理）：{exception.GetType().Name}: {exception.Message}");
+            ApplyDeadParameters(new ParameterEffectResult(
+                model.Parameters.Select(p => p.Id).ToArray(), Array.Empty<string>(), Array.Empty<string>(), 0, 0));
+        }
+    }
+
     /// <summary>加载时创建三个演示播放器（手势 / 表演 / 舞蹈）；动作数据查找用运行时自己的解析表。</summary>
     private void CreateActionPlayers(CubismModel model)
     {
-        _gesture = new GesturePlayer(model, FindMotionEntryByName, FindMotionData, PlayActionMotion, StopActionMotion);        _performance = new PerformancePlayer(model, StartGestureForPerformance, StopGestureForPerformance);
+        _gesture = new GesturePlayer(model, _pose!, FindMotionEntryByName, FindMotionData);
+        _performance = new PerformancePlayer(model, StartGestureForPerformance, StopGestureForPerformance);
         _dance = new DanceController(model);
     }
 
@@ -1847,7 +1868,7 @@ public sealed class ModelRuntime : IDisposable
     /// 互动里播手势（不打断用户当前动作；互动开始已经处理过待机演示让位）。
     /// 最多保持 3 秒自动还原：点手切「竖起食指」这类操作即使没再点一次，也不会永远举着。
     /// </summary>
-    private bool PlayInteractionGesture(string id) => _gesture?.Play(id, stopMotionFirst: false, 3.0) ?? false;
+    private bool PlayInteractionGesture(string id) => _gesture?.Play(id, 3.0) ?? false;
 
     private void StopInteractionGesture() => _gesture?.Stop();
 
@@ -1865,7 +1886,7 @@ public sealed class ModelRuntime : IDisposable
     }
 
     /// <summary>
-    /// 互动开始：如果当前演示 / 待机动作是「待机随机」自动挑的，让位停掉；待机小动作也停掉并进入 3 秒冷却。
+    /// 互动开始：如果当前演示是「待机随机」自动挑的，让位停掉；待机小动作也停掉并进入 3 秒冷却。
     /// 用户自己播的表演 / 舞蹈在 <see cref="IsInteractionBlocked"/> 里已经拒绝互动，不会走到这里。
     /// </summary>
     private void EnterInteractionMode()
@@ -1887,7 +1908,7 @@ public sealed class ModelRuntime : IDisposable
     private bool IsInteractionBlocked()
     {
         if (_interaction?.IsInteracting == true) return false; // 互动自己的手指 / 护住手势动画不算「用户动作」
-        if (_motionPlayer.HasActive && CurrentMotion?.IsIdleCandidate != true && _gesture?.HasActive != true) return true;
+        if (HasUserMotionPlaying) return true;                 // 用户点播的动作进行中（显式播放 IDLE 这类待机候选不算）
         if (!_idleDemoActive && (_performance?.HasActive == true || _dance?.HasActive == true)) return true;
         return false;
     }
@@ -1898,10 +1919,17 @@ public sealed class ModelRuntime : IDisposable
         if (mocapFace || _speechActive) return true;
         if (MusicEnabled && _musicPlaying) return true;
         if (_gesture?.HasActive == true || _performance?.HasActive == true || _dance?.HasActive == true) return true;
-        if (_motionPlayer.HasActive && CurrentMotion?.IsIdleCandidate != true) return true;
+        if (HasUserMotionPlaying) return true;
         if (_interaction?.IsInteracting == true || (_interaction?.CooldownRemaining ?? 0) > 0.01) return true;
         return false;
     }
+
+    /// <summary>
+    /// 有没有「用户点播的非待机动作」在播。显式点播 IDLE 这类待机候选不算忙——它本来就是待机，
+    /// 待机小动作 / 随机手势照常可以叠在它上面（和旧版「待机动作不压制待机小动作」的口径一致）。
+    /// </summary>
+    private bool HasUserMotionPlaying
+        => _motionPlayer.HasActive && _motionPlayer.Current?.Entry.IsIdleCandidate != true;
 
     /// <summary>待机小动作能不能顺带挂表情：用户已经有表情（含额头三态）时不动它，避免撤掉用户的表情。</summary>
     private bool CanPetIdleUseExpression()
@@ -1921,28 +1949,11 @@ public sealed class ModelRuntime : IDisposable
     private Motion3Data? FindMotionData(MotionEntry entry)
         => _motionDataByPath.TryGetValue(entry.FilePath, out var data) ? data : null;
 
-    private void PlayActionMotion(MotionEntry entry, Motion3Data data, double fadeSeconds, double fadeOutSeconds)
-    {
-        var model = _model;
-        if (model is null) return;
-        _motionPlayer.Play(model, entry, data, loop: false, fadeSeconds, fadeOutSeconds);
-    }
+    /// <summary>表演里触发的手势（手势是比表演更高的层，直接叠在表演上面）。</summary>
+    private void StartGestureForPerformance(string id) => _gesture?.Play(id);
 
-    private void StopActionMotion(double fadeSeconds) => _motionPlayer.Stop(fadeSeconds);
-
-    /// <summary>表演里触发的 gesture（不打断表演本身）。</summary>
-    private void StartGestureForPerformance(string id) => _gesture?.Play(id, stopMotionFirst: false);
-
+    /// <summary>表演里触发的手势停下（表演结束 / 被停时）。</summary>
     private void StopGestureForPerformance() => _gesture?.Stop();
-
-    /// <summary>推进手势 / 表演 / 舞蹈（在动作更新之后，覆盖 IDLE 的手臂曲线；物理求值之前）。</summary>
-    private void UpdateActionPlayers(double deltaSeconds, bool mocapFace)
-    {
-        var allowTalk = !mocapFace && !_speechActive;
-        _performance?.Update(deltaSeconds, allowTalk);
-        _gesture?.Update(deltaSeconds);
-        _dance?.Update(deltaSeconds);
-    }
 
     /// <summary>解析语音口型参数。</summary>
     private void ResolveSpeechParameters(CubismModel model)
@@ -1992,44 +2003,17 @@ public sealed class ModelRuntime : IDisposable
         _feedJawOpen = model.FindParameter("JawOpen");
     }
 
-    /// <summary>复位上一帧投喂写过的参数（没写就不碰，手动调的值能保留）。</summary>
-    private void ResetFeedTouchedParameters(CubismParameter[] parameters)
-    {
-        for (var i = 0; i < _feedTouchedCount; i++)
-        {
-            var parameter = parameters[_feedTouchedIndices[i]];
-            parameter.Value = parameter.DefaultValue;
-        }
-        _feedTouchedCount = 0;
-    }
+    /// <summary>推进投喂 / 吃饭状态机（每帧都要走：靠近 / 嚼嚼嚼 / 吞咽的计时不依赖这一帧有没有写参数）。</summary>
+    private void TickFeeding(double deltaSeconds) => _feeding.Update(deltaSeconds);
 
     /// <summary>
-    /// 投喂 / 吃饭表现：饭团靠近时头 / 身体 / 眼睛朝它偏、张嘴；吃到后嚼嚼嚼 → 伪吞咽。
-    /// <para>顺序放在表情之后（嘴型要压过表情的嘴形），物理之前。动捕有脸时整段让位（真人脸优先），
-    /// 说话时只让出嘴部（口型跟着语音）。</para>
+    /// 投喂 / 吃饭输出：饭团靠近时头 / 身体 / 眼睛朝它偏、张嘴；吃到后嚼嚼嚼 → 伪吞咽。
+    /// <para>是比表情更高的层（嘴型要压过表情）。动捕有脸时整段让位（真人脸优先），说话时只让出嘴（口型跟着语音）；
+    /// 输出结束（嚼完 / 饭团拿走）后本层拿最后一帧姿势 0.2 秒交回下面各层。</para>
     /// </summary>
-    private void ApplyFeeding(double deltaSeconds, bool mocapFace)
+    private void WriteFeeding(bool mocapFace)
     {
-        _feeding.Update(deltaSeconds);
-
-        if (!_feeding.HasOutput)
-        {
-            if (!_feedHadOutput) return;
-            _feedHadOutput = false;
-            // 从「有输出」回到「没输出」：把上次写的参数恢复默认一次，之后不再碰
-            if (_feedAngleX is not null) _feedAngleX.Value = _feedAngleX.DefaultValue;
-            if (_feedAngleY is not null) _feedAngleY.Value = _feedAngleY.DefaultValue;
-            if (_feedBodyAngleX is not null) _feedBodyAngleX.Value = _feedBodyAngleX.DefaultValue;
-            if (_feedEyeBallX is not null) _feedEyeBallX.Value = _feedEyeBallX.DefaultValue;
-            if (_feedEyeBallY is not null) _feedEyeBallY.Value = _feedEyeBallY.DefaultValue;
-            if (_feedMouthOpenY is not null) _feedMouthOpenY.Value = _feedMouthOpenY.DefaultValue;
-            if (_feedMouthForm is not null) _feedMouthForm.Value = _feedMouthForm.DefaultValue;
-            if (_feedJawOpen is not null) _feedJawOpen.Value = _feedJawOpen.DefaultValue;
-            return;
-        }
-
-        _feedHadOutput = true;
-        if (mocapFace) return;   // 真人脸优先：头 / 眼 / 嘴都交给动捕
+        if (!_feeding.HasOutput || mocapFace) return;
 
         var fx = _feeding.FocusX;
         var fy = _feeding.FocusY;
@@ -2049,15 +2033,9 @@ public sealed class ModelRuntime : IDisposable
         WriteFeedParameter(_feedJawOpen, mouth * 0.55f);
     }
 
-    private void WriteFeedParameter(CubismParameter? parameter, float value)
+    private static void WriteFeedParameter(CubismParameter? parameter, float value)
     {
-        if (parameter is null) return;
-        parameter.Value = value;   // setter 自带 min~max 夹取
-        if (_feedTouchedCount >= _feedTouchedIndices.Length)
-        {
-            Array.Resize(ref _feedTouchedIndices, _feedTouchedIndices.Length * 2);
-        }
-        _feedTouchedIndices[_feedTouchedCount++] = parameter.Index;
+        if (parameter is not null) parameter.Value = value;   // setter 自带 min~max 夹取
     }
 
     /// <summary>解析鼓嘴参数（模型没有这些参数的自定义模型会自动跳过）。</summary>
@@ -2069,20 +2047,9 @@ public sealed class ModelRuntime : IDisposable
         _moodPucker = model.FindParameter("Mouthpucker") ?? model.FindParameter("MouthPucker");
     }
 
-    /// <summary>复位上一帧鼓嘴写过的参数（只复位真的写过的，平时不碰这些参数）。</summary>
-    private void ResetMoodPuffParameters()
-    {
-        if (!_moodPuffWrote) return;
-        _moodPuffWrote = false;
-        foreach (var parameter in new[] { _moodCheekPuff, _moodCheekPuffL, _moodCheekPuffR, _moodPucker })
-        {
-            if (parameter is not null) parameter.Value = parameter.DefaultValue;
-        }
-    }
-
     /// <summary>
     /// 写鼓嘴：数值按 0~1 平滑逼近目标（约 0.2 秒），写左右脸颊鼓起 + 轻微撅嘴。
-    /// 只在目标 / 当前都接近 0 时不写，避免把用户手动调的脸颊参数每帧打回默认。
+    /// 目标 / 当前都接近 0 时不写 = 鼓嘴层没有输出（用户手动调的脸颊参数照常生效）。
     /// </summary>
     private void ApplyMoodPuff(double deltaSeconds)
     {
@@ -2107,13 +2074,12 @@ public sealed class ModelRuntime : IDisposable
         WriteMoodPuffParameter(_moodPucker, current * 0.35f);
     }
 
-    private void WriteMoodPuffParameter(CubismParameter? parameter, float value)
+    private static void WriteMoodPuffParameter(CubismParameter? parameter, float value)
     {
         if (parameter is null) return;
         parameter.Value = parameter.Maximum > parameter.DefaultValue
             ? parameter.DefaultValue + (parameter.Maximum - parameter.DefaultValue) * value
             : value;
-        _moodPuffWrote = true;
     }
 
     /// <summary>
@@ -2122,7 +2088,6 @@ public sealed class ModelRuntime : IDisposable
     /// </summary>
     private void ApplySpeechMouth(bool mocapFace)
     {
-        _speechTouchedCount = 0;
         if (!_speechActive || mocapFace) return;
         var open = Math.Clamp(_speechMouthOpen, 0f, 1f);
         SetSpeechParameter(_speechMouthOpenY, open);
@@ -2130,28 +2095,9 @@ public sealed class ModelRuntime : IDisposable
         SetSpeechParameter(_speechJawOpen, open * 0.5f);
     }
 
-    private void SetSpeechParameter(CubismParameter? parameter, float value)
+    private static void SetSpeechParameter(CubismParameter? parameter, float value)
     {
-        if (parameter is null) return;
-        parameter.Value = value;
-        if (_speechTouchedCount >= _speechTouchedIndices.Length)
-        {
-            Array.Resize(ref _speechTouchedIndices, _speechTouchedIndices.Length * 2);
-        }
-
-        _speechTouchedIndices[_speechTouchedCount++] = parameter.Index;
-    }
-
-    /// <summary>复位上一帧语音写过的参数。</summary>
-    private void ResetSpeechTouchedParameters(CubismParameter[] parameters)
-    {
-        for (var i = 0; i < _speechTouchedCount; i++)
-        {
-            var parameter = parameters[_speechTouchedIndices[i]];
-            parameter.Value = parameter.DefaultValue;
-        }
-
-        _speechTouchedCount = 0;
+        if (parameter is not null) parameter.Value = value;
     }
 
     /// <summary>待机随机小动作：倒计时 + 条件判定（播动作 / 音乐 / 说话 / 跳舞 / 表演时不抢）。</summary>
@@ -2190,7 +2136,7 @@ public sealed class ModelRuntime : IDisposable
         if (mocapFace || _speechActive) return true;
         if (MusicEnabled && _musicPlaying) return true;
         if (_gesture?.HasActive == true || _performance?.HasActive == true || _dance?.HasActive == true) return true;
-        if (_motionPlayer.HasActive && CurrentMotion?.IsIdleCandidate != true) return true;
+        if (HasUserMotionPlaying) return true;
         if (_interaction?.IsInteracting == true || (_interaction?.CooldownRemaining ?? 0) > 0.01) return true;
         if (_petIdleActions?.HasActive == true) return true;
         return false;
@@ -2242,29 +2188,10 @@ public sealed class ModelRuntime : IDisposable
         return baseInterval * factor;
     }
 
-    /// <summary>写一个音乐响应参数并记录（下一帧开头按记录复位，保证不写时不污染手动值）。</summary>
-    private void SetMusicParameter(CubismParameter? parameter, float value)
+    /// <summary>写一个音乐响应参数（音乐层求值期间调用，落到本层捕获缓冲）。</summary>
+    private static void SetMusicParameter(CubismParameter? parameter, float value)
     {
-        if (parameter is null) return;
-        parameter.Value = value;
-        if (_musicTouchedCount >= _musicTouchedIndices.Length)
-        {
-            Array.Resize(ref _musicTouchedIndices, _musicTouchedIndices.Length * 2);
-        }
-
-        _musicTouchedIndices[_musicTouchedCount++] = parameter.Index;
-    }
-
-    /// <summary>复位上一帧音乐写过的参数。</summary>
-    private void ResetMusicTouchedParameters(CubismParameter[] parameters)
-    {
-        for (var i = 0; i < _musicTouchedCount; i++)
-        {
-            var parameter = parameters[_musicTouchedIndices[i]];
-            parameter.Value = parameter.DefaultValue;
-        }
-
-        _musicTouchedCount = 0;
+        if (parameter is not null) parameter.Value = value;
     }
 
     /// <summary>刷新音乐状态文案（不变时复用字符串，避免每帧分配）。</summary>
@@ -2405,171 +2332,165 @@ public sealed class ModelRuntime : IDisposable
         if (parameter is not null) parameter.Value = value; // 写入时已自动 clamp 到 min~max
     }
 
-    /// <summary>推进一帧（在 UI 线程的 DispatcherTimer 里调）。</summary>
+    /// <summary>本帧时间步长（各层求值期间要用的小函数共享）。</summary>
+    private double _frameDeltaSeconds;
+
+    /// <summary>
+    /// 推进一帧（在 UI 线程的 DispatcherTimer 里调）：
+    /// <list type="number">
+    ///   <item>推进「不管哪一层有没有输出都要走」的状态（动捕读取 / 眨眼判定 / 限时反应计时 / 投喂状态机）；</item>
+    ///   <item>设置各常驻层这一帧求不求值；</item>
+    ///   <item>位姿合成：out = 手动值 → 逐层求值按权重混合 → 写回 Core；</item>
+    ///   <item>物理 / 摇尾巴 / 固定参数（直通读写 Core）→ 待机随机小动作调度 → Core <c>Update()</c>。</item>
+    /// </list>
+    /// </summary>
     public void Tick(TimeSpan delta)
     {
         var model = _model;
-        if (model is null || _disposed) return;
+        var pose = _pose;
+        if (model is null || pose is null || _disposed) return;
 
         var startTimestamp = Stopwatch.GetTimestamp();
         var deltaSeconds = Math.Clamp(delta.TotalSeconds, 0.0, 0.25);
+        _frameDeltaSeconds = deltaSeconds;
         _time += deltaSeconds;
 
-        var parameters = model.Parameters;
-
-        // 1) 受管参数：动作只复位「上一帧动作实际写过的参数」；表情只在生效时复位；
-        //    子系统只在「开启」时复位——关掉后不再复位，用户在参数 / 面部测试里手动拖的值才能保留。
-        ResetMotionTouchedParameters(parameters);
-        ResetMusicTouchedParameters(parameters);
-        ResetSpeechTouchedParameters(parameters);
-        ResetMoodPuffParameters();
-        ResetFeedTouchedParameters(parameters);
-        _gesture?.ResetTouched(parameters);
-        _performance?.ResetTouched(parameters);
-        _dance?.ResetTouched(parameters);
-        _interaction?.ResetTouched(parameters);
-        _petIdleActions?.ResetTouched(parameters);
-        var expressionActive = _expressionManager.HasActive;
-        if (expressionActive) ResetParametersToDefault(parameters, _expressionManaged);
-        if (PhysicsEnabled) ResetParametersToDefault(parameters, _physicsManaged);
-        if (IdleEnabled) ResetParametersToDefault(parameters, _idleManaged);
-        if (EyeTrackingEnabled) ResetParametersToDefault(parameters, _eyeManaged);
-        if (MocapEnabled) ResetParametersToDefault(parameters, _mocapManaged);
-        var swayActive = SwayEnabled || _swayDemoRemaining > 0;
-        if (swayActive) ResetParametersToDefault(parameters, _swayManaged);
-
-        // 1.1) 摄像头动捕状态（决定这一帧是否用动捕驱动 / 是否让自动眨眼接管）
+        // ---- 0) 与层无关的每帧状态 ----
         var mocapFace = UpdateMocapState(out var mocapResult);
         var blinkActive = AutoBlink && !(mocapFace && MocapBlinkEnabled);
-        if (blinkActive) ResetParametersToDefault(parameters, _blinkManaged);
+        TickReactionTimers(deltaSeconds);
+        TickFeeding(deltaSeconds);
 
-        // 1.2) 子系统从「开」切到「关」的那一帧恢复一次默认（之后不再碰，让手动值保留）
-        HandleManagedGroupTransitions(blinkActive, swayActive, expressionActive);
-
-        // 2) 待机行为（眨眼 / 呼吸 / 轻摇）：动捕接管眨眼时不让自动眨眼再写
         var idleEnabled = IdleEnabled;
-        if (_idle is not null)
-        {
-            _idle.Update(_time, deltaSeconds, blinkActive, idleEnabled, idleEnabled);
-        }
+        var gestureActive = _gesture?.HasActive == true;
+        var performanceActive = _performance?.HasActive == true;
+        var danceActive = _dance?.HasActive == true;
+        EyeTrackingPaused = ShouldPauseEyeTracking(
+            EyeTrackingPauseOnAction, IsObserving, gestureActive, performanceActive, danceActive,
+            _interaction?.IsInteracting == true, IsPokeReacting);
 
-        // 3) 动捕有脸 → 写动捕参数（此时跳过鼠标眼控，避免两边抢同一批参数）；没脸 → 鼠标眼控 / 待机摇摆
-        if (mocapFace && mocapResult is not null)
-        {
-            ApplyMocapFace(mocapResult);
-        }
-        else
-        {
-            var eye = _eye;
-            if (eye is not null)
-            {
-                eye.Smoothing = EyeTrackingSmoothing;
-                eye.HeadStrength = EyeTrackingHeadStrength;
-                eye.EyeStrength = EyeTrackingEyeStrength;
-                eye.BodyStrength = EyeTrackingBodyStrength;
-                eye.HorizontalGain = EyeTrackingHorizontalGain;
-                eye.UpGain = EyeTrackingUpGain;
-                eye.DownGain = EyeTrackingDownGain;
-                eye.VerticalOffset = EyeTrackingVerticalOffset;
+        // ---- 1) 常驻层这一帧求不求值 ----
+        var swayActive = SwayEnabled || _swayDemoRemaining > 0;
+        var idleMotionActive = idleEnabled && IdleMotion is not null;
+        _idleAutoStage!.Active = idleEnabled || blinkActive;
+        _eyeStage!.Active = !mocapFace && !EyeTrackingPaused && (idleEnabled || EyeTrackingEnabled);
+        _mocapStage!.Active = mocapFace;
+        _swayStage!.Active = swayActive;
+        _speechStage!.Active = _speechActive && !mocapFace;
+        _moodStage!.Active = _moodPuffTarget > 0f || _moodPuffCurrent > 0.002f;
+        _idleMotionStage!.Active = idleMotionActive;
+        _userMotionStage!.Active = _motionPlayer.HasActive;
+        _expressionStage!.Active = _expressionManager.HasActive;
+        _pokeStage!.Active = IsPokeReacting;
+        _shyStage!.Active = IsShyWiggling;
+        _observationStage!.Active = IsObserving;
+        _feedingStage!.Active = _feeding.HasOutput;
 
-                EyeTrackingPaused = ShouldPauseEyeTracking(
-                    EyeTrackingPauseOnAction, IsObserving,
-                    _gesture?.HasActive == true, _performance?.HasActive == true, _dance?.HasActive == true,
-                    _interaction?.IsInteracting == true, IsPokeReacting);
-                if (!EyeTrackingPaused && (idleEnabled || EyeTrackingEnabled))
-                {
-                    eye.Update(deltaSeconds, EyeTrackingEnabled,
-                        idleEnabled ? _idle?.SwayAngleZ ?? 0f : 0f,
-                        idleEnabled ? _idle?.SwayBodyAngleZ ?? 0f : 0f);
-                }
-            }
-        }
+        if (!idleMotionActive) _idleMotionPlayer.Clear();
+        if (!swayActive) _bodySway?.ClearApplied();   // UI 显示「没有在晃」
 
-        // 3.5) 语音口型（优先级：动捕有脸 > 语音 > 音乐；语音时音乐跟唱闭嘴）
-        ApplySpeechMouth(mocapFace);
+        // ---- 2) 位姿合成（顺序 = 优先级，见 CreatePoseStages） ----
+        pose.SetDeltaSeconds(deltaSeconds);
+        pose.BeginFrame();
 
-        // 3.6) AI 聊天情绪鼓嘴（生气 / 闹别扭时鼓脸颊 + 轻微撅嘴；只写脸颊 / 撅嘴，不抢说话口型）
-        ApplyMoodPuff(deltaSeconds);
-
-        // 4) 身体晃动测试（在动捕之后、动作之前）；动捕有脸时晃动不做头部补偿，让头跟脸
-        UpdateBodySway(deltaSeconds, mocapFace);
-
-        // 4.5) 音乐跟唱 / 律动（在手动晃动之后；动捕有脸时嘴让位；侧向律动由整身轻倾表现）
-        ApplyMusicResponse(mocapFace);
-
-        // 4.6) 整身以脚为支点的左右轻倾：常态 4s/±0.6°，音乐在播平滑加速到 2.6s/±1.0°×SwayStrength
+        pose.Run(_idleAutoStage, () => _idle?.Update(_time, deltaSeconds, blinkActive, idleEnabled, idleEnabled));
+        pose.Run(_eyeStage, UpdateEyeTracking);
+        pose.Run(_mocapStage, () => ApplyMocapFace(mocapResult!));
+        pose.Run(_swayStage, () => UpdateBodySway(deltaSeconds, mocapFace));
+        pose.Run(_musicStage, () => ApplyMusicResponse(mocapFace));
         UpdateBodyLean(deltaSeconds);
-
-        // 5) 待机动作（IdleEnabled 且当前没有动作在播时循环播放）。
-        //    原生手势的 Enter / Hold 阶段不播待机：待机曲线会和保持姿势打架（手臂被拽回默认姿势）。
-        //    手势 Exit 临近结束（ShouldHandBackToIdle）时提前交叉淡入接回：待机压着还在播的 exit 动作淡入，
-        //    Param56（手部网格切换）这类「末值不是默认值」的参数由待机淡入平滑 Blend 回去——
-        //    否则 exit 播完瞬间受管复位会把它们砸到默认值（手部网格硬切闪一下）。
-        var handBackToIdle = _gesture?.ShouldHandBackToIdle == true;
-        if (idleEnabled && IdleMotion is { } idleMotion
-            && (!_motionPlayer.HasActive || handBackToIdle)
-            && _gesture?.SuppressIdleMotion != true &&
-            _motionDataByPath.TryGetValue(idleMotion.FilePath, out var idleData))
+        pose.Run(_speechStage, () => ApplySpeechMouth(mocapFace));
+        pose.Run(_moodStage, () => ApplyMoodPuff(deltaSeconds));
+        pose.Run(_idleMotionStage, UpdateIdleMotion);
+        pose.Run(_userMotionStage, UpdateUserMotion);
+        pose.Run(_danceStage, () => _dance?.Update(deltaSeconds));
+        pose.Run(_performanceStage, () => _performance?.Update(deltaSeconds, allowTalk: !mocapFace && !_speechActive));
+        pose.Run(_gestureStage, () => _gesture?.Update(deltaSeconds, _eyeBlinkParameterIds, _lipSyncParameterIds));
+        pose.Run(_petIdleStage, () => _petIdleActions?.Update(deltaSeconds, IsPetIdleBlocked(mocapFace)));
+        pose.Run(_interactionStage, () => _interaction?.Update(deltaSeconds, IsInteractionBlocked(), mocapFace, _speechActive));
+        pose.Run(_expressionStage, () =>
         {
-            _motionPlayer.Play(model, idleMotion, idleData, loop: true,
-                handBackToIdle ? GesturePlayerIdleHandbackFadeSeconds : -1);
-        }
+            UpdateTemporaryExpressions();
+            _expressionManager.Update(model, deltaSeconds);
+        });
+        pose.Run(_pokeStage, () => WritePokeReaction());
+        pose.Run(_shyStage, () => WriteShyWiggle());
+        pose.Run(_observationStage, () => WriteObservation());
+        pose.Run(_feedingStage, () => WriteFeeding(mocapFace));
 
-        _motionPlayer.Update(model, deltaSeconds, _eyeBlinkParameterIds, _lipSyncParameterIds);
+        // 待机随机挑的演示播完了，标记跟着放下
+        if (_idleDemoActive && !gestureActive && !performanceActive && !danceActive) _idleDemoActive = false;
 
-        // 5.5) 手势 / 时间线表演 / 舞蹈：写在动作之后，覆盖 IDLE 的手臂曲线（物理之前）
-        UpdateActionPlayers(deltaSeconds, mocapFace);
+        pose.EndFrame();
 
-        // 5.55) 鼠标互动反应 + 待机小动作（都在动作之后、物理 / 表情之前；互动优先级高于待机随机动作）
-        if (_idleDemoActive && _gesture?.HasActive != true && _performance?.HasActive != true && _dance?.HasActive != true)
-        {
-            _idleDemoActive = false;
-        }
-
-        _interaction?.Update(deltaSeconds, IsInteractionBlocked(), mocapFace, _speechActive);
-        _petIdleActions?.Update(deltaSeconds, IsPetIdleBlocked(mocapFace));
-
-        UpdateTemporaryExpressions();
-        _expressionManager.Update(model, deltaSeconds);
-
-        // 5.55) 戳脸彩蛋：＞＜ 表情之上叠「微微笑嘴形 + 左右晃脸」（动捕有脸时让位）
-        ApplyPokeReaction(deltaSeconds, mocapFace);
-
-        // 5.56) 高好感互动的害羞扭动：写在表情之后、投喂 / 物理之前，身体与头部错开一点点
-        ApplyShyWiggle(deltaSeconds);
-
-        // 5.57) 观察用户（单眼瞪大 / 微眯 / 白眼 / 歪头 / 盯人）：写在表情与扭动之后，盖住眼睛与头角度
-        ApplyObservation(deltaSeconds);
-
-        // 5.55) 投喂 / 吃饭：饭团靠近时头 / 身体 / 眼睛朝它偏、张嘴；吃到后嚼嚼嚼 → 伪吞咽。
-        //       放在表情之后，嘴型才能压过表情；动捕有脸时整段让位、说话时只让出嘴。
-        ApplyFeeding(deltaSeconds, mocapFace);
-
-        // 5.6) 待机随机小动作：没有动捕 / 音乐 / 语音 / 舞蹈 / 表演 / 互动 / 用户动作时，按随机间隔播一个
-        UpdateIdleRandomGesture(deltaSeconds, mocapFace);
-
-        // 5.7) 用户固定参数：面板「锁定」的参数在所有系统写完之后强制回填（盖过动作 / 待机 / 晃动）。
-        //      注意：ParamAngleX 这类参数同时是物理输出（头部摆的钟摆写回），物理还会再写一次——
-        //      所以物理之后（model.Update 之前）会再回填一次，保证锁定的值最终必胜（见 5.8）。
-
-        // 物理：在参数都算完之后、Core 求值之前跑（改的是参数值）
+        // ---- 3) 物理：读合成好的参数当输入，输出直接写 Core（直通，不进手动值） ----
         if (PhysicsEnabled && _physics is not null)
         {
-            _physics.Evaluate(deltaSeconds, (float)Math.Clamp(PhysicsStrength, 0.0, 1.0));
+            pose.RunBypass(() => _physics.Evaluate(deltaSeconds, (float)Math.Clamp(PhysicsStrength, 0.0, 1.0)));
         }
 
         // 摇尾巴：物理把尾巴角度算完后，再叠加一段带相位延迟的摆动（物理关着也能摇）
-        ApplyTailWag(deltaSeconds);
+        pose.RunBypass(() => ApplyTailWag(deltaSeconds));
 
-        // 5.8) 固定参数最终回填：物理输出（头部摆写回 ParamAngleX 这类输入兼输出参数）
-        //      会覆盖前面的锁定值，物理算完之后再钉一次，锁定的姿势才能站得住。
-        if (_parameterOverrides.Count > 0) ApplyParameterOverrides();
+        // 固定参数（面板「锁定」）最终回填：物理输出也会写 ParamAngleX 这类输入兼输出的参数，
+        // 物理算完之后再钉一次，锁定的姿势才站得住
+        if (_parameterOverrides.Count > 0) pose.RunBypass(() => ApplyParameterOverrides());
+
+        // 待机随机小动作：没有动捕 / 音乐 / 语音 / 舞蹈 / 表演 / 互动 / 用户动作时，按随机间隔播一个
+        UpdateIdleRandomGesture(deltaSeconds, mocapFace);
 
         model.Update();
         // 顶点已更新：互动热区几何缓存失效，下一次 HitTest 用本帧蒙皮重新算
         _interaction?.InvalidateGeometry();
         _lastTickMilliseconds = Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds;
         FrameUpdated?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>鼠标眼控层：把运行时属性同步给控制器并求值（只在层活动时调用）。</summary>
+    private void UpdateEyeTracking()
+    {
+        var eye = _eye;
+        if (eye is null) return;
+        eye.Smoothing = EyeTrackingSmoothing;
+        eye.HeadStrength = EyeTrackingHeadStrength;
+        eye.EyeStrength = EyeTrackingEyeStrength;
+        eye.BodyStrength = EyeTrackingBodyStrength;
+        eye.HorizontalGain = EyeTrackingHorizontalGain;
+        eye.UpGain = EyeTrackingUpGain;
+        eye.DownGain = EyeTrackingDownGain;
+        eye.VerticalOffset = EyeTrackingVerticalOffset;
+
+        var idleEnabled = IdleEnabled;
+        eye.Update(_frameDeltaSeconds, EyeTrackingEnabled,
+            idleEnabled ? _idle?.SwayAngleZ ?? 0f : 0f,
+            idleEnabled ? _idle?.SwayBodyAngleZ ?? 0f : 0f);
+    }
+
+    /// <summary>
+    /// 待机动作层：一直在最底下循环播 <see cref="IdleMotion"/>（换了待机动作就在同一个混合器里交叉淡化过去）。
+    /// 手势 / 用户动作是它上面的层，收尾时自然露出这里的姿势，不需要「压制待机 / 提前接回待机」之类的特判。
+    /// </summary>
+    private void UpdateIdleMotion()
+    {
+        var model = _model;
+        if (model is null) return;
+
+        if (IdleMotion is { } idleMotion
+            && _motionDataByPath.TryGetValue(idleMotion.FilePath, out var idleData)
+            && !string.Equals(_idleMotionPlayer.Current?.Entry.FilePath, idleMotion.FilePath, StringComparison.OrdinalIgnoreCase))
+        {
+            _idleMotionPlayer.Play(model, idleMotion, idleData, loop: true, -1);
+        }
+
+        _idleMotionPlayer.Update(model, _frameDeltaSeconds, _eyeBlinkParameterIds, _lipSyncParameterIds);
+    }
+
+    /// <summary>用户动作层：工具页 / 桌宠点播的 motion3（混合器自带新旧动作交叉淡化）。</summary>
+    private void UpdateUserMotion()
+    {
+        var model = _model;
+        if (model is null) return;
+        _motionPlayer.Update(model, _frameDeltaSeconds, _eyeBlinkParameterIds, _lipSyncParameterIds);
     }
 
     /// <summary>身体晃动测试：限时演示倒计时 + 把运行时属性同步给控制器并执行。</summary>
@@ -2738,15 +2659,20 @@ public sealed class ModelRuntime : IDisposable
     /// <summary>某个表情当前是否生效（UI 勾选状态用）。</summary>
     public bool IsExpressionActive(ExpressionEntry expression) => _expressionManager.IsActive(expression);
 
-    /// <summary>把所有参数 / 部件恢复默认（表情 / 动作 / 晃动测试也停掉）。</summary>
+    /// <summary>
+    /// 把所有参数 / 部件恢复默认（表情 / 动作 / 晃动测试 / 各类限时反应也停掉）。
+    /// 手动值清成模型默认值；位姿合成器下一帧「直接到位」——常驻层（呼吸 / 眼控）立刻按当前开关生效，
+    /// 动作层立即清空，不做淡入淡出。
+    /// </summary>
     public void ResetParameters()
     {
         var model = _model;
         if (model is null) return;
 
-        model.ResetParametersToDefault();
+        model.ResetParametersToDefault();   // 经过合成器：手动值 + Core 一起回默认
         model.ResetPartOpacities();
         _motionPlayer.Clear();
+        _idleMotionPlayer.Clear();
         _temporaryExpressions.Clear();
         _expressionManager.ClearImmediate();
         _physics?.Reset();
@@ -2754,21 +2680,22 @@ public sealed class ModelRuntime : IDisposable
         _eye?.ClearTarget();
         _bodySway?.Reset();
         _swayDemoRemaining = 0;
-        _musicTouchedCount = 0;
         _gesture?.StopImmediate();
         _performance?.Stop();
         _dance?.StopImmediate();
         _interaction?.StopImmediate();
         _petIdleActions?.StopImmediate();
         _idleDemoActive = false;
-        _speechTouchedCount = 0;
         _moodPuffTarget = 0f;
         _moodPuffCurrent = 0f;
-        _moodPuffWrote = false;
-        _feedTouchedCount = 0;
-        _feedHadOutput = false;
         _feeding.Reset();
         _idleRandomGestureTimer = 0;
+        _pokeReactionRemainingSeconds = 0;
+        _wiggleRemainingSeconds = 0;
+        _obsRemainingSeconds = 0;
+        _obsFacePose = null;
+        _tailWagRemainingSeconds = 0;
+        _pose?.SnapAll();
         model.Update();
     }
 
@@ -2778,8 +2705,7 @@ public sealed class ModelRuntime : IDisposable
         if (IdleMotion is null || !_motions.Contains(IdleMotion))
             IdleMotion = _motions.FirstOrDefault(m => m.IsIdleCandidate) ?? _motions.FirstOrDefault();
 
-        // 下一帧 Tick 发现没有动作在播就会自动开始待机
-        if (_motionPlayer.HasActive && CurrentMotion?.IsIdleCandidate == true) _motionPlayer.Stop();
+        // 待机动作是常驻层：换了 IdleMotion，下一帧 UpdateIdleMotion 会在同一个混合器里交叉淡化到新的那个
     }
 
     /// <summary>每帧 Tick 完触发（UI 刷新参数值 / 渲染照它来）。</summary>
@@ -2792,6 +2718,29 @@ public sealed class ModelRuntime : IDisposable
 
         FrameUpdated = null;
         _parameterOverrides.Clear();
+        _parameterEffect = null;
+        _model?.AttachParameterSink(null);
+        _pose = null;
+        _idleAutoStage = null;
+        _eyeStage = null;
+        _mocapStage = null;
+        _swayStage = null;
+        _musicStage = null;
+        _speechStage = null;
+        _moodStage = null;
+        _idleMotionStage = null;
+        _userMotionStage = null;
+        _danceStage = null;
+        _performanceStage = null;
+        _gestureStage = null;
+        _petIdleStage = null;
+        _interactionStage = null;
+        _expressionStage = null;
+        _pokeStage = null;
+        _shyStage = null;
+        _observationStage = null;
+        _feedingStage = null;
+        _deadParameterIndices = new HashSet<int>();
         _renderer?.Dispose();
         _renderer = null;
         _textures?.Dispose();
@@ -2823,7 +2772,6 @@ public sealed class ModelRuntime : IDisposable
         _musicMouthForm = null;
         _musicJawOpen = null;
         _musicParamAngleY = null;
-        _musicTouchedCount = 0;
         _musicKind = MusicContentKind.Silent;
         _musicStatusKind = -1;
         _musicStatusText = MusicStatusSilent;
@@ -2836,6 +2784,7 @@ public sealed class ModelRuntime : IDisposable
         _expressionDataByPath.Clear();
         _temporaryExpressions.Clear();
         _motionPlayer.Clear();
+        _idleMotionPlayer.Clear();
         _expressionManager.ClearImmediate();
         _gesture = null;
         _performance = null;
@@ -2843,7 +2792,6 @@ public sealed class ModelRuntime : IDisposable
         _speechMouthOpenY = null;
         _speechMouthForm = null;
         _speechJawOpen = null;
-        _speechTouchedCount = 0;
         _speechActive = false;
         _speechMouthOpen = 0;
         _idleRandomGestureTimer = 0;
@@ -2859,14 +2807,6 @@ public sealed class ModelRuntime : IDisposable
         _partBindings = Array.Empty<PartBinding>();
         _eyeBlinkParameterIds = Array.Empty<string>();
         _lipSyncParameterIds = Array.Empty<string>();
-        _expressionManaged = Array.Empty<int>();
-        _physicsManaged = Array.Empty<int>();
-        _idleManaged = Array.Empty<int>();
-        _blinkManaged = Array.Empty<int>();
-        _eyeManaged = Array.Empty<int>();
-        _mocapManaged = Array.Empty<int>();
-        _swayManaged = Array.Empty<int>();
-        _managedGroupsInitialized = false;
     }
 
     private void ReportProgress(double progress) => _options.Progress?.Invoke(Math.Clamp(progress, 0.0, 1.0));

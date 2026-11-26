@@ -284,15 +284,44 @@ public sealed unsafe class CubismModel : IDisposable
 
     private const byte DrawableFlagsIsVisible = 1 << 0;
 
-    internal float GetParameterValue(int index) => _parameterValues[index];
+    // ---------- 参数读写转接（位姿合成器挂上来之后，参数读写走合成缓冲而不是直接读写 Core） ----------
 
+    private IParameterSink? _parameterSink;
+
+    /// <summary>挂 / 摘参数转接点（<c>null</c> = 直接读写 Core）。</summary>
+    internal void AttachParameterSink(IParameterSink? sink) => _parameterSink = sink;
+
+    /// <summary>绕过转接点直接读 Core 里的参数值（合成器回填 / 参数有效性探测用）。</summary>
+    internal float ReadCoreParameter(int index) => _parameterValues[index];
+
+
+    /// <summary>绕过转接点直接写 Core（合成器回填 / 参数有效性探测用；自动夹到 min~max）。</summary>
+    internal void WriteCoreParameter(int index, float value)
+    {
+        var parameter = Parameters[index];
+        if (value < parameter.Minimum) value = parameter.Minimum;
+        else if (value > parameter.Maximum) value = parameter.Maximum;
+        _parameterValues[index] = value;
+    }
+
+    /// <summary>读参数：有转接点走转接点（合成期读到的是「下面各层合成到现在的值」），否则读 Core。</summary>
+    internal float GetParameterValue(int index)
+        => _parameterSink is null ? _parameterValues[index] : _parameterSink.ReadParameter(index);
+
+    /// <summary>写参数：有转接点交给转接点（手动值 / 当前层输出），否则直接写 Core。</summary>
     internal void SetParameterValue(int index, float value)
     {
         // Core 要求参数值在 min ~ max 内（超界行为未定义），这里夹一下
         var parameter = Parameters[index];
         if (value < parameter.Minimum) value = parameter.Minimum;
         else if (value > parameter.Maximum) value = parameter.Maximum;
-        _parameterValues[index] = value;
+        if (_parameterSink is null)
+        {
+            _parameterValues[index] = value;
+            return;
+        }
+
+        _parameterSink.WriteParameter(index, value);
     }
 
     internal float GetPartOpacity(int index) => _partOpacities[index];
@@ -316,6 +345,19 @@ public sealed unsafe class CubismModel : IDisposable
         _model = IntPtr.Zero;
         if (_canvasBuffer != IntPtr.Zero) Marshal.FreeHGlobal(_canvasBuffer);
     }
+}
+
+/// <summary>
+/// 参数读写转接点：运行时的位姿合成器实现它，让「面板手动值」「各层输出」「物理直通」三种写入各有归宿。
+/// 挂上之后 <see cref="CubismParameter.Value"/> 的读写都经过这里（见 <c>Model/Control/PoseCompositor</c>）。
+/// </summary>
+public interface IParameterSink
+{
+    /// <summary>读参数当前值。</summary>
+    float ReadParameter(int index);
+
+    /// <summary>写参数（已经夹到 min~max）。</summary>
+    void WriteParameter(int index, float value);
 }
 
 /// <summary>一个模型参数（例如 <c>ParamAngleX</c>）。改 <see cref="Value"/> 后下一次 <see cref="CubismModel.Update"/> 生效。</summary>

@@ -1,4 +1,4 @@
-﻿using System.Runtime.InteropServices;
+using System.Runtime.InteropServices;
 using YuLiangToolkit.Tools.Live2D.Interop;
 
 namespace YuLiangToolkit.Tools.Live2D.Model;
@@ -185,9 +185,6 @@ internal sealed class InteractionController
 
     // ---------- 交互状态 ----------
 
-    private int[] _touchedIndices = new int[64];
-    private int _touchedCount;
-
     private bool _enabled = true;
     private bool _dragPhysicsEnabled = true;
     private bool _blocked;
@@ -299,11 +296,6 @@ internal sealed class InteractionController
 
     /// <summary>互动结束后的冷却（秒）；运行时的待机小动作 / 随机手势要等它归零。</summary>
     public double CooldownRemaining => _cooldownRemaining;
-
-    /// <summary>本帧写过的参数个数（运行时下一帧开头复位）。</summary>
-    public int TouchedCount => _touchedCount;
-
-    public int GetTouchedIndex(int index) => _touchedIndices[index];
 
     /// <summary>额头三态表情当前是否处于「非常态」（待机小动作以此判断别清掉用户表情）。</summary>
     public bool HasFaceExpression => _faceExpressionName is not null;
@@ -568,10 +560,10 @@ internal sealed class InteractionController
     /// 推进一帧：拖动物理衰减、捏脸跟随、抚摸摆头、定时反应包络。
     /// <paramref name="blocked"/> = 用户动作 / 表演 / 舞蹈进行中（此时不接受新的互动）；
     /// <paramref name="mocapFace"/> / <paramref name="speechActive"/> 用于参数优先级让位。
+    /// 参数写进本层（互动）的捕获缓冲，由位姿合成器混合；这一帧没写 = 互动层没有输出。
     /// </summary>
     public void Update(double deltaSeconds, bool blocked, bool mocapFace, bool speechActive)
     {
-        _touchedCount = 0;
         _blocked = blocked;
         _mocapFace = mocapFace;
         _speechActive = speechActive;
@@ -633,18 +625,6 @@ internal sealed class InteractionController
             _faceExpressionRemaining = 0;
             _faceCycleStep = 0;
         }
-    }
-
-    /// <summary>运行时下一帧开头复位「上一帧互动写过的参数」。</summary>
-    public void ResetTouched(CubismParameter[] parameters)
-    {
-        for (var i = 0; i < _touchedCount; i++)
-        {
-            var parameter = parameters[_touchedIndices[i]];
-            parameter.Value = parameter.DefaultValue;
-        }
-
-        _touchedCount = 0;
     }
 
     // ---------- 内部：按下 / 反应派发 ----------
@@ -947,8 +927,8 @@ internal sealed class InteractionController
 
         var leftSide = _pinchSide == "L";
         // 左右映射和外号相反（实测同参考项目）：左脸热区捏 → 鼓画面右半边（CheeckPuffR）
+        // （CheeckPuff2 实测无效已移除：参数有效性探测确认它不驱动画面）
         Write("CheeckPuff", magnitude);
-        Write("CheeckPuff2", magnitude * 0.6f);
         Write("CheeckPuffL", leftSide ? 0f : magnitude);
         Write("CheeckPuffR", leftSide ? magnitude : 0f);
         var wiggle = MathF.Sin(_pinchWigglePhase) * magnitude * 0.32f;
@@ -992,7 +972,7 @@ internal sealed class InteractionController
         Write("AngleZ", 4.5f * envelope * MathF.Sin(phase + 0.6f));
         Write("PositionX", 2.2f * envelope * wave);
         Write("PositionY", 1.4f * envelope * MathF.Cos(phase));
-        Write("ShoulderX", 2.0f * envelope * wave);
+        // ShoulderX 实测无效已移除（肩只跟 ShoulderY / Z）
         Write("ShoulderY", 1.4f * envelope * MathF.Sin(phase + 1.0f));
         Write("LArm", 0.28f * envelope * MathF.Sin(phase + 0.4f));
         Write("RArm", -0.28f * envelope * MathF.Sin(phase + 0.4f));
@@ -1044,7 +1024,6 @@ internal sealed class InteractionController
         var parameter = FindParameter(id);
         if (parameter is null) return;
         parameter.Value = Math.Clamp(value, parameter.Minimum, parameter.Maximum);
-        MarkTouched(parameter);
     }
 
     /// <summary>面部 / 头部参数：动捕有脸时让位（互动优先级低于动捕）；语音说话时嘴部参数也让位。</summary>
@@ -1064,7 +1043,6 @@ internal sealed class InteractionController
         var parameter = FindParameter(id);
         if (parameter is null) return;
         parameter.Value = Math.Clamp(parameter.Value + delta, parameter.Minimum, parameter.Maximum);
-        MarkTouched(parameter);
     }
 
     private static bool IsHeadOrEyeParameter(string id)
@@ -1132,16 +1110,6 @@ internal sealed class InteractionController
         _faceExpressionName = null;
         _faceExpressionRemaining = 0;
         _faceCycleStep = 0;
-    }
-
-    private void MarkTouched(CubismParameter parameter)
-    {
-        if (_touchedCount >= _touchedIndices.Length)
-        {
-            Array.Resize(ref _touchedIndices, _touchedIndices.Length * 2);
-        }
-
-        _touchedIndices[_touchedCount++] = parameter.Index;
     }
 
     private CubismParameter? FindParameter(string id)

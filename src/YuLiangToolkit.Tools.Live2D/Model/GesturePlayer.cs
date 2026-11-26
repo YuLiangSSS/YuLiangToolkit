@@ -1,4 +1,5 @@
 using YuLiangToolkit.Tools.Live2D.Interop;
+using YuLiangToolkit.Tools.Live2D.Model.Control;
 
 namespace YuLiangToolkit.Tools.Live2D.Model;
 
@@ -35,18 +36,24 @@ internal static class DemoMath
 }
 
 /// <summary>
-/// 手势播放器：作者原生手势（enter/exit 动作 + 保持姿势）+ 参数姿势（直接淡入保持）。
+/// 手势播放器：一段手势 = 一个「片段」（<see cref="Clip"/>），本层里最多同时有两段——
+/// 正在播的 <c>_current</c> 和被换掉的 <c>_outgoing</c>（0.25 秒淡出）。
 ///
-/// <para><b>原生手势</b>（同款模型作者留有动作）：先播 enter 动作（<see cref="MotionPlayer"/>，淡入 0.12s）；
-/// enter 播完后从 motion 曲线的末值提取「保持姿势」逐帧写入（因此在动作淡出前接住手臂，不会掉回 IDLE）；
-/// 切走时播 exit 动作，播完释放。</para>
+/// <para><b>原生手势</b>（作者留了进入 / 退出动作）的片段是个小状态机：</para>
+/// <list type="number">
+///   <item><b>Enter</b>：播作者 enter 动作。动作在临时捕获缓冲里求值，读到的「当前值」是下面各层合成好的姿势，
+///     所以淡入 = 从当前姿势过渡到动作姿势（<see cref="MotionPlayer"/> 自己的淡入权重）。</item>
+///   <item><b>Hold</b>：enter 播完，把 enter 曲线末值当保持姿势逐帧写（和动作最后一帧完全相等，无缝）。</item>
+///   <item><b>Exit</b>：先把「这段手势最后一帧的输出」（= 保持姿势 / 抬到一半的姿势）写进缓冲当起点，
+///     再播作者 exit 动作——exit 是从这个起点淡入的，不是从默认值。</item>
+///   <item>exit 播完 → 片段结束，本层不再有输出；合成器拿它最后一帧（exit 末姿势）按层的淡出时间交回待机。</item>
+/// </list>
 ///
-/// <para><b>参数姿势</b>（作者没留动作）：直接给 LArm/LForearm/LWrist/LHand、RArm/... 等参数目标值，
-/// 0.35 秒平滑淡入保持；停止时 0.25 秒淡出回默认。数值是保守初值（同款模型 -1~1、默认 0），
-/// 若 UI 侧觉得幅度不够可继续微调。</para>
+/// <para><b>参数姿势</b>（作者没留动作）：片段输出 = 目标值，权重 0.35 秒淡入、0.25 秒淡出。</para>
 ///
-/// <para><b>受管参数</b>：只在「这一帧真的写」的参数记录到 touched 下标；运行时下一帧开头复位它们，
-/// 手势停掉后不写、手动值即可保留（与 music / performance / dance 同一套机制）。</para>
+/// <para><b>收回不再抽搐</b>：旧实现把参数直接写进模型，靠「帧首复位 + 往保持姿势拉的交接 + 提前接回待机」
+/// 三个补丁凑连续性，任何一处时序错了手就先掉回默认再抬起来。现在每一拍的起点都是「上一拍真实的输出」，
+/// 由合成器按权重混合，没有「回到默认」这个中间状态。</para>
 /// </summary>
 internal sealed class GesturePlayer
 {
@@ -97,24 +104,24 @@ internal sealed class GesturePlayer
             new PoseTarget("RArm", 0.55f), new PoseTarget("RForearm", -0.95f),
             new PoseTarget("RWrist", 0.20f), new PoseTarget("ParamAngleY", -2f),
         },
-        // 抱头：双臂向外上方抬起 + 微微仰头 / 皱眉（模型手臂贴头幅度有限，靠头颈一起表现）
+        // 抱头：双臂向外上方抬起 + 微微仰头（模型手臂贴头幅度有限，靠头颈一起表现；
+        // BrowInnerUp 实测无效已移除——参数有效性探测确认它不驱动任何画面）
         new[]
         {
             new PoseTarget("LArm", 1.00f), new PoseTarget("LForearm", -0.60f),
             new PoseTarget("LWrist", -0.80f), new PoseTarget("LHand", -0.20f),
             new PoseTarget("RArm", 1.00f), new PoseTarget("RForearm", -0.60f),
             new PoseTarget("RWrist", 0.80f), new PoseTarget("RHand", -0.20f),
-            new PoseTarget("ParamAngleY", 5f), new PoseTarget("BrowInnerUp", 0.30f),
-            new PoseTarget("ParamAngleZ", 2f),
+            new PoseTarget("ParamAngleY", 5f), new PoseTarget("ParamAngleZ", 2f),
         },
-        // 放下手：全部回到自然垂手 / 正头
+        // 放下手：全部回到自然垂手 / 正头（ShoulderX 实测无效已移除）
         new[]
         {
             new PoseTarget("LArm", 0.10f), new PoseTarget("LForearm", 0.05f),
             new PoseTarget("LWrist", 0.0f), new PoseTarget("LHand", 0.0f), new PoseTarget("LHand2", 0.0f),
             new PoseTarget("RArm", 0.10f), new PoseTarget("RForearm", 0.05f),
             new PoseTarget("RWrist", 0.0f), new PoseTarget("RHand", 0.0f), new PoseTarget("RHand2", 0.0f),
-            new PoseTarget("ShoulderX", 0.0f), new PoseTarget("ShoulderY", 0.0f),
+            new PoseTarget("ShoulderY", 0.0f),
             new PoseTarget("ParamAngleY", 0f), new PoseTarget("ParamAngleZ", 0f),
         },
     };
@@ -168,15 +175,50 @@ internal sealed class GesturePlayer
         },
     };
 
-    private enum GesturePhase
+    private enum ClipPhase
     {
-        None,
         Enter,
         Hold,
         Exit,
-        PoseIn,
-        PoseHold,
-        PoseOut,
+        Pose,
+        Done,
+    }
+
+    /// <summary>一段手势（原生 = enter → hold → exit 状态机；参数姿势 = Pose + 权重淡入淡出）。</summary>
+    private sealed class Clip
+    {
+        public string Id = "";
+        public NativeGesture? Native;
+        public int PoseIndex = -1;
+        public ClipPhase Phase;
+
+        /// <summary>保持多久自动还原（≤ 0 = 一直保持到手动停止）。</summary>
+        public double AutoRestoreSeconds;
+
+        /// <summary>进入 Hold 后累计的保持时间（不含 enter）。</summary>
+        public double HoldElapsed;
+
+        /// <summary>参数姿势的线性权重（0→1 淡入 / 1→0 淡出）。</summary>
+        public float PoseWeight;
+
+        /// <summary>参数姿势是否正在淡出。</summary>
+        public bool Stopping;
+
+        /// <summary>保持姿势（enter 曲线末值）。</summary>
+        public CubismParameter?[] HoldParameters = Array.Empty<CubismParameter?>();
+        public float[] HoldValues = Array.Empty<float>();
+        public int HoldUsed;
+
+        /// <summary>退出动作的起点 = 这段手势最后一帧的输出（从 Hold 退出时就是保持姿势）。</summary>
+        public CubismParameter?[] ExitBaseParameters = Array.Empty<CubismParameter?>();
+        public float[] ExitBaseValues = Array.Empty<float>();
+        public int ExitBaseUsed;
+
+        /// <summary>参数姿势的目标（建片段时解析；参数不存在的位置为 null）。</summary>
+        public CubismParameter?[] PoseParameters = Array.Empty<CubismParameter?>();
+        public float[] PoseValues = Array.Empty<float>();
+
+        public readonly MotionPlayer Motions = new();
     }
 
     private const double EnterFadeSeconds = 0.12;
@@ -184,20 +226,13 @@ internal sealed class GesturePlayer
     private const double PoseFadeInSeconds = 0.35;
     private const double PoseFadeOutSeconds = 0.25;
 
-    /// <summary>Exit 动作开头把参数继续往「保持姿势」上拉的交接时长（拉力线性衰减到 0）。
-    /// 没有这段：受管复位会在 exit 动作写入前先把保持姿势抹成默认 → 手瞬跳回默认（闪一下）。</summary>
-    private const double ExitHandoverSeconds = 0.15;
-
-    /// <summary>Exit 动作结束前多久让待机动作交叉淡入接回（= 待机重启的淡入时长）。
-    /// 没有这一步：exit 动作播完瞬间受管复位会把 Param56（手部网格切换）从 1 砸到默认 0 → 网格硬切闪一下。
-    /// 作者的设计是让待机动作的 Param56 曲线在淡入过程中把它平滑 Blend 回去。</summary>
-    private const double IdleHandbackSeconds = 0.3;
+    /// <summary>被换掉的旧手势淡出时间（新手势的 enter / 淡入压在它上面交叉淡化）。</summary>
+    private const double OutgoingFadeSeconds = 0.25;
 
     private readonly CubismModel _model;
+    private readonly PoseCompositor _pose;
     private readonly Func<string, MotionEntry?> _findMotionEntry;
     private readonly Func<MotionEntry, Motion3Data?> _findMotionData;
-    private readonly Action<MotionEntry, Motion3Data, double, double> _playMotion;
-    private readonly Action<double> _stopMotion;
 
     /// <summary>参数姿势解析好的目标（加载时一次；参数不存在的目标直接丢掉）。</summary>
     private readonly CubismParameter?[][] _paramPoseParameters;
@@ -206,45 +241,26 @@ internal sealed class GesturePlayer
 
     private readonly Dictionary<string, float> _finalValueScratch = new(24);
 
-    private string? _activeId;
-    private GesturePhase _phase;
-    private double _phaseTimer;
-    private double _phaseDuration;
+    /// <summary>两段手势各自的捕获缓冲（复用，稳态 0 分配）。</summary>
+    private readonly PoseCapture _currentCapture;
+    private readonly PoseCapture _outgoingCapture;
 
-    /// <summary>摆好姿势后还要保持多少秒自动还原（&lt;= 0 = 一直保持，直到手动停止）。</summary>
-    private double _autoRestoreAfterHoldSeconds;
-
-    /// <summary>进入 Hold / PoseHold 后累计的保持时间（只在姿势真正摆好后计时，不含 enter / 淡入）。</summary>
-    private double _holdElapsedSeconds;
-
-    /// <summary>Exit 是否从 Hold 姿势发起（决定要不要做「往保持姿势拉」的交接；从 Enter 中途停的不拉）。</summary>
-    private bool _exitFromHold;
-
-    /// <summary>是否已经把「接回待机」的交叉淡化触发过了（只触发一次）。</summary>
-    private bool _handbackDone;
-
-    private CubismParameter?[] _holdParameters = Array.Empty<CubismParameter?>();
-    private float[] _holdValues = Array.Empty<float>();
-
-    private CubismParameter?[] _poseParameters = Array.Empty<CubismParameter?>();
-    private float[] _poseValues = Array.Empty<float>();
-    private float _poseWeight;
-
-    private int[] _touchedIndices = new int[48];
-    private int _touchedCount;
+    private Clip? _current;
+    private Clip? _outgoing;
+    private float _outgoingWeight;
 
     public GesturePlayer(
         CubismModel model,
+        PoseCompositor pose,
         Func<string, MotionEntry?> findMotionEntry,
-        Func<MotionEntry, Motion3Data?> findMotionData,
-        Action<MotionEntry, Motion3Data, double, double> playMotion,
-        Action<double> stopMotion)
+        Func<MotionEntry, Motion3Data?> findMotionData)
     {
         _model = model;
+        _pose = pose;
         _findMotionEntry = findMotionEntry;
         _findMotionData = findMotionData;
-        _playMotion = playMotion;
-        _stopMotion = stopMotion;
+        _currentCapture = new PoseCapture(model.ParameterCount);
+        _outgoingCapture = new PoseCapture(model.ParameterCount);
 
         _paramPoseParameters = new CubismParameter?[ParamPoseTargets.Length][];
         _paramPoseValues = new float[ParamPoseTargets.Length][];
@@ -267,74 +283,39 @@ internal sealed class GesturePlayer
     /// <summary>手势 id 是否存在（中文名 / jingyu 英文名都行）。</summary>
     public bool IsKnownId(string? id) => NormalizeId(id) is not null;
 
-    /// <summary>
-    /// 该手势是否正在播（Enter / Hold 阶段；退出动作播放期间不算——那时重新 Play 会重新抬手）。
-    /// 用于运行时判断「同一手势重复触发」：这种情况下不能停当前动作 / 重播 enter，
-    /// 否则正在抬手的 enter 动作会被杀掉，Hold 一到就瞬移到末帧姿势。
-    /// </summary>
+    /// <summary>该手势是否正在播（enter / hold / 参数姿势淡入保持中；退出动作播放期间不算）。</summary>
     public bool IsActive(string? id)
     {
         var normalized = NormalizeId(id);
-        if (normalized is null) return false;
-        return string.Equals(_activeId, normalized, StringComparison.Ordinal)
-            && _phase is GesturePhase.Enter or GesturePhase.Hold
-                or GesturePhase.PoseIn or GesturePhase.PoseHold;
+        if (normalized is null || _current is null) return false;
+        if (!string.Equals(_current.Id, normalized, StringComparison.Ordinal)) return false;
+        return _current.Phase is ClipPhase.Enter or ClipPhase.Hold || (_current.Phase == ClipPhase.Pose && !_current.Stopping);
     }
 
     public IReadOnlyList<string> Ids => GestureIdList;
 
-    /// <summary>当前手势 id（没有为 null；退出动作播放期间也算 null）。</summary>
-    public string? ActiveId => _activeId;
+    /// <summary>
+    /// 当前手势 id（没有为 null）。退出动作播放期间也算 null：那时的语义是「手势已经停了、正在收回」，
+    /// 再点同一个手势会重新开始，互动的「竖食指 ⇄ 放下手」切换也靠它判断。
+    /// </summary>
+    public string? ActiveId => _current is { Phase: ClipPhase.Enter or ClipPhase.Hold or ClipPhase.Pose } clip
+        ? clip.Id
+        : null;
 
-    /// <summary>是否还在播手势（含 enter / hold / 退出 / 参数淡入淡出）。</summary>
-    public bool HasActive => _activeId is not null || _phase is GesturePhase.Enter or GesturePhase.Hold or GesturePhase.Exit
-        or GesturePhase.PoseIn or GesturePhase.PoseHold or GesturePhase.PoseOut;
+    /// <summary>是否还在播手势（含退出动作 / 被换掉的旧手势淡出）。</summary>
+    public bool HasActive => _current is not null || _outgoing is not null;
 
     /// <summary>姿势是否已经摆好（enter 播完 / 参数淡入完成），自动还原从这一刻开始计时。</summary>
-    public bool IsHolding => _phase is GesturePhase.Hold or GesturePhase.PoseHold;
+    public bool IsHolding => _current is { Phase: ClipPhase.Hold }
+                             || (_current is { Phase: ClipPhase.Pose, Stopping: false } && _current.PoseWeight >= 1);
 
     /// <summary>
-    /// Exit 动作临近结束、应该让待机动作交叉淡入接回的瞬间（只触发一次）。
-    /// 运行时在这个时刻 Play 待机：MotionPlayer 的交叉淡化会让待机压着还在播的 exit 动作淡入，
-    /// Param56（手部网格切换）这类「曲线末值不是默认值」的参数由待机淡入平滑 Blend 回去——
-    /// 否则 exit 播完瞬间受管复位会把它们砸到默认值（网格硬切闪一下）。
-    /// </summary>
-    public bool ShouldHandBackToIdle
-    {
-        get
-        {
-            if (_phase != GesturePhase.Exit || _handbackDone) return false;
-            if (_phaseDuration - _phaseTimer > IdleHandbackSeconds) return false;
-            _handbackDone = true;
-            return true;
-        }
-    }
-
-    /// <summary>
-    /// 原生手势的 Enter / Hold 阶段：enter 动作已播完、姿势由 WriteHold 每帧钉住时，
-    /// 待机动作**不应**接管 —— 待机的 21 条曲线会和保持姿势打架（手臂被拽回默认姿势，
-    /// 看起来像「狗尾草先收回一次再回到手上」）。退出阶段（Exit）正常播退动作，不受此开关影响。
-    /// </summary>
-    public bool SuppressIdleMotion
-        => _phase is GesturePhase.Enter or GesturePhase.Hold
-           && _activeId is not null
-           && FindNative(_activeId) is not null;
-
-    /// <summary>当前手势是否配置了「保持若干秒后自动还原」（自检 / 调试观察用）。</summary>
-    public bool HasAutoRestore => _autoRestoreAfterHoldSeconds > 0;
-
-    /// <summary>本帧写过的参数个数（运行时下一帧开头复位）。</summary>
-    public int TouchedCount => _touchedCount;
-
-    public int GetTouchedIndex(int index) => _touchedIndices[index];
-
-    /// <summary>
-    /// 播一个手势（id 用中文名或 jingyu 的英文名都行）。
-    /// <paramref name="stopMotionFirst"/>：true = 先停当前动作（用户点手势时用；表演内部触发的 gesture 传 false）。
+    /// 播一个手势。
     /// <paramref name="autoRestoreAfterHoldSeconds"/>：摆好姿势后保持多少秒自动播退出动作还原（&lt;= 0 = 手动停止）。
     /// 计时从 enter 动作播完 / 参数姿势淡入完成之后开始，所以不会把「抬手的过程」算进保持时间。
+    /// 同一手势重复触发只刷新保持计时（不重播 enter）；换手势 = 旧的 0.25 秒淡出、新的照常进入。
     /// </summary>
-    public bool Play(string id, bool stopMotionFirst, double autoRestoreAfterHoldSeconds = 0)
+    public bool Play(string id, double autoRestoreAfterHoldSeconds = 0)
     {
         var normalized = NormalizeId(id);
         if (normalized is null) return false;
@@ -342,331 +323,272 @@ internal sealed class GesturePlayer
         var autoRestore = double.IsFinite(autoRestoreAfterHoldSeconds)
             ? Math.Clamp(autoRestoreAfterHoldSeconds, 0, 60)
             : 0;
-        if (string.Equals(_activeId, normalized, StringComparison.Ordinal))
+        if (IsActive(normalized))
         {
-            // 再点同一个手势：如果这次要求限时，就重置保持计时（便于「再点一下续 3 秒」）。
             if (autoRestore > 0)
             {
-                _autoRestoreAfterHoldSeconds = autoRestore;
-                _holdElapsedSeconds = 0;
+                _current!.AutoRestoreSeconds = autoRestore;
+                _current.HoldElapsed = 0;
             }
 
             return true;
         }
 
-        // 换手势：先把手势自身状态清掉（不播退出动作，直接切）
-        ReleaseHold();
-        _poseWeight = 0;
-        _autoRestoreAfterHoldSeconds = autoRestore;
-        _holdElapsedSeconds = 0;
-        _exitFromHold = false;
-        _handbackDone = false;
+        var clip = CreateClip(normalized, autoRestore);
+        if (clip is null) return false;
 
-        var native = FindNative(normalized);
+        // 正在退出的那段也当旧手势一起淡出；已经有一段旧手势在淡出就直接丢掉（它的权重本来就 < 1）
+        _outgoing = _current;
+        _outgoingWeight = 1;
+        _current = clip;
+        return true;
+    }
+
+    /// <summary>停止手势：原生手势播退出动作（从当前保持姿势起笔）；参数姿势 0.25 秒淡出回待机。</summary>
+    public void Stop()
+    {
+        var clip = _current;
+        if (clip is null) return;
+        switch (clip.Phase)
+        {
+            case ClipPhase.Enter or ClipPhase.Hold:
+                BeginExit(clip);
+                return;
+            case ClipPhase.Pose when !clip.Stopping:
+                clip.Stopping = true;
+                return;
+        }
+    }
+
+    /// <summary>立即释放（不播退出动作）：本层下一帧起没有输出，合成器拿最后一帧姿势按层的淡出时间交回。</summary>
+    public void StopImmediate()
+    {
+        _current = null;
+        _outgoing = null;
+        _outgoingWeight = 0;
+    }
+
+    /// <summary>推进一帧（在位姿合成期、本层的捕获里调用）：旧手势淡出 → 当前手势求值 → 按权重混进本层。</summary>
+    public void Update(double deltaSeconds, IReadOnlyList<string>? eyeBlinkParameterIds,
+        IReadOnlyList<string>? lipSyncParameterIds)
+    {
+        if (_outgoing is not null)
+        {
+            _outgoingWeight -= (float)(deltaSeconds / OutgoingFadeSeconds);
+            if (_outgoingWeight <= 0)
+            {
+                _outgoing = null;
+                _outgoingWeight = 0;
+            }
+            else
+            {
+                EvaluateClip(_outgoing, deltaSeconds, _outgoingCapture, eyeBlinkParameterIds, lipSyncParameterIds);
+                _pose.BlendIntoCurrent(_outgoingCapture, DemoMath.SmoothStep(_outgoingWeight));
+            }
+        }
+
+        var clip = _current;
+        if (clip is null) return;
+
+        EvaluateClip(clip, deltaSeconds, _currentCapture, eyeBlinkParameterIds, lipSyncParameterIds);
+
+        // 原生手势：进入 / 退出动作自带淡入，整段权重恒为 1；参数姿势：按自己的淡入淡出权重混
+        var weight = clip.Native is not null ? 1f : DemoMath.SmoothStep(clip.PoseWeight);
+        _pose.BlendIntoCurrent(_currentCapture, weight);
+
+        if (clip.Phase == ClipPhase.Done) _current = null;
+    }
+
+    // ---------------- 片段求值 ----------------
+
+    private void EvaluateClip(Clip clip, double deltaSeconds, PoseCapture capture,
+        IReadOnlyList<string>? eyeBlinkParameterIds, IReadOnlyList<string>? lipSyncParameterIds)
+    {
+        _pose.CaptureTemporary(capture, () =>
+        {
+            switch (clip.Phase)
+            {
+                case ClipPhase.Enter:
+                    clip.Motions.Update(_model, deltaSeconds, eyeBlinkParameterIds, lipSyncParameterIds);
+                    if (clip.Motions.HasActive) return;
+                    // enter 的最后一帧 = 曲线末值；下一帧起由保持姿势原样接住
+                    clip.Phase = ClipPhase.Hold;
+                    clip.HoldElapsed = 0;
+                    WriteHold(clip);
+                    return;
+
+                case ClipPhase.Hold:
+                    WriteHold(clip);
+                    clip.HoldElapsed += deltaSeconds;
+                    if (clip.AutoRestoreSeconds > 0 && clip.HoldElapsed >= clip.AutoRestoreSeconds)
+                        BeginExit(clip);
+                    return;
+
+                case ClipPhase.Exit:
+                    WriteExitBase(clip);
+                    clip.Motions.Update(_model, deltaSeconds, eyeBlinkParameterIds, lipSyncParameterIds);
+                    if (!clip.Motions.HasActive) clip.Phase = ClipPhase.Done;
+                    return;
+
+                case ClipPhase.Pose:
+                    if (clip.Stopping)
+                    {
+                        clip.PoseWeight -= (float)(deltaSeconds / PoseFadeOutSeconds);
+                        if (clip.PoseWeight <= 0)
+                        {
+                            clip.PoseWeight = 0;
+                            clip.Phase = ClipPhase.Done;
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        clip.PoseWeight += (float)(deltaSeconds / PoseFadeInSeconds);
+                        if (clip.PoseWeight > 1) clip.PoseWeight = 1;
+                    }
+
+                    WritePoseTargets(clip);
+                    return;
+            }
+        });
+    }
+
+    private void WriteHold(Clip clip)
+    {
+        for (var i = 0; i < clip.HoldUsed; i++)
+        {
+            var parameter = clip.HoldParameters[i];
+            if (parameter is not null) parameter.Value = clip.HoldValues[i];
+        }
+    }
+
+    private void WriteExitBase(Clip clip)
+    {
+        for (var i = 0; i < clip.ExitBaseUsed; i++)
+        {
+            var parameter = clip.ExitBaseParameters[i];
+            if (parameter is not null) parameter.Value = clip.ExitBaseValues[i];
+        }
+    }
+
+    private void WritePoseTargets(Clip clip)
+    {
+        var parameters = clip.PoseParameters;
+        var values = clip.PoseValues;
+        for (var i = 0; i < parameters.Length; i++)
+        {
+            var parameter = parameters[i];
+            if (parameter is not null) parameter.Value = values[i];
+        }
+    }
+
+    /// <summary>
+    /// 开始退出：把这段手势「最后一帧的输出」存成退出动作的起点，再播作者的 exit 动作。
+    /// 起点取自本段上一帧的捕获缓冲（Hold = 保持姿势；Enter 中途 = 抬到一半的姿势），
+    /// exit 动作从这个起点淡入——这就是收回不抽搐的关键。
+    /// </summary>
+    private void BeginExit(Clip clip)
+    {
+        if (clip.Native is null)
+        {
+            clip.Stopping = true;
+            return;
+        }
+
+        var source = ReferenceEquals(clip, _current) ? _currentCapture : _outgoingCapture;
+        var count = source.WrittenCount;
+        if (clip.ExitBaseParameters.Length < count)
+        {
+            clip.ExitBaseParameters = new CubismParameter?[count];
+            clip.ExitBaseValues = new float[count];
+        }
+
+        var parameters = _model.Parameters;
+        for (var i = 0; i < count; i++)
+        {
+            var index = source.Written[i];
+            clip.ExitBaseParameters[i] = parameters[index];
+            clip.ExitBaseValues[i] = source.Scratch[index];
+        }
+
+        clip.ExitBaseUsed = count;
+
+        var entry = _findMotionEntry(clip.Native.ExitMotionName);
+        var data = entry is null ? null : _findMotionData(entry);
+        if (entry is null || data is null)
+        {
+            // 没有退出动作：本层不再输出，合成器拿保持姿势按层的淡出时间交回待机
+            clip.Phase = ClipPhase.Done;
+            return;
+        }
+
+        clip.Motions.Clear();
+        clip.Motions.Play(_model, entry, data, loop: false, ExitFadeSeconds, 0);
+        clip.Phase = ClipPhase.Exit;
+    }
+
+    // ---------------- 建片段 ----------------
+
+    private Clip? CreateClip(string id, double autoRestore)
+    {
+        var native = FindNative(id);
         if (native is not null)
         {
             var entry = _findMotionEntry(native.EnterMotionName);
             var data = entry is null ? null : _findMotionData(entry);
             if (entry is not null && data is not null)
             {
-                if (stopMotionFirst) _stopMotion(EnterFadeSeconds);
-                BuildHoldFromMotion(data);
-                // enter 动作末尾不做淡出削弱（fadeOut=0）：播完保持最后一帧原样，
-                // 由 Hold 姿势无缝接管 —— 否则最后 0.3 秒姿势往默认值回落，看起来像「先收回一次」。
-                _playMotion(entry, data, EnterFadeSeconds, 0);
-                _activeId = normalized;
-                _phase = GesturePhase.Enter;
-                _phaseTimer = 0;
-                _phaseDuration = data.Duration;
-                return true;
+                var clip = new Clip { Id = id, Native = native, AutoRestoreSeconds = autoRestore, Phase = ClipPhase.Enter };
+                BuildHoldFromMotion(clip, data);
+                clip.Motions.Play(_model, entry, data, loop: false, EnterFadeSeconds, 0);
+                return clip;
             }
 
             // enter 动作缺失 → 参数姿势兜底（直接淡入保持）
-            StartPose(normalized, native.FallbackTargets, stopMotionFirst);
-            return true;
-        }
-
-        var poseIndex = FindParamPoseIndex(normalized);
-        if (poseIndex < 0) return false;
-        StartPose(normalized, ParamPoseTargets[poseIndex], stopMotionFirst, poseIndex);
-        return true;
-    }
-
-    /// <summary>停止手势：原生手势播退出动作；参数姿势 0.25 秒淡出回默认。</summary>
-    public void Stop()
-    {
-        _autoRestoreAfterHoldSeconds = 0;
-        _holdElapsedSeconds = 0;
-        if (_activeId is null && _phase == GesturePhase.None) return;
-        if (_phase == GesturePhase.Enter || _phase == GesturePhase.Hold)
-        {
-            var native = FindNative(_activeId!);
-            if (native is not null)
+            var fallbackParameters = new CubismParameter?[native.FallbackTargets.Length];
+            var fallbackValues = new float[native.FallbackTargets.Length];
+            for (var i = 0; i < native.FallbackTargets.Length; i++)
             {
-                var entry = _findMotionEntry(native.ExitMotionName);
-                var data = entry is null ? null : _findMotionData(entry);
-                if (entry is not null && data is not null)
-                {
-                    // 不在这里 ReleaseHold：Exit 开头的交接期还要拿保持姿势做「往姿势拉」的衰减衔接
-                    // （受管复位会把姿势抹成默认，没有这段衔接手会瞬跳回默认）
-                    _exitFromHold = _phase == GesturePhase.Hold;
-                    _handbackDone = false;
-                    // exit 动作末尾同样不淡出：收回动画完整播完，最后由待机淡入接回
-                    _playMotion(entry, data, ExitFadeSeconds, 0);
-                    _activeId = null;
-                    _phase = GesturePhase.Exit;
-                    _phaseTimer = 0;
-                    _phaseDuration = data.Duration;
-                    return;
-                }
+                fallbackParameters[i] = _model.FindParameter(native.FallbackTargets[i].Id);
+                fallbackValues[i] = native.FallbackTargets[i].Value;
             }
 
-            // 参数姿势 / 兜底：淡出
-            _exitFromHold = false;
-            _handbackDone = false;
-            ReleaseHold();
-            _activeId = null;
-            _phase = GesturePhase.PoseOut;
-            return;
+            return CreatePoseClip(id, fallbackParameters, fallbackValues, -1, autoRestore);
         }
 
-        // 已经在退出：保持退出动作
-        if (_phase == GesturePhase.Exit) return;
-
-        // 参数姿势淡入中 / 淡出中：转到淡出
-        if (_phase is GesturePhase.PoseIn or GesturePhase.PoseHold)
-        {
-            _exitFromHold = false;
-            _handbackDone = false;
-            _activeId = null;
-            _phase = GesturePhase.PoseOut;
-        }
-        else if (_phase == GesturePhase.PoseOut)
-        {
-            _activeId = null;
-        }
+        var poseIndex = FindParamPoseIndex(id);
+        if (poseIndex < 0) return null;
+        return CreatePoseClip(id, _paramPoseParameters[poseIndex], _paramPoseValues[poseIndex], poseIndex, autoRestore);
     }
 
-    /// <summary>立即释放（停所有演示时用；不播退出动作）。</summary>
-    public void StopImmediate()
-    {
-        ReleaseHold();
-        _poseWeight = 0;
-        _activeId = null;
-        _phase = GesturePhase.None;
-        _autoRestoreAfterHoldSeconds = 0;
-        _holdElapsedSeconds = 0;
-        _exitFromHold = false;
-        _handbackDone = false;
-    }
-
-    /// <summary>推进一帧：写保持姿势 / 参数姿势（在动作更新之后调用，覆盖 IDLE 的手臂曲线）。</summary>
-    public void Update(double deltaSeconds)
-    {
-        _touchedCount = 0;
-        switch (_phase)
+    private static Clip CreatePoseClip(string id, CubismParameter?[] parameters, float[] values, int poseIndex,
+        double autoRestore)
+        => new()
         {
-            case GesturePhase.None:
-                return;
-
-            case GesturePhase.Enter:
-                _phaseTimer += deltaSeconds;
-                if (_phaseTimer < _phaseDuration) return;
-                _phase = GesturePhase.Hold;
-                _phaseTimer = 0;
-                _holdElapsedSeconds = 0;
-                return;
-
-            case GesturePhase.Hold:
-                WriteHold();
-                TickAutoRestore(deltaSeconds);
-                return;
-
-            case GesturePhase.Exit:
-                _phaseTimer += deltaSeconds;
-
-                // 交接期：把参数继续往「保持姿势」上拉（拉力线性衰减到 0）。
-                // exit 曲线本身就是从保持姿势起笔的，这段只负责顶住受管复位、
-                // 让曲线无缝从保持姿势接管；拉力归零后释放保持数据。
-                if (_exitFromHold && _holdUsed > 0)
-                {
-                    if (_phaseTimer < ExitHandoverSeconds)
-                    {
-                        var pull = 1f - (float)(_phaseTimer / ExitHandoverSeconds);
-                        for (var i = 0; i < _holdUsed; i++)
-                        {
-                            var parameter = _holdParameters[i];
-                            if (parameter is null) continue;
-                            parameter.Value += (_holdValues[i] - parameter.Value) * pull;
-                            MarkTouched(parameter);
-                        }
-                    }
-                    else
-                    {
-                        ReleaseHold();
-                        _exitFromHold = false;
-                    }
-                }
-
-                if (_phaseTimer >= _phaseDuration + ExitFadeSeconds + 0.02)
-                {
-                    _phase = GesturePhase.None;
-                    ReleaseHold();
-                    _exitFromHold = false;
-                }
-                return;
-
-            case GesturePhase.PoseIn:
-                _poseWeight += (float)(deltaSeconds / PoseFadeInSeconds);
-                if (_poseWeight >= 1)
-                {
-                    _poseWeight = 1;
-                    _phase = GesturePhase.PoseHold;
-                    _holdElapsedSeconds = 0;
-                }
-
-                WritePose(_poseWeight);
-                return;
-
-            case GesturePhase.PoseHold:
-                WritePose(1f);
-                TickAutoRestore(deltaSeconds);
-                return;
-
-            case GesturePhase.PoseOut:
-                _poseWeight -= (float)(deltaSeconds / PoseFadeOutSeconds);
-                if (_poseWeight <= 0)
-                {
-                    _poseWeight = 0;
-                    _phase = GesturePhase.None;
-                    return;
-                }
-
-                WritePose(_poseWeight);
-                return;
-        }
-    }
-
-    /// <summary>
-    /// 姿势保持计时：只在 Hold / PoseHold 推进，到点调 <see cref="Stop"/> 播作者退出动作或淡出。
-    /// 自动还原本身也走正常退出过渡，所以狗尾草会「收回去」而不是瞬间消失。
-    /// </summary>
-    private void TickAutoRestore(double deltaSeconds)
-    {
-        if (_autoRestoreAfterHoldSeconds <= 0) return;
-        _holdElapsedSeconds += Math.Max(0, deltaSeconds);
-        if (_holdElapsedSeconds < _autoRestoreAfterHoldSeconds) return;
-        Stop();
-    }
-
-    /// <summary>运行时下一帧开头复位「上一帧手势写过的参数」。</summary>
-    public void ResetTouched(CubismParameter[] parameters)
-    {
-        for (var i = 0; i < _touchedCount; i++)
-        {
-            var parameter = parameters[_touchedIndices[i]];
-            parameter.Value = parameter.DefaultValue;
-        }
-
-        _touchedCount = 0;
-    }
-
-    private void StartPose(string id, PoseTarget[] targets, bool stopMotionFirst, int poseIndex = -1)
-    {
-        if (stopMotionFirst) _stopMotion(EnterFadeSeconds);
-        if (poseIndex >= 0)
-        {
-            _poseParameters = _paramPoseParameters[poseIndex];
-            _poseValues = _paramPoseValues[poseIndex];
-        }
-        else
-        {
-            BuildPoseFromTargets(targets);
-        }
-
-        _poseWeight = 0;
-        _activeId = id;
-        _phase = GesturePhase.PoseIn;
-        _phaseTimer = 0;
-    }
-
-    /// <summary>把参数目标解析成数组（enter 动作缺失时的兜底；手势开始才调一次）。</summary>
-    private void BuildPoseFromTargets(PoseTarget[] targets)
-    {
-        var parameters = new CubismParameter?[targets.Length];
-        var values = new float[targets.Length];
-        for (var i = 0; i < targets.Length; i++)
-        {
-            parameters[i] = _model.FindParameter(targets[i].Id);
-            values[i] = targets[i].Value;
-        }
-
-        _poseParameters = parameters;
-        _poseValues = values;
-    }
+            Id = id,
+            PoseIndex = poseIndex,
+            PoseParameters = parameters,
+            PoseValues = values,
+            AutoRestoreSeconds = autoRestore,
+            Phase = ClipPhase.Pose,
+        };
 
     /// <summary>从 enter 动作数据提取保持姿势（曲线末值 → 参数引用数组；手势开始才调一次）。</summary>
-    private void BuildHoldFromMotion(Motion3Data data)
+    private void BuildHoldFromMotion(Clip clip, Motion3Data data)
     {
         data.CollectFinalParameterValues(_finalValueScratch);
         var count = _finalValueScratch.Count;
-        if (_holdParameters.Length < count)
-        {
-            _holdParameters = new CubismParameter?[count];
-            _holdValues = new float[count];
-        }
-
+        clip.HoldParameters = new CubismParameter?[count];
+        clip.HoldValues = new float[count];
         var used = 0;
         foreach (var pair in _finalValueScratch)
         {
-            _holdParameters[used] = _model.FindParameter(pair.Key);
-            _holdValues[used] = pair.Value;
+            clip.HoldParameters[used] = _model.FindParameter(pair.Key);
+            clip.HoldValues[used] = pair.Value;
             used++;
         }
 
-        for (var i = used; i < _holdParameters.Length; i++) _holdParameters[i] = null;
-        _holdUsed = used;
-    }
-
-    private int _holdUsed;
-
-    private void WriteHold()
-    {
-        for (var i = 0; i < _holdUsed; i++)
-        {
-            var parameter = _holdParameters[i];
-            if (parameter is null) continue;
-            parameter.Value = _holdValues[i];
-            MarkTouched(parameter);
-        }
-    }
-
-    private void WritePose(float weight)
-    {
-        var smooth = DemoMath.SmoothStep(weight);
-        for (var i = 0; i < _poseParameters.Length; i++)
-        {
-            var parameter = _poseParameters[i];
-            if (parameter is null) continue;
-            parameter.Value = DemoMath.BlendFromDefault(parameter, _poseValues[i], smooth);
-            MarkTouched(parameter);
-        }
-    }
-
-    private void ReleaseHold()
-    {
-        _holdUsed = 0;
-        if (_holdParameters.Length > 0) Array.Clear(_holdParameters);
-    }
-
-    private void MarkTouched(CubismParameter parameter)
-    {
-        if (_touchedCount >= _touchedIndices.Length)
-        {
-            Array.Resize(ref _touchedIndices, _touchedIndices.Length * 2);
-        }
-
-        _touchedIndices[_touchedCount++] = parameter.Index;
+        clip.HoldUsed = used;
     }
 
     private static string? NormalizeId(string? id)

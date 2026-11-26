@@ -2265,11 +2265,11 @@ internal static class Live2DChecks
                 Near(Param("ParamMouthOpenY"), 0.25, 1e-2),
                 $"嘴={Param("ParamMouthOpenY"):0.###}");
 
-            // 关闭动捕 → 过渡帧复位一次（回到默认），之后手动值可保留
+            // 关闭动捕 → 动捕层立刻让位，嘴交回下面的手动值（之前手调的 0.8），不会停在动捕值 0.25
             runtime.MocapEnabled = false;
             TickFrames(1);
-            C("受管参数动态化：关闭动捕的那一帧把参数组复位一次（嘴回默认 0，不会停在动捕值）",
-                Near(Param("ParamMouthOpenY"), 0, 1e-3),
+            C("受管参数动态化：关闭动捕的那一帧就交回手动值（嘴 = 手调 0.8，不会停在动捕值 0.25）",
+                Near(Param("ParamMouthOpenY"), 0.8, 1e-3),
                 $"嘴={Param("ParamMouthOpenY"):0.###}");
             if (mouthParam is not null) mouthParam.Value = 0.55f;
             TickFrames(5);
@@ -2570,14 +2570,17 @@ internal static class Live2DChecks
             Action refreshInstrumental = () => fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.Instrumental,
                 mouthOpen: 0.8, mouthForm: 0.4, beatPhase: 0.25, beatStrength: 1.0, bpm: 120);
             SettleLean(180, refreshInstrumental); // 3 秒
+            // 纯音乐不跟唱：采样期间嘴型不该被音乐改写。起点是之前手动设的值（位姿合成后手动值会一直保留，
+            // 不再被「关掉某个驱动就整组复位」清掉），所以断言「采样前后嘴型不变」而不是写死 0。
+            var mouthBeforeInstrumental = Param("ParamMouthOpenY");
             var musicInstrumentalLean = SampleLean(360, refreshInstrumental); // 6 秒
             var instrumentalLeanPeriod = EstimateLeanPeriod(musicInstrumentalLean);
             var instrumentalLeanAmplitude = musicInstrumentalLean.Max(s => Math.Abs(s.Deg));
             C("整身轻倾：音乐播放（纯音乐）→ 周期加快到 ≈2.6 秒、幅度 ≈1.0°，嘴保持 0",
                 instrumentalLeanPeriod is >= 2.2 and <= 3.0
                 && instrumentalLeanAmplitude is >= 0.85f and <= 1.15f
-                && Near(Param("ParamMouthOpenY"), 0, 1e-3),
-                $"周期={instrumentalLeanPeriod:0.###}s 幅度={instrumentalLeanAmplitude:0.###}° 嘴={Param("ParamMouthOpenY"):0.###}");
+                && Near(Param("ParamMouthOpenY"), mouthBeforeInstrumental, 1e-3),
+                $"周期={instrumentalLeanPeriod:0.###}s 幅度={instrumentalLeanAmplitude:0.###}° 嘴={Param("ParamMouthOpenY"):0.###}（采样前 {mouthBeforeInstrumental:0.###}）");
 
             // 音乐播放（带歌词）→ 嘴动 + lean 同样加快
             Action refreshVocal = () => fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.VocalSong,
@@ -2763,7 +2766,7 @@ internal static class Live2DChecks
                 {
                     ("LArm", 1.00f), ("LForearm", -0.60f), ("LWrist", -0.80f), ("LHand", -0.20f),
                     ("RArm", 1.00f), ("RForearm", -0.60f), ("RWrist", 0.80f), ("RHand", -0.20f),
-                    ("ParamAngleY", 5f), ("BrowInnerUp", 0.30f), ("ParamAngleZ", 2f),
+                    ("ParamAngleY", 5f), ("ParamAngleZ", 2f),
                 }),
             };
             foreach (var (gesture, targets) in poseGestures)
@@ -3054,6 +3057,278 @@ internal static class Live2DChecks
             C("待机随机手势：狗尾草保持约 2.5 秒后自动播退出动作、参数回默认", idleGrassRestored,
                 $"active={runtime.ActiveGesture ?? "null"} Param39={Param("Param39"):0.###} " +
                 $"Param41={Param("Param41"):0.###} Movement1={Param("Movement1"):0.###}");
+
+            // ---------------- L2. 收回动作连续性（「收回时抽一下」回归测试） ----------------
+            // 操控层重做成位姿合成：每一拍的起点都是上一拍的真实输出。收回 = 从保持姿势交叉淡化到作者退出动作，
+            // 再拿退出末姿势淡出、露出下面的待机动作——全程没有「先回默认值」这个中间状态。
+            // 旧实现收回的第一帧参数先被复位成默认、再被「往保持姿势拉」的补丁拽回来，逐帧看就是先掉一截再弹回；
+            // 退出播完那一刻 Param56（手部网格切换）还会从 1 砸到默认 0 再被待机淡入拉走（网格硬切闪一下）。
+            //
+            // 做法：同一时间线跑两遍——A 播手势、B 不播（其余完全一样，待机动作从头开始，两条时间线逐帧对齐）。
+            //   ① 保持期：手势涉及的参数不动（帧间变化 < 0.01）；
+            //   ② 收回开始后 0.2 秒：A 的帧间变化不超过抬手过程的 1.5 倍（抽搐 = 这里出现一次远超抬手速度的跳动）；
+            //   ③ 交回待机：退出播完后的 20 帧里，(A − B) 只能单调收敛到 0，且 A 每帧的变化量不超过
+            //      「B 自己在动的量 + 全程幅度的 11%」（0.3 秒 smoothstep 交叉淡化的中点斜率 ≈ 8.3%）——
+            //      即 A 是压在待机动画上的干净交叉淡化，没有任何硬切。
+            // 作者动画里一帧跳 0.5 以上的离散开关（Movement*）不参与 ①②，但参与 ③。
+            Quiet();
+            // 待机动作：第一遍关着（纯「保持 → 退出 → 淡出」），第二遍开着垫在最底下（收回后露出的就是它）
+            runtime.IdleRandomGestureEnabled = false;
+            runtime.PetIdleActionsEnabled = false;
+            var retractIssues = new List<string>();
+            var retractReport = new List<string>();
+            foreach (var idleBeneath in new[] { false, true })
+            {
+                runtime.IdleEnabled = idleBeneath;
+                var scenarioLabel = idleBeneath ? "待机开" : "待机关";
+                foreach (var (retractGesture, retractEnterName, retractExitName) in nativeGestures)
+                {
+                    var retractEntry = runtime.Motions.FirstOrDefault(m => m.Name == retractEnterName);
+                    var retractData = retractEntry is null ? null : TryParseMotion(retractEntry.FilePath);
+                    var retractExitEntry = runtime.Motions.FirstOrDefault(m => m.Name == retractExitName);
+                    var retractExitData = retractExitEntry is null ? null : TryParseMotion(retractExitEntry.FilePath);
+                    if (retractData is null || retractExitData is null)
+                    {
+                        retractIssues.Add($"{scenarioLabel}.{retractGesture}(没有 enter / exit 动作数据)");
+                        continue;
+                    }
+
+                    var trackedIds = retractData.Curves
+                        .Where(c => c.Target == "Parameter" && rt.Model.FindParameter(c.Id) is not null)
+                        .Select(c => c.Id)
+                        .Distinct()
+                        .ToArray();
+                    if (trackedIds.Length == 0)
+                    {
+                        retractIssues.Add($"{scenarioLabel}.{retractGesture}(没有可跟踪参数)");
+                        continue;
+                    }
+
+                    var raiseFrames = (int)(retractData.Duration * 60.0) + 6;      // enter 全程 + enter→hold 交接
+                    const int holdFrames = 15;
+                    var exitFrames = (int)Math.Ceiling(retractExitData.Duration * 60.0) + 1;
+                    var totalFrames = raiseFrames + holdFrames + exitFrames + 40;
+
+                    // 跑一遍时间线，逐帧记下手势涉及的参数（两条时间线的待机动作都从 ResetParameters 后重新开始）
+                    float[][] RunRetractScenario(bool withGesture)
+                    {
+                        runtime.ResetParameters();
+                        TickFrames(2);
+                        var samples = new float[totalFrames][];
+                        if (withGesture) runtime.PlayGesture(retractGesture);
+                        for (var i = 0; i < totalFrames; i++)
+                        {
+                            if (withGesture && i == raiseFrames + holdFrames) runtime.StopGesture();
+                            TickFrames(1);
+                            samples[i] = trackedIds.Select(Param).ToArray();
+                        }
+
+                        return samples;
+                    }
+
+                    var scenarioA = RunRetractScenario(true);
+                    var scenarioB = RunRetractScenario(false);
+                    var stopIndex = raiseFrames + holdFrames;
+                    var handBackIndex = stopIndex + exitFrames + 3;                // 退出播完 + 片段收尾，层开始拿末姿势淡出
+                    var continuousCount = 0;
+
+                    for (var p = 0; p < trackedIds.Length; p++)
+                    {
+                        var id = trackedIds[p];
+                        var raiseMax = 0.0;
+                            // 抬手速度只取 enter 段（不含后面的保持窗口）：保持 / 交接期的抖动不能把上限一起抬高
+                        for (var i = 1; i <= raiseFrames; i++) raiseMax = Math.Max(raiseMax, Math.Abs(scenarioA[i][p] - scenarioA[i - 1][p]));
+                        var isDiscreteSwitch = raiseMax > 0.5;
+
+                        // ③ 交回待机：(A − B) 单调收敛，A 的帧间变化 = B 自己的变化 + 剩余差值 × 交叉淡化速率
+                        var handBackOk = handBackIndex + 21 < totalFrames;
+                        var crossfadeRange = 0.0;   // 全程幅度 = 手势姿势与待机姿势在这条时间线上的最大差值
+                        for (var i = 0; i < totalFrames; i++)
+                            crossfadeRange = Math.Max(crossfadeRange, Math.Abs(scenarioA[i][p] - scenarioB[i][p]));
+                        var decayBudget = crossfadeRange * 0.11 + 0.003;
+                        for (var i = handBackIndex; i < handBackIndex + 20 && handBackOk; i++)
+                        {
+                            var diff = Math.Abs(scenarioA[i][p] - scenarioB[i][p]);
+                            var nextDiff = Math.Abs(scenarioA[i + 1][p] - scenarioB[i + 1][p]);
+                            var idleMotion = Math.Abs(scenarioB[i + 1][p] - scenarioB[i][p]);
+                            var delta = Math.Abs(scenarioA[i + 1][p] - scenarioA[i][p]);
+                            // 交叉淡化权重按 smoothstep 走：0.3 秒 = 18 帧，中点斜率 = 全程幅度 × 1.5/18，
+                            // 留 30% 余量；一帧跳回（硬切）一帧就会消掉全程幅度的 100%。
+                            if (nextDiff > diff + 0.002 || diff - nextDiff > decayBudget || delta > idleMotion + decayBudget)
+                            {
+                                handBackOk = false;
+                                retractIssues.Add($"{scenarioLabel}.{retractGesture}.{id} 交回待机第 {i - handBackIndex} 帧不连续：差值 {diff:0.####}→{nextDiff:0.####}，帧间变化 {delta:0.####}（待机自身 {idleMotion:0.####}）");
+                            }
+                        }
+
+                        if (isDiscreteSwitch) continue;   // Movement* 这类开关：作者动画本来一帧跳变，只看 ③
+                        continuousCount++;
+
+                        // ① 保持期不动
+                        var holdMax = 0.0;
+                        for (var i = raiseFrames + 1; i <= stopIndex; i++) holdMax = Math.Max(holdMax, Math.Abs(scenarioA[i][p] - scenarioA[i - 1][p]));
+                        if (holdMax > 0.01) retractIssues.Add($"{scenarioLabel}.{retractGesture}.{id} 保持期帧间变化 {holdMax:0.####}");
+
+                        // ② 收回前 0.2 秒：和抬手同量级
+                        var retractFirstMax = 0.0;
+                        for (var i = stopIndex + 1; i <= stopIndex + 12; i++) retractFirstMax = Math.Max(retractFirstMax, Math.Abs(scenarioA[i][p] - scenarioA[i - 1][p]));
+                        var firstLimit = Math.Max(raiseMax * 1.5, 0.03);
+                        if (retractFirstMax > firstLimit)
+                            retractIssues.Add($"{scenarioLabel}.{retractGesture}.{id} 收回前 0.2s 帧间变化 {retractFirstMax:0.####} > {firstLimit:0.####}（抬手 {raiseMax:0.####}）");
+                    }
+
+                    retractReport.Add($"{scenarioLabel}.{retractGesture}：连续参数 {continuousCount} 个");
+                }
+
+            }
+            C("收回连续性：三个原生手势「抬手 → 保持 → 收回 → 交回待机」全程平滑（保持不动 / 收回 ≈ 抬手量级 / 交回待机单调收敛，不抽搐）",
+                retractIssues.Count == 0 && retractReport.Count == nativeGestures.Length * 2,
+                retractIssues.Count == 0 ? string.Join("；", retractReport) : string.Join("；", retractIssues));
+            runtime.IdleEnabled = false;
+            runtime.IdleRandomGestureEnabled = true;
+
+            // ---------------- L3. 动作层收尾 = 拿最后一帧姿势交叉淡化（StopAllDemos 不会一帧跳回） ----------------
+            runtime.ResetParameters();
+            runtime.StartDance("轻快摇摆", 1.0);
+            TickFrames(40);
+            var danceParams = new[] { "LArm", "RArm", "ParamAngleZ" }.Where(id => rt.Model.FindParameter(id) is not null).ToArray();
+            var danceBeforeStop = danceParams.Select(Param).ToArray();
+            runtime.StopAllDemos();          // 舞蹈是立即停（StopImmediate）：层拿最后一帧姿势 0.25 秒淡出
+            var danceStopMaxDelta = 0.0;
+            var danceStopPrevious = danceParams.Select(Param).ToArray();
+            for (var i = 0; i < 30; i++)
+            {
+                TickFrames(1);
+                var current = danceParams.Select(Param).ToArray();
+                for (var p = 0; p < current.Length; p++)
+                    danceStopMaxDelta = Math.Max(danceStopMaxDelta, Math.Abs(current[p] - danceStopPrevious[p]));
+                danceStopPrevious = current;
+            }
+
+            var danceStopRange = 0f;
+            for (var p = 0; p < danceBeforeStop.Length; p++)
+                danceStopRange = Math.Max(danceStopRange, Math.Abs(danceBeforeStop[p]));
+            C("层淡出：StopAllDemos 后舞蹈姿势 0.25 秒平滑交回（帧间变化 ≤ 停止前幅度的 1/6，不是一帧跳回）",
+                danceStopRange > 0.05 && danceStopMaxDelta <= danceStopRange / 6.0 + 1e-4
+                && danceParams.All(id => Math.Abs(Param(id)) < 0.02),
+                $"停止前最大幅度={danceStopRange:0.###} 停止后最大帧间变化={danceStopMaxDelta:0.####}");
+
+            // ---------------- L4. 参数有效性实测：作者没做、只留了开关的参数（翅膀等）不进动作 ----------------
+            // 模型里有一批参数改了值画面一点不变（官方播放器靠外部特效层消费，本渲染器没有）。
+            // 加载时逐个实测（默认姿势 + 开关环境复测），各层对无效参数的写入直接丢弃；
+            // 这里核对：探测跑完、翅膀系列确实无效、常用参数没被误判、内置动作表全部跑一遍没有一条写到无效参数。
+            Quiet();
+            var parameterEffect = runtime.ParameterEffect;
+            var deadParameterIds = parameterEffect?.DeadParameterIds.ToHashSet(StringComparer.Ordinal) ?? new HashSet<string>();
+            // 翅膀系列：作者在默认体型下没做翅膀（画面不变），但部分参数在换装 / 特效环境下会生效——
+            // 手写动作表不依赖它们（丢弃机制兜底），这里核对「默认画面无效」名单和探测口径自洽。
+            var wingParameterIds = new[]
+            {
+                "WingOpenClose", "WingSpread", "FeatherPhysics1", "FeatherPhysics2", "WingRotation",
+                "WingOpenClose2", "WingSpread2", "FeatherPhysics3", "FeatherPhysics4", "WingRotation2",
+            };
+            var wingsDefaultDead = wingParameterIds.Where(deadParameterIds.Contains).ToArray();
+            var wingRevived = parameterEffect?.ContextRevivedIds.Where(wingParameterIds.Contains).ToArray() ?? Array.Empty<string>();
+            C("参数有效性：翅膀系列全部实测「默认画面无效」（部分在换装环境下会生效，已单独记录）",
+                wingsDefaultDead.Length == wingParameterIds.Length,
+                $"默认无效 {wingsDefaultDead.Length}/{wingParameterIds.Length}；环境复活：{string.Join(", ", wingRevived)}（翅膀系列其余在物理输入豁免内）");
+            var knownLiveIds = new[]
+            {
+                "ParamAngleX", "ParamAngleY", "ParamAngleZ", "ParamEyeBallX", "ParamEyeBallY", "ParamEyeLOpen", "ParamEyeROpen",
+                "ParamMouthOpenY", "ParamMouthForm", "JawOpen", "TongueOut", "ParamBreath",
+                "LArm", "RArm", "LForearm", "RForearm", "LWrist", "RWrist", "LHand", "RHand",
+                "Movement1", "Movement2", "Movement3", "ParamBodyAngleX", "ParamBodyAngleY", "ParamBodyAngleZ", "PositionX",
+                "CheeckPuff", "ShoulderY",
+            };
+            var misjudgedLive = knownLiveIds.Where(id => deadParameterIds.Contains(id)).ToArray();
+            C("参数有效性：加载时实测跑完（有结果 / 复测环境 ≥ 1 组 / 记录耗时）",
+                parameterEffect is not null && parameterEffect.ContextCount > 0 && parameterEffect.ElapsedMilliseconds >= 0,
+                parameterEffect is null
+                    ? "没有探测结果"
+                    : $"有效 {parameterEffect.LiveParameterIds.Count} / 默认无效 {parameterEffect.DeadParameterIds.Count}" +
+                      $"（环境复活 {parameterEffect.ContextRevivedIds.Count}），复测环境 {parameterEffect.ContextCount} 组，耗时 {parameterEffect.ElapsedMilliseconds:0}ms");
+            C("参数有效性：常用参数没有被误判成无效（头 / 眼 / 嘴 / 舌 / 呼吸 / 手臂 / 手势开关 / 身体轴 / 鼓腮）",
+                misjudgedLive.Length == 0, misjudgedLive.Length == 0 ? $"{knownLiveIds.Length} 个全部有效" : "被误判：" + string.Join(", ", misjudgedLive));
+            C("参数有效性：默认画面无效的参数清单（实拍记录，手写动作表不得依赖）", true,
+                parameterEffect is null ? "-" : string.Join(", ", parameterEffect.DeadParameterIds));
+            C("参数有效性：仅在特定环境下生效的参数清单（实拍记录，信息用）", true,
+                parameterEffect is null || parameterEffect.ContextRevivedIds.Count == 0
+                    ? "（无）"
+                    : string.Join(", ", parameterEffect.ContextRevivedIds));
+
+            // 内置动作表全部跑一遍：没有任何一条写到无效参数（丢弃计数 = 0），也没有「整段什么都没动」的哑动作
+            runtime.PetIdleActionsEnabled = true;
+            runtime.IdleRandomGestureEnabled = false;
+            var droppedBefore = runtime.DroppedLayerWrites;
+            var silentActions = new List<string>();
+            const double auditStep = 1.0 / 30.0;   // 30fps 采样：只看「有没有输出」，省一半 Core 求值
+
+            bool StageEverWrote(string stageName, Func<bool> stillRunning)
+            {
+                var wrote = false;
+                for (var i = 0; i < 900 && stillRunning(); i++)
+                {
+                    TickFrames(1, auditStep);
+                    if (runtime.GetPoseStageSnapshot().Any(stage => stage.Name == stageName && stage.WrittenCount > 0)) wrote = true;
+                }
+
+                return wrote;
+            }
+
+            foreach (var gesture in runtime.GestureIds)
+            {
+                runtime.ResetParameters();
+                TickFrames(2, auditStep);
+                runtime.PlayGesture(gesture);
+                if (!StageEverWrote("手势", () => runtime.ActiveGesture is not null)) silentActions.Add("手势 " + gesture);
+            }
+
+            foreach (var performance in runtime.PerformanceIds)
+            {
+                runtime.ResetParameters();
+                TickFrames(2, auditStep);
+                runtime.PlayPerformance(performance);
+                if (!StageEverWrote("表演", () => runtime.ActivePerformance is not null)) silentActions.Add("表演 " + performance);
+            }
+
+            foreach (var danceMode in runtime.DanceModes)
+            {
+                runtime.ResetParameters();
+                TickFrames(2, auditStep);
+                runtime.StartDance(danceMode);
+                TickFrames(60, auditStep);
+                if (!runtime.GetPoseStageSnapshot().Any(stage => stage.Name == "舞蹈" && stage.WrittenCount > 0)) silentActions.Add("舞蹈 " + danceMode);
+            }
+
+            var petIdleNames = runtime.PetIdleActionNames;
+            var petIdleFailedToStart = new List<string>();
+            foreach (var idleAction in petIdleNames)
+            {
+                runtime.ResetParameters();
+                TickFrames(2, auditStep);
+                if (!runtime.TryPlayPetIdleAction(idleAction) || runtime.ActivePetIdleAction != idleAction)
+                {
+                    petIdleFailedToStart.Add(idleAction);
+                    continue;
+                }
+
+                if (!StageEverWrote("待机小动作", () => runtime.ActivePetIdleAction == idleAction)) silentActions.Add("待机小动作 " + idleAction);
+            }
+
+            var droppedByActions = runtime.DroppedLayerWrites - droppedBefore;
+            C("动作表体检：8 个手势 / 6 个表演 / 4 种舞蹈 / 全部待机小动作都能播出来",
+                petIdleFailedToStart.Count == 0 && silentActions.Count == 0,
+                petIdleFailedToStart.Count == 0 && silentActions.Count == 0
+                    ? $"手势 {runtime.GestureIds.Count} / 表演 {runtime.PerformanceIds.Count} / 舞蹈 {runtime.DanceModes.Count} / 待机小动作 {petIdleNames.Count} 全部有输出"
+                    : "没播出来：" + string.Join(", ", petIdleFailedToStart) + "；整段没有输出：" + string.Join(", ", silentActions));
+            C("动作表体检：内置动作全部跑一遍，没有一条写到实测无效的参数（丢弃写入 = 0）",
+                droppedByActions == 0,
+                droppedByActions == 0 ? "丢弃 0 次" : $"丢弃 {droppedByActions} 次：{runtime.DeadWriteReport()}");
+            C("动作表体检：手势 / 表演 / 舞蹈 / 待机小动作全流程丢弃写入为 0（作者 motion 文件不计入）",
+                runtime.DroppedLayerWrites == 0,
+                runtime.DroppedLayerWrites == 0 ? "全局丢弃 0 次" : $"全局丢弃 {runtime.DroppedLayerWrites} 次：{runtime.DeadWriteReport()}");
+            runtime.PetIdleActionsEnabled = false;
+            runtime.IdleRandomGestureEnabled = true;
 
             // ---------------- M. 鼠标互动玩法（热区 / 反应 / 拖拽物理 / 待机小动作） ----------------
             // 互动被「用户动作淡出中」判为 blocked 时会直接取消反应，所以每次重置后要等动作完全淡出（0.2s+）

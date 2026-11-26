@@ -63,17 +63,6 @@ internal sealed class MotionPlayer
     private readonly List<MotionPlayback> _instances = new(2);
     private double _userTime;
 
-    // 本帧动作写过的参数下标（下一帧 ModelRuntime 先按它复位，保证动作没覆盖的参数不残留；
-    // 只被实际在播的动作写过的参数才会复位，用户手动调的其它参数不受影响）
-    private int[] _touchedParameterIndices = new int[128];
-    private int _touchedParameterCount;
-
-    /// <summary>本帧动作写过的参数个数（上一帧的结果；ModelRuntime 用来做「受管参数」复位）。</summary>
-    public int TouchedParameterCount => _touchedParameterCount;
-
-    /// <summary>本帧动作写过的参数下标（上一帧的结果）。</summary>
-    public int GetTouchedParameterIndex(int index) => _touchedParameterIndices[index];
-
     /// <summary>有没有正在播的动作。</summary>
     public bool HasActive => _instances.Count > 0;
 
@@ -166,13 +155,16 @@ internal sealed class MotionPlayer
     /// <summary>立刻清空（不淡出）。</summary>
     public void Clear() => _instances.Clear();
 
-    /// <summary>推进一帧：求值 + 把参数 / 部件不透明度写进模型。</summary>
+    /// <summary>
+    /// 推进一帧：求值 + 把参数 / 部件不透明度写进模型。
+    /// 参数写入落到当前位姿层的捕获缓冲（见 <c>PoseCompositor</c>）：读到的是「下面各层合成到现在的值」，
+    /// 所以淡入 = 从当前姿势过渡到动作姿势，不需要先复位。
+    /// </summary>
     public void Update(CubismModel model, double deltaSeconds,
         IReadOnlyList<string>? eyeBlinkParameterIds, IReadOnlyList<string>? lipSyncParameterIds)
     {
         if (deltaSeconds <= 0) return;
         _userTime += deltaSeconds;
-        _touchedParameterCount = 0;
 
         for (var i = 0; i < _instances.Count; i++)
         {
@@ -271,7 +263,6 @@ internal sealed class MotionPlayer
             {
                 // 没有逐参数淡入淡出：用动作整体的淡入淡出权重
                 target.Value = sourceValue + ((value - sourceValue) * fadeWeight);
-                MarkTouched(target);
             }
             else
             {
@@ -286,7 +277,6 @@ internal sealed class MotionPlayer
                         ? 1f
                         : EasingSine((instance.EndTime - _userTime) / curve.FadeOutTime);
                 target.Value = sourceValue + ((value - sourceValue) * (fin * fout));
-                MarkTouched(target);
             }
         }
 
@@ -300,7 +290,6 @@ internal sealed class MotionPlayer
                 if (parameter is null) continue;
                 var sourceValue = parameter.Value;
                 parameter.Value = sourceValue + ((eyeBlinkValue - sourceValue) * fadeWeight);
-                MarkTouched(parameter);
             }
         }
 
@@ -313,7 +302,6 @@ internal sealed class MotionPlayer
                 if (parameter is null) continue;
                 var sourceValue = parameter.Value;
                 parameter.Value = sourceValue + ((lipSyncValue - sourceValue) * fadeWeight);
-                MarkTouched(parameter);
             }
         }
 
@@ -327,7 +315,6 @@ internal sealed class MotionPlayer
             if (binding.Parameter is { } parameter)
             {
                 parameter.Value = value;
-                MarkTouched(parameter);
             }
             else if (binding.Part is { } part)
             {
@@ -347,17 +334,6 @@ internal sealed class MotionPlayer
             // 把起点挪到当前循环的起点（不重置淡入，保证循环连续）
             instance.StartTime = _userTime - time;
         }
-    }
-
-    /// <summary>记录「这一帧动作写了这个参数」（扩容只在首次超出时发生，稳态 0 分配）。</summary>
-    private void MarkTouched(CubismParameter parameter)
-    {
-        if (_touchedParameterCount == _touchedParameterIndices.Length)
-        {
-            Array.Resize(ref _touchedParameterIndices, _touchedParameterIndices.Length * 2);
-        }
-
-        _touchedParameterIndices[_touchedParameterCount++] = parameter.Index;
     }
 
     /// <summary>官方 <c>CubismMath::GetEasingSine</c>：0 → 0、1 → 1 的正弦缓动。</summary>
