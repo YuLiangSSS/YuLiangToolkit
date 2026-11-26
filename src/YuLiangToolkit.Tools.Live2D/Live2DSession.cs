@@ -3164,7 +3164,7 @@ public sealed class Live2DSession
         var gestures = _viewModel?.GestureActions;
         var id = gestures is { Count: > 0 }
             ? gestures[Random.Shared.Next(gestures.Count)].Id
-            : "比心";
+            : "抱胸致意";
         if (autoRestoreAfterHoldSeconds > 0) PlayGestureTemporarily(id, autoRestoreAfterHoldSeconds);
         else PlayGesture(id);
         _viewModel?.SetStatus(autoRestoreAfterHoldSeconds > 0
@@ -3178,7 +3178,7 @@ public sealed class Live2DSession
         var performances = _viewModel?.Performances;
         var id = performances is { Count: > 0 }
             ? performances[Random.Shared.Next(performances.Count)].Id
-            : "俏皮比心";
+            : "元气早安";
         PlayPerformance(id);
         _viewModel?.SetStatus("随机表演：" + id);
     }
@@ -3189,7 +3189,7 @@ public sealed class Live2DSession
         var modes = _viewModel?.DanceModeOptions;
         var mode = modes is { Count: > 0 }
             ? modes[Random.Shared.Next(modes.Count)].Value
-            : "轻快摇摆";
+            : "左右摇摆";
         var speed = Math.Clamp(_viewModel?.DanceSpeed ?? 1.0, 0.5, 2.0);
         StartDance(mode, speed);
         _viewModel?.SetStatus($"跳个舞：{mode}（{seconds:0.#} 秒）");
@@ -4045,18 +4045,16 @@ public sealed class Live2DSession
         return null;
     }
 
-    /// <summary>动作标签 → 手势（支持英文别名；none / 空 = 不摆动作，交给自动小动作）。</summary>
+    /// <summary>动作标签 → 手势（支持英文别名；none / 空 = 不摆动作，交给自动小动作）。
+    /// 手势只剩作者原生手势（参数姿势已删——手臂参数画面上看不出变化）。</summary>
     private static string PickAiGesture(string? action)
     {
         var tag = (action ?? "").Trim().ToLowerInvariant();
         return tag switch
         {
-            "wave" or "挥手" => "举手打招呼",
-            "heart" or "比心" => "比心",
-            "akimbo" or "叉腰" => "叉腰",
-            "head_hold" or "抱头" => "抱头",
             "point" or "指" => "竖起食指",
             "grass" or "狗尾草" => "拿起狗尾草",
+            "hand_on_chest" or "抱胸" => "抱胸致意",
             _ => "",
         };
     }

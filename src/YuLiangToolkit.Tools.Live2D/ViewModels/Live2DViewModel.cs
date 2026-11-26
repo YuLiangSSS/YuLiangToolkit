@@ -440,12 +440,11 @@ public sealed class Live2DViewModel : ToolViewModelBase
     public ObservableCollection<ExpressionPresetItem> ExpressionPresets { get; } = new();
 
     /// <summary>
-    /// 「表情 / 姿势」分组里的手势按钮：举手（打招呼）/ 举手（搭胸）/ 竖起食指 / 狗尾草。
+    /// 「表情 / 姿势」分组里的手势按钮：举手（搭胸）/ 竖起食指 / 狗尾草（作者原生手势）。
     /// 点一下播放，约 3 秒后自动播退出动作还原（也可以再点一次立刻还原）。
     /// </summary>
     public IReadOnlyList<ActionChipViewModel> GestureChips { get; } = new[]
     {
-        new ActionChipViewModel("举手打招呼", "举手（打招呼）"),
         new ActionChipViewModel("抱胸致意", "举手（搭胸）"),
         new ActionChipViewModel("竖起食指", "竖起食指"),
         new ActionChipViewModel("拿起狗尾草", "狗尾草"),
@@ -2223,36 +2222,36 @@ public sealed class Live2DViewModel : ToolViewModelBase
     /// <summary>肩膀参数行（X / Y / Z）。</summary>
     public ObservableCollection<ArmParameterRowViewModel> ShoulderParameters { get; } = new();
 
-    /// <summary>手势按钮（运行时 <c>PlayGesture(id)</c>）。</summary>
+    /// <summary>手势按钮（作者原生手势；运行时 <c>PlayGesture(id)</c>）。
+    /// 参数姿势（举手打招呼 / 比心 / 叉腰 / 抱头等）已删——手臂参数画面上看不出变化。</summary>
     public IReadOnlyList<ActionChipViewModel> GestureActions { get; } = new[]
     {
         new ActionChipViewModel("抱胸致意", "抱胸致意"),
         new ActionChipViewModel("竖起食指", "竖起食指"),
         new ActionChipViewModel("拿起狗尾草", "拿起狗尾草"),
-        new ActionChipViewModel("举手打招呼", "举手打招呼"),
-        new ActionChipViewModel("比心", "比心"),
-        new ActionChipViewModel("叉腰", "叉腰"),
-        new ActionChipViewModel("抱头", "抱头"),
-        new ActionChipViewModel("放下手", "放下手"),
     };
 
-    /// <summary>表演按钮（运行时 <c>PlayPerformance(id)</c>）。</summary>
+    /// <summary>表演按钮（运行时 <c>PlayPerformance(id)</c>；全身编排：身体 / 腰 / 头 / 眼嘴 + 表情装饰联动）。</summary>
     public IReadOnlyList<ActionChipViewModel> Performances { get; } = new[]
     {
-        new ActionChipViewModel("好奇→思考→恍然大悟", "好奇→思考→恍然"),
-        new ActionChipViewModel("俏皮比心", "俏皮比心"),
-        new ActionChipViewModel("开心挥手", "开心挥手"),
-        new ActionChipViewModel("骄傲展示", "骄傲展示"),
-        new ActionChipViewModel("害羞低头", "害羞低头"),
-        new ActionChipViewModel("晚安道别", "晚安道别"),
+        new ActionChipViewModel("元气早安", "元气早安"),
+        new ActionChipViewModel("开心蹦跳", "开心蹦跳"),
+        new ActionChipViewModel("好奇打量", "好奇打量"),
+        new ActionChipViewModel("傲娇别扭", "傲娇别扭"),
+        new ActionChipViewModel("害羞心动", "害羞心动"),
+        new ActionChipViewModel("委屈抽泣", "委屈抽泣"),
+        new ActionChipViewModel("唱跳小曲", "唱跳小曲"),
+        new ActionChipViewModel("眼镜变装", "眼镜变装"),
+        new ActionChipViewModel("钢盆敲敲", "钢盆敲敲"),
+        new ActionChipViewModel("变身小兔", "变身小兔"),
     };
 
-    /// <summary>舞蹈模式选项。</summary>
+    /// <summary>舞蹈模式选项（大幅身体编排）。</summary>
     public IReadOnlyList<OptionItem<string>> DanceModeOptions { get; } = OptionItem.From(
-        ("轻快摇摆", "轻快摇摆"),
-        ("挥手舞", "挥手舞"),
-        ("摇摆转圈", "摇摆转圈"),
-        ("酷炫抖肩", "酷炫抖肩"));
+        ("左右摇摆", "左右摇摆"),
+        ("转身律动", "转身律动"),
+        ("蹦跳律动", "蹦跳律动"),
+        ("扭腰摆胯", "扭腰摆胯"));
 
     /// <summary>当前选中的舞蹈模式。</summary>
     public OptionItem<string>? SelectedDanceMode
@@ -4928,7 +4927,7 @@ public sealed class Live2DViewModel : ToolViewModelBase
                 {
                     Session.StopGesture();
                     Log("手势：竖起食指 → 还原");
-                    StatusText = "放下手";
+                    StatusText = "收起手指";
                 }
                 RefreshExpressionStates(runtime);
             }

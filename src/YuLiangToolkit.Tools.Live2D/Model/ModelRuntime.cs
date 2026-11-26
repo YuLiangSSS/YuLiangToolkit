@@ -1823,7 +1823,8 @@ public sealed class ModelRuntime : IDisposable
     private void CreateActionPlayers(CubismModel model)
     {
         _gesture = new GesturePlayer(model, _pose!, FindMotionEntryByName, FindMotionData);
-        _performance = new PerformancePlayer(model, StartGestureForPerformance, StopGestureForPerformance);
+        _performance = new PerformancePlayer(model, StartGestureForPerformance, StopGestureForPerformance,
+            FindExpressionByName, ApplyExpression, RemoveExpression);
         _dance = new DanceController(model);
     }
 

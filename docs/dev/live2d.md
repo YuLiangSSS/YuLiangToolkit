@@ -928,50 +928,57 @@ BPM 估计（原来只在有声 hop 估算，稀疏点击永远估不出——�
 
 | 文件 | 职责 |
 | --- | --- |
-| `Model/GesturePlayer.cs` | 8 个手势：3 个**作者原生手势**（enter/exit 动作 + hold 参数）+ 5 个**参数姿势**（直接给手臂目标值）；`Ids / ActiveId / HasActive / Play / Stop / StopImmediate / Update / ResetTouched` |
-| `Model/PerformancePlayer.cs` | 6 个**数据驱动时间线表演**（`BuildDefinitions()` 里定义 Id / Duration / Action 列表：Pose / Look / Nod / Talk / Gesture），按时间推进、触发嵌套手势；`Definitions / Ids / ActiveId / ActiveDuration / ElapsedSeconds / Play / Stop / Update / ResetTouched` |
-| `Model/DanceController.cs` | 4 个**程序化舞蹈模式**（`轻快摇摆 / 挥手舞 / 摇摆转圈 / 酷炫抖肩`）：相位驱动写手臂 / 肩 / 头 / 身体参数，权重 0.25s 淡入淡出；`Modes / ActiveMode / HasActive / Speed / Phase / Start / Stop / StopImmediate / Update / ResetTouched` |
+| `Model/GesturePlayer.cs` | **3 个作者原生手势**（抱胸致意 / 竖起食指 / 拿起狗尾草，enter/exit 动作 + hold 参数）；参数姿势已删（手臂参数画面上看不出变化）；片段模型见 §14.2 |
+| `Model/PerformancePlayer.cs` | **10 个全身时间线表演**（`BuildDefinitions()`：Pose / Look / Nod / Tilt / Smile / Blink / Gesture / Talk / **Expression**——最后一个挂 / 摘 exp3 表情和装饰）；身体 / 腰 / 位移大幅参与；`Definitions / Ids / ActiveId / ActiveDuration / ElapsedSeconds / Play / Stop / Update` |
+| `Model/DanceController.cs` | 4 个**程序化舞蹈模式**（`左右摇摆 / 转身律动 / 蹦跳律动 / 扭腰摆胯`）：相位驱动写**身体主轴 / 腰 / 位移 / 头 / 嘴**（不用画面上看不出的手臂参数），权重 0.25s 淡入淡出；`Modes / ActiveMode / HasActive / Speed / Phase / Start / Stop / StopImmediate / Update` |
 | `Model/ModelRuntime.cs` | 对外 API：`GestureIds / ActiveGesture / PlayGesture(id, autoRestoreAfterHoldSeconds = 0) / StopGesture()`、`PerformanceIds / ActivePerformance / PlayPerformance / StopPerformance`、`DanceModes / ActiveDance / DanceSpeed(0.5~2) / StartDance(mode, speed) / StopDance`、`StopAllDemos()`、`IdleRandomGestureEnabled / IdleRandomGestureIntervalSeconds`、内部 `TryTriggerIdleRandomGesture(forcedGestureId = null)`（自检 / 调试）；`UpdateActionPlayers` / `UpdateIdleRandomGesture` 在 Tick 里调用 |
 
-### 14.2 手势：作者原生动作 + hold 参数
+### 14.2 手势：作者原生动作 + hold 参数（片段模型）
 
-- **原生手势**（抱胸致意 `IdHandOnChest`、竖起食指 `IdPoint`、拿起狗尾草 `IdGrass`）：
-  1. `PlayGesture` 先停其它演示 / 当前动作（避免 `StopMotion` 把 enter 顶掉），
-  2. 播作者 **enter 动作**（`MotionPlayer`，淡入 0.12s），翻到 `GesturePhase.Enter`；
-  3. enter 播完（`_phaseTimer >= data.Duration`）→ `GesturePhase.Hold`：每帧把 `BuildHoldFromMotion` 提取的
-     **enter 曲线末值**直接写参数（`WriteHold`）——这样动作淡出前就「接住」手臂，不会掉回 IDLE；
-  4. `StopGesture`：播作者 **exit 动作**（淡入 0.12s），播完释放（`GesturePhase.None`）。
-- **自动还原**（本轮修）：`Play(..., autoRestoreAfterHoldSeconds)` 设置保持秒数，`GesturePlayer.Update` 只在
-  `Hold / PoseHold` 阶段累计，到点自己调 `Stop()` 走作者退出动作 / 参数淡出。计时不含 enter / 淡入，
-  所以「拿出来 → 摆好 → 保持 N 秒 → 收回去」的节奏不会被抬手过程吃掉。待机随机手势固定用 2.5 秒；
-  UI 手势按钮 / 随机姿势也用同一机制（2.5 秒），不会再举着狗尾草 / 竖着食指定住。
+- **只有 3 个作者原生手势**（抱胸致意 `IdHandOnChest`、竖起食指 `IdPoint`、拿起狗尾草 `IdGrass`）；
+  2026-11-27 删除了 5 个参数姿势（举手打招呼 / 比心 / 叉腰 / 抱头 / 放下手）——模型的语义手臂参数
+  （`LArm / RArm / LForearm…`）虽然参数有效性实测是「有效」，但手臂藏在裙后、画面上几乎看不到变化，
+  用户反馈「等于没动作」；想看完整动作请用 §14.3 的表演。
+- **片段（Clip）状态机**（§26.3 详述）：
+  1. `Play` 建片段并播作者 **enter 动作**（淡入 0.12s，在临时捕获缓冲里求值——淡入从「当前姿势」起笔）；
+  2. enter 播完 → **Hold**：每帧把 `BuildHoldFromMotion` 提取的 **enter 曲线末值**直接写（无缝接住）；
+  3. `Stop` / 自动还原到点 → **Exit**：先把这段手势**上一帧的真实输出**存成退出起点，再播作者 **exit 动作**
+     （从保持姿势起笔，不是从默认值）；播完片段结束，合成器拿末姿势按层淡出交回待机；
+- **自动还原**：`Play(..., autoRestoreAfterHoldSeconds)` 只在 Hold 阶段计时，到点自己 `Stop()` 走退出动作。
+  待机随机手势固定 2.5 秒；UI 手势按钮 / 随机姿势同一机制。
 - **hold 参数提取语义**（和 `Motion3Data.CollectFinalParameterValues` 一致）：遍历 `Target=Parameter` 的曲线，
   取**最后一段的终点值**（`EndValue`；没有段取首值），同 Id 多条曲线时**后写覆盖前写**（字典）。
-  注意 motion3 的贝塞尔段布局是 `[1, c1x, c1y, c2x, c2y, endX, endY]`——**末值是第 7 个数**，不是第 3 个；
-  自检里解析曲线末值也要按这个布局（本轮自检就踩了这个坑，导致 hold 断言误报 0.198 / 0.066）。
-- **参数姿势**（举手打招呼 / 比心 / 叉腰 / 抱头 / 放下手）：作者没留对应动作，直接给语义手臂参数目标值
-  （`LArm / LForearm / LWrist / LHand / LHand2`、`RArm / …`、`ShoulderX / Y（含 Yy）`），
-  `WritePose(weight)` 用 `DemoMath.SmoothStep` 0.35s 淡入、`BlendFromDefault` 从默认值混合；停止 0.25s 淡出。
-- `NormalizeId` 同时支持中文名与英文别名（`hand_on_chest / point / grass / wave / heart / akimbo / head_hold / hands_down`）。
+  注意 motion3 的贝塞尔段布局是 `[1, c1x, c1y, c2x, c2y, endX, endY]`——**末值是第 7 个数**，不是第 3 个。
+- `NormalizeId` 同时支持中文名与英文别名（`hand_on_chest / point / grass`）。
 
-### 14.3 表演：数据驱动时间线
+### 14.3 表演：全身时间线（2026-11-27 全套重编）
 
-- `PerformancePlayer.BuildDefinitions()` 里 6 个定义（Id 即中文名，`Duration` 9~15s）：
-  `好奇→思考→恍然大悟`（15s）/ `俏皮比心`（10s）/ `开心挥手`（9s）/ `骄傲展示`（12s）/ `害羞低头`（10.5s）/
-  `晚安道别`（11s）；
-- 每个定义是 `PerformanceAction[]`：`Pose`（写参数）、`Look`（头 / 眼方向）、`Nod`（点头）、`Talk`（嘴型开合）、
-  `Gesture`（触发嵌套手势，用 `_startGesture/_stopGesture` 回调），带 `At / Duration / Strength / Direction / Count`；
-- 每帧 `Update(delta, allowTalk)`：`_elapsed += delta`，超过 Duration 自动结束（清 touched）；
+- `PerformancePlayer.BuildDefinitions()` 里 **10 个定义**（Id 即中文名，11~14s），参考作者原生动作
+  「脱捕」（13 秒全身：头 + 面部 + 眼嘴 + 手臂 + 身体转动）的全身感编排：
+  `元气早安` / `开心蹦跳` / `好奇打量` / `傲娇别扭` / `害羞心动` / `委屈抽泣` / `唱跳小曲` /
+  `眼镜变装` / `钢盆敲敲` / `变身小兔`；
+- **编排原则**：身体主轴 `ParamBodyAngleX/Y/Z`、腰 `HipAngleX`、位移 `PositionX/Y` 是主力
+  （画面上看得见的大变化）；头 `AngleX/Y/Z + ParamAngle*` 跟随 / 反向；眼睛 / 眉毛 / 嘴（张合 + 嘴形 +
+  舌头）跟上；大量联动 exp3 表情 / 装饰。**手臂参数一律不用**（画面上看不出）；
+  `MouthSmile_L/R / ShoulderX / ShoulderYy / HipAngleZ / 翅膀` 等实测无效参数一律不用
+  （参数有效性实测会把它们的写入拦下，自检「动作表体检」保证）；
+- 每个定义是 `PerformanceAction[]`：`Pose`（写参数）、`Look`（头 / 眼方向）、`Nod`（点头）、`Tilt`（歪头）、
+  `Smile`（眯眼笑 + 嘴形）、`Blink`（眨眼）、`Talk`（嘴型开合）、`Gesture`（嵌套原生手势）、
+  **`Expression`**（At 时刻淡入挂 exp3 表情 / 装饰，动作窗口结束淡出摘掉；表演停止 / 结束时全部摘掉）；
+- 每帧 `Update(delta, allowTalk)`：超过 Duration 自动结束（摘表情 / 停手势）；
   `allowTalk = !mocapFace && !_speechActive`——**动捕 / 语音说话时表演不抢嘴型**；
-- `Stop` 立即结束（不走完时间线），嵌套手势会停下。
+- `Stop` 立即结束（不走完时间线），嵌套手势停下、挂的表情摘掉；
+- 构造函数注入 `findExpression / applyExpression / removeExpression` 回调（ModelRuntime 的表情管线）。
 
-### 14.4 舞蹈：程序化相位
+### 14.4 舞蹈：程序化相位（2026-11-27 全套重编）
 
-- 4 个模式常量：`ModeSway=轻快摇摆 / ModeWave=挥手舞 / ModeSpin=摇摆转圈 / ModeShimmy=酷炫抖肩`；
-- `Start` 只设模式 + 速度；`Update`：`_weight` 按 0.25s 淡入/淡出，`_phase += speed × delta × 2π × BaseFrequency(mode)`，
-  各模式用不同相位的 sin/cos 组合写手臂 / 肩 / `Angle*` / `Position*` / `LeanInput` / `ParamAngle*`；
+- 4 个模式常量：`ModeSway=左右摇摆 / ModeTurn=转身律动 / ModeBounce=蹦跳律动 / ModeTwist=扭腰摆胯`；
+- **全部以身体主轴 + 腰 + 位移为主力**的大幅编排（旧版以手臂 / 肩膀参数为主，画面上看不出变化）：
+  左右摇摆 = 身体 ±8° + 腰 + 位移 + 头反向稳定；转身律动 = 身体左右转 + 头部跟随 / 反抗；
+  蹦跳律动 = 前后弹跳感 + **跟着节奏张嘴** + 点头；扭腰摆胯 = 腰大幅扭 + 身体反方向平衡 + 腿部跟随；
+- `Start` 只设模式 + 速度；`Update`：`_weight` 按 0.25s 淡入/淡出，`_phase += speed × delta × 2π × BaseFrequency(mode)`；
 - `Speed` 夹在 0.5~2.0；`Phase` 公开（自检直接读；速度 2x 时同时间内相位推进约 2 倍）；
-  `Stop` 淡出、`StopImmediate` 立即清；`ResetTouched` 每帧开头复位上一帧写过的参数。
+  `Stop` 淡出、`StopImmediate` 立即清。
 
 ### 14.5 ModelRuntime 集成与优先级
 
@@ -990,25 +997,26 @@ BPM 估计（原来只在有声 hop 估算，稀疏点击永远估不出——�
     `IdleRandomGestureHoldSeconds = 2.5`，摆好后自动播退出动作**，不会残留举狗尾草 / 竖食指的姿势；
   - `IdleRandomTriggerCount` 内部计数（自检用）；`TryTriggerIdleRandomGesture(forcedGestureId)` 可强制指定手势做自检。
 - 配置：`IdleRandomGestureEnabled`（默认 true）/ `IdleRandomGestureIntervalSeconds`（默认 22）。
-- 自检（`Live2DChecks` L 段）：8/6/4 数量与中文名、未知 id 返回 false、3 原生手势 hold 参数 = enter 末值
-  （±2e-2）且保持 1 秒、StopGesture 后回默认、5 参数姿势到位与保持、表演中段变化 + 自然结束回默认 + Stop 立即停、
+- 自检（`Live2DChecks` L 段）：3/10/4 数量与中文名、未知 id 返回 false、3 原生手势 hold 参数 = enter 末值
+  （±2e-2）且保持 1 秒、StopGesture 后回默认、表演中段变化 + 自然结束回默认 + Stop 立即停、
   4 舞蹈各 2 秒移动且有限 + Stop 回默认 + 速度 2x 相位约 2 倍、DanceSpeed 夹取、StopAllDemos、待机随机
-  「关闭不触发 / 忙碌不抢 / 空闲触发」。
+  「关闭不触发 / 忙碌不抢 / 空闲触发」、收回连续性（§26.4）、动作表体检（§26.5）。
 
 ### 14.6 坑
 
 1. **motion3 贝塞尔段布局**：`[type=1, c1x, c1y, c2x, c2y, endX, endY]`——解析末值 / 采样时别把 c1y 当终点。
-2. **原生手势的 enter 动作不能再被 `StopMotion` 顶掉**：`PlayGesture` 内部先 `_stopMotion(0.12)` 再播 enter；
+2. **原生手势的 enter 动作不能再被 `StopMotion` 顶掉**：换手势时运行时先 `StopMotion(0.12)` 再播 enter；
    若外部在 enter 期间又 StopMotion，手势会卡在 Enter（定时器继续走但没有动作可看）。
 3. **hold 参数要在动作淡出前接住**：`BuildHoldFromMotion` 在 Play 时就提取好，Hold 阶段每帧直接写；
    不要改成「等动作播完再读当前参数值」（那时已被淡出改回默认）。
-4. **参数姿势目标值要按参数范围夹取**（`CubismParameter.Value` 自动 clamp）；不同模型手臂参数范围/语义不同，
-   换模型时要核对（本模型 -1~1、默认 0）。
+4. **编排新表演 / 舞蹈只用实测有效的参数**：手臂语义参数（LArm 等）画面上看不出变化、
+   `MouthSmile_L/R / ShoulderX / ShoulderYy / HipAngleZ / 翅膀` 等实测无效——自检「动作表体检」
+   会把手写表对无效参数的丢弃计数拦下来（§26.5 / §27）。
 5. **舞蹈相位不要重置**：`Start` 不重置 `_phase`，所以连续切换模式相位连续；速度变化只改推进速率。
 6. **待机随机不能抢正在播的内容**：条件漏了任意一项（如没判断音乐 / 语音），就会出现「跟唱时突然抱胸」。
-7. **所有演示的写参数都要走 touched 表**：停止后下一帧开头复位，否则会残留姿势；手动值在不再写时保留。
+7. **表演 / 舞蹈收尾交给位姿合成**：层拿最后一帧姿势淡出交回，不要在自己内部「写回默认值」（会双重过渡）。
 8. **自动还原的计时不能从按键那一刻算**：原生手势 enter 要 1.1~1.25 秒，按总时长停会出现「刚拿出来就被收回」；
-   实现只在 `Hold / PoseHold` 累计 `holdElapsed`。新增手势时别绕过 `GesturePlayer.Play` 自己起 `Task.Delay`。
+   实现只在 Hold 累计 `holdElapsed`。新增手势时别绕过 `GesturePlayer.Play` 自己起 `Task.Delay`。
 
 ## 15. 语音 TTS 管线（本地 + 在线软妹音 / 聊天气泡）
 
@@ -1399,7 +1407,7 @@ InteractionController._raiseInteraction(voiceEvent, displayName)
 | `YLT_LIVE2D_MUSIC_SELFTEST=1`（+ `_EXIT=1`） | **音乐跟唱链路自测（会真采集系统声音 8 秒）**：启用回环采集后统计 采样次数 / Latest 非空 / IsPlaying 占比 / Kind 分布 / 平均 RMS·VocalScore·Confidence·BPM / 音高有效率 / SMTC 歌名歌手应用 / LastError，写 `Data\live2d\music-selftest.log`（**只有数字与媒体信息，不保存音频**）；加 `_EXIT=1` 写完退出。**不能和 `YLT_SHOT` 同用**：截图模式会刻意禁用音乐采集（截图流程不碰系统声音） |
 | `YLT_LIVE2D_GESTURE_DEMO=<手势 id>` | 打开页面后自动播指定手势（中文名或 hand_on_chest 等别名），截图验收用 |
 | `YLT_LIVE2D_PERFORMANCE_DEMO=<表演 id>` | 自动播指定表演（中文名），截图验收用 |
-| `YLT_LIVE2D_DANCE_DEMO=<模式名>` | 自动开始指定舞蹈模式（轻快摇摆 / 挥手舞 / 摇摆转圈 / 酷炫抖肩），截图验收用 |
+| `YLT_LIVE2D_DANCE_DEMO=<模式名>` | 自动开始指定舞蹈模式（左右摇摆 / 转身律动 / 蹦跳律动 / 扭腰摆胯），截图验收用 |
 | `YLT_LIVE2D_SPEECH_SELFTEST=1`（+ `_EXIT=1`） | **语音链路自测**：说一句预置台词（会真的合成并播放几秒），统计 采样次数 / IsSpeaking 占比 / 嘴型平均·最大 / LastError，写 `Data\live2d\speech-selftest.log`（**只写数字，不保存音频**）；加 `_EXIT=1` 写完退出 |
 | `YLT_LIVE2D_BUBBLE_SHOT=<png>` | 桌宠 + 聊天气泡**离屏合成**截图（不抓桌面），验收气泡定位 / 透明度用 |
 | `YLT_LIVE2D_INTERACTION_DEMO=<区域/事件>` | 模拟桌宠互动「按下 → 抚摸移动 / 点按 → 抬起」，写 `Data\live2d\interaction-demo.log`（区域名 / 画布坐标 / 是否命中 / LastInteractionName / VoiceEvent / 会话台词 / 是否在说话），并打印到工具页日志；只写状态文本，不保存音频 |

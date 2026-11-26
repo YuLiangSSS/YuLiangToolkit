@@ -2,10 +2,10 @@ using YuLiangToolkit.Tools.Live2D.Interop;
 
 namespace YuLiangToolkit.Tools.Live2D.Model;
 
-/// <summary>时间线表演里的动作类型（对照 jingyu 的 action kinds；这里只做运行时能表达的部分）。</summary>
+/// <summary>时间线表演里的动作类型。</summary>
 internal enum PerformanceActionKind
 {
-    /// <summary>参数姿态：直接给语义参数目标值（按窗口淡入淡出）。</summary>
+    /// <summary>参数姿态：直接给语义参数目标值（按窗口淡入淡出）。身体轴 / 腰 / 头 / 眼 / 嘴都能写。</summary>
     Pose,
 
     /// <summary>看向某方向（眼睛先动、头部跟随）：AngleX/Y + AngleZ 头输入。</summary>
@@ -17,17 +17,23 @@ internal enum PerformanceActionKind
     /// <summary>歪头：AngleZ / ParamAngleZ + 身体反向平衡。</summary>
     Tilt,
 
-    /// <summary>微笑：嘴角 / 眼睛一起变化。</summary>
+    /// <summary>微笑：眯眼笑 + 嘴形上扬（MouthSmile_L/R 实测无效，由 ParamMouthForm 表现）。</summary>
     Smile,
 
     /// <summary>眨眼（可单边）。</summary>
     Blink,
 
-    /// <summary>调 <see cref="GesturePlayer"/> 的拇指 / 手势动作。</summary>
+    /// <summary>调 <see cref="GesturePlayer"/> 的原生手势（抱胸致意 / 竖起食指 / 拿起狗尾草）。</summary>
     Gesture,
 
     /// <summary>说话口型节奏（只在没有真实语音 / 动捕时生效）。</summary>
     Talk,
+
+    /// <summary>
+    /// 挂 / 摘 exp3 表情或装饰（爱心眼 / 脸红 / 黑脸 / 屑屑眼 / 圈圈眼 / ＞＜ / 流泪 /
+    /// 单片眼镜 / 黑框眼镜 / 钢盆 / 体型切换…）：At 时刻淡入挂上，动作窗口结束淡出摘掉。
+    /// </summary>
+    Expression,
 }
 
 /// <summary>pose 动作的参数目标（id 在构造时解析成参数引用，运行时不查字典）。</summary>
@@ -58,8 +64,11 @@ internal sealed class PerformanceAction
     /// <summary>Blink：0=both、1=left、2=right。</summary>
     public int Side;
 
-    /// <summary>Gesture：手势 id（中文名或 jingyu 英文名）。</summary>
+    /// <summary>Gesture：手势 id（中文名或英文名）。</summary>
     public string? GestureId;
+
+    /// <summary>Expression：要挂的 exp3 表情 / 装饰名（可多个）。</summary>
+    public string[] Expressions = Array.Empty<string>();
 
     /// <summary>Pose：参数目标。</summary>
     public PoseValue[] Values = Array.Empty<PoseValue>();
@@ -68,6 +77,7 @@ internal sealed class PerformanceAction
     public CubismParameter?[]? Resolved;
 
     public bool GestureStarted;
+    public bool ExpressionStarted;
 }
 
 internal sealed class PerformanceDefinition
@@ -79,12 +89,17 @@ internal sealed class PerformanceDefinition
 }
 
 /// <summary>
-/// 时间线表演播放器（jingyu 风格）：每个表演 = 一串带 at / duration 的动作（pose/look/nod/tilt/smile/blink/gesture/talk），
-/// 按时间用 smoothstep 淡入淡出采样写参数；结束后自动回默认并释放（受管参数由运行时下一帧复位）。
+/// 时间线表演播放器：每个表演 = 一串带 at / duration 的动作
+/// （pose / look / nod / tilt / smile / blink / gesture / talk / expression），
+/// 按时间用 smoothstep 淡入淡出采样写参数；结束后自动回默认并释放（位姿合成层负责交回）。
+///
+/// <para><b>2026-11-27 全套重编</b>：旧的 6 个表演大多只有头 / 眼在动（手臂参数画面上看不出来），
+/// 参考作者原生动作「脱捕」（13 秒全身：头 + 面部 + 眼嘴 + 手臂 + 身体转动）重新编排了 10 个
+/// 完整表演——身体主轴 / 腰 / 位移大幅参与，嘴巴有节奏地动，并大量联动表情 / 装饰（exp3）。</para>
 ///
 /// <para><b>0 分配</b>：动作表与参数引用都在构造时准备好；每帧只做循环 + 写参数，不 new。</para>
 /// <para><b>嘴型优先级</b>：talk 只在 <c>allowTalk</c>（没有真实语音、没有动捕脸）时写，
-/// 不抢 <see cref="ModelRuntime.SpeechActive"/> 的语音口型。</para>
+/// 不抢语音口型。</para>
 /// </summary>
 internal sealed class PerformancePlayer
 {
@@ -94,6 +109,9 @@ internal sealed class PerformancePlayer
     private readonly CubismModel _model;
     private readonly Action<string> _startGesture;
     private readonly Action _stopGesture;
+    private readonly Func<string, ExpressionEntry?> _findExpression;
+    private readonly Action<ExpressionEntry, double> _applyExpression;
+    private readonly Action<ExpressionEntry, double> _removeExpression;
     private readonly PerformanceDefinition[] _definitions;
     private readonly string[] _ids;
 
@@ -105,11 +123,20 @@ internal sealed class PerformancePlayer
     private double _elapsed;
     private bool _gestureStarted;
 
-    public PerformancePlayer(CubismModel model, Action<string> startGesture, Action stopGesture)
+    /// <summary>本段表演挂上的表情 / 装饰（结束时摘掉）。</summary>
+    private readonly List<ExpressionEntry> _appliedExpressions = new(4);
+
+    public PerformancePlayer(CubismModel model, Action<string> startGesture, Action stopGesture,
+        Func<string, ExpressionEntry?> findExpression,
+        Action<ExpressionEntry, double> applyExpression,
+        Action<ExpressionEntry, double> removeExpression)
     {
         _model = model;
         _startGesture = startGesture;
         _stopGesture = stopGesture;
+        _findExpression = findExpression;
+        _applyExpression = applyExpression;
+        _removeExpression = removeExpression;
         _mouthOpen = model.FindParameter("ParamMouthOpenY");
         _mouthForm = model.FindParameter("ParamMouthForm");
         _jawOpen = model.FindParameter("JawOpen");
@@ -141,21 +168,28 @@ internal sealed class PerformancePlayer
         var definition = Find(id);
         if (definition is null) return false;
         StopGestureIfAny();
+        ClearAppliedExpressions();
         _active = definition;
         _elapsed = 0;
-        for (var i = 0; i < definition.Actions.Length; i++) definition.Actions[i].GestureStarted = false;
+        foreach (var action in definition.Actions)
+        {
+            action.GestureStarted = false;
+            action.ExpressionStarted = false;
+        }
+
         return true;
     }
 
-    /// <summary>立即停止（不走完时间线；已触发的 gesture 会停下）。</summary>
+    /// <summary>立即停止（不走完时间线；已触发的 gesture 会停下、挂的表情摘掉）。</summary>
     public void Stop()
     {
         StopGestureIfAny();
+        ClearAppliedExpressions();
         _active = null;
         _elapsed = 0;
     }
 
-    /// <summary>推进一帧（在位姿合成期、本层的捕获里调用；动作各段自带首尾淡入淡出）。</summary>
+    /// <summary>推进一帧（在位姿合成期、本层的捕获里调用）。</summary>
     public void Update(double deltaSeconds, bool allowTalk)
     {
         var definition = _active;
@@ -165,6 +199,7 @@ internal sealed class PerformancePlayer
         if (_elapsed >= definition.Duration)
         {
             StopGestureIfAny();
+            ClearAppliedExpressions();
             _active = null;
             _elapsed = 0;
             return;
@@ -183,6 +218,11 @@ internal sealed class PerformancePlayer
                     action.GestureStarted = false;
                     _gestureStarted = false;
                     _stopGesture();
+                }
+                else if (action.Kind == PerformanceActionKind.Expression && action.ExpressionStarted)
+                {
+                    action.ExpressionStarted = false;
+                    RemoveExpressions(action.Expressions);
                 }
 
                 continue;
@@ -212,7 +252,10 @@ internal sealed class PerformancePlayer
                     if (allowTalk) ApplyTalk(action, local);
                     break;
                 case PerformanceActionKind.Gesture:
-                    ApplyGesture(action, local);
+                    ApplyGesture(action);
+                    break;
+                case PerformanceActionKind.Expression:
+                    ApplyExpressionAction(action);
                     break;
             }
         }
@@ -333,7 +376,7 @@ internal sealed class PerformancePlayer
         Write(_jawOpen, open * 0.6f * smooth);
     }
 
-    private void ApplyGesture(PerformanceAction action, float local)
+    private void ApplyGesture(PerformanceAction action)
     {
         if (!action.GestureStarted && action.GestureId is not null)
         {
@@ -341,6 +384,39 @@ internal sealed class PerformancePlayer
             _gestureStarted = true;
             _startGesture(action.GestureId);
         }
+    }
+
+    private void ApplyExpressionAction(PerformanceAction action)
+    {
+        if (action.ExpressionStarted || action.Expressions.Length == 0) return;
+        action.ExpressionStarted = true;
+        foreach (var name in action.Expressions)
+        {
+            var entry = _findExpression(name);
+            if (entry is null) continue;
+            _applyExpression(entry, 0.4);
+            _appliedExpressions.Add(entry);
+        }
+    }
+
+    private void RemoveExpressions(string[] names)
+    {
+        foreach (var name in names)
+        {
+            var entry = _findExpression(name);
+            if (entry is null) continue;
+            _removeExpression(entry, 0.5);
+            _appliedExpressions.RemoveAll(item => ReferenceEquals(item, entry));
+        }
+    }
+
+    private void ClearAppliedExpressions()
+    {
+        foreach (var entry in _appliedExpressions) _removeExpression(entry, 0.5);
+        _appliedExpressions.Clear();
+        var active = _active;
+        if (active is null) return;
+        foreach (var action in active.Actions) action.ExpressionStarted = false;
     }
 
     private void StopGestureIfAny()
@@ -410,132 +486,332 @@ internal sealed class PerformancePlayer
         }
     }
 
-    // ---------------- 内置表演数据（中文 id = 显示名；参数值参考 jingyu 语义输入） ----------------
+    // ---------------- 内置表演数据（2026-11-27 全套重编） ----------------
+    //
+    // 编排原则（参考作者原生动作「脱捕」的全身感）：
+    //   - 身体主轴 ParamBodyAngleX/Y/Z、腰 HipAngleX、位移 PositionX/Y 是主力（画面上看得见的大变化）；
+    //   - 头 AngleX/Y/Z + ParamAngleX/Y/Z 跟随 / 反向；眼睛 / 眉毛 / 嘴（张合 + 嘴形 + 舌头）跟上；
+    //   - 大量联动 exp3 表情 / 装饰（爱心眼 / 脸红 / 黑脸 / 屑屑眼 / 圈圈眼 / ＞＜ / 流泪 /
+    //     单片眼镜 / 黑框眼镜 / 钢盆 / 体型切换）；
+    //   - 手臂参数（LArm 等）画面上看不出变化，一律不用；MouthSmile_L/R / ShoulderX / 翅膀等
+    //     实测无效参数一律不用（参数有效性实测会把它们拦下）。
+    // 手势动作用的都是作者原生手势（抱胸致意 / 竖起食指 / 拿起狗尾草）。
 
     private static PerformanceDefinition[] BuildDefinitions() => new[]
     {
         new PerformanceDefinition
         {
-            Id = "好奇→思考→恍然大悟",
-            DisplayName = "好奇→思考→恍然大悟",
-            Duration = 15.0f,
-            Actions = new[]
-            {
-                A(PerformanceActionKind.Look, 0f, 2.4f, strength: 0.65f, direction: 1),
-                A(PerformanceActionKind.Tilt, 0.4f, 3.0f, strength: 0.55f, direction: 1),
-                A(PerformanceActionKind.Pose, 0.3f, 3.6f, values: new[]
-                {
-                    new PoseValue("ParamBrowLY", 0.55f), new PoseValue("ParamBrowRY", -0.15f),
-                    new PoseValue("ParamMouthForm", -0.20f),
-                }),
-                A(PerformanceActionKind.Look, 3.6f, 2.4f, strength: 0.55f, direction: 2),
-                A(PerformanceActionKind.Pose, 5.0f, 3.0f, values: new[]
-                {
-                    new PoseValue("ParamEyeLOpen", 0.70f), new PoseValue("ParamEyeROpen", 0.70f),
-                    new PoseValue("ParamEyeBallX", 0.35f), new PoseValue("AngleZ", -6f),
-                }),
-                A(PerformanceActionKind.Nod, 8.2f, 2.0f, strength: 0.55f, count: 2),
-                A(PerformanceActionKind.Pose, 8.6f, 1.6f, values: new[]
-                {
-                    new PoseValue("ParamBrowLY", 0.6f), new PoseValue("ParamBrowRY", 0.6f),
-                    new PoseValue("ParamEyeLOpen", 1.2f), new PoseValue("ParamEyeROpen", 1.2f),
-                    new PoseValue("ParamMouthOpenY", 0.28f),
-                }),
-                A(PerformanceActionKind.Smile, 9.8f, 4.6f, strength: 0.8f),
-                A(PerformanceActionKind.Talk, 10.4f, 3.4f, strength: 0.6f),
-                A(PerformanceActionKind.Tilt, 11.4f, 2.2f, strength: 0.35f, direction: 0),
-            },
-        },
-        new PerformanceDefinition
-        {
-            Id = "俏皮比心",
-            DisplayName = "俏皮比心",
-            Duration = 10.0f,
-            Actions = new[]
-            {
-                A(PerformanceActionKind.Gesture, 0f, 6.2f, gestureId: GesturePlayer.IdHeart),
-                A(PerformanceActionKind.Smile, 0.4f, 6.4f, strength: 0.85f),
-                A(PerformanceActionKind.Tilt, 0.8f, 3.0f, strength: 0.6f, direction: 1),
-                A(PerformanceActionKind.Look, 0f, 2.0f, strength: 0.4f, direction: 0),
-                A(PerformanceActionKind.Nod, 6.6f, 2.2f, strength: 0.45f, count: 1),
-                A(PerformanceActionKind.Blink, 4.8f, 0.8f, strength: 1.0f, side: 2),
-            },
-        },
-        new PerformanceDefinition
-        {
-            Id = "开心挥手",
-            DisplayName = "开心挥手",
-            Duration = 9.0f,
-            Actions = new[]
-            {
-                A(PerformanceActionKind.Gesture, 0f, 6.4f, gestureId: GesturePlayer.IdWave),
-                A(PerformanceActionKind.Smile, 0.3f, 7.0f, strength: 0.9f),
-                A(PerformanceActionKind.Tilt, 0.6f, 2.6f, strength: 0.5f, direction: 1),
-                A(PerformanceActionKind.Tilt, 3.4f, 2.6f, strength: 0.45f, direction: 0),
-                A(PerformanceActionKind.Nod, 6.6f, 1.8f, strength: 0.5f, count: 2),
-                A(PerformanceActionKind.Blink, 7.6f, 0.7f, side: 0),
-            },
-        },
-        new PerformanceDefinition
-        {
-            Id = "骄傲展示",
-            DisplayName = "骄傲展示",
+            Id = "元气早安",
+            DisplayName = "元气早安",
             Duration = 12.0f,
             Actions = new[]
             {
-                A(PerformanceActionKind.Pose, 0.2f, 4.0f, values: new[]
+                A(PerformanceActionKind.Expression, 0f, 3.2f, expressions: new[] { "爱心眼", "脸红" }),
+                A(PerformanceActionKind.Look, 0f, 2.2f, strength: 0.7f, direction: 3),
+                A(PerformanceActionKind.Pose, 0.2f, 2.8f, values: new[]
                 {
-                    new PoseValue("ParamBrowLY", 0.45f), new PoseValue("ParamBrowRY", 0.45f),
-                    new PoseValue("AngleX", -4f), new PoseValue("AngleZ", 4f),
-                    new PoseValue("PositionZ", -3f), new PoseValue("CheeckPuff", 0.0f),
+                    new PoseValue("ParamBodyAngleY", 5f), new PoseValue("PositionY", 2f),
+                    new PoseValue("ParamAngleY", 4f),
                 }),
-                A(PerformanceActionKind.Smile, 1.0f, 6.0f, strength: 0.75f),
-                A(PerformanceActionKind.Gesture, 3.0f, 6.4f, gestureId: GesturePlayer.IdGrass),
-                A(PerformanceActionKind.Look, 3.4f, 2.6f, strength: 0.5f, direction: 3),
-                A(PerformanceActionKind.Nod, 8.6f, 2.2f, strength: 0.55f, count: 2),
-                A(PerformanceActionKind.Talk, 9.4f, 2.0f, strength: 0.35f),
+                A(PerformanceActionKind.Talk, 1.2f, 3.0f, strength: 0.75f),
+                A(PerformanceActionKind.Pose, 3.4f, 3.6f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleX", 6f), new PoseValue("PositionX", 3f),
+                    new PoseValue("AngleZ", 4f), new PoseValue("ParamAngleZ", 3f),
+                }),
+                A(PerformanceActionKind.Nod, 4.2f, 2.4f, strength: 0.7f, count: 2),
+                A(PerformanceActionKind.Pose, 7.2f, 3.4f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleX", -6f), new PoseValue("PositionX", -3f),
+                    new PoseValue("AngleZ", -4f), new PoseValue("ParamAngleZ", -3f),
+                }),
+                A(PerformanceActionKind.Talk, 7.6f, 2.4f, strength: 0.6f),
+                A(PerformanceActionKind.Blink, 8.4f, 0.7f, side: 0),
+                A(PerformanceActionKind.Smile, 9.2f, 2.6f, strength: 0.85f),
+                A(PerformanceActionKind.Nod, 10.2f, 1.4f, strength: 0.5f, count: 1),
             },
         },
         new PerformanceDefinition
         {
-            Id = "害羞低头",
-            DisplayName = "害羞低头",
-            Duration = 10.5f,
-            Actions = new[]
-            {
-                A(PerformanceActionKind.Look, 0f, 5.0f, strength: 0.55f, direction: 4),
-                A(PerformanceActionKind.Tilt, 1.0f, 4.0f, strength: 0.4f, direction: 0),
-                A(PerformanceActionKind.Pose, 0.4f, 5.0f, values: new[]
-                {
-                    new PoseValue("ParamBrowLY", -0.25f), new PoseValue("ParamBrowRY", -0.25f),
-                    new PoseValue("ParamMouthForm", -0.30f),
-                }),
-                A(PerformanceActionKind.Smile, 0.8f, 4.4f, strength: 0.3f),
-                A(PerformanceActionKind.Blink, 1.6f, 0.8f, side: 0),
-                A(PerformanceActionKind.Talk, 6.2f, 1.8f, strength: 0.25f),
-            },
-        },
-        new PerformanceDefinition
-        {
-            Id = "晚安道别",
-            DisplayName = "晚安道别",
+            Id = "开心蹦跳",
+            DisplayName = "开心蹦跳",
             Duration = 11.0f,
             Actions = new[]
             {
-                A(PerformanceActionKind.Gesture, 0f, 6.6f, gestureId: GesturePlayer.IdWave),
-                A(PerformanceActionKind.Nod, 0.8f, 2.4f, strength: 0.5f, count: 1),
-                A(PerformanceActionKind.Smile, 1.2f, 7.0f, strength: 0.7f),
-                A(PerformanceActionKind.Look, 0f, 2.4f, strength: 0.5f, direction: 0),
-                A(PerformanceActionKind.Talk, 6.0f, 2.4f, strength: 0.5f),
-                A(PerformanceActionKind.Blink, 8.6f, 1.0f, side: 0),
-                A(PerformanceActionKind.Tilt, 9.0f, 2.0f, strength: 0.4f, direction: 1),
+                A(PerformanceActionKind.Expression, 0f, 9.6f, expressions: new[] { "爱心眼" }),
+                A(PerformanceActionKind.Pose, 0f, 3.2f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleY", 7f), new PoseValue("PositionY", 2.5f),
+                    new PoseValue("ParamMouthOpenY", 0.6f), new PoseValue("JawOpen", 0.4f),
+                }),
+                A(PerformanceActionKind.Pose, 3.4f, 3.2f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleY", -7f), new PoseValue("PositionY", -2.5f),
+                    new PoseValue("ParamAngleY", 5f),
+                }),
+                A(PerformanceActionKind.Pose, 6.8f, 2.6f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleX", 5f), new PoseValue("PositionX", 2.5f),
+                    new PoseValue("ParamBodyAngleZ", 3f),
+                }),
+                A(PerformanceActionKind.Talk, 3.6f, 5.6f, strength: 0.8f),
+                A(PerformanceActionKind.Nod, 6.0f, 2.0f, strength: 0.8f, count: 2),
+                A(PerformanceActionKind.Smile, 8.0f, 2.8f, strength: 0.9f),
+                A(PerformanceActionKind.Blink, 9.4f, 0.8f, side: 2),
+            },
+        },
+        new PerformanceDefinition
+        {
+            Id = "好奇打量",
+            DisplayName = "好奇打量",
+            Duration = 13.0f,
+            Actions = new[]
+            {
+                A(PerformanceActionKind.Expression, 0.4f, 3.6f, expressions: new[] { "圈圈眼" }),
+                A(PerformanceActionKind.Pose, 0f, 3.0f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleZ", 6f), new PoseValue("AngleZ", 8f),
+                    new PoseValue("ParamAngleZ", 6f), new PoseValue("ParamBrowLY", 0.5f),
+                    new PoseValue("ParamBrowRY", 0.5f),
+                }),
+                A(PerformanceActionKind.Look, 0.4f, 2.4f, strength: 0.8f, direction: 1),
+                A(PerformanceActionKind.Pose, 3.8f, 3.2f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleZ", -6f), new PoseValue("AngleZ", -8f),
+                    new PoseValue("ParamAngleZ", -6f), new PoseValue("ParamBrowLY", 0.35f),
+                    new PoseValue("ParamBrowRY", 0.35f), new PoseValue("ParamMouthForm", -0.25f),
+                }),
+                A(PerformanceActionKind.Look, 4.0f, 2.6f, strength: 0.8f, direction: 2),
+                A(PerformanceActionKind.Talk, 6.6f, 2.8f, strength: 0.4f),
+                A(PerformanceActionKind.Expression, 7.4f, 4.6f, expressions: new[] { "屑屑眼" }),
+                A(PerformanceActionKind.Pose, 7.6f, 4.4f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleZ", 5f), new PoseValue("AngleZ", 7f),
+                    new PoseValue("ParamAngleZ", 5f), new PoseValue("ParamAngleY", -3f),
+                }),
+                A(PerformanceActionKind.Nod, 11.0f, 1.6f, strength: 0.5f, count: 1),
+            },
+        },
+        new PerformanceDefinition
+        {
+            Id = "傲娇别扭",
+            DisplayName = "傲娇别扭",
+            Duration = 13.5f,
+            Actions = new[]
+            {
+                A(PerformanceActionKind.Expression, 0f, 5.6f, expressions: new[] { "黑脸" }),
+                A(PerformanceActionKind.Pose, 0.2f, 4.8f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleZ", 9f), new PoseValue("AngleZ", -6f),
+                    new PoseValue("ParamAngleZ", 4f), new PoseValue("ParamMouthForm", -0.6f),
+                    new PoseValue("PositionX", -2.5f),
+                }),
+                A(PerformanceActionKind.Look, 0.6f, 2.0f, strength: 0.4f, direction: 4),
+                A(PerformanceActionKind.Pose, 5.8f, 4.0f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleZ", -9f), new PoseValue("AngleZ", 6f),
+                    new PoseValue("ParamAngleZ", -4f), new PoseValue("PositionX", 2.5f),
+                }),
+                A(PerformanceActionKind.Expression, 5.8f, 6.6f, expressions: new[] { "屑屑眼" }),
+                A(PerformanceActionKind.Look, 6.2f, 3.4f, strength: 0.9f, direction: 1),
+                A(PerformanceActionKind.Talk, 9.8f, 2.8f, strength: 0.45f),
+                A(PerformanceActionKind.Pose, 10.0f, 3.2f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleZ", 6f), new PoseValue("AngleZ", -5f),
+                    new PoseValue("ParamAngleZ", 3f), new PoseValue("ParamMouthForm", -0.45f),
+                }),
+                A(PerformanceActionKind.Blink, 11.4f, 0.7f, side: 1),
+            },
+        },
+        new PerformanceDefinition
+        {
+            Id = "害羞心动",
+            DisplayName = "害羞心动",
+            Duration = 11.5f,
+            Actions = new[]
+            {
+                A(PerformanceActionKind.Expression, 0f, 10.4f, expressions: new[] { "爱心眼", "脸红" }),
+                A(PerformanceActionKind.Pose, 0f, 4.4f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleZ", 4f), new PoseValue("AngleY", -5f),
+                    new PoseValue("ParamAngleY", -4f), new PoseValue("ParamMouthForm", 0.3f),
+                }),
+                A(PerformanceActionKind.Look, 0.4f, 2.2f, strength: 0.45f, direction: 4),
+                A(PerformanceActionKind.Pose, 4.6f, 4.4f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleZ", -4f), new PoseValue("AngleZ", 3f),
+                    new PoseValue("ParamAngleZ", -3f), new PoseValue("ParamMouthOpenY", 0.25f),
+                }),
+                A(PerformanceActionKind.Talk, 5.0f, 3.4f, strength: 0.4f),
+                A(PerformanceActionKind.Pose, 9.2f, 2.2f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleZ", 4f), new PoseValue("AngleZ", 4f),
+                    new PoseValue("ParamAngleZ", 3f),
+                }),
+                A(PerformanceActionKind.Blink, 9.6f, 0.8f, side: 1),
+            },
+        },
+        new PerformanceDefinition
+        {
+            Id = "委屈抽泣",
+            DisplayName = "委屈抽泣",
+            Duration = 12.5f,
+            Actions = new[]
+            {
+                A(PerformanceActionKind.Expression, 0f, 11.4f, expressions: new[] { "流泪", "＞＜" }),
+                A(PerformanceActionKind.Pose, 0f, 3.6f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleZ", 3f), new PoseValue("AngleY", 5f),
+                    new PoseValue("ParamAngleY", 4f), new PoseValue("ParamMouthForm", -0.4f),
+                }),
+                A(PerformanceActionKind.Talk, 1.0f, 4.4f, strength: 0.55f),
+                A(PerformanceActionKind.Pose, 3.8f, 3.6f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleZ", -3f), new PoseValue("AngleY", 6f),
+                    new PoseValue("ParamAngleY", 5f), new PoseValue("JawOpen", 0.3f),
+                }),
+                A(PerformanceActionKind.Talk, 5.6f, 4.2f, strength: 0.5f),
+                A(PerformanceActionKind.Look, 8.4f, 2.6f, strength: 0.5f, direction: 4),
+                A(PerformanceActionKind.Pose, 8.6f, 3.4f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleZ", 3f), new PoseValue("AngleZ", -5f),
+                    new PoseValue("ParamAngleZ", -4f), new PoseValue("PositionX", -2f),
+                }),
+                A(PerformanceActionKind.Blink, 10.6f, 0.9f, side: 0),
+            },
+        },
+        new PerformanceDefinition
+        {
+            Id = "唱跳小曲",
+            DisplayName = "唱跳小曲",
+            Duration = 14.0f,
+            Actions = new[]
+            {
+                A(PerformanceActionKind.Expression, 6.8f, 6.0f, expressions: new[] { "爱心眼" }),
+                A(PerformanceActionKind.Pose, 0f, 3.4f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleX", 7f), new PoseValue("PositionX", 3.5f),
+                    new PoseValue("AngleZ", 5f), new PoseValue("ParamAngleZ", 4f),
+                    new PoseValue("HipAngleX", 4f),
+                }),
+                A(PerformanceActionKind.Talk, 0.4f, 3.0f, strength: 0.85f),
+                A(PerformanceActionKind.Pose, 3.6f, 3.4f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleX", -7f), new PoseValue("PositionX", -3.5f),
+                    new PoseValue("AngleZ", -5f), new PoseValue("ParamAngleZ", -4f),
+                    new PoseValue("HipAngleX", -4f),
+                }),
+                A(PerformanceActionKind.Talk, 4.0f, 3.0f, strength: 0.85f),
+                A(PerformanceActionKind.Nod, 2.0f, 2.4f, strength: 0.7f, count: 2),
+                A(PerformanceActionKind.Pose, 7.2f, 3.4f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleX", 7f), new PoseValue("PositionX", 3.5f),
+                    new PoseValue("AngleZ", 5f), new PoseValue("ParamAngleZ", 4f),
+                    new PoseValue("HipAngleX", 4f),
+                }),
+                A(PerformanceActionKind.Talk, 7.6f, 3.0f, strength: 0.9f),
+                A(PerformanceActionKind.Pose, 10.8f, 2.6f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleY", 8f), new PoseValue("PositionY", 3f),
+                    new PoseValue("AngleY", 6f), new PoseValue("ParamAngleY", 5f),
+                }),
+                A(PerformanceActionKind.Nod, 11.0f, 2.4f, strength: 0.8f, count: 2),
+                A(PerformanceActionKind.Smile, 12.4f, 1.4f, strength: 0.8f),
+            },
+        },
+        new PerformanceDefinition
+        {
+            Id = "眼镜变装",
+            DisplayName = "眼镜变装",
+            Duration = 13.0f,
+            Actions = new[]
+            {
+                A(PerformanceActionKind.Expression, 0.2f, 5.4f, expressions: new[] { "黑框眼镜" }),
+                A(PerformanceActionKind.Pose, 0.4f, 4.6f, values: new[]
+                {
+                    new PoseValue("AngleY", 6f), new PoseValue("ParamAngleY", 5f),
+                    new PoseValue("ParamBodyAngleZ", 3f), new PoseValue("ParamMouthForm", 0.4f),
+                }),
+                A(PerformanceActionKind.Look, 1.0f, 2.0f, strength: 0.6f, direction: 3),
+                A(PerformanceActionKind.Expression, 5.6f, 4.4f, expressions: new[] { "单片眼镜" }),
+                A(PerformanceActionKind.Pose, 5.8f, 4.0f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleZ", 7f), new PoseValue("AngleZ", -5f),
+                    new PoseValue("ParamAngleZ", 5f), new PoseValue("PositionX", 2.5f),
+                }),
+                A(PerformanceActionKind.Expression, 7.0f, 3.0f, expressions: new[] { "屑屑眼" }),
+                A(PerformanceActionKind.Look, 7.4f, 2.2f, strength: 0.7f, direction: 2),
+                A(PerformanceActionKind.Pose, 10.0f, 2.6f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleZ", -6f), new PoseValue("AngleZ", 5f),
+                    new PoseValue("ParamAngleZ", -4f), new PoseValue("PositionX", -2.5f),
+                    new PoseValue("ParamMouthForm", -0.3f),
+                }),
+                A(PerformanceActionKind.Expression, 10.2f, 2.4f, expressions: new[] { "＞＜" }),
+                A(PerformanceActionKind.Blink, 11.6f, 0.8f, side: 0),
+            },
+        },
+        new PerformanceDefinition
+        {
+            Id = "钢盆敲敲",
+            DisplayName = "钢盆敲敲",
+            Duration = 12.0f,
+            Actions = new[]
+            {
+                A(PerformanceActionKind.Expression, 0.2f, 10.6f, expressions: new[] { "钢盆" }),
+                A(PerformanceActionKind.Pose, 0.4f, 4.4f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleZ", 5f), new PoseValue("AngleZ", 7f),
+                    new PoseValue("ParamAngleZ", 5f), new PoseValue("ParamMouthForm", -0.2f),
+                }),
+                A(PerformanceActionKind.Talk, 1.0f, 3.2f, strength: 0.5f),
+                A(PerformanceActionKind.Pose, 5.0f, 4.4f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleZ", -5f), new PoseValue("AngleZ", -7f),
+                    new PoseValue("ParamAngleZ", -5f), new PoseValue("ParamEyeBallX", -0.4f),
+                }),
+                A(PerformanceActionKind.Expression, 5.6f, 4.8f, expressions: new[] { "＞＜" }),
+                A(PerformanceActionKind.Talk, 5.8f, 3.2f, strength: 0.45f),
+                A(PerformanceActionKind.Nod, 9.8f, 1.8f, strength: 0.6f, count: 1),
+                A(PerformanceActionKind.Smile, 10.4f, 1.4f, strength: 0.7f),
+            },
+        },
+        new PerformanceDefinition
+        {
+            Id = "变身小兔",
+            DisplayName = "变身小兔",
+            Duration = 14.0f,
+            Actions = new[]
+            {
+                A(PerformanceActionKind.Expression, 0.2f, 5.6f, expressions: new[] { "体型1" }),
+                A(PerformanceActionKind.Pose, 0.4f, 5.0f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleY", 6f), new PoseValue("PositionY", 2.5f),
+                    new PoseValue("ParamAngleZ", 4f), new PoseValue("ParamMouthOpenY", 0.5f),
+                }),
+                A(PerformanceActionKind.Talk, 1.0f, 4.0f, strength: 0.7f),
+                A(PerformanceActionKind.Nod, 3.4f, 1.8f, strength: 0.7f, count: 2),
+                A(PerformanceActionKind.Expression, 6.0f, 5.4f, expressions: new[] { "体型2", "脸红" }),
+                A(PerformanceActionKind.Pose, 6.2f, 5.0f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleX", 5f), new PoseValue("PositionX", 2.5f),
+                    new PoseValue("AngleZ", 5f), new PoseValue("ParamAngleZ", 4f),
+                }),
+                A(PerformanceActionKind.Talk, 6.6f, 4.0f, strength: 0.6f),
+                A(PerformanceActionKind.Blink, 8.6f, 0.8f, side: 1),
+                A(PerformanceActionKind.Pose, 11.6f, 2.0f, values: new[]
+                {
+                    new PoseValue("ParamBodyAngleZ", 3f), new PoseValue("AngleZ", 4f),
+                    new PoseValue("ParamAngleZ", 3f),
+                }),
+                A(PerformanceActionKind.Smile, 12.0f, 1.6f, strength: 0.8f),
             },
         },
     };
 
     private static PerformanceAction A(PerformanceActionKind kind, float at, float duration,
         float strength = 0.5f, int direction = 0, int count = 1, int side = 0, string? gestureId = null,
-        PoseValue[]? values = null) => new()
+        PoseValue[]? values = null, string[]? expressions = null) => new()
     {
         Kind = kind,
         At = at,
@@ -546,5 +822,6 @@ internal sealed class PerformancePlayer
         Side = side,
         GestureId = gestureId,
         Values = values ?? Array.Empty<PoseValue>(),
+        Expressions = expressions ?? Array.Empty<string>(),
     };
 }

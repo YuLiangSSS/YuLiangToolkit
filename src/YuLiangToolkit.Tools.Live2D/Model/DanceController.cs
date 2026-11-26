@@ -3,42 +3,39 @@ using YuLiangToolkit.Tools.Live2D.Interop;
 namespace YuLiangToolkit.Tools.Live2D.Model;
 
 /// <summary>
-/// 舞蹈控制器（程序化循环，不依赖动作文件）：4 种模式，写左右臂 / 肩膀 / 头部与身体「物理输入」参数
-/// （AngleX/Y/Z、PositionX/Y/Z、LeanInput），**不写物理输出**（ParamBodyAngle* 交给物理求值，避免出现硬扭腰）。
-/// 停止时 0.25 秒整体权重淡出回默认；相位连续推进，速度 0.5~2.0 可调。
+/// 舞蹈控制器（程序化循环，不依赖动作文件）：4 种模式。
+///
+/// <para><b>2026-11-27 全套重编</b>：旧版以手臂 / 肩膀参数为主（画面上几乎看不出变化，用户反馈「没动作」）；
+/// 新版全部以**身体主轴 + 腰 + 位移**为主力（实测有效、画面上看得见的大变化），头部 / 眼睛 / 嘴巴跟上，
+/// 只用参数有效性实测确认过的参数（ShoulderX / ShoulderYy / HipAngleZ / 翅膀等无效参数一律不碰）。
+/// 停止时 0.25 秒整体权重淡出回默认（位姿合成层交回）；相位连续推进，速度 0.5~2.0 可调。</para>
 /// </summary>
 internal sealed class DanceController
 {
-    public const string ModeSway = "轻快摇摆";
-    public const string ModeWave = "挥手舞";
-    public const string ModeSpin = "摇摆转圈";
-    public const string ModeShimmy = "酷炫抖肩";
+    public const string ModeSway = "左右摇摆";
+    public const string ModeTurn = "转身律动";
+    public const string ModeBounce = "蹦跳律动";
+    public const string ModeTwist = "扭腰摆胯";
 
-    private static readonly string[] ModeList = { ModeSway, ModeWave, ModeSpin, ModeShimmy };
+    private static readonly string[] ModeList = { ModeSway, ModeTurn, ModeBounce, ModeTwist };
 
-    private readonly CubismModel _model;
-    private readonly CubismParameter? _lArm;
-    private readonly CubismParameter? _lForearm;
-    private readonly CubismParameter? _lWrist;
-    private readonly CubismParameter? _lHand;
-    private readonly CubismParameter? _lHand2;
-    private readonly CubismParameter? _rArm;
-    private readonly CubismParameter? _rForearm;
-    private readonly CubismParameter? _rWrist;
-    private readonly CubismParameter? _rHand;
-    private readonly CubismParameter? _rHand2;
-    private readonly CubismParameter? _shoulderY;
-    private readonly CubismParameter? _shoulderZ;
-    private readonly CubismParameter? _angleX;
-    private readonly CubismParameter? _angleY;
-    private readonly CubismParameter? _angleZ;
+    private readonly CubismParameter? _bodyAngleX;
+    private readonly CubismParameter? _bodyAngleY;
+    private readonly CubismParameter? _bodyAngleZ;
     private readonly CubismParameter? _positionX;
     private readonly CubismParameter? _positionY;
     private readonly CubismParameter? _positionZ;
-    private readonly CubismParameter? _leanInput;
+    private readonly CubismParameter? _hipAngleX;
+    private readonly CubismParameter? _angleX;
+    private readonly CubismParameter? _angleY;
+    private readonly CubismParameter? _angleZ;
     private readonly CubismParameter? _paramAngleX;
     private readonly CubismParameter? _paramAngleY;
     private readonly CubismParameter? _paramAngleZ;
+    private readonly CubismParameter? _paramAngleZLeg;
+    private readonly CubismParameter? _shoulderY;
+    private readonly CubismParameter? _mouthOpen;
+    private readonly CubismParameter? _jawOpen;
 
     private string? _mode;
     private double _speed = 1.0;
@@ -48,29 +45,23 @@ internal sealed class DanceController
 
     public DanceController(CubismModel model)
     {
-        _model = model;
-        _lArm = model.FindParameter("LArm");
-        _lForearm = model.FindParameter("LForearm");
-        _lWrist = model.FindParameter("LWrist");
-        _lHand = model.FindParameter("LHand");
-        _lHand2 = model.FindParameter("LHand2");
-        _rArm = model.FindParameter("RArm");
-        _rForearm = model.FindParameter("RForearm");
-        _rWrist = model.FindParameter("RWrist");
-        _rHand = model.FindParameter("RHand");
-        _rHand2 = model.FindParameter("RHand2");
-        _shoulderY = model.FindParameter("ShoulderY");
-        _shoulderZ = model.FindParameter("ShoulderZ");
-        _angleX = model.FindParameter("AngleX");
-        _angleY = model.FindParameter("AngleY");
-        _angleZ = model.FindParameter("AngleZ");
+        _bodyAngleX = model.FindParameter("ParamBodyAngleX");
+        _bodyAngleY = model.FindParameter("ParamBodyAngleY");
+        _bodyAngleZ = model.FindParameter("ParamBodyAngleZ");
         _positionX = model.FindParameter("PositionX");
         _positionY = model.FindParameter("PositionY");
         _positionZ = model.FindParameter("PositionZ");
-        _leanInput = model.FindParameter("LeanInput");
+        _hipAngleX = model.FindParameter("HipAngleX");
+        _angleX = model.FindParameter("AngleX");
+        _angleY = model.FindParameter("AngleY");
+        _angleZ = model.FindParameter("AngleZ");
         _paramAngleX = model.FindParameter("ParamAngleX");
         _paramAngleY = model.FindParameter("ParamAngleY");
         _paramAngleZ = model.FindParameter("ParamAngleZ");
+        _paramAngleZLeg = model.FindParameter("LEGAngleZ2");
+        _shoulderY = model.FindParameter("ShoulderY");
+        _mouthOpen = model.FindParameter("ParamMouthOpenY");
+        _jawOpen = model.FindParameter("JawOpen");
     }
 
     public static IReadOnlyList<string> Modes => ModeList;
@@ -150,104 +141,93 @@ internal sealed class DanceController
             case ModeSway:
                 ApplySway(w);
                 break;
-            case ModeWave:
-                ApplyWave(w);
+            case ModeTurn:
+                ApplyTurn(w);
                 break;
-            case ModeSpin:
-                ApplySpin(w);
+            case ModeBounce:
+                ApplyBounce(w);
                 break;
-            case ModeShimmy:
-                ApplyShimmy(w);
+            case ModeTwist:
+                ApplyTwist(w);
                 break;
         }
     }
 
     private static double BaseFrequency(string mode) => mode switch
     {
-        ModeSway => 0.85,
-        ModeWave => 1.10,
-        ModeSpin => 0.65,
-        ModeShimmy => 1.55,
+        ModeSway => 0.9,
+        ModeTurn => 0.6,
+        ModeBounce => 1.2,
+        ModeTwist => 1.0,
         _ => 1.0,
     };
 
+    /// <summary>左右摇摆：身体大幅左右 + 腰跟随 + 位移 + 头反向稳定。</summary>
     private void ApplySway(float w)
     {
         var p = _phase;
-        var kick = Math.Sin(p);
+        var swing = Math.Sin(p);
         var second = Math.Sin(p * 2.0);
-        Write(_lArm, 0.30f * kick * w);
-        Write(_lForearm, 0.22f * Math.Sin(p + 0.4) * w);
-        Write(_lWrist, 0.16f * second * w);
-        Write(_lHand, 0.10f * second * w);
-        Write(_rArm, -0.30f * kick * w);
-        Write(_rForearm, -0.22f * Math.Sin(p + 0.4) * w);
-        Write(_rWrist, -0.16f * second * w);
-        Write(_rHand, -0.10f * second * w);
-        Write(_shoulderY, (float)(2.6 * kick) * w);
-        Write(_angleX, (float)(1.8 * Math.Sin(p * 0.5)) * w);
-        Write(_angleZ, (float)(2.2 * kick) * w);
-        Write(_positionX, (float)(1.8 * kick) * w);
-        Write(_paramAngleZ, (float)(1.4 * kick) * w);
-        Write(_paramAngleY, (float)(1.2 * second) * w);
+        Write(_bodyAngleX, 8f * swing * w);
+        Write(_positionX, 3.2f * swing * w);
+        Write(_hipAngleX, 4.5f * swing * w);
+        Write(_bodyAngleZ, 2.5f * Math.Sin(p + 0.5) * w);
+        Write(_angleZ, 3.5f * swing * w);
+        Write(_paramAngleZ, 3f * swing * w);
+        Write(_angleY, 1.5f * second * w);
+        Write(_paramAngleY, 1.8f * second * w);
+        Write(_shoulderY, 2.2f * Math.Sin(p + 1.1) * w);
+        Write(_paramAngleZLeg, 2.5f * swing * w);
     }
 
-    private void ApplyWave(float w)
+    /// <summary>转身律动：身体左右转 + 头部跟着 / 反抗 + 眼神扫视。</summary>
+    private void ApplyTurn(float w)
     {
         var p = _phase;
-        var wave = Math.Sin(p * 2.0);
-        Write(_rArm, (float)(-0.55 + (0.12 * Math.Sin(p))) * w);
-        Write(_rForearm, (float)(0.35 + (0.22 * Math.Sin(p + 0.3))) * w);
-        Write(_rWrist, (float)(0.32 * wave) * w);
-        Write(_rHand, (float)(0.24 * Math.Sin((p * 2.0) + 0.5)) * w);
-        Write(_rHand2, (float)(0.12 * wave) * w);
-        Write(_lArm, (float)(0.12 * Math.Sin(p * 0.5)) * w);
-        Write(_lForearm, (float)(0.10 * Math.Sin(p * 0.5 + 0.3)) * w);
-        Write(_shoulderY, (float)(-2.5 + (1.6 * Math.Sin(p))) * w);
-        Write(_shoulderZ, (float)(1.4 * Math.Sin(p + 0.9)) * w);
-        Write(_angleX, (float)(1.6 * Math.Sin(p * 0.5)) * w);
-        Write(_angleY, (float)(1.2 * Math.Sin(p * 0.75)) * w);
-        Write(_positionX, (float)(1.4 * Math.Sin(p * 0.5)) * w);
-        Write(_paramAngleZ, (float)(2.2 * Math.Sin(p * 0.5 + 0.4)) * w);
-        Write(_paramAngleY, (float)(1.5 * Math.Sin(p * 0.5)) * w);
+        var swing = Math.Sin(p);
+        var swingHalf = Math.Sin(p * 0.5f);
+        Write(_bodyAngleZ, 8.5f * swing * w);
+        Write(_positionX, 2.8f * swing * w);
+        Write(_angleZ, 5.5f * swing * w);
+        Write(_paramAngleZ, 4.5f * swing * w);
+        Write(_angleY, 3.5f * swingHalf * w);
+        Write(_paramAngleY, 3f * swingHalf * w);
+        Write(_angleX, 1.5f * Math.Sin(p * 2.0) * w);
+        Write(_bodyAngleX, 2.5f * Math.Sin(p + 0.9) * w);
     }
 
-    private void ApplySpin(float w)
+    /// <summary>蹦跳律动：前后弹跳感 + 张嘴节奏 + 点头，像跟着歌蹦。</summary>
+    private void ApplyBounce(float w)
+    {
+        var p = _phase;
+        var bounce = Math.Abs(Math.Sin(p));
+        var beat = Math.Sin(p * 2.0);
+        Write(_bodyAngleY, 6f * bounce * w);
+        Write(_positionY, 2.2f * bounce * w);
+        Write(_mouthOpen, (0.30f + (0.25f * beat)) * w);
+        Write(_jawOpen, (0.20f + (0.15f * beat)) * w);
+        Write(_paramAngleY, 2.5f * beat * w);
+        Write(_angleY, 2f * beat * w);
+        Write(_bodyAngleX, 3f * Math.Sin(p * 0.5) * w);
+        Write(_positionX, 1.5f * Math.Sin(p * 0.5) * w);
+        Write(_shoulderY, 2.5f * bounce * w);
+    }
+
+    /// <summary>扭腰摆胯：腰大幅扭 + 身体反方向平衡 + 腿部跟随。</summary>
+    private void ApplyTwist(float w)
     {
         var p = _phase;
         var swing = Math.Sin(p);
         var swing2 = Math.Sin(p * 2.0);
-        Write(_lArm, (float)(-0.42 * swing) * w);
-        Write(_lForearm, (float)(0.30 * Math.Sin(p + 0.5)) * w);
-        Write(_lWrist, (float)(0.18 * swing2) * w);
-        Write(_rArm, (float)(0.42 * swing) * w);
-        Write(_rForearm, (float)(-0.30 * Math.Sin(p + 0.5)) * w);
-        Write(_rWrist, (float)(-0.18 * swing2) * w);
-        Write(_shoulderY, (float)(2.0 * swing) * w);
-        Write(_angleZ, (float)(5.0 * swing) * w);
-        Write(_angleY, (float)(2.0 * swing2) * w);
-        Write(_positionX, (float)(4.0 * swing) * w);
-        Write(_leanInput, (float)(5.0 * swing) * w);
-        Write(_paramAngleY, (float)(3.0 * Math.Sin(p + 0.5)) * w);
-        Write(_paramAngleZ, (float)(3.0 * Math.Sin(p * 0.5)) * w);
-    }
-
-    private void ApplyShimmy(float w)
-    {
-        var p = _phase;
-        var fast = Math.Sin(p * 2.0);
-        var shoulder = Math.Sin(p);
-        // ShoulderX / ShoulderYy 实测无效已移除（肩只跟 ShoulderY / Z）
-        Write(_shoulderY, (float)(2.4 * fast) * w);
-        Write(_shoulderZ, (float)(1.6 * Math.Sin(p + 1.0)) * w);
-        Write(_lArm, (float)(0.16 * fast) * w);
-        Write(_rArm, (float)(-0.16 * fast) * w);
-        Write(_lForearm, (float)(0.10 * Math.Sin(p + 0.3)) * w);
-        Write(_rForearm, (float)(-0.10 * Math.Sin(p + 0.3)) * w);
-        Write(_angleX, (float)(2.0 * fast) * w);
-        Write(_positionX, (float)(1.6 * shoulder) * w);
-        Write(_paramAngleY, (float)(1.6 * fast) * w);
-        Write(_paramAngleZ, (float)(1.0 * shoulder) * w);
+        Write(_hipAngleX, 5.5f * swing * w);
+        Write(_bodyAngleZ, 8f * swing * w);
+        Write(_bodyAngleX, 3f * swing2 * w);
+        Write(_positionX, 2.5f * swing * w);
+        Write(_angleZ, 4.5f * -swing * w);
+        Write(_paramAngleZ, 4f * -swing * w);
+        Write(_paramAngleZLeg, 3f * swing * w);
+        Write(_angleX, 1.8f * swing2 * w);
+        Write(_paramAngleY, 1.6f * swing2 * w);
     }
 
     private void Write(CubismParameter? parameter, double value)

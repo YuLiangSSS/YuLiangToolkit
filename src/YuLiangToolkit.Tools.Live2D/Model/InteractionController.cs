@@ -749,7 +749,7 @@ internal sealed class InteractionController
         if (string.Equals(active, "竖起食指", StringComparison.Ordinal))
         {
             _stopGesture();
-            _raiseInteraction("hand", "放下手");
+            _raiseInteraction("hand", "收起手指");
         }
         else
         {

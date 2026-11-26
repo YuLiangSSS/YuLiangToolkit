@@ -2662,12 +2662,11 @@ internal static class Live2DChecks
             var gestureIds = runtime.GestureIds;
             var performanceIds = runtime.PerformanceIds;
             var danceModes = runtime.DanceModes;
-            C("动作系统：8 个手势 / 6 个表演 / 4 个舞蹈模式（含抱胸致意、竖起食指、拿起狗尾草、举手打招呼、比心）",
-                gestureIds.Count == 8 && performanceIds.Count == 6 && danceModes.Count == 4
+            C("动作系统：3 个作者原生手势 / 10 个表演 / 4 个舞蹈模式（参数姿势已删——手臂参数画面上看不出变化）",
+                gestureIds.Count == 3 && performanceIds.Count == 10 && danceModes.Count == 4
                 && gestureIds.Contains("抱胸致意") && gestureIds.Contains("竖起食指") && gestureIds.Contains("拿起狗尾草")
-                && gestureIds.Contains("举手打招呼") && gestureIds.Contains("比心") && gestureIds.Contains("叉腰")
-                && gestureIds.Contains("抱头") && gestureIds.Contains("放下手")
-                && performanceIds.Contains("开心挥手") && danceModes.Contains("轻快摇摆"),
+                && performanceIds.Contains("元气早安") && performanceIds.Contains("唱跳小曲") && performanceIds.Contains("变身小兔")
+                && danceModes.Contains("左右摇摆") && danceModes.Contains("扭腰摆胯"),
                 $"手势={gestureIds.Count} 表演={performanceIds.Count} 舞蹈={danceModes.Count}");
             C("动作系统：未知手势 / 表演 / 舞蹈模式返回 false（不会抛异常）",
                 !runtime.PlayGesture("不存在的手势")
@@ -2743,58 +2742,9 @@ internal static class Live2DChecks
                     defaultError <= 0.02, $"最大误差={defaultError:0.####}");
             }
 
-            // 参数姿势：举手打招呼 / 比心 / 叉腰 / 抱头（0.35s 淡入后到位并保持；目标值按 l2d-model 调优版）
-            var poseGestures = new (string Gesture, (string Id, float Value)[] Targets)[]
-            {
-                ("举手打招呼", new[]
-                {
-                    ("LArm", 1.00f), ("LForearm", 0.80f), ("LWrist", 0.60f), ("LHand", 0.40f),
-                    ("ShoulderY", 12f), ("ParamAngleZ", 4f), ("ParamEyeBallY", 0.25f), ("EyeSmile", 0.40f),
-                }),
-                ("比心", new[]
-                {
-                    ("LArm", 0.45f), ("LForearm", 1.00f), ("LWrist", -0.80f), ("LHand", 0.50f),
-                    ("RArm", 0.45f), ("RForearm", 1.00f), ("RWrist", 0.80f), ("RHand", 0.50f),
-                    ("ParamAngleZ", -4f), ("EyeSmile", 0.50f),
-                }),
-                ("叉腰", new[]
-                {
-                    ("LArm", 0.55f), ("LForearm", -0.95f), ("LWrist", -0.20f),
-                    ("RArm", 0.55f), ("RForearm", -0.95f), ("RWrist", 0.20f), ("ParamAngleY", -2f),
-                }),
-                ("抱头", new[]
-                {
-                    ("LArm", 1.00f), ("LForearm", -0.60f), ("LWrist", -0.80f), ("LHand", -0.20f),
-                    ("RArm", 1.00f), ("RForearm", -0.60f), ("RWrist", 0.80f), ("RHand", -0.20f),
-                    ("ParamAngleY", 5f), ("ParamAngleZ", 2f),
-                }),
-            };
-            foreach (var (gesture, targets) in poseGestures)
-            {
-                runtime.PlayGesture(gesture);
-                TickFrames(42); // 0.7s > 0.35s 淡入
-                var poseError = targets.Max(t =>
-                {
-                    var parameter = rt.Model.FindParameter(t.Id);
-                    var expected = parameter is null ? 0.0 : Math.Clamp(t.Value, parameter.Minimum, parameter.Maximum);
-                    return Math.Abs(Param(t.Id) - expected);
-                });
-                C($"姿势「{gesture}」：0.35 秒淡入后到位（与设定值 ±2e-2，含参数范围夹取）",
-                    poseError <= 0.02, $"最大误差={poseError:0.####}");
-                TickFrames(30);
-                var poseStayError = targets.Max(t =>
-                {
-                    var parameter = rt.Model.FindParameter(t.Id);
-                    var expected = parameter is null ? 0.0 : Math.Clamp(t.Value, parameter.Minimum, parameter.Maximum);
-                    return Math.Abs(Param(t.Id) - expected);
-                });
-                C($"姿势「{gesture}」：保持 0.5 秒不回落（±2e-2）", poseStayError <= 0.02, $"最大误差={poseStayError:0.####}");
-                runtime.StopGesture();
-                TickFrames(30); // 0.25s 淡出
-            }
-
             // 时间线表演：中段参数变化 → 自然结束回默认；Stop 立即停
-            const string performanceId = "开心挥手";
+            // （参数姿势手势已删：手臂参数画面上看不出变化，全身编排走表演的动作时间线）
+            const string performanceId = "元气早安";
             runtime.ResetParameters();
             TickFrames(2);
             var performanceStarted = runtime.PlayPerformance(performanceId);
@@ -2804,7 +2754,7 @@ internal static class Live2DChecks
                 performanceStarted && runtime.ActivePerformance == performanceId && performanceMoved && AllParamsFinite(),
                 $"active={runtime.ActivePerformance} moved={performanceMoved}");
 
-            TickFrames(510); // 再 8.5 秒（总 10.5s > 表演时长 9s）
+            TickFrames(620); // 再 ~10.3 秒（总 12.3s > 表演时长 12s；挂的临时表情到点自动摘掉）
             C("表演：时间线走完后自动结束、参数回默认值（±2e-2）",
                 runtime.ActivePerformance is null && AllNearDefault(0.02),
                 $"active={runtime.ActivePerformance}");
@@ -2848,13 +2798,13 @@ internal static class Live2DChecks
             double ReadDancePhase()
                 => dancePhaseProperty?.GetValue(danceObject) is double phase ? phase : double.NaN;
 
-            runtime.StartDance("轻快摇摆", 1.0);
+            runtime.StartDance("左右摇摆", 1.0);
             var phaseStart1 = ReadDancePhase();
             TickFrames(60); // 1 秒
             var phaseEnd1 = ReadDancePhase();
             runtime.StopDance();
             TickFrames(45);
-            runtime.StartDance("轻快摇摆", 2.0);
+            runtime.StartDance("左右摇摆", 2.0);
             var phaseStart2 = ReadDancePhase();
             TickFrames(60); // 1 秒（速度 2x）
             var phaseEnd2 = ReadDancePhase();
@@ -2876,7 +2826,7 @@ internal static class Live2DChecks
 
             // StopAllDemos：手势 / 表演 / 舞蹈 / 动作一起停
             runtime.PlayPerformance(performanceId);
-            runtime.StartDance("轻快摇摆", 1.0);
+            runtime.StartDance("左右摇摆", 1.0);
             TickFrames(60);
             StopInteractionDemos();
             TickFrames(90);
@@ -2941,7 +2891,7 @@ internal static class Live2DChecks
             runtime.MusicEnabled = true;
             fakeMusic.Latest = MakeMusicSnapshot(MusicContentKind.Instrumental, mouthOpen: 0.5, mouthForm: 0.2,
                 beatPhase: 0.1, beatStrength: 0.5, bpm: 120);
-            runtime.StartDance("轻快摇摆", 1.0);
+            runtime.StartDance("左右摇摆", 1.0);
             var idleTriggeredWhenBusy = false;
             for (var i = 0; i < 480 && !idleTriggeredWhenBusy; i++)
             {
@@ -3189,7 +3139,7 @@ internal static class Live2DChecks
 
             // ---------------- L3. 动作层收尾 = 拿最后一帧姿势交叉淡化（StopAllDemos 不会一帧跳回） ----------------
             runtime.ResetParameters();
-            runtime.StartDance("轻快摇摆", 1.0);
+            runtime.StartDance("左右摇摆", 1.0);
             TickFrames(40);
             var danceParams = new[] { "LArm", "RArm", "ParamAngleZ" }.Where(id => rt.Model.FindParameter(id) is not null).ToArray();
             var danceBeforeStop = danceParams.Select(Param).ToArray();
@@ -3629,7 +3579,7 @@ internal static class Live2DChecks
                     $"active={runtime.InteractionActive} gesture={runtime.ActiveGesture ?? "null"}");
             }
 
-            // ---------- 点手：竖食指 / 放下手 ----------
+            // ---------- 点手：竖食指 / 收起手指 ----------
             StopInteractionDemos();
             runtime.ResetParameters();
             TickFrames(2);
@@ -3649,8 +3599,8 @@ internal static class Live2DChecks
                 runtime.PressInteraction(InteractionRegion.HandLeft, handX, handY);
                 runtime.ReleaseInteraction();
                 TickFrames(3);
-                C("互动反应：再点左手 → 名称「放下手」、手势停止",
-                    runtime.LastInteractionVoiceEvent == "hand" && runtime.LastInteractionName == "放下手"
+                C("互动反应：再点左手 → 名称「收起手指」、手势停止",
+                    runtime.LastInteractionVoiceEvent == "hand" && runtime.LastInteractionName == "收起手指"
                     && runtime.ActiveGesture is null,
                     $"{runtime.LastInteractionName} gesture={runtime.ActiveGesture ?? "null"}");
             }
