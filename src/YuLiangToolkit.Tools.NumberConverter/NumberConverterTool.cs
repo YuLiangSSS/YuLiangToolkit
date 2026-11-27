@@ -23,6 +23,8 @@ public sealed class NumberConverterTool : ITool
 
     public string Category => "数学";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "数学" };
+
     public IReadOnlyList<string> Tags => new[]
     {
         "数学", "转换", "金额", "大写", "人民币", "英文念法", "罗马数字", "进制", "千分位", "支票",

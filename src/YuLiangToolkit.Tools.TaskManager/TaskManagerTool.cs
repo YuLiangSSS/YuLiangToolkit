@@ -29,6 +29,8 @@ public sealed class TaskManagerTool : ITool
 
     public string Category => "系统";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "系统" };
+
     /// <summary>主页标签：点标签可快速筛出同类工具。</summary>
     public IReadOnlyList<string> Tags => new[] { "任务管理器", "进程", "端口", "性能监测", "PID", "GPU", "CPU", "内存" };
 

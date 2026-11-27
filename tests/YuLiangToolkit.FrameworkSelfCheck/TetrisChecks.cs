@@ -78,8 +78,8 @@ internal static class TetrisChecks
 
         if (category is not null)
         {
-            check("[俄罗斯方块] 「游戏」类别图标是 🎮、Order = 30、有说明文案",
-                category.EmojiIcon == "🎮" && category.Order == 30 && category.Description.Length > 0,
+            check("[俄罗斯方块] 「游戏」类别图标是 🎮、Order = 120、有说明文案",
+                category.EmojiIcon == "🎮" && category.Order == 120 && category.Description.Length > 0,
                 $"{category.EmojiIcon} / {category.Order} / {category.Description}");
         }
 

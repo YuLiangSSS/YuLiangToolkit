@@ -32,7 +32,7 @@ internal static class CalendarChecks
         var tool = new CalendarTool();
         check("[日历] 工具 Id / 名称 / Emoji / 分类 / 排序符合约定",
             tool.Id == "calendar" && tool.Name == "日历" && tool.EmojiIcon.Length > 0
-            && tool.Category == "系统" && tool.Order == 168 && tool is ITool,
+            && tool.Category == "时间" && tool.Order == 168 && tool is ITool,
             $"{tool.Id} / {tool.Name} / {tool.Category} / {tool.Order}");
 
         check("[日历] 标签含日历 / 日期 / 今天",

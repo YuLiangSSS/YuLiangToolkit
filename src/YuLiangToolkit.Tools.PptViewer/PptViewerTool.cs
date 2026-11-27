@@ -30,6 +30,8 @@ public class PptViewerTool : ITool, IToolCacheSource
 
     public string Category => "文档";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "文档" };
+
     public IReadOnlyList<string> Tags => new[]
     {
         "PPT", "pptx", "pptm", "ppsx", "幻灯片", "演示文稿", "幻灯", "演示", "放映", "全屏放映",

@@ -48,6 +48,8 @@ public class ScreenRecorderTool : ITool, IShortcutProvider
 
     public string Category => "媒体";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "媒体" };
+
     /// <summary>主页标签（卡片上显示成蓝色小字，也能被搜索命中）。</summary>
     public IReadOnlyList<string> Tags => new[]
     {
@@ -73,7 +75,7 @@ public class ScreenRecorderTool : ITool, IShortcutProvider
     /// <summary>工具名。</summary>
     public string ShortcutToolName => Name;
 
-    /// <summary>分类路径（录屏没有 CategoryPath，这里给「媒体」目录，和主页卡片一致）。</summary>
+    /// <summary>快捷键分组路径（和主页「媒体」分类保持一致）。</summary>
     public IReadOnlyList<string> ShortcutCategoryPath => new[] { Category };
 
     /// <summary>整个工具的快捷键总开关（复用已有的「启用全局快捷键」）。</summary>

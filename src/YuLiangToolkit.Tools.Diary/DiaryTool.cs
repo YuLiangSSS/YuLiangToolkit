@@ -28,6 +28,8 @@ public sealed class DiaryTool : ITool
 
     public string Category => "生活";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "生活" };
+
     public IReadOnlyList<string> Tags => new[] { "日记", "记事", "写作", "富文本", "心情", "备忘" };
 
     /// <summary>排在阅读 / 写作类工具附近。</summary>

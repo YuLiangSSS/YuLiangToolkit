@@ -17,6 +17,8 @@ public class SampleTool : ITool
     public string EmojiIcon => "🧪";
     public string Category => "开发";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "开发" };
+
     /// <summary>主页标签：卡片上显示成蓝色小字，点主页的标签即可快速筛选。</summary>
     public IReadOnlyList<string> Tags => new[] { "示例", "模板", "Data", "Config", "轮子演示" };
 

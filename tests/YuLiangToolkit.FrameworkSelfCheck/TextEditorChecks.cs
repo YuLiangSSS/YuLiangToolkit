@@ -45,7 +45,7 @@ internal static class TextEditorChecks
         var tool = new TextEditorTool();
         check("[编辑器] 工具 Id / 名称 / 分类 / 排序符合约定",
             tool.Id == "text-editor" && tool.Name == "文本编辑器"
-            && tool.Category == "文件" && tool.Order == 41,
+            && tool.Category == "文档" && tool.Order == 41,
             $"{tool.Id} / {tool.Name} / {tool.Category} / {tool.Order}");
         check("[编辑器] 标签里有「编辑器」「代码」，描述说明行号与缩放",
             tool.Tags.Contains("编辑器") && tool.Tags.Contains("代码")

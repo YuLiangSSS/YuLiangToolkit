@@ -28,7 +28,9 @@ public class PdfReaderTool : ITool, IToolCacheSource
 
     public string EmojiIcon => "📄";
 
-    public string Category => "媒体";
+    public string Category => "文档";
+
+    public IReadOnlyList<string> CategoryPath => new[] { "文档" };
 
     public IReadOnlyList<string> Tags => new[]
     {

@@ -27,6 +27,8 @@ public class PictureViewerTool : ITool, IToolCacheSource
 
     public string Category => "媒体";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "媒体" };
+
     public IReadOnlyList<string> Tags => new[]
     {
         "图片", "看图", "图片查看器", "漫画", "条漫", "长图", "滚动", "连续", "画廊", "阅读器",

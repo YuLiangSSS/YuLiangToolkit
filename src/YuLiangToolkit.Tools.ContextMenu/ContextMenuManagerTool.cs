@@ -23,9 +23,11 @@ public sealed class ContextMenuManagerTool : ITool
 
     public string Category => "系统";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "系统" };
+
     public IReadOnlyList<string> Tags => new[] { "系统", "右键菜单", "注册表", "隐藏", "删除", "添加", "清理" };
 
-    /// <summary>主页根层卡片（不写 <see cref="CategoryPath"/> 就放根目录）。</summary>
+    /// <summary>排在「系统」类别里其它管理工具附近。</summary>
     public int Order => 500;
 
     public FrameworkElement CreateView()

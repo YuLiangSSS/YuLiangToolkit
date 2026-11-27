@@ -76,6 +76,8 @@ public class MediaPlayerTool : ITool, IShortcutProvider, IShortcutActionHost
 
     public string Category => "媒体";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "媒体" };
+
     public IReadOnlyList<string> Tags => new[]
     {
         "播放器", "播放", "音乐", "视频", "音频", "mp3", "flac", "mp4", "MKV",

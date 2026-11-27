@@ -1,4 +1,4 @@
-﻿using System.Buffers.Binary;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -125,7 +125,7 @@ public static class BoardGamesChecks
         if (category is not null)
         {
             check("[注册] 「棋牌」类别图标是 🎲", category.EmojiIcon == "🎲", category.EmojiIcon);
-            check("[注册] 「棋牌」类别 Order = 20", category.Order == 20, category.Order.ToString());
+            check("[注册] 「棋牌」类别 Order = 110", category.Order == 110, category.Order.ToString());
             check("[注册] 「棋牌」类别有说明文案", category.Description.Length > 0, category.Description);
         }
 

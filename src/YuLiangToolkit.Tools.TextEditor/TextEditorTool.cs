@@ -20,8 +20,10 @@ public class TextEditorTool : ITool
 
     public string EmojiIcon => "📝";
 
-    /// <summary>跟批量重命名同属「文件」类（文件类工具排在一起）。</summary>
-    public string Category => "文件";
+    /// <summary>归在「文档」类（阅读 / 写作 / 文本处理排在一起）。</summary>
+    public string Category => "文档";
+
+    public IReadOnlyList<string> CategoryPath => new[] { "文档" };
 
     /// <summary>主页标签：卡片上显示成蓝色小字，点主页的标签即可快速筛选。</summary>
     public IReadOnlyList<string> Tags => new[] { "编辑器", "代码", "文本", "行号", "AvalonEdit" };

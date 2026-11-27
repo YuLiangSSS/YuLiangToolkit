@@ -24,6 +24,8 @@ public class VideoToGifTool : ITool
 
     public string Category => "媒体";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "媒体" };
+
     /// <summary>主页标签（卡片上显示成蓝色小字，也能被搜索命中）。</summary>
     public IReadOnlyList<string> Tags => new[]
     {

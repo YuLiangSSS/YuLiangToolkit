@@ -30,10 +30,12 @@ public sealed class AppManagerTool : ITool
 
     public string Category => "系统";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "系统" };
+
     /// <summary>主页标签：点标签可快速筛出同类工具。</summary>
     public IReadOnlyList<string> Tags => new[] { "已安装应用", "卸载", "修改", "安装日期", "占用大小", "驱动器" };
 
-    /// <summary>主页根层卡片，紧挨「任务管理器」（46）与「软件升级器」（505）。</summary>
+    /// <summary>排在「任务管理器」（46）与「软件升级器」（505）之间。</summary>
     public int Order => 47;
 
     public FrameworkElement CreateView()

@@ -34,7 +34,7 @@ public sealed class NotificationLogTool : ITool
         "通知", "通知历史", "通知中心", "提醒", "notification", "日志",
     };
 
-    /// <summary>排在系统分类里秒表 (170) 之后。</summary>
+    /// <summary>排在「系统」分类里截图 (172) 附近。</summary>
     public int Order => 172;
 
     public FrameworkElement CreateView()

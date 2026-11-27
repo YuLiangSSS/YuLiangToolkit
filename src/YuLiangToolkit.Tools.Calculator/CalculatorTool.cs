@@ -23,6 +23,8 @@ public sealed class CalculatorTool : ITool
 
     public string Category => "数学";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "数学" };
+
     public IReadOnlyList<string> Tags => new[]
     {
         "数学", "计算器", "科学计算器", "表达式", "三角函数", "辈分", "亲戚称谓", "日期", "天数",

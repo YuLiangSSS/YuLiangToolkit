@@ -71,16 +71,16 @@ public sealed class CountdownTool : ITool, IShortcutProvider, IShortcutActionHos
 
     public string EmojiIcon => "⏳";
 
-    public string Category => "系统";
+    public string Category => "时间";
 
-    public IReadOnlyList<string> CategoryPath => new[] { "系统" };
+    public IReadOnlyList<string> CategoryPath => new[] { "时间" };
 
     public IReadOnlyList<string> Tags => new[]
     {
         "倒计时", "计时", "番茄钟", "countdown", "快捷键", "提醒",
     };
 
-    /// <summary>排在系统分类里秒表 (170) 与通知管理 (172) 之间。</summary>
+    /// <summary>排在「时间」分类里秒表 (170) 与闹钟 (173) 之间。</summary>
     public int Order => 171;
 
     public FrameworkElement CreateView() => new CountdownView { DataContext = _viewModel };

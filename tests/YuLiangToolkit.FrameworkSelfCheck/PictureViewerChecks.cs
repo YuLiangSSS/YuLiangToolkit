@@ -1019,7 +1019,9 @@ internal static class PictureViewerChecks
         Check("[图片] 主页标签能搜到「漫画 / 滚动 / 中键」",
             tool.Tags.Contains("漫画") && tool.Tags.Contains("滚动") && tool.Tags.Contains("中键"),
             string.Join(",", tool.Tags));
-        Check("[图片] 默认挂在主页根层（没有 CategoryPath）", ((ITool)tool).CategoryPath.Count == 0);
+        Check("[图片] 归在「媒体」类别（CategoryPath 与 Category 一致）",
+            ((ITool)tool).CategoryPath.SequenceEqual(new[] { "媒体" }),
+            string.Join(" / ", ((ITool)tool).CategoryPath));
 
         // ---------------------------------------------------------------- 13. 全屏（沉浸阅读）状态机
         // 只断言 ViewModel 的状态机：真正的窗口操作（藏标题栏 / 侧边栏、铺满屏幕）在 View / 外壳

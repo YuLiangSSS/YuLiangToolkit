@@ -26,6 +26,8 @@ public class WordViewerTool : ITool, IToolCacheSource
 
     public string Category => "文档";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "文档" };
+
     public IReadOnlyList<string> Tags => new[]
     {
         "Word", "docx", "docm", "文档", "阅读器", "只读", "浏览", "大纲", "缩放", "查找", "阅读",

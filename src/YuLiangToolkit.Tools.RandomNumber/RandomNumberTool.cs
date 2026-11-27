@@ -21,6 +21,8 @@ public sealed class RandomNumberTool : ITool
 
     public string Category => "数学";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "数学" };
+
     public IReadOnlyList<string> Tags => new[] { "数学", "随机数", "大数", "小数", "抽样" };
 
     /// <summary>主页卡片排序：夹在「计算器」(510) 与「函数绘图」(520) 之间。</summary>

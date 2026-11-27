@@ -1382,7 +1382,7 @@ internal static class PdfReaderChecks
         var pdfTool = new PdfReaderTool();
         Check("工具契约：Id / 名称 / 分类与配置一致",
             pdfTool.Id == "pdf-reader" && pdfTool.Id == PdfReaderConfig.ToolId
-            && pdfTool.Name == "PDF 阅读器" && pdfTool.Category == "媒体",
+            && pdfTool.Name == "PDF 阅读器" && pdfTool.Category == "文档",
             $"{pdfTool.Id} / {pdfTool.Name} / {pdfTool.Category}");
 
         Check("工具契约：排序号 17（不是默认 0，主页排序不会乱）",

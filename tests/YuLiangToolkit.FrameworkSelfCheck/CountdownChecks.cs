@@ -33,7 +33,7 @@ internal static class CountdownChecks
         var tool = new CountdownTool();
         check("[倒计时] 工具 Id / 名称 / Emoji / 分类 / 排序符合约定",
             tool.Id == "countdown" && tool.Name == "倒计时" && tool.EmojiIcon.Length > 0
-            && tool.Category == "系统" && tool.Order == 171 && tool is ITool,
+            && tool.Category == "时间" && tool.Order == 171 && tool is ITool,
             $"{tool.Id} / {tool.Name} / {tool.Category} / {tool.Order}");
 
         check("[倒计时] 实现了 IShortcutProvider（能出现在主页设置 → 快捷键）",

@@ -77,16 +77,16 @@ public sealed class StopwatchTool : ITool, IShortcutProvider, IShortcutActionHos
 
     public string EmojiIcon => "⏱️";
 
-    public string Category => "系统";
+    public string Category => "时间";
 
-    public IReadOnlyList<string> CategoryPath => new[] { "系统" };
+    public IReadOnlyList<string> CategoryPath => new[] { "时间" };
 
     public IReadOnlyList<string> Tags => new[]
     {
         "秒表", "计时", "计时器", "stopwatch", "快捷键", "热键", "计次",
     };
 
-    /// <summary>主页排序：排在「系统」分类里其它工具之后。</summary>
+    /// <summary>主页排序：排在「时间」分类里其它工具之后。</summary>
     public int Order => 170;
 
     public FrameworkElement CreateView() => new StopwatchView { DataContext = _viewModel };

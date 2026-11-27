@@ -30,6 +30,8 @@ public class ExcelViewerTool : ITool, IToolCacheSource
 
     public string Category => "文档";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "文档" };
+
     public IReadOnlyList<string> Tags => new[]
     {
         "Excel", "xlsx", "xlsm", "表格", "工作簿", "工作表", "单元格", "文档", "阅读器", "只读", "浏览",

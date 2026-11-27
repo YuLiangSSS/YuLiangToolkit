@@ -38,12 +38,12 @@ internal static class StopwatchChecks
         check("[秒表] 工具 Id / 名称 / Emoji / 分类 / 排序符合约定，且实现 ITool",
             tool.Id == StopwatchConfig.ToolId && tool.Id == "stopwatch"
             && tool.Name == "秒表" && tool.EmojiIcon.Length > 0
-            && tool.Category == "系统" && tool.Order == 170
+            && tool.Category == "时间" && tool.Order == 170
             && tool is ITool,
             $"{tool.Id} / {tool.Name} / {tool.Category} / {tool.Order}");
 
-        check("[秒表] 归在「系统」分类下（CategoryPath 与 Category 一致）",
-            tool.CategoryPath.Count == 1 && tool.CategoryPath[0] == "系统",
+        check("[秒表] 归在「时间」分类下（CategoryPath 与 Category 一致）",
+            tool.CategoryPath.Count == 1 && tool.CategoryPath[0] == "时间",
             string.Join(" / ", tool.CategoryPath));
 
         check("[秒表] 标签包含秒表 / 快捷键 / 计次（主页搜索能命中）",

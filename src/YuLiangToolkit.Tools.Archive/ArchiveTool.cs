@@ -23,6 +23,8 @@ public class ArchiveTool : ITool
 
     public string Category => "文件";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "文件" };
+
     public IReadOnlyList<string> Tags => new[]
     {
         "压缩", "解压", "解压缩", "zip", "7z", "rar", "tar", "gz", "bz2", "xz",

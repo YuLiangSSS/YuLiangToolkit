@@ -21,16 +21,16 @@ public sealed class CalendarTool : ITool
 
     public string EmojiIcon => "📅";
 
-    public string Category => "系统";
+    public string Category => "时间";
 
-    public IReadOnlyList<string> CategoryPath => new[] { "系统" };
+    public IReadOnlyList<string> CategoryPath => new[] { "时间" };
 
     public IReadOnlyList<string> Tags => new[]
     {
         "日历", "月历", "日期", "calendar", "今天", "星期",
     };
 
-    /// <summary>排在系统分类里秒表 (170) 之前。</summary>
+    /// <summary>排在「时间」分类里秒表 (170) 之前。</summary>
     public int Order => 168;
 
     public FrameworkElement CreateView()

@@ -28,6 +28,8 @@ public sealed class MailTool : ITool
 
     public string Category => "网络";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "网络" };
+
     /// <summary>主页标签：点标签可快速筛出同类工具。</summary>
     public IReadOnlyList<string> Tags => new[] { "邮箱", "IMAP", "Gmail", "QQ", "代收" };
 

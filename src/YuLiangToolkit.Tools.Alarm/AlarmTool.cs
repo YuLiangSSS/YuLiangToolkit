@@ -35,16 +35,16 @@ public sealed class AlarmTool : ITool
 
     public string EmojiIcon => "⏰";
 
-    public string Category => "系统";
+    public string Category => "时间";
 
-    public IReadOnlyList<string> CategoryPath => new[] { "系统" };
+    public IReadOnlyList<string> CategoryPath => new[] { "时间" };
 
     public IReadOnlyList<string> Tags => new[]
     {
         "闹钟", "定时", "提醒", "alarm", "起床", "贪睡",
     };
 
-    /// <summary>排在系统分类里倒计时 (171) 之后。</summary>
+    /// <summary>排在「时间」分类里倒计时 (171) 之后。</summary>
     public int Order => 173;
 
     public FrameworkElement CreateView() => new AlarmView { DataContext = _viewModel };

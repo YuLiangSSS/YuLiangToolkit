@@ -40,6 +40,8 @@ public sealed class LauncherTool : ITool, IStartupTask
 
     public string Category => "系统";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "系统" };
+
     /// <summary>主页标签：点标签可快速筛出同类工具。</summary>
     public IReadOnlyList<string> Tags => new[] { "启动器", "快捷方式", "桌面", "图标", "exe", "联动启动" };
 

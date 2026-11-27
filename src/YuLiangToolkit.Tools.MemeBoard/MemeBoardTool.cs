@@ -23,7 +23,9 @@ public sealed class MemeBoardTool : ITool
 
     public string EmojiIcon => "😆";
 
-    public string Category => "系统";
+    public string Category => "生活";
+
+    public IReadOnlyList<string> CategoryPath => new[] { "生活" };
 
     /// <summary>主页标签：点标签可快速筛出同类工具。</summary>
     public IReadOnlyList<string> Tags => new[] { "表情包", "收藏", "QQ", "剪贴板", "自动粘贴" };

@@ -18,6 +18,8 @@ public class SpugCaptchaTool : ITool
     public string EmojiIcon => "📨";
     public string Category => "开发";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "开发" };
+
     /// <summary>主页标签：卡片上显示成蓝色小字，点主页的标签即可快速筛选。</summary>
     public IReadOnlyList<string> Tags => new[] { "Spug", "验证码", "短信", "邮箱", "推送", "联调", "测试" };
 

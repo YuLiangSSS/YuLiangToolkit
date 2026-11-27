@@ -16,6 +16,8 @@ public class BatchRenameTool : ITool
     public string EmojiIcon => "🏷️";
     public string Category => "文件";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "文件" };
+
     /// <summary>主页标签：卡片上显示成蓝色小字，点主页的标签即可快速筛选。</summary>
     public IReadOnlyList<string> Tags => new[]
     {

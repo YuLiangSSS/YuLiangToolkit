@@ -25,6 +25,8 @@ public class OpenWithTool : ITool
 
     public string Category => "文件";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "文件" };
+
     public IReadOnlyList<string> Tags => new[]
     {
         "打开方式", "Open with", "右键", "文件关联", "文本", "压缩包", "自动", "注册表",

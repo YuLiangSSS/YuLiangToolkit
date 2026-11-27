@@ -31,7 +31,7 @@ internal static class AlarmChecks
         var tool = new AlarmTool();
         check("[闹钟] 工具 Id / 名称 / Emoji / 分类 / 排序符合约定",
             tool.Id == "alarm" && tool.Name == "闹钟" && tool.EmojiIcon.Length > 0
-            && tool.Category == "系统" && tool.Order == 173 && tool is ITool,
+            && tool.Category == "时间" && tool.Order == 173 && tool is ITool,
             $"{tool.Id} / {tool.Name} / {tool.Order}");
 
         check("[闹钟] 标签含闹钟 / 提醒 / 贪睡",

@@ -25,9 +25,11 @@ public sealed class SoftwareUpdaterTool : ITool
 
     public string Category => "系统";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "系统" };
+
     public IReadOnlyList<string> Tags => new[] { "系统", "winget", "升级", "更新", "批量", "已安装应用" };
 
-    /// <summary>主页根层卡片，排在「右键菜单管理」附近。</summary>
+    /// <summary>排在「右键菜单管理」附近。</summary>
     public int Order => 505;
 
     public FrameworkElement CreateView()

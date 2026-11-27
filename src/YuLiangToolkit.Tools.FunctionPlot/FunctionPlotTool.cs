@@ -24,9 +24,11 @@ public sealed class FunctionPlotTool : ITool
 
     public string Category => "数学";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "数学" };
+
     public IReadOnlyList<string> Tags => new[] { "数学", "函数", "绘图", "图像", "坐标系" };
 
-    /// <summary>主页根层卡片，紧跟「计算器」（510）后面。</summary>
+    /// <summary>排在「计算器」（510）后面。</summary>
     public int Order => 520;
 
     public FrameworkElement CreateView()

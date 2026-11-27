@@ -26,6 +26,8 @@ public sealed class MailSenderTool : ITool
 
     public string Category => "网络";
 
+    public IReadOnlyList<string> CategoryPath => new[] { "网络" };
+
     /// <summary>主页标签：点标签可快速筛出同类工具。</summary>
     public IReadOnlyList<string> Tags => new[] { "邮件", "发送", "推送", "API", "Resend", "富文本", "附件" };
 

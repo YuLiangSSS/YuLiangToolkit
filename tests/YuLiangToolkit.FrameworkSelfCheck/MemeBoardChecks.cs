@@ -41,7 +41,7 @@ internal static class MemeBoardChecks
         var tool = new MemeBoardTool();
         check("[表情包收藏夹] 工具 Id / 名称 / 分类 / 排序符合约定，且实现了 ITool",
             tool.Id == "meme-board" && tool.Name == "表情包收藏夹"
-            && tool.Category == "系统" && tool.Order == 45
+            && tool.Category == "生活" && tool.Order == 45
             && tool is ITool,
             $"{tool.Id} / {tool.Name} / {tool.Category} / {tool.Order}");
 

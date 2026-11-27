@@ -43,12 +43,12 @@ internal static class WorldClockChecks
         var tool = new WorldClockTool();
         check("[全球时钟] 工具 Id / 名称 / 分类 / 排序符合约定，且实现了 ITool",
             tool.Id == "world-clock" && tool.Name == "全球时钟"
-            && tool.Category == "系统" && tool.Order == 165
+            && tool.Category == "时间" && tool.Order == 165
             && tool is ITool,
             $"{tool.Id} / {tool.Name} / {tool.Category} / {tool.Order}");
 
-        check("[全球时钟] 归在「系统」类别下（CategoryPath 与 Category 一致）",
-            tool.CategoryPath.Count == 1 && tool.CategoryPath[0] == "系统",
+        check("[全球时钟] 归在「时间」类别下（CategoryPath 与 Category 一致）",
+            tool.CategoryPath.Count == 1 && tool.CategoryPath[0] == "时间",
             string.Join(" / ", tool.CategoryPath));
 
         check("[全球时钟] 主页图标非空、标签含时区 / 时差 / 世界时间",
