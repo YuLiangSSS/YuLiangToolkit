@@ -185,6 +185,21 @@ public partial class StickerWindow : Window
         catch { /* 打开资源管理器失败不影响贴纸 */ }
     }
 
+    /// <summary>用编辑后的图片替换当前贴纸（尺寸由编辑结果决定，窗口保持原位置 / 大小）。</summary>
+    public bool ReplaceImage(string path)
+    {
+        var full = ScreenStickerConfig.NormalizePath(path);
+        if (full.Length == 0 || !File.Exists(full)) return false;
+        var image = StickerImage.Load(full);
+        if (image is null) return false;
+
+        _entry.Path = full;
+        Picture.Source = image;
+        _session.NotifyWindowGeometryChanged(this);
+        _session.SaveSoon();
+        return true;
+    }
+
     /// <summary>
     /// 程序退出 / 「关闭全部贴纸」时关闭：<b>保留配置记录</b>，下次启动还能恢复。
     /// 用户自己点「关闭这张贴纸」不走这里（那种要删记录）。
@@ -492,6 +507,29 @@ public partial class StickerWindow : Window
     {
         _menuOpen = false;
         if (!IsMouseOver) SetHoverChrome(false);
+    }
+
+    private void OnMenuEditClick(object sender, RoutedEventArgs e)
+    {
+        _menuOpen = false;
+        if (IsAnimated)
+        {
+            MessageBox.Show(this, "动图暂不支持直接编辑，请先保存为静态图后再试。", "编辑贴图",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var editor = new StickerEditWindow(_entry.Path)
+        {
+            Owner = this,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+        };
+        if (editor.ShowDialog() != true || editor.EditedImagePath is not { } edited) return;
+        if (!ReplaceImage(edited))
+        {
+            MessageBox.Show(this, "编辑后的图片加载失败。", "编辑贴图",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private void OnMenuTopmostClick(object sender, RoutedEventArgs e)

@@ -33,6 +33,9 @@
                 <Style TargetType="Separator" BasedOn="{StaticResource DarkMenuSeparatorStyle}" />
             </ContextMenu.Resources>
 
+            <MenuItem Header="编辑图片…（画笔 / 高亮 / 橡皮）" Click="OnMenuEditClick"
+                      ToolTip="打开轻量编辑器；保存后会替换当前这张贴图" />
+
             <MenuItem x:Name="MenuItemTopmost" Header="强制置顶（覆盖其它窗口）" IsCheckable="True"
                       Click="OnMenuTopmostClick"
                       ToolTip="打开后这张贴纸会一直盖在普通窗口上面；再点一次取消" />
