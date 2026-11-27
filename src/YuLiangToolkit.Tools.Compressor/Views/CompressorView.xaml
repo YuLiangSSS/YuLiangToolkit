@@ -1,0 +1,195 @@
+<UserControl x:Class="YuLiangToolkit.Tools.Compressor.Views.CompressorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:core="clr-namespace:YuLiangToolkit.Core.Mvvm;assembly=YuLiangToolkit.Core"
+             Background="Transparent">
+    <UserControl.Resources>
+        <Style x:Key="CompressorListItemStyle" TargetType="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Row" Background="Transparent" CornerRadius="8" Padding="9">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Row" Property="Background" Value="{DynamicResource ListRowHoverBackgroundBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Row" Property="Background" Value="{DynamicResource ListRowSelectedBackgroundBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="28,22,28,26">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" MinHeight="480" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="🗜️ 压缩器" FontSize="21" FontWeight="SemiBold" />
+            <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                       Margin="0,5,0,0"
+                       Text="把图片、音频、视频拖进来即可批量压缩。选好压缩程度和输出格式，点「开始压缩」；文件只读源文件，不会覆盖原文件。" />
+            <TextBlock FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                       Margin="0,8,0,0" Text="支持：JPG / PNG / WebP / GIF（图片首帧） · MP3 / WAV / FLAC / M4A / OGG / OPUS（音频） · MP4 / MKV / MOV / AVI / WebM（视频）" />
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="0,16,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.45*" MinWidth="480" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="*" MinWidth="360" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 左：拖放与文件列表 -->
+            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Padding="18"
+                    AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <Border x:Name="DropZone" Grid.Row="0"
+                            Background="{DynamicResource InputBackgroundBrush}"
+                            BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                            CornerRadius="10" Padding="18,15" AllowDrop="True"
+                            DragOver="OnDragOver" Drop="OnDrop">
+                        <StackPanel>
+                            <TextBlock Text="把文件拖到这里" FontSize="16" FontWeight="SemiBold"
+                                       HorizontalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="图片 / 音频 / 视频都可以，支持一次拖多个文件或文件夹"
+                                       FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                                       HorizontalAlignment="Center" Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Border>
+
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,0">
+                        <Button Content="＋ 添加文件" Command="{Binding AddFilesCommand}"
+                                Style="{StaticResource PrimaryButtonStyle}" Height="32" Padding="12,4" />
+                        <Button Content="＋ 添加文件夹" Command="{Binding AddFolderCommand}"
+                                Style="{StaticResource SecondaryButtonStyle}" Height="32" Padding="12,4" Margin="8,0,0,0" />
+                        <Button Content="移除选中" Command="{Binding RemoveSelectedCommand}"
+                                Style="{StaticResource SecondaryButtonStyle}" Height="32" Padding="12,4" Margin="8,0,0,0" />
+                        <Button Content="清空列表" Command="{Binding ClearCommand}"
+                                Style="{StaticResource SecondaryButtonStyle}" Height="32" Padding="12,4" Margin="8,0,0,0" />
+                        <TextBlock Text="{Binding SummaryText}" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center" Margin="14,0,0,0" />
+                    </StackPanel>
+
+                    <ListBox Grid.Row="2" Margin="0,8,0,0" Background="Transparent" BorderThickness="0"
+                             ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
+                             ItemContainerStyle="{StaticResource CompressorListItemStyle}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="34" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding KindIcon}" FontSize="22" VerticalAlignment="Top" Margin="0,1,0,0" />
+                                    <StackPanel Grid.Column="1" Margin="4,0,8,0">
+                                        <TextBlock Text="{Binding FileName}" FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="{Binding DisplayDetail}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                                                   TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                                        <ProgressBar Value="{Binding Progress, Mode=OneWay}" Height="4" Margin="0,7,0,0" Minimum="0" Maximum="100" />
+                                        <TextBlock Text="{Binding StatusText}" FontSize="11"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="2" Text="{Binding SizeText}" FontSize="11"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Top" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+
+            <core:PaneSplitter Grid.Column="1" Style="{StaticResource PaneSplitterVerticalStyle}"
+                               Key="compressor.文件与设置" />
+
+            <!-- 右：压缩设置 -->
+            <Border Grid.Column="2" Style="{StaticResource CardStyle}" Padding="18">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel>
+                        <TextBlock Text="压缩设置" FontSize="14" FontWeight="SemiBold" />
+                        <TextBlock Text="压缩程度" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,14,0,4" />
+                        <ComboBox ItemsSource="{Binding PresetOptions}" DisplayMemberPath="Label"
+                                  SelectedItem="{Binding SelectedPreset, Mode=TwoWay}"
+                                  Style="{StaticResource ComboBoxStyle}" />
+                        <TextBlock Text="{Binding PresetDescription}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap" Margin="0,5,0,0" />
+
+                        <TextBlock Text="输出格式" FontSize="12.5" FontWeight="SemiBold" Margin="0,18,0,6" />
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="图片" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding ImageFormatOptions}" DisplayMemberPath="Label"
+                                      SelectedItem="{Binding SelectedImageFormat, Mode=TwoWay}" Style="{StaticResource ComboBoxStyle}" />
+                        </Grid>
+                        <Grid Margin="0,7,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="音频" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding AudioFormatOptions}" DisplayMemberPath="Label"
+                                      SelectedItem="{Binding SelectedAudioFormat, Mode=TwoWay}" Style="{StaticResource ComboBoxStyle}" />
+                        </Grid>
+                        <Grid Margin="0,7,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="82"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="视频" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" Text="{Binding VideoFormatText, Mode=OneWay}" IsReadOnly="True" Style="{StaticResource TextBoxStyle}" />
+                        </Grid>
+
+                        <TextBlock Text="输出目录" FontSize="12.5" FontWeight="SemiBold" Margin="0,18,0,6" />
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <TextBox Text="{Binding OutputFolderText, Mode=OneWay}" IsReadOnly="True" Style="{StaticResource TextBoxStyle}" FontSize="11" />
+                            <Button Grid.Column="1" Content="浏览…" Style="{StaticResource SecondaryButtonStyle}" Padding="9,3" Margin="7,0,0,0" Command="{Binding BrowseOutputCommand}" />
+                            <Button Grid.Column="2" Content="打开" Style="{StaticResource SecondaryButtonStyle}" Padding="9,3" Margin="6,0,0,0" Command="{Binding OpenOutputCommand}" />
+                        </Grid>
+                        <TextBlock Text="{Binding OutputSummary}" FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                        <TextBlock Text="{Binding FormatSummary}" FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,3,0,0" />
+
+                        <TextBlock Text="选项" FontSize="12.5" FontWeight="SemiBold" Margin="0,18,0,6" />
+                        <CheckBox Content="同名输出自动加序号（不覆盖）" IsChecked="{Binding Cfg.OverwriteExisting, Converter={StaticResource InverseBoolConverter}}" Style="{StaticResource CheckBoxStyle}" />
+                        <CheckBox Content="完成后打开输出目录" IsChecked="{Binding Cfg.OpenFolderAfter}" Style="{StaticResource CheckBoxStyle}" Margin="0,7,0,0" />
+
+                        <TextBlock Text="FFmpeg（音频 / 视频）" FontSize="12.5" FontWeight="SemiBold" Margin="0,18,0,6" />
+                        <TextBlock Text="{Binding FfmpegStatusText}" FontSize="10.5" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                        <Button Content="选择 ffmpeg.exe…" Style="{StaticResource SecondaryButtonStyle}" Height="30" Margin="0,7,0,0"
+                                HorizontalAlignment="Left" Command="{Binding ChooseFfmpegCommand}" />
+
+                        <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,1,0,0" Margin="0,18,0,0" />
+                        <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                            <Button Content="开始压缩" Command="{Binding StartCommand}" Style="{StaticResource PrimaryButtonStyle}"
+                                    Height="38" Width="132" />
+                            <Button Content="取消" Command="{Binding CancelCommand}" Style="{StaticResource SecondaryButtonStyle}"
+                                    Height="38" Width="74" Margin="8,0,0,0" />
+                            <Button Content="恢复默认" Command="{Binding ResetSettingsCommand}" Style="{StaticResource SecondaryButtonStyle}"
+                                    Height="32" Padding="10,3" Margin="12,3,0,0" />
+                        </StackPanel>
+                        <ProgressBar Value="{Binding OverallProgress, Mode=OneWay}" Height="6" Minimum="0" Maximum="100" Margin="0,15,0,0" />
+                        <TextBlock Text="{Binding StatusText}" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap" Margin="0,6,0,0" />
+                        <TextBlock Text="处理日志" FontSize="11" FontWeight="SemiBold" Margin="0,14,0,4" />
+                        <TextBox Text="{Binding LogText}" IsReadOnly="True" Height="90" FontSize="10.5"
+                                 Style="{StaticResource TextBoxStyle}" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

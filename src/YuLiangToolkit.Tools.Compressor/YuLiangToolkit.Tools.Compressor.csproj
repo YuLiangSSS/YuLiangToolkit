@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.Compressor</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.Compressor</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+  </ItemGroup>
+
+</Project>
