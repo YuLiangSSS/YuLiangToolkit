@@ -10,6 +10,9 @@
 | 🎵 音频工具 | 视频转音频（MP3 / FLAC / 原样提取）+ 分段视频合成（m3u8 / ts → mp4/mkv） | [tools/audio-tools.md](tools/audio-tools.md) |
 | 🖼️ 视频转 GIF | 把视频文件截取一段转成 GIF 动图：可设起始时间 / 时长 / 帧率 / 宽度 / 颜色数 / 抖动，FFmpeg 两遍调色板编码，颜色准、体积小 | [tools/video-to-gif.md](tools/video-to-gif.md) |
 | 🎥 录屏 / GIF | 用 FFmpeg 的 gdigrab 录屏：全屏 / 框选区域 / 指定窗口 → GIF 或 MP4 / MKV / MOV / AVI / WebM（H.264 / H.265 / AV1 / VP9 / MPEG-4 / MJPEG 编码器可选，画质或码率可调）；支持麦克风 + 系统声音、摄像头预览与屏幕叠加、可自定义全局快捷键，也能截 PNG | [tools/screen-recorder.md](tools/screen-recorder.md) |
+| 📷 截图工具 | Snipaste 风格截图：冻结全屏后框选，拖动 / 缩放选区、放大镜取色；矩形 / 椭圆 / 箭头 / 直线 / 画笔 / 荧光笔 / 文字 / 序号 / 马赛克 / 模糊 / 橡皮擦 / 撤销重做 / OCR，支持复制 / 保存 / 贴图、历史、贴图组、压缩档位与四条全局快捷键 | [tools/screenshot.md](tools/screenshot.md) |
+| ✏️ 屏幕画笔 | Epic Pen 风格桌面透明批注：画笔 / 荧光笔 / 橡皮 / 直线 / 矩形 / 椭圆 / 箭头 / 文字，白板 / 黑板、额外调色板、撤销重做与四条全局快捷键；可被截图工具捕获 | [tools/screen-pen.md](tools/screen-pen.md) |
+| 🗜️ 压缩器 | 图片 / 音频 / 视频批量压缩：轻度 / 标准 / 极限 / 超糊 / 全损 / 随缘六档，自动识别文件，支持拖入、进度、取消和输出目录 | [tools/compressor.md](tools/compressor.md) |
 | ✂️ 剪辑工具 | 简易视频 / GIF 剪辑：时间轴缩略图定位、起止裁剪、多片段按顺序拼接，导出 MP4 / MKV / MOV / AVI / WebM 或 GIF，可生成低清预览片段确认效果 | [tools/media-editor.md](tools/media-editor.md) |
 | 🎬 视频 / 音乐播放器 | 本地播放器：播放列表、循环随机、可调步长的快进快退 | [tools/media-player.md](tools/media-player.md) |
 | 🖼️ 图片连续阅读器 | 把一个文件夹的图片首尾相接成一条长带（无缝、无间距），滚轮连续看条漫 / 长图 / 漫画；六种阅读方式（连续滚动三种方向 / 双页翻页左右 / 单页浏览），支持缩放、自由拖拽、拖动惯性 / 滚轮惯性、F11 全屏沉浸阅读（工具条自动隐藏）、🕘 最近浏览（上限可调）、双击图片打开与三层图片边框；**排序（页序 / 名称 / 修改日期 / 大小 + 正逆序）**与**📄 一键转 PDF**（一张一页、按排序拼接，JPEG 无损嵌入 / 透明合成白底） | [tools/picture-viewer.md](tools/picture-viewer.md) |

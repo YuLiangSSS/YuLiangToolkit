@@ -66,6 +66,12 @@
     <!-- 「屏幕贴纸」：贴纸几何（默认大小 / 图片比例 / 以鼠标为锚点缩放 / 角点缩放 / 夹回屏幕）/
          层级顺序 / 最近使用列表 / 配置默认值；全部纯逻辑，不创建窗口。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.ScreenSticker\YuLiangToolkit.Tools.ScreenSticker.csproj" />
+    <!-- 「截图工具」：配置默认值 / 选区换算 / 标注命中 / 渲染器 / 历史与贴图组纯逻辑。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Screenshot\YuLiangToolkit.Tools.Screenshot.csproj" />
+    <!-- 「屏幕画笔」：配置默认值 / 颜色解析 / 批注渲染 / 与截图的覆盖状态协作。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.ScreenPen\YuLiangToolkit.Tools.ScreenPen.csproj" />
+    <!-- 「压缩器」：文件类型识别 / 压缩预设 / FFmpeg 参数 / 输出命名纯逻辑。 -->
+    <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Compressor\YuLiangToolkit.Tools.Compressor.csproj" />
     <!-- 「网页浏览器」：地址栏输入解析（补协议 / localhost / IP / 搜索词）/ 搜索模板 / 配置默认值，
          全是纯逻辑；不启动 WebView2、不联网。 -->
     <ProjectReference Include="..\..\src\YuLiangToolkit.Tools.Browser\YuLiangToolkit.Tools.Browser.csproj" />
