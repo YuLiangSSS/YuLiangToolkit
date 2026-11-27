@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 「截图工具」：Snipaste 风格的截图 / 编辑 / 贴图工作流。
+       捕获、冻结全屏、框选、标注全部在本地完成；贴图复用「屏幕贴纸」的成熟窗口
+       （拖动 / 缩放 / 置顶 / 多张同时存在），避免再造一套窗口生命周期。 -->
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>YuLiangToolkit.Tools.Screenshot</RootNamespace>
+    <AssemblyName>YuLiangToolkit.Tools.Screenshot</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuLiangToolkit.Core\YuLiangToolkit.Core.csproj" />
+    <ProjectReference Include="..\YuLiangToolkit.Tools.ScreenSticker\YuLiangToolkit.Tools.ScreenSticker.csproj" />
+  </ItemGroup>
+
+</Project>
