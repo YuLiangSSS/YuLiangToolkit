@@ -1,0 +1,71 @@
+<Window x:Class="YuLiangToolkit.Tools.ScreenPen.Views.ScreenPenToolbarWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="屏幕画笔工具栏"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        SizeToContent="Height"
+        Width="62"
+        WindowStartupLocation="Manual"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True">
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="Width" Value="42" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#FFF0F0F0" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontSize" Value="19" />
+            <Setter Property="FontFamily" Value="Segoe UI Symbol" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="7">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#5532ADE6" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#8832ADE6" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <Border Background="#E61E1E1E" BorderBrush="#5532ADE6" BorderThickness="1" CornerRadius="12"
+            Padding="6,8" MouseLeftButtonDown="OnDragHandleMouseDown">
+        <StackPanel>
+            <TextBlock Text="⠿" Foreground="#FF8E8E93" FontSize="16" HorizontalAlignment="Center"
+                       Margin="0,0,0,4" Cursor="SizeAll" />
+            <Button x:Name="PenButton" Content="✏" Tag="pen" ToolTip="画笔（P）" Click="OnToolClick" />
+            <Button x:Name="HighlighterButton" Content="▰" Tag="highlighter" ToolTip="荧光笔（H）" Click="OnToolClick" />
+            <Button x:Name="EraserButton" Content="⌫" Tag="eraser" ToolTip="橡皮（E）" Click="OnToolClick" />
+            <Button x:Name="LineButton" Content="╱" Tag="line" ToolTip="直线（L）" Click="OnToolClick" />
+            <Button x:Name="RectangleButton" Content="□" Tag="rectangle" ToolTip="矩形（R）" Click="OnToolClick" />
+            <Button x:Name="EllipseButton" Content="○" Tag="ellipse" ToolTip="椭圆（O）" Click="OnToolClick" />
+            <Button x:Name="ArrowButton" Content="→" Tag="arrow" ToolTip="箭头（A）" Click="OnToolClick" />
+            <Button x:Name="TextButton" Content="T" Tag="text" ToolTip="文字（T）" Click="OnToolClick" />
+            <Border Height="1" Background="#33FFFFFF" Margin="2,5" />
+            <WrapPanel x:Name="ColorPanel" Width="46" HorizontalAlignment="Center" />
+            <Button Content="调" ToolTip="打开完整调色板" Click="OnPaletteClick" />
+            <Border Height="1" Background="#33FFFFFF" Margin="2,5" />
+            <Button Content="↶" ToolTip="撤销（Ctrl+Shift+F9）" Click="OnUndoClick" />
+            <Button Content="↷" ToolTip="重做" Click="OnRedoClick" />
+            <Button Content="清" ToolTip="清空批注" Click="OnClearClick" />
+            <Button Content="隐" ToolTip="隐藏画笔" Click="OnHideClick" />
+            <Button Content="×" ToolTip="隐藏工具栏" Click="OnHideToolbarClick" />
+        </StackPanel>
+    </Border>
+</Window>
